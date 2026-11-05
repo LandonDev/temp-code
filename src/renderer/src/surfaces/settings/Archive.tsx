@@ -19,6 +19,7 @@ import { PageEmpty, PageRow, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { Button } from "../../components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
+import { reveal } from "../../components/ui/reveal";
 import { MoreHorizontal } from "../../chrome/icons";
 import {
   AlertDialog,
@@ -266,7 +267,7 @@ function RowActions({
   onDelete?: () => void;
 }) {
   return (
-    <span className="flex items-center gap-1 opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/item:opacity-100 group-hover/item:delay-(--delay-hover) group-focus-within/item:opacity-100 group-focus-within/item:delay-(--dur-instant) has-[[data-popup-open]]:opacity-100 has-[[data-popup-open]]:delay-(--dur-instant) motion-reduce:transition-opacity">
+    <span className={`flex items-center gap-1 ${reveal("item", { row: true })}`}>
       {onRestore ? (
         <Button variant="ghost" size="sm" aria-label={`Restore ${name}`} onClick={onRestore}>
           Restore

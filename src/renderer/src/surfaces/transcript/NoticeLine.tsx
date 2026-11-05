@@ -2,6 +2,7 @@
 import { useContext, type ReactNode } from "react";
 import { ChevronRight } from "../../chrome/icons";
 import { CollapsibleTrigger } from "../../components/ui/collapsible";
+import { reveal } from "../../components/ui/reveal";
 import { TooltipProvider } from "../../components/ui/tooltip";
 import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
 import { cn } from "../../lib/cn";
@@ -105,7 +106,7 @@ export function NoticeLine({
           {actions ? (
             <span
               data-slot="notice-actions"
-              className="pointer-events-auto relative ms-1 flex shrink-0 items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/notice:opacity-100 group-hover/notice:delay-(--delay-hover) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) has-aria-expanded:opacity-100 motion-reduce:transition-opacity"
+              className={`pointer-events-auto relative ms-1 flex shrink-0 items-center ${reveal("notice")} has-aria-expanded:opacity-100`}
             >
               <TooltipProvider>{actions}</TooltipProvider>
             </span>

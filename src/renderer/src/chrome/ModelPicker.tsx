@@ -13,6 +13,7 @@ import { Button } from "../components/ui/button";
 import { GroupInput, InputGroup } from "../components/ui/input";
 import { Kbd } from "../components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/lazy-menus";
+import { reveal } from "../components/ui/reveal";
 import { Separator } from "../components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
@@ -572,22 +573,22 @@ export function ModelList({
               {item.vendor ? <HarnessIcon harness={item.vendor} className="size-3.5 shrink-0 text-muted-foreground" /> : null}
               <span className="min-w-0 flex-1 truncate">{item.name}</span>
               {selected ? <Check className="size-3.5 shrink-0" /> : null}
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleFavorite(item.id);
-                }}
-                className={cn(
-                  "text-muted-foreground hover:text-foreground focus-visible:opacity-100",
-                  favorited ? "text-foreground" : "opacity-0 group-hover/model:opacity-100",
-                )}
-              >
-                <Star fill={favorited ? "currentColor" : "none"} />
-              </Button>
+              {/* A favourite's star stays; any other row's waits on the shared hover reveal. */}
+              <span className={cn("flex", !favorited && reveal("model"))}>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleFavorite(item.id);
+                  }}
+                  className={favorited ? "text-foreground" : "text-muted-foreground hover:text-foreground"}
+                >
+                  <Star fill={favorited ? "currentColor" : "none"} />
+                </Button>
+              </span>
               {shortcut ? (
                 <Kbd size="sm" className="border-transparent bg-transparent text-muted-foreground">
                   {shortcut}

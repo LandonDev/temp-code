@@ -1,5 +1,6 @@
 import { Tip } from "../components/tip";
 import { Button } from "../components/ui/button";
+import { FADE_IN } from "../components/ui/reveal";
 import { StatusMark } from "../components/ui/status";
 import { MorphText } from "../motion/MorphText";
 import { NO_ROOM_LABEL, rightPanel, useRightPanel, useShownSection, useShownThreadId } from "../lib/rightPanel";
@@ -38,41 +39,44 @@ export function AgentsCueView({
   "use no memo";
   const noRoom = room === false;
   return (
-    <Tip label={noRoom ? NO_ROOM_LABEL : cue.line} side="bottom">
-      <Button
-        variant="ghost"
-        size="xs"
-        data-tauri-drag-region="false"
-        data-agents-cue
-        data-state={cue.state}
-        aria-label={cue.line}
-        aria-pressed={!noRoom && pressed}
-        aria-disabled={noRoom || undefined}
-        onClick={noRoom ? undefined : onClick}
-        className={CUE}
-      >
-        <StatusMark state={cue.state} word={false} still={cue.still} aria-hidden />
-        {cue.marks.length ? (
-          <span data-slot="cue-marks" aria-hidden className="flex items-center gap-0.5">
-            {cue.marks.map((mark) => (
-              <span key={mark} data-mark={mark} className={MARK}>
-                <HarnessIcon harness={mark} className="size-3" />
-              </span>
-            ))}
-            {cue.more ? <span className="tabular-nums">+{cue.more}</span> : null}
-          </span>
-        ) : null}
-        <MorphText state={cue.label} className={cue.state === "waiting" ? "font-medium text-warning tabular-nums" : "tabular-nums"}>
-          {cue.label}
-        </MorphText>
-      </Button>
-    </Tip>
+    // The fade rides a wrapper (`FADE_IN`), so the button keeps its hover fill on `--dur-hover`.
+    <span className={`inline-flex ${FADE_IN}`}>
+      <Tip label={noRoom ? NO_ROOM_LABEL : cue.line} side="bottom">
+        <Button
+          variant="ghost"
+          size="xs"
+          data-tauri-drag-region="false"
+          data-agents-cue
+          data-state={cue.state}
+          aria-label={cue.line}
+          aria-pressed={!noRoom && pressed}
+          aria-disabled={noRoom || undefined}
+          onClick={noRoom ? undefined : onClick}
+          className={CUE}
+        >
+          <StatusMark state={cue.state} word={false} still={cue.still} aria-hidden />
+          {cue.marks.length ? (
+            <span data-slot="cue-marks" aria-hidden className="flex items-center gap-0.5">
+              {cue.marks.map((mark) => (
+                <span key={mark} data-mark={mark} className={MARK}>
+                  <HarnessIcon harness={mark} className="size-3" />
+                </span>
+              ))}
+              {cue.more ? <span className="tabular-nums">+{cue.more}</span> : null}
+            </span>
+          ) : null}
+          <MorphText state={cue.label} className={cue.state === "waiting" ? "font-medium text-warning tabular-nums" : "tabular-nums"}>
+            {cue.label}
+          </MorphText>
+        </Button>
+      </Tip>
+    </span>
   );
 }
 
 /** The quiet row control (`ROW_CONTROL`: 12px muted, the /5 hover fill) at
  *  24px, pressed like the panel toggle beside it. */
-const CUE = `${ROW_CONTROL} gap-1.5 transition-opacity duration-(--dur-fast) ease-(--ease-out) starting:opacity-0 aria-pressed:bg-muted aria-pressed:text-foreground aria-disabled:opacity-50 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground motion-reduce:transition-opacity`;
+const CUE = `${ROW_CONTROL} gap-1.5 aria-pressed:bg-muted aria-pressed:text-foreground aria-disabled:opacity-50 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground`;
 
 /** A provider's mark, 2px from the next: one that joins grows in from a
  *  quarter on the layout spring's curve (`@starting-style`, so the first

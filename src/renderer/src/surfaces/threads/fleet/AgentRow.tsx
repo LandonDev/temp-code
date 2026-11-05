@@ -3,6 +3,7 @@ import { ExternalLink, Square } from "../../../chrome/icons";
 import { TruncateTip } from "../../../components/tip";
 import { Button } from "../../../components/ui/button";
 import { Item } from "../../../components/ui/item";
+import { reveal } from "../../../components/ui/reveal";
 import { STATUS_WORD, StatusMark, type ThreadState } from "../../../components/ui/status";
 import { actionFailed } from "../../../lib/threadActionToast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
@@ -54,14 +55,15 @@ const SETTLED = new Set<ThreadState>(["done", "idle", "stopped"]);
 /** Line one's end gives way to the actions as they reveal: a mask sized past
  *  the line at rest closes over its last 72px, fading over the 16px before
  *  the 56px the actions take, after `--delay-hover` on hover, at once on
- *  focus and on leaving; under reduced motion it snaps (the transition
- *  narrows to opacity). Only `mask-size` moves, so nothing reflows. */
+ *  keyboard focus (a click holds nothing) and on leaving; under reduced
+ *  motion it snaps (the transition narrows to opacity). Only `mask-size`
+ *  moves, so nothing reflows. */
 const YIELDS =
-  "[mask-image:linear-gradient(to_left,transparent_56px,black_72px)] [mask-repeat:no-repeat] [mask-size:calc(100%_+_72px)_100%] transition-[mask-size] duration-(--dur-fast) ease-(--ease-out) group-hover:[mask-size:100%_100%] group-hover:delay-(--delay-hover) group-focus-within:[mask-size:100%_100%] group-focus-within:delay-(--dur-instant) motion-reduce:transition-opacity";
+  "[mask-image:linear-gradient(to_left,transparent_56px,black_72px)] [mask-repeat:no-repeat] [mask-size:calc(100%_+_72px)_100%] transition-[mask-size] duration-(--dur-fast) ease-(--ease-out) group-hover:[mask-size:100%_100%] group-hover:delay-(--delay-hover) group-focus-visible:[mask-size:100%_100%] group-focus-visible:delay-(--dur-instant) group-has-focus-visible:[mask-size:100%_100%] group-has-focus-visible:delay-(--dur-instant) motion-reduce:transition-opacity";
 
-/** The actions: hidden at rest, shown after `--delay-hover` on hover, at once on focus. */
-const REVEALS =
-  "pointer-events-none opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover:pointer-events-auto group-hover:opacity-100 group-hover:delay-(--delay-hover) group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-focus-within:delay-(--dur-instant) motion-reduce:transition-opacity";
+/** The actions: the shared hover reveal, at once on the row's keyboard
+ *  focus, taking no pointer at rest. */
+const REVEALS = reveal("", { row: true, overlay: true });
 
 const noHost: HostGlyphOf = () => null;
 

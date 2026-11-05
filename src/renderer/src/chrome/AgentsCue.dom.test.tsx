@@ -111,12 +111,16 @@ describe("AgentsCueView", () => {
     expect(watching.container.querySelector('[data-slot="working-dot"]')).toBeNull();
   });
 
-  it("fades in on entry and carries the pressed fill", () => {
+  it("fades in on entry on a wrapper and carries the pressed fill", () => {
     render(<AgentsCueView cue={cue(1)} pressed onClick={() => {}} />);
+    const fade = button()!.parentElement!.className;
+    expect(fade).toContain("starting:opacity-0");
+    expect(fade).toContain("duration-(--dur-fast)");
+    expect(fade).toContain("motion-reduce:transition-opacity");
+    // The fade rides the wrapper, so the button keeps its hover fill on --dur-hover.
     const cls = button()!.className;
-    expect(cls).toContain("starting:opacity-0");
-    expect(cls).toContain("duration-(--dur-fast)");
-    expect(cls).toContain("motion-reduce:transition-opacity");
+    expect(cls).not.toContain("transition-opacity");
+    expect(cls).not.toContain("starting:opacity-0");
     // Pressed as Toggle is (muted, foreground text), and pressed down to /12 as every row is.
     expect(cls).toContain("aria-pressed:bg-muted");
     expect(cls).not.toContain("aria-pressed:bg-foreground/7");

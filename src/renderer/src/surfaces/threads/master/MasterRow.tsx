@@ -4,6 +4,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger, DISCLOSURE_CHEVRON
 import { Item } from "../../../components/ui/item";
 import { ROW_PRESS } from "../../../components/ui/press";
 import { Progress } from "../../../components/ui/progress";
+import { reveal } from "../../../components/ui/reveal";
 import { STATUS_WORD, StatusMark, statusToneClass } from "../../../components/ui/status";
 import { TaskRows } from "../../../components/ui/task-list";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
@@ -152,6 +153,11 @@ export const MasterRow = memo(function MasterRow({
 });
 
 const stop = (e: { stopPropagation(): void }) => e.stopPropagation();
+
+/** The row's actions over line one's end: the shared hover reveal, at once
+ *  on the row's keyboard focus, taking no pointer at rest; the model mark
+ *  under them yields on the same timing (`ModelMark`). */
+const REVEALS = reveal("", { row: true, overlay: true });
 
 /** The view, drawn again only when what it is handed changes: the row's own
  *  subscriptions wake it on every push of its thread, most of which it keeps. */
@@ -336,7 +342,7 @@ export function MasterRowView({
       <span
         data-actions
         onKeyDown={stop}
-        className="pointer-events-none absolute top-1 right-2 flex gap-0.5 opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-focus-within:delay-(--dur-instant) group-hover:pointer-events-auto group-hover:opacity-100 group-hover:delay-(--delay-hover) has-[[data-popup-open]]:opacity-100 has-[[data-popup-open]]:delay-(--dur-instant) motion-reduce:transition-opacity"
+        className={`absolute top-1 right-2 flex gap-0.5 ${REVEALS}`}
       >
         <RowAction label="Message" onClick={() => onOpen(meta.id, true)}>
           <MessageSquare />

@@ -153,4 +153,12 @@ describe("DevicesBlock", () => {
     expect(failed.root.textContent).toContain("Landon’s Mac is not linked right now");
     expect(failed.root.querySelector("[data-summary]")!.textContent).toBe("Not reachable");
   });
+  it("a row's actions wait on the shared hover reveal, never held by a click", () => {
+    mount();
+    const wrapper = screen.getAllByRole("button", { name: "Delete" })[0].closest("[data-device-actions]")!.className;
+    expect(wrapper).toContain("group-hover/item:delay-(--delay-hover)");
+    expect(wrapper).toContain("has-focus-visible:opacity-100");
+    expect(wrapper).toContain("transition-opacity");
+    expect(wrapper).not.toContain("focus-within");
+  });
 });

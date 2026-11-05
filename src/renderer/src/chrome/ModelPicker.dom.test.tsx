@@ -335,4 +335,23 @@ describe("ModelPicker: Meta's models", () => {
     // Meta's four rows under claude and codex, plus Muse Code's own three static rows.
     expect(within(menu).getAllByRole("option")).toHaveLength(7);
   });
+  it("a model row's star waits on the shared hover reveal; a favourite's stays", async () => {
+    picker("claude", "claude:claude-opus-5-5");
+    const menu = await open(/Opus 5\.5/);
+    await act(async () => {
+      fireEvent.change(within(menu).getByRole("textbox", { name: "Search models" }), { target: { value: "muse" } });
+    });
+    const add = within(menu).getAllByRole("button", { name: "Add to favorites" })[0];
+    const wrapper = add.parentElement!.className;
+    expect(wrapper).toContain("group-hover/model:opacity-100");
+    expect(wrapper).toContain("group-hover/model:delay-(--delay-hover)");
+    expect(wrapper).toContain("starting:opacity-0");
+    expect(wrapper).toContain("has-focus-visible:opacity-100");
+    expect(add.className).not.toContain("opacity-0");
+    await act(async () => {
+      fireEvent.click(add);
+    });
+    const remove = within(menu).getAllByRole("button", { name: "Remove from favorites" })[0];
+    expect(remove.parentElement!.className).not.toContain("opacity-0");
+  });
 });

@@ -165,6 +165,21 @@ describe('EditRow', () => {
     expect(queryByTestId('inline-editor')).toBeNull()
   })
 
+  it('Edit here reveals on the shared hover recipe', async () => {
+    const { getByRole } = render(<EditRow block={withTool(edit, {}, 'ed2')} cwd="/repo" />)
+    await act(async () => {
+      fireEvent.click(getByRole('button', { name: 'Edited a.ts' }))
+    })
+    const button = getByRole('button', { name: 'Edit here' })
+    const wrapper = button.parentElement!.className
+    expect(wrapper).toContain('group-hover/body:delay-(--delay-hover)')
+    expect(wrapper).toContain('has-focus-visible:opacity-100')
+    expect(wrapper).toContain('motion-reduce:transition-opacity')
+    // The fade is the wrapper's: the button keeps its own hover fill.
+    expect(button.className).not.toContain('opacity-0')
+    expect(button.className).toContain('duration-(--dur-hover)')
+  })
+
   it('a created file says Created', () => {
     const write: Block = withTool(edit, { name: 'Write', kind: 'write', input: { file_path: '/repo/diag.ts', content: 'x\ny' } }, 'w1')
     const { getByText } = render(<EditRow block={write} cwd="/repo" />)

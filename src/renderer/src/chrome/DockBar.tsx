@@ -2,6 +2,7 @@ import { OVERFLOW_FADE, useOverflowEdges } from "../hooks/useOverflowEdges";
 import { useCallback, useLayoutEffect, useRef } from "react";
 import { Button } from "../components/ui/button";
 import { Kbd } from "../components/ui/kbd";
+import { reveal } from "../components/ui/reveal";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
@@ -85,7 +86,7 @@ export function DockBar({ terminals, active, dev, onSelect, onSelectDev, onClose
                 key={file.id}
                 data-dock-tab={file.id}
                 ref={(el) => sortable.setItemRef(file.id, el)}
-                className={`group relative flex h-full shrink-0 items-stretch ${sortable.draggingId === file.id ? "z-10" : ""} ${canDrag ? "touch-none" : ""}`}
+                className={`group/dock-tab relative flex h-full shrink-0 items-stretch ${sortable.draggingId === file.id ? "z-10" : ""} ${canDrag ? "touch-none" : ""}`}
                 onPointerDown={(event) => {
                   if (!canDrag || event.button !== 0) return;
                   if ((event.target as HTMLElement | null)?.closest("[data-no-drag]")) return;
@@ -112,19 +113,20 @@ export function DockBar({ terminals, active, dev, onSelect, onSelectDev, onClose
                   <TooltipContent side="top">{file.cwd}</TooltipContent>
                 </Tooltip>
                 {onClose ? (
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    data-no-drag=""
-                    aria-label={`Close ${label}`}
-                    className={`absolute right-0 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 ${
-                      file.id === active ? "opacity-100" : "opacity-0"
-                    }`}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={() => onClose(file.id)}
-                  >
-                    <X />
-                  </Button>
+                  // The active tab's close stays; another tab's waits on the shared hover reveal.
+                  <span className={`absolute right-0 top-1/2 flex -translate-y-1/2 ${file.id === active ? "" : reveal("dock-tab", { row: true })}`}>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      data-no-drag=""
+                      aria-label={`Close ${label}`}
+                      className="text-muted-foreground hover:text-foreground"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={() => onClose(file.id)}
+                    >
+                      <X />
+                    </Button>
+                  </span>
                 ) : null}
               </div>
             );

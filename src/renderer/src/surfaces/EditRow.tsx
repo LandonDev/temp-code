@@ -2,6 +2,7 @@ import { createContext, lazy, Suspense, useContext, useEffect, useMemo, useState
 import { GitCompare, Pencil } from '../chrome/icons'
 import { Button } from '../components/ui/button'
 import { Collapsible, CollapsibleContent } from '../components/ui/collapsible'
+import { reveal } from '../components/ui/reveal'
 import { Skeleton } from '../components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
 import { readTextFile } from '../lib/fs'
@@ -290,7 +291,8 @@ export function EditRow({
  */
 const EDGE_TO_EDGE = 'group/body relative overflow-hidden px-0 py-1'
 
-/** A ghost icon button at the body's top right, shown on hover and focus. */
+/** A ghost icon button at the body's top right: the shared hover reveal
+ *  (components/ui/reveal.ts) on a wrapper, so the button keeps its fill. */
 function CornerButton({
   label,
   onClick,
@@ -301,21 +303,23 @@ function CornerButton({
   children: ReactNode
 }) {
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={label}
-            onClick={onClick}
-            className="absolute right-1 top-1 z-10 text-muted-foreground opacity-0 transition-[opacity,background-color] duration-(--dur-fast) ease-(--ease-out) group-hover/body:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none"
-          />
-        }
-      >
-        {children}
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
+    <span className={`absolute right-1 top-1 z-10 flex ${reveal('body')}`}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={label}
+              onClick={onClick}
+              className="text-muted-foreground"
+            />
+          }
+        >
+          {children}
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+    </span>
   )
 }

@@ -11,6 +11,7 @@ import {
 import { Empty, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
 import { Item, ItemActions, ItemContent, ItemMedia } from "@renderer/components/ui/item";
 import { Skeleton } from "@renderer/components/ui/skeleton";
+import { reveal, yields } from "@renderer/components/ui/reveal";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
@@ -739,6 +740,14 @@ export function fileMenuRows(file: GitChangedFile, side: ChangeSide, editor: str
  *  closed row carries none. A fresh open mounts it closed for a frame, so its
  *  height animates; a row scrolled back into view with its fold open mounts
  *  it open, with nothing to replay. */
+/** A file row's hover pieces: the actions (and the fold's chevron) on the
+ *  shared reveal, at once on the row's keyboard focus, no pointer at rest;
+ *  what sits under them (the counts, the file's icon) yields on the same
+ *  timing. A hunk row's one action reveals the same way. */
+const ROW_REVEALS = reveal("row", { row: true, overlay: true });
+const ROW_YIELDS = yields("row");
+const HUNK_REVEALS = reveal("hunk", { row: true });
+
 function useFoldPanel(open: boolean): { held: boolean; shown: boolean } {
   const [held, setHeld] = useState(open);
   const [shown, setShown] = useState(open);
@@ -787,23 +796,23 @@ function FileRow({
       <ItemMedia className="relative z-10 size-4">
         {foldable ? (
           <>
-            <span className={cn("grid place-items-center", open ? "opacity-0" : "group-hover/row:opacity-0 group-focus-within/row:opacity-0")}>
+            {/* The file's icon gives way to the fold's chevron on the shared hover reveal; an open fold keeps the chevron. */}
+            <span className={cn("grid place-items-center", open ? "opacity-0" : ROW_YIELDS)}>
               <FileTypeIcon name={file.relative} isDir={false} size={16} />
             </span>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={open ? `Hide ${hunksName}` : `Show ${hunksName}`}
-              aria-expanded={open}
-              onClick={() => actions.toggleHunks(file, side)}
-              className={cn(
-                // Above the row's open-the-diff overlay, with a 24px hit area around its 16px.
-                "absolute inset-0 z-10 size-4 rounded-sm text-muted-foreground after:absolute after:-inset-1 after:content-[''] hover:text-foreground",
-                open ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100",
-              )}
-            >
-              <ChevronRight className={cn("size-3", DISCLOSURE_CHEVRON, open && "rotate-90")} />
-            </Button>
+            {/* Above the row's open-the-diff overlay, with a 24px hit area around its 16px. */}
+            <span data-fold-reveal className={cn("absolute inset-0 z-10 flex", !open && ROW_REVEALS)}>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={open ? `Hide ${hunksName}` : `Show ${hunksName}`}
+                aria-expanded={open}
+                onClick={() => actions.toggleHunks(file, side)}
+                className="size-4 rounded-sm text-muted-foreground after:absolute after:-inset-1 after:content-[''] hover:text-foreground"
+              >
+                <ChevronRight className={cn("size-3", DISCLOSURE_CHEVRON, open && "rotate-90")} />
+              </Button>
+            </span>
           </>
         ) : (
           <FileTypeIcon name={file.relative} isDir={false} size={16} />
@@ -822,10 +831,14 @@ function FileRow({
         </Button>
       </ItemContent>
       <ItemActions className="relative z-10 gap-1">
-        {rowBusy ? (
-          <Spinner className="size-3 text-muted-foreground" />
-        ) : (
-          <span className="hidden items-center group-hover/row:flex group-focus-within/row:flex">
+        {rowBusy ? <Spinner className="size-3 text-muted-foreground" /> : null}
+        {/* The counts hold the actions' place at rest and give way to them on the
+            shared hover reveal: the actions lie over them, so the name never reflows. */}
+        <span data-counts-slot className={cn("flex justify-end", !rowBusy && [side === "staged" ? "min-w-6" : "min-w-12", ROW_YIELDS])}>
+          <Counts status={file.status} {...countsFor(file, side)} />
+        </span>
+        {rowBusy ? null : (
+          <span data-change-actions className={cn("absolute inset-y-0 right-0 flex items-center", ROW_REVEALS)}>
             {side === "staged" ? (
               <IconAction label="Unstage" disabled={!!busy} onClick={() => actions.unstage(file)}>
                 <Minus className="size-3.5" />
@@ -842,7 +855,6 @@ function FileRow({
             )}
           </span>
         )}
-        <Counts status={file.status} {...countsFor(file, side)} />
       </ItemActions>
     </Item>
   );
@@ -890,7 +902,7 @@ function HunkRows({ file, side, fold, busy, actions }: { file: GitChangedFile; s
             {busy === `${foldKey(side, file.relative)}#${h.from}` ? (
               <Spinner className="size-3 text-muted-foreground" />
             ) : (
-              <span className="opacity-0 group-hover/hunk:opacity-100 group-focus-within/hunk:opacity-100">
+              <span className={cn("flex", HUNK_REVEALS)}>
                 {staged ? (
                   <IconAction label={`Unstage lines ${span.slice(1)}`} disabled={!!busy} onClick={() => actions.unstageHunk(file, h)}>
                     <Minus className="size-3.5" />

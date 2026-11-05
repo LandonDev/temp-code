@@ -7,6 +7,7 @@ import { grammarFor } from "../lib/highlightLanguages";
 import { STEP_CLASS, StreamRevealContext } from "../lib/streamReveal";
 import { playCue } from "../lib/sounds";
 import { SwapIcon } from "../motion/IconSwap";
+import { reveal as hoverReveal } from "../components/ui/reveal";
 import { IconAction, useArmOnIntent } from "./transcript/IconAction";
 
 /**
@@ -207,7 +208,7 @@ export const CodeBlock = memo(function CodeBlock({
   const copyButton = (
     <span
       data-reveal="copy-code"
-      className={`flex opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/code:opacity-100 group-hover/code:delay-(--delay-hover) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) motion-reduce:transition-opacity ${heading ? "" : "absolute right-1 top-1 z-10"}`}
+      className={`flex ${hoverReveal("code")} ${heading ? "" : "absolute right-1 top-1 z-10"}`}
     >
       <IconAction label={copied ? "Copied" : "Copy code"} onClick={copy} armed={armed} className="rounded-sm">
         <SwapIcon swapped={copied} from={<Copy className="size-3.5" />} to={<Check className="size-3.5" />} />

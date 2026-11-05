@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { QueuedMessage } from "../lib/tcserver/types";
 
 vi.mock("../lib/tcserver/store", () => ({ useSessionMeta: () => undefined }));
@@ -14,6 +14,7 @@ const item = (id: string, text: string, stored?: boolean): QueuedMessage => ({ i
 const noop = () => {};
 
 describe("MessageQueue", () => {
+  afterEach(cleanup);
   it.each([["xhigh", "Extra high"], ["ultra", "Ultra"]])("uses the shared effort word for %s", (reasoning, word) => {
     const { container, unmount } = render(<MessageQueue sessionId="s" items={[{ ...item("model", "follow up"), reasoning }]} onSteer={noop} onRemove={noop} onUpdate={noop} onReorder={noop} />);
     expect(container.querySelector('[aria-label="Model for this message"]')?.textContent).toContain(word);
@@ -43,5 +44,27 @@ describe("MessageQueue", () => {
     expect(mergeOrder(items, ["b", "a"])).toEqual(["first", "b", "a"]);
     expect(mergeOrder([item("a", "A"), item("first", "task", true), item("b", "B")], ["b", "a"])).toEqual(["b", "first", "a"]);
     expect(mergeOrder(items, ["a", "b"])).toEqual(["first", "a", "b"]);
+  });
+  it("queue actions and the tune button reveal on the shared hover recipe", () => {
+    render(<MessageQueue sessionId="s1" items={[item("a", "first")]} onSteer={noop} onRemove={noop} onUpdate={noop} onReorder={noop} />);
+    const actions = screen.getByRole("button", { name: "Remove from queue" }).parentElement!.className;
+    expect(actions).toContain("group-hover/q:delay-(--delay-hover)");
+    expect(actions).toContain("has-focus-visible:opacity-100");
+    expect(actions).toContain("motion-reduce:transition-opacity");
+    // A click holds nothing up.
+    expect(actions).not.toContain("focus-within");
+    const tune = screen.getByRole("button", { name: "Model for this message" });
+    const wrapper = tune.parentElement!;
+    expect(wrapper.className).toContain("group-hover/q:delay-(--delay-hover)");
+    expect(wrapper.className).toContain("has-[[data-popup-open]]:opacity-100");
+    expect(tune.className).not.toContain("opacity-0");
+    // Its popover open marks the trigger, which holds the wrapper shown.
+    fireEvent.click(tune);
+    expect(wrapper.querySelector("[data-popup-open]")).not.toBeNull();
+  });
+
+  it("a tuned message shows its settings at rest, outside the reveal", () => {
+    render(<MessageQueue sessionId="s1" items={[{ ...item("a", "first"), provider: "claude", model: "claude-opus-5-5" }]} onSteer={noop} onRemove={noop} onUpdate={noop} onReorder={noop} />);
+    expect(screen.getByRole("button", { name: "Model for this message" }).parentElement!.className).not.toContain("opacity-0");
   });
 });

@@ -95,4 +95,16 @@ describe("NewThreadChooser", () => {
     const { container } = render(<NewThreadChooser workspaceId="ws_gone" empty={false} onStart={() => {}} />);
     expect(container.innerHTML).toBe("");
   });
+  it("a tunable row's options button waits on the shared hover reveal, on a wrapper", async () => {
+    render(<NewThreadChooser workspaceId={null} empty={false} onStart={() => {}} />);
+    await click(screen.getByRole("button", { name: "New thread" }));
+    const tune = screen.getByRole("button", { name: "Research options" });
+    const wrapper = tune.parentElement!.className;
+    expect(wrapper).toContain("group-hover/row:delay-(--delay-hover)");
+    expect(wrapper).toContain("group-has-focus-visible/row:opacity-100");
+    expect(wrapper).not.toContain("focus-within");
+    // The button keeps its own hover fill on --dur-hover.
+    expect(tune.className).not.toContain("transition-opacity");
+    expect(tune.className).toContain("duration-(--dur-hover)");
+  });
 });

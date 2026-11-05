@@ -295,13 +295,37 @@ describe("ChangesPanel", () => {
     expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Open diff", "Open in VS Code", "Stage", "Discard…"]);
   });
 
+  it("a row's Discard and Stage lie over its counts on the shared reveal, so nothing reflows", async () => {
+    h.index = indexOf({ files: [file("a.ts"), file("b.ts", { staged: true, unstaged: false })] });
+    mount();
+    await flush();
+    const actions = screen.getByRole("button", { name: "Stage" }).closest("[data-change-actions]")!;
+    expect(actions.className).toContain("absolute");
+    expect(actions.className).toContain("group-hover/row:delay-(--delay-hover)");
+    expect(actions.className).toContain("group-has-focus-visible/row:opacity-100");
+    expect(actions.className).toContain("pointer-events-none");
+    // No display toggle: the actions never enter the flow.
+    expect(actions.className).not.toMatch(/(^|\s)(hidden|group-hover\/row:flex)/);
+    expect(actions.className).not.toContain("focus-within");
+    expect(within(actions as HTMLElement).getByRole("button", { name: "Discard" })).toBeTruthy();
+    // The counts hold the actions' place at rest and give way on the same timing.
+    const slots = [...document.querySelectorAll("[data-counts-slot]")];
+    const [unstaged, staged] = [slots.find((el) => el.closest("[data-menu-id]")?.getAttribute("data-menu-id")?.includes("a.ts"))!, slots.find((el) => el.closest("[data-menu-id]")?.getAttribute("data-menu-id")?.includes("b.ts"))!];
+    expect(unstaged.className).toContain("min-w-12");
+    expect(staged.className).toContain("min-w-6");
+    for (const slot of [unstaged, staged]) {
+      expect(slot.className).toContain("group-hover/row:opacity-0");
+      expect(slot.className).toContain("group-hover/row:delay-(--delay-hover)");
+    }
+  });
+
   it("a modified file folds open into its hunks and stages one", async () => {
     h.index = indexOf({ files: [file("a.ts")] });
     mount();
     await flush();
     const toggle = screen.getByRole("button", { name: "Show hunks of a.ts" });
     // Its 16px glyph takes a 24px hit area, above the row's open-the-diff overlay.
-    expect(toggle.classList).toContain("z-10");
+    expect(toggle.closest("[data-fold-reveal]")!.classList).toContain("z-10");
     expect(toggle.className).toContain("after:-inset-1");
     fireEvent.click(toggle);
     await act(() => new Promise((r) => setTimeout(r, 50)));

@@ -7,6 +7,7 @@ import { ChevronLeft, Plus, SlidersHorizontal } from "./icons";
 import { Button } from "../components/ui/button";
 import { ItemButton, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/lazy-menus";
+import { reveal } from "../components/ui/reveal";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
 import { ThreadTune, normalizeTune } from "./ThreadTune";
@@ -145,23 +146,25 @@ export function NewThreadChooser({
                   </ItemContent>
                 </ItemButton>
                 {tunable ? (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          aria-label={`${THREAD_LABELS[type]} options`}
-                          data-tune-type={type}
-                          className="me-1 text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) hover:text-foreground focus-visible:opacity-100 focus-visible:delay-(--dur-instant) group-hover/row:opacity-100 group-hover/row:delay-(--delay-hover) group-focus-within/row:opacity-100 group-focus-within/row:delay-(--dur-instant) motion-reduce:transition-opacity"
-                          onClick={() => openTune(type)}
-                        />
-                      }
-                    >
-                      <SlidersHorizontal />
-                    </TooltipTrigger>
-                    <TooltipContent>{THREAD_LABELS[type]} options</TooltipContent>
-                  </Tooltip>
+                  <span className={`me-1 flex ${reveal("row", { row: true })}`}>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={`${THREAD_LABELS[type]} options`}
+                            data-tune-type={type}
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={() => openTune(type)}
+                          />
+                        }
+                      >
+                        <SlidersHorizontal />
+                      </TooltipTrigger>
+                      <TooltipContent>{THREAD_LABELS[type]} options</TooltipContent>
+                    </Tooltip>
+                  </span>
                 ) : null}
               </div>
             );

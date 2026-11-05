@@ -333,6 +333,9 @@ app replaces itself from the feed, and only from the feed.
   `focus-visible:ring`. Neighbouring tooltips share one `TooltipProvider`
   (delays in `TOOLTIP`, lib/ease.ts), never around a scroller, the rail's
   nav or a virtual list (the lazy provider remounts what it wraps). A
+  hover reveal is `reveal(group)` on a wrapper (components/ui/reveal.ts;
+  what it covers `yields(group)`; lib/revealGuard.test.ts refuses a reveal
+  without `--delay-hover` or on focus-within), a
   disclosure chevron is a ChevronRight turning `rotate-90` on
   `DISCLOSURE_CHEVRON` (components/ui/disclosure.ts), with no timing of its
   own beside it and never a 180° turn (`lib/disclosureGuard.test.ts`; a menu

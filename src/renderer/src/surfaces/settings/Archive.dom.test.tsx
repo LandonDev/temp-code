@@ -90,6 +90,16 @@ describe("Archive page", () => {
     expect(within(row).queryByRole("button", { name: /Delete/ })).toBeNull();
   });
 
+  it("a row's actions wait on the shared hover reveal and an open menu holds them, never a click", () => {
+    state.metas = [meta("t1", "Fix the build", "p1")];
+    render(<ArchivePage {...handlers()} />);
+    const wrapper = within(rowOf("Fix the build")).getByRole("button", { name: "Restore Fix the build" }).parentElement!.className;
+    expect(wrapper).toContain("group-hover/item:delay-(--delay-hover)");
+    expect(wrapper).toContain("has-[[data-popup-open]]:opacity-100");
+    expect(wrapper).toContain("group-has-focus-visible/item:opacity-100");
+    expect(wrapper).not.toContain("focus-within");
+  });
+
   it("restores a thread and opens it", async () => {
     state.metas = [meta("t1", "Fix the build", "p1")];
     const h = handlers();

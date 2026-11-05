@@ -423,9 +423,11 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     menu (Pull, Push, Stash changes, Stage all, Unstage all); a push to the
     default branch confirms. Then the index: Staged and Changes headed
     only when both have rows, each row the file's type icon, its name with
-    the folder after it, Unstage or Discard and Stage on hover or focus,
-    and `+n −n` (New, Deleted; a file in both groups counts each group's
-    own lines, `stagedCounts`/`unstagedCounts` from the host); a click opens the diff against HEAD, the
+    the folder after it, and `+n −n` (New, Deleted; a file in both groups counts each group's
+    own lines, `stagedCounts`/`unstagedCounts` from the host), over which
+    Unstage or Discard and Stage lie on the hover reveal (the counts hold
+    their place at rest and give way, so the name never reflows; at once on
+    keyboard focus); a click opens the diff against HEAD, the
     right-click menu adds Open in <editor>, and a modified file folds open
     into hunks in both groups (the caret takes the icon's place on hover):
     under Changes each is stageable (index → working copy), under Staged

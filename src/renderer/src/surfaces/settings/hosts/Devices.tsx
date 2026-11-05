@@ -10,6 +10,7 @@ import {
 } from "@server/shared/contract-hostdevices";
 import { PageEmpty } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
+import { reveal } from "../../../components/ui/reveal";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { ConfirmDialog, errorText } from "../../../chrome/ConfirmDialog";
 import { deleteSimulator, openXcodeDevices, refreshHostDevicesHosts, shutdownSimulator, useHostDevices } from "../../../lib/hostDevices";
@@ -222,8 +223,8 @@ function DeviceRow({
         </>
       }
     >
-      {/* The actions show on hover or focus, with no transition: rows do not move. */}
-      <span className={`flex items-center gap-1 ${busy ? "" : "opacity-0 group-hover/item:opacity-100 focus-within:opacity-100"}`}>{children}</span>
+      {/* The actions wait on the shared hover reveal; a busy row keeps them shown. */}
+      <span data-device-actions className={`flex items-center gap-1 ${busy ? "" : reveal("item", { row: true })}`}>{children}</span>
       <Facts parts={state} className="text-xs text-muted-foreground" />
     </Row>
   );

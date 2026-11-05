@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Copy, FileCode } from "../chrome/icons";
 import { Button } from "../components/ui/button";
+import { reveal } from "../components/ui/reveal";
 import { Spinner } from "../components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/cn";
@@ -70,7 +71,7 @@ export const ToolDetails = memo(function ToolDetails({
   return (
     <div className="group/details relative flex min-w-0 flex-col">
       {/* The reveal rides a wrapper, so the toggle keeps its own fill's transition. */}
-      <span className="absolute right-0 top-0 z-10 flex opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/details:opacity-100 group-hover/details:delay-(--delay-hover) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) motion-reduce:transition-opacity">
+      <span className={`absolute right-0 top-0 z-10 flex ${reveal("details")}`}>
       <Tooltip>
         <TooltipTrigger
           render={
@@ -201,7 +202,7 @@ function CopyOutput({ text, armed }: { text: string; armed: boolean }) {
   };
   return (
     // The reveal rides a wrapper, so the button keeps its own hover fill's transition.
-    <span className="absolute right-0 top-0 flex opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/output:opacity-100 group-hover/output:delay-(--delay-hover) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) motion-reduce:transition-opacity">
+    <span className={`absolute right-0 top-0 flex ${reveal("output")}`}>
       <IconAction label={copied ? "Copied" : "Copy output"} onClick={copy} armed={armed}>
         <SwapIcon swapped={copied} from={<Copy className="size-3.5" />} to={<Check className="size-3.5" />} />
       </IconAction>

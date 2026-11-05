@@ -80,4 +80,14 @@ describe('DockBar', () => {
     expect(props.onAdd).toHaveBeenCalledTimes(1)
     expect(props.onHide).toHaveBeenCalledTimes(1)
   })
+  it("another tab's close waits on the shared hover reveal; the active tab's stays", () => {
+    const { view } = mount()
+    const other = view.getByLabelText('Close build').parentElement!.className
+    expect(other).toContain('group-hover/dock-tab:delay-(--delay-hover)')
+    expect(other).toContain('group-focus-visible/dock-tab:opacity-100')
+    expect(other).toContain('has-focus-visible:opacity-100')
+    expect(other).not.toContain('focus-within')
+    expect(view.getByLabelText('Close build').className).not.toContain('opacity-0')
+    expect(view.getByLabelText('Close zsh').parentElement!.className).not.toContain('opacity-0')
+  })
 })

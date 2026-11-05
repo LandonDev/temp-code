@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { HandoffButton, SecondOpinionButton } from "../../chrome/SecondOpinionButton";
 import { Collapsible, CollapsibleContent } from "../../components/ui/collapsible";
 import { STATUS_WORD, StatusMark, statusToneClass } from "../../components/ui/status";
+import { reveal } from "../../components/ui/reveal";
 import { MorphText } from "../../motion/MorphText";
 import { cn } from "../../lib/cn";
 import { COPIED_MS, copyText } from "../../lib/clipboard";
@@ -338,7 +339,7 @@ function ClosingActions({
   onHandoff?: (harness: HarnessId, model: string) => void;
 }) {
   return (
-    <span className="ms-1 flex items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/turnend:opacity-100 group-hover/turnend:delay-(--delay-hover) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) has-aria-expanded:opacity-100 motion-reduce:transition-opacity">
+    <span className={`ms-1 flex items-center ${reveal("turnend")} has-aria-expanded:opacity-100`}>
       {/* One provider: moving to a neighbour moves the label instead of waiting again. */}
       <TooltipProvider>
         {output ? <CopyTurnButton text={output} armed={armed} /> : null}

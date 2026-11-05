@@ -264,6 +264,14 @@ html.theme-light {
 @source "../../../node_modules/streamdown/dist/*.js";
 @source "../../../node_modules/@streamdown/code/dist/*.js";
 @source "../../../node_modules/@streamdown/mermaid/dist/*.js";
+/* components/ui/reveal.ts builds the hover reveal's classes from a group's
+   name at run time (the literals cost the first paint bytes), so its
+   variants are listed here; a new group joins each list it uses
+   (reveal.dom.test.tsx holds the two to the same names). */
+@source inline("group-hover{,/body,/code,/details,/dock-tab,/html-render,/hunk,/item,/message,/model,/notice,/output,/q,/row,/turnend}:{opacity-100,delay-(--delay-hover)}");
+@source inline("group-{focus-visible,has-focus-visible}{,/dock-tab,/hunk,/item,/row}:{opacity-100,delay-(--dur-instant)}");
+@source inline("group-hover{,/row}:{pointer-events-auto,opacity-0}");
+@source inline("group-{focus-visible,has-focus-visible,has-[[data-popup-open]]}{,/row}:{opacity-0,delay-(--dur-instant)}");
 
 /* The raised button (default, secondary, destructive; Kobra's t-raise on our
    tokens). The element paints nothing; its fill and shadow are a layer behind

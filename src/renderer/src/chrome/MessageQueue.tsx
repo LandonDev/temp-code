@@ -8,6 +8,7 @@ import { effortWord, modelsFor, resolveModel } from '../lib/models'
 import { HARNESSES, HARNESS_TITLE, type HarnessId } from '../lib/session'
 import { HarnessIcon } from './HarnessIcon'
 import { Button } from '../components/ui/button'
+import { reveal } from '../components/ui/reveal'
 import { Textarea } from '../components/ui/textarea'
 import { ChoiceSelect } from '../components/choice-select'
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/lazy-menus'
@@ -150,7 +151,7 @@ export function MessageQueue({
                 )}
                 <span className="flex shrink-0 items-center gap-0.5">
                   {sessionId ? <QueueTuneButton sessionId={sessionId} item={m} /> : null}
-                  <span className="flex items-center gap-0.5 opacity-0 transition-opacity duration-(--dur-fast) group-hover/q:opacity-100 focus-within:opacity-100 motion-reduce:transition-none">
+                  <span className={`flex items-center gap-0.5 ${reveal('q')}`}>
                     {paused ? null : (
                       <RowAction label="Send now" onClick={() => onSteer(m.id)}>
                         <ArrowUp />
@@ -216,7 +217,7 @@ function QueueTuneButton({ sessionId, item }: { sessionId: string; item: QueuedM
     })
   }
 
-  return (
+  const trigger = (
     <Popover open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger
@@ -227,9 +228,7 @@ function QueueTuneButton({ sessionId, item }: { sessionId: string; item: QueuedM
                   variant="ghost"
                   size="xs"
                   aria-label="Model for this message"
-                  className={`relative h-5 px-1 text-xs font-normal text-muted-foreground after:absolute after:inset-x-0 after:-inset-y-0.5 after:content-[''] hover:text-foreground aria-expanded:opacity-100 ${
-                    overridden ? '' : 'opacity-0 group-hover/q:opacity-100 focus-visible:opacity-100'
-                  }`}
+                  className="relative h-5 px-1 text-xs font-normal text-muted-foreground after:absolute after:inset-x-0 after:-inset-y-0.5 after:content-[''] hover:text-foreground"
                 />
               }
             />
@@ -293,6 +292,9 @@ function QueueTuneButton({ sessionId, item }: { sessionId: string; item: QueuedM
       </PopoverContent>
     </Popover>
   )
+  // A tuned message shows its settings at rest; an untuned one shows the
+  // button on the queue's hover reveal, held while its popover is open.
+  return overridden ? trigger : <span className={`flex ${reveal('q')}`}>{trigger}</span>
 }
 
 function TuneRow({ label, children }: { label: string; children: ReactNode }) {

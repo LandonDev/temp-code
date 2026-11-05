@@ -258,12 +258,16 @@ describe("AgentRowView", () => {
     const actions = container.querySelector("[data-actions]")!.className;
     expect(actions).toContain("opacity-0");
     expect(actions).toContain("group-hover:delay-(--delay-hover)");
-    expect(actions).toContain("group-focus-within:delay-(--dur-instant)");
+    expect(actions).toContain("group-focus-visible:opacity-100");
+    expect(actions).toContain("group-has-focus-visible:delay-(--dur-instant)");
+    // A click holds nothing: focus-within is never the trigger.
+    expect(actions).not.toContain("focus-within");
     // Line one's end gives way under them on the same timing; the model line stays put.
     const head = container.querySelector("[data-row-head]")!.className;
     expect(head).toContain("group-hover:[mask-size:100%_100%]");
     expect(head).toContain("group-hover:delay-(--delay-hover)");
-    expect(head).toContain("group-focus-within:delay-(--dur-instant)");
+    expect(head).toContain("group-focus-visible:delay-(--dur-instant)");
+    expect(head).not.toContain("focus-within");
     expect(container.querySelector("[data-model-line]")!.className).not.toContain("group-hover");
     expect(container.querySelector("[data-model]")!.className).not.toContain("opacity-0");
   });

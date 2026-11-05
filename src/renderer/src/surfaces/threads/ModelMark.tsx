@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { supportsContext1m } from "@server/shared/catalog";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
 import { HostGlyph } from "../../chrome/HostGlyph";
+import { yields } from "../../components/ui/reveal";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { cn } from "../../lib/cn";
 import { asHarness, pickerModelId } from "../../lib/tcserver/store";
@@ -74,9 +75,12 @@ export function modelMarkTip(meta: ModelMeta, lead?: string, context?: string): 
  *  narrow row's hidden name and effort fall back on. The row's title gives
  *  its width up first (the caller's `shrink-[1000]`); then the name
  *  truncates, and the effort never does. It gives way to the row's actions
- *  on hover and focus. `className` adds to the mark's own classes (the
+ *  on their own timing (`yields`: after `--delay-hover` on hover, at once on
+ *  keyboard focus), so the two cross over together. `className` adds to the mark's own classes (the
  *  Agents row's wait), `nameClassName` and `effortClassName` to the name's
  *  and the effort's (a narrow row keeps the mark alone). */
+const YIELDS = yields("");
+
 export function ModelMark({
   meta,
   lead,
@@ -100,7 +104,8 @@ export function ModelMark({
         render={
           <span
             className={cn(
-              "flex min-w-0 shrink items-center gap-1.5 overflow-hidden text-xs whitespace-nowrap text-muted-foreground transition-opacity duration-(--dur-fast) group-focus-within:opacity-0 group-hover:opacity-0 motion-reduce:transition-none",
+              "flex min-w-0 shrink items-center gap-1.5 overflow-hidden text-xs whitespace-nowrap text-muted-foreground",
+              YIELDS,
               className,
             )}
             data-model

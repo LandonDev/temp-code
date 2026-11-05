@@ -93,4 +93,22 @@ describe("a board row's model mark", () => {
     const { container } = render(<MasterRowView {...(FIXTURES[0].props as Parameters<typeof MasterRowView>[0])} />);
     expect(container.querySelectorAll("[data-model]")).toHaveLength(1);
   });
+  it("the model mark yields with the same delay as the actions arrive", () => {
+    const meta = standInMeta({ sessionId: "w", environmentId: "local", title: "Wonder", status: "running", provider: "claude", model: "claude-opus-5-5", reasoning: "high" }, "m");
+    const { container } = render(<MasterRow rowRef={ref(meta)} landed={false} host={null} onOpen={() => {}} menu={menu} />);
+    const mark = container.querySelector("[data-model]")!.className;
+    const actions = container.querySelector("[data-actions]")!.className;
+    expect(mark).toContain("group-hover:opacity-0");
+    expect(actions).toContain("group-hover:opacity-100");
+    for (const cls of [mark, actions]) {
+      expect(cls).toContain("group-hover:delay-(--delay-hover)");
+      expect(cls).toContain("group-focus-visible:delay-(--dur-instant)");
+      expect(cls).toContain("group-has-focus-visible:delay-(--dur-instant)");
+      expect(cls).toContain("duration-(--dur-fast)");
+      expect(cls).toContain("motion-reduce:transition-opacity");
+      // A click on the row holds neither.
+      expect(cls).not.toContain("focus-within");
+    }
+    expect(actions).toContain("pointer-events-none");
+  });
 });
