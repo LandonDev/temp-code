@@ -167,7 +167,7 @@ describe('a project card', () => {
     probe.unmount()
   })
 
-  it('counts who needs you, what is dormant and archived, 4px apart with no dots', () => {
+  it('counts who needs you, then what is dormant and archived as one comma run, with no dots', () => {
     const probe = mountProbe(
       projectCard(
         [
@@ -178,7 +178,9 @@ describe('a project card', () => {
       )
     )
     const counts = probe.container.querySelector<HTMLElement>('[data-card-counts]')!
-    expect(Array.from(counts.children).map((c) => c.textContent)).toEqual(['1 needs you', '4 dormant', '2 archived'])
+    // The loud count by its glyph and tone; the quiet ones one muted sentence 8px on, never apart by space alone.
+    expect(Array.from(counts.children).map((c) => c.textContent)).toEqual(['1 needs you', '4 dormant, 2 archived'])
+    expect(counts.children[1].className).toContain('ms-1')
     expect(counts.querySelector('[data-state="waiting"]')).not.toBeNull()
     expect(counts.className).toContain('gap-1')
     expect(counts.className).not.toContain('gap-2')

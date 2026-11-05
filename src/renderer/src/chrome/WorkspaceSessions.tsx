@@ -913,18 +913,17 @@ const BatchLine = memo(function BatchLine({ thread, state, agents }: MasterBlock
 /** The count line's facts, two spaces apart: needs you in amber and failed
  *  in red with their glyphs, the rest muted. */
 function CountLine({ counts }: { counts: readonly CardCount[] }) {
+  // The loud counts lead, each by its glyph and tone; the quiet ones that
+  // follow are one comma run in muted, so no two facts differ by space alone.
+  const loud = counts.filter((c) => c.kind === "waiting" || c.kind === "failed");
+  const quiet = counts.filter((c) => c.kind !== "waiting" && c.kind !== "failed");
   return (
     <span className="mt-1 flex h-4 min-w-0 items-center gap-1 tabular-nums text-muted-foreground" data-card-counts>
-      {counts.map((c) =>
-        c.kind === "waiting" || c.kind === "failed" ? (
-          // A glyph keeps 8px from the count before it, as from its own word.
-          <StatusMark key={c.kind} state={c.kind} word={c.text} className="shrink-0 font-normal not-first:ms-1 [&_svg]:size-3" />
-        ) : (
-          <span key={c.kind} className="min-w-0 truncate">
-            {c.text}
-          </span>
-        ),
-      )}
+      {loud.map((c) => (
+        // A glyph keeps 8px from the count before it, as from its own word.
+        <StatusMark key={c.kind} state={c.kind} word={c.text} className="shrink-0 font-normal not-first:ms-1 [&_svg]:size-3" />
+      ))}
+      {quiet.length ? <span className={cn("min-w-0 truncate", loud.length > 0 && "ms-1")}>{quiet.map((c) => c.text).join(", ")}</span> : null}
     </span>
   );
 }
