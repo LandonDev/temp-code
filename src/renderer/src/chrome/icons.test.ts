@@ -75,9 +75,12 @@ describe("icon stroke", () => {
 describe("provider marks", () => {
   it("ships an asset for every mark HarnessIcon draws, Meta's among them", async () => {
     const { HARNESS_ICONS, MONOCHROME_HARNESSES } = await import("./HarnessIcon");
-    const assets = readdirSync(join(SRC, "assets/providers")).map((f) => f.replace(/\.svg$/, "")).sort();
-    expect(assets).toContain("meta");
-    expect(Object.keys(HARNESS_ICONS).sort()).toEqual(assets);
+    const assets = readdirSync(join(SRC, "assets/providers")).sort();
+    const importedAssets = import.meta.glob<string>("../assets/providers/*.svg", { eager: true, import: "default" });
+    expect(assets).toContain("meta.svg");
+    expect(Object.keys(importedAssets).map((path) => path.slice(path.lastIndexOf("/") + 1)).sort()).toEqual(assets);
+    // Providers may share a mark: Muse Code uses Meta's asset.
+    expect(new Set(Object.values(HARNESS_ICONS))).toEqual(new Set(Object.values(importedAssets)));
     expect(MONOCHROME_HARNESSES.has("meta")).toBe(true);
   });
 

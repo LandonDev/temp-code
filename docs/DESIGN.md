@@ -612,6 +612,10 @@ colour, 16px in a rail row and 14px beside text, an image on the 4px radius,
 never tinted by state; it is the one drawing of it in the rail, Search,
 Inbox, Notes and the folder picker.
 
+Provider marks may share an asset (Muse Code uses Meta's). `chrome/icons.test.ts`
+checks that every `HARNESS_ICONS` entry names an asset in `assets/providers`,
+every asset is used, and Meta's is present.
+
 ## Loading and empty states
 
 A surface that waits shows a `Skeleton` in the shape of what is coming when

@@ -1001,7 +1001,9 @@ Meta's Muse Code CLI is provider `muse` (`src/main/server/drivers/muse.ts`).
 Meta brands it with the Meta symbol and publishes no Muse mark, so every
 `muse` mark (HarnessIcon's `markDrawing`, the phone's `ProviderGlyph`) draws
 Meta's, and its words tell the two apart (a model's tooltip ends "on Muse
-Code"). It runs
+Code"). `chrome/icons.test.ts` checks the distinct assets referenced by
+`HARNESS_ICONS` against `assets/providers`; provider keys may share a file.
+It runs
 one `muse serve` per thread over the Muse Session Protocol (newline JSON-RPC
 on stdio), spoken through Meta's `@muse-code/sdk` (pinned exactly, 1.4.14;
 bundled into main like aliax-core, so electron.vite excludes it from the
