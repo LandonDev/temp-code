@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore, type CSSProperties } from "react";
 import type { toast as Toast, ToasterProps } from "sonner";
-import { CircleAlert, CircleCheck, Info } from "@renderer/chrome/icons";
+import { Info } from "@renderer/chrome/icons";
 import { Spinner } from "./spinner";
+import { StatusMark, type ThreadState } from "./status";
 import { buttonVariants } from "./button";
 import { cn } from "@renderer/lib/cn";
 import { subscribeToastAnchor, toastAnchor } from "@renderer/lib/toastAnchor";
@@ -87,6 +88,18 @@ function useToastInset(): ToastInset {
   return inset;
 }
 
+/** A toast's glyph in the status vocabulary (docs/DESIGN.md): a toast that
+ *  needs the person is waiting's amber ring-dot, a failure failed's red
+ *  ring with a bang, a success done's muted check. The title says the words,
+ *  so the glyph is hidden from assistive tech. */
+function ToastGlyph({ state }: { state: ThreadState }) {
+  return (
+    <span aria-hidden data-toast-glyph={state} className="contents">
+      <StatusMark state={state} word={false} />
+    </span>
+  );
+}
+
 /** The one toast stack (sonner), mounted once in main.tsx. A toast is one
  *  line, an optional second line, at most one action, and leaves on its own.
  *  It sits above the focused thread's strip, never over a control. */
@@ -101,10 +114,10 @@ export function Toaster(props: ToasterProps) {
         mobileOffset={offset}
         visibleToasts={4}
         icons={{
-          success: <CircleCheck className="size-4" />,
+          success: <ToastGlyph state="done" />,
           info: <Info className="size-4" />,
-          warning: <CircleAlert className="size-4" />,
-          error: <CircleAlert className="size-4" />,
+          warning: <ToastGlyph state="waiting" />,
+          error: <ToastGlyph state="failed" />,
           loading: <Spinner />,
         }}
         toastOptions={{

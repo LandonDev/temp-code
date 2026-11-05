@@ -41,6 +41,8 @@ export function ThreadBatchToasts({ onOpen }: Props): null {
         id,
         description: `${notice.failed.length} failed: ${first.title} (${first.error})`,
         duration: Infinity,
+        // A failure stays until it is read; its close dismisses it unread.
+        closeButton: true,
         onDismiss: () => {
           for (const restId of restIds) toast.dismiss(restId);
           done();
@@ -54,6 +56,7 @@ export function ThreadBatchToasts({ onOpen }: Props): null {
           id: restId,
           description: f.error,
           duration: Infinity,
+          closeButton: true,
           onDismiss: () => dismissedRest.add(restId),
           action: { label: "Open", onClick: () => open.current(f.sessionId, f.environmentId) },
         });

@@ -35,7 +35,7 @@ afterEach(() => {
   vi.mocked(toast.dismiss).mockClear();
 });
 
-type Options = { id: string; duration: number; description?: string; onDismiss: () => void; onAutoClose?: () => void; action?: { label: string; onClick: () => void } };
+type Options = { id: string; duration: number; closeButton?: boolean; description?: string; onDismiss: () => void; onAutoClose?: () => void; action?: { label: string; onClick: () => void } };
 const options = (call: unknown[]) => call[1] as Options;
 
 describe("ThreadBatchToasts", () => {
@@ -73,6 +73,7 @@ describe("ThreadBatchToasts", () => {
     expect(title).toBe("Stopped 1");
     expect(opts.description).toBe("2 failed: Search (harness not responding)");
     expect(opts.duration).toBe(Infinity);
+    expect(opts.closeButton).toBe(true);
     opts.action!.onClick();
     expect(onOpen).toHaveBeenCalledWith("a", "local");
     // The second failure is its own toast under the lead, with its error and Open.
@@ -80,6 +81,7 @@ describe("ThreadBatchToasts", () => {
     const second = options(vi.mocked(toast.error).mock.calls[1]);
     expect(second.id).toBe(`${opts.id}:c`);
     expect(second.description).toBe("link down");
+    expect(second.closeButton).toBe(true);
     second.action!.onClick();
     expect(onOpen).toHaveBeenLastCalledWith("c", "local");
     // A dismissed secondary stays dismissed when the list syncs again.

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadToast, TOAST_WIDTH, Toaster, toastInset } from "./toaster";
@@ -152,6 +152,29 @@ describe("a toast's buttons and motion", () => {
     const dismiss = screen.getByRole("button", { name: "Dismiss" });
     expect(dismiss.classList).toContain("t-raise-secondary");
     expect(dismiss.classList).not.toContain("!bg-muted");
+  });
+
+  it("speaks the status vocabulary: a warning is waiting's amber glyph, an error failed's red one", async () => {
+    render(<Toaster />);
+    const toast = await loadToast();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      toast.warning("Approve Bash");
+      toast.error("Stop all failed");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const warning = await waitFor(() => {
+      const el = document.querySelector('[data-toast-glyph="waiting"] [data-slot="status-mark"]');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    const error = document.querySelector('[data-toast-glyph="failed"] [data-slot="status-mark"]')!;
+    expect(error).not.toBeNull();
+    expect(warning.className).toContain("text-warning");
+    expect(error.className).toContain("text-destructive");
+    expect(warning.querySelector("svg")!.outerHTML).not.toBe(error.querySelector("svg")!.outerHTML);
+    // The title says the words; the glyph is not read twice.
+    expect(warning.closest("[aria-hidden]")).not.toBeNull();
   });
 
   it("rides the motion tokens and the toast layer, out-specifying sonner's stylesheet", () => {
