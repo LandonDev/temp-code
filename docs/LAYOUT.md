@@ -632,7 +632,10 @@ before the host's meta lands (`chipThreadsOf` in chrome/ShellTitleBar.tsx).
   one sits on the shelf. The thread menu's "Close tab" (after Open to the
   side, only while the thread has a tab; "Close pane" when it shares one)
   does the same. A chip has no hover X: it would read as archive.
-- **Hover.** One `Tooltip` per chip under a shared `TooltipProvider`: the
+- **Hover.** One `Tooltip` per chip under its row's `TooltipProvider`,
+  which sits inside the row's tablist (the end group has its own): the lazy
+  provider remounts what it wraps when tooltips warm, so none sits around a
+  scroller and a scrolled row keeps its place. The
   title, under it the status word with what it is about ("Working
   typecheck", "Needs you  approve Bash", a tally, a failure's verdict), and
   the host's name with two or more hosts.

@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useEffect, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { resetTooltips, tooltipChunk, warmTooltips } from "../components/ui/tooltip";
 import { slotTarget, type HeaderModel } from "../lib/threadHeaderModel";
 import { getExternalPaneDrop } from "../lib/paneDrop";
 import type { Session } from "../lib/session";
@@ -250,6 +251,26 @@ describe("ThreadHeaderStrip rows", () => {
     // 28px arrows beside the 28px chips, and the row pads each end by the arrow's room.
     expect(right.className).toContain("size-7");
     expect((box as HTMLElement).style.getPropertyValue("--strip-pad-r")).toBe("36px");
+  });
+
+  it("tooltips warming keep the scrollers and the end group: each row's provider sits inside its tablist", async () => {
+    resetTooltips();
+    const end = <button type="button" data-end-group>Panel</button>;
+    mount({ model: twoRows, end });
+    const live = liveRow();
+    const shelf = shelfRow()!;
+    const panel = screen.getByRole("button", { name: "Panel" });
+    live.scrollLeft = 40;
+    shelf.scrollLeft = 24;
+    await tooltipChunk.load();
+    act(() => warmTooltips());
+    // The chips are the primitive's now, and the scrollers are the same nodes, still scrolled.
+    expect(liveRow()).toBe(live);
+    expect(shelfRow()).toBe(shelf);
+    expect(live.scrollLeft).toBe(40);
+    expect(shelf.scrollLeft).toBe(24);
+    expect(screen.getByRole("button", { name: "Panel" })).toBe(panel);
+    resetTooltips();
   });
 
   it("shows the host glyph after the title with two hosts, none with one, and tints an offline host's chip", () => {

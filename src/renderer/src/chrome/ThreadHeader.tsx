@@ -3,6 +3,7 @@ import type { ThreadRules } from "@server/shared/rules";
 import type { ThreadType } from "../lib/tcserver/types";
 import type { HeaderModel } from "../lib/threadHeaderModel";
 import type { ReadyMap } from "../lib/threadStripModel";
+import { TooltipProvider } from "../components/ui/tooltip";
 import { AgentsCue } from "./AgentsCue";
 import { NewThreadChooser } from "./NewThreadChooser";
 import { ProjectPlanChip } from "./ProjectPlanChip";
@@ -139,25 +140,29 @@ export function ThreadHeader({
         onScrollBy={onScrollBy}
         trailing={<NewThreadChooser workspaceId={workspaceId} empty={empty} onStart={onNew} />}
         end={
-          <div className="flex shrink-0 items-center gap-0.5">
-            <ProjectPlanChip />
-            <AgentsCue threadId={model.activeId} room={panelRoom} />
-            <ThreadMenu
-            host={activeChip ? host.host : null}
-            cost={cost}
-            rows={activeChip ? menu.rowsFor(activeChip.id) : []}
-            onPick={(id) => activeChip && menu.onPick(activeChip.id, id)}
-            onOpen={() => menu.onOpenChange(model.activeId, true)}
-            running={running}
-            onPauseAll={onPauseAll}
-            terminal={{ onShow: onShowTerminal, onNew: onNewTerminal, active: projectTerminalActive }}
-            recent={model.dormant}
-            onOpenRecent={onSelect}
-            archived={archived}
-            onRestore={onRestore}
-            panel={{ open: railOpen, room: panelRoom, onToggle: onToggleRail }}
-            />
-          </div>
+          // Its own TooltipProvider: the strip's rows each have theirs, so no
+          // provider sits around a scroller (the lazy one remounts what it wraps).
+          <TooltipProvider>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <ProjectPlanChip />
+              <AgentsCue threadId={model.activeId} room={panelRoom} />
+              <ThreadMenu
+                host={activeChip ? host.host : null}
+                cost={cost}
+                rows={activeChip ? menu.rowsFor(activeChip.id) : []}
+                onPick={(id) => activeChip && menu.onPick(activeChip.id, id)}
+                onOpen={() => menu.onOpenChange(model.activeId, true)}
+                running={running}
+                onPauseAll={onPauseAll}
+                terminal={{ onShow: onShowTerminal, onNew: onNewTerminal, active: projectTerminalActive }}
+                recent={model.dormant}
+                onOpenRecent={onSelect}
+                archived={archived}
+                onRestore={onRestore}
+                panel={{ open: railOpen, room: panelRoom, onToggle: onToggleRail }}
+              />
+            </div>
+          </TooltipProvider>
         }
       />
       {menu.dialogs}

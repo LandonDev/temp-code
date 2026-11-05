@@ -156,71 +156,77 @@ export function ThreadHeaderStrip({
     "--strip-pad-l": overflow?.left ? `${ARROW_ROOM_PX}px` : undefined,
     "--strip-pad-r": overflow?.right ? `${ARROW_ROOM_PX}px` : undefined,
   } as CSSProperties;
+  // Each row's chips share one TooltipProvider inside its tablist, and the
+  // end group has its own (ThreadHeader): a provider swaps from a fragment
+  // to the primitive when tooltips warm, remounting what it wraps, so none
+  // sits around a scroller.
   return (
-    <TooltipProvider>
-      <RowsContextMenu
-        label="Thread actions"
-        rowsFor={events.menu?.rowsFor ?? (() => null)}
-        onPick={(pick, id) => events.menu?.onPick(pick, id)}
-        onOpenChange={(open, id) => events.menu?.onOpenChange(open, id)}
-        disabled={!events.menu}
+    <RowsContextMenu
+      label="Thread actions"
+      rowsFor={events.menu?.rowsFor ?? (() => null)}
+      onPick={(pick, id) => events.menu?.onPick(pick, id)}
+      onOpenChange={(open, id) => events.menu?.onOpenChange(open, id)}
+      disabled={!events.menu}
+    >
+      {/* One hold region over both rows: a chip that settles under the
+          pointer keeps its place until the pointer leaves either. */}
+      <div
+        className="flex min-w-0 flex-1 flex-col"
+        data-strip-region
+        onPointerEnter={() => stripHold.set(true)}
+        onPointerLeave={() => stripHold.set(false)}
+        onPointerCancel={() => stripHold.set(false)}
       >
-        {/* One hold region over both rows: a chip that settles under the
-            pointer keeps its place until the pointer leaves either. */}
-        <div
-          className="flex min-w-0 flex-1 flex-col"
-          data-strip-region
-          onPointerEnter={() => stripHold.set(true)}
-          onPointerLeave={() => stripHold.set(false)}
-          onPointerCancel={() => stripHold.set(false)}
-        >
-          {/* The 40px live row: the chips, New thread and the end group share
-              one centre, whatever else the title bar holds. */}
-          <div className="flex h-10 min-w-0 items-center">
-            {model.heading !== undefined ? (
-              // The home has no strip: its chats are the column's Chats list,
-              // so the row holds the thread on screen's title alone.
-              model.heading ? <HomeHeading chip={model.heading} {...events} /> : null
-            ) : (
-            <div className="relative flex min-w-0 self-stretch" style={pad}>
-              {overflow?.left && onScrollBy ? <ScrollArrow side="left" onClick={() => onScrollBy(-1)} /> : null}
-              <div
-                ref={stripRef}
-                onWheel={wheelToX}
-                role="tablist"
-                aria-label="Threads"
-                aria-orientation="horizontal"
-                data-strip="live"
-                data-tauri-drag-region="false"
-                className="scrollbar-none flex min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none pl-[var(--strip-pad-l,6px)] pr-[var(--strip-pad-r,6px)]"
-              >
+        {/* The 40px live row: the chips, New thread and the end group share
+            one centre, whatever else the title bar holds. */}
+        <div className="flex h-10 min-w-0 items-center">
+          {model.heading !== undefined ? (
+            // The home has no strip: its chats are the column's Chats list,
+            // so the row holds the thread on screen's title alone.
+            model.heading ? <HomeHeading chip={model.heading} {...events} /> : null
+          ) : (
+          <div className="relative flex min-w-0 self-stretch" style={pad}>
+            {overflow?.left && onScrollBy ? <ScrollArrow side="left" onClick={() => onScrollBy(-1)} /> : null}
+            <div
+              ref={stripRef}
+              onWheel={wheelToX}
+              role="tablist"
+              aria-label="Threads"
+              aria-orientation="horizontal"
+              data-strip="live"
+              data-tauri-drag-region="false"
+              className="scrollbar-none flex min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none pl-[var(--strip-pad-l,6px)] pr-[var(--strip-pad-r,6px)]"
+            >
+              <TooltipProvider>
                 <ChipRow chips={live} activeId={activeId} onSelect={onSelect} {...events} />
-              </div>
-              {overflow?.right && onScrollBy ? <ScrollArrow side="right" onClick={() => onScrollBy(1)} /> : null}
+              </TooltipProvider>
             </div>
-            )}
-            {model.heading !== undefined ? null : trailing}
-            <div className="h-full min-w-1.5 flex-1" />
-            {end}
+            {overflow?.right && onScrollBy ? <ScrollArrow side="right" onClick={() => onScrollBy(1)} /> : null}
           </div>
-          <Collapsible open={shelf.length > 0}>
-            <CollapsibleContent data-shelf-fold className="collapsible-auto">
-              <div
-                onWheel={wheelToX}
-                role="tablist"
-                aria-label="Settled threads"
-                aria-orientation="horizontal"
-                data-strip="shelf"
-                data-tauri-drag-region="false"
-                className="scrollbar-none flex h-8 min-w-0 items-start gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none px-1.5 pt-0.5"
-              >
-                <ChipRow chips={shownShelf} activeId={activeId} onSelect={onSelect} shelf {...events} />
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
+          )}
+          {model.heading !== undefined ? null : trailing}
+          <div className="h-full min-w-1.5 flex-1" />
+          {end}
         </div>
-      </RowsContextMenu>
-    </TooltipProvider>
+        <Collapsible open={shelf.length > 0}>
+          <CollapsibleContent data-shelf-fold className="collapsible-auto">
+            <div
+              onWheel={wheelToX}
+              role="tablist"
+              aria-label="Settled threads"
+              aria-orientation="horizontal"
+              data-strip="shelf"
+              data-tauri-drag-region="false"
+              className="scrollbar-none flex h-8 min-w-0 items-start gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none px-1.5 pt-0.5"
+            >
+              <TooltipProvider>
+                <ChipRow chips={shownShelf} activeId={activeId} onSelect={onSelect} shelf {...events} />
+              </TooltipProvider>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
+    </RowsContextMenu>
   );
 }
 
