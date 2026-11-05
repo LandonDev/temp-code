@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { BuildRun, BuildTarget, EffectiveBuild, RemoteStatus } from "@server/shared/build";
 import { ChoiceSelect, type Choice } from "@renderer/components/choice-select";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
@@ -229,7 +229,7 @@ export function BuildView({
             <Button size="sm" variant="secondary" onClick={onCancel}>
               Cancel
             </Button>
-          ) : (
+          ) : effective === null ? null : (
             <Button size="sm" disabled={!effective || pulling} onClick={onBuild}>
               Build
             </Button>
@@ -250,7 +250,7 @@ export function BuildView({
           </Empty>
         ) : (
           <div className="shrink-0 px-1">
-            <StatusRow run={run} own={own} effective={effective} />
+            <StatusRow run={run} own={own} chosen={chosen} effective={effective} />
           </div>
         )}
         {run || lines.length > 0 ? <Log lines={lines} runId={run?.id ?? null} /> : null}
@@ -260,8 +260,9 @@ export function BuildView({
   );
 }
 
-/** The run's state in the status vocabulary with its detail, the command under it. Before a run, the command alone. */
-function StatusRow({ run, own, effective }: { run: BuildRun | null; own: string | null; effective: EffectiveBuild | undefined }) {
+/** The run's state in the status vocabulary with its detail, the command under it. Before a run, the command alone.
+ *  The detail is one comma run ("exit 1, 1m 2s"), and names the run's branch only when the select above does not. */
+function StatusRow({ run, own, chosen, effective }: { run: BuildRun | null; own: string | null; chosen: string | null; effective: EffectiveBuild | undefined }) {
   const running = run?.status === "running";
   const now = useNow(running);
   const command = effective?.command ?? run?.command;
@@ -271,7 +272,7 @@ function StatusRow({ run, own, effective }: { run: BuildRun | null; own: string 
         <TooltipTrigger render={<span className="min-w-0 truncate font-mono" />}>{command}</TooltipTrigger>
         <TooltipContent>{command}</TooltipContent>
       </Tooltip>
-      {effective && effective.source !== "project" ? <span className="ml-2 shrink-0">{effective.source}</span> : null}
+      {effective && effective.source !== "project" ? <span className="ml-1 shrink-0">{effective.source}</span> : null}
     </span>
   ) : (
     <Skeleton className="h-3 w-40" />
@@ -284,30 +285,20 @@ function StatusRow({ run, own, effective }: { run: BuildRun | null; own: string 
     );
   }
   const took = duration((run.endedAt ?? (running && now > 0 ? now : Date.now())) - run.startedAt);
-  const facts: ReactNode[] = [];
+  const facts: string[] = [];
   if (run.status === "running" || run.status === "ok") facts.push(took);
   if (run.status === "failed") {
     if (run.exitCode !== undefined) facts.push(`exit ${run.exitCode}`);
     facts.push(took);
   }
-  if (run.branch && run.branch !== own) facts.push(run.branch);
+  if (run.branch && run.branch !== own && run.branch !== chosen) facts.push(run.branch);
   return (
     <Item size="xs" className="min-h-7 flex-nowrap py-1" data-build-status={run.status}>
       <ItemContent className="min-w-0">
         <StatusMark
           state={STATE[run.status]}
           className="text-[13px]"
-          detail={
-            facts.length > 0 ? (
-              <>
-                {facts.map((fact, i) => (
-                  <span key={i} className={i > 0 ? "ml-2" : undefined}>
-                    {fact}
-                  </span>
-                ))}
-              </>
-            ) : undefined
-          }
+          detail={facts.length > 0 ? facts.join(", ") : undefined}
         />
         <span className="mt-0.5 block">{commandLine}</span>
       </ItemContent>

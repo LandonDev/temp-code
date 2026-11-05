@@ -483,9 +483,11 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     counts (Changes has them).
   - **Build** (`BuildPanel`): the target `Select` and Build or Cancel; one
     status row (`StatusMark`: Working with the time, Done, Failed with the
-    exit code, Stopped) over the command; "2 behind origin" with Fetch only
-    when a fetch is due; the log; the outputs as rows that reveal the file.
-    No command is one Empty with "Set one" (the workspace's Build settings).
+    exit code, Stopped; its detail one comma run, "exit 1, 1m 2s", naming
+    the run's branch only when the select shows another) over the command;
+    "2 behind origin" with Fetch only when a fetch is due; the log; the
+    outputs as rows that reveal the file. No command is one Empty with "Set
+    one" (the workspace's Build settings) and no Build button beside it.
   - **Debug** (`DebugPanel`): with no session one muted line, "⌃D in a
     Java file starts a session here"; while one runs, the step controls,
     its `StatusMark` (Working, Paused) and Stop, then Call stack, Variables

@@ -127,12 +127,23 @@ describe("BuildView", () => {
     expect(status().textContent).toBe("Done1m 4s");
   });
 
-  it("says Failed with the exit code, the duration and another branch, apart, no middle dots", () => {
+  it("says Failed with the exit code and the duration as one comma run, and no branch the select already shows", () => {
     view({ chosen: "raids", run: run({ status: "failed", exitCode: 1, branch: "raids", startedAt: now - 62_000 }) });
     expect(status().dataset.state).toBe("failed");
-    const facts = [...status().querySelectorAll("[data-slot=status-detail] span")].map((s) => s.textContent);
-    expect(facts).toEqual(["exit 1", "1m 2s", "raids"]);
+    expect(status().querySelector("[data-slot=status-detail]")!.textContent).toBe("exit 1, 1m 2s");
     expect(document.body.textContent).not.toContain("·");
+  });
+
+  it("names the run's branch when the select has moved to another", () => {
+    view({
+      targets: [
+        { branch: "master", cwd: "/w/plugin", kind: "project" },
+        { branch: "raids", cwd: "/w/raids", kind: "checkout" },
+      ],
+      chosen: "master",
+      run: run({ status: "failed", exitCode: 1, branch: "raids", startedAt: now - 62_000 }),
+    });
+    expect(status().querySelector("[data-slot=status-detail]")!.textContent).toBe("exit 1, 1m 2s, raids");
   });
 
   it("says Stopped for a cancelled run", () => {
@@ -144,7 +155,8 @@ describe("BuildView", () => {
   it("offers Set one when there is no command", () => {
     const props = view({ effective: null });
     expect(screen.getByText("No build command")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Build" }) as HTMLButtonElement).disabled).toBe(true);
+    // No dead Build beside the Empty's own action.
+    expect(screen.queryByRole("button", { name: "Build" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Set one" }));
     expect(props.onSetCommand).toHaveBeenCalledOnce();
   });
