@@ -582,6 +582,13 @@ export class AccountsService {
     return snap.profiles.some((p) => p.name !== account && eligible(p.name, { serviceId, out, reports: snap.reports, headroom, tiers, now }))
   }
 
+  /** When the account's cooldown for the model lifts, by the gateway's picture; null when it is not in one. */
+  capLiftsAt(provider: AccountProvider, model: string | null, account: string | null): number | null {
+    if (!account) return null
+    const until = this.headroomFor(provider, model)?.[account]?.throttledUntil ?? 0
+    return until > this.deps.now() ? until : null
+  }
+
   failover(
     sessionId: string,
     info: { provider: AccountProvider; model: string | null; window: Limit['window']; account: string | null }

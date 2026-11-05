@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { emptyAccounts, type AccountsSnapshot } from '@shared/accounts'
 import type { AgentEvent } from '@shared/events'
 import { networkRefusalOf } from './failureKind'
@@ -250,6 +250,7 @@ it('a failover on a watching thread lands at its next turn start: a report wake 
   await sleep(20)
   expect(routes[spawns]).toEqual({ id, route: { account: 'b@x.com', pin: false } })
   expect(sends.at(-1)).toContain('<subagent-report>done</subagent-report>')
+  await settle()
 })
 
 it('a handle that matches its thread is reused at a turn start, and a steer into a running turn keeps its stream', async () => {
@@ -317,6 +318,62 @@ it("a cap failure says whether another account had room, asked of the account th
   emit({ type: 'error', message: "You've reached your Fable limit", limit: { window: { model: 'Fable' } } })
   expect(asked).toEqual([['claude', 'claude-fable-5-1', 'refused@x.com']])
   expect(registry.get(id)?.failure).toMatchObject({ kind: 'rate_limited', account: 'refused@x.com', roomElsewhere: false })
+})
+
+describe('a cap with no other account for the model', () => {
+  const report = (n: number) => ({ text: `<subagent-report>child ${n} done</subagent-report>`, agentId: `kid${n}`, title: `Kid ${n}`, status: 'idle' })
+  const errorRows = (id: string) => store.eventsAfter(id, 0).filter((r) => r.event.type === 'error').length
+
+  /** A Fable master at its cap, settled watching, every other account out of room. */
+  async function capped(liftsAt: number | null = null): Promise<string> {
+    registry.limits = { ...byModel(), roomElsewhere: () => false, capLiftsAt: () => liftsAt }
+    const { id, emit } = await running({ model: 'claude-fable-5-1' })
+    emit({ type: 'status', status: 'running' })
+    emit({ type: 'error', message: "You've reached your Fable limit", limit: { window: { model: 'Fable' } } })
+    emit({ type: 'status', status: 'watching' })
+    await settle()
+    return id
+  }
+
+  it('parks report wakes: no turn, no new card', async () => {
+    const id = await capped()
+    const before = { sends: sends.length, errors: errorRows(id) }
+    for (const n of [1, 2, 3]) registry.deliverAgentReport(id, report(n))
+    await sleep(20)
+    expect(sends).toHaveLength(before.sends)
+    expect(errorRows(id)).toBe(before.errors)
+  })
+
+  it('a tune to another model releases them as one turn on that model', async () => {
+    const id = await capped()
+    for (const n of [1, 2, 3]) registry.deliverAgentReport(id, report(n))
+    const spawns = spawned.length
+    const before = sends.length
+    await registry.tune(id, { model: 'claude-opus-5-5' })
+    await sleep(20)
+    expect(spawned.slice(spawns)).toEqual([{ id, model: 'claude-opus-5-5' }])
+    expect(sends.slice(before)).toHaveLength(1)
+    for (const n of [1, 2, 3]) expect(sends.at(-1)).toContain(`child ${n} done`)
+  })
+
+  it("the person's own message is never held, and carries the parked reports", async () => {
+    const id = await capped()
+    registry.deliverAgentReport(id, report(1))
+    await registry.send(id, 'try again')
+    expect(sends.at(-1)).toContain('child 1 done')
+    expect(sends.at(-1)).toContain('try again')
+  })
+
+  it('the cooldown lifting releases them', async () => {
+    const id = await capped(Date.now() + 900)
+    registry.deliverAgentReport(id, report(1))
+    const before = sends.length
+    await sleep(100)
+    expect(sends).toHaveLength(before)
+    await sleep(700)
+    expect(sends.slice(before)).toHaveLength(1)
+    expect(sends.at(-1)).toContain('child 1 done')
+  })
 })
 
 it('a scope pin change recomputes threads under it; a refresh re-picks threads with no account', async () => {

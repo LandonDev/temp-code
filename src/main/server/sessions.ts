@@ -528,6 +528,8 @@ export interface AccountRouter {
   observeQuota?(provider: AccountProvider, account: string, window: LimitWindow, resetsAt: number): void
   /** Whether an account other than `account` has room for the model now (eligible()); null when the host cannot say. */
   roomElsewhere?(provider: AccountProvider, model: string | null, account: string | null): boolean | null
+  /** When the account's cooldown for the model lifts, by the gateway's picture; null when unknown. */
+  capLiftsAt?(provider: AccountProvider, model: string | null, account: string | null): number | null
 }
 /** @deprecated use AccountRouter */
 export type LimitFailover = AccountRouter
@@ -789,6 +791,11 @@ export class SessionRegistry {
   /** What each live handle was spawned with (model, effort, pin): a turn
    *  start on a handle whose thread moved since boots fresh (staleHandle). */
   private spawnedWith = new Map<string, { model: string | null; reasoning: SessionMeta['reasoning'] | null; pin: string | null }>()
+  /** Threads a usage cap stopped with no other account left for their
+   *  model: report and batch wakes park instead of spending a turn on the
+   *  cap, until a model or account change, a continue, the person's own
+   *  message or the cooldown's lift (the timer, when the gateway knows it). */
+  private capHolds = new Map<string, ReturnType<typeof setTimeout> | null>()
   /** Threads told their account left this host, and which: one notice row per account per thread. */
   private accountsGone = new Map<string, string>()
   /** Per root: the switch to continue on, and the short timer that lets
@@ -1670,6 +1677,7 @@ export class SessionRegistry {
     const moved = after !== before
     if (moved && meta.status === 'watching') this.pendingReboot.add(sessionId)
     else if (moved) await this.dropHandle(sessionId)
+    if (moved) this.releaseCapHold(sessionId, { drain: true })
     return { account: after, moved }
   }
 
@@ -1938,6 +1946,7 @@ export class SessionRegistry {
           this.setAccount(sessionId, switched.to)
           // A live CLI keeps the scope it spawned under: its next turn boots on the new account.
           if (this.handles.has(sessionId)) this.pendingReboot.add(sessionId)
+          this.releaseCapHold(sessionId)
         }
         return switched
       })
@@ -2858,6 +2867,11 @@ export class SessionRegistry {
     // A real message starts a fresh turn — the error taint belongs to the
     // one that died. (The pass's own handle.send bypasses this method.)
     this.erroredTurns.delete(sessionId)
+    // A message moves a cap-held thread on: the reports parked meanwhile ride ahead of it.
+    if (this.releaseCapHold(sessionId)) {
+      const reports = this.takeReports(sessionId)
+      if (reports.text) this.holdNotice(sessionId, reports.text)
+    }
     // A completed plan that takes input again is open until plan_complete
     // is called anew (one whose build started keeps its mark).
     reopenPlan(this.planFlow(), meta)
@@ -3704,7 +3718,10 @@ export class SessionRegistry {
     else await this.dropHandle(sessionId)
     const next = this.store.updateSession(sessionId, modelChanged ? { ...rest, model } : rest)
     if (next) this.notifyMeta(next)
-    if (modelChanged) this.expectAccount(sessionId, { fresh: true })
+    if (modelChanged) {
+      this.expectAccount(sessionId, { fresh: true })
+      this.releaseCapHold(sessionId, { drain: true })
+    }
   }
 
   /** Edit a live orchestration thread's per-run tune. The handle drops so
@@ -4191,6 +4208,7 @@ export class SessionRegistry {
       // The replacement accepted the work. Only now settle the old chips;
       // a boot or send failure leaves the fold true for another retry.
       if (this.storedContinuableError(sessionId)) this.append(sessionId, { type: 'errors-cleared' })
+      this.releaseCapHold(sessionId)
       this.erroredTurns.delete(sessionId)
       this.limited.delete(sessionId)
     } catch (error) {
@@ -4746,6 +4764,7 @@ export class SessionRegistry {
       this.erroredTurns.add(sessionId)
       this.passPending.delete(sessionId)
       if (event.limit && !event.stopped) this.onLimitError(sessionId, event.limit.window)
+      if (!event.stopped && event.failure?.roomElsewhere === false) this.holdForCap(sessionId, event.failure.account)
       if (event.message === FIRST_OUTPUT_SILENCE) this.recoverSilence(sessionId)
     }
     // A limited session settling lets its pending switch continue the tree;
@@ -5636,6 +5655,34 @@ export class SessionRegistry {
    *  entry, no pass stamping. Idle parents get it now, busy ones at their
    *  next settle, ahead of queued user messages (a queued message opens a
    *  fresh round; the report belongs to the round that spawned the agent). */
+  /** A usage cap with no other account for the model: hold the thread's
+   *  wakes (each would hit the same cap and write another card), with a
+   *  timer to the cooldown's lift when the gateway knows it. */
+  private holdForCap(sessionId: string, account: string | null): void {
+    const meta = this.store.getSession(sessionId)
+    const picked = meta ? pickedProviderOf(meta.provider, meta.model) : null
+    if (!meta || !picked) return
+    const prior = this.capHolds.get(sessionId)
+    if (prior) clearTimeout(prior)
+    const at = this.limits?.capLiftsAt?.(picked, meta.model ?? null, account) ?? null
+    const wait = at === null ? null : at - Date.now()
+    const timer = wait !== null && wait > 0 ? setTimeout(() => this.releaseCapHold(sessionId, { drain: true }), wait) : null
+    timer?.unref?.()
+    this.capHolds.set(sessionId, timer)
+  }
+
+  /** End a cap hold; `drain` sends what parked meanwhile when the thread is
+   *  between turns (a tune, a reroute, the lift). Answers whether one was held. */
+  private releaseCapHold(sessionId: string, opts: { drain?: boolean } = {}): boolean {
+    if (!this.capHolds.has(sessionId)) return false
+    const timer = this.capHolds.get(sessionId)
+    if (timer) clearTimeout(timer)
+    this.capHolds.delete(sessionId)
+    const status = this.store.getSession(sessionId)?.status
+    if (opts.drain && (status === 'idle' || status === 'watching') && !this.isTreePaused(sessionId)) this.drainSettled(sessionId)
+    return true
+  }
+
   deliverAgentReport(sessionId: string, report: AgentReport): void {
     const list = this.pendingReports.get(sessionId) ?? []
     list.push(report)
@@ -5689,6 +5736,7 @@ export class SessionRegistry {
    *  this settle. */
   private drainReports(sessionId: string): boolean {
     if (this.isTreePaused(sessionId)) return false
+    if (this.capHolds.has(sessionId)) return false
     if (this.draining.has(sessionId)) return false
     if (!this.pendingReports.get(sessionId)?.length) return false
     this.draining.add(sessionId)
@@ -5889,6 +5937,8 @@ export class SessionRegistry {
     if (this.sweepTimer) clearInterval(this.sweepTimer)
     if (this.livenessTimer) clearInterval(this.livenessTimer)
     this.scheduler.dispose()
+    for (const timer of this.capHolds.values()) if (timer) clearTimeout(timer)
+    this.capHolds.clear()
     this.flushFolds()
     for (const id of [...this.pendingApprovals.keys()]) this.denyPendingApprovals(id)
     await Promise.allSettled([...this.handles.values()].map((h) => h.dispose()))
