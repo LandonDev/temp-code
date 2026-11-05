@@ -38,44 +38,44 @@ struct MarkdownView: View {
             MarkdownBlocksView(document: document, dim: dim)
         } else {
             Text(text)
-                .font(.body)
+                .transcriptType(TranscriptType.prose)
                 .foregroundStyle(dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
 
-/// The desktop's `AgentMarkdown` in SwiftUI: paragraphs at body size with a
-/// generous measure, headings two and one steps up, lists with a hanging
-/// marker, code in a bordered block, a quote behind a 2 pt rule, tables as
-/// a bordered grid that scrolls sideways.
+/// The desktop's `AgentMarkdown` in SwiftUI: paragraphs in the prose type
+/// (15 on 22), headings on the prose ladder (17, 16, 15 semibold), lists
+/// with a hanging marker, code in a bordered block in the code type, a
+/// quote behind a 2 pt rule, tables as a bordered grid that scrolls sideways.
 struct MarkdownBlocksView: View {
     let document: MarkdownDocument
     var dim = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: TranscriptMetrics.Gap.block) {
             ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .paragraph(let text):
                     Text(text.inlineStyled())
-                        .font(.body)
+                        .transcriptType(TranscriptType.prose)
                 case .heading(let level, let text):
                     Text(text.inlineStyled())
-                        .font(level <= 1 ? .title2.weight(.semibold) : level == 2 ? .title3.weight(.semibold) : .headline)
-                        .padding(.top, level <= 2 ? 8 : 4)
+                        .transcriptType(level <= 1 ? TranscriptType.proseH1 : level == 2 ? TranscriptType.proseH2 : TranscriptType.proseH3)
+                        .padding(.top, level <= 2 ? TranscriptMetrics.Gap.line * 2 : TranscriptMetrics.Gap.line)
                 case .list(let items, let ordered):
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                             ListItemRow(item: item, index: index, ordered: ordered)
                         }
                     }
-                    .font(.body)
+                    .transcriptType(TranscriptType.prose)
                 case .code(let code, let language):
-                    CodeBlock(text: code, language: language, font: .callout, maxLines: 40)
+                    CodeBlock(text: code, language: language, type: TranscriptType.code, maxLines: 40)
                 case .quote(let text):
                     Text(text.inlineStyled())
-                        .font(.body)
+                        .transcriptType(TranscriptType.prose)
                         .foregroundStyle(.secondary)
                         .padding(.leading, 12)
                         .padding(.vertical, 2)
@@ -97,14 +97,14 @@ struct MarkdownBlocksView: View {
     }
 }
 
-/// Monospaced text one step down, never wrapped: a language header when the
+/// Monospaced text in a code type (`rowCode` by default), never wrapped: a language header when the
 /// fence names one, line numbers in the dim step, sideways scroll, a fold
 /// past `maxLines`, and Copy in the context menu. The desktop's `CodeBlock`
 /// without the colouring (no highlighter runs on the phone).
 struct CodeBlock: View {
     let text: String
     var language: String? = nil
-    var font: Font.TextStyle = .footnote
+    var type: TypeSpec = TranscriptType.rowCode
     var maxLines = 24
     var tint: Color? = nil
     var lineNumbers = true
@@ -117,17 +117,17 @@ struct CodeBlock: View {
         VStack(alignment: .leading, spacing: 0) {
             if let language, !language.isEmpty {
                 Text(language)
-                    .font(.caption.weight(.medium))
+                    .transcriptType(TranscriptType.detail, weight: .medium)
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .frame(minHeight: 36)
+                    .padding(.horizontal, TranscriptMetrics.tableInset)
+                    .frame(minHeight: TranscriptMetrics.tableRow)
                 Hairline()
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 8) {
                     if lineNumbers, lines.count > 1 {
                         Text(shown.indices.map { String($0 + 1) }.joined(separator: "\n"))
-                            .font(.system(font, design: .monospaced))
+                            .transcriptType(type)
                             .foregroundStyle(.tertiary)
                             .monospacedDigit()
                             .multilineTextAlignment(.trailing)
@@ -135,7 +135,7 @@ struct CodeBlock: View {
                             .accessibilityHidden(true)
                     }
                     Text(shown.joined(separator: "\n"))
-                        .font(.system(font, design: .monospaced))
+                        .transcriptType(type)
                         .foregroundStyle(tint ?? .primary)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: true, vertical: false)
@@ -143,16 +143,16 @@ struct CodeBlock: View {
                 .padding(.vertical, 8)
             }
             // The first character rests on the block's inset at either end of a sideways scroll.
-            .contentMargins(.horizontal, 10, for: .scrollContent)
+            .contentMargins(.horizontal, TranscriptMetrics.tableInset, for: .scrollContent)
             if lines.count > maxLines {
                 Button {
                     withAnimation(expanded ? Motion.collapse : Motion.expand) { expanded.toggle() }
                 } label: {
                     Text(expanded ? "Show less" : "Show all \(lines.count) lines")
-                        .font(.footnote.weight(.medium))
+                        .transcriptType(TranscriptType.line, weight: .medium)
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 10)
-                        .frame(minHeight: 32)
+                        .padding(.horizontal, TranscriptMetrics.tableInset)
+                        .frame(minHeight: TranscriptMetrics.tableRow)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.pressable)
@@ -178,7 +178,8 @@ private struct MarkdownTable: View {
                     GridRow {
                         ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
                             Text(cell.inlineStyled())
-                                .font(index == 0 ? .subheadline.weight(.semibold) : .subheadline)
+                                .transcriptType(TranscriptType.line, weight: index == 0 ? .semibold : .regular)
+                                .monospacedDigit()
                                 .foregroundStyle(index == 0 ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                                 .padding(.vertical, 7)
                                 .gridColumnAlignment(.leading)
@@ -190,20 +191,20 @@ private struct MarkdownTable: View {
                 }
             }
         }
-        .contentMargins(.horizontal, 10, for: .scrollContent)
+        .contentMargins(.horizontal, TranscriptMetrics.tableInset, for: .scrollContent)
         .transcriptBlock()
     }
 }
 
 extension AttributedString {
-    /// Inline code one step down in mono on the desktop's wash, so a `name`
+    /// Inline code in the code type on the desktop's wash, so a `name`
     /// sits in the line instead of standing out of it; the rest keeps the
     /// paragraph's font. (A run's background has no radius of its own; at
     /// text height the square wash reads as the desktop's 4 px.)
     func inlineStyled() -> AttributedString {
         var styled = self
         for run in styled.runs where run.inlinePresentationIntent?.contains(.code) == true {
-            styled[run.range].font = .system(.callout, design: .monospaced)
+            styled[run.range].font = TranscriptType.code.font
             styled[run.range].backgroundColor = Color(.tertiarySystemFill)
         }
         return styled

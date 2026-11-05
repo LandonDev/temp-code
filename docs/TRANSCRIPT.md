@@ -66,8 +66,9 @@ foreground, the same words the group line uses); the components only draw it.
   gist would only repeat it ("Ran bun run typecheck") says "Ran a command";
   more than two clauses end "and N more".
 - **What it opens.** A read or a list opens its file in the editor at the
-  line it started from (Claude's Read `offset` is that line), with no caret
-  and nothing in the transcript. A command opens its card
+  line it started from (Claude's Read `offset` is that line); its caret
+  says so, as on every row that does something, and nothing opens in the
+  transcript. A command opens its card
   (`transcript/CommandCard.tsx`: the tool's name, `$ ` in line with it and
   the command in mono, tinted by ink alone through `lib/shellTokens.ts`
   (no status colours), twelve lines then Show all, what it printed under
@@ -128,7 +129,7 @@ foreground, the same words the group line uses); the components only draw it.
 ## Thinking, closing lines and notices
 
 - **A thought** is no row. While it streams the working line says
-  Thinking and its newest finished sentence (`latestLine` in
+  its newest finished sentence in Thinking's place (`latestLine` in
   `transcript/thinking.ts`); once it ends it leaves nothing in the run,
   short or long, and shows only in a group a person opened by hand, as
   "Thought ›" with no duration (`transcript/ThinkingRow.tsx`), opening the
@@ -233,7 +234,7 @@ foreground, the same words the group line uses); the components only draw it.
   forbids free text, Skip dismisses the set; once answered, one line per
   question says what was picked.
 - **Prose and code** (`AgentMarkdown.tsx`, `CodeBlock.tsx`,
-  `transcript/markdown.css`): 14/22 prose (`size="compact"` is 14/24 for
+  `transcript/markdown.css`): 14/22 prose (`size="compact"` is 14/22 for
   panels) whose blocks set their own rhythm under streamdown's (every gap a
   margin-top, docs/DESIGN.md "The transcript"), one plain inline-code pill
   one pixel under its text, a quiet code block coloured by weight on
@@ -438,7 +439,7 @@ foreground, the same words the group line uses); the components only draw it.
   renderer, since a worker has no document.
 - **Nothing animates on scroll.** A row born after the transcript opened
   fades in once, on its first mount; one that leaves the window and comes
-  back is history. The fade is 150 ms of opacity, off under reduced
+  back is history. The fade is `--dur-fast` (120 ms) of opacity, off under reduced
   motion. Jumps glide the scroll offset; under reduced motion they land.
 
 ## No jerk in any scenario

@@ -1,4 +1,6 @@
 import SwiftUI
+import TempCodeClient
+import UIKit
 
 /// The visual system of docs/IOS-DESIGN.md: system colors by meaning, three
 /// text steps, the radius ladder, hairlines, and the few lengths every row shares.
@@ -257,5 +259,164 @@ private struct Raised: ViewModifier {
             .hairlineBorder(RoundedRectangle.corner(radius))
             .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.06), radius: 1, y: 1)
             .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.08), radius: 12, y: 4)
+    }
+}
+
+/// The transcript's type, the desktop's ladder on iOS text styles
+/// (`TranscriptScale` in the client package holds the numbers): prose 15 on
+/// 22, lines 13 on 20, details 12 on 16, code in mono. Each size scales with
+/// Dynamic Type relative to its style and its line box keeps its ratio, so
+/// nothing clips at an accessibility size. A view names a token,
+/// `.transcriptType(.line)`, and never a size.
+enum TranscriptType {
+    static let prose = TranscriptScale.prose
+    static let line = TranscriptScale.line
+    static let detail = TranscriptScale.detail
+    static let code = TranscriptScale.code
+    static let rowCode = TranscriptScale.rowCode
+    static let proseH1 = TranscriptScale.proseH1
+    static let proseH2 = TranscriptScale.proseH2
+    static let proseH3 = TranscriptScale.proseH3
+    static let document = TranscriptScale.document
+    static let documentH1 = TranscriptScale.documentH1
+    static let documentH2 = TranscriptScale.documentH2
+    static let documentH3 = TranscriptScale.documentH3
+}
+
+/// The transcript's lengths (`TranscriptLengths` in the client package):
+/// rows, gaps, radii, the bubble, the column and the composer's.
+enum TranscriptMetrics {
+    static let line = CGFloat(TranscriptLengths.line)
+    static let tableRow = CGFloat(TranscriptLengths.tableRow)
+    static let glyphSlot = CGFloat(TranscriptLengths.glyphSlot)
+    static let glyphGap = CGFloat(TranscriptLengths.glyphGap)
+    static let wordGap = CGFloat(TranscriptLengths.wordGap)
+    static let afterValue = CGFloat(TranscriptLengths.afterValue)
+    static let tableInset = CGFloat(TranscriptLengths.tableInset)
+    static let tableRadius = CGFloat(TranscriptLengths.tableRadius)
+    static let bodyRadius = CGFloat(TranscriptLengths.bodyRadius)
+    static let bubbleRadius = CGFloat(TranscriptLengths.bubbleRadius)
+
+    enum Gap {
+        static let first = CGFloat(TranscriptLengths.gapFirst)
+        static let turn = CGFloat(TranscriptLengths.gapTurn)
+        static let reply = CGFloat(TranscriptLengths.gapReply)
+        static let block = CGFloat(TranscriptLengths.gapBlock)
+        static let line = CGFloat(TranscriptLengths.gapLine)
+        static let closing = CGFloat(TranscriptLengths.gapClosing)
+        static let last = CGFloat(TranscriptLengths.gapLast)
+    }
+
+    static let bubbleMaxShare = CGFloat(TranscriptLengths.bubbleMaxShare)
+    static let bubblePadding = EdgeInsets(
+        top: CGFloat(TranscriptLengths.bubblePaddingV), leading: CGFloat(TranscriptLengths.bubblePaddingH),
+        bottom: CGFloat(TranscriptLengths.bubblePaddingV), trailing: CGFloat(TranscriptLengths.bubblePaddingH)
+    )
+    static let column = CGFloat(TranscriptLengths.column)
+    static let documentColumn = CGFloat(TranscriptLengths.documentColumn)
+    static let slot = CGFloat(TranscriptLengths.slot)
+    static let composerRow = CGFloat(TranscriptLengths.composerRow)
+    static let composerControl = CGFloat(TranscriptLengths.composerControl)
+    static let composerBox = CGFloat(TranscriptLengths.composerBox)
+    static let hitArea = CGFloat(TranscriptLengths.hitArea)
+}
+
+extension TypeSpec.Style {
+    var textStyle: Font.TextStyle {
+        switch self {
+        case .subheadline: .subheadline
+        case .footnote: .footnote
+        case .caption: .caption
+        case .callout: .callout
+        }
+    }
+}
+
+extension TypeSpec.Weight {
+    var font: Font.Weight {
+        switch self {
+        case .regular: .regular
+        case .medium: .medium
+        case .semibold: .semibold
+        }
+    }
+
+    var uiFont: UIFont.Weight {
+        switch self {
+        case .regular: .regular
+        case .medium: .medium
+        case .semibold: .semibold
+        }
+    }
+}
+
+extension View {
+    /// One transcript type token: its scaled size, weight, design, tracking
+    /// and line box. `weight` overrides the token's (a title in medium).
+    func transcriptType(_ spec: TypeSpec, weight: TypeSpec.Weight? = nil) -> some View {
+        modifier(TranscriptTypeModifier(spec: spec, weight: weight ?? spec.weight))
+    }
+}
+
+extension View {
+    /// The token's scaled font alone, for a glyph beside the text: no
+    /// tracking and no line box.
+    func transcriptFont(_ spec: TypeSpec, weight: TypeSpec.Weight? = nil) -> some View {
+        modifier(TranscriptFontModifier(spec: spec, weight: weight ?? spec.weight))
+    }
+}
+
+private struct TranscriptFontModifier: ViewModifier {
+    let spec: TypeSpec
+    let weight: TypeSpec.Weight
+    @ScaledMetric private var size: CGFloat
+
+    init(spec: TypeSpec, weight: TypeSpec.Weight) {
+        self.spec = spec
+        self.weight = weight
+        _size = ScaledMetric(wrappedValue: spec.size, relativeTo: spec.style.textStyle)
+    }
+
+    func body(content: Content) -> some View {
+        content.font(.system(size: size, weight: weight.font, design: spec.mono ? .monospaced : .default))
+    }
+}
+
+extension TypeSpec {
+    /// The token as a font at its default size, for an `AttributedString`
+    /// run or a `Text` concatenation; a view uses `.transcriptType` instead,
+    /// which also scales and sets the line box.
+    var font: Font {
+        .system(size: size, weight: weight.font, design: mono ? .monospaced : .default)
+    }
+}
+
+private struct TranscriptTypeModifier: ViewModifier {
+    let spec: TypeSpec
+    let weight: TypeSpec.Weight
+    @ScaledMetric private var size: CGFloat
+
+    init(spec: TypeSpec, weight: TypeSpec.Weight) {
+        self.spec = spec
+        self.weight = weight
+        _size = ScaledMetric(wrappedValue: spec.size, relativeTo: spec.style.textStyle)
+    }
+
+    func body(content: Content) -> some View {
+        let box = spec.lineHeight(atSize: size)
+        let styled = content
+            .font(.system(size: size, weight: weight.font, design: spec.mono ? .monospaced : .default))
+            .tracking(spec.tracking * size)
+        if #available(iOS 26.0, *) {
+            styled.lineHeight(.exact(points: box))
+        } else {
+            let natural = (spec.mono
+                ? UIFont.monospacedSystemFont(ofSize: size, weight: weight.uiFont)
+                : UIFont.systemFont(ofSize: size, weight: weight.uiFont)).lineHeight
+            let spacing = spec.lineSpacing(atSize: size, fontLine: natural)
+            // Line spacing goes between lines only; half above and half below
+            // give a single line the same box.
+            styled.lineSpacing(spacing).padding(.vertical, spacing / 2)
+        }
     }
 }

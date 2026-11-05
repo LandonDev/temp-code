@@ -2177,6 +2177,20 @@ proof and the sizing rules; the pieces, by name:
   screen per type (board, plan, fleet, sources as the hero with the chat as
   a second segment), tokens, exact motion values and the performance rules.
   iOS threads build to it and do not re-decide what it states.
+- The phone's numbers are written once: the transcript's type and lengths
+  are the client package's `TranscriptScale` and `TranscriptLengths`
+  (Design/TranscriptScale.swift; the desktop's ladder on iOS text styles,
+  prose 15/22, lines 13/20, details 12/16), drawn through Tokens.swift's
+  `.transcriptType(_:)`, `TranscriptType` and `TranscriptMetrics`; the
+  motion numbers are `MotionValues` (Design/MotionValues.swift, the
+  desktop's durations, curves, springs, holds and loops exactly), which
+  Design/Motion.swift turns into animations. Two vitest guards run on the
+  box: scripts/ios-motion-parity.test.ts fails when a `MotionValues` line
+  differs from index.css, lib/ease.ts or the holds, and
+  scripts/ios-literal-guard.test.ts counts every literal duration, curve,
+  font size or row height under ios/TempCode/Sources/{Thread,Shell,Design}
+  outside Tokens.swift and Motion.swift against a per-file allow-list that
+  only shrinks (`IOS_LITERAL_GUARD_PRINT=1` prints the tally).
 - `ios/TempCodeClient` (Swift 6 package on the contract package) is the
   phone's connection runtime: `TempCodeSocket` mirrors the desktop supervisor
   (ticket, hello checked against the paired id and contract, jittered backoff

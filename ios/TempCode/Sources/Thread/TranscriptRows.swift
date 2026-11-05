@@ -135,13 +135,13 @@ struct UserTurnRow: View {
                 }
                 if !turn.text.isEmpty {
                     Text(turn.text)
-                        .font(.body)
+                        .transcriptType(TranscriptType.prose)
                         .textSelection(.enabled)
                         .lineLimit(folds && !expanded ? Self.foldLines : nil)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if folds {
                         Text(expanded ? "Show less" : "Show more")
-                            .font(.footnote.weight(.medium))
+                            .transcriptType(TranscriptType.line, weight: .medium)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -165,7 +165,7 @@ struct UserTurnRow: View {
                 // trailing edge; the time is the desktop's tooltip, here the
                 // accessibility value.
                 Text(word)
-                    .font(.caption)
+                    .transcriptType(TranscriptType.detail)
                     .foregroundStyle(stamp.state == .failed ? AnyShapeStyle(Tint.destructive) : AnyShapeStyle(.secondary))
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .contentTransition(.opacity)
@@ -214,7 +214,7 @@ extension Attachment {
 
 // MARK: - assistant
 
-/// The agent's answer as the page: body size, no container, a generous
+/// The agent's answer as the page: the prose type, no container, a generous
 /// measure, selectable, the whole message copied from the context menu.
 /// Streaming appends to the same row through `StreamingAssistantRow` (the
 /// streaming thread's seam); an empty streaming block draws nothing (the
@@ -727,7 +727,7 @@ struct QuietLine: View {
         }
         .foregroundStyle(tint)
         .padding(.horizontal, 8)
-        .frame(minHeight: 28)
+        .frame(minHeight: TranscriptMetrics.line)
         .accessibilityElement(children: .combine)
     }
 }
@@ -772,7 +772,7 @@ struct CompactionLine: View {
             }
             .font(.footnote)
             .padding(.horizontal, 8)
-            .frame(minHeight: 28)
+            .frame(minHeight: TranscriptMetrics.line)
             .accessibilityElement(children: .combine)
         case .failed:
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -789,7 +789,7 @@ struct CompactionLine: View {
             .font(.footnote)
             .foregroundStyle(Tint.destructive)
             .padding(.horizontal, 8)
-            .frame(minHeight: 28)
+            .frame(minHeight: TranscriptMetrics.line)
             .accessibilityElement(children: .combine)
         case .done, .unknown:
             LabeledDivider {
@@ -856,7 +856,7 @@ struct SystemRow: View {
                 .font(.footnote)
                 .foregroundStyle(Tint.destructive)
                 .padding(.horizontal, 8)
-                .frame(minHeight: 28)
+                .frame(minHeight: TranscriptMetrics.line)
                 .textSelection(.enabled)
                 .accessibilityElement(children: .combine)
             }
@@ -873,7 +873,7 @@ struct SystemRow: View {
             .font(.footnote)
             .foregroundStyle(.tertiary)
             .padding(.horizontal, 8)
-            .frame(minHeight: 28)
+            .frame(minHeight: TranscriptMetrics.line)
             .accessibilityElement(children: .combine)
         case .agentSpawned:
             AgentSpawnRow(line: line, client: client, kind: .spawned)

@@ -31,23 +31,23 @@ struct FailureCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle")
-                        .font(.footnote.weight(.medium))
+                        .transcriptFont(TranscriptType.line, weight: .medium)
                         .foregroundStyle(Tint.destructive)
                     Text(failure.summary)
-                        .font(.subheadline.weight(.medium))
+                        .transcriptType(TranscriptType.prose, weight: .medium)
                         .lineLimit(3)
                 }
                 Text(failure.cause)
-                    .font(.footnote)
+                    .transcriptType(TranscriptType.line)
                     .foregroundStyle(.secondary)
                 if let note = FailureActions.note(kind: failure.kind, routed: routed) {
                     Text(note)
-                        .font(.footnote)
+                        .transcriptType(TranscriptType.line)
                         .foregroundStyle(.secondary)
                 }
                 if let block, !block.isTransient {
                     Text(block.text(now: Date().timeIntervalSince1970 * 1000))
-                        .font(.footnote)
+                        .transcriptType(TranscriptType.line)
                         .foregroundStyle(.secondary)
                 } else {
                     // Side by side while every label fits on one line, else stacked full width.
@@ -59,13 +59,13 @@ struct FailureCard: View {
                     .disabled(busy || pending != nil || block != nil)
                     if let block {
                         Text(block.text(now: Date().timeIntervalSince1970 * 1000))
-                            .font(.footnote)
+                            .transcriptType(TranscriptType.line)
                             .foregroundStyle(.secondary)
                     }
                 }
                 if let outcome {
                     Text(outcome)
-                        .font(.footnote)
+                        .transcriptType(TranscriptType.line)
                         .foregroundStyle(outcomeIsError ? Tint.destructive : Color.secondary)
                 }
             }
