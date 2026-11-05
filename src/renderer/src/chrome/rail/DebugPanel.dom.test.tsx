@@ -112,7 +112,13 @@ describe("DebugPanel", () => {
     fireEvent.click(screen.getByText("this").closest("button")!);
     expect(controller.loadVariables).toHaveBeenLastCalledWith(1, 7, 1);
     expect(screen.getByText("count").closest("button")).toBeNull();
-    expect((screen.getByText("count").parentElement as HTMLElement).style.paddingLeft).toBe("20px");
+    // 28px rows, 8px from glyph to name, names in foreground, a level 16px in.
+    const leaf = screen.getByText("count").parentElement as HTMLElement;
+    expect(leaf.style.paddingLeft).toBe("24px");
+    expect(leaf.className).toContain("h-7");
+    expect(leaf.className).toContain("gap-2");
+    expect(screen.getByText("this").className).toContain("text-foreground");
+    expect(screen.getByText("this").className).not.toContain("text-info");
 
     expect(screen.getByText("Listening on 5005")).toBeTruthy();
 

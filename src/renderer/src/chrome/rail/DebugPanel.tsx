@@ -202,8 +202,13 @@ function Group({ heading, fill, children }: { heading: string | null; fill?: boo
   );
 }
 
-/** A variable; one that expands leads with the disclosure chevron, turned
- *  while its children show under it, and a leaf keeps the chevron's place. */
+/** A variable on a 28px row: one that expands leads with the disclosure
+ *  chevron, turned while its children show under it, and a leaf keeps the
+ *  chevron's place; 8px from the glyph to the name, the name in foreground,
+ *  each level 16px in, as the Agents rows nest. */
+/** How far each level of a variable's children sits in from its parent. */
+export const VARIABLE_INDENT_PX = 16;
+
 function VariableRow({ variable: v, open, onExpand }: { variable: DebugVariable; open: boolean; onExpand: (v: DebugVariable) => void }) {
   const body = (
     <>
@@ -212,12 +217,12 @@ function VariableRow({ variable: v, open, onExpand }: { variable: DebugVariable;
       ) : (
         <span aria-hidden className="size-3 shrink-0" />
       )}
-      <span className="shrink-0 text-info">{v.name}</span>
+      <span className="shrink-0 text-foreground">{v.name}</span>
       <span className="truncate text-muted-foreground">{v.value}</span>
     </>
   );
-  const shape = "flex h-6 w-full items-center gap-1.5 rounded-md pr-2 text-left";
-  const indent = { paddingLeft: 8 + v.depth * 12 };
+  const shape = "flex h-7 w-full items-center gap-2 rounded-md pr-2 text-left";
+  const indent = { paddingLeft: 8 + v.depth * VARIABLE_INDENT_PX };
   if (!v.ref) {
     return (
       <div className={shape} style={indent}>
