@@ -20,6 +20,8 @@ describe("hit areas and insets", () => {
     expect(read("surfaces/settings/General.tsx")).toContain(`h-auto px-0 text-xs ${STRETCH}`);
     expect(read("surfaces/settings/hosts/Devices.tsx")).toContain(`hover:text-foreground ${STRETCH}`);
     expect(read("chrome/ThreadDefaultsDialog.tsx")).toContain(`h-auto px-0 text-xs ${STRETCH}`);
+    // An account row's action ("Make a new one"): the same 16px link.
+    expect(read("aliax/views/accounts/usage.tsx")).toContain(`h-auto px-0 text-xs ${STRETCH}`);
   });
 
   it("end the right panel's header on its rows' 12px Stop column, and start a dock tab's label on the terminal's 12px", () => {

@@ -5,7 +5,7 @@ import { loadToast } from "../components/ui/toaster";
 import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import { ChevronRight, Plus } from "./icons";
 import { HarnessIcon } from "./HarnessIcon";
-import { useConfirm } from "./ConfirmDialog";
+import { confirmAction } from "./ConfirmDialog";
 import { Facts } from "../surfaces/settings/hosts/Facts";
 import { ChoiceSelect, type Choice } from "../components/choice-select";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
@@ -171,12 +171,11 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
     rulesStore.save(environmentId, workspaceId, next).catch(saveFailed);
   const patchConduct = (patch: Partial<OrchestrationRules["conduct"]>) =>
     push({ ...rules, conduct: { ...rules.conduct, ...patch } });
-  const confirm = useConfirm();
   // The global Reset wipes every routing rule and model policy too: it asks first.
   const clearScope = async () => {
     if (
       workspaceId === null &&
-      !(await confirm({
+      !(await confirmAction({
         title: "Reset rules",
         body: "Every setting, model policy and routing rule goes back to the defaults.",
         action: "Reset rules",

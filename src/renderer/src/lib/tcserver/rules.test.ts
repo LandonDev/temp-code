@@ -220,6 +220,18 @@ describe("rulesStore", () => {
     expect(rulesStore.scope("local", "w1")?.overridden).toBe(false);
   });
 
+  it("clear keeps the shown scope until the reload's answer replaces it", async () => {
+    await rulesStore.save("local", "w1", DEFAULT_RULES);
+    const seen: (RulesScope | undefined)[] = [];
+    const off = rulesStore.subscribe(() => seen.push(rulesStore.scope("local", "w1")));
+    await rulesStore.clear("local", "w1");
+    off();
+    // The editor never drops to its skeleton for the round trip.
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((scope) => scope !== undefined)).toBe(true);
+    expect(seen[seen.length - 1]?.overridden).toBe(false);
+  });
+
   it("a refused save puts back what stood, rejects with the host's reason and reads the home again", async () => {
     const before = await rulesStore.load("local", null);
     link.refuse = "refused: orchestration rules and thread defaults live on box; it is offline";

@@ -328,7 +328,7 @@ export function RowFacts({
           <span className={cn("font-medium", line.tone === "warning" ? "text-warning" : "text-muted-foreground")}>{line.text}</span>
           {line.detail ? <span className="text-muted-foreground">{line.detail}</span> : null}
           {line.action && onAction ? (
-            <Button variant="link" size="xs" className="h-auto px-0 text-xs" onClick={() => onAction(line.action!.kind)}>
+            <Button variant="link" size="xs" className="h-auto px-0 text-xs after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']" onClick={() => onAction(line.action!.kind)}>
               {line.action.label}
             </Button>
           ) : null}

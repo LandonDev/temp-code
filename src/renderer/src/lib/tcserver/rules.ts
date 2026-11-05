@@ -306,11 +306,19 @@ class RulesStore {
   async clear(environmentId: string, workspaceId: string | null): Promise<RulesScope> {
     const key = scopeKey(environmentId, workspaceId);
     await this.links.get(environmentId)?.request("rules.set", { workspaceId, rules: null });
-    const scopes = new Map(this.state.scopes);
-    scopes.delete(key);
-    this.set({ ...this.state, scopes });
     if (workspaceId === null) this.dropInherited(environmentId);
-    return this.load(environmentId, workspaceId);
+    // The shown scope stays until the reload's answer replaces it, so the
+    // editor never drops to its skeleton for the round trip.
+    try {
+      return await this.load(environmentId, workspaceId, true);
+    } catch (err) {
+      // No answer: the cleared copy is not shown as if it still held.
+      const scopes = new Map(this.state.scopes);
+      scopes.delete(key);
+      this.set({ ...this.state, scopes });
+      this.setError(key, err instanceof Error ? err.message : String(err));
+      throw err;
+    }
   }
 
   /** Workspaces without an override mirror their host's global rules;
