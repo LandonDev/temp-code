@@ -1,5 +1,5 @@
 // A9 (notices): the one line every transcript notice is drawn on.
-import { useContext, type ReactNode } from "react";
+import { Fragment, useContext, type ReactNode } from "react";
 import { ChevronRight } from "../../chrome/icons";
 import { CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
 import { reveal } from "../../components/ui/reveal";
@@ -11,8 +11,9 @@ import { STEP_NOTICE, StepRowContext, TABLE_BODY } from "./stepLine";
 /**
  * A notice on one line, the action rows' size (13px on 20px in a 28px row): a 14px glyph
  * slot (a StatusMark glyph when a state applies, else a chrome icon), the
- * lead, its details 4px apart in the muted ink (each shrinks and truncates
- * before the lead, a `trailing` status or the chevron does), then actions
+ * lead (medium weight when details follow it), its details 4px after it as one muted comma run
+ * ("master, release-277") that shrinks and truncates, with one ellipsis,
+ * before the lead, a `trailing` status or the chevron does, then actions
  * shown on the line's hover or focus; the glyph sits 8px from the lead, and
  * a trailing status, the chevron and the actions 8px after the last detail. The glyph slot matches the action rows' tool icon,
  * so notice text lines up with them. Wrapping text breaks under the lead,
@@ -23,8 +24,9 @@ import { STEP_NOTICE, StepRowContext, TABLE_BODY } from "./stepLine";
  * the fold's content.
  *
  * Folded into a run as one of its steps (`StepRowContext`), the line reads
- * verb then target like a call: the lead muted whatever `tone` says (a
- * failure is the glyph's to say), the first detail in foreground.
+ * verb then target like a call: the lead muted and regular whatever `tone`
+ * says (a failure is the glyph's to say), the first detail its own span in
+ * foreground, the rest the muted comma run.
  */
 export function NoticeLine({
   glyph,
@@ -60,6 +62,9 @@ export function NoticeLine({
   const shown = details.filter((d) => d != null && d !== false && d !== "");
   const step = useContext(StepRowContext);
   const strong = tone === "strong" && !step;
+  // A step reads verb then target: its first detail stands on its own.
+  const target = step ? shown[0] : undefined;
+  const run = step ? shown.slice(1) : shown;
   // What opens under the line is no step: its own lines read as notices.
   const body = children ? (
     <div data-slot="notice-body" className={cn("min-w-0 pl-5.5", TABLE_BODY)}>
@@ -82,23 +87,27 @@ export function NoticeLine({
           <span
             className={cn(
               strong ? "text-foreground" : "text-muted-foreground",
+              // The weight parts a lead from its details; a lone lead or a sentence stays regular.
+              !step && run.length > 0 && "font-medium",
               fold && "group-hover/notice:text-foreground",
               wrap ? "min-w-0 whitespace-pre-wrap break-words" : "shrink-0",
             )}
           >
             {lead}
           </span>
-          {shown.map((detail, i) => (
-            <span
-              key={i}
-              className={cn(
-                step && i === 0 ? "text-foreground" : "text-muted-foreground",
-                wrap ? "" : "min-w-0 truncate",
-              )}
-            >
-              {detail}
+          {target != null ? (
+            <span className={cn("text-foreground", wrap ? "" : "min-w-0 truncate")}>{target}</span>
+          ) : null}
+          {run.length ? (
+            <span data-slot="notice-details" className={cn("text-muted-foreground", wrap ? "" : "min-w-0 truncate")}>
+              {run.map((detail, i) => (
+                <Fragment key={i}>
+                  {i > 0 ? joiner(run[i - 1]) : null}
+                  {detail}
+                </Fragment>
+              ))}
             </span>
-          ))}
+          ) : null}
           {trailing ? <span className="ms-1 flex shrink-0 items-center">{trailing}</span> : null}
           {fold ? (
             <ChevronRight
@@ -125,3 +134,8 @@ export function NoticeLine({
   );
 }
 
+
+/** A comma between details, unless the one before already ends its phrase ("Backfill the old rows? Yes"). */
+function joiner(before: ReactNode): string {
+  return typeof before === "string" && /[?:]$/.test(before) ? " " : ", ";
+}

@@ -12,11 +12,35 @@ import { STEP_NOTICE, StepRowContext } from "./stepLine";
 afterEach(cleanup);
 
 describe("NoticeLine", () => {
-  it("sets each detail in its own span, with no separator glyphs", () => {
+  it("sets the lead in medium and its details as one muted comma run, so a cut line ends in one ellipsis", () => {
     const { container } = render(<NoticeLine lead="Context compacted" details={["48k → 12k", "6s"]} />);
-    const spans = [...container.querySelectorAll('[data-slot="notice-line"] > div > div > span')].map((s) => s.textContent);
-    expect(spans).toEqual(["Context compacted", "48k → 12k", "6s"]);
+    const spans = [...container.querySelectorAll<HTMLElement>('[data-slot="notice-line"] > div > div > span')];
+    expect(spans.map((s) => s.textContent)).toEqual(["Context compacted", "48k → 12k, 6s"]);
+    const [lead, run] = spans;
+    expect(lead.className).toContain("font-medium");
+    expect(lead.className).toContain("text-muted-foreground");
+    expect(run.dataset.slot).toBe("notice-details");
+    expect(run.className).toContain("text-muted-foreground");
+    expect(run.className).toContain("truncate");
+    expect(run.className).not.toContain("font-medium");
     expect(container.textContent).not.toMatch(/[·|•]/);
+  });
+
+  it("takes no comma after a detail that ends its own phrase", () => {
+    const { container } = render(<NoticeLine lead="Answered" details={["Backfill the old rows?", "Yes"]} />);
+    expect(container.querySelector('[data-slot="notice-details"]')!.textContent).toBe("Backfill the old rows? Yes");
+  });
+
+  it("a lone lead, or a sentence, stays regular", () => {
+    const { container } = render(
+      <>
+        <NoticeLine lead="Checked background tasks" />
+        <NoticeLine lead="Account me@x.dev is gone from this host" wrap />
+      </>,
+    );
+    for (const line of container.querySelectorAll('[data-slot="notice-line"]')) {
+      expect(line.querySelector("div > div > span")!.className).not.toContain("font-medium");
+    }
   });
 
   it("is the action rows' size: 13px on a 20px line in a 28px row", () => {
@@ -89,6 +113,8 @@ describe("NoticeLine as a step of a run", () => {
     );
     const [lead, branch, rest] = spans(container);
     expect(lead.className).toContain("text-muted-foreground");
+    // A call's verb: regular, as an action row's.
+    expect(lead.className).not.toContain("font-medium");
     expect(branch.className).toContain("text-foreground");
     expect(branch.className).not.toContain("text-muted-foreground");
     expect(rest.className).toContain("text-muted-foreground");
@@ -207,15 +233,16 @@ describe("SystemRow", () => {
   });
 
 describe("NoticeLine in a narrow pane", () => {
-  it("every detail may shrink; a trailing status never does", () => {
+  it("the details shrink as one run; a trailing status never does", () => {
     const { container } = render(
       <NoticeLine lead="Started the build" details={["A very long build title that fills the pane", "second"]} trailing={<span>Working</span>} />,
     );
     const spans = [...container.querySelectorAll('[data-slot="notice-line"] > div > div > span')];
+    expect(spans).toHaveLength(3);
+    expect(spans[1].textContent).toBe("A very long build title that fills the pane, second");
     expect(spans[1].className).toContain("truncate");
-    expect(spans[2].className).toContain("truncate");
-    expect(spans[3].textContent).toBe("Working");
-    expect(spans[3].className).toContain("shrink-0");
+    expect(spans[2].textContent).toBe("Working");
+    expect(spans[2].className).toContain("shrink-0");
   });
 
   it("a wrapping line's details wrap instead of truncating", () => {

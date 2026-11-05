@@ -800,7 +800,8 @@ closing line, which reads "Worked for 2m 4s" ("Worked" until the time lands), it
 buttons showing on hover or keyboard focus; a turn the person stopped
 closes on "Stopped" instead, with the same buttons. Every notice (a gate, a review, a compaction, a
 pass, a batch, a second opinion asked of another harness) is one muted
-line with a glyph, a lead and its details; only a held review and a failure
+line with a glyph, a lead in medium weight and its details as one muted
+comma run after it ("Release passed master, release-277"); only a held review and a failure
 are cards. A compaction is one line that counts from its start, takes
 its outcome in place and reads "Compaction stopped" when its turn ended
 without one. The host's steps of the agent's work fold into the run they sit

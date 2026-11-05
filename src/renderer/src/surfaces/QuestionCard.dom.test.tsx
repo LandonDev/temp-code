@@ -78,8 +78,8 @@ describe("QuestionCard", () => {
     );
     const lines = answered.container.querySelectorAll('[data-slot="notice-line"]');
     expect(lines.length).toBe(2);
-    expect(lines[0].textContent).toBe("AnsweredFileA");
-    expect(lines[1].textContent).toBe("AnsweredHow?Fast");
+    expect(lines[0].textContent).toBe("AnsweredFile, A");
+    expect(lines[1].textContent).toBe("AnsweredHow? Fast");
     answered.unmount();
     const dismissed = render(<QuestionCard question={meta([spec("Which?", ["A"])], null)} />);
     expect(dismissed.container.textContent).toBe("Dismissed");
@@ -149,14 +149,14 @@ describe("QuestionCard", () => {
     expect(fold.isConnected).toBe(true);
     expect(fold.closest('[data-slot="collapsible"]')!.hasAttribute("data-closed")).toBe(true);
     const line = view.container.querySelector<HTMLElement>('[data-slot="notice-line"]')!;
-    expect(line.textContent).toBe("AnsweredFileB");
+    expect(line.textContent).toBe("AnsweredFile, B");
     expect(line.closest('[data-slot="collapsible-content"]')!.className).toContain("collapsible-auto");
     // The closed card leaves the accessibility tree, so nothing answers twice.
     expect(screen.queryByRole("button", { name: /^(Next|Continue)/ })).toBeNull();
     expect(onAnswer).toHaveBeenCalledTimes(1);
     // The host's echo keeps the lines and lets the card go.
     view.rerender(<QuestionCard question={{ ...question, answers: [["B"]] }} onAnswer={onAnswer} />);
-    expect(view.container.querySelector('[data-slot="notice-line"]')!.textContent).toBe("AnsweredFileB");
+    expect(view.container.querySelector('[data-slot="notice-line"]')!.textContent).toBe("AnsweredFile, B");
   });
 
   it("an answer the host never took opens the card again with its picks, and says so", async () => {

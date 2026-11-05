@@ -38,7 +38,7 @@ export const TASK_INSET_PX = 12; // px-3
 export const TASK_GAP_PX = 8; // gap-2: 8px from a mark to its first word
 export const TASK_MARK_PX = 14; // size-3.5
 export const TASK_BORDER_PX = 1; // border
-export const TASK_TALLY_GAP_PX = 4; // gap-1
+export const TASK_TALLY_GAP_PX = 8; // gap-2: a chevron 8px after the last value
 export const TASK_CHEVRON_PX = 14; // size-3.5
 
 const CHECK = "M4.8 8.4 7.04 10.8 11.52 6.0";
@@ -285,7 +285,7 @@ export function TaskList({
         <TruncateTip text={headline}>
           <span className="block min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-foreground">{headline}</span>
         </TruncateTip>
-        <span className={cn("flex shrink-0 items-center gap-1 text-[13px] leading-5 tabular-nums transition-colors", complete ? "text-foreground" : "text-muted-foreground")}>
+        <span className={cn("flex shrink-0 items-center gap-2 text-[13px] leading-5 tabular-nums transition-colors", complete ? "text-foreground" : "text-muted-foreground")}>
           <span dir="ltr">
             {done}/{tasks.length}
           </span>

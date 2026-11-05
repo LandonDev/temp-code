@@ -14,6 +14,7 @@ import { SelectSessionContext } from "./AgentMarkdown";
 import { useOpenAgentDetail } from "./agentDetailContext";
 import { NoticeLine } from "./transcript/NoticeLine";
 import { CARD_SHAPE } from "./QuestionCard";
+import { Facts } from "./settings/hosts/Facts";
 import { useTranscriptSession } from "./transcriptSession";
 import { cn } from "../lib/cn";
 
@@ -115,8 +116,7 @@ function HeldReview({
       <div data-review-head className="flex min-w-0 items-center gap-1 leading-5">
         <StatusMark state="waiting" word={false} className="me-1" />
         <span className="shrink-0 font-medium text-foreground">Reviewed by {label}</span>
-        <span className="shrink-0 text-muted-foreground">{plural(blocking, "blocking finding")}</span>
-        <span className="min-w-0 truncate text-muted-foreground">merge held</span>
+        <Facts parts={[plural(blocking, "blocking finding"), "merge held"]} className="text-muted-foreground" />
       </div>
       <FindingList findings={review.blocking} cwd={cwd} onOpenFile={onOpenFile} className="mt-3" strong />
       {minor ? (
@@ -125,7 +125,7 @@ function HeldReview({
             render={<Button variant="ghost" size="xs" className="-ml-2 text-muted-foreground hover:text-foreground aria-expanded:bg-transparent aria-expanded:hover:bg-foreground/7" />}
           >
             {plural(minor, "minor finding")}
-            <ChevronRight aria-hidden className={cn("size-3 text-muted-foreground", DISCLOSURE_CHEVRON, minorOpen && "rotate-90")} />
+            <ChevronRight aria-hidden className={cn("ms-1 size-3", DISCLOSURE_CHEVRON, minorOpen && "rotate-90")} />
           </CollapsibleTrigger>
           <CollapsibleContent>
             <FindingList findings={review.minor} cwd={cwd} onOpenFile={onOpenFile} className="pt-2" />

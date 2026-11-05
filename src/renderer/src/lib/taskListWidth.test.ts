@@ -26,8 +26,8 @@ describe("fitCard", () => {
 
   it("is never narrower than its header", () => {
     const header = { title: "Tasks", tally: "12/12" };
-    // donut and gap, the title, a gap, the tally, 4px, the chevron.
-    const head = 14 + 8 + 5 * 6 + 8 + 5 * 6 + 4 + 14;
+    // donut and gap, the title, a gap, the tally, 8px, the chevron.
+    const head = 14 + 8 + 5 * 6 + 8 + 5 * 6 + 8 + 14;
     expect(fitCard({ labels: ["A"], hasTimes: false, header }, measure)).toBe(2 * (1 + 12) + head);
   });
 
@@ -68,6 +68,8 @@ describe("the constants are the list's classes", () => {
     expect(mark.getAttribute("class")).toContain(`size-${cls(TASK_MARK_PX)}`);
     expect(chevron.getAttribute("class")).toContain(`size-${cls(TASK_CHEVRON_PX)}`);
     expect(chevron.parentElement!.className).toContain(`gap-${cls(TASK_TALLY_GAP_PX)}`);
+    // A chevron sits 8px after the last value, as the board's task bar does.
+    expect(TASK_TALLY_GAP_PX).toBe(8);
   });
 });
 

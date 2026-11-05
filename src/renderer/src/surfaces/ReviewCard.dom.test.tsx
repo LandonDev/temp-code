@@ -74,8 +74,9 @@ describe("ReviewCard", () => {
     // The question card's frame, by the one name, and no margin of its own: the row gap spaces it.
     for (const cls of CARD_SHAPE.split(" ")) expect(card.className.split(" ")).toContain(cls);
     expect(card.className).not.toMatch(/\bmy-\d/);
-    expect(card.textContent).toContain("1 blocking finding");
-    expect(card.textContent).toContain("merge held");
+    // Its facts are one comma run, never two muted facts set apart by space alone.
+    expect(card.querySelector('[data-review-head] [data-slot="facts"]')!.textContent).toBe("1 blocking findingmerge held");
+    expect(card.querySelector('[data-review-head] [data-slot="facts"]')!.className).toContain("[&>span:not(:last-child)]:after:content-[',']");
     expect(card.textContent).toContain("Drops the error");
     expect(card.textContent).toContain("A 500 reads as success");
     expect(card.textContent).not.toContain("Address the findings");
@@ -112,6 +113,9 @@ describe("ReviewCard", () => {
     const chevron = trigger.querySelector("svg")!;
     expect(chevron.getAttribute("class")).toContain("duration-(--dur-base)");
     expect(chevron.getAttribute("class")).not.toContain("rotate-90");
+    // 8px after the count (the button's 4px gap and its own 4px), lifting with the words: no tone of its own.
+    expect(chevron.getAttribute("class")).toContain("ms-1");
+    expect(chevron.getAttribute("class")).not.toContain("text-muted-foreground");
     fireEvent.click(trigger);
     expect(trigger.querySelector("svg")!.getAttribute("class")).toContain("rotate-90");
   });

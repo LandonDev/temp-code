@@ -46,7 +46,7 @@ describe("UserMessageBlock", () => {
     const { container } = mount(user({ text: "", secondOpinion: { from: "claude", to: "codex", files: 3 } }));
     expect(container.querySelector("[data-user-bubble]")).toBeNull();
     const line = container.querySelector('[data-slot="notice-line"]')!;
-    expect(line.textContent).toBe("Second opinionCodex3 files");
+    expect(line.textContent).toBe("Second opinionCodex, 3 files");
     expect(container.textContent).not.toContain("Claude");
   });
 

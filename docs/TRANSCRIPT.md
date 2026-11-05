@@ -192,8 +192,10 @@ foreground, the same words the group line uses); the components only draw it.
   settled transcript mounts no tooltip roots); a live turn speaks
   `StatusMark`'s words. No clock time.
 - **Notices** draw on `transcript/NoticeLine.tsx`: a 14 px glyph slot that
-  lines up with the action rows' tool icon, the lead, each detail its own
-  muted span and hover actions, at the action rows' 13 px on 20 px in a 28 px row; a line
+  lines up with the action rows' tool icon, the lead (medium weight when
+  details follow it), the details as one muted comma run ("master,
+  release-277"; no comma after a detail ending in "?" or ":") that truncates
+  with one ellipsis, and hover actions, at the action rows' 13 px on 20 px in a 28 px row; a line
   that opens is its own trigger with a bare chevron, as a row is. Gate, compaction, pass,
   handoff, plan hand-off, batch, account-gone, a stopped turn and any plain
   system text are lines; a held review (`ReviewCard.tsx`) and a failure
