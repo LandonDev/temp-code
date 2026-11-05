@@ -1,6 +1,6 @@
 import type { SessionMeta } from "./tcserver/types";
 import { threadStateOf, type ThreadState } from "../components/ui/status";
-import type { CardThread, ProjectCardStatus } from "./projectCardModel";
+import { projectCardStatus, type CardThread, type ProjectCardStatus } from "./projectCardModel";
 import { type Catalog, workspacePathOfSession } from "./projectContext";
 import { agentSummary, type AgentSummary } from "./threads/agents";
 import { marksAtRest, settledWithAgents } from "./threadStripModel";
@@ -392,6 +392,21 @@ export function cardCounts(status: ProjectCardStatus, archivedCount: number): Ca
   if (status.dormant > 0) out.push({ kind: "dormant", text: `${status.dormant} dormant` });
   if (archivedCount > 0) out.push({ kind: "archived", text: `${archivedCount} archived` });
   return out;
+}
+
+/**
+ * A project card's count line, counted over its roots alone: a batch thread
+ * that waits or fails is said in its master's block, so nothing is said twice.
+ * The card and its fixture both call this.
+ */
+export function projectCardCounts<T extends CardThread>(
+  roots: readonly T[],
+  selectedId: string | null,
+  lastSeen: Record<string, number>,
+  seenFloor: number,
+  archivedCount: number,
+): CardCount[] {
+  return cardCounts(projectCardStatus(roots, selectedId, lastSeen, seenFloor), archivedCount);
 }
 
 /** A card's accessible name: the project, then what needs saying, loudest

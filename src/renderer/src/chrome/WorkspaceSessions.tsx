@@ -53,7 +53,7 @@ import {
 import { SESSION_LIST_PAGE } from "../lib/sessionListWindow";
 import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import {
-  cardCounts,
+  projectCardCounts,
   cardLines,
   nextPage,
   projectCardAriaLabel,
@@ -1167,9 +1167,7 @@ export const ProjectCard = memo(function ProjectCard({
       latest={latest}
       lines={shown}
       hidden={hidden}
-      // A batch thread that waits or fails is said in its master's block; the
-      // count line counts the roots alone, so nothing is said twice.
-      counts={cardCounts(projectCardStatus(threads, rows.activeSessionId ?? null, lastSeen, seenFloor), archivedCount)}
+      counts={projectCardCounts(threads, rows.activeSessionId ?? null, lastSeen, seenFloor, archivedCount)}
       ariaLabel={projectCardAriaLabel(project.name, status)}
       selected={selected}
       offline={offline}

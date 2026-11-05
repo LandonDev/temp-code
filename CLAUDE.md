@@ -384,7 +384,8 @@ app replaces itself from the feed, and only from the feed.
   touched (every new behaviour gets a jsdom test), and a static render
   through `bun run ui:preview <module>#<Export> --props '<json>'`
   (scripts/ui-preview.ts: the component rendered by the client renderer in a
-  jsdom document, under tsconfig.web.json so every renderer alias resolves,
+  jsdom document and read once its markup settles (400ms at most, so a count
+  ticking up shows where it lands), under tsconfig.web.json so every renderer alias resolves,
   inside the built stylesheet in dark and light, written to /tmp/ui-preview
   or `--out <dir>`, `--shot` adding PNGs at 864 and 400px through headless
   Chrome (`TEMP_CODE_CHROME`, else Playwright's cached chrome-headless-shell),

@@ -3,7 +3,8 @@
 import { CommandPopover, type PopoverMatches } from "./CommandPopover";
 
 
-export function SlashMenuPreview({ matches, active }: { matches: PopoverMatches; active: number }) {
+/** `typed` is what the stand-in field shows, so each fixture's field matches its menu. */
+export function SlashMenuPreview({ matches, active, typed = "/re" }: { matches: PopoverMatches; active: number; typed?: string }) {
   // The preview's jsdom has no scrollIntoView, which the active row's effect calls.
   const element = document.defaultView?.Element;
   if (element && !element.prototype.scrollIntoView) element.prototype.scrollIntoView = () => {};
@@ -11,7 +12,7 @@ export function SlashMenuPreview({ matches, active }: { matches: PopoverMatches;
     <div className="flex w-[560px] flex-col justify-end" style={{ height: 360 }}>
       <div className="relative">
         <CommandPopover matches={matches} active={active} projectId={null} projects={[]} onActive={() => {}} onAccept={() => {}} />
-        <div className="h-[46px] rounded-xl border border-border bg-card px-3 py-3 text-[14px] leading-[22px]">/re</div>
+        <div className="h-[46px] rounded-xl border border-border bg-card px-3 py-3 text-[14px] leading-[22px]">{typed}</div>
       </div>
     </div>
   );

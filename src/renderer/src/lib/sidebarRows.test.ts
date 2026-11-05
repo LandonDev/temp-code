@@ -3,6 +3,7 @@ import { SESSION_LIST_PAGE } from "./sessionListWindow";
 import type { Catalog } from "./projectContext";
 import {
   cardCounts,
+  projectCardCounts,
   cardLines,
   groupMark,
   groupUnread,
@@ -460,6 +461,13 @@ describe("cardCounts", () => {
   it("reads No threads for a project with none, and the archived count when only those remain", () => {
     expect(counts([])).toEqual([["none", "No threads"]]);
     expect(counts([], 3)).toEqual([["archived", "3 archived"]]);
+  });
+});
+
+describe("projectCardCounts", () => {
+  it("counts the roots alone: a batch thread that waits is its master's block's to say", () => {
+    const master: ThreadRow = { ...row("m", { status: "watching", isMaster: true }), batch: [row("b", { status: "waiting", masterId: "m" })] };
+    expect(projectCardCounts([master, row("w", { status: "waiting" })], null, {}, 1000, 0).map((c) => c.text)).toEqual(["1 needs you"]);
   });
 });
 

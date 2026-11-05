@@ -17,6 +17,6 @@ export default [
       },
     },
   },
-  { name: "No match on /zzz", props: { active: 0, matches: { mode: "command", rows: [] } } },
-  { name: "An @ while the project's files are read", props: { active: 0, matches: { mode: "file", rows: [], loading: true } } },
+  { name: "No match on /zzz", props: { active: 0, typed: "/zzz", matches: { mode: "command", rows: [] } } },
+  { name: "An @ while the project's files are read", props: { active: 0, typed: "@", matches: { mode: "file", rows: [], loading: true } } },
 ];

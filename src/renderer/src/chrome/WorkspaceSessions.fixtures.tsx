@@ -4,7 +4,7 @@
 // and `…#Column`.
 // The presentational card fed plain props built by the same pure rules the column uses: no stores.
 import { projectCardStatus } from "../lib/projectCardModel";
-import { cardCounts, cardLines, projectCardAriaLabel } from "../lib/sidebarRows";
+import { cardLines, projectCardAriaLabel, projectCardCounts } from "../lib/sidebarRows";
 import type { SessionMeta } from "../lib/tcserver/types";
 import { cardThreads, threadRow, type ThreadRow } from "../lib/workspaceSessions";
 import { Button } from "../components/ui/button";
@@ -64,7 +64,7 @@ function Card({
         latest={threads.length ? NOW - minutesAgo * 60_000 : 0}
         lines={cardLines(threads, status)}
         hidden={0}
-        counts={cardCounts(status, archived)}
+        counts={projectCardCounts(threads, null, {}, SEEN, archived)}
         ariaLabel={projectCardAriaLabel(name, status)}
         selected={selected}
         onSelect={noop}

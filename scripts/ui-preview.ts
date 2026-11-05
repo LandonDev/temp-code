@@ -111,8 +111,17 @@ async function clientMarkup(component: ComponentType<Props>, props: Props): Prom
   window.document.body.appendChild(container)
   const root = createRoot(container)
   flushSync(() => root.render(createElement(component, props)))
+  // Effects and short animations (a count ticking up, a morph) land after the
+  // first render: read the markup until two reads 50ms apart agree, at most
+  // 400ms, so a fixture shows what the component settles on.
   await new Promise((done) => setTimeout(done, 0))
-  const html = container.innerHTML
+  let html = container.innerHTML
+  for (let waited = 0; waited < 400; waited += 50) {
+    await new Promise((done) => setTimeout(done, 50))
+    const next = container.innerHTML
+    if (next === html) break
+    html = next
+  }
   root.unmount()
   container.remove()
   return html

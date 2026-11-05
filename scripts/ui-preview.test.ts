@@ -64,6 +64,25 @@ describe('ui-preview', () => {
     expect(result.stdout).toContain('/tmp/ui-preview/Button.html\n/tmp/ui-preview/Button.light.html\n')
   })
 
+  it('reads the markup once it settles, so a count ticking up shows where it lands', () => {
+    const { dir, target, name } = temporaryComponent((name) => `
+      import { useEffect, useState } from 'react'
+      export function ${name}() {
+        // A count ticking up, as useCountUp does: it changes every 20ms until it lands.
+        const [n, setN] = useState(0)
+        useEffect(() => {
+          if (n >= 5) return
+          const timer = setTimeout(() => setN(n + 1), 20)
+          return () => clearTimeout(timer)
+        }, [n])
+        return <span>{n === 5 ? 'settled' : n}</span>
+      }
+    `)
+    const result = run([target], dir)
+    expect(result.status, result.stderr).toBe(0)
+    expect(output(name).dark).toContain('<span>settled</span>')
+  })
+
   it('stubs CSS and nested callbacks, resolves aliases, and notes missing styles once', () => {
     const { dir, name, target } = temporaryComponent((name) => `
       import './sample.css'
