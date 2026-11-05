@@ -12,7 +12,7 @@ file. A sibling change that needs a new check (the bundle-size check after
 | tier | steps | runs |
 | --- | --- | --- |
 | `commit` | typecheck, vitest, build, bundle-size | in the post-commit hook, on every commit on master |
-| `publish` | renderer-soak, renderer-soak-chat, renderer-soak-typing, e2e-remote-fence, hub, ios, ios-client | before signing in `release:publish`; and in the hook when a commit touches a guarded path. The three soaks, hub, ios and ios-client are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships |
+| `publish` | renderer-soak, renderer-soak-chat, renderer-soak-typing, renderer-soak-scroll, e2e-remote-fence, hub, ios, ios-client | before signing in `release:publish`; and in the hook when a commit touches a guarded path. The four soaks, hub, ios and ios-client are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships |
 
 Guarded paths (`TIER_PATHS`): `ios/**`, `scripts/gen-swift-contract.ts`,
 `src/shared/wireSchemas.ts`, `src/shared/contract*.ts`,
@@ -57,6 +57,16 @@ from launch to teardown inside the same 90 s, so the publish's soak lane
 runs about 25 s longer than with two scenes. The store's old per-item
 live-edit fold fails it (busy p95 near 500 ms on the box's flood); docs/box.md
 "Typing on a busy master" has the runs.
+
+`renderer-soak-scroll` runs `--gate --scene scroll`: the master's
+transcript, its board, the rail's workspaces and the workspace column, each
+turned by the wheel at 60 Hz for 4 s and flung once under the board's load.
+It passes when every surface and every stretch moves and no long task runs
+while it does; the frame rate (90% of the display's) and the longest frame
+(32 ms) are the target and are reported against it, not judged, until a run
+on the Mac sizes them there (scripts/lib/soakJudge.ts `SCROLL_RULE`,
+`framesReportOnly`). It runs about 40 s from launch to teardown inside the
+same 90 s. docs/box.md "Scrolling while threads work" has the runs.
 
 The CPU bounds are regression guards, each the scene's highest figure on
 the Mac (M4 Max, the window on a 144 Hz screen) plus a margin. The same code
@@ -185,6 +195,7 @@ these ran, so its numbers moved by up to 40 % between runs.
 | renderer-soak | 64.1 s, 64.6 s (2026-11-01, a fresh clone) | 62.6 s, 63.1 s | 62 s by hand | Mac only; a 50 s window inside its 90 s |
 | renderer-soak-chat | about 63 s (2026-11-02, by hand) | | 62 s by hand | Mac only; the same window, after the board scene |
 | renderer-soak-typing | 47.8 s, 55.4 s (2026-11-05, a fresh clone) | | 62 s (2026-11-05, load 34) | Mac only; its phases, after the chat scene |
+| renderer-soak-scroll | not measured (no Mac linked) | | about 40 s (2026-11-05, load 86) | Mac only; four surfaces, after the typing scene |
 
 With the three commit lanes at once on the box, vitest finished at 42 s
 and typecheck at 43 s while the build was still running, so the commit

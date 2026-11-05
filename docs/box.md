@@ -3234,14 +3234,75 @@ hold, the row read p50 35 ms, p95 52 ms on master at load 15 and 39 / 49 ms
 with the rows kept (load 16, traced). Two interleaved pairs at loads 63 to
 68, 16 sends each, took the Enter's handler from 37.6 and 37.0 ms to 34.8
 and 33.9 ms at p50; the row's frame waited on the loaded machine either
-way (p50 78 to 79 ms on both). It is a hand-run scene; its gate form (`--gate
---scene send`, 10 sends) fits the 90 s budget and joins the gate once a run
-on the Mac sizes it.
+way (p50 78 to 79 ms on both). Those box runs had the kept rows alone: a
+hand run soaks the `out/` it finds (only `--gate` builds), and their
+bundle predated the kept estimates. It is a hand-run scene; its gate form
+(`--gate --scene send`, 10 sends, 34 s at load 87) fits the 90 s budget and
+joins the gate once a run on the Mac sizes it.
 
 ```bash
 bun scripts/measure-renderer-soak.ts --scene send --label <name>                 # 16 sends, the tail loaded
 bun scripts/measure-renderer-soak.ts --scene send --load-all --peer-delay 300 --label <name>
 bun scripts/measure-renderer-soak.ts --scene send --build dev --no-profile --label <name>   # what each send rendered
+```
+
+### Scrolling while threads work
+
+The user, 2026-11-05: "Scrolling is also very laggy when a bunch of stuff
+is working." `--scene scroll` turns four scrollers under the board's load:
+the master's transcript (its 5,000-row history), its board, the rail's
+workspaces and the workspace column (the synthetic host grows the rail by
+30 workspaces and the column by 24 projects for it). Each is turned by the
+wheel at 60 Hz, 40 px a tick and back at either end, for `--wheel` seconds
+(10 by hand, 4 on the gate), then flung once (`Input.synthesizeScrollGesture`);
+every animation frame's interval is kept while it moves, with its long tasks
+and long animation frames (scripts/lib/soakScroll.ts; soakJudge.ts
+`SCROLL_RULE`: the display's rate held at 90% or better, no frame over 32
+ms, no long task, every surface and stretch moved). `--host box` scrolls the box's
+busiest master read-only; `--surfaces` picks surfaces for a hand run.
+
+On the box (60 Hz under xvfb, load 75 to 97) the transcript, the rail and
+the column held 54 to 59 frames a second; the board drew 29 to 31, every
+other frame missed. Its trace named two things. The board's virtualizer
+lived in the board's own component: TanStack re-renders the component that
+holds it, through `flushSync`, whenever its range or its `isScrolling`
+moves, so a scroll re-rendered the whole board, its header, foot and chat
+included; the list is its own component now (MasterView.tsx `BoardList`),
+which a scroll re-renders with its rows standing. And the rows slid under a
+still pointer: each frame turned hover on and off along the rows the pointer
+crossed, about 120 hover transitions started and cancelled a second and
+some 580 pointer events through React, all restyled at the next scroll
+event, whose `scrollTop` read forced the style and the layout of the
+document. A scroller's children are now out of the pointer's reach while it
+scrolls (lib/scrollActivity.ts `QUIET_ATTR`, the rule in index.css), until
+`SCROLL_QUIET_MS` (80 ms, a few frames) after its last scroll, the person
+moving the pointer or pressing a button; a scroll with a button held (a
+scrollbar drag, a selection or a drag reaching the edge) keeps the pointer.
+The runs below had a 150 ms window. Traced back to back, 4 s of wheel on the board each:
+
+| Tree | Load | A scroll event | Restyled inside it | Layout inside it | Main thread busy | Board fps |
+|---|---|---|---|---|---|---|
+| master + the scene (87560c95) | 75, 76 | 8.0, 7.8 ms | 177, 180 elements | 1.3, 1.2 ms | 532 ms a second | 29.9, 28.7 |
+| this change | 75, 78 | 2.2, 2.3 ms | 35, 36 elements | 0.01 ms | 385 ms a second | 37.1, 37.3 |
+
+A full pair at load 87 and 89: the board 30.1 to 36.4 fps, the rail 56.3 to
+57.7, the column 55.8 to 56.9, the transcript 54.3 and 54.5. The fps these
+runs read is the main thread's: the compositor drew a frame at every vsync
+in every traced run (`DrawFrame` 59.4 to 59.7 a second), the scroll moving
+on its own thread, and what fell behind was the main thread's content
+(`DroppedFrame` 32.1 to 28.3 a second on the board, 11.1 on the
+transcript), with a scroller at device scale 1 repainted on the main thread
+where the Mac's is composited. The targets are the Mac's, and no Mac was
+linked to the box when this landed: the gate row `renderer-soak-scroll`
+(`--gate`, 4 s of wheel a surface, about 40 s; passed at load 86 on the box)
+fails a surface that did not move or a long task while scrolling, and reports
+the frame rate and the longest frame against the target until a run on the
+Mac sizes them there.
+
+```bash
+bun scripts/measure-renderer-soak.ts --scene scroll --label <name>                         # 10 s of wheel a surface, then a fling
+bun scripts/measure-renderer-soak.ts --scene scroll --surfaces board --wheel 4 --trace 4 --no-profile --label <name>
+bun scripts/measure-renderer-soak.ts --scene scroll --host box --label <name>              # the box's busiest master, read-only
 ```
 
 ## Profiling the host

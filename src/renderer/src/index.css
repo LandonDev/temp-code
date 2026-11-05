@@ -526,6 +526,13 @@ html:not(.is-mac) #root {
   background-color: var(--scrollbar-thumb-hover);
 }
 
+/* While a scroller scrolls its children are out of the pointer's reach
+   (lib/scrollActivity.ts sets data-scroll-quiet): rows sliding under a still
+   pointer take no hover. The scroller itself keeps the wheel and its bar. */
+[data-scroll-quiet] > * {
+  pointer-events: none;
+}
+
 ::-webkit-scrollbar-thumb:active {
   background-color: var(--scrollbar-thumb-active);
 }

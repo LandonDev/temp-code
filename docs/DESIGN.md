@@ -565,6 +565,10 @@ shows while the pointer is over the scroller or while it scrolls
 (`lib/scrollActivity.ts` marks a scrolling element `data-scrolling` and
 clears it `SCROLL_IDLE_MS` after the last scroll); Chromium cannot fade a
 scrollbar, so it shows and hides at once. There is no scroll-area component.
+While a scroller scrolls its children take no pointer (`data-scroll-quiet`,
+cleared `SCROLL_QUIET_MS` after the last scroll, when the pointer moves or
+on a press, never set while a button is held), so rows sliding under a
+still pointer show no hover and start no hover transition.
 
 A rounded scroller sets `--scrollbar-inset` to its radius
 (`[--scrollbar-inset:var(--radius-xl)]` on a menu), so the pill never runs

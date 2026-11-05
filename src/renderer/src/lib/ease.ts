@@ -30,6 +30,11 @@ export const TOOLTIP = { delay: 300, closeDelay: 120 } as const;
  *  (lib/scrollActivity.ts; docs/DESIGN.md "Scrolling"). */
 export const SCROLL_IDLE_MS = 900;
 
+/** How long a scroller's children stay out of the pointer's reach after its
+ *  last scroll, in ms (lib/scrollActivity.ts `QUIET_ATTR`): a few frames, so a
+ *  scroll in motion keeps it and a click on a list that has stopped lands. */
+export const SCROLL_QUIET_MS = 80;
+
 /** The beat a working group holds open after its work moved on, in ms, so
  *  its last step's settle shows before it folds (transcript/ActionGroup.tsx). */
 export const FOLD_HOLD_MS = 600;

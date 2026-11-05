@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { DEFAULT_BATCH_RULES, type BatchState, type BoardDigest } from "@server/shared/contract-batch";
 import type { AgentEvent, EventRow } from "@server/shared/events";
 import type { Session } from "../../lib/session";
@@ -25,7 +25,7 @@ import type { SessionMeta, ServerPush } from "../../lib/tcserver/types";
  * The chat, the child's transcript and the heavy pickers are stand-ins.
  */
 
-const { startThread, batch, link, boxLink, hosts, catalog, rowReads } = vi.hoisted(() => {
+const { startThread, batch, link, boxLink, hosts, catalog, rowReads, shellRenders } = vi.hoisted(() => {
   class FakeLink implements Link {
     constructor(public environmentId: string) {}
     profile = "local" as const;
@@ -75,6 +75,8 @@ const { startThread, batch, link, boxLink, hosts, catalog, rowReads } = vi.hoist
   }
   return {
   rowReads: [] as (string | null | undefined)[],
+  /** The board view's renders, through its SplitShell. */
+  shellRenders: { n: 0 },
   startThread: vi.fn(async () => ({ id: "new" })),
   link: new FakeLink("local"),
   boxLink: new FakeLink("box"),
@@ -223,6 +225,7 @@ vi.mock("./SplitShell", async (original) => ({
     actions?: React.ReactNode;
     splitState?: { split: number; setSplit: (n: number) => void };
   }) => (
+    shellRenders.n++,
     <div>
       {hasBoard ? (
         <div data-board data-folded={collapsed ? "" : undefined} data-split={splitState?.split}>
@@ -902,6 +905,26 @@ describe("the master view", () => {
     expect(within(impl()).getByText("1/2")).toBeTruthy();
   });
 
+  it("scrolling the board renders its list alone, never the board around it", async () => {
+    seed(Array.from({ length: 6 }, (_, i) => meta({ id: `c-${i}`, title: `Thread ${i}`, status: "running", createdAt: i })));
+    renderView();
+    await flush();
+    const scroller = document.querySelector<HTMLElement>("[data-board-scroller]")!;
+    let top = 0;
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, get: () => top, set: (v: number) => (top = v) });
+    const shell = shellRenders.n;
+    rowReads.length = 0;
+    // Each wheel tick is a scroll, and the virtualizer's isScrolling turns on, then off once it rests.
+    for (let i = 1; i <= 5; i++) {
+      top = i * 40;
+      act(() => void fireEvent.scroll(scroller));
+    }
+    await act(() => new Promise((r) => setTimeout(r, 250)));
+    expect(shellRenders.n).toBe(shell);
+    expect(rowReads).toEqual([]);
+    expect(screen.getByRole("button", { name: /Thread 5/ })).toBeTruthy();
+  });
+
   it("a plan and the build it started are one row, keeping the plan's title", async () => {
     seed([
       meta({ id: "c-plan", title: "Search screen", status: "idle", threadType: "planning", archived: true, implementationId: "c-build", createdAt: 1 }),
@@ -1019,6 +1042,56 @@ describe("the master view", () => {
     expect(document.querySelector("[data-board]")!.getAttribute("data-split")).toBe("60");
     expect(headers().map((h) => h.getAttribute("data-group-header"))).toEqual(["running", "done"]);
     expect(document.activeElement).toBe(screen.getByRole("button", { name: /Inbox/ }));
+  });
+
+  it("Back brings back and focuses the row that opened the child when it moved past the rows the list had drawn", async () => {
+    // A board 400px tall, so the list draws a window of its rows, and a scroller that scrolls.
+    const tall = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-board-scroller") ? 400 : 0;
+    });
+    const board = (el: Element) => el.hasAttribute("data-board-scroller");
+    const client = vi.spyOn(Element.prototype, "clientHeight", "get").mockImplementation(function (this: Element) {
+      return board(this) ? 400 : 0;
+    });
+    const content = vi.spyOn(Element.prototype, "scrollHeight", "get").mockImplementation(function (this: Element) {
+      return board(this) ? 2_000 : 0;
+    });
+    const tops = new WeakMap<Element, number>();
+    const top = vi.spyOn(Element.prototype, "scrollTop", "get").mockImplementation(function (this: Element) {
+      return tops.get(this) ?? 0;
+    });
+    const setTop = vi.spyOn(Element.prototype, "scrollTop", "set").mockImplementation(function (this: Element, v: number) {
+      tops.set(this, v);
+    });
+    const hadScrollTo = Object.prototype.hasOwnProperty.call(Element.prototype, "scrollTo");
+    const scrollTo = Element.prototype.scrollTo;
+    Element.prototype.scrollTo = function (this: Element, options?: ScrollToOptions | number) {
+      tops.set(this, typeof options === "object" ? (options.top ?? 0) : 0);
+      this.dispatchEvent(new Event("scroll"));
+    } as Element["scrollTo"];
+    onTestFinished(() => {
+      tall.mockRestore();
+      client.mockRestore();
+      content.mockRestore();
+      top.mockRestore();
+      setTop.mockRestore();
+      if (hadScrollTo) Element.prototype.scrollTo = scrollTo;
+      else delete (Element.prototype as { scrollTo?: unknown }).scrollTo;
+    });
+    const title = (i: number) => `Row ${String.fromCharCode(65 + i)} task`;
+    seed(Array.from({ length: 16 }, (_, i) => meta({ id: `c-${i}`, title: title(i), status: "running", createdAt: i })));
+    renderView();
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Row A task/ }));
+    await flush();
+    // While the child is open, it settles and moves to Done, after every running row.
+    const { environmentId: _e, ...settled } = meta({ id: "c-0", title: title(0), status: "done", createdAt: 0 });
+    act(() => link.push({ push: "session", session: settled } as unknown as ServerPush));
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    fireEvent.click(screen.getByRole("button", { name: /Back/ }));
+    // The list scrolls to the row, draws it, and the next frame focuses it.
+    await act(() => new Promise((r) => setTimeout(r, 100)));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: /Row A task/ }));
   });
 
   it("the title bar's menu archives the done threads or every one through batch.archive, with the live count", async () => {

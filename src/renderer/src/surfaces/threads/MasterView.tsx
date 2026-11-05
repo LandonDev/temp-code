@@ -1,5 +1,5 @@
-import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { measureElement, useVirtualizer, type Virtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from "react";
 import { ConfirmDialog } from "../../chrome/ConfirmDialog";
 import { RowsContextMenu, RowsMenu } from "../../chrome/menuRows";
 import { useThreadMenu } from "../../chrome/useThreadMenu";
@@ -128,6 +128,100 @@ const measureRow: VirtualizerOptions<HTMLDivElement, HTMLDivElement>["measureEle
   const index = instance.indexFromElement(node);
   return instance.measurementsCache[index]?.size ?? instance.options.estimateSize(index);
 };
+
+/**
+ * The board's rows, virtualized, with the scroller they scroll in. The
+ * virtualizer re-renders the component that holds it, through flushSync,
+ * whenever its range or its `isScrolling` moves (as a scroll starts and
+ * rests, and at every row a long board's window gains or drops): held here,
+ * that re-renders this list and its section headers, the rows staying as
+ * they are (BoardRow), never the board, its header, foot and chat.
+ */
+const BoardList = memo(function BoardList({
+  items,
+  scroller,
+  savedScroll,
+  estimateSize,
+  api,
+  masterId,
+  landed,
+  blockedOf,
+  hostOf,
+  onOpen,
+  menu,
+}: {
+  items: BoardItem[];
+  /** The board's scroller, drawn here, so the virtualizer finds it attached in its first layout effect. */
+  scroller: RefObject<HTMLDivElement | null>;
+  savedScroll: RefObject<number>;
+  estimateSize: (index: number) => number;
+  /** The virtualizer, for the board's return from a child (MasterBoardView). */
+  api: RefObject<Virtualizer<HTMLDivElement, HTMLDivElement> | null>;
+  masterId: string;
+  landed: ReadonlySet<string>;
+  blockedOf: (row: BoardRowRef) => string | null;
+  hostOf: (environmentId: string) => RowHost | null;
+  onOpen: (id: string, focus?: boolean) => void;
+  menu: RowMenu;
+}) {
+  const getItemKey = useCallback((i: number) => items[i]?.key ?? i, [items]);
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scroller.current,
+    estimateSize,
+    getItemKey,
+    overscan: 6,
+    gap: 0,
+    initialOffset: () => savedScroll.current,
+    measureElement: measureRow,
+  });
+  useLayoutEffect(() => {
+    api.current = virtualizer;
+    return () => {
+      api.current = null;
+    };
+  }, [api, virtualizer]);
+  return (
+    <div ref={scroller} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1 pt-1 pb-2" data-board-scroller>
+      <RowsContextMenu
+        label="Thread actions"
+        lazyMount
+        rowsFor={(id) => (id ? menu.rowsFor(id) : null)}
+        onPick={(pick, id) => id && menu.onPick(id, pick)}
+        onOpenChange={(open, id) => id && menu.onOpenChange(id, open)}
+      >
+    {/* The board pane: every task bar is 35% of it (TASK_BAR_CLASS). */}
+    <div className="@container relative w-full" style={{ height: virtualizer.getTotalSize() }} data-board-pane>
+      {virtualizer.getVirtualItems().map((v) => {
+        const item = items[v.index];
+        if (!item) return null;
+        return (
+          <div
+            key={v.key}
+            data-index={v.index}
+            data-group={item.kind === "row" ? item.row.group : undefined}
+            ref={virtualizer.measureElement}
+            className="absolute top-0 left-0 w-full"
+            style={{ transform: `translateY(${v.start}px)` }}
+          >
+            {item.kind === "header" ? (
+              <h3
+                className={`flex ${v.index === 0 ? "h-6" : "h-8"} items-end px-2 pb-1 text-xs leading-4 font-medium text-muted-foreground`}
+                data-group-header={item.group.id}
+              >
+                {item.group.label}
+              </h3>
+            ) : (
+              <BoardRow masterId={masterId} rowRef={item.row} landed={landed.has(item.row.id)} blocked={blockedOf(item.row)} host={hostOf(item.row.environmentId)} onOpen={onOpen} menu={menu} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+      </RowsContextMenu>
+    </div>
+  );
+});
 
 /** The board's first complete paint, once per open, to this machine's stall log. */
 function reportBoardPaint(masterId: string, rows: number, ms: number): void {
@@ -278,21 +372,13 @@ function MasterBoardView(props: ThreadViewProps) {
     },
     [items, digests, session.id],
   );
-  const getItemKey = useCallback((i: number) => items[i]?.key ?? i, [items]);
-  const virtualizer = useVirtualizer({
-    count: items.length,
-    getScrollElement: () => scroller.current,
-    estimateSize,
-    getItemKey,
-    overscan: 6,
-    gap: 0,
-    initialOffset: () => savedScroll.current,
-    measureElement: measureRow,
-  });
+  const list = useRef<Virtualizer<HTMLDivElement, HTMLDivElement> | null>(null);
 
   // Back from a child: the saved offset first, then the row that opened it in
   // view and focused. Rows re-sort by state while a child is open, so the raw
   // offset can land elsewhere; a row the board no longer lists leaves the offset.
+  // BoardList draws the scroller and attaches its virtualizer in its own
+  // layout effects, which run before this one.
   useLayoutEffect(() => {
     if (openId) return;
     const el = scroller.current;
@@ -311,7 +397,7 @@ function MasterBoardView(props: ThreadViewProps) {
     const row = rowOf();
     if (row) return land(row);
     // Out of the rendered window: bring it in, and focus it once it is drawn.
-    virtualizer.scrollToIndex(index, { align: "auto" });
+    list.current?.scrollToIndex(index, { align: "auto" });
     const frame = requestAnimationFrame(() => {
       const drawn = rowOf();
       if (drawn) land(drawn);
@@ -342,11 +428,14 @@ function MasterBoardView(props: ThreadViewProps) {
 
   // The child that blocks the batch's end says why on its own row (a far
   // child is named `<env>:<session>`); every other row gets null.
-  const blockedOf = (row: BoardRowRef): string | null => {
-    const b = view.blocked;
-    if (!b || (b.sessionId !== row.id && b.sessionId !== `${row.environmentId}:${row.id}`)) return null;
-    return blockedReason(b.why, b.environmentId ? hostNames.get(b.environmentId) : null);
-  };
+  const blocked = view.blocked;
+  const blockedOf = useCallback(
+    (row: BoardRowRef): string | null => {
+      if (!blocked || (blocked.sessionId !== row.id && blocked.sessionId !== `${row.environmentId}:${row.id}`)) return null;
+      return blockedReason(blocked.why, blocked.environmentId ? hostNames.get(blocked.environmentId) : null);
+    },
+    [blocked, hostNames],
+  );
 
   const openRef = useRef<(id: string, focus?: boolean) => void>(() => {});
   openRef.current = (id: string, focus = false) => {
@@ -473,44 +562,19 @@ function MasterBoardView(props: ThreadViewProps) {
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <BoardDigestContext.Provider value={digests}>
         <AgentSummaryContext.Provider value={summaries}>
-          <div ref={scroller} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1 pt-1 pb-2" data-board-scroller>
-            <RowsContextMenu
-              label="Thread actions"
-              lazyMount
-              rowsFor={(id) => (id ? rowMenu.rowsFor(id) : null)}
-              onPick={(pick, id) => id && rowMenu.onPick(id, pick)}
-              onOpenChange={(open, id) => id && rowMenu.onOpenChange(id, open)}
-            >
-            {/* The board pane: every task bar is 35% of it (TASK_BAR_CLASS). */}
-            <div className="@container relative w-full" style={{ height: virtualizer.getTotalSize() }} data-board-pane>
-              {virtualizer.getVirtualItems().map((v) => {
-                const item = items[v.index];
-                if (!item) return null;
-                return (
-                  <div
-                    key={v.key}
-                    data-index={v.index}
-                    data-group={item.kind === "row" ? item.row.group : undefined}
-                    ref={virtualizer.measureElement}
-                    className="absolute top-0 left-0 w-full"
-                    style={{ transform: `translateY(${v.start}px)` }}
-                  >
-                    {item.kind === "header" ? (
-                      <h3
-                        className={`flex ${v.index === 0 ? "h-6" : "h-8"} items-end px-2 pb-1 text-xs leading-4 font-medium text-muted-foreground`}
-                        data-group-header={item.group.id}
-                      >
-                        {item.group.label}
-                      </h3>
-                    ) : (
-                      <BoardRow masterId={session.id} rowRef={item.row} landed={landed.has(item.row.id)} blocked={blockedOf(item.row)} host={hostOf(item.row.environmentId)} onOpen={open} menu={rowMenu} />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            </RowsContextMenu>
-          </div>
+            <BoardList
+              items={items}
+              scroller={scroller}
+              savedScroll={savedScroll}
+              estimateSize={estimateSize}
+              api={list}
+              masterId={session.id}
+              landed={landed}
+              blockedOf={blockedOf}
+              hostOf={hostOf}
+              onOpen={open}
+              menu={rowMenu}
+            />
         </AgentSummaryContext.Provider>
       </BoardDigestContext.Provider>
       <LiveBatchFoot holder={batch} loaded={loaded} titleOf={titleOf} hostName={hostName} onSave={saveRules} onStop={stopStep} toastAnchor={!chatOpen} />

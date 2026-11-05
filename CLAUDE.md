@@ -125,8 +125,9 @@ Two separate steps, on purpose, over one gate.
   everything; `--only a,b` / `--skip a,b` / `--verbose` for a hand run.
   - `commit`: typecheck, vitest, the electron-vite build and, after it in
     the same lane, the bundle-size check (scripts/check-bundle-size.ts).
-    `publish`: renderer-soak, renderer-soak-chat and renderer-soak-typing
-    (the build lane, after the build, one after the other; Mac only), e2e-remote-fence, hub:test, ios:test, ios:test:client. A proof that
+    `publish`: renderer-soak, renderer-soak-chat, renderer-soak-typing and
+    renderer-soak-scroll (the build lane, after the build, one after the
+    other; Mac only), e2e-remote-fence, hub:test, ios:test, ios:test:client. A proof that
     boots an instance belongs in `publish`.
   - Steps in one lane run in array order, one at a time; lanes run at
     once (typecheck, vitest and build + bundle-size together), with a combined status
@@ -2102,7 +2103,12 @@ names the far child).
   `--sends`, `--load-all` pages it all in, `--peer-delay <ms>` slows the
   synthetic host's answers), each timed to its row's first frame, to the
   composer emptying and to the host's answer, judged by `SEND_RULE`, a
-  synthetic hand-run scene; docs/box.md "Sending into a long thread"; typing: the master's composer typed into
+  synthetic hand-run scene; docs/box.md "Sending into a long thread";
+  scroll: the master's transcript, its board, the rail and the workspace
+  column each turned by the wheel at 60 Hz for `--wheel` seconds and flung,
+  every animation frame's interval kept, judged by `SCROLL_RULE`,
+  `--surfaces`, `--host box` read-only, scripts/lib/soakScroll.ts;
+  docs/box.md "Scrolling while threads work"; typing: the master's composer typed into
   beside its board in phases under the board's load, the master's churn and
   a 3,000-edit live-edit flood every 10 s, scripts/lib/soakTyping.ts, judged
   by `TYPING_RULE`; docs/box.md "Typing on a busy master"; scenarios: the no-jerk timeline of
@@ -2141,7 +2147,11 @@ names the far child).
   `renderer-soak-typing` (`--gate --scene typing`, about 65 s inside the
   same 90 s: keystroke to frame p95 ≤ 16 ms idle and ≤ 33 ms busy and fast,
   no long task over 100 ms while typing, every phase's text exact; CPU
-  reported, not judged). Each soak in
+  reported, not judged), and `renderer-soak-scroll` (`--gate --scene
+  scroll`, about 40 s: 4 s of wheel and a fling on each of the four
+  surfaces, every one moving and no long task while it does; the frame rate
+  and the longest frame reported against `SCROLL_RULE` until a run on the
+  Mac sizes them). Each soak in
   release-publish waits for `$STAGE/build.done`
   (TEMP_CODE_SOAK_BUILD_DONE), elsewhere it reads out/bundle-map.json's
   `head` stamp and builds when out/ is not HEAD's clean build. docs/box.md
@@ -2170,7 +2180,12 @@ names the far child).
   (useMasterModel.ts `BatchHolder`) the foot follows whole, the view reads a
   kept projection (`useBatchView`), each row is a memoized `BoardRow` and
   the master's chat is built only for new render functions; AgentTranscript
-  is memoized. The rail card's clock reaches the time alone (`LineElapsed`,
+  is memoized. A scroll re-renders what scrolls: a virtualizer re-renders
+  the component that holds it whenever its range or `isScrolling` moves, so
+  it lives in a list component of its own (MasterView.tsx `BoardList`), and
+  a scroller's children take no pointer while it scrolls
+  (lib/scrollActivity.ts `QUIET_ATTR`, `SCROLL_QUIET_MS`; index.css), so rows
+  sliding under a still pointer turn no hover. The rail card's clock reaches the time alone (`LineElapsed`,
   `CardAgo` on the shared tickers; `CardNowContext` fixes them for a
   fixture), and its master block, batch lines and agents lines are
   memoized. The composer keeps its session by `sameComposerChrome`
