@@ -254,8 +254,9 @@ describe("no jerk in any scenario", () => {
     expect(view.line()).toBe(line);
     expect(view.line()?.querySelector('[data-slot="working-mark"]')).not.toBeNull();
     expect(view.line()?.textContent).not.toMatch(/Worked/);
-    // Once every step has painted and the last fade is done, the line morphs.
-    for (let i = 0; i < 6; i++) await settle(400);
+    // Once every step has painted and the last fade is done, the line morphs. The drain takes about 2 s on an idle
+    // machine, so wait on the mark leaving rather than a fixed time: under the gate's parallel lanes it runs longer.
+    await settleUntil(() => !view.line()?.querySelector('[data-slot="working-mark"]'), 10_000);
     expect(view.line()).toBe(line);
     expect(view.line()?.querySelector('[data-slot="working-mark"]')).toBeNull();
     expect(view.line()?.textContent).toBe("Worked for 4s");
