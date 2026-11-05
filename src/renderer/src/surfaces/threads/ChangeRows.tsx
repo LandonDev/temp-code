@@ -2,7 +2,9 @@ import { FilePreview } from "../../chrome/FilePreview";
 import { ChevronRight } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
-import { Item } from "../../components/ui/item";
+import { ItemButton } from "../../components/ui/item";
+import { ROW_PRESS } from "../../components/ui/press";
+import { Counts } from "../../chrome/rail/changeRows";
 import { Spinner } from "../../components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import type { OpenFileFn } from "../../lib/search";
@@ -55,7 +57,7 @@ function ChangeFile({
   const preview = block?.tool?.preview;
   return (
     <Collapsible data-change-row={file.path}>
-      <Item size="xs" render={<CollapsibleTrigger />} className="group/change h-7 py-0 text-left hover:bg-muted">
+      <CollapsibleTrigger render={<ItemButton size="xs" className={cn("group/change h-7 py-0", ROW_PRESS)} />}>
         <Tooltip>
           <TooltipTrigger render={<span className="min-w-0 truncate text-[13px] text-foreground" />}>
             {file.name}
@@ -64,12 +66,12 @@ function ChangeFile({
         </Tooltip>
         {file.disk ? <span className="text-xs text-muted-foreground">shell</span> : null}
         {file.editing ? <Spinner className="size-3.5 text-muted-foreground" /> : null}
-        <span className="ml-auto flex shrink-0 items-center gap-2 text-xs tabular-nums">
-          {file.adds > 0 ? <span className="text-success">+{file.adds}</span> : null}
-          {file.dels > 0 ? <span className="text-destructive">−{file.dels}</span> : null}
+        {/* The tally on the board's recipe (Counts: 4px between values), the chevron 8px after it. */}
+        <span className="ml-auto flex shrink-0 items-center gap-2 text-xs">
+          <Counts additions={file.adds} deletions={file.dels} />
           <ChevronRight className={cn("size-3.5 text-muted-foreground group-data-[panel-open]/change:rotate-90", DISCLOSURE_CHEVRON)} />
         </span>
-      </Item>
+      </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="flex flex-col items-start gap-1 px-2 pt-1 pb-2">
           {preview ? (

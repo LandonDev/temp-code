@@ -1202,8 +1202,10 @@ clock, a done one in the done tone, nothing under 1.5 s); folded, the
 header names the running task on one cut line. Then one line per approval or question
 waiting on the person (opening the chat) and the last failure (or
 Stopped), then the files each task changed (`ChangeRows`: a row per file
-under its task's name, shell-made ones marked `shell`, each opening its
-diff preview in place with Open diff under it), then the closing report.
+under its task's name, shell-made ones marked `shell`, each one
+`ItemButton` on `ROW_PRESS` ending in its `Counts` and the chevron 8px
+after, opening its diff preview in place with Open diff under it), then
+the closing report.
 Earlier passes fold into rows above (number, request, tally, diffstat and
 the run's record), each opening its tasks and changes; a pure Q&A pass has
 no row. A finished pass offers **Start pass N**, which arms the next

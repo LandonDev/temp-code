@@ -62,6 +62,26 @@ describe("dense rows at 28px", () => {
     expect(row.className).toContain("py-0");
     expect(row.className).not.toContain("py-1.5");
   });
+
+  it("a changed file's row is one button that presses to /12, its tally the board's Counts", () => {
+    const groups = [{ key: "g", task: null, files: [{ path: "/repo/src/a.ts", name: "a.ts", adds: 84, dels: 2, edits: [], editing: false }] }] as unknown as ChangeGroup[];
+    const { container } = render(<ChangeRows groups={groups} cwd="/repo" onOpenFile={() => {}} onOpenDiff={() => {}} />);
+    const row = container.querySelector<HTMLElement>("[data-change-row] > button")!;
+    // An ItemButton, never an Item made a trigger through render.
+    expect(row.tagName).toBe("BUTTON");
+    expect(row.getAttribute("type")).toBe("button");
+    // ROW_PRESS: /5 on hover, /12 on a press, never muted (which means selected).
+    expect(row.className).toContain("hover:bg-foreground/5");
+    expect(row.className).toContain("active:bg-foreground/12");
+    expect(row.className.split(/\s+/)).not.toContain("hover:bg-muted");
+    const counts = row.querySelector<HTMLElement>("[data-slot='counts']")!;
+    expect(counts.textContent).toBe("+84−2");
+    expect(counts.className).toContain("gap-1");
+    expect(counts.className).toContain("font-sans");
+    // The chevron 8px after the tally.
+    expect(counts.parentElement!.className).toContain("gap-2");
+    expect(counts.nextElementSibling!.getAttribute("class")).toContain("rotate-90");
+  });
 });
 
 describe("each task fits its column", () => {
