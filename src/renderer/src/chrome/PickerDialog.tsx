@@ -55,7 +55,9 @@ export function PickerDialog({
             onKeyDown={onSearchKey}
           />
         </InputGroup>
-        <Separator className="-mx-1 mb-1" />
+        {/* Across the frame's 4px inset to both edges: a full-width
+            separator shifted by -mx-1 stopped 8px short of the right. */}
+        <Separator data-picker-rule className="-mx-1 mb-1 data-[orientation=horizontal]:w-auto" />
         {children}
       </DialogContent>
     </Dialog>

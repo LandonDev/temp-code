@@ -33,6 +33,20 @@ describe("PickerDialog", () => {
     await act(async () => fireEvent.keyDown(field, { key: "Escape" }));
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("runs the rule under the field to both edges of the frame", async () => {
+    await act(async () => {
+      render(
+        <PickerDialog label="Go to File" search={createRef()} query="" onQuery={vi.fn()} onSearchKey={vi.fn()} onClose={vi.fn()}>
+          <p>rows</p>
+        </PickerDialog>,
+      );
+    });
+    const rule = document.querySelector("[data-picker-rule]")!;
+    expect(rule.className).toContain("-mx-1");
+    // A width of its own would pin it to the content box and leave the right end short.
+    expect(rule.className).toContain("data-[orientation=horizontal]:w-auto");
+  });
 });
 
 describe("MarkdownModeToggle", () => {
