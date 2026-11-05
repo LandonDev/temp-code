@@ -4,7 +4,6 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
   loadProjectFiles,
@@ -15,6 +14,7 @@ import {
 } from "../lib/fileIndex";
 import { looksLikeProject } from "../lib/recents";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
+import { usePointerHighlight } from "../hooks/usePointerHighlight";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { MatchText } from "./MatchText";
 import { PickerDialog, PickerNote, pickerRowClass } from "./PickerDialog";
@@ -195,42 +195,14 @@ function FileList({
   onPick: (file: RankedFile) => void;
 }) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
-  const activeRef = useRef<HTMLDivElement>(null);
-  const pointer = useRef({ x: Number.NaN, y: Number.NaN, allow: false });
-  const fromPointer = useRef(false);
-
-  useEffect(() => {
-    pointer.current.allow = false;
-  }, [files]);
-
-  useEffect(() => {
-    if (fromPointer.current) {
-      fromPointer.current = false;
-      return;
-    }
-    pointer.current.allow = false;
-    activeRef.current?.scrollIntoView({ block: "nearest" });
-  }, [active]);
-
-  const onListMouseMove = (e: ReactMouseEvent<HTMLDivElement>) => {
-    if (e.clientX === pointer.current.x && e.clientY === pointer.current.y) {
-      return;
-    }
-    pointer.current = { x: e.clientX, y: e.clientY, allow: true };
-  };
-
-  const onRowEnter = (index: number) => {
-    if (!pointer.current.allow) return;
-    fromPointer.current = true;
-    onActive(index);
-  };
+  const { activeRef, onMouseMove, onRowEnter } = usePointerHighlight<HTMLDivElement>({ active, items: files, onActive });
 
   return (
     <div
       ref={lockOverscroll}
       role="listbox"
       aria-label="Files"
-      onMouseMove={onListMouseMove}
+      onMouseMove={onMouseMove}
       className="max-h-[min(380px,50vh)] overflow-x-hidden overflow-y-auto overscroll-none [--scrollbar-inset:var(--radius-xl)]"
     >
       {files.map((file, index) => {

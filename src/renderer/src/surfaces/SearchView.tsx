@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { HostGlyph } from "../chrome/HostGlyph";
@@ -18,6 +17,7 @@ import { FolderGlyph } from "../chrome/WorkspaceGlyph";
 import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
+import { usePointerHighlight } from "../hooks/usePointerHighlight";
 import { GroupInput, InputGroup } from "../components/ui/input";
 import { ItemButton } from "../components/ui/item";
 import { Spinner } from "../components/ui/spinner";
@@ -596,38 +596,7 @@ function ResultList({
   onActive: (index: number) => void;
   onOpen: (hit: AppSearchHit, beside?: boolean) => void;
 }) {
-  const activeRef = useRef<HTMLButtonElement>(null);
-  const pointer = useRef({ x: Number.NaN, y: Number.NaN, allow: false });
-  const fromPointer = useRef(false);
-
-  useEffect(() => {
-    pointer.current.allow = false;
-  }, [hits]);
-
-  useEffect(() => {
-    if (fromPointer.current) {
-      fromPointer.current = false;
-      return;
-    }
-    pointer.current.allow = false;
-    activeRef.current?.scrollIntoView({ block: "nearest" });
-  }, [active]);
-
-  const onListMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (
-      event.clientX === pointer.current.x &&
-      event.clientY === pointer.current.y
-    ) {
-      return;
-    }
-    pointer.current = { x: event.clientX, y: event.clientY, allow: true };
-  };
-
-  const onRowEnter = (index: number) => {
-    if (!pointer.current.allow) return;
-    fromPointer.current = true;
-    onActive(index);
-  };
+  const { activeRef, onMouseMove, onRowEnter } = usePointerHighlight<HTMLButtonElement>({ active, items: hits, onActive });
 
   const nameOf = (id: string): string => environments.find((env) => env.id === id)?.name ?? id;
 
@@ -636,7 +605,7 @@ function ResultList({
       id="app-search-results"
       role="listbox"
       aria-label="Search results"
-      onMouseMove={onListMouseMove}
+      onMouseMove={onMouseMove}
     >
       {hits.map((hit, index) => {
         const highlighted = index === active;

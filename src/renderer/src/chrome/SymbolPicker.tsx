@@ -5,6 +5,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
+import { usePointerHighlight } from "../hooks/usePointerHighlight";
 import type { EditorNavigation } from "../lib/search";
 import type { WorkspaceSymbolRow } from "../surfaces/monaco/lsp/providers";
 import { PickerDialog, PickerNote, pickerRowClass } from "./PickerDialog";
@@ -142,17 +143,14 @@ function SymbolList({
   onPick: (row: WorkspaceSymbolRow) => void;
 }) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
-  const activeRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: "nearest" });
-  }, [active]);
+  const { activeRef, onMouseMove, onRowEnter } = usePointerHighlight<HTMLDivElement>({ active, items: rows, onActive });
 
   return (
     <div
       ref={lockOverscroll}
       role="listbox"
       aria-label="Symbols"
+      onMouseMove={onMouseMove}
       className="max-h-[min(380px,50vh)] overflow-x-hidden overflow-y-auto overscroll-none [--scrollbar-inset:var(--radius-xl)]"
     >
       {rows.map((row, index) => {
@@ -166,7 +164,7 @@ function SymbolList({
             role="option"
             aria-selected={highlighted}
             onMouseDown={(e) => e.preventDefault()}
-            onMouseEnter={() => onActive(index)}
+            onMouseEnter={() => onRowEnter(index)}
             onClick={() => onPick(row)}
             className={pickerRowClass(highlighted)}
           >

@@ -1,6 +1,7 @@
 import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
 import { GroupInput, InputGroup } from "../components/ui/input";
+import { MENU_ROW } from "../components/ui/menu-row";
 import { Separator } from "../components/ui/separator";
 import { cn } from "../lib/cn";
 import { Search } from "./icons";
@@ -61,15 +62,19 @@ export function PickerDialog({
   );
 }
 
-/** A picker's empty or waiting line. */
+/** A picker's empty or waiting line: one muted row in a row's box, never
+ *  an empty state (docs/DESIGN.md "Loading and empty states"). */
 export function PickerNote({ children }: { children: ReactNode }) {
-  return <p className="px-2 py-2 text-xs text-muted-foreground">{children}</p>;
+  return <p data-picker-note className="flex h-7 items-center px-3 text-[13px] text-muted-foreground">{children}</p>;
 }
 
-/** One 28px row of a picker list; the highlighted row is a muted fill. */
+/** One row of a picker list, in a menu row's box (`MENU_ROW`: 28px, 12px
+ *  in, 8px from glyph to label) with the frame's radius less its 4px inset
+ *  (16 − 4 = 12px); the highlighted row is a muted fill. */
 export function pickerRowClass(highlighted: boolean): string {
   return cn(
-    "flex h-7 w-full cursor-default items-center gap-3 rounded-md px-2 text-left text-[13px] leading-none",
+    "flex w-full cursor-default items-center rounded-xl text-left",
+    MENU_ROW,
     highlighted && "bg-muted",
   );
 }
