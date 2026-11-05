@@ -411,7 +411,7 @@ export function SaveNoteButton({
         onSave(text);
         setSaved(true);
         if (timer.current != null) window.clearTimeout(timer.current);
-        timer.current = window.setTimeout(() => setSaved(false), 2000);
+        timer.current = window.setTimeout(() => setSaved(false), COPIED_MS);
       }}
     >
       <SwapIcon swapped={saved} from={<FilePlusCorner className="size-3.5" />} to={<Check className="size-3.5" />} />

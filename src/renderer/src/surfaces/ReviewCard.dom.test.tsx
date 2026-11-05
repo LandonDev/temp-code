@@ -79,6 +79,11 @@ describe("ReviewCard", () => {
     expect(card.textContent).toContain("Drops the error");
     expect(card.textContent).toContain("A 500 reads as success");
     expect(card.textContent).not.toContain("Address the findings");
+    // The head line: the glyph 8px from the title (the line's 4px and its own 4px), each fact 4px apart.
+    const head = card.querySelector<HTMLElement>("[data-review-head]")!;
+    expect(head.className.split(" ")).toContain("gap-1");
+    expect(head.className.split(" ")).not.toContain("gap-2");
+    expect((head.firstElementChild as HTMLElement).className.split(" ")).toContain("me-1");
     // A 20px file button reaches 24px through its hit area.
     expect(screen.getByRole("button", { name: "src/x.ts:12" }).className).toContain("after:-inset-y-0.5");
     // The actions sit 8px apart, as the failure card's do.

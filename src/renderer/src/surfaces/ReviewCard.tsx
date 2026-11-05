@@ -108,8 +108,9 @@ function HeldReview({
 
   return (
     <div data-slot="review-hold" className={`${CARD_SHAPE} min-w-0 border border-border bg-card font-sans text-[13px]`}>
-      <div className="flex min-w-0 items-center gap-2 leading-5">
-        <StatusMark state="waiting" word={false} />
+      {/* The line rule: the glyph 8px from the title, each fact 4px from the next. */}
+      <div data-review-head className="flex min-w-0 items-center gap-1 leading-5">
+        <StatusMark state="waiting" word={false} className="me-1" />
         <span className="shrink-0 font-medium text-foreground">Reviewed by {label}</span>
         <span className="shrink-0 text-muted-foreground">{plural(blocking, "blocking finding")}</span>
         <span className="min-w-0 truncate text-muted-foreground">merge held</span>

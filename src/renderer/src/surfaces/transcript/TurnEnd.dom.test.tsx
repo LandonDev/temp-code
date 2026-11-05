@@ -458,3 +458,24 @@ describe("TurnEnd while the turn waits on its agents", () => {
     expect(said(view.container)).toBe("Thinking");
   });
 });
+
+describe("SaveNoteButton", () => {
+  it("reverts to Save as note on COPIED_MS, as Copy does", async () => {
+    vi.useFakeTimers();
+    try {
+      const { SaveNoteButton } = await import("./TurnEnd");
+      const onSave = vi.fn();
+      render(<SaveNoteButton text="The answer" onSave={onSave} />);
+      fireEvent.click(screen.getByRole("button", { name: "Save as note" }));
+      expect(onSave).toHaveBeenCalledWith("The answer");
+      expect(screen.getByRole("button", { name: "Saved to Notes" })).toBeTruthy();
+      // The mocked clipboard's COPIED_MS is 1200: still saved just before it, back just after.
+      act(() => vi.advanceTimersByTime(1199));
+      expect(screen.getByRole("button", { name: "Saved to Notes" })).toBeTruthy();
+      act(() => vi.advanceTimersByTime(1));
+      expect(screen.getByRole("button", { name: "Save as note" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
