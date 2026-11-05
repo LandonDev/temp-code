@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 let resolveCount: (n: number) => void = () => {};
@@ -14,7 +14,8 @@ afterEach(cleanup);
 describe("RemoveProjectDialog", () => {
   it("is an alert that says what stays, then the count once it loads", async () => {
     const onConfirm = vi.fn();
-    render(<RemoveProjectDialog name="Alpha" path="/x/alpha" onCancel={() => {}} onConfirm={onConfirm} />);
+    const onDone = vi.fn();
+    render(<RemoveProjectDialog name="Alpha" path="/x/alpha" onCancel={() => {}} onConfirm={onConfirm} onDone={onDone} />);
     const alert = screen.getByRole("alertdialog");
     expect(screen.getByText("Remove “Alpha”?")).toBeTruthy();
     expect(alert.textContent).toContain("Files on disk stay.");
@@ -25,6 +26,8 @@ describe("RemoveProjectDialog", () => {
       fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     });
     expect(onConfirm).toHaveBeenCalledTimes(1);
+    // The parent clears its state only once the exit has played.
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
   });
 
   it("words one thread and none", () => {

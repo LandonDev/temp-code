@@ -158,7 +158,7 @@ describe("Modal", () => {
 
 describe("ConfirmDialog", () => {
   it("is an alert dialog with the verb in the button kit", () => {
-    render(<ConfirmDialog title="Delete it?" body="Gone for good." confirmLabel="Delete" danger onCancel={vi.fn()} onConfirm={vi.fn()} />);
+    render(<ConfirmDialog title="Delete it?" body="Gone for good." confirmLabel="Delete" danger onCancel={vi.fn()} onConfirm={vi.fn()} onDone={vi.fn()} />);
     const dialog = screen.getByRole("alertdialog");
     expect(dialog.textContent).toContain("Gone for good.");
     expect(screen.getByRole("button", { name: "Delete" }).getAttribute("data-variant")).toBe("destructive");
@@ -172,6 +172,7 @@ describe("ConfirmDialog", () => {
         confirmLabel="Delete"
         onCancel={vi.fn()}
         onConfirm={() => Promise.reject(new Error("disk full"))}
+        onDone={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
