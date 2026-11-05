@@ -23,7 +23,7 @@ describe("hit areas and insets", () => {
   });
 
   it("end the right panel's header on its rows' 12px Stop column, and start a dock tab's label on the terminal's 12px", () => {
-    expect(read("surfaces/RightPanel.tsx")).toContain("border-b border-border pr-3 pl-2");
+    expect(read("surfaces/RightPanel.tsx")).toContain("border-b border-border px-3");
     // The line variant zeroes the list's padding; 8px on that variant plus the trigger's 4px is 12.
     expect(read("chrome/DockBar.tsx")).toContain("data-[variant=line]:px-2");
     expect(read("components/ui/tabs.tsx")).toContain("group-data-[variant=line]/tabs-list:px-1");

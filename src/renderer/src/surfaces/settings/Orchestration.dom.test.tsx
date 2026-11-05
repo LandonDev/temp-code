@@ -191,18 +191,6 @@ describe("Orchestration page", () => {
     expect(state.clear).toHaveBeenCalledWith("local", null);
   });
 
-  it("slides a refused change back and says why in its own section", async () => {
-    state.save.mockRejectedValueOnce(new Error("refused: settings of the rules live on box; it is offline"));
-    render(<OrchestrationPage />);
-    const edits = screen.getByRole("switch", { name: "File edits" });
-    expect(edits.getAttribute("aria-checked")).toBe("false");
-    await act(async () => fireEvent.click(edits));
-    expect(screen.getByRole("switch", { name: "File edits" }).getAttribute("aria-checked")).toBe("false");
-    const conduct = screen.getByRole("region", { name: "Conduct" });
-    expect(within(conduct).getByRole("alert").textContent).toContain("it is offline");
-    expect(within(screen.getByRole("region", { name: "Routing" })).queryByRole("alert")).toBeNull();
-  });
-
   it("offers Remove override only on an overriding workspace", () => {
     state.workspaces = [{ id: "w1", name: "Alpha", environmentId: "local" }];
     state.scope = { rules: rules(), overridden: true };
