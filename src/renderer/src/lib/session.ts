@@ -605,6 +605,44 @@ export function sameSessionChrome(a: Session, b: Session): boolean {
   return lastUserBlock(a.blocks) === lastUserBlock(b.blocks);
 }
 
+/**
+ * The session fields the composer draws or hands on: ThreadComposer, its
+ * bar, its cards and the gesture's preconnect read these and no other
+ * (threadChat.composer.dom.test.tsx renders it under a proxy that fails on
+ * any other read). A meta push that moves only the rest (a master's
+ * activity, statusDetail, lastEventAt, activityKind or background as its
+ * batch moves) keeps the composer's session, so the composer skips it.
+ */
+export const COMPOSER_FIELDS = [
+  "id",
+  "environmentId",
+  "harness",
+  "model",
+  "modelSettings",
+  "runtimeMode",
+  "cwd",
+  "worktreeCwd",
+  "projectId",
+  "context",
+  "composerSeed",
+  "inboxCard",
+  "noteCard",
+  "handoffCard",
+  "busy",
+  "status",
+  "parentId",
+  "threadType",
+  "draftMaster",
+  "draftTitle",
+] as const satisfies readonly (keyof Session)[];
+
+/** Two sessions the composer draws alike (COMPOSER_FIELDS). */
+export function sameComposerChrome(a: Session, b: Session): boolean {
+  if (a === b) return true;
+  for (const key of COMPOSER_FIELDS) if (a[key] !== b[key]) return false;
+  return true;
+}
+
 function lastUserBlock(blocks: readonly Block[]): Block | undefined {
   for (let i = blocks.length - 1; i >= 0; i--) if (blocks[i]!.role === "user") return blocks[i];
   return undefined;

@@ -99,11 +99,11 @@ import { MasterCheck } from './MasterCheck'
 import { DraftTitleField } from './DraftTitleField'
 import { useSlashCommands } from '../lib/tcserver/slashCommands'
 import { readCopiedMessage } from '../lib/copyMessage'
-import { sessionStore, useSessionMeta, useSessionMetasWhen } from '../lib/tcserver/store'
+import { sessionStore, useSessionMetaValue, useSessionMetasWhen } from '../lib/tcserver/store'
 import { threadToken } from '../lib/threadMentions'
 import { tune as tuneSession } from '../lib/tcserver/commands'
 import { nativeModelId } from '../lib/models'
-import type { ThreadType } from '../lib/tcserver/types'
+import type { SessionMeta, ThreadType } from '../lib/tcserver/types'
 import { useProjects } from '../lib/tcserver/workspaces'
 
 type Props = {
@@ -168,6 +168,9 @@ type Props = {
 
 /** Quiet time after the last keystroke before a remembered draft is written. */
 const DRAFT_SAVE_DELAY_MS = 300
+
+const metaEnvironment = (meta: SessionMeta): string => meta.environmentId
+const metaProvider = (meta: SessionMeta): string => meta.provider
 
 export function Composer({
   enabled = true,
@@ -268,7 +271,10 @@ export function Composer({
   const commandOpen = live?.mode === 'command'
   const mentionOpen = live?.mode === 'file'
   const metas = useSessionMetasWhen(!!live)
-  const sessionMeta = useSessionMeta(sessionId)
+  // Three values of the thread's meta, each a primitive: a meta push that moves anything else renders nothing here.
+  const metaEnvironmentId = useSessionMetaValue(sessionId, metaEnvironment)
+  const threadProvider = useSessionMetaValue(sessionId, metaProvider)
+  const compactable = useSessionMetaValue(sessionId, canCompact) ?? false
   const draft = useDraftRow(sessionId, shell)
   // A draft's first send remounts the composer in the docked footer (the
   // empty screen and the thread's view are different trees). The new one
@@ -290,7 +296,7 @@ export function Composer({
   }, [arrival, reduce])
   const rowOpen = draft || (!!arrival && !rowFolded)
   const projects = useProjects()
-  const environmentId = (sessionId ? sessionStore.environmentOf(sessionId) : undefined) ?? sessionMeta?.environmentId ?? projects.find((p) => p.id === projectId)?.environmentId ?? environmentOfCwd(executionCwd) ?? registry.primary().environmentId
+  const environmentId = (sessionId ? sessionStore.environmentOf(sessionId) : undefined) ?? metaEnvironmentId ?? projects.find((p) => p.id === projectId)?.environmentId ?? environmentOfCwd(executionCwd) ?? registry.primary().environmentId
   const commands = useSlashCommands(environmentId, harness, executionCwd, commandOpen)
   const attachmentsSupported = harnessSupportsAttachments(harness)
   const commandsByName = useMemo(
@@ -400,7 +406,6 @@ export function Composer({
     onModelChange(nextHarness, nextModel)
     retuneAfterPick.current = !!sessionId
   }
-  const threadProvider = sessionMeta?.provider
   useEffect(() => {
     if (!retuneAfterPick.current || !sessionId) return
     retuneAfterPick.current = false
@@ -1012,7 +1017,7 @@ export function Composer({
                   usage={context}
                   busy={busy}
                   compacting={compacting}
-                  compactable={!!sessionMeta && canCompact(sessionMeta)}
+                  compactable={compactable}
                   onCompact={() => void compactSession(sessionId).catch((err) => console.warn('[context-meter]', err))}
                   finalFocus={fieldTarget}
                 />

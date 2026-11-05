@@ -28,6 +28,7 @@ import { acknowledgeQuoteRequest, type QuoteRequest } from "../lib/quoteDraft";
 import type { RecentProject } from "../lib/recents";
 import type { OpenFileFn } from "../lib/search";
 import {
+  sameComposerChrome,
   sameSessionChrome,
   sessionDisplayTitle,
   sessionWorkCwd,
@@ -136,7 +137,8 @@ type ThreadComposerProps = {
 /** The composer of one thread with everything that rides on it: the Mac
  *  bridge's cards, the message queue, the host's connection line and the
  *  review strip. Memoized: handed the session as `useThreadChat` keeps it
- *  (`sameSessionChrome`), it skips every streamed delta. */
+ *  (`sameComposerChrome`), it skips every streamed delta and every meta push
+ *  that moves only what it does not draw. */
 export const ThreadComposer = memo(function ThreadComposer({
   session,
   actions,
@@ -374,15 +376,17 @@ export function useThreadChat({
   const disarmNewPass = useCallback(() => setNewPassArmed(false), []);
   // The Watching line opens what the thread watches: its subagents, else its background work.
   const openActivity = useCallback(() => rightPanel.open(sessionId, watchSection(sessionStore.metaOf(sessionId)?.background)), [sessionId]);
-  // The composer and the strip read no streamed text: they keep the session
-  // they drew until something else in it changes.
+  // The strip reads no streamed text: it keeps the session it drew until
+  // something else in it changes. The composer keeps it until a field it
+  // draws changes (a busy master's activity moves on every batch push).
   const chrome = useKept(session, sameSessionChrome);
+  const composerSession = useKept(session, sameComposerChrome);
 
   const composerOf = (opts?: ChatOpts) => (
     <>
       <AppshotFlyIn sessionId={sessionId} active={focused && visible} />
       <ThreadComposer
-        session={chrome}
+        session={composerSession}
         actions={actions}
         visible={visible}
         focused={focused && composerFocused}

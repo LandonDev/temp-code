@@ -2555,6 +2555,19 @@ export function useSessionBusy(id: string | null | undefined): boolean {
 const readMetas = (): SessionMeta[] => sessionStore.metas();
 const subscribeMetas = (l: () => void): (() => void) => sessionStore.onMetaChange(l);
 
+/** One value of a session's meta, by a selector that returns a primitive:
+ *  re-renders when that value changes, never for the rest of the meta (a
+ *  busy master's activity moves on every batch push). */
+export function useSessionMetaValue<T extends string | number | boolean | null | undefined>(
+  id: string | null | undefined,
+  read: (meta: SessionMeta) => T,
+): T | undefined {
+  return useSyncExternalStore(subscribeMetas, () => {
+    const meta = id ? sessionStore.metaOf(id) : null;
+    return meta ? read(meta) : undefined;
+  });
+}
+
 /** Every server-known meta as React state, open or not. */
 export function useSessionMetas(): SessionMeta[] {
   return useSyncExternalStore(subscribeMetas, readMetas);
