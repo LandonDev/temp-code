@@ -80,7 +80,7 @@ export function ThreadListPopover({
               {restore ? (
                 <span
                   data-listed-restore
-                  className={`flex items-center gap-1 opacity-0 [grid-area:1/1] ${REVEAL} group-hover/item:opacity-100 group-focus-visible/item:opacity-100`}
+                  className="flex items-center gap-1 opacity-0 [grid-area:1/1] transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/item:opacity-100 group-hover/item:delay-(--delay-hover) group-focus-visible/item:opacity-100 group-focus-visible/item:delay-(--dur-instant) motion-reduce:transition-opacity"
                 >
                   <ArchiveRestore className="size-3.5" />
                   Restore

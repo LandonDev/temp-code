@@ -21,7 +21,7 @@ describe("ThreadListPopover", () => {
     expect(age.className).toContain("tabular-nums");
     // At the row's end, outside the title's column: no second line under the title.
     expect(age.closest('[data-slot="item-content"]')).toBeNull();
-    expect(age.closest('[data-slot="item-actions"]')!.className).toContain("text-[12px]");
+    expect(age.closest('[data-slot="item-actions"]')!.className).toContain("text-xs");
     expect(row("a").querySelector('[data-slot="item-description"]')).toBeNull();
     // A recent row has no Restore, and its age never fades.
     expect(row("a").querySelector("[data-listed-restore]")).toBeNull();
