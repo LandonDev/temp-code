@@ -2161,26 +2161,29 @@ keyboard action. Every animated change has a static cue as well.
   plus 8 ms and the reader at the bottom on every frame. The test server's
   `TC_TEST_NO_HARNESS=1` keeps its seeded threads from booting CLIs (several
   GiB, past the host's per-call cap).
-- **Baseline, 2026-11-05**, on the tree before A4's reveal (iPhone 17 Pro simulator on iOS 27.0, 60 Hz; the
-  Mac's load average 100 to 700 from four agents, so frame times are an
-  upper bound, never a budget):
+- **Baseline, 2026-11-05** (iPhone 17 Pro simulator on iOS 27.0, 60 Hz; the
+  Mac's load average 50 to 700 from four agents, so frame times are an
+  upper bound, never a budget). "Before A4" is the tree with keyed rows
+  (A2) and the old reveal; "after A4" is master with the 100 ms reveal
+  steps and the focused thread's pushes:
 
-  | Proof | `List` (today) | `ScrollView` + `LazyVStack`, same ids |
-  | --- | --- | --- |
-  | transcript, rows made twice on screen | 0 in all four runs (26 to 34 rows; up to 5 made again after scrolling off) | not run |
-  | transcript, scrolled-up offset | held exactly (0 offset changes while 12 rows arrived) | not run |
-  | stream, late frames of ~1,370 | 22, worst 71 ms (most while the 420-line Edit grows, 7 to 11 s) | 25, worst 94 ms |
-  | stream, reader at the bottom | lost at 20 s (the turn's settle) and never back, 203 frames | held (3 frames at 2.8 s) |
-  | scroll, 2,000 rows, late frames | 150 of 2,946, worst 2.0 s, mean 18.8 ms | no report: the main thread sat in text sizing inside the stack's layout for over 10 minutes once the window held every row |
+  | Proof | `List`, before A4 | `ScrollView` + `LazyVStack`, same ids, before A4 | `List`, after A4 |
+  | --- | --- | --- | --- |
+  | transcript, rows made twice on screen | 0 in all four runs (26 to 34 rows; up to 5 made again after scrolling off) | not run | 0 in all four runs (22 to 32 rows) |
+  | transcript, scrolled-up offset | held exactly (no offset change while 12 rows arrived) | not run | held exactly (34 rows arrived) |
+  | stream, late frames of ~1,370 | 22, worst 71 ms (most while the 420-line Edit grows, 7 to 11 s) | 25, worst 94 ms | 4, worst 63 ms |
+  | stream, reader at the bottom | lost at 20 s (the turn's settle) and never back, 203 frames | held (3 frames at 2.8 s) | held on every frame |
+  | scroll, 2,000 rows, late frames | 150 of 2,946, worst 2.0 s, mean 18.8 ms | no report: the main thread sat in text sizing inside the stack's layout for over 10 minutes once the window held every row | 43 of 3,269, worst 39 ms, mean 16.9 ms |
 
-  The transcript stays a `List`. A `LazyVStack` keeps the bottom on size
-  changes, but it cannot lay out a long window, and the window grows a page
-  of 75 at every reach of the top; `List` sizes cells as they come. The
-  identity the counter checks already holds under `List`. What the stream
-  report found is the follow rule's, not the container's: a size change at
-  the settle that passes the 64 pt "at the bottom" slack clears `atBottom`
-  before `pinTail` runs, so nothing pins again; the follow slice fixes it
-  and the stream set's unpinned check proves it.
+  The transcript stays a `List`. A `LazyVStack` kept the bottom where the
+  old `List` lost it, but it could not lay out a long window, and the
+  window grows a page of 75 at every reach of the top; `List` sizes cells
+  as they come. The identity the counter checks holds under `List`, and
+  after A4 the reader stays pinned through the stream's settle (the reveal
+  drains instead of landing the rest of the text in one step past the
+  64 pt "at the bottom" slack). The late frames left are the stream's
+  growing Edit and one at its end; at 120 Hz on a quiet Mac they are the
+  next thing the stream set measures.
 
 ## Push, the Live Activity and the Dynamic Island
 
