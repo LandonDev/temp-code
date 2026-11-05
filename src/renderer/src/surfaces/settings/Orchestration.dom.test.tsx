@@ -36,6 +36,7 @@ const { OrchestrationPage } = await import("./Orchestration");
 const shared = await import("@server/shared/rules");
 const catalogModule = await import("@server/shared/catalog");
 const { OrchestrationRulesEditor } = await import("../../chrome/OrchestrationRules");
+const { ConfirmHost } = await import("../../chrome/ConfirmDialog");
 const { openOrchestrationSettings, takeRequestedRulesFocus } = await import("../../lib/tcserver/rules");
 const { OPEN_SETTINGS_EVENT } = await import("../../lib/monaco/debugTab");
 
@@ -168,12 +169,38 @@ describe("Orchestration page", () => {
     expect(screen.getByText("May work directly whenever that is faster.")).toBeTruthy();
   });
 
-  it("offers Reset on the global rules", async () => {
+  it("offers Reset on the global rules only while they differ from the defaults", () => {
+    state.scope = { rules: rules(), overridden: false };
     render(<OrchestrationPage />);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Reset" }));
-    });
+    expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
+  });
+
+  it("asks before the global Reset, which wipes every rule, and resets only on the verb", async () => {
+    state.scope = { rules: rules(), overridden: true };
+    render(
+      <>
+        <OrchestrationPage />
+        <ConfirmHost />
+      </>,
+    );
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Reset" })));
+    const confirm = await screen.findByRole("alertdialog");
+    expect(confirm.textContent).toContain("Reset rules");
+    expect(state.clear).not.toHaveBeenCalled();
+    await act(async () => fireEvent.click(within(confirm).getByRole("button", { name: "Reset rules" })));
     expect(state.clear).toHaveBeenCalledWith("local", null);
+  });
+
+  it("slides a refused change back and says why in its own section", async () => {
+    state.save.mockRejectedValueOnce(new Error("refused: settings of the rules live on box; it is offline"));
+    render(<OrchestrationPage />);
+    const edits = screen.getByRole("switch", { name: "File edits" });
+    expect(edits.getAttribute("aria-checked")).toBe("false");
+    await act(async () => fireEvent.click(edits));
+    expect(screen.getByRole("switch", { name: "File edits" }).getAttribute("aria-checked")).toBe("false");
+    const conduct = screen.getByRole("region", { name: "Conduct" });
+    expect(within(conduct).getByRole("alert").textContent).toContain("it is offline");
+    expect(within(screen.getByRole("region", { name: "Routing" })).queryByRole("alert")).toBeNull();
   });
 
   it("offers Remove override only on an overriding workspace", () => {

@@ -202,6 +202,17 @@ describe("rulesStore", () => {
     expect(link.stored.get("w1")?.conduct.delegation).toBe("free");
   });
 
+  it("a refused save puts the scope back as it was and rejects with the reason", async () => {
+    await rulesStore.load("local", null);
+    const before = rulesStore.scope("local", null);
+    link.refuseSet = "refused: settings of the rules live on box; it is offline";
+    const next = { ...DEFAULT_RULES, conduct: { ...DEFAULT_RULES.conduct, selfEdit: true } };
+    const save = rulesStore.save("local", null, next);
+    expect(rulesStore.scope("local", null)?.rules.conduct.selfEdit).toBe(true);
+    await expect(save).rejects.toThrow("it is offline");
+    expect(rulesStore.scope("local", null)).toBe(before);
+  });
+
   it("a global save invalidates workspaces that inherit, not overrides", async () => {
     link.stored.set("w2", { ...DEFAULT_RULES, conduct: { ...DEFAULT_RULES.conduct, maxParallel: 2 } });
     await Promise.all([rulesStore.load("local", "w1"), rulesStore.load("local", "w2")]);

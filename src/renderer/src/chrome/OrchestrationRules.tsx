@@ -5,6 +5,7 @@ import { loadToast } from "../components/ui/toaster";
 import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import { ChevronRight, Plus } from "./icons";
 import { HarnessIcon } from "./HarnessIcon";
+import { useConfirm } from "./ConfirmDialog";
 import { ChoiceSelect, type Choice } from "../components/choice-select";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
 import { ItemButton, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
@@ -119,6 +120,8 @@ export function RulesSkeleton({ workspaceId, error, onRetry }: { workspaceId: st
   );
 }
 
+/** The editor's sections, each of which says its own refused save. */
+
 /** On a workspace's page the sections sit among others, so they name what they are about. */
 const titlesFor = (workspaceId: string | null) =>
   workspaceId
@@ -167,15 +170,29 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
     rulesStore.save(environmentId, workspaceId, next).catch(saveFailed);
   const patchConduct = (patch: Partial<OrchestrationRules["conduct"]>) =>
     push({ ...rules, conduct: { ...rules.conduct, ...patch } });
-  const clearScope = () => void rulesStore.clear(environmentId, workspaceId).catch(saveFailed);
+  const confirm = useConfirm();
+  // The global Reset wipes every routing rule and model policy too: it asks first.
+  const clearScope = async () => {
+    if (
+      workspaceId === null &&
+      !(await confirm({
+        title: "Reset rules",
+        body: "Every setting, model policy and routing rule goes back to the defaults.",
+        action: "Reset rules",
+        danger: true,
+      }))
+    )
+      return;
+    void rulesStore.clear(environmentId, workspaceId).catch(saveFailed);
+  };
   const saveRule = (rule: RoutingRule, position?: number) => {
     const next = upsertRoutingRule(rules, rule);
     const at = next.routing.findIndex((r) => r.id === rule.id);
-    push(position === undefined ? next : moveRoutingRule(next, at, position));
+    void push(position === undefined ? next : moveRoutingRule(next, at, position));
     setEditing(null);
   };
   const deleteRule = (id: string) => {
-    push(removeRoutingRule(rules, id));
+    void push(removeRoutingRule(rules, id));
     setEditing(null);
   };
 
@@ -194,9 +211,10 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
     ) : (
       (scopeState ?? note)
     );
+  // Only while the scope holds its own copy: the defaults have nothing to reset.
   const conductAction =
-    !workspaceId || overridden ? (
-      <Button variant="ghost" size="sm" onClick={clearScope} disabled={blocked}>
+    overridden ? (
+      <Button variant="ghost" size="sm" onClick={() => void clearScope()} disabled={blocked}>
         {workspaceId ? "Remove override" : "Reset"}
       </Button>
     ) : null;
