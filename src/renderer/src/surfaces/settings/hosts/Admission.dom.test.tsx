@@ -85,6 +85,27 @@ describe("HostAdmission", () => {
     expect(container.innerHTML).toBe("");
   });
 
+  it("a failed poll keeps the row as it last read, never takes it away", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      answers.set("local:admission.get", async () => state());
+      const { container } = render(<HostAdmission environmentId="local" />);
+      await flush();
+      expect(facts(container)).toEqual([["118 of 120 running", "7 queued"]]);
+      answers.set("local:admission.get", async () => {
+        throw new Error("The host did not answer");
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+      expect(screen.getByText("Running threads")).toBeTruthy();
+      expect(facts(container)).toEqual([["118 of 120 running", "7 queued"]]);
+      expect(requests.filter((r) => r.method === "admission.get").length).toBeGreaterThan(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("pins the cap from the field, and Use default goes back", async () => {
     answers.set("local:admission.get", async () => state());
     answers.set("local:admission.set", async () => state({ cap: 60, pinned: 60 }));

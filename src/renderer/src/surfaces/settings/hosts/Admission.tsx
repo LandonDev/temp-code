@@ -35,7 +35,9 @@ export function HostAdmission({ environmentId }: { environmentId: string }) {
         const next = await registry.link(environmentId)!.request<AdmissionState>("admission.get", {});
         if (live) setState(next);
       } catch {
-        if (live) setState("none");
+        // A host that never answered has no row (an older build); a failed
+        // poll after an answer keeps the row as it last read.
+        if (live) setState((current) => (current === null ? "none" : current));
       }
     };
     void load();

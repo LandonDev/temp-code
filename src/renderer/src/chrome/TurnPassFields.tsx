@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   TURN_PASS_OFF,
   passEnabled,
@@ -113,23 +113,37 @@ function linkOrNull(workspaceId: string): Link | null {
 /** Settings-page group for one workspace's pass; saves on every change.
  *  No answer from the host is the section's error and Retry. */
 export function TurnPassEditor({ workspaceId }: { workspaceId: string }) {
+  // The value the host last confirmed (its answer to the read, or a save it
+  // took), never an optimistic one still in flight; and the newest change.
+  const confirmed = useRef<TurnPass | null>(null);
+  const latest = useRef(0);
   const read = useHostRead(
     linkOrNull(workspaceId),
-    async () => (await loadTurnPass(workspaceId)) ?? TURN_PASS_OFF,
+    async () => {
+      const pass = (await loadTurnPass(workspaceId)) ?? TURN_PASS_OFF;
+      confirmed.current = pass;
+      return pass;
+    },
     workspaceId,
   );
   const value = read.value;
   const [error, setError] = useState<string | null>(null);
 
   const change = (next: TurnPass) => {
-    // A refusal puts back the value the host still holds, under its red line.
-    const held = value;
+    const n = ++latest.current;
     read.set(next);
     setError(null);
-    saveTurnPass(workspaceId, next).catch((err) => {
-      if (held) read.set(held);
-      setError(err instanceof Error ? err.message : String(err));
-    });
+    saveTurnPass(workspaceId, next).then(
+      () => {
+        confirmed.current = next;
+      },
+      (err) => {
+        // A refusal puts back what the host holds, under its red line, unless
+        // a newer change is on its way (its own answer decides then).
+        if (n === latest.current && confirmed.current) read.set(confirmed.current);
+        setError(err instanceof Error ? err.message : String(err));
+      },
+    );
   };
 
   return (
