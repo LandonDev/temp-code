@@ -2587,7 +2587,14 @@ proof and the sizing rules; the pieces, by name:
   done, then swaps to the settled parse, which equals
   `streamingDocument(settled: true)` (MarkdownSettleTests); the scenario
   runner's reveal, fade and drain checks live in
-  `Rendering/TranscriptScenarioReveal.swift`; `Thread/ActivityPhaseRow.swift` the phases, their rail,
+  `Rendering/TranscriptScenarioReveal.swift`; `FollowRule.atBottom`
+  decides the reader's place (only their own scroll or a deliberate scroll
+  to a row leaves the bottom; growth under them pins), pins coalesce onto
+  the next main-queue turn, and TranscriptView's DEBUG `TranscriptTrace`
+  notes every scroll write and every offset drop that stays two frames
+  (`write`, `jumpUp` in layout-events.json), which the transcript set
+  fails on; the test server's `POST /scenario` gives each play its own ids
+  (`uniqueScenarioIds`); `Thread/ActivityPhaseRow.swift` the phases, their rail,
   the thinking steps and the thinking tail; `ShimmerText`
   (TranscriptStyles.swift) is the desktop's shimmer. The test server's
   `POST /stream` plays a bursty turn with a growing Edit and live edits.
