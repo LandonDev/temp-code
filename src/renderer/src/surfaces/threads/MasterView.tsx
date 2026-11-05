@@ -21,7 +21,8 @@ import { addMenuItems, adoptCandidates, boardMenuItems, doneRows, pairedProjectI
 import { ChildPane } from "./master/ChildPane";
 import { MasterRow, type RowMenu } from "./master/MasterRow";
 import { RowBoundary } from "./master/RowBoundary";
-import { taskBar } from "./master/rowBody";
+import { taskProgress } from "./master/rowBody";
+import { taskFoldChoice, taskFoldKey, taskFoldOpen } from "./master/taskFold";
 import { boardTaskLabels, taskBarStyle, useTaskBarWidth } from "./master/taskBarWidth";
 import { NewPassDialog } from "./master/NewPassDialog";
 import { AgentSummaryContext } from "./master/agentSummary";
@@ -29,6 +30,7 @@ import {
   archiveBatch,
   BoardDigestContext,
   doneTally,
+  groupOf,
   rowHost,
   rowModels,
   setBatchRules,
@@ -87,11 +89,14 @@ type BoardItem = { kind: "header"; key: string; group: BoardGroup } | { kind: "r
 
 /** A section heading is 32px, its words on the last 16px with 4px under
  *  them; the first one 24px. A row is 48px (MasterRow), 64px with its task
- *  bar's line; rows sit flush. */
+ *  bar's line, and 20px a task more with its list open (the compact
+ *  TaskRows, 2px above and under); rows sit flush. */
 const HEADER_PX = 32;
 const FIRST_HEADER_PX = 24;
 const ROW_PX = 48;
 const BAR_LINE_PX = 16;
+const TASK_ROW_PX = 20;
+const TASK_FOLD_PAD_PX = 4;
 
 /** Row sizes come from the ResizeObserver (WorkspaceSessions' rule): a row
  *  mounting while the list scrolls keeps its cached or estimated size
@@ -235,15 +240,21 @@ function MasterBoardView(props: ThreadViewProps) {
       ]),
     [layout],
   );
-  // A row with its task bar is a line taller; the measure follows its fold.
+  // A row with its task bar is a line taller, and its open list a row a
+  // task (open while the thread is live, MasterRow); the measure follows the fold.
   const estimateSize = useCallback(
     (i: number) => {
       const item = items[i];
       if (item?.kind !== "row") return i === 0 ? FIRST_HEADER_PX : HEADER_PX;
       const meta = sessionStore.metaOf(item.row.id) ?? item.row.fallback;
-      return meta && taskBar(meta, digests.get(item.row.id)) ? ROW_PX + BAR_LINE_PX : ROW_PX;
+      const progress = meta ? taskProgress(meta, digests.get(item.row.id)) : null;
+      if (!meta || !progress) return ROW_PX;
+      const key = taskFoldKey(session.id, item.row.key);
+      const live = groupOf(meta) !== "done";
+      if (!live && taskFoldChoice(key) !== true) return ROW_PX;
+      return ROW_PX + BAR_LINE_PX + (taskFoldOpen(key, live) ? progress.total * TASK_ROW_PX + TASK_FOLD_PAD_PX : 0);
     },
-    [items, digests],
+    [items, digests, session.id],
   );
   // Every bar on the board is one width: the folded list's widest row over
   // all the board's task lists, re-measured only when that set of labels changes.

@@ -1,4 +1,4 @@
-import { memo, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { memo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { Button } from "../../../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../components/ui/collapsible";
 import { Item } from "../../../components/ui/item";
@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/
 import { ChevronRight, MessageSquare, MoreHorizontal, Pause, Play } from "../../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../../chrome/menuRows";
 import { cn } from "../../../lib/cn";
+import { useFoldHold } from "../../../lib/foldHold";
 import { useKept } from "../../../lib/keptValue";
 import * as commands from "../../../lib/tcserver/commands";
 import { useSessionMeta } from "../../../lib/tcserver/store";
@@ -21,7 +22,7 @@ import { ModelMark, modelMarkName, modelMarkTip, storeHostGlyph, type HostGlyphO
 import { tasksOf } from "../implementationBoard";
 import { TypeGlyph } from "../TypeGlyph";
 import { agentTail, useRowAgents, type AgentLine, type RowAgents } from "./agentSummary";
-import { rowStatus, taskBar, taskList, taskTally } from "./rowBody";
+import { rowStatus, taskList, taskProgress, taskTally } from "./rowBody";
 import { useTaskFold } from "./taskFold";
 import { GROUP_LABEL, groupOf, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, type RowHost } from "./useMasterModel";
 
@@ -41,8 +42,14 @@ import { GROUP_LABEL, groupOf, typeWord, useBoardDigest, useRowMeta, type BoardR
  * the end tally (16px, the row 64px; a finished one is 48px again, its
  * tally back at the end, or none once every task is ticked): the task bar from the start of the title's column, foreground while the
  * thread works and muted otherwise, then the tally and a chevron; the
- * whole line folds the task list open under it (compact TaskRows), closed
- * by default and remembered per row for the window's life (taskFold.ts).
+ * whole line folds the task list open under it (compact TaskRows). The
+ * list opens on its own while the thread is live and folds on its own
+ * once it finishes: FOLD_HOLD_MS after the move to Done, so the last tick
+ * shows, the list and the bar line fold away together on the layout
+ * spring (`.collapsible-auto`), once, at that transition. The person's
+ * hand wins both ways and is remembered per row for the window's life
+ * (taskFold.ts): a list closed while working stays closed, one opened
+ * while it folds away stays open with its bar line.
  * Every bar on the board is one width, the folded list's widest row over
  * all the board's task lists (taskBarWidth.ts), and the tally and chevron
  * follow it, so the line reads bar, tally, chevron from the column's start.
@@ -123,7 +130,7 @@ export const MasterRow = memo(function MasterRow({
   const plan = useSessionMeta(rowRef.planId);
   const digest = useBoardDigest(rowRef.id);
   const agents = useRowAgents(rowRef.id);
-  const [tasksOpen, setTasksOpen] = useTaskFold(masterId, rowRef.key);
+  const [tasksChoice, setTasksChoice] = useTaskFold(masterId, rowRef.key);
   if (!meta) return null;
   return (
     <ShownRow
@@ -138,8 +145,8 @@ export const MasterRow = memo(function MasterRow({
       hostGlyph={hostGlyph}
       onOpen={onOpen}
       menu={menu}
-      tasksOpen={tasksOpen}
-      onTasksOpenChange={setTasksOpen}
+      tasksChoice={tasksChoice}
+      onTasksChoice={setTasksChoice}
     />
   );
 });
@@ -164,8 +171,8 @@ export function MasterRowView({
   hostGlyph,
   onOpen,
   menu,
-  tasksOpen = false,
-  onTasksOpenChange,
+  tasksChoice,
+  onTasksChoice,
 }: {
   meta: SessionMeta;
   /** The plan's title when the row is a plan and the build it started. */
@@ -179,20 +186,43 @@ export function MasterRowView({
   hostGlyph: HostGlyphOf;
   onOpen: (id: string, focus?: boolean) => void;
   menu: RowMenu;
-  /** The task list's fold under the bar line (bar rows only). */
-  tasksOpen?: boolean;
-  onTasksOpenChange?: (open: boolean) => void;
+  /** The person's choice for the task list under the bar line (bar rows
+   *  only); undefined follows the default, open while the thread is live. */
+  tasksChoice?: boolean;
+  /** Records the person's choice; undefined when it is back at the default. */
+  onTasksChoice?: (choice: boolean | undefined) => void;
 }) {
   const title = planTitle || meta.title;
   const { state, detail } = rowStatus(meta, digest, landed, blocked);
   // The word the glyph stands for and the detail, as one name for readers.
   const statusLabel = plainStatus(STATUS_WORD[state], detail);
-  const bar = taskBar(meta, digest);
   const group = groupOf(meta);
+  // The task list opens on its own while the thread is live and holds a
+  // beat once it reaches Done, then folds with its bar line, unless the
+  // person's hand decided otherwise. The fold rides the auto motion until
+  // the person moves it, and again from the thread's next change of state.
+  const live = group !== "done";
+  const held = useFoldHold(live);
+  const progress = taskProgress(meta, digest);
+  const barShown = progress !== null && (held || tasksChoice === true);
+  const tasksOpen = tasksChoice ?? held;
+  const [hand, setHand] = useState(false);
+  const [handLive, setHandLive] = useState(live);
+  if (handLive !== live) {
+    setHandLive(live);
+    setHand(false);
+  }
+  // A click back to the default clears the choice: the thread's default,
+  // and the one on screen during the beat (closing then is kept, opening
+  // then is the person's open on a finished row).
+  const onTasksOpenChange = (next: boolean) => {
+    setHand(true);
+    onTasksChoice?.(next === live && next === held ? undefined : next);
+  };
   // A bar row says its tally on the bar's line alone; a finished row with
   // every task ticked says none (Done already says it).
   const tasks = taskList(digest);
-  const tally = bar || (group === "done" && tasks.every((t) => t.status === "completed")) ? null : taskTally(tasks);
+  const tally = barShown || (group === "done" && tasks.every((t) => t.status === "completed")) ? null : taskTally(tasks);
   // The section heading says the word; a state it does not name says its own.
   const ownWord = STATUS_WORD[state] !== GROUP_LABEL[group];
   const quiet = group === "done" || group === "queued";
@@ -281,10 +311,14 @@ export function MasterRowView({
         ) : null}
       </span>
 
-      {bar ? (
+      {progress ? (
         <>
           <span />
-          <TaskBar bar={bar} working={state === "working"} todos={taskList(digest)} open={tasksOpen} onOpenChange={onTasksOpenChange} />
+          <Collapsible open={barShown} className="min-w-0">
+            <CollapsibleContent className="collapsible-auto">
+              <TaskBar bar={progress} working={state === "working"} todos={tasks} open={tasksOpen} auto={!hand} onOpenChange={onTasksOpenChange} />
+            </CollapsibleContent>
+          </Collapsible>
         </>
       ) : null}
 
@@ -338,20 +372,25 @@ export const TASK_FOLD_CLASS = "w-[min(var(--task-bar,160px),calc(100cqw-64px))]
 /** The bar line and the task list it folds open: the 4px bar (foreground
  *  while the thread works, muted in every other state, so it never
  *  competes with an amber or red detail), the tally and a chevron, the
- *  whole line one button. The fold is the standard Fold row (DESIGN.md);
- *  the bar's fill is Progress's own and moves only when a task ticks. Its
- *  click and keys stay off the row, which would open the thread. */
+ *  whole line one button. The list opening or folding on its own rides
+ *  the fold that opens on its own (`.collapsible-auto`), a hand's move the
+ *  standard Fold row (DESIGN.md); the bar's fill is Progress's own and
+ *  moves only when a task ticks. Its click and keys stay off the row,
+ *  which would open the thread. */
 function TaskBar({
   bar,
   working,
   todos,
   open,
+  auto,
   onOpenChange,
 }: {
   bar: { done: number; total: number };
   working: boolean;
   todos: ReturnType<typeof taskList>;
   open: boolean;
+  /** The fold follows the thread rather than the person's last click. */
+  auto: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
   return (
@@ -368,7 +407,7 @@ function TaskBar({
         </span>
         <ChevronRight aria-hidden className={cn("size-3 shrink-0 text-muted-foreground transition-[rotate] duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none", open && "rotate-90")} />
       </CollapsibleTrigger>
-      <CollapsibleContent data-task-fold>
+      <CollapsibleContent data-task-fold data-auto={auto || undefined} className={auto ? "collapsible-auto" : undefined}>
         <TaskRows size="compact" tasks={tasksOf(todos, 0, working)} className={TASK_FOLD_CLASS} />
       </CollapsibleContent>
     </Collapsible>

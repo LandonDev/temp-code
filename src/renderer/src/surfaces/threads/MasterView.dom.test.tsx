@@ -665,7 +665,7 @@ describe("the master view", () => {
     expect(headers().map((h) => h.getAttribute("data-group-header"))).toEqual(["running"]);
   });
 
-  it("an implementation row says the task in hand on line two and 1/3 on its task bar, its list folded", async () => {
+  it("an implementation row says the task in hand on line two and 1/3 on its task bar, its list open while it works", async () => {
     seed([
       meta({ id: "c-impl", title: "Home screen", status: "running", activity: "Running bun" }),
       meta({ id: "c-chat", title: "A question", status: "running", threadType: "chat", activity: "Reading" }),
@@ -685,8 +685,8 @@ describe("the master view", () => {
     expect(impl.querySelector("[data-bar-tally]")?.textContent).toBe("1/3");
     // A reader hears the state and its detail, not the state alone.
     expect(screen.getByRole("button", { name: /Working: Write the view/ })).toBe(impl);
-    expect(within(impl).getByRole("button", { name: "Tasks: 1 of 3 done" }).getAttribute("aria-expanded")).toBe("false");
-    expect(within(impl).queryByRole("list")).toBeNull();
+    expect(within(impl).getByRole("button", { name: "Tasks: 1 of 3 done" }).getAttribute("aria-expanded")).toBe("true");
+    expect(within(impl).getAllByRole("listitem")).toHaveLength(3);
     // A chat keeps its activity; the tally still ends its line.
     const chat = screen.getByRole("button", { name: /A question/ });
     expect(chat.querySelector("[data-row-status]")?.textContent).toBe("Reading1/3");
@@ -867,7 +867,8 @@ describe("the master view", () => {
     const digest: BoardDigest = { todos: [{ content: "Write the view", status: "completed" }, { content: "Tests", status: "in_progress" }] };
     act(() => link.push({ push: "board", masterId: "m", sessionId: "c-impl", digest } as ServerPush));
     expect(within(impl()).getByText("1/2")).toBeTruthy();
-    expect(within(impl()).getByText("Tests")).toBeTruthy();
+    // Line two says the task in hand; the open list names it too.
+    expect(impl().querySelector("[data-row-status]")?.textContent).toBe("Tests");
     // Only that row rendered again; another master's push changes nothing.
     expect(new Set(rowReads.filter(Boolean))).toEqual(new Set(["c-impl"]));
     act(() => link.push({ push: "board", masterId: "other", sessionId: "c-impl", digest: {} } as ServerPush));

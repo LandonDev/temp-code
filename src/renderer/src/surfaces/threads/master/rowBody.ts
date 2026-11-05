@@ -47,14 +47,22 @@ export function taskTally(tasks: readonly TodoItem[]): string | null {
  *  through a task list toward a branch. */
 export const BAR_TYPES: ReadonlySet<string> = new Set(["implementation", "orchestration"]);
 
+/** An implementation or orchestration row's tasks, done of total, once it
+ *  has a task list, whatever its state; null for every other row. The bar
+ *  line draws it while the thread is live, and while its list folds away
+ *  (MasterRow); `taskBar` is the live rule alone. */
+export function taskProgress(meta: Pick<SessionMeta, "threadType">, digest: Pick<BoardDigest, "todos">): { done: number; total: number } | null {
+  const tasks = taskList(digest);
+  if (tasks.length === 0 || !BAR_TYPES.has(meta.threadType ?? "")) return null;
+  return { done: tasks.filter((t) => t.status === "completed").length, total: tasks.length };
+}
+
 /** The bar line's share, done of total: an implementation or orchestration
  *  row once it has a task list, until it sits under Done (finished, landed
  *  or stopped: groupOf); null for every other row, and for a finished one
  *  (they keep the tally at the end of line two). */
 export function taskBar(meta: Pick<SessionMeta, "threadType"> & GroupedMeta, digest: Pick<BoardDigest, "todos">): { done: number; total: number } | null {
-  const tasks = taskList(digest);
-  if (tasks.length === 0 || !BAR_TYPES.has(meta.threadType ?? "") || groupOf(meta) === "done") return null;
-  return { done: tasks.filter((t) => t.status === "completed").length, total: tasks.length };
+  return groupOf(meta) === "done" ? null : taskProgress(meta, digest);
 }
 
 /** A row's state and its detail. An idle thread on the board has had a

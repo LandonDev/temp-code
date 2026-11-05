@@ -39,7 +39,7 @@ const base = (over: Partial<SessionMeta>): SessionMeta =>
     ...over,
   }) as SessionMeta;
 
-export type FixtureRow = { meta: SessionMeta; digest: BoardDigest; agents: RowAgents | null; landed: boolean; tasksOpen?: boolean };
+export type FixtureRow = { meta: SessionMeta; digest: BoardDigest; agents: RowAgents | null; landed: boolean; tasksChoice?: boolean };
 
 const todos = (inHand: number, total: number, names: string[]) =>
   names.slice(0, total).map((content, i) => ({ content, status: i < inHand ? "completed" : i === inHand ? "in_progress" : "pending" }) as const);
@@ -94,9 +94,10 @@ export const FIXTURE_ROWS: FixtureRow[] = [
 const SEVEN = ["Read the brief", "Rail rows", "Section headings", "Write the project header rows", "Tests", "Docs", "Look at it at 420 and 640px"];
 
 /** The task bar's cases (board.preview.tsx `TaskBarPreview`): an
- *  implementation row with no tasks yet (no bar), 3/7 working folded and
- *  open, 5/7 paused (the muted bar), a finished row with every task ticked
- *  (no bar, no tally) and one stopped at 5/7 (no bar, 5/7 at the end). */
+ *  implementation row with no tasks yet (no bar), 3/7 working folded by
+ *  hand and open by default, 5/7 paused (the muted bar, open), a finished
+ *  row with every task ticked (no bar, no tally) and one stopped at 5/7
+ *  (no bar, 5/7 at the end). */
 export const TASK_BAR_ROWS: FixtureRow[] = [
   { meta: base({ id: "fresh", title: "Settings sheet", status: "running", activity: "Reading the brief", createdAt: 1 }), digest: {}, agents: null, landed: false },
   {
@@ -104,22 +105,23 @@ export const TASK_BAR_ROWS: FixtureRow[] = [
     digest: { todos: todos(3, 7, SEVEN) },
     agents: null,
     landed: false,
+    tasksChoice: false,
   },
   {
     meta: base({ id: "headers", title: "Project headers", status: "running", threadType: "orchestration", provider: "codex", model: "gpt-6.1-sol", context1m: false, activity: "Spawning", createdAt: 3 }),
     digest: { todos: todos(3, 7, SEVEN) },
     agents: null,
     landed: false,
-    tasksOpen: true,
   },
   { meta: base({ id: "type", title: "Type scale", status: "paused", activity: "Running bun test", createdAt: 4 }), digest: { todos: todos(5, 7, SEVEN) }, agents: null, landed: false },
-  { meta: base({ id: "tokens", title: "Design tokens", status: "idle", createdAt: 0 }), digest: { todos: todos(7, 7, SEVEN) }, agents: null, landed: true, tasksOpen: true },
+  { meta: base({ id: "tokens", title: "Design tokens", status: "idle", createdAt: 0 }), digest: { todos: todos(7, 7, SEVEN) }, agents: null, landed: true },
   { meta: base({ id: "icons", title: "Icon set", status: "stopped", createdAt: 0 }), digest: { todos: todos(5, 7, SEVEN) }, agents: null, landed: false },
 ];
 
 /** Three implementation rows whose task lists differ in width
  *  (board.preview.tsx `TaskBarWidthPreview`): every bar takes the widest
- *  list's width, the tally follows each bar, and the open list ends there. */
+ *  list's width, the tally follows each bar, and the open list ends there.
+ *  Every one is live, so every list is open. */
 export const TASK_BAR_WIDTH_ROWS: FixtureRow[] = [
   { meta: base({ id: "short", title: "Icons", status: "running", activity: "Editing icons.ts", createdAt: 1 }), digest: { todos: todos(1, 3, ["Read", "Draw", "Docs"]) }, agents: null, landed: false },
   {
@@ -127,14 +129,12 @@ export const TASK_BAR_WIDTH_ROWS: FixtureRow[] = [
     digest: { todos: todos(4, 12, ["Read the brief", "Rail rows", "Section headings", "Host glyph", "Hover actions", "Tests", "Docs", "Fixtures", "Light theme", "Dark theme", "Bundle check", "Land"]) },
     agents: null,
     landed: false,
-    tasksOpen: true,
   },
   {
     meta: base({ id: "long", title: "Project headers", status: "paused", activity: "Running bun test", createdAt: 3 }),
     digest: { todos: todos(2, 5, ["Read the brief", "Write the project header rows with their host glyphs", "Tests", "Docs", "Land"]) },
     agents: null,
     landed: false,
-    tasksOpen: true,
   },
 ];
 

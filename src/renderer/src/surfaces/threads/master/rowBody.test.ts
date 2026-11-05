@@ -3,7 +3,7 @@ import type { TodoItem } from "../../../lib/tcserver/todos";
 import type { BoardDigest } from "@server/shared/contract-batch";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { clockTime } from "../../../lib/duration";
-import { passLine, rowStatus, summaryLine, taskBar, taskInHand, taskTally } from "./rowBody";
+import { passLine, rowStatus, summaryLine, taskBar, taskInHand, taskProgress, taskTally } from "./rowBody";
 
 const todos: TodoItem[] = [
   { content: "Read the brief", status: "completed" },
@@ -53,6 +53,14 @@ describe("the task bar", () => {
       expect(taskBar(m({ status }), { todos: seven(7) })).toBeNull();
       expect(taskBar(m({ status }), { todos: seven(5) })).toBeNull();
     }
+  });
+
+  it("keeps its share under Done for the list folding away (taskProgress), by the same type and task rules", () => {
+    for (const status of ["idle", "done", "stopped", "running"] as const) {
+      expect(taskProgress(m({ status, threadType: "implementation" }), { todos: seven(5) })).toEqual({ done: 5, total: 7 });
+    }
+    expect(taskProgress(m({ threadType: "implementation" }), {})).toBeNull();
+    expect(taskProgress(m({ threadType: "planning" }), { todos: seven(3) })).toBeNull();
   });
 
   it("is null with no tasks yet", () => {

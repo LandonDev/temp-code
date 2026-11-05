@@ -1184,8 +1184,10 @@ brought into view even when it moved section meanwhile.
   measure). Once it sits under Done (finished, landed or stopped:
   `groupOf`) the line goes and the row is 48px again, like every settled
   row: its tally back at the end of line two, or none when every task is
-  ticked, since Done already says so; a fold remembered open stays in
-  taskFold.ts and is simply not drawn. The line, from the column's start:
+  ticked, since Done already says so. A row that finishes on screen holds
+  its open list `FOLD_HOLD_MS` (600ms) so the last tick shows, then the
+  list and the line fold away together on `.collapsible-auto`, once, at
+  that transition; a row that mounts finished draws neither. The line, from the column's start:
   the 4px `Progress` bar, then 8px on the tally (`3/7`, 12px muted, said
   here and nowhere else on the row) and a 12px chevron, one group. Every
   bar on the board is one width, the width the folded list takes: the
@@ -1206,17 +1208,27 @@ brought into view even when it moved section meanwhile.
   spinner stays the row's one moving mark. Line two keeps the task in
   hand, said once, right above the bar. The whole line is one button
   ("Tasks: 3 of 7 done", `aria-expanded`), hover `foreground/5`; its click
-  and keys stay off the row. It folds the task list open under it,
-  closed by default: `TaskRows` at its compact size (20px rows, 12px
+  and keys stay off the row. It folds the task list open under it, open
+  by default while the row is live (Working, Needs you, Queued) and closed
+  under Done: `TaskRows` at its compact size (20px rows, 12px
   labels and marks, each one line cut at the column's edge with the whole
   text on hover; done ticks and strikes, the running task is foreground
   with the cursor, pending muted; no card, header, times or steps). The
-  fold is the standard Fold row (DESIGN.md) and the chevron turns with it.
-  Each row's fold is remembered for the window's life by `<master>:<row
-  key>` (master/taskFold.ts; a plan's row key is the plan's id, so it
-  survives the build starting), through the virtualizer unmounting the
-  row, the child pane and back, and a section change; never across a
-  reload. Planning, chat, research and project-plan rows have no bar.
+  fold the thread moves (open on a new pass, folded at the finish) rides
+  `.collapsible-auto`, the fold that opens on its own; a hand's move
+  rides the standard Fold row (DESIGN.md); the chevron turns with either.
+  The list shows every task, so nothing scrolls inside it; a tick changes
+  no height, and the board's rows follow any height the fold takes
+  through the virtualizer's ResizeObserver (its estimate counts an open
+  list at 20px a task). The person's hand wins both ways and is
+  remembered for the window's life by `<master>:<row key>`
+  (master/taskFold.ts, a choice only where it differs from the default; a
+  plan's row key is the plan's id, so it survives the build starting),
+  through the virtualizer unmounting the row, the child pane and back, and
+  a section change; never across a reload: a list closed while the thread
+  works stays closed through the finish and the next pass, one opened
+  while it folds away stays open with its line, and a click back to the
+  default clears the choice. Planning, chat, research and project-plan rows have no bar.
   A row of a host whose link is not open sits under the offline
   tint (`opacity-50`, `data-host-offline`): its row is the launch
   mirror's and lifts when the host is back.

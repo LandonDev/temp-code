@@ -48,8 +48,8 @@ export function BoardPreview({ rows = FIXTURE_ROWS, foot = true }: { rows?: read
                 hostGlyph={hostGlyph}
                 onOpen={noop}
                 menu={{ rowsFor: () => [], onPick: noop, onOpenChange: noop }}
-                tasksOpen={row.tasksOpen}
-                onTasksOpenChange={noop}
+                tasksChoice={row.tasksChoice}
+                onTasksChoice={noop}
               />
             ))}
           </div>

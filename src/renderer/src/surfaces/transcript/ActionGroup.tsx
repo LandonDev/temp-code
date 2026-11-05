@@ -1,5 +1,5 @@
 // A7 (turn structure): one run of actions, a line that opens onto its rows.
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useReducedMotion } from "motion/react";
 import { Bot, ChevronRight, Sparkles, type IconComponent } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
@@ -9,7 +9,8 @@ import type { Block } from "../../lib/session";
 import type { OpenFileFn } from "../../lib/search";
 import { useLiveEdits } from "../../lib/tcserver/store";
 import { useTitlesOf } from "../../lib/threadMentions";
-import { DUR, FOLD_HOLD_MS, SPRING_LAYOUT_CSS } from "../../lib/ease";
+import { DUR, SPRING_LAYOUT_CSS } from "../../lib/ease";
+import { useFoldHold } from "../../lib/foldHold";
 import { MorphText } from "../../motion/MorphText";
 import { useCountUp } from "../../motion/useCountUp";
 import { usePersistedOpen } from "../editOpenState";
@@ -47,27 +48,6 @@ function lineGlyph(blocks: Block[], kind: ActionGroupKind, cwd?: string): IconCo
   if (kind === "agents") return Bot;
   const lead = blocks.find((b) => isToolBlock(b) && toolCategory(b) === kind);
   return lead ? GLYPH[actionOf(lead, cwd).glyph] : Sparkles;
-}
-
-/**
- * Whether a group's work is still on: while `working`, and for
- * FOLD_HOLD_MS after it stops, so the last step's settle shows before the
- * group folds. Decided during render, so the frame `working` turns false on
- * never starts a fold.
- */
-function useFoldHold(working: boolean): boolean {
-  const [held, setHeld] = useState(false);
-  const [was, setWas] = useState(working);
-  if (was !== working) {
-    setWas(working);
-    setHeld(!working);
-  }
-  useEffect(() => {
-    if (!held) return;
-    const timer = setTimeout(() => setHeld(false), FOLD_HOLD_MS);
-    return () => clearTimeout(timer);
-  }, [held]);
-  return working || held;
 }
 
 /**

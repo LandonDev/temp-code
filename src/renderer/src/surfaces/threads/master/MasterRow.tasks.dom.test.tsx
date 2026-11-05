@@ -1,16 +1,18 @@
 // @vitest-environment jsdom
 /** An implementation or orchestration row on the master board carries its
- *  task bar on a third line and folds open to its task list
+ *  task bar on a third line and folds open to its task list, open on its
+ *  own while the thread is live and folded on its own once it finishes
  *  (docs/LAYOUT.md "Master"); every other row keeps its two lines. */
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FOLD_HOLD_MS } from "../../../lib/ease";
 import type { BoardDigest } from "@server/shared/contract-batch";
 import type { TodoItem } from "../../../lib/tcserver/todos";
 import type { SessionMeta, ThreadType } from "../../../lib/tcserver/types";
 import { sessionStore } from "../../../lib/tcserver/store";
 import { FakeMetaLink, wireMeta } from "../../../test/fakeMetaLink";
 import { MasterRow, MasterRowView } from "./MasterRow";
-import { resetTaskFolds } from "./taskFold";
+import { resetTaskFolds, taskFoldChoice, taskFoldKey, useTaskFold } from "./taskFold";
 import { BoardDigestContext, BoardDigests, type BoardRowRef } from "./useMasterModel";
 
 const seven = (done: number, inProgress = true): TodoItem[] =>
@@ -20,8 +22,8 @@ const meta = (over: Partial<SessionMeta> = {}) => ({ ...wireMeta("c1"), environm
 const menu = { rowsFor: () => [], onPick: () => {}, onOpenChange: () => {} };
 const noGlyph = () => null;
 
-function view(m: SessionMeta, digest: BoardDigest, extra: { tasksOpen?: boolean; onTasksOpenChange?: (open: boolean) => void; onOpen?: (id: string) => void } = {}) {
-  return render(<MasterRowView meta={m} digest={digest} agents={null} landed={false} host={null} hostGlyph={noGlyph} onOpen={extra.onOpen ?? (() => {})} menu={menu} tasksOpen={extra.tasksOpen} onTasksOpenChange={extra.onTasksOpenChange} />);
+function view(m: SessionMeta, digest: BoardDigest, extra: { tasksChoice?: boolean; onTasksChoice?: (choice: boolean | undefined) => void; onOpen?: (id: string) => void } = {}) {
+  return render(<MasterRowView meta={m} digest={digest} agents={null} landed={false} host={null} hostGlyph={noGlyph} onOpen={extra.onOpen ?? (() => {})} menu={menu} tasksChoice={extra.tasksChoice} onTasksChoice={extra.onTasksChoice} />);
 }
 
 const row = (container: HTMLElement) => container.querySelector("[data-menu-id]")!;
@@ -31,6 +33,7 @@ const indicator = (container: HTMLElement) => container.querySelector<HTMLElemen
 afterEach(() => {
   cleanup();
   resetTaskFolds();
+  vi.useRealTimers();
 });
 
 describe("the task bar", () => {
@@ -47,7 +50,7 @@ describe("the task bar", () => {
   it("names its button by the tasks and says whether it is open", () => {
     const { container } = view(meta(), { todos: seven(3) });
     expect(trigger(container)?.getAttribute("aria-label")).toBe("Tasks: 3 of 7 done");
-    expect(trigger(container)?.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger(container)?.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("fills in the foreground while working and muted in every other state", () => {
@@ -79,9 +82,9 @@ describe("the task bar", () => {
     }
   });
 
-  it("goes once the row is finished, even with its fold remembered open: no tally when every task is ticked, else it ends line two", () => {
+  it("is absent from a row that is finished when it mounts: no tally when every task is ticked, else it ends line two", () => {
     for (const over of [{ status: "idle" }, { status: "done" }, { status: "stopped" }] as const) {
-      const all = view(meta({ ...over, activity: null }), { todos: seven(7, false) }, { tasksOpen: true });
+      const all = view(meta({ ...over, activity: null }), { todos: seven(7, false) });
       expect(all.container.querySelector("[data-task-bar]")).toBeNull();
       expect(all.container.querySelector("[data-task-fold]")).toBeNull();
       expect(all.container.querySelector("[data-tally]")).toBeNull();
@@ -104,18 +107,31 @@ describe("the task bar", () => {
 });
 
 describe("the fold", () => {
-  it("is closed by default", () => {
-    const { container } = view(meta(), { todos: seven(3) });
-    expect(container.querySelector("[data-task-fold] li")).toBeNull();
+  it("is open by default on every live row, and rides the fold that opens on its own", () => {
+    for (const status of ["running", "watching", "waiting", "error", "paused", "queued"] as const) {
+      const { container, unmount } = view(meta({ status, activity: null }), { todos: seven(3) });
+      expect(trigger(container)?.getAttribute("aria-expanded")).toBe("true");
+      expect(container.querySelectorAll("[data-task-fold] li")).toHaveLength(7);
+      expect(container.querySelector("[data-task-fold]")?.className).toContain("collapsible-auto");
+      unmount();
+    }
   });
 
-  it("opens on the bar's click without opening the thread", () => {
+  it("closes on the bar's click without opening the thread, the person's choice", () => {
     const onOpen = vi.fn();
-    const onTasksOpenChange = vi.fn();
-    const { container } = view(meta(), { todos: seven(3) }, { onOpen, onTasksOpenChange });
+    const onTasksChoice = vi.fn();
+    const { container } = view(meta(), { todos: seven(3) }, { onOpen, onTasksChoice });
     fireEvent.click(trigger(container)!);
-    expect(onTasksOpenChange).toHaveBeenCalledWith(true);
+    expect(onTasksChoice).toHaveBeenCalledWith(false);
     expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("goes back to the default on a click that matches it", () => {
+    const onTasksChoice = vi.fn();
+    const { container } = view(meta(), { todos: seven(3) }, { tasksChoice: false, onTasksChoice });
+    expect(trigger(container)?.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger(container)!);
+    expect(onTasksChoice).toHaveBeenCalledWith(undefined);
   });
 
   it("keeps Enter and Space on the bar off the row", () => {
@@ -126,7 +142,7 @@ describe("the fold", () => {
   });
 
   it("lists every task at the compact size, the running one with the cursor", () => {
-    const { container } = view(meta(), { todos: seven(3) }, { tasksOpen: true });
+    const { container } = view(meta(), { todos: seven(3) });
     const list = container.querySelector("[data-task-fold] ul")!;
     expect(list.getAttribute("data-size")).toBe("compact");
     expect([...list.querySelectorAll(".task-mark")].map((m) => m.getAttribute("data-state"))).toEqual(["done", "done", "done", "active", "pending", "pending", "pending"]);
@@ -135,7 +151,7 @@ describe("the fold", () => {
   });
 
   it("leaves a working row exactly one moving mark with its fold open", () => {
-    const { container } = view(meta(), { todos: seven(3) }, { tasksOpen: true });
+    const { container } = view(meta(), { todos: seven(3) });
     expect(container.querySelectorAll("[data-slot=spinner][data-turning]")).toHaveLength(1);
   });
 });
@@ -165,24 +181,24 @@ describe("the fold's memory", () => {
   );
   const barOf = (id: string) => document.querySelector<HTMLButtonElement>(`[data-menu-id='${id}'] [data-task-bar] [data-slot='collapsible-trigger']`);
 
-  it("keeps a row open across its unmount and remount, and each row apart", async () => {
+  it("keeps a row the person closed closed across its unmount and remount, and each row apart", async () => {
     const { rerender } = render(board(["a", "b"]));
     await act(async () => {
       fireEvent.click(barOf("a")!);
     });
-    expect(barOf("a")?.getAttribute("aria-expanded")).toBe("true");
-    expect(barOf("b")?.getAttribute("aria-expanded")).toBe("false");
+    expect(barOf("a")?.getAttribute("aria-expanded")).toBe("false");
+    expect(barOf("b")?.getAttribute("aria-expanded")).toBe("true");
     // The virtualizer drops the row, then brings it back.
     rerender(board(["b"]));
     expect(barOf("a")).toBeNull();
     rerender(board(["a", "b"]));
-    expect(barOf("a")?.getAttribute("aria-expanded")).toBe("true");
-    expect(barOf("b")?.getAttribute("aria-expanded")).toBe("false");
+    expect(barOf("a")?.getAttribute("aria-expanded")).toBe("false");
+    expect(barOf("b")?.getAttribute("aria-expanded")).toBe("true");
   });
 });
 
 describe("the task bar's preview fixture", () => {
-  it("draws no bar with no tasks, 3/7 folded and open, 5/7 paused, and none on the finished rows", async () => {
+  it("draws no bar with no tasks, 3/7 folded by hand and open by default, 5/7 paused and open, and none on the finished rows", async () => {
     const { TaskBarPreview } = await import("./board.preview");
     render(<TaskBarPreview />);
     const bars = [...document.querySelectorAll("[data-task-bar]")];
@@ -192,13 +208,13 @@ describe("the task bar's preview fixture", () => {
     expect(document.querySelector("[data-menu-id='icons'] [data-task-bar]")).toBeNull();
     expect(document.querySelector("[data-menu-id='icons'] [data-tally]")?.textContent).toBe("5/7");
     expect(bars.map((b) => b.querySelector("[data-bar-tally]")?.textContent)).toEqual(["3/7", "3/7", "5/7"]);
-    expect(bars.map((b) => b.querySelector("[data-slot='collapsible-trigger']")?.getAttribute("aria-expanded"))).toEqual(["false", "true", "false"]);
+    expect(bars.map((b) => b.querySelector("[data-slot='collapsible-trigger']")?.getAttribute("aria-expanded"))).toEqual(["false", "true", "true"]);
   });
 });
 
 describe("the bar's one width", () => {
   it("reads the board's width, capped at the column less the tally and chevron, and the open list ends where it does", () => {
-    const { container } = view(meta(), { todos: seven(3) }, { tasksOpen: true });
+    const { container } = view(meta(), { todos: seven(3) });
     const bar = container.querySelector("[data-task-bar] [data-bar]")!;
     expect(bar.className).toContain("w-[min(var(--task-bar,160px),calc(100cqw-64px))]");
     expect(bar.className.split(" ")).toContain("shrink");
@@ -231,5 +247,100 @@ describe("the bar's one width", () => {
     expect(new Set(bars.map((b) => b.className)).size).toBe(1);
     expect(bars.every((b) => holder.contains(b))).toBe(true);
     expect([...document.querySelectorAll("[data-bar-tally]")].map((t) => t.textContent)).toEqual(["1/3", "4/12", "2/5"]);
+  });
+});
+
+describe("the fold following the thread", () => {
+  const KEY = taskFoldKey("m1", "c1");
+  /** The row with the fold memory the board gives it. */
+  function Row({ m, todos }: { m: SessionMeta; todos: TodoItem[] }) {
+    const [choice, setChoice] = useTaskFold("m1", "c1");
+    return <MasterRowView meta={m} digest={{ todos }} agents={null} landed={false} host={null} hostGlyph={noGlyph} onOpen={() => {}} menu={menu} tasksChoice={choice} onTasksChoice={setChoice} />;
+  }
+  function mount(m: SessionMeta, todos = seven(3)) {
+    const out = render(<Row m={m} todos={todos} />);
+    return { ...out, update: (next: SessionMeta, nextTodos = todos) => out.rerender(<Row m={next} todos={nextTodos} />) };
+  }
+  const expanded = (c: HTMLElement) => trigger(c)?.getAttribute("aria-expanded") ?? null;
+  const finished = meta({ status: "idle", activity: null });
+
+  it("holds open a beat when the thread finishes, then folds the list and the bar line away on the auto fold, once", () => {
+    vi.useFakeTimers();
+    const { container, update } = mount(meta(), seven(6));
+    expect(expanded(container)).toBe("true");
+    update(finished, seven(7, false));
+    // The frame the thread finishes never starts the fold: the last tick shows.
+    expect(expanded(container)).toBe("true");
+    expect(container.querySelector("[data-bar-tally]")?.textContent).toBe("7/7");
+    act(() => vi.advanceTimersByTime(FOLD_HOLD_MS - 1));
+    expect(expanded(container)).toBe("true");
+    const outer = container.querySelector("[data-task-bar]")!.closest("[data-slot='collapsible-content']")!;
+    expect(outer.className).toContain("collapsible-auto");
+    expect(container.querySelector("[data-task-fold]")?.className).toContain("collapsible-auto");
+    act(() => vi.advanceTimersByTime(1));
+    expect(expanded(container) ?? "false").toBe("false");
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(container.querySelector("[data-task-bar]")).toBeNull();
+    expect(taskFoldChoice(KEY)).toBeUndefined();
+  });
+
+  it("folds nothing again on a re-render that changes nothing it follows", () => {
+    vi.useFakeTimers();
+    const { container, update } = mount(meta(), seven(6));
+    update(finished, seven(7, false));
+    act(() => vi.advanceTimersByTime(FOLD_HOLD_MS * 3));
+    expect(container.querySelector("[data-task-bar]")).toBeNull();
+    update({ ...finished, title: "Renamed" }, seven(7, false));
+    act(() => vi.advanceTimersByTime(FOLD_HOLD_MS * 3));
+    expect(container.querySelector("[data-task-bar]")).toBeNull();
+    // A live row's unrelated push keeps its list open.
+    cleanup();
+    const live = mount(meta(), seven(3));
+    live.update(meta({ activity: "Reading" }), seven(4));
+    act(() => vi.advanceTimersByTime(FOLD_HOLD_MS * 3));
+    expect(expanded(live.container)).toBe("true");
+  });
+
+  it("keeps a list the person closed while working closed, through the finish and the next pass", () => {
+    vi.useFakeTimers();
+    const { container, update } = mount(meta());
+    act(() => {
+      fireEvent.click(trigger(container)!);
+    });
+    expect(expanded(container)).toBe("false");
+    expect(taskFoldChoice(KEY)).toBe(false);
+    // A hand's move rides the hand fold, not the auto one.
+    expect(container.querySelector("[data-task-fold]")?.className ?? "").not.toContain("collapsible-auto");
+    update(finished);
+    act(() => vi.advanceTimersByTime(FOLD_HOLD_MS * 3));
+    expect(container.querySelector("[data-task-bar]")).toBeNull();
+    update(meta({ status: "running" }));
+    expect(expanded(container)).toBe("false");
+  });
+
+  it("keeps a list the person opened as it folded away open, with its bar line", () => {
+    vi.useFakeTimers();
+    const { container, update } = mount(meta());
+    update(finished);
+    // Closed by hand during the beat, then opened again: the person's open on a finished row.
+    act(() => {
+      fireEvent.click(trigger(container)!);
+    });
+    act(() => {
+      fireEvent.click(trigger(container)!);
+    });
+    act(() => vi.advanceTimersByTime(FOLD_HOLD_MS * 3));
+    expect(taskFoldChoice(KEY)).toBe(true);
+    expect(expanded(container)).toBe("true");
+    expect(container.querySelectorAll("[data-task-fold] li")).toHaveLength(7);
+  });
+
+  it("opens again on its own when a finished thread starts a new pass", () => {
+    vi.useFakeTimers();
+    const { container, update } = mount(finished);
+    expect(container.querySelector("[data-task-bar]")).toBeNull();
+    update(meta({ status: "running" }));
+    expect(expanded(container)).toBe("true");
+    expect(container.querySelector("[data-task-fold]")?.className).toContain("collapsible-auto");
   });
 });

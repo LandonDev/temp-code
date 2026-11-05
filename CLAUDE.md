@@ -3126,9 +3126,12 @@ this is the short one.
   widest row over all the board's task lists (master/taskBarWidth.ts on
   taskListWidth.ts's canvas, the `--task-bar` variable on the list, 160px
   floor, the column less 64px its cap),
-  the whole line folding the task list open under it (`TaskRows` compact,
-  closed by default, remembered per row for the window's life in
-  master/taskFold.ts; `taskBar` in master/rowBody.ts).
+  the whole line folding the task list open under it (`TaskRows` compact;
+  open by default while the thread is live, folded with the line on
+  `.collapsible-auto` `FOLD_HOLD_MS` after it reaches Done, once, at that
+  transition, `useFoldHold` in lib/foldHold.ts; the person's choice wins
+  both ways, remembered per row for the window's life in
+  master/taskFold.ts; `taskBar` and `taskProgress` in master/rowBody.ts).
   On hover the model mark gives way to Message, the state's one verb
   (Pause, Resume, Start now) and ⋯, the row's menu, where Stop, Archive
   and a queued thread's Remove from queue live. A row whose thread has
