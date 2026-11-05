@@ -360,7 +360,8 @@ app replaces itself from the feed, and only from the feed.
   surfaces/threads/ThreadView.tsx), the thread taking its width at once;
   the composer's slash menu moves on the popup recipe (`POPUP_MOTION`,
   chrome/CommandPopover.tsx). Modal and
-  ConfirmDialog ride `components/ui/dialog.tsx`. Its Changes section is one
+  ConfirmDialog ride `components/ui/dialog.tsx`, and every form dialog is
+  Modal + ModalBody + DialogFooter (`lib/dialogShapeGuard.test.ts`). Its Changes section is one
   virtual list (`chrome/rail/changesItems.ts` through the rail's
   `VirtualRows` on a native scroller whose size comes from the
   ResizeObserver, starting from the last one seen (`sizeKey`), so a cold

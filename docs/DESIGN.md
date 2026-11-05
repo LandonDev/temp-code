@@ -467,7 +467,7 @@ removes something from disk is ticked (worktrees, simulators, a project's
 cleanup); archiving alone loses nothing, so its verb is the primary. A thread's resources are a removal
 form of that kind; its dev servers live in the Activity section and the
 dev servers pane, never in a dialog.
-`chrome/Modal.tsx` and `chrome/ConfirmDialog.tsx` are thin shells on
+Every form or decision dialog has one shape: `Modal` (or `ModalPanel` when a parent holds it open), `ModalBody` and `DialogFooter`, whose `start` slot holds a quiet verb (Remove override, Delete) and whose children sit between Cancel and the confirm; `lib/dialogShapeGuard.test.ts` refuses a bare `DialogContent` or ui/dialog's `DialogFooter` outside the shells (the pickers, the lightbox, the page viewer). `chrome/Modal.tsx` and `chrome/ConfirmDialog.tsx` are thin shells on
 `Dialog` and `AlertDialog`, and every form dialog has their one shape:
 `Modal`, `ModalBody` and `DialogFooter`, 448px or wider, a hairline over
 the footer, Cancel then the verb, an action of the dialog's own at the
