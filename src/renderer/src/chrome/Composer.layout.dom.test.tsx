@@ -109,15 +109,12 @@ describe("the box: one row", () => {
 
   it("a three-line paste grows the field, so the box grows upward over its bottom-aligned controls", () => {
     const { row, field } = parts(render(<Composer {...props()} />).container);
-    // 22px a line plus the field's 3px above and below.
-    Object.defineProperty(field, "scrollHeight", {
-      configurable: true,
-      get: () => {
-        const lines = Math.max((field.textContent ?? "").split("\n").length, field.querySelectorAll("br").length + 1);
-        return 6 + 22 * lines;
-      },
-    });
-    field.style.height = "28px";
+    // 22px a line plus the field's 3px above and below; a pinned height is what is drawn.
+    field.getBoundingClientRect = () => {
+      const pinned = parseFloat(field.style.height);
+      const lines = Math.max((field.textContent ?? "").split("\n").length, field.querySelectorAll("br").length + 1);
+      return { height: Number.isFinite(pinned) ? pinned : 6 + 22 * lines } as DOMRect;
+    };
     field.focus();
     const paste = new Event("paste", { bubbles: true, cancelable: true });
     Object.defineProperty(paste, "clipboardData", {
@@ -131,6 +128,36 @@ describe("the box: one row", () => {
     expect(field.style.transition).toBe("height var(--dur-base) var(--ease-out)");
     expect(classes(row)).toContain("items-end");
     expect(row.lastElementChild!.getAttribute("aria-label")).toBe("Send");
+    // Once it lands the box is the browser's to size again: nothing stays pinned for a width change to make stale.
+    const done = new Event("transitionend");
+    Object.defineProperty(done, "propertyName", { value: "height" });
+    act(() => {
+      field.dispatchEvent(done);
+    });
+    expect(field.style.height).toBe("");
+    expect(field.style.transition).toBe("");
+  });
+
+  it("50 keystrokes read no layout and write no height: the field is the browser's to size", () => {
+    const { field } = parts(render(<Composer {...props()} />).container);
+    const reads = { rect: 0, offset: 0, scroll: 0, client: 0 };
+    field.getBoundingClientRect = () => (reads.rect++, { height: 28 } as DOMRect);
+    Object.defineProperty(field, "offsetHeight", { get: () => (reads.offset++, 28) });
+    Object.defineProperty(field, "scrollHeight", { get: () => (reads.scroll++, 28) });
+    Object.defineProperty(field, "clientWidth", { get: () => (reads.client++, 400) });
+    const styles = vi.spyOn(window, "getComputedStyle");
+    field.focus();
+    for (let i = 0; i < 50; i++) {
+      act(() => {
+        field.append(document.createTextNode("a"));
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    expect(field.textContent!.endsWith("a".repeat(50))).toBe(true);
+    expect(reads).toEqual({ rect: 0, offset: 0, scroll: 0, client: 0 });
+    expect(styles.mock.calls.filter(([el]) => el === field)).toHaveLength(0);
+    expect(field.style.height).toBe("");
+    expect(field.className).toContain("max-h-40");
   });
 });
 

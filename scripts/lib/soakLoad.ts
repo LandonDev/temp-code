@@ -39,9 +39,11 @@
  *   meta    the master's own live context grows every 10 s (child null)
  *   edit    live edits owned by the master, 10 a second over 40 paths,
  *           each with a 2 KB diff
- *   flood   400 edits in one second on 400 distinct paths every 10 s,
+ *   flood   3,000 edits in one second on 3,000 distinct paths every 10 s,
  *           burst and with no diff (the flood valve's shape past 200
- *           paths a second, livediff.ts)
+ *           paths a second, livediff.ts): the scale at which the store's
+ *           old per-item copy held the window for 300 ms a task (docs/box.md
+ *           "Typing on a busy master")
  *
  * The driver pauses and resumes (the typing scene's idle phase): a pause
  * stops every stream, and a resume carries on from where it stopped instead
@@ -104,7 +106,7 @@ export const CHAT_PROFILE: SoakProfile = {
 export const TYPING_SETTLERS = Array.from({ length: SOAK_CHILDREN }, (_, i) => i).filter((i) => i !== SOAK_FOCUSED && !SOAK_STREAMERS.includes(i))
 /** The steady live edits' paths, and the floods' pool (two floods' worth, so the renderer's 500-edit cap evicts). */
 export const TYPING_EDIT_PATHS = 40
-export const TYPING_FLOOD_SIZE = 400
+export const TYPING_FLOOD_SIZE = 3_000
 export const TYPING_FLOOD_POOL = 2 * TYPING_FLOOD_SIZE
 export const TYPING_FLOOD_EVERY_MS = 10_000
 

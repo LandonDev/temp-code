@@ -967,7 +967,6 @@ export function Composer({
                           : 'Ask, build, / for skills, @ for references…'
                 }
                 className="composer-field relative max-h-40 min-w-0 flex-1 px-1 py-[3px] font-sans text-sm leading-[22px] text-foreground outline-none"
-                maxHeight={160}
                 tokens={tokens}
                 onFocus={onFocus}
                 onKeyDown={onKeyDown}

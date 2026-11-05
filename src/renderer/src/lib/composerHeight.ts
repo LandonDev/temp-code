@@ -1,41 +1,57 @@
+import { DUR } from "./ease";
+
 /**
- * Fit a textarea's height to its content. A keystroke, and the clear after
- * a send, snap: nothing animates on a keystroke, and a height that eased on
- * every wrap dragged the transcript above it along. `animate` is the caller
- * saying the change came from no keystroke (a paste, a restore, a quote);
- * such a change of more than one line eases over `--dur-base`.
- * FLIP: measure the target at `auto`, put the old height back, force a
- * layout, then let the transition carry it. The box is bottom-anchored so
- * it grows upward. Reduced motion, a first fit or no change snaps.
+ * The composer's field sizes itself. At rest its inline height is unset:
+ * the browser fits the box to its content under its max-height in its own
+ * frame, so a keystroke writes no height and reads no layout (the field
+ * once set `auto`, read `scrollHeight` and pinned the height in pixels on
+ * every keystroke, a forced layout each time). A keystroke, and the clear
+ * after a send, snap.
+ *
+ * A change that came from no keystroke (a paste, a restore, a quote) eases
+ * when it moves the box by more than a line: `easeFieldHeight` reads the
+ * rendered height once before the change, makes it, reads the new one,
+ * pins the old height, forces a layout and lets the transition carry it
+ * over `--dur-base` `--ease-out` (FLIP; the box is bottom-anchored, so it
+ * grows upward), then clears the inline height again once the transition
+ * ends. A second change mid-ease starts from where the box is drawn.
+ * Reduced motion, a change of a line or less, or a box with no layout yet
+ * snaps, pinning nothing.
  */
-export function morphTextareaHeight(el: HTMLElement, max: number, animate = false): void {
-  const prev = el.style.height;
+
+/** The field's running ease: ends it, leaving the height to the browser. */
+const easing = new WeakMap<HTMLElement, () => void>();
+
+/** A keystroke: a running ease snaps to where the content puts the box. Nothing is read or written otherwise. */
+export function settleFieldHeight(el: HTMLElement): void {
+  easing.get(el)?.();
+}
+
+export function easeFieldHeight(el: HTMLElement, change: () => void): void {
+  const from = el.getBoundingClientRect().height;
+  settleFieldHeight(el);
+  change();
+  const to = el.getBoundingClientRect().height;
+  if (!from || !to || Math.abs(to - from) <= lineHeight(el) || prefersReducedMotion()) return;
   el.style.transition = "none";
-  el.style.height = "auto";
-  const target = Math.min(el.scrollHeight, max);
-  const next = `${target}px`;
-  const from = parseFloat(prev);
-  if (
-    !animate ||
-    prev === next ||
-    !Number.isFinite(from) ||
-    Math.abs(target - from) <= lineHeight(el) ||
-    prefersReducedMotion()
-  ) {
-    el.style.height = next;
-    el.style.transition = "";
-    return;
-  }
-  el.style.height = prev;
+  el.style.height = `${from}px`;
   void el.offsetHeight;
   el.style.transition = "height var(--dur-base) var(--ease-out)";
-  el.style.height = next;
-  const clear = (event: TransitionEvent): void => {
-    if (event.propertyName !== "height") return;
+  el.style.height = `${to}px`;
+  const end = (): void => {
+    el.removeEventListener("transitionend", onEnd);
+    clearTimeout(timer);
+    easing.delete(el);
     el.style.transition = "";
-    el.removeEventListener("transitionend", clear);
+    el.style.height = "";
   };
-  el.addEventListener("transitionend", clear);
+  const onEnd = (event: TransitionEvent): void => {
+    if (event.target === el && event.propertyName === "height") end();
+  };
+  el.addEventListener("transitionend", onEnd);
+  // A transition that never ends (the pane hidden mid-ease) still lets go.
+  const timer = setTimeout(end, DUR.base * 1000 + 100);
+  easing.set(el, end);
 }
 
 /** The field's line, read from its style; the composer's 22px when unset. */

@@ -44,7 +44,7 @@ describe('soak load', () => {
 
   it("the typing scene: the board's load, the master's churn and its live edits", () => {
     expect(profileOf('typing')).toBe(TYPING_PROFILE)
-    expect(declaredRates(TYPING_PROFILE)).toEqual({ meta: 8.1, delta: 30, tool: 0.2, log: 5, settle: 0.5, resume: 0.5, edit: 10, flood: 40 })
+    expect(declaredRates(TYPING_PROFILE)).toEqual({ meta: 8.1, delta: 30, tool: 0.2, log: 5, settle: 0.5, resume: 0.5, edit: 10, flood: 300 })
     // The settlers never include a child whose transcript streams.
     expect(TYPING_SETTLERS).toHaveLength(13)
     expect(TYPING_SETTLERS.some((i) => i === SOAK_PROFILE.focused || SOAK_PROFILE.streamers.includes(i))).toBe(false)
@@ -65,7 +65,7 @@ describe('soak load', () => {
     const settles = seen.filter((s) => s.emit.kind === 'settle')
     const resumes = seen.filter((s) => s.emit.kind === 'resume')
     for (const [i, s] of settles.entries()) if (resumes[i]) expect(resumes[i]!.t - s.t).toBeCloseTo(1_000, -2)
-    // The floods: 400 edits inside the first second of every ten, nothing between.
+    // The floods: 3,000 edits inside the first second of every ten, nothing between.
     const floods = seen.filter((s) => s.emit.kind === 'flood')
     expect(floods.every((f) => f.t % TYPING_FLOOD_EVERY_MS <= 1_000 + SOAK_TICK_MS)).toBe(true)
     expect(floods.filter((f) => f.t < TYPING_FLOOD_EVERY_MS)).toHaveLength(TYPING_FLOOD_SIZE)
@@ -73,10 +73,10 @@ describe('soak load', () => {
 
   it('a windowed stream owes nothing between its windows', () => {
     const flood = TYPING_PROFILE.streams.find((s) => s.kind === 'flood')!
-    expect(owedAt(flood, 500)).toBe(200)
-    expect(owedAt(flood, 1_000)).toBe(400)
-    expect(owedAt(flood, 9_999)).toBe(400)
-    expect(owedAt(flood, 10_500)).toBe(600)
+    expect(owedAt(flood, 500)).toBe(TYPING_FLOOD_SIZE / 2)
+    expect(owedAt(flood, 1_000)).toBe(TYPING_FLOOD_SIZE)
+    expect(owedAt(flood, 9_999)).toBe(TYPING_FLOOD_SIZE)
+    expect(owedAt(flood, 10_500)).toBe(1.5 * TYPING_FLOOD_SIZE)
   })
 
   it('a pause holds every stream, and a resume carries on without paying the pause', () => {

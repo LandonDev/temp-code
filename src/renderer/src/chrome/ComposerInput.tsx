@@ -10,7 +10,7 @@ import {
 } from 'react'
 import { brandOf } from '../lib/addonBrand'
 import { addonTitle } from '../lib/addonNames'
-import { morphTextareaHeight } from '../lib/composerHeight'
+import { easeFieldHeight, settleFieldHeight } from '../lib/composerHeight'
 import { pastePlan } from '../lib/composerPaste'
 import {
   insertPlainText,
@@ -169,8 +169,8 @@ export const ComposerInput = forwardRef<
     /** when given, a pasted text over the size threshold becomes a file here instead of typed text */
     attachLargePastes?: (file: File) => void
     placeholder: string
+    /** its max-height caps the box; past it the field scrolls */
     className?: string
-    maxHeight: number
     /** plain tokens to colour; positions in the serialized text */
     tokens?: readonly ComposerToken[]
   }
@@ -183,14 +183,12 @@ export const ComposerInput = forwardRef<
     attachLargePastes,
     placeholder,
     className,
-    maxHeight,
     tokens = NO_TOKENS
   },
   ref
 ) {
   tallyRender('composerInput')
   const rootRef = useRef<HTMLDivElement>(null)
-  const lastText = useRef('')
   /** an IME is composing: the DOM is in flux, report when it settles */
   const composing = useRef(false)
   /** an input event already reported this task; the selectionchange it queued follows */
@@ -201,9 +199,9 @@ export const ComposerInput = forwardRef<
   const clearing = useRef<Animation | null>(null)
   const paintedTokens = useRef(tokens)
 
-  /** `animate`: the change came from no keystroke (a paste, a quote, a
-   *  restore), so a jump of more than a line eases; typing snaps. */
-  const report = (animate = false): void => {
+  /** The field's state to the composer. The box sizes itself (lib/composerHeight.ts):
+   *  nothing here reads or writes its height. */
+  const report = (): void => {
     const root = rootRef.current
     if (!root) return
     // Chromium leaves a lone <br> after the last character goes; the
@@ -212,10 +210,6 @@ export const ComposerInput = forwardRef<
       root.innerHTML = ''
     }
     const { text, caret, chips } = readComposer(root, selectionIn(root))
-    if (text !== lastText.current) {
-      lastText.current = text
-      morphTextareaHeight(root, maxHeight, animate)
-    }
     onState(text, caret, chips)
   }
 
@@ -227,6 +221,8 @@ export const ComposerInput = forwardRef<
     setTimeout(() => {
       reportedThisFrame.current = false
     }, 0)
+    // A keystroke snaps: a paste's ease still running ends where the text puts the box.
+    if (rootRef.current) settleFieldHeight(rootRef.current)
     report()
   }
 
@@ -243,12 +239,12 @@ export const ComposerInput = forwardRef<
     if (selectionIn(root)) root.focus()
     else caretToEnd(root)
     const caret = readComposer(root, selectionIn(root)).caret
-    insertPlainText(root, text)
+    easeFieldHeight(root, () => insertPlainText(root, text))
     undo.current = [
       ...undo.current.slice(1 - UNDO_DEPTH),
       { before, after: serializeComposer(root), caret }
     ]
-    report(true)
+    report()
   }
 
   /** ⌘Z with the box exactly as an insertion left it: take that insertion back. */
@@ -256,11 +252,11 @@ export const ComposerInput = forwardRef<
     const top = undo.current[undo.current.length - 1]
     if (!top || serializeComposer(root) !== top.after) return false
     undo.current = undo.current.slice(0, -1)
-    rebuild(root, top.before)
+    easeFieldHeight(root, () => rebuild(root, top.before))
     const at = positionsFor(root, [top.caret])[0]
     if (at) placeCaret(root, at.node, at.offset)
     else caretToEnd(root)
-    report(true)
+    report()
     return true
   }
 
@@ -279,15 +275,17 @@ export const ComposerInput = forwardRef<
       const [start, end] = positionsFor(root, from <= to ? [from, to] : [to, from])
       if (!start || !end) return
       root.focus()
-      const range = document.createRange()
-      range.setStart(start.node, start.offset)
-      range.setEnd(end.node, end.offset)
-      range.deleteContents()
       const nodes: Node[] =
         'chip' in insert
           ? [chipElement(insert.chip), document.createTextNode(' ')]
           : [document.createTextNode(insert.text)]
-      for (const n of [...nodes].reverse()) range.insertNode(n)
+      easeFieldHeight(root, () => {
+        const range = document.createRange()
+        range.setStart(start.node, start.offset)
+        range.setEnd(end.node, end.offset)
+        range.deleteContents()
+        for (const n of [...nodes].reverse()) range.insertNode(n)
+      })
       const last = nodes[nodes.length - 1]!
       const after = document.createRange()
       after.setStartAfter(last)
@@ -296,17 +294,18 @@ export const ComposerInput = forwardRef<
       sel?.removeAllRanges()
       sel?.addRange(after)
       undo.current = []
-      report(true)
+      report()
     },
     insertText,
     clear: (fade = false) => {
       const root = rootRef.current
       if (!root) return
+      // The clear after a send snaps, as a keystroke does.
       const wipe = () => {
         clearing.current?.cancel()
         clearing.current = null
+        settleFieldHeight(root)
         root.innerHTML = ''
-        root.style.height = 'auto'
         undo.current = []
         report()
       }
@@ -332,10 +331,10 @@ export const ComposerInput = forwardRef<
     restore: (segments) => {
       const root = rootRef.current
       if (!root) return
-      rebuild(root, segments)
+      easeFieldHeight(root, () => rebuild(root, segments))
       if (document.activeElement === root) caretToEnd(root)
       undo.current = []
-      report(true)
+      report()
     }
   }))
 
@@ -350,27 +349,6 @@ export const ComposerInput = forwardRef<
       for (const name of Object.values(HIGHLIGHT_NAMES)) globalThis.CSS?.highlights?.delete(name)
     }
   }, [])
-
-  // The pane this sits in can animate open from zero width — a height
-  // measured mid-animation wraps the content absurdly and then sticks.
-  // Re-measure whenever the box's WIDTH changes; height-only resizes (our
-  // own morph) bail out, so no feedback loop.
-  const lastWidth = useRef(0)
-  useLayoutEffect(() => {
-    const root = rootRef.current
-    if (!root) return
-    const ro = new ResizeObserver(() => {
-      const w = root.clientWidth
-      if (w === lastWidth.current) return
-      lastWidth.current = w
-      if (w === 0) return
-      root.style.transition = 'none'
-      root.style.height = 'auto'
-      root.style.height = `${Math.min(maxHeight, root.scrollHeight)}px`
-    })
-    ro.observe(root)
-    return () => ro.disconnect()
-  }, [maxHeight])
 
   // selectionchange is document-level — needed for caret-only moves. An
   // input event moves the caret too and has already reported this frame.

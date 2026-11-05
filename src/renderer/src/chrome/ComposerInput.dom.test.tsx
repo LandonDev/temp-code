@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
 
-const morph = vi.hoisted(() => vi.fn())
-vi.mock('../lib/composerHeight', () => ({ morphTextareaHeight: morph }))
+const height = vi.hoisted(() => ({ ease: vi.fn((_el: HTMLElement, change: () => void) => change()), settle: vi.fn() }))
+vi.mock('../lib/composerHeight', () => ({ easeFieldHeight: height.ease, settleFieldHeight: height.settle }))
 import { createRef } from 'react'
 import { ComposerInput, type ComposerInputHandle } from './ComposerInput'
 import { devRenders } from '../lib/devRenders'
@@ -29,7 +29,6 @@ describe('ComposerInput under jsdom', () => {
           onPaste={onPaste}
           attachLargePastes={opts.attachLargePastes}
           placeholder="Ask"
-          maxHeight={160}
         />
       </Probe>
     )
@@ -63,19 +62,24 @@ describe('ComposerInput under jsdom', () => {
     expect(devRenders.composerInput).toBe(before + 1)
   })
 
-  it('a keystroke snaps the height; a paste, a restore and a quote may ease it', () => {
+  it('a keystroke and the clear snap the height; a paste, a restore, a quote and a replaced range may ease it', () => {
     const { probe, root, ref } = mount()
-    morph.mockClear()
+    height.ease.mockClear()
+    height.settle.mockClear()
     probe.act(() => type(root, 'a'))
-    expect(morph).toHaveBeenLastCalledWith(root, 160, false)
+    expect(height.settle).toHaveBeenCalledTimes(1)
+    expect(height.ease).not.toHaveBeenCalled()
     probe.act(() => paste(root, 'one\ntwo\nthree'))
-    expect(morph).toHaveBeenLastCalledWith(root, 160, true)
     probe.act(() => ref.current!.restore([{ text: 'restored' }]))
-    expect(morph).toHaveBeenLastCalledWith(root, 160, true)
     probe.act(() => ref.current!.insertText(' quoted'))
-    expect(morph).toHaveBeenLastCalledWith(root, 160, true)
+    probe.act(() => ref.current!.replaceRange(0, 1, { text: 'R' }))
+    expect(height.ease).toHaveBeenCalledTimes(4)
+    for (const [el] of height.ease.mock.calls) expect(el).toBe(root)
+    // Each change ran inside its ease, which reads the box before and after it.
+    expect(root.textContent).toBe('Restored quoted')
     probe.act(() => ref.current!.clear())
-    expect(morph).toHaveBeenLastCalledWith(root, 160, false)
+    expect(height.settle).toHaveBeenCalledTimes(2)
+    expect(height.ease).toHaveBeenCalledTimes(4)
   })
 
   it('20 keystrokes report 20 states and render the input zero more times', () => {
@@ -95,7 +99,6 @@ describe('ComposerInput under jsdom', () => {
           onKeyDown={() => {}}
           onPaste={() => {}}
           placeholder="Ask"
-          maxHeight={160}
           tokens={[{ start: 0, end: 1, kind: 'skill' }]}
         />
       </Probe>
@@ -222,7 +225,6 @@ describe('ComposerInput under jsdom', () => {
           onKeyDown={() => {}}
           onPaste={() => {}}
           placeholder="Ask"
-          maxHeight={160}
           tokens={[{ start: 0, end: 5, kind: 'skill' }]}
         />
       </Probe>
