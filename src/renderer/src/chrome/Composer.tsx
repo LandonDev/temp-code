@@ -263,6 +263,8 @@ export function Composer({
     index: 0
   })
   const [files, setFiles] = useState<ProjectFile[]>(() => peekProjectFiles(executionCwd) ?? [])
+  // The folder `files` was read for: until it is this one, an `@` with no other match reads Loading….
+  const [filesFor, setFilesFor] = useState<string | null>(() => (peekProjectFiles(executionCwd) ? executionCwd : null))
   const [notes, setNotes] = useState<Note[]>(() => peekNotes(hostOfCwd(executionCwd)) ?? [])
 
   attachmentsRef.current = attachments
@@ -368,12 +370,13 @@ export function Composer({
       (session) => ({ kind: 'thread', session })
     )
     const noteHits: AtMatch[] = rankNoteFiles(notes, live.query).map((file) => ({ kind: 'note', file }))
-    return { mode: 'file', rows: [...fileHits, ...threadHits, ...noteHits] }
-  }, [commands, executionCwd, live, mentionable, metas, notes, projectId, sessionId])
+    const loading = looksLikeProject(executionCwd) && filesFor !== executionCwd
+    return { mode: 'file', rows: [...fileHits, ...threadHits, ...noteHits], loading }
+  }, [commands, executionCwd, filesFor, live, mentionable, metas, notes, projectId, sessionId])
   const rows = matches?.rows.length ?? 0
-  // Mounted from the first match on, so its close keeps its fade.
+  // Mounted from the first `/` or `@` on, so its close keeps its fade.
   const [menuUsed, setMenuUsed] = useState(false)
-  if (rows > 0 && !menuUsed) setMenuUsed(true)
+  if (live && !menuUsed) setMenuUsed(true)
   const selectionKey = live ? `${live.mode}:${live.query}` : ''
   const active =
     selection.key === selectionKey ? Math.min(selection.index, Math.max(0, rows - 1)) : 0
@@ -527,6 +530,9 @@ export function Composer({
         if (!cancelled) setFiles(next)
       })
       .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setFilesFor(executionCwd)
+      })
     return () => {
       cancelled = true
     }
@@ -780,6 +786,12 @@ export function Composer({
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    // The menu is open while a trigger is live, its no-match row too: Escape closes it.
+    if (live && rows === 0 && e.key === 'Escape') {
+      e.preventDefault()
+      setDismissed(`${live.mode}:${live.start}`)
+      return
+    }
     if (live && rows > 0) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault()

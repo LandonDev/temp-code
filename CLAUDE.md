@@ -431,7 +431,7 @@ app replaces itself from the feed, and only from the feed.
   a workspace's threads beside the rail (`workspaceThreadsChunk`), the
   file and symbol pickers (`pickersChunk`, mounted while open), the
   composer's slash and @ menu (`commandMenuChunk`, mounted from a
-  composer's first match on), a box
+  composer's first `/` or `@` on), a box
   thread's waiting Mac bridge card (`macBridgeChunk`), the return from Away
   (`awayReturnChunk`: chrome/AwayReturn.tsx, mounted at boot, loaded after
   the first paint), a review's notice

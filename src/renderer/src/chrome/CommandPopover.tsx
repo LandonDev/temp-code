@@ -15,7 +15,9 @@ import { FileText, MessageSquare, StickyNote } from "./icons";
  * The composer's autocomplete, ported from temp-code's PromptBar: one flat
  * keyboard list rising above the box. `/` rows are the provider's commands
  * sectioned by source; `@` rows are project files, then threads, then notes.
- * It exists only while there is something to pick. It moves as every popup
+ * It is open while a `/` or `@` is being typed: with nothing to pick it holds
+ * one muted row, "No matches", or "Loading…" while the project's files are
+ * still on their way, so it never vanishes under the typing. It moves as every popup
  * does, on transitions (POPUP_MOTION): it rises 4px from the box's edge and
  * fades in, and on close keeps its last rows, inert, while it fades back
  * down, so typing past it turns it around from where it is. A row keeps its
@@ -34,7 +36,7 @@ export type AtMatch =
 
 export type PopoverMatches =
   | { mode: "command"; rows: SlashCommand[] }
-  | { mode: "file"; rows: AtMatch[] };
+  | { mode: "file"; rows: AtMatch[]; /** The project's files are still being read. */ loading?: boolean };
 
 /** A menu's row (MENU_ROW), its 8px radius concentric in the 12px popover's 4px inset. */
 const ROW = `${MENU_ROW} flex w-full cursor-default items-center rounded-lg text-left`;
@@ -62,7 +64,7 @@ export function CommandPopover({
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
-  const open = !!matches && matches.rows.length > 0;
+  const open = !!matches;
   // The rows on screen: the live ones while open, the last ones while it leaves.
   const [held, setHeld] = useState<PopoverMatches | null>(open ? matches : null);
   if (open && held !== matches) setHeld(matches);
@@ -124,7 +126,12 @@ export function CommandPopover({
         aria-label={rows.mode === "command" ? "Skills and commands" : "Files and threads"}
         className="max-h-72 overflow-x-hidden overflow-y-auto overscroll-none rounded-xl p-1 [--scrollbar-inset:var(--radius-xl)]"
       >
-        {rows.mode === "command"
+        {rows.rows.length === 0 ? (
+          // A picker's no match is one muted row (DESIGN.md "Loading and empty states").
+          <div data-command-empty role="option" aria-selected={false} aria-disabled className={`${ROW} text-muted-foreground`}>
+            {rows.mode === "file" && rows.loading ? "Loading…" : "No matches"}
+          </div>
+        ) : rows.mode === "command"
           ? rows.rows.map((c, n) => (
               <Fragment key={`${c.scope}:${c.name}`}>
                 {SECTION_LABELS[c.source] !==

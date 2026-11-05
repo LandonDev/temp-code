@@ -25,7 +25,7 @@ describe("CommandPopover", () => {
     expect(classes.some((c) => /animate-|fade-in|slide-in/.test(c))).toBe(false);
     expect(frame.hasAttribute("data-ending-style")).toBe(false);
     // Closing keeps the last rows on screen while they fade, inert.
-    rerender(<CommandPopover matches={{ mode: "command", rows: [] }} {...props} />);
+    rerender(<CommandPopover matches={null} {...props} />);
     const leaving = container.querySelector<HTMLElement>("[data-command-popover]")!;
     expect(leaving).toBe(frame);
     expect(leaving.hasAttribute("data-ending-style")).toBe(true);
@@ -33,6 +33,32 @@ describe("CommandPopover", () => {
     expect(leaving.textContent).toContain("a.ts");
     fireEvent.transitionEnd(leaving, { propertyName: "opacity" });
     expect(container.querySelector("[data-command-popover]")).toBeNull();
+  });
+
+  it("no match is one muted row, a menu row's box, and it stays open rather than vanishing", () => {
+    const at: PopoverMatches = { mode: "file", rows: [{ kind: "file", file: file("src/a.ts") }] };
+    const { container, rerender } = render(<CommandPopover matches={at} {...props} />);
+    const frame = container.querySelector<HTMLElement>("[data-command-popover]")!;
+    rerender(<CommandPopover matches={{ mode: "command", rows: [] }} {...props} />);
+    expect(container.querySelector("[data-command-popover]")).toBe(frame);
+    expect(frame.hasAttribute("data-ending-style")).toBe(false);
+    const rows = container.querySelectorAll("[role=option]");
+    expect(rows).toHaveLength(1);
+    const empty = rows[0] as HTMLElement;
+    expect(empty.textContent).toBe("No matches");
+    expect(empty.getAttribute("aria-disabled")).toBe("true");
+    for (const c of [...MENU_ROW.split(" "), "text-muted-foreground"]) expect(empty.className.split(" ")).toContain(c);
+  });
+
+  it("reads Loading… while the project's files are on their way and nothing else matches", () => {
+    const { container, rerender } = render(<CommandPopover matches={{ mode: "file", rows: [], loading: true }} {...props} />);
+    expect(container.querySelector("[data-command-empty]")!.textContent).toBe("Loading…");
+    rerender(<CommandPopover matches={{ mode: "file", rows: [], loading: false }} {...props} />);
+    expect(container.querySelector("[data-command-empty]")!.textContent).toBe("No matches");
+    // A thread that matches while the files load is a row, not the loading line.
+    const thread = { kind: "thread", session: { id: "t", title: "t", status: "idle", projectId: null, updatedAt: 1 } as SessionMeta } as const;
+    rerender(<CommandPopover matches={{ mode: "file", rows: [thread], loading: true }} {...props} />);
+    expect(container.querySelector("[data-command-empty]")).toBeNull();
   });
 
   it("turns around when it reopens mid-exit, and is gone after twice its exit when no fade ends", () => {
