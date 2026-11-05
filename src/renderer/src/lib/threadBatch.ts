@@ -24,7 +24,9 @@ export type BatchScope =
   | { kind: "all" }
   /** `paths`: a workspace linked across hosts names every copy's folder. */
   | { kind: "project"; path: string; paths?: readonly string[]; name: string }
-  | { kind: "host"; environmentId: string; name: string };
+  | { kind: "host"; environmentId: string; name: string }
+  /** A project card in the workspace column: the project and its linked copies' ids. */
+  | { kind: "projects"; ids: readonly string[]; name: string };
 
 /** Idle for at least this long before Archive done takes a thread. */
 export const ARCHIVE_DONE_AGE_MS = 10 * 60_000;
@@ -69,6 +71,8 @@ function inScope(t: SessionMeta, scope: BatchScope, catalog: Catalog): boolean {
       const home = workspacePathOfSession(t, catalog);
       return (scope.paths ?? [scope.path]).some((p) => sameProjectPath(home, p));
     }
+    case "projects":
+      return !!t.projectId && scope.ids.includes(t.projectId);
   }
 }
 

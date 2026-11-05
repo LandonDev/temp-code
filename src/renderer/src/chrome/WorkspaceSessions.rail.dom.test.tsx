@@ -363,3 +363,27 @@ describe("the Chats fold", () => {
     expect(shownChats()).toBe(32);
   });
 });
+
+describe("a project card's menu", () => {
+  it("offers the fleet switches over the project and its copies, and no hand-made pause, stop or continue", async () => {
+    await act(async () => {
+      await menuChunk.load();
+      warmMenus();
+    });
+    const project = { environmentId: "local", id: "p1", workspaceId: "w1", name: "app", mode: "local", branch: null, cwd: "/w1/app", createdAt: 1, updatedAt: 1, archived: false } as unknown as ProjectMeta;
+    h.catalog = { projects: [project], workspaces: [workspace("w1")] };
+    h.metas = [{ ...chat(1), projectId: "p1", workspaceId: "w1", cwd: "/w1/app", status: "running", busySince: 1 } as SessionMeta];
+    vi.spyOn(sessionStore, "metas").mockImplementation(() => h.metas);
+    render(<Column shown scope="w1" />);
+    const card = document.querySelector<HTMLElement>("[data-project-card]")!.parentElement!;
+    fireEvent.click(within(card).getAllByRole("button", { name: "More" })[0]);
+    const menu = await screen.findByRole("menu");
+    const names = within(menu).getAllByRole("menuitem").map((item) => item.textContent?.trim());
+    expect(names).toEqual(expect.arrayContaining(["Pause all", "Resume all", "Stop all"]));
+    expect(names).not.toContain("Archive done");
+    for (const gone of ["Continue paused threads", "Pause active threads", "Stop active threads"]) expect(names).not.toContain(gone);
+    // Counted over the scope: one thread runs, none is paused.
+    expect(within(menu).getByRole("menuitem", { name: /Pause all/ }).getAttribute("aria-disabled")).not.toBe("true");
+    expect(within(menu).getByRole("menuitem", { name: /Resume all/ }).getAttribute("aria-disabled")).toBe("true");
+  });
+});

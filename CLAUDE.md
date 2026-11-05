@@ -2888,7 +2888,10 @@ Pause all, Resume all, Stop all and Archive done sit beside Mark all read in
 a project's menu (rail row and project header; on a project linked across
 hosts they act on every copy, one `session.batch` per host), a host's
 submenu in the rail's Hosts row (`HostsRow` in chrome/HostRows.tsx, with two
-or more hosts), and the Threads menu for everything. Roots only, subagents follow their parent; a row with nothing to
+or more hosts), and the Threads menu for everything; a project card in the
+workspace column offers Pause all, Resume all and Stop all over the project
+and its linked copies (the `projects` scope, `ids` of every copy), its
+archiving staying Archive dormant. Roots only, subagents follow their parent; a row with nothing to
 act on is disabled. The rules per row and the toast line are
 `src/renderer/src/lib/threadBatch.ts`, the confirm copy with its live count
 `lib/threadBatchCopy.ts` (out of the first paint; both unit-tested); the

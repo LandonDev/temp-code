@@ -116,6 +116,18 @@ describe("batchTargets", () => {
     const scope = { kind: "project" as const, path: "/tmp/here", paths: ["/tmp/here", "/srv/work"], name: "app" };
     expect(ids(batchTargets("pause", [onBox, here, elsewhere], { ...all, scope }))).toEqual(["box", "here"]);
   });
+  it("scopes a project card to its project and its linked copies by id", () => {
+    const leader = meta({ id: "leader", status: "running", projectId: "p1" });
+    const copy = meta({ id: "copy", status: "paused", projectId: "p1-box", environmentId: "env_box" });
+    const other = meta({ id: "other", status: "running", projectId: "p2" });
+    const loose = meta({ id: "loose", status: "running", projectId: null });
+    const scope = { kind: "projects" as const, ids: ["p1", "p1-box"], name: "app" };
+    const list = [leader, copy, other, loose];
+    expect(ids(batchTargets("pause", list, { ...all, scope }))).toEqual(["leader"]);
+    expect(ids(batchTargets("stop", list, { ...all, scope }))).toEqual(["leader"]);
+    expect(ids(batchTargets("resume", list, { ...all, scope }))).toEqual(["copy"]);
+    expect(batchConfirm("stop", 1, scope).title).toBe("Stop 1 running thread in app?");
+  });
 });
 
 describe("batchConfirm", () => {

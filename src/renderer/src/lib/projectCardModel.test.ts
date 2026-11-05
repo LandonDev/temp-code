@@ -3,9 +3,7 @@ import {
   cardTasks,
   pausedElapsed,
   projectCardStatus,
-  projectRunAction,
   runningElapsed,
-  stoppableThreads,
   type CardThread,
 } from "./projectCardModel";
 
@@ -128,19 +126,5 @@ describe("lines", () => {
     expect(cardTasks(thread("a", { threadType: "implementation", tasks }))).toEqual(tasks);
     expect(cardTasks(thread("a", { threadType: "implementation" }))).toBeNull();
     expect(cardTasks(thread("a", { threadType: "planning", tasks }))).toBeNull();
-  });
-});
-
-describe("menu", () => {
-  it("offers continue when anything is paused, else pause when anything runs", () => {
-    const both = projectCardStatus(
-      [thread("r", { status: "running" }), thread("p", { status: "paused" })],
-      null,
-      {},
-    );
-    expect(projectRunAction(both)).toBe("resume");
-    expect(projectRunAction(projectCardStatus([thread("r", { status: "running" })], null, {}))).toBe("pause");
-    expect(projectRunAction(projectCardStatus([thread("i")], null, {}))).toBeNull();
-    expect(ids(stoppableThreads(both))).toEqual(["r", "p"]);
   });
 });

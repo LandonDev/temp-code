@@ -23,12 +23,9 @@ import {
   GitBranch,
   MessageSquarePlus,
   MoreHorizontal,
-  Pause,
   Pencil,
-  Play,
   Plus,
   Settings,
-  Square,
   Trash2,
 } from "./icons";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -49,9 +46,7 @@ import {
   cardTasks,
   pausedElapsed,
   projectCardStatus,
-  projectRunAction,
   runningElapsed,
-  stoppableThreads,
 } from "../lib/projectCardModel";
 import { SESSION_LIST_PAGE } from "../lib/sessionListWindow";
 import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
@@ -74,7 +69,10 @@ import { duration } from "../lib/duration";
 import { timeAgo } from "../lib/format";
 import { useClock, useSlowClock } from "../lib/turnClock";
 import { tallyRender } from "../lib/devRenders";
-import { interrupt, pause, resume } from "../lib/tcserver/commands";
+import { batchActionOfMenuId, batchCounts, batchMenuId, batchMenuRows } from "../lib/threadBatchMenu";
+import { requestThreadBatch, type BatchScope } from "../lib/threadBatch";
+import { selectionFor } from "../lib/threadBatchSelection";
+import { sessionStore } from "../lib/tcserver/store";
 import { archiveDormantThreads } from "../lib/archiveDormantThreads";
 import { dormantByType, dormantThreads, focusedTree, marksAtRest, threadStatus } from "../lib/threadStripModel";
 import { sameSet, useKept } from "../lib/keptValue";
@@ -1102,8 +1100,7 @@ export const ProjectCard = memo(function ProjectCard({
   const status = projectCardStatus(cardThreads(threads), rows.activeSessionId ?? null, lastSeen, seenFloor);
   const all = cardLines(threads, status);
   const { shown, hidden } = windowRows(all, requested, null);
-  const runAction = projectRunAction(status);
-  const stoppable = stoppableThreads(status);
+  const batchScope: BatchScope = { kind: "projects", ids: [...new Set([project.id, ...(group.projectIds ?? [])])], name: project.name };
   const teardown = project.mode === "worktree" && Boolean(project.branch);
 
   const dormant = () => dormantThreads(threads, lastSeen, seenFloor, rows.focusedTree);
@@ -1116,9 +1113,9 @@ export const ProjectCard = memo(function ProjectCard({
       { kind: "item", id: "preamble", label: "Preamble…", icon: FileText },
       { kind: "sep" },
     ];
-    if (runAction === "resume") items.push({ kind: "item", id: "resume", label: "Continue paused threads", icon: Play });
-    else if (runAction === "pause") items.push({ kind: "item", id: "pause", label: "Pause active threads", icon: Pause });
-    if (stoppable.length) items.push({ kind: "item", id: "stop", label: "Stop active threads", icon: Square, danger: true });
+    // The fleet switches over the project and every linked copy, confirms
+    // included (lib/threadBatch.ts); archiving is the dormant rows below.
+    items.push(...batchMenuRows(batchCounts(sessionStore.metas(), selectionFor(batchScope))).filter((row) => row.kind !== "item" || row.id !== batchMenuId("archiveDone")));
     items.push(
       { kind: "sep" },
       {
@@ -1140,9 +1137,7 @@ export const ProjectCard = memo(function ProjectCard({
     else if (id === "rename") setRenaming(true);
     else if (id === "settings") openSettings(project);
     else if (id === "preamble") openPreamble(project);
-    else if (id === "resume") void Promise.allSettled(status.paused.map((t) => resume(t.id)));
-    else if (id === "pause") void Promise.allSettled(status.running.map((t) => pause(t.id)));
-    else if (id === "stop") void Promise.allSettled(stoppable.map((t) => interrupt(t.id)));
+    else if (batchActionOfMenuId(id)) void requestThreadBatch(batchActionOfMenuId(id)!, batchScope, () => selectionFor(batchScope));
     else if (id === "archive-dormant") archiveDormantThreads(dormant(), rows.activeSessionId);
     else if (id.startsWith("archive-dormant:"))
       archiveDormantThreads(dormantByType(dormant()).find((g) => g.type === id.slice("archive-dormant:".length))?.threads ?? [], rows.activeSessionId);

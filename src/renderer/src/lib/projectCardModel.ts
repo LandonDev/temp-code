@@ -126,18 +126,3 @@ export function pausedElapsed(t: CardThread): number {
 export function cardTasks(t: CardThread): NonNullable<SessionMeta["tasks"]> | null {
   return t.threadType === "implementation" ? (t.tasks ?? null) : null;
 }
-
-export type ProjectRunAction = "resume" | "pause" | null;
-
-/** The menu's one pause/continue row: continue when anything is paused,
- *  pause when anything runs, nothing when the project is quiet. */
-export function projectRunAction(status: ProjectCardStatus): ProjectRunAction {
-  if (status.paused.length > 0) return "resume";
-  if (status.running.length > 0) return "pause";
-  return null;
-}
-
-/** Threads Stop interrupts: the running ones and the paused ones. */
-export function stoppableThreads<T extends CardThread>(status: ProjectCardStatus<T>): T[] {
-  return [...status.running, ...status.paused];
-}

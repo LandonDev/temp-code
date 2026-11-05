@@ -18,6 +18,7 @@ export function scopePhrase(scope: BatchScope): string {
     case "host":
       return `on ${scope.name}`;
     case "project":
+    case "projects":
       return `in ${scope.name}`;
   }
 }
