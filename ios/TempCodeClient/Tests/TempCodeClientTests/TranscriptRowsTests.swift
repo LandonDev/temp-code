@@ -180,3 +180,66 @@ import TempCodeContract
         #expect(FollowRule.write(for: .enteringBackground, atBottom: true) == .none)
     }
 }
+
+@Suite struct BornRowsTests {
+    @Test func `a placeholder and a loading page cannot mark history as born live`() {
+        let born = BornRows()
+        born.open(thread: nil)
+        #expect(born.openedAt == nil)
+        var thread = ThreadState()
+        thread.isLoading = true
+        born.open(thread: thread)
+        #expect(born.openedAt == nil)
+        thread.append([EventRow(sessionId: "s", seq: 10, ts: 1_000,
+            event: .userText(UserTextEvent(text: "history")))], trim: false)
+        thread.isLoading = false
+        born.open(thread: thread)
+        #expect(born.openedAt == 10)
+        #expect(!born.isUnclaimed(row(10)))
+        #expect(born.isUnclaimed(row(11)))
+    }
+
+    private func row(_ seq: Int, key: Int? = nil) -> TranscriptRowModel {
+        .item(ThreadEntry(item: textItem(seq, ts: 1_000, "hello world "), key: key))
+    }
+
+    @Test func `an empty unsubscribed state waits but a loaded empty thread opens at zero`() {
+        let born = BornRows()
+        var thread = ThreadState()
+        born.open(thread: thread)
+        #expect(born.openedAt == nil)
+        thread.isLive = true
+        born.open(thread: thread)
+        #expect(born.openedAt == 0)
+    }
+
+    @Test func `preparing a live row twice keeps its reveal until it appears`() {
+        let born = BornRows()
+        born.open(at: 10)
+        let live = row(11)
+        #expect(born.isUnclaimed(live))
+        #expect(born.isUnclaimed(live), "preparing a view must not claim it")
+        #expect(born.claim(live))
+        #expect(!born.isUnclaimed(live), "a row scrolled back in shows whole")
+        #expect(!born.claim(live))
+    }
+
+    @Test func `opening waits for loaded rows and keeps history outside the reveal`() {
+        let born = BornRows()
+        born.open(at: nil)
+        #expect(!born.isUnclaimed(row(11)))
+        born.open(at: 10)
+        born.open(at: 20)
+        #expect(born.openedAt == 10)
+        #expect(!born.isUnclaimed(row(10)))
+        #expect(!born.isUnclaimed(row(5)))
+        #expect(born.isUnclaimed(row(11)))
+    }
+
+    @Test func `a provisional row keeps its claim when its final seq arrives`() {
+        let born = BornRows()
+        born.open(at: 10)
+        #expect(born.claim(row(-1_000, key: -1_000)))
+        #expect(!born.isUnclaimed(row(12, key: -1_000)))
+    }
+}

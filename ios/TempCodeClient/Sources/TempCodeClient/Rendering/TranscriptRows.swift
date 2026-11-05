@@ -396,3 +396,39 @@ extension ToolItem {
         ["TodoWrite", "update_plan", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"].contains(name)
     }
 }
+
+/// Tracks rows born after the transcript opened. Reading eligibility never
+/// consumes it: SwiftUI may prepare a row several times before it appears.
+/// The view claims it on appearance; a later mount then shows it whole.
+public final class BornRows {
+    public private(set) var openedAt: Int?
+    private var claimed: Set<TranscriptRowID> = []
+
+    public init() {}
+
+    /// A placeholder or a first page still loading is not the opening paint.
+    public func open(thread: ThreadState?) {
+        guard let thread, !thread.isLoading,
+              thread.isLive || !thread.rows.isEmpty else { return }
+        open(at: thread.fold.lastSeq)
+    }
+
+    /// The first loaded paint fixes the line between history and live.
+    public func open(at lastSeq: Int?) {
+        if openedAt == nil, let lastSeq { openedAt = lastSeq }
+    }
+
+    public func isUnclaimed(_ row: TranscriptRowModel) -> Bool {
+        guard let openedAt, let seq = row.anchorSeq,
+              seq > openedAt || seq < 0 else { return false }
+        return !claimed.contains(row.id)
+    }
+
+    /// Consume the reveal only once the row appears.
+    @discardableResult
+    public func claim(_ row: TranscriptRowModel) -> Bool {
+        guard isUnclaimed(row) else { return false }
+        claimed.insert(row.id)
+        return true
+    }
+}

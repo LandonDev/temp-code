@@ -2418,8 +2418,9 @@ proof and the sizing rules; the pieces, by name:
   is the desktop's jitter buffer in Swift as of 0b82ddad (`Pacer`, the rate
   window, the 250 ms seeded lead, the catch-up, `revealCut`'s whole-word
   steps every 100 ms; `SmoothTextReveal` on a timer `RevealClock`, no
-  display link; UTF-16 positions; born-live rows through `BornRows` in
-  TranscriptView), and the thread screen names its thread with
+  display link; UTF-16 positions; born-live rows through the client
+  package's `BornRows`, claimed by TranscriptView on appearance), and the
+  thread screen names its thread with
   `session.focus { sessionId, shown }` (`FocusSignal`, in the phone's
   subset); the fold gives a partial-born tool item a
   provisional id and the final row's seq, folds `live-edits` into the
