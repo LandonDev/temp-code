@@ -369,10 +369,15 @@ elapsed time and Stop, nothing else, and the held states with their
 actions: Paused with Stop and Continue, Stopped with Resume (the harness is
 gone), Queued with Start now; a held row's way on (Continue, Resume, Start
 now) is the raised `secondary`, Stop the ghost beside it. Every Stop there
-spins in place while it lands (`BusyLabel`, keeping its word), the timer's
+spins in place while it lands (`BusyLabel`, keeping its word), until its
+request settles, the row leaves its slot or `STOP_DEADLINE_MS` (10s) passes,
+so a Stop the host never acts on never spins for good; the timer's
 set at its width's end (`align="end"`) so the word stands over Send; a held
-row's glyph sits in the `+` button's 28px box, on `+`'s axis, its word 8px
-after that box, and the queue's grip sits in the same box. What the thread does is the transcript's
+row's glyph sits in the `+` button's 28px box, on `+`'s axis (the row
+carries the box's 1px sides, unseen), its word 8px after that box, and its
+detail, the tally and the frozen time one comma run ("Stopped The harness
+is gone, 1m 35s"). The queue's grip sits in the same box, centred on its
+text's first line, and the text starts 8px after it, on the field's column. What the thread does is the transcript's
 working line, a pending approval or question is its card, and a watching
 thread's state is the transcript's closing line (Watching then its age,
 ticking every second, amber past 30 minutes, opening the Activity section; an
@@ -634,7 +639,7 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Toast (sonner, on `--layer-toast`; index.css overrides its 400-500ms defaults, out-specifying its injected stylesheet) | rise and fade, `--dur-base` `--ease-out`, no height or shadow transition | fade, `--dur-fast` `--ease-exit` | fade, `--dur-fast` |
 | Right panel (a toggle in place; the thread takes its width at once, so no frame lays out the transcript) | slides in from the row's right edge (`translate-x-full`→0) and fades, `--dur-slow` `--ease-out`; mounted open (a tab switch, a launch) it is just there; a section's body fades `--dur-fast` | drawn over the thread, inert: a quarter of its width back out and a fade, `--dur-fast` `--ease-exit` | fade only |
 | Rail | no width animation; content fades `--dur-fast` | same | same |
-| The composer's slash and @ menu (transitions; the entry is `@starting-style`; open while a `/` or `@` is typed, with nothing to pick one muted 28px row, "No matches", or "Loading…" while the project's files or the host's commands are read, or "Couldn't load commands" in red when the host gave no list, which Escape closes) | fade + rise 4px from the box's edge, `--dur-base` `--ease-out`; a row keeps its element as the filter narrows, and the frame's height follows the list on the same transition | its last rows stay, inert, while it fades 1px back down, `--dur-fast` `--ease-exit`; typing it open again turns it back | fade only |
+| The composer's slash and @ menu (transitions; the entry is `@starting-style`; open while a `/` or `@` is typed, with nothing to pick one muted 28px row, "No matches", or "Loading…" while the project's files or the host's commands are read, or "Couldn't load commands" in red when the host gave no list, which Escape closes and the next `/` asks again) | fade + rise 4px from the box's edge, `--dur-base` `--ease-out`; a row keeps its element as the filter narrows, and the frame's height follows the list on the same transition | its last rows stay, inert, while it fades 1px back down, `--dur-fast` `--ease-exit`; typing it open again turns it back | fade only |
 | Tab indicator | segmented: the pill glides on `SPRING_LAYOUT_CSS` (`TabsIndicator`); line tabs and the tab strip: instant | — | jump |
 | Press, a raised button (`default`, `secondary`, `destructive`) | its fill layer scales 0.985 (0.997 × 0.985 full width) while the label stays put, `--dur-fast` | release, `--dur-hover` | none |
 | Press, ghost, link, outline and every row (a rail row, an Item, a toggle, a tab, a hover action, a board row, a task list's header, a row control around the composer) | the fill steps to `foreground/12` at once; nothing scales (`ROW_PRESS` in components/ui/press.ts for a row drawn by hand, `ROW_CONTROL` in chrome/composerRow.ts for the quiet controls under and over the composer's box); a control floating on its own fill (jump to latest) lays `foreground/12` over that fill instead | back over `--dur-hover` | same |

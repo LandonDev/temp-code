@@ -79,9 +79,10 @@ class SlashCommandStore {
     return this.state.get(commandKey(environmentId, provider, cwd))?.commands;
   }
 
+  /** No entry, one past the TTL, or a failed one: a failure is asked again at the next open, never held. */
   isStale(environmentId: string, provider: string, cwd: string, now = Date.now()): boolean {
     const entry = this.state.get(commandKey(environmentId, provider, cwd));
-    return !entry || now - entry.at >= COMMANDS_STALE_MS;
+    return !entry || !!entry.failed || now - entry.at >= COMMANDS_STALE_MS;
   }
 
   /** Re-read one provider's list on one host; concurrent calls share the request. */

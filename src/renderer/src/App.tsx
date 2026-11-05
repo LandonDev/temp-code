@@ -2882,11 +2882,8 @@ export default function App() {
     (sessionId: string) => {
       const session = sessionStore.getSnapshot().find((s) => s.id === sessionId);
       turnGen.current.set(sessionId, (turnGen.current.get(sessionId) ?? 0) + 1);
-      if (session) {
-        for (const id of sessionChildHarnesses(session)) {
-          void cancelHarnessTurn(id, sessionId);
-        }
-      }
+      // The requests settle what the Stop control shows: it spins until they do.
+      const cancels = session ? sessionChildHarnesses(session).map((id) => cancelHarnessTurn(id, sessionId)) : [];
       setSessions((prev) =>
         prev.map((s) => {
           if (s.id !== sessionId) return s;
@@ -2905,6 +2902,7 @@ export default function App() {
         nudgeWatchedFiles();
         window.setTimeout(() => nudgeWatchedFiles(), 150);
       }
+      return Promise.allSettled(cancels).then(() => undefined);
     },
     [],
   );

@@ -13,6 +13,9 @@ import { duration } from "../../lib/duration";
 import { COLUMN_MAX_CLASS } from "../transcriptOutlineModel";
 import { DUR } from "../../lib/ease";
 
+/** The longest a Stop spins when nothing settles it: past this, the control takes a click again. */
+export const STOP_DEADLINE_MS = 10_000;
+
 /** What the row draws; the slot keeps the last of these for its exit fade. */
 type RowView = { slot: NonNullable<ReturnType<typeof composerSlotOf>>; state: string; status: ReturnType<typeof threadStatus>; elapsed: number; batchPaused: number };
 
@@ -53,7 +56,8 @@ export const WorkingStrip = memo(function WorkingStrip({
   onStart,
 }: {
   session: Session;
-  onStop: () => void;
+  /** A promise settles the Stop's busy state; without one it ends when the slot changes or at `STOP_DEADLINE_MS`. */
+  onStop: () => Promise<void> | void;
   onResume: () => Promise<void> | void;
   /** Start a queued thread now (session.start); absent, the row only says Queued. */
   onStart?: () => Promise<void> | void;
@@ -106,17 +110,25 @@ export const WorkingStrip = memo(function WorkingStrip({
     setStartBusy(true);
     Promise.resolve(onStart()).finally(() => setStartBusy(false));
   };
-  // Stop spins until the row leaves its slot (the timer, or Paused).
+  // Stop spins while its work runs: until its request settles, the row leaves
+  // its slot (the timer, or Paused) or the deadline passes, whichever is first,
+  // so a Stop the host never acts on is never a spinner for good.
   const [stopping, setStopping] = useState(false);
   const [stoppingSlot, setStoppingSlot] = useState(slot);
   if (stoppingSlot !== slot) {
     setStoppingSlot(slot);
     if (stopping) setStopping(false);
   }
+  useEffect(() => {
+    if (!stopping) return;
+    const timer = setTimeout(() => setStopping(false), STOP_DEADLINE_MS);
+    return () => clearTimeout(timer);
+  }, [stopping]);
   const stopTurn = (): void => {
     if (stopping) return;
     setStopping(true);
-    onStop();
+    const done = (): void => setStopping(false);
+    onStop()?.then(done, done);
   };
 
   // When the slot empties, the outgoing row stays for --dur-fast and fades
@@ -139,8 +151,8 @@ export const WorkingStrip = memo(function WorkingStrip({
   }, [leaving]);
   const view = live ?? leaving;
 
-  const time = (ms: number, role?: "timer") => (
-    <span role={role} className="shrink-0 tabular-nums text-muted-foreground">
+  const time = (ms: number) => (
+    <span role="timer" className="shrink-0 tabular-nums text-muted-foreground">
       {duration(ms)}
     </span>
   );
@@ -150,7 +162,7 @@ export const WorkingStrip = memo(function WorkingStrip({
     if (slot === "timer") {
       return (
         <>
-          {elapsed >= 1000 ? time(elapsed, "timer") : null}
+          {elapsed >= 1000 ? time(elapsed) : null}
           <Actions>
             <Button variant="ghost" size="xs" onClick={stopTurn} disabled={stopping}>
               <BusyLabel busy={stopping} label="Stop" align="end" />
@@ -159,20 +171,19 @@ export const WorkingStrip = memo(function WorkingStrip({
         </>
       );
     }
-    const mark = <ThreadStatusMark status={shownStatus} className={ON_PLUS_AXIS} />;
+    // A held row's frozen time is one more fact of its detail: "Stopped The harness is gone, 1m 35s".
+    const heldMark = (status: typeof shownStatus) => (
+      <ThreadStatusMark status={withTime(status, elapsed)} className={ON_PLUS_AXIS} />
+    );
     switch (state) {
       case "paused":
         return (
           <>
-            {batchPaused > 0 ? (
-              <ThreadStatusMark
-                status={{ ...shownStatus, detail: `and ${batchPaused} batch thread${batchPaused === 1 ? "" : "s"} with it` }}
-                className={ON_PLUS_AXIS}
-              />
-            ) : (
-              mark
+            {heldMark(
+              batchPaused > 0
+                ? { ...shownStatus, detail: `and ${batchPaused} batch thread${batchPaused === 1 ? "" : "s"} with it` }
+                : shownStatus,
             )}
-            {elapsed > 0 ? time(elapsed) : null}
             <Actions>
               <Button variant="ghost" size="xs" onClick={stopTurn} disabled={stopping}>
                 <BusyLabel busy={stopping} label="Stop" />
@@ -186,8 +197,7 @@ export const WorkingStrip = memo(function WorkingStrip({
       case "stopped":
         return (
           <>
-            {mark}
-            {elapsed > 0 ? time(elapsed) : null}
+            {heldMark(shownStatus)}
             <Actions>
               <Button variant="secondary" size="xs" onClick={resume} disabled={resumeBusy}>
                 <BusyLabel busy={resumeBusy} label="Resume" busyLabel="Resuming…" />
@@ -198,7 +208,7 @@ export const WorkingStrip = memo(function WorkingStrip({
       case "queued":
         return (
           <>
-            {mark}
+            {heldMark(shownStatus)}
             {onStart ? (
               <Actions>
                 <Button variant="secondary" size="xs" onClick={start} disabled={startBusy}>
@@ -223,7 +233,8 @@ export const WorkingStrip = memo(function WorkingStrip({
         inert={!visible}
         data-leaving={!visible && leaving ? "" : undefined}
         className={cn(
-          "flex h-full items-center gap-1 px-1.5 text-xs transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
+          // The box's and the queue's 1px side borders, unseen, so the glyph sits on `+`'s axis.
+          "flex h-full items-center gap-1 border-x border-transparent px-1.5 text-xs transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-none",
           visible ? "opacity-100" : "opacity-0",
         )}
       >
@@ -239,6 +250,12 @@ function useBatchPaused(masterId: string, on: boolean): number {
   const metas = useSessionMetasWhen(on);
   if (!on) return 0;
   return metas.filter((m) => m.masterId === masterId && !m.archived && !m.parentId && (m.status === "paused" || m.treeHasPaused)).length;
+}
+
+/** A held row's detail with its frozen time after it, one comma run with the tally: never facts parted by space. */
+function withTime(status: RowView["status"], elapsed: number): RowView["status"] {
+  const facts = [status.detail, status.tally, elapsed > 0 ? duration(elapsed) : undefined].filter((f): f is string => !!f);
+  return { ...status, detail: facts.length ? facts.join(", ") : null, tally: null };
 }
 
 /** A held row's glyph sits in the `+` button's 28px box, so it centres on

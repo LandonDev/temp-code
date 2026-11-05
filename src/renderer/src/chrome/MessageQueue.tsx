@@ -143,15 +143,19 @@ export function MessageQueue({
                     className={`pointer-events-none absolute inset-x-2 z-20 h-0.5 rounded-full bg-accent ${sortable.toIndex! < sortable.fromIndex! ? 'top-0' : 'bottom-0'}`}
                   />
                 ) : null}
-                <div className="flex items-start gap-1.5 rounded-lg border border-border bg-card py-1.5 pr-1.5 pl-1.5">
+                <div className="flex items-start gap-2 rounded-lg border border-border bg-card py-1.5 pr-1.5 pl-1.5">
                   <span
                     data-queue-grip
                     aria-hidden
                     onPointerDown={(event) => sortable.onItemPointerDown(m.id, event)}
-                    // The `+` button's 28px box, so the grip centres on `+`'s axis.
+                    // The `+` button's 28px box, so the grip centres on `+`'s axis; inside it the
+                    // grip centres on the text's first 20px line, as the box centres its controls
+                    // on the field's first line. The text starts 8px after the box, as the field's does.
                     className="-my-1.5 flex w-7 shrink-0 cursor-grab touch-none justify-center self-stretch py-1.5 text-muted-foreground/60 active:cursor-grabbing"
                   >
-                    <GripVertical className="mt-[3px] size-3.5" />
+                    <span className="flex h-5 items-center">
+                      <GripVertical className="size-3.5" />
+                    </span>
                   </span>
                   {editing === m.id ? (
                     <Textarea

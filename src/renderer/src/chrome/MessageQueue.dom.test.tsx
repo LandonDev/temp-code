@@ -189,6 +189,12 @@ describe("MessageQueue reorder", () => {
     expect(g.className.split(" ")).toEqual(expect.arrayContaining(["w-7", "justify-center"]));
     expect(g.className).not.toMatch(/(^|\s)-?ms-/);
     expect(g.parentElement!.className.split(" ")).toContain("pl-1.5");
+    // The text starts 8px after the box, as the field's does (the row's gap-1 and the field's px-1).
+    expect(g.parentElement!.className.split(" ")).toContain("gap-2");
+    // The grip centres on the text's first 20px line, on the grid: no off-grid nudge.
+    const line = g.querySelector("svg")!.parentElement!;
+    expect(line.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "items-center"]));
+    expect(g.innerHTML).not.toContain("mt-[3px]");
   });
 
   it("a press on the text edits it; only the grip drags", () => {

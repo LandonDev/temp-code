@@ -102,6 +102,14 @@ describe("slashCommandStore", () => {
     expect(slashCommandStore.isStale("local", "claude", "/repo")).toBe(true);
   });
 
+  it("a failed list is stale at once, so the next open asks again", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    await slashCommandStore.refresh("elsewhere", "claude", "/repo");
+    expect(slashCommandStore.getSnapshot().get(commandKey("elsewhere", "claude", "/repo"))?.failed).toBe(true);
+    expect(slashCommandStore.isStale("elsewhere", "claude", "/repo")).toBe(true);
+  });
+
   it("re-reads every known list when the socket reopens", async () => {
     await slashCommandStore.refresh("local", "claude", "/repo");
     await slashCommandStore.refresh("local", "codex", "/repo");

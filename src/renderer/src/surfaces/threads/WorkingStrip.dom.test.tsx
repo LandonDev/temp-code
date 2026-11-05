@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { newSession, type Block, type Session } from '../../lib/session'
 import { emptyThread } from '../../lib/tcserver/todos'
 import { mountProbe, Probe } from '../../test/renderProbe'
-import { WorkingStrip } from './WorkingStrip'
+import { STOP_DEADLINE_MS, WorkingStrip } from './WorkingStrip'
 
 const session = (over: Partial<Session>): Session => ({
   ...newSession('env-local'),
@@ -219,7 +219,9 @@ describe('WorkingStrip: the held rows', () => {
     const onResume = vi.fn(() => Promise.resolve())
     const onStop = vi.fn()
     const probe = mount(session({ status: 'stopped', frozenActiveElapsed: 95_000 }), { onStop, onResume })
-    expect(rowText(probe)).toBe('StoppedThe harness is gone1m 35sResume')
+    expect(rowText(probe)).toBe('StoppedThe harness is gone, 1m 35sResume')
+    // The detail and its frozen time are one comma run: one muted span after the word.
+    expect([...row(probe).querySelectorAll('span')].some((el) => el.textContent === 'The harness is gone, 1m 35s' && el.children.length === 0)).toBe(true)
     expect(probe.container.querySelector('[aria-live="polite"]')!.textContent).toBe('Stopped')
     await probe.act(async () => buttons(probe)[0]!.click())
     expect(onResume).toHaveBeenCalledTimes(1)
@@ -253,7 +255,52 @@ describe('WorkingStrip: the row shares the box and the line rule', () => {
     expect(classes).toEqual(expect.arrayContaining(['px-1.5', 'gap-1']))
     expect(classes).not.toContain('px-4')
     expect(classes).not.toContain('gap-2')
+    // The box's and the queue's 1px side borders, unseen, so the glyph sits on `+`'s axis.
+    expect(classes).toEqual(expect.arrayContaining(['border-x', 'border-transparent']))
     probe.unmount()
+  })
+})
+
+describe("WorkingStrip: Stop's busy state ends when its work does", () => {
+  const working = session({ status: 'running', busySince: Date.now() - 5_000 })
+
+  it('spins until the request settles, then takes a click again, even when the slot never changed', async () => {
+    let settle!: () => void
+    const onStop = vi.fn(() => new Promise<void>((resolve) => (settle = resolve)))
+    const probe = mount(working, { onStop })
+    const stop = buttons(probe)[0]!
+    await probe.act(async () => stop.click())
+    expect(stop.disabled).toBe(true)
+    expect(stop.querySelector('[data-slot="spinner"]')).not.toBeNull()
+    await probe.act(async () => settle())
+    expect(stop.disabled).toBe(false)
+    expect(stop.querySelector('[data-slot="spinner"]')).toBeNull()
+    expect(onStop).toHaveBeenCalledTimes(1)
+    probe.unmount()
+  })
+
+  it('a refused request ends the spin too', async () => {
+    const onStop = vi.fn(() => Promise.reject(new Error('no link')))
+    const probe = mount(working, { onStop })
+    await probe.act(async () => buttons(probe)[0]!.click())
+    expect(buttons(probe)[0]!.disabled).toBe(false)
+    probe.unmount()
+  })
+
+  it('with no request to wait on, the spin ends at the deadline', async () => {
+    vi.useFakeTimers()
+    try {
+      const probe = mount(working, { onStop: () => {} })
+      await probe.act(async () => buttons(probe)[0]!.click())
+      expect(buttons(probe)[0]!.disabled).toBe(true)
+      await probe.act(async () => {
+        vi.advanceTimersByTime(STOP_DEADLINE_MS)
+      })
+      expect(buttons(probe)[0]!.disabled).toBe(false)
+      probe.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
