@@ -90,8 +90,9 @@ export function FileHeader({ folder, diff, markdown, save = IDLE, children }: Fi
           </ToggleGroup>
         ) : null}
         {children}
-        {diff?.onRevert || diff?.onStage ? <ChangeActions diff={diff} /> : null}
-        {diff ? <Stepper diff={diff} /> : null}
+        {/* Nothing left to review (every change reverted) leaves no dead controls. */}
+        {diff && diff.total > 0 && (diff.onRevert || diff.onStage) ? <ChangeActions diff={diff} /> : null}
+        {diff && diff.total > 0 ? <Stepper diff={diff} /> : null}
       </header>
     </TooltipProvider>
   );
@@ -102,7 +103,7 @@ function SaveWord({ save }: { save: SaveState }) {
   if (save.status !== "error") return null;
   return (
     <Tooltip>
-      <TooltipTrigger render={<span tabIndex={0} className="min-w-0 max-w-64 truncate text-destructive outline-none focus-visible:underline" />}>
+      <TooltipTrigger render={<span tabIndex={0} className="focus-ring min-w-0 max-w-64 truncate rounded-sm text-destructive" />}>
         Save failed: {save.message}
       </TooltipTrigger>
       <TooltipContent>{save.message}</TooltipContent>

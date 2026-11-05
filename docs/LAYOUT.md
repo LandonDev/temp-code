@@ -883,7 +883,9 @@ nothing under it repeats them.
   tab: the folder in mono, cut from the left; on a review tab `+n −n`;
   then "Saving…" or "Save failed" while that is so, Preview and Source on a
   Markdown file, and on a review tab the change stepper ("2/5" between
-  Previous and Next). There is no footer and nothing floats over the text.
+  Previous and Next), which leaves with Revert and Stage once no change is
+  left to review. "Save failed" takes the one focus ring (`focus-ring`).
+  There is no footer and nothing floats over the text.
 - **The body**: the editor, or for Markdown the preview and the source
   swapped in place. Loading is a `Skeleton` of code lines under the
   header's slot; a file that will not open is one `Empty` with Retry.

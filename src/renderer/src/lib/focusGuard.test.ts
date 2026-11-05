@@ -30,6 +30,16 @@ describe("the focus ring", () => {
     expect(found).toEqual(ALLOWED);
   });
 
+  it("never trades the ring for a hand-drawn focus: no class string pairs outline-none with focus-visible:underline", () => {
+    const found: string[] = [];
+    for (const path of walk(root)) {
+      for (const literal of readFileSync(path, "utf8").match(/"[^"\n]*"|`[^`]*`/g) ?? []) {
+        if (/\boutline-none\b/.test(literal) && /focus-visible:underline\b/.test(literal)) found.push(relative(root, path));
+      }
+    }
+    expect(found).toEqual([]);
+  });
+
   it("names focus-ring in the global rule", () => {
     const css = readFileSync(join(root, "index.css"), "utf8");
     const rule = css.slice(css.indexOf(".focus-ring:focus-visible"), css.indexOf("}", css.indexOf(".focus-ring:focus-visible")));

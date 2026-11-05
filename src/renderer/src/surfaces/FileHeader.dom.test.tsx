@@ -35,15 +35,20 @@ describe("FileHeader", () => {
     expect(container.textContent).not.toContain("+");
   });
 
+  it("draws no stepper and no change actions when nothing is left to review", () => {
+    const { container } = render(
+      <FileHeader folder={null} diff={diff({ index: 0, total: 0, onRevert: vi.fn(), onStage: vi.fn() })} save={{ status: "idle" }} />,
+    );
+    expect(container.textContent).not.toContain("0/0");
+    expect(container.querySelector("[role=toolbar]")).toBeNull();
+  });
+
   it("steps between changes, each end disabled", () => {
     const onPrev = vi.fn();
     const onNext = vi.fn();
     const { container, rerender } = render(
-      <FileHeader folder={null} diff={diff({ index: 0, total: 0, onPrev, onNext })} save={{ status: "idle" }} />,
+      <FileHeader folder={null} diff={diff({ index: 0, total: 3, onPrev, onNext })} save={{ status: "idle" }} />,
     );
-    expect(container.textContent).toContain("0/0");
-    expect(button(container, "Previous change").disabled).toBe(true);
-    expect(button(container, "Next change").disabled).toBe(true);
 
     rerender(<FileHeader folder={null} diff={diff({ index: 0, total: 3, onPrev, onNext })} save={{ status: "idle" }} />);
     expect(container.textContent).toContain("1/3");
@@ -99,7 +104,11 @@ describe("FileHeader", () => {
     expect(container.textContent).toBe("Saving…");
     rerender(<FileHeader folder={null} save={{ status: "error", message: "EACCES" }} />);
     expect(container.textContent).toBe("Save failed: EACCES");
-    expect(container.querySelector<HTMLElement>(".text-destructive")!.tabIndex).toBe(0);
+    const word = container.querySelector<HTMLElement>(".text-destructive")!;
+    expect(word.tabIndex).toBe(0);
+    // The one focus ring, never a hand-drawn underline.
+    expect(word.className).toContain("focus-ring");
+    expect(word.className).not.toContain("focus-visible:underline");
     rerender(<FileHeader folder={null} save={{ status: "saved" }} />);
     expect(container.textContent).toBe("");
     rerender(<FileHeader folder={null} save={{ status: "idle" }} />);
