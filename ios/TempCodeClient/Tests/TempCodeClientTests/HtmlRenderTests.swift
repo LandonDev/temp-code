@@ -69,10 +69,10 @@ import TempCodeContract
         let read = item(toolItem(2, ts: 1_002, doneTs: 1_010, input: ["file_path": .string("/repo/a.ts")]))
         let page = item(.tool(call("mcp__app__html_render", result, seq: 3)))
         let rows = TranscriptRows.rows([user, read, page], turnOpen: false)
-        #expect(rows.map(\.id) == [TranscriptRowID(kind: .item, seq: 1), TranscriptRowID(kind: .group, seq: 2), TranscriptRowID(kind: .item, seq: 3)])
+        #expect(rows.map(\.id) == [TranscriptRowID(key: 1), TranscriptRowID(key: 2), TranscriptRowID(key: 3)])
         // While it runs it is ordinary work.
         let running = item(.tool(call("mcp__app__html_render", nil, status: .running, seq: 3)))
-        #expect(TranscriptRows.rows([user, read, running], turnOpen: true).map(\.id).prefix(2) == [TranscriptRowID(kind: .item, seq: 1), TranscriptRowID(kind: .group, seq: 2)])
+        #expect(TranscriptRows.rows([user, read, running], turnOpen: true).map(\.id).prefix(2) == [TranscriptRowID(key: 1), TranscriptRowID(key: 2)])
     }
 
     @Test func `the theme travels as the desktop's fragment and message`() throws {

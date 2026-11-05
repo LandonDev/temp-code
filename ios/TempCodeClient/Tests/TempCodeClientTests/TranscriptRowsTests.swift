@@ -32,7 +32,7 @@ import TempCodeContract
         #expect(kinds(rows) == ["item 1", "group [2, 3]"])
         guard case .group(let group) = rows[1] else { return }
         #expect(group.kind == .research)
-        #expect(group.id == TranscriptRowID(kind: .group, seq: 2))
+        #expect(group.id == TranscriptRowID(key: 2))
     }
 
     @Test func `one read is a phase of one`() {
@@ -52,7 +52,7 @@ import TempCodeContract
         let before = TranscriptRows.rows([userEntry(1), read(2), read(3)], turnOpen: true)
         let after = TranscriptRows.rows([userEntry(1), read(2), read(3), read(4)], turnOpen: true)
         #expect(before[1].id == after[1].id)
-        #expect(after[1].id == TranscriptRowID(kind: .group, seq: 2))
+        #expect(after[1].id == TranscriptRowID(key: 2))
         guard case .group(let group) = after[1] else { return }
         #expect(group.entries.count == 3)
     }
@@ -85,7 +85,7 @@ import TempCodeContract
         #expect(end.durationMs == 12_400)
         #expect(end.completedTs == 13_400)
         #expect(end.answer == "First.\n\nSecond.")
-        #expect(end.id == TranscriptRowID(kind: .turnEnd, seq: 1))
+        #expect(end.id == TranscriptRowID(key: 1, end: true))
         // A completed time before the turn's start never reads negative.
         let clamped = TranscriptRows.rows([userEntry(1, ts: 5_000, completedTs: 4_000)], turnOpen: false)
         guard case .turnEnd(let zero) = clamped[1] else {
@@ -97,10 +97,10 @@ import TempCodeContract
 
     @Test func `rowID finds the group for a hidden chip and the item for prose`() {
         let rows = TranscriptRows.rows([userEntry(1), read(2), read(3), item(textItem(4, ts: 1_004, "done"))], turnOpen: false)
-        #expect(TranscriptRows.rowID(containing: 2, in: rows) == TranscriptRowID(kind: .group, seq: 2))
-        #expect(TranscriptRows.rowID(containing: 3, in: rows) == TranscriptRowID(kind: .group, seq: 2))
-        #expect(TranscriptRows.rowID(containing: 4, in: rows) == TranscriptRowID(kind: .item, seq: 4))
-        #expect(TranscriptRows.rowID(containing: 1, in: rows) == TranscriptRowID(kind: .item, seq: 1))
+        #expect(TranscriptRows.rowID(containing: 2, in: rows) == TranscriptRowID(key: 2))
+        #expect(TranscriptRows.rowID(containing: 3, in: rows) == TranscriptRowID(key: 2))
+        #expect(TranscriptRows.rowID(containing: 4, in: rows) == TranscriptRowID(key: 4))
+        #expect(TranscriptRows.rowID(containing: 1, in: rows) == TranscriptRowID(key: 1))
         #expect(TranscriptRows.rowID(containing: 9, in: rows) == nil)
     }
 
@@ -114,5 +114,69 @@ import TempCodeContract
     @Test func `entries before the first user row fold on their own`() {
         let rows = TranscriptRows.rows([read(2), read(3), item(textItem(4, ts: 1_004, "done"))], turnOpen: false)
         #expect(kinds(rows) == ["group [2, 3]", "item 4"])
+    }
+}
+
+/// The row ids are one key space: an item, a group and the step it grew
+/// from share a key; the end row is its message's key with `end` set.
+@Suite struct TranscriptRowKeyTests {
+    private func readEntry(_ seq: Int, key: Int? = nil) -> ThreadEntry {
+        ThreadEntry(item: toolItem(seq, ts: 1_000 + seq, doneTs: 1_100 + seq), key: key)
+    }
+
+    @Test func `a lone call and the group it becomes share one key`() {
+        let user = ThreadEntry(item: userItem(1, ts: 1_000))
+        let lone = TranscriptRows.rows([user, readEntry(2, key: -1_000)], turnOpen: true)
+        let grown = TranscriptRows.rows([user, readEntry(2, key: -1_000), readEntry(3)], turnOpen: true)
+        #expect(lone[1].id == TranscriptRowID(key: -1_000))
+        #expect(grown[1].id == lone[1].id)
+    }
+
+    @Test func `the end row is the message's key, from the thinking tail to the closing line`() {
+        let open = ThreadEntry(item: userItem(4, ts: 1_000), key: -100_000)
+        let tail = TranscriptRows.rows([open], turnOpen: true)
+        #expect(tail.last?.id == TranscriptRowID(key: -100_000, end: true))
+        let closed = ThreadEntry(item: .user(UserTurn(seq: 4, ts: 1_000, text: "go", attachments: [], model: nil, reasoning: nil, completedTs: 2_000, costUsd: nil)), key: -100_000)
+        let ended = TranscriptRows.rows([closed, ThreadEntry(item: textItem(5, ts: 1_500, "done"))], turnOpen: false)
+        #expect(ended.last?.id == TranscriptRowID(key: -100_000, end: true))
+        #expect(ended.first?.id == TranscriptRowID(key: -100_000))
+    }
+
+    @Test func `a group keeps its key when history adds steps before its first`() {
+        let memory = RowKeyMemory()
+        let tail = TranscriptRows.rows([readEntry(5), readEntry(6)], turnOpen: false, memory: memory)
+        #expect(tail[0].id == TranscriptRowID(key: 5))
+        let joined = TranscriptRows.rows([ThreadEntry(item: userItem(1, ts: 1_000)), readEntry(2), readEntry(3), readEntry(5), readEntry(6)], turnOpen: false, memory: memory)
+        #expect(joined[1].id == TranscriptRowID(key: 5))
+    }
+
+    @Test func `two groups never draw under one remembered key`() {
+        let memory = RowKeyMemory()
+        _ = TranscriptRows.rows([readEntry(2), readEntry(3)], turnOpen: false, memory: memory)
+        let split = TranscriptRows.rows([readEntry(2), ThreadEntry(item: textItem(9, ts: 1_200, "a paragraph")), readEntry(3)], turnOpen: false, memory: memory)
+        let ids = split.map(\.id)
+        #expect(Set(ids).count == ids.count)
+        #expect(split.first?.id == TranscriptRowID(key: 2))
+    }
+}
+
+/// `FollowRule`: the offset follows only a reader at the bottom.
+@Suite struct FollowRuleTests {
+    @Test func `rows changing pin a reader at the bottom and leave one who is up`() {
+        #expect(FollowRule.write(for: .rowsChanged, atBottom: true) == .pin)
+        #expect(FollowRule.write(for: .rowsChanged, atBottom: false) == .none)
+    }
+
+    @Test func `a landing or a reflow in flight is never moved`() {
+        #expect(FollowRule.write(for: .rowsChanged, atBottom: true, landing: true) == .none)
+        #expect(FollowRule.write(for: .rowsChanged, atBottom: true, reflowHeld: true) == .none)
+        #expect(FollowRule.write(for: .opened, atBottom: true, landing: true) == .none)
+        #expect(FollowRule.write(for: .opened, atBottom: true) == .snap)
+    }
+
+    @Test func `the jump glides and leaving the app snaps only a reader who is up`() {
+        #expect(FollowRule.write(for: .jump, atBottom: false) == .glide)
+        #expect(FollowRule.write(for: .enteringBackground, atBottom: false) == .snap)
+        #expect(FollowRule.write(for: .enteringBackground, atBottom: true) == .none)
     }
 }

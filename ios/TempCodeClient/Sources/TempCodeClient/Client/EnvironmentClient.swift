@@ -25,6 +25,8 @@ public struct ThreadState: Sendable, Hashable {
     public var goneReason: String?
     /// User turns this device sent that the host has not echoed yet; the echo clears them by text.
     public var pending: [PendingTurn] = []
+    /// The next optimistic row's key: below every provisional call's.
+    public var nextPendingKey = -100_000
     /// A send is on its way: from the call until the host starts the turn or echoes the text.
     public var sending = false
     /// Approval decisions this device gave that the host has not confirmed yet, by request id.
@@ -36,7 +38,7 @@ public struct ThreadState: Sendable, Hashable {
 
     /// The fold's items with the pending turns at the end: what the transcript shows.
     public var entries: [ThreadEntry] {
-        pending.isEmpty ? fold.items : fold.items + pending.enumerated().map { $1.entry(index: $0) }
+        pending.isEmpty ? fold.items : fold.items + pending.map(\.entry)
     }
 
     /// The last persisted seq held; a streaming preview at the tail never moves it.
@@ -100,10 +102,43 @@ public struct ThreadState: Sendable, Hashable {
 
     /// The fold rebuilt from every row held; the live edits carry over.
     mutating func refold() {
-        var rebuilt = ThreadFold.fold(rows)
+        var rebuilt = ThreadFold(keys: fold.keys, provisionalFrom: fold)
+        for row in rows { rebuilt.apply(row) }
         rebuilt.carryLiveEdits(from: fold)
         fold = rebuilt
         refolds += 1
+    }
+
+    /// What this device did optimistically, confirmed by the host's rows: the
+    /// echo of a sent text retires its pending turn (and Sending… once none
+    /// remain), its row taking the pending row's key; a resolved approval or
+    /// question retires its overlay.
+    mutating func settle(_ rows: [EventRow]) {
+        for row in rows where row.ephemeral != true {
+            switch row.event {
+            case .userText(let event):
+                if let at = pending.firstIndex(where: { $0.text == event.text }) {
+                    // The echo is drawn where the optimistic row was, under its key.
+                    if let key = pending[at].key { fold.rekeyEcho(seq: row.seq, key: key) }
+                    pending.remove(at: at)
+                }
+                if pending.isEmpty { sending = false }
+            case .approvalResolved(let event):
+                decisions[event.requestId] = nil
+            case .questionResolved(let event):
+                answers[event.requestId] = nil
+            default:
+                break
+            }
+        }
+    }
+
+    /// A message this device sends, pending under the next optimistic key.
+    mutating func addPending(text: String, sentAt: Int) -> PendingTurn {
+        let turn = PendingTurn(text: text, sentAt: sentAt, key: nextPendingKey)
+        nextPendingKey -= 1
+        pending.append(turn)
+        return turn
     }
 
     static func partialCallId(_ row: EventRow) -> String? {
@@ -873,19 +908,7 @@ public final class EnvironmentClient {
     /// echo of a sent text retires its pending turn (and Sending… once none
     /// remain); a resolved approval or question retires its overlay.
     private static func settle(_ state: inout ThreadState, rows: [EventRow]) {
-        for row in rows where row.ephemeral != true {
-            switch row.event {
-            case .userText(let event):
-                if let at = state.pending.firstIndex(where: { $0.text == event.text }) { state.pending.remove(at: at) }
-                if state.pending.isEmpty { state.sending = false }
-            case .approvalResolved(let event):
-                state.decisions[event.requestId] = nil
-            case .questionResolved(let event):
-                state.answers[event.requestId] = nil
-            default:
-                break
-            }
-        }
+        state.settle(rows)
     }
 
     private func prepend(_ id: String, rows: [EventRow], moreBefore: Bool?) {

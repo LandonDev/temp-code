@@ -36,13 +36,16 @@ struct TranscriptView: View {
     @State private var openGroups: Set<TranscriptRowID> = []
     /// The thread's working directory, read once: phase lines read paths relative to it.
     @State private var cwd: String?
+    /// The group key each step was drawn under, so history joining above
+    /// never renames a group (read and written outside observation).
+    @State private var keyMemory = RowKeyMemory()
     @Environment(\.scenePhase) private var scenePhase
 
     /// Rows a cold open shows, and one page back.
     static let page = 75
 
     var body: some View {
-        let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen)
+        let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory)
         let shown = rows.count > window ? Array(rows.suffix(window)) : rows
         let moreAbove = rows.count > window || thread.moreBefore
         ScrollViewReader { proxy in
@@ -118,7 +121,7 @@ struct TranscriptView: View {
             }
             .overlay(alignment: .bottom) {
                 TranscriptScrollControls(state: scrollState) {
-                    withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
+                    withAnimation(Motion.base) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
                 }
             }
             .overlay(alignment: .top) {
@@ -135,7 +138,7 @@ struct TranscriptView: View {
             // Leaving the app scrolled up puts the transcript back at the bottom before the
             // system takes its snapshot, so the return shows the newest rows with no scroll.
             .onChange(of: scenePhase) { _, phase in
-                if TranscriptLanding.snapsToBottom(enteringBackground: phase == .background, atBottom: scrollState.atBottom) {
+                if phase == .background, FollowRule.write(for: .enteringBackground, atBottom: scrollState.atBottom) == .snap {
                     snapToBottom(proxy: proxy)
                 }
                 #if DEBUG
@@ -143,7 +146,7 @@ struct TranscriptView: View {
                 #endif
             }
             .onChange(of: rows.count, initial: true) {
-                if !rows.isEmpty, !initializedScroll, targetSeq == nil {
+                if !rows.isEmpty, !initializedScroll, FollowRule.write(for: .opened, atBottom: true, landing: targetSeq != nil) == .snap {
                     initializedScroll = true
                     Task { @MainActor in
                         await Task.yield()
@@ -295,10 +298,13 @@ struct TranscriptView: View {
     /// Pin on data changes, not on scroll geometry changes. Replacing the
     /// scroll view's size anchor at an edge forces a full layout pass.
     private func pinTail(proxy: ScrollViewProxy) {
-        guard scrollState.atBottom, targetStatus == nil else { return }
+        func follows() -> Bool {
+            FollowRule.write(for: .rowsChanged, atBottom: scrollState.atBottom, landing: targetStatus != nil, reflowHeld: scrollState.reflowHeld) == .pin
+        }
+        guard follows() else { return }
         Task { @MainActor in
             await Task.yield()
-            guard scrollState.atBottom, targetStatus == nil else { return }
+            guard follows() else { return }
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
@@ -313,7 +319,7 @@ struct TranscriptView: View {
         targetStatus = "Loading search result…"
         guard let seq = await client.reveal(sessionId, seq: targetSeq),
               let state = client.threads[sessionId],
-              case let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen),
+              case let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory),
               let id = TranscriptRows.rowID(containing: seq, in: rows),
               let index = rows.firstIndex(where: { $0.id == id }) else {
             if !Task.isCancelled {
@@ -326,7 +332,7 @@ struct TranscriptView: View {
         targetStatus = nil
         TestHooks.recordNavigation(target: targetSeq, item: seq, oldest: client.threads[sessionId]?.rows.first?.seq)
         window = max(window, rows.count - index + 8)
-        if id.kind == .group { Motion.withoutAnimation { openGroups.insert(id) } }
+        if case .group = rows[index] { Motion.withoutAnimation { openGroups.insert(id) } }
         try? await Task.sleep(for: .milliseconds(60))
         guard !Task.isCancelled else { return }
         var transaction = Transaction()
@@ -345,7 +351,7 @@ struct TranscriptView: View {
         guard let top = shown.first else { return }
         extending = true
         defer { extending = false }
-        let anchorSeq = top.anchorSeq ?? top.id.seq
+        let anchorSeq = top.anchorSeq
         if rows.count > window {
             window += Self.page
         } else {
@@ -353,8 +359,8 @@ struct TranscriptView: View {
             window += olderPage
         }
         var anchor = top.id
-        if case .group = top, let state = client.threads[sessionId],
-           let found = TranscriptRows.rowID(containing: anchorSeq, in: TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen)) {
+        if case .group = top, let anchorSeq, let state = client.threads[sessionId],
+           let found = TranscriptRows.rowID(containing: anchorSeq, in: TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory)) {
             anchor = found
         }
         try? await Task.sleep(for: .milliseconds(16))
@@ -380,7 +386,7 @@ final class TranscriptScrollState {
 }
 
 /// Only this control reads the position flag in its body. The pill rises in
-/// and sinks out on `Motion.jump` (150 ms, 8 pt of travel; a fade under
+/// and sinks out on `Motion.jump` (`fast`, 4 pt of travel; a fade under
 /// reduced motion).
 private struct TranscriptScrollControls: View {
     let state: TranscriptScrollState
@@ -400,19 +406,6 @@ private struct TranscriptScrollControls: View {
 
 enum TranscriptAnchor: Hashable {
     case bottom
-}
-
-extension TranscriptRowModel {
-    /// The seq a row stands for in scroll memory: an item's own, a group's
-    /// first chip's; a turn's closing line stands for nothing (its user row
-    /// is far above it).
-    var anchorSeq: Int? {
-        switch self {
-        case .item(let entry): entry.seq
-        case .group(let group): group.entries[0].seq
-        case .turnEnd, .thinkingTail: nil
-        }
-    }
 }
 
 private struct TopSentinel: View {

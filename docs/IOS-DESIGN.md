@@ -776,9 +776,24 @@ row (`Sources/Thread/TranscriptView.swift`, `TranscriptRows.swift`,
 model (`Rendering/TranscriptRows.swift`, the desktop's `transcriptRows.ts`
 and `transcriptActivity.ts` with zen on, the desktop's default): an entry
 on its own, a phase of the agent's work, a live turn's thinking tail, or a
-settled turn's closing line, each with a stable id (an item's seq, a
-phase's first seq, the turn's user seq), so the list, a search landing and
-the scroll proof all speak rows. The plain-words tool lines are
+settled turn's closing line, each under one key that never changes while
+the row is on screen (`TranscriptRowID`, the desktop's `rowKey`): an item,
+a group and the step it grew from share one key, the first step's
+`ThreadEntry.key`, which the fold gives at birth and keeps (a call born
+from a partial keeps its provisional key when its final row stamps the
+seq; the host's echo of a sent message keeps the optimistic row's key;
+`RowKeys` carries both across a refold); a group keeps its key when
+history joins above it (`RowKeyMemory`); the turn's end row is its
+message's key with `end` set, one row from Send to the close. The list, a
+search landing and the scroll proof all speak rows. What the list does to
+its own offset is `FollowRule`: it follows the newest row only while the
+reader is at the bottom and never writes the offset while they are up,
+however the rows change. `ScenarioRunner` (Rendering/TranscriptScenario.swift,
+the desktop's "no jerk in any scenario" runner) plays the desktop's ten
+scenarios as timed pushes through the fold and the rows on an injected
+clock and asserts all three after every push; the checks later work builds
+(the reveal, the fade, the phase hold, the morph, the drain) are named
+there and a scenario lists the ones it awaits. The plain-words tool lines are
 the package's `ToolPhrase` (tested). Row kinds and their mobile form:
 
 - **User turn**: bordered field, 12 pt radius, hairline border, 12 pt
