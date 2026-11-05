@@ -593,7 +593,7 @@ being produced shimmers (`WorkingText`); nothing else does.
 
 Rules: animate `transform` and `opacity` (and height only through the
 collapsible, the question card's frame between its questions, or the slash menu's frame); every animation is interruptible and starts from the current
-value; nothing animates on a keystroke; nothing overshoots without a
+value; nothing animates on a keystroke but the menu it opens; nothing overshoots without a
 gesture; every animated class carries its `motion-reduce:` guard.
 
 ## The transcript
