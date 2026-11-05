@@ -1,4 +1,4 @@
-import { Plus, Search, File, Trash2 } from "../chrome/icons";
+import { Plus, Search, StickyNote, Trash2 } from "../chrome/icons";
 import { BusyLabel, Button } from "../components/ui/button";
 import { ItemButton } from "../components/ui/item";
 import { cn } from "../lib/cn";
@@ -251,11 +251,7 @@ export function NotesView({
           onClick={() => void onCreate()}
           className="shrink-0 text-muted-foreground"
         >
-          {creating ? (
-            <BusyLabel busy label="" />
-          ) : (
-            <Plus className="size-3.5" />
-          )}
+          {creating ? <BusyLabel busy label="" /> : <Plus />}
         </Button>
         </Tip>
       </div>
@@ -323,10 +319,8 @@ export function NotesView({
           <OverlayNav onBack={onClose} onToggleSidebar={onToggleSidebar} />
         )}
         <div className="flex min-w-0 flex-1 items-center gap-2 px-3 text-[13px]">
-          <File
-            className="size-3.5 shrink-0 text-muted-foreground"
-          />
-          <span className="min-w-0 truncate text-foreground">Notes</span>
+          <StickyNote className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 truncate font-medium">Notes</span>
         </div>
         {IS_MAC ? null : <WindowControls />}
       </div>
@@ -583,8 +577,8 @@ function NoteEditor({
       ref={lockOverscroll}
       className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none"
     >
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-8 py-8">
-        <header className="flex flex-col gap-3">
+      <div data-note-detail className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-8 py-8">
+        <header className="flex flex-col">
           {note.slug || project ? (
             <div className="flex min-w-0 items-center gap-3 text-xs text-muted-foreground">
               {note.slug ? (
@@ -614,13 +608,13 @@ function NoteEditor({
             }}
             onKeyDown={onTitleKeyDown}
             aria-label="Note title"
-            className="h-auto rounded-none border-0 p-0 text-base font-semibold leading-6 tracking-[-0.01em] text-foreground shadow-none!"
+            className={`${note.slug || project ? "mt-2 " : ""}h-auto rounded-none border-0 p-0 text-base font-semibold leading-6 tracking-[-0.01em] text-foreground shadow-none!`}
             placeholder="Untitled"
           />
           {time ? (
-            <div className="text-xs text-muted-foreground tabular-nums">Updated {time}</div>
+            <div className="mt-2 text-xs text-muted-foreground tabular-nums">Updated {time}</div>
           ) : null}
-          <div className="flex flex-wrap items-center gap-2 pt-1">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <Button size="sm" disabled={!canAddToChat} onClick={() => onAddToChat(draft)}>
               Add to chat
             </Button>
@@ -649,7 +643,7 @@ function NoteEditor({
             />
           ) : null}
           {saveError ? (
-            <p className="text-xs text-destructive">{saveError}</p>
+            <p className="mt-2 text-xs text-destructive">{saveError}</p>
           ) : null}
         </header>
         <Tabs value={mode} onValueChange={(next) => setMode(next as typeof mode)}>
@@ -678,7 +672,7 @@ function NoteEditor({
         ) : body.trim() ? (
           <AgentMarkdown text={body} cwd={note.sourceCwd} />
         ) : (
-          <p className="text-[13px] text-muted-foreground">No description</p>
+          <p className="text-[13px] text-muted-foreground">Empty note</p>
         )}
       </div>
     </div>

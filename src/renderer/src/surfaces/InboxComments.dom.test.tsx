@@ -39,6 +39,15 @@ const comment = (over: Record<string, unknown> = {}) => ({
 });
 
 describe("the inbox comments", () => {
+  it("opens 24px under its hairline, the detail's section gap", () => {
+    const view = render(
+      <InboxComments thread={{ comments: [comment()], truncated: false }} loading={false} error={null} cwd="/srv/app" provider="github" />,
+    );
+    const section = view.container.querySelector("section")!;
+    expect(section.className).toContain("pt-6");
+    expect(section.className).not.toContain("pt-5");
+  });
+
   it("lists a comment's facts without dots, the review word in its tone", () => {
     const view = render(
       <InboxComments

@@ -28,6 +28,14 @@ afterEach(() => {
 })
 
 describe('Lightbox', () => {
+  it('sets its arrows and counter 16px in, the inset of its close', () => {
+    render(<Lightbox />)
+    act(() => openLightbox(items, 0))
+    expect(screen.getByRole('button', { name: 'Previous image' }).className).toContain('start-4')
+    expect(screen.getByRole('button', { name: 'Next image' }).className).toContain('end-4')
+    expect(document.querySelector('[data-lightbox-counter]')!.className).toContain('bottom-4')
+  })
+
   it('renders nothing until the store opens, then fills the window', () => {
     render(<Lightbox />)
     expect(screen.queryByRole('dialog')).toBeNull()

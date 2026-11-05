@@ -179,4 +179,12 @@ describe("the notes view", () => {
     expect(rows()[0]!.getAttribute("aria-current")).toBe("true");
     expect(document.activeElement).toBe(rows()[0]);
   });
+
+  it("frames itself as the Inbox does: the strip's medium label, the detail's 24px sections", async () => {
+    const view = await mount();
+    const label = [...view.container.querySelectorAll("span")].find((el) => el.textContent === "Notes")!;
+    expect(label.className).toContain("font-medium");
+    expect(view.container.querySelector("[data-note-detail]")!.className).toContain("gap-6");
+    expect((view.getByLabelText("Note title") as HTMLElement).className).toContain("mt-2");
+  });
 });

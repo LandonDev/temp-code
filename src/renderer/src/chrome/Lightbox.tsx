@@ -138,7 +138,7 @@ export function Lightbox() {
                 size="icon"
                 aria-label="Previous image"
                 onClick={() => stepLightbox(-1)}
-                className="absolute start-0 top-1/2 -translate-y-1/2"
+                className="absolute start-4 top-1/2 -translate-y-1/2"
               >
                 <ChevronLeft className="size-5" />
               </Button>
@@ -149,12 +149,12 @@ export function Lightbox() {
                 size="icon"
                 aria-label="Next image"
                 onClick={() => stepLightbox(1)}
-                className="absolute end-0 top-1/2 -translate-y-1/2"
+                className="absolute end-4 top-1/2 -translate-y-1/2"
               >
                 <ChevronRight className="size-5" />
               </Button>
             </Tip>
-            <span className="absolute bottom-0 text-xs tabular-nums text-muted-foreground">
+            <span data-lightbox-counter className="absolute bottom-4 text-xs tabular-nums text-muted-foreground">
               {shown.index + 1} / {shown.items.length}
             </span>
           </>

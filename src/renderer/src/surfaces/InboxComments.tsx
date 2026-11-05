@@ -86,7 +86,7 @@ export function InboxComments({
   const moreOn = provider === "linear" ? "Linear" : "GitHub";
 
   return (
-    <section className="flex flex-col gap-2 border-t border-border pt-5">
+    <section className="flex flex-col gap-2 border-t border-border pt-6">
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
         <h2 className="font-medium">{label}</h2>
         {thread.truncated ? <span>the latest, more on {moreOn}</span> : null}
@@ -157,7 +157,7 @@ export function InboxCommentForm({
   return (
     <form
       onSubmit={onFormSubmit}
-      className="flex flex-col gap-2 border-t border-border pt-5"
+      className="flex flex-col gap-2 border-t border-border pt-6"
     >
       {replyTo ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -201,7 +201,7 @@ function CommentsPending() {
     <div
       role="status"
       aria-busy
-      className="flex items-center gap-2 border-t border-border pt-5 text-xs text-muted-foreground"
+      className="flex items-center gap-2 border-t border-border pt-6 text-xs text-muted-foreground"
     >
       <Spinner aria-hidden className="size-3.5" />
       Loading comments
