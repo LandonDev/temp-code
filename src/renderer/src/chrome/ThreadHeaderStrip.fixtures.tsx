@@ -38,7 +38,10 @@ function chip(id: string, title: string, over: Partial<StripChip> = {}, thread: 
   };
 }
 
+// The title bar ends its content 12px from the window's edge (TitleBar's
+// pe-3); the preview draws that inset around the end group.
 const end = (
+  <div className="flex pe-3">
   <ThreadMenu
     host={null}
     cost={1.24}
@@ -53,6 +56,7 @@ const end = (
     onRestore={() => {}}
     panel={{ open: false, onToggle: () => {} }}
   />
+  </div>
 );
 
 const common = {
@@ -126,6 +130,20 @@ export default [
           chip("s4", "Plan the iPhone Duo shell", { live: false, status: "done" }, { threadType: "planning", environmentId: "local" }),
           chip("s5", "Why is the build slow on the box this week", { live: false }, { threadType: "research", environmentId: "env_box" }),
         ],
+      },
+      trailing: <NewThreadChooser workspaceId={null} empty={false} onStart={() => {}} />,
+    },
+  },
+  {
+    name: "A full shelf: its cut edge fades",
+    props: {
+      ...common,
+      model: {
+        activeId: "f1",
+        live: [chip("w", "Typecheck the renderer", { status: "running" }, { threadType: "implementation", activity: "typecheck" })],
+        dormant: Array.from({ length: 14 }, (_, i) =>
+          chip(`f${i}`, `Settled thread ${i + 1}`, { live: false }, { threadType: (["chat", "planning", "implementation", "research"] as const)[i % 4] }),
+        ),
       },
       trailing: <NewThreadChooser workspaceId={null} empty={false} onStart={() => {}} />,
     },
