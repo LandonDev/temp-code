@@ -154,8 +154,9 @@ const NO_AGENTS: string[] = [];
 /**
  * A settled turn's thread still watching its background work or its
  * subagents: the word, what it watches ("Review the perf pass", "3
- * subagents") and the stretch's age on the half-minute clock, the age amber
- * when `stale`. The Activity section has the whole list, which the line
+ * subagents") and the stretch's age, ticking every second like the closing
+ * line's timer (one element per transcript, gated on the pane being shown),
+ * the age amber when `stale`. The Activity section has the whole list, which the line
  * opens when given `onOpen`.
  */
 export function WatchingLine({
@@ -170,7 +171,7 @@ export function WatchingLine({
   /** What the thread watches, in the watch words (shared/watch.ts `watchSubject`). */
   subject?: string;
 }) {
-  const now = useSlowClock(since != null && usePaneVisible());
+  const now = useClock(since != null && usePaneVisible());
   const said = plainStatus(STATUS_WORD.watching, subject ?? null);
   const body = (
     <>
@@ -190,7 +191,7 @@ export function WatchingLine({
           size="xs"
           onClick={onOpen}
           aria-label={`${said}, open Activity`}
-          className="-ml-2 gap-2 text-[13px] font-normal text-muted-foreground hover:text-foreground"
+          className="-ml-2 gap-1 text-[13px] font-normal text-muted-foreground hover:text-foreground"
         >
           {body}
         </Button>
@@ -285,7 +286,7 @@ function ClosingActions({
   onHandoff?: (harness: HarnessId, model: string) => void;
 }) {
   return (
-    <span className="flex items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/turnend:opacity-100 group-hover/turnend:delay-(--delay-hover) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) has-aria-expanded:opacity-100 motion-reduce:transition-opacity">
+    <span className="ms-1 flex items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/turnend:opacity-100 group-hover/turnend:delay-(--delay-hover) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) has-aria-expanded:opacity-100 motion-reduce:transition-opacity">
       {/* One provider: moving to a neighbour moves the label instead of waiting again. */}
       <TooltipProvider>
         {output ? <CopyTurnButton text={output} armed={armed} /> : null}

@@ -81,7 +81,7 @@ export function ActionLine({
         <span className="sr-only">{label}</span>
       )}
       {glyph}
-      <span className="pointer-events-none flex min-w-0 items-center gap-2">
+      <span className="pointer-events-none flex min-w-0 items-center gap-1">
         {/* Keyed by the word: a change of tense ("Reading" to "Read") morphs in place. */}
         {verb ? (
           <MorphText state={verb} className={cn("shrink-0 text-muted-foreground", action && LIFT)}>
@@ -95,7 +95,7 @@ export function ActionLine({
       {/* Extras are buttons of their own; a click between them is the line's.
           Extras that render nothing leave no slot (`empty:hidden`). */}
       {trailing ? (
-        <span className="relative flex shrink-0 items-center gap-2 empty:hidden" onClick={action}>
+        <span className="relative ms-1 flex shrink-0 items-center gap-2 empty:hidden" onClick={action}>
           {trailing}
         </span>
       ) : null}
@@ -103,7 +103,7 @@ export function ActionLine({
         <ChevronRight
           aria-hidden
           className={cn(
-            "pointer-events-none size-3 shrink-0 text-muted-foreground transition-[rotate,color] duration-(--dur-base) ease-(--ease-out) group-hover/action:text-foreground motion-reduce:transition-none",
+            "pointer-events-none ms-1 size-3 shrink-0 text-muted-foreground transition-[rotate,color] duration-(--dur-base) ease-(--ease-out) group-hover/action:text-foreground motion-reduce:transition-none",
             opens && open && "rotate-90",
           )}
         />

@@ -41,7 +41,7 @@ export function workingTipLine(row: WorkingRow, now: number): string {
   return plainStatus(STATUS_WORD[row.state], [detail, elapsed].filter(Boolean).join(", "));
 }
 
-/** The tooltip: the word, its detail and the elapsed time 8px after it as
+/** The tooltip: the word, its detail and the elapsed time 4px after it as
  *  spans (StatusMark), the project under them. It mounts only while the
  *  tooltip shows, so its second hand runs only then: the Working section
  *  itself never re-renders on the clock. `at` fixes the time (a fixture). */
@@ -59,7 +59,7 @@ function TipBody({ row, project, at }: { row: WorkingRow; project: string | null
           detail || elapsed ? (
             <>
               {detail}
-              {elapsed ? <span className={detail ? "ms-2" : undefined}>{elapsed}</span> : null}
+              {elapsed ? <span className={detail ? "ms-1" : undefined}>{elapsed}</span> : null}
             </>
           ) : null
         }

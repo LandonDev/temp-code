@@ -9,9 +9,10 @@ import { STEP_NOTICE, StepRowContext } from "./stepLine";
 /**
  * A notice on one line, the action rows' size (13px on 20px in a 28px row): a 14px glyph
  * slot (a StatusMark glyph when a state applies, else a chrome icon), the
- * lead, its details 8px apart in the muted ink (each shrinks and truncates
+ * lead, its details 4px apart in the muted ink (each shrinks and truncates
  * before the lead, a `trailing` status or the chevron does), then actions
- * shown on the line's hover or focus. The glyph slot matches the action rows' tool icon,
+ * shown on the line's hover or focus; the glyph sits 8px from the lead, and
+ * a trailing status, the chevron and the actions 8px after the last detail. The glyph slot matches the action rows' tool icon,
  * so notice text lines up with them. Wrapping text breaks under the lead,
  * never under the glyph. A line that opens (`fold`, inside a Collapsible)
  * is its own trigger, as an action row is: the whole line, a bare chevron
@@ -68,7 +69,7 @@ export function NoticeLine({
         <span className="flex h-5 w-3.5 shrink-0 items-center justify-center text-muted-foreground [&>svg]:size-3.5">
           {glyph}
         </span>
-        <div className={cn("flex min-w-0 flex-1 gap-x-2 leading-5", fold && "pointer-events-none", wrap ? "flex-wrap" : "items-center")}>
+        <div className={cn("flex min-w-0 flex-1 gap-x-1 leading-5", fold && "pointer-events-none", wrap ? "flex-wrap" : "items-center")}>
           <span
             className={cn(
               strong ? "text-foreground" : "text-muted-foreground",
@@ -89,12 +90,12 @@ export function NoticeLine({
               {detail}
             </span>
           ))}
-          {trailing ? <span className="flex shrink-0 items-center">{trailing}</span> : null}
+          {trailing ? <span className="ms-1 flex shrink-0 items-center">{trailing}</span> : null}
           {fold ? (
             <ChevronRight
               aria-hidden
               className={cn(
-                "size-3 shrink-0 text-muted-foreground transition-[rotate,color] duration-(--dur-base) ease-(--ease-out) group-hover/notice:text-foreground motion-reduce:transition-none",
+                "ms-1 size-3 shrink-0 text-muted-foreground transition-[rotate,color] duration-(--dur-base) ease-(--ease-out) group-hover/notice:text-foreground motion-reduce:transition-none",
                 fold.open && "rotate-90",
               )}
             />
@@ -102,7 +103,7 @@ export function NoticeLine({
           {actions ? (
             <span
               data-slot="notice-actions"
-              className="pointer-events-auto relative flex shrink-0 items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/notice:opacity-100 group-hover/notice:delay-(--delay-hover) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) has-aria-expanded:opacity-100 motion-reduce:transition-opacity"
+              className="pointer-events-auto relative ms-1 flex shrink-0 items-center opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/notice:opacity-100 group-hover/notice:delay-(--delay-hover) starting:opacity-0 has-focus-visible:opacity-100 has-focus-visible:delay-(--dur-instant) has-aria-expanded:opacity-100 motion-reduce:transition-opacity"
             >
               <TooltipProvider>{actions}</TooltipProvider>
             </span>

@@ -26,8 +26,10 @@ import { Counts } from "./Counts";
 import { setOpenedLive } from "./workingOpen";
 import { workingPhase, type WorkingPhase } from "./workingPhase";
 
-/** A line of the transcript: 28px, 13px on 20px, muted. */
-export const LINE = "flex h-7 items-center gap-2 font-sans text-[13px] leading-5 tabular-nums text-muted-foreground";
+/** A line of the transcript: 28px, 13px on 20px, muted. Its words, details,
+ *  counts and times sit 4px apart; a glyph keeps 8px to the first word
+ *  (StatusMark's own) and a chevron or the hover actions 8px after the last. */
+export const LINE = "flex h-7 items-center gap-1 font-sans text-[13px] leading-5 tabular-nums text-muted-foreground";
 
 const MARK_IN = { opacity: 0, transform: "scale(0.25)" };
 const MARK_SHOWN = { opacity: 1, transform: "scale(1)", transition: SPRING_LAYOUT };
@@ -143,7 +145,7 @@ export function TurnLine({
             </motion.span>
           ) : null}
         </AnimatePresence>
-        <div ref={words} data-turn-words className={cn("flex min-w-0 items-center gap-2", hasBody && "pointer-events-none", live && "pl-5.5")}>
+        <div ref={words} data-turn-words className={cn("flex min-w-0 items-center gap-1", hasBody && "pointer-events-none", live && "pl-5.5")}>
           <MorphText state={live ? phase.key : "closed"} className="min-w-0">
             {live ? <PhaseWords phase={phase} /> : closing?.words}
           </MorphText>
@@ -157,7 +159,7 @@ export function TurnLine({
             <ChevronRight
               aria-hidden
               className={cn(
-                "size-3 shrink-0 transition-[rotate,color] duration-(--dur-base) ease-(--ease-out) group-hover/turnend:text-foreground motion-reduce:transition-none",
+                "ms-1 size-3 shrink-0 transition-[rotate,color] duration-(--dur-base) ease-(--ease-out) group-hover/turnend:text-foreground motion-reduce:transition-none",
                 bodyOpen && "rotate-90",
               )}
             />

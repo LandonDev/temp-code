@@ -112,7 +112,7 @@ export function TaskStepRow({ task }: { task: NonNullable<Block["task"]> }) {
   const { state, verb } = TASK_STEP[task.status];
   return (
     <ActionLine
-      glyph={<StatusMark state={state} word={false} />}
+      glyph={<StatusMark state={state} word={false} className="me-1" />}
       verb={verb}
       object={task.label}
       title={task.label}

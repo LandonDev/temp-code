@@ -172,7 +172,8 @@ const LIVE: ReadonlySet<ThreadState> = new Set(["working", "waiting", "watching"
 /**
  * A state drawn as two spans (docs/DESIGN.md "Status vocabulary"): the
  * glyph, the word in medium weight and its tone, then what the state is
- * about in regular weight and muted, 6px after it. The glyph alone
+ * about in regular weight and muted, 4px after it (the glyph sits 8px from
+ * the word). The glyph alone
  * (`word={false}`), glyph and the state's word, or glyph and a given word
  * (a link's); `glyph={false}` draws the word without its glyph. A line that
  * depends on a row's own mark (a subagent's under its thread) passes
@@ -222,7 +223,7 @@ export function StatusMark({
         </span>
       ) : null}
       {hasDetail ? (
-        <span data-slot="status-detail" className="-ms-0.5 min-w-0 truncate font-normal text-muted-foreground tabular-nums">
+        <span data-slot="status-detail" className="-ms-1 min-w-0 truncate font-normal text-muted-foreground tabular-nums">
           {detail}
         </span>
       ) : null}

@@ -268,8 +268,15 @@ time. Groups are 16px apart; a group that needs a name gets a short
 `font-medium` heading in 12px `muted-foreground`, never a label with a
 colon. Two facts on one line differ in weight and colour, never only in
 the space between them: a state's word in medium weight and its tone, then
-its detail in regular weight and `muted-foreground`, 6px after it (two
-spans, `StatusMark`). Where one plain string is unavoidable (a tooltip, an
+its detail in regular weight and `muted-foreground`, 4px after it (two
+spans, `StatusMark`). Every line keeps one spacing rule: a glyph sits 8px
+from the first word; each word, detail, count or time sits 4px from the
+next, about a space; a chevron or the hover actions sit 8px after the last
+value. Two texts of different sizes on one line share a baseline: a row
+that pairs them aligns on baselines (`items-baseline`), or puts both on one
+line height, and a clipped inline-block (`WorkingText`) aligns to the
+line's top, since its own baseline is its bottom edge
+(`scripts/measure-line-pairs.ts` measures both in a browser). Where one plain string is unavoidable (a tooltip, an
 accessible name, a toast, a notification) it is "Word: Detail"
 (`plainStatus`, src/shared/statusWords.ts). No visible text separates two
 facts with a run of spaces, a middle dot, a pipe or a bullet;
@@ -304,7 +311,7 @@ dot in the working tone, never a still arc: a frozen arc reads as a spinner
 that hung.
 
 The word may be followed by what the state is about, drawn as a second
-span in regular weight and muted, 6px after the word: Working then
+span in regular weight and muted, 4px after the word: Working then
 "Editing Rail.tsx", Needs you then "Approve Bash", Watching then "3
 subagents", Failed then "Usage cap". The host sends the detail on its own
 (`SessionMeta.statusDetail`); `activity` keeps a legacy two-space string
@@ -315,7 +322,7 @@ then the one subagent's title, "Review the perf pass", or "3 subagents") in the 
 the tab, the chip and the rail alike, and the fleet header counts watching on its own. `threadStatus` (lib/threadStripModel.ts) is the one
 place that decides a thread's state and its detail, the tree's overrides
 included, and `ThreadStatusMark` (chrome/TabIndicator.tsx) draws it with the
-round's tally 8px after the detail. A watching thread on one task names it
+round's tally 4px after the detail. A watching thread on one task names it
 in the model's words (Watching then "sleep 45 seconds"); more than one is
 counted (`watchPhrase`, src/shared/watch.ts). A turn a wait_for_agent holds
 says what it waits on by title, Working then "Waiting on Review the perf
@@ -329,7 +336,9 @@ actions: Paused with Stop and Continue, Stopped with Resume (the harness is
 gone), Queued with Start now. What the thread does is the transcript's
 working line, a pending approval or question is its card, and a watching
 thread's state is the transcript's closing line (Watching then its age,
-amber past 30 minutes, opening the Activity section); nothing above the composer
+ticking every second, amber past 30 minutes, opening the Activity section; an
+age a half-minute clock refreshes, a banner's or an Activity row's, is whole
+minutes, `minuteAge`); nothing above the composer
 repeats the working line, and no banner repeats the slot. A person's Stop
 idles the thread, the slot empties and the transcript's Stopped line says
 so once. A first response is said in the transcript's working line, never
@@ -578,7 +587,7 @@ one class chain.
 | Element | Size / line |
 | --- | --- |
 | The prose, the person's bubble, a question's prompt, the composer's field | 14px / 22px |
-| A line: a group's line, an action, a thought, a notice, an approval, the closing line | 13px / 20px in a 28px row, 26px hung in an open group; the glyph in a 14px slot, 8px to the words, so words start at 22px |
+| A line: a group's line, an action, a thought, a notice, an approval, the closing line | 13px / 20px in a 28px row, 26px hung in an open group; the glyph in a 14px slot, 8px to the words, so words start at 22px; each word, detail, count or time 4px from the next; a chevron or the hover actions 8px after the last |
 | Counts (`+46 −3`, a failed tally) | the text's size (13px in a row and on the group line) `tabular-nums`; the failed mark 4px from its number |
 | Code in a row's body: a command, its output, a diff | 12px / 20px mono |
 | A code block in the prose | 13px / 20px mono |
@@ -619,7 +628,8 @@ and no rules ("Created  diag.ts  +46 ▸", "Ran  npx convex dev…  ▸", "Read
 types.ts ▸"), verb muted, object in foreground, counts green and red, a
 caret per row. Every row of the list sits on one grid (transcript/stepLine.ts):
 glyph, verb, target, counts, extras, caret, each slot only when it has
-something and 8px apart, 26px a row; a call that names nothing reads its
+something: the glyph 8px from the verb, verb, target and counts 4px apart,
+the extras and the caret 8px after the last value, 26px a row; a call that names nothing reads its
 verb alone ("Ran a command"), a connector's call names the connector
 ("Cosmic Admin  Build get"), a todo update's tally sits muted in the counts
 slot, and a host step folded in reads verb then target like a call. A row's opened body is one card (a hairline, `rounded-lg`,

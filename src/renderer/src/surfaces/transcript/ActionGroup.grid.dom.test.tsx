@@ -40,9 +40,10 @@ describe("an open group's rows sit on one grid", () => {
     const { container } = mountFixture("Mixed calls, opened");
     for (const id of ["mixed1", "mixed3", "mixed6"]) {
       const line = lineOf(step(container, id));
-      expect(classes(line)).toEqual(expect.arrayContaining(["h-7", "in-data-[hung]:h-6.5", "gap-2", "text-[13px]"]));
+      expect(classes(line)).toEqual(expect.arrayContaining(["h-7", "in-data-[hung]:h-6.5", "gap-1", "text-[13px]"]));
       const glyph = line.querySelector("[data-glyph]")!;
-      expect(classes(glyph)).toEqual(expect.arrayContaining(["size-3.5", "shrink-0"]));
+      // 8px to the verb: its own 4px on the line's 4px.
+      expect(classes(glyph)).toEqual(expect.arrayContaining(["me-1", "size-3.5", "shrink-0"]));
       // The glyph is the first thing drawn after the line's stretched button.
       const drawn = [...line.children].filter((el) => el.tagName !== "BUTTON" && !classes(el).includes("sr-only"));
       expect(drawn[0]).toBe(glyph);

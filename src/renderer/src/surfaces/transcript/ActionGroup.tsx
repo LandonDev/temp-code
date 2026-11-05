@@ -204,9 +204,9 @@ export function ActionGroup({
                 aria-expanded={open}
                 aria-controls={panelId}
                 onClick={toggle}
-                className="group/line h-7 w-fit min-w-0 justify-start gap-2 rounded-md px-0 font-sans text-[13px] font-normal leading-5 text-muted-foreground hover:bg-transparent hover:text-foreground active:bg-transparent aria-expanded:bg-transparent motion-reduce:transition-none"
+                className="group/line h-7 w-fit min-w-0 justify-start gap-1 rounded-md px-0 font-sans text-[13px] font-normal leading-5 text-muted-foreground hover:bg-transparent hover:text-foreground active:bg-transparent aria-expanded:bg-transparent motion-reduce:transition-none"
               >
-                <span data-kind={group.kind} className="flex shrink-0">
+                <span data-kind={group.kind} className="me-1 flex shrink-0">
                   <Glyph className="size-3.5" aria-hidden />
                 </span>
                 {/* The phrase changes tense in place when the run settles; a count
@@ -218,7 +218,7 @@ export function ActionGroup({
                 <Counts added={adds} removed={dels} failed={group.failed} />
                 <ChevronRight
                   aria-hidden
-                  className={`size-3 shrink-0 transition-transform duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none ${open ? "rotate-90" : ""}`}
+                  className={`ms-1 size-3 shrink-0 transition-transform duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none ${open ? "rotate-90" : ""}`}
                 />
               </Button>
               {reauth ? <ReconnectChip reauth={reauth} /> : null}

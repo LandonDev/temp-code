@@ -157,7 +157,7 @@ export function AgentRowView({
       </span>
       <span className="flex h-5 min-w-0 items-center gap-2">
         <TruncateTip text={title}>
-          <span className={cn("min-w-0 truncate text-[13px] font-medium", settled ? "text-muted-foreground" : "text-foreground")} data-row-title>
+          <span className={cn("min-w-0 truncate text-[13px] leading-5 font-medium", settled ? "text-muted-foreground" : "text-foreground")} data-row-title>
             {title}
           </span>
         </TruncateTip>
@@ -165,7 +165,7 @@ export function AgentRowView({
         <span className="flex-1" />
         <ModelMark meta={meta} lead={role} className={cn(YIELDS, "@max-[18rem]/agent:shrink-0")} nameClassName="@max-[18rem]/agent:hidden" />
         {settled ? (
-          <span className={cn("shrink-0 text-xs text-muted-foreground tabular-nums", YIELDS)}>
+          <span className={cn("-ms-1 shrink-0 text-xs leading-5 text-muted-foreground tabular-nums", YIELDS)}>
             <AgentClock meta={meta} state={state} />
           </span>
         ) : null}
@@ -188,7 +188,7 @@ export function AgentRowView({
               </TooltipTrigger>
               <TooltipContent className="max-w-sm">{statusText}</TooltipContent>
             </Tooltip>
-            <span className="ms-auto flex shrink-0 items-center gap-2 text-xs text-muted-foreground tabular-nums">
+            <span className="ms-auto flex shrink-0 items-center gap-1 text-xs text-muted-foreground tabular-nums">
               {tally ? <span data-tally>{tally.short}</span> : null}
               <AgentClock meta={meta} state={state} />
             </span>

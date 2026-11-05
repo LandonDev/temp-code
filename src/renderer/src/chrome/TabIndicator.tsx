@@ -44,7 +44,7 @@ export function TabIndicator({ thread }: { thread: TabThread }) {
 
 /**
  * A thread's status as one line: the mark with its word, what the state is
- * about, and the round's tally 8px after it. The strip, the chip's hover
+ * about, and the round's tally 4px after it. The strip, the chip's hover
  * line and the banners draw this; the tones are StatusMark's alone.
  */
 export function ThreadStatusMark({
@@ -66,7 +66,7 @@ export function ThreadStatusMark({
         detail || tally ? (
           <>
             {detail}
-            {tally ? <span className={detail ? "ms-2" : undefined}>{tally}</span> : null}
+            {tally ? <span className={detail ? "ms-1" : undefined}>{tally}</span> : null}
           </>
         ) : null
       }

@@ -22,6 +22,16 @@ export function duration(ms: number): string {
   return `${d}d${h % 24 ? ` ${h % 24}h` : ""}`;
 }
 
+/** An age in whole minutes, "<1m", "12m", "2h 14m": for text a half-minute
+ *  clock refreshes (useSlowClock), which would jump a second hand 30s at a time. */
+export function minuteAge(ms: number): string {
+  const m = Math.floor(Math.max(0, ms) / 60_000);
+  if (m < 1) return "<1m";
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return m % 60 ? `${h}h ${m % 60}m` : `${h}h`;
+}
+
 const clocks = new Map<string, Intl.DateTimeFormat>();
 
 /** The app's one clock time, "2:02 PM" (12-hour with AM/PM where the

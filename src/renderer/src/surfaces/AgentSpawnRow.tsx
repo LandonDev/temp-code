@@ -88,7 +88,7 @@ export function AgentStepRow({
   const title = batch ? "the batch" : name.title;
   return (
     <ActionLine
-      glyph={<StatusMark state={stateOf(status) ?? "done"} word={false} still />}
+      glyph={<StatusMark state={stateOf(status) ?? "done"} word={false} still className="me-1" />}
       verb={verb}
       object={title}
       title={batch ? undefined : name.full}

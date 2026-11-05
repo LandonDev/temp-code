@@ -6,7 +6,8 @@ const copyText = vi.fn((_: string) => Promise.resolve());
 vi.mock("../../lib/clipboard", () => ({ COPIED_MS: 1200, copyText: (text: string) => copyText(text) }));
 vi.mock("../../lib/sounds", () => ({ playCue: () => {} }));
 
-import { TurnDuration, TurnEnd } from "./TurnEnd";
+import { TurnDuration, TurnEnd, WatchingLine } from "./TurnEnd";
+import { PaneVisibilityContext } from "../../hooks/paneVisibility";
 import { TurnStateContext, type TurnSession } from "../turnState";
 import { TranscriptSessionContext } from "../transcriptSession";
 import { ErrorRowView } from "./NoticeRow";
@@ -254,6 +255,39 @@ describe("TurnEnd of a watching thread", () => {
     const { container } = end(idle);
     expect(container.querySelector('[role="status"]')).toBeNull();
     expect(container.textContent).toBe("Worked for 2s");
+  });
+});
+
+describe("the Watching line's age", () => {
+  // A whole second, so the clock's ticks land on the test's steps.
+  const t = 1_700_000_000_000;
+  beforeEach(() => {
+    vi.useFakeTimers({ now: t });
+  });
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+  const age = (c: HTMLElement) => c.querySelector('[role="status"] [aria-hidden="true"]:not([data-slot])')?.textContent;
+
+  it("ticks every second, never a half minute at a time", () => {
+    const { container } = render(<WatchingLine since={t - (5 * 60_000 + 15_000)} subject="3 subagents" />);
+    expect(age(container)).toBe("5m 15s");
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(age(container)).toBe("5m 16s");
+    act(() => vi.advanceTimersByTime(29_000));
+    expect(age(container)).toBe("5m 45s");
+  });
+
+  it("holds still in a hidden pane", () => {
+    const { container } = render(
+      <PaneVisibilityContext.Provider value={false}>
+        <WatchingLine since={t - 60_000} />
+      </PaneVisibilityContext.Provider>,
+    );
+    const before = container.textContent;
+    act(() => vi.advanceTimersByTime(5_000));
+    expect(container.textContent).toBe(before);
   });
 });
 

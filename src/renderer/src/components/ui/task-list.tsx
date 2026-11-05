@@ -137,8 +137,8 @@ function TaskRow({ task }: { task: Task }) {
   );
   return (
     <Collapsible open={open} onOpenChange={(next) => task.onDetailOpenChange?.(next)} render={<li />} className="flex min-h-7 flex-col py-1">
-      <div className="flex items-start gap-2.5">
-        <TaskMark state={task.state} className="mt-[3px]" />
+      <div className="flex items-baseline gap-2.5">
+        <TaskMark state={task.state} className="mt-[3px] self-start" />
         {has ? (
           <CollapsibleTrigger className="group/steps -mx-1 flex min-w-0 items-start gap-1 rounded-md px-1 text-start transition-[background-color] duration-(--dur-fast) hover:bg-foreground/5 motion-reduce:transition-none">
             {label}

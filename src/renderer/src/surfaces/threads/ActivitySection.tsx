@@ -12,6 +12,7 @@ import { rowStale, stopActivity, useActivity, type ActivityKind, type ActivityRo
 import { devPane } from "../../lib/devPane";
 import { taskLog } from "../../lib/tcserver/commands";
 import type { SessionMeta } from "../../lib/tcserver/types";
+import { minuteAge } from "../../lib/duration";
 import { useSlowClock } from "../../lib/turnClock";
 
 /**
@@ -43,15 +44,6 @@ const GLYPH: Record<ActivityKind, ComponentType<{ className?: string }>> = {
 const LOG_POLL_MS = 1_500;
 /** The most of a log the fold keeps. */
 const LOG_KEEP = 64 * 1024;
-
-/** An age in whole minutes: "<1m", "12m", "2h 14m". */
-export function ageText(ms: number): string {
-  const m = Math.floor(Math.max(0, ms) / 60_000);
-  if (m < 1) return "<1m";
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  return m % 60 ? `${h}h ${m % 60}m` : `${h}h`;
-}
 
 // Colour codes and cursor moves a terminal would act on; the fold shows the text.
 // eslint-disable-next-line no-control-regex
@@ -166,13 +158,13 @@ function Row({
       </ItemMedia>
       <ItemContent className="min-w-0">
         <Tooltip>
-          <TooltipTrigger render={<span className="block truncate text-[13px] text-foreground" />}>{row.label}</TooltipTrigger>
+          <TooltipTrigger render={<span className="block truncate text-[13px] leading-5 text-foreground" />}>{row.label}</TooltipTrigger>
           <TooltipContent>{row.label}</TooltipContent>
         </Tooltip>
       </ItemContent>
       <ItemActions className="gap-1">
         {now > 0 ? (
-          <span className={cn("text-xs tabular-nums", stale ? "text-warning" : "text-muted-foreground")}>{ageText(now - row.since)}</span>
+          <span className={cn("text-xs leading-5 tabular-nums", stale ? "text-warning" : "text-muted-foreground")}>{minuteAge(now - row.since)}</span>
         ) : null}
         {row.stop ? (
           <Tooltip>

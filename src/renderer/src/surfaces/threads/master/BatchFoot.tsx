@@ -207,16 +207,19 @@ const StepRow = memo(function StepRow({ step, detail, now, open, onStop, onFold 
     <li data-step={step.id} data-step-status={step.status}>
       <div className="flex min-h-7 min-w-0 items-center gap-2">
         <StatusMark state={stepState(step.status)} word={false} />
-        <span className={cn("shrink-0 text-[13px]", quiet ? "text-muted-foreground" : "text-foreground")}>{step.name}</span>
-        {/* A failure is said only here, so it wraps rather than being cut. */}
-        <span className={cn("min-w-0 flex-1 text-xs", failed ? "py-1.5 break-words text-destructive" : "truncate text-muted-foreground")} data-step-detail>
-          {detail.text || detail.label ? <span className="tabular-nums">{[detail.text, detail.label].filter(Boolean).join(", ")}</span> : null}
-        </span>
-        {time ? (
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground" data-step-time>
-            {time}
+        {/* The name, its detail and the time on one baseline, 4px apart. */}
+        <span className="flex min-w-0 flex-1 items-baseline gap-1">
+          <span className={cn("shrink-0 text-[13px] leading-5", quiet ? "text-muted-foreground" : "text-foreground")}>{step.name}</span>
+          {/* A failure is said only here, so it wraps rather than being cut. */}
+          <span className={cn("min-w-0 flex-1 text-xs", failed ? "py-1.5 break-words text-destructive" : "truncate text-muted-foreground")} data-step-detail>
+            {detail.text || detail.label ? <span className="tabular-nums">{[detail.text, detail.label].filter(Boolean).join(", ")}</span> : null}
           </span>
-        ) : null}
+          {time ? (
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground" data-step-time>
+              {time}
+            </span>
+          ) : null}
+        </span>
         {step.status === "running" ? (
           <Button variant="ghost" size="xs" onClick={() => void stop()} disabled={stopping}>
             <Square className="size-3" />

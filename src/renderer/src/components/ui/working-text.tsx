@@ -19,6 +19,11 @@ const canAnimate = () => typeof document !== "undefined" && typeof document.docu
  * timeline so new words continue the sweep where the old left off. The
  * overlay is not mounted under reduced motion, in a hidden pane or while the
  * document is hidden: the words are then still muted text.
+ *
+ * `align-top`: an inline-block that clips (`truncate`) takes its bottom edge
+ * as its baseline, so beside plain text it would ride a descender's depth
+ * high; aligned to the line box's top, its own line puts its words on the
+ * same baseline as its neighbours'.
  */
 export function WorkingText({ children, words, className }: { children: ReactNode; words?: string; className?: string }) {
   const reduce = useReducedMotion();
@@ -39,7 +44,7 @@ export function WorkingText({ children, words, className }: { children: ReactNod
   }, [moving]);
 
   return (
-    <span data-slot="working-text" className={cn("relative inline-block min-w-0 truncate text-muted-foreground", className)}>
+    <span data-slot="working-text" className={cn("relative inline-block min-w-0 truncate align-top text-muted-foreground", className)}>
       {children}
       {moving && (
         <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">

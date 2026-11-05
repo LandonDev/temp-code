@@ -151,4 +151,11 @@ describe("staleWatchers", () => {
     expect(staleText([one], now)).toEqual({ subject: "Deploy watch", detail: "2h 14m" });
     expect(staleText([one, one], now)).toEqual({ subject: "2 threads", detail: "for over 30 min" });
   });
+
+  it("says the age in whole minutes, so the half-minute clock never jumps a second hand", () => {
+    const one = watching("Deploy watch", now - (35 * 60_000 + 15_000));
+    expect(staleText([one], now)).toEqual({ subject: "Deploy watch", detail: "35m" });
+    expect(staleText([one], now + 1_000).detail).toBe("35m");
+    expect(staleText([one], now + 30_000).detail).toBe("35m");
+  });
 });

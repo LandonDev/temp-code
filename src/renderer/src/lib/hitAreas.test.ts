@@ -9,7 +9,7 @@ const read = (file: string) => readFileSync(join(ROOT, file), "utf8");
 describe("hit areas and insets", () => {
   it("stretch the small targets to 24px with an ::after", () => {
     // The task bar's 16px fold: 4px more above and below, so a near miss folds instead of opening the thread.
-    expect(read("surfaces/threads/master/MasterRow.tsx")).toContain("relative -mx-1 flex h-4 w-[calc(100%+8px)] items-center gap-2 rounded-sm px-1 after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']");
+    expect(read("surfaces/threads/master/MasterRow.tsx")).toContain("relative -mx-1 flex h-4 w-fit max-w-[calc(100%+8px)] items-center gap-2 rounded-sm px-1 after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']");
     // A file tab's 16px close: 4px every side.
     expect(read("chrome/SurfaceTabs.tsx")).toContain("pointer-events-auto relative size-4 rounded-sm text-muted-foreground after:absolute after:-inset-1 after:content-['']");
     // 20px actions: 2px above and below.

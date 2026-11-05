@@ -68,7 +68,7 @@ describe('ThreadStatusMark', () => {
     )
     expect(container.textContent).toBe('WorkingRunning bun3/7')
     expect(container.textContent).not.toMatch(/[·|•]/)
-    expect(container.querySelector('[data-slot="status-detail"] span')?.className).toBe('ms-2')
+    expect(container.querySelector('[data-slot="status-detail"] span')?.className).toBe('ms-1')
   })
 
   it('draws a tally alone without a margin, and only the word with neither', () => {

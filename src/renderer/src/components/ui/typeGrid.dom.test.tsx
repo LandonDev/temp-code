@@ -34,9 +34,9 @@ describe("type on one grid", () => {
     expect(container.querySelector("[data-slot=empty-description]")!.className).toContain("leading-5");
   });
 
-  it("a status word and its detail sit 6px apart: the root's 8px less 2", () => {
+  it("a status word and its detail sit 4px apart: the root's 8px less 4", () => {
     const { container } = render(<StatusMark state="working" word detail="Editing Rail.tsx" />);
-    expect(container.querySelector("[data-slot=status-detail]")!.className).toContain("-ms-0.5");
+    expect(container.querySelector("[data-slot=status-detail]")!.className).toContain("-ms-1");
   });
 
   it("a menu's shortcut is a KbdGroup with no tracking, as the context menu's", async () => {

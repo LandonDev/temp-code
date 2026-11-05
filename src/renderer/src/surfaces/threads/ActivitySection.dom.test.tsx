@@ -21,7 +21,7 @@ vi.mock("../../lib/tcserver/store", () => ({ useSessionMeta: () => null, useSess
 if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
 
 import { activityRows } from "../../lib/activity";
-import { ActivityRows, ageText } from "./ActivitySection";
+import { ActivityRows } from "./ActivitySection";
 
 afterEach(() => {
   cleanup();
@@ -119,13 +119,6 @@ describe("ActivitySection", () => {
     fireEvent.click(rowOf("shell"));
     expect(await screen.findByText(/listening on :5173/)).toBeTruthy();
     expect(document.querySelector('[data-slot="task-command"]')).toBeNull();
-  });
-
-  it("writes ages in whole minutes", () => {
-    expect(ageText(10_000)).toBe("<1m");
-    expect(ageText(12 * 60_000)).toBe("12m");
-    expect(ageText((2 * 60 + 14) * 60_000)).toBe("2h 14m");
-    expect(ageText(3 * 3_600_000)).toBe("3h");
   });
 
   it("turns an old task's age amber once the thread waits on its own tasks alone", () => {

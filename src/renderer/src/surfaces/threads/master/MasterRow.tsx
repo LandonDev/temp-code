@@ -411,7 +411,7 @@ function RowAction({
 /** The thread's live subagents under its two lines (agentSummary.ts), in
  *  the title's column: per agent a still status glyph, working as a dot
  *  (the row's own spinner is its one moving mark), its title, the state's word in its
- *  tone and what it is about, muted, then the host's glyph; one quiet line
+ *  tone 4px after the title and what it is about, muted, then the host's glyph; one quiet line
  *  for the ones past the cap and the settled ones ("2 more, 3 done"). A
  *  line opens its agent in the board's place, where its approval or
  *  question is answered; its click never reaches the row. */
@@ -447,7 +447,7 @@ function AgentLineRow({ line, hostGlyph, onOpen }: { line: AgentLine; hostGlyph:
       >
         <StatusMark state={line.state} word={false} still aria-hidden />
         <span className="max-w-[45%] min-w-0 shrink-0 truncate text-foreground">{line.title || "Subagent"}</span>
-        <StatusMark state={line.state} glyph={false} detail={line.detail || undefined} className="min-w-0 flex-1 ps-0.5" data-agent-what />
+        <StatusMark state={line.state} glyph={false} detail={line.detail || undefined} className="min-w-0 flex-1 -ms-0.5" data-agent-what />
         {hostGlyph(line.environmentId)}
       </Button>
     </li>

@@ -3,7 +3,7 @@ import { isStaleWatch } from "@shared/watch";
 import { stopAll } from "../lib/activity";
 import { heldSuffix, useMacHeldTotal } from "../lib/macBridge";
 import { useSlowClock } from "../lib/turnClock";
-import { duration } from "../lib/duration";
+import { minuteAge } from "../lib/duration";
 import { mergeModelSettings, nativeModelId, resolveModel } from "../lib/models";
 import type { HarnessId } from "../lib/session";
 import * as serverCommands from "../lib/tcserver/commands";
@@ -96,11 +96,12 @@ export function staleWatchers(
 /** A banner's subject and what it says about it. */
 export type BannerLine = { subject: string; detail: string | null };
 
-/** The stale-watching banner's line: the thread and how long it has watched (amber), or the count. */
+/** The stale-watching banner's line: the thread and how long it has watched in whole
+ *  minutes (amber; the banner reads the half-minute clock), or the count. */
 export function staleText(stale: readonly Pick<SessionMeta, "title" | "background">[], now: number): BannerLine {
   if (stale.length !== 1) return { subject: `${stale.length} threads`, detail: "for over 30 min" };
   const since = stale[0].background?.watchingSince ?? now;
-  return { subject: stale[0].title, detail: duration(Math.max(0, now - since)) };
+  return { subject: stale[0].title, detail: minuteAge(now - since) };
 }
 
 /** The paused banner's line: the thread (or the count), the batch threads paused with their master, and the Mac jobs waiting with it when any. */

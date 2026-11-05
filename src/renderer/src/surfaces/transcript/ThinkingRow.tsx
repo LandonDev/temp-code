@@ -47,12 +47,12 @@ export function ActivityThinkingRow({
         className="relative w-fit max-w-full text-muted-foreground has-[>button:focus-visible]:text-foreground has-[>button:hover]:text-foreground"
       >
         <div aria-hidden={expandable || undefined} className={ROW}>
-          <Sparkles className="size-3.5 shrink-0" />
+          <Sparkles className="me-1 size-3.5 shrink-0" />
           <span className="truncate">Thought</span>
           {expandable ? (
             <ChevronRight
               className={cn(
-                "size-3 shrink-0 transition-transform duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none",
+                "ms-1 size-3 shrink-0 transition-transform duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none",
                 open && "rotate-90",
               )}
             />

@@ -43,7 +43,7 @@ export function ProviderMark({ harness, className = "" }: { harness: HarnessId; 
 export function SubagentSteps({ count }: { count?: number }) {
   if (!count) return null;
   return (
-    <span className="shrink-0 font-sans text-xs tabular-nums text-muted-foreground">
+    <span className="shrink-0 font-sans tabular-nums text-muted-foreground">
       {count} {count === 1 ? "step" : "steps"}
     </span>
   );
