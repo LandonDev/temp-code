@@ -635,7 +635,11 @@ the scroller's 16px gutter, the composer flush with it in every placement,
 the root in the sans face at 13px. Whatever sits on the column (the working
 strip, the load line, the no-rows line, an orchestration's fleet header, the
 transcript skeleton) takes `COLUMN_MAX_CLASS`, never a width of its own; a
-test refuses the old 896px anywhere in the renderer.
+test refuses the old 896px anywhere in the renderer. A line outside the
+scroller (the load and no-rows lines, the footer) keeps the gutter outside
+the column, `COLUMN_GUTTER_CLASS` around `columnClass()`
+(threads/chatSlots.tsx), never a padding inside it, so its text starts on
+the column's edge at every width.
 
 The composer is one row in its box, as Claude's: the `+` menu (28px) at the
 left, the field, Send (a 28px circle) at the right, 6px from the sides and

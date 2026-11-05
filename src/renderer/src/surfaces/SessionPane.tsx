@@ -28,13 +28,12 @@ import { NoRowsLine } from "./NoRowsLine";
 import { PaneHeader } from "./paneChrome";
 import { SurfaceSkeleton } from "./SurfaceSkeleton";
 import { ThreadView } from "./threads/ThreadView";
-import { ChatFooter } from "./threads/chatSlots";
+import { ChatFooter, COLUMN_GUTTER_CLASS, columnClass } from "./threads/chatSlots";
 import { isMasterThread } from "../lib/masterThread";
 import { useSessionActions, useThreadChat } from "./threadChat";
 import * as serverCommands from "../lib/tcserver/commands";
 import { askPreconnect, idleForPreconnect } from "../lib/preconnect";
 import { ADD_TO_CHAT_EVENT, type AddToChatRequest } from "../lib/quoteDraft";
-import { COLUMN_MAX_CLASS } from "./transcriptOutlineModel";
 
 /** The pane switch: opacity alone, --dur-fast (DESIGN.md "Pane switch"). */
 export const PANE_FADE = { duration: DUR.fast, ease: EASE_OUT } as const;
@@ -283,10 +282,11 @@ export function LoadLine({ name, load, onRetry }: { name: string; load: LoadStat
   const parts = loadLineText(name, load, now);
   if (!parts) return null;
   return (
+    <div className={`${COLUMN_GUTTER_CLASS} mt-2 shrink-0`}>
     <div
       role="status"
       data-load-line={load.phase}
-      className={`mx-auto mt-2 flex h-6 w-full ${COLUMN_MAX_CLASS} shrink-0 items-center gap-2 px-4 text-xs text-muted-foreground`}
+      className={`${columnClass()} flex h-6 items-center gap-2 text-xs text-muted-foreground`}
     >
       <span className="flex min-w-0 flex-1 items-center gap-2">
         {parts.map((part, i) => (
@@ -298,6 +298,7 @@ export function LoadLine({ name, load, onRetry }: { name: string; load: LoadStat
       <Button variant="ghost" size="xs" className="shrink-0" onClick={onRetry}>
         {load.phase === "failed" ? "Retry now" : "Retry"}
       </Button>
+    </div>
     </div>
   );
 }

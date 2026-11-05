@@ -146,6 +146,22 @@ describe("the pane while a transcript loads", () => {
     expect(skeleton()).toBeNull();
   });
 
+  it("the no-rows and load lines share the column's edges: the gutter outside, the column inside", async () => {
+    const { COLUMN_GUTTER_CLASS, columnClass } = await import("./threads/chatSlots");
+    store.draft = false;
+    const { unmount } = pane(session({ phase: "loaded", since: NOW, attempt: 0, empty: true }));
+    const noRows = document.querySelector<HTMLElement>("[data-no-rows]")!;
+    expect(noRows.className).toContain(columnClass());
+    expect(noRows.className).not.toMatch(/\bpx-/);
+    expect(noRows.parentElement!.className).toContain(COLUMN_GUTTER_CLASS);
+    unmount();
+    pane(session({ phase: "slow", since: NOW - 6_000, attempt: 1 }));
+    const load = line() as HTMLElement;
+    expect(load.className).toContain(columnClass());
+    expect(load.className).not.toMatch(/\bpx-/);
+    expect(load.parentElement!.className).toContain(COLUMN_GUTTER_CLASS);
+  });
+
   it("with the host's failure on the meta, the line is its summary", () => {
     store.draft = false;
     const failed = { ...session({ phase: "loaded", since: NOW, attempt: 0, empty: true }), failure: { kind: "network", summary: "The provider did not answer", cause: "", account: null } } as Session;
