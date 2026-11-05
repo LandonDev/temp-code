@@ -380,14 +380,15 @@ app replaces itself from the feed, and only from the feed.
   checks literal renderer colours against the token layer and counted
   palette exceptions; the counts only shrink.
 - The renderer is split (docs/bundle-split.md): the index chunk carries
-  only the first paint (rail, transcript, composer, thread header; 5,110.1
-  kB on 2026-11-05, once the thread lists and the plan chip's options left
-  it, under the 5,136.0 kB budget)
+  only the first paint (rail, transcript, composer, thread header; 5,132.9
+  kB on 2026-11-05, once the Away row came in and a review's line and card
+  left for the diff chunk, under the 5,136.0 kB budget)
   and every other surface is a
   lazy chunk behind
   `defineChunk` (src/renderer/src/lib/lazyChunk.tsx), listed in
   `src/renderer/src/surfaces/chunks.ts`: Settings, the Aliax pages
-  (recharts), the edit row's diff body, the CodeMirror
+  (recharts), the edit row's diff body with a review's line and card
+  (ReviewCard, NoticeRow holding a line's height until it lands), the CodeMirror
   editor with its find keys and git helpers, the terminal (xterm), the
   non-chat thread views (board, plan, research, fleet), the HTML render
   frame, the media viewer, the lightbox, the release notes with the

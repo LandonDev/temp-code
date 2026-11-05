@@ -625,6 +625,8 @@ describe("the host's steps fold into the run", () => {
     sys("pass", "Pass: Notes"),
     sys("ho", "Implementation started: T", { planHandoff: { id: "x", title: "T", how: "auto" } }),
     sys("bm", "Merged by the batch: ui-3", { notice: { kind: "batch" } }),
+    sys("aw", "Decided without asking: used tabs", { notice: { kind: "away", away: { kind: "decision", text: "used tabs" } } }),
+    sys("aq", "Answered for you: Tabs or spaces?", { notice: { kind: "away", away: { kind: "question", text: "Tabs or spaces?" } } }),
     { id: "todo", role: "tool", text: "TodoWrite", tool: { name: "TodoWrite", status: "completed", input: { todos: [] } } },
   ];
 

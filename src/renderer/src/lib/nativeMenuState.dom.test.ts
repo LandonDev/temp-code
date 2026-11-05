@@ -2,6 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { shellStore } from "../stores/shell";
 import { messageListFold } from "./messageListFold";
+import { awayStore, resetAwayForTest } from "./away";
+import { registry } from "./connection/registry";
 import { MENU_STATE_CLOCK_MS, MENU_STATE_THROTTLE_MS, menuStateOf, publishMenuState, type MenuFacts } from "./nativeMenuState";
 import { rightPanel } from "./rightPanel";
 import { sessionStore } from "./tcserver/store";
@@ -18,6 +20,7 @@ const facts = (over: Partial<MenuFacts> = {}): MenuFacts => ({
   dockUsable: true,
   unread: 1,
   counts: { pause: 1, resume: 1, stop: 1, archiveDone: 1 },
+  away: false,
   ...over,
 });
 
@@ -26,8 +29,9 @@ describe("menuStateOf", () => {
     expect(menuStateOf(facts({ sidebarOpen: true, panel: "open", dockOpen: true, messageList: true }))).toEqual({
       open: ["toggle_sidebar", "toggle_panel", "toggle_terminal", "toggle_message_list"],
       disabled: [],
+      checked: { toggle_away: false },
     });
-    expect(menuStateOf(facts())).toEqual({ open: [], disabled: [] });
+    expect(menuStateOf(facts())).toEqual({ open: [], disabled: [], checked: { toggle_away: false } });
   });
 
   it("names ⌘W Close Pane while the active tab is split", () => {
@@ -50,6 +54,10 @@ describe("menuStateOf", () => {
       "archive_done_threads",
     ]);
     expect(menuStateOf(facts({ counts: { ...NONE, resume: 2 } })).disabled).not.toContain("resume_all_threads");
+  });
+
+  it("ticks Away from Computer while Away is on", () => {
+    expect(menuStateOf(facts({ away: true })).checked).toEqual({ toggle_away: true });
   });
 });
 
@@ -132,6 +140,24 @@ describe("publishMenuState", () => {
     const send = vi.fn();
     publishMenuState(() => ({ dockOpen: false, dockUsable: true }), send).stop();
     expect(send.mock.calls[0][0].disabled).toContain("toggle_panel");
+  });
+
+  it("ticks Away from Computer as this machine's Away store moves", () => {
+    resetAwayForTest();
+    const send = vi.fn();
+    const publisher = publishMenuState(() => ({ dockOpen: false, dockUsable: true }), send);
+    expect(send.mock.calls[0][0].checked).toEqual({ toggle_away: false });
+    const host = { state: { enabled: true, at: 5, by: "env_mac" }, decided: { since: 5, threads: [] } };
+    awayStore.setState({ hosts: { [registry.primaryEnvironmentId]: host } });
+    vi.advanceTimersByTime(MENU_STATE_THROTTLE_MS);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1][0].checked).toEqual({ toggle_away: true });
+    // The flip in flight wins over the host's last word.
+    awayStore.setState({ pending: { enabled: false, at: 6, by: "" } });
+    vi.advanceTimersByTime(MENU_STATE_THROTTLE_MS);
+    expect(send.mock.calls[2][0].checked).toEqual({ toggle_away: false });
+    publisher.stop();
+    resetAwayForTest();
   });
 
   it("reads the facts again as the clock moves, for Archive Done's age rule", () => {

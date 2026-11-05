@@ -115,6 +115,8 @@ import UngroupItemsIcon from "@hugeicons/core-free-icons/UngroupItemsIcon";
 import WholeWordIcon from "@hugeicons/core-free-icons/WholeWordIcon";
 import HammerIcon from "@hugeicons/core-free-icons/HammerIcon";
 import Wrench01Icon from "@hugeicons/core-free-icons/Wrench01Icon";
+import Moon02Icon from "@hugeicons/core-free-icons/Moon02Icon";
+import HelpCircleIcon from "@hugeicons/core-free-icons/HelpCircleIcon";
 import { forwardRef, type Ref } from "react";
 
 /** Props shared by every chrome icon. `icon` is filled in by the named wrappers. */
@@ -222,6 +224,7 @@ export const ChevronRight = wrap(ArrowRight01Icon, "ChevronRight");
 export const ChevronUp = wrap(ArrowUp01Icon, "ChevronUp");
 export const CircleAlert = wrap(AlertCircleIcon, "CircleAlert");
 export const CircleCheck = wrap(CheckmarkCircle02Icon, "CircleCheck");
+export const CircleHelp = wrap(HelpCircleIcon, "CircleHelp");
 export const Info = wrap(InformationCircleIcon, "Info");
 export const CircleDashed = wrap(CircleDashedIcon, "CircleDashed");
 export const CircleDot = wrap(CircleDotIcon, "CircleDot");
@@ -260,6 +263,7 @@ export const MessageMultiple = wrap(MessageMultiple01Icon, "MessageMultiple");
 export const MessageSquare = wrap(Comment01Icon, "MessageSquare");
 export const MessageSquarePlus = wrap(CommentAdd01Icon, "MessageSquarePlus");
 export const Minus = wrap(MinusSignIcon, "Minus");
+export const Moon = wrap(Moon02Icon, "Moon");
 export const MoreHorizontal = wrap(MoreHorizontalIcon, "MoreHorizontal");
 export const Palette = wrap(PaintBoardIcon, "Palette");
 export const PanelLeft = wrap(LayoutAlignRightIcon, "PanelLeft");

@@ -12,7 +12,7 @@ import { reviewChunk } from "../chunks";
 import { Skeleton } from "../../components/ui/skeleton";
 import { useTurnState } from "../turnState";
 import { useTranscriptSession } from "../transcriptSession";
-import { GitMerge, Users } from "../../chrome/icons";
+import { CircleHelp, GitMerge, Lock, Users } from "../../chrome/icons";
 import { StatusMark } from "../../components/ui/status";
 import { NoticeLine } from "./NoticeLine";
 import { PlanHandoffRow } from "./PlanHandoffRow";
@@ -61,6 +61,7 @@ export function NoticeRow({
   if (block.notice?.kind === "account-gone") {
     return <NoticeLine glyph={<Users />} lead={block.text} wrap />;
   }
+  if (block.notice?.kind === "away") return <AwayNoticeLine block={block} />;
   if (block.notice?.kind === "plan-build") return <PlanBuildNotice text={block.text} />;
   if (isErrorBlock(block)) return <ErrorRowView block={block} />;
   const actions = passActionsOf(block);
@@ -81,6 +82,18 @@ export function ErrorRowView({ block }: { block: Block }) {
   if (!sessionId || stopClosesTurn(outcome, block)) return null;
   const row = errorRowOf(outcome, block);
   return <ErrorChip sessionId={sessionId} row={row} busy={session?.busy} />;
+}
+
+/** A question's and an approval's still glyph; a decision has none. */
+const AWAY_GLYPH = { question: CircleHelp, approval: Lock } as const;
+
+/** What happened while the person was away: a decision the thread noted, a
+ *  question the host answered for them, an approval it skipped; the host's
+ *  words, muted like every notice. */
+export function AwayNoticeLine({ block }: { block: Block }) {
+  const kind = block.notice?.away?.kind;
+  const Glyph = kind === "question" || kind === "approval" ? AWAY_GLYPH[kind] : null;
+  return <NoticeLine data-away={kind ?? "decision"} glyph={Glyph ? <Glyph /> : undefined} lead={block.text} wrap />;
 }
 
 /** A plan's automatic build that could not start, with the host's reason. */

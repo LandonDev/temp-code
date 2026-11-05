@@ -65,6 +65,7 @@ function toItem(node: MenuNode): MenuItemConstructorOptions {
     // (its Ctrl; Return on the item from menu navigation is also "by accelerator" and still runs).
     ...(node.pageKey ? { registerAccelerator: false } : {}),
     ...(node.enabled === false ? { enabled: false } : {}),
+    ...(node.checkbox ? { type: 'checkbox' as const, checked: node.checked === true } : {}),
     click: (_item, _window, event) => {
       if (node.pageKey && event?.triggeredByAccelerator && event.ctrlKey) return
       dispatch(node.id)
@@ -104,6 +105,11 @@ export function applyFocusedMenu(): void {
 const strings = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []
 
+const ticks = (value: unknown): Record<string, boolean> =>
+  value && typeof value === 'object'
+    ? Object.fromEntries(Object.entries(value).filter((e): e is [string, boolean] => typeof e[1] === 'boolean'))
+    : {}
+
 /** A window said what it shows; it reaches the menu now if that window is the focused one,
  *  else when it is next focused. */
 export function receiveMenuState(contents: WebContents, raw: unknown): void {
@@ -115,7 +121,7 @@ export function receiveMenuState(contents: WebContents, raw: unknown): void {
       applyFocusedMenu()
     })
   }
-  states.set(contents.id, { open: strings(value.open), disabled: strings(value.disabled) })
+  states.set(contents.id, { open: strings(value.open), disabled: strings(value.disabled), checked: ticks(value.checked) })
   if (BrowserWindow.getFocusedWindow()?.webContents === contents) applyFocusedMenu()
 }
 

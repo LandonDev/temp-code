@@ -30,7 +30,9 @@ import { selectionFor } from "./lib/threadBatchSelection";
 /** The View menu's fleet switches reach every host. */
 const EVERYWHERE: BatchScope = { kind: "all" };
 import { ThreadBatchToasts } from "./chrome/ThreadBatchToasts";
+import { AwayReturn } from "./chrome/AwayReturn";
 import { GoalDialogHost } from "./chrome/GoalDialog";
+import { toggleAway } from "./lib/away";
 import { MacBridgeToasts } from "./chrome/MacBridgeCards";
 import { environment, environmentAt, environmentStore, stepEnvironment } from "./stores/environment";
 import { subscribeEnvironmentSwitch, workspaceToLandOn } from "./lib/environmentSwitch";
@@ -3225,6 +3227,7 @@ export default function App() {
         case "resume_all_threads": return go(() => void requestThreadBatch("resume", EVERYWHERE, () => selectionFor(EVERYWHERE)));
         case "stop_all_threads": return go(() => void requestThreadBatch("stop", EVERYWHERE, () => selectionFor(EVERYWHERE)));
         case "archive_done_threads": return go(() => void requestThreadBatch("archiveDone", EVERYWHERE, () => selectionFor(EVERYWHERE)));
+        case "toggle_away": return go(toggleAway);
         case "open_notes": return go(a.onOpenNotes);
         case "open_settings": return go(() => a.openSettings());
         case "check_for_updates": return go(() => void updateStore.check(true));
@@ -3642,6 +3645,7 @@ export default function App() {
 
       <MoveToasts />
       <ThreadBatchToasts onOpen={onOpenApprovalSession} />
+      <AwayReturn onOpen={onOpenApprovalSession} />
       <GoalDialogHost />
       {batchPending ? <ThreadBatchDialog /> : null}
       <HiddenApprovalToasts

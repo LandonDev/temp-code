@@ -2,6 +2,7 @@ import { registry, useEnvironments } from "../lib/connection";
 import { environmentOfCwd } from "../lib/tcserver/projects";
 import { aliasKeys, mergeRailSections, type RailItem } from "../lib/linkedRail";
 import { HostsRow } from "./HostRows";
+import { AwayRow } from "./AwayRow";
 import { useHostsOffline } from "./hostOffline";
 import {
   Archive,
@@ -927,17 +928,17 @@ export function railTopRows(facts: { chats: boolean; notes: boolean; aliax: bool
   return rows;
 }
 
-export type RailFootRowId = "signIn" | "update" | "hosts" | "settings";
+export type RailFootRowId = "signIn" | "update" | "hosts" | "away" | "settings";
 
 /** The foot's rows, in order: the sign-in while this machine has no account,
- *  the update when there is one to act on, the hosts with two or more, then
- *  Settings. */
+ *  the update when there is one to act on, the hosts with two or more, the
+ *  Away switch, then Settings. */
 export function railFootRows(facts: { signIn: boolean; update: boolean; hosts: number }): RailFootRowId[] {
   const rows: RailFootRowId[] = [];
   if (facts.signIn) rows.push("signIn");
   if (facts.update) rows.push("update");
   if (facts.hosts >= 2) rows.push("hosts");
-  rows.push("settings");
+  rows.push("away", "settings");
   return rows;
 }
 
@@ -977,6 +978,8 @@ export function RailFoot({
         return <UpdateRow key={id} state={update} onOpenWhatsNew={onOpenWhatsNew} />;
       case "hosts":
         return <HostsRow key={id} onAddWorkspace={onAddWorkspace} />;
+      case "away":
+        return <AwayRow key={id} />;
       case "settings":
         return (
           <RailRow

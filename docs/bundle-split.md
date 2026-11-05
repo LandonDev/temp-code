@@ -96,7 +96,8 @@ lazy chunks and the top contributors. `bun run check:bundle`
 (scripts/check-bundle-size.ts) fails when the index chunk's static closure
 passes 5 MiB + 16 KiB, 5,136.0 kB (measured 5,000.1 kB after A26's sweep, from
 5,287.9 kB over budget before it; UI-13's build took it to 5,140.8 kB, and
-the select leaving the first paint brought it to 5,062.2 kB; the budget leaves room for the
+the select leaving the first paint brought it to 5,062.2 kB; the Away row
+took it to 5,146.6 kB until ReviewCard joined the diff chunk, 5,132.9 kB; the budget leaves room for the
 surfaces that belong in the first paint, not a chunk's worth: xterm alone is
 0.3 MiB, CodeMirror 0.8, recharts 0.9) or when any module of
 `NEVER_IN_ENTRY` (the packages and surfaces above) is in that closure — a

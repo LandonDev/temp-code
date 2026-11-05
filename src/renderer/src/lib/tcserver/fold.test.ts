@@ -1100,6 +1100,16 @@ describe("merge review rows", () => {
     expect(last.notice).toEqual({ kind: "account-gone" });
   });
 
+  it("an away notice is a row each with its payload, even when two read the same", () => {
+    const away = { kind: "question" as const, text: "Tabs or spaces?" };
+    const notice = { type: "notice", kind: "away", message: "Answered for you: Tabs or spaces?", away } as AgentEvent;
+    const state = foldAll(rows([notice, notice]), CWD);
+    const shown = state.blocks.filter((b) => b.notice?.kind === "away");
+    expect(shown).toHaveLength(2);
+    expect(shown[0]).toMatchObject({ role: "system", text: "Answered for you: Tabs or spaces?", notice: { kind: "away", away } });
+    expect(new Set(shown.map((b) => b.id)).size).toBe(2);
+  });
+
   it("a batch notice keeps its kind", () => {
     const state = foldAll(rows([{ type: "notice", kind: "batch", message: "Batch done: 3 landed" } as AgentEvent]), CWD);
     const last = state.blocks[state.blocks.length - 1];

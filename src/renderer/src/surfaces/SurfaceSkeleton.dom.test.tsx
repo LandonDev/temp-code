@@ -82,8 +82,9 @@ describe("SurfaceSkeleton", () => {
   });
 
   it("a switch's skeleton has the Switch's box", () => {
-    const switchSource = readFileSync(resolve(__dirname, "../components/ui/switch.tsx"), "utf8");
-    expect(switchSource).toContain("h-[18px] w-8");
+    // The track's box lives in switch-track.ts, which switch.tsx draws from.
+    expect(readFileSync(resolve(__dirname, "../components/ui/switch.tsx"), "utf8")).toContain("SWITCH_TRACK");
+    expect(readFileSync(resolve(__dirname, "../components/ui/switch-track.ts"), "utf8")).toContain("h-[18px] w-8");
     const { container } = render(<SurfaceSkeleton kind="accounts" count={1} />);
     expect(container.querySelector("[data-skeleton-switch]")!.className).toContain("h-[18px] w-8");
   });

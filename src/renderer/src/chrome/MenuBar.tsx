@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MENU_TREE, inAppMenus, type InAppMenu } from "@shared/menuTree";
 import { Button } from "../components/ui/button";
+import { useAway } from "../lib/away";
 import { cn } from "../lib/cn";
 import { RowsMenu, type MenuRow } from "./menuRows";
 import { ALT, IS_MAC, MOD, SHIFT } from "../lib/platform";
@@ -27,8 +28,9 @@ export function acceleratorLabel(accelerator: string): string {
   return mods.join("") + (KEY_NAMES[key] ?? key);
 }
 
-/** A menu's rows: words and keys, no glyphs, as the native bar. */
-function rowsOf(menu: InAppMenu, disabled: ReadonlySet<string>): MenuRow[] {
+/** A menu's rows: words and keys, no glyphs, as the native bar; a checkbox
+ *  row ticked as `checked` says. */
+export function rowsOf(menu: InAppMenu, disabled: ReadonlySet<string>, checked: Readonly<Record<string, boolean>> = {}): MenuRow[] {
   return menu.items.map((item): MenuRow =>
     item.kind === "separator"
       ? { kind: "sep" }
@@ -38,6 +40,7 @@ function rowsOf(menu: InAppMenu, disabled: ReadonlySet<string>): MenuRow[] {
           label: item.label,
           ...(item.accelerator ? { shortcut: acceleratorLabel(item.accelerator) } : {}),
           ...(disabled.has(item.id) ? { disabled: true } : {}),
+          ...(item.checkbox ? { checked: checked[item.id] === true } : {}),
         },
   );
 }
@@ -51,6 +54,7 @@ type Props = {
 export function MenuBar({ onCommand, disabled }: Props) {
   const menus = useMemo(() => inAppMenus(MENU_TREE), []);
   const off = useMemo(() => new Set(disabled ?? []), [disabled]);
+  const away = useAway().enabled;
   const [open, setOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -138,7 +142,7 @@ export function MenuBar({ onCommand, disabled }: Props) {
                 {key}
               </Button>
             }
-            rows={() => rowsOf(menu, off)}
+            rows={() => rowsOf(menu, off, { toggle_away: away })}
             onPick={handlePick}
             onOpenChange={(next) => {
               if (next) setActiveMenu(key);

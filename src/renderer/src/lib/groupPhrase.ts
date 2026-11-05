@@ -167,6 +167,12 @@ const REVIEW_WORDS: Record<string, string> = {
   skipped: "merged without review",
 };
 
+const AWAY_PHRASE = {
+  decision: "decided without asking",
+  question: "answered for you",
+  approval: "skipped an approval",
+} as const;
+
 /** A host step on its own: a gate, a review, a pass, a check, a hand-off, a batch merge. */
 function hostPhrase(block: Block): string {
   if (block.gate) {
@@ -177,6 +183,7 @@ function hostPhrase(block: Block): string {
   if (block.backgroundCheck) return "checked background tasks";
   if (block.planHandoff) return "started the build";
   if (block.notice?.kind === "batch") return "merged by the batch";
+  if (block.notice?.kind === "away") return AWAY_PHRASE[block.notice.away?.kind ?? "decision"];
   if (/^Pass:/.test(block.text)) return "ran the pass";
   return "";
 }

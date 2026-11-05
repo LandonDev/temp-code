@@ -151,7 +151,8 @@ export function isActivityBlock(block: Block): boolean {
  * the run it sits in: a subagent spawned or settled, a background task
  * that finished or the check on idle ones, a gate or release outcome, a
  * review that merged, the turn pass, the plan's build hand-off, a merge the
- * batch made. What asks the person something or ends a stretch of work
+ * batch made, a decision made (or a question answered, an approval skipped)
+ * while the person was away. What asks the person something or ends a stretch of work
  * (a held review, a failure, Stopped, compaction, Batch done, an account
  * gone, a plain host line) stays a row of its own.
  */
@@ -160,6 +161,7 @@ export function isFoldedStep(block: Block): boolean {
   if (block.agent || block.task || block.backgroundCheck || block.gate || block.planHandoff) return true;
   if (block.review) return block.review.outcome !== "held";
   if (passActionsOf(block)) return true;
+  if (block.notice?.kind === "away") return true;
   return block.notice?.kind === "batch" && block.text.startsWith("Merged by the batch");
 }
 

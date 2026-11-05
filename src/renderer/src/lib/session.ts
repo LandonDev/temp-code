@@ -1,5 +1,5 @@
 import type { GateNotice } from "@server/shared/gate";
-import type { NoticeKind } from "@server/shared/events";
+import type { AwayNotice, NoticeKind } from "@server/shared/events";
 import type { ReviewNotice } from "@server/shared/review";
 import type { ContextUsage } from "./contextUsage";
 import type { HandoffComposerCard } from "./handoff";
@@ -196,7 +196,7 @@ export type Block = {
   gate?: GateNotice;
   /** A plain notice row the host typed (a batch's merge or end, an account
    *  gone from this host): the kind it was sent with, so it draws typed. */
-  notice?: { kind: NoticeKind };
+  notice?: { kind: NoticeKind; away?: AwayNotice };
   approval?: {
     requestId: string | number;
     decided?: "allow" | "deny";

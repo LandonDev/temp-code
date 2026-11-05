@@ -50,6 +50,9 @@ type Props = {
   glyphClassName?: string;
   /** The row's button is disabled (an action already under way). */
   disabled?: boolean;
+  /** Set: the row is a switch (`role="switch"`), on while true; its
+   *  trailing node draws the track (chrome/AwayRow.tsx). */
+  checked?: boolean;
   /** The wrapper: sortable pointer handlers, a context menu, data attributes;
    *  `children` draw over the row (a drag's drop marker). */
   rowRef?: Ref<HTMLDivElement>;
@@ -95,6 +98,7 @@ export function RailRow({
   intent,
   glyphClassName,
   disabled,
+  checked,
   rowRef,
   className,
   children,
@@ -130,6 +134,7 @@ export function RailRow({
     disabled,
     "aria-label": ariaLabel,
     "aria-current": selected ? ("true" as const) : undefined,
+    ...(checked === undefined ? {} : { role: "switch", "aria-checked": checked }),
     className: cn(
       "h-7 min-w-0 flex-1 justify-start gap-2 rounded-md px-3 text-[13px] font-normal text-inherit",
       "hover:bg-transparent active:bg-transparent aria-expanded:bg-transparent",

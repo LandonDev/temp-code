@@ -86,6 +86,7 @@ export const APP_COMMANDS = [
   "resume_all_threads",
   "stop_all_threads",
   "archive_done_threads",
+  "toggle_away",
 ] as const;
 
 export type AppCommandId = (typeof APP_COMMANDS)[number];

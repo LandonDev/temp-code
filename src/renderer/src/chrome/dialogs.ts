@@ -25,3 +25,5 @@ export { ThreadListPopover } from "./ThreadListPopover";
 export { ProjectPlanOptions } from "../surfaces/threads/ProjectPlanCard";
 // The thread menu's Goal… (chrome/GoalDialog.tsx hosts it once).
 export { GoalDialog } from "./GoalDialogBody";
+// The return toast's Review (chrome/AwayReturn.tsx), mounted only while open.
+export { AwayReviewDialog } from "./AwayReviewDialog";

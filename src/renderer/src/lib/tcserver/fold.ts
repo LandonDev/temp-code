@@ -679,6 +679,11 @@ export function foldEvent(
       } else if (e.kind === "gate" && e.gate) {
         // A gate run's row: its own card, never folded into the status line.
         blocks = [...sealLastStream(blocks), { id: `notice:${row.seq}`, role: "system", text: e.message, gate: e.gate }];
+      } else if (e.kind === "away") {
+        // What the thread decided or the host answered while the person was
+        // away: a row each, even when two read the same.
+        const notice = e.away ? { kind: e.kind, away: e.away } : { kind: e.kind };
+        blocks = [...sealLastStream(blocks), { id: `notice:${row.seq}`, role: "system", text: e.message, notice }];
       } else {
         // A batch's or an account's notice keeps its kind, so it draws typed.
         const next = appendStatusBlock(blocks, e.message, `notice:${row.seq}`);

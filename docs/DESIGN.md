@@ -594,6 +594,7 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Pane switch | opacity, `--dur-fast`; no rise; a switch by a key (⌃Tab, ⌘1–9) at once | — | none |
 | The agents cue arriving in the title bar | fade, `--dur-fast` `--ease-out` (`@starting-style`); once there, a new count morphs its words (`MorphText`) and a provider's mark that joins grows from 0.25 on `--dur-layout` `--ease-layout` | at once; a mark that leaves goes at once | the fades |
 | The slot above the composer emptying | — | the outgoing row stays, inert, and fades `--dur-fast` `--ease-out`; the 28px stays | at once |
+| Switch (a setting's `Switch`, the rail's Away row) | the thumb slides on its clip-path, `--dur-slow` `--ease-out`, and grows 5px toward the other side on the track's hover; the track's fill changes over `--dur-fast`; the row around the Away track never moves | the same | snaps |
 | Progress bar | the indicator slides by `translateX` inside its clipped, rounded track, `--dur-slow` (a scale would squash its round ends) | — | none |
 
 Rules: animate `transform` and `opacity` (and height only through the
@@ -736,7 +737,11 @@ for a batch), each agent that settled ("Finished", "Failed", "Needs you",
 "Stopped" or "Paused", then its title, behind the state's glyph), a
 finished task, the check on idle tasks, a gate or release outcome, a review
 that merged, the turn pass, the plan's build hand-off, a merge the batch
-made. A held review, a failure, Stopped, compaction, "Batch done" and
+made, and what happened while the person was away (a decision the thread
+noted, a question the host answered for them, an approval it skipped). An
+away line is the host's words, muted; a question leads with its still help
+glyph and an approval with its lock, both in the muted tone, and a decision
+has no glyph. A held review, a failure, Stopped, compaction, "Batch done" and
 account-gone stay lines of their own. Every agent row names its agent by
 title, the one bright text on its line (28px alone, 32px in a table), and an open wait is no row:
 the working line says "Waiting on <title>". A handoff keeps its bubble: its text is the person's brief. The

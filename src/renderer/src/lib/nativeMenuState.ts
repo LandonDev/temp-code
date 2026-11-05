@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { EMPTY_MENU_STATE, sameMenuState, type MenuState } from "@shared/menuTree";
 import { shellStore } from "../stores/shell";
+import { awayEnabled, awayStore } from "./away";
 import { workspaceTabsStore } from "../stores/workspace";
 import { leafIds } from "./layout";
 import { threadsToMarkRead } from "./markRead";
@@ -16,8 +17,9 @@ import { isUnread } from "./threadStripModel";
 
 /**
  * What the native menu bar shows for this window (src/shared/menuTree.ts):
- * Show or Hide on the four toggles, and the rows that would do nothing
- * greyed. Sent to main over `menu:state` when it changes; a no-op at /ui.
+ * Show or Hide on the four toggles, the rows that would do nothing
+ * greyed, and Away from Computer ticked while it is on. Sent to main over
+ * `menu:state` when it changes; a no-op at /ui.
  */
 
 export type MenuFacts = {
@@ -33,6 +35,8 @@ export type MenuFacts = {
   dockUsable: boolean;
   unread: number;
   counts: BatchCounts;
+  /** This machine's Away is on (lib/away.ts). */
+  away: boolean;
 };
 
 const FLEET_IDS: Record<BatchAction, string> = {
@@ -56,7 +60,7 @@ export function menuStateOf(f: MenuFacts): MenuState {
   for (const action of Object.keys(FLEET_IDS) as BatchAction[]) {
     if (f.counts[action] === 0) disabled.push(FLEET_IDS[action]);
   }
-  return { open, disabled };
+  return { open, disabled, checked: { toggle_away: f.away } };
 }
 
 const EVERYWHERE = { kind: "all" } as const;
@@ -82,6 +86,7 @@ function readFacts(dock: { dockOpen: boolean; dockUsable: boolean }): MenuFacts 
     split: !!active && leafIds(active.layout).length > 1,
     unread,
     counts: batchCounts(metas, { catalog, lastSeen, floor, scope: EVERYWHERE, now: Date.now() }),
+    away: awayEnabled(),
   };
 }
 
@@ -120,6 +125,7 @@ export function publishMenuState(
     shellStore.subscribe(schedule),
     workspaceTabsStore.subscribe(schedule),
     messageListFold.subscribe(schedule),
+    awayStore.subscribe(schedule),
   ];
   const clock = setInterval(schedule, MENU_STATE_CLOCK_MS);
   flush();

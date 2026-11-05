@@ -154,6 +154,8 @@ describe('menu tree', () => {
       '—',
       ['Mark All Read'],
       '—',
+      ['Away from Computer'],
+      '—',
       ['Pause All'],
       ['Resume All'],
       ['Stop All'],
@@ -222,7 +224,7 @@ describe('resolveMenu', () => {
     tree.flatMap((s) => s.items).flatMap((i) => (i.kind === 'submenu' ? i.items : [i])).find((i) => i.kind === 'command' && i.id === id) as { label: string; enabled?: boolean }
 
   it('relabels an open toggle and greys a disabled id', () => {
-    const tree = resolveMenu(MENU_TREE, { open: ['toggle_sidebar'], disabled: ['pause_all_threads', 'focus_left'] })
+    const tree = resolveMenu(MENU_TREE, { open: ['toggle_sidebar'], disabled: ['pause_all_threads', 'focus_left'], checked: {} })
     expect(find(tree, 'toggle_sidebar').label).toBe('Hide Sidebar')
     expect(find(tree, 'toggle_panel').label).toBe('Show Panel')
     expect(find(tree, 'pause_all_threads').enabled).toBe(false)
@@ -232,17 +234,35 @@ describe('resolveMenu', () => {
 
   it('reads Close Pane on ⌘W while the focused tab is split, Close Tab otherwise', () => {
     expect(find(resolveMenu(MENU_TREE, EMPTY_MENU_STATE), 'close_tab').label).toBe('Close Tab')
-    expect(find(resolveMenu(MENU_TREE, { open: ['close_tab'], disabled: [] }), 'close_tab').label).toBe('Close Pane')
+    expect(find(resolveMenu(MENU_TREE, { open: ['close_tab'], disabled: [], checked: {} }), 'close_tab').label).toBe('Close Pane')
   })
 
   it('leaves the tree itself alone', () => {
-    resolveMenu(MENU_TREE, { open: ['toggle_sidebar'], disabled: [] })
+    resolveMenu(MENU_TREE, { open: ['toggle_sidebar'], disabled: [], checked: {} })
     expect(MENU_COMMANDS.find((c) => c.id === 'toggle_sidebar')!.label).toBe('Show Sidebar')
   })
 
   it('compares states without order', () => {
-    expect(sameMenuState({ open: ['a', 'b'], disabled: [] }, { open: ['b', 'a'], disabled: [] })).toBe(true)
-    expect(sameMenuState({ open: ['a'], disabled: [] }, { open: ['a'], disabled: ['b'] })).toBe(false)
+    const state = (open: string[], disabled: string[], checked: Record<string, boolean> = {}) => ({ open, disabled, checked })
+    expect(sameMenuState(state(['a', 'b'], []), state(['b', 'a'], []))).toBe(true)
+    expect(sameMenuState(state(['a'], []), state(['a'], ['b']))).toBe(false)
+    expect(sameMenuState(state([], [], { toggle_away: false }), state([], []))).toBe(true)
+    expect(sameMenuState(state([], [], { toggle_away: true }), state([], []))).toBe(false)
+  })
+
+  it('ticks Away from Computer, in its own group after Mark All Read, as the window says', () => {
+    const threads = MENU_TREE.find((s) => s.label === 'Threads')!.items
+    const at = threads.findIndex((i) => i.kind === 'command' && i.id === 'toggle_away')
+    expect(threads[at - 2]).toMatchObject({ kind: 'command', id: 'mark_all_read' })
+    expect(threads[at - 1].kind).toBe('separator')
+    expect(threads[at + 1].kind).toBe('separator')
+    expect(threads[at]).toMatchObject({ label: 'Away from Computer', checkbox: true })
+    expect(MENU_COMMANDS.find((c) => c.id === 'toggle_away')!.accelerator).toBeUndefined()
+    const ticked = (checked: Record<string, boolean>) =>
+      (find(resolveMenu(MENU_TREE, { open: [], disabled: [], checked }), 'toggle_away') as { checked?: boolean }).checked
+    expect(ticked({ toggle_away: true })).toBe(true)
+    expect(ticked({})).toBe(false)
+    expect((find(resolveMenu(MENU_TREE, EMPTY_MENU_STATE), 'mark_all_read') as { checked?: boolean }).checked).toBeUndefined()
   })
 })
 

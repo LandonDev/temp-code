@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MENU_TREE, inAppMenus } from "@shared/menuTree";
-import { MenuBar, acceleratorLabel } from "./MenuBar";
+import { MenuBar, acceleratorLabel, rowsOf } from "./MenuBar";
 import { IS_MAC } from "../lib/platform";
 
 afterEach(cleanup);
@@ -58,6 +58,17 @@ describe("MenuBar", () => {
     fireEvent.click(menuButton("Go"));
     const notes = (await screen.findByRole("menuitem", { name: /Notes/ })) as HTMLButtonElement;
     expect(notes.disabled || notes.getAttribute("aria-disabled") === "true").toBe(true);
+  });
+});
+
+describe("rowsOf", () => {
+  it("ticks Away from Computer as a checkbox row, and nothing else", () => {
+    const threads = inAppMenus(MENU_TREE).find((m) => m.label === "Threads")!;
+    const away = (checked: boolean) => rowsOf(threads, new Set(), { toggle_away: checked }).find((r) => r.kind === "item" && r.id === "toggle_away");
+    expect(away(true)).toMatchObject({ label: "Away from Computer", checked: true });
+    expect(away(false)).toMatchObject({ checked: false });
+    const others = rowsOf(threads, new Set(), { toggle_away: true }).filter((r) => r.kind === "item" && r.id !== "toggle_away");
+    for (const row of others) expect(row).not.toHaveProperty("checked");
   });
 });
 

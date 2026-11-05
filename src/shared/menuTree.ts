@@ -24,8 +24,12 @@ export interface MenuCommand {
    *  `MenuState.open` (Show/Hide on a toggle; Close Tab/Close Pane on ⌘W,
    *  open while the focused tab is split). `label` is the `show` one. */
   toggle?: { show: string; hide: string }
+  /** A checkbox row, ticked while the window names the id true in `MenuState.checked`. */
+  checkbox?: true
   /** Set by `resolveMenu` only. */
   enabled?: boolean
+  /** Set by `resolveMenu` only, on a checkbox row. */
+  checked?: boolean
 }
 
 export interface MenuRole {
@@ -60,7 +64,7 @@ const cmd = (
   id: string,
   label: string,
   accelerator?: string,
-  extra: Pick<MenuCommand, 'pageKey' | 'desktopOnly'> = {}
+  extra: Pick<MenuCommand, 'pageKey' | 'desktopOnly' | 'checkbox'> = {}
 ): MenuCommand => ({ kind: 'command', id, label, ...(accelerator ? { accelerator } : {}), ...extra })
 const toggle = (id: string, what: string, accelerator: string, extra: Pick<MenuCommand, 'desktopOnly'> = {}): MenuCommand => ({
   ...cmd(id, `Show ${what}`, accelerator, extra),
@@ -170,6 +174,8 @@ export const MENU_TREE: MenuSection[] = [
       sep,
       cmd('mark_all_read', 'Mark All Read'),
       sep,
+      cmd('toggle_away', 'Away from Computer', undefined, { checkbox: true }),
+      sep,
       cmd('pause_all_threads', 'Pause All'),
       cmd('resume_all_threads', 'Resume All'),
       cmd('stop_all_threads', 'Stop All'),
@@ -209,18 +215,21 @@ export const RENDERER_MENU_IDS: string[] = MENU_COMMANDS.map((c) => c.id).filter
   (id) => !(MAIN_MENU_IDS as readonly string[]).includes(id)
 )
 
-/** What a window tells main: the toggles that are open and the items that would do nothing. */
+/** What a window tells main: the toggles that are open, the items that would
+ *  do nothing and the checkbox rows' ticks. */
 export interface MenuState {
   open: string[]
   disabled: string[]
+  checked: Record<string, boolean>
 }
 
-export const EMPTY_MENU_STATE: MenuState = { open: [], disabled: [] }
+export const EMPTY_MENU_STATE: MenuState = { open: [], disabled: [], checked: {} }
 
 export function sameMenuState(a: MenuState, b: MenuState): boolean {
   const same = (x: string[], y: string[]): boolean =>
     x.length === y.length && [...x].sort().join('\n') === [...y].sort().join('\n')
-  return same(a.open, b.open) && same(a.disabled, b.disabled)
+  const ticked = (c: Record<string, boolean>): string[] => Object.keys(c).filter((id) => c[id])
+  return same(a.open, b.open) && same(a.disabled, b.disabled) && same(ticked(a.checked), ticked(b.checked))
 }
 
 function resolveNodes(items: MenuNode[], state: MenuState): MenuNode[] {
@@ -228,16 +237,24 @@ function resolveNodes(items: MenuNode[], state: MenuState): MenuNode[] {
     if (item.kind === 'submenu') return { ...item, items: resolveNodes(item.items, state) }
     if (item.kind !== 'command') return item
     const label = item.toggle && state.open.includes(item.id) ? item.toggle.hide : item.label
-    return { ...item, label, enabled: !state.disabled.includes(item.id) }
+    return {
+      ...item,
+      label,
+      enabled: !state.disabled.includes(item.id),
+      ...(item.checkbox ? { checked: state.checked[item.id] === true } : {})
+    }
   })
 }
 
-/** The tree as a window in `state` reads it: open toggles say Hide, disabled ids are greyed. */
+/** The tree as a window in `state` reads it: open toggles say Hide, disabled ids are greyed,
+ *  checkbox rows ticked. */
 export function resolveMenu(tree: MenuSection[], state: MenuState): MenuSection[] {
   return tree.map((section) => ({ ...section, items: resolveNodes(section.items, state) }))
 }
 
-export type InAppItem = { kind: 'separator' } | { kind: 'item'; id: string; label: string; accelerator?: string }
+export type InAppItem =
+  | { kind: 'separator' }
+  | { kind: 'item'; id: string; label: string; accelerator?: string; checkbox?: true }
 
 export interface InAppMenu {
   label: string
@@ -259,7 +276,8 @@ export function inAppMenus(tree: MenuSection[]): InAppMenu[] {
           kind: 'item',
           id: item.id,
           label: `${prefix}${item.label}`,
-          ...(item.accelerator ? { accelerator: item.accelerator } : {})
+          ...(item.accelerator ? { accelerator: item.accelerator } : {}),
+          ...(item.checkbox ? { checkbox: true as const } : {})
         }
       ]
     })

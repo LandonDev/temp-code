@@ -57,6 +57,7 @@ export const NEVER_IN_ENTRY = [
   'src/renderer/src/surfaces/AliaxPagesView.tsx',
   'src/renderer/src/surfaces/DiffPane.tsx',
   'src/renderer/src/surfaces/DiffBody.tsx',
+  'src/renderer/src/surfaces/ReviewCard.tsx',
   'src/renderer/src/surfaces/FileEditor.tsx',
   'src/renderer/src/surfaces/editorSearch.ts',
   'src/renderer/src/surfaces/editorGit.ts',
@@ -84,6 +85,7 @@ export const NEVER_IN_ENTRY = [
   'src/renderer/src/chrome/WhatsNewDialog.tsx',
   'src/renderer/src/chrome/ThreadBatchDialog.tsx',
   'src/renderer/src/chrome/GoalDialogBody.tsx',
+  'src/renderer/src/chrome/AwayReviewDialog.tsx',
   'src/renderer/src/lib/releaseNotesParse.ts',
   // The rail's virtualizer rides virtualChunk; the rail lists its cards plainly until it lands.
   'src/renderer/src/chrome/railVirtualRows.tsx',

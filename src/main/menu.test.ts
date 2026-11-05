@@ -184,6 +184,17 @@ describe('menu state', () => {
     expect(row('View', 'toggle_terminal').label).toBe('Hide Terminal')
   })
 
+  it('builds Away from Computer as a checkbox, ticked as the window says', () => {
+    const c = contents(1)
+    vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(windowOf(c))
+    expect(row('Threads', 'toggle_away')).toMatchObject({ type: 'checkbox', checked: false, label: 'Away from Computer' })
+    menuModule.receiveMenuState(c as never, { open: [], disabled: [], checked: { toggle_away: true, junk: 'yes' } })
+    expect(row('Threads', 'toggle_away')).toMatchObject({ type: 'checkbox', checked: true })
+    expect(row('Threads', 'mark_all_read').type).toBeUndefined()
+    menuModule.receiveMenuState(c as never, { open: [], disabled: [], checked: { toggle_away: false } })
+    expect(row('Threads', 'toggle_away').checked).toBe(false)
+  })
+
   it('does not rebuild for a state it already shows', () => {
     const c = contents(1)
     vi.mocked(BrowserWindow.getFocusedWindow).mockReturnValue(windowOf(c))

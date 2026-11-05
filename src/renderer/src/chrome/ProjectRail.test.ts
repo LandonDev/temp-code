@@ -67,18 +67,18 @@ describe("railTopRows", () => {
 });
 
 describe("railFootRows", () => {
-  it("is Settings alone at /ui with one host (no updater there)", () => {
-    expect(railFootRows({ signIn: false, update: false, hosts: 1 })).toEqual(["settings"]);
+  it("is Away and Settings at /ui with one host (no updater there)", () => {
+    expect(railFootRows({ signIn: false, update: false, hosts: 1 })).toEqual(["away", "settings"]);
   });
 
   it("on the desktop puts the update first and the hosts after it, the hosts only with two or more", () => {
-    expect(railFootRows({ signIn: false, update: true, hosts: 2 })).toEqual(["update", "hosts", "settings"]);
+    expect(railFootRows({ signIn: false, update: true, hosts: 2 })).toEqual(["update", "hosts", "away", "settings"]);
     expect(railFootRows({ signIn: false, update: true, hosts: 1 })[0]).toBe("update");
     expect(railFootRows({ signIn: false, update: false, hosts: 3 })[0]).toBe("hosts");
   });
 
   it("leads with the sign-in on first run, before the update, and leaves it out when there is an account", () => {
-    expect(railFootRows({ signIn: true, update: true, hosts: 1 })).toEqual(["signIn", "update", "settings"]);
+    expect(railFootRows({ signIn: true, update: true, hosts: 1 })).toEqual(["signIn", "update", "away", "settings"]);
     expect(railFootRows({ signIn: false, update: true, hosts: 1 })).not.toContain("signIn");
   });
 });
