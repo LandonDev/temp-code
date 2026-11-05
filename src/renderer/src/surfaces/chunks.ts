@@ -66,6 +66,9 @@ export const pickersChunk = defineChunk("pickers", () => import("../chrome/picke
 /** A box thread's waiting Mac bridge card above its composer (chrome/MacBridgeThreadCards.tsx). */
 export const macBridgeChunk = defineChunk("macBridge", () => import("../chrome/MacBridgeThreadCards"));
 
+/** The return from Away (chrome/AwayReturn.tsx): its listener, toast and list, mounted at boot and loaded after the first paint. */
+export const awayReturnChunk = defineChunk("awayReturn", () => import("../chrome/AwayReturn"));
+
 /** The rail's virtualizer (@tanstack/react-virtual); the rail lists its cards plainly until it lands. */
 export const virtualChunk = defineChunk("virtual", () => import("../chrome/railVirtualRows"));
 
@@ -99,6 +102,7 @@ export const allChunks = {
   pickersChunk,
   commandMenuChunk,
   macBridgeChunk,
+  awayReturnChunk,
   virtualChunk,
   messageListChunk,
   reviewChunk,

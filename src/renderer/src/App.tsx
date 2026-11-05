@@ -27,10 +27,12 @@ import { MoveToasts } from "./chrome/ThreadHostChip";
 import { requestThreadBatch, useBatchPending, type BatchScope } from "./lib/threadBatch";
 import { selectionFor } from "./lib/threadBatchSelection";
 
+/** The return from Away: its listener and toast load after the first paint (awayReturnChunk). */
+const AwayReturn = awayReturnChunk.surface("AwayReturn");
+
 /** The View menu's fleet switches reach every host. */
 const EVERYWHERE: BatchScope = { kind: "all" };
 import { ThreadBatchToasts } from "./chrome/ThreadBatchToasts";
-import { AwayReturn } from "./chrome/AwayReturn";
 import { GoalDialogHost } from "./chrome/GoalDialog";
 import { toggleAway } from "./lib/away";
 import { MacBridgeToasts } from "./chrome/MacBridgeCards";
@@ -291,7 +293,7 @@ import {
 import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
-import { aliaxChunk, dialogsChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk } from "./surfaces/chunks";
+import { aliaxChunk, awayReturnChunk, dialogsChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, terminalChunk } from "./surfaces/chunks";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
 import { useNativeMenuState } from "./lib/nativeMenuState";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";

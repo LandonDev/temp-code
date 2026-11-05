@@ -47,6 +47,7 @@ on intent so the skeleton is rarely seen.
 | dialogs | the dialogs an action opens (`chrome/dialogs.ts`): new project and workspace, project settings and teardown, the remote folder picker, thread defaults, the preamble, What's new, the fleet switches' confirm, the thread menu's Recent and Archived lists (`ThreadListPopover`) and its Goal… (`GoalDialog`, hosted once by chrome/GoalDialog.tsx) and the project plan chip's options (`ProjectPlanOptions`); with them Base UI's sheet and select | App.tsx, Sidebar.tsx, WorkspaceSessions.tsx, ThreadMenu.tsx, ProjectPlanChip.tsx, GoalDialog.tsx, each mounted only while open | the workspace menu's trigger, the ⋯ menu opening, the plan chip's hover; the first thread on screen, after idle |
 | select | Base UI's select and every picker on it (`components/select-body.ts`): `ChoiceSelect` for the dialogs and settings, and the composer's permission mode (`AccessPickerSelect`), thread type (`ThreadTypeSelect`) and the model menu's setting rows (`SettingSelect`, chrome/composerSelects.tsx) | choice-select.tsx; AccessPicker.tsx, ThreadTypeChip.tsx and ModelSettings.tsx through `components/lazy-select.tsx` | the pointer entering a cold picker; the first thread on screen, after idle |
 | review | a review's notice (`ReviewCard`): its line, or the held review's card | transcript/NoticeRow.tsx, with a 28px skeleton line in the notice's shape | the first thread on screen, after idle |
+| awayReturn | the return from Away (`chrome/AwayReturn.tsx`): the listener on every host's `away` push, its toast and the Review list's mount | App.tsx, at boot with nothing to draw until it loads | its own mount, after the first paint |
 | virtual | `@tanstack/react-virtual` and the rail's virtual rows (`chrome/railVirtualRows.tsx`); until it lands the rail lists its cards plainly (`chrome/railRows.tsx`) | WorkspaceSessions.tsx | an idle slot, or at once past 200 rows |
 | messageList | the transcript's message list rows (`surfaces/TranscriptOutlineList.tsx`, `chrome/JumpList.tsx`); the first paint draws the chevron alone, and a list folded from launch loads nothing | TranscriptOutline.tsx | the first thread's idle slot, or the chevron's hover |
 
@@ -97,7 +98,7 @@ lazy chunks and the top contributors. `bun run check:bundle`
 passes 5 MiB + 16 KiB, 5,136.0 kB (measured 5,000.1 kB after A26's sweep, from
 5,287.9 kB over budget before it; UI-13's build took it to 5,140.8 kB, and
 the select leaving the first paint brought it to 5,062.2 kB; the Away row
-took it to 5,146.6 kB until ReviewCard joined the diff chunk, 5,132.9 kB; the budget leaves room for the
+and master's growth took it to 5,136.9 kB until the return from Away took a chunk of its own, 5,134.4 kB; the budget leaves room for the
 surfaces that belong in the first paint, not a chunk's worth: xterm alone is
 0.3 MiB, CodeMirror 0.8, recharts 0.9) or when any module of
 `NEVER_IN_ENTRY` (the packages and surfaces above) is in that closure — a
