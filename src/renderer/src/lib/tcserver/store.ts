@@ -51,16 +51,10 @@ export type LiveEditState = {
   ts: number;
 };
 
-/** What one `live-edit` push said, for listeners that act per file. */
-export type LiveEditNotice = {
-  /** The watched repo root the path is relative to. */
-  cwd: string;
-  path: string;
-  kind: "changed" | "created" | "deleted";
-  settled: boolean;
-  ts: number;
-};
-export type LiveEditListener = (sessionIds: string[], edit: LiveEditNotice) => void;
+/** One item of a `live-edits` push (or a lone `live-edit`): the sessions that own it and the edit. */
+type LiveEditItem = Pick<Extract<ServerPush, { push: "live-edit" }>, "sessionIds" | "edit">;
+/** Told once per live-edit push, after every item landed; reads `liveEditsOf`. */
+export type LiveEditListener = () => void;
 
 const MAX_LIVE_EDITS = 500;
 const NO_EDITS: Record<string, LiveEditState> = {};
@@ -1979,43 +1973,12 @@ class SessionStore {
         if (entry) for (const row of push.rows) this.applyPush(entry, row);
         break;
       }
-      case "live-edits": {
-        for (const item of push.items) this.onPush({ push: "live-edit", ...item }, environmentId);
+      case "live-edits":
+        this.applyLiveEdits(push.items);
         break;
-      }
-      case "live-edit": {
-        this.pushed.liveEdit += 1;
-        for (const sid of push.sessionIds) {
-          const cur = { ...(this.liveEdits.get(sid) ?? {}) };
-          const prev = cur[push.edit.path];
-          cur[push.edit.path] = {
-            path: push.edit.path,
-            kind: push.edit.kind,
-            adds: push.edit.adds ?? prev?.adds,
-            dels: push.edit.dels ?? prev?.dels,
-            diff: push.edit.diff ?? prev?.diff ?? null,
-            bytes: push.edit.bytes,
-            burst: push.edit.burst,
-            state: push.edit.settled ? "settled" : "editing",
-            startedTs: prev?.startedTs ?? push.edit.ts,
-            ts: push.edit.ts,
-          };
-          const keys = Object.keys(cur);
-          if (keys.length > MAX_LIVE_EDITS) delete cur[keys[0]];
-          this.liveEdits.set(sid, cur);
-        }
-        {
-          const notice: LiveEditNotice = {
-            cwd: push.cwd,
-            path: push.edit.path,
-            kind: push.edit.kind,
-            settled: !!push.edit.settled,
-            ts: push.edit.ts,
-          };
-          for (const l of this.liveEditListeners) l(push.sessionIds, notice);
-        }
+      case "live-edit":
+        this.applyLiveEdits([push]);
         break;
-      }
       case "event": {
         this.pushed.event += 1;
         const entry = this.entries.get(push.row.sessionId);
@@ -2045,6 +2008,40 @@ class SessionStore {
       default:
         break;
     }
+  }
+
+  /** A live-edit push in one pass, however many items it carries: each
+   *  session's map is copied once, every item written into the copy (the
+   *  path's earlier adds, dels, diff and start carried), the oldest path past
+   *  MAX_LIVE_EDITS evicted as each new one lands, and the listeners told
+   *  once. A flood of hundreds of items once copied the whole map per item. */
+  private applyLiveEdits(items: readonly LiveEditItem[]): void {
+    if (items.length === 0) return;
+    this.pushed.liveEdit += items.length;
+    // Insertion order is the eviction order; a Map gives the oldest in O(1).
+    const copies = new Map<string, Map<string, LiveEditState>>();
+    for (const { sessionIds, edit } of items) {
+      for (const sid of sessionIds) {
+        let cur = copies.get(sid);
+        if (!cur) copies.set(sid, (cur = new Map(Object.entries(this.liveEdits.get(sid) ?? NO_EDITS))));
+        const prev = cur.get(edit.path);
+        cur.set(edit.path, {
+          path: edit.path,
+          kind: edit.kind,
+          adds: edit.adds ?? prev?.adds,
+          dels: edit.dels ?? prev?.dels,
+          diff: edit.diff ?? prev?.diff ?? null,
+          bytes: edit.bytes,
+          burst: edit.burst,
+          state: edit.settled ? "settled" : "editing",
+          startedTs: prev?.startedTs ?? edit.ts,
+          ts: edit.ts,
+        });
+        if (!prev && cur.size > MAX_LIVE_EDITS) cur.delete(cur.keys().next().value!);
+      }
+    }
+    for (const [sid, cur] of copies) this.liveEdits.set(sid, Object.fromEntries(cur));
+    for (const l of this.liveEditListeners) l();
   }
 
   private foldRow(entry: Entry, row: EventRow): boolean {

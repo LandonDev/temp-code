@@ -897,19 +897,25 @@ async function recordTyping(c: Cdp, shown: Shown, rendererPid: number): Promise<
       answers!.on('line', onLine)
       soakHost!.stdin!.write(`${command}\n`)
     })
+  log('warming up 3 s')
+  await sleep(3_000)
+  // The view may still be settling (a host's rows landing): click until the field takes focus.
   const until = Date.now() + 30_000
-  let field = await c.eval<{ count: number; x: number; y: number; width: number; text: string }>(TYPING_FIELD)
-  while (field.count !== 1 && Date.now() < until) {
-    await sleep(250)
+  let field = { count: 0, x: 0, y: 0, width: 0, text: '' }
+  let focused = false
+  while (!focused && Date.now() < until) {
     field = await c.eval(TYPING_FIELD)
+    if (field.count === 1) {
+      if (field.text) throw new Error('the composer already holds text')
+      for (const type of ['mousePressed', 'mouseReleased'] as const) await c.send('Input.dispatchMouseEvent', { type, x: field.x, y: field.y, button: 'left', clickCount: 1 })
+      focused = await c.eval<boolean>('document.activeElement === window.__typingField')
+    }
+    if (!focused) await sleep(500)
   }
   if (field.count !== 1) throw new Error(`expected one composer on screen, found ${field.count}`)
-  if (field.text) throw new Error('the composer already holds text')
-  for (const type of ['mousePressed', 'mouseReleased'] as const) await c.send('Input.dispatchMouseEvent', { type, x: field.x, y: field.y, button: 'left', clickCount: 1 })
-  if (!(await c.eval<boolean>('document.activeElement === window.__typingField'))) throw new Error('the composer did not take focus')
+  if (!focused) throw new Error('the composer did not take focus')
   await c.eval(typingObservers(shown.masterId))
-  log(`typing into the master's composer (${field.width}px wide); warming up 3 s`)
-  await sleep(3_000)
+  log(`typing into the master's composer (${field.width}px wide)`)
 
   const key = async (k: string, text?: string, modifiers = 0, extra: Record<string, unknown> = {}): Promise<void> => {
     await c.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, text, modifiers, timestamp: Date.now() / 1000, ...extra })

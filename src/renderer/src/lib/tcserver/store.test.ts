@@ -501,6 +501,52 @@ describe("sessionStore", () => {
     expect(sessionStore.liveEditsOf("nope")).toEqual({});
   });
 
+  it("a live-edits push of 2,000 items lands in one pass: one copy per session, one notify, the same state as item by item", () => {
+    sessionStore.attach(link);
+    type Item = { sessionIds: string[]; edit: { path: string; kind: "changed"; diff: string | null; adds?: number; dels?: number; bytes?: number; burst?: boolean; settled?: boolean; ts: number } };
+    // The old per-item fold, the reference: copy the map, write, evict the first key past 500.
+    const reference = (items: Item[], start: Record<string, Record<string, unknown>> = {}): Record<string, Record<string, unknown>> => {
+      const maps = { ...start };
+      for (const { sessionIds, edit } of items) {
+        for (const sid of sessionIds) {
+          const cur = { ...(maps[sid] ?? {}) } as Record<string, Record<string, unknown> | undefined>;
+          const prev = cur[edit.path];
+          cur[edit.path] = { path: edit.path, kind: edit.kind, adds: edit.adds ?? prev?.adds, dels: edit.dels ?? prev?.dels, diff: edit.diff ?? prev?.diff ?? null, bytes: edit.bytes, burst: edit.burst, state: edit.settled ? "settled" : "editing", startedTs: prev?.startedTs ?? edit.ts, ts: edit.ts };
+          const keys = Object.keys(cur);
+          if (keys.length > 500) delete cur[keys[0]!];
+          maps[sid] = cur as Record<string, unknown>;
+        }
+      }
+      return maps;
+    };
+    // 2,000 items over 600 paths: every path edited more than once, diffs dropped and carried, two owners each.
+    const items: Item[] = Array.from({ length: 2_000 }, (_, i) => ({
+      sessionIds: ["writer", "root"],
+      edit: { path: `src/f${(i * 7) % 600}.ts`, kind: "changed", diff: i % 3 ? `+line ${i}` : null, adds: i % 4 ? i % 9 : undefined, dels: i % 5 ? 1 : undefined, bytes: i, burst: i % 2 === 0 || undefined, settled: i % 11 === 0 || undefined, ts: 1_000 + i },
+    }));
+    const heard = vi.fn();
+    const off = sessionStore.onLiveEdit(heard);
+    const copies = vi.spyOn(Object, "fromEntries");
+    link.push({ push: "live-edits", items: items.map((item) => ({ cwd: "/repo", ...item })) } as ServerPush);
+    expect(copies).toHaveBeenCalledTimes(2);
+    copies.mockRestore();
+    expect(heard).toHaveBeenCalledTimes(1);
+    const want = reference(items);
+    for (const sid of ["writer", "root"]) {
+      const got = sessionStore.liveEditsOf(sid);
+      // The newest 500 paths, in the order they first landed, each with its last state and carried fields.
+      expect(Object.keys(got)).toEqual(Object.keys(want[sid]!));
+      expect(Object.keys(got)).toHaveLength(500);
+      expect(got).toEqual(want[sid]);
+    }
+    // A later lone live-edit goes through the same pass and carries the path's fields on.
+    const path = Object.keys(want.root!)[499]!;
+    link.push({ push: "live-edit", cwd: "/repo", sessionIds: ["root"], edit: { path, kind: "changed", diff: null, ts: 9_999 } } as ServerPush);
+    expect(heard).toHaveBeenCalledTimes(2);
+    expect(sessionStore.liveEditsOf("root")[path]).toMatchObject({ startedTs: (want.root![path] as { startedTs: number }).startedTs, diff: (want.root![path] as { diff: string | null }).diff, ts: 9_999 });
+    off();
+  });
+
   it("raises onSessionAdded for new top-level sessions pushed after boot, once", async () => {
     link.metas = [wireMeta({ id: "boot" })];
     sessionStore.attach(link);
