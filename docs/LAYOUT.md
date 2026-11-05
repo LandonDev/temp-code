@@ -486,7 +486,9 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     own lines, `stagedCounts`/`unstagedCounts` from the host), over which
     Unstage or Discard and Stage lie on the hover reveal (the counts hold
     their place at rest and give way, so the name never reflows; at once on
-    keyboard focus); a click opens the diff against HEAD, the
+    keyboard focus); a click anywhere on the row but its fold and its
+    actions opens the diff against HEAD (the row is `ROW_HOLDS` with its
+    open control laid over it, so it presses to /12 under the one ring), the
     right-click menu adds Open in <editor>, and a modified file folds open
     into hunks in both groups (the caret takes the icon's place on hover):
     under Changes each is stageable (index → working copy), under Staged

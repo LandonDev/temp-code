@@ -330,11 +330,15 @@ describe("ChangesPanel", () => {
     mount();
     await flush();
     const toggle = screen.getByRole("button", { name: "Show hunks of a.ts" });
-    // Its 16px glyph takes a 24px hit area, above the row's open-the-diff overlay.
-    expect(toggle.closest("[data-fold-reveal]")!.classList).toContain("z-10");
+    // Its 16px glyph takes a 24px hit area, above the row's open control: the media is what the row
+    // shows (positioned after the open control, no pointer), the toggle takes one once revealed.
+    expect(toggle.closest('[data-slot="item-media"]')!.className.split(/\s+/)).toEqual(expect.arrayContaining(["relative", "pointer-events-none"]));
+    expect(toggle.closest("[data-fold-reveal]")!.className).toContain("group-hover/row:pointer-events-auto");
     expect(toggle.className).toContain("after:-inset-1");
     fireEvent.click(toggle);
     await act(() => new Promise((r) => setTimeout(r, 50)));
+    // An open fold keeps its chevron, and its pointer, at rest.
+    expect(screen.getByRole("button", { name: "Hide hunks of a.ts" }).closest("[data-fold-reveal]")!.className.split(/\s+/)).toContain("pointer-events-auto");
     expect(screen.getByText("L2")).toBeTruthy();
     expect(screen.getByText("L7")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Stage lines 2" }));
@@ -668,6 +672,27 @@ describe("ChangesPanel's virtual list", () => {
       }
     });
     expect(rowsMounted()).toBeLessThan(shown);
+  });
+
+  it("a file row is a container with its open control laid over it, pressing to /12 under the one ring", async () => {
+    h.index = indexOf({ files: [file("a.ts"), file("gone.ts", { status: "deleted" })] });
+    mount();
+    await flush();
+    const open = screen.getByRole("button", { name: "Open the diff of a.ts" });
+    const row = open.parentElement!;
+    // The open control is the row's first child, a native button over the whole row.
+    expect(row.firstElementChild).toBe(open);
+    expect(open.hasAttribute("data-row-open")).toBe(true);
+    expect(open.className.split(/\s+/)).toEqual(expect.arrayContaining(["absolute", "inset-0", "rounded-[inherit]"]));
+    // No stretched pseudo-element and no hand-drawn ring: the one focus ring draws round the row.
+    expect(open.className).not.toMatch(/before:|outline-none/);
+    expect(row.className).toContain("hover:bg-foreground/5");
+    expect(row.className).toContain("has-[>[data-row-open]:active]:bg-foreground/12");
+    // What the row shows takes no pointer, so the name, the counts and the row's end open the diff.
+    for (const slot of ["item-content", "item-actions"]) expect(row.querySelector(`[data-slot="${slot}"]`)!.className).toContain("pointer-events-none");
+    expect(open.contains(screen.getAllByRole("button", { name: "Stage" })[0])).toBe(false);
+    // A deleted file's row has the same open control, marked disabled.
+    expect(screen.getByRole("button", { name: "gone.ts, deleted" }).hasAttribute("data-row-open")).toBe(true);
   });
 
   it("a row's actions stay reachable from the keyboard", async () => {

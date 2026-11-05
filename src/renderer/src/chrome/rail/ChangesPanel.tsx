@@ -9,7 +9,8 @@ import {
   DropdownMenuTrigger,
 } from "@renderer/components/ui/dropdown-menu";
 import { Empty, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
-import { Item, ItemActions, ItemContent, ItemMedia } from "@renderer/components/ui/item";
+import { Item, ItemActions, ItemButton, ItemContent, ItemMedia } from "@renderer/components/ui/item";
+import { ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "@renderer/components/ui/press";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { reveal, yields } from "@renderer/components/ui/reveal";
 import { Spinner } from "@renderer/components/ui/spinner";
@@ -796,21 +797,33 @@ function FileRow({
   const rowBusy = busy === file.relative;
   const panel = useFoldPanel(open);
 
+  // A container with its open control laid over it (press.ts ROW_HOLDS): the
+  // fold and the actions are its own buttons above it, the icon, the name and
+  // the counts take no pointer, so a click anywhere else opens the diff and
+  // the row presses to /12 with the one focus ring round it.
   const row = (
     <Item
       size="xs"
       aria-current={active || undefined}
-      className={cn("group/row min-h-7 flex-nowrap gap-2 py-0 hover:bg-foreground/5", active && "bg-muted hover:bg-muted")}
+      className={cn("group/row min-h-7 flex-nowrap gap-2 py-0", ROW_HOLDS, active && "bg-muted hover:bg-muted")}
     >
-      <ItemMedia className="relative z-10 size-4">
+      {/* A deleted file has no diff to open, but its row still takes focus: its actions show on focus. */}
+      <ItemButton
+        data-row-open
+        aria-disabled={deleted || undefined}
+        onClick={() => actions.open(file)}
+        className={cn(ROW_OPEN, "aria-disabled:cursor-default")}
+        aria-label={deleted ? `${file.relative}, deleted` : `Open the diff of ${file.relative}`}
+      />
+      <ItemMedia className={cn("size-4", ROW_SHOWS)}>
         {foldable ? (
           <>
             {/* The file's icon gives way to the fold's chevron on the shared hover reveal; an open fold keeps the chevron. */}
             <span className={cn("grid place-items-center", open ? "opacity-0" : ROW_YIELDS)}>
               <FileTypeIcon name={file.relative} isDir={false} size={16} />
             </span>
-            {/* Above the row's open-the-diff overlay, with a 24px hit area around its 16px. */}
-            <span data-fold-reveal className={cn("absolute inset-0 z-10 flex", !open && ROW_REVEALS)}>
+            {/* Above the row's open control, with a 24px hit area around its 16px. */}
+            <span data-fold-reveal className={cn("absolute inset-0 flex", open ? "pointer-events-auto" : ROW_REVEALS)}>
               <Button
                 variant="ghost"
                 size="icon-xs"
@@ -827,19 +840,10 @@ function FileRow({
           <FileTypeIcon name={file.relative} isDir={false} size={16} />
         )}
       </ItemMedia>
-      <ItemContent className="min-w-0">
-        {/* A deleted file has no diff to open, but its row still takes focus: its actions show on focus. */}
-        <Button
-          variant="ghost"
-          aria-disabled={deleted || undefined}
-          onClick={() => actions.open(file)}
-          className="static flex h-auto min-w-0 justify-start rounded-none px-0 py-0 text-left font-normal before:absolute before:inset-0 before:content-[''] hover:bg-transparent focus-visible:outline-none! focus-visible:before:rounded-lg focus-visible:before:outline-2 focus-visible:before:-outline-offset-2 focus-visible:before:outline-accent active:bg-transparent aria-disabled:cursor-default"
-          aria-label={deleted ? `${file.relative}, deleted` : `Open the diff of ${file.relative}`}
-        >
-          <FileName relative={file.relative} muted={deleted} />
-        </Button>
+      <ItemContent className={cn("min-w-0", ROW_SHOWS)}>
+        <FileName relative={file.relative} muted={deleted} />
       </ItemContent>
-      <ItemActions className="relative z-10 gap-1">
+      <ItemActions className={cn("gap-1", ROW_SHOWS)}>
         {rowBusy ? <Spinner className="size-3 text-muted-foreground" /> : null}
         {/* The counts hold the actions' place at rest and give way to them on the
             shared hover reveal: the actions lie over them, so the name never reflows. */}
