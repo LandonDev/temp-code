@@ -17,7 +17,7 @@ describe("GateCard", () => {
   it("a red typecheck names the branch and the error count, its log behind the caret", () => {
     const log = "src/a.ts(3,1): error TS2322: wrong\nsrc/b.ts(9,2): error TS2345: also wrong\nFound 2 errors in 2 files.";
     const { container } = render(<GateCard block={block({ step: "typecheck", branch: "feature", ok: false, log, at: 1 })} />);
-    expect(parts(container)).toEqual(["Typecheck failed", "feature, 2 errors"]);
+    expect(parts(container)).toEqual(["Typecheck failed on", "feature, 2 errors"]);
     expect(container.querySelector('[data-state="failed"]')).not.toBeNull();
     expect(container.textContent).not.toMatch(/[·|•]/);
     expect(container.querySelector("pre")).toBeNull();
@@ -53,16 +53,16 @@ describe("GateCard", () => {
 
   it("a green run is one quiet line with nothing to open", () => {
     const { container } = render(<GateCard block={block({ step: "gate", branch: "master", ok: true, log: "✓ build 20s", at: 1 })} />);
-    expect(parts(container)).toEqual(["Gate passed", "master"]);
+    expect(parts(container)).toEqual(["Gate passed on", "master"]);
     expect(container.querySelector("button")).toBeNull();
   });
 
   it("a red gate names the step; a green release names the tag", () => {
     const red = render(<GateCard block={block({ step: "gate", branch: "master", ok: false, log: "✓ typecheck 2s passed\n✗ vitest 40s failed", at: 1 })} />);
-    expect(parts(red.container).slice(0, 2)).toEqual(["Gate failed", "master, at vitest"]);
+    expect(parts(red.container).slice(0, 2)).toEqual(["Gate failed on", "master, at vitest"]);
     red.unmount();
     const tagged = render(<GateCard block={block({ step: "release", branch: "master", ok: true, log: "released v277 (tag release-277, package.json 1.0.277)", at: 1 })} />);
-    expect(parts(tagged.container)).toEqual(["Release passed", "master, release-277"]);
+    expect(parts(tagged.container)).toEqual(["Release passed on", "master, release-277"]);
   });
 
   it("says a red gate's reason once on its line, the log folded behind the caret", () => {
@@ -75,9 +75,9 @@ describe("GateCard", () => {
     const missing = render(
       <GateCard block={block({ step: "gate", branch: "master", ok: false, log: '$ bun scripts/gate.ts\nerror: Module not found "scripts/gate.ts"', at: 1 })} />,
     );
-    expect(parts(missing.container).slice(0, 2)).toEqual(["Gate failed", 'master, error: Module not found "scripts/gate.ts"']);
+    expect(parts(missing.container).slice(0, 2)).toEqual(["Gate failed on", 'master, error: Module not found "scripts/gate.ts"']);
     missing.unmount();
     const release = render(<GateCard block={block({ step: "release", branch: "master", ok: false, log: "tree is dirty", at: 1 })} />);
-    expect(parts(release.container).slice(0, 2)).toEqual(["Release failed", "master, tree is dirty"]);
+    expect(parts(release.container).slice(0, 2)).toEqual(["Release failed on", "master, tree is dirty"]);
   });
 });

@@ -13,7 +13,7 @@ export const fixtures = [
   },
   {
     name: "A trailing status after the details",
-    props: { glyph: <GitMerge className="size-3.5" />, lead: "Merged", details: ["port-the-view", "into master"], trailing: <StatusMark state="done" detail="pushed" /> },
+    props: { glyph: <GitMerge className="size-3.5" />, lead: "Merged", details: ["port-the-view into master"], trailing: <StatusMark state="done" detail="pushed" /> },
   },
   {
     name: "Actions on hover (hidden at rest)",

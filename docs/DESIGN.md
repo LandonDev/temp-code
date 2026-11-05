@@ -824,7 +824,7 @@ buttons showing on hover or keyboard focus; a turn the person stopped
 closes on "Stopped" instead, with the same buttons. Every notice (a gate, a review, a compaction, a
 pass, a batch, a second opinion asked of another harness) is one muted
 line with a glyph, a lead in medium weight and its details as one muted
-comma run after it ("Release passed master, release-277"); only a held review and a failure
+comma run after it ("Release passed on master, release-277"); a phrase stays whole in the run, so a lead that needs its preposition keeps it ("Gate failed on") and a label ends in ":" ("Answered Approach: Fast, Small"); only a held review and a failure
 are cards. A compaction is one line that counts from its start, takes
 its outcome in place and reads "Compaction stopped" when its turn ended
 without one; its lead and details follow the same rule ("Context compacted

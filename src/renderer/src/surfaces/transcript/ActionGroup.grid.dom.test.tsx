@@ -109,7 +109,7 @@ describe("an open group's rows sit on one grid", () => {
     const { container } = mountFixture("Mixed calls, opened");
     const line = lineOf(step(container, "mixed8"));
     expect(classes(line)).toEqual(expect.arrayContaining(["min-h-7", "in-data-[table]:min-h-8"]));
-    const lead = [...line.querySelectorAll("span")].find((el) => el.textContent === "Gate failed")!;
+    const lead = [...line.querySelectorAll("span")].find((el) => el.textContent === "Gate failed on")!;
     const branch = [...line.querySelectorAll("span")].find((el) => el.textContent === "port-the-view")!;
     expect(classes(lead)).toContain("text-muted-foreground");
     expect(classes(lead)).not.toContain("text-foreground");

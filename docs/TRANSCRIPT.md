@@ -51,7 +51,7 @@ foreground, the same words the group line uses); the components only draw it.
   the orchestrator's keep theirs. A host step folded into a run
   (`StepRowContext`, set by ActivityRow) reads the same way: its lead muted
   whatever its tone (a failure is the glyph's to say), its first detail in
-  foreground ("Gate failed  port-the-view  at vitest").
+  foreground ("Gate failed on" muted, "port-the-view" in foreground, then "at vitest").
 
 - **The glyph** (`transcript/ToolGlyph.tsx`): one 14 px box, the kind's
   icon from the `GLYPH` record, the connector's mark or the subagent's

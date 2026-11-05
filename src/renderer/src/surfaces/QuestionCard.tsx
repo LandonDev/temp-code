@@ -104,6 +104,11 @@ export function QuestionCard({
   );
 }
 
+/** A question's label ends its phrase with ":" (a question keeps its "?"), so the run reads "Approach: Fast, Small", never "Approach, Fast, Small". */
+function labelOf(label: string): string {
+  return /[?:]$/.test(label) ? label : `${label}:`;
+}
+
 function AnsweredQuestions({ question, answers }: { question: QuestionMeta; answers: string[][] | null }) {
   if (answers === null) return <NoticeLine glyph={<StatusMark state="done" word={false} />} lead="Dismissed" />;
   return (
@@ -113,7 +118,7 @@ function AnsweredQuestions({ question, answers }: { question: QuestionMeta; answ
           key={i}
           glyph={<StatusMark state="done" word={false} />}
           lead="Answered"
-          details={[q.header ?? q.question, answers[i]?.join(", ") || "No answer"]}
+          details={[labelOf(q.header ?? q.question), answers[i]?.join(", ") || "No answer"]}
         />
       ))}
     </>

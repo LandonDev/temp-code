@@ -59,8 +59,9 @@ export function GateCard({ block }: { block: Block }) {
 
 const STEP: Record<GateNotice["step"], string> = { typecheck: "Typecheck", gate: "Gate", release: "Release" };
 
+/** The lead ends in "on" so the branch after it reads as one phrase, as shared gateLine says it ("Gate failed on master, at vitest"). */
 function leadOf(gate: GateNotice): string {
-  return `${STEP[gate.step]} ${gate.ok ? "passed" : "failed"}`;
+  return `${STEP[gate.step]} ${gate.ok ? "passed" : "failed"} on`;
 }
 
 /** ["feature", "3 errors"], ["master", "at vitest"], ["master", "error: Module not found"], ["master", "release-277"] */
