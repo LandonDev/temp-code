@@ -312,7 +312,7 @@ const WhatsNewDialog = dialogsChunk.surface("WhatsNewDialog");
 const NewWorkspaceDialog = dialogsChunk.surface("NewWorkspaceDialog");
 const RemoteFolderDialog = dialogsChunk.surface("RemoteFolderDialog");
 const InboxView = inboxChunk.surface("InboxView", <SurfaceSkeleton kind="page" label="Loading inbox" />);
-const NotesView = notesChunk.surface("NotesView", <SurfaceSkeleton kind="page" label="Loading notes" />);
+const NotesView = notesChunk.surface("NotesView", <SurfaceSkeleton kind="page" lines={3} label="Loading notes" />);
 import { inboxComposerCard, type InboxItem } from "./lib/githubTasks";
 import { threadPane, titleThread, windowTitle } from "./lib/windowTitle";
 import {

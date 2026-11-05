@@ -10,6 +10,7 @@ vi.mock("../chrome/TitleBar", () => ({ OverlayNav: () => null }));
 vi.mock("../chrome/WindowControls", () => ({ WindowControls: () => null }));
 
 import { InboxView } from "./InboxView";
+import { saveInboxSource } from "../lib/inboxFilters";
 
 afterEach(cleanup);
 
@@ -48,5 +49,19 @@ describe("the inbox's Escape", () => {
     fireEvent.keyDown(button, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
     confirm.remove();
+  });
+});
+
+describe("the inbox list while it first loads", () => {
+  it("draws the state kit's rows, the row's own shape", async () => {
+    saveInboxSource("linear");
+    try {
+      const { view } = await mount();
+      const skeleton = view.container.querySelector('[data-surface-skeleton="rows"]');
+      expect(skeleton?.getAttribute("aria-label")).toBe("Loading inbox");
+      expect(skeleton?.querySelectorAll("[data-skeleton-row]")).toHaveLength(5);
+    } finally {
+      saveInboxSource("github");
+    }
   });
 });

@@ -68,6 +68,45 @@ describe("SurfaceSkeleton", () => {
     for (const view of ["InboxView.tsx", "NotesView.tsx"]) expect(readFileSync(resolve(__dirname, view), "utf8")).toContain("const DEFAULT_WIDTH = PAGE_LIST_WIDTH;");
   });
 
+  it.each([
+    [2, 2],
+    [3, 1],
+  ] as const)("page with %i-line rows: the list's head (%i blocks) before its rows, rows 8px in, the detail on the detail's inset", (lines, blocks) => {
+    const { container } = render(<SurfaceSkeleton kind="page" lines={lines} />);
+    const list = container.querySelector("[data-skeleton-list]")!;
+    const head = list.querySelector("[data-skeleton-head]")!;
+    expect(list.firstElementChild).toBe(head);
+    expect(head.className).toContain("p-2");
+    expect(head.querySelectorAll('[data-slot="skeleton"].h-8')).toHaveLength(blocks);
+    const rows = list.querySelectorAll("[data-skeleton-row]");
+    expect(rows.length).toBe(8);
+    expect(rows[0]!.parentElement!.className).toContain("p-1");
+    expect(rows[0]!.className).toContain("px-2");
+    expect(container.querySelector("[data-skeleton-detail]")!.className).toContain("px-8");
+    expect(container.querySelector("[data-skeleton-detail] > div")!.className).toContain("max-w-5xl");
+  });
+
+  it("rows: the Inbox's row line for line, a 14px glyph on a 20px line over a 16px line", () => {
+    const { container } = render(<SurfaceSkeleton kind="rows" count={1} />);
+    const row = container.querySelector("[data-skeleton-row]")!;
+    expect(row.className.split(" ")).toEqual(expect.arrayContaining(["gap-0.5", "px-2", "py-2"]));
+    const [first, second] = [...row.children] as HTMLElement[];
+    expect(first!.className).toContain("h-5");
+    expect(first!.querySelector("[data-skeleton-glyph]")!.className).toContain("size-3.5");
+    expect(second!.querySelector(".h-4")).not.toBeNull();
+    expect(row.parentElement!.className).toContain("gap-0.5 p-1");
+  });
+
+  it("search: the strip, then count one-line rows, each led by the 16px glyph, 12px in", () => {
+    const { container: rows } = render(<SurfaceSkeleton kind="search" count={2} />);
+    const row = rows.querySelector("[data-skeleton-row]")!;
+    expect(row.className).toContain("h-7");
+    expect(row.className).toContain("px-2");
+    expect(row.parentElement!.className).toContain("p-1");
+    expect(row.querySelector("[data-skeleton-glyph]")!.className).toContain("size-4");
+    cleanup();
+  });
+
   it("search: the strip, then count one-line rows", () => {
     const { container } = render(<SurfaceSkeleton kind="search" count={5} />);
     expect(container.querySelector("[data-surface-skeleton]")!.children[0]!.hasAttribute("data-skeleton-strip")).toBe(true);
@@ -79,6 +118,8 @@ describe("SurfaceSkeleton", () => {
     const rows = container.querySelectorAll("[data-skeleton-row]");
     expect(rows).toHaveLength(2);
     expect(rows[0]!.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(3);
+    // NoteCard's lines: 16px, then 4px and a 20px title, then 2px and 16px.
+    expect([...rows[0]!.querySelectorAll(".h-4, .h-5")].map((el) => (el.className.includes("h-5") ? 20 : 16))).toEqual([16, 20, 16]);
   });
 
   it("a switch's skeleton has the Switch's box", () => {

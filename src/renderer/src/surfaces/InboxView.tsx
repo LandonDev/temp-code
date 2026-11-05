@@ -105,7 +105,7 @@ import {
   type InboxReplyTarget,
 } from "./InboxComments";
 import { InboxPrDiff } from "./InboxPrDiff";
-import { EmptyState, PAGE_LIST_WIDTH } from "./SurfaceSkeleton";
+import { EmptyState, PAGE_LIST_WIDTH, SurfaceSkeleton } from "./SurfaceSkeleton";
 
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 420;
@@ -500,7 +500,7 @@ export function InboxView({
         {sourceError && visibleItems.length === 0 ? (
           <p className="px-3 py-2 text-xs text-destructive">{sourceError}</p>
         ) : loading && items.length === 0 ? (
-          <InboxRowsSkeleton />
+          <SurfaceSkeleton kind="rows" count={5} label="Loading inbox" />
         ) : visibleItems.length === 0 ? (
           <InboxListEmpty
             narrowed={narrowedByUser}
@@ -771,23 +771,6 @@ export function InboxRow({
         ) : null}
       </span>
     </ItemButton>
-  );
-}
-
-/** Five rows in the row's shape while the first list loads. */
-function InboxRowsSkeleton() {
-  return (
-    <div aria-label="Loading inbox" className="flex flex-col gap-0.5 p-1">
-      {[0, 1, 2, 3, 4].map((index) => (
-        <div key={index} className="flex flex-col gap-1.5 px-2 py-2">
-          <div className="flex items-center gap-2">
-            <Skeleton className="size-3.5 rounded-sm" />
-            <Skeleton className="h-3.5 flex-1" />
-          </div>
-          <Skeleton className="ms-[22px] h-3 w-1/2" />
-        </div>
-      ))}
-    </div>
   );
 }
 
