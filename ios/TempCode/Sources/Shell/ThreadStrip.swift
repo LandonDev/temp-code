@@ -27,7 +27,8 @@ struct ThreadStripView: View {
     var body: some View {
         let hosts = HomeRows.inputs(model.registry.ordered)
         if let scope = ThreadStrip.scope(for: route, hosts: hosts) {
-            let chips = ThreadStrip.chips(scope: scope, open: route)
+            // Until the project shell draws the whole strip (B3b): the live row alone.
+            let chips = ThreadStrip.model(scope: scope, shown: shownThread, order: [], hosts: hosts).live
             HStack(spacing: 0) {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal) {
@@ -77,6 +78,11 @@ struct ThreadStripView: View {
                 painted = true
             }
         }
+    }
+
+    private var shownThread: (environmentId: String, sessionId: String)? {
+        guard case .thread(let environmentId, let sessionId, _)? = route else { return nil }
+        return (environmentId, sessionId)
     }
 
     private func scrollKey(_ chips: [StripChip]) -> String {

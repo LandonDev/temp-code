@@ -156,11 +156,26 @@ split the row whose thread is the detail's root sits on `Surface.fill`.
 The detail reads "No Thread Selected" (Home) or "No Result Selected"
 (Search) when nothing is open, a title alone. Above Home's detail, in the
 split poses only, the thread strip (Shell/ThreadStrip.swift over the client
-package's `ThreadStrip`) is one 40 pt row of chips: the open thread's
-project's live roots (`ThreadGroups.isLive`, pinned included), every linked
-copy mixed, freshest first, the open thread kept when dormant, then `+` for a
-new thread in that project; a chat with no project lists its workspace's
-chats, a loose chat its host's. A chip is the type glyph, the title
+package's `ThreadStrip`) is one 40 pt row of chips over the desktop's
+strip rules (`ThreadStrip.model`, threadStripModel.ts and
+threadHeaderModel.ts): the scope is the open thread's project with every
+linked copy, else its workspace's loose chats on every copy, and a chat
+outside every workspace has no strip; every unarchived root of the scope, a
+batch thread left to its master's chip. Live is not idle or done, or live,
+paused or recoverable work in its tree, or unread, or a plan ready to build
+(`planCompletedAt` on a settled planner); pinned alone is not live. The live
+row keeps a stable order saved per scope key (`ThreadStripStore`,
+`strip.order.v1`: a project's `ProjectPairs.key`, so linked copies share it;
+the first 64 ids, a scope not drawn for 30 days forgotten; new chips join
+oldest first; a state change moves nothing), the settled roots sit on the
+shelf freshest first, the thread on screen is selected on whichever row it
+sits (a subagent selects its root), and a thread outside the scope (a batch
+child, another scope's root) is a temporary chip at the live row's end,
+never saved. `ProjectLanding.active` is the desktop's `activeLanding`: the
+scope's most recent active root by its last event, a batch thread standing
+in for its master, none when the thread on screen is already in the scope.
+Until the project shell (B3b) draws the whole strip, the split shows the
+live row alone, then `+`. A chip is the type glyph, the title
 (semibold while unseen), the host glyph with two or more hosts and the
 spinner while running, on the fill when selected; its long press is the
 row's menu. The thread screen keeps its tab bar in the split (hiding it
@@ -2222,8 +2237,8 @@ workspaces. The detail holds the thread or Settings, and reads "No Thread
 Selected" when nothing is open.
 
 **The thread strip.** Unfolded, one row of chips above the thread lists the
-open thread's project's live roots, freshest first, the open thread kept
-even when dormant, then `+`: the desktop's strip, which is the project's
+open thread's project's live roots in their saved order (`ThreadStrip.model`,
+above), then `+`: the desktop's strip, which is the project's
 threads and not a set of open tabs. Folded there is no strip.
 
 **Memory.** `navigation.memory.v2` keeps, per tab, the sidebar path, the
