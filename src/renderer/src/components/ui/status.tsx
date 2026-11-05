@@ -255,7 +255,9 @@ export function StatusMark({
         </span>
       ) : null}
       {hasDetail ? (
-        <span data-slot="status-detail" className="-ms-1 min-w-0 truncate font-normal text-muted-foreground tabular-nums">
+        // 4px after the word; a detail with no word before it keeps the
+        // glyph's 8px, or starts at the row's own edge with neither.
+        <span data-slot="status-detail" className={cn("min-w-0 truncate font-normal text-muted-foreground tabular-nums", text !== null && "-ms-1")}>
           {detail}
         </span>
       ) : null}

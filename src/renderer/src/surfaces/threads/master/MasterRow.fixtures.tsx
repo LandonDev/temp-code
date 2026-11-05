@@ -31,7 +31,7 @@ const meta = (over: Partial<SessionMeta>): SessionMeta =>
     ...over,
   }) as SessionMeta;
 
-const agents = (lines: RowAgents["lines"]): RowAgents => ({ lines, more: 0, moreWaiting: 0, done: 1 });
+const agents = (lines: RowAgents["lines"]): RowAgents => ({ lines, more: 0, moreWaiting: 0, done: lines.length ? 1 : 0 });
 const line = (id: string, title: string, state: RowAgents["lines"][number]["state"], detail: string) => ({
   id,
   environmentId: "local",
@@ -78,5 +78,11 @@ export default [
   {
     name: "a Cursor row: no effort",
     props: props(meta({ id: "c4", title: "Lint fixes", provider: "cursor", model: "composer-2.5", reasoning: undefined, statusDetail: "Editing eslint.config.js" }), agents([])),
+  },
+  {
+    // Under Needs you the section says the word, so the detail stands alone
+    // under the title and starts on its edge.
+    name: "waiting on an approval",
+    props: props(meta({ id: "c5", title: "Delete the old cache", status: "waiting", activity: "rm -rf build", busySince: null }), agents([])),
   },
 ];

@@ -50,4 +50,18 @@ describe("StatusMark", () => {
       cleanup();
     }
   });
+
+  it("pulls the detail 4px toward the word only, so a detail with no word lines up with its title", () => {
+    const detail = (el: HTMLElement) => el.querySelector("[data-slot=status-detail]")!.className;
+    const both = render(<StatusMark state="waiting" detail="Approve Bash" />);
+    expect(detail(both.container)).toContain("-ms-1");
+    cleanup();
+    // Glyph then detail: the glyph's own 8px, as before a word.
+    const glyphOnly = render(<StatusMark state="waiting" word={false} detail="Approve Bash" />);
+    expect(detail(glyphOnly.container)).not.toContain("-ms-1");
+    cleanup();
+    // A board row's line: the detail alone starts at the row's edge.
+    const bare = render(<StatusMark state="waiting" glyph={false} word={false} detail="Approve Bash" />);
+    expect(detail(bare.container)).not.toContain("-ms-1");
+  });
 });
