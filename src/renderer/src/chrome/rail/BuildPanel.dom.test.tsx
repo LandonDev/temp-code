@@ -109,6 +109,11 @@ describe("BuildView", () => {
     expect(document.querySelector("[data-slot=build-log]")).toBeNull();
     expect(screen.getByText("bun run build")).toBeTruthy();
     expect(screen.getByText("detected")).toBeTruthy();
+    // The section's top row: 36px on the panel's 12px inset, as Changes, Build, Notes and Files all draw it.
+    const top = screen.getByRole("button", { name: "Build" }).closest('[data-slot="section-top"]')!;
+    expect(top.className).toContain("h-9");
+    expect(top.className).toContain("px-3");
+
   });
 
   it("says Working with the elapsed time while running, and Cancel cancels", () => {

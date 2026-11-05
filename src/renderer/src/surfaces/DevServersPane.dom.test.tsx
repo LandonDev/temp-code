@@ -154,6 +154,10 @@ describe('DevServersPane', () => {
     expect(rows()).toEqual(['env_box/res1', 'env_box/run1'])
     const groups = [...probe!.container.querySelectorAll('[data-dev-group]')].map((g) => g.getAttribute('aria-label'))
     expect(groups).toEqual(['Coins page', 'cosmicweb'])
+    // Rows and headings on the 12px inset (4px here, 8px in each row), groups 16px apart.
+    const list = probe!.container.querySelector('[data-dev-group]')!.parentElement!
+    expect(list.className).toContain('p-1')
+    expect(list.className).toContain('gap-4')
     expect(probe!.container.querySelector('[data-dev-server="env_box/run1"]')!.textContent).toContain('Vite dev server')
     expect(shown()).toBe('res1')
     await probe!.act(async () => (probe!.container.querySelector('[data-dev-server="env_box/run1"]') as HTMLElement).click())

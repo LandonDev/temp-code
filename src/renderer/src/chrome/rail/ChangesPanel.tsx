@@ -636,7 +636,7 @@ function TopRow({
   const hasStaged = files.some((f) => f.staged);
   const branch = index.branch ?? "Detached HEAD";
   return (
-    <div className={cn("flex h-9 shrink-0 items-center gap-1 pr-2", branchPicker ? "pl-1.5" : "pl-3")}>
+    <div data-slot="section-top" className={cn("flex h-9 shrink-0 items-center gap-1 pr-3", branchPicker ? "pl-1.5" : "pl-3")}>
       {branchPicker ?? (
         <Tooltip>
           <TooltipTrigger render={<span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground" />}>{branch}</TooltipTrigger>

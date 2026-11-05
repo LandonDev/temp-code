@@ -206,7 +206,7 @@ export function BuildView({
   return (
     <TooltipProvider>
       <div className="flex min-h-0 flex-1 flex-col" data-slot="build-section">
-        <div className="flex h-9 shrink-0 items-center gap-2 px-3">
+        <div data-slot="section-top" className="flex h-9 shrink-0 items-center gap-2 px-3">
           {chosen ? (
             <Tooltip>
               <TooltipTrigger render={<span className="flex min-w-0 flex-1" />}>

@@ -201,6 +201,11 @@ describe("ChangesPanel", () => {
     await flush();
     const head = screen.getByRole("button", { name: "Branch feat" });
     expect(head.getAttribute("data-variant")).toBe("head");
+    // The section's top row: 36px on the panel's 12px inset, as Changes, Build, Notes and Files all draw it.
+    const top = head.closest('[data-slot="section-top"]')!;
+    expect(top.className).toContain("h-9");
+    expect(top.className).toContain("pr-3");
+
     expect(head.getAttribute("data-tip")).toBe("Tracks origin/feat");
     fireEvent.click(head);
     expect(onBranchChange).toHaveBeenCalledWith("t1");

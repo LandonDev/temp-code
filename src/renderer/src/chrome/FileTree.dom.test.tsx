@@ -70,6 +70,11 @@ describe("FileTree", () => {
     const header = screen.getByRole("button", { name: "New file" }).parentElement!;
     expect(header.querySelectorAll("button")).toHaveLength(3);
     expect(header.className).not.toContain("border-b");
+    // The section's top row: 36px on the panel's 12px inset, as Changes, Build, Notes and Files all draw it.
+    const top = header.closest('[data-slot="section-top"]')!;
+    expect(top.className).toContain("h-9");
+    expect(top.className).toContain("px-3");
+
     expect(container.querySelector("button[title]")).toBeNull();
   });
 

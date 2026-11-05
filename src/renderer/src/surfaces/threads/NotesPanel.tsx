@@ -186,7 +186,7 @@ export function NotesView({
   return (
     <TooltipProvider>
       <div className="flex min-h-0 flex-1 flex-col" data-slot="notes-section">
-        <div className="flex h-8 shrink-0 items-center justify-between gap-2 pr-2 pl-3">
+        <div data-slot="section-top" className="flex h-9 shrink-0 items-center justify-between gap-2 px-3">
           <span className={cn("truncate text-xs tabular-nums", saving === "failed" ? "text-destructive" : "text-muted-foreground")}>{state}</span>
           {loading ? null : (
             <div className="flex items-center gap-0.5">
@@ -204,7 +204,7 @@ export function NotesView({
           )}
         </div>
         {loading ? (
-          <div className="flex flex-col gap-2.5 px-3 py-2" aria-busy="true" aria-label="Loading notes">
+          <div className="flex flex-col gap-3 px-3 py-2" aria-busy="true" aria-label="Loading notes">
             <Skeleton className="h-3.5 w-1/3" />
             <Skeleton className="h-3.5 w-11/12" />
             <Skeleton className="h-3.5 w-3/4" />

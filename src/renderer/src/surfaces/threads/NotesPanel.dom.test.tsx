@@ -72,6 +72,11 @@ describe("NotesBody", () => {
     await flush();
     expect(screen.getByTestId("md").textContent).toContain("Ship the notes panel.");
     expect(screen.getByText("Updated 2m ago")).toBeTruthy();
+    // The section's top row: 36px on the panel's 12px inset, as Changes, Build, Notes and Files all draw it.
+    const top = screen.getByText("Updated 2m ago").closest('[data-slot="section-top"]')!;
+    expect(top.className).toContain("h-9");
+    expect(top.className).toContain("px-3");
+
     expect(screen.getByTestId("md").dataset.size).toBe("compact");
     act(() => push({ push: "notes", sessionId: "s1", doc: { text: "## Goal\n\nShipped.\n", updatedAt: Date.now(), path: "/p/notes.md" } }));
     expect(screen.getByTestId("md").textContent).toContain("Shipped.");
@@ -169,6 +174,7 @@ describe("NotesBody", () => {
     request.mockImplementationOnce(() => new Promise(() => {}));
     render(<NotesBody session={session} />);
     expect(screen.getByLabelText("Loading notes").getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByLabelText("Loading notes").className).toContain("gap-3");
     expect(screen.queryByRole("button", { name: "Edit notes" })).toBeNull();
   });
 

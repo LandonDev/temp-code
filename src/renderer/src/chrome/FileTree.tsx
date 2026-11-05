@@ -672,7 +672,8 @@ export function FileTree({
           onPointerEnter={warmFileSurfaces}
         >
           <div
-            className="flex h-8 shrink-0 items-center justify-end gap-0.5 px-1.5"
+            data-slot="section-top"
+            className="flex h-9 shrink-0 items-center justify-end gap-0.5 px-3"
             onContextMenu={(e) => e.stopPropagation()}
           >
             <HeaderButton label="New file" onClick={() => startCreate(false)}>

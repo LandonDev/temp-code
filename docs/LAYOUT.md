@@ -395,7 +395,9 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   wraps or scrolls) from the 12px inset, and Hide (28px, its ⌘⇧R in a key
   cap) at the same inset on the right, under one tooltip provider; the section's body
   below (`ActivitySection`, `FleetList`, `NotesBody`, `ChangesPanel`,
-  `FileTree`, `BuildPanel`, `DebugPanel`). It never tweens its width: a
+  `FileTree`, `BuildPanel`, `DebugPanel`), whose first row (Changes' branch,
+  Build's target, Notes' state, Files' buttons) is one 36px row on the 12px
+  inset in every section. It never tweens its width: a
   toggle in place gives the thread its new width at once (one layout; the
   transcript's anchor row holds it) and moves the pane on transform and
   opacity alone (`usePaneMotion` in ThreadView, `PANE_MOTION`): opening, it

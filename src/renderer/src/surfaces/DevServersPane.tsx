@@ -90,7 +90,7 @@ export function DevServersPane({
           <DevStarter starter={starter} />
           {servers.length > 0 ? (
             <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-              <div className="flex flex-col gap-2 p-1.5">
+              <div className="flex flex-col gap-4 p-1">
                 {serverGroups(servers).map((group) => (
                   <ItemGroup key={group.key} aria-label={group.owner} data-dev-group={group.key} className="gap-0.5">
                     <div className="truncate px-2 pt-1 text-xs font-medium text-muted-foreground">{group.owner}</div>
