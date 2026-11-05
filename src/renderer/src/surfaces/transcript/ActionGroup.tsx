@@ -217,7 +217,7 @@ export function ActionGroup({
                 aria-expanded={open}
                 aria-controls={panelId}
                 onClick={toggle}
-                className="group/line h-7 w-fit min-w-0 justify-start gap-1 rounded-md px-0 font-sans text-[13px] font-normal leading-5 text-muted-foreground transition-none hover:bg-transparent hover:text-foreground active:bg-transparent aria-expanded:bg-transparent"
+                className="group/line h-7 w-fit min-w-0 shrink justify-start gap-1 rounded-md px-0 font-sans text-[13px] font-normal leading-5 text-muted-foreground transition-none hover:bg-transparent hover:text-foreground active:bg-transparent aria-expanded:bg-transparent"
               >
                 <span data-kind={group.kind} className="me-1 flex shrink-0">
                   {/* The glyph of the run's main kind; it swaps in place when that kind changes. */}

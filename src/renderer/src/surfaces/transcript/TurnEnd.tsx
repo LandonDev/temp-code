@@ -240,7 +240,7 @@ export function WatchingLine({
           size="xs"
           onClick={onOpen}
           aria-label={`${said}, open Activity`}
-          className="-ml-2 gap-1 text-[13px] font-normal text-muted-foreground hover:text-foreground"
+          className="-ml-2 min-w-0 shrink gap-1 text-[13px] font-normal text-muted-foreground hover:text-foreground"
         >
           {body}
         </Button>

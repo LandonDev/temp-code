@@ -280,6 +280,9 @@ describe("TurnEnd of a watching thread", () => {
     const button = row.querySelector("button")!;
     expect(button.textContent).toMatch(/^Watchingsleep 90 seconds5m( \d+s)?$/);
     expect(button.getAttribute("aria-label")).toBe("Watching: sleep 90 seconds, open Activity");
+    // A long subject truncates inside the button instead of pushing the age off the line.
+    expect(button.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "shrink"]));
+    expect(button.className.split(" ")).not.toContain("shrink-0");
     fireEvent.click(button);
     expect(open).toHaveBeenCalledTimes(1);
   });

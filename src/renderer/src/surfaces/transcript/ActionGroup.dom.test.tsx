@@ -82,6 +82,20 @@ describe("ActionGroup", () => {
     expect(container.querySelector("[data-kind]")?.getAttribute("data-kind")).toBe("edit");
   });
 
+  it("a long phrase truncates and keeps its counts and chevron", () => {
+    const { container } = mount(five());
+    const line = trigger(container)!;
+    // Button's base is shrink-0, which would make min-w-0 a no-op and push the counts off a narrow line.
+    expect(line.className.split(" ")).toContain("shrink");
+    expect(line.className.split(" ")).not.toContain("shrink-0");
+    expect(line.className.split(" ")).toContain("min-w-0");
+    const kids = [...line.children];
+    expect(kids.at(-2)?.getAttribute("data-slot")).toBe("counts");
+    expect(kids.at(-1)?.tagName.toLowerCase()).toBe("svg");
+    expect(kids.at(-1)?.getAttribute("class")).toContain("shrink-0");
+    expect(line.querySelector('[data-slot="morph-text"]')?.className).toContain("min-w-0");
+  });
+
   it("leads with the dominant kind's glyph", () => {
     const { container } = mount([read("a", "a.ts"), read("b", "b.ts"), bash("c", "ls")]);
     expect(container.querySelector("[data-kind]")?.getAttribute("data-kind")).toBe("research");

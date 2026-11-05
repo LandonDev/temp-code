@@ -153,7 +153,7 @@ function ObjectText({
         event.stopPropagation();
         onObject();
       }}
-      className="pointer-events-auto relative h-auto min-w-0 justify-start px-0 text-[13px] font-normal underline-offset-2 focus-visible:underline"
+      className="pointer-events-auto relative h-auto min-w-0 shrink justify-start px-0 text-[13px] font-normal underline-offset-2 focus-visible:underline"
     />
   ) : null;
   const text = <span className={cls}>{object}</span>;
