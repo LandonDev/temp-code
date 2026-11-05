@@ -12,7 +12,7 @@ file. A sibling change that needs a new check (the bundle-size check after
 | tier | steps | runs |
 | --- | --- | --- |
 | `commit` | typecheck, vitest, build, bundle-size | in the post-commit hook, on every commit on master |
-| `publish` | renderer-soak, renderer-soak-chat, e2e-remote-fence, hub, ios, ios-client | before signing in `release:publish`; and in the hook when a commit touches a guarded path. The two soaks, hub, ios and ios-client are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships |
+| `publish` | renderer-soak, renderer-soak-chat, renderer-soak-typing, e2e-remote-fence, hub, ios, ios-client | before signing in `release:publish`; and in the hook when a commit touches a guarded path. The three soaks, hub, ios and ios-client are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships |
 
 Guarded paths (`TIER_PATHS`): `ios/**`, `scripts/gen-swift-contract.ts`,
 `src/shared/wireSchemas.ts`, `src/shared/contract*.ts`,
@@ -25,8 +25,8 @@ instance belongs in `publish`.
 
 ## The renderer soak
 
-Two steps, one scene each, with the same window and bounds and a CPU bound
-of their own. `renderer-soak` runs `bun scripts/measure-renderer-soak.ts
+Three steps, one scene each. The first two share their window and bounds
+with a CPU bound of their own; the third types. `renderer-soak` runs `bun scripts/measure-renderer-soak.ts
 --gate`: the production build's window, inactive and unthrottled, under the
 synthetic host's load (scripts/lib/soakHost.ts: a pinned master, sixteen
 batch children, streaming text and a running shell step) with the board and
@@ -43,6 +43,20 @@ stays under its scene's bound (scripts/lib/soakJudge.ts `GATE_RULE`,
 2026-11-01 class (the dev build's +66 MB a minute fails the 30 MB rule in
 under a minute) and a main thread that never rests, not small drifts. No
 bound is ever raised to make a run pass.
+
+`renderer-soak-typing` runs `--gate --scene typing`: the master's board and
+chat under the board scene's load, the master's own churn and a 3,000-edit
+live-edit flood every 10 s, its composer typed into in phases (100 keys with
+the load paused, 200 under it, 100 at key repeat speed, a 1,000-key burst
+and a 2,000-character paste; never sent). It passes when a keystroke
+reaches its frame within 16 ms at p95 with the load paused and within 33 ms
+under it, paced or fast, no long task passes 100 ms while typing paced or
+fast, and every phase's text is exact (scripts/lib/soakJudge.ts
+`TYPING_RULE`); CPU and memory are reported, not judged. It runs about 65 s
+from launch to teardown inside the same 90 s, so the publish's soak lane
+runs about 25 s longer than with two scenes. The store's old per-item
+live-edit fold fails it (busy p95 near 500 ms on the box's flood); docs/box.md
+"Typing on a busy master" has the runs.
 
 The CPU bounds are regression guards, each the scene's highest figure on
 the Mac (M4 Max, the window on a 144 Hz screen) plus a margin. The same code
@@ -74,8 +88,9 @@ A hand run reads CPU without failing on it with `--cpu-report-only`
 reported" in the table), and `--trace 5` adds the frame attribution to the
 report.
 
-Both read `out/`, so they sit in the `build` lane after the build and the
-bundle-size check, the board scene first, one instance at a time. In
+All three read `out/`, so they sit in the `build` lane after the build and
+the bundle-size check, the board scene first, then the chat and the typing
+scenes, one instance at a time. In
 `release:publish` the gate runs beside the build, so the script touches
 `$STAGE/build.done` once its build and size check pass and starts the gate
 with `TEMP_CODE_SOAK_BUILD_DONE` naming that file; each soak waits for it
@@ -169,6 +184,7 @@ these ran, so its numbers moved by up to 40 % between runs.
 | ios-client | not measured (link dropped) | | n/a | SwiftPM plus a live test server, Mac only |
 | renderer-soak | 64.1 s, 64.6 s (2026-11-01, a fresh clone) | 62.6 s, 63.1 s | 62 s by hand | Mac only; a 50 s window inside its 90 s |
 | renderer-soak-chat | about 63 s (2026-11-02, by hand) | | 62 s by hand | Mac only; the same window, after the board scene |
+| renderer-soak-typing | 47.8 s, 55.4 s (2026-11-05, a fresh clone) | | 62 s (2026-11-05, load 34) | Mac only; its phases, after the chat scene |
 
 With the three commit lanes at once on the box, vitest finished at 42 s
 and typecheck at 43 s while the build was still running, so the commit

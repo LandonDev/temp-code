@@ -125,8 +125,8 @@ Two separate steps, on purpose, over one gate.
   everything; `--only a,b` / `--skip a,b` / `--verbose` for a hand run.
   - `commit`: typecheck, vitest, the electron-vite build and, after it in
     the same lane, the bundle-size check (scripts/check-bundle-size.ts).
-    `publish`: renderer-soak and renderer-soak-chat (the build lane, after
-    the build, one after the other; Mac only), e2e-remote-fence, hub:test, ios:test, ios:test:client. A proof that
+    `publish`: renderer-soak, renderer-soak-chat and renderer-soak-typing
+    (the build lane, after the build, one after the other; Mac only), e2e-remote-fence, hub:test, ios:test, ios:test:client. A proof that
     boots an instance belongs in `publish`.
   - Steps in one lane run in array order, one at a time; lanes run at
     once (typecheck, vitest and build + bundle-size together), with a combined status
@@ -2080,7 +2080,10 @@ names the far child).
 - `bun scripts/measure-renderer-soak.ts` soaks a built tree's window
   (`--build prod|dev`, `--host synthetic|box`, `--view board|stream|split`,
   `--minutes`, `--every`, `--label`, `--tree`, `--gate`, `--scene
-  board|chat|scenarios` (scenarios: the no-jerk timeline of
+  board|chat|typing|scenarios` (typing: the master's composer typed into
+  beside its board in phases under the board's load, the master's churn and
+  a 3,000-edit live-edit flood every 10 s, scripts/lib/soakTyping.ts, judged
+  by `TYPING_RULE`; docs/box.md "Typing on a busy master"; scenarios: the no-jerk timeline of
   scripts/lib/soakScenarios.ts played once, with `--screencast <dir>`,
   `--reduced-motion`, `--scrolled-up`; never the gate; docs/TRANSCRIPT.md
   "No jerk in any scenario"), `--trace <s>` (scripts/lib/soakTrace.ts: main-thread frames
@@ -2095,8 +2098,10 @@ names the far child).
   on macOS, whose bun has no node:sqlite; a pinned master,
   sixteen batch children, the fixed load of scripts/lib/soakLoad.ts; with
   `--scene chat` one plain chat thread with the focused child's load,
-  CHAT_PROFILE, shown as a stream;
-  `bun run script:soak-host-check` proves the load reaches a socket); box
+  CHAT_PROFILE, shown as a stream; with `--scene typing` TYPING_PROFILE,
+  paused and resumed over the host's stdin;
+  `bun run script:soak-host-check` proves the load reaches a socket, `--
+  --scene typing` its live edits and the master's metas too); box
   mode pairs read-only and revokes at exit. The window opens through
   `window.__monocode.open(sessionId, { split })` (every build; lib/monocodeOpen.ts)
   and runs inactive and unthrottled (`TEMP_CODE_SOAK_WINDOW=1`, honoured
@@ -2110,8 +2115,12 @@ names the far child).
   where it reads 15% busy; each fails the publish;
   `--cpu-report-only` reads CPU without failing for a hand run; docs/box.md
   "The soak's two scenes" has why the board cannot reach 12% while the
-  phrase fade and the spinners stay as designed): in
-  release-publish it waits for `$STAGE/build.done`
+  phrase fade and the spinners stay as designed), and
+  `renderer-soak-typing` (`--gate --scene typing`, about 65 s inside the
+  same 90 s: keystroke to frame p95 ≤ 16 ms idle and ≤ 33 ms busy and fast,
+  no long task over 100 ms while typing, every phase's text exact; CPU
+  reported, not judged). Each soak in
+  release-publish waits for `$STAGE/build.done`
   (TEMP_CODE_SOAK_BUILD_DONE), elsewhere it reads out/bundle-map.json's
   `head` stamp and builds when out/ is not HEAD's clean build. docs/box.md
   "The renderer over time" has the numbers; docs/RENDERER_RETENTION.md the
@@ -2129,7 +2138,23 @@ names the far child).
   pending-approval index, `usePendingApprovals`, ids, title, tool and label
   only, its builder installed by lib/approvalToast.ts so the store imports
   no transcript wording; chrome/toastSync.ts calls sonner only for added,
-  changed or removed ids and dismisses an owner's toasts when it unmounts). A component that only needs the metas when a
+  changed or removed ids and dismisses an owner's toasts when it unmounts).
+  A keystroke forces no layout and renders the field alone (the field sizes
+  itself, lib/composerHeight.ts: only a paste, a restore, a quote or a
+  replaced range eases its height, the inline height cleared after). A
+  live-edit push costs one pass however many items it carries (store
+  `applyLiveEdits`: one copy per session, one notify). A step's log line
+  renders the board's foot alone: the batch state lives in a holder
+  (useMasterModel.ts `BatchHolder`) the foot follows whole, the view reads a
+  kept projection (`useBatchView`), each row is a memoized `BoardRow` and
+  the master's chat is built only for new render functions; AgentTranscript
+  is memoized. The rail card's clock reaches the time alone (`LineElapsed`,
+  `CardAgo` on the shared tickers; `CardNowContext` fixes them for a
+  fixture), and its master block, batch lines and agents lines are
+  memoized. The composer keeps its session by `sameComposerChrome`
+  (lib/session.ts `COMPOSER_FIELDS`, a proxy test fails on a read outside
+  it) and reads its meta through `useSessionMetaValue`, one primitive at a
+  time, so a busy master's activity renders no composer. A component that only needs the metas when a
   menu opens or a click lands reads `sessionStore.metas()` then, never
   `useSessionMetas()`: a hook subscribed to the metas renders its component
   on every push, whatever it returns. Keep the hot parents compilable by

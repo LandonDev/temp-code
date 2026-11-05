@@ -2811,7 +2811,9 @@ no-jerk timeline (scripts/lib/soakScenarios.ts) once instead of a load,
 with `--screencast <dir>` (every painted frame as `<ms>.png` and an
 `index.json` of the steps), `--reduced-motion` and `--scrolled-up`
 (docs/TRANSCRIPT.md "No jerk in any scenario"); it is never in the gate.
-A hand run does not build: run `bun x electron-vite build` first, and give
+`--scene typing` types into the master's composer beside its board under a
+heavier load ("Typing on a busy master" below). A hand run does not build:
+run `bun x electron-vite build` first, and give
 it its own `--port` when another session soaks on the box (two runs on the
 default 9251 kill each other's window).
 
@@ -2821,6 +2823,7 @@ bun scripts/measure-renderer-soak.ts --host box --view stream --minutes 30 --lab
 bun scripts/measure-renderer-soak.ts --build dev --view board --minutes 10 --why --label dev-why
 bun scripts/measure-renderer-soak.ts --gate   # the release gate's board step
 bun scripts/measure-renderer-soak.ts --gate --scene chat   # its chat step
+bun scripts/measure-renderer-soak.ts --gate --scene typing   # its typing step
 bun scripts/measure-renderer-soak.ts --gate --cpu-report-only --trace 5 --label <name>   # by hand
 ```
 
@@ -3013,6 +3016,128 @@ come every step and its frame, and no step shows more than 32 chars where
 the old reveal dropped a burst in one frame. The gate's two scenes on the
 same tree: board 22.3% (bound 33%), chat 17.2% (bound 22%), heap after GC
 +3.0 and +2.6 MB, no long task.
+
+### Typing on a busy master
+
+The user, 2026-11-05: "in a master thread with a lot of threads running,
+the transcript looks fine and scrolling seems fine, but typing a long thing
+in the typing area lags and characters do not update properly." Scrolling
+runs on the compositor thread and stays smooth while the main thread is
+blocked; typing cannot. No character was ever lost or reordered: they were
+held back behind a blocked main thread and landed in a lump. Performance 3
+(the plan `.temp-code/plan-Vn08KJaG8iRY.md`, the runs in `.temp-code/perf3/`)
+measured it, named four causes and fixed each.
+
+The first runs (master 8ab1d255, the box under xvfb at 60 Hz, typing over CDP
+at a seeded 60-120 ms a key; keystroke to the end of the next frame):
+
+| Scene | p50 ms | p95 ms | max ms | Long tasks while typing |
+|---|---|---|---|---|
+| synthetic board, the master's composer, load on | 18.0 | 29.0 | 77.2 | none |
+| the same window, load frozen | 13.1 | 21.3 | 26.1 | none |
+| one streaming chat | 16.8 | 25.7 | 33.1 | none |
+| the real box master (90 children, 12 running) | 16.5 | 29.5 | 57.3 | none |
+| the real box master, dev build, 2,000 fast keys during a live-edit flood | 418 | 5,824 | 7,077 | 190, 15.5 s in 68 s, worst 935 ms |
+
+The causes and their fixes, worst first:
+
+1. A live-edit flood held the window for up to a second. When threads
+   write many files at once, the host streams `live-edits` pushes of
+   hundreds of items, and the store copied the session's whole live-edit
+   map (up to 500 paths) and listed its keys for every item. Now a push
+   costs one pass: one copy per session, the oldest path evicted as each
+   new one lands, one notify (store.ts `applyLiveEdits`). Under bun alone a
+   400-edit flood went from 39.7 ms to 0.3 ms. A flood of distinct files has
+   no repeated path to fold, and with the pass in place a 3,000-edit flood
+   made no long task, so the host does not coalesce them.
+2. Every keystroke forced a layout: the field set its height to `auto`,
+   read `scrollHeight` and pinned the height in pixels. Now the field sizes
+   itself under its `max-h-40`; only a paste, a restore, a quote or a
+   replaced range eases its height, and the inline height is cleared when
+   the ease ends (lib/composerHeight.ts). Layouts while typing busy: 35.2 a
+   second before, 14.4 after.
+3. Board pushes re-rendered what sits around the composer. The step log's
+   four pushes a second went through React state and re-rendered every row's
+   boundary and the master's chat; a project card's own second clock
+   re-rendered the whole card every second. Now the batch state lives in a
+   holder the foot alone follows (useMasterModel.ts `BatchHolder`), the rows
+   and the chat are memoized, and the card's times are leaves on the shared
+   tickers. In a dev build's tally over 30 s of typing: RowBoundary 569 → 0,
+   ChunkBoundary 619 → 101, ChatColumn and ChatFooter 151 → 0.
+4. The master's own meta re-rendered the composer: its activity, status
+   detail and last event move as its batch moves. Now the composer keeps its
+   session by `sameComposerChrome` (lib/session.ts `COMPOSER_FIELDS`) and
+   reads three values of the meta, not the whole of it.
+
+#### The typing scene
+
+`--scene typing` runs the board scene's load plus two streams the box had
+and the board scene lacked: a batch child settling and running again every
+second round robin, which re-pushes the master's meta, the master's context
+every 10 s, live edits owned by the master (10 a second over 40 paths, a
+2 KB diff each) and a flood of 3,000 edits in one second every 10 s
+(scripts/lib/soakLoad.ts `TYPING_PROFILE`; the host feeds them through the
+registry and livediff.ts's `emitLiveEdit`). The window opens the master's
+board with its chat, clicks the composer and types in phases, each followed
+by a 1 s rest, an exact check of the text and a clear (never a send):
+
+| Phase | Hand run | Gate | Judged by |
+|---|---|---|---|
+| idle: the load paused over the host's stdin, keys 60-120 ms apart | 300 keys | 100 | p95 ≤ 16 ms, no long task over 100 ms |
+| busy: the whole load, the same pace | 300 | 200 | p95 ≤ 33 ms, no long task over 100 ms |
+| fast: keys 30-40 ms apart | 300 | 100 | p95 ≤ 33 ms, no long task over 100 ms |
+| burst: keys back to back | 2,000 | 1,000 | the text only (its latency is the queue's) |
+| paste: one paste | 2,000 characters | 2,000 | the text only |
+
+Every phase's text must be exact (scripts/lib/soakJudge.ts `TYPING_RULE`).
+Each phase also reads the input delay, Event Timing, long tasks, long
+animation frames with their three longest scripts, and the store's flushes,
+the master's meta changes and its live-edit items a second, which prove the
+load is what the scene says. CPU and memory across the phases are reported,
+not judged. `--trace <s>` traces the busy phase; `--why` on a dev build
+tallies re-renders while typing busy against a quiet window as long.
+Against `--host box` there is no pause, so the idle phase is skipped. The
+gate step `renderer-soak-typing` (docs/release-gate.md) runs it on the Mac,
+where the bounds are judged: at 60 Hz under xvfb the wait for the next frame
+alone reaches 16 ms, so the box reports its figures beside the Mac's.
+
+```bash
+bun x electron-vite build
+bun scripts/measure-renderer-soak.ts --scene typing --label <name>   # by hand, 300 keys a phase
+bun scripts/measure-renderer-soak.ts --scene typing --trace 5 --label <name>
+bun scripts/measure-renderer-soak.ts --scene typing --build dev --why --label <name>
+bun scripts/measure-renderer-soak.ts --scene typing --host box --label <name>   # read-only, no idle phase
+bun scripts/measure-renderer-soak.ts --gate --scene typing   # the gate's step
+```
+
+#### Before and after
+
+The box, production, hand runs, keystroke to frame p95 / worst in ms:
+
+| Tree | Load | Idle | Busy | Fast | Long tasks while typing |
+|---|---|---|---|---|---|
+| 53d4f6cb, the 400-edit flood, three runs | 5-14 | 19.7-22.3 / 21-37 | 19.7-22.1 / 31-45 | 19.4-20.4 / 38-39 | none |
+| 53d4f6cb, the 3,000-edit flood | 7 | 19.5 / 21.5 | 513.6 / 992.5 | 517.4 / 1,035 | 64, worst 334 ms |
+| Fix 1 (94ffe292), the 3,000-edit flood | 7 | 20.0 / 21.6 | 19.7 / 21.3 | 19.5 / 21.2 | none |
+| fixes 1-4 rebased on master, the 3,000-edit flood, three runs | 19-30 | 21.0-22.8 / 26-56 | 23.3-29.2 / 34-113 | 20.9-24.9 / 24-32 | one, 55 ms |
+| read-only against the box (fcd98e15), 53d4f6cb | 8 | – | 20.8 / 26.5 | 19.9 / 27.7 | none |
+
+The Mac (an M4 Max, the window on a 144 Hz screen, macOS 27.2), the gate's
+phases (100, 200 and 100 keys), the 3,000-edit flood, three runs each, one at
+a time, while the Mac ran its own heavy load (the report's one-minute load
+average 53 to 537); keystroke to frame p95 / worst in ms:
+
+| Tree | Idle | Busy | Fast | Worst long task idle / busy / fast | Text | Gate |
+|---|---|---|---|---|---|---|
+| base: 53d4f6cb's renderer, the head's scripts (98d99054) | 9.8-10.3 / 12-15 | 310-396 / 559-647 | 330-446 / 512-576 | 0 / 182-205 / 192-206 ms | exact | failed, three times |
+| head (f1bf80ea, fixes 1-4) | 9.9-10.4 / 13-15 | 9.3-9.5 / 11-85 | 8.8-9.6 / 9-11 | none | exact | passed, three times |
+
+On the head the board gate read 25.6% CPU (bound 33%) and the chat gate
+15.8% (bound 22%), heap after GC +2.6 and +2.8 MB, no long task. The step
+took 48 s and 55 s from launch to teardown. The plan kept a fifth fix in
+reserve (deferring the store's flush while a key is fresh) for a busy p95
+still over 33 ms on the Mac; at 9.5 ms it was not built. The reports are in
+`.temp-code/perf3/mac/`.
 
 ## Profiling the host
 
