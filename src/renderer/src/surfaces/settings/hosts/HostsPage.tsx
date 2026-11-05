@@ -256,10 +256,8 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
           confirmLabel="Remove"
           danger
           onCancel={close}
-          onConfirm={async () => {
-            await remove(dialog.env);
-            close();
-          }}
+          onConfirm={() => remove(dialog.env)}
+          onDone={close}
         />
       ) : null}
     </div>

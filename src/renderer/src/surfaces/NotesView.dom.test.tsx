@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -36,7 +36,7 @@ vi.mock("../chrome/TitleBar", () => ({ OverlayNav: () => null }));
 vi.mock("../chrome/WindowControls", () => ({ WindowControls: () => null }));
 
 import { NotesView } from "./NotesView";
-import { createNote } from "../lib/notes";
+import { createNote, deleteNote } from "../lib/notes";
 
 afterEach(cleanup);
 
@@ -108,6 +108,32 @@ describe("the notes view", () => {
       fireEvent.click(del);
     });
     expect(view.getByText("Delete note?")).toBeTruthy();
+  });
+
+  it("deletes inside the confirm, which plays its exit before the list moves on; a refusal is its red line", async () => {
+    const view = await mount();
+    fireEvent.click(view.getByRole("button", { name: /Deploy/ }));
+    vi.mocked(deleteNote).mockRejectedValueOnce(new Error("The host did not answer"));
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Delete" }));
+    });
+    const dialog = view.getByRole("alertdialog");
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    });
+    expect(within(view.getByRole("alertdialog")).getByText("The host did not answer")).toBeTruthy();
+    expect((view.getByLabelText("Note title") as HTMLInputElement).value).toBe("Deploy");
+    const closed: boolean[] = [];
+    const watch = new MutationObserver(() => closed.push(dialog.hasAttribute("data-closed")));
+    watch.observe(dialog, { attributes: true });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    });
+    await waitFor(() => expect(view.queryByRole("alertdialog")).toBeNull());
+    watch.disconnect();
+    // The dialog closed itself while its note was still on screen.
+    expect(closed).toContain(true);
+    expect(deleteNote).toHaveBeenLastCalledWith("local", "n2");
   });
 
   it("leaves Escape inside the Delete confirm to the confirm, and closes from the page", async () => {

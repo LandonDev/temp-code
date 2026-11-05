@@ -438,9 +438,7 @@ export function ProjectRail({
   );
 
   const onConfirmDelete = () => {
-    if (!removing) return;
-    onRemoveProject?.(removing.path, { purgeData: true });
-    setRemoving(null);
+    if (removing) onRemoveProject?.(removing.path, { purgeData: true });
   };
 
   // The draggable rows: a linked row moves as one, by its lead folder.
@@ -662,6 +660,7 @@ export function ProjectRail({
           path={removing.path}
           onConfirm={onConfirmDelete}
           onCancel={() => setRemoving(null)}
+          onDone={() => setRemoving(null)}
         />
       ) : null}
       <div

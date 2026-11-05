@@ -161,8 +161,9 @@ export function previewMove(sessionId: string): Promise<SessionMovePreview> {
   return registry.linkOf(LOCAL_ENVIRONMENT_ID).request<SessionMovePreview>("session.move.preview", { sessionId, from: sessionStore.hostIdOf(from) });
 }
 
-/** Move a thread to `to` (an environment of this window) through the desktop's server. */
-export async function moveThread(sessionId: string, to: string): Promise<SessionMoveResult> {
+/** Move a thread to `to` (an environment of this window) through the desktop's server.
+ *  A refusal is a toast unless the caller says it itself (`toastRefusal: false`, the move confirm's red line). */
+export async function moveThread(sessionId: string, to: string, { toastRefusal = true }: { toastRefusal?: boolean } = {}): Promise<SessionMoveResult> {
   const from = sessionStore.environmentOf(sessionId);
   if (!from) throw new Error(`unknown session: ${sessionId}`);
   const title = sessionStore.metaOf(sessionId)?.title ?? sessionStore.get(sessionId)?.title ?? "thread";
@@ -180,7 +181,7 @@ export async function moveThread(sessionId: string, to: string): Promise<Session
     return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    set({ notices: [...state.notices, { key: nextKey++, ...notice, result: null, error: message }] });
+    if (toastRefusal) set({ notices: [...state.notices, { key: nextKey++, ...notice, result: null, error: message }] });
     throw err;
   } finally {
     const done = new Map(state.moving);

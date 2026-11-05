@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { HostDevicesReport } from "@server/shared/contract-hostdevices";
 
 vi.mock("../../../lib/hostDevices", () => ({}));
@@ -122,6 +122,24 @@ describe("DevicesBlock", () => {
     });
     expect(props.onDelete).toHaveBeenCalledTimes(1);
     expect(props.onDelete).toHaveBeenCalledWith("AAA");
+  });
+
+  it("a refused Delete is the confirm's red line and the confirm stays; a landed one closes it", async () => {
+    const { props } = mount();
+    vi.mocked(props.onDelete).mockRejectedValueOnce(new Error("simctl: device is booting"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]!);
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Delete" }).at(-1)!);
+    });
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog.textContent).toContain("simctl: device is booting");
+    // Said once, in the dialog: the group's own failure line stays empty.
+    expect(screen.getAllByText("simctl: device is booting")).toHaveLength(1);
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Delete" }).at(-1)!);
+    });
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(props.onDelete).toHaveBeenCalledTimes(2);
   });
 
   it("a simulator nobody holds confirms with what is removed", () => {

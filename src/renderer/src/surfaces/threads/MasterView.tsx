@@ -553,10 +553,8 @@ function MasterBoardView(props: ThreadViewProps) {
           body="Each turn holds where it is."
           confirmLabel="Pause all"
           onCancel={() => setPausing(false)}
-          onConfirm={async () => {
-            await byHost(toPause, "pause");
-            setPausing(false);
-          }}
+          onConfirm={() => byHost(toPause, "pause")}
+          onDone={() => setPausing(false)}
         />
       ) : null}
     </div>

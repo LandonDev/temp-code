@@ -114,9 +114,10 @@ export function ConfirmDialog({
   danger?: boolean;
   onCancel: () => void;
   onConfirm: () => void | Promise<void>;
-  /** The confirm landed: the dialog plays its exit, then this runs. Without
-   *  it the parent unmounts the dialog itself once `onConfirm` resolves. */
-  onDone?: () => void;
+  /** The confirm landed: the dialog plays its exit, then this runs. The
+   *  parent clears its state here, never in `onConfirm`, so the verb's
+   *  close plays the same exit as Cancel's. */
+  onDone: () => void;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -128,7 +129,7 @@ export function ConfirmDialog({
       await onConfirm();
       // The verb stays spinning through the exit, so it cannot be pressed
       // again and Cancel cannot replace the landing.
-      if (onDone) closeThen(onDone);
+      closeThen(onDone);
     } catch (err) {
       setError(errorText(err));
       setPending(false);

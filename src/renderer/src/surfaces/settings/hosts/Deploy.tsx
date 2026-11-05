@@ -92,10 +92,8 @@ export function HostDeploy({ environmentId, name }: { environmentId: string; nam
           body={deployConfirmText(name, deployed, master)}
           confirmLabel="Deploy"
           onCancel={() => setConfirm(false)}
-          onConfirm={async () => {
-            await startDeploy(environmentId, "master");
-            setConfirm(false);
-          }}
+          onConfirm={() => startDeploy(environmentId, "master")}
+          onDone={() => setConfirm(false)}
         />
       ) : null}
     </>

@@ -6,7 +6,9 @@ type Props = {
   name: string;
   path: string;
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
+  /** The removal landed and the confirm's exit played: the parent clears its state. */
+  onDone: () => void;
 };
 
 /** The one line under the title: what stays, and how many threads go once counted. */
@@ -20,7 +22,7 @@ export function removeProjectLine(sessions: number | null): string {
  * threads on the server. Files and worktrees on disk are left alone; opening
  * the folder again brings the workspace back empty.
  */
-export function RemoveProjectDialog({ name, path, onCancel, onConfirm }: Props) {
+export function RemoveProjectDialog({ name, path, onCancel, onConfirm, onDone }: Props) {
   const [sessions, setSessions] = useState<number | null>(null);
 
   useEffect(() => {
@@ -41,6 +43,7 @@ export function RemoveProjectDialog({ name, path, onCancel, onConfirm }: Props) 
       danger
       onCancel={onCancel}
       onConfirm={onConfirm}
+      onDone={onDone}
     />
   );
 }

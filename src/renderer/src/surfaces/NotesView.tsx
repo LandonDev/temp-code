@@ -207,9 +207,12 @@ export function NotesView({
     });
   };
 
-  const onDelete = async (id: string) => {
+  // The delete runs inside its confirm (a refusal is the confirm's red line);
+  // the list moves on only once the confirm's exit has played, since the
+  // note's editor, and the confirm with it, leaves when its note does.
+  const onDelete = (id: string) => deleteNote(environmentId, id);
+  const onDeleted = async (id: string) => {
     try {
-      await deleteNote(environmentId, id);
       const next = await loadNotes(environmentId, true);
       setNotes(next);
       setSelectedId((current) => {
@@ -336,6 +339,7 @@ export function NotesView({
           customColors={groupCustomColors}
           onSaved={onSaved}
           onDelete={onDelete}
+          onDeleted={onDeleted}
           onAddToChat={onAddToChat}
         />
       </div>
@@ -448,12 +452,14 @@ function NoteDetail({
   customColors,
   onSaved,
   onDelete,
+  onDeleted,
   onAddToChat,
 }: {
   environmentId: string;
   note: Note | null;
   onSaved: (note: Note) => void;
-  onDelete: (id: string) => void | Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  onDeleted: (id: string) => void;
   onAddToChat: (note: Note) => void;
 } & ProjectMarks) {
   // Nothing selected draws nothing, as the Inbox's detail: the list's
@@ -471,6 +477,7 @@ function NoteDetail({
       customColors={customColors}
       onSaved={onSaved}
       onDelete={onDelete}
+      onDeleted={onDeleted}
       onAddToChat={onAddToChat}
     />
   );
@@ -485,12 +492,14 @@ function NoteEditor({
   customColors,
   onSaved,
   onDelete,
+  onDeleted,
   onAddToChat,
 }: {
   environmentId: string;
   note: Note;
   onSaved: (note: Note) => void;
-  onDelete: (id: string) => void | Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  onDeleted: (id: string) => void;
   onAddToChat: (note: Note) => void;
 } & ProjectMarks) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
@@ -643,7 +652,17 @@ function NoteEditor({
               onConfirm={async () => {
                 skipSave.current = true;
                 if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
-                await onDelete(note.id);
+                try {
+                  await onDelete(note.id);
+                } catch (err) {
+                  // Refused: the note stays, and so does its saving.
+                  skipSave.current = false;
+                  throw err;
+                }
+              }}
+              onDone={() => {
+                setConfirmDelete(false);
+                onDeleted(note.id);
               }}
             />
           ) : null}

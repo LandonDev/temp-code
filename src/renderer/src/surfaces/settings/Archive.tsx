@@ -192,10 +192,8 @@ export function ArchivePage({
           name={archivedProjectLabel(deleting.path)}
           path={deleting.path}
           onCancel={() => setDeleting(null)}
-          onConfirm={() => {
-            onDeleteProject?.(deleting.path);
-            setDeleting(null);
-          }}
+          onConfirm={() => onDeleteProject?.(deleting.path)}
+          onDone={() => setDeleting(null)}
         />
       ) : null}
       {deletingThread ? (

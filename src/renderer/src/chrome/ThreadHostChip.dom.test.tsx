@@ -1,17 +1,18 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { MoveNotice } from "../lib/threadMove";
 import { toast } from "sonner";
 
-const moves = vi.hoisted(() => ({ notices: [] as MoveNotice[] }));
+const moves = vi.hoisted(() => ({ notices: [] as MoveNotice[], move: null as null | ((...args: unknown[]) => Promise<unknown>) }));
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), dismiss: vi.fn() }) }));
 
 vi.mock("../lib/threadMove", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/threadMove")>()),
   useMoveNotices: () => moves.notices.map((notice) => ({ ...notice })),
   previewMove: async () => ({ branch: "ios/home", detached: false, worktree: false, dirty: 3, origin: true }),
+  moveThread: (...args: unknown[]) => moves.move!(...args),
 }));
 
 import { MoveThreadConfirm, MoveToasts } from "./ThreadHostChip";
@@ -34,6 +35,34 @@ describe("the move confirm", () => {
   });
 });
 
+
+describe("the move confirm's verb", () => {
+  it("runs the move inside the confirm: a refusal is its red line, never a toast, and the confirm stays", async () => {
+    moves.move = vi.fn(async () => {
+      throw new Error("box is offline");
+    });
+    const onClose = vi.fn();
+    render(<MoveThreadConfirm sessionId="s1" to="env_box" toName="box" fromName="This Mac" onClose={onClose} />);
+    await screen.findByText("Branch ios/home travels too");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Move thread" }));
+    });
+    expect(moves.move).toHaveBeenCalledWith("s1", "env_box", { toastRefusal: false });
+    expect(within(screen.getByRole("alertdialog")).getByText("box is offline")).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("closes through its exit once the move lands", async () => {
+    moves.move = vi.fn(async () => ({}));
+    const onClose = vi.fn();
+    render(<MoveThreadConfirm sessionId="s1" to="env_box" toName="box" fromName="This Mac" onClose={onClose} />);
+    await screen.findByText("Branch ios/home travels too");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Move thread" }));
+    });
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+});
 
 describe("MoveToasts", () => {
   it("skips unchanged visible fields, updates one changed move and dismisses removed and unmounted moves", async () => {

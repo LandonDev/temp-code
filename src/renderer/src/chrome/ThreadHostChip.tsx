@@ -139,10 +139,11 @@ export function MoveThreadConfirm({
       }
       confirmLabel="Move thread"
       onCancel={onClose}
-      onConfirm={() => {
-        onClose();
-        void moveThread(sessionId, to).catch(() => undefined);
+      // The move runs inside the confirm: a refusal is its red line, not a toast.
+      onConfirm={async () => {
+        await moveThread(sessionId, to, { toastRefusal: false });
       }}
+      onDone={onClose}
     />
   );
 }

@@ -156,11 +156,17 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
           confirmLabel="Delete"
           danger
           onCancel={() => setConfirm(null)}
+          // The delete runs inside the confirm: a refusal is its red line and it stays.
           onConfirm={async () => {
-            const udid = confirm.udid;
-            setConfirm(null);
-            await run(udid, () => onDelete(udid));
+            setBusy(confirm.udid);
+            setFailed(null);
+            try {
+              await onDelete(confirm.udid);
+            } finally {
+              setBusy(null);
+            }
           }}
+          onDone={() => setConfirm(null)}
         />
       ) : null}
     </Group>

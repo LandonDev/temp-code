@@ -24,7 +24,7 @@ export function DeleteThreadDialog({
   onCancel: () => void;
   onConfirm: () => void | Promise<void>;
   /** The delete landed: runs once the dialog's exit has played. */
-  onDone?: () => void;
+  onDone: () => void;
 }) {
   return (
     <ConfirmDialog
