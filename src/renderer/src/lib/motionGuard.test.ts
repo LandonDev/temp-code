@@ -24,6 +24,7 @@ const CSS_ALLOWED: Record<string, string> = {};
 const KEYFRAMES: Record<string, string> = {
   "stream-step-in": "lib/streamReveal.ts",
   "status-breathe": "components/ui/status.tsx",
+  "table-frame-in": "surfaces/transcript/ActionGroup.tsx",
   "z-fade-quick": "surfaces/AgentTranscript.tsx",
   "reveal-flash": "surfaces/monaco/MonacoPane.tsx",
   "bubble-send-in": "surfaces/transcript/UserMessage.tsx",

@@ -29,16 +29,17 @@ foreground, the same words the group line uses); the components only draw it.
 
 - **One grid** (`transcript/stepLine.ts`): every step of a run, a call, a
   thought, a folded host step, is one line of the same slots, each drawn
-  only when it has something, 8px apart: the 14px glyph (`GLYPH_SLOT`), the
-  verb muted, the target in foreground (it truncates first), the counts at
-  the text's size, the row's extras (an empty extras slot takes no room,
-  `empty:hidden`), the chevron on a row that opens. The glyph box is fixed,
-  so verbs line up and each target starts where its verb ends, as in
-  Claude's open group. A line is 28px at the prose's edge (a lone call) and
-  26px hung in an open group's list, which says so with `data-hung`
-  (`STEP_LINE`'s `in-data-[hung]:h-6.5`; a notice, which can wrap, takes
-  `STEP_NOTICE`). No border, fill or rule; hover lifts the verb and the
-  chevron to foreground, at once.
+  only when it has something: the 14px glyph (`GLYPH_SLOT`) 8px from the
+  verb, the verb muted, the target in foreground (it truncates first), the
+  counts at the text's size, each 4px from the next, then the row's extras
+  (an empty extras slot takes no room, `empty:hidden`) and the chevron on a
+  row that opens, 8px after the last value. The glyph box is fixed, so verbs
+  line up and each target starts where its verb ends, as in Claude's open
+  group. A line is 28px at the prose's edge (a lone call) and 32px in an open
+  group's table, which says so with `data-table` (`STEP_LINE`'s
+  `in-data-[table]:h-8 in-data-[table]:px-3`; a notice, which can wrap,
+  takes `STEP_NOTICE`). Hover lifts the verb and the chevron to foreground,
+  at once.
 - **The words.** A stand-in object toolPhrase.ts says when a call names
   nothing ("a command", "a file", "the project", "a page", "the web", "a
   question") is filler, not a target: it folds into the verb ("Ran a
@@ -101,12 +102,21 @@ foreground, the same words the group line uses); the components only draw it.
   decided the card is its one verdict line and the row an ordinary row
   again. An edit's bookkeeping row leaves the card to its parent
   (`ActionRow approval={false}`), so one call has one card.
-- **One card, never two.** The group draws no box: its rows hang 22 px
-  under the line's words, so a row's glyph sits under them, and a lone row
-  lines up with the prose. A row's open body is a card of its own
-  (`BODY_FRAME` in ActionRow.tsx: hairline, rounded-lg, bg-card, p-3; an
-  edit's diff in the same card with its tints to the edges), which a
-  `bg-card` ancestor (the board's task card) cancels. Opening a body inside
+- **One frame, never two.** An open group's rows sit in a table, as
+  Claude's: under the line, one hairline frame with a 12px radius from the
+  prose's edge across the column, no fill, a 32px row per step (our 20px
+  line and 6px above and below, a step looser than the prose's 28px) with
+  its words 12px in, and a hairline between two rows (ActionGroup's
+  `data-table`; the frame is a separate inert span drawn over the rows'
+  edges, `overflow-clip` on the table, so the window's glide moves the rows
+  inside a frame that stays put). A lone row is bare and lines up with the
+  prose. A row's open body standing alone is a card of its own (`BODY_FRAME`
+  in ActionRow.tsx: hairline, rounded-lg, bg-card, p-3; an edit's diff in
+  the same card with its tints to the edges); in the table it is the row's
+  lower part, across its width under one hairline, its content 12px in with
+  8px above and below (`TABLE_BODY` in stepLine.ts for a thought's and a
+  notice's), so no card sits in the table; a `bg-card` ancestor (the board's
+  task card) cancels it. Opening a body inside
   a group is a hand on the group (`transcript/groupHand.ts`), which decides
   it from then on. Hover lifts the verb and the caret to foreground, as the
   group line does.
@@ -135,8 +145,11 @@ foreground, the same words the group line uses); the components only draw it.
   "30 s" is drawn in place); an open wait on agents, "Waiting on <title>"
   (UI-15's `openWaitOf`, `waitIds` and `waitLine`); the running calls, one
   by its verb and object ("Reading format.ts"), several by the group's
-  present-tense phrase; Thinking and its newest sentence while a thought
-  streams; the mark alone while prose streams; else Thinking.
+  present-tense phrase; while a thought streams, its newest sentence in the
+  word's place (Thinking until the first), each sentence its own phase
+  (`thought:<n>`), so one morphs into the next and a long one ends in an
+  ellipsis at the row's edge, said once to a screen reader as Thinking
+  (`spoken`); the mark alone while prose streams; else Thinking.
   `useHeldPhase` (lib/heldWord.ts) holds a phase 300 ms by its key, so one
   that lasted 40 ms never paints. A call the line tells (`toldByWorkingLine`
   in transcriptActivity.ts: pending, not waiting on the person, not agent
@@ -218,7 +231,7 @@ foreground, the same words the group line uses); the components only draw it.
   (`surfaces/transcriptRows.ts`): one per turn item (a block, or a group:
   every step between two paragraphs, todo updates and the host's folded
   steps included (a thought is drawn only in a group opened by hand, and a
-  call still running only once its turn is over), one muted line whose rows hang under its words
+  call still running only once its turn is over), one muted line whose rows sit in a table under it
   when it opens; a group of one step is that step's own row, the same tree,
   so a second call landing remounts nothing; the group the open turn works
   in, `working`, opens on its own at two calls, shows its newest five rows
@@ -244,8 +257,8 @@ foreground, the same words the group line uses); the components only draw it.
   (`pb-4` outside the measured container).
 - **Estimates follow the metrics.** `estimateRowHeight` is the row's gap
   plus its body: 28px a line (a closed group, an action, a thought, a
-  notice, the closing line), a working group 28px plus 26px (`HUNG_LINE`)
-  for each of its newest five rows, prose 22px a line at about 100 characters plus 40px a
+  notice, the closing line), a working group 28px plus 32px (`TABLE_ROW`)
+  for each of its newest five rows and 1px for each rule between two, prose 22px a line at about 100 characters plus 40px a
   fence, a bubble 16px plus 22px a line, a failure card 88px, a closing row
   that draws nothing 0.
 - **Only the viewport is mounted.** `lib/transcriptWindow.ts` (`RowLayout`)

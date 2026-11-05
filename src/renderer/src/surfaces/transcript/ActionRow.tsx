@@ -107,7 +107,7 @@ export function ActionRow({
       {hasBody ? (
         <Collapsible open={shown} onOpenChange={setOpen}>
           <CollapsibleContent>
-            <div className="pb-2">
+            <div className="pb-2 in-data-[table]:pb-0">
               <div data-row-body className={BODY_FRAME}>
               {action.opens === "command" ? (
                 <CommandCard block={block} failed={action.failed} />
@@ -127,12 +127,14 @@ export function ActionRow({
 }
 
 /**
- * A row's open body is a card of its own (hairline, rounded-lg, p-3), in a
- * group's list or alone; on a surface that is already a card (the board's
- * task card) it draws nothing, so no card sits within a card.
+ * A row's open body is a card of its own (hairline, rounded-lg, p-3) when the
+ * row stands alone; in a group's table it is no card but the row's lower part,
+ * across its width under one hairline, its content 12px in with 8px above and
+ * below; on a surface that is already a card (the board's task card) it draws
+ * nothing. No card sits within a card.
  */
 export const BODY_FRAME =
-  "rounded-lg border border-border bg-card p-3 in-[.bg-card]:rounded-none in-[.bg-card]:border-0 in-[.bg-card]:bg-transparent in-[.bg-card]:p-0";
+  "rounded-lg border border-border bg-card p-3 in-data-[table]:rounded-none in-data-[table]:border-0 in-data-[table]:border-t in-data-[table]:bg-transparent in-data-[table]:py-2 in-[.bg-card]:rounded-none in-[.bg-card]:border-0 in-[.bg-card]:bg-transparent in-[.bg-card]:p-0";
 
 /** The thread an app call names: the agent's detail when it is a subagent, else the pane. */
 function useThreadOpener(action: Action): (() => void) | undefined {

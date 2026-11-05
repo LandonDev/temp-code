@@ -21,7 +21,7 @@
   }
 }
 
-/* The phrase fade (lib/streamReveal.ts, StreamingText): each step of a
+/* The phrase fade (lib/streamReveal.ts): each step of a
    stream is one span fading in, linear, with no stagger inside it. */
 @keyframes stream-step-in {
   from {
@@ -154,6 +154,24 @@
     transition-property: opacity;
     transition-duration: var(--dur-fast) !important;
     transition-timing-function: var(--ease-out) !important;
+  }
+}
+
+/* A group's table frame fading in as a lone call becomes a group on its own
+   (ActionGroup's useTableEntry); never at mount. */
+.table-frame-in {
+  animation: table-frame-in var(--dur-base) var(--ease-out);
+}
+
+@keyframes table-frame-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-frame-in {
+    animation-duration: var(--dur-fast);
   }
 }
 

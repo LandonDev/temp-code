@@ -12,8 +12,8 @@ dense: 13px type, one gray step between the rail, the content and a floating
 layer, hairline borders, no shadows on anything docked. The transcript is
 tight: 14px prose on 22px lines in a 768px column, the person's words in a
 soft bubble on the right, the model's as plain text on the left, its actions
-clumped into one muted 28px line per paragraph whose rows hang under its
-words when it opens, with no box around them. Colour means something or is absent: amber when the
+clumped into one muted 28px line per paragraph whose rows open under it in
+one hairline table, 32px a row, with rules between them. Colour means something or is absent: amber when the
 person is needed (and on the context meter from 85% full), red when
 something failed, green for lines added, the one
 blue accent for links and focus, and a thread's type on its glyph alone.
@@ -136,7 +136,7 @@ a surface above `/10`.
 | --- | --- |
 | 11px | a key cap, a group label in a menu |
 | 12px | secondary lines in the chrome, descriptions under a title, status words, a count in a row's status line |
-| 13px | the chrome's default: rows, menus, buttons, fields, tabs, settings, an Item's title, a tooltip (regular, 20px lines); the transcript's action, thinking, notice and closing lines (20px lines in 28px rows, 26px hung in an open group) and their counts (`+46 −3`) |
+| 13px | the chrome's default: rows, menus, buttons, fields, tabs, settings, an Item's title, a tooltip (regular, 20px lines); the transcript's action, thinking, notice and closing lines (20px lines in 28px rows, 32px in an open group's table) and their counts (`+46 −3`) |
 | 14px | dialog and panel body text (22px lines); the transcript's prose, the person's bubble, a question's prompt and the composer's field (22px lines) |
 | 15px | an h2 in the model's prose; a document's body (a plan, a board's plan, a report: 15/24, its h3 15/24 medium) |
 | 16px | a title: a dialog's, a sheet's, a page's, an inbox item's, a note's, a report's, an agent's (semibold on 24px lines at -0.01em, one recipe, `lib/typeScaleGuard.test.ts`); an h1 in the model's prose; a document's h2 |
@@ -345,7 +345,7 @@ so once. A first response is said in the transcript's working line, never
 above the composer: Sending from the click until the host echoes the
 message, then the host's word for the wait (Starting the CLI, Initializing,
 Waiting for the provider, a retry, "Waiting for the provider, 25 s"), then
-Thinking with the summary's newest sentence once the thought streams, then
+Thinking, then the summary's newest sentence in its place once the thought streams, then
 the running call ("Reading format.ts", "Running the tests", "Waiting on
 Review the perf pass"), and the mark alone while prose streams
 (`workingPhase`). A phase stays at least 300 ms once it paints and one that
@@ -545,7 +545,7 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Fold (collapsible) | height, `--dur-slow` `--ease-out` | height, `--dur-base` | opacity |
 | Fold that opens on its own (`.collapsible-auto`: the transcript's working group, the running task's steps, the title bar's shelf) | height on the layout spring (`--dur-layout` `--ease-layout`) + opacity `--dur-base` `--ease-out` | the same, so the rows are gone before the box closes | opacity, `--dur-fast` |
 | A step landing in it (`.step-land`) | fade + rise 4px, `--dur-base` `--ease-out`; only a step that lands while the fold is open, never at mount, on a hand open or when a panel unhides | none | none |
-| The working group's rows, opening on their own | glide 22px from the prose edge into their hang (translate), on the layout spring | — | none |
+| The working group's rows, opening on their own (a lone call becoming a table) | glide 12px from the prose edge to the table's inset (translate), on the layout spring, while the table's frame fades in over `--dur-base` `--ease-out` (`table-frame-in`); never at mount: a settled or reopened table draws its frame at once | — | the frame fades over `--dur-fast`; nothing moves |
 | The working group's window (its newest five rows) | the oldest row leaves the top as the list glides up by its measured height, `--dur-base` `--ease-out` | — | none |
 | The working group's fold | waits `FOLD_HOLD_MS` once the work moved on, so the last row's settle shows, then folds on `.collapsible-auto` | — | the same wait, then the fade |
 | Disclosure chevron (`DISCLOSURE_CHEVRON`, components/ui/disclosure.ts: one ChevronRight turning `rotate-90`) | rotates with its fold, `--dur-base` `--ease-out`, everywhere | same | none |
@@ -565,7 +565,7 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Scrollbar | shows at once on hover or scroll | hides at once, `SCROLL_IDLE_MS` (900ms) after the last scroll or when the pointer leaves | same |
 | List rows (rail, tabs, fleet, attachments, the transcript's message list) | none; a row being reordered follows the pointer on the list's axis from where it was grabbed while the others hold still with the insertion line, then glides into its slot (or back to its own, on Escape or a drop that changes nothing) on `SPRING_GLIDE` | none | the line alone; the drop at once |
 | Transcript rows | one `--dur-fast` fade on first appearance, never replayed | — | none |
-| Streaming text | the prose: the jitter buffer (surfaces/smoothText) steps whole words every 100ms (`REVEAL.stepMs`), holding a bare block marker and a table's header row until they have content; each step is one span fading in over `--dur-reveal` on `--ease-reveal` (lib/streamReveal.ts, `.stream-step`), and the settle waits for the last fade; a live short line (the working line's newest sentence of a thought) takes the same fade in `StreamingText` | — | whole-word steps, no fade |
+| Streaming text | the prose: the jitter buffer (surfaces/smoothText) steps whole words every 100ms (`REVEAL.stepMs`), holding a bare block marker and a table's header row until they have content; each step is one span fading in over `--dur-reveal` on `--ease-reveal` (lib/streamReveal.ts, `.stream-step`), and the settle waits for the last fade; the working line's newest sentence of a thought is no stream but a phase of its own, morphing in (`MorphText`) | — | whole-word steps, no fade |
 | Composer send | the bubble rides with the content as the prompt parks, rising 16px and fading in, `--dur-slow` `--ease-drawer`; in follow mode it flies from the field only when it lands within 240px of it | — | fade, `--dur-fast` |
 | Composer field height | snaps on a keystroke and on the clear after a send; a change of more than one line the person did not type (a paste, a restore, a quote) eases over `--dur-base` | — | snaps |
 | Composer, a new thread's first send | the box keeps its width and moves into its docked place (a FLIP translate, `--dur-slow` `--ease-drawer`) | — | none |
@@ -607,7 +607,7 @@ one class chain.
 | Element | Size / line |
 | --- | --- |
 | The prose, the person's bubble, a question's prompt, the composer's field | 14px / 22px |
-| A line: a group's line, an action, a thought, a notice, an approval, the closing line | 13px / 20px in a 28px row, 26px hung in an open group; the glyph in a 14px slot, 8px to the words, so words start at 22px; each word, detail, count or time 4px from the next; a chevron or the hover actions 8px after the last |
+| A line: a group's line, an action, a thought, a notice, an approval, the closing line | 13px / 20px in a 28px row, 32px in an open group's table (12px in); the glyph in a 14px slot, 8px to the words, so words start at 22px; each word, detail, count or time 4px from the next; a chevron or the hover actions 8px after the last |
 | Counts (`+46 −3`, a failed tally) | the text's size (13px in a row and on the group line) `tabular-nums`; the failed mark 4px from its number |
 | Code in a row's body: a command, its output, a diff | 12px / 20px mono |
 | A code block in the prose | 13px / 20px mono |
@@ -642,14 +642,15 @@ delivered in the red tone; its time is in the word's tooltip, never in the
 flow, and a word that changes on screen fades in on `--dur-fast`
 (transcript/UserMessage.tsx `SteerLine`). The model's prose is plain text.
 Between paragraphs, the actions since the last paragraph are one muted line
-("Created diag.ts, ran a command  +46 ▾") that opens into one row per action
-hung 22px under it, so a row's glyph sits under the line's words, with no box
-and no rules ("Created  diag.ts  +46 ▸", "Ran  npx convex dev…  ▸", "Read
-types.ts ▸"), verb muted, object in foreground, counts green and red, a
+("Created diag.ts, ran a command +46 ▾") that opens into a table under it, as
+Claude's: one hairline frame with a 12px radius from the prose's edge across
+the column, no fill, one 32px row per action with its words 12px in and a
+hairline between two rows ("Created diag.ts +46 ▸", "Ran npx convex dev… ▸",
+"Read types.ts ▸"), verb muted, object in foreground, counts green and red, a
 caret per row. Every row of the list sits on one grid (transcript/stepLine.ts):
 glyph, verb, target, counts, extras, caret, each slot only when it has
 something: the glyph 8px from the verb, verb, target and counts 4px apart,
-the extras and the caret 8px after the last value, 26px a row; a call that names nothing reads its
+the extras and the caret 8px after the last value, 32px a row in the table; a call that names nothing reads its
 verb alone ("Ran a command"), a connector's call names the connector
 ("Cosmic Admin  Build get"), a todo update's tally sits muted in the counts
 slot, and a host step folded in reads verb then target like a call. A row's opened body is one card (a hairline, `rounded-lg`,
@@ -687,8 +688,9 @@ its last row). A thread still watching ends in "Watching" with the watch's
 age under its last closing line, on every surface; in a pane it opens the
 Activity section.
 An approval card carries the amber glyph and its two buttons, not the
-word. A thought is no row: while it streams the working line says Thinking
-and its newest sentence, and once it ends it shows only in a group opened
+word. A thought is no row: while it streams the working line says its
+newest sentence in place of Thinking (Thinking until the first, a long one
+cut with an ellipsis at the row's edge), and once it ends it shows only in a group opened
 by hand, as "Thought ▸" with no duration, which opens the text. Each live
 turn ends in one working line, from Send to the turn's end: the working
 mark, then the phase's words in the shimmer (one running call by its verb,

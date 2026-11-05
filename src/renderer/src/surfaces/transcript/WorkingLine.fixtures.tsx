@@ -15,9 +15,26 @@ const live = (turn: Block[], activity?: string) => ({ live: true, turn, activity
 export default [
   { name: "Sending", props: live([{ ...user, pending: true }]) },
   { name: "The host's wait", props: live([user], "Waiting for the provider, 25 s") },
+  { name: "Thinking, before its first words", props: live([user, { id: "r", role: "reasoning", text: "", streaming: true }]) },
   {
-    name: "Thinking, with its newest sentence",
+    name: "A thought: its sentence in place of Thinking",
+    props: live([user, { id: "r", role: "reasoning", text: "The schema has no index yet.", streaming: true }]),
+  },
+  {
+    name: "A thought's second sentence",
     props: live([user, { id: "r", role: "reasoning", text: "The schema has no index yet. I should add one on the table.", streaming: true }]),
+  },
+  {
+    name: "A long sentence, cut at the row's edge",
+    props: live([
+      user,
+      {
+        id: "r",
+        role: "reasoning",
+        text: "The table is read by every query in the inbox, the search and the board, so an index on its owner and its updated time would let each of them skip the full scan they do today.",
+        streaming: true,
+      },
+    ]),
   },
   { name: "One call", props: live([user, call("c1", "Read", "read", { file_path: `${CWD}/convex/format.ts` })]) },
   {

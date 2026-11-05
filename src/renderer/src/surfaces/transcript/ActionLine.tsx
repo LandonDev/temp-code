@@ -10,7 +10,7 @@ import { STEP_LINE } from "./stepLine";
 
 /**
  * `[glyph]  Verb  object  +46 −3  extras  ▸` on the step grid (stepLine.ts):
- * 28px tall at 13px, 26px hung in an open group, the caret right after the
+ * 28px tall at 13px, 32px in an open group's table, the caret right after the
  * last thing on the line as on the group line. A slot with nothing to draw
  * takes no room. The list around
  * the rows gives them their side padding (ActionGroup), so a lone row lines

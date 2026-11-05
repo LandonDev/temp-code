@@ -783,8 +783,8 @@ The classic transcript, restyled with BUI primitives on the existing
 virtualized list: *Streaming Text* (assistant deltas), *Tool Chips*
 (call/result pairs), *Code Block* (shiki stays), *Approval Card*, and one
 *working line* per live turn (the working mark and the shimmering words of
-the phase: Sending, the host's wait, Thinking with its newest sentence, the
-running call), which becomes the closing line when the turn ends. A thought
+the phase: Sending, the host's wait, Thinking and then the thought's newest
+sentence in its place, the running call), which becomes the closing line when the turn ends. A thought
 is no row; a group opened by hand shows it as "Thought". The person's message is a soft
 bubble on the right (`card`, 12px corners, 12/8 padding, at most 85% of the
 column, no outline); the model's prose is plain text on the left at 14px on

@@ -52,8 +52,8 @@ export function latestLine(text: string): string {
 
 /** The ordinal of the sentence `latestLine` shows: the same while that
  *  sentence grows, new once a later one finishes. The working line keys its
- *  `StreamingText` by it, so a new sentence fades in whole and a growing one
- *  fades only its new words. */
+ *  phase by it (`thought:<n>`), so a new sentence morphs in and a growing one
+ *  is redrawn in place. */
 export function latestLineKey(text: string): number {
   return latestIndex(sentencesOf(text));
 }

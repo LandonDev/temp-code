@@ -173,3 +173,48 @@ describe("the working line", () => {
     expect(container.querySelector('[data-slot="turn-line"]')?.textContent).toBe("Worked for 2s");
   });
 });
+
+describe("the thinking line", () => {
+  const thought = (text: string): Block => ({ id: "r", role: "reasoning", text, streaming: true });
+  const words = (c: HTMLElement) => status(c)?.querySelector('[data-turn-words]')?.textContent;
+  const morphs = (c: HTMLElement) => c.querySelectorAll('[data-slot="turn-line"] [data-morph-key]').length;
+
+  it("draws the thought's sentence in place of Thinking, in the same line, said as Thinking throughout", async () => {
+    const view = render(end([user, thought("")]));
+    const line = view.container.querySelector('[data-slot="turn-line"]');
+    expect(words(view.container)).toBe("Thinking");
+    expect(label(view.container)).toBe("Thinking");
+
+    view.rerender(end([user, thought("I read the schema.")]));
+    await hold();
+    await flush();
+    expect(words(view.container)).toBe("I read the schema.");
+    expect(status(view.container)?.textContent).not.toContain("Thinking");
+    expect(label(view.container)).toBe("Thinking");
+    expect(view.container.querySelector('[data-slot="turn-line"]')).toBe(line);
+    // The sentence shimmers as the words do.
+    expect(view.container.querySelector('[data-slot="working-text"]')?.textContent).toBe("I read the schema.");
+  });
+
+  it("skips a sentence that came and went inside the hold, and never draws two at once", async () => {
+    const view = render(end([user, thought("")]));
+    view.rerender(end([user, thought("First one.")]));
+    await wait(100);
+    view.rerender(end([user, thought("First one. Second one.")]));
+    expect(words(view.container)).toBe("Thinking");
+    await hold();
+    await flush();
+    expect(words(view.container)).toBe("Second one.");
+    expect(morphs(view.container)).toBe(1);
+    expect(label(view.container)).toBe("Thinking");
+  });
+
+  it("redraws a sentence growing under its key in place, with no morph", async () => {
+    const view = render(end([user, thought("I read")]));
+    expect(words(view.container)).toBe("I read");
+    const span = view.container.querySelector('[data-slot="turn-line"] [data-morph-key]');
+    view.rerender(end([user, thought("I read the file")]));
+    expect(words(view.container)).toBe("I read the file");
+    expect(view.container.querySelector('[data-slot="turn-line"] [data-morph-key]')).toBe(span);
+  });
+});

@@ -793,7 +793,9 @@ routed to (aliax-core's `forward`). Two listeners:
   still `pending` (not yet echoed), the meta's activity while the turn has
   nothing of its own, then the open wait on agents, the running call
   ("Reading format.ts", told by the line alone: `toldByWorkingLine`, no row
-  until it settles), Thinking with a streaming thought's newest sentence,
+  until it settles), Thinking and then a streaming thought's newest sentence
+  in its place (each sentence a phase of its own, `thought:<n>`, spoken as
+  Thinking),
   the mark alone under streaming prose; a phase stays at least 300 ms once
   painted and one that came and went inside the hold is skipped
   (`useHeldPhase`, lib/heldWord.ts); a change of phase morphs the words

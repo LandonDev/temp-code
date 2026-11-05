@@ -238,7 +238,7 @@ export function EditRow({
       />
       <Collapsible open={open}>
         <CollapsibleContent>
-          <div className="pb-2">
+          <div className="pb-2 in-data-[table]:pb-0">
             <div data-row-body className={`${BODY_FRAME} ${omitted && !editMode ? 'group/body relative' : EDGE_TO_EDGE}`}>
               {editMode && filePath && cwd ? (
                 <>

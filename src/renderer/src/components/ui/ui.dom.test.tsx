@@ -14,7 +14,6 @@ import { TOOLTIP_CLOSE_DELAY, TOOLTIP_DELAY, Tooltip, TooltipContent, TooltipPro
 import { TOOLTIP } from "@renderer/lib/ease";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table";
 import { Item, ItemButton } from "./item";
-import { StreamingText } from "./streaming-text";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -571,22 +570,7 @@ describe("Table", () => {
   });
 });
 
-describe("StreamingText", () => {
-  it("draws the line as one fading span, and each update's new text as one more", () => {
-    const view = render(<StreamingText className="truncate">{"Reading  the"}</StreamingText>);
-    const line = view.container.firstElementChild as HTMLElement;
-    expect(line.className).toBe("truncate");
-    const steps = () => Array.from(line.querySelectorAll(".stream-step"));
-    expect(steps().map((step) => step.textContent)).toEqual(["Reading  the"]);
-    const first = steps()[0];
-    view.rerender(<StreamingText className="truncate">{"Reading  the\nfile."}</StreamingText>);
-    expect(steps().map((step) => step.textContent)).toEqual(["Reading  the", "\nfile."]);
-    expect(steps()[0]).toBe(first);
-    expect(line.textContent).toBe("Reading  the\nfile.");
-    view.rerender(<StreamingText className="truncate">{"Something else"}</StreamingText>);
-    expect(steps().map((step) => step.textContent)).toEqual(["Something else"]);
-  });
-
+describe("the phrase fade", () => {
   it("fades on the reveal tokens and stops under reduced motion", () => {
     const css = readFileSync(resolve(__dirname, "../../assets/components.css"), "utf8");
     expect(css).toMatch(/\.stream-step\s*\{\s*animation:\s*stream-step-in var\(--dur-reveal\) var\(--ease-reveal\) both;/);

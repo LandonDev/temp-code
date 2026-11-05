@@ -250,9 +250,10 @@ export function sameRow(a: TranscriptRow, b: TranscriptRow): boolean {
 const PROSE_LINE = 22;
 const PROSE_CHARS = 100;
 /** Every line row: an action, a group's line, a thought, a notice, the closing line;
- *  a row hung in an open group's list is 26px (transcript/stepLine.ts). */
+ *  a row of an open group's table is 32px, with a 1px rule between two rows
+ *  (transcript/stepLine.ts; the frame is drawn over the rows' edges). */
 const LINE = 28;
-const HUNG_LINE = 26;
+const TABLE_ROW = 32;
 /** How many rows a group shows while it works on its own (a thought counts). */
 export const GROUP_WINDOW = 5;
 
@@ -279,7 +280,8 @@ function itemHeight(item: TurnItem, working: boolean, settled: boolean): number 
     const rows = (b: Block) => (isStepBlock(b) ? stepRows(b) : 1);
     const shown = item.blocks.filter((b) => !isThinkingBlock(b) && (settled || !toldByWorkingLine(b))).reduce((n, b) => n + rows(b), 0);
     if (item.blocks.reduce((n, b) => n + (isStepBlock(b) ? stepRows(b) : 0), 0) <= 1) return LINE * shown;
-    return working ? LINE + HUNG_LINE * Math.min(GROUP_WINDOW, shown) : LINE;
+    const open = Math.min(GROUP_WINDOW, shown);
+    return working && open ? LINE + (TABLE_ROW + 1) * open - 1 : LINE;
   }
   const block = item.block;
   switch (block.role) {

@@ -4,7 +4,7 @@ import { ChevronRight } from "../../chrome/icons";
 import { CollapsibleTrigger } from "../../components/ui/collapsible";
 import { TooltipProvider } from "../../components/ui/tooltip";
 import { cn } from "../../lib/cn";
-import { STEP_NOTICE, StepRowContext } from "./stepLine";
+import { STEP_NOTICE, StepRowContext, TABLE_BODY } from "./stepLine";
 
 /**
  * A notice on one line, the action rows' size (13px on 20px in a 28px row): a 14px glyph
@@ -112,7 +112,7 @@ export function NoticeLine({
       </div>
       {/* What opens under the line is no step: its own lines read as notices. */}
       {children ? (
-        <div className="min-w-0 pl-5.5">
+        <div className={cn("min-w-0 pl-5.5", TABLE_BODY)}>
           <StepRowContext.Provider value={false}>{children}</StepRowContext.Provider>
         </div>
       ) : null}

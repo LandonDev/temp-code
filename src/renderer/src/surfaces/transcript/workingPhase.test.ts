@@ -34,7 +34,7 @@ describe("workingPhase", () => {
     // An empty thought is not the turn's own yet.
     expect(workingPhase([user(), thought("")], "Initializing").key).toBe("host:Initializing");
     // Once the turn has its own, the host's words stop.
-    expect(workingPhase([user(), thought("Hm.")], "Waiting for the provider").key).toBe("thinking");
+    expect(workingPhase([user(), thought("Hm.")], "Waiting for the provider").key).toBe("thought:0");
   });
 
   it("tells one running call by its verb and object, in the present tense", () => {
@@ -55,9 +55,15 @@ describe("workingPhase", () => {
     expect(workingPhase([user(), read("a", "a.ts", "completed")], null, { cwd: CWD }).key).toBe("thinking");
   });
 
-  it("says Thinking with the newest sentence while a thought streams", () => {
+  it("says the thought's newest sentence in place of Thinking, each sentence its own phase, spoken as Thinking", () => {
     const phase = workingPhase([user(), thought("I read the file. Now the tests.")], null);
-    expect(phase).toEqual({ key: "thinking", words: "Thinking", thought: { line: "Now the tests.", key: 1 } });
+    expect(phase).toEqual({ key: "thought:1", words: "Now the tests.", spoken: "Thinking", thought: { line: "Now the tests.", key: 1 } });
+    // The first sentence growing keeps its key; the next takes a new one once it ends.
+    expect(workingPhase([user(), thought("I read the")], null)).toMatchObject({ key: "thought:0", words: "I read the" });
+    expect(workingPhase([user(), thought("I read the file.")], null)).toMatchObject({ key: "thought:0", words: "I read the file." });
+    expect(workingPhase([user(), thought("I read the file. Now the te")], null).key).toBe("thought:0");
+    // Before its first words the thought is Thinking.
+    expect(workingPhase([user(), thought("")], null)).toEqual({ key: "thinking", words: "Thinking" });
   });
 
   it("draws the mark alone while prose streams, and Thinking between steps", () => {

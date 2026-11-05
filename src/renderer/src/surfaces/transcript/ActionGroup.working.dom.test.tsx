@@ -53,7 +53,8 @@ const lineShown = (c: HTMLElement) => !line(c).closest("[hidden]");
 const isOpen = (c: HTMLElement) => line(c).getAttribute("aria-expanded") === "true";
 const steps = (c: HTMLElement) => [...c.querySelectorAll<HTMLElement>("[data-step]")];
 const ids = (c: HTMLElement) => steps(c).map((el) => el.dataset.step);
-const rowsPanel = (c: HTMLElement) => c.querySelector<HTMLElement>("[data-group-rows]")!.parentElement as HTMLElement;
+const rowsPanel = (c: HTMLElement) => c.querySelector<HTMLElement>("[data-group-rows]")!.parentElement!.parentElement as HTMLElement;
+const frame = (c: HTMLElement) => c.querySelector<HTMLElement>("[data-table-frame]");
 const click = (el: Element) =>
   act(() => {
     fireEvent.click(el);
@@ -71,9 +72,21 @@ describe("the working group", () => {
     // The running call is the working line's, not a row; the line names both.
     expect(ids(container)).toEqual(["c0"]);
     expect(line(container).textContent).toMatch(/2|running/i);
-    // No box: the rows hang 22px under the line's words.
-    expect(container.querySelector("[data-group-rows]")!.className).toContain("pl-5.5");
-    expect(container.querySelector(".border")).toBeNull();
+    // The rows sit in the table, its frame fading in while the lone row glides to the inset.
+    expect(container.querySelector("[data-group-rows]")!.closest("[data-table]")).not.toBeNull();
+    expect(frame(container)!.className).toContain("table-frame-in");
+  });
+
+  it("fades the table's frame in only on the lone-to-group glide, never at mount", async () => {
+    const mounted = mount(running(2), true);
+    expect(frame(mounted.container)!.className).not.toContain("table-frame-in");
+    cleanup();
+    const { container, update } = mount(done(1), true);
+    expect(frame(container)).toBeNull();
+    update(running(1), true);
+    expect(frame(container)!.className).toContain("table-frame-in");
+    await act(() => new Promise((resolve) => setTimeout(resolve, 500)));
+    expect(frame(container)!.className).not.toContain("table-frame-in");
   });
 
   it("draws nothing for one running call alone while its turn is open", () => {

@@ -6,7 +6,7 @@ import { cn } from "../../lib/cn";
 import { type Block } from "../../lib/session";
 import type { OpenFileFn } from "../../lib/search";
 import { AgentMarkdown } from "../AgentMarkdown";
-import { STEP_LINE } from "./stepLine";
+import { STEP_LINE, TABLE_BODY } from "./stepLine";
 
 /** One row of the action list on the step grid: the 14px glyph slot, then the words. */
 const ROW = STEP_LINE;
@@ -67,7 +67,7 @@ export function ActivityThinkingRow({
       </div>
       {expandable ? (
         <CollapsibleContent keepMounted={opened}>
-          <div className="min-w-0 pb-2 pl-5.5">
+          <div className={cn("min-w-0 pb-2 pl-5.5", TABLE_BODY)}>
             {opened ? (
               <AgentMarkdown className="agent-reasoning" size="prose" text={block.text} cwd={cwd} onOpenFile={onOpenFile} />
             ) : null}

@@ -61,13 +61,13 @@ describe("flattenTurns", () => {
     expect(working(flattenTurns([[...turn, reply("a0")]], true).rows)).toMatchObject({ working: false });
     // Only the last turn works.
     expect(working(flattenTurns([turn, [user("u1"), reply("a1")]], true).rows)).toMatchObject({ working: false });
-    // A working group is estimated open on its newest five rows, each hung 26px.
+    // A working group is estimated open on its newest five rows: 32px table rows with a rule between two.
     const many = [user("u0"), ...Array.from({ length: 9 }, (_, i) => tool(`m${i}`))];
     const row = flattenTurns([many], true).rows.find((r) => r.key === "m0")!;
-    expect(estimateRowHeight(row)).toBe(16 + 28 + 26 * 5);
-    // Three calls: the line, then three hung rows.
+    expect(estimateRowHeight(row)).toBe(16 + 28 + 32 * 5 + 4);
+    // Three calls: the line, then the table's three rows.
     const three = flattenTurns([[user("u0"), tool("h0"), tool("h1"), tool("h2")]], true).rows.find((r) => r.key === "h0")!;
-    expect(estimateRowHeight(three)).toBe(16 + 28 + 3 * 26);
+    expect(estimateRowHeight(three)).toBe(16 + 28 + 3 * 32 + 2);
   });
 
   it("keeps a paused last turn open, with nothing in it live", () => {

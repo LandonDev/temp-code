@@ -25,22 +25,51 @@ const lineOf = (row: HTMLElement) =>
 const classes = (el: Element) => (el.getAttribute("class") ?? "").split(/\s+/);
 
 describe("an open group's rows sit on one grid", () => {
-  it("says the list is hung, and every step line takes the hung height", () => {
+  it("sits the list in a table, and every step line takes the table's 32px and 12px inset", () => {
     const { container } = mountFixture("Mixed calls, opened");
-    expect(list(container).hasAttribute("data-hung")).toBe(true);
+    expect(list(container).closest("[data-table]")).not.toBeNull();
     const steps = list(container).querySelectorAll(":scope > [data-step]");
     expect(steps.length).toBeGreaterThan(0);
     for (const row of steps) {
-      const hung = row.querySelector(".in-data-\\[hung\\]\\:h-6\\.5, .in-data-\\[hung\\]\\:min-h-6\\.5");
-      expect(hung, row.getAttribute("data-step") ?? "").not.toBeNull();
+      const line = row.querySelector(".in-data-\\[table\\]\\:h-8, .in-data-\\[table\\]\\:min-h-8");
+      expect(line, row.getAttribute("data-step") ?? "").not.toBeNull();
+      expect(classes(line!)).toContain("in-data-[table]:px-3");
     }
+  });
+
+  it("draws a frame and rules for a group of two or more, and none for a lone call", () => {
+    const { container } = mountFixture("Opened, three commands (the table)");
+    const table = list(container).closest<HTMLElement>("[data-table]")!;
+    expect(classes(table)).toEqual(expect.arrayContaining(["overflow-clip", "rounded-xl"]));
+    const frame = table.querySelector("[data-table-frame]")!;
+    expect(classes(frame)).toEqual(expect.arrayContaining(["absolute", "inset-0", "rounded-xl", "border", "border-border", "pointer-events-none"]));
+    // Drawn after the list, so the list keeps its place among the children.
+    expect(table.lastElementChild).toBe(frame);
+    expect(classes(list(container))).toEqual(expect.arrayContaining(["divide-y", "divide-border"]));
+    expect(list(container).querySelectorAll(":scope > [data-step]")).toHaveLength(3);
+    // A group that mounts settled draws its frame at once.
+    expect(classes(frame)).not.toContain("table-frame-in");
+    cleanup();
+    const lone = mountFixture("Lone read");
+    expect(lone.container.querySelector("[data-table]")).toBeNull();
+    expect(lone.container.querySelector("[data-table-frame]")).toBeNull();
+  });
+
+  it("opens a row's body flush in the table: no card of its own, under one hairline", () => {
+    const { container } = mountFixture("Opened, mixed with a body open (the table)");
+    const body = step(container, "body3").querySelector("[data-row-body]")!;
+    expect(body).not.toBeNull();
+    expect(classes(body)).toEqual(
+      expect.arrayContaining(["in-data-[table]:rounded-none", "in-data-[table]:border-0", "in-data-[table]:border-t", "in-data-[table]:bg-transparent", "in-data-[table]:py-2"]),
+    );
+    expect(classes(body.parentElement!)).toContain("in-data-[table]:pb-0");
   });
 
   it("leads each call with the 14px glyph slot, verbs muted and targets in foreground", () => {
     const { container } = mountFixture("Mixed calls, opened");
     for (const id of ["mixed1", "mixed3", "mixed6"]) {
       const line = lineOf(step(container, id));
-      expect(classes(line)).toEqual(expect.arrayContaining(["h-7", "in-data-[hung]:h-6.5", "gap-1", "text-[13px]"]));
+      expect(classes(line)).toEqual(expect.arrayContaining(["h-7", "in-data-[table]:h-8", "gap-1", "text-[13px]"]));
       const glyph = line.querySelector("[data-glyph]")!;
       // 8px to the verb: its own 4px on the line's 4px.
       expect(classes(glyph)).toEqual(expect.arrayContaining(["me-1", "size-3.5", "shrink-0"]));
@@ -75,7 +104,7 @@ describe("an open group's rows sit on one grid", () => {
   it("reads a folded gate as verb then target: the lead muted, the branch in foreground", () => {
     const { container } = mountFixture("Mixed calls, opened");
     const line = lineOf(step(container, "mixed8"));
-    expect(classes(line)).toEqual(expect.arrayContaining(["min-h-7", "in-data-[hung]:min-h-6.5"]));
+    expect(classes(line)).toEqual(expect.arrayContaining(["min-h-7", "in-data-[table]:min-h-8"]));
     const lead = [...line.querySelectorAll("span")].find((el) => el.textContent === "Gate failed")!;
     const branch = [...line.querySelectorAll("span")].find((el) => el.textContent === "port-the-view")!;
     expect(classes(lead)).toContain("text-muted-foreground");

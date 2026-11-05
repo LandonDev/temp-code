@@ -4,6 +4,7 @@ import { useReducedMotion } from "motion/react";
 import { Bot, ChevronRight, Sparkles, type IconComponent } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Collapsible, CollapsibleContent } from "../../components/ui/collapsible";
+import { cn } from "../../lib/cn";
 import type { Block } from "../../lib/session";
 import type { OpenFileFn } from "../../lib/search";
 import { useLiveEdits } from "../../lib/tcserver/store";
@@ -72,9 +73,10 @@ function useFoldHold(working: boolean): boolean {
 /**
  * Everything the agent did between two paragraphs. One call is its own row
  * at the prose's edge. More is one muted line, led by the glyph of the work
- * it did most ("Created diag.ts, ran a command  +46"), its rows hung 22px
- * under its words with no box and no rules. A lone call and a group are one
- * tree, so the second call's arrival remounts nothing.
+ * it did most ("Created diag.ts, ran a command +46"), its rows in a table
+ * under it, as Claude's: one hairline frame with a 12px radius across the
+ * column, a 32px row per step with a rule between two. A lone call and a
+ * group are one tree, so the second call's arrival remounts nothing.
  *
  * Thoughts are no rows: a thought streaming is the turn's working line, and
  * a settled one shows only in a group opened by hand, as "Thought". While
@@ -86,8 +88,8 @@ function useFoldHold(working: boolean): boolean {
  * lone draws nothing.
  *
  * While the turn works in it (`working`), the group opens on its own once it
- * holds two calls: the line folds open above the first row and the rows
- * glide into their hang. It shows its newest GROUP_WINDOW rows, the oldest
+ * holds two calls: the line folds open above the first row, the rows glide
+ * to the table's inset and its frame fades in. It shows its newest GROUP_WINDOW rows, the oldest
  * leaving the top as the list glides up; a row that lands fades in and
  * rises. When the work moves on it waits FOLD_HOLD_MS and folds. A person's
  * hand (the line, or a row's body) decides the group from then on, and a
@@ -172,7 +174,7 @@ export function ActionGroup({
   const listRef = useRef<HTMLDivElement>(null);
   const from = auto && !lone ? Math.max(0, shown.length - GROUP_WINDOW) : 0;
   const shownFrom = useWindowGlide(listRef, shown, from, reduce);
-  useHangGlide(listRef, lone, auto && open, reduce);
+  const framing = useTableEntry(listRef, lone, auto && open, reduce);
 
   if (lone && shown.length === 0) return null;
 
@@ -225,13 +227,22 @@ export function ActionGroup({
             </div>
           </CollapsibleContent>
         </Collapsible>
-        {/* The rows: one list, the same parent for a lone call and a group,
-            so the second call's arrival remounts nothing. Hung under the
-            line, its rows are 26px (stepLine.ts). */}
+        {/* The rows: one list in one frame, the same parents for a lone call
+            and a group, so the second call's arrival remounts nothing. A
+            group's rows sit in a table (stepLine.ts): a hairline frame with a
+            12px radius, drawn over the rows' edges after the list (so the
+            list keeps its place among the children), 32px rows with rules
+            between them; the window's glide moves the rows inside the frame,
+            which stays put and clips them. A lone call is a bare row. */}
         <Collapsible open={open}>
           <CollapsibleContent id={panelId} className={auto ? "collapsible-auto" : undefined}>
-            <div ref={listRef} data-group-rows data-hung={lone ? undefined : ""} className={lone ? "flex min-w-0 flex-col" : "flex min-w-0 flex-col pl-5.5"}>
-              {rows}
+            <div data-table={lone ? undefined : ""} className={lone ? "flex min-w-0 flex-col" : "relative flex min-w-0 flex-col overflow-clip rounded-xl"}>
+              <div ref={listRef} data-group-rows className={lone ? "flex min-w-0 flex-col" : "flex min-w-0 flex-col divide-y divide-border"}>
+                {rows}
+              </div>
+              {lone ? null : (
+                <span aria-hidden data-table-frame className={cn("pointer-events-none absolute inset-0 rounded-xl border border-border", framing && "table-frame-in")} />
+              )}
             </div>
           </CollapsibleContent>
         </Collapsible>
@@ -310,22 +321,29 @@ function useWindowGlide(
 }
 
 /**
- * The rows gliding 22px from the prose's edge into their hang when a lone
- * call becomes a group while it works on its own, on the layout spring; the
- * transform comes off when it ends. Nothing moves at mount.
+ * A lone call becoming a group while it works on its own: the rows glide
+ * 12px from the prose's edge to the table's inset on the layout spring, and
+ * the table's frame fades in over --dur-base (`table-frame-in`, true while it
+ * runs; under reduced motion the frame fades over --dur-fast and nothing
+ * moves). The transform comes off when it ends. Nothing moves at mount: a
+ * group that mounts settled, or reopens, draws its frame at once.
  */
-function useHangGlide(listRef: RefObject<HTMLDivElement | null>, lone: boolean, auto: boolean, reduce: boolean): void {
+function useTableEntry(listRef: RefObject<HTMLDivElement | null>, lone: boolean, auto: boolean, reduce: boolean): boolean {
   const [wasLone, setWasLone] = useState(lone);
   const [glide, setGlide] = useState(false);
   if (wasLone !== lone) {
     setWasLone(lone);
-    setGlide(wasLone && !lone && auto && !reduce);
+    setGlide(wasLone && !lone && auto);
   }
   useLayoutEffect(() => {
     const list = listRef.current;
     if (!glide || !list) return;
+    if (reduce) {
+      const timer = setTimeout(() => setGlide(false), DUR.fast * 1000 + 50);
+      return () => clearTimeout(timer);
+    }
     list.style.transition = "none";
-    list.style.transform = "translateX(-22px)";
+    list.style.transform = "translateX(-12px)";
     void list.offsetHeight;
     list.style.transition = "transform var(--dur-layout) var(--ease-layout)";
     list.style.transform = "";
@@ -342,5 +360,6 @@ function useHangGlide(listRef: RefObject<HTMLDivElement | null>, lone: boolean, 
       clearTimeout(timer);
       list.removeEventListener("transitionend", onEnd);
     };
-  }, [listRef, glide]);
+  }, [listRef, glide, reduce]);
+  return glide;
 }

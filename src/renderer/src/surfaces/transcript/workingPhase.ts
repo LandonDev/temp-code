@@ -9,12 +9,17 @@ import { latestLine, latestLineKey } from "./thinking";
 /**
  * One phase of the working line. `key` decides when the words morph: a
  * change of key morphs them (and is held at least 300 ms), new words under
- * the same key (a count, a seconds figure, a new sentence) are drawn at once.
+ * the same key (a count, a seconds figure, a sentence growing) are drawn at
+ * once. A thought's sentences are each a key of their own, so one morphs
+ * into the next.
  */
 export type WorkingPhase = {
   key: string;
-  /** The words, plain: the line's accessible name. Empty while prose streams (the mark alone). */
+  /** The words, plain. Empty while prose streams (the mark alone). */
   words: string;
+  /** The line's accessible name when it is not `words`: a thought's sentences
+   *  are said once as "Thinking", not each one to a screen reader. */
+  spoken?: string;
   /** One call the line tells: its verb muted, its object in foreground. */
   call?: { block: Block; verb: string; object: string };
   /** A thought streaming: its newest sentence and that sentence's ordinal. */
@@ -34,8 +39,9 @@ function started(turn: Block[]): boolean {
  * is drawn in place; the wait on agents (`waitWords`, UI-15's words);
  * the running calls (`toldByWorkingLine`), one by its verb and object
  * ("Reading format.ts"), several by the group's present-tense phrase; a
- * thought streaming, as Thinking and its newest sentence; prose streaming,
- * as the mark alone; else Thinking.
+ * thought streaming, as its newest sentence in place of the word (Thinking
+ * until its first sentence); prose streaming, as the mark alone; else
+ * Thinking.
  */
 export function workingPhase(
   turn: Block[],
@@ -53,7 +59,12 @@ export function workingPhase(
   }
   if (calls.length > 1) return { key: "calls", words: groupPhrase(calls, cwd, true, titleOf) };
   const thought = turn.findLast((b) => isThinkingBlock(b) && b.streaming);
-  if (thought) return { key: "thinking", words: "Thinking", thought: { line: latestLine(thought.text), key: latestLineKey(thought.text) } };
+  if (thought) {
+    const line = latestLine(thought.text);
+    if (!line) return { key: "thinking", words: "Thinking" };
+    const key = latestLineKey(thought.text);
+    return { key: `thought:${key}`, words: line, spoken: "Thinking", thought: { line, key } };
+  }
   if (last && isProseBlock(last) && last.streaming) return { key: "writing", words: "" };
   return { key: "thinking", words: "Thinking" };
 }

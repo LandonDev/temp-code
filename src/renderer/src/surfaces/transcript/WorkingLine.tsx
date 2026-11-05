@@ -4,7 +4,6 @@ import { type ReactNode, useLayoutEffect, useMemo, useRef, useState } from "reac
 import { ChevronRight } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Collapsible, CollapsibleContent } from "../../components/ui/collapsible";
-import { StreamingText } from "../../components/ui/streaming-text";
 import { WorkingMark } from "../../components/ui/working-mark";
 import { WorkingText } from "../../components/ui/working-text";
 import { cn } from "../../lib/cn";
@@ -49,7 +48,9 @@ export type Closing = { words: ReactNode; actions: ReactNode; intent?: Record<st
  * A turn's last line, one element from Send to the turn's end. While the
  * turn is live (`live`): the working mark in the glyph slot, then words that
  * morph with the work (`workingPhase`, each phase held 300 ms): Sending, the
- * host's words for the wait, Thinking with its newest sentence, the running
+ * host's words for the wait, Thinking and then the thought's newest sentence
+ * in its place (each sentence its own phase, so one morphs into the next and
+ * a long one ends in an ellipsis at the row's edge), the running
  * call ("Reading format.ts", its live counts for an edit, a chevron that
  * opens a command's or a tool's body under the line), the mark alone while
  * prose streams. When the turn settles in front of the person the mark
@@ -125,7 +126,7 @@ export function TurnLine({
     <div data-slot="turn-line" className="flex min-w-0 flex-col">
       <div
         role={live ? "status" : undefined}
-        aria-label={live ? phase.words || "Working" : undefined}
+        aria-label={live ? phase.spoken ?? (phase.words || "Working") : undefined}
         className={cn(LINE, "group/turnend relative min-w-0")}
         {...(live ? undefined : closing?.intent)}
       >
@@ -149,11 +150,6 @@ export function TurnLine({
           <MorphText state={live ? phase.key : "closed"} className="min-w-0">
             {live ? <PhaseWords phase={phase} /> : closing?.words}
           </MorphText>
-          {live && phase.thought?.line ? (
-            <StreamingText key={phase.thought.key} className="min-w-0 truncate text-muted-foreground">
-              {phase.thought.line}
-            </StreamingText>
-          ) : null}
           {edit && (adds || dels) ? <Counts added={adds} removed={dels} /> : null}
           {hasBody ? (
             <ChevronRight

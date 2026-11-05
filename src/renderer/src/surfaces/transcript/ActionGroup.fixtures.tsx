@@ -1,6 +1,7 @@
 // A7 (turn structure): ActionGroup's states for the static render harness.
 import type { Block } from "../../lib/session";
 import { setEditOpen } from "../editOpenState";
+import { setOpenedLive } from "./workingOpen";
 
 const CWD = "/Users/me/shop";
 const lines = (n: number) => Array.from({ length: n }, (_, i) => `line ${i}`).join("\n");
@@ -146,6 +147,10 @@ setEditOpen(":a:orchOpen1", true);
 setEditOpen(":a:wakeOpen1", true);
 setEditOpen(":a:mixed1", true);
 setEditOpen(":a:agentsOpen1", true);
+setEditOpen(":a:cmds1", true);
+setEditOpen(":a:body1", true);
+// The table's command with its body open (a row opened from the working line lands open).
+setOpenedLive("body3", true);
 
 /** A working run of `n` steps, the last still running: the working line tells it, and a thought draws no row. */
 const working = (prefix: string, n: number): Block[] =>
@@ -206,6 +211,29 @@ export const fixtures: { name: string; props: { blocks: Block[]; cwd: string; li
   { name: "Wake run", props: { blocks: wake("wake"), cwd: CWD } },
   { name: "Wake run, opened", props: { blocks: wake("wakeOpen"), cwd: CWD } },
   { name: "Mixed calls, opened", props: { blocks: mixed("mixed"), cwd: CWD } },
+  {
+    name: "Opened, three commands (the table)",
+    props: {
+      blocks: [
+        call("cmds1", "Bash", "execute", { command: "bun run typecheck" }),
+        call("cmds2", "Bash", "execute", { command: "bun test src/renderer/src/surfaces/transcript" }),
+        call("cmds3", "Bash", "execute", { command: "git status --short" }),
+      ],
+      cwd: CWD,
+    },
+  },
+  {
+    name: "Opened, mixed with a body open (the table)",
+    props: {
+      blocks: [
+        call("body1", "Read", "read", { file_path: `${CWD}/convex/types.ts` }),
+        call("body2", "Edit", "edit", { file_path: `${CWD}/convex/schema.ts`, old_string: "a", new_string: lines(3) }),
+        { ...call("body3", "Bash", "execute", { command: "npm test" }), tool: { callId: "body3", name: "Bash", kind: "execute", title: "Bash", status: "completed", input: { command: "npm test" }, detail: "✓ 42 tests passed in 1.8s" } },
+        call("body4", "Grep", "search", { pattern: "index", path: `${CWD}/convex` }),
+      ],
+      cwd: CWD,
+    },
+  },
   {
     name: "Thought only (draws nothing)",
     props: {

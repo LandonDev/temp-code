@@ -44,7 +44,7 @@ export function WorkingText({ children, words, className }: { children: ReactNod
   }, [moving]);
 
   return (
-    <span data-slot="working-text" className={cn("relative inline-block min-w-0 truncate align-top text-muted-foreground", className)}>
+    <span data-slot="working-text" className={cn("relative inline-block max-w-full min-w-0 truncate align-top text-muted-foreground", className)}>
       {children}
       {moving && (
         <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
