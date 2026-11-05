@@ -266,21 +266,33 @@ private struct DraftRow: View {
     let newCopy: (EnvironmentClient) -> Void
 
     var body: some View {
-        HStack(spacing: TranscriptMetrics.glyphGap * 2) {
-            typeMenu
-            if draft.threadType == .chat {
-                master
-            }
-            Spacer(minLength: 0)
-            if copies.count > 1 || !newCopyHosts.isEmpty {
-                hostMenu
-            }
+        // A narrow row gives the host's name up first (its glyph stays), then lets the words truncate.
+        ViewThatFits(in: .horizontal) {
+            content(hostName: true, fixed: true)
+            content(hostName: false, fixed: true)
+            content(hostName: false, fixed: false)
         }
         .transcriptType(TranscriptType.detail)
         .foregroundStyle(.secondary)
         .lineLimit(1)
         .padding(.horizontal, ComposerMetrics.side)
         .frame(minHeight: ComposerMetrics.row)
+    }
+
+    private func content(hostName: Bool, fixed: Bool) -> some View {
+        HStack(spacing: TranscriptMetrics.glyphGap * 2) {
+            typeMenu
+                .fixedSize()
+            if draft.threadType == .chat {
+                master
+                    .fixedSize(horizontal: fixed, vertical: false)
+            }
+            Spacer(minLength: 0)
+            if copies.count > 1 || !newCopyHosts.isEmpty {
+                hostMenu(showsName: hostName)
+                    .fixedSize()
+            }
+        }
     }
 
     private var typeMenu: some View {
@@ -331,7 +343,7 @@ private struct DraftRow: View {
         }
     }
 
-    private var hostMenu: some View {
+    private func hostMenu(showsName: Bool) -> some View {
         let current = copies.first { $0.id == draft.environmentId } ?? copies.first
         return Menu {
             ForEach(copies) { copy in
@@ -355,7 +367,9 @@ private struct DraftRow: View {
         } label: {
             HStack(spacing: TranscriptMetrics.wordGap) {
                 Image(systemName: "desktopcomputer")
-                Text(current?.client.environment.name ?? "")
+                if showsName {
+                    Text(current?.client.environment.name ?? "")
+                }
             }
             .rowHit()
         }

@@ -2465,8 +2465,17 @@ proof and the sizing rules; the pieces, by name:
   project's menu), then the stray chats 16 pt under the cards.
   `Route.project(key:thread:seq:)` (Shell/ProjectShell.swift) is a project's
   place in the DETAIL column, the desktop's project home: the strip, then
-  the thread its chip selects (`ThreadScreen`) or the draft (until B4 an
-  empty body whose New Thread opens the sheet); `key` is the strip scope's
+  the thread its chip selects (`ThreadScreen`) or the project's draft (an
+  empty body and Shell/DraftComposer.swift: the A10 box as `ComposerBox`,
+  the A11 row with the draft's own mode, and the draft row with the type,
+  Master for a chat (admin) and the host of a linked project with New copy
+  through `project.ensureLinked`; the client's `ProjectDraftStore`, one
+  draft per link key or `loose:<workspace>`, 64 keys for 30 days in
+  UserDefaults `project.drafts.v1`, photos in memory; the first send is
+  `session.create { firstMessage }`, or create, upload, send and
+  `session.archive` on a failed send, `sendDraft`; it opens the thread in
+  the shell and clears the draft; every New thread focuses the draft,
+  `NewThreadPresenter.compose`); `key` is the strip scope's
   key (a project's `ProjectPairs.key`, `loose:…` for a workspace's loose
   chats), `thread` the chip id `<env>:<sid>`. `ShellPaths.place` puts every
   root of a project or of a workspace's loose chats in its shell, a
@@ -2479,8 +2488,9 @@ proof and the sizing rules; the pieces, by name:
   `project`, `RailStatus`, `isActive`; ThreadGroups.swift
   `masters`/`batchHome`), pure over `HomeHostInput` values (ProjectCardTests
   holds the card); the app's `HomeRows` adapts the clients,
-  Shell/ShellRows.swift holds the shared rows and `NewThreadPresenter` (the
-  new-thread sheet presents from the root), and `HomeSlots`
+  Shell/ShellRows.swift holds the shared rows and `NewThreadPresenter` (New
+  thread focuses the project's draft; the new-thread sheet, kept for a
+  prefilled brief, presents from the root), and `HomeSlots`
   (Shell/HomeSlots.swift) is where sibling features plug in (host notes,
   host and project menus, project settings, the plan chip and the menu's
   Project Plan row, the host's trailing mark). On the iPhone Duo (plan 1) Home and Search are each one
@@ -2752,8 +2762,8 @@ proof and the sizing rules; the pieces, by name:
   leaves inert on a `fast` fade); `CardActions.swift` (Allow,
   Deny and Answer under the live cards in `TranscriptRows.swift`, the
   optimistic decision and the one quiet rollback line);
-  `Shell/ThreadSheets.swift` (Start a build from a plan, New thread from a
-  workspace or project header's `+`, both over the host's `catalog.get`;
+  `Shell/ThreadSheets.swift` (Start a build from a plan, the New thread
+  sheet for a prefilled brief, both over the host's `catalog.get`;
   Rename); `Design/ThreadRowActions.swift` (swipe to pin and archive,
   context menu with rename). All of it sits on the client package's
   `Client/Actions.swift` (the gate on the key and the socket, pending

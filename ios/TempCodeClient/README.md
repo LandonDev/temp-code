@@ -496,6 +496,17 @@ would have shown as "Key refused".
   may use (the model with operate, the mode with approve, else read-only).
   `PermissionWords` holds the desktop's mode words and hints.
   `setPermission(_:_:)` is `session.permission` (approve).
+- **A project's draft.** `ProjectDrafts` (`Client/ProjectDrafts.swift`)
+  keeps one `ProjectDraft` per link key (`loose:<workspace>` for loose
+  chats): text, type, model, effort, mode, a chat's Master pick, the host;
+  64 keys, 30 days; `focus(type:)` keeps the text and drops Master off a
+  chat; `masterBlock(caps:)` is the admin rule; `threadDraft` builds the
+  create; `ensureLinkedParams` is the desktop's `ensureLinkedArgs`.
+  `ProjectDraftStore.shared` keeps them in UserDefaults
+  (`project.drafts.v1`) and the photos in memory, with `focusRequest` for
+  New thread. `sendDraft` is `session.create { firstMessage }`, or with
+  photos create, upload, send and `session.archive` on a failed send
+  (`DraftSend.steps`); `ensureLinked` is `project.ensureLinked` (operate).
 - **Approve and answer.** `approve(_:requestId:allow:)` and
   `answer(_:requestId:answers:)` write `ThreadState.decisions` /
   `ThreadState.answers` first (the card reads them over the fold), send,
