@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   TURN_PASS_OFF,
   passEnabled,
   type TurnPass,
 } from "@server/shared/turnpass";
 import { linkOfWorkspace } from "../lib/tcserver/projects";
+import { useHostRead } from "../lib/connection/hostRead";
+import type { Link } from "../lib/connection";
+import { Button } from "../components/ui/button";
 import { ChoiceSelect } from "../components/choice-select";
 import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
 import { SettingSwitch } from "../components/setting-switch";
@@ -91,7 +94,6 @@ export async function saveTurnPass(
   });
 }
 
-/** Settings-page group for one workspace's pass; saves on every change. */
 /** The three rows TurnPassFields draws, in their shape. */
 const TURN_PASS_SKELETON = [
   { description: true, control: "switch" },
@@ -99,22 +101,28 @@ const TURN_PASS_SKELETON = [
   { description: true },
 ] as const;
 
+/** The workspace's host link, or null while the catalog does not know it yet. */
+function linkOrNull(workspaceId: string): Link | null {
+  try {
+    return linkOfWorkspace(workspaceId);
+  } catch {
+    return null;
+  }
+}
+
+/** Settings-page group for one workspace's pass; saves on every change.
+ *  No answer from the host is the section's error and Retry. */
 export function TurnPassEditor({ workspaceId }: { workspaceId: string }) {
-  const [value, setValue] = useState<TurnPass | null>(null);
+  const read = useHostRead(
+    linkOrNull(workspaceId),
+    async () => (await loadTurnPass(workspaceId)) ?? TURN_PASS_OFF,
+    workspaceId,
+  );
+  const value = read.value;
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    let live = true;
-    setValue(null);
-    loadTurnPass(workspaceId)
-      .then((pass) => live && setValue(pass ?? TURN_PASS_OFF))
-      .catch((err) => live && setError(err instanceof Error ? err.message : String(err)));
-    return () => {
-      live = false;
-    };
-  }, [workspaceId]);
 
   const change = (next: TurnPass) => {
-    setValue(next);
+    read.set(next);
     setError(null);
     saveTurnPass(workspaceId, next).catch((err) =>
       setError(err instanceof Error ? err.message : String(err)),
@@ -122,9 +130,24 @@ export function TurnPassEditor({ workspaceId }: { workspaceId: string }) {
   };
 
   return (
-    <PageSection title="Completed turn">
-      {value ? <TurnPassFields value={value} onChange={change} /> : error ? null : <PageRowsSkeleton rows={TURN_PASS_SKELETON} />}
-      {error ? <PageError>{error}</PageError> : null}
+    <PageSection
+      title="Completed turn"
+      action={
+        !value && read.error ? (
+          <Button variant="ghost" size="sm" onClick={read.retry}>
+            Retry
+          </Button>
+        ) : null
+      }
+    >
+      {value ? (
+        <TurnPassFields value={value} onChange={change} />
+      ) : read.error ? (
+        <PageError>{read.error}</PageError>
+      ) : (
+        <PageRowsSkeleton rows={TURN_PASS_SKELETON} />
+      )}
+      {value && error ? <PageError>{error}</PageError> : null}
     </PageSection>
   );
 }

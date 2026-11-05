@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registry } from "../connection";
 import type { Link } from "./store";
 import type { ProjectMeta, ServerPush, ThreadDefaults, WorkspaceMeta } from "./types";
-import { projectIndex, projectOf, workspaceByPath, workspaceIdOf, workspaceIndex, workspaceStore } from "./workspaces";
+import { projectIndex, projectOf, scopeKey, workspaceByPath, workspaceIdOf, workspaceIndex, workspaceStore } from "./workspaces";
 import { createProject, createWorkspace } from "./projects";
 
 const ws = (over: Partial<WorkspaceMeta> = {}): WorkspaceMeta => ({
@@ -286,5 +286,20 @@ describe("thread defaults", () => {
     await tick();
     link.request = () => Promise.reject(new Error("down"));
     expect(await workspaceStore.loadDefaults("local", "w1")).toEqual({ defaults: set(), overridden: false });
+  });
+
+  it("a failed first load stores no made-up set: the scope stays absent with its error until a retry answers", async () => {
+    workspaceStore.attach(link);
+    await tick();
+    await tick();
+    const answer = link.request.bind(link);
+    link.request = () => Promise.reject(new Error("refused"));
+    await workspaceStore.loadDefaults("local", "w9");
+    expect(workspaceStore.defaultsAt("local", "w9")).toBeUndefined();
+    expect(workspaceStore.getSnapshot().defaultsErrors.get(scopeKey("local", "w9"))).toBe("refused");
+    link.request = answer;
+    await workspaceStore.loadDefaults("local", "w9");
+    expect(workspaceStore.defaultsAt("local", "w9")).toBeDefined();
+    expect(workspaceStore.getSnapshot().defaultsErrors.size).toBe(0);
   });
 });

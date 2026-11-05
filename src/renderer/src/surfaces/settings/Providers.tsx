@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
-import { PageRow, PageSection } from "../../components/page";
+import { PageError, PageRow, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import {
@@ -13,40 +13,53 @@ import {
 import { refreshHarnessCatalogs } from "../../lib/harness/registry";
 import { modelsFor } from "../../lib/models";
 import { HARNESSES, HARNESS_TITLE, type HarnessId } from "../../lib/session";
-import { probeDoctor, type Doctor, type DoctorRow } from "../../lib/tcserver/catalog";
+import { probeDoctor, type DoctorRow } from "../../lib/tcserver/catalog";
 import { registry } from "../../lib/connection";
+import { useHostRead } from "../../lib/connection/hostRead";
 import { CopyButton } from "./hosts/CopyButton";
 
 /** The agent CLIs this machine can run: one row each, its version and one
  *  control. What the picker lists and the hooks live on Thread defaults. */
 export function ProvidersPage() {
   useSyncExternalStore(subscribeHarnessAvailability, getHarnessAvailabilitySnapshot, getHarnessAvailabilitySnapshot);
-  const [doctor, setDoctor] = useState<Doctor | null>(null);
-
-  const refreshDoctor = useCallback((force = false) => {
-    void probeHarnessAvailability({ force });
-    void probeDoctor(registry.primary().environmentId, { force })
-      .then(setDoctor)
-      .catch(() => setDoctor({}));
-  }, []);
+  const link = registry.primary();
+  // Never a row made up from a failure: no answer is the section's error and Retry, not "Not installed".
+  const doctor = useHostRead(link, () => probeDoctor(link.environmentId));
 
   useEffect(() => {
-    refreshDoctor();
-  }, [refreshDoctor]);
+    void probeHarnessAvailability();
+  }, []);
+
+  const refreshDoctor = () => {
+    void probeHarnessAvailability({ force: true });
+    void probeDoctor(link.environmentId, { force: true }).then(doctor.set, () => {});
+  };
 
   return (
-    <PageSection>
-      {HARNESSES.map((harness) => (
-        <ProviderRow
-          key={harness}
-          harness={harness}
-          doctor={doctor ? (doctor[harness] ?? { found: false }) : undefined}
-          onUpdated={(row) => {
-            setDoctor((prev) => ({ ...(prev ?? {}), [harness]: row }));
-            refreshDoctor(true);
-          }}
-        />
-      ))}
+    <PageSection
+      action={
+        doctor.error && !doctor.value ? (
+          <Button variant="ghost" size="sm" onClick={doctor.retry}>
+            Retry
+          </Button>
+        ) : null
+      }
+    >
+      {doctor.error && !doctor.value ? (
+        <PageError>{doctor.error}</PageError>
+      ) : (
+        HARNESSES.map((harness) => (
+          <ProviderRow
+            key={harness}
+            harness={harness}
+            doctor={doctor.value ? (doctor.value[harness] ?? { found: false }) : undefined}
+            onUpdated={(row) => {
+              doctor.set({ ...(doctor.value ?? {}), [harness]: row });
+              refreshDoctor();
+            }}
+          />
+        ))
+      )}
     </PageSection>
   );
 }

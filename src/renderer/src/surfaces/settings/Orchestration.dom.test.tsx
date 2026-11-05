@@ -12,6 +12,8 @@ const state = vi.hoisted(() => ({
   clear: vi.fn(async () => {}),
   load: vi.fn(async () => {}),
   toastError: vi.fn(),
+  error: null as string | null,
+  retry: vi.fn(),
 }));
 
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
@@ -22,7 +24,7 @@ vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ error:
 vi.mock("../../lib/tcserver/workspaces", () => ({ useWorkspaces: () => state.workspaces }));
 vi.mock("../../lib/tcserver/rules", async (original) => ({
   ...(await original<typeof import("../../lib/tcserver/rules")>()),
-  useRulesScope: () => ({ scope: state.scope, catalog: state.catalog }),
+  useRulesScope: () => ({ scope: state.scope, catalog: state.catalog, error: state.error, retry: state.retry }),
   rulesStore: {
     save: (...a: unknown[]) => state.save(...a),
     clear: (...a: unknown[]) => state.clear(...(a as [])),
@@ -108,6 +110,8 @@ beforeEach(() => {
   state.clear.mockClear();
   state.load.mockClear();
   state.toastError.mockClear();
+  state.error = null;
+  state.retry.mockClear();
 });
 afterEach(cleanup);
 
@@ -120,6 +124,17 @@ describe("Orchestration page", () => {
     // The rows in their shape: Delegation's select first, then the switches.
     const rows = [...document.querySelectorAll<HTMLElement>("[data-slot=page-row-skeleton]")];
     expect(rows.map((r) => r.dataset.control)).toEqual(["select", "switch", "switch", "switch", "switch", "switch", "select", "select"]);
+  });
+
+  it("ends the skeleton when rules.get does not answer: the host's words and Retry", () => {
+    state.scope = undefined;
+    state.error = "The host did not answer";
+    render(<OrchestrationPage />);
+    const conduct = screen.getByRole("region", { name: "Conduct" });
+    expect(screen.queryByTestId("rules-skeleton")).toBeNull();
+    expect(within(conduct).getByRole("alert").textContent).toBe("The host did not answer");
+    fireEvent.click(within(conduct).getByRole("button", { name: "Retry" }));
+    expect(state.retry).toHaveBeenCalledOnce();
   });
 
   it("is the global rules alone: no scope picker", () => {

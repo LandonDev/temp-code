@@ -23,7 +23,11 @@ vi.mock("../../chrome/ProjectDialogs", () => ({
   ProjectSettingsDialog: ({ project }: { project: { name: string } }) => <div role="dialog">{project.name} settings</div>,
 }));
 vi.mock("../../chrome/rail/buildSettings", () => ({
-  BuildEditor: () => <div data-testid="build-editor" />,
+  BuildEditor: () => (
+    <section aria-labelledby="build-heading" data-testid="build-editor">
+      <h2 id="build-heading">Build</h2>
+    </section>
+  ),
   takeRequestedBuildFocus: () => {
     const focus = state.focus;
     state.focus = false;

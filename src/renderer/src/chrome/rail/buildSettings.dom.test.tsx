@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BuildConfig } from "@server/shared/build";
 
 const state = vi.hoisted(() => ({
-  config: null as BuildConfig | null | "pending",
+  config: null as BuildConfig | null | "pending" | "refused",
   detected: { command: "bun run build", outputs: "out/**" } as BuildConfig | null,
   set: vi.fn(),
   failSet: false,
@@ -13,18 +13,24 @@ const state = vi.hoisted(() => ({
 vi.mock("../../lib/tcserver/workspaces", () => ({
   useWorkspaces: () => [{ id: "w1", name: "Alpha", path: "/w/alpha", environmentId: "local" }],
 }));
-vi.mock("../../lib/connection", () => ({
-  registry: {
-    linkOf: () => ({
-      request: (method: string, params: unknown) => {
-        if (method === "build.get") return state.config === "pending" ? new Promise(() => {}) : Promise.resolve(state.config);
+vi.mock("../../lib/connection", () => {
+  const link = {
+    connected: true,
+    onOpen: () => () => {},
+    request: (method: string, params: unknown) => {
+        if (method === "build.get")
+          return state.config === "pending"
+            ? new Promise(() => {})
+            : state.config === "refused"
+              ? Promise.reject(new Error("The host did not answer"))
+              : Promise.resolve(state.config);
         if (method === "build.detect") return Promise.resolve(state.detected);
         state.set(method, params);
         return state.failSet ? Promise.reject(new Error("build.set refused")) : Promise.resolve(null);
       },
-    }),
-  },
-}));
+  };
+  return { registry: { linkOf: () => link } };
+});
 
 const { BuildEditor, openBuildSettings, takeRequestedBuildFocus } = await import("./buildSettings");
 const { OPEN_SETTINGS_EVENT } = await import("../../lib/monaco/debugTab");
@@ -44,6 +50,19 @@ describe("BuildEditor", () => {
     state.config = "pending";
     render(<BuildEditor workspaceId="w1" />);
     expect(screen.getByTestId("build-skeleton")).toBeTruthy();
+  });
+
+  it("draws no field when build.get fails, so nothing typed can save over the real config: the error and Retry", async () => {
+    state.config = "refused";
+    render(<BuildEditor workspaceId="w1" />);
+    const section = await screen.findByRole("region", { name: "Build" });
+    await act(async () => {});
+    expect(section.querySelector("input")).toBeNull();
+    expect(section.querySelector("[role=alert]")?.textContent).toBe("The host did not answer");
+    state.config = { command: "make", outputs: "" } as BuildConfig;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    expect(((await screen.findByRole("textbox", { name: "Build command" })) as HTMLInputElement).value).toBe("make");
+    expect(state.set).not.toHaveBeenCalled();
   });
 
   it("shows the detected command as the placeholder", async () => {

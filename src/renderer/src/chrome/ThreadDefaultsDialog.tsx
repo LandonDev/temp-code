@@ -21,7 +21,7 @@ import {
   storedModelId,
   type DefaultsScope,
 } from "../lib/tcserver/defaults";
-import { scopeKey, useThreadDefaults, useWorkspaceCatalog, workspaceStore } from "../lib/tcserver/workspaces";
+import { scopeKey, useThreadDefaults, useThreadDefaultsError, useWorkspaceCatalog, workspaceStore } from "../lib/tcserver/workspaces";
 import { openWorkspaceSettings } from "../lib/settings";
 import type { ThreadDefaults, WorkspaceMeta } from "../lib/tcserver/types";
 
@@ -121,6 +121,7 @@ export function ThreadDefaultsEditor({ workspaceId }: { workspaceId: string | nu
 
 function DefaultsEditor({ environmentId, workspaceId }: { environmentId: string; workspaceId: string | null }) {
   const scope = useThreadDefaults(environmentId, workspaceId);
+  const failure = useThreadDefaultsError(environmentId, workspaceId);
   const [error, setError] = useState<string | null>(null);
   const save = (next: ThreadDefaults | null) => {
     setError(null);
@@ -153,11 +154,17 @@ function DefaultsEditor({ environmentId, workspaceId }: { environmentId: string;
           <Button variant="ghost" size="sm" onClick={() => save(null)} disabled={blocked}>
             {workspaceId === null ? "Reset" : "Remove override"}
           </Button>
+        ) : !scope && failure ? (
+          <Button variant="ghost" size="sm" onClick={failure.retry}>
+            Retry
+          </Button>
         ) : null
       }
     >
       {scope ? (
         <ThreadDefaultsFields value={scope.defaults} onChange={save} environmentId={environmentId} disabled={blocked} />
+      ) : failure ? (
+        <PageError>{failure.error}</PageError>
       ) : (
         <PageRowsSkeleton rows={DEFAULTS_SKELETON} />
       )}

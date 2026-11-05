@@ -40,9 +40,7 @@ export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
       <TurnPassEditor workspaceId={workspaceId} />
       {workspace ? <AccountsSection workspace={workspace} /> : null}
       <div id="settings-build" ref={build} tabIndex={-1} className="outline-none">
-        <PageSection title="Build">
-          <BuildEditor workspaceId={workspaceId} />
-        </PageSection>
+        <BuildEditor workspaceId={workspaceId} />
       </div>
       <div id="settings-orchestration" ref={rules} tabIndex={-1} className="flex flex-col gap-6 outline-none">
         <OrchestrationRulesEditor workspaceId={workspaceId} />

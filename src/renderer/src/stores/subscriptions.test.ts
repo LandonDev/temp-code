@@ -160,6 +160,7 @@ function catalog(over: Partial<WorkspaceCatalog> = {}): WorkspaceCatalog {
     projects: [],
     icons: new Map(),
     defaults: new Map(),
+    defaultsErrors: new Map(),
     loaded: true,
     ...over,
   } as WorkspaceCatalog;

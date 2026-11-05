@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { expectModalShape } from "../../chrome/modalShape.testkit";
 
@@ -12,12 +12,14 @@ const host = vi.hoisted(() => ({
   check: null as null | ((r: { current: string; latest: string; updated: boolean }) => void),
   engine: undefined as undefined | { dist: boolean; accepted: boolean; build: string },
   editor: null as null | { editor: string; effective: string | null; installed: Record<string, boolean> },
+  doctorFails: false,
 }));
 
-vi.mock("../../lib/connection", () => ({
-  registry: {
-    primary: () => ({
-      request: (method: string) =>
+vi.mock("../../lib/connection", () => {
+  const link = {
+    connected: true,
+    onOpen: () => () => {},
+    request: (method: string) =>
         method === "idea.acceptEula"
           ? new Promise<void>((resolve, reject) => { host.accept = resolve; host.refuse = reject; host.acceptCalls++; })
           : method === "lsp.status"
@@ -26,10 +28,12 @@ vi.mock("../../lib/connection", () => ({
             ? new Promise((resolve) => (host.eula = resolve))
             : method === "idea.checkUpdate"
               ? new Promise((resolve) => (host.check = resolve))
-              : Promise.resolve({ java: { found: true, version: "21", jdtls: true, path: "/usr/lib/jvm/21", ideaServer: host.engine } }),
-    }),
-  },
-}));
+              : host.doctorFails
+                ? Promise.reject(new Error("The host did not answer"))
+                : Promise.resolve({ java: { found: true, version: "21", jdtls: true, path: "/usr/lib/jvm/21", ideaServer: host.engine } }),
+  };
+  return { registry: { primary: () => link } };
+});
 vi.mock("../../lib/tcserver/workspaces", () => ({ useProjects: () => [{ id: "p1", name: "Alpha" }] }));
 vi.mock("../../lib/editorConfig", () => ({ useEditorConfig: () => host.editor, chooseEditorSetting: vi.fn() }));
 vi.mock("../../lib/monaco/lspGate", () => ({ retryBlockedEnsures: vi.fn() }));
@@ -42,6 +46,7 @@ beforeEach(() => {
   host.acceptCalls = 0;
   host.lsp = null;
   host.editor = null;
+  host.doctorFails = false;
 });
 afterEach(cleanup);
 
@@ -58,6 +63,29 @@ describe("Editor", () => {
     await act(async () => {});
     expect(headings()).toEqual(["Saving", "Completions", "Open files in", "Java", "Language servers"]);
     expect(screen.getByText("Found VS Code; Auto opens VS Code.")).toBeTruthy();
+  });
+
+  it("never says No JDK found when doctor.get fails: the error and Retry", async () => {
+    host.doctorFails = true;
+    render(<EditorPage />);
+    await act(async () => {});
+    const java = screen.getByRole("region", { name: "Java" });
+    expect(java.textContent).not.toContain("No JDK found");
+    expect(java.textContent).not.toContain("Not downloaded");
+    expect(java.querySelector("[role=alert]")?.textContent).toBe("The host did not answer");
+    host.doctorFails = false;
+    await act(async () => fireEvent.click(within(java).getByRole("button", { name: "Retry" })));
+    expect(java.textContent).toContain("JDK 21");
+  });
+
+  it("never says None running when lsp.status fails: the error and Retry", async () => {
+    render(<EditorPage />);
+    // The first poll is refused: resolving with a rejected promise rejects it.
+    await act(async () => (host.lsp as unknown as (v: unknown) => void)(Promise.reject(new Error("refused"))));
+    const servers = screen.getByRole("region", { name: "Language servers" });
+    expect(servers.textContent).not.toContain("None running");
+    expect(within(servers).getByRole("alert").textContent).toBe("refused");
+    expect(within(servers).getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
   it("holds skeletons until the first poll answers", async () => {

@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { normalizeProjectPath } from "../recents";
 import { aliasKeys } from "../linkedRail";
 import type { Link } from "../connection";
+import { whenOpen, withDeadline } from "../connection/openRead";
 import type { ProjectMeta, ServerPush, ThreadDefaults, WireProjectMeta, WireWorkspaceMeta, WorkspaceIcon, WorkspaceMeta } from "./types";
 import { BUILT_IN_SCOPE, parseDefaultsScope, type DefaultsScope } from "./defaults";
 
@@ -19,6 +20,9 @@ export type WorkspaceCatalog = {
   /** Thread defaults per workspace id ("" = global): the set in force there
    *  and whether the scope stores its own. Absent until loaded. */
   defaults: ReadonlyMap<string, DefaultsScope>;
+  /** Why a scope's defaults have not loaded (NO_ANSWER past the deadline, a
+   *  refusal), until it is asked again or a late answer lands. */
+  defaultsErrors: ReadonlyMap<string, string>;
   loaded: boolean;
 };
 
@@ -27,6 +31,7 @@ const EMPTY: WorkspaceCatalog = {
   projects: [],
   icons: new Map(),
   defaults: new Map(),
+  defaultsErrors: new Map(),
   loaded: false,
 };
 
@@ -280,16 +285,37 @@ class WorkspaceStore {
     return this.state.defaults.get(scopeKey(environmentId, workspaceId));
   }
 
+  /** Read a scope's defaults once the socket is open. A failure (a refusal,
+   *  or no answer past LOAD_DEADLINE_MS) never stores a made-up set: the
+   *  scope stays absent with its error for the page to show with Retry, the
+   *  caller gets what was there before (else the built-in set), and a late
+   *  answer still lands. */
   async loadDefaults(environmentId: string, workspaceId: string | null): Promise<DefaultsScope> {
     const link = this.linkOf(environmentId);
     if (!link) return BUILT_IN_SCOPE;
     const key = scopeKey(environmentId, workspaceId);
-    const scope = await link
-      .request<unknown>("defaults.get", { workspaceId })
+    this.setDefaultsError(key, null);
+    const read = whenOpen(link)
+      .then(() => link.request<unknown>("defaults.get", { workspaceId }))
       .then(parseDefaultsScope)
-      .catch(() => this.state.defaults.get(key) ?? BUILT_IN_SCOPE);
-    this.setDefaults(new Map([[key, scope]]));
-    return scope;
+      .then((scope) => {
+        this.setDefaults(new Map([[key, scope]]));
+        this.setDefaultsError(key, null);
+        return scope;
+      });
+    return withDeadline(read).catch((err: unknown) => {
+      const had = this.state.defaults.get(key);
+      if (!had) this.setDefaultsError(key, err instanceof Error ? err.message : String(err));
+      return had ?? BUILT_IN_SCOPE;
+    });
+  }
+
+  private setDefaultsError(key: string, error: string | null): void {
+    if ((this.state.defaultsErrors.get(key) ?? null) === error) return;
+    const defaultsErrors = new Map(this.state.defaultsErrors);
+    if (error === null) defaultsErrors.delete(key);
+    else defaultsErrors.set(key, error);
+    this.set({ ...this.state, defaultsErrors });
   }
 
   /** Store a set at the scope, or null to clear it: a workspace falls back
@@ -399,4 +425,15 @@ export function useThreadDefaults(
     if (!scope) void workspaceStore.loadDefaults(environmentId, workspaceId ?? null);
   }, [scope, environmentId, workspaceId]);
   return scope;
+}
+
+/** Why a scope's defaults have not loaded, with a retry; null while they load or once they have. */
+export function useThreadDefaultsError(
+  environmentId: string,
+  workspaceId: string | null | undefined,
+): { error: string; retry: () => void } | null {
+  const { defaultsErrors } = useWorkspaceCatalog();
+  const error = defaultsErrors.get(scopeKey(environmentId, workspaceId));
+  if (error === undefined) return null;
+  return { error, retry: () => void workspaceStore.loadDefaults(environmentId, workspaceId ?? null) };
 }

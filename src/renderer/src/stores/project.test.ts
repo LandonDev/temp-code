@@ -157,6 +157,7 @@ describe("project actions", () => {
       projects: [],
       icons: new Map(),
       defaults: new Map(),
+      defaultsErrors: new Map(),
       loaded: true,
     } as unknown as WorkspaceCatalog;
 

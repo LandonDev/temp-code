@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { expectModalShape } from "../../chrome/modalShape.testkit";
 
 const state = vi.hoisted(() => ({
+  failed: false,
+  retry: vi.fn(),
   ladder: ["low", "medium", "high"] as string[],
   overridden: false,
   home: undefined as { name: string; online: boolean } | undefined,
@@ -51,11 +53,15 @@ vi.mock("../../lib/tcserver/defaults", async (original) => ({
 }));
 vi.mock("../../lib/tcserver/workspaces", () => ({
   scopeKey: (env: string, id: string) => `${env}:${id}`,
-  useThreadDefaults: () => ({
-    defaults: { provider: "claude", model: "", reasoning: "medium", permission: "edits" },
-    overridden: state.overridden,
-    home: state.home,
-  }),
+  useThreadDefaults: () =>
+    state.failed
+      ? undefined
+      : {
+          defaults: { provider: "claude", model: "", reasoning: "medium", permission: "edits" },
+          overridden: state.overridden,
+          home: state.home,
+        },
+  useThreadDefaultsError: () => (state.failed ? { error: "The host did not answer", retry: state.retry } : null),
   useWorkspaceCatalog: () => ({
     workspaces: state.workspaces,
     defaults: new Map([...state.overriding].map((id) => [`local:${id}`, { overridden: true }])),
@@ -68,6 +74,8 @@ const { ThreadDefaultsDialog } = await import("../../chrome/ThreadDefaultsDialog
 
 beforeEach(() => {
   probe.answered = true;
+  state.failed = false;
+  state.retry.mockClear();
   state.ladder = ["low", "medium", "high"];
   state.overridden = false;
   state.home = undefined;
@@ -178,6 +186,16 @@ describe("Thread defaults", () => {
     expect(within(picker).queryAllByRole("switch")).toHaveLength(0);
     const rows = [...picker.querySelectorAll<HTMLElement>("[data-slot=page-row-skeleton]")];
     expect(rows.map((r) => r.dataset.control)).toEqual(["switch", "switch"]);
+  });
+
+  it("ends the skeleton when defaults.get does not answer: the error and Retry, no made-up set", () => {
+    state.failed = true;
+    render(<ThreadDefaultsPage />);
+    expect(screen.queryByRole("combobox", { name: "Provider" })).toBeNull();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("The host did not answer");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(state.retry).toHaveBeenCalledOnce();
   });
 
   it("saves the settings.json hooks switch", () => {

@@ -1,11 +1,23 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const host = vi.hoisted(() => ({ answer: null as null | ((pass: unknown) => void) }));
-vi.mock("../lib/tcserver/projects", () => ({
-  linkOfWorkspace: () => ({ request: () => new Promise((resolve) => (host.answer = resolve)) }),
+const host = vi.hoisted(() => ({
+  answer: null as null | ((pass: unknown) => void),
+  refuse: null as null | ((error: Error) => void),
 }));
+vi.mock("../lib/tcserver/projects", () => {
+  const link = {
+    connected: true,
+    onOpen: () => () => {},
+    request: () =>
+      new Promise((resolve, reject) => {
+        host.answer = resolve;
+        host.refuse = reject;
+      }),
+  };
+  return { linkOfWorkspace: () => link };
+});
 vi.mock("../components/choice-select", async () => await import("../components/choice-select-body"));
 vi.mock("../lib/sounds", () => ({ playCue: vi.fn() }));
 
@@ -31,5 +43,16 @@ describe("Completed turn", () => {
     expect(titles).toEqual(["Checks", "Fresh build", "Commit"]);
     expect(screen.getByRole("switch", { name: "Checks" })).toBeTruthy();
     expect(section.textContent).not.toMatch(/Verify|Make a build/);
+  });
+
+  it("ends the skeleton when turnpass.get fails: the error and Retry, which asks again", async () => {
+    render(<TurnPassEditor workspaceId="w1" />);
+    await act(async () => host.refuse?.(new Error("The host did not answer")));
+    const section = screen.getByRole("region", { name: "Completed turn" });
+    expect(section.querySelector("[data-slot=page-row-skeleton]")).toBeNull();
+    expect(within(section).getByRole("alert").textContent).toBe("The host did not answer");
+    await act(async () => fireEvent.click(within(section).getByRole("button", { name: "Retry" })));
+    await act(async () => host.answer?.({ verify: true, build: false, commit: "off" }));
+    expect(screen.getByRole("switch", { name: "Checks" })).toBeTruthy();
   });
 });

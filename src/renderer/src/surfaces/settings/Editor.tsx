@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { EDITOR_IDS, EDITOR_LABELS, type EditorChoice } from "@shared/editor";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import type { LspStatusRow } from "@shared/domain";
@@ -12,6 +12,7 @@ import {
   type FormatOnSave,
 } from "../../lib/settings";
 import { registry } from "../../lib/connection";
+import { useHostRead } from "../../lib/connection/hostRead";
 import { retryBlockedEnsures } from "../../lib/monaco/lspGate";
 import { chooseEditorSetting, useEditorConfig } from "../../lib/editorConfig";
 import { Dialog } from "../../components/ui/dialog";
@@ -19,7 +20,7 @@ import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { ModalBody, ModalPanel } from "../../chrome/Modal";
 import { LoadingLine } from "../SurfaceSkeleton";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageEmpty, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
+import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -63,33 +64,35 @@ export function lspFigures(row: LspStatusRow): string[] {
 /** Live language-server rows, polled while the page is open. M7a's push
  *  of readiness changes can replace the poll once it lands. */
 function LanguageServers() {
-  const [rows, setRows] = useState<LspStatusRow[] | null>(null);
+  const link = registry.primary();
+  const read = useHostRead(link, () => link.request<LspStatusRow[]>("lsp.status"));
+  const rows = read.value;
+  const { retry } = read;
   const projects = useProjects();
   const projectNames = useMemo(
     () => new Map(projects.map((project) => [project.id, project.name])),
     [projects],
   );
+  // The poll asks again every 5 s; a failed poll keeps the rows it last had.
   useEffect(() => {
-    let cancelled = false;
-    const tick = () =>
-      void registry.primary()
-        .request<LspStatusRow[]>("lsp.status")
-        .then((next) => {
-          if (!cancelled) setRows(next);
-        })
-        .catch(() => {
-          if (!cancelled) setRows([]);
-        });
-    tick();
-    const timer = window.setInterval(tick, 5_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, []);
+    const timer = window.setInterval(retry, 5_000);
+    return () => window.clearInterval(timer);
+  }, [retry]);
+  const failed = !rows && read.error;
   return (
-    <PageSection title="Language servers">
-      {rows === null ? (
+    <PageSection
+      title="Language servers"
+      action={
+        failed ? (
+          <Button variant="ghost" size="sm" onClick={retry}>
+            Retry
+          </Button>
+        ) : null
+      }
+    >
+      {failed ? (
+        <PageError>{read.error}</PageError>
+      ) : !rows ? (
         <PageRowsSkeleton rows={2} description control="none" />
       ) : rows.length === 0 ? (
         <PageEmpty>None running</PageEmpty>
@@ -154,8 +157,11 @@ export function EditorPage() {
   const [autoSave, setAutoSave] = useState(loadAutoSave);
   const [formatOnSave, setFormatOnSave] = useState<FormatOnSave>(loadFormatOnSave);
   const [ghostText, setGhostText] = useState(loadGhostText);
-  const [engine, setEngine] = useState<IdeaEngine | null | undefined>(undefined);
-  const [java, setJava] = useState<JavaDoctor | null | undefined>(undefined);
+  const link = registry.primary();
+  // The JDK and the engine as the host reports them; until it answers, nothing is said about either.
+  const doctor = useHostRead(link, () => link.request<{ java?: JavaDoctor }>("doctor.get"));
+  const java: JavaDoctor | null | undefined = doctor.value ? (doctor.value.java ?? null) : undefined;
+  const engine: IdeaEngine | null | undefined = doctor.value ? (doctor.value.java?.ideaServer ?? null) : undefined;
   const [eula, setEula] = useState<{ build: string; text: string } | null>(null);
   const [gateOpen, setGateOpen] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -163,22 +169,7 @@ export function EditorPage() {
   // dialog: the row's note sits behind the scrim.
   const [eulaError, setEulaError] = useState<string | null>(null);
 
-  const refreshEngine = useCallback(() => {
-    void registry.primary()
-      .request<{ java?: JavaDoctor }>("doctor.get")
-      .then((doctor) => {
-        setJava(doctor.java ?? null);
-        setEngine(doctor.java?.ideaServer ?? null);
-      })
-      .catch(() => {
-        setJava(null);
-        setEngine(null);
-      });
-  }, []);
-
-  useEffect(() => {
-    refreshEngine();
-  }, [refreshEngine]);
+  const refreshEngine = doctor.retry;
 
   const onFormat = (patch: Partial<FormatOnSave>) => {
     const next = { ...formatOnSave, ...patch };
@@ -246,6 +237,7 @@ export function EditorPage() {
           : "Needs the EULA";
 
   const loading = <Skeleton className="mt-1 h-3 w-40" />;
+  const javaFailed = !doctor.value && doctor.error !== null;
 
   return (
     <>
@@ -296,25 +288,45 @@ export function EditorPage() {
 
       <OpenFilesIn />
 
-      <PageSection title="Java">
-        <PageRow
-          title="JDK"
-          description={
-            jdkState === null ? (
-              loading
-            ) : (
-              <>
-                <span className={java?.error ? "block text-warning" : "block"}>{jdkState}</span>
-                {java?.path ? <span className="block truncate font-mono text-xs">{java.path}</span> : null}
-              </>
-            )
-          }
-        />
-        <PageRow title="IntelliJ engine" description={note ?? engineState ?? loading}>
-          <Button variant="secondary" size="sm" disabled={checking} onClick={engine?.accepted ? checkUpdate : openGate}>
-            <BusyLabel busy={checking} label={engine?.accepted ? "Check for update" : "Accept EULA"} />
-          </Button>
-        </PageRow>
+      <PageSection
+        title="Java"
+        action={
+          javaFailed ? (
+            <Button variant="ghost" size="sm" onClick={doctor.retry}>
+              Retry
+            </Button>
+          ) : null
+        }
+      >
+        {javaFailed ? (
+          <PageError>{doctor.error}</PageError>
+        ) : (
+          <>
+            <PageRow
+              title="JDK"
+              description={
+                jdkState === null ? (
+                  loading
+                ) : (
+                  <>
+                    <span className={java?.error ? "block text-warning" : "block"}>{jdkState}</span>
+                    {java?.path ? <span className="block truncate font-mono text-xs">{java.path}</span> : null}
+                  </>
+                )
+              }
+            />
+            <PageRow title="IntelliJ engine" description={note ?? engineState ?? loading}>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={checking || engine === undefined}
+                onClick={engine?.accepted ? checkUpdate : openGate}
+              >
+                <BusyLabel busy={checking} label={engine?.accepted ? "Check for update" : "Accept EULA"} />
+              </Button>
+            </PageRow>
+          </>
+        )}
       </PageSection>
 
       <LanguageServers />

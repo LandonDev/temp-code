@@ -1,4 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LOAD_DEADLINE_MS, NO_ANSWER } from "../connection/openRead";
+import { scopeKey } from "./workspaces";
 import type { Link } from "./store";
 import type { ProviderInfo, ServerPush } from "./types";
 import {
@@ -98,9 +100,18 @@ class FakeLink implements Link {
   /** The next rules.get is read now and answered once this resolves. */
   hold: Promise<void> | null = null;
   pushes = new Set<(push: ServerPush) => void>();
+  /** Holds rules.get unanswered: the late answer is `release()`. */
+  hang = false;
+  release: () => void = () => {};
+  /** Refuses rules.set, as the box does while it is offline. */
+  refuseSet: string | null = null;
   async request<T>(method: string, params?: unknown): Promise<T> {
     this.calls.push({ method, params });
     const p = params as { workspaceId: string | null; rules?: OrchestrationRules | null };
+    if (method === "rules.get" && this.hang) {
+      return new Promise<T>((resolve) => (this.release = () => resolve({ rules: DEFAULT_RULES, overridden: false } as T)));
+    }
+    if (method === "rules.set" && this.refuseSet) return Promise.reject(new Error(this.refuseSet));
     if (method === "rules.get") {
       const own = this.stored.get(p.workspaceId ?? "");
       const scope: RulesScope = {
@@ -158,6 +169,28 @@ describe("rulesStore", () => {
     expect(rulesStore.scope("local", null)?.overridden).toBe(false);
     await rulesStore.load("local", null);
     expect(link.of("rules.get")).toHaveLength(1);
+  });
+
+  it("says the host did not answer past the deadline, and a late answer still lands", async () => {
+    vi.useFakeTimers();
+    try {
+      link.hang = true;
+      const load = rulesStore.load("local", null).catch((e: Error) => e.message);
+      await vi.advanceTimersByTimeAsync(LOAD_DEADLINE_MS);
+      expect(await load).toBe(NO_ANSWER);
+      expect(rulesStore.getSnapshot().errors.get(scopeKey("local", null))).toBe(NO_ANSWER);
+      expect(rulesStore.scope("local", null)).toBeUndefined();
+      // Retry shares the read in flight under a fresh deadline and clears the error meanwhile.
+      void rulesStore.load("local", null).catch(() => {});
+      expect(rulesStore.getSnapshot().errors.size).toBe(0);
+      expect(link.of("rules.get")).toHaveLength(1);
+      link.release();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(rulesStore.scope("local", null)?.overridden).toBe(false);
+      expect(rulesStore.getSnapshot().errors.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("saves through and marks the scope overridden before the reply", async () => {

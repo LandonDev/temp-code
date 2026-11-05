@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { InboxProviderMark } from "../../chrome/InboxProviderMark";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
+import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { Dialog } from "../../components/ui/dialog";
@@ -36,6 +36,7 @@ import {
 } from "../../lib/settings";
 import { loadSoundsEnabled, saveSoundsEnabled } from "../../lib/sounds";
 import { registry } from "../../lib/connection";
+import { useHostRead } from "../../lib/connection/hostRead";
 import { updateStore, useUpdateSnapshot } from "../../lib/updateStore";
 import { MANUAL_DOWNLOAD_URL, canRetry } from "../../lib/updater";
 import { isWebMode, openUrl } from "../../lib/native";
@@ -155,9 +156,12 @@ export function GeneralPage({
 
 function LinearSettings() {
   const [connecting, setConnecting] = useState(false);
-  // null until the host answers: the key field and Connect would otherwise
-  // show for a connected account and then flip to Disconnect.
-  const [connected, setConnected] = useState<boolean | null>(null);
+  const link = registry.primary();
+  // Undefined until the host answers, and never made up from a failure:
+  // Connect… would otherwise show for a connected account.
+  const status = useHostRead(link, () => linearConnected(link.environmentId));
+  const connected = status.value?.connected;
+  const setConnected = (next: boolean) => status.set({ connected: next });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [teams, setTeams] = useState<LinearTeam[]>([]);
@@ -173,18 +177,8 @@ function LinearSettings() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    void linearConnected(registry.primary().environmentId)
-      .then((status) => {
-        if (cancelled) return;
-        setConnected(status.connected);
-        if (status.connected) void loadTeams();
-      })
-      .catch(() => !cancelled && setConnected(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [loadTeams]);
+    if (connected) void loadTeams();
+  }, [connected, loadTeams]);
 
   // The dialog awaits this; a refusal stays in the dialog as its red line.
   const onConnect = async (token: string) => {
@@ -225,9 +219,22 @@ function LinearSettings() {
 
   return (
     <>
-      <PageSection title="Linear">
-        {connected === null ? (
-          <PageRowsSkeleton rows={1} media control="button" />
+      <PageSection
+        title="Linear"
+        action={
+          connected === undefined && status.error ? (
+            <Button variant="ghost" size="sm" onClick={status.retry}>
+              Retry
+            </Button>
+          ) : null
+        }
+      >
+        {connected === undefined ? (
+          status.error ? (
+            <PageError>{status.error}</PageError>
+          ) : (
+            <PageRowsSkeleton rows={1} media control="button" />
+          )
         ) : (
           <PageRow
             media={<InboxProviderMark provider="linear" className="size-4" />}

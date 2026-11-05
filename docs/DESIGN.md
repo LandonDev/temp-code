@@ -502,8 +502,12 @@ control is one `Switch`, one `ChoiceSelect`, one `Input` or one `Button`;
 a loading value is a `Skeleton` in its shape, an error a red 12px line
 under its row. A section loaded from a host waits for the socket to open,
 asks again on every new socket until it has answered, and past 10 s says
-"The host did not answer" with Retry (lib/connection/openRead.ts); a late
-answer still lands. A row with a second action gives it its own row or
+"The host did not answer" with Retry (lib/connection/openRead.ts; a page's
+own read is `useHostRead`, lib/connection/hostRead.ts, and a store's scopes
+keep the same rule: plans, rules, thread defaults); a late answer still
+lands. A failure never stands in as a value: no "Not installed", "No JDK
+found", Connect… or empty field the host did not say, and a field that saves
+stays away until its value has loaded. A row with a second action gives it its own row or
 opens a dialog: Linear's key field sits behind Connect…, and the release
 notes are a row under Release, whose one button is the updater's. Switching pages does not animate.
 

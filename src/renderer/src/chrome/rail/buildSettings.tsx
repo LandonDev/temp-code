@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { BuildConfig } from "@server/shared/build";
 import { registry } from "../../lib/connection";
+import { useHostRead } from "../../lib/connection/hostRead";
+import { Button } from "../../components/ui/button";
 import { OPEN_SETTINGS_EVENT } from "../../lib/monaco/debugTab";
 import { workspaceSettingsSection } from "../../lib/settings";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
-import { PageError, PageRow, PageRowsSkeleton } from "../../components/page";
+import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { Input } from "../../components/ui/input";
 
 /**
@@ -73,12 +75,21 @@ export function BuildFields({
   );
 }
 
-/** Self-loading editor for the workspace settings page; saves as you type. */
+/** The workspace page's Build section, self-loading; saves as you type.
+ *  Its fields stay away until `build.get` answers, so nothing typed into an
+ *  empty stand-in can save over the real config; no answer is the section's
+ *  error and Retry. */
 export function BuildEditor({ workspaceId }: { workspaceId: string }) {
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
   const path = workspace?.path;
   const environmentId = workspace?.environmentId;
-  const [config, setConfig] = useState<BuildConfig | undefined>(undefined);
+  const link = environmentId ? registry.linkOf(environmentId) : null;
+  const read = useHostRead(
+    link,
+    async () => (await link!.request<BuildConfig | null>("build.get", { workspaceId })) ?? BUILD_EMPTY,
+    workspaceId,
+  );
+  const config = read.value;
   const [detected, setDetected] = useState<BuildConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
@@ -86,10 +97,6 @@ export function BuildEditor({ workspaceId }: { workspaceId: string }) {
   useEffect(() => {
     if (!environmentId) return;
     let live = true;
-    void registry.linkOf(environmentId)
-      .request<BuildConfig | null>("build.get", { workspaceId })
-      .then((c) => live && setConfig(c ?? BUILD_EMPTY))
-      .catch(() => live && setConfig(BUILD_EMPTY));
     if (path) {
       void registry.linkOf(environmentId)
         .request<BuildConfig | null>("build.detect", { path })
@@ -104,7 +111,7 @@ export function BuildEditor({ workspaceId }: { workspaceId: string }) {
 
   const push = (next: BuildConfig): void => {
     if (!environmentId) return;
-    setConfig(next);
+    read.set(next);
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
       setError(null);
@@ -115,18 +122,31 @@ export function BuildEditor({ workspaceId }: { workspaceId: string }) {
     }, 500);
   };
 
-  if (config === undefined) {
-    return (
-      <div data-testid="build-skeleton">
-        <PageRowsSkeleton rows={2} description control="field" />
-      </div>
-    );
-  }
+  const failed = config === undefined && read.error !== null;
   return (
-    <>
-      <BuildFields value={config} onChange={push} detected={detected} />
-      {error ? <PageError>{error}</PageError> : null}
-    </>
+    <PageSection
+      title="Build"
+      action={
+        failed ? (
+          <Button variant="ghost" size="sm" onClick={read.retry}>
+            Retry
+          </Button>
+        ) : null
+      }
+    >
+      {config ? (
+        <>
+          <BuildFields value={config} onChange={push} detected={detected} />
+          {error ? <PageError>{error}</PageError> : null}
+        </>
+      ) : failed ? (
+        <PageError>{read.error}</PageError>
+      ) : (
+        <div data-testid="build-skeleton">
+          <PageRowsSkeleton rows={2} description control="field" />
+        </div>
+      )}
+    </PageSection>
   );
 }
 

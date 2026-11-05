@@ -20,7 +20,8 @@ vi.mock("../../lib/linear", () => ({
   saveHiddenLinearTeamIds: vi.fn(),
   notifyLinearChange: vi.fn(),
 }));
-vi.mock("../../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "local" }) } }));
+const link = vi.hoisted(() => ({ environmentId: "local", connected: true, onOpen: () => () => {} }));
+vi.mock("../../lib/connection", () => ({ registry: { primary: () => link } }));
 vi.mock("../../lib/githubTasks", () => ({ clearInboxCache: vi.fn() }));
 vi.mock("../../lib/updateStore", () => ({
   updateStore: { install: vi.fn(), check: vi.fn() },
@@ -237,6 +238,20 @@ describe("General", () => {
     await act(async () => answer({ connected: true }));
     expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();
     linear.pending = null;
+  });
+
+  it("never offers Connect… when linear.status fails: the error and Retry, which asks again", async () => {
+    linear.pending = Promise.reject(new Error("The host did not answer"));
+    linear.pending.catch(() => {});
+    linear.connected = true;
+    page();
+    await act(async () => {});
+    const section = screen.getByRole("region", { name: "Linear" });
+    expect(screen.queryByRole("button", { name: "Connect…" })).toBeNull();
+    expect(section.querySelector("[role=alert]")?.textContent).toBe("The host did not answer");
+    linear.pending = null;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();
   });
 
   it("leaves Plans to Thread defaults", async () => {

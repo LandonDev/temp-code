@@ -6,7 +6,7 @@ import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import { ChevronRight, Plus } from "./icons";
 import { HarnessIcon } from "./HarnessIcon";
 import { ChoiceSelect, type Choice } from "../components/choice-select";
-import { PageEmpty, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
+import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
 import { ItemButton, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
 import { SettingSwitch } from "../components/setting-switch";
 import { Button } from "../components/ui/button";
@@ -94,13 +94,27 @@ const CONDUCT_SKELETON = [
   { description: true },
 ] as const;
 
-/** The Conduct section's rows while the scope loads, under its real heading. */
-export function RulesSkeleton({ workspaceId }: { workspaceId: string | null }) {
+/** The Conduct section's rows while the scope loads, under its real
+ *  heading; once the host has failed to answer, its error and Retry. */
+export function RulesSkeleton({ workspaceId, error, onRetry }: { workspaceId: string | null; error?: string | null; onRetry?: () => void }) {
   return (
-    <PageSection title={titlesFor(workspaceId).conduct}>
-      <div data-testid="rules-skeleton">
-        <PageRowsSkeleton rows={CONDUCT_SKELETON} />
-      </div>
+    <PageSection
+      title={titlesFor(workspaceId).conduct}
+      action={
+        error && onRetry ? (
+          <Button variant="ghost" size="sm" onClick={onRetry}>
+            Retry
+          </Button>
+        ) : null
+      }
+    >
+      {error ? (
+        <PageError>{error}</PageError>
+      ) : (
+        <div data-testid="rules-skeleton">
+          <PageRowsSkeleton rows={CONDUCT_SKELETON} />
+        </div>
+      )}
     </PageSection>
   );
 }
@@ -132,7 +146,7 @@ function saveFailed(err: unknown): false {
 }
 
 export function RulesEditor({ environmentId, workspaceId }: { environmentId: string; workspaceId: string | null }) {
-  const { scope, catalog } = useRulesScope(environmentId, workspaceId, true);
+  const { scope, catalog, error, retry } = useRulesScope(environmentId, workspaceId, true);
   const [editing, setEditing] = useState<RoutingRule | "new" | null>(null);
   // A host's link coming or going may move where the copy can be written:
   // the answer says so again.
@@ -142,7 +156,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
     void rulesStore.load(environmentId, workspaceId, true).catch(() => undefined);
   }, [environmentId, workspaceId, linkStates]);
 
-  if (!scope) return <RulesSkeleton workspaceId={workspaceId} />;
+  if (!scope) return <RulesSkeleton workspaceId={workspaceId} error={error} onRetry={retry} />;
   const titles = titlesFor(workspaceId);
   const { rules, overridden } = scope;
   const stale = catalog ? staleModels(rules, catalog) : [];

@@ -4,15 +4,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const host = vi.hoisted(() => ({
   doctor: null as null | ((doctor: Record<string, unknown>) => void),
+  refuse: null as null | ((error: Error) => void),
   update: vi.fn(),
   installed: new Set<string>(["claude", "codex"]),
 }));
 
 vi.mock("../../lib/tcserver/catalog", () => ({
-  probeDoctor: () => new Promise((resolve) => (host.doctor = resolve)),
+  probeDoctor: () =>
+    new Promise((resolve, reject) => {
+      host.doctor = resolve;
+      host.refuse = reject;
+    }),
 }));
+const link = {
+  environmentId: "local",
+  connected: true,
+  onOpen: () => () => {},
+  request: (...args: unknown[]) => host.update(...args),
+};
 vi.mock("../../lib/connection", () => ({
-  registry: { primary: () => ({ environmentId: "local", request: (...args: unknown[]) => host.update(...args) }) },
+  registry: {
+    primary: () => link,
+  },
 }));
 vi.mock("../../lib/harness/availability", () => ({
   getHarnessAvailabilitySnapshot: () => 0,
@@ -91,6 +104,20 @@ describe("Providers", () => {
     expect(update.querySelector("[data-slot=spinner]")).toBeTruthy();
     await act(async () => fail(new Error("npm exited 1")));
     expect(within(row("claude")).getByText("npm exited 1").closest("[data-slot=item-description]")?.className).toContain("text-destructive");
+  });
+
+  it("never says Not installed when the host does not answer: the error and Retry, which asks again", async () => {
+    render(<ProvidersPage />);
+    await act(async () => host.refuse?.(new Error("The host did not answer")));
+    expect(document.body.textContent).not.toContain("Not installed");
+    expect(screen.queryByRole("button", { name: "Copy install command" })).toBeNull();
+    expect(screen.getByRole("alert").textContent).toBe("The host did not answer");
+    host.doctor = null;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    expect(host.doctor).not.toBeNull();
+    await act(async () => host.doctor?.(DOCTOR));
+    expect(row("claude").textContent).toContain("v2.1.263");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("leaves the model picker and the hooks to Thread defaults", async () => {

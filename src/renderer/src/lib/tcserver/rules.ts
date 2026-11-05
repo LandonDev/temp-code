@@ -12,6 +12,7 @@ import {
 } from "@server/shared/rules";
 import { OPEN_SETTINGS_EVENT } from "../monaco/debugTab";
 import type { Link } from "../connection";
+import { whenOpen, withDeadline } from "../connection/openRead";
 import { scopeKey } from "./workspaces";
 import type { ProviderId, ProviderInfo } from "./types";
 import type { SettingsHome } from "../settingsHome";
@@ -59,9 +60,12 @@ export type RulesState = {
   scopes: ReadonlyMap<string, RulesScope>;
   /** Each host's catalog, by environment id; absent until it answers. */
   catalogs: ReadonlyMap<string, RulesCatalog>;
+  /** Why a scope's last load failed (NO_ANSWER past the deadline), by scope
+   *  key, until it is asked again or a late answer lands. */
+  errors: ReadonlyMap<string, string>;
 };
 
-const EMPTY: RulesState = { scopes: new Map(), catalogs: new Map() };
+const EMPTY: RulesState = { scopes: new Map(), catalogs: new Map(), errors: new Map() };
 
 // ── pure helpers ───────────────────────────────────────────────────────
 
@@ -164,7 +168,8 @@ class RulesStore {
     const scopes = new Map([...this.state.scopes].filter(([key]) => !key.startsWith(`${environmentId}|`)));
     const catalogs = new Map(this.state.catalogs);
     catalogs.delete(environmentId);
-    this.set({ scopes, catalogs });
+    const errors = new Map([...this.state.errors].filter(([key]) => !key.startsWith(`${environmentId}|`)));
+    this.set({ scopes, catalogs, errors });
   }
 
   /** Test seam. */
@@ -195,27 +200,46 @@ class RulesStore {
 
   /** Read a scope from its host once; later reads come from the cache.
    *  `fresh` asks again (the editor at each mount and when a host's link
-   *  changes) while the last answer stays on screen. */
+   *  changes) while the last answer stays on screen. The read waits for the
+   *  socket to open; past LOAD_DEADLINE_MS, or on a refusal, a scope with no
+   *  answer yet keeps an error (`errors`) until it is asked again, and a late
+   *  answer still lands. Asking again while a read is in flight shares it
+   *  under a fresh deadline. */
   load(environmentId: string, workspaceId: string | null, fresh = false): Promise<RulesScope> {
     const key = scopeKey(environmentId, workspaceId);
     const cached = this.state.scopes.get(key);
     if (cached && !fresh) return Promise.resolve(cached);
-    const pending = this.inflight.get(key);
-    if (pending) return pending;
     const link = this.links.get(environmentId);
     if (!link) return Promise.resolve(cached ?? { rules: DEFAULT_RULES, overridden: false });
-    const before = this.writes.get(key) ?? 0;
-    const request = link
-      .request<RulesScope>("rules.get", { workspaceId })
-      .then((scope) => {
-        // A write went out after this read: its answer is older than the write.
-        if ((this.writes.get(key) ?? 0) !== before) return this.state.scopes.get(key) ?? scope;
-        this.setScope(key, scope);
-        return scope;
-      })
-      .finally(() => this.inflight.delete(key));
-    this.inflight.set(key, request);
-    return request;
+    this.setError(key, null);
+    let request = this.inflight.get(key);
+    if (!request) {
+      const before = this.writes.get(key) ?? 0;
+      request = whenOpen(link)
+        .then(() => link.request<RulesScope>("rules.get", { workspaceId }, { retry: true }))
+        .then((scope) => {
+          // A write went out after this read: its answer is older than the write.
+          if ((this.writes.get(key) ?? 0) !== before) return this.state.scopes.get(key) ?? scope;
+          this.setScope(key, scope);
+          this.setError(key, null);
+          return scope;
+        })
+        .finally(() => this.inflight.delete(key));
+      this.inflight.set(key, request);
+    }
+    const timed = withDeadline(request);
+    timed.catch((err: unknown) => {
+      if (!this.state.scopes.has(key)) this.setError(key, err instanceof Error ? err.message : String(err));
+    });
+    return timed;
+  }
+
+  private setError(key: string, error: string | null): void {
+    if ((this.state.errors.get(key) ?? null) === error) return;
+    const errors = new Map(this.state.errors);
+    if (error === null) errors.delete(key);
+    else errors.set(key, error);
+    this.set({ ...this.state, errors });
   }
 
   /** One environment's catalog, once; `fresh` asks again (the rules editor
@@ -318,7 +342,9 @@ export function useRulesState(): RulesState {
 }
 
 /** The scope's rules and its host's catalog, loading both on first use;
- *  `freshCatalog` asks the host's catalog again at mount. */
+ *  `freshCatalog` asks the host's catalog again at mount. `error` is why the
+ *  scope has not loaded (no answer past the deadline, a refusal), with
+ *  `retry` to ask again. */
 export function useRulesScope(
   environmentId: string,
   workspaceId: string | null,
@@ -326,15 +352,20 @@ export function useRulesScope(
 ): {
   scope: RulesScope | undefined;
   catalog: RulesCatalog | null;
+  error: string | null;
+  retry: () => void;
 } {
   const state = useRulesState();
   useEffect(() => {
     void rulesStore.load(environmentId, workspaceId, freshCatalog).catch(() => undefined);
-    void rulesStore.loadCatalog(environmentId, freshCatalog);
+    void rulesStore.loadCatalog(environmentId, freshCatalog).catch(() => undefined);
   }, [environmentId, workspaceId, freshCatalog]);
+  const key = scopeKey(environmentId, workspaceId);
   return {
-    scope: state.scopes.get(scopeKey(environmentId, workspaceId)),
+    scope: state.scopes.get(key),
     catalog: state.catalogs.get(environmentId) ?? null,
+    error: state.errors.get(key) ?? null,
+    retry: () => void rulesStore.load(environmentId, workspaceId).catch(() => {}),
   };
 }
 

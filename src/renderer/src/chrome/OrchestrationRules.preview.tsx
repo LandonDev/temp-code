@@ -47,6 +47,8 @@ const HOSTS: Record<string, { catalog: RulesCatalog; rules: OrchestrationRules; 
 for (const [environmentId, host] of Object.entries(HOSTS)) {
   const link = {
     environmentId,
+    connected: true,
+    onOpen: () => () => {},
     request: (method: string) =>
       Promise.resolve(
         method === "catalog.get"
