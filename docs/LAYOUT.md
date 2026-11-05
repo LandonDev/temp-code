@@ -771,14 +771,17 @@ Under the box, 4px below it, one 24px row (chrome/ComposerBar.tsx), always
 there so nothing moves on focus, inset 6px as the box's own row is, so the
 model's glyph sits on `+`'s axis (both centred 21px from the box's edge) and
 the permission mode ends over Send: at the left the model
-button, which reads the model and the effort ("Opus 5.5  High") and opens
+button, which reads the model and the effort 4px after it ("Opus 5.5 High") and opens
 the model menu: providers, search, the list, then the model's settings as
 rows (Effort, Context, Speed only for the tiers the serving CLI lists, any
 other setting). Its model rows are menu rows (`MENU_ROW` at 28px, `rounded-lg`
 concentric with the 12px panel's 4px inset), and the group heading, the no-match
 line and the setting rows share their 12px inset. In the Claude and Codex tabs a maker's models (Meta's, the
 catalog's `vendor` rows) follow the harness's own under the maker's name in
-11px muted, each row led by its 14px mark; Effort lists that row's ladder
+11px muted, its 12px mark 8px before it, and no row draws a glyph, so every
+label starts on one edge; out of a tab (search, favorites) each row ends
+its name with its harness in 12px muted, 4px after it, since one model is
+offered under several; Effort lists that row's ladder
 (Minimal only on the Codex Meta rows) and a vendor row has no Context. At
 the right the context meter and the permission mode as a
 quiet select (none for fx). They are ghost controls in 12px

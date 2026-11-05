@@ -279,10 +279,15 @@ describe("ModelPicker: Meta's models", () => {
       expect(group.getAttribute("role")).toBe("group");
       expect(group.getAttribute("aria-labelledby") && menu.querySelector(`#${CSS.escape(group.getAttribute("aria-labelledby")!)}`)?.textContent).toBe("Meta");
       expect(within(group).getAllByRole("option").map((o) => o.querySelector("span")?.textContent)).toEqual(["Muse Wonder 1.0", "Muse Spark 1.3"]);
-      // The harness's own rows come first, outside the group; Meta's rows lead with the mark.
+      // The harness's own rows come first, outside the group; the heading carries Meta's mark and
+      // no row draws a glyph, so every label starts on one edge.
       const names = within(menu).getAllByRole("option").map((o) => o.querySelector("span")?.textContent);
       expect(names[0]).toBe(own);
-      expect(within(group).getAllByRole("option").every((o) => o.querySelector("svg path")?.getAttribute("d")?.startsWith("M6.915"))).toBe(true);
+      const heading = menu.querySelector(`#${CSS.escape(group.getAttribute("aria-labelledby")!)}`)!;
+      expect(heading.querySelector("svg path")?.getAttribute("d")?.startsWith("M6.915")).toBe(true);
+      expect(within(menu).getAllByRole("option").every((o) => !(o.firstElementChild instanceof SVGElement))).toBe(true);
+      // In its tab a row names no harness: the tab does.
+      expect(menu.querySelector("[data-model-harness]")).toBeNull();
       cleanup();
     }
   });
@@ -333,7 +338,23 @@ describe("ModelPicker: Meta's models", () => {
     });
     expect(groupIn(menu)).toBeNull();
     // Meta's four rows under claude and codex, plus Muse Code's own three static rows.
-    expect(within(menu).getAllByRole("option")).toHaveLength(7);
+    const options = within(menu).getAllByRole("option");
+    expect(options).toHaveLength(7);
+    // One model under two harnesses: each row ends its name with its harness, 12px muted, 4px after it.
+    const wonder = options.filter((o) => o.textContent?.startsWith("Muse Wonder 1.0"));
+    const harnesses = wonder.map((o) => o.querySelector<HTMLElement>("[data-model-harness]")!.textContent);
+    expect(new Set(harnesses).size).toBe(harnesses.length);
+    expect(harnesses).toEqual(expect.arrayContaining(["Claude Code", "Codex"]));
+    const tag = wonder[0].querySelector<HTMLElement>("[data-model-harness]")!;
+    expect(tag.className.split(" ")).toEqual(expect.arrayContaining(["text-xs", "text-muted-foreground"]));
+    expect(tag.parentElement!.className.split(" ")).toEqual(expect.arrayContaining(["gap-1", "items-baseline"]));
+  });
+  it("the composer's quiet trigger sets its effort 4px after the name, the row's gap alone", () => {
+    render(<ModelPicker harness="claude" model="claude:claude-opus-5-5" quiet onChange={() => {}} settings={{ values: { effort: "high" }, onChange: () => {} }} />);
+    const trigger = screen.getByRole("button", { name: /Opus 5\.5 High/ });
+    expect(trigger.className.split(" ")).toContain("gap-1");
+    const effort = [...trigger.querySelectorAll("span")].find((el) => el.textContent === "High")!;
+    expect(effort.className).not.toMatch(/(^|\s)ms-/);
   });
   it("a model row's star waits on the shared hover reveal; a favourite's stays", async () => {
     picker("claude", "claude:claude-opus-5-5");

@@ -398,7 +398,7 @@ export function ModelPicker({
           <HarnessIcon harness={current.harness} className="size-3.5 shrink-0" />
           {/* In the composer's row the words give way to the icon as the box narrows (ComposerBar). */}
           <span className={cn("min-w-0 truncate @max-[9rem]/composer-bar:hidden", !quiet && "text-foreground")}>{current.name}</span>
-          {effort ? <span className={cn("shrink-0 @max-[23rem]/composer-bar:hidden", quiet ? "ms-0.5" : "ms-1 text-muted-foreground")}>{effort}</span> : null}
+          {effort ? <span className={cn("shrink-0 @max-[23rem]/composer-bar:hidden", !quiet && "ms-1 text-muted-foreground")}>{effort}</span> : null}
           <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
         </TooltipTrigger>
         <TooltipContent>
@@ -572,8 +572,12 @@ export function ModelList({
                 disabled ? "text-muted-foreground opacity-60" : highlighted && "bg-muted",
               )}
             >
-              {item.vendor ? <HarnessIcon harness={item.vendor} className="size-3.5 shrink-0 text-muted-foreground" /> : null}
-              <span className="min-w-0 flex-1 truncate">{item.name}</span>
+              {/* No row draws a glyph, so every label starts on one edge; a maker's mark is its group heading's. */}
+              <span className="flex min-w-0 flex-1 items-baseline gap-1">
+                <span className="min-w-0 truncate">{item.name}</span>
+                {/* Out of its tab (search, favorites) a row names its harness: one model is offered under several. */}
+                {grouped ? null : <span data-model-harness className="shrink-0 text-xs text-muted-foreground">{HARNESS_TITLE[item.harness]}</span>}
+              </span>
               {selected ? <Check className="size-3.5 shrink-0" /> : null}
               {/* A favourite's star stays; any other row's waits on the shared hover reveal. */}
               <span className={cn("flex", !favorited && reveal("model"))}>
@@ -627,7 +631,8 @@ function renderGroups(
     <>
       {models.slice(0, split).map(row)}
       <div role="group" aria-labelledby={headingId} data-vendor-group={vendor}>
-        <div id={headingId} role="presentation" className="px-3 pt-2 pb-1 text-[11px] font-medium text-muted-foreground">
+        <div id={headingId} role="presentation" className="flex items-center gap-2 px-3 pt-2 pb-1 text-[11px] font-medium text-muted-foreground">
+          <HarnessIcon harness={vendor} className="size-3 shrink-0" />
           {VENDOR_TITLE[vendor]}
         </div>
         {models.slice(split).map((item, i) => row(item, split + i))}

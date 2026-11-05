@@ -596,7 +596,10 @@ routed to (aliax-core's `forward`). Two listeners:
   reasoning enum reads) starts at `minimal`, which only the codex Meta rows
   list (the Claude CLI takes low..max); `fitReasoning` moves a rung a model
   lacks to its nearest, so minimal lands on low. The picker groups them
-  under "Meta" with Meta's mark (chrome/HarnessIcon.tsx `MarkId`), only
+  under a "Meta" heading with Meta's mark (chrome/HarnessIcon.tsx `MarkId`;
+  no model row draws a glyph, and out of its tab, in search and favorites,
+  a row ends its name with its harness, since one model is offered under
+  several), only
   while the thread's host holds a Meta key (`useAccounts`: no key, no rows
   in the Claude and Codex tabs, favorites or search; the Muse harness's own
   rows ride the subscription and never hide), and the
