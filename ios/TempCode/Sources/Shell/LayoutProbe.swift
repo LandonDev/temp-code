@@ -44,6 +44,12 @@ enum LayoutProbe {
         [frame.minX, frame.minY, frame.width, frame.height].map { String(Int($0.rounded())) }.joined(separator: ",")
     }
 
+    /// Counts an occurrence (`counts.<key>` in the report): how often a thing was drawn.
+    static func count(_ key: String) {
+        state.counts[key, default: 0] += 1
+        state.schedule()
+    }
+
     /// The tab and the focused stack's depth (RootView, on every navigation change).
     static func route(tab: String, depth: Int) {
         guard state.tab != tab || state.depth != depth else { return }
@@ -153,6 +159,7 @@ enum LayoutProbe {
         var atBottom: (@MainActor () -> Bool)?
         var notes: [String: String] = [:]
         var rowLedger = RowInitLedger()
+        var counts: [String: Int] = [:]
         var events: [[String: Any]] = []
         var writes = 0
         private var pending: Task<Void, Never>?
@@ -229,6 +236,7 @@ enum LayoutProbe {
                 "t": ms
             ]
             if let atBottom { report["transcriptAtBottom"] = atBottom() ? 1 : 0 }
+            if !counts.isEmpty { report["counts"] = counts }
             if !rowLedger.rows.isEmpty {
                 report["rowInits"] = ["rows": rowLedger.rows.count, "inits": rowLedger.inits, "violations": rowLedger.violations.count]
                 let perRow = rowLedger.rows.mapValues { ["inits": $0.inits, "appears": $0.appears, "disappears": $0.disappears] }

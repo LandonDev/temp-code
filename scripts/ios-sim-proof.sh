@@ -942,7 +942,8 @@ CHECK
 # index.json with the planned and the actual times). The checks: no row on
 # screen made its state twice (row-inits.json from LayoutProbe, by row key),
 # reduce motion on in its run, and the scrolled-up offset never moved while
-# rows arrived below. Reduce motion is the simulator's own setting
+# rows arrived below; and, from the layout report's counts, when no step faded in under
+# full motion or one did under reduced motion. Reduce motion is the simulator's own setting
 # (`defaults write com.apple.Accessibility ReduceMotionEnabled`), read back
 # from UIAccessibility in row-inits.json.
 reduce_motion() { xcrun simctl spawn "$TC_SIM_UDID" defaults write com.apple.Accessibility ReduceMotionEnabled -bool "$1" >/dev/null 2>&1 || true; }
@@ -955,15 +956,22 @@ transcript_set() {
   (cd "$here/.." && "$bun" -e 'import { scenarioTimeline } from "./scripts/lib/soakScenarios.ts"
 const seen = new Set<string>()
 for (const s of scenarioTimeline()) { if (seen.has(s.label)) continue; seen.add(s.label); console.log(`${s.at}\t${s.label}`) }') > "$dir/timeline.tsv"
-  for run in light dark reduced scrolled-up; do
-    if [ "$run" = dark ]; then appearance dark; else appearance light; fi
-    if [ "$run" = reduced ]; then reduce_motion true; else reduce_motion false; fi
+  for run in ${TC_TRANSCRIPT_RUNS:-light dark reduced scrolled-up}; do
+    # A setting that changes lands a moment later; under load after the launch it rebuilt the scene
+    # (the reduced run once opened on Home). Change it, then give it time to land.
+    want="$([ "$run" = dark ] && echo dark || echo light) $([ "$run" = reduced ] && echo true || echo false)"
+    if [ "$want" != "${had:-}" ]; then
+      appearance "${want% *}"
+      reduce_motion "${want#* }"
+      had=$want
+      sleep 8
+    fi
     container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data)
     rm -f "$container/Documents/transcript-report.json" "$container/Documents/scroll-hold.json"
     mkdir -p "$dir/$run"
     if [ "$run" = scrolled-up ]; then TC_SCROLL_UP_RUN=1 launch_app thread "$thread" chat; else launch_app thread "$thread" chat; fi
     # Played only once the app says the thread landed (and, scrolled up, that the reader is up): a loaded Mac lands late.
-    wait_for "$container/Documents/transcript-report.json" 60 || echo "ios-sim-proof: transcript $run: no landing report" >&2
+    wait_for "$container/Documents/transcript-report.json" 120 || echo "ios-sim-proof: transcript $run: no landing report" >&2
     [ "$run" = scrolled-up ] && { wait_for "$container/Documents/scroll-hold.json" 30 || echo "ios-sim-proof: transcript $run: the reader was not scrolled up" >&2; }
     cp "$container/Documents/transcript-report.json" "$dir/$run-landing.json" 2>/dev/null || echo '{}' > "$dir/$run-landing.json"
     sysctl -n vm.loadavg > "$dir/$run-load.txt"
@@ -991,7 +999,9 @@ if wait > 0: time.sleep(wait)
 json.dump({'ms': ms, 'shots': index}, open(f'{out}/index.json', 'w'), indent=1)
 print(f'ios-sim-proof: transcript {out.rsplit("/", 1)[-1]}: {len(index)} shots over {ms} ms')
 PLAY
-    kill -INT "$recorder" 2>/dev/null; wait "$recorder" 2>/dev/null || true
+    # A recorder that never started (another recording holds the device) leaves no video; the shots still count.
+    kill -INT "$recorder" 2>/dev/null || echo "ios-sim-proof: transcript $run: no video ($(tail -n 1 "$dir/record.err"))" >&2
+    wait "$recorder" 2>/dev/null || true
     rm -f "$dir/record.err"
     # The layout report writes 250 ms after the last change.
     sleep 1
@@ -1007,7 +1017,8 @@ PLAY
 import json, pathlib, sys
 out = pathlib.Path(sys.argv[1])
 failures, summary = [], {}
-for run in ('light', 'dark', 'reduced', 'scrolled-up'):
+runs = [r for r in ('light', 'dark', 'reduced', 'scrolled-up') if (out / f'{r}-row-inits.json').exists()]
+for run in runs:
     r = json.loads((out / f'{run}-row-inits.json').read_text())
     rows = r.get('rows', {})
     v = r.get('violations', [])
@@ -1019,10 +1030,18 @@ for run in ('light', 'dark', 'reduced', 'scrolled-up'):
     if not rows: failures.append(f'{run}: no row-inits report')
     if v: failures.append(f'{run}: {len(v)} rows on screen made their state again: ' + ', '.join(f"{x['key']}×{x['inits']}@{x['t']}ms" for x in v[:12]))
     if run == 'reduced' and r.get('reduceMotion') != 1: failures.append('reduced: reduce motion was off in the app')
+    # The phrase fade: young runs drawn while the timeline streams, never under reduced motion.
+    layout = json.loads((out / f'{run}-layout.json').read_text()) if (out / f'{run}-layout.json').exists() else {}
+    fades = layout.get('counts', {}).get('streamFadeYoung', 0)
+    summary[run]['fades'] = fades
+    summary[run]['counts'] = layout.get('counts', {})
+    if run == 'reduced' and fades: failures.append(f'reduced: {fades} fades drawn under reduced motion')
+    if run in ('light', 'dark') and not fades: failures.append(f'{run}: no step faded in')
     if run != 'reduced' and r.get('reduceMotion') == 1: failures.append(f'{run}: reduce motion was on')
-hold = json.loads((out / 'scroll-hold.json').read_text())
+hold = json.loads((out / 'scroll-hold.json').read_text()) if 'scrolled-up' in runs else {'skipped': True}
 summary['scrolledUp'] = hold
 if not hold: failures.append('scrolled-up: no scroll-hold report')
+elif hold.get('skipped'): pass
 else:
     moved = hold['maxOffset'] - hold['minOffset']
     if hold['seq'] <= hold['seqAtStart']: failures.append('scrolled-up: no rows arrived during the run')

@@ -30,12 +30,18 @@ struct MarkdownView: View {
     let text: String
     var dim = false
     var streaming = false
+    /// The streaming row's phrase fade; nil draws every block as it stands.
+    var fade: StreamFadeState? = nil
 
     var body: some View {
         if streaming {
-            MarkdownBlocksView(document: ThreadCaches.markdown.streamingDocument(scope: scope, seq: seq, text: text), dim: dim)
+            MarkdownBlocksView(document: ThreadCaches.markdown.streamingDocument(scope: scope, seq: seq, text: text), dim: dim, fade: fade)
         } else if let document = ThreadCaches.markdown.document(scope: scope, seq: seq, text: text) {
             MarkdownBlocksView(document: document, dim: dim)
+        } else if ThreadCaches.markdown.hasStreamingSlot(scope: scope, seq: seq) {
+            // A row that just drained: its streaming render, whole, until the settled
+            // parse lands. The two are the same document, so the swap changes nothing.
+            MarkdownBlocksView(document: ThreadCaches.markdown.streamingDocument(scope: scope, seq: seq, text: text, settled: true), dim: dim)
         } else {
             Text(text)
                 .transcriptType(TranscriptType.prose)
@@ -52,30 +58,31 @@ struct MarkdownView: View {
 struct MarkdownBlocksView: View {
     let document: MarkdownDocument
     var dim = false
+    /// A streaming row's fade: prose blocks (paragraphs, headings, quotes,
+    /// list items) draw their young steps faded; code, tables and rules never.
+    var fade: StreamFadeState? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: TranscriptMetrics.Gap.block) {
             ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .paragraph(let text):
-                    Text(text.inlineStyled())
-                        .transcriptType(TranscriptType.prose)
+                    prose(text.inlineStyled(), type: TranscriptType.prose)
                 case .heading(let level, let text):
-                    Text(text.inlineStyled())
-                        .transcriptType(level <= 1 ? TranscriptType.proseH1 : level == 2 ? TranscriptType.proseH2 : TranscriptType.proseH3)
+                    prose(text.inlineStyled(), type: level <= 1 ? TranscriptType.proseH1 : level == 2 ? TranscriptType.proseH2 : TranscriptType.proseH3)
                         .padding(.top, level <= 2 ? TranscriptMetrics.Gap.line * 2 : TranscriptMetrics.Gap.line)
                 case .list(let items, let ordered):
+                    let itemRuns = listRuns(items)
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                            ListItemRow(item: item, index: index, ordered: ordered)
+                            ListItemRow(item: item, index: index, ordered: ordered, runs: itemRuns?[index])
                         }
                     }
                     .transcriptType(TranscriptType.prose)
                 case .code(let code, let language):
                     CodeBlock(text: code, language: language, type: TranscriptType.code, maxLines: 40)
                 case .quote(let text):
-                    Text(text.inlineStyled())
-                        .transcriptType(TranscriptType.prose)
+                    prose(text.inlineStyled(), type: TranscriptType.prose)
                         .foregroundStyle(.secondary)
                         .padding(.leading, 12)
                         .padding(.vertical, 2)
@@ -94,6 +101,29 @@ struct MarkdownBlocksView: View {
         }
         .foregroundStyle(dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// A prose block: plain when nothing fades, else its runs through the renderer.
+    @ViewBuilder
+    private func prose(_ styled: AttributedString, type: TypeSpec) -> some View {
+        if let fade {
+            StreamFadeText(styled: styled, runs: fade.runs(String(styled.characters)), type: type)
+        } else {
+            Text(styled)
+                .transcriptType(type)
+        }
+    }
+
+    /// A list's runs per item: the ledger reads the items joined by newlines.
+    private func listRuns(_ items: [AttributedString]) -> [[RevealSegment]]? {
+        guard let fade else { return nil }
+        let plain = items.map { String($0.characters) }
+        let runs = fade.runs(plain.joined(separator: "\n"))
+        var start = 0
+        return plain.map { item in
+            defer { start += item.count + 1 }
+            return RevealSegment.slice(runs, from: start, to: start + item.count)
+        }
     }
 }
 
@@ -216,6 +246,8 @@ private struct ListItemRow: View {
     let item: AttributedString
     let index: Int
     let ordered: Bool
+    /// The item's runs while its row streams (nil: drawn as it stands).
+    var runs: [RevealSegment]? = nil
 
     var body: some View {
         let (checked, text) = Self.checklist(item)
@@ -231,8 +263,22 @@ private struct ListItemRow: View {
                     .monospacedDigit()
                     .frame(minWidth: 18, alignment: .trailing)
             }
-            Text(text.inlineStyled())
+            itemText(text.inlineStyled(), checked: checked)
                 .foregroundStyle(checked == true ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+        }
+    }
+
+    @ViewBuilder
+    private func itemText(_ styled: AttributedString, checked: Bool?) -> some View {
+        // A checkbox item's runs count its "[x] " prefix, which the glyph replaced: shift them by it.
+        let shift = checked == nil ? 0 : 4
+        if let runs, runs.contains(where: \.young) {
+            StreamFadeText(styled: styled, runs: runs.compactMap { run in
+                let from = max(0, run.from - shift), to = run.to - shift
+                return to > from ? RevealSegment(from: from, to: min(to, styled.characters.count), bornAt: run.bornAt) : nil
+            }, type: TranscriptType.prose)
+        } else {
+            Text(styled)
         }
     }
 

@@ -15,27 +15,48 @@ import TempCodeContract
 /// even when it mounts settled. A streaming block is paced inside this row's
 /// own state, so a step re-runs this body and nothing in the fold; the
 /// revealed prefix goes through the markdown's incremental path (the last
-/// changed block only). When the final row arrives the reveal drains what
-/// it still holds at the stream's pace, and only then the settled markdown
-/// takes over.
+/// changed block only), each step fading in as one run (`StreamFade.swift`).
+/// When the final row arrives the reveal drains what it still holds at the
+/// stream's pace; the row stays on the streaming render until that drain
+/// and its last fade are done, then swaps to the settled parse, which is
+/// the same document, so nothing on screen changes. The row reports to the
+/// thread's `RevealDrain` under its turn while it reveals.
 struct StreamingAssistantRow: View {
     let block: TextBlock
     @State private var reveal: SmoothTextReveal?
+    /// The phrase fade's ledger (plain storage; the reveal's steps redraw the row).
+    @State private var fade = StreamFadeState()
+    /// Bumped when the last fade has run out, so the row settles.
+    @State private var fadeEnded = 0
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.revealTurn) private var revealTurn
+    @Environment(\.revealDrain) private var revealDrain
 
     init(block: TextBlock, born: Bool = false) {
         self.block = block
         _reveal = State(initialValue: block.streaming || born ? SmoothTextReveal(text: block.text, streaming: block.streaming, fromStart: born) : nil)
     }
 
+    /// Still on the streaming render: the stream runs, the reveal holds text back, or a step is still fading.
+    private var revealing: Bool {
+        guard let reveal else { return false }
+        _ = fadeEnded
+        return block.streaming || reveal.revealing || fade.fading
+    }
+
     var body: some View {
-        if let reveal, block.streaming || reveal.revealing {
+        #if DEBUG
+        let _ = LayoutProbe.count(reveal == nil ? "streamRow.noReveal" : revealing ? "streamRow.streaming" : "streamRow.settled")
+        #endif
+        if let reveal, revealing {
             let shown = reveal.revealed
+            let _ = fade.reduced = reduceMotion
             Group {
                 if !shown.isEmpty {
                     // The incremental path, never the async one: that would
                     // flicker between plain and styled on every step.
-                    MarkdownView(seq: block.seq, text: shown, streaming: true)
+                    MarkdownView(seq: block.seq, text: shown, streaming: true, fade: fade)
                         .textSelection(.enabled)
                         .padding(.vertical, 6)
                 }
@@ -43,8 +64,20 @@ struct StreamingAssistantRow: View {
             .onChange(of: block.text) { reveal.update(text: block.text, streaming: block.streaming) }
             .onChange(of: block.streaming) { reveal.update(text: block.text, streaming: block.streaming) }
             .onChange(of: scenePhase) { if scenePhase != .active { reveal.snap() } }
-            .onDisappear { reveal.snap() }
+            // What the row held when it mounted is shown, not faded; from then on every step fades.
+            .onAppear { fade.arm() }
+            .onDisappear {
+                fade.disarm()
+                reveal.snap()
+            }
+            // Settle once the last fade has run out (each step restarts the wait).
+            .task(id: fade.lastStepAt) {
+                try? await Task.sleep(for: .seconds(StreamRevealLedger.fade))
+                if !Task.isCancelled { fadeEnded += 1 }
+            }
             .onChange(of: reveal.revealedUnits, initial: true) { LayoutProbe.note("revealedUnits", String(reveal.revealedUnits)) }
+            .onChange(of: revealing, initial: true) { report() }
+            .onDisappear { revealDrain?.report(turn: revealTurn ?? -1, row: block.seq, on: false) }
         } else {
             MarkdownView(seq: block.seq, text: block.text)
                 .textSelection(.enabled)
@@ -52,7 +85,14 @@ struct StreamingAssistantRow: View {
                 .contextMenu {
                     Button("Copy Message", systemImage: "doc.on.doc") { UIPasteboard.general.string = block.text }
                 }
+                .onAppear { report() }
         }
+    }
+
+    /// Tells the thread's drain whether this row still reveals under its turn.
+    private func report() {
+        guard let revealDrain, let revealTurn else { return }
+        revealDrain.report(turn: revealTurn, row: block.seq, on: revealing)
     }
 }
 

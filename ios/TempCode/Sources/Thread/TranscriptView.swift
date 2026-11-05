@@ -42,6 +42,19 @@ struct TranscriptView: View {
     /// Which rows were born live (read and written outside observation).
     @State private var bornRows = BornRows()
     @Environment(\.scenePhase) private var scenePhase
+    /// Which turns still reveal text (A6's closing line waits on it).
+    @State private var revealDrain = RevealDrain()
+
+    /// Each row's turn: the key of the message it follows.
+    static func turnKeys(_ rows: [TranscriptRowModel]) -> [TranscriptRowID: Int] {
+        var keys: [TranscriptRowID: Int] = [:]
+        var turn: Int?
+        for row in rows {
+            if case .item(let entry) = row, case .user = entry.item { turn = entry.key }
+            if let turn { keys[row.id] = turn }
+        }
+        return keys
+    }
 
     /// Rows a cold open shows, and one page back.
     static let page = 75
@@ -50,6 +63,7 @@ struct TranscriptView: View {
         let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory)
         let shown = rows.count > window ? Array(rows.suffix(window)) : rows
         let moreAbove = rows.count > window || thread.moreBefore
+        let turns = TranscriptView.turnKeys(rows)
         let _ = bornRows.open(thread: client.threads[sessionId])
         let _ = LayoutProbe.note("bornOpenedAt", bornRows.openedAt.map(String.init) ?? "waiting")
         ScrollViewReader { proxy in
@@ -74,6 +88,7 @@ struct TranscriptView: View {
                     }
                     .id(row.id)
                     .onAppear { bornRows.claim(row) }
+                    .environment(\.revealTurn, turns[row.id])
                     .rowInitProbe(row.id)
                     .accessibilityIdentifier("transcript-item")
                 }
@@ -96,6 +111,7 @@ struct TranscriptView: View {
             .scrollContentBackground(.hidden)
             .environment(\.defaultMinListRowHeight, 0)
             .environment(scrollState)
+            .environment(\.revealDrain, revealDrain)
             .environment(\.transcriptCwd, cwd)
             .task(id: sessionId) { cwd = client.session(sessionId)?.cwd }
             .contentMargins(.vertical, 8, for: .scrollContent)

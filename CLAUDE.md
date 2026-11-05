@@ -2574,7 +2574,20 @@ proof and the sizing rules; the pieces, by name:
   running edit tool by path (`ToolItem.live`, `ThreadFold.liveEdits`), and
   `EnvironmentClient.append` applies a batch in place;
   `Thread/StreamingRow.swift` holds the streaming assistant row and the
-  live chip label; `Thread/ActivityPhaseRow.swift` the phases, their rail,
+  live chip label; the phrase fade (A5) is the client package's
+  `Rendering/StreamReveal.swift` (`StreamRevealLedger`: a ledger per block
+  by its first 32 characters, the settled prefix and at most four steps
+  younger than `revealFade` as runs, a reparsed block fading whole, none
+  before arming or under reduced motion; `RevealDrain`, the turns still
+  revealing, which the closing line waits on) drawn by
+  `Thread/StreamFade.swift` (`StreamFadeRenderer`, a `TextRenderer` under a
+  `TimelineView` that runs only while a run is young, over a `Text`
+  interpolated from the runs; prose blocks only, never code or tables); a
+  row stays on the streaming render until its drain and last fade are
+  done, then swaps to the settled parse, which equals
+  `streamingDocument(settled: true)` (MarkdownSettleTests); the scenario
+  runner's reveal, fade and drain checks live in
+  `Rendering/TranscriptScenarioReveal.swift`; `Thread/ActivityPhaseRow.swift` the phases, their rail,
   the thinking steps and the thinking tail; `ShimmerText`
   (TranscriptStyles.swift) is the desktop's shimmer. The test server's
   `POST /stream` plays a bursty turn with a growing Edit and live edits.
