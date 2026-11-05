@@ -5,8 +5,8 @@ import TempCodeContract
 /// One phase of the agent's work, the desktop's `ActivityPhaseGroup` (zen,
 /// its default): the kind's glyph and one human line, "Read 3 files in
 /// src/lib and searched for tokens", with the steps under it on a rail. The
-/// line shimmers in the present tense while the agent is in the phase; the
-/// phase opens by itself on its second step and keeps a short window pinned
+/// line reads in the present tense while the agent is in the phase (the
+/// turn's working line is what moves); the phase opens by itself on its second step and keeps a short window pinned
 /// to its newest step, then folds back to its line when the agent moves on,
 /// unless the person opened it by hand. That settle-close animates only
 /// while the reader is at the bottom; anywhere else it closes without
@@ -38,7 +38,7 @@ struct ActivityPhaseRow: View {
     }
 
     var body: some View {
-        if group.isSingle, let only = group.entries.first {
+        if group.isSingle, let only = group.calls.first {
             HStack(alignment: .top, spacing: 0) {
                 PhaseGlyph(kind: group.kind)
                 ActivityStep(entry: only, client: client, sessionId: sessionId, live: group.live)
@@ -58,17 +58,12 @@ struct ActivityPhaseRow: View {
             } label: {
                 HStack(spacing: 0) {
                     PhaseGlyph(kind: group.kind)
-                    Group {
-                        if group.live {
-                            ShimmerText(text: title)
-                        } else {
-                            // Dimmed: the work is chrome around the answer.
-                            Text(title).foregroundStyle(.secondary)
-                        }
-                    }
-                    .font(.subheadline)
-                    .lineLimit(1)
-                    .padding(.horizontal, 8)
+                    // Dimmed: the work is chrome around the answer.
+                    Text(title)
+                        .foregroundStyle(.secondary)
+                        .font(.subheadline)
+                        .lineLimit(1)
+                        .padding(.horizontal, 8)
                     Spacer(minLength: 0)
                 }
                 .frame(minHeight: ActivityStep.lineHeight)
@@ -109,8 +104,10 @@ struct ActivityPhaseRow: View {
     /// window, bottom-aligned and clipped, so the newest step holds the line
     /// the way the desktop's pinned pane does; settled, every step.
     @ViewBuilder private var steps: some View {
-        let shown = group.live ? Array(group.entries.suffix(Self.windowSteps)) : group.entries
-        let clipped = group.live && group.entries.count > Self.windowSteps
+        // A thought shows only in a phase the person opened.
+        let steps = group.shown(byHand: byHand || forceOpen)
+        let shown = group.live ? Array(steps.suffix(Self.windowSteps)) : steps
+        let clipped = group.live && steps.count > Self.windowSteps
         let list = VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(shown.enumerated()), id: \.element.id) { index, entry in
                 ActivityStep(entry: entry, client: client, sessionId: sessionId, live: group.live)
@@ -182,21 +179,22 @@ private struct PhaseEdit: View {
     }
 }
 
-/// A thought inside a phase, the desktop's `ActivityThinkingRow`: its first
-/// paragraph as one plain line in the dim step, breathing while it streams.
-/// Tap opens the whole thought in place; reasoning is read on purpose.
+/// A thought inside a phase the person opened, the desktop's
+/// `ThinkingRow`: "Thought" in the dim step, no duration; tap opens the
+/// whole thought in place. Reasoning is read on purpose. While a thought
+/// streams it is no row: the working line says its newest sentence.
 struct ThinkingStep: View {
     let block: TextBlock
     @State private var open = false
 
     var body: some View {
-        let summary = TranscriptRows.summary(block.text)
         VStack(alignment: .leading, spacing: 0) {
             Button {
                 withAnimation(open ? Motion.collapse : Motion.expand) { open.toggle() }
             } label: {
                 HStack(spacing: 0) {
-                    BreathingText(text: summary, breathing: block.streaming)
+                    Text("Thought")
+                        .foregroundStyle(.secondary)
                         .font(.subheadline)
                         .lineLimit(1)
                     Spacer(minLength: 0)
@@ -206,7 +204,7 @@ struct ThinkingStep: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.pressable)
-            .accessibilityLabel(open ? "Hide thinking" : "Thinking: \(summary)")
+            .accessibilityLabel(open ? "Hide thought" : "Thought")
             .accessibilityValue(open ? "Expanded" : "Collapsed")
             if open {
                 MarkdownView(seq: block.seq, text: block.text, dim: true)
@@ -216,34 +214,6 @@ struct ThinkingStep: View {
                     .transition(.asymmetric(insertion: .opacity.animation(Motion.expandContent), removal: .opacity.animation(Motion.collapse)))
             }
         }
-    }
-}
-
-/// A line in the dim step that breathes while it streams, the desktop's
-/// `zen-thinking-pulse`: opacity 0.35 to 0.9 and back over 3.6 s, stepped
-/// (14 steps a leg), so it redraws a handful of times a second, never per
-/// frame. Still under Reduce Motion.
-private struct BreathingText: View {
-    let text: String
-    let breathing: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        if breathing, !reduceMotion {
-            TimelineView(.periodic(from: .now, by: 1.8 / 14)) { context in
-                Text(text)
-                    .foregroundStyle(.secondary)
-                    .opacity(Self.level(at: context.date))
-            }
-        } else {
-            Text(text).foregroundStyle(.secondary)
-        }
-    }
-
-    static func level(at date: Date) -> Double {
-        let t = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 3.6) / 1.8
-        let leg = t < 1 ? t : 2 - t
-        return 0.35 + 0.55 * (leg * 14).rounded(.down) / 14
     }
 }
 
@@ -297,22 +267,6 @@ nonisolated struct PhaseRail: Shape {
         path.move(to: CGPoint(x: x, y: y - r))
         path.addQuadCurve(to: CGPoint(x: x + r, y: y), control: CGPoint(x: x, y: y))
         return path
-    }
-}
-
-/// The thinking line a live turn ends on while it has nothing to show yet,
-/// the desktop's thinking tail: the next content takes its slot.
-struct ThinkingTailRow: View {
-    var body: some View {
-        HStack(spacing: 0) {
-            ShimmerText(text: "Thinking")
-                .font(.subheadline)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 8)
-        .frame(minHeight: ActivityStep.lineHeight)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Thinking")
     }
 }
 

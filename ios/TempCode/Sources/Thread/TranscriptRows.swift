@@ -7,8 +7,8 @@ import TempCodeContract
 /// page, the work between answers as phases (thinking, tool calls and edits
 /// under one human line, `ActivityPhaseRow`), cards for what needs the
 /// user, an agent's published page as the page itself (`HtmlRenderRow`),
-/// quiet lines and labelled dividers for the rest, a live turn's
-/// thinking tail and a settled turn's closing line.
+/// quiet lines and labelled dividers for the rest, and each turn's end row
+/// (`TurnLineRow`: its working line, then its closing line).
 struct TranscriptRow: View, Equatable {
     let row: TranscriptRowModel
     let client: EnvironmentClient
@@ -30,9 +30,7 @@ struct TranscriptRow: View, Equatable {
         case .group(let group):
             ActivityPhaseRow(group: group, client: client, sessionId: sessionId, forceOpen: forceOpen)
         case .turnEnd(let end):
-            TurnEndRow(end: end)
-        case .thinkingTail:
-            ThinkingTailRow()
+            TurnLineRow(end: end, client: client, sessionId: sessionId)
         }
     }
 }
@@ -72,39 +70,6 @@ private struct ItemRow: View {
         case .system(let line):
             SystemRow(line: line, client: client, sessionId: sessionId)
         }
-    }
-}
-
-/// A settled turn's closing line, the desktop's `TurnEnd`: "Worked for 12s"
-/// and, at the trailing edge, the clock time, quiet, with Copy answer in the
-/// context menu. Nothing
-/// while the turn runs; the working strip has the live timer.
-struct TurnEndRow: View {
-    let end: TurnEnd
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "checkmark")
-                .frame(width: 18)
-                .accessibilityHidden(true)
-            Text(TranscriptRows.workedLabel(ms: end.durationMs))
-            Spacer(minLength: 8)
-            Text(TimeFormat.stamp(end.completedTs))
-                .monospacedDigit()
-        }
-        .font(.footnote)
-        .foregroundStyle(.tertiary)
-        .padding(.horizontal, 8)
-        .padding(.top, 2)
-        .padding(.bottom, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .contextMenu {
-            if !end.answer.isEmpty {
-                Button("Copy answer", systemImage: "doc.on.doc") { UIPasteboard.general.string = end.answer }
-            }
-        }
-        .accessibilityElement(children: .combine)
     }
 }
 

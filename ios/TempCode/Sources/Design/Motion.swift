@@ -82,6 +82,62 @@ enum Motion {
     /// The jump-to-latest pill.
     static let jump: Animation = fast
 
+    // MARK: The working line
+
+    /// The word morph's lift: the old words rise this far as they leave, the new from this far below.
+    static let morphLift = CGFloat(MorphModel.lift)
+    /// The closing line's words slide from past the glyph slot to the prose edge on the morph's arrival.
+    static let settleSlide: Animation = swapIn
+
+    /// A `MotionValues` curve as a keyframe's timing curve.
+    static func unit(_ curve: MotionValues.Curve) -> UnitCurve {
+        .bezier(startControlPoint: UnitPoint(x: curve.x1, y: curve.y1), endControlPoint: UnitPoint(x: curve.x2, y: curve.y2))
+    }
+
+    /// One dot of the working mark (MARK in lib/ease.ts): from its rest it
+    /// gathers towards the middle by `gather` of the period on the
+    /// breathing curve, holds, and parts again from `part`.
+    struct MarkDot {
+        let restX: CGFloat
+        let gatheredX: CGFloat
+        let gatheredScale: CGFloat
+        let gather: Double
+        let part: Double
+
+        /// The x or scale legs of one period, as keyframe durations and curves.
+        func legs(_ rest: CGFloat, _ gathered: CGFloat) -> [(value: CGFloat, duration: Double, curve: UnitCurve)] {
+            let period = MotionValues.markPeriod
+            return [
+                (gathered, period * gather, Motion.breathe),
+                (gathered, period * (part - gather), .linear),
+                (rest, period * (1 - part), Motion.breathe),
+            ]
+        }
+    }
+
+    static let breathe = unit(MotionValues.easeBreathe)
+    /// Left, middle, right; the right runs behind the left, so the three drift rather than clap.
+    static let markDots = [
+        MarkDot(restX: -CGFloat(MotionValues.markSpread), gatheredX: -1, gatheredScale: CGFloat(MotionValues.markSideScale), gather: MotionValues.markGather, part: MotionValues.markPart),
+        MarkDot(restX: 0, gatheredX: 0, gatheredScale: CGFloat(MotionValues.markMiddleScale), gather: MotionValues.markGather, part: MotionValues.markPart),
+        MarkDot(restX: CGFloat(MotionValues.markSpread), gatheredX: 1, gatheredScale: CGFloat(MotionValues.markSideScale), gather: MotionValues.markLagGather, part: MotionValues.markLagPart),
+    ]
+    /// A dot of the mark, in points.
+    static let markDot: CGFloat = 3
+
+    /// The shimmer's band (SHIMMER in lib/ease.ts), as a share of the
+    /// words' width either side of them: off the words until `shimmerStart`
+    /// of the period, across them on the sweep curve by `shimmerEnd`, then
+    /// off the other side until the period ends.
+    static let shimmerLegs: [(value: CGFloat, duration: Double, curve: UnitCurve)] = {
+        let period = MotionValues.shimmerPeriod
+        return [
+            (-1, period * MotionValues.shimmerStart, .linear),
+            (1, period * (MotionValues.shimmerEnd - MotionValues.shimmerStart), unit(MotionValues.shimmerSweep)),
+            (1, period * (1 - MotionValues.shimmerEnd), .linear),
+        ]
+    }()
+
     // MARK: A glyph trading state
 
     /// Send ↔ Stop, outline ↔ fill, pin ↔ unpin: the new glyph grows from a

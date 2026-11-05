@@ -2547,7 +2547,7 @@ proof and the sizing rules; the pieces, by name:
   row's changed block only, on it: `streamingDocument`), `TranscriptRows`
   (entries → the list's rows: an item, a phase of thinking and tool calls
   under one line with the live rule (the desktop's former zen activity view), a
-  live turn's thinking tail, a settled turn's closing line; stable ids) and
+  turn's end row, its working line then its closing line; stable ids) and
   `ToolPhrase` (the desktop's toolPhrase.ts with `group`, its `groupPhrase`,
   tested); `threads[id].fold`
   stays current incrementally. The transcript's two seams for sibling
@@ -2617,16 +2617,30 @@ proof and the sizing rules; the pieces, by name:
   done, then swaps to the settled parse, which equals
   `streamingDocument(settled: true)` (MarkdownSettleTests); the scenario
   runner's reveal, fade and drain checks live in
-  `Rendering/TranscriptScenarioReveal.swift`; `FollowRule.atBottom`
+  `Rendering/TranscriptScenarioReveal.swift`, its hold, morph and
+  closing-line checks in `Rendering/TranscriptScenarioLine.swift`;
+  `FollowRule.atBottom`
   decides the reader's place (only their own scroll or a deliberate scroll
   to a row leaves the bottom; growth under them pins), pins coalesce onto
   the next main-queue turn, and TranscriptView's DEBUG `TranscriptTrace`
   notes every scroll write and every offset drop that stays two frames
   (`write`, `jumpUp` in layout-events.json), which the transcript set
   fails on; the test server's `POST /scenario` gives each play its own ids
-  (`uniqueScenarioIds`); `Thread/ActivityPhaseRow.swift` the phases, their rail,
-  the thinking steps and the thinking tail; `ShimmerText`
-  (TranscriptStyles.swift) is the desktop's shimmer. The test server's
+  (`uniqueScenarioIds`); `Thread/ActivityPhaseRow.swift` the phases, their rail
+  and the thinking steps (a thought is no row: only a phase opened by hand
+  shows one, as "Thought"; while the turn is open a streaming thought and
+  a call the working line tells are no row, `TranscriptRows.rows`); a
+  turn's end row is one row from Send to the
+  close, `TurnLineRow` (`Thread/WorkingLine.swift`, over the client
+  package's `TurnLineInput` and `TurnLineModel` in `Rendering/TurnLine.swift`
+  and `LinePhase`): the working line (`WorkingMark`, the words in
+  `WorkingText`'s shimmer, each phase held 300 ms and changed through
+  `Design/MorphText.swift`), folded while a card waits or the thread is
+  paused, Stopped after a Stop, and "Worked for …" once `RevealDrain`
+  says the turn's rows are done revealing, then the Watching line under
+  the last turn while the thread watches; a turn's end ends every text
+  still streaming (`ThreadFold.closeUserTurns`); the header's subtitle
+  says no phase. The test server's
   `POST /stream` plays a bursty turn with a growing Edit and live edits.
 - Settings (thread 5): `ios/TempCode/Sources/Shell/{SettingsView,HostsView,
   AddEnvironmentSheet,SettingsStyles}.swift` are the SwiftUI alone; every

@@ -19,6 +19,7 @@
 		15BC131F1C8DDF6A7D21C007 /* ThreadActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38091D4AA307C8AE81C19643 /* ThreadActivity.swift */; };
 		17089A612469DC19E891190A /* AccountChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF5C21DE9EDFAD8644D4D3BD /* AccountChip.swift */; };
 		185C9CFF9FF2ED0FE3BF260A /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B3B09FA95C9406F6DB3C428 /* SearchView.swift */; };
+		1B073B562BF1D7175E318E81 /* WorkingLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3F22331C88CFFC49E5CC0D9 /* WorkingLine.swift */; };
 		1B397DAFBA99F301139211C4 /* WorkingStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECE31D51E7B8B8D6510DE175 /* WorkingStrip.swift */; };
 		1F2C61F70507AF0AA3EFE904 /* ThreadStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE7A6B9BA6DC1DC9FD59EA66 /* ThreadStrip.swift */; };
 		1FB0FF3F2BA329BD97D44344 /* TranscriptRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67182306E6D12A2B115CC644 /* TranscriptRows.swift */; };
@@ -127,6 +128,7 @@
 		C963ACA68697CC6119BCAF3D /* SearchRowViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AB775DFEAC401CE7C5E00C6 /* SearchRowViews.swift */; };
 		CCE4F6B807350528BF385F86 /* ThreadScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDA46DA4DA2674032B09E9D9 /* ThreadScreen.swift */; };
 		CD231FE7A0DA2FDE505ACF76 /* AddThreadSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AE9B93108E6DEA8082B6475 /* AddThreadSheet.swift */; };
+		CDA2C98346EDAF8A772D5B3E /* MorphText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7541751E15FB25F642D43083 /* MorphText.swift */; };
 		CEA16927C6E7A58FC70AC5E5 /* ArchiveBatchSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 985EEA459AFD5430EB39D3AB /* ArchiveBatchSheet.swift */; };
 		CF4256BCDCB08A140819A288 /* ActivityPhaseRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA8381F81776CD2B52BC0687 /* ActivityPhaseRow.swift */; };
 		D03705BD050A5406B1CECBEF /* NeedsYouNotes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E87EC3DF336E9F9C38A9188 /* NeedsYouNotes.swift */; };
@@ -269,6 +271,7 @@
 		728030024F26E8BF8E4FE9CF /* BoardOutcomes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardOutcomes.swift; sourceTree = "<group>"; };
 		7443D2F5EA079F041A1EE511 /* Duo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Duo.swift; sourceTree = "<group>"; };
 		7535142EC1534693C9291DF9 /* MasterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MasterView.swift; sourceTree = "<group>"; };
+		7541751E15FB25F642D43083 /* MorphText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MorphText.swift; sourceTree = "<group>"; };
 		776798E4452947B1F6C08838 /* ProjectPlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectPlanView.swift; sourceTree = "<group>"; };
 		793A843C291F830634F37C73 /* LayoutProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutProbe.swift; sourceTree = "<group>"; };
 		7BBB53D44FB85BE6A24DDD1F /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
@@ -339,6 +342,7 @@
 		F1313199058F50B8FC0E193B /* SubagentListScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubagentListScreen.swift; sourceTree = "<group>"; };
 		F178447D123AA2791D58D854 /* ThreadActivityText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadActivityText.swift; sourceTree = "<group>"; };
 		F265C2B1028FE5D79ABC64D3 /* PlanFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanFlow.swift; sourceTree = "<group>"; };
+		F3F22331C88CFFC49E5CC0D9 /* WorkingLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkingLine.swift; sourceTree = "<group>"; };
 		F7058E3A970F021E13295DB8 /* LiveText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveText.swift; sourceTree = "<group>"; };
 		F842F4C8A9DCC4A2A5149BF0 /* WorkspaceIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceIconView.swift; sourceTree = "<group>"; };
 		FAD80CF3ECFDAAC8176A3D56 /* MasterRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MasterRows.swift; sourceTree = "<group>"; };
@@ -417,6 +421,7 @@
 				641553FAFC34373347B4887C /* HostMark.swift */,
 				F7058E3A970F021E13295DB8 /* LiveText.swift */,
 				97C101715834513D41BDDBBB /* MorphWord.swift */,
+				7541751E15FB25F642D43083 /* MorphText.swift */,
 				002DFE88A99F9FF59FF9A750 /* Motion.swift */,
 				458CA933FF6A32D8B310B3D6 /* Pressable.swift */,
 				2129548FC89473DA37D3322A /* SectionHeader.swift */,
@@ -547,6 +552,7 @@
 				67182306E6D12A2B115CC644 /* TranscriptRows.swift */,
 				A5F85B138E361FDF48F26370 /* TranscriptStyles.swift */,
 				EFB33B5636588A22783599F7 /* TranscriptView.swift */,
+				F3F22331C88CFFC49E5CC0D9 /* WorkingLine.swift */,
 				ECE31D51E7B8B8D6510DE175 /* WorkingStrip.swift */,
 				B03DD1B56E889D958322BC44 /* Frame */,
 				561F3C98B5A53375A7002201 /* Master */,
@@ -869,6 +875,7 @@
 				D05AE2AB15DC533D0C27C491 /* MasterView.swift in Sources */,
 				4B09811F9A81080EAED4CCCA /* MediaImage.swift in Sources */,
 				219FE17E331380B1AB575DAD /* MorphWord.swift in Sources */,
+				CDA2C98346EDAF8A772D5B3E /* MorphText.swift in Sources */,
 				B699A65B99A5636451EF8703 /* Motion.swift in Sources */,
 				DA4F42DBD8ECA9A7D9D9CD2F /* Navigation.swift in Sources */,
 				31957CC6CAE40CD4147ACC8D /* NavigationRouter.swift in Sources */,
@@ -938,6 +945,7 @@
 				1FB0FF3F2BA329BD97D44344 /* TranscriptRows.swift in Sources */,
 				40F866E114FA5D0D457BDD77 /* TranscriptStyles.swift in Sources */,
 				349C3E1F097A407CF390AF65 /* TranscriptView.swift in Sources */,
+				1B073B562BF1D7175E318E81 /* WorkingLine.swift in Sources */,
 				1B397DAFBA99F301139211C4 /* WorkingStrip.swift in Sources */,
 				7FC48A69C90FED61AE3EDB20 /* WorkspaceIconView.swift in Sources */,
 				F7A0247378FDDEF0C7BF172F /* WorkspaceScreen.swift in Sources */,

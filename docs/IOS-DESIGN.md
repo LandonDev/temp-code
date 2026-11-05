@@ -534,12 +534,12 @@ account chip, and the elapsed ticking once a second in tabular digits while
 the thread is live. The host's name leads that line, in the tertiary step,
 only when more than one host is paired; the line drops the host, then
 compacts to the type and the model (or the one word "Queued" / "Stopped",
-or a running turn's phase alone), before the title truncates. The line's
+alone), before the title truncates. The line's
 mark and words by status:
 
 | status | mark | after the host |
 | --- | --- | --- |
-| running, starting | spinner | type, model, account, elapsed, then the turn's phase while it waits before its first content ("Rate limited", "Retry 3 in 32 s" quieter; `StripWords.phase` reads the host's phase line off the activity) |
+| running, starting | spinner | type, model, account, elapsed (the turn's phase is the transcript's working line, never the header's) |
 | watching | info dot, still live | type, model, account, elapsed |
 | waiting | warning dot | type, model, account |
 | error | destructive dot | type, model, account |
@@ -963,8 +963,8 @@ row (`Sources/Thread/TranscriptView.swift`, `TranscriptRows.swift`,
 `TranscriptStyles.swift`). What the list shows is the client package's row
 model (`Rendering/TranscriptRows.swift`, the desktop's `transcriptRows.ts`
 and `transcriptActivity.ts` with zen on, the desktop's default): an entry
-on its own, a phase of the agent's work, a live turn's thinking tail, or a
-settled turn's closing line, each under one key that never changes while
+on its own, a phase of the agent's work, or a turn's end row (its working
+line while the turn runs, then its closing line), each under one key that never changes while
 the row is on screen (`TranscriptRowID`, the desktop's `rowKey`): an item,
 a group and the step it grew from share one key, the first step's
 `ThreadEntry.key`, which the fold gives at birth and keeps (a call born
@@ -981,9 +981,12 @@ reader is at the bottom and never writes the offset while they are up,
 however the rows change. `ScenarioRunner` (Rendering/TranscriptScenario.swift,
 the desktop's "no jerk in any scenario" runner) plays the desktop's ten
 scenarios as timed pushes through the fold and the rows on an injected
-clock and asserts all three after every push; the checks later work builds
-(the reveal, the fade, the phase hold, the morph, the drain) are named
-there and a scenario lists the ones it awaits. The plain-words tool lines are
+clock and asserts all three after every push, with the reveal, the fade
+and the drain (`TranscriptScenarioReveal.swift`) and the phase hold, the
+word morph and the closing line's wait for the drain
+(`TranscriptScenarioLine.swift`: each end row's `TurnLineModel` sampled at
+every reveal step and every hold's end, its words through a `MorphModel`;
+`ScenarioReport.lineEvents` lists each morph and fold). The plain-words tool lines are
 the package's `ToolPhrase` (tested). Row kinds and their mobile form:
 
 - **User turn**: the desktop's bubble (transcript/UserMessage.tsx): at
@@ -1026,10 +1029,46 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
   (`MarkdownCache.streamingDocument`), so the earlier blocks keep their
   render and nothing flickers between plain and styled; a paragraph past
   8 KiB stays plain until the next block boundary.
-- **Thinking**: a step inside a phase (below), never a row of its own.
-  While a live turn has nothing to show yet (after the prompt, behind a
-  thought or an answer with no words) it ends on one shimmering "Thinking"
-  line, the desktop's thinking tail; the next content takes its slot.
+- **Thinking**: a thought is no row. While it streams the working line
+  says its newest finished sentence in Thinking's place; once it ends it
+  shows only in a phase the person opened, as "Thought" in `secondary`,
+  which opens the text. A phase of thoughts alone draws nothing, and a
+  lone call with a thought before it is a lone step.
+- **The working line** (`Thread/WorkingLine.swift` `TurnLineRow`, over the
+  client package's `TurnLineInput` and `TurnLineModel` in
+  `Rendering/TurnLine.swift`, the desktop's TurnEnd.tsx and `TurnLine`):
+  the turn's end row from Send to the turn's close, one row under its
+  message's key that never remounts. One 28 pt line at the prose edge:
+  `WorkingMark` in the 14 pt glyph slot, then 22 pt in the phase's words
+  in `WorkingText`, the line type, each phase held 300 ms
+  (`HeldPhase`) and changing through `MorphText`. The words are
+  `LinePhase.of`: Sending until the host echoes the message; the host's
+  words for a wait before the turn's own content (`LinePhase.hostWords`
+  over the meta's detail, "Waiting for the provider, 25 s"); "Waiting on"
+  an agent by title while a `wait_for_agent` holds the turn (the meta's
+  `awaiting`); one running call by its verb, muted, and its object in the
+  primary step, several by the group's phrase; a streaming thought's
+  newest sentence, said once as Thinking to VoiceOver; the mark alone while
+  prose streams; else Thinking. A card that waits on the person (an
+  approval undecided, a question unanswered) or a paused, stopped or
+  queued thread folds the line closed with its words kept; the resume
+  opens it again. The person's Stop row draws nothing: the line morphs to
+  Stopped. Once the turn is over and `RevealDrain` says no row of it still
+  reveals (the line looks again each reveal step, the drain tells no one),
+  the mark leaves as an icon swap and the words morph into "Worked for 2m
+  4s" ("Worked" until the time lands) and slide 22 pt to the prose edge.
+  A turn's end ends every text still streaming (`ThreadFold`), so a block
+  whose final row never came cannot hold the line open. A settled turn
+  that mounts draws its closing line at once, still; Copy answer is in its
+  context menu. No clock time.
+- **The Watching line**: under the thread's last closing line while the
+  thread watches (`WatchWords.isWatching`: watching, or idle or done with
+  subagents still working): the watching ring, Watching in medium, the
+  subject (`watchSubject`: one task by its label, one subagent by its
+  title, else counted) and the watch's age ticking each second, amber past
+  30 minutes on its own tasks (`WatchWords.isStale`). It opens the agents
+  list when it watches subagents. Once shown it stays mounted, folding
+  closed when the watch ends.
 - **Tool**: the one-line chip in the desktop's grammar: the kind's glyph
   in the quiet step at the verb's weight, the verb in the dim step ("Read",
   "Searched for", "Counted to one hundred"), the target loud (a file in
@@ -1064,14 +1103,14 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
   rest counted ("… and 2 more"), then "(1 failed)"; a phase that only
   thought reads "Thought". The phase the agent is in (the last phase of
   the open turn, nothing after it) says it in the present tense ("Reading
-  …", "Thinking") under the shimmer, and opens by itself on its second
-  step; its steps hang off a rail (a 1 pt spine down the glyph column at
+  …", "Thinking"), still (the working line is what moves), and opens by
+  itself on its second step; its steps hang off a rail (a 1 pt spine down the glyph column at
   14 % of the text colour, a quarter-round branch to each step's first
   line), each new one fading in over 150 ms, the newest nine in a window
   280 pt tall pinned to the newest, older ones leaving under a short fade.
-  A step is a thought's first paragraph as one plain line in `secondary`,
-  breathing (opacity 0.35 to 0.9, 1.8 s a leg, stepped) while it streams,
-  tap for the whole thought; a call's chip without its glyph (the rail is
+  While the turn is open a call the working line tells (`LinePhase.told`)
+  is no step: it joins its phase once it settles. A step is a thought (in
+  a phase the person opened only); a call's chip without its glyph (the rail is
   the bullet; a failure keeps an ✕ at the trailing edge); an edit's card.
   Once the agent moves on the phase folds to its line, dimmed, unless the
   person opened it by hand; that settle-close animates (200 ms ease-out)
@@ -1080,13 +1119,12 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
   its edit cards under the line. A lone step is not a group: the glyph and
   the step, no header repeating it. A search hit inside a phase opens it
   before the list scrolls to it.
-- **The shimmer** (`ShimmerText`, the desktop's `TextShimmer`): the words
-  at 40 % of the text colour, a band of full colour 2 pt per character
-  each side of its centre sweeping left to right, 1.4 s a pass, linear, no
-  pause; a gradient's offset under the text's own mask, read off a
-  `TimelineView`, so a frame lays nothing out and it stops off screen.
-  Reduce Motion holds the words still in `secondary` and the thought's
-  breathing stops.
+- **The shimmer** (`WorkingText`, the desktop's): the words muted, and
+  over them a copy in the primary step seen through a band that rests off
+  the words until 15 % of a 3 s period, crosses them on the sweep curve by
+  85 % and rests again; the band moves by its offset alone
+  (`keyframeAnimator`), so a frame lays nothing out. Still, muted words
+  under reduced motion and while the scene is not active.
 - **Edits**: the desktop's bordered card: the icon in a 20 pt box, the file
   name medium, the directory dim, a live verb while the call runs, `+n −m`
   in success and destructive, semibold and tabular; deleted and failed say
@@ -1154,18 +1192,15 @@ the package's `ToolPhrase` (tested). Row kinds and their mobile form:
   host has it; tap pushes it.
 - **Preamble**: "Project rules", then "212 words" quieter, folded inside the first user
   field above the brief; tap opens the text on a 150 ms cross-fade.
-- **Turn end**: a settled turn closes with one quiet line, "Worked for 12s"
-  behind a check with the clock time at the trailing edge (the desktop's `TurnEnd`), Copy answer in the
-  context menu (the turn's prose joined by blank lines). Nothing while the
-  turn runs: the working strip has the live timer. The open turn and a
-  pending turn have none.
+- **Turn end**: the working line becomes the turn's closing line, "Worked
+  for 12s" or Stopped, in the same row (above).
 
 Streaming: new text appends to the last assistant row without re-laying the
 rows above (rows compare by value and keep their identity by the row
 model's ids); the list stays pinned to the bottom while the user is at the
 bottom and shows a "Jump to latest" pill (one, a glass capsule that answers the
-touch, 36 pt with a 44 pt hit area, 150 ms opacity and 8 pt of travel) once they scroll up. Turn completion adds the closing line
-and nothing else. Nothing animates on first paint from cache. Images reach
+touch, 36 pt with a 44 pt hit area, 150 ms opacity and 8 pt of travel) once they scroll up. Turn completion turns the working
+line into the closing line and adds nothing. Nothing animates on first paint from cache. Images reach
 the phone through `fs.media` and the `/asset` GET; the host an image lives
 on is `MediaImage.hostOf(_:)` (the media-host thread's seam).
 
@@ -2176,6 +2211,11 @@ left in a view.
 | Last-activity line changing | `fast` cross-fade with 2 pt blur; the row never changes height | `SwapText`, `.swapTransition()` (`Motion.swap(reduced:)`, `Motion.crossFade`, `Motion.crossFadeBlur`) |
 | Counts and elapsed | `contentTransition(.numericText())` on `fast` | `.numeric(value)` (`Motion.numeric`), `CountText`, `ElapsedText`, `AgoText` |
 | Streaming text | the desktop's jitter buffer (`SmoothText`, smoothText.ts as of 0b82ddad, in UTF-16 units): the base pace is the arrival rate over the last 1.5 s (a gap counted 1 s at most, a burst at 1,500/s over a step), clamped 25–1,500 units/s, 400 before the first gap; a lead held behind the live end, seeded 250 ms (every host is remote to the phone), never under twice the gaps' 90th percentile (100–800 ms), an underrun growing it 1.5 times or by the wait, its excess decaying on a 6 s time constant; each spurt holds until a lead and a step are in hand; the pace leans up to 1.5 times while more than the lead is buffered, and every character shows within 1.5 s of arriving; the stream's end drains at the same pace, only a rewrite of the shown prefix and a hidden row snap. Whole words every 100 ms (`revealCut`: a token past 24 units cut where the pace reaches, never inside a grapheme; a bare block marker and a table's header row held until they have content; never inside an open fence), on a timer between steps, no display frames. A row that joins the last turn after the transcript opened is born live and reveals from its first word even when it mounts settled; the opening seq waits for the loaded thread; SwiftUI may prepare a row more than once, so preparation reads its eligibility and appearance consumes it; history and a row scrolled back in show whole. Each step fades in as one run over `revealFade` (0.4 s, linear; the desktop's `.stream-step`): the streaming block's text is one `Text` interpolated from its runs, the settled prefix as one and each step younger than the fade as its own (at most four; older young steps join the prefix), each young run carrying `StreamFadeAttribute` with its arrival, drawn at its opacity by `StreamFadeRenderer`, a `TextRenderer` under a `TimelineView(.animation(paused:))` that runs only while a run is young. A per-block ledger keyed by the block's first 32 characters (`StreamRevealLedger`) keeps old steps merged into the prefix; a block reparsed into another text fades in whole; text a row held when it mounted shows without a fade; paragraphs, headings, quotes and list items fade, code, tables and rules never; no rise; under reduced motion the word steps stay and nothing fades. The row stays on the streaming render until the drain and its last fade are done, then swaps to the settled parse, the same document (`streamingDocument(settled:)` stands in until the settled parse lands), so nothing on screen changes; while it reveals it reports to the thread's `RevealDrain` under its turn, which the closing line waits on. A chip's target types in and cross-fades on `fast` with 2 pt blur when replaced; edit counts tick with `numericText` | `SmoothTextReveal`, `StreamingAssistantRow`, `StreamFadeText`, `StreamRevealLedger`, `RevealDrain`, `BornRows`, `LiveChipLabel` (`Motion.swap`, `Motion.crossFade`) |
+| Working mark | three 3 pt dots in a 14 pt box gather into one and part every 1.6 s (the left and middle gather by 42 % and part at 58 %, the right by 50 % and 66 %, each leg on the breathing curve), offset and scale only; enters and leaves as a glyph trading state does | `WorkingMark` (`Motion.markDots`, `Motion.breathe`, `Motion.markDot`); the three dots at rest under reduced motion |
+| The shimmer | the band crosses the working words every 3 s, offset only | `WorkingText` (`Motion.shimmerLegs`); muted words under reduced motion |
+| Word morph | the old words lift 3 pt and fade over `swapOut`, then the new rise 3 pt over `base` on the swap curve while the box glides its width over `base`, the arriving words clipped, never cut with an ellipsis; new words under one key drawn at once; nothing on mount | `MorphText` (`Motion.swapOut`, `Motion.swapIn`, `Motion.morphLift`); reduced motion fades out, then in, `fast` each, no lift and no glide |
+| The working line settling | once every row of the turn has finished revealing: the mark leaves as a glyph trading state, the words morph into the closing words and slide 22 pt to the prose edge on `base` and the swap curve | `TurnLineRow` (`Motion.settleSlide`); the morph's fades and no slide under reduced motion |
+| The working line held, the Watching line | folds closed and opens again on the layout spring, the words kept; never unmounted while on screen | `Motion.layout`; opacity on `fast` under reduced motion |
 | Status dot to spinner | cross-fade over `fast` | `StatusDot` (`Motion.crossFade`) |
 | A glyph trading state (Send ↔ Stop, outline ↔ fill, pin ↔ unpin) | scale 0.25 → 1, opacity 0 → 1, blur 4 → 0, spring `duration 0.3, bounce 0`; reduced motion: opacity on the swap curve over `fast` | `.iconSwapTransition()` with `.id(symbol)` in a `ZStack` (`Motion.iconSwap(reduced:)`, `Motion.iconSwap`, `Motion.iconSwapScale`, `Motion.iconSwapBlur`, `Motion.iconFade`); `TypeGlyph(active:)` uses the symbol replace effect instead, since Glyphs builds without Motion |
 | Composer button | its tint and glyph color cross-fade 120 ms as it turns on or off; send ↔ steer ↔ queue ↔ pause is the glyph-trading row above, the circle never moves | `Motion.crossFade` on the tint; `.id(intent)` with `Motion.iconSwap(reduced:)` on the glyph |

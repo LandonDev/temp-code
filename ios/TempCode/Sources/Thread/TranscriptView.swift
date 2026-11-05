@@ -95,8 +95,9 @@ struct TranscriptView: View {
                     .environment(\.revealTurn, turns[row.id])
                     .rowInitProbe(row.id)
                     .accessibilityIdentifier("transcript-item")
+                    // The end row keeps its own vertical room, so a folded line takes none.
+                    .listRowInsets(row.id.end ? endInsets : rowInsets)
                 }
-                .listRowInsets(rowInsets)
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
                 Color.clear
@@ -224,6 +225,7 @@ struct TranscriptView: View {
 
     /// The desktop's 4 px between rows of a turn, at the page's 16 pt margin.
     private var rowInsets: EdgeInsets { EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16) }
+    private var endInsets: EdgeInsets { EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16) }
 
     @State private var initializedScroll = false
     @State private var proofScrollView: UIScrollView?

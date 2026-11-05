@@ -625,6 +625,7 @@ struct ThreadScreen: View {
 
     private func transcript(session: SessionMeta?, thread: ThreadState, measured: Bool = false) -> some View {
         TranscriptView(client: client, sessionId: sessionId, thread: thread, targetSeq: landingSeq, measured: measured)
+            .environment(\.openAgents, { showAgents = true })
     }
 }
 
