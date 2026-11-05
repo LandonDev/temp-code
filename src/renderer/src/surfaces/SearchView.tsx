@@ -475,7 +475,7 @@ export function SearchView({
         {besideRail ? null : (
           <OverlayNav onBack={onClose} onToggleSidebar={onToggleSidebar} />
         )}
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 px-3">
+        <div className="flex min-w-0 flex-1 items-center gap-1 px-3">
           <InputGroup
             className="flex-1"
             leading={<Search />}
@@ -515,7 +515,8 @@ export function SearchView({
 
       <div
         ref={lockOverscroll}
-        className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none px-1.5 py-1.5"
+        data-search-results
+        className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none p-1"
       >
         {empty ? null : noHost ? (
           <EmptyState
@@ -652,7 +653,8 @@ function ResultList({
             size="xs"
             id={`app-search-hit-${index}`}
             data-kind={hit.kind}
-            className={`h-7 flex-nowrap gap-2 rounded-md px-3 py-0 text-left transition-none ${highlighted ? "bg-muted" : ""}`}
+            data-search-row
+            className={`h-7 flex-nowrap gap-2 rounded-md px-2 py-0 text-left transition-none ${highlighted ? "bg-muted" : ""}`}
           >
             <span className="grid size-4 shrink-0 place-items-center text-muted-foreground">
               {row.icon}
@@ -700,7 +702,7 @@ export function HostMark({
 }) {
   const also = alsoOn && alsoOn.length > 0 ? `${name}, also on ${alsoOn.join(", ")}` : undefined;
   return (
-    <span data-host-mark className="flex shrink-0 items-center gap-1.5 ps-1 text-xs text-muted-foreground">
+    <span data-host-mark className="flex shrink-0 items-center gap-2 ps-1 text-xs text-muted-foreground">
       <HostGlyph environmentId={environmentId} title={also} />
       {newer ? <span>newer</span> : null}
     </span>

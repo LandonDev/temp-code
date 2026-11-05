@@ -550,7 +550,7 @@ export function InboxView({
             variant="ghost"
             size="sm"
             onClick={() => setScope((value) => (value === "all" ? "current" : "all"))}
-            className="mx-1.5 mb-1.5 justify-start self-start text-muted-foreground"
+            className="mx-1 mb-1 justify-start self-start text-muted-foreground"
           >
             {scope === "all" ? "This workspace only" : "Show all workspaces"}
           </Button>

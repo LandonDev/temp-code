@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, type RenderResult } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * The search surface over two hosts: one row per hit kind (thread title,
@@ -77,6 +77,8 @@ vi.mock("../chrome/FileTypeIcon", () => ({ FileTypeIcon: () => <span data-icon="
 vi.mock("../chrome/HarnessIcon", () => ({ HarnessIcon: () => <span data-icon="harness" /> }));
 
 import { SearchView } from "./SearchView";
+import { menuChunk } from "./chunks";
+import { warmMenus } from "../chrome/menuRows";
 
 const recents = [{ path: "/Users/me/gateway-kit", lastOpened: 1 }] as never;
 
@@ -163,6 +165,12 @@ const hostOf = (row: HTMLElement) => {
 };
 
 describe("SearchView across hosts", () => {
+  // The filter menu is RowsMenu: its body rides the menu chunk, loaded and
+  // published before the fake timers start.
+  beforeAll(async () => {
+    await menuChunk.load();
+    warmMenus();
+  });
   beforeEach(() => {
     vi.useFakeTimers();
     Element.prototype.scrollIntoView = () => {};
@@ -297,6 +305,12 @@ describe("SearchView across hosts", () => {
     expect(menuItem(menu, "Files").getAttribute("aria-checked")).toBe("true");
     expect(menuItem(menu, "Any").getAttribute("aria-checked")).toBe("true");
     expect(menuItem(menu, "app")).toBeTruthy();
+    // RowsMenu data: every row names its id and leads with a glyph; groups
+    // are parted by a separator, never by margin.
+    const items = [...menu.querySelectorAll('[role="menuitemcheckbox"]')];
+    expect(items.every((el) => el.getAttribute("data-menu-row") && el.querySelector("svg"))).toBe(true);
+    expect(menu.querySelectorAll('[data-slot="dropdown-menu-separator"]')).toHaveLength(2);
+    expect(menu.querySelector(".mt-2")).toBeNull();
 
     await act(async () => {
       fireEvent.click(menuItem(menu, "Files"));
@@ -317,6 +331,16 @@ describe("SearchView across hosts", () => {
       fireEvent.click(menuItem(menu, "app"));
     });
     expect(input.value).toBe("gateway type:thread,note,project project:app ");
+    view.unmount();
+  });
+
+  it("starts the results 12px in, like every sibling list: a p-1 scroller and px-2 rows", async () => {
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
+    await search(view, "gateway");
+    expect(view.container.querySelector("[data-search-results]")?.className).toMatch(/(^| )p-1( |$)/);
+    const row = rows(view)[0];
+    expect(row.className).toMatch(/(^| )px-2( |$)/);
+    expect(view.container.innerHTML).not.toMatch(/px-1\.5|py-1\.5|gap-1\.5/);
     view.unmount();
   });
 
