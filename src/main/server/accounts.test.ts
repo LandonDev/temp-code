@@ -199,6 +199,9 @@ describe('AccountsService', () => {
     headroom.observe({ service: 'claude-code', account: 'b@x.com', model: 'claude-fable-5-1', status: 429, headers: new Headers({ 'retry-after': '600' }) })
     expect(svc.roomElsewhere('claude', 'claude-fable-5-1', 'a@x.com')).toBe(false)
     expect(svc.roomElsewhere('claude', 'claude-opus-5-5', 'a@x.com')).toBe(true)
+    // The cooldown says when b is back for Fable; nothing for a model it is not cooling on.
+    expect(svc.capLiftsAt('claude', 'claude-fable-5-1', 'b@x.com')).toBe(now + 600_000)
+    expect(svc.capLiftsAt('claude', 'claude-opus-5-5', 'b@x.com')).toBeNull()
     // Codex has one account: nowhere else to go.
     expect(svc.roomElsewhere('codex', 'gpt-6.1-sol', 'c@x.com')).toBe(false)
   })
