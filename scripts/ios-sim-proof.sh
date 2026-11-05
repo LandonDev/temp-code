@@ -1055,6 +1055,11 @@ for run in runs:
     left = [e['t'] for e in events if e.get('key') == 'atBottom' and e.get('to') == '0']
     stayed = run == 'scrolled-up' or layout.get('notes', {}).get('atBottom', '1') == '1'
     summary[run]['leftBottomAtMs'] = left[:3]
+    # A drop of the offset no deliberate write explains is a jerk (TranscriptTrace's jumpUp; the scrolled-up
+    # run's own scroll is its one deliberate drop).
+    jumps = [(e['t'], e['to']) for e in events if e.get('key') == 'jumpUp']
+    summary[run]['jumps'] = jumps[:4]
+    if run != 'scrolled-up' and jumps: failures.append(f'{run}: the offset jumped up {len(jumps)} times with the reader at the bottom: {jumps[:3]}')
     if not stayed: failures.append(f'{run}: the list left the bottom on its own at {left[:3]} ms and stayed off it')
     if run == 'reduced' and fades: failures.append(f'reduced: {fades} fades drawn under reduced motion')
     # The fade is judged where its rows were on screen: a list that left the bottom streamed below the fold.

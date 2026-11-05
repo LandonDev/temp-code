@@ -140,6 +140,8 @@ struct TranscriptView: View {
             } action: { _, now in
                 // Held at the captured value while a reflow is open: the geometry flickers mid-fold.
                 guard !scrollState.reflowHeld else { return }
+                // A deliberate scroll away counts until the reader is back at the bottom, by any road.
+                if now { scrollState.offBottomWrite = false }
                 let verdict = FollowRule.atBottom(was: scrollState.atBottom, geometry: now, readerMoving: scrollState.readerMoving, offBottomWrite: scrollState.offBottomWrite)
                 if scrollState.atBottom != verdict.atBottom { scrollState.atBottom = verdict.atBottom }
                 if verdict.pin { pinTail(proxy: proxy) }
@@ -471,6 +473,9 @@ struct TranscriptView: View {
     /// the top changes that group's id.
     private func extend(proxy: ScrollViewProxy, rows: [TranscriptRowModel], shown: [TranscriptRowModel]) async {
         guard let top = shown.first else { return }
+        // The sentinel shows while the reader is at the bottom and not scrolling only when the list
+        // threw its offset (re-estimating rows mid-update): load the page, keep the reader at the bottom.
+        let deliberate = !scrollState.atBottom || scrollState.readerMoving
         extending = true
         defer { extending = false }
         let anchorSeq = top.anchorSeq
@@ -486,6 +491,11 @@ struct TranscriptView: View {
             anchor = found
         }
         try? await Task.sleep(for: .milliseconds(16))
+        guard deliberate else {
+            TranscriptTrace.write("extend kept bottom")
+            pinTail(proxy: proxy)
+            return
+        }
         var transaction = Transaction()
         transaction.disablesAnimations = true
         TranscriptTrace.write("extend \(anchor.key)"); scrollState.offBottomWrite = true; withTransaction(transaction) { proxy.scrollTo(anchor, anchor: .top) }
@@ -608,8 +618,10 @@ private struct JumpPill: View {
 
 /// DEBUG: the transcript proof's trace of what moves the offset. Every
 /// scroll the view makes is a numbered `write` event in the layout events;
-/// an offset that drops more than 200 pt is a `jumpUp` event with the
-/// content height and the top row, so a jump no write explains stands out.
+/// an offset that drops more than 200 pt and stays dropped for two frames
+/// (34 ms) is a `jumpUp` event with the content height and the top row, so
+/// a jump no write explains stands out. A drop the next pin puts right
+/// sooner (a List re-estimating mid-update) never reaches the screen.
 @MainActor
 enum TranscriptTrace {
     #if DEBUG
@@ -627,13 +639,31 @@ enum TranscriptTrace {
 private struct TranscriptTraceModifier: ViewModifier {
     let topRow: () -> TranscriptRowID?
     @State private var last: CGPoint?
+    /// A drop seen and not yet put right: from where, when, what it read.
+    @State private var drop: (from: CGFloat, at: Date, words: String)?
+
+    /// Two frames at 60 Hz: a drop put right sooner never reaches the screen.
+    private static let visible: TimeInterval = 0.034
 
     func body(content: Content) -> some View {
         content.onScrollGeometryChange(for: CGPoint.self) { CGPoint(x: $0.contentSize.height, y: $0.contentOffset.y) } action: { _, now in
-            if let last, last.y - now.y > 200 {
-                LayoutProbe.note("jumpUp", "\(Int(last.y))→\(Int(now.y)) h \(Int(last.x))→\(Int(now.x)) top \(topRow()?.key ?? -1)")
+            if let open = drop {
+                if now.y >= open.from - 200 {
+                    drop = nil
+                } else if Date().timeIntervalSince(open.at) >= Self.visible {
+                    LayoutProbe.note("jumpUp", open.words)
+                    drop = nil
+                }
+            } else if let last, last.y - now.y > 200 {
+                drop = (last.y, Date(), "\(Int(last.y))→\(Int(now.y)) h \(Int(last.x))→\(Int(now.x)) top \(topRow()?.key ?? -1)")
             }
             last = now
+        }
+        .task(id: drop?.at) {
+            // A drop that stays past two frames with no further geometry change is on screen too.
+            guard let open = drop else { return }
+            try? await Task.sleep(for: .seconds(Self.visible))
+            if drop?.at == open.at { LayoutProbe.note("jumpUp", open.words); drop = nil }
         }
     }
 }

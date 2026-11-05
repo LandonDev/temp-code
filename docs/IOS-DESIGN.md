@@ -2281,26 +2281,53 @@ keyboard action. Every animated change has a static cue as well.
   growing Edit and one at its end; at 120 Hz on a quiet Mac they are the
   next thing the stream set measures.
 
-- **The phrase fade, 2026-11-05** (A5; the same simulator, 60 Hz, the Mac's
-  load average 30 to 160). The stream set with the fade against the same
-  run under reduce motion, the fade off, at matched load: drawn at every
-  display frame the fade cost 80 late frames of ~1,300 (worst 290 ms)
-  against 48 (worst 123 ms); with the timeline capped at 30 Hz (a 0.4 s
-  linear fade in 12 steps, `StreamFadeText`) 74 against 65 (worst 386 ms
-  against 118, single frames). The reader stayed at the bottom on every
-  frame in all four runs; 172 to 174 draws carried a young run with the
-  fade, none under reduce motion. So the fade stays at every width, capped
-  at 30 Hz; the plan's fallback (no fade at compact width) was not taken,
-  and a quiet Mac at 120 Hz has to say whether the worst frame is the
-  fade's. Text selection under the renderer is not verified by touch (no
+- **The phrase fade, 2026-11-05** (A5; iPhone 17 Pro simulator, 60 Hz).
+  The stream set with the fade, then the same run under reduce motion (the
+  fade off), back to back twice at a one-minute load of 13 to 29: 79 and 69
+  late frames of ~1,300 against 39 and 49, the worst frame 133 and 122 ms
+  against 114 and 131; the reader at the bottom on every frame, 179 to 183
+  draws carrying a young run with the fade and none without. The worst
+  frame is the stream's own, not the fade's, so the fade stays at every
+  width (the plan's fallback, no fade at compact width, was not taken); it
+  adds about 30 late frames a run, which a 120 Hz device has to measure.
+  The fade's timeline redraws at most 30 times a second (a 0.4 s linear
+  fade in 12 steps): drawn at every display frame it cost half again as
+  many. Text selection under the renderer is not verified by touch (no
   long-press driver on this Mac); the renderer draws only while a run is
-  young, and a settled reply is plain `Text`. The transcript set found a
-  jerk older than A5: the list leaves the bottom on its own during the
-  timeline and stays off it (light at 19 s and 48 s in two runs, dark and
-  reduce motion at 51 s in one; the same with the pre-A5 views), which
-  the set now fails on; a revealing row asks the follow rule to pin at
-  each shown step (`TranscriptFollow`), which keeps the stream set pinned
-  but has not cured the timeline's case.
+  young, and a settled reply is plain `Text`.
+- **Following the reader, 2026-11-05.** The transcript set caught the list
+  leaving the bottom on its own mid-timeline and staying off it, with the
+  pre-A5 views too. The trace (`TranscriptTrace`: every scroll the view
+  makes is a numbered `write` event, a drop of the offset a `jumpUp`)
+  showed no stray write: the last write was a plain pin, and 73 ms later
+  "at the bottom" went false. The geometry alone cannot tell a reader who
+  scrolled up from a row growing below a reader at the bottom by more than
+  the 64 pt slack, and a `List` keeps no bottom on size changes, so the
+  follow rule took growth for the reader leaving. `FollowRule.atBottom`
+  decides it now: only the reader's own scroll (the scroll phase tracking,
+  interacting or decelerating) or a scroll the view makes on purpose to a
+  row away from the bottom (a landing, a page above, a reflow's row) takes
+  a reader off the bottom; growth under a reader at the bottom keeps them
+  there and pins. Pins coalesce into one per pass and run on the next
+  main-queue turn, after the list has applied the update that asked for
+  one: run mid-update, a scroll to the bottom row read the list's
+  estimated heights and dropped the offset by thousands of points. A
+  deliberate scroll away (`offBottomWrite`) ends once the reader is back
+  at the bottom by any road, and a top sentinel that shows while the
+  reader is at the bottom and not scrolling (the list threw the offset)
+  loads its page and keeps the reader at the bottom. After these, no run
+  of the transcript set leaves the bottom. What is left, and what the set
+  still fails on: one or two visible drops a run (a `jumpUp` is a drop
+  still there after two frames; shorter ones never reach the screen) at
+  the steps where calls regroup (turn 1's first call growing into a
+  group, turn 3's burst, turn 6's four calls at once), where the list's
+  content height halves as it re-estimates the rows the diff touched
+  (5,311 to 1,914 pt) and the next pin puts the offset back. That is the
+  `List`'s self-sizing, not a write of ours; the next slice owns it.
+  Writing the bottom edge from the scroll view's content size instead was
+  tried and was worse: mid-update the list reports a stale size too.
+  A revealing row asks the follow rule to pin at each shown step
+  (`TranscriptFollow`), since the reveal grows a row with no row landing.
 
 ## Push, the Live Activity and the Dynamic Island
 
