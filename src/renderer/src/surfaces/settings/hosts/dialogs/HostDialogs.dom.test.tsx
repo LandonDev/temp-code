@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { expectModalShape } from "../../../../chrome/modalShape.testkit";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { SavedEnvironment } from "@server/shared/contract-remote";
 
@@ -96,6 +97,8 @@ describe("NewKeyDialog", () => {
     });
     expect(writeText).toHaveBeenCalledWith("tc_k1.secret");
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    // The Made step ends on the same footer as the form, Done alone.
+    expectModalShape(screen.getByRole("dialog"), { cancel: false });
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });

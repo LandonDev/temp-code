@@ -5,10 +5,10 @@ import {
   type MacBridgeHostPolicy,
 } from "@server/shared/contract-macbridge";
 import { Button } from "../../../components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
 import { Input } from "../../../components/ui/input";
 import { SettingSwitch } from "../../../components/setting-switch";
-import { errorText } from "../../../chrome/ConfirmDialog";
+import { DialogFooter, ErrorLine, errorText } from "../../../chrome/ConfirmDialog";
+import { Modal, ModalBody } from "../../../chrome/Modal";
 import { pickFolder } from "../../../lib/fs";
 import { setMacBridgeLimits, setMacBridgeShared, useMacBridgeHosts } from "../../../lib/macBridge";
 import { isWebMode } from "../../../lib/nativeWeb";
@@ -49,93 +49,87 @@ export function MacBridgeHostDialog({ host: initial, onClose }: { host: MacBridg
   };
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent size="default" data-mac-bridge-settings={id}>
-        <DialogHeader>
-          <DialogTitle>Mac bridge on {host.name}</DialogTitle>
-        </DialogHeader>
-        <div className="flex flex-col gap-4">
-          <Group>
-            {fwd ? (
-              <Row title="Dev server forwarding">
-                <SettingSwitch label="Dev server forwarding" on={fwd.enabled} onChange={(on) => run(() => setForwarding(id, on))} />
-              </Row>
-            ) : null}
-            {runs ? (
-              <Row title="Commands at once" description={<Facts parts={usageParts(host)} />}>
-                <CommitField
-                  kind="int"
-                  aria-label={`Commands and jobs running at once from ${host.name}`}
-                  value={host.maxRunning}
-                  min={1}
-                  max={MAC_BRIDGE_MAX_RUNNING_CAP}
-                  className="w-16"
-                  onCommit={(n) => n !== null && void run(() => setMacBridgeLimits(id, { maxRunning: n }))}
-                />
-              </Row>
-            ) : null}
-            <Row title="Threads at once" description={runs ? undefined : <Facts parts={usageParts(host)} />}>
+    <Modal onClose={onClose} title={`Mac bridge on ${host.name}`} size="sm" data-mac-bridge-settings={id}>
+      <ModalBody>
+        <Group>
+          {fwd ? (
+            <Row title="Dev server forwarding">
+              <SettingSwitch label="Dev server forwarding" on={fwd.enabled} onChange={(on) => run(() => setForwarding(id, on))} />
+            </Row>
+          ) : null}
+          {runs ? (
+            <Row title="Commands at once" description={<Facts parts={usageParts(host)} />}>
               <CommitField
                 kind="int"
-                aria-label={`Threads ${host.name} may start on this Mac at once`}
-                value={host.maxThreads}
-                min={0}
-                max={MAC_BRIDGE_MAX_THREADS_CAP}
+                aria-label={`Commands and jobs running at once from ${host.name}`}
+                value={host.maxRunning}
+                min={1}
+                max={MAC_BRIDGE_MAX_RUNNING_CAP}
                 className="w-16"
-                onCommit={(n) => n !== null && void run(() => setMacBridgeLimits(id, { maxThreads: n }))}
+                onCommit={(n) => n !== null && void run(() => setMacBridgeLimits(id, { maxRunning: n }))}
               />
             </Row>
-          </Group>
-          {host.policy !== "off" ? (
-            <Group title="Shared folders" data-mac-bridge-shared={host.shared.length}>
-              {host.shared.length === 0 ? (
-                <p className="py-1.5 text-xs text-muted-foreground">No shared folders</p>
-              ) : null}
-              {host.shared.map((folder) => (
-                <Row key={folder} title={<span className="block truncate font-mono text-xs font-normal">{folder}</span>}>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="text-muted-foreground hover:text-destructive"
-                    onClick={() => void run(() => setMacBridgeShared(id, host.shared.filter((f) => f !== folder)))}
-                  >
-                    Remove
-                  </Button>
-                </Row>
-              ))}
-              <form
-                className="flex items-center gap-2 pt-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (path.trim()) void add(path.trim());
-                }}
-              >
-                <Input
-                  aria-label="Folder to share"
-                  value={path}
-                  placeholder="/Users/you/Documents/shared"
-                  spellCheck={false}
-                  autoComplete="off"
-                  className="h-7 flex-1 font-mono text-xs"
-                  onChange={(e) => setPath(e.target.value)}
-                />
-                <Button type="submit" variant="secondary" size="sm" disabled={!path.trim()}>
-                  Add
-                </Button>
-                {isWebMode() ? null : (
-                  <Button type="button" variant="secondary" size="sm" onClick={() => void browse()}>
-                    Choose…
-                  </Button>
-                )}
-              </form>
-            </Group>
           ) : null}
-          {error ? <p className="text-xs text-destructive">{error}</p> : null}
-        </div>
-        <DialogFooter>
-          <Button onClick={onClose}>Done</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <Row title="Threads at once" description={runs ? undefined : <Facts parts={usageParts(host)} />}>
+            <CommitField
+              kind="int"
+              aria-label={`Threads ${host.name} may start on this Mac at once`}
+              value={host.maxThreads}
+              min={0}
+              max={MAC_BRIDGE_MAX_THREADS_CAP}
+              className="w-16"
+              onCommit={(n) => n !== null && void run(() => setMacBridgeLimits(id, { maxThreads: n }))}
+            />
+          </Row>
+        </Group>
+        {host.policy !== "off" ? (
+          <Group title="Shared folders" data-mac-bridge-shared={host.shared.length}>
+            {host.shared.length === 0 ? (
+              <p className="py-1.5 text-xs text-muted-foreground">No shared folders</p>
+            ) : null}
+            {host.shared.map((folder) => (
+              <Row key={folder} title={<span className="block truncate font-mono text-xs font-normal">{folder}</span>}>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="text-muted-foreground hover:text-destructive"
+                  onClick={() => void run(() => setMacBridgeShared(id, host.shared.filter((f) => f !== folder)))}
+                >
+                  Remove
+                </Button>
+              </Row>
+            ))}
+            <form
+              className="flex items-center gap-2 pt-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (path.trim()) void add(path.trim());
+              }}
+            >
+              <Input
+                aria-label="Folder to share"
+                value={path}
+                placeholder="/Users/you/Documents/shared"
+                spellCheck={false}
+                autoComplete="off"
+                className="h-7 flex-1 font-mono text-xs"
+                onChange={(e) => setPath(e.target.value)}
+              />
+              <Button type="submit" variant="secondary" size="sm" disabled={!path.trim()}>
+                Add
+              </Button>
+              {isWebMode() ? null : (
+                <Button type="button" variant="secondary" size="sm" onClick={() => void browse()}>
+                  Choose…
+                </Button>
+              )}
+            </form>
+          </Group>
+        ) : null}
+        <ErrorLine error={error} />
+      </ModalBody>
+      {/* Each change saves as it is made: nothing is left to cancel. */}
+      <DialogFooter confirmLabel="Done" closeOnConfirm onConfirm={onClose} />
+    </Modal>
   );
 }

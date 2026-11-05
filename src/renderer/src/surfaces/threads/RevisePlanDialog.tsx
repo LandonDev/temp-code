@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { BusyLabel, Button } from "../../components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../../components/ui/dialog";
+import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
+import { ModalBody, ModalPanel } from "../../chrome/Modal";
+import { Dialog } from "../../components/ui/dialog";
 import { Textarea } from "../../components/ui/textarea";
 
 /** Asks what should change in the project plan and sends it as a turn in
@@ -40,8 +41,10 @@ export function RevisePlanDialog({
   };
   return (
     <Dialog open={open} onOpenChange={(next) => (next || !busy) && onOpenChange(next)}>
-      <DialogContent
-        size="default"
+      <ModalPanel
+        title="Revise the plan"
+        size="sm"
+        busy={busy}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
@@ -49,25 +52,25 @@ export function RevisePlanDialog({
           }
         }}
       >
-        <DialogTitle>Revise the plan</DialogTitle>
-        <Textarea
-          autoFocus
-          value={ask}
-          onChange={(e) => setAsk(e.target.value)}
-          placeholder="What should change?"
-          aria-label="What should change"
-          disabled={busy}
+        <ModalBody>
+          <Textarea
+            autoFocus
+            value={ask}
+            onChange={(e) => setAsk(e.target.value)}
+            placeholder="What should change?"
+            aria-label="What should change"
+            disabled={busy}
+          />
+          <ErrorLine error={error} />
+        </ModalBody>
+        <DialogFooter
+          onCancel={() => onOpenChange(false)}
+          confirmLabel="Send"
+          busyLabel="Sending…"
+          pending={busy}
+          onConfirm={() => void send()}
         />
-        {error ? <p className="text-xs text-destructive">{error}</p> : null}
-        <DialogFooter>
-          <Button variant="secondary" disabled={busy} onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button disabled={busy} onClick={() => void send()}>
-            <BusyLabel busy={busy} label="Send" busyLabel="Sending…" />
-          </Button>
-        </DialogFooter>
-      </DialogContent>
+      </ModalPanel>
     </Dialog>
   );
 }

@@ -2,9 +2,9 @@ import { WandSparkles } from "./icons";
 import { useRef, useState } from "react";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Textarea } from "@renderer/components/ui/textarea";
-import { ErrorLine, errorText } from "./ConfirmDialog";
+import { DialogFooter, ErrorLine, errorText } from "./ConfirmDialog";
 import { Tip } from "../components/tip";
-import { Modal, useModalClose } from "./Modal";
+import { Modal } from "./Modal";
 import { generateCommitMessage } from "../lib/harness";
 import { MOD } from "../lib/platform";
 
@@ -46,7 +46,6 @@ function Body({
   generating,
   setGenerating,
 }: Props & { generating: boolean; setGenerating: (on: boolean) => void }) {
-  const close = useModalClose();
   const [message, setMessage] = useState("");
   const [generateError, setGenerateError] = useState<string | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -104,17 +103,17 @@ function Body({
         </div>
         <ErrorLine error={error || generateError} />
       </div>
-      <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-        <Button variant="secondary" disabled={waiting} onClick={() => (close ? close(onCancel) : onCancel())}>
-          Cancel
-        </Button>
+      <DialogFooter
+        onCancel={onCancel}
+        confirmLabel="Stash & switch"
+        pending={busy === "stash"}
+        busy={waiting && busy !== "stash"}
+        onConfirm={onStash}
+      >
         <Button variant="secondary" disabled={!canCommit} onClick={() => onCommit(trimmed)}>
           <BusyLabel busy={busy === "commit"} label="Commit & switch" />
         </Button>
-        <Button disabled={waiting} onClick={onStash}>
-          <BusyLabel busy={busy === "stash"} label="Stash & switch" />
-        </Button>
-      </div>
+      </DialogFooter>
     </>
   );
 }

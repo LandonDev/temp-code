@@ -455,7 +455,10 @@ cleanup); archiving alone loses nothing, so its verb is the primary. A thread's 
 form of that kind; its dev servers live in the Activity section and the
 dev servers pane, never in a dialog.
 `chrome/Modal.tsx` and `chrome/ConfirmDialog.tsx` are thin shells on
-`Dialog` and `AlertDialog` for their existing callers. A sheet is for a long form or picker
+`Dialog` and `AlertDialog`, and every form dialog has their one shape:
+`Modal`, `ModalBody` and `DialogFooter`, 448px or wider, a hairline over
+the footer, Cancel then the verb, an action of the dialog's own at the
+footer's start; a field's label is `Field` over it, a choice a `FieldRow`. A sheet is for a long form or picker
 that would not fit a dialog. A menu (`DropdownMenu`, `ContextMenu`) is
 verbs; a popover is content (a picker, a preview, a list of accounts). A
 menu's rows are `MenuRow` data rendered by `RowsMenu` (from a trigger) or

@@ -1033,9 +1033,10 @@ handed off; a question forces it open. Header: "Plan" and the task count,
 which once the plan is written and settled with no build yet is the Plan
 ready mark with the count as its detail;
 before the handoff one primary **Start build** opens `StartBuildDialog`
-(Implement or Orchestrate, model, effort, access, the goal prefilled from
-the plan, the orchestration rules only for Orchestrate; Start calls
-`plan.implement`, one build). After the handoff the header names the build
+(the board's add sheet's form: the goal first, prefilled from the plan,
+then Build (Implement or Orchestrate), Model with its effort and Access as
+label-and-control rows, the orchestration rules only for Orchestrate;
+Start calls `plan.implement`, one build). After the handoff the header names the build
 (the build's tinted type glyph, "Implementation" and its `StatusMark`) and
 opens it. With the chat folded,
 a heading outline sits at the left edge when the board leaves it room

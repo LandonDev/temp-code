@@ -8,7 +8,9 @@ import { CANCELLED, SIGN_IN_REFRESHED } from "@shared/signInWords";
 import { RefreshCw } from "@renderer/chrome/icons";
 import { Page } from "@renderer/components/page";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@renderer/components/ui/dialog";
+import { Dialog } from "@renderer/components/ui/dialog";
+import { DialogFooter, ErrorLine } from "@renderer/chrome/ConfirmDialog";
+import { ModalBody, ModalPanel } from "@renderer/chrome/Modal";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { compact, localDayTime } from "@aliax/lib/viz";
@@ -178,24 +180,29 @@ export function AccountsPage(): React.JSX.Element {
       />
 
       <Dialog open={login !== null} onOpenChange={(open) => !open && closeLogin()}>
-        <DialogContent size="sm" showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Sign in to {loginName}</DialogTitle>
-            {login?.error ? null : (
-              <DialogDescription className="flex items-center gap-2">
+        <ModalPanel
+          title={`Sign in to ${loginName}`}
+          size="sm"
+          description={
+            login?.error ? undefined : (
+              <span className="inline-flex items-center gap-2">
                 <Spinner />
                 Finish in the window that opened
-              </DialogDescription>
-            )}
-          </DialogHeader>
-          {login?.error ? <p className="text-[13px] text-destructive">{login.error}</p> : null}
-          <DialogFooter>
-            <Button variant="secondary" onClick={closeLogin}>
-              Cancel
-            </Button>
-            {login?.error ? <Button onClick={() => void addAccount(login.serviceId, login.hint)}>Try again</Button> : null}
-          </DialogFooter>
-        </DialogContent>
+              </span>
+            )
+          }
+        >
+          {login?.error ? (
+            <ModalBody>
+              <ErrorLine error={login.error} />
+            </ModalBody>
+          ) : null}
+          <DialogFooter
+            onCancel={closeLogin}
+            confirmLabel={login?.error ? "Try again" : undefined}
+            onConfirm={login ? () => void addAccount(login.serviceId, login.hint) : undefined}
+          />
+        </ModalPanel>
       </Dialog>
     </Page>
   );

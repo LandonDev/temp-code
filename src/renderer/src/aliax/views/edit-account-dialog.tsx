@@ -1,9 +1,10 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ProfileView, ServiceId } from "aliax-core/shared/types";
-import { BusyLabel, Button } from "@renderer/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@renderer/components/ui/dialog";
+import { Dialog } from "@renderer/components/ui/dialog";
 import { Input } from "@renderer/components/ui/input";
-import { ErrorLine, errorText } from "@renderer/chrome/ConfirmDialog";
+import { DialogFooter, ErrorLine, errorText } from "@renderer/chrome/ConfirmDialog";
+import { Field, FieldRow } from "@renderer/chrome/DialogField";
+import { ModalBody, ModalPanel } from "@renderer/chrome/Modal";
 import { ToggleGroup, ToggleGroupItem } from "@renderer/components/ui/toggle-group";
 import { ACCOUNT_COLORS, DEFAULT_COLOR } from "@aliax/lib/accounts";
 
@@ -23,8 +24,6 @@ export function EditAccountDialog({
 }) {
   const [nickname, setNickname] = useState(profile.nickname ?? "");
   const [color, setColor] = useState(profile.color ?? DEFAULT_COLOR);
-  const nicknameId = useId();
-  const colourId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -51,20 +50,12 @@ export function EditAccountDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="sm">
-        <DialogHeader>
-          <DialogTitle>Edit account</DialogTitle>
-          {/* The row hides the email once a nickname exists; this is where it lives. */}
-          <DialogDescription>{profile.email ?? profile.name}</DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={nicknameId} className="text-xs font-medium text-muted-foreground">
-              Nickname
-            </label>
+    <Dialog open={open} onOpenChange={(next) => (next || !pending) && onOpenChange(next)}>
+      {/* The row hides the email once a nickname exists; the subtitle is where it lives. */}
+      <ModalPanel title="Edit account" description={profile.email ?? profile.name} size="sm" busy={pending}>
+        <ModalBody>
+          <Field label="Nickname">
             <Input
-              id={nicknameId}
               autoFocus
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
@@ -73,13 +64,9 @@ export function EditAccountDialog({
               }}
               placeholder={profile.email ?? profile.name}
             />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span id={colourId} className="text-xs font-medium text-muted-foreground">
-              Colour
-            </span>
+          </Field>
+          <FieldRow label="Colour">
             <ToggleGroup
-              aria-labelledby={colourId}
               size="xs"
               value={[color]}
               onValueChange={(value) => {
@@ -92,18 +79,11 @@ export function EditAccountDialog({
                 </ToggleGroupItem>
               ))}
             </ToggleGroup>
-          </div>
-        </div>
-        <ErrorLine error={error} />
-        <DialogFooter>
-          <Button variant="secondary" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button disabled={pending} onClick={() => void save()}>
-            <BusyLabel busy={pending} label="Save" />
-          </Button>
-        </DialogFooter>
-      </DialogContent>
+          </FieldRow>
+          <ErrorLine error={error} />
+        </ModalBody>
+        <DialogFooter onCancel={() => onOpenChange(false)} confirmLabel="Save" pending={pending} onConfirm={() => void save()} />
+      </ModalPanel>
     </Dialog>
   );
 }

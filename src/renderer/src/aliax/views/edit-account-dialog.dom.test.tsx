@@ -1,12 +1,30 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { expectModalShape } from "@renderer/chrome/modalShape.testkit";
 import { ACCOUNT_COLORS } from "@aliax/lib/accounts";
 import { EditAccountDialog } from "./edit-account-dialog";
 
 afterEach(cleanup);
 
 describe("EditAccountDialog", () => {
+  it("is the one dialog shape, the email its 12px subtitle, its fields labelled", () => {
+    render(
+      <EditAccountDialog
+        open
+        onOpenChange={vi.fn()}
+        serviceId="codex"
+        profile={{ name: "a@x.com", email: "a@x.com", createdAt: 1, active: false }}
+        onSaved={vi.fn()}
+      />,
+    );
+    const dialog = screen.getByRole("dialog");
+    expectModalShape(dialog);
+    expect(screen.getByText("a@x.com").className).toContain("text-xs");
+    expect(dialog.querySelectorAll('[data-slot="dialog-field"], [data-slot="dialog-field-row"]')).toHaveLength(2);
+    expect(screen.getByRole("group", { name: "Colour" })).toBeTruthy();
+  });
+
   it("Save sends the nickname and the colour, then closes", async () => {
     const updateProfile = vi.fn(async () => ({ ok: true }));
     (window as unknown as { aliax: unknown }).aliax = { updateProfile };

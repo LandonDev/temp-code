@@ -4,7 +4,10 @@ import { ChoiceSelect } from "../../components/choice-select";
 import { PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
+import { Dialog } from "../../components/ui/dialog";
+import { DialogFooter } from "../../chrome/ConfirmDialog";
+import { Field } from "../../chrome/DialogField";
+import { ModalBody, ModalPanel } from "../../chrome/Modal";
 import { Input } from "../../components/ui/input";
 import { Progress } from "../../components/ui/progress";
 import { SettingSwitch } from "../../components/setting-switch";
@@ -296,39 +299,28 @@ function ConnectLinearDialog({
   };
   return (
     <Dialog open={open} onOpenChange={(next) => (next || busy ? undefined : onClose())}>
-      <DialogContent size="sm">
-        <DialogHeader>
-          <DialogTitle>Connect Linear</DialogTitle>
-          <DialogDescription>Create a personal key in Linear, under Settings, Security and access.</DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-col gap-1.5">
-          <Input
-            autoFocus
-            type="password"
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void submit();
-              }
-            }}
-            placeholder="lin_api_…"
-            aria-label="Linear API key"
-            autoComplete="off"
-            spellCheck={false}
-          />
-          {error ? <p className="text-xs text-destructive">{error}</p> : null}
-        </div>
-        <DialogFooter>
-          <Button variant="secondary" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button onClick={() => void submit()} disabled={busy || !token.trim()}>
-            <BusyLabel busy={busy} label="Connect" />
-          </Button>
-        </DialogFooter>
-      </DialogContent>
+      <ModalPanel title="Connect Linear" size="sm" busy={busy}>
+        <ModalBody>
+          <Field label="API key" hint="Create a personal key in Linear, under Settings, Security and access." error={error}>
+            <Input
+              autoFocus
+              type="password"
+              value={token}
+              onChange={(event) => setToken(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void submit();
+                }
+              }}
+              placeholder="lin_api_…"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </Field>
+        </ModalBody>
+        <DialogFooter onCancel={onClose} confirmLabel="Connect" pending={busy} disabled={!token.trim()} onConfirm={() => void submit()} />
+      </ModalPanel>
     </Dialog>
   );
 }

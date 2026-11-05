@@ -3,8 +3,10 @@ import type { ThreadRules } from "@server/shared/rules";
 import { AccessPicker } from "../../chrome/AccessPicker";
 import { ModelPicker } from "../../chrome/ModelPicker";
 import { ThreadTune, normalizeTune } from "../../chrome/ThreadTune";
-import { BusyLabel, Button } from "../../components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../../components/ui/dialog";
+import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
+import { Field, FieldRow } from "../../chrome/DialogField";
+import { ModalBody, ModalPanel } from "../../chrome/Modal";
+import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { mergeModelSettings, nativeModelId, resolveModel } from "../../lib/models";
@@ -102,9 +104,10 @@ export function StartBuildDialog({
         onOpenChange(next);
       }}
     >
-      <DialogContent
-        size="default"
-        className="max-h-[calc(100vh-2rem)] overflow-x-hidden overflow-y-auto [--scrollbar-inset:var(--radius-2xl)]"
+      <ModalPanel
+        title="Start the build"
+        size="sm"
+        busy={busy}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
@@ -112,55 +115,66 @@ export function StartBuildDialog({
           }
         }}
       >
-        <DialogTitle>Start the build</DialogTitle>
-        <ToggleGroup
-          spacing={0}
-          variant="outline"
-          aria-label="Build"
-          value={[type]}
-          onValueChange={(v) => {
-            const next = v[0] as BuildType | undefined;
-            if (next) setType(next);
-          }}
-        >
-          <ToggleGroupItem value="implementation">Implement</ToggleGroupItem>
-          <ToggleGroupItem value="orchestration">Orchestrate</ToggleGroupItem>
-        </ToggleGroup>
-        <div className="-ml-1 flex flex-wrap items-center gap-1">
-          <ModelPicker
-            harness={choice.harness}
-            model={choice.model}
-            environmentId={session.environmentId}
-            onChange={(h, m) => {
-              setChoice({ harness: h, model: m });
-              setSettings(mergeModelSettings(resolveModel(h, m, session.environmentId), settings));
-            }}
-            settings={{ values: settings, onChange: setSettings }}
-          />
-          <AccessPicker value={mode} onChange={setMode} />
-        </div>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground">Goal</span>
-          <Input value={goal} onChange={(e) => setGoal(e.target.value)} />
-        </label>
-        {type === "orchestration" ? (
-          <ThreadTune
-            tune={tune}
-            onChange={setTune}
-            environmentId={session.environmentId}
-            workspaceId={session.workspaceId ?? null}
-          />
-        ) : null}
-        {error ? <p className="text-xs text-destructive">{error}</p> : null}
-        <DialogFooter>
-          <Button variant="secondary" disabled={busy} onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button disabled={busy} onClick={() => void start()}>
-            <BusyLabel busy={busy} label="Start" busyLabel="Starting…" />
-          </Button>
-        </DialogFooter>
-      </DialogContent>
+        {/* The add sheet's vocabulary: what the build is for first, then
+            each choice as a row, its label at the start and its control at
+            the end (FieldRow). */}
+        <ModalBody>
+          <Field label="Goal">
+            <Input value={goal} placeholder="No goal" onChange={(e) => setGoal(e.target.value)} />
+          </Field>
+          <div className="flex flex-col">
+            <FieldRow label="Build">
+              <ToggleGroup
+                spacing={0}
+                size="sm"
+                value={[type]}
+                onValueChange={(v) => {
+                  const next = v[0] as BuildType | undefined;
+                  if (next) setType(next);
+                }}
+              >
+                <ToggleGroupItem value="implementation">Implement</ToggleGroupItem>
+                <ToggleGroupItem value="orchestration">Orchestrate</ToggleGroupItem>
+              </ToggleGroup>
+            </FieldRow>
+            <FieldRow label="Model">
+              <span className="flex items-center" data-model-picker>
+                <ModelPicker
+                  harness={choice.harness}
+                  model={choice.model}
+                  environmentId={session.environmentId}
+                  onChange={(h, m) => {
+                    setChoice({ harness: h, model: m });
+                    setSettings(mergeModelSettings(resolveModel(h, m, session.environmentId), settings));
+                  }}
+                  settings={{ values: settings, onChange: setSettings }}
+                />
+              </span>
+            </FieldRow>
+            <FieldRow label="Access">
+              <span className="flex items-center">
+                <AccessPicker value={mode} onChange={setMode} />
+              </span>
+            </FieldRow>
+          </div>
+          {type === "orchestration" ? (
+            <ThreadTune
+              tune={tune}
+              onChange={setTune}
+              environmentId={session.environmentId}
+              workspaceId={session.workspaceId ?? null}
+            />
+          ) : null}
+          <ErrorLine error={error} />
+        </ModalBody>
+        <DialogFooter
+          onCancel={() => onOpenChange(false)}
+          confirmLabel="Start"
+          busyLabel="Starting…"
+          pending={busy}
+          onConfirm={() => void start()}
+        />
+      </ModalPanel>
     </Dialog>
   );
 }

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Field } from "@renderer/chrome/DialogField";
-import { BusyLabel, Button } from "@renderer/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@renderer/components/ui/dialog";
+import { DialogFooter } from "@renderer/chrome/ConfirmDialog";
+import { ModalBody, ModalPanel } from "@renderer/chrome/Modal";
+import { Dialog } from "@renderer/components/ui/dialog";
 import { Input } from "@renderer/components/ui/input";
 
 export type AddKeyResult = { ok: true; name?: string } | { ok: false; error: string };
@@ -72,12 +73,9 @@ export function AddKeyDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="sm">
-        <DialogHeader>
-          <DialogTitle>Add {serviceName} key</DialogTitle>
-        </DialogHeader>
-        <div className="flex flex-col gap-4">
+    <Dialog open={open} onOpenChange={(next) => (next || !verifying) && onOpenChange(next)}>
+      <ModalPanel title={`Add ${serviceName} key`} size="sm" busy={verifying}>
+        <ModalBody>
           <Field label="Key" error={error}>
             <Input
               type="password"
@@ -97,16 +95,15 @@ export function AddKeyDialog({
           <Field label="Name">
             <Input value={name} placeholder="Optional" readOnly={verifying} onChange={(e) => setName(e.target.value)} onKeyDown={onEnter} />
           </Field>
-        </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button disabled={!ready} aria-busy={verifying || undefined} onClick={() => void add()}>
-            <BusyLabel busy={verifying} label="Add" />
-          </Button>
-        </DialogFooter>
-      </DialogContent>
+        </ModalBody>
+        <DialogFooter
+          onCancel={() => onOpenChange(false)}
+          confirmLabel="Add"
+          pending={verifying}
+          disabled={!ready}
+          onConfirm={() => void add()}
+        />
+      </ModalPanel>
     </Dialog>
   );
 }

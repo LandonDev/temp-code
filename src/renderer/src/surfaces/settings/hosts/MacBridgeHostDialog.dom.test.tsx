@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { expectModalShape } from "../../../chrome/modalShape.testkit";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { MacBridgeHostPolicy } from "@server/shared/contract-macbridge";
 
@@ -74,6 +75,11 @@ describe("MacBridgeHostDialog", () => {
     fireEvent.blur(threads);
     await flush();
     expect(calls.at(-1)).toEqual({ method: "limits", args: ["env_box", { maxThreads: 0 }] });
+  });
+
+  it("is the one dialog shape, Done alone in its footer", () => {
+    render(<MacBridgeHostDialog host={host()} onClose={() => {}} />);
+    expectModalShape(screen.getByRole("dialog"), { cancel: false });
   });
 
   it("hides the commands cap under Read", () => {

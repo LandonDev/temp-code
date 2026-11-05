@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { expectModalShape } from "../../chrome/modalShape.testkit";
 
 const state = vi.hoisted(() => ({
   ladder: ["low", "medium", "high"] as string[],
@@ -142,11 +143,20 @@ describe("Thread defaults", () => {
     expect(screen.getByRole("heading", { name: "Thread defaults" })).toBeTruthy();
     expect(dialog.textContent).toContain("Alpha");
     for (const name of ["Provider", "Model", "Permission mode"]) expect(screen.getByRole("combobox", { name })).toBeTruthy();
+    expectModalShape(dialog);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
     });
     expect(state.save).toHaveBeenCalledWith("local", "w1", expect.objectContaining({ provider: "claude" }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("puts an overriding workspace's Remove override at the footer's start", async () => {
+    state.overridden = true;
+    render(<ThreadDefaultsDialog workspace={{ id: "w1", name: "Alpha", environmentId: "local" } as never} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    const start = dialog.querySelector('[data-slot="dialog-footer"] [data-footer-start]');
+    expect(start?.textContent).toBe("Remove override");
   });
 
   it("lists a picker switch per installed CLI, and saves its visibility", () => {

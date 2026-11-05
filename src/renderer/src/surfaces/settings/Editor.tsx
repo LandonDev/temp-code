@@ -14,16 +14,10 @@ import {
 import { registry } from "../../lib/connection";
 import { retryBlockedEnsures } from "../../lib/monaco/lspGate";
 import { chooseEditorSetting, useEditorConfig } from "../../lib/editorConfig";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../../components/ui/dialog";
-import { Spinner } from "../../components/ui/spinner";
+import { Dialog } from "../../components/ui/dialog";
+import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
+import { ModalBody, ModalPanel } from "../../chrome/Modal";
+import { LoadingLine } from "../SurfaceSkeleton";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageEmpty, PageRow, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
@@ -327,31 +321,21 @@ export function EditorPage() {
       </PageSection>
 
       <LanguageServers />
-      <Dialog open={gateOpen} onOpenChange={setGateOpen}>
-        <DialogContent size="md">
-          <DialogHeader>
-            <DialogTitle>JetBrains EULA</DialogTitle>
-            {eula ? <DialogDescription>intellij-server {eula.build}</DialogDescription> : null}
-          </DialogHeader>
-          {eula ? (
-            <pre tabIndex={0} className={cn(CONSOLE, "max-h-80 overflow-x-hidden overflow-y-auto whitespace-pre-wrap")}>
-              {eula.text}
-            </pre>
-          ) : note ? (
-            <p className="text-xs text-destructive">{note}</p>
-          ) : (
-            <p className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Spinner className="size-3.5" />
-              Downloading the engine to read its license…
-            </p>
-          )}
-          <DialogFooter>
-            <DialogClose render={<Button variant="secondary" />}>Cancel</DialogClose>
-            <Button disabled={!eula || accepting} onClick={accept}>
-              <BusyLabel busy={accepting} label="Accept and enable" />
-            </Button>
-          </DialogFooter>
-        </DialogContent>
+      <Dialog open={gateOpen} onOpenChange={(next) => (next || !accepting) && setGateOpen(next)}>
+        <ModalPanel title="JetBrains EULA" description={eula ? `intellij-server ${eula.build}` : undefined} busy={accepting}>
+          <ModalBody>
+            {eula ? (
+              <pre tabIndex={0} className={cn(CONSOLE, "max-h-80 overflow-x-hidden overflow-y-auto whitespace-pre-wrap")}>
+                {eula.text}
+              </pre>
+            ) : note ? (
+              <ErrorLine error={note} />
+            ) : (
+              <LoadingLine label="Downloading the engine to read its license…" />
+            )}
+          </ModalBody>
+          <DialogFooter onCancel={() => setGateOpen(false)} confirmLabel="Accept and enable" pending={accepting} disabled={!eula} onConfirm={accept} />
+        </ModalPanel>
       </Dialog>
     </>
   );

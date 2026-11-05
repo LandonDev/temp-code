@@ -1,12 +1,11 @@
 import { useState } from "react";
 import type { Capability } from "@server/shared/capabilities";
 import type { RemoteAudience, RemoteKey } from "@server/shared/contract-remote";
-import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@renderer/components/ui/toggle-group";
 import { DialogFooter, ErrorLine, errorText } from "../../../../chrome/ConfirmDialog";
 import { Field, FieldRow } from "../../../../chrome/DialogField";
-import { Modal, useModalClose } from "../../../../chrome/Modal";
+import { Modal } from "../../../../chrome/Modal";
 import { rpc } from "../rpc";
 import { CapsPicker, Secret } from "./fields";
 
@@ -30,7 +29,6 @@ export function NewKeyDialog(props: Props) {
 }
 
 function Made({ created, onClose }: { created: Created; onClose: () => void }) {
-  const close = useModalClose();
   return (
     <>
       <div className="flex flex-col gap-4 px-5 py-4">
@@ -38,9 +36,7 @@ function Made({ created, onClose }: { created: Created; onClose: () => void }) {
         {created.webhookSecret ? <Secret label="Webhook signing secret" value={created.webhookSecret} /> : null}
       </div>
       {/* Nothing is left to cancel once the key exists: Done alone. */}
-      <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-        <Button onClick={() => (close ? close(onClose) : onClose())}>Done</Button>
-      </div>
+      <DialogFooter confirmLabel="Done" closeOnConfirm onConfirm={onClose} />
     </>
   );
 }

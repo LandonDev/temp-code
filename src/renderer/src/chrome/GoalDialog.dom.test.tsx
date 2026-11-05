@@ -7,9 +7,10 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { expectModalShape } from "./modalShape.testkit";
 
 const { setGoal, clearGoal } = vi.hoisted(() => ({
-  setGoal: vi.fn(() => Promise.resolve()),
+  setGoal: vi.fn((): Promise<void> => Promise.resolve()),
   clearGoal: vi.fn(() => Promise.resolve()),
 }));
 vi.mock("../lib/tcserver/commands", () => ({ setGoal, clearGoal }));
@@ -32,6 +33,28 @@ afterEach(() => {
 const goal = { condition: "tests pass", iterations: 3 } as never;
 
 describe("GoalDialog", () => {
+  it("is the one dialog shape: Clear at the footer's start while a goal runs", () => {
+    render(<GoalDialog sessionId="a" goal={goal} />);
+    act(() => goalDialog.open("a"));
+    const dialog = screen.getByRole("dialog");
+    expectModalShape(dialog);
+    expect(screen.getByRole("button", { name: "Clear" }).closest("[data-footer-start]")).not.toBeNull();
+  });
+
+  it("says a refused goal in the dialog and stays open; Escape waits while it is sent", async () => {
+    let refuse: (e: Error) => void = () => {};
+    setGoal.mockImplementationOnce(() => new Promise<void>((_, reject) => (refuse = reject)));
+    render(<GoalDialog sessionId="a" />);
+    act(() => goalDialog.open("a"));
+    fireEvent.change(screen.getByRole("textbox", { name: "Goal" }), { target: { value: "ship it" } });
+    fireEvent.click(screen.getByRole("button", { name: "Set" }));
+    expect(screen.getByRole("dialog").getAttribute("aria-busy")).toBe("true");
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await act(async () => refuse(new Error("not connected")));
+    expect(screen.getByText("not connected").className).toContain("text-destructive");
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
   it("opens for its own thread only", () => {
     render(
       <>

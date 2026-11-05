@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { expectModalShape } from "../../chrome/modalShape.testkit";
 import type { OrchestrationRules, RulesCatalog, RulesScope } from "../../lib/tcserver/rules";
 
 const state = vi.hoisted(() => ({
@@ -246,6 +247,15 @@ describe("Orchestration page", () => {
     await choose(within(dialog).getByRole("combobox", { name: "Position" }), "2");
     await saveDialog(dialog);
     expect(saved().routing.map((r) => r.id)).toEqual(["r2", "r1"]);
+  });
+
+  it("is the one dialog shape, Delete a quiet action at the footer's start", async () => {
+    render(<OrchestrationPage />);
+    const dialog = await openRule("Reviews");
+    expectModalShape(dialog);
+    const del = within(dialog).getByRole("button", { name: "Delete" });
+    expect(del.closest("[data-footer-start]")).not.toBeNull();
+    expect(del.getAttribute("data-variant")).toBe("ghost");
   });
 
   it("deletes a rule from its dialog", async () => {

@@ -40,6 +40,7 @@ vi.mock("../../lib/models", () => ({
   resolveModel: () => null,
 }));
 
+import { expectModalShape } from "../../chrome/modalShape.testkit";
 import { landedInPicker, StartBuildDialog } from "./StartBuildDialog";
 
 const session = {
@@ -84,7 +85,16 @@ describe("the Start dialog", () => {
     expect(screen.getByRole("button", { name: "Orchestrate" })).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/\b[23] threads\b/);
     // Taller than a small window, it scrolls instead of hiding its footer.
-    expect((document.querySelector('[data-slot="dialog-content"]') as HTMLElement).className).toMatch(/overflow-y-auto/);
+    const panel = document.querySelector('[data-slot="dialog-content"]') as HTMLElement;
+    expect(panel.querySelector(':scope > .overflow-y-auto')).not.toBeNull();
+    // The add sheet's form: the goal first, then each choice as a labelled row.
+    const goal = screen.getByLabelText("Goal");
+    const firstField = panel.querySelector('[data-slot="dialog-field"], [data-slot="dialog-field-row"]')!;
+    expect(firstField.contains(goal)).toBe(true);
+    const rows = [...panel.querySelectorAll('[data-slot="dialog-field-row"]')].map((r) => r.querySelector('[data-slot="item-title"]')?.textContent);
+    expect(rows).toEqual(["Build", "Model", "Access"]);
+    expect(screen.getByRole("group", { name: "Build" })).toBeTruthy();
+    expectModalShape(panel);
   });
 
   it("Start starts exactly one implementation thread by default, and closes", async () => {

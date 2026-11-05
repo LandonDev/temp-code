@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { expectModalShape } from "@renderer/chrome/modalShape.testkit";
 import { AddKeyDialog, type AddKeyResult } from "./AddKeyDialog";
 
 afterEach(cleanup);
@@ -29,6 +30,11 @@ describe("AddKeyDialog", () => {
     expect(add.disabled).toBe(false);
   });
 
+  it("is the one dialog shape: Modal, a hairline footer, Cancel secondary", () => {
+    const { dialog } = setup(vi.fn());
+    expectModalShape(dialog);
+  });
+
   it("verifies with a spinner, then closes and reports the saved name", async () => {
     let answer!: (r: AddKeyResult) => void;
     const submit = vi.fn(() => new Promise<AddKeyResult>((resolve) => (answer = resolve)));
@@ -38,7 +44,7 @@ describe("AddKeyDialog", () => {
     fireEvent.click(add);
     expect(submit).toHaveBeenCalledWith({ name: "Work", key: "LLM_1607_abc" });
     expect(add.disabled).toBe(true);
-    expect(add.getAttribute("aria-busy")).toBe("true");
+    expect(dialog.getAttribute("aria-busy")).toBe("true");
     expect(add.querySelector("[data-slot=busy-label]")?.getAttribute("data-busy")).toBe("true");
     expect(within(dialog).getByRole("button", { name: "Add" })).toBe(add);
     await act(async () => answer({ ok: true, name: "Work" }));

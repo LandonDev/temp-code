@@ -21,6 +21,12 @@ type Props = {
   /** Where focus lands on open (Base UI's popup prop: a ref or a function).
    *  Default: `openFocusOf`. */
   initialFocus?: ComponentProps<typeof DialogContent>["initialFocus"];
+  /** Where focus goes on close (Base UI's popup prop); default the opener. */
+  finalFocus?: ComponentProps<typeof DialogContent>["finalFocus"];
+  /** Keys anywhere in the dialog (⌘↩ to submit from any field). */
+  onKeyDown?: ComponentProps<typeof DialogContent>["onKeyDown"];
+  /** Data attributes for tests and the soak's probes. */
+  [data: `data-${string}`]: string | undefined;
   children: ReactNode;
 };
 
@@ -76,7 +82,25 @@ export function openFocusOf(popup: HTMLElement | null): HTMLElement | true {
   return true;
 }
 
-export function ModalPanel({ busy = false, title, description, size = "md", className, initialFocus, children }: Props) {
+/**
+ * The dialog's panel: the header with its title, subtitle and close, then one
+ * scroller for the body and the footer. `Modal` mounts it open and plays the
+ * exit before the parent's `onClose`; a dialog whose parent holds `open`
+ * wraps it in its own `Dialog` root and closes through that.
+ */
+export function ModalPanel({
+  busy = false,
+  title,
+  description,
+  size = "md",
+  className,
+  initialFocus,
+  finalFocus,
+  onKeyDown,
+  children,
+  onClose: _onClose,
+  ...data
+}: Omit<Props, "onClose"> & { onClose?: () => void }) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const popup = useRef<HTMLDivElement>(null);
   const focusOnOpen = () => openFocusOf(popup.current);
@@ -84,10 +108,13 @@ export function ModalPanel({ busy = false, title, description, size = "md", clas
     <DialogContent
       ref={popup}
       initialFocus={initialFocus ?? focusOnOpen}
+      finalFocus={finalFocus}
+      onKeyDown={onKeyDown}
       size={SIZE[size]}
       showCloseButton={false}
       aria-busy={busy || undefined}
       className={cn("flex max-h-[calc(100vh-4rem)] flex-col gap-0 overflow-hidden p-0", className)}
+      {...data}
     >
       <header className="flex shrink-0 items-start gap-2 px-5 pt-5">
         <div className="min-w-0 flex-1">

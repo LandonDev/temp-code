@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { expectModalShape } from "../../chrome/modalShape.testkit";
 
 const host = vi.hoisted(() => ({
   accept: null as null | (() => void),
@@ -109,6 +110,7 @@ describe("Editor", () => {
     expect(screen.getByText("intellij-server 263.1")).toBeTruthy();
     expect((screen.getByRole("button", { name: "Accept and enable" }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByRole("button", { name: "Cancel" }).dataset.variant).toBe("secondary");
+    expectModalShape(dialog);
   });
 
   it("holds Accept and enable's width and sends once while acceptance waits", async () => {

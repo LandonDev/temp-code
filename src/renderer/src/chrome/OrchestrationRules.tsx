@@ -9,8 +9,9 @@ import { ChoiceSelect, type Choice } from "../components/choice-select";
 import { PageRow, PageSection } from "../components/page";
 import { ItemButton, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
 import { SettingSwitch } from "../components/setting-switch";
-import { BusyLabel, Button } from "../components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Button } from "../components/ui/button";
+import { DialogFooter } from "./ConfirmDialog";
+import { Modal, ModalBody, useModalClose } from "./Modal";
 import { Input } from "../components/ui/input";
 import { Skeleton } from "../components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -482,14 +483,7 @@ function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; 
   );
 }
 
-export function RuleDialog({
-  rule,
-  rules,
-  catalog,
-  onSave,
-  onDelete,
-  onClose,
-}: {
+type RuleDialogProps = {
   rule: RoutingRule | null;
   rules: OrchestrationRules;
   catalog: RulesCatalog | null;
@@ -497,7 +491,20 @@ export function RuleDialog({
   onSave: (r: RoutingRule, position?: number) => void;
   onDelete?: () => void;
   onClose: () => void;
-}) {
+};
+
+export function RuleDialog(props: RuleDialogProps) {
+  return (
+    <Modal onClose={props.onClose} title={props.rule ? "Edit rule" : "Add rule"} size="sm">
+      <RuleForm {...props} />
+    </Modal>
+  );
+}
+
+/** Save and Delete play the dialog's exit, then change the rules. */
+function RuleForm({ rule, rules, catalog, onSave, onDelete, onClose }: RuleDialogProps) {
+  const close = useModalClose();
+  const thenClose = (fn: () => void) => (close ? close(fn) : fn());
   const providers = providersOf(catalog).filter((p) => (catalog?.[p]?.models.length ?? 0) > 0);
   const index = rule ? rules.routing.findIndex((r) => r.id === rule.id) : -1;
   const [enabled, setEnabled] = useState(rule?.enabled ?? true);
@@ -506,7 +513,6 @@ export function RuleDialog({
   const [provider, setProvider] = useState<ProviderId>(rule?.provider ?? providers[0] ?? "claude");
   const [model, setModel] = useState(rule?.model ?? "");
   const [reasoning, setReasoning] = useState<Reasoning>(rule?.reasoning ?? "medium");
-  const taskRef = useRef<HTMLInputElement>(null);
   const taskId = useId();
 
   const models = useMemo(
@@ -523,100 +529,86 @@ export function RuleDialog({
 
   const save = () => {
     if (!task.trim()) return;
-    onSave({
-      id: rule?.id ?? newRuleId(),
-      task: task.trim(),
-      provider,
-      model,
-      reasoning,
-      enabled,
-    }, index >= 0 ? position : undefined);
+    const next = { id: rule?.id ?? newRuleId(), task: task.trim(), provider, model, reasoning, enabled };
+    thenClose(() => onSave(next, index >= 0 ? position : undefined));
   };
 
   return (
-    <Dialog open onOpenChange={(open) => (open ? null : onClose())}>
-      <DialogContent initialFocus={taskRef}>
-        <DialogHeader>
-          <DialogTitle>{rule ? "Edit rule" : "Add rule"}</DialogTitle>
-        </DialogHeader>
-        <form
-          className="flex flex-col gap-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            save();
-          }}
-        >
-          <Field label="When the task is" htmlFor={taskId}>
-            <Input
-              id={taskId}
-              ref={taskRef}
-              value={task}
-              onChange={(e) => setTask(e.target.value)}
-              placeholder="Bulk or mechanical work with a clear spec"
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        save();
+      }}
+    >
+      <ModalBody>
+        <Field label="When the task is" htmlFor={taskId}>
+          <Input
+            id={taskId}
+            autoFocus
+            value={task}
+            onChange={(e) => setTask(e.target.value)}
+            placeholder="Bulk or mechanical work with a clear spec"
+          />
+        </Field>
+        <div className="flex gap-3">
+          <Field label="Provider">
+            <ChoiceSelect
+              label="Provider"
+              className="w-full"
+              value={provider}
+              onChange={(v) => {
+                setProvider(v);
+                setModel("");
+              }}
+              options={providers.map((p) => ({ value: p, label: catalog?.[p]?.label ?? p }))}
             />
           </Field>
-          <div className="flex gap-3">
-            <Field label="Provider">
-              <ChoiceSelect
-                label="Provider"
-                className="w-full"
-                value={provider}
-                onChange={(v) => {
-                  setProvider(v);
-                  setModel("");
-                }}
-                options={providers.map((p) => ({ value: p, label: catalog?.[p]?.label ?? p }))}
-              />
+          <Field label="Model">
+            <ChoiceSelect
+              label="Model"
+              className="w-full"
+              value={model}
+              onChange={setModel}
+              options={[{ value: "", label: "Provider default" }, ...models.map((m) => ({ value: m.id, label: m.label }))]}
+            />
+          </Field>
+          {ladder.length > 1 ? (
+            <Field label="Effort">
+              <ChoiceSelect label="Effort" className="w-full" value={reasoning} onChange={setReasoning} options={effortChoices(ladder)} />
             </Field>
-            <Field label="Model">
-              <ChoiceSelect
-                label="Model"
-                className="w-full"
-                value={model}
-                onChange={setModel}
-                options={[{ value: "", label: "Provider default" }, ...models.map((m) => ({ value: m.id, label: m.label }))]}
-              />
-            </Field>
-            {ladder.length > 1 ? (
-              <Field label="Effort">
-                <ChoiceSelect label="Effort" className="w-full" value={reasoning} onChange={setReasoning} options={effortChoices(ladder)} />
-              </Field>
-            ) : null}
-          </div>
-          {index >= 0 ? (
-            <div className="flex gap-3">
-              <Field label="Position">
-                <ChoiceSelect
-                  label="Position"
-                  className="w-full"
-                  value={String(position)}
-                  onChange={(v) => setPosition(Number(v))}
-                  options={rules.routing.map((_, i) => ({ value: String(i), label: String(i + 1) }))}
-                />
-              </Field>
-              <Field label="Enabled">
-                <span className="flex h-8 items-center">
-                  <SettingSwitch label="Enabled" on={enabled} onChange={setEnabled} />
-                </span>
-              </Field>
-            </div>
           ) : null}
-          <DialogFooter className="items-center">
-            {onDelete ? (
-              <Button type="button" variant="destructive" onClick={onDelete}>
-                Delete
-              </Button>
-            ) : null}
-            <span className="flex-1" />
-            <Button type="button" variant="secondary" onClick={onClose}>
-              Cancel
+        </div>
+        {index >= 0 ? (
+          <div className="flex gap-3">
+            <Field label="Position">
+              <ChoiceSelect
+                label="Position"
+                className="w-full"
+                value={String(position)}
+                onChange={(v) => setPosition(Number(v))}
+                options={rules.routing.map((_, i) => ({ value: String(i), label: String(i + 1) }))}
+              />
+            </Field>
+            <Field label="Enabled">
+              <span className="flex h-8 items-center">
+                <SettingSwitch label="Enabled" on={enabled} onChange={setEnabled} />
+              </span>
+            </Field>
+          </div>
+        ) : null}
+      </ModalBody>
+      <DialogFooter
+        start={
+          onDelete ? (
+            <Button type="button" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={() => thenClose(onDelete)}>
+              Delete
             </Button>
-            <Button type="submit" disabled={!task.trim()}>
-              <BusyLabel busy={false} label="Save" />
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          ) : null
+        }
+        onCancel={onClose}
+        confirmLabel="Save"
+        disabled={!task.trim()}
+      />
+    </form>
   );
 }

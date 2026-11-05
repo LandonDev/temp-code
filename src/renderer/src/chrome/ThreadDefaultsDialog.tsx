@@ -1,11 +1,11 @@
 import { registry } from "../lib/connection";
 import { useEffect, useState } from "react";
-import { ErrorLine } from "./ConfirmDialog";
+import { DialogFooter, ErrorLine } from "./ConfirmDialog";
 import { homeNote } from "../lib/settingsHome";
 import { FieldRow } from "./DialogField";
 import { ChoiceSelect } from "../components/choice-select";
 import { PageRow, PageRowsSkeleton, PageSection } from "../components/page";
-import { BusyLabel, Button } from "../components/ui/button";
+import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { ModalPanel, useClosingDialog } from "./Modal";
 import {
@@ -229,19 +229,19 @@ export function ThreadDefaultsDialog({
             )}
             <ErrorLine error={error} />
           </div>
-          <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-            {scope?.overridden ? (
-              <Button variant="ghost" disabled={pending} onClick={() => void save(null)} className="me-auto">
-                Remove override
-              </Button>
-            ) : null}
-            <Button variant="secondary" disabled={pending} onClick={() => closeThen(onClose)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={pending || !value}>
-              <BusyLabel busy={pending} label="Save" />
-            </Button>
-          </div>
+          <DialogFooter
+            start={
+              scope?.overridden ? (
+                <Button variant="ghost" disabled={pending} onClick={() => void save(null)}>
+                  Remove override
+                </Button>
+              ) : null
+            }
+            onCancel={() => closeThen(onClose)}
+            confirmLabel="Save"
+            pending={pending}
+            disabled={!value}
+          />
         </form>
       </ModalPanel>
     </Dialog>

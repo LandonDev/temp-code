@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { expectModalShape } from "../../chrome/modalShape.testkit";
 
 const linear = vi.hoisted(() => ({
   connected: false,
@@ -100,10 +101,10 @@ describe("General", () => {
     page();
     await act(async () => {});
     // The row has one control and no field of its own.
-    expect(screen.queryByLabelText("Linear API key")).toBeNull();
+    expect(screen.queryByLabelText("API key")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Connect…" }));
-    const field = await screen.findByLabelText("Linear API key");
-    expect(screen.getByRole("dialog", { name: "Connect Linear" })).toBeTruthy();
+    const field = await screen.findByLabelText("API key");
+    expectModalShape(screen.getByRole("dialog", { name: "Connect Linear" }));
     fireEvent.change(field, { target: { value: "lin_api_x" } });
     fireEvent.keyDown(field, { key: "Enter" });
     expect(linear.save).toHaveBeenCalledWith("local", "lin_api_x");
@@ -118,7 +119,7 @@ describe("General", () => {
     page();
     await act(async () => {});
     fireEvent.click(screen.getByRole("button", { name: "Connect…" }));
-    fireEvent.change(await screen.findByLabelText("Linear API key"), { target: { value: "lin_api_x" } });
+    fireEvent.change(await screen.findByLabelText("API key"), { target: { value: "lin_api_x" } });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Connect" }));
     });
@@ -232,7 +233,7 @@ describe("General", () => {
     page();
     const section = screen.getByRole("region", { name: "Linear" });
     expect(section.querySelector("[data-slot=page-row-skeleton]")).toBeTruthy();
-    expect(screen.queryByLabelText("Linear API key")).toBeNull();
+    expect(screen.queryByLabelText("API key")).toBeNull();
     await act(async () => answer({ connected: true }));
     expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();
     linear.pending = null;

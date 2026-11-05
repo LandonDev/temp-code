@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { expectModalShape } from '@renderer/chrome/modalShape.testkit'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import type { ServiceView, UsageReport } from 'aliax-core/shared/types'
 import type { StatsBundle } from '@shared/aliaxStats'
@@ -214,6 +215,9 @@ describe('AccountsPage', () => {
     // The instruction leaves with the wait: nothing is left to finish in the window.
     expect(within(dialog).queryByText('Finish in the window that opened')).toBeNull()
     expect(toasts.error).not.toHaveBeenCalled()
+    // The one dialog shape, its error the 12px red line every dialog says.
+    expectModalShape(dialog)
+    expect(within(dialog).getByText("Couldn't reach claude.ai").className).toContain('text-xs')
     aliax.loginStart.mockReturnValue(new Promise(() => {}))
     fireEvent.click(within(dialog).getByRole('button', { name: 'Try again' }))
     await act(flush)

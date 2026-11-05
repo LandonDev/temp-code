@@ -23,24 +23,41 @@ export function ErrorLine({ error }: { error: string | null }) {
   return error ? <p className="whitespace-pre-wrap text-xs text-destructive">{error}</p> : null;
 }
 
-/** Modal footer: a hairline, Cancel at left of the confirm, the confirm
- *  showing a spinner while pending; an optional quiet note at the far left
- *  (where a save lands, or why it cannot). */
+/** A dialog's footer, the one every form dialog ends in: a hairline, then
+ *  at the start an optional `start` action of the dialog's own (Remove
+ *  override, Clear, Delete) and a quiet `note` (where a save lands, or why it
+ *  cannot), then Cancel, any extra verbs (`children`), and the confirm, which
+ *  holds its width through `BusyLabel` while pending. With no `onCancel` the
+ *  footer has no Cancel (a Done once nothing is left to cancel). */
 export function DialogFooter({
   onCancel,
   confirmLabel,
+  busyLabel,
   danger,
   pending,
+  busy,
   disabled,
   onConfirm,
   closeOnConfirm,
   note,
+  start,
+  children,
 }: {
   note?: ReactNode;
-  onCancel: () => void;
-  confirmLabel: string;
+  /** An action of the dialog's own at the footer's start. */
+  start?: ReactNode;
+  /** Verbs between Cancel and the confirm (Commit & switch). */
+  children?: ReactNode;
+  onCancel?: () => void;
+  /** Absent: no confirm (a footer that only cancels while it waits). */
+  confirmLabel?: string;
+  /** The confirm's words while pending, when they change ("Starting…"). */
+  busyLabel?: string;
   danger?: boolean;
+  /** The confirm's work is in flight: it spins, and Cancel waits. */
   pending?: boolean;
+  /** Another of the footer's verbs is in flight: Cancel and the confirm wait. */
+  busy?: boolean;
   disabled?: boolean;
   onConfirm?: () => void;
   /** The verb ends the dialog: it plays the exit, then runs `onConfirm`
@@ -51,23 +68,33 @@ export function DialogFooter({
   const confirm = onConfirm && closeOnConfirm && close ? () => close(onConfirm) : onConfirm;
   return (
     <div data-slot="dialog-footer" className="flex items-center justify-end gap-2 border-t border-border px-5 pt-4 pb-5">
-      {note ? (
-        <span data-footer-note className="me-auto min-w-0 truncate text-xs text-muted-foreground">
-          {note}
-        </span>
+      {start || note ? (
+        <div data-footer-start className="me-auto flex min-w-0 items-center gap-2">
+          {start}
+          {note ? (
+            <span data-footer-note className="min-w-0 truncate text-xs text-muted-foreground">
+              {note}
+            </span>
+          ) : null}
+        </div>
       ) : null}
-      <Button data-dialog-cancel variant="secondary" disabled={pending} onClick={() => (close ? close(onCancel) : onCancel())}>
-        Cancel
-      </Button>
-      <Button
-        data-dialog-confirm
-        type={onConfirm ? "button" : "submit"}
-        variant={danger ? "destructive" : "default"}
-        onClick={confirm}
-        disabled={pending || disabled}
-      >
-        <BusyLabel busy={!!pending} label={confirmLabel} />
-      </Button>
+      {onCancel ? (
+        <Button data-dialog-cancel variant="secondary" disabled={pending || busy} onClick={() => (close ? close(onCancel) : onCancel())}>
+          Cancel
+        </Button>
+      ) : null}
+      {children}
+      {confirmLabel ? (
+        <Button
+          data-dialog-confirm
+          type={onConfirm ? "button" : "submit"}
+          variant={danger ? "destructive" : "default"}
+          onClick={confirm}
+          disabled={pending || busy || disabled}
+        >
+          <BusyLabel busy={!!pending} label={confirmLabel} busyLabel={busyLabel} />
+        </Button>
+      ) : null}
     </div>
   );
 }

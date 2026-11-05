@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { expectModalShape } from "./modalShape.testkit";
 
 vi.mock("../lib/harness", () => ({ generateCommitMessage: vi.fn(async () => "Fix the rail order") }));
 
@@ -15,6 +16,14 @@ const open = (over: Partial<Parameters<typeof SwitchBranchDialog>[0]> = {}) => {
 };
 
 describe("SwitchBranchDialog", () => {
+  it("ends on the shared footer: Cancel, Commit & switch between, Stash & switch last", () => {
+    open();
+    const dialog = screen.getByRole("dialog");
+    expectModalShape(dialog);
+    const footer = dialog.querySelector('[data-slot="dialog-footer"]')!;
+    expect([...footer.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Cancel", "Commit & switch", "Stash & switch"]);
+  });
+
   it("lands focus in the message and commits on ⌘↩", async () => {
     const props = open();
     const field = screen.getByRole("textbox", { name: "Commit message" });
