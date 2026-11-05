@@ -341,6 +341,8 @@ describe("ChangesPanel", () => {
     expect(screen.getByRole("button", { name: "Hide hunks of a.ts" }).closest("[data-fold-reveal]")!.className.split(/\s+/)).toContain("pointer-events-auto");
     expect(screen.getByText("L2")).toBeTruthy();
     expect(screen.getByText("L7")).toBeTruthy();
+    // A hunk's counts at its 12px line's size.
+    expect(screen.getByText("L2").parentElement!.querySelector("[data-slot=counts]")!.className.split(/\s+/)).toContain("text-xs");
     fireEvent.click(screen.getByRole("button", { name: "Stage lines 2" }));
     await act(() => new Promise((r) => setTimeout(r, 20)));
     expect(h.git.gitStageContents).toHaveBeenCalledWith("local", "/p", "a.ts", "staged text");
@@ -688,6 +690,8 @@ describe("ChangesPanel's virtual list", () => {
     expect(open.className).not.toMatch(/before:|outline-none/);
     expect(row.className).toContain("hover:bg-foreground/5");
     expect(row.className).toContain("has-[>[data-row-open]:active]:bg-foreground/12");
+    // The counts at the name's 13px, never the row's inherited 14px.
+    expect(row.querySelector("[data-slot=counts]")!.className.split(/\s+/)).toContain("text-[13px]");
     // What the row shows takes no pointer, so the name, the counts and the row's end open the diff.
     for (const slot of ["item-content", "item-actions"]) expect(row.querySelector(`[data-slot="${slot}"]`)!.className).toContain("pointer-events-none");
     expect(open.contains(screen.getAllByRole("button", { name: "Stage" })[0])).toBe(false);

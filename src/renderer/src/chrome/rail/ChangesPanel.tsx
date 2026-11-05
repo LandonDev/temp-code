@@ -848,7 +848,7 @@ function FileRow({
         {/* The counts hold the actions' place at rest and give way to them on the
             shared hover reveal: the actions lie over them, so the name never reflows. */}
         <span data-counts-slot className={cn("flex justify-end", !rowBusy && [side === "staged" ? "min-w-6" : "min-w-12", ROW_YIELDS])}>
-          <Counts status={file.status} {...countsFor(file, side)} />
+          <Counts status={file.status} {...countsFor(file, side)} className="text-[13px]" />
         </span>
         {rowBusy ? null : (
           <span data-change-actions className={cn("absolute inset-y-0 right-0 flex items-center", ROW_REVEALS)}>
@@ -910,7 +910,7 @@ function HunkRows({ file, side, fold, busy, actions }: { file: GitChangedFile; s
         return (
           <div key={h.from} className="group/hunk flex h-7 items-center gap-2 rounded-lg pr-2 pl-8 hover:bg-foreground/5">
             <span className="text-xs tabular-nums text-muted-foreground">{span}</span>
-            <Counts status="modified" additions={h.additions} deletions={h.deletions} />
+            <Counts status="modified" additions={h.additions} deletions={h.deletions} className="text-xs" />
             <span className="flex-1" />
             {busy === `${foldKey(side, file.relative)}#${h.from}` ? (
               <Spinner className="size-3 text-muted-foreground" />

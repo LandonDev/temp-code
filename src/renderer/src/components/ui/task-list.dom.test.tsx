@@ -332,6 +332,9 @@ describe("press and hover", () => {
     const chevron = () => header.querySelector("[data-slot='task-chevron']")!.getAttribute("class")!;
     expect(chevron()).toContain("rotate-90");
     expect(chevron()).toContain("duration-(--dur-base)");
+    // 12px beside the header's 13px words, as every disclosure chevron at that size.
+    expect(chevron().split(/\s+/)).toContain("size-3");
+    expect(chevron()).not.toContain("size-3.5");
     expect(header.className).toContain("data-panel-open:rounded-b-none");
     fireEvent.click(header);
     expect(chevron()).not.toContain("rotate-90");

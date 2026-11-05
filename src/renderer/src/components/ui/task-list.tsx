@@ -289,7 +289,7 @@ export function TaskList({
           <span dir="ltr">
             {done}/{tasks.length}
           </span>
-          <ChevronRight aria-hidden data-slot="task-chevron" className={cn("size-3.5", DISCLOSURE_CHEVRON, open && "rotate-90")} />
+          <ChevronRight aria-hidden data-slot="task-chevron" className={cn("size-3", DISCLOSURE_CHEVRON, open && "rotate-90")} />
         </span>
       </CollapsibleTrigger>
 

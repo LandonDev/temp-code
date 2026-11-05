@@ -242,6 +242,9 @@ describe("the implementation board", () => {
     expect(facts.textContent).toMatch(/, High, 200k$/);
     const tally = screen.getByRole("button", { name: /Pass 1/ }).querySelector("[data-slot=counts]")!.parentElement!;
     expect(tally.className).toContain("gap-1");
+    // At the line's size beside its 13px words, its chevron 12px: one size per line size.
+    expect(tally.className.split(/\s+/)).toContain("text-[13px]");
+    expect(tally.querySelector("svg")!.getAttribute("class")!.split(/\s+/)).toContain("size-3");
   });
 
   it("an earlier pass folds into a row that opens its tasks and changes", async () => {
@@ -269,7 +272,13 @@ describe("the implementation board", () => {
     expect(document.querySelector('[data-change-row="src/a.ts"]')).toBeNull();
     fireEvent.click(pass);
     await act(async () => {});
-    expect(document.querySelector('[data-change-row="src/a.ts"]')).toBeTruthy();
+    const change = document.querySelector('[data-change-row="src/a.ts"]')!;
+    expect(change).toBeTruthy();
+    // A change row's counts at its 13px name's size, the 12px chevron after them.
+    const counts = change.querySelector("[data-slot=counts]")!.parentElement!;
+    expect(counts.className.split(/\s+/)).toContain("text-[13px]");
+    expect(counts.querySelector("svg")!.getAttribute("class")!.split(/\s+/)).toEqual(expect.arrayContaining(["size-3"]));
+    expect(counts.querySelector("svg")!.getAttribute("class")).not.toContain("size-3.5");
     expect(document.querySelectorAll('[data-slot="task-list"]')).toHaveLength(2);
   });
 
