@@ -1247,6 +1247,11 @@ export async function startServer(
     onChange: () => registry.scheduler.schedule()
   })
   registry.admission = admission
+  // Away from computer: the threads read it at spawn, and every flip reaches the running turns.
+  registry.away = away
+  away.onChange((snapshot, stateChanged) => {
+    if (stateChanged) registry.awayChanged(snapshot.state.enabled)
+  })
   // Warm processes count against memory, never the cap: none spawn under the floor.
   // TEMP_CODE_E2E_MEMORY_LOW=1 on an isolated instance holds the floor for the warm-start proof.
   const lowSeam = process.env.TEMP_CODE_E2E_MEMORY_LOW === '1' && !!process.env.TEMP_CODE_USER_DATA

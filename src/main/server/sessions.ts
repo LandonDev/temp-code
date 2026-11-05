@@ -23,6 +23,8 @@ import type { SessionBatchResult } from '@shared/contract'
 import { batchChildIds, runSessionBatch, type SessionBatchAction } from './sessionBatch'
 import { ThreadScheduler, type QueuedLine } from './scheduler'
 import type { Admission } from './admission'
+import type { AwayService } from './away'
+import { AWAY_MECHANICS, awayBlock } from './awayPrompts'
 import { CATALOG, resolveModel, visibleModels, type ProviderId } from '@shared/catalog'
 import type {
   AgentEvent,
@@ -634,6 +636,12 @@ export class SessionRegistry {
   private readonly spans = new SendSpans({ write: recordSendSpan })
   /** The running cap and the memory floor (admission.ts). Set by the server; null runs uncapped. */
   admission: Pick<Admission, 'cap' | 'memoryLow'> | null = null
+  /** Away from computer (away.ts). Set by the server; null is never away. */
+  away: Pick<AwayService, 'enabled' | 'count'> | null = null
+  /** What each live harness was last told about away (awayPrompts.ts): its
+   *  spawn's mechanics, a whisper, or a catch-up ahead of its next turn. A
+   *  harness with no entry was told nothing, which reads as off. */
+  private readonly awayToldAs = new Map<string, boolean>()
   /** Boot-resume threads past the cap, queued with their nudge (the restart's time) until a slot frees. */
   private readonly queuedResumes = new Map<string, number>()
   /** Queued threads whose start is in flight: Start now and the scheduler never start one twice. */
@@ -2973,6 +2981,8 @@ export class SessionRegistry {
         if (planner && planNotes) parts.push(notesForPlanHandoff(planNotes, planner.title))
       }
       const preamble = parts.filter(Boolean).join('\n\n')
+      // The preamble carried the away mechanics (and the block, while away is on).
+      if (preamble.includes(AWAY_MECHANICS)) this.awayToldAs.set(sessionId, this.awayOn())
       if (preamble) {
         const note = retyped
           ? `The user CHANGED this thread's type mid-conversation. The instructions below REPLACE the ones this thread opened with — earlier turns may follow the old shape; from this message on, follow these.\n\n`
@@ -4208,8 +4218,13 @@ export class SessionRegistry {
     const noKey = this.limits !== null && route === null && routedProviderOf(meta.provider, meta.model) === 'meta'
 
     const startP = (noKey ? Promise.reject(new Error(NO_META_KEY_MESSAGE)) : this.ensureCwd(meta))
-      .then(() =>
-        driver.start({
+      .then(() => {
+        // claude reads the away state into its system prompt at this spawn
+        // (mechanicsFor); every other harness reads it in its first message,
+        // or not at all on a resume, so its next turn catches up.
+        if (meta.provider === 'claude') this.awayToldAs.set(sessionId, this.awayOn())
+        else this.awayToldAs.delete(sessionId)
+        return driver.start({
           // Drivers seed goal state from here (resume dedup, watcher init).
           session: { ...meta, goal: this.goalOf(sessionId) },
           route,
@@ -4247,7 +4262,7 @@ export class SessionRegistry {
             this.settleGoneHarness(sessionId)
           }
         })
-      )
+      })
       .then(async (handle) => {
         this.starting.delete(sessionId)
         // The person hit Stop while this booted: put it down unsent, write
@@ -5116,10 +5131,39 @@ export class SessionRegistry {
 
   /** The held lines, once; '' when none. */
   private takeNotices(sessionId: string): string {
+    // A harness told another away state than the one in force hears the
+    // current one first (an idle thread, a watching master's wake, a queued
+    // thread's start); on and off again while it idled tells it nothing.
+    const away = this.awayCatchUp(sessionId)
     const list = this.notices.get(sessionId)
-    if (!list?.length) return ''
+    if (!list?.length) return away
     this.notices.delete(sessionId)
-    return list.join('\n\n')
+    return [away, ...list].filter(Boolean).join('\n\n')
+  }
+
+  private awayOn(): boolean {
+    return this.away?.enabled ?? false
+  }
+
+  private awayCatchUp(sessionId: string): string {
+    const now = this.awayOn()
+    if ((this.awayToldAs.get(sessionId) ?? false) === now) return ''
+    this.awayToldAs.set(sessionId, now)
+    return awayBlock(now)
+  }
+
+  /** Away flipped (away.ts): every running turn hears it now; every other
+   *  thread at its next turn (takeNotices) or its next spawn (mechanicsFor). */
+  awayChanged(enabled: boolean): void {
+    for (const [sessionId, handle] of this.handles) {
+      const status = this.store.getSession(sessionId)?.status
+      if (status !== 'running' && status !== 'starting' && status !== 'waiting') continue
+      if ((this.awayToldAs.get(sessionId) ?? false) === enabled) continue
+      this.awayToldAs.set(sessionId, enabled)
+      this.lastActivity.set(sessionId, Date.now())
+      // Not taken: the next turn catches up.
+      handle.send(awayBlock(enabled)).catch(() => this.awayToldAs.delete(sessionId))
+    }
   }
 
   /** Test seam: what waits for the next message. */

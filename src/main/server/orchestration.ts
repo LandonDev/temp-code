@@ -1,5 +1,6 @@
 import { execFileBudgeted as execFileP } from './spawnBudget'
 import { NOTES_MECHANICS, STEER_MECHANICS } from './notesPrompts'
+import { awayMechanics } from './awayPrompts'
 import { nanoid } from 'nanoid'
 import { anglePathFor, SHOWING_VISUALS } from './threads'
 import { mkdirSync } from 'node:fs'
@@ -1368,7 +1369,10 @@ and reports wake you, and you stay live (watching) until the batch is
 done. A person's message reaches you at once, into a live turn as a
 <user-steer> or as a wake; a wait_for_agent in flight returns on it.
 Answer a steer first in one short line (what you took from it, what you
-will do), then act on it.`
+will do), then act on it.
+
+While the person is away, your batch's final report gathers every child's
+decisions under "Decisions made while you were away".`
 
 /** What a thread hears when it is pinned as a master, or unpinned, while
  *  its harness is up: the harness's prompt was built at its spawn
@@ -1384,8 +1388,13 @@ export function masterPinNotice(master: boolean): string {
 /** The mechanics a session is prompted with: the spawn toolset, plus the
  *  master block when the session is its project's master. */
 export function mechanicsFor(session: SessionMeta): string {
-  const base = orchestratorMechanics(rulesFor(session), policyRole(session))
+  const base = `${orchestratorMechanics(rulesFor(session), policyRole(session))}\n\n${awayMechanics(awayNow())}`
   return isMasterSession(session) ? `${base}\n\n${MASTER_MECHANICS}` : base
+}
+
+/** Is the person away right now (away.ts, on the registry)? A spawn reads it into its mechanics. */
+export function awayNow(): boolean {
+  return registry?.away?.enabled ?? false
 }
 
 /** Prompt appended to an orchestrator's system prompt: fixed mechanics
