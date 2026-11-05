@@ -556,7 +556,15 @@ over 200 ms.
   the reader's top row must hold through turn 6 (each send parks the
   prompt, by design). On the box (2026-11-05): no jump with motion (the
   turn-6 table drawn at 65 heights, the fence at 188), and the top row held
-  scrolled up, with motion and without.
+  scrolled up, with motion and without. The gate scenes, base master
+  against the branch, interleaved, under another load on the box (load
+  average 35 to 60 from other agents' builds, so every run, base included,
+  read over the CPU bounds): board 65.5 and 48.5% for base, 53.3 and 53.9%
+  for the branch; chat over four rounds 28.7, 26.6, 36.7 and 38.0% for base,
+  30.6, 35.1, 38.3 and 38.7% for the branch (means 32.5 and 35.7%); no long
+  task over 200 ms, heap and RSS growth inside the gate's rules in every
+  run. The entry closure went from 5,134.5 kB to 5,131.0 kB with the review
+  chunk paying for the motion.
 
 ```bash
 bun x electron-vite build   # a hand run reads out/ as it is
