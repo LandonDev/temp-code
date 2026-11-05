@@ -3,11 +3,11 @@ import type { DevTarget } from "@server/shared/contract-devservers";
 import { DEV_TAB, DockBar } from "../chrome/DockBar";
 import { DevServerRow } from "../chrome/DevServerRow";
 import { DockFrame } from "../chrome/DockFrame";
-import { DevStarter, useDevStarter } from "./DevStarter";
+import { DevStarter, useDevStarter, type DevStarterState } from "./DevStarter";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { ItemGroup } from "../components/ui/item";
 import { devPane, useDevPane } from "../lib/devPane";
-import { serverGroups, shownServer, useDevTab, useDockProject, useLiveDevServers } from "../lib/devServers";
+import { serverGroups, shownServer, useDevTab, useDockProject, useLiveDevServers, type LiveServer } from "../lib/devServers";
 import { findProjectTerminal, selectDockTerminal, withDockOpen, withDockSize } from "../lib/projectTerminal";
 import { useProjects } from "../lib/tcserver/workspaces";
 import { dockCwdOf, useActivePane, useProject } from "../stores/project";
@@ -86,23 +86,7 @@ export function DevServersPane({
         }}
       />
       <div className="flex min-h-0 min-w-0 flex-1">
-        <div className="flex w-72 shrink-0 flex-col border-r border-border">
-          <DevStarter starter={starter} />
-          {servers.length > 0 ? (
-            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-              <div className="flex flex-col gap-4 p-1">
-                {serverGroups(servers).map((group) => (
-                  <ItemGroup key={group.key} aria-label={group.owner} data-dev-group={group.key} className="gap-0.5">
-                    <div className="truncate px-2 pt-1 text-xs font-medium text-muted-foreground">{group.owner}</div>
-                    {group.servers.map((server) => (
-                      <DevServerRow key={server.key} server={server} picked={server.key === shown?.key} onPick={() => devPane.pick(server.key)} />
-                    ))}
-                  </ItemGroup>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
+        <DevServerColumn starter={starter} servers={servers} shownKey={shown?.key ?? null} onPick={(key) => devPane.pick(key)} />
         <div className="relative flex min-h-0 min-w-0 flex-1">
           {shown ? (
             <DevConsole
@@ -126,6 +110,41 @@ export function DevServersPane({
         </div>
       </div>
     </DockFrame>
+  );
+}
+
+/** The pane's left column: the starter, then every live server under the
+ *  thread it belongs to, rows and headings on the 12px inset, groups 16px
+ *  apart. */
+export function DevServerColumn({
+  starter,
+  servers,
+  shownKey,
+  onPick,
+}: {
+  starter: DevStarterState;
+  servers: LiveServer[];
+  shownKey: string | null;
+  onPick: (key: string) => void;
+}) {
+  return (
+    <div className="flex w-72 shrink-0 flex-col border-r border-border">
+      <DevStarter starter={starter} />
+      {servers.length > 0 ? (
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+          <div className="flex flex-col gap-4 p-1">
+            {serverGroups(servers).map((group) => (
+              <ItemGroup key={group.key} aria-label={group.owner} data-dev-group={group.key} className="gap-0.5">
+                <div className="truncate px-2 pt-1 text-xs font-medium text-muted-foreground">{group.owner}</div>
+                {group.servers.map((server) => (
+                  <DevServerRow key={server.key} server={server} picked={server.key === shownKey} onPick={() => onPick(server.key)} />
+                ))}
+              </ItemGroup>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
