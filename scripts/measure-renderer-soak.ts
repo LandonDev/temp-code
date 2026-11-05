@@ -50,6 +50,17 @@
  *   a jump fails the run, except under --reduced-motion, which steps by design.
  *   With --scrolled-up the run also fails when the reader's top row moved
  *   while turn 6 streamed (each send parks the prompt, by design).
+ * --scene typing: the board scene's load with the master's own churn and
+ *   its live edits (soakLoad.ts TYPING_PROFILE), the master's board and
+ *   chat open, its composer typed into in phases (scripts/lib/soakTyping.ts:
+ *   idle with the load paused, busy, fast, a burst and a paste), each phase's
+ *   keystroke-to-frame latency, input delay, Event Timing, long tasks, long
+ *   animation frames with their scripts and the store's counters read, its
+ *   text checked exactly, and the field cleared; never sent. Judged by
+ *   soakJudge.ts TYPING_RULE, with --gate on the gate's shorter phases
+ *   (scripts/gate.ts renderer-soak-typing). --trace traces the busy phase;
+ *   --why (dev) tallies the re-renders while typing busy against a quiet
+ *   window as long. Against --host box it skips the idle phase (no pause).
  *
  * Each sample forces a GC (HeapProfiler.collectGarbage) and reads the heap
  * (Runtime.getHeapUsage), the renderer's memory (Linux: smaps_rollup PSS and
@@ -64,7 +75,7 @@
  */
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { homedir, loadavg } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { Cdp, REPO, portFree, sleep, type Target } from './lib/packagedApp'
@@ -73,8 +84,9 @@ import { summarizeTrace, TRACE_CATEGORIES, traceMarkdown, type TraceEvent, type 
 import { REVEAL_OBSERVER, revealLine, summarizeReveal, type RevealRecord } from './lib/revealReport'
 import { HEIGHT_OBSERVER, heightLine, summarizeHeights, type HeightRecord } from './lib/heightReport'
 import { REVEAL } from '../src/renderer/src/lib/ease'
-import { buildIsCurrent, FAMILY, GATE_TIMING, gateRule, handRule, judgeSoak, parseSoakArgs, REACT_MEASURE_PREFIX, type BuildStamp, type GateScene, type SoakSample } from './lib/soakJudge'
+import { buildIsCurrent, FAMILY, GATE_TIMING, gateRule, handRule, judgeSoak, judgeTyping, parseSoakArgs, REACT_MEASURE_PREFIX, TYPING_RULE, type BuildStamp, type GateScene, type SoakSample } from './lib/soakJudge'
 import { scenarioLength, questionClicks } from './lib/soakScenarios'
+import { summarizePhase, typingGaps, typingMarkdown, typingPhases, typingProse, type PhaseSummary, type TypingRecords } from './lib/soakTyping'
 
 const args = parseSoakArgs(process.argv.slice(2).filter((a) => a !== '--why'))
 /** Hand runs on a dev build: also tally the props React names as changed, per component. */
@@ -663,6 +675,10 @@ async function main(): Promise<void> {
   const gpu = procs.find((p) => p.type === 'gpu-process') ?? (linux ? procs.find((p) => p.pid !== renderer.pid && viz(p.pid)) : undefined)
   const types = [...new Set(procs.map((p) => p.type))].join(', ')
   log(`renderer ${renderer.pid}, gpu ${gpu?.pid ?? 'none'} (${procs.length} processes: ${types})`)
+  if (args.scene === 'typing') {
+    await recordTyping(c, shown, renderer.pid)
+    return
+  }
 
   const warmMs = args.gate ? GATE_TIMING.warmMs : 30_000
   log(`warming up ${warmMs / 1000} s`)
@@ -785,6 +801,221 @@ async function main(): Promise<void> {
   ].join('\n')
   writeFileSync(join(ROOT, `${args.label}.md`), md + '\n')
   for (const v of verdict.verdicts) console.log(`${v.ok ? '✓' : v.reportOnly ? '!' : '✗'} ${v.what}: ${v.got} (limit ${v.limit}${v.reportOnly ? ', reported only' : ''})`)
+  console.log(`${verdict.ok ? 'passed' : 'FAILED'}: ${ROOT}/${args.label}.md`)
+  process.exitCode = verdict.ok ? 0 : 1
+}
+
+// ── typing, measured ─────────────────────────────────────────────────────
+/** The master's composer: the one field on screen, kept as window.__typingField. */
+const TYPING_FIELD = `(() => {
+  const fields = [...document.querySelectorAll('[data-composer-input]')].filter((e) => e.getBoundingClientRect().width > 0)
+  if (fields.length !== 1) return { count: fields.length }
+  window.__typingField = fields[0]
+  const r = fields[0].getBoundingClientRect()
+  return { count: 1, x: r.x + r.width / 2, y: r.y + r.height / 2, width: Math.round(r.width), text: fields[0].textContent }
+})()`
+
+/** The page side of a typing phase: per keystroke its timestamp, its handler
+ *  and the end of the next frame's work; Event Timing, long tasks and long
+ *  animation frames; the store's flushes, meta flushes, the master's meta
+ *  changes and its live-edit items. begin() opens a window, end() reads it. */
+const typingObservers = (masterId: string): string => `(() => {
+  if (window.__typing) return true
+  const field = window.__typingField
+  const store = window.__monocode.sessionStore
+  const s = (window.__typing = { active: false, keys: [], events: [], tasks: [], frames: [] })
+  const ch = new MessageChannel()
+  const pending = new Map()
+  let seq = 0
+  ch.port1.onmessage = (e) => {
+    const rec = pending.get(e.data)
+    if (rec) { rec.frame = performance.now(); pending.delete(e.data) }
+  }
+  document.addEventListener('keydown', (e) => {
+    if (!s.active || e.target !== field) return
+    const rec = { stamp: e.timeStamp, handler: performance.now(), frame: null }
+    s.keys.push(rec)
+    const id = seq++
+    pending.set(id, rec)
+    requestAnimationFrame(() => ch.port2.postMessage(id))
+  }, true)
+  new PerformanceObserver((list) => { for (const e of list.getEntries()) if (e.interactionId) s.events.push({ interactionId: e.interactionId, duration: e.duration, start: e.startTime }) }).observe({ type: 'event', durationThreshold: 16, buffered: true })
+  new PerformanceObserver((list) => { for (const e of list.getEntries()) s.tasks.push({ start: e.startTime, duration: e.duration }) }).observe({ type: 'longtask' })
+  try {
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) {
+        if (e.duration <= 50) continue
+        const scripts = [...(e.scripts || [])].sort((a, b) => b.duration - a.duration).slice(0, 3)
+        s.frames.push({ start: e.startTime, duration: e.duration, blocking: e.blockingDuration || 0, scripts: scripts.map((x) => ({ invoker: String(x.invoker || ''), fn: String(x.sourceFunctionName || ''), url: String(x.sourceURL || ''), duration: x.duration })) })
+      }
+    }).observe({ type: 'long-animation-frame' })
+  } catch {}
+  const counts = { flushes: 0, metaFlushes: 0, masterMetas: 0 }
+  store.subscribe(() => counts.flushes++)
+  store.onMetaChange((c) => { counts.metaFlushes++; if (c.ids.has(${JSON.stringify(masterId)})) counts.masterMetas++ })
+  const read = () => ({ ...counts, liveEdits: store.pushCounts().liveEdit ?? 0 })
+  s.begin = () => { s.keys = []; s.t0 = performance.now(); s.c0 = read(); s.active = true; return s.t0 }
+  s.end = () => {
+    s.active = false
+    const t0 = s.t0, t1 = performance.now(), c1 = read()
+    const inWindow = (x) => x.start >= t0 && x.start < t1
+    const longest = new Map()
+    for (const e of s.events) if (inWindow(e) && (longest.get(e.interactionId)?.duration ?? -1) < e.duration) longest.set(e.interactionId, e)
+    return {
+      keys: s.keys,
+      events: [...longest.values()].map((e) => ({ interactionId: e.interactionId, duration: e.duration })),
+      longTasks: s.tasks.filter(inWindow),
+      frames: s.frames.filter(inWindow),
+      store: { flushes: c1.flushes - s.c0.flushes, metaFlushes: c1.metaFlushes - s.c0.metaFlushes, masterMetas: c1.masterMetas - s.c0.masterMetas, liveEdits: c1.liveEdits - s.c0.liveEdits },
+      windowMs: t1 - t0
+    }
+  }
+  return true
+})()`
+
+/**
+ * `--scene typing`: the master's composer typed into, phase by phase
+ * (scripts/lib/soakTyping.ts), never sent. The idle phase pauses the
+ * synthetic host's load over its stdin and waits for its answer; the box
+ * has no pause, so a box run skips it. CPU and memory are read across the
+ * phases and reported, not judged.
+ */
+async function recordTyping(c: Cdp, shown: Shown, rendererPid: number): Promise<void> {
+  const canPause = args.host === 'synthetic' && !!soakHost?.stdin
+  if (!canPause) log('the box has no pause: the idle phase is skipped')
+  const answers = soakHost?.stdout ? createInterface({ input: soakHost.stdout }) : null
+  const control = (command: 'pause' | 'resume'): Promise<void> =>
+    new Promise((ok, fail) => {
+      const want = command === 'pause' ? '"paused"' : '"resumed"'
+      const timer = setTimeout(() => fail(new Error(`the synthetic host did not answer ${command}`)), 10_000)
+      const onLine = (line: string): void => {
+        if (!line.includes(want)) return
+        clearTimeout(timer)
+        answers!.off('line', onLine)
+        ok()
+      }
+      answers!.on('line', onLine)
+      soakHost!.stdin!.write(`${command}\n`)
+    })
+  const until = Date.now() + 30_000
+  let field = await c.eval<{ count: number; x: number; y: number; width: number; text: string }>(TYPING_FIELD)
+  while (field.count !== 1 && Date.now() < until) {
+    await sleep(250)
+    field = await c.eval(TYPING_FIELD)
+  }
+  if (field.count !== 1) throw new Error(`expected one composer on screen, found ${field.count}`)
+  if (field.text) throw new Error('the composer already holds text')
+  for (const type of ['mousePressed', 'mouseReleased'] as const) await c.send('Input.dispatchMouseEvent', { type, x: field.x, y: field.y, button: 'left', clickCount: 1 })
+  if (!(await c.eval<boolean>('document.activeElement === window.__typingField'))) throw new Error('the composer did not take focus')
+  await c.eval(typingObservers(shown.masterId))
+  log(`typing into the master's composer (${field.width}px wide); warming up 3 s`)
+  await sleep(3_000)
+
+  const key = async (k: string, text?: string, modifiers = 0, extra: Record<string, unknown> = {}): Promise<void> => {
+    await c.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, text, modifiers, timestamp: Date.now() / 1000, ...extra })
+    await c.send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, modifiers, timestamp: Date.now() / 1000, ...extra })
+  }
+  const fieldText = (): Promise<string> => c.eval<string>('window.__typingField.textContent')
+  const clear = async (): Promise<void> => {
+    const select = { code: 'KeyA', windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65, commands: ['selectAll'] }
+    await key('a', undefined, mac ? 4 : 2, select)
+    await key('Backspace', undefined, 0, { windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 })
+    await sleep(150)
+    const left = await fieldText()
+    if (left !== '') throw new Error(`the composer did not clear (${left.length} characters left)`)
+  }
+  const sample = async (): Promise<{ at: number; heapMb: number; rssMb: number; cpuS: number }> => {
+    await c.send('HeapProfiler.collectGarbage')
+    const heap = (await c.send('Runtime.getHeapUsage')) as { usedSize: number }
+    return { at: Date.now(), heapMb: Math.round((heap.usedSize / 2 ** 20) * 10) / 10, rssMb: memoryMb(rendererPid).mb, cpuS: cpuSeconds(rendererPid) }
+  }
+
+  const before = await sample()
+  const summaries: PhaseSummary[] = []
+  let trace: TraceSummary | null = null
+  let renders: { typing: [string, number][]; quiet: [string, number][]; ms: number } | null = null
+  for (const [i, phase] of typingPhases(args.gate, canPause).entries()) {
+    if (phase.name === 'idle') {
+      await control('pause')
+      await sleep(1_000)
+    }
+    const expected = typingProse(phase.count, 7 + i)
+    if (why && phase.name === 'busy') await c.eval('window.__soakDrain()')
+    const tracing = args.traceS && phase.name === 'busy' ? traceFrames(c, args.traceS) : null
+    await c.eval('window.__typing.begin()')
+    if (phase.name === 'paste') {
+      await c.eval(`(() => {
+        const data = new DataTransfer()
+        data.setData('text/plain', ${JSON.stringify(expected)})
+        window.__typingField.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+        return true
+      })()`)
+    } else {
+      const gaps = typingGaps(phase.cadence, phase.count, 123_456_789 + i)
+      for (const [k, ch] of [...expected].entries()) {
+        await key(ch, ch)
+        if (gaps[k]) await sleep(gaps[k]!)
+      }
+    }
+    await sleep(1_000)
+    const records = await c.eval<TypingRecords>('window.__typing.end()')
+    const summary = summarizePhase(phase, records, expected, await fieldText())
+    summaries.push(summary)
+    log(`${phase.name}: ${summary.count} in ${summary.seconds} s, key → frame p95 ${summary.frame.p95 ?? '–'} ms, max ${summary.frame.max ?? '–'} ms, long tasks ${summary.longTasks.count} (worst ${summary.longTasks.maxMs} ms), text ${summary.text.ok ? 'exact' : `differs at ${summary.text.firstDifference}`}`)
+    if (tracing) trace = await tracing
+    if (why && phase.name === 'busy') {
+      // The same window's length again with the draft held and nothing typed.
+      const typed = (await c.eval<{ renders: [string, number][] }>('window.__soakDrain()')).renders
+      await sleep(records.windowMs)
+      const quiet = (await c.eval<{ renders: [string, number][] }>('window.__soakDrain()')).renders
+      const top = (r: [string, number][]): [string, number][] => [...r].sort((a, b) => b[1] - a[1]).slice(0, 25)
+      renders = { typing: top(typed), quiet: top(quiet), ms: Math.round(records.windowMs) }
+    }
+    if (phase.name === 'idle') {
+      await control('resume')
+      await sleep(2_000)
+    }
+    await clear()
+  }
+  const after = await sample()
+  answers?.close()
+
+  const verdict = judgeTyping(summaries)
+  const wall = (after.at - before.at) / 1000
+  const usage = {
+    cpuPct: Math.round(((after.cpuS - before.cpuS) / wall) * 1000) / 10,
+    heapGrowthMb: Math.round((after.heapMb - before.heapMb) * 10) / 10,
+    rssGrowthMb: Math.round((after.rssMb - before.rssMb) * 10) / 10,
+    seconds: Math.round(wall)
+  }
+  const sha = (() => {
+    try {
+      return execFileSync('git', ['-C', tree, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim()
+    } catch {
+      return null
+    }
+  })()
+  const owners = why ? await c.eval<[string, number][]>('window.__soakOwners ? window.__soakOwners() : []') : []
+  writeFileSync(join(ROOT, `${args.label}.json`), JSON.stringify({ label: args.label, args, tree, sha, platform: process.platform, shown, rule: TYPING_RULE, verdict, phases: summaries, usage, trace, renders, owners }, null, 1))
+  const renderTable = (rows: [string, number][]): string[] => ['| component | renders |', '|---|---|', ...rows.map(([n, k]) => `| ${n} | ${k} |`)]
+  const md = [
+    `# ${args.label}: ${args.host} host, typing scene, ${args.build} build (${sha ?? 'no git'}, ${process.platform}, load ${loadavg()[0]!.toFixed(1)})`,
+    '',
+    ...typingMarkdown(summaries),
+    '',
+    `Across the phases (${usage.seconds} s, reported, not judged): renderer CPU ${usage.cpuPct}% of one core, heap after GC ${usage.heapGrowthMb >= 0 ? '+' : ''}${usage.heapGrowthMb} MB, renderer ${linux ? 'PSS' : 'RSS'} ${usage.rssGrowthMb >= 0 ? '+' : ''}${usage.rssGrowthMb} MB.`,
+    '',
+    `Rule: ${TYPING_RULE.name}`,
+    '',
+    '| reading | got | limit | |',
+    '|---|---|---|---|',
+    ...verdict.verdicts.map((v) => `| ${v.what} | ${v.got} | ${v.limit} | ${v.ok ? 'pass' : 'FAIL'} |`),
+    ...(renders ? ['', `Re-renders with changed props while typing busy (${renders.ms} ms):`, '', ...renderTable(renders.typing), '', 'And in a quiet window as long, the draft held:', '', ...renderTable(renders.quiet)] : []),
+    ...(owners.length ? ['', 'Re-renders by owner chain, the whole run:', '', '| chain | renders |', '|---|---|', ...owners.map(([k, n]) => `| ${k} | ${n} |`)] : []),
+    ...(trace ? ['', 'The busy phase, traced:', '', ...traceMarkdown(trace)] : [])
+  ].join('\n')
+  writeFileSync(join(ROOT, `${args.label}.md`), md + '\n')
+  for (const v of verdict.verdicts) console.log(`${v.ok ? '✓' : '✗'} ${v.what}: ${v.got} (limit ${v.limit})`)
   console.log(`${verdict.ok ? 'passed' : 'FAILED'}: ${ROOT}/${args.label}.md`)
   process.exitCode = verdict.ok ? 0 : 1
 }

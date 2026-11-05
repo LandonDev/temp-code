@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildIsCurrent, FAMILY, GATE_CPU_PCT, GATE_RULE, gateRule, handRule, judgeSoak, parseSoakArgs, type SoakSample } from './lib/soakJudge'
+import { buildIsCurrent, FAMILY, GATE_CPU_PCT, GATE_RULE, gateRule, handRule, judgeSoak, judgeTyping, parseSoakArgs, TYPING_RULE, type SoakSample } from './lib/soakJudge'
+import type { PhaseSummary } from './lib/soakTyping'
 
 const sample = (t: number, over: Partial<SoakSample> = {}): SoakSample => ({ t, heapMb: 40, rssMb: 200, cpuS: 0.5, wallS: 10, longTasks: [], ...over })
 
@@ -152,5 +153,73 @@ describe("the gate's out/", () => {
     expect(buildIsCurrent({ sha: 'abc', clean: false }, 'abc', true)).toBe(false)
     expect(buildIsCurrent({ sha: 'abc', clean: true }, 'abc', false)).toBe(false)
     expect(buildIsCurrent(null, 'abc', true)).toBe(false)
+  })
+})
+
+describe('the typing scene', () => {
+  const phase = (name: PhaseSummary['phase'], p95: number | null, over: Partial<PhaseSummary> = {}): PhaseSummary => ({
+    phase: name,
+    count: 100,
+    seconds: 10,
+    frame: { n: p95 === null ? 0 : 100, p50: p95 === null ? null : p95 / 2, p95, p99: p95, max: p95 },
+    inputDelay: { n: 100, p50: 1, p95: 3, p99: 4, max: 5 },
+    events: { over16: 0, p95: null, max: null },
+    longTasks: { count: 0, totalMs: 0, maxMs: 0 },
+    frames: { count: 0, worst: [] },
+    store: { flushesPerS: 8, metaFlushesPerS: 8, masterMetasPerS: 1, liveEditsPerS: 50 },
+    text: { ok: true, firstDifference: null, expected: 100, actual: 100 },
+    ...over
+  })
+  const passing = (): PhaseSummary[] => [phase('idle', 12), phase('busy', 30), phase('fast', 31), phase('burst', 400), phase('paste', null)]
+
+  it('types into the master beside its board, on the gate or by hand, the box included', () => {
+    expect(parseSoakArgs(['--gate', '--scene', 'typing'])).toMatchObject({ gate: true, scene: 'typing', view: 'board', host: 'synthetic', label: 'gate-typing', profile: false })
+    expect(parseSoakArgs(['--scene', 'typing'])).toMatchObject({ gate: false, scene: 'typing', view: 'board', label: 'synthetic-prod-typing' })
+    expect(parseSoakArgs(['--scene', 'typing', '--host', 'box'])).toMatchObject({ host: 'box', scene: 'typing', label: 'box-prod-typing' })
+    expect(parseSoakArgs(['--scene', 'typing', '--build', 'dev', '--trace', '5'])).toMatchObject({ build: 'dev', traceS: 5 })
+    expect(() => parseSoakArgs(['--gate', '--scene', 'typing', '--host', 'box'])).toThrow('synthetic host only')
+    expect(() => parseSoakArgs(['--scene', 'typing', '--view', 'split'])).toThrow('its view is board')
+    expect(() => parseSoakArgs(['--scene', 'typing', '--minutes', '5'])).toThrow('runs its phases')
+    expect(() => parseSoakArgs(['--gate', '--scene', 'typing', '--cpu-report-only'])).toThrow('never judges it')
+  })
+
+  it('passes when the paced phases are inside their bounds and every text is exact', () => {
+    const verdict = judgeTyping(passing())
+    expect(verdict.ok).toBe(true)
+    expect(verdict.verdicts.map((v) => v.what)).toEqual([
+      'idle: keystroke to frame p95, ms',
+      'idle: longest long task, ms',
+      'idle: characters wrong or missing',
+      'busy: keystroke to frame p95, ms',
+      'busy: longest long task, ms',
+      'busy: characters wrong or missing',
+      'fast: keystroke to frame p95, ms',
+      'fast: longest long task, ms',
+      'fast: characters wrong or missing',
+      'burst: characters wrong or missing',
+      'paste: characters wrong or missing'
+    ])
+  })
+
+  it('fails a slow idle or busy keystroke, a long task while typing, or a wrong character in any phase', () => {
+    const at = (i: number, p: PhaseSummary): PhaseSummary[] => passing().map((x, k) => (k === i ? p : x))
+    expect(judgeTyping(at(0, phase('idle', 16.5))).ok).toBe(false)
+    expect(judgeTyping(at(0, phase('idle', 16))).ok).toBe(true)
+    expect(judgeTyping(at(1, phase('busy', 34))).ok).toBe(false)
+    expect(judgeTyping(at(2, phase('fast', 30, { longTasks: { count: 1, totalMs: 120, maxMs: 120 } }))).ok).toBe(false)
+    // The burst's latency and long tasks are the queue's: only its text counts.
+    expect(judgeTyping(at(3, phase('burst', 900, { longTasks: { count: 4, totalMs: 900, maxMs: 300 } }))).ok).toBe(true)
+    const wrong = judgeTyping(at(4, phase('paste', null, { text: { ok: false, firstDifference: 1_990, expected: 2_000, actual: 1_995 } })))
+    expect(wrong.ok).toBe(false)
+    expect(wrong.verdicts.find((v) => v.what === 'paste: characters wrong or missing')).toMatchObject({ got: 10, ok: false })
+    // A phase with no keystroke reading cannot pass its bound.
+    expect(judgeTyping(at(1, phase('busy', null))).ok).toBe(false)
+  })
+
+  it('a box run has no idle phase, and nothing judges what it skipped', () => {
+    const verdict = judgeTyping(passing().slice(1))
+    expect(verdict.ok).toBe(true)
+    expect(verdict.verdicts.some((v) => v.what.startsWith('idle'))).toBe(false)
+    expect(TYPING_RULE.p95Ms).toEqual({ idle: 16, busy: 33, fast: 33 })
   })
 })

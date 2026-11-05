@@ -17,13 +17,19 @@
  * within +100 MB (+150 MB on a dev build), CPU within the view's figure on
  * a production build, and on a dev build at most 5,000 component re-renders
  * with changed props a minute, 500 of them in the tooltip and button family.
+ * The typing scene's (`--scene typing`, TYPING_RULE, with or without
+ * `--gate`): a keystroke reaches its frame within 16 ms at p95 with the
+ * load paused and 33 ms under it, paced or fast, every phase's text is
+ * exact, and no long task passes 100 ms while typing paced or fast; CPU
+ * and memory are reported, not judged.
  * The bounds are never raised to make a run pass.
  */
+import type { PhaseSummary, TypingPhaseName } from './soakTyping'
 
 export type SoakHostKind = 'synthetic' | 'box'
 export type SoakBuild = 'prod' | 'dev'
 export type SoakView = 'board' | 'stream' | 'split'
-export type SoakScene = 'board' | 'chat'
+export type SoakScene = 'board' | 'chat' | 'typing' | 'scenarios'
 
 export interface SoakArgs {
   host: SoakHostKind
@@ -78,11 +84,14 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   const host = (flag('--host') ?? 'synthetic') as SoakHostKind
   const build = (flag('--build') ?? 'prod') as SoakBuild
   const scene = (flag('--scene') ?? 'board') as SoakScene
-  if (!['board', 'chat', 'scenarios'].includes(scene)) throw new Error('--scene is board, chat or scenarios')
-  if (scene !== 'board' && host !== 'synthetic') throw new Error(`--scene ${scene} is a synthetic host`)
+  if (!['board', 'chat', 'typing', 'scenarios'].includes(scene)) throw new Error('--scene is board, chat, typing or scenarios')
+  if ((scene === 'chat' || scene === 'scenarios') && host !== 'synthetic') throw new Error(`--scene ${scene} is a synthetic host`)
   if (scene === 'scenarios' && gate) throw new Error('--scene scenarios is a recording, never the gate')
-  const view = (flag('--view') ?? (scene === 'board' ? (gate ? 'split' : 'board') : 'stream')) as SoakView
-  if (scene !== 'board' && view !== 'stream') throw new Error(`--scene ${scene} has one thread: its view is stream`)
+  const view = (flag('--view') ?? (scene === 'board' ? (gate ? 'split' : 'board') : scene === 'typing' ? 'board' : 'stream')) as SoakView
+  if (scene === 'typing' && view !== 'board') throw new Error("--scene typing types into the master's composer beside its board: its view is board")
+  if ((scene === 'chat' || scene === 'scenarios') && view !== 'stream') throw new Error(`--scene ${scene} has one thread: its view is stream`)
+  if (scene === 'typing' && (argv.includes('--minutes') || argv.includes('--every'))) throw new Error('--scene typing runs its phases, not a window: drop --minutes and --every')
+  if (scene === 'typing' && argv.includes('--cpu-report-only')) throw new Error('--scene typing reports CPU and never judges it: drop --cpu-report-only')
   const screencast = flag('--screencast') ?? null
   const scrolledUp = argv.includes('--scrolled-up')
   if (scrolledUp && scene !== 'scenarios') throw new Error('--scrolled-up belongs to --scene scenarios')
@@ -102,7 +111,7 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   if (!(minutes > 0)) throw new Error('--minutes takes a positive number')
   if (!(every >= 1)) throw new Error('--every takes seconds, at least 1')
   if (every > minutes * 60) throw new Error('--every is longer than the run')
-  const label = flag('--label') ?? (gate ? (scene === 'chat' ? 'gate-chat' : 'gate') : `${host}-${build}-${scene === 'board' ? view : scene}`)
+  const label = flag('--label') ?? (gate ? (scene === 'board' ? 'gate' : `gate-${scene}`) : `${host}-${build}-${scene === 'board' ? view : scene}`)
   if (!/^[a-z0-9-]+$/i.test(label)) throw new Error('--label takes letters, digits and dashes')
   const traceS = Number(flag('--trace') ?? '0')
   if (!(traceS >= 0 && traceS <= 30)) throw new Error('--trace takes seconds, 0 to 30')
@@ -181,8 +190,8 @@ export interface SoakRule {
  * board's ratio (docs/box.md "The soak's two scenes"). Never raised to make
  * a run pass.
  */
-/** The scenes the gate measures; `scenarios` is a recording, judged by eye. */
-export type GateScene = Exclude<SoakScene, 'scenarios'>
+/** The scenes the gate judges by its window's rule; `typing` has TYPING_RULE, and `scenarios` is a recording, judged by eye. */
+export type GateScene = Exclude<SoakScene, 'scenarios' | 'typing'>
 
 export const GATE_CPU_PCT: Record<GateScene, number> = { board: 33, chat: 22 }
 
@@ -225,6 +234,40 @@ export interface Verdict {
   ok: boolean
   /** Shown against its limit; the run passes whatever it reads. */
   reportOnly?: boolean
+}
+
+/**
+ * The typing scene's bounds (Performance 3's targets, judged on the Mac at
+ * 144 Hz; on the box under xvfb at 60 Hz the wait for the next frame alone
+ * can reach 16 ms, so its idle figure is read, not trusted): keystroke to
+ * frame at p95 per paced or fast phase, the longest task while typing in
+ * them, and the text of every phase exact. The burst's latency is the
+ * queue's and the paste has no keystrokes: only their text is judged.
+ */
+export const TYPING_RULE: { name: string; p95Ms: Partial<Record<TypingPhaseName, number>>; longTaskMaxMs: number; longTaskPhases: TypingPhaseName[] } = {
+  name: 'typing',
+  p95Ms: { idle: 16, busy: 33, fast: 33 },
+  longTaskMaxMs: 100,
+  longTaskPhases: ['idle', 'busy', 'fast']
+}
+
+/** Every phase against TYPING_RULE; a phase the run skipped (idle against the box) is not judged. */
+export function judgeTyping(phases: readonly PhaseSummary[], rule = TYPING_RULE): { ok: boolean; verdicts: Verdict[] } {
+  const verdicts: Verdict[] = []
+  for (const p of phases) {
+    const p95 = rule.p95Ms[p.phase]
+    if (p95 !== undefined) {
+      const got = p.frame.p95 ?? Number.POSITIVE_INFINITY
+      verdicts.push({ what: `${p.phase}: keystroke to frame p95, ms`, got, limit: p95, ok: got <= p95 })
+    }
+    if (rule.longTaskPhases.includes(p.phase)) {
+      verdicts.push({ what: `${p.phase}: longest long task, ms`, got: p.longTasks.maxMs, limit: rule.longTaskMaxMs, ok: p.longTasks.maxMs <= rule.longTaskMaxMs })
+    }
+    // The text check: 0 when exact, else the count of characters past the first difference.
+    const off = p.text.ok ? 0 : Math.max(p.text.expected, p.text.actual) - (p.text.firstDifference ?? 0)
+    verdicts.push({ what: `${p.phase}: characters wrong or missing`, got: off, limit: 0, ok: p.text.ok })
+  }
+  return { ok: verdicts.every((v) => v.ok), verdicts }
 }
 
 /** Least-squares slope of y over t, per minute. */

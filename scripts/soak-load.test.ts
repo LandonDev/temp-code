@@ -1,5 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { BURST_STALL_EVERY_MS, BURST_STALL_MS, burstOpen, CHAT_PROFILE, declaredRates, profileOf, SOAK_PROFILE, SOAK_TICK_MS, startLoad, type SoakClock, type SoakEmit } from './lib/soakLoad'
+import {
+  BURST_STALL_EVERY_MS,
+  BURST_STALL_MS,
+  burstOpen,
+  CHAT_PROFILE,
+  declaredRates,
+  owedAt,
+  profileOf,
+  SOAK_PROFILE,
+  SOAK_TICK_MS,
+  startLoad,
+  TYPING_FLOOD_EVERY_MS,
+  TYPING_FLOOD_SIZE,
+  TYPING_PROFILE,
+  TYPING_SETTLERS,
+  type SoakClock,
+  type SoakEmit
+} from './lib/soakLoad'
 
 function fakeClock(): SoakClock & { advance(ms: number, step?: number): void } {
   let now = 1_000_000
@@ -21,8 +38,63 @@ function fakeClock(): SoakClock & { advance(ms: number, step?: number): void } {
 
 describe('soak load', () => {
   it('declares the box-shaped rates', () => {
-    expect(declaredRates()).toEqual({ meta: 8, delta: 30, tool: 0.2, log: 5 })
+    expect(declaredRates()).toEqual({ meta: 8, delta: 30, tool: 0.2, log: 5, settle: 0, resume: 0, edit: 0, flood: 0 })
     expect(SOAK_PROFILE.children).toBe(16)
+  })
+
+  it("the typing scene: the board's load, the master's churn and its live edits", () => {
+    expect(profileOf('typing')).toBe(TYPING_PROFILE)
+    expect(declaredRates(TYPING_PROFILE)).toEqual({ meta: 8.1, delta: 30, tool: 0.2, log: 5, settle: 0.5, resume: 0.5, edit: 10, flood: 40 })
+    // The settlers never include a child whose transcript streams.
+    expect(TYPING_SETTLERS).toHaveLength(13)
+    expect(TYPING_SETTLERS.some((i) => i === SOAK_PROFILE.focused || SOAK_PROFILE.streamers.includes(i))).toBe(false)
+  })
+
+  it('the typing streams keep their rates over 60 s of fake time', () => {
+    const clock = fakeClock()
+    const seen: { t: number; emit: SoakEmit }[] = []
+    const start = clock.now()
+    const driver = startLoad((emit) => seen.push({ t: clock.now() - start, emit }), clock, TYPING_PROFILE)
+    clock.advance(60_000)
+    driver.stop()
+    const counts = driver.counts()
+    const rates = declaredRates(TYPING_PROFILE)
+    for (const kind of ['settle', 'resume', 'edit', 'flood'] as const) expect(Math.abs(counts[kind] - rates[kind] * 60)).toBeLessThanOrEqual(1)
+    expect(seen.filter((s) => s.emit.kind === 'meta' && s.emit.child === null)).toHaveLength(6)
+    // Each settle comes a second before its resume.
+    const settles = seen.filter((s) => s.emit.kind === 'settle')
+    const resumes = seen.filter((s) => s.emit.kind === 'resume')
+    for (const [i, s] of settles.entries()) if (resumes[i]) expect(resumes[i]!.t - s.t).toBeCloseTo(1_000, -2)
+    // The floods: 400 edits inside the first second of every ten, nothing between.
+    const floods = seen.filter((s) => s.emit.kind === 'flood')
+    expect(floods.every((f) => f.t % TYPING_FLOOD_EVERY_MS <= 1_000 + SOAK_TICK_MS)).toBe(true)
+    expect(floods.filter((f) => f.t < TYPING_FLOOD_EVERY_MS)).toHaveLength(TYPING_FLOOD_SIZE)
+  })
+
+  it('a windowed stream owes nothing between its windows', () => {
+    const flood = TYPING_PROFILE.streams.find((s) => s.kind === 'flood')!
+    expect(owedAt(flood, 500)).toBe(200)
+    expect(owedAt(flood, 1_000)).toBe(400)
+    expect(owedAt(flood, 9_999)).toBe(400)
+    expect(owedAt(flood, 10_500)).toBe(600)
+  })
+
+  it('a pause holds every stream, and a resume carries on without paying the pause', () => {
+    const clock = fakeClock()
+    const driver = startLoad(() => {}, clock, TYPING_PROFILE)
+    clock.advance(5_000)
+    const before = driver.counts()
+    driver.pause()
+    clock.advance(20_000)
+    expect(driver.counts()).toEqual(before)
+    driver.resume()
+    clock.advance(5_000)
+    driver.stop()
+    const after = driver.counts()
+    // Ten seconds of load in all: one flood, a hundred steady edits.
+    expect(after.flood).toBe(TYPING_FLOOD_SIZE)
+    expect(Math.abs(after.edit - 100)).toBeLessThanOrEqual(1)
+    expect(Math.abs(after.delta - 300)).toBeLessThanOrEqual(3)
   })
 
   it('produces the declared rates over 60 s of fake time', () => {
@@ -66,7 +138,7 @@ describe('soak load', () => {
   })
 
   it("gives the chat scene the focused child's load alone", () => {
-    expect(declaredRates(CHAT_PROFILE)).toEqual({ meta: 0.5, delta: 20, tool: 0.2, log: 0 })
+    expect(declaredRates(CHAT_PROFILE)).toEqual({ meta: 0.5, delta: 20, tool: 0.2, log: 0, settle: 0, resume: 0, edit: 0, flood: 0 })
     expect(CHAT_PROFILE.streams.every((s) => s.child === 0)).toBe(true)
     expect(profileOf('chat')).toBe(CHAT_PROFILE)
     expect(profileOf('board')).toBe(SOAK_PROFILE)

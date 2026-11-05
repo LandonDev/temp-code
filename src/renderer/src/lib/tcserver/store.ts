@@ -447,7 +447,7 @@ class SessionStore {
   private pendingApprovals: ReadonlyMap<string, ApprovalToastNotice> = new Map();
   private approvalListeners = new Set<() => void>();
   private version = 0;
-  private pushed = { session: 0, event: 0 };
+  private pushed = { session: 0, event: 0, liveEdit: 0 };
   /** `metas()` as of the last meta change; the metas hooks' stable snapshot. */
   private metasSnapshot: SessionMeta[] | null = null;
   private metaPending = false;
@@ -773,9 +773,9 @@ class SessionStore {
     }
   }
 
-  /** Cumulative `session` and `event` pushes received; the stall recorder differences them. */
-  pushCounts(): { session: number; event: number } {
-    return { session: this.pushed.session, event: this.pushed.event };
+  /** Cumulative `session` and `event` pushes and live-edit items received; the stall recorder and the soak difference them. */
+  pushCounts(): { session: number; event: number; liveEdit: number } {
+    return { session: this.pushed.session, event: this.pushed.event, liveEdit: this.pushed.liveEdit };
   }
 
   /** Dev facade only (`__app.feed`, lib/appFacade.ts): a synthetic push takes
@@ -1984,6 +1984,7 @@ class SessionStore {
         break;
       }
       case "live-edit": {
+        this.pushed.liveEdit += 1;
         for (const sid of push.sessionIds) {
           const cur = { ...(this.liveEdits.get(sid) ?? {}) };
           const prev = cur[push.edit.path];

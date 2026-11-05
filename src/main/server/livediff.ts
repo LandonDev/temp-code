@@ -96,7 +96,9 @@ export function onLiveEdit(listener: (p: LiveEditPush) => void): () => void {
 }
 
 /** Hand a live edit to every listener: the server's sockets (each sends it
- *  only when subscribed to an owner) and the checkpoint turns. */
+ *  only when subscribed to an owner) and the checkpoint turns. The watchers'
+ *  own path, and the seam an in-process proof feeds (the renderer soak's
+ *  typing scene, the iOS test server). */
 export const emitLiveEdit = (p: LiveEditPush): void => {
   for (const l of listeners) l(p)
 }

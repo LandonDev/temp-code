@@ -28,9 +28,27 @@
  * ± 30%, with a stall of BURST_STALL_MS every BURST_STALL_EVERY_MS: the
  * shape a box thread reached the Mac in on 2026-11-05 (docs/TRANSCRIPT.md
  * "The stream reveals a phrase at a time").
+ *
+ * The typing scene (`--scene typing`, TYPING_PROFILE) is the board's load
+ * plus the two streams the box sent a busy master's window that the board
+ * scene lacks (Performance 3, 2026-11-05):
+ *
+ *   settle  a batch child (round robin over TYPING_SETTLERS) ends its turn
+ *           and goes idle every 2 s, which re-pushes the master's meta
+ *   resume  the same child runs again a second later
+ *   meta    the master's own live context grows every 10 s (child null)
+ *   edit    live edits owned by the master, 10 a second over 40 paths,
+ *           each with a 2 KB diff
+ *   flood   400 edits in one second on 400 distinct paths every 10 s,
+ *           burst and with no diff (the flood valve's shape past 200
+ *           paths a second, livediff.ts)
+ *
+ * The driver pauses and resumes (the typing scene's idle phase): a pause
+ * stops every stream, and a resume carries on from where it stopped instead
+ * of paying what the pause would have owed.
  */
 
-export type SoakKind = 'meta' | 'delta' | 'tool' | 'log'
+export type SoakKind = 'meta' | 'delta' | 'tool' | 'log' | 'settle' | 'resume' | 'edit' | 'flood'
 
 /** One stream of the load: a kind, the child it is about (null for the master), and its rate. */
 export interface SoakStream {
@@ -40,6 +58,8 @@ export interface SoakStream {
   perSecond: number
   /** where in its period the stream starts, 0 to 1 */
   phase: number
+  /** a stream that runs in bursts: `perSecond` for the first `forMs` of every `everyMs`, nothing between */
+  window?: { everyMs: number; forMs: number }
 }
 
 export interface SoakProfile {
@@ -69,8 +89,9 @@ function profile(): SoakProfile {
 export const SOAK_PROFILE: SoakProfile = profile()
 
 /** The scenes the soak measures: the master's board beside a streaming child, or one plain chat;
+ *  `typing` is the board's with the master's own churn and its live edits, typed into;
  *  `scenarios` plays the no-jerk timeline on one chat instead of a load (scripts/lib/soakScenarios.ts). */
-export type SoakScene = 'board' | 'chat' | 'scenarios'
+export type SoakScene = 'board' | 'chat' | 'typing' | 'scenarios'
 
 export const CHAT_PROFILE: SoakProfile = {
   children: 1,
@@ -79,15 +100,47 @@ export const CHAT_PROFILE: SoakProfile = {
   streams: SOAK_PROFILE.streams.filter((s) => s.child === SOAK_FOCUSED).map((s) => ({ ...s }))
 }
 
+/** The children the typing scene settles and resumes: every one but the three that stream. */
+export const TYPING_SETTLERS = Array.from({ length: SOAK_CHILDREN }, (_, i) => i).filter((i) => i !== SOAK_FOCUSED && !SOAK_STREAMERS.includes(i))
+/** The steady live edits' paths, and the floods' pool (two floods' worth, so the renderer's 500-edit cap evicts). */
+export const TYPING_EDIT_PATHS = 40
+export const TYPING_FLOOD_SIZE = 400
+export const TYPING_FLOOD_POOL = 2 * TYPING_FLOOD_SIZE
+export const TYPING_FLOOD_EVERY_MS = 10_000
+
+export const TYPING_PROFILE: SoakProfile = {
+  ...SOAK_PROFILE,
+  streams: [
+    ...SOAK_PROFILE.streams.map((s) => ({ ...s })),
+    // A child settles at 1, 3, 5… s and runs again at 2, 4, 6… s; the master's context grows at 7.5, 17.5… s, between them.
+    { kind: 'settle', child: null, perSecond: 0.5, phase: 0.5 },
+    { kind: 'resume', child: null, perSecond: 0.5, phase: 0 },
+    { kind: 'meta', child: null, perSecond: 0.1, phase: 0.25 },
+    { kind: 'edit', child: null, perSecond: 10, phase: 0 },
+    { kind: 'flood', child: null, perSecond: TYPING_FLOOD_SIZE, phase: 0, window: { everyMs: TYPING_FLOOD_EVERY_MS, forMs: 1_000 } }
+  ]
+}
+
 export function profileOf(scene: SoakScene): SoakProfile {
+  if (scene === 'typing') return TYPING_PROFILE
   return scene === 'chat' || scene === 'scenarios' ? CHAT_PROFILE : SOAK_PROFILE
 }
 
-/** What the profile declares a second, by kind. */
+const NO_RATES = (): Record<SoakKind, number> => ({ meta: 0, delta: 0, tool: 0, log: 0, settle: 0, resume: 0, edit: 0, flood: 0 })
+
+/** What the profile declares a second, by kind (a windowed stream averaged over its period). */
 export function declaredRates(p: SoakProfile = SOAK_PROFILE): Record<SoakKind, number> {
-  const rates: Record<SoakKind, number> = { meta: 0, delta: 0, tool: 0, log: 0 }
-  for (const s of p.streams) rates[s.kind] += s.perSecond
+  const rates = NO_RATES()
+  for (const s of p.streams) rates[s.kind] += s.window ? (s.perSecond * s.window.forMs) / s.window.everyMs : s.perSecond
   return rates
+}
+
+/** How many emissions a stream owes `ms` into the load. */
+export function owedAt(s: SoakStream, ms: number): number {
+  if (!s.window) return Math.floor((ms / 1000) * s.perSecond + s.phase)
+  const { everyMs, forMs } = s.window
+  const active = Math.floor(ms / everyMs) * forMs + Math.min(ms % everyMs, forMs)
+  return Math.floor((active / 1000) * s.perSecond + s.phase)
 }
 
 /** One emission: the stream's kind, its child, and the stream's own count so far (0-based). */
@@ -130,6 +183,9 @@ export interface BurstCadence {
 export interface SoakDriver {
   stop(): void
   counts(): Record<SoakKind, number>
+  /** Holds every stream; nothing is owed for the time it is held. */
+  pause(): void
+  resume(): void
 }
 
 /** Whether a burst may leave at `ms` into the load: not inside a stall
@@ -145,21 +201,23 @@ export function startLoad(
   p: SoakProfile = SOAK_PROFILE,
   burst: BurstCadence | null = null
 ): SoakDriver {
-  const start = clock.now()
+  // The load's own clock: wall time since the start, less every pause.
+  let start = clock.now()
+  let pausedAt: number | null = null
   const paid = p.streams.map(() => 0)
-  const counts: Record<SoakKind, number> = { meta: 0, delta: 0, tool: 0, log: 0 }
+  const counts = NO_RATES()
   const random = burst?.random ?? Math.random
   const bursty = (s: SoakStream): boolean => burst !== null && s.kind === 'delta' && s.child === p.focused
   let release = 0
   const tick = (): void => {
+    if (pausedAt !== null) return
     const ms = clock.now() - start
-    const seconds = ms / 1000
     // The focused stream's next burst: due, and not inside a stall.
     const releasing = burst !== null && ms >= release && burstOpen(ms)
     if (releasing) release = ms + burst!.everyMs * (1 - BURST_JITTER + 2 * BURST_JITTER * random())
     p.streams.forEach((s, i) => {
       if (bursty(s) && !releasing) return
-      const owed = Math.floor(seconds * s.perSecond + s.phase)
+      const owed = owedAt(s, ms)
       while (paid[i]! < owed) {
         const n = paid[i]!
         paid[i] = n + 1
@@ -171,6 +229,14 @@ export function startLoad(
   const cancel = clock.every(SOAK_TICK_MS, tick)
   return {
     stop: cancel,
-    counts: () => ({ ...counts })
+    counts: () => ({ ...counts }),
+    pause: () => {
+      if (pausedAt === null) pausedAt = clock.now()
+    },
+    resume: () => {
+      if (pausedAt === null) return
+      start += clock.now() - pausedAt
+      pausedAt = null
+    }
   }
 }

@@ -8,11 +8,26 @@
  * seeds one plain chat thread instead, with no master, batch or shell step,
  * and drives CHAT_PROFILE (the focused child's load alone):
  *
- *   meta   a child's live context grows (a meta push, no row)
+ *   meta   a child's live context grows (a meta push, no row); with no
+ *          child, the master's
  *   delta  an assistant text delta; a message ends at a tool call or after
  *          100 deltas, a turn every 24 tool calls
  *   tool   a Read call and its result
  *   log    a line on the master's running shell step (a batch-delta line)
+ *
+ * The typing scene (`startSoakHost('typing')`) seeds the board's batch and
+ * adds TYPING_PROFILE's streams:
+ *
+ *   settle  a child's turn completes and it goes idle: the registry
+ *           re-pushes its master, and its settle report to the master is
+ *           parked (no harness takes it)
+ *   resume  that child is sent "Keep going" and runs again
+ *   edit    a live edit owned by the master, through livediff.ts's
+ *           emitLiveEdit, so the server's per-socket filter and previews
+ *           lane carry it as they carry a watcher's
+ *   flood   the same, burst and without a diff
+ *
+ * None of the edits settles, so the checkpoint listener reads no file.
  *
  * No thread has a harness: the registry's boot, send and liveness sweep are
  * stood in for, so nothing spawns a CLI or flips a seeded row to stopped.
@@ -30,10 +45,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { configure } from 'aliax-core'
 import { startServer } from '../../src/main/server/index'
+import { emitLiveEdit } from '../../src/main/server/livediff'
 import type { AgentEvent } from '../../src/shared/events'
 import { playScenarios, type ScenarioStep } from './soakScenarios'
 import { batchRowMidRun, withShellLog } from './ios-seeds'
-import { profileOf, startLoad, type BurstCadence, type SoakClock, type SoakDriver, type SoakEmit, type SoakScene } from './soakLoad'
+import { profileOf, startLoad, TYPING_EDIT_PATHS, TYPING_FLOOD_POOL, TYPING_FLOOD_SIZE, TYPING_SETTLERS, type BurstCadence, type SoakClock, type SoakDriver, type SoakEmit, type SoakScene } from './soakLoad'
 
 export const SOAK_MASTER = 'soak-master'
 export const SOAK_CHAT = 'soak-chat'
@@ -63,6 +79,14 @@ const PROSE =
   'The listener keeps one pool per account, so a turn reuses the socket the last one opened. ' +
   'When the provider answers slowly the wait says so in the working line, and the timer above the composer keeps counting from the click. ' +
   'Nothing here needs a second store: the meta already carries the phase, and the board reads it the way the rail does. '
+
+/** A live edit's diff body, about 2 KB: one hunk of 12 lines out and 12 in. */
+const EDIT_DIFF = (() => {
+  const lines = ['@@ -10,12 +10,12 @@ export function exportCsv(rows: Row[]): string {']
+  for (let i = 0; i < 12; i++) lines.push(`-  const column${i} = rows.map((row) => row.cells[${i}]).filter(Boolean).join(',')`)
+  for (let i = 0; i < 12; i++) lines.push(`+  const column${i} = rows.map((row) => quote(row.cells[${i}] ?? '')).join(',')`)
+  return lines.join('\n') + '\n'
+})()
 
 export interface SoakHost {
   baseUrl: string
@@ -184,6 +208,13 @@ export async function startSoakHost(scene: SoakScene = 'board'): Promise<SoakHos
     s.text = ''
     s.deltas = 0
   }
+  const liveEdit = (path: string, burst: boolean): void =>
+    emitLiveEdit({
+      push: 'live-edit',
+      cwd: repo,
+      sessionIds: [SOAK_MASTER],
+      edit: burst ? { path, kind: 'changed', diff: null, bytes: 2_400, burst: true, ts: Date.now() } : { path, kind: 'changed', adds: 12, dels: 12, diff: EDIT_DIFF, bytes: 2_400, ts: Date.now() }
+    })
   const apply = (emit: SoakEmit): void => {
     if (emit.kind === 'log') {
       if (!batchRow) return
@@ -191,7 +222,25 @@ export async function startSoakHost(scene: SoakScene = 'board'): Promise<SoakHos
       server.batches.seedRow(batchRow)
       return
     }
-    const id = children[emit.child ?? 0]!
+    if (emit.kind === 'settle' || emit.kind === 'resume') {
+      const id = children[TYPING_SETTLERS[emit.n % TYPING_SETTLERS.length]!]!
+      if (emit.kind === 'settle') {
+        endMessage(id, streamOf(id))
+        append(id, { type: 'turn-complete' })
+        append(id, { type: 'status', status: 'idle' })
+      } else {
+        append(id, { type: 'user-text', text: 'Keep going with the next file.' })
+        append(id, { type: 'status', status: 'running' })
+      }
+      return
+    }
+    if (emit.kind === 'edit') return liveEdit(`src/billing/edit${emit.n % TYPING_EDIT_PATHS}.ts`, false)
+    if (emit.kind === 'flood') {
+      // Each flood takes the other half of the pool, so the paths are distinct within a flood and the cap evicts across two.
+      const flood = Math.floor(emit.n / TYPING_FLOOD_SIZE)
+      return liveEdit(`src/generated/file${((flood % 2) * TYPING_FLOOD_SIZE + (emit.n % TYPING_FLOOD_SIZE)) % TYPING_FLOOD_POOL}.ts`, true)
+    }
+    const id = emit.child === null ? SOAK_MASTER : children[emit.child]!
     const s = streamOf(id)
     if (emit.kind === 'meta') {
       s.tokens += 1_337
