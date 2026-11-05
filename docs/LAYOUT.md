@@ -74,7 +74,10 @@ written to `document.title` from App.tsx): a page that covers the window
 alone ("Settings", "Search", "Inbox", "Notes", "Accounts", "Stats"), else the
 focused thread's title ("New thread" untitled), file's name or "Terminal",
 then " — " and the project's name; "TempCode" with nothing open. No app
-suffix: macOS names the app already. The dock badge has one meaning: the
+suffix: macOS names the app already. The title bar draws no title of its own
+on any platform: off macOS (Linux, the web /ui) the window's or the
+browser's own title shows `document.title`, and the strip's box runs to the
+end group, which reaches the bar's end. The dock badge has one meaning: the
 threads that need you (an approval or a question) on every host, subagents
 included, archived out; never unread, failed or plan-ready. Every window
 reports the same count and the dock shows the largest (src/main/dockBadge.ts);

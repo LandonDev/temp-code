@@ -41,7 +41,6 @@ const header: ThreadHeaderProps = {
 function bar(over: Partial<ComponentProps<typeof TitleBar>> = {}) {
   render(
     <TitleBar
-      tabs={[]}
       activeId=""
       cwd="/Users/me/repo"
       header={header}
@@ -154,18 +153,58 @@ describe("TitleBar", () => {
     });
     const live = [chip("a", "Alpha"), chip("b", "Beta")];
     const props = (model: ThreadHeaderProps["model"]) => ({ header: { ...header, model }, activeId: "tab" });
-    const view = render(<TitleBar tabs={[]} cwd="/r" onToggleSidebar={() => {}} onNew={() => {}} {...props({ live, dormant: [], activeId: "a" })} />);
+    const view = render(<TitleBar cwd="/r" onToggleSidebar={() => {}} onNew={() => {}} {...props({ live, dormant: [], activeId: "a" })} />);
     const shown = () => reveal.mock.instances.at(-1) as unknown as HTMLElement;
     expect(shown().textContent).toContain("Alpha");
-    view.rerender(<TitleBar tabs={[]} cwd="/r" onToggleSidebar={() => {}} onNew={() => {}} {...props({ live, dormant: [], activeId: "b" })} />);
+    view.rerender(<TitleBar cwd="/r" onToggleSidebar={() => {}} onNew={() => {}} {...props({ live, dormant: [], activeId: "b" })} />);
     expect(shown().textContent).toContain("Beta");
     const settled = { ...live[1], live: false };
     const calls = reveal.mock.calls.length;
     view.rerender(
-      <TitleBar tabs={[]} cwd="/r" onToggleSidebar={() => {}} onNew={() => {}} {...props({ live: [live[0]], dormant: [settled], activeId: "b" })} />,
+      <TitleBar cwd="/r" onToggleSidebar={() => {}} onNew={() => {}} {...props({ live: [live[0]], dormant: [settled], activeId: "b" })} />,
     );
     expect(reveal.mock.calls.length).toBe(calls + 1);
     expect(shown().closest('[role="tablist"]')?.getAttribute("aria-label")).toBe("Settled threads");
+  });
+
+  it("off macOS the end group reaches the bar's end, with no second window title beside the strip", () => {
+    // jsdom's navigator is not a Mac: this is the web /ui and a Linux window.
+    bar();
+    const bar_ = screen.getByRole("banner");
+    expect(bar_.textContent).not.toContain("TempCode");
+    const panel = screen.getByRole("button", { name: "Panel" });
+    // The strip's box holds the end group (Panel last) and is the row's one
+    // growing box, so nothing splits the bar beside it.
+    const row = bar_.lastElementChild!;
+    const growing = [...row.children].filter((el) => el.classList.contains("flex-1"));
+    expect(growing).toHaveLength(1);
+    expect(growing[0].contains(panel)).toBe(true);
+  });
+
+  it("re-measures the live row's arrows when a chip joins a full row", () => {
+    const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+    const scroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollWidth");
+    let content = 100;
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 100 });
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", { configurable: true, get: () => content });
+    try {
+      const chip = (id: string) => ({
+        id, thread: { ...chat, id, title: id, status: "running" as const }, tabId: id, live: true,
+        status: "running" as const, unread: false, updatedAt: 1,
+      });
+      const view = (live: ReturnType<typeof chip>[]) => (
+        <TitleBar cwd="/r" activeId="a" onToggleSidebar={() => {}} onNew={() => {}} header={{ ...header, model: { live, dormant: [], activeId: "a" } }} />
+      );
+      const { rerender } = render(view([chip("a")]));
+      expect(screen.queryByRole("button", { name: "Scroll threads right" })).toBeNull();
+      // The box and the tab stay; only the row's content grows.
+      content = 300;
+      rerender(view([chip("a"), chip("b")]));
+      expect(screen.getByRole("button", { name: "Scroll threads right" })).toBeTruthy();
+    } finally {
+      if (width) Object.defineProperty(HTMLElement.prototype, "clientWidth", width);
+      if (scroll) Object.defineProperty(HTMLElement.prototype, "scrollWidth", scroll);
+    }
   });
 
   it("names the rail's toggle by what it shows, as the panel's and the sidebar's are", () => {

@@ -1,4 +1,3 @@
-import type { Tab } from "../chrome/TitleBar";
 
 /** Chrome-like palette — saturated enough to read on dark glass. */
 export const TAB_GROUP_COLORS = [
@@ -281,6 +280,9 @@ export type TabGroupSegment =
     };
 
 export type GroupedTab = { id: string; groupId?: string };
+
+/** A tab as grouping reads it: its id, its group and its project folder. */
+type Tab = GroupedTab & { project: string };
 
 /**
  * Groups never span projects, so every membership change is checked against the

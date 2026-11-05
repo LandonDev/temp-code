@@ -13,21 +13,17 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
-import { basename } from "../lib/fs";
 import { looksLikeProject } from "../lib/recents";
-import type { HarnessId } from "../lib/session";
 import { CwdPicker } from "./CwdPicker";
 import { shortcutFor } from "../lib/settings";
 import { Tip } from "../components/tip";
 import { Button } from "../components/ui/button";
 import { TooltipProvider } from "../components/ui/tooltip";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
-import type { TabThread } from "./TabIndicator";
 import { ThreadHeader, type ThreadHeaderProps } from "./ThreadHeader";
 import { WindowControls } from "./WindowControls";
 import { IS_MAC } from "../lib/platform";
@@ -36,36 +32,7 @@ import { useShell } from "../stores/shell";
 import type { IntentProps } from "../lib/lazyChunk";
 import { settingsChunk } from "../surfaces/chunks";
 
-export type Tab = {
-  id: string;
-  /** Project folder name, e.g. `agent-terminal`. */
-  project: string;
-  /** Focused conversation title; empty for a fresh session. */
-  title: string;
-  /** Other conversation titles in this tab, focused session omitted. */
-  more: string[];
-  sessionCount: number;
-  harnesses: HarnessId[];
-  /** Harnesses with an in-flight turn in this tab. */
-  busyHarnesses: HarnessId[];
-  /** Open file basenames, active files first. */
-  files: string[];
-  /** Split layout with more than one pane in this tab. */
-  multiPane?: boolean;
-  /** Focus is on a file/terminal pane rather than a conversation pane. */
-  fileFocused?: boolean;
-  /** Explicit tab group; absent means ungrouped. */
-  groupId?: string;
-  dirty?: boolean;
-  terminal?: boolean;
-  /** The focused thread's type and live state, for the edge indicator. */
-  thread?: TabThread;
-  /** Last activity on the focused thread; the strip orders freshest first. */
-  updatedAt?: number;
-};
-
 type Props = {
-  tabs: Tab[];
   activeId: string;
   cwd: string;
   onToggleSidebar: () => void;
@@ -262,7 +229,6 @@ export function OverlayNav({
 }
 
 function TitleBarComponent({
-  tabs,
   activeId,
   cwd,
   onToggleSidebar,
@@ -335,29 +301,12 @@ function TitleBarComponent({
     };
   }, [syncTabOverflow, tabStrip]);
 
+  // A chip joining a full row changes neither the scroller's box nor the
+  // tab, so the arrows re-measure on the live row itself.
+  const liveChips = header.model.live;
   useLayoutEffect(() => {
     syncTabOverflow();
-  }, [activeId, syncTabOverflow, tabs]);
-
-  const activeTab = useMemo(
-    () => tabs.find((t) => t.id === activeId),
-    [activeId, tabs],
-  );
-  const systemTitle = useMemo(() => {
-    const activeName = activeTab
-      ? activeTab.files[0]
-        ? basename(activeTab.files[0])
-        : activeTab.project
-      : "";
-    const project = cwd ? basename(cwd) : "";
-    if (activeName && project && activeName !== project) {
-      return `${activeName} — ${project} — TempCode`;
-    }
-    if (project) {
-      return `${project} — TempCode`;
-    }
-    return "TempCode";
-  }, [activeTab, cwd]);
+  }, [activeId, liveChips, syncTabOverflow]);
 
   const railClosed = !projectRailOpen;
   const showCurrentProject = looksLikeProject(cwd);
@@ -462,14 +411,6 @@ function TitleBarComponent({
             }}
           />
         </div>
-
-        {IS_MAC ? null : (
-          <div className="flex min-w-0 flex-1 items-center justify-center px-4">
-            <span className="pointer-events-none truncate text-[12px] font-medium text-muted-foreground select-none">
-              {systemTitle}
-            </span>
-          </div>
-        )}
         {trailingControls}
       </div>
     </header>

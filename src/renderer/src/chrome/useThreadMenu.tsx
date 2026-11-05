@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { devPane, useDevPane } from "../lib/devPane";
 import { useDevRunning, useDevServable } from "../lib/devServers";
 import { bridgeableEnvironment, loadThreadBridge, setThreadBridge, useThreadBridge } from "../lib/macBridge";
@@ -112,7 +112,10 @@ export function useThreadDevServer(sessionId: string | null): { open: boolean } 
 
 export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi {
   const latest = useRef(handlers);
-  latest.current = handlers;
+  // The latest handlers, written after render (the React Compiler's rule).
+  useLayoutEffect(() => {
+    latest.current = handlers;
+  });
   const actions = useContext(SessionActionsContext);
   const metaOf = (id: string): SessionMeta | null => sessionStore.metaOf(id) ?? latest.current.metaFor?.(id) ?? null;
   // The thread the menu was last opened for: its bridge, resources and moves.

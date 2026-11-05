@@ -1,8 +1,6 @@
-import { memo, useEffect, useMemo, useRef, type ComponentProps } from "react";
+import { memo, useEffect, useMemo, type ComponentProps } from "react";
 import { sameData, useKept } from "../lib/keptValue";
 import { resolveSessionContext } from "../lib/projectContext";
-import type { BackgroundWork } from "@shared/events";
-import { pendingApprovalForSession } from "../lib/approvalToast";
 import { usePanelRoom, useRightPanel } from "../lib/rightPanel";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import {
@@ -10,31 +8,15 @@ import {
   filterTabsForWorkspace,
   tabArchived,
 } from "../lib/workspaceTabGroups";
-import { useEditors } from "../stores/editors";
 import { header, stripOrder, stripOrderStore, useHeldStripModel } from "../stores/header";
 import { useStore } from "zustand";
 import { dockCwdOf, useProject, useProjectCwds } from "../stores/project";
 import { useTerminals } from "../stores/terminals";
 import { useWorkspaceTabs } from "../stores/workspace";
-import { basename } from "../lib/fs";
-import {
-  focusedFileTab,
-  isFilesystemTab,
-  isTerminalTab,
-  leafIds,
-  type FilePaneTab,
-  type WorkspaceTab,
-} from "../lib/layout";
+import { focusedFileTab, leafIds, type WorkspaceTab } from "../lib/layout";
 import { projectName } from "../lib/paths";
 import { findProjectTerminal } from "../lib/projectTerminal";
-import { releaseNotesTitle } from "../lib/releaseNotes";
-import {
-  hasPendingApproval,
-  sessionDisplayTitle,
-  UNTITLED_THREAD,
-  type HarnessId,
-  type Session,
-} from "../lib/session";
+import type { Session } from "../lib/session";
 import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import {
   sessionStore,
@@ -42,7 +24,6 @@ import {
   useSessionShells,
 } from "../lib/tcserver/store";
 import type { SessionMeta } from "../lib/tcserver/types";
-import { terminalTabLabel } from "../lib/terminalTab";
 import {
   buildHeaderModel,
   headerOrder,
@@ -60,11 +41,9 @@ import {
 } from "../lib/threadStripModel";
 import { copiesOf } from "../lib/projectHostChoice";
 import { usePlanReady } from "../hooks/usePlanReady";
-import { turnStartOf } from "../lib/turnClock";
-import type { TabThread } from "./TabIndicator";
 import type { ThreadHeaderProps } from "./ThreadHeader";
 import type { ArchivedThread, ChipThread } from "./ThreadHeaderStrip";
-import { TitleBar, type Tab as TitleTab } from "./TitleBar";
+import { TitleBar } from "./TitleBar";
 
 /** The header's handlers; the rest of ThreadHeaderProps is derived here. */
 export type HeaderEvents = Pick<
@@ -82,7 +61,6 @@ export type HeaderEvents = Pick<
 >;
 
 type StateProps =
-  | "tabs"
   | "header"
   | "activeId"
   | "cwd"
@@ -111,7 +89,6 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
   const shells = useSessionShells();
   const { active, sidebarCwd: cwd } = useProjectCwds();
   const activeSessionId = active?.id;
-  const dirtyFiles = useEditors((s) => s.dirtyFiles);
   const panel = useRightPanel(activeSessionId ?? "");
   const railOpen = panel.open;
   const panelRoom = usePanelRoom(activeSessionId ?? "");
@@ -164,13 +141,9 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
     return [...roots, ...sessions.filter((s) => !ids.has(s.id))];
   }, [chipThreads, sessions, stripScope]);
   const planReady = usePlanReady(planThreads);
-  const nextTitleTabs = useMemo<TitleTab[]>(
-    () => deckTabs.map((tab) => toTitleTab(tab, sessions, dirtyFiles, planReady)),
-    [deckTabs, dirtyFiles, planReady, sessions],
-  );
   const tabProjects = useMemo(
-    () => new Map(nextTitleTabs.map((tab) => [tab.id, tab.project])),
-    [nextTitleTabs],
+    () => new Map(deckTabs.map((tab) => [tab.id, tabProjectOf(tab, sessions)])),
+    [deckTabs, sessions],
   );
   // The active tab joins even when the scope filtered it out: the thread on
   // screen always has its chip.
@@ -277,14 +250,9 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
     [archivedThreads, cost, headerEvents, headerWorkspaceId, panelRoom, planReady, railOpen, running, stripModel],
   );
 
-  const titleTabsRef = useRef(nextTitleTabs);
-  if (!titleTabsEqual(titleTabsRef.current, nextTitleTabs)) {
-    titleTabsRef.current = nextTitleTabs;
-  }
   return (
     <TitleBar
       {...titleBar}
-      tabs={titleTabsRef.current}
       header={headerProps}
       activeId={activeTabId}
       cwd={cwd}
@@ -295,31 +263,6 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
 }
 
 export const ShellTitleBar = memo(ShellTitleBarComponent);
-
-function titleTabsEqual(a: TitleTab[], b: TitleTab[]): boolean {
-  if (a.length !== b.length) return false;
-  return a.every((tab, index) => {
-    const other = b[index];
-    return (
-      other != null &&
-      tab.id === other.id &&
-      tab.project === other.project &&
-      tab.title === other.title &&
-      tab.sessionCount === other.sessionCount &&
-      tab.dirty === other.dirty &&
-      tab.more.join("\u0000") === other.more.join("\u0000") &&
-      tab.harnesses.join("\u0000") === other.harnesses.join("\u0000") &&
-      tab.busyHarnesses.join("\u0000") === other.busyHarnesses.join("\u0000") &&
-      tab.files.join("\u0000") === other.files.join("\u0000") &&
-      tab.multiPane === other.multiPane &&
-      tab.fileFocused === other.fileFocused &&
-      tab.terminal === other.terminal &&
-      tab.groupId === other.groupId &&
-      tab.updatedAt === other.updatedAt &&
-      sameTabThread(tab.thread, other.thread)
-    );
-  });
-}
 
 /**
  * The open sessions, re-read only when a shell or a meta changes. Every
@@ -334,169 +277,15 @@ function useTitleSessions(metas: readonly SessionMeta[]): Session[] {
   return useMemo(() => sessionStore.getSnapshot(), [shells, metas]);
 }
 
-function conversationTitle(session: Session): string {
-  const title = sessionDisplayTitle(session.title, session.harness);
-  return title === UNTITLED_THREAD ? "" : title;
+/** The project folder a tab belongs to: its focused thread's, else its
+ *  focused file's, else "~". App's callbacks read it from the header store. */
+function tabProjectOf(tab: WorkspaceTab, sessions: readonly Session[]): string {
+  const byId = (id: string | undefined) => sessions.find((session) => session.id === id);
+  const focused = byId(tab.focusedId) ?? leafIds(tab.layout).map(byId).find(Boolean);
+  if (focused) return projectName(focused.cwd);
+  const file = focusedFileTab(tab);
+  return file ? projectName(file.cwd) : "~";
 }
-
-/** The focused thread's live state for the tab edge; absent for drafts with no type. */
-function tabThreadOf(session: Session | undefined, planReady: Record<string, boolean>): TabThread | undefined {
-  if (!session || !session.threadType) return undefined;
-  const status = session.status ?? (session.busy ? "running" : "idle");
-  return {
-    type: session.threadType,
-    status,
-    since: turnStartOf(session) ?? 0,
-    activity: session.activity ?? null,
-    statusDetail: session.statusDetail ?? null,
-    activityKind: session.activityKind ?? null,
-    tasks: session.tasks ? { done: session.tasks.done, total: session.tasks.total } : null,
-    planReady: !!planReady[session.id],
-    frozenElapsed: session.frozenActiveElapsed ?? null,
-    failure: session.failure?.summary ?? null,
-    waitingOn: status === "waiting" ? (pendingApprovalForSession(session)?.tool ?? null) : null,
-    background: sessionStore.metaOf(session.id)?.background ?? null,
-    backgroundWork: backgroundWorkOf(sessionStore.metaOf(session.id)?.background),
-  };
-}
-
-/** The tasks and live subagents a thread waits on, as one count for the tab. */
-function backgroundWorkOf(background: BackgroundWork | null | undefined): number {
-  return (background?.tasks.length ?? 0) + (background?.agents.length ?? 0);
-}
-
-function sameTabThread(a: TabThread | undefined, b: TabThread | undefined): boolean {
-  if (!a || !b) return a === b;
-  return (
-    a.type === b.type &&
-    a.status === b.status &&
-    a.since === b.since &&
-    a.activity === b.activity &&
-    a.statusDetail === b.statusDetail &&
-    a.activityKind === b.activityKind &&
-    (a.tasks?.done ?? -1) === (b.tasks?.done ?? -1) &&
-    (a.tasks?.total ?? -1) === (b.tasks?.total ?? -1) &&
-    a.planReady === b.planReady &&
-    a.frozenElapsed === b.frozenElapsed &&
-    (a.failure ?? null) === (b.failure ?? null) &&
-    (a.waitingOn ?? null) === (b.waitingOn ?? null) &&
-    (a.backgroundWork ?? 0) === (b.backgroundWork ?? 0)
-  );
-}
-
-function toTitleTab(
-  tab: WorkspaceTab,
-  sessions: Session[],
-  dirtyFiles: Set<string>,
-  planReady: Record<string, boolean>,
-): TitleTab {
-  const paneIds = leafIds(tab.layout);
-  const multiPane = paneIds.length > 1;
-  const tabSessions = paneIds
-    .map((id) => sessions.find((session) => session.id === id))
-    .filter((session): session is Session => session != null);
-  const sessionFocused = tabSessions.some(
-    (session) => session.id === tab.focusedId,
-  );
-  const fileFocused =
-    !sessionFocused &&
-    (tab.editorPanes.some((pane) => pane.id === tab.focusedId) ||
-      (tab.terminalPanes ?? []).some((pane) => pane.id === tab.focusedId));
-  const focused =
-    sessions.find((session) => session.id === tab.focusedId) ?? tabSessions[0];
-
-  const seen = new Set<HarnessId>();
-  const harnesses: HarnessId[] = [];
-  const busySeen = new Set<HarnessId>();
-  const busyHarnesses: HarnessId[] = [];
-  const ordered = focused
-    ? [focused, ...tabSessions.filter((session) => session.id !== focused.id)]
-    : tabSessions;
-  for (const session of ordered) {
-    if (
-      session.busy &&
-      !hasPendingApproval(session.blocks) &&
-      !busySeen.has(session.harness)
-    ) {
-      busySeen.add(session.harness);
-      busyHarnesses.push(session.harness);
-    }
-    if (seen.has(session.harness)) continue;
-    seen.add(session.harness);
-    harnesses.push(session.harness);
-  }
-
-  const files: string[] = [];
-  const seenKeys = new Set<string>();
-  const pushFile = (file: FilePaneTab) => {
-    const key = file.terminal
-      ? `terminal:${file.id}`
-      : file.releaseNotes
-        ? `release-notes:${file.releaseNotes.version}`
-        : file.path;
-    if (seenKeys.has(key)) return;
-    seenKeys.add(key);
-    files.push(
-      file.releaseNotes
-        ? releaseNotesTitle(file.releaseNotes.version)
-        : file.terminal
-          ? terminalTabLabel(file)
-          : basename(file.path),
-    );
-  };
-  const focusedPane =
-    tab.editorPanes.find((pane) => pane.id === tab.focusedId) ??
-    (tab.terminalPanes ?? []).find((pane) => pane.id === tab.focusedId);
-  const otherPanes = [
-    ...tab.editorPanes.filter((pane) => pane.id !== focusedPane?.id),
-    ...(tab.terminalPanes ?? []).filter((pane) => pane.id !== focusedPane?.id),
-  ];
-  const panes = focusedPane ? [focusedPane, ...otherPanes] : otherPanes;
-  for (const pane of panes) {
-    const active = pane.files.find((file) => file.id === pane.activeFileId);
-    if (active) pushFile(active);
-  }
-  for (const pane of panes) {
-    for (const file of pane.files) pushFile(file);
-  }
-
-  const more = tabSessions
-    .filter((session) => session.id !== focused?.id)
-    .map(conversationTitle)
-    .filter(Boolean);
-
-  const hasTerminal = (tab.terminalPanes ?? []).some((pane) =>
-    pane.files.some(isTerminalTab),
-  );
-  const focusedFile = focusedFileTab(tab);
-
-  return {
-    thread: tabThreadOf(focused, planReady),
-    updatedAt: focused ? sessionStore.metaOf(focused.id)?.updatedAt : undefined,
-    id: tab.id,
-    project: focused
-      ? projectName(focused.cwd)
-      : focusedFile
-        ? projectName(focusedFile.cwd)
-        : "~",
-    title: focused ? conversationTitle(focused) : "",
-    more,
-    sessionCount: tabSessions.length,
-    harnesses,
-    busyHarnesses,
-    files,
-    multiPane,
-    fileFocused,
-    dirty: tab.editorPanes.some((pane) =>
-      pane.files.some(
-        (file) => isFilesystemTab(file) && dirtyFiles.has(file.id),
-      ),
-    ),
-    terminal: hasTerminal && harnesses.length === 0,
-    groupId: tab.groupId,
-  };
-}
-
 
 /**
  * The threads the strip may draw: every meta, plus a sent local thread whose
