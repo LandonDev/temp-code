@@ -46,6 +46,13 @@ private struct Rig {
     func run(limitMs: Double = 10_000) -> [(t: Double, units: Int)] {
         var changes: [(t: Double, units: Int)] = []
         var last = reveal.revealedUnits
+        // Record an already-due wake at its own time, before sampling in
+        // 10 ms slices; otherwise a 100 ms gap reads as 90 ms.
+        clock.advance(0)
+        if reveal.revealedUnits != last {
+            last = reveal.revealedUnits
+            changes.append((clock.now, last))
+        }
         var spent = 0.0
         while clock.pending, spent < limitMs {
             clock.advance(10)

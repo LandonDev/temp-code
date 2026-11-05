@@ -2737,6 +2737,11 @@ proof and the sizing rules; the pieces, by name:
   `TC_IOS_SECOND_HOST=1` child is the same project on a second host with the
   cross-host child, exported as `TC_TEST_SECOND_*`. docs/IOS-DESIGN.md
   "Two hosts".
+- A2/A4 verification on the Mac: pending-turn fixtures use `addPending`
+  so each send takes its own key; the reveal test clock runs an already-due
+  wake before its 10 ms samples, so a 100 ms step does not read as 90 ms.
+  The DEBUG transcript report's `topRow` is `TranscriptRowID.key`, not the
+  persisted seq. `docs/IOS-PHONE-A2-A4-VERIFY.md` records the checks and proof.
 - Tests: `bun run ios:test` (contract) and `bun run ios:test:client` (the
   package, pure suites plus a live suite against scripts/ios-client-test-server.ts,
   a real server with a read key that lives only in the test process

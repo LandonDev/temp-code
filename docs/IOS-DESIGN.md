@@ -785,7 +785,9 @@ seq; the host's echo of a sent message keeps the optimistic row's key;
 `RowKeys` carries both across a refold); a group keeps its key when
 history joins above it (`RowKeyMemory`); the turn's end row is its
 message's key with `end` set, one row from Send to the close. The list, a
-search landing and the scroll proof all speak rows. What the list does to
+search landing and the scroll proof all speak rows. The DEBUG
+`transcript-report.json` field `topRow` holds the stable row key (or -1),
+which can differ from its persisted seq after a partial call or a local send. What the list does to
 its own offset is `FollowRule`: it follows the newest row only while the
 reader is at the bottom and never writes the offset while they are up,
 however the rows change. `ScenarioRunner` (Rendering/TranscriptScenario.swift,

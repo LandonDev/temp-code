@@ -135,7 +135,8 @@ private func fields(_ value: some Encodable) throws -> [String: JSONValue] {
 
     @Test func `pending turns sit after the fold's rows, in the order they were sent`() {
         var state = ThreadState()
-        state.pending = [PendingTurn(text: "first", sentAt: 10), PendingTurn(text: "second", sentAt: 11)]
+        _ = state.addPending(text: "first", sentAt: 10)
+        _ = state.addPending(text: "second", sentAt: 11)
         let entries = state.entries
         #expect(entries.count == 2)
         #expect(entries.map(\.seq) == [-100_000, -100_001])

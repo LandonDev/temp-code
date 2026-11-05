@@ -42,11 +42,11 @@ private func expectClean(_ scenario: TranscriptScenario) {
             .init(atMs: 0, "send", .send("Fix the build")),
             .init(atMs: 40, "the echo", .rows([row(1, 40, user("Fix the build"))])),
             .init(atMs: 300, "a thought", .rows([row(2, 300, thought("Look at the log."))])),
-            .init(atMs: 500, "a read streams in", .rows([row(-1, 500, tool("a", "Read", partial: true, ["file_path": "src/a.ts"]), ephemeral: true)])),
-            .init(atMs: 700, "the read's call row", .rows([row(3, 700, tool("a", "Read", ["file_path": "src/a.ts"]))])),
+            .init(atMs: 500, "a read streams in", .rows([row(-1, 500, tool("a", "Read", partial: true, ["file_path": .string("src/a.ts")]), ephemeral: true)])),
+            .init(atMs: 700, "the read's call row", .rows([row(3, 700, tool("a", "Read", ["file_path": .string("src/a.ts")]))])),
             .init(atMs: 900, "it settles", .rows([row(4, 900, done("a"))])),
             .init(atMs: 1_000, "prose", .rows([row(5, 1_000, prose("Reading it now."))])),
-            .init(atMs: 1_200, "a command: the group grows", .rows([row(6, 1_200, tool("b", "Bash", ["command": "bun test"])), row(7, 1_250, tool("c", "Edit", ["file_path": "src/b.ts"]))])),
+            .init(atMs: 1_200, "a command: the group grows", .rows([row(6, 1_200, tool("b", "Bash", ["command": .string("bun test")])), row(7, 1_250, tool("c", "Edit", ["file_path": .string("src/b.ts")]))])),
             .init(atMs: 1_800, "they settle", .rows([row(8, 1_800, done("b")), row(9, 1_850, done("c"))])),
             .init(atMs: 2_000, "the answer, then the close", .rows([row(10, 2_000, prose("Done.", msg: "p2")), row(11, 2_050, complete)])),
         ]))
@@ -65,7 +65,7 @@ private func expectClean(_ scenario: TranscriptScenario) {
         expectClean(TranscriptScenario("long call", pushes: [
             .init(atMs: 0, "send", .send("go")),
             .init(atMs: 20, "echo and a read", .rows([row(1, 20, user("go")), row(2, 40, tool("a", "Read")), row(3, 60, done("a"))])),
-            .init(atMs: 100, "a long command", .rows([row(4, 100, tool("b", "Bash", ["command": "sleep 60"]))])),
+            .init(atMs: 100, "a long command", .rows([row(4, 100, tool("b", "Bash", ["command": .string("sleep 60")]))])),
             .init(atMs: 60_000, "it settles, a burst of three", .rows([row(5, 60_000, done("b")), row(6, 60_010, tool("c", "Read")), row(7, 60_020, tool("d", "Read")), row(8, 60_030, tool("e", "Edit"))])),
             .init(atMs: 60_200, "more", .rows([row(9, 60_200, done("c")), row(10, 60_210, done("d")), row(11, 60_220, done("e")), row(12, 60_230, tool("f", "Read"))])),
         ]))
@@ -95,9 +95,9 @@ private func expectClean(_ scenario: TranscriptScenario) {
     @Test func `a subagent spawned, waited on and finished`() {
         expectClean(TranscriptScenario("subagent", awaits: [.drain], pushes: [
             .init(atMs: 0, "send", .send("review it")),
-            .init(atMs: 20, "echo, the spawn", .rows([row(1, 20, user("review it")), row(2, 40, tool("sp", "mcp__orchestrator__spawn_agent", ["task": "Review the payment flow"]))])),
+            .init(atMs: 20, "echo, the spawn", .rows([row(1, 20, user("review it")), row(2, 40, tool("sp", "mcp__orchestrator__spawn_agent", ["task": .string("Review the payment flow")]))])),
             .init(atMs: 200, "spawned", .rows([row(3, 200, done("sp", "{\"agentId\":\"c1\"}"))])),
-            .init(atMs: 300, "waiting", .rows([row(4, 300, tool("w", "mcp__orchestrator__wait_for_agent", ["agentId": "c1"]))])),
+            .init(atMs: 300, "waiting", .rows([row(4, 300, tool("w", "mcp__orchestrator__wait_for_agent", ["agentId": .string("c1")]))])),
             .init(atMs: 60_000, "finished", .rows([row(5, 60_000, done("w", "{\"agentId\":\"c1\",\"status\":\"idle\"}")), row(6, 60_100, prose("It is fine.")), row(7, 60_200, complete)])),
         ]))
     }

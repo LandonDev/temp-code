@@ -106,7 +106,7 @@ enum TestHooks {
 
     /// Whether the transcript is at its bottom one second after it landed,
     /// the app came back to the foreground, or its width changed
-    /// (transcript-report.json: atBottom 1 or 0, topRow the seq of the row at
+    /// (transcript-report.json: atBottom 1 or 0, topRow the stable key of the row at
     /// the top edge or -1, reflowAnchor 1 for the end, 2 for a row, 0 for
     /// none). Written under a launch route, or with
     /// `TC_TEST_TRANSCRIPT_REPORT=1` for a plain launch that restores a thread.
@@ -122,7 +122,7 @@ enum TestHooks {
             case .row?: 2
             case nil: 0
             }
-            writeReport("transcript-report", ["atBottom": state.atBottom ? 1 : 0, "topRow": state.topRow?.seq ?? -1, "reflowAnchor": anchor])
+            writeReport("transcript-report", ["atBottom": state.atBottom ? 1 : 0, "topRow": state.topRow?.key ?? -1, "reflowAnchor": anchor])
         }
         #endif
     }
