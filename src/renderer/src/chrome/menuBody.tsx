@@ -137,7 +137,7 @@ function Row({ item, onPick, kind }: { item: MenuRow; onPick: (id: string) => vo
   if (item.kind === "sep" || item.kind === "label") return null;
   if (item.kind === "note") {
     return (
-      <div data-menu-note={item.id} className="flex items-center gap-2 px-3 py-1 text-[12px] text-muted-foreground">
+      <div data-menu-note={item.id} className="flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground">
         {item.content}
       </div>
     );
@@ -163,7 +163,7 @@ function Row({ item, onPick, kind }: { item: MenuRow; onPick: (id: string) => vo
       {item.description ? (
         <span className="flex min-w-0 flex-col gap-0.5">
           <span>{item.label}</span>
-          <span className="text-[12px] text-muted-foreground">{item.description}</span>
+          <span className="text-xs text-muted-foreground">{item.description}</span>
         </span>
       ) : (
         <span className="min-w-0 truncate">{item.label}</span>

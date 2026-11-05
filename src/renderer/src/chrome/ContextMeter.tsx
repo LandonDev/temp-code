@@ -156,7 +156,7 @@ export function ContextBreakdown({
     <div className="flex flex-col gap-4" data-context-breakdown>
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-[13px] font-medium text-foreground">Context</span>
-        <span className="text-[12px] tabular-nums text-muted-foreground">
+        <span className="text-xs tabular-nums text-muted-foreground">
           {max ? `${formatTokens(total)} of ${formatTokens(max)}` : formatTokens(total)}
         </span>
       </div>
@@ -168,7 +168,7 @@ export function ContextBreakdown({
       ) : null}
       {!reading ? (
         busy ? (
-          <p className="text-[12px] text-muted-foreground">Breakdown after this turn</p>
+          <p className="text-xs text-muted-foreground">Breakdown after this turn</p>
         ) : (
           <div className="flex flex-col gap-2" aria-busy data-context-loading>
             {["w-2/3", "w-1/2", "w-3/5"].map((width) => (
@@ -197,7 +197,7 @@ export function ContextBreakdown({
       ) : null}
       {loose.map((list) => (
         <div key={list.title} className="flex flex-col" data-context-list={list.title}>
-          <div className="mb-1 flex items-baseline justify-between gap-3 text-[12px] text-muted-foreground">
+          <div className="mb-1 flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
             <span className="font-medium">{list.title}</span>
             <span className="tabular-nums">{formatTokens(list.rows.reduce((n, r) => n + r.tokens, 0))}</span>
           </div>
@@ -243,13 +243,13 @@ function ListRows({ list }: { list: BreakdownListData }) {
   return (
     <div className="flex flex-col ps-3" data-context-rows={list.title}>
       {shown.map((r) => (
-        <div key={r.key} className="flex h-6 items-center justify-between gap-3 text-[12px]">
+        <div key={r.key} className="flex h-6 items-center justify-between gap-3 text-xs">
           <span className="min-w-0 truncate font-mono text-muted-foreground">{r.label}</span>
           <span className="shrink-0 tabular-nums text-muted-foreground">{formatTokens(r.tokens)}</span>
         </div>
       ))}
       {sorted.length > shown.length ? (
-        <div className="flex h-6 items-center text-[12px] text-muted-foreground">+{sorted.length - shown.length} more</div>
+        <div className="flex h-6 items-center text-xs text-muted-foreground">+{sorted.length - shown.length} more</div>
       ) : null}
     </div>
   );

@@ -179,7 +179,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
               const line = paceLine(p);
               return (
                 <div key={`${p.service}-${p.label}`} data-slot="pace-series">
-                  <p className="mb-2 flex flex-wrap gap-x-2 text-[12px]">
+                  <p className="mb-2 flex flex-wrap gap-x-2 text-xs">
                     <span className="text-foreground">{paceTitle(p)}</span>
                     <span className={line.warning ? "text-warning" : "text-muted-foreground"}>{line.text}</span>
                   </p>

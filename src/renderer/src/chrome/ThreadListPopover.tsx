@@ -33,7 +33,7 @@ export function ThreadListPopover({
   const shown = q ? threads.filter((t) => t.title.toLowerCase().includes(q)) : threads;
   return (
     <>
-      <div className="px-2 pt-1.5 pb-1 text-[12px] font-medium text-muted-foreground">{heading}</div>
+      <div className="px-2 pt-1.5 pb-1 text-xs font-medium text-muted-foreground">{heading}</div>
       {threads.length > SEARCH_PAST ? (
         <div className="px-1 pb-1">
           <Input
@@ -64,7 +64,7 @@ export function ThreadListPopover({
               <ItemDescription className="tabular-nums">{timeAgo(thread.updatedAt)}</ItemDescription>
             </ItemContent>
             {restore ? (
-              <ItemActions className="gap-1 text-[12px] text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/item:opacity-100 group-hover/item:delay-(--delay-hover) group-focus-visible/item:opacity-100 group-focus-visible/item:delay-(--dur-instant) motion-reduce:transition-opacity">
+              <ItemActions className="gap-1 text-xs text-muted-foreground opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/item:opacity-100 group-hover/item:delay-(--delay-hover) group-focus-visible/item:opacity-100 group-focus-visible/item:delay-(--dur-instant) motion-reduce:transition-opacity">
                 <ArchiveRestore className="size-3.5" />
                 Restore
               </ItemActions>

@@ -180,7 +180,7 @@ export function ArchivePage({
                     onRestore={() => restore(meta)}
                     onDelete={() => setDeletingThread(meta)}
                   />
-                  <span className="text-[12px] text-muted-foreground tabular-nums">{formatDate(meta.updatedAt)}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{formatDate(meta.updatedAt)}</span>
                 </PageRow>
               ))
             )}

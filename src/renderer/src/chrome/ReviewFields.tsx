@@ -185,7 +185,7 @@ export function ReviewFields({
             <ChoiceSelect label={COPY.blockOn.label} value={value.blockOn} options={BLOCK_OPTIONS} onChange={(blockOn) => set({ blockOn })} />
           </PageRow>
           <PageRow title={COPY.minutes.label} description={hint(COPY.minutes.hint)}>
-            <span className="flex items-center gap-2 text-[12px] text-muted-foreground">
+            <span className="flex items-center gap-2 text-xs text-muted-foreground">
               <Input
                 aria-label={COPY.minutes.label}
                 inputMode="numeric"

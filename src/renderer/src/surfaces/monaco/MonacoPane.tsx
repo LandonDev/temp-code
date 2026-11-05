@@ -280,7 +280,7 @@ export default function MonacoPane(props: Props) {
 
 function Stub({ text }: { text: string }) {
   return (
-    <div className="flex flex-1 items-center justify-center px-6 text-center text-[12px] text-muted-foreground">
+    <div className="flex flex-1 items-center justify-center px-6 text-center text-xs text-muted-foreground">
       {text}
     </div>
   );

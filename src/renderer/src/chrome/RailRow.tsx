@@ -60,7 +60,7 @@ type Props = {
 } & Omit<HTMLAttributes<HTMLDivElement>, "onClick" | "className">;
 
 const TRAILING =
-  "flex shrink-0 items-center justify-end gap-1 text-[12px] tabular-nums text-muted-foreground";
+  "flex shrink-0 items-center justify-end gap-1 text-xs tabular-nums text-muted-foreground";
 /** With hover actions over it, the trailing slot reserves their place and
  *  fades: one 24px action, or two. */
 const YIELDS =
@@ -263,7 +263,7 @@ export function RailHeading({
   const Icon = action?.icon;
   return (
     <div className="flex h-7 shrink-0 items-center gap-1 pr-1 pl-3">
-      <span id={id} data-rail-heading className="min-w-0 flex-1 truncate text-[12px] font-medium text-muted-foreground">
+      <span id={id} data-rail-heading className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
         {children}
       </span>
       {action && Icon ? (

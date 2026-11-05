@@ -274,7 +274,7 @@ export function BranchPicker({
       {head && !awaitingBranch ? (
         <span className="truncate">{label}</span>
       ) : awaitingBranch ? (
-        <span className="relative truncate font-mono text-[12px]">
+        <span className="relative truncate font-mono text-xs">
           {/*
             A real text node, hidden rather than absent, so the pending
             line box is produced exactly the way the loaded one is — the
@@ -286,7 +286,7 @@ export function BranchPicker({
         </span>
       ) : (
         <TruncateTip text={label}>
-          <span className="truncate font-mono text-[12px]">{label}</span>
+          <span className="truncate font-mono text-xs">{label}</span>
         </TruncateTip>
       )}
       {/* A menu trigger's still chevron, as every picker in the draft row has. */}

@@ -142,6 +142,9 @@ a surface above `/10`.
 | 16px | a title: a dialog's, a sheet's, a page's, an inbox item's, a note's, a report's, an agent's (semibold on 24px lines at -0.01em, one recipe, `lib/typeScaleGuard.test.ts`); an h1 in the model's prose; a document's h2 |
 | 18px | a document's h1 (26px lines, -0.01em) |
 
+`text-xs` is the one class for 12px; `lib/typeScaleGuard.test.ts` refuses
+the literal `text-[12px]` throughout renderer source.
+
 Weight and colour make the hierarchy, not size jumps: a title is `font-medium`
 foreground, its detail `muted-foreground` at the next size down. Code is the
 mono face one size below its surroundings. Tracking: `-0.01em` from 16px

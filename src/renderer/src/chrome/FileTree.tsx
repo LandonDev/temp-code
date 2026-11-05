@@ -699,7 +699,7 @@ export function FileTree({
             className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none pt-1"
           >
             {opError ? (
-              <p className="px-3 py-1 text-[12px] leading-4 text-destructive">
+              <p className="px-3 py-1 text-xs leading-4 text-destructive">
                 {opError}
               </p>
             ) : null}
@@ -786,7 +786,7 @@ function TreeChildren({
   return (
     <>
       {error ? (
-        <p className="truncate pr-2 text-[12px] text-muted-foreground" style={pad}>
+        <p className="truncate pr-2 text-xs text-muted-foreground" style={pad}>
           {error}
         </p>
       ) : null}
@@ -1101,7 +1101,7 @@ function NameIssueView({
   const error = Boolean(fallback) || !issue || issue.severity === "error";
   return (
     <p
-      className={`pr-2 pb-1 text-[12px] leading-4 ${
+      className={`pr-2 pb-1 text-xs leading-4 ${
         error ? "text-destructive" : "text-warning"
       }`}
       style={{ paddingLeft: 28 + depth * 12 }}

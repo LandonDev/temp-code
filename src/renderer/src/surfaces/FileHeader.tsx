@@ -62,7 +62,7 @@ const keepFocus = (event: MouseEvent) => event.preventDefault();
 export function FileHeader({ folder, diff, markdown, save = IDLE, children }: FileHeaderProps) {
   return (
     <TooltipProvider>
-      <header className="flex h-8 shrink-0 items-center gap-2 border-b border-border bg-background px-3 text-[12px]">
+      <header className="flex h-8 shrink-0 items-center gap-2 border-b border-border bg-background px-3 text-xs">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {folder ? (
             <span className="min-w-0 truncate text-left font-mono text-muted-foreground [direction:rtl]">
@@ -85,8 +85,8 @@ export function FileHeader({ folder, diff, markdown, save = IDLE, children }: Fi
               if (next === "preview" || next === "source") markdown.onModeChange(next);
             }}
           >
-            <ToggleGroupItem value="preview" className="text-[12px]">Preview</ToggleGroupItem>
-            <ToggleGroupItem value="source" className="text-[12px]">Source</ToggleGroupItem>
+            <ToggleGroupItem value="preview" className="text-xs">Preview</ToggleGroupItem>
+            <ToggleGroupItem value="source" className="text-xs">Source</ToggleGroupItem>
           </ToggleGroup>
         ) : null}
         {children}

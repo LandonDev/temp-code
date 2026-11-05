@@ -93,17 +93,17 @@ export function FilePreview({ preview, status, cwd, onOpenFile }: Props) {
         {filePath && onOpenFile ? (
           <Button
             variant="link"
-            className="h-auto min-w-0 shrink justify-start p-0 font-mono text-[12px] font-normal"
+            className="h-auto min-w-0 shrink justify-start p-0 font-mono text-xs font-normal"
             onClick={() => onOpenFile(filePath)}
           >
             <span className="truncate">{label}</span>
           </Button>
         ) : (
-          <span className="min-w-0 truncate font-mono text-[12px] text-foreground">
+          <span className="min-w-0 truncate font-mono text-xs text-foreground">
             {label}
           </span>
         )}
-        <span className="ms-auto flex shrink-0 items-center gap-2 text-[12px]">
+        <span className="ms-auto flex shrink-0 items-center gap-2 text-xs">
           <Counts additions={added} deletions={deleted} />
           {status === "rejected" ? (
             <span className="font-sans text-muted-foreground">Rejected</span>

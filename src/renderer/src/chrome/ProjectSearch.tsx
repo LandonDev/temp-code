@@ -158,7 +158,7 @@ export function ProjectSearch({
           </TooltipTrigger>
           <TooltipContent>Back to files</TooltipContent>
         </Tooltip>
-        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground">
           Search in files
         </span>
       </div>
@@ -194,7 +194,7 @@ export function ProjectSearch({
           placeholder="Files to include"
           aria-label="Files to include"
           spellCheck={false}
-          className="h-7 text-[12px]"
+          className="h-7 text-xs"
         />
         <Input
           value={exclude}
@@ -202,12 +202,12 @@ export function ProjectSearch({
           placeholder="Files to exclude"
           aria-label="Files to exclude"
           spellCheck={false}
-          className="h-7 text-[12px]"
+          className="h-7 text-xs"
         />
       </div>
 
       {trimmed ? (
-        <div aria-live="polite" className="flex shrink-0 items-center gap-2 px-3 pb-2 text-[12px] text-muted-foreground">
+        <div aria-live="polite" className="flex shrink-0 items-center gap-2 px-3 pb-2 text-xs text-muted-foreground">
           {loading ? (
             <>
               <Spinner className="size-3.5" />
@@ -234,8 +234,8 @@ export function ProjectSearch({
               <div className="flex h-7 items-center gap-2 px-1.5">
                 <FileTypeIcon name={group.name} isDir={false} size={16} />
                 <span className="shrink-0 truncate text-[13px] text-foreground">{group.name}</span>
-                <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground">{folder}</span>
-                <span data-match-count className="shrink-0 text-[12px] text-muted-foreground tabular-nums">
+                <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{folder}</span>
+                <span data-match-count className="shrink-0 text-xs text-muted-foreground tabular-nums">
                   {group.matches.length}
                 </span>
               </div>
@@ -250,7 +250,7 @@ export function ProjectSearch({
                       <span className="w-7 shrink-0 text-right font-mono text-xs leading-5 text-muted-foreground tabular-nums">
                         {match.line}
                       </span>
-                      <span className="min-w-0 flex-1 truncate font-mono text-[12px] leading-5 text-foreground/80">
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs leading-5 text-foreground/80">
                         <MatchText
                           text={match.preview.trimEnd()}
                           query={trimmed}

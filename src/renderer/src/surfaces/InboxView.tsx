@@ -507,7 +507,7 @@ export function InboxView({
         className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none"
       >
         {sourceError && visibleItems.length === 0 ? (
-          <p className="px-3 py-2 text-[12px] text-destructive">{sourceError}</p>
+          <p className="px-3 py-2 text-xs text-destructive">{sourceError}</p>
         ) : loading && items.length === 0 ? (
           <InboxRowsSkeleton />
         ) : visibleItems.length === 0 ? (
@@ -545,11 +545,11 @@ export function InboxView({
           </ul>
         )}
         {authMessage && visibleItems.length > 0 ? (
-          <p className="px-3 py-2 text-[12px] text-destructive">{authMessage}</p>
+          <p className="px-3 py-2 text-xs text-destructive">{authMessage}</p>
         ) : null}
         {repoErrors.length > 0 && !(sourceError && visibleItems.length === 0)
           ? repoErrors.map((repo) => (
-              <p key={repo.repo} className="px-3 py-1 text-[12px] text-muted-foreground">
+              <p key={repo.repo} className="px-3 py-1 text-xs text-muted-foreground">
                 {repo.repo}: {repo.error}
               </p>
             ))
@@ -765,10 +765,10 @@ export function InboxRow({
           {row.title}
         </span>
         {row.time ? (
-          <span className="shrink-0 text-[12px] text-muted-foreground tabular-nums">{row.time}</span>
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{row.time}</span>
         ) : null}
       </span>
-      <span className="flex min-w-0 items-center gap-3 ps-[22px] text-[12px] text-muted-foreground">
+      <span className="flex min-w-0 items-center gap-3 ps-[22px] text-xs text-muted-foreground">
         {row.line.map((fact, index) => (
           <span key={index} className={index === 0 ? "shrink-0 tabular-nums" : "min-w-0 truncate"}>
             {fact}
@@ -1071,7 +1071,7 @@ function InboxDetail({
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-8 py-8">
       <header className="flex flex-col">
-        <div className="flex min-w-0 items-center gap-3 text-[12px] text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-3 text-xs text-muted-foreground">
           <span className="flex shrink-0 items-center gap-2">
             <InboxProviderMark provider={item.provider} className="size-3.5" />
             <span className="tabular-nums">{inboxItemRef(item)}</span>
@@ -1093,7 +1093,7 @@ function InboxDetail({
         <h1 className="mt-2 text-base font-semibold leading-6 tracking-[-0.01em] text-balance text-foreground">
           {item.title}
         </h1>
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           {authorName ? (
             <InboxPerson
               name={authorName}
@@ -1168,7 +1168,7 @@ function InboxDetail({
             {item.kind === "pr" ? "Review on GitHub" : linear ? "Open in Linear" : "Open on GitHub"}
           </Button>
         </div>
-        {startError ? <p className="mt-2 text-[12px] text-destructive">{startError}</p> : null}
+        {startError ? <p className="mt-2 text-xs text-destructive">{startError}</p> : null}
       </header>
       {isPr ? (
         <Tabs value={tab} onValueChange={(next) => setTab(next as "summary" | "code")}>
@@ -1190,7 +1190,7 @@ function InboxDetail({
         diffLoading ? (
           <ParagraphSkeleton />
         ) : diffError ? (
-          <p className="text-[12px] text-destructive">{diffError}</p>
+          <p className="text-xs text-destructive">{diffError}</p>
         ) : prDiff ? (
           <InboxPrDiff key={`${item.projectPath}:${item.number}:${revision}`} diff={prDiff} />
         ) : (
@@ -1199,7 +1199,7 @@ function InboxDetail({
       ) : loading ? (
         <ParagraphSkeleton />
       ) : error ? (
-        <p className="text-[12px] text-destructive">{error}</p>
+        <p className="text-xs text-destructive">{error}</p>
       ) : (
         <>
           {details?.body.trim() ? (

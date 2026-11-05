@@ -101,12 +101,12 @@ export function MeterRowView({ provider, meter, now, ...trigger }: MeterProps & 
         />
       )}
       {meter.limited ? (
-        <span data-meter-limited className="flex min-w-0 gap-2 text-[12px] whitespace-nowrap text-warning tabular-nums">
+        <span data-meter-limited className="flex min-w-0 gap-2 text-xs whitespace-nowrap text-warning tabular-nums">
           <span>Limited</span>
           {future(meter.limited.until, now) ? <span>{untilShort(meter.limited.until, now)}</span> : null}
         </span>
       ) : future(meter.resetsAt, now) ? (
-        <span className="min-w-0 truncate text-[12px] whitespace-nowrap text-muted-foreground tabular-nums">
+        <span className="min-w-0 truncate text-xs whitespace-nowrap text-muted-foreground tabular-nums">
           in {untilShort(meter.resetsAt, now)}
         </span>
       ) : null}
@@ -128,11 +128,11 @@ export function MeterDetails({ provider, meter, now }: MeterProps) {
         ) : null}
       </div>
       {shareless(meter) && meter.limited ? (
-        <p className="text-[12px] text-warning">
+        <p className="text-xs text-warning">
           {future(meter.limited.until, now) ? `Every key limited for ${untilShort(meter.limited.until, now)}` : "Every key limited"}
         </p>
       ) : meter.share === null ? (
-        <p className="text-[12px] text-muted-foreground">No usage reported yet</p>
+        <p className="text-xs text-muted-foreground">No usage reported yet</p>
       ) : (
         <>
           {meter.windows.map((w) => (
@@ -140,7 +140,7 @@ export function MeterDetails({ provider, meter, now }: MeterProps) {
               <div className="flex items-baseline gap-2">
                 <span className="text-[13px] text-foreground">{w.name}</span>
                 {future(w.resetsAt, now) ? (
-                  <span className="text-[12px] text-muted-foreground tabular-nums">in {untilShort(w.resetsAt, now)}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">in {untilShort(w.resetsAt, now)}</span>
                 ) : null}
                 <span className="ms-auto text-[13px] text-foreground tabular-nums">{percent(w.share)}%</span>
               </div>
@@ -148,11 +148,11 @@ export function MeterDetails({ provider, meter, now }: MeterProps) {
             </div>
           ))}
           {meter.limited ? (
-            <p className="mt-1 text-[12px] text-warning">
+            <p className="mt-1 text-xs text-warning">
               {future(meter.limited.until, now) ? `Limited for ${untilShort(meter.limited.until, now)}` : "Limited"}
             </p>
           ) : (
-            <p className="mt-1 text-[12px] text-muted-foreground">{roomWords(meter.withRoom)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{roomWords(meter.withRoom)}</p>
           )}
         </>
       )}

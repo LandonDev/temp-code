@@ -254,7 +254,7 @@ export function SurfaceTabs({
           <Tooltip>
             <TooltipTrigger
               render={
-                <div className="flex max-w-72 shrink-0 items-center px-3 text-[12px] text-muted-foreground tabular-nums" />
+                <div className="flex max-w-72 shrink-0 items-center px-3 text-xs text-muted-foreground tabular-nums" />
               }
             >
               <span className="min-w-0 truncate">{busy}</span>

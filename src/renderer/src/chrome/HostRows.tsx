@@ -127,7 +127,7 @@ function HostSubmenu({
       <DropdownMenuSubTrigger data-host-menu={id}>
         <HostGlyph environmentId={id} />
         <span className="min-w-0 truncate">{name}</span>
-        <span className="ms-auto flex shrink-0 items-center gap-2 ps-4 text-[12px] text-muted-foreground">
+        <span className="ms-auto flex shrink-0 items-center gap-2 ps-4 text-xs text-muted-foreground">
           {word}
           <DeployDriftMark environmentId={id} />
         </span>

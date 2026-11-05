@@ -55,7 +55,7 @@ function AwayReviewRow({ thread, host, onOpen, onClose }: { thread: AwayDecidedT
         <ItemTitle className="min-w-0 truncate font-normal">{meta?.title || "Untitled"}</ItemTitle>
         {host ? <HostGlyph environmentId={thread.environmentId} /> : null}
       </ItemContent>
-      <span className="shrink-0 text-[12px] tabular-nums text-muted-foreground">{decisionsLabel(thread.count)}</span>
+      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{decisionsLabel(thread.count)}</span>
     </ItemButton>
   );
 }

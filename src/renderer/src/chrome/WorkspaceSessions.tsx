@@ -435,7 +435,7 @@ export function ThreadRowView({
           <span ref={titleRef} className="truncate">
             {shownTitle}
           </span>
-          <span className="truncate text-[12px] text-muted-foreground">{verdict}</span>
+          <span className="truncate text-xs text-muted-foreground">{verdict}</span>
         </span>
       ) : (
         <span ref={titleRef} className={cn("min-w-0 truncate", live ? "shrink" : "flex-1", row.unread && "font-medium text-foreground")}>
@@ -446,7 +446,7 @@ export function ThreadRowView({
         <>
           <HostGlyph environmentId={row.environmentId} />
           {live ? (
-            <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground" data-activity>
+            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" data-activity>
               {live}
             </span>
           ) : null}
@@ -462,7 +462,7 @@ export function ThreadRowView({
               }}
               onDoubleClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}
-              className="h-5 gap-0.5 px-1 text-[12px] font-normal tabular-nums text-muted-foreground after:absolute after:-inset-y-0.5 after:inset-x-0 after:content-[''] hover:text-foreground"
+              className="h-5 gap-0.5 px-1 text-xs font-normal tabular-nums text-muted-foreground after:absolute after:-inset-y-0.5 after:inset-x-0 after:content-[''] hover:text-foreground"
             >
               <ChevronRight
                 className={cn(
@@ -476,7 +476,7 @@ export function ThreadRowView({
           ) : null}
           <span className={cn("flex shrink-0 items-center gap-2", more && YIELDS)}>
             {tally ? (
-              <span className={cn("text-[12px] tabular-nums", tally.done === tally.total ? "text-success" : "text-muted-foreground")}>
+              <span className={cn("text-xs tabular-nums", tally.done === tally.total ? "text-success" : "text-muted-foreground")}>
                 {tally.done}/{tally.total}
               </span>
             ) : null}
@@ -964,7 +964,7 @@ export function ProjectCardView({
     </>
   );
   const box = cn(
-    "flex w-full min-w-0 cursor-default flex-col rounded-lg px-3 py-2 text-left text-[12px] focus-ring",
+    "flex w-full min-w-0 cursor-default flex-col rounded-lg px-3 py-2 text-left text-xs focus-ring",
     // The card is the column's one container: always on its own fill, a step
     // further on hover, the farthest step while selected. No transition (list rows never animate).
     selected ? "bg-sidebar-group-selected" : "bg-sidebar-group hover:bg-sidebar-group-hover",
@@ -1172,7 +1172,7 @@ export function SectionHeading({
         size="xs"
         aria-expanded={open}
         onClick={onToggle}
-        className="h-7 min-w-0 flex-1 justify-start gap-1 px-3 text-[12px] font-medium text-muted-foreground hover:bg-transparent hover:text-foreground aria-expanded:bg-transparent"
+        className="h-7 min-w-0 flex-1 justify-start gap-1 px-3 text-xs font-medium text-muted-foreground hover:bg-transparent hover:text-foreground aria-expanded:bg-transparent"
       >
         <span className="truncate">{label}</span>
         <FoldChevron open={open} className="size-3" />
@@ -1214,7 +1214,7 @@ const ArchivedProjects = memo(function ArchivedProjects({
         label="Archived"
         open={open}
         onToggle={toggle}
-        trailing={<span className="pr-2 text-[12px] tabular-nums text-muted-foreground">{groups.length}</span>}
+        trailing={<span className="pr-2 text-xs tabular-nums text-muted-foreground">{groups.length}</span>}
       />
       <CollapsibleContent>
         {groups.map(({ project, threads }) => (

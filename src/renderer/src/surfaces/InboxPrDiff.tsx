@@ -93,7 +93,7 @@ export function InboxPrDiff({ diff }: Props) {
 
   return (
     <div className="inbox-pr-diff flex flex-col gap-3">
-      <div className="flex items-center gap-3 text-[12px]">
+      <div className="flex items-center gap-3 text-xs">
         <span className="text-muted-foreground">{fileLabel}</span>
         <DiffCounts additions={diff.additions} deletions={diff.deletions} />
         <TooltipProvider>
@@ -112,7 +112,7 @@ export function InboxPrDiff({ diff }: Props) {
         </TooltipProvider>
       </div>
       {diff?.truncated ? (
-        <p className="text-[12px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Too large to show in full; the files appear without their diffs.
         </p>
       ) : null}
@@ -164,7 +164,7 @@ function PrFileCard({
         <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground", DISCLOSURE_CHEVRON, expanded && "rotate-90")} />
         <FileTypeIcon name={name} isDir={false} size={16} />
         <TruncateTip text={label}>
-          <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-foreground">{label}</span>
+          <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">{label}</span>
         </TruncateTip>
         <DiffCounts additions={file.additions} deletions={file.deletions} />
       </Button>
@@ -176,14 +176,14 @@ function PrFileCard({
 function PrFileBody({ file }: { file: PrDiffFile }) {
   if (file.binary) {
     return (
-      <p className="border-t border-border px-3 py-3 text-[12px] text-muted-foreground">
+      <p className="border-t border-border px-3 py-3 text-xs text-muted-foreground">
         Binary file changed
       </p>
     );
   }
   if (file.lines.length === 0) {
     return (
-      <p className="border-t border-border px-3 py-3 text-[12px] text-muted-foreground">
+      <p className="border-t border-border px-3 py-3 text-xs text-muted-foreground">
         No textual diff
       </p>
     );
@@ -247,7 +247,7 @@ function DiffLineRow({ line }: { line: PrDiffLine }) {
       <span className={`w-3 shrink-0 text-center font-mono text-xs font-bold ${markColor}`}>
         {mark}
       </span>
-      <span className="whitespace-pre pr-3 font-mono text-[12px] leading-5">
+      <span className="whitespace-pre pr-3 font-mono text-xs leading-5">
         {highlight(line.text, line.kind === "context")}
       </span>
     </div>

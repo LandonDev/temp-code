@@ -261,7 +261,7 @@ export function NotesView({
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none"
       >
         {error && notes.length === 0 ? (
-          <p className="px-3 py-2 text-[12px] text-destructive">{error}</p>
+          <p className="px-3 py-2 text-xs text-destructive">{error}</p>
         ) : loading && notes.length === 0 ? (
           <SurfaceSkeleton kind="rows" lines={3} count={6} label="Loading notes" />
         ) : visible.length === 0 ? (
@@ -420,7 +420,7 @@ function NoteCard({
         <span className="mt-1 block truncate text-[13px] font-medium leading-snug text-foreground">{note.title}</span>
       </TruncateTip>
       {preview ? (
-        <span className="mt-0.5 line-clamp-1 text-[12px] leading-snug text-muted-foreground">
+        <span className="mt-0.5 line-clamp-1 text-xs leading-snug text-muted-foreground">
           {preview}
         </span>
       ) : null}
@@ -573,7 +573,7 @@ function NoteEditor({
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-8 py-8">
         <header className="flex flex-col gap-3">
           {note.slug || project ? (
-            <div className="flex min-w-0 items-center gap-3 text-[12px] text-muted-foreground">
+            <div className="flex min-w-0 items-center gap-3 text-xs text-muted-foreground">
               {note.slug ? (
                 <span className="min-w-0 truncate">{note.slug}</span>
               ) : null}
@@ -605,7 +605,7 @@ function NoteEditor({
             placeholder="Untitled"
           />
           {time ? (
-            <div className="text-[12px] text-muted-foreground tabular-nums">Updated {time}</div>
+            <div className="text-xs text-muted-foreground tabular-nums">Updated {time}</div>
           ) : null}
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <Button size="sm" disabled={!canAddToChat} onClick={() => onAddToChat(draft)}>
@@ -636,7 +636,7 @@ function NoteEditor({
             />
           ) : null}
           {saveError ? (
-            <p className="text-[12px] text-destructive">{saveError}</p>
+            <p className="text-xs text-destructive">{saveError}</p>
           ) : null}
         </header>
         <Tabs value={mode} onValueChange={(next) => setMode(next as typeof mode)}>

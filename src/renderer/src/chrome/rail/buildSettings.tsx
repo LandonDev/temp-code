@@ -56,12 +56,12 @@ export function BuildFields({
             placeholder={f.placeholder}
             spellCheck={false}
             aria-label={`Build ${f.label.toLowerCase()}`}
-            className={compact ? "font-mono text-[12px]" : "w-64 font-mono text-[12px]"}
+            className={compact ? "font-mono text-xs" : "w-64 font-mono text-xs"}
           />
         );
         return compact ? (
           <label key={f.key} className="flex flex-col gap-1.5">
-            <span className="text-[12px] font-medium text-muted-foreground">{f.label}</span>
+            <span className="text-xs font-medium text-muted-foreground">{f.label}</span>
             {input}
           </label>
         ) : (
@@ -134,7 +134,7 @@ export function BuildEditor({ workspaceId }: { workspaceId: string }) {
   return (
     <>
       <BuildFields value={config} onChange={push} detected={detected} />
-      {error ? <p className="pt-2 text-[12px] text-destructive">{error}</p> : null}
+      {error ? <p className="pt-2 text-xs text-destructive">{error}</p> : null}
     </>
   );
 }

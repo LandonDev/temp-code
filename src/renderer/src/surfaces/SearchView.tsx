@@ -579,7 +579,7 @@ export function HostFooter({ progress }: { progress: HostProgress[] }) {
   return (
     <div
       aria-label="Hosts searched"
-      className="flex h-7 shrink-0 items-center gap-4 overflow-hidden border-t border-border px-3 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums"
+      className="flex h-7 shrink-0 items-center gap-4 overflow-hidden border-t border-border px-3 text-xs whitespace-nowrap text-muted-foreground tabular-nums"
     >
       {progress.map((row) => (
         <span
@@ -676,13 +676,13 @@ function ResultList({
             <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{row.title}</span>
             {row.meta ? (
               <span
-                className={`min-w-0 max-w-[45%] truncate text-[12px] text-muted-foreground ${row.mono ? "font-mono" : ""}`}
+                className={`min-w-0 max-w-[45%] truncate text-xs text-muted-foreground ${row.mono ? "font-mono" : ""}`}
               >
                 {row.meta}
               </span>
             ) : null}
             {(hit.kind === "file" || hit.kind === "content") && hit.more ? (
-              <span data-more className="shrink-0 text-[12px] text-muted-foreground tabular-nums">
+              <span data-more className="shrink-0 text-xs text-muted-foreground tabular-nums">
                 +{hit.more} more
               </span>
             ) : null}
@@ -716,7 +716,7 @@ export function HostMark({
 }) {
   const also = alsoOn && alsoOn.length > 0 ? `${name}, also on ${alsoOn.join(", ")}` : undefined;
   return (
-    <span data-host-mark className="flex shrink-0 items-center gap-1.5 ps-1 text-[12px] text-muted-foreground">
+    <span data-host-mark className="flex shrink-0 items-center gap-1.5 ps-1 text-xs text-muted-foreground">
       <HostGlyph environmentId={environmentId} title={also} />
       {newer ? <span>newer</span> : null}
     </span>

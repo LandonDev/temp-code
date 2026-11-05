@@ -347,7 +347,7 @@ function SidebarComponent({
         className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none"
       >
         {workspaceSessions ?? (
-          <p className="px-3 py-2 text-[12px] text-muted-foreground">
+          <p className="px-3 py-2 text-xs text-muted-foreground">
             No project folder
           </p>
         )}

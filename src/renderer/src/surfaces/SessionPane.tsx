@@ -286,7 +286,7 @@ export function LoadLine({ name, load, onRetry }: { name: string; load: LoadStat
     <div
       role="status"
       data-load-line={load.phase}
-      className={`mx-auto mt-2 flex h-6 w-full ${COLUMN_MAX_CLASS} shrink-0 items-center gap-2 px-4 text-[12px] text-muted-foreground`}
+      className={`mx-auto mt-2 flex h-6 w-full ${COLUMN_MAX_CLASS} shrink-0 items-center gap-2 px-4 text-xs text-muted-foreground`}
     >
       <span className="flex min-w-0 flex-1 items-center gap-2">
         {parts.map((part, i) => (

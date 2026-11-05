@@ -203,7 +203,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
                 <Fragment key={p}>
                   <TableRow data-slot="table-group-row" className="border-b-0">
                     <TableCell colSpan={3} className="h-8 pt-2">
-                      <span className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground">
+                      <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                         <HarnessIcon harness={p as HarnessId} className="size-3.5 shrink-0" />
                         {label}
                       </span>
@@ -211,7 +211,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
                   </TableRow>
                   {models.length === 0 ? (
                     <TableRow data-slot="table-empty-row">
-                      <TableCell colSpan={3} className="text-[12px] text-muted-foreground">
+                      <TableCell colSpan={3} className="text-xs text-muted-foreground">
                         No models until {label} is installed and signed in
                       </TableCell>
                     </TableRow>
@@ -258,7 +258,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
           <RuleRow key={r.id} rule={r} rules={rules} catalog={catalog} onEdit={() => setEditing(r)} />
         ))}
         {rules.routing.length === 0 ? (
-          <p className="py-3 text-[12px] text-muted-foreground">No rules. Subagents use each provider's default model.</p>
+          <p className="py-3 text-xs text-muted-foreground">No rules. Subagents use each provider's default model.</p>
         ) : null}
       </PageSection>
 
@@ -328,7 +328,7 @@ function ModelRow({
     <TableRow data-stale={model ? undefined : ""}>
       <TableCell className={cn("w-full truncate", approved && model ? "text-foreground" : "text-muted-foreground")}>
         {name}
-        {model ? null : <span className="ms-1 text-[12px]">not on this host</span>}
+        {model ? null : <span className="ms-1 text-xs">not on this host</span>}
       </TableCell>
       <TableCell>
         <ChoiceSelect
@@ -416,7 +416,7 @@ function RuleRow({
 function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-      <label htmlFor={htmlFor} className="text-[12px] font-medium text-muted-foreground">
+      <label htmlFor={htmlFor} className="text-xs font-medium text-muted-foreground">
         {label}
       </label>
       {children}

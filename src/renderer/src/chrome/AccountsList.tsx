@@ -110,7 +110,7 @@ function AccountRow({
       role="option"
       aria-selected={checked}
       aria-disabled
-      className="flex w-full items-center gap-6 rounded-lg px-2.5 py-2.5 text-left text-[12px] leading-none text-foreground"
+      className="flex w-full items-center gap-6 rounded-lg px-2.5 py-2.5 text-left text-xs leading-none text-foreground"
     >
       <span className="flex min-w-0 flex-1 items-start gap-2.5">
         <span
@@ -302,7 +302,7 @@ function WindowLine({ w, now }: { w: UsageWindow; now: number }) {
     <span className="flex flex-col gap-1.5" data-window={w.label}>
       <span className="flex items-baseline justify-between gap-2">
         <span className="truncate text-xs text-muted-foreground">{w.label}</span>
-        <span className={`text-[12px] font-medium tabular-nums ${toneFor(w, now)}`}>{formatPercent(left)}</span>
+        <span className={`text-xs font-medium tabular-nums ${toneFor(w, now)}`}>{formatPercent(left)}</span>
       </span>
       <Bar w={w} now={now} height="h-1.5" />
     </span>

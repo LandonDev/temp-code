@@ -252,7 +252,7 @@ export function SurfaceSkeleton({
  *  beside its word, centred. */
 export function LoadingLine({ label }: { label: string }) {
   return (
-    <div role="status" aria-busy className="flex select-none items-center justify-center gap-2 py-6 text-[12px] text-muted-foreground">
+    <div role="status" aria-busy className="flex select-none items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
       <Spinner aria-hidden className="size-3.5" />
       <span>{label}</span>
     </div>

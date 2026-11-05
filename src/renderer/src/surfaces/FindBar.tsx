@@ -116,7 +116,7 @@ export function FindBar(props: FindBarProps) {
                 aria-label="Find"
                 aria-invalid={missed || undefined}
                 placeholder="Find"
-                className="min-w-36 font-mono text-[12px]"
+                className="min-w-36 font-mono text-xs"
                 value={props.search}
                 onChange={(event) => props.onSearch(event.currentTarget.value)}
                 onCompositionStart={props.onCompositionStart}
@@ -125,7 +125,7 @@ export function FindBar(props: FindBarProps) {
               />
               <span
                 data-count={count.state}
-                className={cn("shrink-0 text-[12px] tabular-nums", missed ? "text-destructive" : "text-muted-foreground")}
+                className={cn("shrink-0 text-xs tabular-nums", missed ? "text-destructive" : "text-muted-foreground")}
               >
                 {count.text}
               </span>
@@ -176,7 +176,7 @@ export function FindBar(props: FindBarProps) {
                   ref={props.replaceRef}
                   aria-label="Replace"
                   placeholder="Replace"
-                  className="min-w-36 font-mono text-[12px]"
+                  className="min-w-36 font-mono text-xs"
                   value={props.replace}
                   onChange={(event) => props.onReplace(event.currentTarget.value)}
                   {...FIELD_ATTRS}

@@ -136,10 +136,10 @@ function PermissionRow({
       {granted === null ? (
         <Skeleton data-testid="permission-skeleton" className="h-3 w-16" />
       ) : granted ? (
-        <span className="text-[12px] text-muted-foreground">Granted</span>
+        <span className="text-xs text-muted-foreground">Granted</span>
       ) : (
         <>
-          <span className="text-[12px] text-warning">Not granted</span>
+          <span className="text-xs text-warning">Not granted</span>
           {/* macOS prompts once; after a denial only System Settings can grant it. */}
           <Button variant="secondary" size="sm" aria-label={`Grant ${label} in System Settings`} onClick={() => void openUrl(PANE_URL + pane)}>
             Grant…

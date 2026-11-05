@@ -108,7 +108,7 @@ export function CwdPicker({
       {children ?? (
         <>
           {inProject ? <FolderGlyph path={cwd} /> : <Folder className="size-4 shrink-0" />}
-          <span className="truncate font-mono text-[12px]">{label}</span>
+          <span className="truncate font-mono text-xs">{label}</span>
         </>
       )}
       {chevron ? (

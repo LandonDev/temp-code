@@ -116,7 +116,7 @@ export function MenuBar({ onCommand, disabled }: Props) {
   return (
     <div
       ref={barRef}
-      className="flex h-7 shrink-0 items-center gap-0.5 border-b border-border bg-sidebar px-2 text-[12px]"
+      className="flex h-7 shrink-0 items-center gap-0.5 border-b border-border bg-sidebar px-2 text-xs"
       data-tauri-drag-region="false"
     >
       {menus.map((menu) => {
@@ -137,7 +137,7 @@ export function MenuBar({ onCommand, disabled }: Props) {
                 onMouseEnter={() => {
                   if (activeMenu && activeMenu !== key) setActiveMenu(key);
                 }}
-                className={cn("h-5 px-2 text-[12px] font-normal after:absolute after:-inset-y-0.5 after:inset-x-0 after:content-['']", isActive ? "bg-muted text-foreground" : "text-muted-foreground")}
+                className={cn("h-5 px-2 text-xs font-normal after:absolute after:-inset-y-0.5 after:inset-x-0 after:content-['']", isActive ? "bg-muted text-foreground" : "text-muted-foreground")}
               >
                 {key}
               </Button>

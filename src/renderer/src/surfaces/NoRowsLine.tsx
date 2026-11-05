@@ -7,7 +7,7 @@ export function NoRowsLine({ summary }: { summary?: string | null }) {
     <p
       role="status"
       data-no-rows
-      className={`mx-auto mt-2 w-full ${COLUMN_MAX_CLASS} shrink-0 px-4 py-0.5 text-[12px] leading-5 text-muted-foreground`}
+      className={`mx-auto mt-2 w-full ${COLUMN_MAX_CLASS} shrink-0 px-4 py-0.5 text-xs leading-5 text-muted-foreground`}
     >
       {summary || "No messages yet"}
     </p>

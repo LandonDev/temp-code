@@ -149,7 +149,7 @@ export function ColorPicker({ value, onChange }: Props) {
           spellCheck={false}
           aria-label="Hex color"
           onChange={(e) => onHexInput(e.target.value)}
-          className="min-w-0 flex-1 font-mono text-[12px]"
+          className="min-w-0 flex-1 font-mono text-xs"
         />
       </div>
     </div>

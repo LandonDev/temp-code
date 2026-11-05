@@ -76,7 +76,7 @@ export function sectionEntries(roots: readonly ThreadRow[]): Entry[] {
  *  aligned with its title. */
 function AgentsLine({ summary, className }: { summary: AgentSummary; className: string }) {
   return (
-    <div className={cn("flex min-w-0 items-center gap-2 pb-1 text-[12px] text-muted-foreground", className)}>
+    <div className={cn("flex min-w-0 items-center gap-2 pb-1 text-xs text-muted-foreground", className)}>
       {agentSummaryParts(summary).map((part) => (
         <span key={part.text} className={cn("shrink-0 truncate", part.tone)}>
           {part.text}
@@ -101,7 +101,7 @@ function MasterRows({ block, activeId, onSelect }: { block: MasterBlock; activeI
         </div>
       ))}
       {block.queued > 0 ? (
-        <div className="flex h-7 items-center pl-15 text-[12px] text-muted-foreground">{block.queued} queued</div>
+        <div className="flex h-7 items-center pl-15 text-xs text-muted-foreground">{block.queued} queued</div>
       ) : null}
     </div>
   );
@@ -127,7 +127,7 @@ export function WorkspaceThreadsList({
     <div className="flex flex-col gap-2">
       {sections.map((section) => (
         <div key={section.key} className="flex flex-col">
-          <span className="flex h-7 items-center px-3 text-[12px] font-medium text-muted-foreground">{section.label}</span>
+          <span className="flex h-7 items-center px-3 text-xs font-medium text-muted-foreground">{section.label}</span>
           {section.entries.map((entry) =>
             entry.kind === "master" ? (
               <MasterRows key={entry.id} block={entry.block} activeId={activeSessionId} onSelect={onSelectThread} />

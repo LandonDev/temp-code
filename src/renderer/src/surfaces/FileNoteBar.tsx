@@ -66,7 +66,7 @@ export function EditorAlert({
   return (
     <div className="shrink-0 px-3 py-2">
       <Alert role={role} variant={tone} className="py-1.5">
-        <AlertDescription className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
+        <AlertDescription className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
           <span className="min-w-0 grow basis-40 text-pretty text-foreground">{text}</span>
           {aside || actions.length > 0 ? (
             <span data-alert-end className="ms-auto flex shrink-0 items-center gap-2">

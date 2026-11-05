@@ -66,7 +66,7 @@ describe("type on one grid", () => {
     const source = readFileSync(resolve(__dirname, "toaster.tsx"), "utf8");
     expect(source).toContain('toast: "!items-start !gap-2');
     expect(source).toContain('title: "!font-medium !leading-5"');
-    expect(source).toContain('description: "!text-[12px] !leading-4 !text-muted-foreground"');
+    expect(source).toContain('description: "!text-xs !leading-4 !text-muted-foreground"');
     expect(source).toContain('icon: "!h-5"');
   });
 

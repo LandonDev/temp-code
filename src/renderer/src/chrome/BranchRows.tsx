@@ -74,7 +74,7 @@ export function BranchRows({
               ) : (
                 <>
                   <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{row.branch.name}</span>
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs">{row.branch.name}</span>
                   {row.branch.remote ? (
                     <span className="shrink-0 text-xs text-muted-foreground">{row.branch.remote}</span>
                   ) : null}

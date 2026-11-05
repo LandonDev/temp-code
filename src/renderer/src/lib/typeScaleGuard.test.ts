@@ -15,7 +15,7 @@ function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const path = join(dir, name);
     if (statSync(path).isDirectory()) walk(path, out);
-    else if (/\.tsx$/.test(name) && !/\.(test|fixtures)\.tsx$/.test(name)) out.push(path);
+    else if (/\.tsx?$/.test(name) && !/\.(test|fixtures)\.tsx?$/.test(name)) out.push(path);
   }
   return out;
 }
@@ -40,6 +40,11 @@ describe("the type guard", () => {
 });
 
 describe("the type scale guard", () => {
+  it("names 12px text-xs rather than an arbitrary size", () => {
+    const hits = files.filter(({ text }) => text.includes("text-[12px]")).map(({ file }) => file);
+    expect(hits).toEqual([]);
+  });
+
   it("keeps 11px for key caps and a menu's group labels, and 10px nowhere", () => {
     const off: string[] = [];
     for (const { file, text } of files) {

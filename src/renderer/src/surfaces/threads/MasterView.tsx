@@ -145,7 +145,7 @@ export function MasterView(props: ThreadViewProps) {
 export function BoardFailed({ renderChat, onRetry }: Pick<ThreadViewProps, "renderChat"> & { onRetry: () => void }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col [contain:layout_style]" data-board-failed>
-      <div role="alert" className={`mx-auto mt-2 flex h-6 w-full ${COLUMN_MAX_CLASS} shrink-0 items-center gap-2 px-4 text-[12px] text-muted-foreground`}>
+      <div role="alert" className={`mx-auto mt-2 flex h-6 w-full ${COLUMN_MAX_CLASS} shrink-0 items-center gap-2 px-4 text-xs text-muted-foreground`}>
         <span className="min-w-0 flex-1 truncate">Couldn't load the board</span>
         <Button variant="ghost" size="xs" className="shrink-0" onClick={onRetry}>
           Retry

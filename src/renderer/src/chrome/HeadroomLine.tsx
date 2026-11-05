@@ -27,7 +27,7 @@ export function HeadroomLine({ headroom, now, className }: { headroom: AccountHe
   return (
     <Tooltip>
       <TooltipTrigger
-        render={<span className={cn("flex items-center gap-2 text-[12px] leading-none", className)} data-headroom={look.tone} />}
+        render={<span className={cn("flex items-center gap-2 text-xs leading-none", className)} data-headroom={look.tone} />}
       >
         <span className="shrink-0 text-muted-foreground">Headroom</span>
         <Progress

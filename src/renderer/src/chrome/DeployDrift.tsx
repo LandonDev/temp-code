@@ -27,7 +27,7 @@ export function DriftMark({ drift, className = "" }: { drift: DeployDrift; class
           <span
             data-deploy-drift={drift.behind}
             aria-label={title}
-            className={`relative shrink-0 cursor-default text-[12px] tabular-nums text-muted-foreground after:absolute after:-inset-y-0.5 after:inset-x-0 after:content-[''] ${className}`.trim()}
+            className={`relative shrink-0 cursor-default text-xs tabular-nums text-muted-foreground after:absolute after:-inset-y-0.5 after:inset-x-0 after:content-[''] ${className}`.trim()}
           />
         }
       >

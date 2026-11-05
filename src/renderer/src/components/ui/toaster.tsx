@@ -113,7 +113,7 @@ export function Toaster(props: ToasterProps) {
             // The glyph sits on the title's first line, not the middle of two.
             toast: "!items-start !gap-2 !rounded-xl !border-0 !bg-popover !text-popover-foreground !shadow-overlay !ring-1 !ring-border !text-[13px]",
             title: "!font-medium !leading-5",
-            description: "!text-[12px] !leading-4 !text-muted-foreground",
+            description: "!text-xs !leading-4 !text-muted-foreground",
             icon: "!h-5",
             // Our raised buttons: sonner's own button paints a background, a 4px radius
             // and its own sizes, so those are reset for the raise's fill layer to show.

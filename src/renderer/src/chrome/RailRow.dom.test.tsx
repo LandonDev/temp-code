@@ -173,7 +173,7 @@ describe("RailHeading", () => {
     const onAdd = vi.fn();
     render(<RailHeading action={{ label: "Add workspace", icon: Plus, onClick: onAdd }}>Workspaces</RailHeading>);
     const heading = screen.getByText("Workspaces");
-    expect(heading.className).toContain("text-[12px]");
+    expect(heading.className).toContain("text-xs");
     expect(heading.className).not.toContain("uppercase");
     fireEvent.click(screen.getByRole("button", { name: "Add workspace" }));
     expect(onAdd).toHaveBeenCalledOnce();

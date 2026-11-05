@@ -387,7 +387,7 @@ function RenameInput({
         }
       }}
       onBlur={(event) => onRename(chip.id, event.target.value.trim())}
-      className={shelf ? "h-6 w-40 shrink-0 px-2 text-[12px]" : "h-7 w-44 shrink-0 px-3 text-[13px]"}
+      className={shelf ? "h-6 w-40 shrink-0 px-2 text-xs" : "h-7 w-44 shrink-0 px-3 text-[13px]"}
     />
   );
 }
@@ -518,7 +518,7 @@ const LIVE_CHIP =
 const CHIP_TITLE =
   "min-w-0 truncate after:invisible after:block after:h-0 after:overflow-hidden after:font-medium after:content-[attr(data-text)]";
 /** A shelf chip: 24px, 8px padding, 6px from glyph to title, 12px muted type. */
-const SHELF_CHIP = "h-6 gap-1.5 px-2 text-[12px]";
+const SHELF_CHIP = "h-6 gap-1.5 px-2 text-xs";
 
 function Chip({
   chip,

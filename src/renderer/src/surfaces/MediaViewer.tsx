@@ -268,10 +268,10 @@ export function MediaViewer({
               if (next) setFit(next === "fit");
             }}
           >
-            <ToggleGroupItem value="fit" className="text-[12px]" onMouseDown={keepFocus}>
+            <ToggleGroupItem value="fit" className="text-xs" onMouseDown={keepFocus}>
               Fit
             </ToggleGroupItem>
-            <ToggleGroupItem value="actual" className="text-[12px]" onMouseDown={keepFocus}>
+            <ToggleGroupItem value="actual" className="text-xs" onMouseDown={keepFocus}>
               100%
             </ToggleGroupItem>
           </ToggleGroup>
@@ -316,7 +316,7 @@ function ReviewSide({
 }) {
   return (
     <section aria-label={label} className={cn("flex min-w-0 flex-1 flex-col", className)}>
-      <div className="flex h-8 shrink-0 items-center gap-2 px-3 text-[12px]">
+      <div className="flex h-8 shrink-0 items-center gap-2 px-3 text-xs">
         <span className="font-medium text-muted-foreground">{label}</span>
         <Facts facts={facts} />
       </div>
@@ -441,7 +441,7 @@ function LoadingLine() {
   return (
     <div
       role="status"
-      className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 text-[12px] text-muted-foreground animate-in fade-in fill-mode-both duration-(--dur-base) [--tw-animation-delay:var(--dur-slow)]"
+      className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 text-xs text-muted-foreground animate-in fade-in fill-mode-both duration-(--dur-base) [--tw-animation-delay:var(--dur-slow)]"
     >
       <Spinner aria-hidden="true" role="presentation" />
       Loading…

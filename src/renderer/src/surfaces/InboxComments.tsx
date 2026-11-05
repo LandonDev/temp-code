@@ -72,7 +72,7 @@ export function InboxComments({
   }
   if (!thread) {
     if (error) {
-      return <p className="text-[12px] text-destructive">{error}</p>;
+      return <p className="text-xs text-destructive">{error}</p>;
     }
     if (loading) return <CommentsPending />;
     return null;
@@ -87,12 +87,12 @@ export function InboxComments({
 
   return (
     <section className="flex flex-col gap-2 border-t border-border pt-5">
-      <div className="flex items-center gap-3 text-[12px] text-muted-foreground">
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
         <h2 className="font-medium">{label}</h2>
         {thread.truncated ? <span>the latest, more on {moreOn}</span> : null}
         {loading ? <Spinner aria-label="Loading comments" className="size-3" /> : null}
       </div>
-      {error ? <p className="text-[12px] text-destructive">{error}</p> : null}
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
       <ol className="flex flex-col gap-2">
         {thread.comments.map((comment) => (
           <li key={comment.id}>
@@ -160,7 +160,7 @@ export function InboxCommentForm({
       className="flex flex-col gap-2 border-t border-border pt-5"
     >
       {replyTo ? (
-        <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="min-w-0 truncate">
             Replying to {replyTo.author || "comment"}
           </span>
@@ -185,7 +185,7 @@ export function InboxCommentForm({
         className="max-h-40 resize-none overflow-x-hidden overflow-y-auto px-3 leading-5 text-foreground"
       />
       <div className="flex items-start gap-3">
-        <p className="min-w-0 flex-1 pt-1 text-[12px] text-destructive">
+        <p className="min-w-0 flex-1 pt-1 text-xs text-destructive">
           {error}
         </p>
         <Button type="submit" size="sm" variant="secondary" disabled={!canPost}>
@@ -201,7 +201,7 @@ function CommentsPending() {
     <div
       role="status"
       aria-busy
-      className="flex items-center gap-2 border-t border-border pt-5 text-[12px] text-muted-foreground"
+      className="flex items-center gap-2 border-t border-border pt-5 text-xs text-muted-foreground"
     >
       <Spinner aria-hidden className="size-3.5" />
       Loading comments
@@ -243,7 +243,7 @@ function InboxComment({
   const inner = (
     <>
       <header
-        className={`flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground ${
+        className={`flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground ${
           nested ? "" : "px-3 py-2"
         } ${!nested && (hasBody || hasReplies) ? "border-b border-border" : ""}`}
       >

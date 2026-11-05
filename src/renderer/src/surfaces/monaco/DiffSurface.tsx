@@ -322,7 +322,7 @@ export function DiffSurface({
         </div>
       ) : null}
       {phase === "error" ? (
-        <div className="flex flex-1 items-center justify-center text-[12px] text-muted-foreground">
+        <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
           Could not open this diff.
         </div>
       ) : null}

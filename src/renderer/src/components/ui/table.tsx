@@ -35,7 +35,7 @@ function TableHead({ className, ...props }: ComponentProps<"th">) {
   return (
     <th
       data-slot="table-head"
-      className={cn("h-8 px-3 text-start align-middle text-[12px] font-medium whitespace-nowrap text-muted-foreground first:pl-0 last:pr-0", className)}
+      className={cn("h-8 px-3 text-start align-middle text-xs font-medium whitespace-nowrap text-muted-foreground first:pl-0 last:pr-0", className)}
       {...props}
     />
   );
@@ -52,7 +52,7 @@ function TableCell({ className, ...props }: ComponentProps<"td">) {
 }
 
 function TableCaption({ className, ...props }: ComponentProps<"caption">) {
-  return <caption data-slot="table-caption" className={cn("mt-3 text-[12px] text-muted-foreground", className)} {...props} />;
+  return <caption data-slot="table-caption" className={cn("mt-3 text-xs text-muted-foreground", className)} {...props} />;
 }
 
 export { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption };
