@@ -19,7 +19,7 @@ describe("modelMix", () => {
   });
 
   it("gives each provider two slots and folds the rest into Other, so the stack is the day's whole", () => {
-    const names = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "gpt-6.1-sol", "gpt-6-sol", "o9"];
+    const names = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "gpt-6.1-sol", "gpt-6-astra", "o9"];
     const { series, rows } = modelMix({
       byModel: names.map((name, i) => ({ name, value: 100 - i, turns: 1 })),
       modelDaily: names.map((n) => day(n, 10)),
@@ -28,7 +28,7 @@ describe("modelMix", () => {
       ["claude-opus-5-5", "var(--chart-1)"],
       ["claude-sonnet-5-5", "var(--chart-3)"],
       ["gpt-6.1-sol", "var(--chart-2)"],
-      ["gpt-6-sol", "var(--chart-4)"],
+      ["gpt-6-astra", "var(--chart-4)"],
       [OTHER_KEY, "var(--muted-foreground)"],
     ]);
     expect(series.at(-1)!.name).toBe("Other");
@@ -36,6 +36,27 @@ describe("modelMix", () => {
     const total = series.reduce((sum, s) => sum + (row[s.key] as number), 0);
     expect(total).toBe(60);
     expect(row[OTHER_KEY]).toBe(20);
+  });
+
+  it("keeps each model's colour when two of one provider trade places", () => {
+    const colours = (names: string[]) =>
+      Object.fromEntries(
+        modelMix({ byModel: names.map((name, i) => ({ name, value: 100 - i, turns: 1 })), modelDaily: names.map((n) => day(n, 10)) }).series.map((s) => [s.key, s.color]),
+      );
+    const opusFirst = colours(["claude-opus-5-5", "claude-sonnet-5-5", "gpt-6.1-sol", "gpt-6-astra"]);
+    const sonnetFirst = colours(["claude-sonnet-5-5", "claude-opus-5-5", "gpt-6-astra", "gpt-6.1-sol"]);
+    expect(sonnetFirst).toEqual(opusFirst);
+    expect(opusFirst["claude-opus-5-5"]).toBe("var(--chart-1)");
+    expect(opusFirst["claude-sonnet-5-5"]).toBe("var(--chart-3)");
+  });
+
+  it("folds a second model of one family into Other, never into another's colour", () => {
+    const names = ["claude-opus-5-5", "claude-opus-4-8"];
+    const { series } = modelMix({ byModel: names.map((name, i) => ({ name, value: 10 - i, turns: 1 })), modelDaily: names.map((n) => day(n, 5)) });
+    expect(series.map((s) => [s.key, s.color])).toEqual([
+      ["claude-opus-5-5", "var(--chart-1)"],
+      [OTHER_KEY, "var(--muted-foreground)"],
+    ]);
   });
 
   it("draws no Other when every model has a slot", () => {

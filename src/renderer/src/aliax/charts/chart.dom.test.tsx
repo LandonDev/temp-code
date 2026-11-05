@@ -6,7 +6,7 @@ import { Line, LineChart } from "recharts";
 import { ChartFrame, LINE, TICK } from "./chart";
 import { ChartTooltipContent } from "./tooltip";
 import { ChartLegend } from "./legend";
-import { SERIES, ramp } from "./palette";
+import { NEUTRAL_SERIES, SERIES, ramp } from "./palette";
 
 // jsdom has no layout, so ResponsiveContainer would measure 0×0 and draw nothing.
 vi.mock("recharts", async (importOriginal) => {
@@ -73,9 +73,10 @@ describe("the chart module", () => {
     expect(tip.className).toContain("rounded-xl");
   });
 
-  it("ramps from the background to the first chart colour", () => {
+  it("ramps from the background to the neutral series: the heatmap counts both providers", () => {
     expect(ramp(0)).toBe("transparent");
-    expect(ramp(5)).toBe("color-mix(in oklab, var(--chart-1) 100%, var(--background))");
-    expect(ramp(1)).toBe("color-mix(in oklab, var(--chart-1) 20%, var(--background))");
+    expect(ramp(5)).toBe(NEUTRAL_SERIES);
+    expect(ramp(1)).toBe("color-mix(in oklab, var(--foreground) 12%, var(--background))");
+    expect(NEUTRAL_SERIES).not.toContain("--chart-");
   });
 });

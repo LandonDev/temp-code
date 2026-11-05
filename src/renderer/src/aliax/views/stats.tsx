@@ -6,7 +6,7 @@ import { Empty, EmptyDescription, EmptyTitle } from "@renderer/components/ui/emp
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { AXIS, BAR, BAR_CURSOR, CHART_HEIGHT, ChartFrame, GRID, HBAR, LINE, LINE_CURSOR } from "@aliax/charts/chart";
 import { ChartLegend } from "@aliax/charts/legend";
-import { SERIES, SERVICE_SERIES } from "@aliax/charts/palette";
+import { NEUTRAL_SERIES, SERIES, SERVICE_SERIES } from "@aliax/charts/palette";
 import { ChartTooltipContent } from "@aliax/charts/tooltip";
 import { TIMEZONE, clip, compact, compactTick, modelLabel, shortDay } from "@aliax/lib/viz";
 import { HEATMAP_HEIGHT, Heatmap } from "./stats/heatmap";
@@ -116,7 +116,8 @@ function RankedBars({ label, data, unit }: { label: string; data: { name: string
         <XAxis type="number" hide />
         <YAxis {...AXIS} type="category" dataKey="name" width={128} tickFormatter={(v: string) => clip(v)} />
         <ChartTooltip cursor={BAR_CURSOR} isAnimationActive={false} content={(props) => tooltip(props, { valueFormatter: (v) => `${compact(v)} ${unit}` })} />
-        <Bar {...HBAR} dataKey="value" name={unit} fill={SERIES[0]} />
+        {/* Both providers' work in one bar: the neutral series, never Claude's colour. */}
+        <Bar {...HBAR} dataKey="value" name={unit} fill={NEUTRAL_SERIES} />
       </BarChart>
     </ChartFrame>
   );
@@ -276,7 +277,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
               <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} minTickGap={24} />
               <YAxis {...AXIS} domain={[0, 100]} width={44} tickFormatter={percent} />
               <ChartTooltip cursor={LINE_CURSOR} isAnimationActive={false} content={(props) => tooltip(props, { labelFormatter: (v) => shortDay(String(v)), valueFormatter: percent })} />
-              <Line {...LINE} dataKey="hit" name="Hit rate" stroke={SERIES[0]} />
+              <Line {...LINE} dataKey="hit" name="Hit rate" stroke={NEUTRAL_SERIES} />
             </LineChart>
           </ChartFrame>
         )}

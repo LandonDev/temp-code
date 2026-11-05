@@ -66,6 +66,14 @@ describe("Stats", () => {
     expect(swatch.style.backgroundColor).toBe("var(--chart-2)");
   });
 
+  it("draws Busiest hours, which counts both providers, on the neutral ramp, never Claude's colour", () => {
+    render(<StatsView data={STATS} status={null} />);
+    const busiest = screen.getByRole("region", { name: "Busiest hours" });
+    const swatches = [...busiest.querySelectorAll<HTMLElement>("[data-ramp]")];
+    expect(swatches.length).toBeGreaterThan(0);
+    for (const swatch of swatches) expect(swatch.getAttribute("style")).toMatch(/var\(--foreground\)/);
+  });
+
   it("loads under the same seven headings, each section in the shape it will hold", () => {
     render(<StatsView data={null} status={null} />);
     expect(headings()).toEqual(ORDER);

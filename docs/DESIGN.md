@@ -92,8 +92,15 @@ The chart tokens (`--chart-1..4`, aliax/charts) colour thin marks, so each
 reaches 3:1 on `background` and `card` in both themes
 (`lib/chartContrast.test.ts`). Colour follows the entity, never its rank: a
 provider keeps its slot on every chart (Claude `chart-1`, Codex `chart-2`),
-a model takes its provider's slots (`chart-1` then `chart-3`, `chart-2` then
-`chart-4`) and anything past them folds into Other in `muted-foreground`.
+a model takes one of its provider's slots by its family, never by its
+output rank (`chart-1` or `chart-3` for Claude: Opus and Haiku the first,
+Fable and Sonnet the second; `chart-2` or `chart-4` for Codex: Sol the
+first, the other lines the second; `modelSlot` in aliax/charts/palette.ts),
+and a model whose slot a bigger one holds, or anything past them, folds
+into Other in `muted-foreground`. One series that counts both providers
+(Top projects, Tools used, Cache hit rate, the Busiest hours ramp) is the
+neutral `NEUTRAL_SERIES`, the foreground mixed 60% into the page, never a
+provider's colour.
 Every chart and the heatmap read a hover out the same way
 (`ChartTooltipContent`: the popover's fill, `rounded-xl`, 12px inset), and
 their ticks are 12px.
