@@ -775,7 +775,8 @@ made at the click (`archiveEmptyThreads`).
 Under the row under the box, 4px below it with the same edges (its
 pickers' glyphs on the model's), one more quiet row (`DraftRow`) holds
 project, host, branch and type (chrome/ThreadTypeChip.tsx: the type's tinted
-glyph and its name, each item the same glyph over its hint) on the shell's
+glyph 4px from its name in the row's 24px box, the select's 28px `sm`
+stepped down, each item the same glyph over its hint) on the shell's
 new-thread screen and until a thread's first message; an unsent chat draft
 adds "Master thread" after the type (chrome/MasterCheck.tsx: a 14px
 checkbox and its 12px muted words, the label the hit area with the type

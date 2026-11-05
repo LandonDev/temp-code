@@ -225,3 +225,39 @@ describe("the empty thread and the docked footer", () => {
     expect(box.style.transform).toBe("");
   });
 });
+
+describe("the draft row", () => {
+  it("the draft row's controls share one 24px box", async () => {
+    const { DraftRow } = await import("./Composer");
+    const { container } = render(
+      <DraftRow
+        draft
+        cwd="/repo"
+        recents={[]}
+        enabled
+        busy={false}
+        sessionId="s1"
+        threadType="chat"
+        master={false}
+        onMasterChange={noop}
+        draftTitle=""
+        onDraftTitleChange={noop}
+        onCwdChange={noop}
+        onThreadTypeChange={noop}
+        onClose={noop}
+      />,
+    );
+    const row = container.querySelector<HTMLElement>("[data-composer-draft-row]")!;
+    const chip = row.querySelector<HTMLElement>("[data-thread-type-picker]")!;
+    // The select's own `sm` is 28px; the chip steps it down to the row's 24px.
+    expect(classes(chip)).toEqual(expect.arrayContaining(["data-[size=sm]:h-6", "gap-1", "py-0", "*:data-[slot=select-value]:gap-1"]));
+    expect(classes(chip)).not.toContain("data-[size=sm]:h-7");
+    expect(classes(chip)).not.toContain("gap-1.5");
+    const others = [...row.querySelectorAll<HTMLElement>("button:not([data-thread-type-picker]), input, label")].filter(
+      (el) => !el.closest("[data-composer-master]") || el.tagName === "LABEL",
+    );
+    // The project, the branch, Master thread and the name field.
+    expect(others.length).toBeGreaterThanOrEqual(4);
+    for (const el of others) expect(classes(el)).toContain("h-6");
+  });
+});

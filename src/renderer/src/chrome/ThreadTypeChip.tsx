@@ -10,7 +10,10 @@ export type ThreadTypeChipProps = {
   onClose?: () => void;
 };
 
-export const THREAD_TYPE_TRIGGER = `${ROW_CONTROL} shrink-0 border-transparent px-1.5 [&>svg]:size-3`;
+/** The draft row's 24px box, as its other pickers: the select's `sm` 28px
+ *  steps down to `h-6`, and the glyph sits 4px from its word (the trigger's
+ *  own gap, and the value's inside the real select). */
+export const THREAD_TYPE_TRIGGER = `${ROW_CONTROL} shrink-0 gap-1 border-transparent px-1.5 py-0 data-[size=sm]:h-6 *:data-[slot=select-value]:gap-1 [&>svg]:size-3`;
 
 /** The trigger's value: the type's glyph and name. */
 export function ThreadTypeValue({ value }: { value: ThreadType }) {
