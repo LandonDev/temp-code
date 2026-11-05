@@ -100,7 +100,7 @@ struct AttachmentStrip: View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
                 ForEach(Array(uploads.enumerated()), id: \.element.id) { index, upload in
-                    AttachmentChip(upload: upload, position: index + 1, count: uploads.count, onRemove: { onRemove(upload) }, onRetry: { onRetry(upload) })
+                    AttachmentChip(thumbnail: upload.thumbnail, bar: upload.committed == nil ? upload.fraction : nil, sent: upload.sent, failed: upload.failed, position: index + 1, count: uploads.count, onRemove: { onRemove(upload) }, onRetry: { onRetry(upload) })
                         .transition(Motion.appear(reduced: reduceMotion))
                 }
             }
@@ -110,11 +110,36 @@ struct AttachmentStrip: View {
     }
 }
 
+/// A draft's photos, waiting in memory for the thread their first send
+/// makes: the same chips, with no bar until they travel.
+struct DraftPhotoStrip: View {
+    let photos: [DraftPhoto]
+    let onRemove: (Int) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(Array(photos.enumerated()), id: \.offset) { index, photo in
+                    AttachmentChip(thumbnail: UIImage(data: photo.data), bar: nil, sent: 0, failed: nil, position: index + 1, count: photos.count, onRemove: { onRemove(index) }, onRetry: {})
+                        .transition(Motion.appear(reduced: reduceMotion))
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+    }
+}
+
 /// One photo: the thumbnail (the fill step until it is decoded), the bar in
-/// the accent while it travels and in the destructive tint once it failed,
-/// the remove control, and Retry in the context menu of a failed one.
+/// the accent while it travels and in the destructive tint once it failed
+/// (`bar` nil: none), the remove control, and Retry in the context menu of a
+/// failed one.
 private struct AttachmentChip: View {
-    let upload: PhotoUpload
+    let thumbnail: UIImage?
+    /// The upload's fraction while it travels; nil once the host has it, or before it goes.
+    let bar: Double?
+    let sent: Int
+    let failed: String?
     let position: Int
     let count: Int
     let onRemove: () -> Void
@@ -129,7 +154,7 @@ private struct AttachmentChip: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Group {
-                if let image = upload.thumbnail {
+                if let image = thumbnail {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()
@@ -139,11 +164,11 @@ private struct AttachmentChip: View {
             }
             .frame(width: size, height: size)
             .overlay(alignment: .bottomLeading) {
-                if upload.committed == nil {
+                if let bar {
                     Rectangle()
-                        .fill(upload.failed == nil ? Color.accentColor : Tint.destructive)
-                        .frame(width: upload.failed == nil ? size * upload.fraction : size, height: 2)
-                        .animation(Motion.numeric, value: upload.sent)
+                        .fill(failed == nil ? Color.accentColor : Tint.destructive)
+                        .frame(width: failed == nil ? size * bar : size, height: 2)
+                        .animation(Motion.numeric, value: sent)
                 }
             }
             .clipShape(RoundedRectangle.rowCorner)
@@ -160,7 +185,7 @@ private struct AttachmentChip: View {
             .accessibilityLabel("Remove photo \(position)")
         }
         .contextMenu {
-            if upload.failed != nil {
+            if failed != nil {
                 Button("Retry", systemImage: "arrow.clockwise", action: onRetry)
             }
             Button("Remove", systemImage: "xmark", role: .destructive, action: onRemove)
@@ -171,8 +196,8 @@ private struct AttachmentChip: View {
 
     private var label: String {
         let base = "Photo \(position) of \(count)"
-        if let failed = upload.failed { return "\(base), failed: \(failed)" }
-        if upload.committed != nil { return base }
-        return "\(base), uploading \(Int((upload.fraction * 100).rounded())) %"
+        if let failed { return "\(base), failed: \(failed)" }
+        guard let bar else { return base }
+        return "\(base), uploading \(Int((bar * 100).rounded())) %"
     }
 }

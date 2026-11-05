@@ -134,8 +134,8 @@ struct HomeView: View {
         presenter.compose(client, workspace, projectId.flatMap { id in client.projects.first { $0.id == id } })
     }
 
-    /// DEBUG only: the proof opens the new-thread sheet, a fleet confirm, or
-    /// creates a chat in the first workspace and opens it.
+    /// DEBUG only: the proof opens the workspace's chat draft, a fleet
+    /// confirm, or makes a chat in the first workspace by its draft.
     private func performLaunch(_ clients: [EnvironmentClient]) async {
         guard let client = clients.first, client.hasShell, let workspace = client.workspaces.first else { return }
         if (TestHooks.sheet == "project-settings" || TestHooks.sheet == "preamble"), !launched, let project = client.projects.first(where: { !$0.archived }) {
@@ -144,7 +144,9 @@ struct HomeView: View {
             let registry = model.registry
             let hosts = registry.ordered.map { (environmentId: $0.environment.id, projects: $0.projects) }
             projectSettings.target = ProjectLinks.target(for: project, on: client.environment.id, hosts: hosts) { registry.platform($0) }
-        } else         if TestHooks.sheet == "new", presenter.target == nil {
+        } else if TestHooks.sheet == "new", !launched {
+            // New thread: the workspace's chat draft in its shell.
+            launched = true
             presenter.compose(client, workspace, nil)
         } else if let sheet = TestHooks.sheet, sheet.hasPrefix("fleet:"), let action = TestHooks.batchAction(String(sheet.dropFirst(6))), !launched {
             // The fleet confirm for the shot, host scope (thread iOS 20).
@@ -154,12 +156,9 @@ struct HomeView: View {
             launched = true
             await FleetSwitches.shared.run(action, client: client, scope: .host(name: client.environment.name))
         } else if TestHooks.action == "new-chat", !launched {
+            // A chat made by its draft: New thread focuses the workspace's chat draft, whose composer types and sends (DraftComposer).
             launched = true
-            guard let catalog = await client.loadCatalog(), let provider = CatalogChoice.providerOrder.compactMap({ catalog[$0.rawValue] }).first else { return }
-            let draft = ThreadDraft.thread(type: .chat, workspaceId: workspace.id, projectId: nil, provider: provider.id, model: provider.defaultModel, reasoning: nil, permission: nil)
-            if let created = try? await client.createThread(draft) {
-                navigator.open(.thread(environmentId: client.environment.id, sessionId: created.id, seq: nil))
-            }
+            presenter.compose(client, workspace, nil, type: .chat)
         }
     }
 }

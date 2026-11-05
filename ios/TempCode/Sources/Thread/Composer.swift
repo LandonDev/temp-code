@@ -228,58 +228,15 @@ struct ComposerBar: View {
         }
     }
 
-    /// The box: one glass shape, `+`, the field and the button on one row
-    /// whose controls stay on the bottom line as the field grows.
+    /// The box, with this thread's field and button.
     private var box: some View {
-        HStack(alignment: .bottom, spacing: ComposerMetrics.gap) {
-            if canAttach {
-                attachMenu
-                    .transition(.opacity)
-            }
-            TextField(placeholder, text: field, axis: .vertical)
-                .transcriptType(TranscriptType.prose)
-                .lineLimit(1...ComposerMetrics.maxLines)
-                .focused(focused)
-                .disabled(block != nil)
-                .padding(.vertical, ComposerMetrics.fieldPad)
-                .padding(.leading, canAttach ? 0 : ComposerMetrics.gap)
-                .frame(minHeight: ComposerMetrics.control)
-                .onChange(of: text) {
-                    failure = nil
-                    queuedNote = false
-                }
-                .accessibilityLabel(block == nil ? "Message" : block!.text(now: Date().timeIntervalSince1970 * 1000))
-            if block == nil {
-                ComposerButton(intent: intent, enabled: enabled, offersQueue: offersQueue, holding: $holding, reduced: reduceMotion, onTap: act, onQueue: queue)
-                    .transition(.opacity)
-            }
+        ComposerBox(placeholder: placeholder, text: field, focused: focused, blocked: block.map { $0.text(now: Date().timeIntervalSince1970 * 1000) }, canAttach: canAttach, attachEnabled: uploads.count < Self.maxPhotos, onAttach: { picking = true }) {
+            ComposerButton(intent: intent, enabled: enabled, offersQueue: offersQueue, holding: $holding, reduced: reduceMotion, onTap: act, onQueue: queue)
         }
-        .padding(.horizontal, ComposerMetrics.side)
-        .padding(.vertical, ComposerMetrics.edge)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .tcGlass(in: RoundedRectangle.corner(ComposerMetrics.radius))
-        .contentShape(RoundedRectangle.corner(ComposerMetrics.radius))
-        .onTapGesture { if block == nil { focused.wrappedValue = true } }
-    }
-
-    /// `+`: Photos (the model and its effort are the row under the box). A
-    /// bare 28 pt glyph inside the box's glass (never glass on glass), its
-    /// touch reaching 44 pt; off once the turn holds four photos.
-    private var attachMenu: some View {
-        Button {
-            picking = true
-        } label: {
-            Image(systemName: "plus")
-                .font(.body.weight(.medium))
-                .foregroundStyle(uploads.count < Self.maxPhotos ? Color.primary : Color(.tertiaryLabel))
-                .frame(width: ComposerMetrics.control, height: ComposerMetrics.control)
-                .padding(ComposerMetrics.hitOutset)
-                .contentShape(Rectangle())
-                .padding(-ComposerMetrics.hitOutset)
+        .onChange(of: text) {
+            failure = nil
+            queuedNote = false
         }
-        .buttonStyle(.pressable)
-        .disabled(uploads.count >= Self.maxPhotos)
-        .accessibilityLabel("Add photos")
     }
 
     private var placeholder: String {
@@ -501,5 +458,63 @@ struct ComposerButton: View {
             guard !Task.isCancelled, pressed, inside, offersQueue else { return }
             holding = true
         }
+    }
+}
+
+/// The box itself, the one drawing a thread's composer and a project's
+/// draft share: one glass shape at the field radius, `+` at the left (a bare
+/// 28 pt glyph inside the box's glass, never glass on glass, its touch
+/// reaching 44 pt, off once the turn holds four photos), the field in the
+/// prose type, and the caller's button at the right; the controls stay on
+/// the bottom line as the field grows. `blocked` is the reason the key or
+/// the link cannot act: it takes the placeholder's place, the field is
+/// off, and `+` and the button leave. A tap on the padding focuses the field.
+struct ComposerBox<Trailing: View>: View {
+    let placeholder: String
+    let text: Binding<String>
+    let focused: FocusState<Bool>.Binding
+    var blocked: String?
+    var canAttach = true
+    var attachEnabled = true
+    let onAttach: () -> Void
+    @ViewBuilder let button: Trailing
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: ComposerMetrics.gap) {
+            if canAttach {
+                Button(action: onAttach) {
+                    Image(systemName: "plus")
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(attachEnabled ? Color.primary : Color(.tertiaryLabel))
+                        .frame(width: ComposerMetrics.control, height: ComposerMetrics.control)
+                        .padding(ComposerMetrics.hitOutset)
+                        .contentShape(Rectangle())
+                        .padding(-ComposerMetrics.hitOutset)
+                }
+                .buttonStyle(.pressable)
+                .disabled(!attachEnabled)
+                .accessibilityLabel("Add photos")
+                .transition(.opacity)
+            }
+            TextField(blocked ?? placeholder, text: text, axis: .vertical)
+                .transcriptType(TranscriptType.prose)
+                .lineLimit(1...ComposerMetrics.maxLines)
+                .focused(focused)
+                .disabled(blocked != nil)
+                .padding(.vertical, ComposerMetrics.fieldPad)
+                .padding(.leading, canAttach ? 0 : ComposerMetrics.gap)
+                .frame(minHeight: ComposerMetrics.control)
+                .accessibilityLabel(blocked ?? "Message")
+            if blocked == nil {
+                button
+                    .transition(.opacity)
+            }
+        }
+        .padding(.horizontal, ComposerMetrics.side)
+        .padding(.vertical, ComposerMetrics.edge)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .tcGlass(in: RoundedRectangle.corner(ComposerMetrics.radius))
+        .contentShape(RoundedRectangle.corner(ComposerMetrics.radius))
+        .onTapGesture { if blocked == nil { focused.wrappedValue = true } }
     }
 }

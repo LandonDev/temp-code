@@ -10,8 +10,9 @@ import TempCodeContract
 /// the strip keeps its scroll. A subagent pushes over the shell on the
 /// detail's stack. What the shell shows is remembered under the scope's key
 /// (`ShellLandingStore`), which a card's tap comes back to (`ShellPaths.land`).
-/// Until the project's draft lands (B4), the draft is an empty body whose New
-/// Thread opens the new-thread sheet.
+/// With no thread open the shell is the project's draft: an empty body and
+/// the draft composer at its foot (`DraftComposer`), on the transcript's
+/// column and edges.
 struct ProjectShell: View {
     @Environment(AppModel.self) private var model
     @Environment(ShellNavigator.self) private var navigator
@@ -46,7 +47,7 @@ struct ProjectShell: View {
 }
 
 /// The shell with no thread open: the project's name in the bar with its
-/// plan chip and menu, and one New Thread.
+/// plan chip and menu, an empty body, and the draft composer.
 private struct ShellDraftBody: View {
     @Environment(AppModel.self) private var model
     @Environment(NewThreadPresenter.self) private var presenter
@@ -55,13 +56,13 @@ private struct ShellDraftBody: View {
 
     var body: some View {
         let lead = lead
-        VStack {
-            if let lead {
-                Button("New Thread") { presenter.compose(lead.client, lead.workspace, lead.project) }
-                    .buttonStyle(.bordered)
+        Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .tcBottomBar(fade: false) {
+                DraftComposer(scope: scope)
+                    .frame(maxWidth: ReadingMeasure.columnFrame(width: .infinity))
+                    .frame(maxWidth: .infinity)
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle(scope.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

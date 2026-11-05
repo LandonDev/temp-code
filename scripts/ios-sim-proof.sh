@@ -37,8 +37,9 @@
 #           the composer's button as Send, steer (a wrapping draft) and Pause,
 #           a send landing as the user row, a message queued for the next turn,
 #           Pause and Stop mid-turn, approve and deny,
-#           a question answered, Start from the plan into a build, a new chat
-#           from the workspace, a message to an agent, pin, archive and rename;
+#           a question answered, Start from the plan into a build, the
+#           workspace's chat draft and a new chat sent from it (one create
+#           carrying its first message), a message to an agent, pin, archive and rename;
 #           the key shots in dark too. TC_TEST_CONTROL_URL is the test server's
 #           control panel; the set reads back what landed.
 #   f4      Old and missing search hits, full board history, then the scroll budget.
@@ -538,7 +539,7 @@ actions_set() {
   shot "act-question-open-light" thread "Fix the invoice totals"
   TC_SHEET="start" shot "act-start-sheet-light" thread "history onto the box"
   TC_ACTION="start-build" shot "act-start-light" thread "history onto the box" "" "" 20
-  TC_SHEET="new" shot "act-new-sheet-light" home
+  TC_SHEET="new" shot "act-new-draft-light" home
   TC_ACTION="new-chat" shot "act-new-chat-light" home "" "" "" 20
   TC_ACTION="send:Check the tests too" shot "act-agent-light" thread "thread screens" fleet agent
   TC_ACTION="pin" shot "act-pin-thread-light" thread "gateway refuse"
@@ -555,7 +556,7 @@ actions_set() {
   control /ask '{"sessionId":"ios-waiting","kind":"approval"}' >/dev/null
   shot "act-approval-dark" thread "Run the test suite"
   TC_SHEET="start" shot "act-start-sheet-dark" thread "history onto the box"
-  TC_SHEET="new" shot "act-new-sheet-dark" home
+  TC_SHEET="new" shot "act-new-draft-dark" home
   appearance light
   # What landed, by kind: the proof's own check of every action above.
   python3 - "$(control /actions)" <<'PY'
@@ -564,6 +565,10 @@ kinds = [a["kind"] for a in json.loads(sys.argv[1])["actions"]]
 want = {"send": 4, "queue": 1, "pause": 1, "stop": 1, "approve": 2, "answer": 1, "create": 2, "pin": 1, "rename": 1, "archive": 1}
 counts = {k: kinds.count(k) for k in want}
 missing = {k: v for k, v in want.items() if counts[k] < v}
+# The new chat is made by its draft: one create whose first message is the draft's text.
+created = {a["sessionId"] for a in json.loads(sys.argv[1])["actions"] if a["kind"] == "create"}
+if not any(a["kind"] == "send" and a.get("text") == "A chat started from its draft" and a["sessionId"] in created for a in json.loads(sys.argv[1])["actions"]):
+    missing["draft-first-message"] = 1
 print("ios-sim-proof: actions landed " + json.dumps(counts))
 if missing:
     print("ios-sim-proof: MISSING " + json.dumps(missing), file=sys.stderr)
@@ -784,7 +789,7 @@ glass_set() {
     shot "glass-board-$mode" thread "dark mode" board
     shot "glass-master-$mode" thread "Ship the stats pipeline" board
     shot "glass-agents-$mode" thread "thread screens" fleet agents
-    TC_SHEET=new shot "glass-new-sheet-$mode" home
+    TC_SHEET=new shot "glass-new-draft-$mode" home
   done
   appearance light
   xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null

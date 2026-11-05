@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import TempCodeContract
 
 /// One remembered draft per project, the desktop's lib/projectDrafts.ts:
@@ -86,6 +87,23 @@ public struct ProjectDrafts: Codable, Sendable, Hashable {
     public static func masterBlock(caps: [Capability]) -> String? {
         caps.contains(.admin) ? nil : "Master threads need an admin key"
     }
+
+    /// The create a draft's first send makes, on the copy it starts in: its
+    /// type, model, effort and mode, Master for a chat, the text as the
+    /// first message (`DraftSend` decides whether the create carries it).
+    public static func threadDraft(_ draft: ProjectDraft, workspaceId: String, projectId: String?, provider: ProviderId, model: String) -> ThreadDraft {
+        var thread = ThreadDraft.thread(type: draft.threadType, workspaceId: workspaceId, projectId: projectId, provider: draft.provider ?? provider, model: draft.model ?? model, reasoning: draft.reasoning, permission: draft.permission)
+        thread.master = draft.bornMaster ? true : nil
+        return thread
+    }
+
+    /// What `project.ensureLinked` needs from the caller's copy, the
+    /// desktop's `ensureLinkedArgs`; nil while the project or its workspace
+    /// carries no link id yet (the linker has not run).
+    public static func ensureLinkedParams(project: ProjectMeta, workspace: WorkspaceMeta) -> Methods.ProjectEnsureLinked.Params? {
+        guard let projectLink = project.linkId, !projectLink.isEmpty, let workspaceLink = workspace.linkId, !workspaceLink.isEmpty else { return nil }
+        return .init(projectLinkId: projectLink, workspaceLinkId: workspaceLink, name: project.name, branch: project.branch, mode: project.mode, callerWorkspacePath: workspace.path, callerProjectCwd: project.cwd)
+    }
 }
 
 /// How a draft's first send goes out. Without photos, one create that
@@ -122,10 +140,14 @@ public struct DraftPhoto: Sendable, Hashable {
 }
 
 /// `ProjectDrafts` in UserDefaults (`project.drafts.v1`), the photos in memory.
-@MainActor
+@MainActor @Observable
 public final class ProjectDraftStore {
     public static let defaultsKey = "project.drafts.v1"
-    private let defaults: UserDefaults
+    /// The app's one store.
+    public static let shared = ProjectDraftStore()
+    @ObservationIgnored private let defaults: UserDefaults
+    /// The draft a New thread just focused: its composer takes the keyboard, then clears it.
+    public var focusRequest: String?
     public private(set) var drafts: ProjectDrafts
     /// Photos picked before the thread exists, by key; never written to disk.
     public private(set) var photos: [String: [DraftPhoto]] = [:]
@@ -144,10 +166,12 @@ public final class ProjectDraftStore {
         save()
     }
 
+    /// New thread: the draft takes the type asked for, keeps its text, and its composer takes the keyboard.
     @discardableResult
     public func focus(_ key: String, type: ThreadType?) -> ProjectDraft {
         let draft = drafts.focus(key, type: type, now: Self.now())
         save()
+        focusRequest = key
         return draft
     }
 
@@ -169,6 +193,16 @@ public final class ProjectDraftStore {
 }
 
 extension EnvironmentClient {
+    /// This host's copy of a linked project, found or made (`project.ensureLinked`, operate).
+    public func ensureLinked(_ params: Methods.ProjectEnsureLinked.Params) async throws -> EnsureLinkedResult {
+        if let block = operateBlock { throw ActionError.blocked(block) }
+        do {
+            return try await request(Methods.ProjectEnsureLinked.self, params)
+        } catch {
+            throw ActionError.wrap(error)
+        }
+    }
+
     /// A draft's first send, `DraftSend`'s steps: the thread made with its
     /// first message stored by the create, or (with photos) made, given the
     /// photos, then sent, archived again when the send fails.
