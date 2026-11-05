@@ -21,6 +21,7 @@ import { Spinner } from "@renderer/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { useNow } from "@aliax/lib/accounts";
 import { AccountRow, barColumns, type BarColumns } from "./accounts/row";
+import { UsageCellsSkeleton } from "./accounts/usage";
 import { STATIC_WARN_MS, type OwnerView, type RowAction } from "./accounts/rowLine";
 
 /** The mark each section leads with: the harness's, or Meta's vendor mark. */
@@ -237,18 +238,22 @@ export function AccountsSkeleton() {
           </div>
           <div className="mt-2 flex flex-col">
             {[0, 1].map((row) => (
-              <div key={row} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
+              // An AccountRow's shape: the dot, the 20px name over its 16px line, the bars, the switch and ⋯.
+              <div key={row} data-slot="account-row-skeleton" className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
                 <Skeleton className="size-2 rounded-full" />
-                <div className="flex flex-1 flex-col gap-1.5">
-                  <Skeleton className="h-3.5 w-36" />
-                  <Skeleton className="h-3 w-24" />
+                <div className="flex flex-1 flex-col gap-0.5">
+                  <span className="flex h-5 items-center">
+                    <Skeleton className="h-3.5 w-36" />
+                  </span>
+                  <span className="flex h-4 items-center">
+                    <Skeleton className="h-3 w-24" />
+                  </span>
                 </div>
-                <div className="order-last flex basis-full gap-3 ps-5 @3xl/accounts:order-none @3xl/accounts:basis-auto @3xl/accounts:ps-0">
-                  {[0, 1, 2].map((cell) => (
-                    <Skeleton key={cell} className="h-9 min-w-0 flex-1 @3xl/accounts:w-34 @3xl/accounts:flex-none" />
-                  ))}
-                </div>
-                <Skeleton className="h-[18px] w-8 rounded-full" />
+                <UsageCellsSkeleton cells={3} className="order-last basis-full ps-5 @3xl/accounts:order-none @3xl/accounts:basis-auto @3xl/accounts:ps-0" />
+                <span className="flex items-center gap-2">
+                  <Skeleton className="h-[18px] w-8 rounded-full" />
+                  <Skeleton className="size-7 rounded-md" />
+                </span>
               </div>
             ))}
           </div>

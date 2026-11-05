@@ -117,6 +117,30 @@ function WindowDetail({ w, now }: { w: UsageWindow; now: number }) {
 const spacer = (key: string) => <span key={key} aria-hidden data-slot="usage-cell" className={CELL} />;
 
 /**
+ * The bars while their report loads, in the shape that lands: each cell its
+ * 16px label line, the 4px bar and its 16px reset line, 4px apart, inside the
+ * button's 6px above and below, so a row neither shrinks on Refresh nor
+ * grows when the report arrives.
+ */
+export function UsageCellsSkeleton({ cells, className }: { cells: number; className?: string }) {
+  return (
+    <span data-slot="usage-cells" className={cn("flex items-start gap-3 py-1.5", className)} aria-busy="true">
+      {Array.from({ length: cells }, (_, i) => (
+        <span key={i} data-slot="usage-cell" className={CELL}>
+          <span className="flex h-4 items-center">
+            <Skeleton className="h-3 w-full" />
+          </span>
+          <Skeleton className="h-1 w-full" />
+          <span className="flex h-4 items-center">
+            <Skeleton className="h-3 w-2/3" />
+          </span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
  * One column per usage window, each its bar over the time it resets, then
  * the gateway's Rate bar. The bars of a row sit inside one button whose
  * popover holds every detail, so the detail is drawn once and reachable by
@@ -146,19 +170,7 @@ export function UsageBars({
   readOnly?: boolean;
 }) {
   const span = Math.max(1, columns.windows);
-  if (report === undefined) {
-    const cells = keyed ? 1 : span + (columns.rate ? 1 : 0);
-    return (
-      <span data-slot="usage-cells" className={cn("flex items-start gap-3", className)} aria-busy="true">
-        {Array.from({ length: cells }, (_, i) => (
-          <span key={i} data-slot="usage-cell" className={CELL}>
-            <Skeleton className="h-3 w-full" />
-            <Skeleton className="h-1 w-full" />
-          </span>
-        ))}
-      </span>
-    );
-  }
+  if (report === undefined) return <UsageCellsSkeleton cells={keyed ? 1 : span + (columns.rate ? 1 : 0)} className={className} />;
   const windows = report.windows.slice(0, columns.windows);
   const rate = headroom ? headroomLook(headroom, now) : null;
   const count = windows.length + (rate ? 1 : 0);

@@ -409,4 +409,25 @@ describe("AccountsSkeleton", () => {
       expect((h.nextElementSibling as HTMLElement).className).toContain("mt-2");
     }
   });
+
+  it("draws each row in an AccountRow's shape: cells of label, bar and reset inside the button's inset, then the switch and ⋯", () => {
+    const { container } = render(<AccountsSkeleton />);
+    const row = container.querySelector("[data-slot=account-row-skeleton]")!;
+    const cells = row.querySelector<HTMLElement>("[data-slot=usage-cells]")!;
+    expect(cells.className).toContain("py-1.5");
+    const cell = cells.querySelector<HTMLElement>("[data-slot=usage-cell]")!;
+    expect([...cell.children].map((el) => el.className.match(/\bh-(4|1)\b/)?.[0])).toEqual(["h-4", "h-1", "h-4"]);
+    // The switch, then ⋯ at icon-sm's 28px.
+    expect(row.lastElementChild!.querySelector(".size-7")).not.toBeNull();
+  });
+});
+
+describe("a row's bars while its report loads", () => {
+  it("are the AccountsSkeleton's cells: nothing moves when the report lands", () => {
+    props.usage = {};
+    render(<AccountsView {...props} />);
+    const loading = document.querySelector<HTMLElement>('[data-slot="usage-cells"][aria-busy="true"]')!;
+    expect(loading.className).toContain("py-1.5");
+    expect(loading.querySelector("[data-slot=usage-cell]")!.children).toHaveLength(3);
+  });
 });
