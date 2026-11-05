@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button } from "../components/ui/button";
+import { BusyLabel, Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { Textarea } from "../components/ui/textarea";
 import { goalEnterSubmits, goalStateOf } from "../lib/goalControl";
@@ -25,7 +25,9 @@ export function GoalDialog({
 }) {
   const open = useGoalDialog(sessionId);
   const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState(false);
+  // Which verb runs: the one clicked spins, the others wait.
+  const [running, setRunning] = useState<"save" | "clear" | null>(null);
+  const busy = running !== null;
   const state = goalStateOf(goal, draft, busy);
 
   useEffect(() => {
@@ -41,8 +43,8 @@ export function GoalDialog({
     goalDialog.close();
     onClose?.();
   };
-  const run = async (task: () => Promise<unknown>) => {
-    setBusy(true);
+  const run = async (verb: "save" | "clear", task: () => Promise<unknown>) => {
+    setRunning(verb);
     setError(null);
     try {
       await task();
@@ -51,11 +53,11 @@ export function GoalDialog({
       // A refused RPC writes no row on the thread: say it here.
       setError(errorText(err));
     } finally {
-      setBusy(false);
+      setRunning(null);
     }
   };
-  const submit = () => void run(() => setGoal(sessionId, state.condition));
-  const clear = () => void run(() => clearGoal(sessionId));
+  const submit = () => void run("save", () => setGoal(sessionId, state.condition));
+  const clear = () => void run("clear", () => clearGoal(sessionId));
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? goalDialog.open(sessionId) : busy ? undefined : close())}>
@@ -84,13 +86,14 @@ export function GoalDialog({
           start={
             state.active ? (
               <Button variant="ghost" disabled={!state.canClear} onClick={clear}>
-                Clear
+                <BusyLabel busy={running === "clear"} label="Clear" />
               </Button>
             ) : null
           }
           onCancel={close}
           confirmLabel={state.primary}
-          pending={busy}
+          pending={running === "save"}
+          busy={running === "clear"}
           disabled={state.primaryDisabled}
           onConfirm={submit}
         />

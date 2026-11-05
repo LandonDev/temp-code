@@ -70,7 +70,7 @@ vi.mock("../../lib/tcserver/workspaces", () => ({
 }));
 
 const { ThreadDefaultsPage } = await import("./ThreadDefaults");
-const { ThreadDefaultsDialog } = await import("../../chrome/ThreadDefaultsDialog");
+const { ThreadDefaultsDialog, ThreadDefaultsEditor } = await import("../../chrome/ThreadDefaultsDialog");
 
 beforeEach(() => {
   probe.answered = true;
@@ -168,6 +168,32 @@ describe("Thread defaults", () => {
     const dialog = await screen.findByRole("dialog");
     const start = dialog.querySelector('[data-slot="dialog-footer"] [data-footer-start]');
     expect(start?.textContent).toBe("Remove override");
+  });
+
+  it("spins the verb that runs: Remove override, never Save", async () => {
+    state.overridden = true;
+    let land: () => void = () => {};
+    state.save.mockImplementationOnce(() => new Promise<void>((resolve) => (land = resolve)));
+    render(<ThreadDefaultsDialog workspace={{ id: "w1", name: "Alpha", environmentId: "local" } as never} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove override" }));
+    const busyOf = (name: string) => within(dialog).getByRole("button", { name }).querySelector("[data-slot=busy-label]")?.hasAttribute("data-busy");
+    expect(busyOf("Remove override")).toBe(true);
+    expect(busyOf("Save")).toBe(false);
+    expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(state.save).toHaveBeenCalledWith("local", "w1", null);
+    await act(async () => land());
+  });
+
+  it("says a workspace follows or overrides the global set only once its host has said", () => {
+    state.workspaces = [{ id: "w1", name: "Alpha", environmentId: "local" }];
+    state.failed = true;
+    const { unmount } = render(<ThreadDefaultsEditor workspaceId="w1" />);
+    expect(document.body.textContent).not.toContain("the global defaults");
+    unmount();
+    state.failed = false;
+    render(<ThreadDefaultsEditor workspaceId="w1" />);
+    expect(document.body.textContent).toContain("Follows the global defaults.");
   });
 
   it("lists a picker switch per installed CLI, and saves its visibility", () => {

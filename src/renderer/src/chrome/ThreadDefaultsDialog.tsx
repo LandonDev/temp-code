@@ -6,11 +6,10 @@ import { FieldRow } from "./DialogField";
 import { ChoiceSelect } from "../components/choice-select";
 import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
 import { Facts } from "../surfaces/settings/hosts/Facts";
-import { Button } from "../components/ui/button";
+import { BusyLabel, Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { ModalPanel, useClosingDialog } from "./Modal";
 import {
-  BUILT_IN_SCOPE,
   EFFORT_LABELS,
   PERMISSION_HINTS,
   PERMISSION_LABELS,
@@ -135,7 +134,9 @@ function DefaultsEditor({ environmentId, workspaceId }: { environmentId: string;
   const resettable = scope?.overridden === true;
   // The set lives on the box with the orchestration rules (remote/rulesSync.ts).
   const { note, blocked } = homeNote(scope?.home);
-  const hint = scopeHint(workspaceId, scope ?? BUILT_IN_SCOPE);
+  // Only the host's answer says where the values come from: while the scope
+  // loads, or after its read failed, there is no line.
+  const hint = scope ? scopeHint(workspaceId, scope) : undefined;
   return (
     <PageSection
       // The global page's own title says what this is; a workspace page names it.
@@ -205,7 +206,9 @@ export function ThreadDefaultsDialog({
 }) {
   const scope = useThreadDefaults(workspace.environmentId, workspace.id);
   const [value, setValue] = useState<ThreadDefaults | null>(scope?.defaults ?? null);
-  const [pending, setPending] = useState(false);
+  // Which verb runs: Save, or Remove override; the one clicked spins.
+  const [running, setRunning] = useState<"save" | "remove" | null>(null);
+  const pending = running !== null;
   const [error, setError] = useState<string | null>(null);
   const { root, closeThen } = useClosingDialog(onClose, pending);
   useEffect(() => {
@@ -213,15 +216,15 @@ export function ThreadDefaultsDialog({
   }, [scope]);
 
   const save = async (next: ThreadDefaults | null) => {
-    setPending(true);
+    setRunning(next ? "save" : "remove");
     setError(null);
     try {
       await workspaceStore.saveDefaults(workspace.environmentId, workspace.id, next);
-      setPending(false);
+      // The verb keeps spinning through the exit.
       closeThen(onClose);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      setPending(false);
+      setRunning(null);
     }
   };
 
@@ -236,7 +239,7 @@ export function ThreadDefaultsDialog({
         >
           <div className="flex flex-col gap-4 px-5 py-4">
             {value ? (
-              <DialogFields value={value} onChange={setValue} environmentId={workspace.environmentId} hint={scopeHint(workspace.id, scope ?? BUILT_IN_SCOPE)} />
+              <DialogFields value={value} onChange={setValue} environmentId={workspace.environmentId} hint={scope ? scopeHint(workspace.id, scope) : undefined} />
             ) : (
               <PageRowsSkeleton rows={4} />
             )}
@@ -246,13 +249,14 @@ export function ThreadDefaultsDialog({
             start={
               scope?.overridden ? (
                 <Button variant="ghost" disabled={pending} onClick={() => void save(null)}>
-                  Remove override
+                  <BusyLabel busy={running === "remove"} label="Remove override" />
                 </Button>
               ) : null
             }
             onCancel={() => closeThen(onClose)}
             confirmLabel="Save"
-            pending={pending}
+            pending={running === "save"}
+            busy={running === "remove"}
             disabled={!value}
           />
         </form>

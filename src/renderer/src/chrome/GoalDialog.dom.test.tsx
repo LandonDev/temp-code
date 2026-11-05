@@ -55,6 +55,18 @@ describe("GoalDialog", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
+  it("spins Clear while it runs, never Set", async () => {
+    let land: () => void = () => {};
+    clearGoal.mockImplementationOnce(() => new Promise<void>((resolve) => (land = resolve)));
+    render(<GoalDialog sessionId="a" goal={goal} />);
+    act(() => goalDialog.open("a"));
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    const busyOf = (name: string) => screen.getByRole("button", { name }).querySelector("[data-slot=busy-label]")?.hasAttribute("data-busy");
+    expect(busyOf("Clear")).toBe(true);
+    expect(busyOf("Update")).toBe(false);
+    await act(async () => land());
+  });
+
   it("opens for its own thread only", () => {
     render(
       <>

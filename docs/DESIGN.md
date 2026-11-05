@@ -585,7 +585,8 @@ Inbox, Notes and the folder picker.
 A surface that waits shows a `Skeleton` in the shape of what is coming when
 the wait is a load, and a `Spinner` with a word ("Loading…", "Starting…")
 when it is an action. A button uses `BusyLabel` to reserve both states
-at rest; its spinner is hidden from assistive tech so the verb stays its
+at rest, and the button clicked is the one that spins (a footer's Clear or
+Remove override spins itself while the confirm only waits); its spinner is hidden from assistive tech so the verb stays its
 name. `lib/busyLabelGuard.test.ts` refuses a bare Spinner in Button or
 AlertDialogAction children, including a primitive's render slot. An icon
 button keeps its name on the button and uses an empty BusyLabel for its
