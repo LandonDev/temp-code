@@ -21,7 +21,11 @@ export default [
     props: { cue: agentsCue({ working: 2, waiting: 1, queued: 1, providers: ["claude", "codex"] }, true) },
   },
   {
-    name: "Six providers: four marks and +2",
+    name: "Muse Code beside a Meta model: one symbol, both named",
+    props: { cue: agentsCue({ working: 2, waiting: 0, queued: 0, providers: ["muse", "meta"] }, false) },
+  },
+  {
+    name: "Six providers, Muse Code and Meta one symbol: four marks and +1",
     props: { cue: agentsCue({ working: 6, waiting: 0, queued: 0, providers: ["claude", "codex", "muse", "cursor", "meta", "grok"] }, false) },
   },
   { name: "Queued only", props: { cue: agentsCue({ working: 0, waiting: 0, queued: 2, providers: ["codex"] }, false) } },

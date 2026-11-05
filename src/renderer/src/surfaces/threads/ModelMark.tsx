@@ -57,13 +57,19 @@ export function modelMarkName(provider: string | null | undefined, model: string
 /** The mark's tooltip: "Claude Opus 5.5, high effort, 1M context", after
  *  `lead` when given ("Reviewer, Claude Opus 5.5, …"). A vendor's model
  *  names its maker and the harness its mark gave way to: "Meta Muse Wonder
- *  1.0 on Codex, high effort". The context is `context` when given (the
+ *  1.0 on Codex, high effort". Muse Code draws the same Meta symbol, so its
+ *  rows name it too: "Muse Spark 1.3 on Muse Code". The context is `context` when given (the
  *  model line's word, "200k"), else "1M" for a thread on the 1M window. */
 export function modelMarkTip(meta: ModelMeta, lead?: string, context?: string): string {
   const effort = meta.reasoning ? `${effortWord(meta.reasoning).toLowerCase()} effort` : null;
   const label = modelLabel(meta.provider, meta.model);
+  const harness = meta.provider ? asHarness(meta.provider) : null;
   const name =
-    meta.provider && modelVendor(meta.provider, meta.model) === "meta" ? `Meta ${label} on ${HARNESS_TITLE[asHarness(meta.provider)]}` : label;
+    harness && modelVendor(meta.provider, meta.model) === "meta"
+      ? `Meta ${label} on ${HARNESS_TITLE[harness]}`
+      : harness === "muse"
+        ? `${label} on ${HARNESS_TITLE.muse}`
+        : label;
   const window = context || (meta.context1m ? "1M" : "");
   return [lead || null, name, effort, window ? `${window} context` : null].filter(Boolean).join(", ");
 }

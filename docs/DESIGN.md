@@ -457,7 +457,9 @@ own tooltip, since the row's open control lies over the line.
 While any subagent of the thread on screen is live, the title bar's end
 group holds the agents cue (chrome/AgentsCue.tsx), a quiet 24px row
 control: the loudest state's glyph, one 12px mark per distinct provider of
-the live agents (at most four, then "+N"), and "3 agents", or "1 needs you"
+the live agents, each drawing once (Muse Code draws Meta's symbol, since
+Meta publishes no Muse mark, so it and a Meta model share one; at most
+four, then "+N"), and "3 agents", or "1 needs you"
 in amber while one waits; the line "Agents: 1 needs you, 2 working on
 Claude Code and Codex" is its tooltip and name. It keeps the one-moving-mark rule: while the thread's own
 turn runs (its tab and working line spin), the cue draws working's still

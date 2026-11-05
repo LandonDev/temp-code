@@ -1,6 +1,6 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { HARNESS_ICONS, HarnessIcon, MONOCHROME_HARNESSES } from "./HarnessIcon";
+import { HARNESS_ICONS, HarnessIcon, MONOCHROME_HARNESSES, markDrawing } from "./HarnessIcon";
 import { HARNESSES, HARNESS_TITLE } from "../lib/session";
 
 afterEach(cleanup);
@@ -18,5 +18,15 @@ describe("HarnessIcon", () => {
     const svg = container.querySelector("svg")!;
     expect(svg.getAttribute("fill")).toBe("currentColor");
     expect(svg.getAttribute("class")).toContain("size-3.5");
+  });
+
+  it("draws Muse Code with Meta's symbol, since Meta publishes no Muse mark", () => {
+    const muse = render(<HarnessIcon harness="muse" />).container.querySelector("svg")!;
+    const meta = render(<HarnessIcon harness="meta" />).container.querySelector("svg")!;
+    expect(muse.querySelector("path")!.getAttribute("d")).toBe(meta.querySelector("path")!.getAttribute("d"));
+    expect(muse.getAttribute("viewBox")).toBe(meta.getAttribute("viewBox"));
+    expect(HARNESS_ICONS.muse).toBe(HARNESS_ICONS.meta);
+    expect(markDrawing("muse")).toBe("meta");
+    expect(markDrawing("claude")).toBe("claude");
   });
 });

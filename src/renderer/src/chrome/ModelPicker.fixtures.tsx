@@ -24,5 +24,6 @@ const gpt = [
 export default [
   { name: "Claude tab", props: { ...base, models: [...claude, ...claudeMeta], currentId: claude[0].id } },
   { name: "Codex tab, Wonder picked", props: { ...base, models: [...gpt, ...codexMeta], currentId: codexMeta[0].id, active: 2 } },
+  { name: "Muse Code tab", props: { ...base, models: modelsFor("muse"), currentId: modelsFor("muse")[0].id } },
   { name: "Search: muse", props: { ...base, grouped: false, models: [...claudeMeta, ...codexMeta], currentId: "" } },
 ];

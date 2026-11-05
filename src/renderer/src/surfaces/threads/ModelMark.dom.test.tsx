@@ -62,6 +62,17 @@ describe("ModelMark", () => {
     expect(container.querySelector("[data-model] svg path")?.getAttribute("d")).toMatch(META_PATH);
   });
 
+  it("draws Meta's mark for a Muse Code row and names Muse Code in its tooltip", async () => {
+    const { container } = render(<ModelMark meta={{ provider: "muse", model: "muse-spark-1.3", reasoning: "medium" }} effort />);
+    const mark = container.querySelector("[data-model]")!;
+    expect(mark.querySelector("svg path")?.getAttribute("d")).toMatch(META_PATH);
+    expect(mark.querySelector("[data-model-name]")?.textContent).toBe("Muse Spark 1.3");
+    fireEvent.pointerEnter(mark);
+    fireEvent.mouseEnter(mark);
+    fireEvent.focus(mark);
+    await waitFor(() => expect(tipText()).toBe("Muse Spark 1.3 on Muse Code, medium effort"), { timeout: 2000 });
+  });
+
   it("truncates the name, never the effort, and leaves the title to give way first", () => {
     const { container } = render(<ModelMark meta={opus} effort nameClassName="n-hide" effortClassName="e-hide" />);
     const mark = container.querySelector("[data-model]")!;

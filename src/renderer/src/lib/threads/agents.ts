@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { contextPercent } from "../contextUsage";
 import { STATUS_WORD, statusNeedsYou, statusToneClass, threadStateOf, type ThreadState } from "../../components/ui/status";
 import { findModel } from "../models";
-import type { MarkId } from "../../chrome/HarnessIcon";
+import { markDrawing, type MarkId } from "../../chrome/HarnessIcon";
 import { HARNESS_TITLE, type Block, type Session } from "../session";
 import { asHarness, pickerModelId, sessionStore } from "../tcserver/store";
 import { tallyOf } from "../tcserver/todos";
@@ -478,8 +478,8 @@ export function liveAgentCounts(childrenOf: (id: string) => readonly SessionMeta
 
 /** What the title bar's agents cue says. `still` draws working as the dot
  *  while the thread's own turn spins (one moving mark); `marks` are the
- *  live agents' providers, each once, at most `CUE_MARKS`, and `more` the
- *  providers past them; `label` is the count's words, "3 agents", or while
+ *  live agents' providers, each drawing once, at most `CUE_MARKS`, and
+ *  `more` the drawings past them; `label` is the count's words, "3 agents", or while
  *  one needs you "1 needs you"; `line` is its tooltip and accessible name. */
 export type AgentsCue = {
   state: "working" | "waiting" | "queued";
@@ -498,11 +498,13 @@ export function agentsCue(counts: LiveAgents, rootRunning: boolean): AgentsCue |
   const state = counts.waiting ? "waiting" : counts.working ? "working" : "queued";
   const parts = (["waiting", "working", "queued"] as const).filter((k) => counts[k] > 0).map((k) => `${counts[k]} ${STATUS_WORD[k].toLowerCase()}`);
   const providers = counts.providers ?? [];
+  // Muse Code draws Meta's symbol: one glyph stands for both, the line names each.
+  const drawn = providers.filter((m, i) => providers.findIndex((p) => markDrawing(p) === markDrawing(m)) === i);
   return {
     state,
     still: state === "working" && rootRunning,
-    marks: providers.slice(0, CUE_MARKS),
-    more: Math.max(0, providers.length - CUE_MARKS),
+    marks: drawn.slice(0, CUE_MARKS),
+    more: Math.max(0, drawn.length - CUE_MARKS),
     label: counts.waiting ? `${counts.waiting} ${counts.waiting === 1 ? "needs" : "need"} you` : `${total} ${total === 1 ? "agent" : "agents"}`,
     line: plainStatus("Agents", parts.join(", ") + onProviders(providers)),
   };

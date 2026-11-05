@@ -979,7 +979,11 @@ routed to (aliax-core's `forward`). Two listeners:
   the summary at 5.2 s). docs/box.md "Warm start" has the tables.
 
 ## Muse Code: a harness of its own
-Meta's Muse Code CLI is provider `muse` (`src/main/server/drivers/muse.ts`):
+Meta's Muse Code CLI is provider `muse` (`src/main/server/drivers/muse.ts`).
+Meta brands it with the Meta symbol and publishes no Muse mark, so every
+`muse` mark (HarnessIcon's `markDrawing`, the phone's `ProviderGlyph`) draws
+Meta's, and its words tell the two apart (a model's tooltip ends "on Muse
+Code"). It runs
 one `muse serve` per thread over the Muse Session Protocol (newline JSON-RPC
 on stdio), spoken through Meta's `@muse-code/sdk` (pinned exactly, 1.4.14;
 bundled into main like aliax-core, so electron.vite excludes it from the
@@ -1863,7 +1867,7 @@ names the far child).
   `parentId`, any depth; a master's batch is its board's), a quiet 24px
   control (`ROW_CONTROL`): the loudest state's glyph, one 12px provider mark
   per distinct provider of the live agents (`HarnessIcon`, a Meta model's
-  maker's mark; at most four, then "+N"), and "3 agents", or "1 needs you"
+  maker's mark; one drawing once, `markDrawing`; at most four, then "+N"), and "3 agents", or "1 needs you"
   in amber while one waits; its line "Agents: 1 needs you, 2 working on
   Claude Code and Codex"; working is the still dot while the thread's own
   turn runs; a new count morphs (`MorphText`); a click opens

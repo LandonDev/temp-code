@@ -73,6 +73,13 @@ describe("AgentsCueView", () => {
     expect(button()!.querySelector('[data-slot="cue-marks"]')).toBeNull();
   });
 
+  it("draws a Muse Code agent with Meta's symbol, once beside a Meta model, and names both", () => {
+    render(<AgentsCueView cue={cue(2, 0, 0, false, ["muse", "meta"])} pressed={false} onClick={() => {}} />);
+    expect(marks()).toEqual(["muse"]);
+    expect(button()!.querySelector('[data-mark="muse"] svg path')!.getAttribute("d")).toMatch(/^M6\.915 4\.03/);
+    expect(button()!.getAttribute("aria-label")).toBe("Agents: 2 working on Muse Code and Meta");
+  });
+
   it("caps the marks at four and counts the rest as +N", () => {
     render(<AgentsCueView cue={cue(6, 0, 0, false, ["claude", "codex", "muse", "cursor", "grok", "pi"])} pressed={false} onClick={() => {}} />);
     expect(marks()).toEqual(["claude", "codex", "muse", "cursor"]);

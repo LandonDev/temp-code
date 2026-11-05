@@ -521,4 +521,16 @@ describe("the live-agents cue", () => {
     expect(two).toMatchObject({ marks: ["claude", "codex"], more: 0, line: "Agents: 3 working on Claude Code and Codex" });
     expect(agentsCue({ working: 1, waiting: 0, queued: 0, providers: ["meta"] }, false)?.line).toBe("Agents: 1 working on Meta");
   });
+
+  it("draws Muse Code's mark, and draws it once beside a Meta model, since both are Meta's symbol", () => {
+    const metas = [
+      m("a", "r", { provider: "muse", model: "muse-spark-1.3" }),
+      m("b", "r", { provider: "codex", model: "muse-wonder-1.0" }),
+    ];
+    const counts = liveAgentCounts(index(metas), "r");
+    expect(counts.providers).toEqual(["muse", "meta"]);
+    expect(agentsCue(counts, false)).toMatchObject({ marks: ["muse"], more: 0, line: "Agents: 2 working on Muse Code and Meta" });
+    const five = { working: 6, waiting: 0, queued: 0, providers: ["claude", "codex", "muse", "cursor", "meta", "grok"] as const };
+    expect(agentsCue(five, false)).toMatchObject({ marks: ["claude", "codex", "muse", "cursor"], more: 1 });
+  });
 });
