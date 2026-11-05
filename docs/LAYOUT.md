@@ -345,14 +345,18 @@ does not hold that count.
 The rail's Stats row opens it (src/renderer/src/aliax/views/stats.tsx, the
 bundle from the stats worker). One `Page` at 672px, its sections in order:
 Pace, Daily output, Model mix, Top projects, Cache hit rate, Busiest hours,
-Tools used, each a `PageSection` whose description names its window. A
+Tools used, each a `PageSection`; Cache hit rate and Busiest hours name
+their window in a description, and the rest read the last 30 days. A
 section with nothing to draw is one `PageEmpty` line ("Nothing yet" where
-its description already names the window). While the first index runs the
+its description already names the window, "Nothing in the last 30 days"
+elsewhere). While the first index runs the
 body is each section's skeleton at its real height, and the page's own line
 under the title gives the progress, once; a stats worker that is gone is
 one red 12px line there with Reindex, which restarts it. Colour follows
 what a series is: Claude `--chart-1`, Codex `--chart-2`, a provider's
-second model `--chart-3` and `--chart-4`, the rest "Other"; one hover
+second model `--chart-3` and `--chart-4` by its family, never its rank, the
+rest "Other", and a series that counts both providers (Top projects, Tools
+used, Cache hit rate, the Busiest hours ramp) the neutral gray; one hover
 readout per chart, 12px ticks, the tooltip on `px-3 rounded-xl`, and every
 chart colour reaches 3:1 on the page in both themes
 (`lib/chartContrast.test.ts`).
