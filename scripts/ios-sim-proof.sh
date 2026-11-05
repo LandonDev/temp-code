@@ -300,6 +300,8 @@ launch_app() {
     xcrun simctl launch --terminate-running-process "$TC_SIM_UDID" "$BUNDLE" >/dev/null
 }
 appearance() { xcrun simctl ui "$TC_SIM_UDID" appearance "$1" >/dev/null 2>&1 || true; }
+# Wait up to $2 seconds for a report file to exist and hold something.
+wait_for() { local i=0; while [ ! -s "$1" ] && [ "$i" -lt "$(( $2 * 2 ))" ]; do sleep 0.5; i=$((i + 1)); done; [ -s "$1" ]; }
 
 # Under the Duo axis the device takes the asked pose before the first launch.
 [ -n "$POSE" ] && fold "$POSE"
@@ -394,8 +396,11 @@ threads_set() {
 
 scroll_set() {
   appearance light
-  TC_SCROLL_RUN=1 shot "long-scrolled" thread "2,000 rows" "" "" 62
   container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
+  [ -n "$container" ] && rm -f "$container/Documents/scroll-report.json"
+  # The run takes about 60 s once the pages are in; a loaded Mac takes longer to load them, so wait for the report.
+  TC_SCROLL_RUN=1 shot "long-scrolled" thread "2,000 rows" "" "" 62
+  [ -n "$container" ] && { wait_for "$container/Documents/scroll-report.json" 240 || true; }
   if [ -n "$container" ] && [ -f "$container/Documents/scroll-report.json" ]; then
     cp "$container/Documents/scroll-report.json" "$OUT/scroll-report.json"
     echo "ios-sim-proof: scroll report $(cat "$OUT/scroll-report.json")"
@@ -914,7 +919,6 @@ CHECK
 # rows arrived below. Reduce motion is the simulator's own setting
 # (`defaults write com.apple.Accessibility ReduceMotionEnabled`), read back
 # from UIAccessibility in row-inits.json.
-wait_for() { local i=0; while [ ! -s "$1" ] && [ "$i" -lt "$(( $2 * 2 ))" ]; do sleep 0.5; i=$((i + 1)); done; [ -s "$1" ]; }
 reduce_motion() { xcrun simctl spawn "$TC_SIM_UDID" defaults write com.apple.Accessibility ReduceMotionEnabled -bool "$1" >/dev/null 2>&1 || true; }
 transcript_set() {
   [ -n "${TC_TEST_CONTROL_URL:-}" ] || { echo "ios-sim-proof: the transcript set needs TC_TEST_CONTROL_URL (bun scripts/ios-sim-proof-local.ts)" >&2; return 2; }
@@ -1031,7 +1035,7 @@ stream_set() {
 import json, sys
 r = json.load(open(sys.argv[1]))
 print('ios-sim-proof: stream load ' + open(sys.argv[1].replace('stream-report.json', 'stream-load.txt')).read().strip())
-print('ios-sim-proof: stream ' + json.dumps({k: r[k] for k in ('frames', 'maxFramesPerSecond', 'expectedMs', 'hitches', 'worstMs', 'meanMs', 'over16Ms', 'unpinnedFrames', 'seqStart', 'seqEnd', 'hitchAtS')}))
+print('ios-sim-proof: stream ' + json.dumps({k: r[k] for k in ('frames', 'maxFramesPerSecond', 'expectedMs', 'hitches', 'worstMs', 'meanMs', 'over16Ms', 'unpinnedFrames', 'firstUnpinnedAtS', 'repinnedAtS', 'seqStart', 'seqEnd', 'hitchAtS')}))
 failures = []
 if r['seqEnd'] <= r['seqStart']: failures.append('no streamed rows landed inside the recording')
 if r['frames'] < r['seconds'] * 50: failures.append(f"only {r['frames']} frames in {r['seconds']:.1f} s")

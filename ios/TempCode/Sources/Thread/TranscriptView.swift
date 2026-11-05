@@ -359,9 +359,11 @@ struct TranscriptView: View {
         let recorder = FrameRecorder()
         self.recorder = recorder
         let state = scrollState
-        let thread = thread
+        let client = client
+        let sessionId = sessionId
+        // ThreadState is a value: read the client's current one at each call. Rows, partials included, show the stream landing.
         recorder.start(sourceRows: thread.rows.count, items: TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen).count,
-                       scrollView: proofScrollView, driver: .stream(pinned: { state.atBottom }, seq: { thread.fold.lastSeq }))
+                       scrollView: proofScrollView, driver: .stream(pinned: { state.atBottom }, seq: { client.threads[sessionId]?.rows.count ?? 0 }))
         try? await Task.sleep(for: .seconds(TestHooks.streamSeconds))
         _ = recorder.stop()
         self.recorder = nil

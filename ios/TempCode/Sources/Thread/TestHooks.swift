@@ -236,7 +236,7 @@ enum TestHooks {
 /// came more than 8 ms late, and the worst one. The `scroll` driver moves
 /// the offset itself (two 25 s glides); the `stream` driver moves nothing
 /// and records while a turn streams with the reader pinned at the bottom
-/// (`pinned` is read each frame; `seq` the thread's last seq).
+/// (`pinned` is read each frame; `seq` the thread's row count, partials included).
 final class FrameRecorder: NSObject {
     enum Driver {
         case scroll
@@ -245,6 +245,8 @@ final class FrameRecorder: NSObject {
 
     private var driver: Driver = .scroll
     private var unpinnedFrames = 0
+    private var firstUnpinnedAt: Double?
+    private var repinnedAt: Double?
     private var seqStart = 0
     private var link: CADisplayLink?
     private var maxFramesPerSecond = 60
@@ -275,8 +277,11 @@ final class FrameRecorder: NSObject {
         var travelPt: Double
         /// When each late frame landed, in seconds since the run began (the first 20).
         var hitchAtS: [Double]
-        /// The stream driver: frames the reader was not at the bottom, and the thread's last seq at the start and end.
+        /// The stream driver: frames the reader was not at the bottom, and the thread's rows (partials included) at the start and end.
         var unpinnedFrames = 0
+        /// When the reader first left the bottom and when it was first back, in seconds since the run began (-1: never).
+        var firstUnpinnedAtS = -1.0
+        var repinnedAtS = -1.0
         var seqStart = 0
         var seqEnd = 0
         var seconds = 0.0
@@ -346,7 +351,12 @@ final class FrameRecorder: NSObject {
         last = link.timestamp
         lastOffset = offset
         if case .stream(let pinned, _) = driver {
-            if !pinned() { unpinnedFrames += 1 }
+            if !pinned() {
+                unpinnedFrames += 1
+                if firstUnpinnedAt == nil { firstUnpinnedAt = elapsed }
+            } else if firstUnpinnedAt != nil, repinnedAt == nil {
+                repinnedAt = elapsed
+            }
             return
         }
         if let scrollView {
@@ -372,6 +382,8 @@ final class FrameRecorder: NSObject {
         if case .stream(_, let seq) = driver { streaming = true; seqEnd = seq() } else { streaming = false }
         var report = Report(driver: streaming ? "stream-pinned" : "native-list-offset", initialOffset: initialOffset, curve: "linear", scrollFrames: movingIntervals.count, scrollHitches: movingIntervals.count { $0 - expectedMs > 8 }, scrollWorstMs: movingIntervals.max() ?? 0, lateFrames: lateFrames, sourceRows: sourceRows, items: items, frames: intervals.count, maxFramesPerSecond: maxFramesPerSecond, expectedMs: expectedMs, hitches: hitches, worstMs: worst, meanMs: mean, over16Ms: intervals.count { $0 > 16.7 }, offsetSamples: offsetSamples, travelPt: travel, hitchAtS: hitchTimes.map { ($0 * 10).rounded() / 10 })
         report.unpinnedFrames = unpinnedFrames
+        report.firstUnpinnedAtS = firstUnpinnedAt.map { ($0 * 10).rounded() / 10 } ?? -1
+        report.repinnedAtS = repinnedAt.map { ($0 * 10).rounded() / 10 } ?? -1
         report.seqStart = seqStart
         report.seqEnd = seqEnd
         report.seconds = (startedAt.map { (last ?? $0) - $0 } ?? 0)
