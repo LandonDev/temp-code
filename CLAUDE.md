@@ -3156,10 +3156,9 @@ this is the short one.
   is 64px until it is done (a finished one is 48px, its tally back at the
   end of line two, none once every task is ticked): a third line holds the task bar (`Progress`, foreground while
   working, muted otherwise), the tally said there alone and a chevron
-  right after it; every bar on the board is one width, the folded list's
-  widest row over all the board's task lists (master/taskBarWidth.ts on
-  taskListWidth.ts's canvas, the `--task-bar` variable on the list, 160px
-  floor, the column less 64px its cap),
+  right after it; every bar on the board is one width, 35% of the board
+  pane (`@container` on MasterView's `data-board-pane`, the bar
+  `w-[max(160px,35cqw)]`, no cap: a column too narrow shrinks the bar),
   the whole line folding the task list open under it (`TaskRows` compact;
   open by default while the thread is live, folded with the line on
   `.collapsible-auto` `FOLD_HOLD_MS` after it reaches Done, once, at that

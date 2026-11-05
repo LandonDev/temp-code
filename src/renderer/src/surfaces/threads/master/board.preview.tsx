@@ -5,7 +5,6 @@ import { SplitShell } from "../SplitShell";
 import { BatchFoot } from "./BatchFoot";
 import { FIXTURE_BATCH, FIXTURE_ROWS, fixtureGroups, TASK_BAR_ROWS, TASK_BAR_WIDTH_ROWS, type FixtureRow } from "./boardFixture";
 import { MasterRowView } from "./MasterRow";
-import { boardTaskLabels, fitTaskBar, taskBarStyle } from "./taskBarWidth";
 
 /**
  * The board drawn from boardFixture.ts with no store, for `bun run
@@ -18,20 +17,11 @@ const noop = () => {};
 const hostGlyph = (environmentId: string) => (environmentId === "local" ? null : <HostGlyph environmentId={environmentId} className="shrink-0" />);
 const tally = `${FIXTURE_ROWS.filter((r) => r.meta.status === "idle").length}/${FIXTURE_ROWS.length}`;
 
-/** A stand-in for the canvas, which the static render has none of: 12px
- *  of the app's sans averages about 6.4px a character. */
-const previewMeasure = (text: string) => text.length * 6.4;
-
-/** The board's one bar width over these rows, as MasterView measures it. */
-function previewBarWidth(rows: readonly FixtureRow[]): number {
-  const labels = boardTaskLabels(rows.map((r) => ({ id: r.meta.id, threadType: r.meta.threadType })), (id) => rows.find((r) => r.meta.id === id)?.digest ?? {});
-  return fitTaskBar(labels ? labels.split("\n") : [], previewMeasure);
-}
-
 export function BoardPreview({ rows = FIXTURE_ROWS, foot = true }: { rows?: readonly FixtureRow[]; foot?: boolean }) {
   return (
     <div className="flex flex-col bg-background">
-      <div className="px-1 pt-1 pb-2" style={taskBarStyle(previewBarWidth(rows))}>
+      <div className="px-1 pt-1 pb-2">
+      <div className="@container" data-board-pane>
         {fixtureGroups(rows).map((group, i) => (
           <div key={group.id} data-group={group.id}>
             <h3 className={`flex ${i === 0 ? "h-6" : "h-8"} items-end px-2 pb-1 text-xs leading-4 font-medium text-muted-foreground`} data-group-header={group.id}>
@@ -55,6 +45,7 @@ export function BoardPreview({ rows = FIXTURE_ROWS, foot = true }: { rows?: read
           </div>
         ))}
       </div>
+      </div>
       {foot ? <BatchFoot batch={FIXTURE_BATCH} titleOf={() => undefined} onSave={async () => {}} onStop={async () => {}} /> : null}
     </div>
   );
@@ -70,8 +61,8 @@ export function TaskBarPreview({ width = 420 }: { width?: number }) {
   );
 }
 
-/** Three rows whose task lists differ in width: one bar width for all
- *  (`ui:preview …board.preview.tsx#TaskBarWidthPreview`). */
+/** Three rows whose task lists differ in width: one bar width for all, 35%
+ *  of the pane (`ui:preview …board.preview.tsx#TaskBarWidthPreview --props '{"width":900}'`). */
 export function TaskBarWidthPreview({ width = 560 }: { width?: number }) {
   return (
     <div style={{ width }}>

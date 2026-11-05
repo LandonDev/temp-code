@@ -119,8 +119,8 @@ export const TASK_BAR_ROWS: FixtureRow[] = [
 ];
 
 /** Three implementation rows whose task lists differ in width
- *  (board.preview.tsx `TaskBarWidthPreview`): every bar takes the widest
- *  list's width, the tally follows each bar, and the open list ends there.
+ *  (board.preview.tsx `TaskBarWidthPreview`): every bar is the same 35% of
+ *  the pane, the tally follows each bar, and each open list keeps the column.
  *  Every one is live, so every list is open. */
 export const TASK_BAR_WIDTH_ROWS: FixtureRow[] = [
   { meta: base({ id: "short", title: "Icons", status: "running", activity: "Editing icons.ts", createdAt: 1 }), digest: { todos: todos(1, 3, ["Read", "Draw", "Docs"]) }, agents: null, landed: false },

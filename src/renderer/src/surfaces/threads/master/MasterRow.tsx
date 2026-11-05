@@ -50,9 +50,8 @@ import { GROUP_LABEL, groupOf, typeWord, useBoardDigest, useRowMeta, type BoardR
  * hand wins both ways and is remembered per row for the window's life
  * (taskFold.ts): a list closed while working stays closed, one opened
  * while it folds away stays open with its bar line.
- * Every bar on the board is one width, the folded list's widest row over
- * all the board's task lists (taskBarWidth.ts), and the tally and chevron
- * follow it, so the line reads bar, tally, chevron from the column's start.
+ * Every bar on the board is one width, 35% of the board pane (160px at
+ * least), and the tally and chevron follow it, so the line reads bar, tally, chevron from the column's start.
  * Under them the thread's live
  * subagents, one still line each, working as a dot (AgentLines). A row of a host out of reach is
  * under the offline tint. A click opens the thread's full view in the
@@ -360,14 +359,15 @@ export function MasterRowView({
   );
 }
 
-/** The bar takes the board's one width (`--task-bar`, taskBarWidth.ts;
- *  160px before the board has measured), capped at the title column less
- *  64px, the room the widest tally ("12/12") and the chevron take with
- *  their gaps, so a narrow column caps every bar alike instead of each
- *  giving way by its own tally. The open list ends where the bar does.
+/** The bar is 35% of the board pane, never under 160px: the pane is the
+ *  board's row list, a size container (`@container` on MasterView's
+ *  `data-board-pane`, the width of the scroller's content box), so `cqw` reads the same pane on every row and every bar is
+ *  one width. No cap: in a column too narrow for the bar, its tally and
+ *  chevron, the bar shrinks and they never do. The open list keeps the
+ *  column's width, its rows truncating at the column's edge.
  *  Literal classes: Tailwind reads no built ones. */
-export const TASK_BAR_CLASS = "min-w-0 shrink w-[min(var(--task-bar,160px),calc(100cqw-64px))]";
-export const TASK_FOLD_CLASS = "w-[min(var(--task-bar,160px),calc(100cqw-64px))] py-0.5";
+export const TASK_BAR_CLASS = "min-w-0 shrink w-[max(160px,35cqw)]";
+export const TASK_FOLD_CLASS = "py-0.5";
 
 /** The bar line and the task list it folds open: the 4px bar (foreground
  *  while the thread works, muted in every other state, so it never
@@ -394,7 +394,7 @@ function TaskBar({
   onOpenChange?: (open: boolean) => void;
 }) {
   return (
-    <Collapsible open={open} onOpenChange={(next) => onOpenChange?.(next)} className="@container min-w-0" data-task-bar>
+    <Collapsible open={open} onOpenChange={(next) => onOpenChange?.(next)} className="min-w-0" data-task-bar>
       <CollapsibleTrigger
         aria-label={`Tasks: ${String(bar.done)} of ${String(bar.total)} done`}
         onClick={stop}

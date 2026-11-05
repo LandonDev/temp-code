@@ -631,8 +631,7 @@ rows, the foot and the add sheet are the UI thread's
   title. Progress bars and task lists are on implementation and
   orchestration rows only, and only until the row is done: the task bar
   on a third line with `3/7` and the chevron right after it, every bar on
-  the board one width (the folded list's widest row over all the board's
-  task lists, master/taskBarWidth.ts), folding open to the task list,
+  the board one width (35% of the board pane, 160px at least), folding open to the task list,
   open on its own while the thread is live and folded on its own a beat
   after it finishes, the person's hand winning both ways
   (docs/LAYOUT.md "Master"); a finished one is 48px again with its tally
