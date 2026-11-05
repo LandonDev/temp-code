@@ -129,7 +129,13 @@ function HostsMenuRows({
         kind: "sub",
         id: `host:${id}`,
         label: name,
-        icon: () => <HostGlyph environmentId={id} />,
+        // The row names the host: the glyph is bare (no tooltip, no name of
+        // its own), centred in the menu's 14px glyph column.
+        icon: () => (
+          <span aria-hidden className="grid size-3.5 shrink-0 place-items-center">
+            <HostGlyph environmentId={id} bare />
+          </span>
+        ),
         contentLabel: `${name} actions`,
         trailing: (
           <>

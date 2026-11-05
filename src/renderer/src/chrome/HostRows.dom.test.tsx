@@ -163,6 +163,15 @@ describe("HostsRow", () => {
     expect(triggers[1].textContent).toContain("box");
     expect(triggers[1].textContent).toContain("offline");
     expect(triggers.map((t) => t.querySelector("[data-host-glyph]")?.getAttribute("data-host-kind"))).toEqual(["mac", "server"]);
+    // The row names the host once: the glyph is bare and hidden, in the 14px glyph column.
+    for (const trigger of triggers) {
+      const glyph = trigger.querySelector("[data-host-glyph]")!;
+      expect(glyph.closest("[aria-hidden]")!.className).toContain("size-3.5");
+    }
+    // The label takes the free room, so the state words sit against the chevron.
+    const label = triggers[1].querySelector("[data-menu-trailing]")!.previousElementSibling!;
+    expect(label.className).toContain("flex-1");
+    expect(triggers[1].querySelector("[data-menu-trailing]")!.className).not.toContain("ms-auto");
     expect(screen.getByRole("menuitem", { name: "Host settings" })).toBeTruthy();
   });
 

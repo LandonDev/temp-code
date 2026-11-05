@@ -148,9 +148,11 @@ function Row({ item, onPick, kind }: { item: MenuRow; onPick: (id: string) => vo
       <Sub>
         <SubTrigger disabled={item.disabled} data-menu-row={item.id} aria-description={item.reason}>
           {Icon ? <Icon /> : null}
-          {item.trailing ? <span className="min-w-0 truncate">{item.label}</span> : item.label}
+          {/* The label takes the free room, so the trailing words sit right
+              before the chevron on every row instead of halving the room with it. */}
+          {item.trailing ? <span className="min-w-0 flex-1 truncate">{item.label}</span> : item.label}
           {item.trailing ? (
-            <span data-menu-trailing className="ms-auto flex shrink-0 items-center gap-1 ps-4 text-xs text-muted-foreground">
+            <span data-menu-trailing className="flex shrink-0 items-center gap-1 ps-4 text-xs text-muted-foreground">
               {item.trailing}
             </span>
           ) : null}
