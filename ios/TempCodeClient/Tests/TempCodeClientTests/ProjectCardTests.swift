@@ -85,6 +85,19 @@ private func kinds(_ card: ProjectCard) -> [String] {
         #expect(out.counts.isEmpty, "every root has a line")
     }
 
+    @Test func `a needs-you or failed detail reads as plain words, never markdown`() throws {
+        let out = try card([
+            meta("q", status: .waiting, updatedAt: 400, statusDetail: "Done: `Theme.ts` and **two** [files](https://x.dev/a)"),
+            meta("f", status: .error, updatedAt: 300, failure: "Failed: _cannot_ read `snake_case_name` ~~now~~")
+        ])
+        #expect(out.lines[0].thread.detail == "Done: Theme.ts and two files")
+        #expect(out.lines[1].thread.detail == "Failed: cannot read snake_case_name now")
+        #expect(InlineMarkdown.plain("a *b* c 2*3*4 my_var_x") == "a b c 2*3*4 my_var_x")
+        // The loaded cue is what the line draws, and it reads plain too.
+        #expect(ProjectCards.subline(cue: HomeModel.Cue(text: "Blocked: `bun test` needs your approval"), thread: out.lines[0].thread) == "Blocked: bun test needs your approval")
+        #expect(ProjectCards.subline(cue: nil, thread: out.lines[0].thread) == "Done: Theme.ts and two files")
+    }
+
     @Test func `needs you and failed are lines and never counted`() throws {
         let out = try card([meta("q", status: .waiting), meta("f", status: .error), meta("d", updatedAt: 1)])
         #expect(kinds(out) == ["needs:q", "failed:f"])

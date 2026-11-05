@@ -20,22 +20,22 @@ struct ThreadStripView: View {
     @Environment(ShellNavigator.self) private var navigator
     @Environment(NewThreadPresenter.self) private var presenter
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let route: Route?
+    let scope: StripScope
+    let shown: (environmentId: String, sessionId: String)?
     @State private var painted = false
     @State private var width: CGFloat = 0
 
     var body: some View {
         let hosts = HomeRows.inputs(model.registry.ordered)
-        if let scope = ThreadStrip.scope(for: route, hosts: hosts) {
-            // Until the project shell draws the whole strip (B3b): the live row alone.
-            let chips = ThreadStrip.model(scope: scope, shown: shownThread, order: [], hosts: hosts).live
+        // Until the strip is drawn whole (B3b): the live row alone.
+        let chips = ThreadStrip.model(scope: scope, shown: shown, order: [], hosts: hosts).live
             HStack(spacing: 0) {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal) {
                         HStack(spacing: 6) {
                             ForEach(chips) { chip in
                                 StripChipView(chip: chip) {
-                                    navigator.open(.thread(environmentId: chip.environmentId, sessionId: chip.meta.id, seq: nil))
+                                    navigator.open(.project(key: scope.key, thread: chip.id))
                                 }
                                 .id(chip.id)
                                 // Pin, archive and rename on a chip: the rows' own menu.
@@ -77,12 +77,6 @@ struct ThreadStripView: View {
                 try? await Task.sleep(for: .milliseconds(300))
                 painted = true
             }
-        }
-    }
-
-    private var shownThread: (environmentId: String, sessionId: String)? {
-        guard case .thread(let environmentId, let sessionId, _)? = route else { return nil }
-        return (environmentId, sessionId)
     }
 
     private func scrollKey(_ chips: [StripChip]) -> String {

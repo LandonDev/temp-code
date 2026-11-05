@@ -10,8 +10,13 @@ public enum Route: Hashable, Codable, Sendable {
     case thread(environmentId: String, sessionId: String, seq: Int?)
     /// A workspace's projects and chats; `key` is `HomeSections.Entry.id`.
     case workspace(key: String)
-    /// A project's every thread; `key` is `HomeProject.id`.
-    case project(key: String)
+    /// A project's shell in the detail: its strip over `thread` (the chip's
+    /// id, `<environmentId>:<sessionId>`), or over the project's draft when
+    /// `thread` is nil. `key` is the strip scope's key (`StripScope.key`): a
+    /// project's `HomeProject.id`, or `loose:…` for a workspace's loose
+    /// chats. `seq` is a row to land on, as on `thread`. The defaults keep
+    /// the synthesized `Codable` decoding a route saved without them.
+    case project(key: String, thread: String? = nil, seq: Int? = nil)
     case archivedThreads(environmentId: String, projectId: String)
     case archivedProjects(environmentId: String, workspaceId: String)
     case settings

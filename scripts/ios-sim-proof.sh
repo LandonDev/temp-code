@@ -8,7 +8,8 @@
 #
 # TC_PROOF_SET picks the shots:
 #   shell   Home, a workspace's project cards, the archived list, Inbox,
-#           Search with results, Settings, Hosts and a thread, in light and
+#           Search with results, Settings, Hosts, a thread in its project's
+#           shell and a project card's landing (route project), in light and
 #           dark, Home and the workspace once more at an accessibility text size, and Home with the host gone (the status row) when
 #           TC_PROOF_KILL_CMD says how to stop the host.
 #           TC_TEST_THREAD="part of a title" picks the thread shot (else the newest);
@@ -346,6 +347,7 @@ shell_set() {
   shot 05-settings-light settings
   shot 06-hosts-light hosts
   shot 07-thread-light thread
+  shot 07b-project-light project
   appearance dark
   shot 08-home-dark home
   shot 08b-workspace-dark workspace
@@ -357,6 +359,7 @@ shell_set() {
   shot 12-settings-dark settings
   shot 13-hosts-dark hosts
   shot 14-thread-dark thread
+  shot 14b-project-dark project
   appearance light
   xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
   shot 15-home-a11y home

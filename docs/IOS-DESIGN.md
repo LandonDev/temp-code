@@ -35,22 +35,23 @@ Home                      Inbox                 Search
 └ Workspace rows (logo, name, the rail's one status mark)
    └ Workspace (pushed): the desktop's middle sidebar
       ├ Project card ▸ the lines of what needs saying
-      │   └ Project (pushed): every thread, active then dormant,
-      │     "n archived" at the end
       ├ Chats (threads with no project)
       └ "n archived projects" at the end
-Thread (one screen, five shapes by type; subagents push from their root)
+Project shell (the detail): the strip, then the thread its chip selects
+   (one screen, five shapes by type; subagents push over it) or the draft
+Thread, bare: a chat outside every workspace
 Settings (hosts, notifications, appearance) from the Home header
 ```
 
 Tab bar with three tabs: Home, Inbox, Search. Settings is a button in the
 Home navigation bar, as in Apple's own apps. No fourth tab for hosts.
 
-Home is the desktop's sidebar in three pushed levels of one
+Home is the desktop's sidebar in two pushed levels of one
 NavigationStack: Home is the far-left workspace column, a workspace is the
-middle sidebar, a project is the whole list of its threads. Each level is
-a plain `List` under a large title; the rules are the client package's
-`HomeSections` (Shell/HomeSections.swift: `home`, `workspace`, `project`),
+middle sidebar. A project is no list: it is the project's shell in the
+detail column, the desktop's project home. Each level is a plain `List`
+under a large title; the rules are the client package's `HomeSections`
+(Shell/HomeSections.swift: `home`, `workspace`),
 ported from the desktop's, so the phone and the desktop never disagree
 about what is active or what a workspace's state is.
 
@@ -111,8 +112,9 @@ thread on screen, `EnvironmentClient.visibleThread`, nor a thread housed in
 a master). One page of 32 lines, then "N more". Last a quiet count line of
 what has no line: "N dormant", "N archived", or "No threads" for a project
 with none; needs you and failed are lines, so they are never counted, and a
-pin earns no line. A tap on a line opens that thread (a needs-you line on
-its card); a tap anywhere else opens the project; a long press and the
+pin earns no line. A tap on a line opens that thread in the project's shell
+(a needs-you line on its card); a tap anywhere else opens the shell on its
+landing; a long press and the
 ellipsis open the project's menu (New Thread, settings, Project Plan, the
 fleet switches per host copy). The card's accessible name says what needs
 saying ("Alpha, 1 needs you, 2 working, 3 unread"). Then the workspace's
@@ -120,11 +122,24 @@ chats (no project), all of them, under a "Chats" header 16 pt under the
 cards, each the one `ThreadRow`; then one dim "n archived projects" row per
 host copy. Projects order by latest activity.
 
-**Project: every thread.** The title is the project's name; the bar holds
-the plan chip, New Thread and the project's menu. The active threads
-first, then the dormant ones under "Dormant", each nested as on the
-workspace screen, then one dim "n archived" row per host copy that pushes
-the archived list.
+**The project's shell.** `Route.project(key:thread:seq:)` is a project's
+place in the detail column (Shell/ProjectShell.swift): the strip on top,
+then the thread its chip selects (`ThreadScreen`), or the project's draft
+when none is open (until the draft lands, an empty body whose New Thread
+opens the new-thread sheet, with the project's name, plan chip and menu in
+the bar). `key` is the strip scope's key: a project's `ProjectPairs.key`,
+or `loose:…` for a workspace's loose chats, which get a shell of their own.
+Every root of a project or of a workspace's loose chats opens in its shell;
+a subagent opens its root's shell and pushes over it; a chat outside every
+workspace opens bare (`ShellPaths.place`). A card's tap lands the shell
+(`ShellPaths.land`, the desktop's project home): the project's most recent
+active thread (`ProjectLanding`, a batch thread's master in its place),
+else the thread last on screen there, else the draft, and a project left on
+its draft comes back on it. The last thread is kept per scope key
+(`ShellLandingStore`, `shell.landing.v1`), so linked copies share it. A tap
+while the shell is already open moves nothing. The shell is one screen
+whichever thread it shows (`ShellPaths.identity`), so a chip's tap swaps
+the thread under a strip that keeps its scroll.
 
 **Rows.** Every thread row is the one `ThreadRow` (status dot or spinner,
 type glyph, title with the "Master" tag, the model and the tasks or
@@ -149,9 +164,14 @@ changes a size and nothing else. Each runs on a `ShellNavigator`
 (Shell/ShellNavigator.swift): the sidebar's routes, the route at the
 detail's root, and what the detail pushed over it. Every tap in a list goes
 through `open(route)`, which places the route by its column
-(`ShellPaths.column(of:)` in the client package): a workspace, a project and
-the archived lists push in the sidebar; a thread, Settings and Hosts replace
-the detail's root and clear its stack. Collapsed, the detail sits on top of
+(`ShellPaths.column(of:)` in the client package) and a thread in its shell
+(`ShellPaths.place`): a workspace and the archived lists push in the
+sidebar; a project's shell, a bare thread, Settings and Hosts replace the
+detail's root and clear its stack. A card's tap goes through
+`openProject(key)`. The paths: a card or a line on Home opens the shell in
+Home; a notification tap switches to Home and opens the shell there; a
+search hit opens the same shell in Search's own detail, so Search keeps
+its place. Collapsed, the detail sits on top of
 the sidebar's stack and Back from it clears it. The Inbox keeps its own
 split over one typed path (`InboxScreen`, "iPhone Duo" below).
 
@@ -175,8 +195,8 @@ one checked, left out when there is one, and a pick swaps the sidebar's path
 and leaves the detail alone. Its chevron shows on the inline title. In the
 split the row whose thread is the detail's root sits on `Surface.fill`.
 The detail reads "No Thread Selected" (Home) or "No Result Selected"
-(Search) when nothing is open, a title alone. Above Home's detail, in the
-split poses only, the thread strip (Shell/ThreadStrip.swift over the client
+(Search) when nothing is open, a title alone. At the shell's top, in every
+pose, the thread strip (Shell/ThreadStrip.swift over the client
 package's `ThreadStrip`) is one 40 pt row of chips over the desktop's
 strip rules (`ThreadStrip.model`, threadStripModel.ts and
 threadHeaderModel.ts): the scope is the open thread's project with every
@@ -195,23 +215,26 @@ child, another scope's root) is a temporary chip at the live row's end,
 never saved. `ProjectLanding.active` is the desktop's `activeLanding`: the
 scope's most recent active root by its last event, a batch thread standing
 in for its master, none when the thread on screen is already in the scope.
-Until the project shell (B3b) draws the whole strip, the split shows the
-live row alone, then `+`. A chip is the type glyph, the title
+Until the strip is drawn whole (B3b), the shell shows the live row alone,
+then `+`. A chip is the type glyph, the title
 (semibold while unseen), the host glyph with two or more hosts and the
 spinner while running, on the fill when selected; its long press is the
 row's menu. The thread screen keeps its tab bar in the split (hiding it
 would hide the vertical rail for every tab) and hides it in compact as
 before.
 
-Memory is `navigation.memory.v2` (`NavigationSnapshot` in the client
+Memory is `navigation.memory.v3` (`NavigationSnapshot` in the client
 package): per tab the sidebar's routes, the detail's root and its stack,
 plus the overlay toggle; the Inbox's path has its own key. One snapshot
-opens the same place folded or unfolded. The outer display allows portrait
+opens the same place folded or unfolded. A v2 snapshot gives back its tab
+and toggle and opens every column at its root (`NavigationSnapshot.restore`):
+mapping a v2 thread to its project needs the session cache, which the
+restore runs before. The outer display allows portrait
 and both landscapes; the inner display ignores the key.
 
 **Furniture** (ios/TempCode/Sources/Shell/): HomeView.swift (level 1),
 WorkspaceScreen.swift, ProjectCardView.swift (the project card),
-ProjectScreen.swift, ShellRows.swift (the rail mark, the working line, the
+ProjectShell.swift (the project's shell), ShellRows.swift (the rail mark, the working line, the
 thread rows, the project menu, the
 cue loader, `NewThreadPresenter`: the new-thread sheet presents from the
 root so any level can open it), HomeRows.swift (the clients as
@@ -219,8 +242,9 @@ root so any level can open it), HomeRows.swift (the clients as
 ShellSplit.swift, ShellNavigator.swift, ShellPoseEnvironment.swift and
 ThreadStrip.swift (the split, its navigator, the pose seam, the strip).
 `Route` and `AppTab` live in the client package (Shell/Routes.swift) beside
-`ShellPose`, `ShellPaths` and `ThreadStrip`; `Route.workspace(key:)` and
-`Route.project(key:)` carry the `ProjectPairs` fold keys.
+`ShellPose`, `ShellPaths` and `ThreadStrip`; `Route.workspace(key:)` carries
+the `ProjectPairs` fold key and `Route.project(key:thread:seq:)` the strip
+scope's key with the chip id (`<environmentId>:<sessionId>`) of its thread.
 
 **Project settings.** The project's menu opens the sheet
 (`Shell/ProjectSettingsSheet.swift`, presented from the root through
@@ -2318,16 +2342,17 @@ size change and nothing else: the paths, the open thread and everything it
 holds (a typed draft, a rename, the segment) are the same values before and
 after. `columnVisibility` always carries the expanded preference, so the
 sidebar arrives with the expansion and never flickers in. The sidebar is
-Home's three levels; at the workspace level its title is a menu of the
-workspaces. The detail holds the thread or Settings, and reads "No Thread
-Selected" when nothing is open.
+Home's two levels; at the workspace level its title is a menu of the
+workspaces. The detail holds a project's shell, a bare thread or Settings,
+and reads "No Thread Selected" when nothing is open; collapsed, a card's
+tap pushes the shell over the workspace.
 
-**The thread strip.** Unfolded, one row of chips above the thread lists the
-open thread's project's live roots in their saved order (`ThreadStrip.model`,
-above), then `+`: the desktop's strip, which is the project's
-threads and not a set of open tabs. Folded there is no strip.
+**The thread strip.** At the shell's top in every pose, one row of chips
+lists the project's live roots in their saved order (`ThreadStrip.model`,
+above), then `+`: the desktop's strip, which is the project's threads and
+not a set of open tabs.
 
-**Memory.** `navigation.memory.v2` keeps, per tab, the sidebar path, the
+**Memory.** `navigation.memory.v3` keeps, per tab, the sidebar path, the
 detail root and the detail stack, plus the overlay toggle; one snapshot
 opens the same place folded or unfolded.
 

@@ -37,6 +37,14 @@ public struct StripScope: Sendable, Hashable {
     /// The key the live row's order is saved under (`stripScopeKey`): a
     /// linked project's copies share their link id.
     public var key: String
+
+    /// What the shell's bar says: the project's name, or the workspace's for its loose chats.
+    public var name: String {
+        switch kind {
+        case .project(let project): project.project.name
+        case .workspaceChats(let workspace): workspace.name
+        }
+    }
 }
 
 /// One chip of the strip.
@@ -71,9 +79,11 @@ public struct StripModel: Sendable, Hashable {
 public enum ThreadStrip {
     // MARK: The scope
 
-    /// The scope of the thread a route shows (a subagent's root's), or nil
-    /// for any other route, an unknown thread or a chat outside every workspace.
+    /// The scope of the thread a route shows (a subagent's root's), or of a
+    /// project's shell; nil for any other route, an unknown thread or a chat
+    /// outside every workspace.
     public nonisolated static func scope(for route: Route?, hosts: [HomeHostInput]) -> StripScope? {
+        if case .project(let key, _, _)? = route { return scope(key: key, hosts: hosts) }
         guard case .thread(let environmentId, let sessionId, _)? = route,
               let host = hosts.first(where: { $0.environmentId == environmentId }),
               let meta = root(of: sessionId, in: host.sessions) else { return nil }
@@ -83,6 +93,19 @@ public enum ThreadStrip {
         guard let workspaceId = ThreadGroups.workspaceId(of: meta, projects: host.projects, workspaces: host.workspaces) else { return nil }
         return scope(workspace: environmentId, workspaceId: workspaceId, hosts: hosts)
     }
+
+    /// The scope a shell's key names (`StripScope.key`): a workspace's loose
+    /// chats for a `loose:` key, else a project.
+    public nonisolated static func scope(key: String, hosts: [HomeHostInput]) -> StripScope? {
+        guard key.hasPrefix(looseKeyPrefix) else { return scope(project: key, hosts: hosts) }
+        for workspace in HomeSections.workspaces(of: hosts) {
+            guard let member = workspace.members.first else { continue }
+            if let scope = scope(workspace: member.environmentId, workspaceId: member.workspace.id, hosts: hosts), scope.key == key { return scope }
+        }
+        return nil
+    }
+
+    static let looseKeyPrefix = "loose:"
 
     /// The scope of a project by its key (`ProjectPairs.key`).
     public nonisolated static func scope(project key: String, hosts: [HomeHostInput]) -> StripScope? {
@@ -105,7 +128,7 @@ public enum ThreadStrip {
             kind: .workspaceChats(workspace),
             roots: HomeSections.mixed(chats).map { HostedItem(environmentId: $0.environmentId, item: $0.item) },
             lead: .init(environmentId: first.environmentId, workspaceId: first.workspace.id, projectId: nil),
-            key: "loose:\(linkId ?? "\(first.environmentId):\(first.workspace.id)")"
+            key: looseKeyPrefix + "\(linkId ?? "\(first.environmentId):\(first.workspace.id)")"
         )
     }
 

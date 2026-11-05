@@ -10,10 +10,11 @@ let rowInsets = EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
 /// (`NavigationSnapshot`, the client package's). Written on every change and
 /// read back before the first frame of a cold launch, so the app opens on
 /// the screen it was killed on, folded or unfolded: one snapshot opens a
-/// thread on top of the Project list in compact and in the detail beside it
-/// in the split (the thread's segment is remembered by the thread screen
-/// itself, per thread). The old `navigation.memory` key is ignored, not
-/// migrated. The proof's launch routes (`TC_TEST_ROUTE`) start clean instead.
+/// project's shell on top of the workspace in compact and in the detail
+/// beside it in the split (the thread's segment is remembered by the thread
+/// screen itself, per thread). A v2 snapshot gives back its tab alone and
+/// v1's key is ignored (`NavigationSnapshot.restore`). The proof's launch
+/// routes (`TC_TEST_ROUTE`) start clean instead.
 enum NavigationMemory {
     struct Restored {
         var snapshot: NavigationSnapshot
@@ -34,8 +35,7 @@ enum NavigationMemory {
         #if DEBUG
         if let route = ProcessInfo.processInfo.environment["TC_TEST_ROUTE"], !route.isEmpty { return nil }
         #endif
-        guard let data = defaults.data(forKey: NavigationSnapshot.key),
-              let snapshot = try? JSONDecoder().decode(NavigationSnapshot.self, from: data) else { return nil }
+        guard let snapshot = NavigationSnapshot.restore(v3: defaults.data(forKey: NavigationSnapshot.key), v2: defaults.data(forKey: NavigationSnapshot.v2Key)) else { return nil }
         let sheet = defaults.data(forKey: sheetKey).flatMap { try? JSONDecoder().decode(SheetMemory.self, from: $0) }
         let inbox = defaults.data(forKey: inboxKey).flatMap { try? JSONDecoder().decode([InboxRoute].self, from: $0) }
         return Restored(snapshot: snapshot, inbox: inbox, sheet: sheet)

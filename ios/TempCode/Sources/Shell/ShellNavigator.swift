@@ -6,8 +6,10 @@ import TempCodeClient
 /// and whatever the detail pushed over it. The same values drive both
 /// shapes: collapsed, the detail sits on top of the sidebar's stack;
 /// expanded, beside it. Every tap in the shell's lists goes through `open`,
-/// which places the route by its column (`ShellPaths.column(of:)`); pushes
-/// made from inside the detail keep using `NavigationLink(value:)` on the
+/// which places the route by its column (`ShellPaths.column(of:)`) and a
+/// thread in its project's shell (`ShellPaths.place`); a project's tap goes
+/// through `openProject`, which lands it (`ShellPaths.land`). Pushes made
+/// from inside the detail keep using `NavigationLink(value:)` on the
 /// detail's own stack.
 @MainActor @Observable
 final class ShellNavigator {
@@ -22,6 +24,8 @@ final class ShellNavigator {
     var pose = ShellPose.stack(short: false)
     /// The window's width, for the fold's place (`ShellSplit`).
     var windowWidth: CGFloat = 0
+    /// Every host's lists, for placing a thread in its shell; the root sets it.
+    @ObservationIgnored var hosts: () -> [HomeHostInput] = { [] }
 
     init(tab: AppTab, memory: ColumnMemory = ColumnMemory(), sidebarShown: Bool = true) {
         self.tab = tab
@@ -32,16 +36,26 @@ final class ShellNavigator {
     }
 
     /// A sidebar route pushes; a detail route replaces the detail's root and
-    /// clears what was pushed over the old one.
+    /// clears what was pushed over the old one. A thread of a project (or of
+    /// a workspace's loose chats) opens in its shell, a subagent pushed over
+    /// its root's; a chat outside every workspace opens bare.
     func open(_ route: Route) {
         switch ShellPaths.column(of: route) {
         case .sidebar:
             sidebarPath.append(route)
         case .detail:
-            detailRoot = route
+            let placed = ShellPaths.place(route, hosts: hosts())
+            detailRoot = placed.root
             detailStack = NavigationPath()
+            if let push = placed.push { detailStack.append(push) }
             if pose.isOverlay { sidebarShown = false }
         }
+    }
+
+    /// A project card's tap: its shell on its landing, or, already there,
+    /// the shell as it is with what was pushed over it gone.
+    func openProject(_ key: String) {
+        open(ShellPaths.land(key: key, current: detailRoot, hosts: hosts(), remembered: ShellLandingStore.shared[key]))
     }
 
     /// Back to the tab's root with nothing open.
@@ -54,10 +68,10 @@ final class ShellNavigator {
         detailStack = NavigationPath()
     }
 
-    /// The thread at the detail's root is this one (any row of it).
+    /// The thread at the detail's root, bare or in its shell, is this one (any row of it).
     func isOpen(environmentId: String, sessionId: String) -> Bool {
-        guard case .thread(let env, let id, _)? = detailRoot else { return false }
-        return env == environmentId && id == sessionId
+        guard let shown = ShellPaths.shown(detailRoot) else { return false }
+        return shown.environmentId == environmentId && shown.sessionId == sessionId
     }
 
     /// What the memory keeps of this tab.

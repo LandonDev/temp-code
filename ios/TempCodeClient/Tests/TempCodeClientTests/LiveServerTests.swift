@@ -405,13 +405,18 @@ struct LiveServerTests {
         #expect(pair.members.allSatisfy { $0.name == "ios-workspace" })
         let paired: Set<String> = [primary.environment.id, second.environment.id]
 
-        // Home: one workspace, one project row, the second host's thread under it beside the primary's.
+        // The project's shell: one strip under the link's key, the second host's thread beside the primary's.
         let inputs = [primary, second].map { HomeHostInput(environmentId: $0.environment.id, name: $0.environment.name, workspaces: $0.workspaces, projects: $0.projects, sessions: $0.sessions) }
-        let screen = try #require(HomeSections.project("link:\(LiveServer.projectLinkId)", hosts: inputs))
-        #expect(screen.project.isLinked)
-        let rows = (screen.active + screen.dormant).map(\.id)
-        #expect(rows.contains("thread:\(second.environment.id):\(LiveServer.secondThread)"))
-        #expect(rows.contains { $0.hasPrefix("thread:\(primary.environment.id):") })
+        let scope = try #require(ThreadStrip.scope(key: "link:\(LiveServer.projectLinkId)", hosts: inputs))
+        guard case .project(let linked) = scope.kind else { Issue.record("not a project scope"); return }
+        #expect(linked.isLinked)
+        let strip = ThreadStrip.model(scope: scope, shown: nil, order: [], hosts: inputs)
+        let chips = (strip.live + strip.shelf).map(\.id)
+        #expect(chips.contains("\(second.environment.id):\(LiveServer.secondThread)"))
+        #expect(chips.contains { $0.hasPrefix("\(primary.environment.id):") })
+        // A tap on the second host's thread opens the same shell.
+        let placed = ShellPaths.place(.thread(environmentId: second.environment.id, sessionId: LiveServer.secondThread, seq: nil), hosts: inputs)
+        #expect(placed.root == .project(key: scope.key, thread: "\(second.environment.id):\(LiveServer.secondThread)"))
 
         // The settings home is one of the two copies, read off the hellos' platforms.
         let project = try #require(primary.projects.first { $0.linkId == LiveServer.projectLinkId })

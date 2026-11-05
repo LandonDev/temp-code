@@ -66,11 +66,13 @@ public struct CardThread: Sendable, Hashable {
     public var pausedElapsed: Int { max(0, meta.treeFrozenActiveElapsed ?? meta.frozenActiveElapsed ?? 0) }
 
     /// What a needs-you or failed line says after the title: the host's
-    /// verdict on a failure, else its status detail, else the state's word.
+    /// verdict on a failure, else its status detail, else the state's word,
+    /// as plain words: the card draws text, so a detail quoting the model's
+    /// markdown loses its backticks, emphasis and link targets.
     public var detail: String {
         switch state {
-        case .failed: meta.failureSummary ?? StatusDetail.of(meta) ?? "Failed"
-        default: StatusDetail.of(meta) ?? "Needs you"
+        case .failed: InlineMarkdown.plain(meta.failureSummary ?? StatusDetail.of(meta) ?? "Failed")
+        default: InlineMarkdown.plain(StatusDetail.of(meta) ?? "Needs you")
         }
     }
 }
@@ -215,6 +217,14 @@ public struct ProjectCard: Sendable, Hashable, Identifiable {
 public enum ProjectCards {
     /// Lines on a card before "N more" (`SESSION_LIST_PAGE`).
     public static let page = 32
+
+    /// What a needs-you or failed line says under its title: the thread's
+    /// needs-you cue (the approval, the question, the failure's row) when
+    /// it has loaded, else the line's detail, as plain words: the card draws
+    /// text, and a cue quoting the model's markdown loses its marks.
+    public nonisolated static func subline(cue: HomeModel.Cue?, thread: CardThread) -> String {
+        InlineMarkdown.plain(cue?.text ?? thread.detail)
+    }
     /// An elapsed shows from three seconds in: a turn that ends at once never flashes a clock.
     public static let showsElapsedMs = 3_000
 

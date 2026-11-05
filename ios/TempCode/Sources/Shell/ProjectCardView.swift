@@ -36,7 +36,7 @@ struct ProjectCardView: View {
                 .padding(.top, linesGap)
             }
             if card.hidden > 0 {
-                // Past one page the project screen holds the rest.
+                // Past one page the project's strip holds the rest.
                 CardQuietLine(text: "\(card.hidden) more")
                     .allowsHitTesting(false)
             }
@@ -49,7 +49,7 @@ struct ProjectCardView: View {
         .padding(CardMetrics.padding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            Button { navigator.open(.project(key: card.id)) } label: { Color.clear }
+            Button { navigator.openProject(card.id) } label: { Color.clear }
                 .buttonStyle(CardFillStyle(selected: selected))
                 .accessibilityLabel(card.accessibilityLabel)
                 .accessibilityHint("Opens the project")
@@ -145,12 +145,12 @@ private struct CardLineView: View {
         case .needsYou(let t):
             open(t, seq: cue?.seq) {
                 CardThreadLine(thread: t, mark: .waiting)
-                CardSubline(text: cue?.text ?? t.detail, tint: Tint.warningText)
+                CardSubline(text: ProjectCards.subline(cue: cue, thread: t), tint: Tint.warningText)
             }
         case .failed(let t):
             open(t, seq: cue?.seq) {
                 CardThreadLine(thread: t, mark: .failed)
-                CardSubline(text: cue?.text ?? t.detail, tint: Tint.destructiveText)
+                CardSubline(text: ProjectCards.subline(cue: cue, thread: t), tint: Tint.destructiveText)
             }
         case .working(let t):
             open(t) {

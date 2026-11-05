@@ -53,10 +53,6 @@ struct RootView: View {
                 ShellSplit(navigator: home) {
                     HomeView(slots: shellSlots)
                         .fleetToastInset()
-                } detailTop: { route in
-                    if pose.isSplit {
-                        ThreadStripView(route: route)
-                    }
                 } placeholder: {
                     DetailPlaceholder(title: "No Thread Selected", symbol: "bubble.left.and.bubble.right")
                 } destination: { destination($0) }
@@ -70,7 +66,6 @@ struct RootView: View {
                 ShellSplit(navigator: search) {
                     SearchView(initialQuery: model.launchSearch)
                         .fleetToastInset()
-                } detailTop: { _ in
                 } placeholder: {
                     DetailPlaceholder(title: "No Result Selected", symbol: "magnifyingglass")
                 } destination: { destination($0) }
@@ -82,6 +77,10 @@ struct RootView: View {
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
         .onChange(of: pose, initial: true) { for navigator in navigators { navigator.pose = pose } }
         .onChange(of: size.width, initial: true) { for navigator in navigators { navigator.windowWidth = size.width } }
+        .onAppear {
+            let registry = model.registry
+            for navigator in navigators { navigator.hosts = { HomeRows.inputs(registry.ordered) } }
+        }
         .preferredColorScheme(appearance.scheme)
         .modifier(layoutProbe) // DEBUG: the layout report the Duo proof reads (LayoutProbe.swift)
         // The fleet switches' confirm sheet, shared by every menu; the outcome line sits on each tab (thread iOS 20).
@@ -120,7 +119,8 @@ struct RootView: View {
         .onChange(of: router.visible) { reportVisibility() }
         .onChange(of: router.lists) { reportVisibility() }
         .onChange(of: scenePhase) { reportVisibility() }
-        // A notification or Live Activity tap: Home's sidebar at its root, the thread in the detail, on its card.
+        // A notification or Live Activity tap: Home's sidebar at its root, the thread in its project's
+        // shell in the detail, on its card.
         .onChange(of: router.pending) { _, route in
             guard let route else { return }
             // A tap names its card: it lands there even this early in a cold launch.
@@ -217,8 +217,8 @@ struct RootView: View {
             }
         case .workspace(let key):
             WorkspaceScreen(key: key, slots: shellSlots)
-        case .project(let key):
-            ProjectScreen(key: key, slots: shellSlots)
+        case .project(let key, let thread, let seq):
+            ProjectShell(key: key, thread: thread, seq: seq, slots: shellSlots)
         case .archivedThreads(let environmentId, let projectId):
             if let client = model.registry.client(environmentId) {
                 ArchivedThreadsView(client: client, projectId: projectId)
@@ -282,15 +282,23 @@ struct RootView: View {
                 if TestHooks.open == "sidebar" { home.sidebarShown = true }
             }
         case "thread-in-project":
-            // The thread in the detail with its project open in the sidebar: the split's selected row.
+            // The thread in its shell with its workspace open in the sidebar: the split's selected card.
             let candidates = client.sessions.filter { $0.parentId == nil && $0.projectId != nil }
             let wanted = model.launchThread.map { needle in candidates.filter { $0.title.localizedCaseInsensitiveContains(needle) } } ?? candidates
             guard let session = wanted.first ?? candidates.first,
                   let project = client.projects.first(where: { $0.id == session.projectId }),
                   let workspace = client.workspaces.first(where: { $0.id == project.workspaceId }) else { return }
             home.open(.workspace(key: ProjectPairs.key(environmentId, workspace)))
-            home.open(.project(key: ProjectPairs.key(environmentId, project)))
             home.open(.thread(environmentId: environmentId, sessionId: session.id, seq: nil))
+        case "project":
+            // A project card's tap: the workspace in the sidebar, the project's shell on its landing
+            // (TC_TEST_THREAD names a thread whose project it is, else the first project).
+            let candidates = client.sessions.filter { $0.parentId == nil && $0.projectId != nil }
+            let session = model.launchThread.flatMap { needle in candidates.first { $0.title.localizedCaseInsensitiveContains(needle) } } ?? candidates.first
+            guard let project = client.projects.first(where: { $0.id == session?.projectId }) ?? client.projects.first,
+                  let workspace = client.workspaces.first(where: { $0.id == project.workspaceId }) else { return }
+            home.open(.workspace(key: ProjectPairs.key(environmentId, workspace)))
+            home.openProject(ProjectPairs.key(environmentId, project))
         case "workspace":
             // The sidebar at the Workspace level with nothing open: the split's empty detail.
             // A workspace, not the Chats entry: the project cards are what the shot shows.

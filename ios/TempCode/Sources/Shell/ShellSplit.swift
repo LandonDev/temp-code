@@ -8,8 +8,8 @@ import UIKit
 /// identity and its state (a typed draft, a rename, the segment). The
 /// sidebar is the tab's list stack on `navigator.sidebarPath`; the detail is
 /// a stack on `navigator.detailStack` over the route at `navigator.detailRoot`,
-/// or the placeholder when nothing is open. `detailTop` sits above the
-/// detail's stack (the Home tab's thread strip) and is the caller's.
+/// or the placeholder when nothing is open. A project's shell keeps its
+/// identity while its thread changes (`ShellPaths.identity(of:)`).
 ///
 /// The style is the system's automatic one, which is `SidebarMode`'s rule:
 /// the sidebar tiles beside the detail when the window is wider than tall
@@ -17,10 +17,9 @@ import UIKit
 /// `columnVisibility` always carries the expanded preference (the remembered
 /// toggle), never the collapsed state, so the sidebar arrives with the
 /// expansion and never flickers in.
-struct ShellSplit<Sidebar: View, Top: View, Placeholder: View, Destination: View>: View {
+struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
     @Bindable var navigator: ShellNavigator
     @ViewBuilder let sidebar: () -> Sidebar
-    @ViewBuilder let detailTop: (Route?) -> Top
     @ViewBuilder let placeholder: () -> Placeholder
     @ViewBuilder let destination: (Route) -> Destination
     /// The device partially open (tabletop): the seam sits on the fold.
@@ -36,23 +35,21 @@ struct ShellSplit<Sidebar: View, Top: View, Placeholder: View, Destination: View
             }
             .navigationSplitViewColumnWidth(min: 280, ideal: halfOpen && foldX > 280 ? foldX : 320, max: halfOpen ? max(360, foldX) : 360)
         } detail: {
-            VStack(spacing: 0) {
-                detailTop(navigator.detailRoot)
-                NavigationStack(path: $navigator.detailStack) {
-                    Group {
-                        if let root = navigator.detailRoot {
-                            destination(root)
-                        } else {
-                            placeholder()
-                        }
+            NavigationStack(path: $navigator.detailStack) {
+                Group {
+                    if let root = navigator.detailRoot {
+                        destination(root)
+                    } else {
+                        placeholder()
                     }
-                    // A new root is a new screen; the same root through a fold is the same one.
-                    .id(navigator.detailRoot)
-                    .navigationDestination(for: Route.self, destination: destination)
-                    // At the stack's root, not on Hosts: a push made while Hosts itself was still
-                    // arriving (the proof's hook) found no destination and drew the warning glyph.
-                    .navigationDestination(for: HostDetailRoute.self) { HostDetailView(environmentId: $0.environmentId) }
                 }
+                // A new root is a new screen; the same root through a fold is the same one, and a
+                // project's shell is one screen whichever thread it shows.
+                .id(ShellPaths.identity(of: navigator.detailRoot))
+                .navigationDestination(for: Route.self, destination: destination)
+                // At the stack's root, not on Hosts: a push made while Hosts itself was still
+                // arriving (the proof's hook) found no destination and drew the warning glyph.
+                .navigationDestination(for: HostDetailRoute.self) { HostDetailView(environmentId: $0.environmentId) }
             }
         }
         // The fold is the window's centre line; the split may start short of the window's leading edge.
