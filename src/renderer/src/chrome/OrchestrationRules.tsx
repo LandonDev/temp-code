@@ -6,7 +6,7 @@ import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import { ChevronRight, Plus } from "./icons";
 import { HarnessIcon } from "./HarnessIcon";
 import { ChoiceSelect, type Choice } from "../components/choice-select";
-import { PageRow, PageSection } from "../components/page";
+import { PageEmpty, PageRow, PageSection } from "../components/page";
 import { ItemButton, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
 import { SettingSwitch } from "../components/setting-switch";
 import { Button } from "../components/ui/button";
@@ -307,7 +307,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
           <RuleRow key={r.id} rule={r} rules={rules} catalog={catalog} disabled={blocked} onEdit={() => setEditing(r)} />
         ))}
         {rules.routing.length === 0 ? (
-          <p className="py-3 text-xs text-muted-foreground">No rules. Subagents use each provider's default model.</p>
+          <PageEmpty>No rules</PageEmpty>
         ) : null}
       </PageSection>
 

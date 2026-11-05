@@ -306,7 +306,7 @@ describe("Orchestration page", () => {
   it("shows an empty state with no rules", () => {
     state.scope = { rules: rules({ routing: [] }), overridden: false };
     render(<OrchestrationPage />);
-    expect(screen.getByText("No rules. Subagents use each provider's default model.")).toBeTruthy();
+    expect(screen.getByText("No rules")).toBeTruthy();
   });
 
   it("opens a workspace's rules on its page, and the global rules on this one", () => {

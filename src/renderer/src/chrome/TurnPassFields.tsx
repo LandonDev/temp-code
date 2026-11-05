@@ -6,7 +6,7 @@ import {
 } from "@server/shared/turnpass";
 import { linkOfWorkspace } from "../lib/tcserver/projects";
 import { ChoiceSelect } from "../components/choice-select";
-import { PageRow, PageRowsSkeleton, PageSection } from "../components/page";
+import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
 import { SettingSwitch } from "../components/setting-switch";
 
 /**
@@ -117,7 +117,7 @@ export function TurnPassEditor({ workspaceId }: { workspaceId: string }) {
   return (
     <PageSection title="Completed turn">
       {value ? <TurnPassFields value={value} onChange={change} /> : error ? null : <PageRowsSkeleton rows={3} />}
-      {error ? <p className="pt-2 text-xs text-destructive">{error}</p> : null}
+      {error ? <PageError>{error}</PageError> : null}
     </PageSection>
   );
 }

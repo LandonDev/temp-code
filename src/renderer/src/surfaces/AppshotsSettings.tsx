@@ -10,7 +10,7 @@ import {
 } from "../lib/appshots";
 import { openUrl } from "../lib/native";
 import { ChoiceSelect, type Choice } from "../components/choice-select";
-import { PageRow, PageRowsSkeleton, PageSection } from "../components/page";
+import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
 import { SettingSwitch } from "../components/setting-switch";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
@@ -96,7 +96,7 @@ export function AppshotsPage() {
             </PageRow>
           </>
         ) : loadError ? (
-          <p className="text-xs text-destructive">{loadError}</p>
+          <PageError>{loadError}</PageError>
         ) : (
           <PageRowsSkeleton rows={3} />
         )}

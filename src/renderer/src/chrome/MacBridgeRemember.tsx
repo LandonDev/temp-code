@@ -8,6 +8,7 @@ import {
   useMacBridgeRules,
   type RunRememberChoice
 } from '../lib/macBridgeRules'
+import { PageEmpty, PageError } from '../components/page'
 import { Button } from '../components/ui/button'
 import { Item, ItemActions, ItemContent, ItemTitle } from '../components/ui/item'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
@@ -66,7 +67,7 @@ export function MacBridgeRuleList({ sessionId, empty, heading }: { sessionId: st
     }
   }
   if (rules.length === 0)
-    return empty ? <p className="text-xs text-muted-foreground">{empty}</p> : null
+    return empty ? <PageEmpty>{empty}</PageEmpty> : null
   const forgetAll = (
     <Button variant="destructive" size="xs" onClick={() => void forget()}>
       Forget all
@@ -99,7 +100,7 @@ export function MacBridgeRuleList({ sessionId, empty, heading }: { sessionId: st
         )
       })}
       {heading ? null : <div className="flex justify-end">{forgetAll}</div>}
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      {error ? <PageError>{error}</PageError> : null}
     </div>
   )
 }

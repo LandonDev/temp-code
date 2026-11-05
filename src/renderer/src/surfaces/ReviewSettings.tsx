@@ -1,6 +1,6 @@
 import type { ReviewSettings } from "@server/shared/review";
 import { ReviewFields, ReviewSkeleton, saveReviewSettings, useReviewScope } from "../chrome/ReviewFields";
-import { PageSection } from "../components/page";
+import { PageError, PageSection } from "../components/page";
 import { Button } from "../components/ui/button";
 import { registry } from "../lib/connection";
 
@@ -33,7 +33,7 @@ export function ReviewsPage() {
       }
     >
       {scope ? <ReviewFields value={scope.settings} onChange={change} environmentId={environmentId} /> : error ? null : <ReviewSkeleton />}
-      {error ? <p className="pt-2 text-xs text-destructive">{error}</p> : null}
+      {error ? <PageError>{error}</PageError> : null}
     </PageSection>
   );
 }

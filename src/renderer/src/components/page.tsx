@@ -159,4 +159,21 @@ function PageEmpty({ className, children, ...rest }: ComponentPropsWithoutRef<"p
   );
 }
 
-export { Page, PageSection, PageRow, PageRowsSkeleton, PageEmpty, PAGE_SCROLLER, PAGE_WIDTH };
+/** A section's failure, where no single row owns it (a load the host did
+ *  not answer, a save refused for the whole section): one red 12px line in
+ *  a row's place, beside `PageEmpty`. An error a row owns is that row's
+ *  `error`. Pre-wrapped, so a multi-line reason keeps its lines. */
+function PageError({ className, children, ...rest }: ComponentPropsWithoutRef<"p">) {
+  return (
+    <p
+      role="alert"
+      {...rest}
+      data-slot="page-error"
+      className={cn("py-3 text-xs whitespace-pre-wrap text-destructive", className)}
+    >
+      {children}
+    </p>
+  );
+}
+
+export { Page, PageSection, PageRow, PageRowsSkeleton, PageEmpty, PageError, PAGE_SCROLLER, PAGE_WIDTH };

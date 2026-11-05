@@ -579,7 +579,8 @@ list the person narrowed (a typed filter, the filter menu) says so in that
 line and offers Clear filters as its action. A
 section of a settings page with nothing in it shows one muted line in a
 row's place (`PageEmpty`), never `Empty`: the section's heading is already
-the title. A
+the title. A section's failure that no row owns is one red line in the same
+place (`PageError`); an error a row owns is that row's red line. A
 new thread (a draft) shows the composer and nothing else, and so does a
 project with no thread on screen: its draft, the composer alone, with no
 chip, badge or heading for it; a thread its host holds with no rows shows

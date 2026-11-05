@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
-import { PageRow, PageSection } from "../../components/page";
+import { PageEmpty, PageRow, PageSection } from "../../components/page";
 import { Input } from "../../components/ui/input";
 import { filterKeybindings, KEYBINDING_SCOPE_LABEL, visibleKeybindingGroups } from "../../lib/settings";
 import { isWebMode } from "../../lib/nativeWeb";
@@ -20,7 +20,7 @@ export function KeybindingsPage() {
         autoComplete="off"
       />
       {groups.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No shortcut matches</p>
+        <PageEmpty>No shortcut matches</PageEmpty>
       ) : (
         groups.map((group) => (
           <PageSection key={group.title} title={group.title}>

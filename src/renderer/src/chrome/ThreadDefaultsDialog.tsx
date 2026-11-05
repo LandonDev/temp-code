@@ -4,7 +4,7 @@ import { DialogFooter, ErrorLine } from "./ConfirmDialog";
 import { homeNote } from "../lib/settingsHome";
 import { FieldRow } from "./DialogField";
 import { ChoiceSelect } from "../components/choice-select";
-import { PageRow, PageRowsSkeleton, PageSection } from "../components/page";
+import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { ModalPanel, useClosingDialog } from "./Modal";
@@ -159,7 +159,7 @@ function DefaultsEditor({ environmentId, workspaceId }: { environmentId: string;
         <PageRowsSkeleton rows={4} />
       )}
       {workspaceId === null ? <OverridingWorkspaces environmentId={environmentId} /> : null}
-      {error ? <p className="pt-2 text-xs text-destructive">{error}</p> : null}
+      {error ? <PageError>{error}</PageError> : null}
     </PageSection>
   );
 }

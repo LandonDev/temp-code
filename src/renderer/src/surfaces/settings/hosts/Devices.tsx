@@ -8,7 +8,7 @@ import {
   type Phone,
   type Simulator,
 } from "@server/shared/contract-hostdevices";
-import { PageEmpty } from "../../../components/page";
+import { PageEmpty, PageError } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
 import { reveal } from "../../../components/ui/reveal";
 import { Skeleton } from "../../../components/ui/skeleton";
@@ -105,7 +105,7 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
           <Skeleton className="h-3.5 w-56" />
         </div>
       ) : null}
-      {error && !report ? <p className="py-1.5 text-xs text-destructive">{error}</p> : null}
+      {error && !report ? <PageError>{error}</PageError> : null}
       {report ? (
         <>
           {report.simulators.length === 0 ? (
@@ -151,7 +151,7 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
           ))}
         </>
       ) : null}
-      {failed ? <p className="pt-1 text-xs text-destructive">{failed}</p> : null}
+      {failed ? <PageError>{failed}</PageError> : null}
       {confirm ? (
         <ConfirmDialog
           {...deleteSimulatorConfirm(confirm)}

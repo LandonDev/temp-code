@@ -3,6 +3,7 @@ import type { RemoteKey, RemotePairing, RemoteSession, RemoteStatus, SavedEnviro
 import type { HarnessSyncStatus } from "@server/shared/contract-harness";
 import type { MemorySyncStatus } from "@server/shared/contract-memory";
 import type { AttachmentSettings } from "@server/shared/contract-attachments";
+import { PageError } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { ConfirmDialog, errorText } from "../../../chrome/ConfirmDialog";
@@ -217,7 +218,7 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
           {section.devices ? <DevicesGroup host={section.devices} onOpenSession={onOpenSession} /> : null}
         </Fragment>
       ))}
-      {hosts.error ? <p className="text-xs text-destructive">{hosts.error}</p> : null}
+      {hosts.error ? <PageError>{hosts.error}</PageError> : null}
       {web ? null : (
         <div>
           <Button variant="secondary" size="sm" onClick={() => setDialog({ kind: "add" })}>
@@ -262,7 +263,7 @@ function PageSkeleton({ error }: { error: string | null }) {
           <Skeleton className="h-7 w-20" />
         </div>
       ))}
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      {error ? <PageError>{error}</PageError> : null}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { registry } from "../../lib/connection";
 import { OPEN_SETTINGS_EVENT } from "../../lib/monaco/debugTab";
 import { workspaceSettingsSection } from "../../lib/settings";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
-import { PageRow } from "../../components/page";
+import { PageError, PageRow } from "../../components/page";
 import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 
@@ -134,7 +134,7 @@ export function BuildEditor({ workspaceId }: { workspaceId: string }) {
   return (
     <>
       <BuildFields value={config} onChange={push} detected={detected} />
-      {error ? <p className="pt-2 text-xs text-destructive">{error}</p> : null}
+      {error ? <PageError>{error}</PageError> : null}
     </>
   );
 }

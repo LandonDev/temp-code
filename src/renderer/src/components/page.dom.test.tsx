@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Page, PageRow, PageRowsSkeleton, PageSection } from "./page";
+import { Page, PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "./page";
 import { Button } from "./ui/button";
 
 afterEach(cleanup);
@@ -126,5 +126,21 @@ describe("PageRow", () => {
     render(<PageRowsSkeleton rows={3} />);
     expect(screen.getByLabelText("Loading").getAttribute("aria-busy")).toBe("true");
     expect(document.querySelectorAll("[data-slot=page-row-skeleton]")).toHaveLength(3);
+  });
+});
+
+describe("PageError and PageEmpty", () => {
+  it("draws a section's failure as one red 12px line in a row's place, announced", () => {
+    render(<PageError>{"The host did not answer\nTry again"}</PageError>);
+    const line = screen.getByRole("alert");
+    expect(line.dataset.slot).toBe("page-error");
+    for (const c of ["py-3", "text-xs", "text-destructive", "whitespace-pre-wrap"]) expect(line.className).toContain(c);
+  });
+
+  it("sits on the same 12px inset as the muted empty line", () => {
+    render(<PageEmpty>No rules</PageEmpty>);
+    const empty = screen.getByText("No rules");
+    expect(empty.className).toContain("py-3");
+    expect(empty.className).toContain("text-muted-foreground");
   });
 });

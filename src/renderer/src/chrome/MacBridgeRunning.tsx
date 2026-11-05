@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { MacBridgeRequest } from '@server/shared/contract-macbridge'
 import { heldParts, startMacBridge, stopMacBridgeAll, useMacBridgeRunning } from '../lib/macBridge'
 import { requestCode } from './MacBridgeCards'
+import { PageError } from '../components/page'
 import { Button } from '../components/ui/button'
 import { Row } from '../surfaces/settings/hosts/Group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
@@ -93,7 +94,7 @@ export function MacBridgeRunningList({
           )}
         </Row>
       ))}
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      {error ? <PageError>{error}</PageError> : null}
     </div>
   )
 }

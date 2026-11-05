@@ -10,7 +10,7 @@ import {
   usePlanSettingsError,
 } from "../lib/tcserver/plans";
 import { ChoiceSelect } from "../components/choice-select";
-import { PageRow, PageRowsSkeleton, PageSection } from "../components/page";
+import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
 import { Button } from "../components/ui/button";
 import { SettingSwitch } from "../components/setting-switch";
 
@@ -151,7 +151,7 @@ export function PlanSettingsEditor() {
       ) : failure ? null : (
         <PageRowsSkeleton rows={5} />
       )}
-      {error || failure ? <p className="pt-2 text-xs text-destructive">{error ?? failure?.error}</p> : null}
+      {error || failure ? <PageError>{error ?? failure?.error}</PageError> : null}
     </PageSection>
   );
 }

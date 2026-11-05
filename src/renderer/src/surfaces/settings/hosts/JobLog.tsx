@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { PageError } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../components/ui/collapsible";
 import { DISCLOSURE_CHEVRON } from "../../../components/ui/disclosure";
@@ -86,7 +87,7 @@ export function JobLog({ environmentId, job, hostName }: { environmentId: string
           {card.lines.length ? card.lines.join("\n") : running ? "Waiting for output…" : ""}
         </pre>
       </CollapsibleContent>
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      {error ? <PageError>{error}</PageError> : null}
     </Collapsible>
   );
 }
