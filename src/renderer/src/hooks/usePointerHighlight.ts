@@ -7,7 +7,9 @@ import { useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
  * moved, and the `mouseenter` that fires on the row now under it must not
  * take the highlight back. So a row's enter counts only after a real
  * `mousemove` over the list, and a keyboard move (or new rows) waits for the
- * next one.
+ * next one. The browser sends a row's `mouseenter` before the `mousemove`
+ * that re-arms the pointer, so the move that re-arms it also lights the row
+ * it is over (the list's options, in order, are the indexes).
  *
  * Spread `onMouseMove` on the list, put `activeRef` on the highlighted row
  * and call `onRowEnter(index)` from each row's `onMouseEnter`.
@@ -42,7 +44,13 @@ export function usePointerHighlight<T extends HTMLElement>({
 
   const onMouseMove = (event: ReactMouseEvent<HTMLElement>) => {
     if (event.clientX === pointer.current.x && event.clientY === pointer.current.y) return;
+    const armed = pointer.current.allow;
     pointer.current = { x: event.clientX, y: event.clientY, allow: true };
+    if (armed) return;
+    const row = event.target instanceof Element ? event.target.closest('[role="option"]') : null;
+    if (!row || !event.currentTarget.contains(row)) return;
+    const index = [...event.currentTarget.querySelectorAll('[role="option"]')].indexOf(row);
+    if (index >= 0) onRowEnter(index);
   };
 
   const onRowEnter = (index: number) => {

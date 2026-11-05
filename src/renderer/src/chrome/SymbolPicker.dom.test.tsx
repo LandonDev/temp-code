@@ -62,10 +62,15 @@ describe("SymbolPicker", () => {
     fireEvent.mouseMove(list, { clientX: 20, clientY: 70 });
     fireEvent.mouseEnter(rows()[2]);
     expect(selected()).toBe(4);
-    // A real move does.
-    fireEvent.mouseMove(list, { clientX: 22, clientY: 74 });
+    // A real move does: the browser sends the row's enter first, then the move over it.
     fireEvent.mouseEnter(rows()[1]);
+    expect(selected()).toBe(4);
+    fireEvent.mouseMove(rows()[1], { clientX: 22, clientY: 74 });
     expect(selected()).toBe(1);
+    // Once armed, the next row the pointer enters takes the highlight.
+    fireEvent.mouseEnter(rows()[3]);
+    fireEvent.mouseMove(rows()[3], { clientX: 22, clientY: 90 });
+    expect(selected()).toBe(3);
   });
 
   it("draws its rows in a menu row's box and its empty line as one muted row", async () => {
