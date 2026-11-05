@@ -21,7 +21,12 @@ final class ShellNavigator {
     var sidebarShown: Bool
     /// The shell's pose, set by the root: a detail opened in the overlay pose
     /// hides the overlay, the way Mail's sidebar closes on a pick.
-    var pose = ShellPose.stack(short: false)
+    var pose = ShellPose.stack(short: false) {
+        didSet { if pose != oldValue { poseChangedAt = Date() } }
+    }
+    /// When the pose last changed: a write of the split's visibility inside
+    /// `ShellPose.foldSettle` of it is the fold's, not the person's.
+    @ObservationIgnored private(set) var poseChangedAt = Date.distantPast
     /// The window's width, for the fold's place (`ShellSplit`).
     var windowWidth: CGFloat = 0
     /// Every host's lists, for placing a thread in its shell; the root sets it.

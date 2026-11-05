@@ -2696,8 +2696,8 @@ proof and the sizing rules; the pieces, by name:
   bottom and 700 pt up, four shots and a .mov each). `pose_check` is
   scripts/lib/duo_pose_check.py: the pose's row, the dock's rule, and per
   thread shot the sidebar (its state as asked; beside the thread 260-320 pt,
-  iOS 27.1 holding it at 320, half open up to the fold; the column what it
-  leaves of the window less its safe area), the mode and columns `ThreadPose`
+  iOS 27.1 holding it at 320, half open up to the fold; the column from its
+  edge, half open past the fold's band, to the window less its safe area), the mode and columns `ThreadPose`
   gives that column (a board beside the sidebar is the pager, by the
   person's choice: no UIKit workaround), the measure (768, or the column
   less 32) and the composer on the column's edges; scripts/lib/

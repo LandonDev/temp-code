@@ -7,8 +7,9 @@ for <pose>, and the PNG the window times the scale. On a thread shot the dock
 (the slot above the composer, the composer the column's width) and, from the
 thread screen's own pose record, the rules of docs/IOS-DESIGN.md "The thread
 screen on the iPhone Duo": the sidebar's state as asked (SHOT_SIDEBAR
-shown|hidden) and its width (in [260, 320]; half open up to the fold) with the
-thread's column what it leaves of the split; the mode ThreadPose gives the
+shown|hidden) and its width (in [260, 320]; half open up to the fold), the
+thread's column starting at the sidebar's edge (half open, past the fold's
+band) and ending where the window less its safe area does; the mode ThreadPose gives the
 column (SHOT_KIND: chat is one segment, every other type two; two panes from
 680 at regular width) and the columns (TwoPaneColumns: the chat at least 360,
 a hero of 320 up to half and 672, the fold's band as the gap); the text
@@ -85,11 +86,21 @@ if (r.get('route') or {}).get('thread') and 'composer.frame' in notes and 'measu
     # The split's own note is information only: it once lagged a fold back by 4 pt.
     safe = r.get('safeArea') or {}
     held = r['window']['w'] - safe.get('left', 0) - safe.get('right', 0)
-    if sb == 'visible':
+    body = notes.get('body.frame')
+    bx = int(body.split(',')[0]) if body else None
+    if bx is None:
+        problems.append('no body.frame note')
+    elif sb == 'visible':
+        # Beside the thread: 260 asked, 320 held on iOS 27.1; half open the sidebar fills the
+        # first panel and the thread starts past the fold's band (48 pt at most).
         hi = 320 if pose != 'half-open' else max(320, r['window']['w'] / 2 + 2)
         if not 260 <= sbw <= hi: problems.append(f'sidebar {sbw} wide, not in [260, {hi:g}]')
-        if not near(sbw + width, held, 1.5): problems.append(f'sidebar {sbw} + column {width:g} ≠ {held} held')
-    elif not near(width, held, 1): problems.append(f'column {width:g} ≠ {held} held with the sidebar {sb}')
+        band = 48 if pose == 'half-open' else 1.5
+        if not -1.5 <= bx - safe.get('left', 0) - sbw <= band: problems.append(f'the column starts at {bx}, the sidebar ends at {sbw}')
+    elif not near(bx, safe.get('left', 0), 1.5):
+        problems.append(f'the column starts at {bx} with the sidebar {sb}')
+    if bx is not None and not near(bx + width, held + safe.get('left', 0), 1.5):
+        problems.append(f'the column {bx}+{width:g} does not end at the {held} held')
     # The mode for the column actually given: one segment alone; two panes from 680 at regular width.
     if kind:
         segments = 1 if kind == 'chat' else 2
@@ -119,13 +130,9 @@ if (r.get('route') or {}).get('thread') and 'composer.frame' in notes and 'measu
     want_measure = min(column - 32, cap)
     if not near(measure, want_measure, 1): problems.append(f'measure {measure}, want {want_measure:g}')
     # The composer's box on the column's edges.
-    body = notes.get('body.frame')
-    if body:
-        bx = int(body.split(',')[0])
+    if bx is not None:
         left = bx + (hero + gap if mode == 'twoPane' else 0) + max(16, (column - cap) / 2)
         if not near(cx, left, 1.5): problems.append(f'composer starts at {cx}, the column at {left:g}')
-    else:
-        problems.append('no body.frame note')
     if draft and notes.get('draftChars') != draft: problems.append(f"draft {notes.get('draftChars')} chars, typed {draft}")
     rule = f"{pose}/{label} rule: {kind or '?'} {mode} column {width:g} sidebar {sb} {sbw}/{split} columns {notes.get('columns')} measure {measure} composer x {cx}"
     if problems:

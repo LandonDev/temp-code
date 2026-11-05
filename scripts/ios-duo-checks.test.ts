@@ -106,7 +106,7 @@ describe('duo_pose_check.py', () => {
     expect(wide.out).toContain('sidebar 340 wide')
     const short = poseCheck(report(besideSidebar), poseRecord({ mode: 'pager', width: 530 }), { SHOT_KIND: 'implementation' })
     expect(short.status).toBe(1)
-    expect(short.out).toContain('≠ 867 held')
+    expect(short.out).toContain('does not end at the 867 held')
   })
 
   it('refuses a sidebar in another state than the shot asked for', () => {
@@ -165,6 +165,17 @@ describe('duo_pose_check.py', () => {
     expect(run.status).toBe(0)
   })
 
+  it('starts the column past the fold half open, where the sidebar fills the first panel', () => {
+    const halfOpen = { hinge: { state: 'partiallyOpen', angle: 128 }, classified: 'half-open' }
+    const notes = { ...besideSidebar, 'sidebar.width': '456', 'body.frame': '496,154,371,433', 'composer.frame': '512,507,339,74', measure: '339' }
+    const ok = poseCheck(report(notes, halfOpen), poseRecord({ mode: 'pager', width: 371.3 }), { SHOT_KIND: 'implementation', SHOT_SIDEBAR: 'shown' }, 'half-open')
+    expect(ok.out).toContain('sidebar visible 456')
+    expect(ok.status).toBe(0)
+    const far = poseCheck(report({ ...notes, 'body.frame': '520,154,347,433', 'composer.frame': '536,507,315,74', measure: '315' }, halfOpen), poseRecord({ mode: 'pager', width: 347 }), { SHOT_KIND: 'implementation' }, 'half-open')
+    expect(far.status).toBe(1)
+    expect(far.out).toContain('the column starts at 520, the sidebar ends at 456')
+  })
+
   it('holds the draft to what was typed, and a thread shot to its pose record', () => {
     const draft = poseCheck(report(besideSidebar), poseRecord({ mode: 'pager', width: 547 }), { SHOT_KIND: 'implementation', SHOT_DRAFT: '61' })
     expect(draft.status).toBe(1)
@@ -184,6 +195,7 @@ describe('duo_fold_check.py', () => {
     { pose: 'folded', t: 40_000, atBottom: 1, sidebar: 'stack' }
   ]
   const events = [
+    { t: 100, key: 'hSize', from: null, to: 'regular' },
     { t: 15_000, key: 'hSize', from: 'regular', to: 'compact' },
     { t: 15_000, key: 'window', from: '951x669', to: '466x678' },
     { t: 15_010, key: 'sidebar', from: 'hidden', to: 'stack' },
@@ -196,7 +208,7 @@ describe('duo_fold_check.py', () => {
   ]
   function foldCheck(
     run: 'bottom' | 'scrolled-up',
-    change: { samples?: string; draft?: string[]; violations?: unknown[]; tops?: number[]; atBottom?: number[] } = {}
+    change: { samples?: string; draft?: string[]; violations?: unknown[]; tops?: number[]; atBottom?: number[]; events?: unknown[] } = {}
   ): { status: number | null; out: string } {
     const dir = scratch()
     mkdirSync(join(dir, 'unfolded'))
@@ -209,7 +221,7 @@ describe('duo_fold_check.py', () => {
       const top = change.tops?.[i] ?? (run === 'bottom' ? -1 : 412)
       writeFileSync(join(dir, stop.pose, `${name}.transcript.json`), JSON.stringify({ atBottom, topRow: top, reflowAnchor: i === 0 ? 0 : run === 'bottom' ? 1 : 2 }))
     })
-    writeFileSync(join(dir, `cycle-${run}`, 'events.json'), JSON.stringify(events))
+    writeFileSync(join(dir, `cycle-${run}`, 'events.json'), JSON.stringify(change.events ?? events))
     writeFileSync(join(dir, `cycle-${run}`, 'samples.txt'), change.samples ?? ' 61\n120 61\n240 61\n240 61\n900 61\n')
     writeFileSync(join(dir, `cycle-${run}`, 'row-inits.json'), JSON.stringify({ rows: { a: { inits: 1, appears: 1, disappears: 0 } }, violations: change.violations ?? [] }))
     const out = spawnSync('python3', [join(lib, 'duo_fold_check.py'), dir, run, '61'], { encoding: 'utf8' })
@@ -219,6 +231,12 @@ describe('duo_fold_check.py', () => {
   it('passes a run that kept the route, the draft, the reveal and the reader', () => {
     expect(foldCheck('bottom').status).toBe(0)
     expect(foldCheck('scrolled-up').status).toBe(0)
+  })
+
+  it('fails when the event log no longer reaches the first stop', () => {
+    const run = foldCheck('bottom', { events: events.slice(1) })
+    expect(run.status).toBe(1)
+    expect(run.out).toContain('after the first stop at 10000 ms')
   })
 
   it('fails when the reveal goes back (a row made again starts from nothing)', () => {

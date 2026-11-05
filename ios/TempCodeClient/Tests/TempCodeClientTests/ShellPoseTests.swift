@@ -54,6 +54,21 @@ import Testing
     }
 }
 
+@Suite struct SidebarMemoryTests {
+    @Test("a fold's own writes of the split's visibility are not the person's toggle") func aFoldsOwnWritesAreNotThePersons() {
+        let tiled = ShellPose.split(sidebar: .tiled)
+        // Collapsing: the split writes `.all` with the pose already a stack.
+        #expect(!ShellPose.keepsVisibilityWrite(pose: .stack(short: false), sincePoseChange: 0.03))
+        #expect(!ShellPose.keepsVisibilityWrite(pose: .stack(short: false), sincePoseChange: 30))
+        // Expanding: `.detailOnly` then `.all` within 40 ms of the split.
+        #expect(!ShellPose.keepsVisibilityWrite(pose: tiled, sincePoseChange: 0.004))
+        #expect(!ShellPose.keepsVisibilityWrite(pose: tiled, sincePoseChange: 0.041))
+        // The person's toggle, once the pose has held.
+        #expect(ShellPose.keepsVisibilityWrite(pose: tiled, sincePoseChange: 0.5))
+        #expect(ShellPose.keepsVisibilityWrite(pose: .split(sidebar: .overlay), sincePoseChange: 12))
+    }
+}
+
 @Suite struct SidebarColumnTests {
     @Test("the sidebar asks for 260, never past 320; half open it follows the fold") func theSidebarAsksFor260() {
         #expect(SidebarColumn.of(halfOpen: false, foldX: 475) == SidebarColumn(min: 260, ideal: 260, max: 320))

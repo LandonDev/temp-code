@@ -53,6 +53,19 @@ public enum ShellPose: Sendable, Hashable {
     /// The overlay pose: the sidebar hides behind the system toggle.
     public var isOverlay: Bool { self == .split(sidebar: .overlay) }
 
+    /// How long after the pose changes a write of the split's visibility is
+    /// the split's own: collapsing, SwiftUI writes `.all`, and expanding it
+    /// writes `.detailOnly` then `.all` inside about 40 ms, none of it the
+    /// person's toggle.
+    public static let foldSettle: TimeInterval = 0.5
+
+    /// Whether a write of the split's visibility is the person's, to keep as
+    /// the remembered toggle: only in a split, and only once the pose has held
+    /// for `foldSettle`.
+    public static func keepsVisibilityWrite(pose: ShellPose, sincePoseChange: TimeInterval) -> Bool {
+        pose.isSplit && sincePoseChange >= foldSettle
+    }
+
     /// Inline titles only on the short stack.
     public var titleDisplay: TitleDisplay {
         if case .stack(short: true) = self { return .inline }

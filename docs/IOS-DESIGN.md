@@ -597,7 +597,8 @@ than the window). The rules are the client package's
 | Folded portrait | 466×678, compact×regular | 466 | The phone's screen, unchanged |
 | Folded landscape | 678×466, compact×compact | 678 | The pager; the header is one line; the segment bar leaves while the field has focus |
 | Unfolded landscape | 951×669, regular×regular | 951 less the 84 pt tab rail, or 547 beside the sidebar (iOS keeps it at 320) | Hero and chat side by side from 680 pt, the chat at least 360; the pager beside the sidebar |
-| Unfolded portrait | 669×951, regular×regular | 669 with the sidebar hidden, about 350 with it shown | Side by side at 669; the pager beside the sidebar |
+| Unfolded portrait | 669×951, regular×regular | 669, the sidebar over it when shown | The pager: 669 is under the 680 two panes need |
+| Half open | 951×669, regular×regular, partly open | 867 with the sidebar hidden; shown, the sidebar fills the first panel to the fold (456) and the thread starts past the band (371) | Two panes on the fold's band with the sidebar hidden; the pager beside it |
 
 **The sidebar keeps 320 on iOS 27.1, and the desktop's rule stays.** The
 shell asks the split for 260 pt (`SidebarColumn`, 320 at most), but the
@@ -717,8 +718,9 @@ shown (`TC_TEST_SIDEBAR=shown`) light and dark, and hidden light, dark, with
 the keyboard up (on the chat, `draft:`) and at accessibility-large. Each
 shot's `pose-<sessionId>.json` lands beside its layout report and
 `pose_check` holds it to this section: the sidebar's state as asked and,
-beside the thread, its width in [260, 320] (half open, up to the fold), the
-thread's column what the sidebar leaves of the window less its safe area;
+beside the thread, its width in [260, 320] (half open, up to the fold); the
+thread's column starting at the sidebar's edge (half open, past the fold's
+band, 48 pt at most) and ending where the window less its safe area does;
 the mode `ThreadPose` gives that column and `TwoPaneColumns`' split; the
 measure (768, 640 for a lone plan, or the column less 32); the composer's box
 on the column's edges; the draft's length when one was typed. The fold run
@@ -2619,7 +2621,11 @@ under it; folded, the Recent menu at the row's end holds them.
 
 **Memory.** `navigation.memory.v3` keeps, per tab, the sidebar path, the
 detail root and the detail stack, plus the overlay toggle; one snapshot
-opens the same place folded or unfolded.
+opens the same place folded or unfolded. The split writes its visibility as
+it collapses (`.all`) and expands (`.detailOnly` then `.all`, inside 40 ms);
+only a write in a split whose pose has held for half a second is the
+person's toggle (`ShellPose.keepsVisibilityWrite`, `foldSettle`), so a
+sidebar hidden before a fold is hidden after it.
 
 **Orientation.** The outer display allows portrait and both landscapes; the
 inner display ignores the key.

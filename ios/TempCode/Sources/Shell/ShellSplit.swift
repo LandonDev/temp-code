@@ -81,15 +81,18 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
     }
     #endif
 
-    /// The expanded preference: the remembered toggle, whatever the collapsed state.
+    /// The expanded preference: the remembered toggle, whatever the collapsed
+    /// state. The split's own writes around a fold are dropped (`ShellPose.keepsVisibilityWrite`).
     private var visibility: Binding<NavigationSplitViewVisibility> {
         Binding(
             get: { navigator.sidebarShown ? .all : .detailOnly },
             set: { value in
+                // A fold writes the split's visibility as it collapses and expands; only the person's toggle is kept.
+                let kept = ShellPose.keepsVisibilityWrite(pose: navigator.pose, sincePoseChange: Date().timeIntervalSince(navigator.poseChangedAt))
                 #if DEBUG
-                if probed { LayoutProbe.note("sidebar.write", "\(value) \(navigator.pose)") }
+                if probed { LayoutProbe.note("sidebar.write", "\(value == .detailOnly ? "detailOnly" : "shown") \(kept ? "kept" : "dropped")") }
                 #endif
-                navigator.sidebarShown = value != .detailOnly
+                if kept { navigator.sidebarShown = value != .detailOnly }
             }
         )
     }
