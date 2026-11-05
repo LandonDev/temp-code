@@ -23,6 +23,8 @@ describe("EditAccountDialog", () => {
     expect(screen.getByText("a@x.com").className).toContain("text-xs");
     expect(dialog.querySelectorAll('[data-slot="dialog-field"], [data-slot="dialog-field-row"]')).toHaveLength(2);
     expect(screen.getByRole("group", { name: "Colour" })).toBeTruthy();
+    // The subtitle names the account once; the field does not say it again.
+    expect((screen.getByLabelText("Nickname") as HTMLInputElement).placeholder).toBe("");
   });
 
   it("Save sends the nickname and the colour, then closes", async () => {

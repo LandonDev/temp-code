@@ -62,7 +62,7 @@ export function DialogFooter({
   const close = useModalClose();
   const confirm = onConfirm && closeOnConfirm && close ? () => close(onConfirm) : onConfirm;
   return (
-    <div data-slot="dialog-footer" className="flex items-center justify-end gap-2 border-t border-border px-5 pt-4 pb-5">
+    <div data-slot="dialog-footer" className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-5 pt-4 pb-5">
       {start || note ? (
         <div data-footer-start className="me-auto flex min-w-0 items-center gap-2">
           {start}

@@ -22,6 +22,8 @@ describe("SwitchBranchDialog", () => {
     expectModalShape(dialog);
     const footer = dialog.querySelector('[data-slot="dialog-footer"]')!;
     expect([...footer.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Cancel", "Commit & switch", "Stash & switch"]);
+    // In a 400px window three verbs wrap onto a second line, never past the edge.
+    expect(footer.className).toContain("flex-wrap");
   });
 
   it("lands focus in the message and commits on ⌘↩", async () => {

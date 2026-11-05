@@ -62,7 +62,6 @@ export function EditAccountDialog({
               onKeyDown={(e) => {
                 if (e.key === "Enter") void save();
               }}
-              placeholder={profile.email ?? profile.name}
             />
           </Field>
           <FieldRow label="Colour">
