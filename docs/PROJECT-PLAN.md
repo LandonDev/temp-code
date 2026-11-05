@@ -100,8 +100,8 @@ the ticks live only in the file.
   PlanView): the document with `## Milestones` rendered as the live list
   (a checkbox per milestone), the header counting milestones done with the
   "Project's plan" toggle, the three buttons after a complete document. While the selected project has a
-  project plan, the thread header carries a plan chip after the `+`
-  (src/renderer/src/chrome/ProjectPlanChip.tsx): "Plan", or the milestone
+  project plan, the thread header carries a plan chip in its end group,
+  before the agents cue and ⋯ (src/renderer/src/chrome/ProjectPlanChip.tsx): "Plan", or the milestone
   count once kept; it opens the plan and its popover holds the options.
   State comes from `projectPlan.get` (src/renderer/src/lib/projectPlan.ts),
   refreshed after every action, after a merge lands and whenever a

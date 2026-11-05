@@ -121,8 +121,6 @@ export function RulesSkeleton({ workspaceId, error, onRetry }: { workspaceId: st
   );
 }
 
-/** The editor's sections, each of which says its own refused save. */
-
 /** On a workspace's page the sections sit among others, so they name what they are about. */
 const titlesFor = (workspaceId: string | null) =>
   workspaceId
@@ -143,6 +141,7 @@ function refusalWords(err: unknown): string {
   return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "";
 }
 
+/** A refused save, from any of the editor's sections: one toast with the host's reason. */
 function saveFailed(err: unknown): false {
   const description = refusalWords(err);
   void loadToast().then((toast) => toast.error("Couldn't save the rules", description ? { description } : undefined));

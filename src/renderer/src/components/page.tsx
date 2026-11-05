@@ -187,7 +187,7 @@ function WidePageRow({
 }
 
 /** What sits at a loading row's end, at its real size: a `Switch` (32×18),
- *  a `ChoiceSelect` (32px, 160px wide), an `Input` (32px, 256px wide), a
+ *  a `ChoiceSelect` (32px; it fits its value, so 160px stands for one), an `Input` (32px, 256px wide), a
  *  number field (32px, 80px wide), a small `Button` (28px) or nothing. */
 type SkeletonControl = "switch" | "select" | "field" | "number" | "button" | "none";
 const SKELETON_CONTROL: Record<Exclude<SkeletonControl, "none">, string> = {
