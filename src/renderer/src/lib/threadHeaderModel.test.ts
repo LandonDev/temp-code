@@ -151,6 +151,66 @@ describe("buildHeaderModel: the loose scope", () => {
     expect(headerOrder(build(null)).map((c) => c.id)).toEqual(["chat-home"]);
   });
 
+  it("draws no chip on the home: its chats are the column's list, the thread on screen its title", () => {
+    const homeThreads = [
+      thread("old", { projectId: null, workspaceId: null, cwd: "/tmp", updatedAt: 10 }),
+      thread("new", { projectId: null, workspaceId: null, cwd: "/tmp", status: "running", updatedAt: 30 }),
+      thread("mid", { projectId: null, workspaceId: null, cwd: "/tmp", updatedAt: 20 }),
+    ];
+    const home = (shown: string[], order: string[] = []) =>
+      orderModel(
+        buildHeaderModel({
+          threads: homeThreads,
+          tabs: [{ id: "t", sessionIds: shown }],
+          scope: { loose: null, catalog },
+          activeTabId: "t",
+          lastSeen: {},
+          planReady: {},
+        }),
+        order,
+      );
+    const model = home(["mid"], ["old", "mid"]);
+    expect(model.live).toEqual([]);
+    expect(model.dormant).toEqual([]);
+    expect(model.heading?.id).toBe("mid");
+    expect(model.activeId).toBe("mid");
+    // The keys walk the Chats list, newest first, as the column draws it.
+    expect(model.list?.map((c) => c.id)).toEqual(["new", "mid", "old"]);
+    expect(headerOrder(model).map((c) => c.id)).toEqual(["new", "mid", "old"]);
+    expect(slotTarget(model, 0)).toBe("new");
+    expect(slotTarget(model, 2)).toBe("old");
+    expect(slotTarget(model, 5)).toBeNull();
+    expect(slotTarget(model, -1)).toBe("old");
+    // Archiving the chat on screen hands selection to its neighbour in the list.
+    expect(archiveNeighbour(model, "mid")?.id).toBe("old");
+    expect(archiveNeighbour({ ...model, activeId: "old" }, "old")?.id).toBe("mid");
+    expect(saveIds(model)).toEqual([]);
+    // Nothing on screen: no title, nothing active, the list still walks.
+    const empty = home([]);
+    expect(empty.heading).toBeNull();
+    expect(empty.activeId).toBeNull();
+    expect(slotTarget(empty, 0)).toBe("new");
+  });
+
+  it("titles the home's bar with a thread from another scope on screen", () => {
+    const model = build(null, { activeTabId: "t-proj" });
+    expect(model.heading?.id).toBe("proj");
+    expect(model.list?.map((c) => c.id)).toEqual(["chat-home"]);
+    expect(model.live).toEqual([]);
+  });
+
+  it("keeps the home's list and title through the hold", () => {
+    const model = build(null);
+    expect(holdModel(model, ["gone"], true).list).toBe(model.list);
+    expect(orderModel(model, []).list).toBe(model.list);
+  });
+
+  it("a workspace's loose scope has no list or title: its chips are the strip", () => {
+    const model = build("w1");
+    expect(model.list).toBeUndefined();
+    expect(model.heading).toBeUndefined();
+  });
+
   it("gives the thread on screen its chip at the live row's end when it is outside the scope", () => {
     const model = orderModel(build("w2", { activeTabId: "t-proj" }), ["proj"]);
     expect(model.activeId).toBe("proj");

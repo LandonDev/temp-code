@@ -177,6 +177,11 @@ export function ThreadHeaderStrip({
           {/* The 40px live row: the chips, New thread and the end group share
               one centre, whatever else the title bar holds. */}
           <div className="flex h-10 min-w-0 items-center">
+            {model.heading !== undefined ? (
+              // The home has no strip: its chats are the column's Chats list,
+              // so the row holds the thread on screen's title alone.
+              model.heading ? <HomeHeading chip={model.heading} {...events} /> : null
+            ) : (
             <div className="relative flex min-w-0 self-stretch" style={pad}>
               {overflow?.left && onScrollBy ? <ScrollArrow side="left" onClick={() => onScrollBy(-1)} /> : null}
               <div
@@ -193,7 +198,8 @@ export function ThreadHeaderStrip({
               </div>
               {overflow?.right && onScrollBy ? <ScrollArrow side="right" onClick={() => onScrollBy(1)} /> : null}
             </div>
-            {trailing}
+            )}
+            {model.heading !== undefined ? null : trailing}
             <div className="h-full min-w-1.5 flex-1" />
             {end}
           </div>
@@ -472,6 +478,36 @@ function dropChip(id: string, paneId: string, edge: PaneEdge): void {
   // A pane already on the page whose composer held the flag never hears it
   // again: give its field the caret, off the chip.
   document.querySelector<HTMLElement>(`[data-session-drop="${id}"] [data-composer-input]`)?.focus();
+}
+
+/**
+ * The home's title: the thread on screen in 13px medium foreground where the
+ * live row's first chip would start, outside the window's drag region only
+ * over its words. A double-click renames it in place and a right-click opens
+ * the thread's menu, as on a chip; nothing else is drawn, since the column's
+ * Chats list already says its type and state.
+ */
+function HomeHeading({ chip, ...events }: { chip: StripChip } & ChipEvents) {
+  if (events.renamingId === chip.id)
+    return (
+      <div className="flex min-w-0 pl-1.5">
+        <RenameInput chip={chip} shelf={false} onRename={events.onRename} />
+      </div>
+    );
+  const title = chipTitle(chip);
+  return (
+    <div className="flex min-w-0 pl-1.5">
+      <h1
+        data-home-heading
+        data-menu-id={chip.id}
+        data-tauri-drag-region="false"
+        onDoubleClick={() => events.onStartRename(chip.id)}
+        className="min-w-0 truncate px-3 text-[13px] leading-5 font-medium text-foreground"
+      >
+        {title}
+      </h1>
+    </div>
+  );
 }
 
 const LIVE_CHIP =

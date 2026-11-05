@@ -44,8 +44,8 @@ component builds each surface, and how**. Nothing here is built yet.
 ### First run
 
 A new install opens the ordinary window, with no welcome screen or wizard:
-the home's draft, set to Claude: the composer alone, never a chip in the
-strip. It starts empty wherever the app was launched from: no folder is
+the home's draft, set to Claude: the composer alone, under a title bar that
+holds only its end group (the home has no strip). It starts empty wherever the app was launched from: no folder is
 adopted as a workspace, in a dev, preview or packaged build alike. The rail
 has its usual shape (the navigation group on top, Accounts and Stats in
 it, then the Workspaces list; Check for updates and Settings in the foot) and adds two
@@ -96,6 +96,16 @@ away), never growing the bar in one frame. The rail and the workspace
 column keep their 40px headers. The bar's icon buttons are 28px
 (`icon-sm`) beside the 28px chips, their glyphs 14px at a 1.5 stroke; a
 chip's focus ring is the global outline alone.
+The home (the rail's Chats: the chats outside every workspace) has no
+strip: its chats are the workspace column's Chats list, so chips would say
+it twice. Its live row holds the thread on screen's title alone, 13px
+medium foreground where the first chip's glyph would start (18px in), then
+the same end group; with the home's draft on screen, the end group alone.
+The title renames in place on a double-click and opens the thread's menu on
+a right-click, as a chip does, and is outside the drag region only over its
+words. The row stays 40px, so nothing moves between a workspace and the
+home (`heading` on the header model, `HomeHeading` in
+chrome/ThreadHeaderStrip.tsx).
 The live row's right end is the end group: the project plan's chip when
 the project has one, the agents cue while a subagent of the thread on
 screen is live, then two ghost icon buttons, each with a `Tooltip`: the ⋯
@@ -412,7 +422,12 @@ hand-made), "Threads" and "Settled threads". The scope is the selected
 project and every linked copy of it, or with no project selected the loose
 chats of the workspace and its linked copies (its Chats) or of the home
 (the chats outside every workspace): `StripScope`, `looseScopeOf` and
-`stripRootThreads` in lib/threadStripModel.ts. A batch child has no chip
+`stripRootThreads` in lib/threadStripModel.ts. The home draws no strip
+("Titlebar" above): its model holds no chip, only its chats newest first as
+the column lists them (`list`, `isHomeScope` in lib/threadHeaderModel.ts),
+so ⌘1–9 open the nth chat of the Chats list, ⌃Tab walks the open ones in
+that order, and archiving or deleting the chat on screen selects its
+neighbour in the list; the column header's New thread is its new thread. A batch child has no chip
 (its master's chip stands for the batch) except while it is on screen. The
 live row holds the live threads (working, needs you, failed, paused,
 queued, plan ready, unread) in a stable order; the shelf under it holds the

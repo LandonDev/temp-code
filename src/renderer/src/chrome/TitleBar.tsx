@@ -282,9 +282,13 @@ function TitleBarComponent({
   const projectRailOpen = useShell((s) => s.projectRailOpen);
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const tabStripRef = useRef<HTMLDivElement | null>(null);
+  // The home draws no strip, so the live row comes and goes with the scope:
+  // its listeners follow the element.
+  const [tabStrip, setTabStrip] = useState<HTMLDivElement | null>(null);
   const setTabStripRef = useCallback(
     (el: HTMLDivElement | null) => {
       tabStripRef.current = el;
+      setTabStrip(el);
       lockOverscroll(el);
     },
     [lockOverscroll],
@@ -319,9 +323,9 @@ function TitleBarComponent({
   }, [activeId, activeChip, activeOnShelf]);
 
   useLayoutEffect(() => {
-    const el = tabStripRef.current;
-    if (!el) return;
+    const el = tabStrip;
     syncTabOverflow();
+    if (!el) return;
     el.addEventListener("scroll", syncTabOverflow, { passive: true });
     const ro = new ResizeObserver(syncTabOverflow);
     ro.observe(el);
@@ -329,7 +333,7 @@ function TitleBarComponent({
       el.removeEventListener("scroll", syncTabOverflow);
       ro.disconnect();
     };
-  }, [syncTabOverflow]);
+  }, [syncTabOverflow, tabStrip]);
 
   useLayoutEffect(() => {
     syncTabOverflow();

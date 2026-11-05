@@ -310,3 +310,76 @@ describe("TitleBar and an unsent draft", () => {
     expect([...model.live, ...model.dormant].map((c) => c.id)).toEqual([chat.id]);
   });
 });
+
+describe("TitleBar at the home", () => {
+  const catalog = { workspaces: [{ id: "w1", path: "/w1" }], projects: [] } as unknown as Catalog;
+  const home = { ...chat, id: "home-chat", workspaceId: null, cwd: "/tmp", title: "A home chat" } as SessionMeta;
+  const other = { ...home, id: "home-other", title: "Another home chat", status: "running", updatedAt: 2 } as SessionMeta;
+  const homeModel = (activeIds: string[]) =>
+    orderModel(
+      buildHeaderModel({
+        threads: [home, other],
+        tabs: [{ id: "tab", sessionIds: activeIds }],
+        scope: { loose: null, catalog },
+        activeTabId: "tab",
+        lastSeen: { [home.id]: 1 },
+        planReady: {},
+      }),
+      [],
+    );
+
+  it("draws no strip: the thread on screen's title, the thread menu and the panel toggle", async () => {
+    Element.prototype.scrollIntoView = () => {};
+    sessionStore.attach(listing([home, other]));
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    bar({ header: { ...header, model: homeModel([home.id]) } });
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.queryByText("Another home chat")).toBeNull();
+    expect(screen.queryByRole("button", { name: /New thread/ })).toBeNull();
+    const heading = screen.getByRole("heading", { name: "A home chat" });
+    // The title sits in the bar's one 40px row, beside the end group.
+    const row = heading.closest(".h-10");
+    expect(row?.querySelector('[aria-label="Thread menu"]')).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Panel/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Thread menu" }));
+    for (const name of ["Rename", /^Archive/]) expect(await screen.findByRole("menuitem", { name })).toBeTruthy();
+  });
+
+  it("renames the title in place on a double-click", () => {
+    Element.prototype.scrollIntoView = () => {};
+    const onRename = vi.fn();
+    bar({ header: { ...header, onRename, model: homeModel([home.id]) } });
+    fireEvent.doubleClick(screen.getByRole("heading", { name: "A home chat" }));
+    const input = screen.getByRole("textbox", { name: "Thread title" }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Renamed" } });
+    fireEvent.blur(input);
+    expect(onRename).toHaveBeenCalledWith(home.id, "Renamed");
+  });
+
+  it("draws nothing in the row's place with no thread on screen", () => {
+    Element.prototype.scrollIntoView = () => {};
+    bar({ header: { ...header, model: homeModel([]) } });
+    expect(screen.queryByRole("heading")).toBeNull();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.getByRole("button", { name: "Thread menu" })).toBeTruthy();
+  });
+
+  it("a workspace's loose chats keep their strip", () => {
+    Element.prototype.scrollIntoView = () => {};
+    const model = orderModel(
+      buildHeaderModel({
+        threads: [chat],
+        tabs: [{ id: "tab", sessionIds: [chat.id] }],
+        scope: { loose: new Set(["w1"]), catalog },
+        activeTabId: "tab",
+        lastSeen: { [chat.id]: 1 },
+        planReady: {},
+      }),
+      [],
+    );
+    bar({ header: { ...header, model } });
+    expect(screen.getByRole("tablist", { name: "Threads" })).toBeTruthy();
+    expect(screen.queryByRole("heading")).toBeNull();
+  });
+});

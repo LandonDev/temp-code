@@ -19,6 +19,9 @@ import type { SessionStatus } from "./tcserver/types";
  * opens the thread. A thread with no tab still shows: the strip is the
  * scope's threads, not the open tabs. The live chips are the top row, the
  * settled ones the shelf under it; the thread on screen always has a chip.
+ * The home (the chats outside every workspace) has no strip: its chats are
+ * the workspace column's Chats list, so the model draws no chip there and
+ * keeps that list for the keys and the thread on screen as the bar's title.
  */
 
 export type HeaderTab = {
@@ -50,6 +53,11 @@ export type HeaderModel<T extends StripThread = StripThread> = {
    *  thread, a batch child): its chip ends the live row and is never saved
    *  into the order. */
   outsideId?: string | null;
+  /** The home only, where no chip is drawn: its chats in the column's order,
+   *  newest first, for ⌘1–9, ⌃Tab and a neighbour on archive. */
+  list?: HeaderChip<T>[];
+  /** The home only: the thread on screen, drawn as the bar's title. */
+  heading?: HeaderChip<T> | null;
 };
 
 /** The root of `id`'s thread, by the parentId chain over the threads known. */
@@ -108,12 +116,23 @@ export function buildHeaderModel<T extends StripThread>(input: {
     onScreen && !onScreen.parentId && !onScreen.archived && !roots.includes(onScreen)
       ? chip(onScreen, isLiveThread(onScreen, input.lastSeen, input.planReady, floor))
       : null;
+  if (isHomeScope(input.scope)) {
+    const liveIds = new Set(live.map((t) => t.id));
+    const list = roots.map((t) => chip(t, liveIds.has(t.id)));
+    const heading = outside ?? list.find((c) => c.id === onScreenId) ?? null;
+    return { live: [], dormant: [], activeId: heading?.id ?? null, outsideId: null, list, heading };
+  }
   const model = {
     live: [...live.map((t) => chip(t, true)), ...(outside ? [outside] : [])],
     dormant: dormant.map((t) => chip(t, false)),
   };
   const drawn = onScreenId && [...model.live, ...model.dormant].some((c) => c.id === onScreenId);
   return { ...model, activeId: drawn ? onScreenId : null, outsideId: outside?.id ?? null };
+}
+
+/** The home's scope: the chats outside every workspace, drawn with no strip. */
+export function isHomeScope(scope: StripScope): boolean {
+  return "loose" in scope && scope.loose === null;
 }
 
 /** The ids the saved order may keep: the live row less the outside chip. */
@@ -180,10 +199,9 @@ export function holdModel<T extends StripThread>(
   if (ids.length === inScope.length) return model;
   const held = new Set(ids);
   return {
+    ...model,
     live: [...ids.map((id) => byId.get(id)!), ...(outside ? [outside] : [])],
     dormant: model.dormant.filter((chip) => !held.has(chip.id)),
-    activeId: model.activeId,
-    outsideId: model.outsideId,
   };
 }
 
@@ -198,10 +216,8 @@ export function orderModel<T extends StripThread>(
   const inScope = outside ? model.live.filter((chip) => chip !== outside) : model.live;
   const byId = new Map(inScope.map((chip) => [chip.id, chip]));
   return {
+    ...model,
     live: [...orderChips(order, inScope).map((id) => byId.get(id)!), ...(outside ? [outside] : [])],
-    dormant: model.dormant,
-    activeId: model.activeId,
-    outsideId: model.outsideId,
   };
 }
 
@@ -217,25 +233,34 @@ export function stripScopeKey(
 
 /** The thread ⌘1–9 selects: the nth chip as drawn (`slot` < 0 the last),
  *  opened as a click on it opens it, so a chip sharing a split focuses its
- *  own pane and a chip with no tab opens its thread. */
+ *  own pane and a chip with no tab opens its thread. On the home, the nth
+ *  chat of the column's Chats list. */
 export function slotTarget<T extends StripThread>(model: HeaderModel<T>, slot: number): string | null {
-  const chip = slot < 0 ? model.live[model.live.length - 1] : model.live[slot];
+  const row = model.list ?? model.live;
+  const chip = slot < 0 ? row[row.length - 1] : row[slot];
   return chip?.id ?? null;
 }
 
-/** Strip order for next/previous: the live row, then the shelf. */
+/** Strip order for next/previous: the live row, then the shelf; on the
+ *  home, the Chats list. */
 export function headerOrder<T extends StripThread>(model: HeaderModel<T>): HeaderChip<T>[] {
-  return [...model.live, ...model.dormant];
+  return model.list ?? [...model.live, ...model.dormant];
 }
 
 /** The chip that takes selection when the active chip `id` is archived:
  *  its neighbour on its own row (the next, else the one before), else the
- *  first of the other row; null when `id` is not active or was the last. */
+ *  first of the other row; on the home its neighbour in the Chats list;
+ *  null when `id` is not active or was the last. */
 export function archiveNeighbour<T extends StripThread>(
   model: HeaderModel<T>,
   id: string,
 ): HeaderChip<T> | null {
   if (model.activeId !== id) return null;
+  if (model.list) {
+    const at = model.list.findIndex((c) => c.id === id);
+    if (at < 0) return null;
+    return model.list[at + 1] ?? model.list[at - 1] ?? null;
+  }
   const onShelf = model.dormant.some((c) => c.id === id);
   const row = onShelf ? model.dormant : model.live;
   const at = row.findIndex((c) => c.id === id);

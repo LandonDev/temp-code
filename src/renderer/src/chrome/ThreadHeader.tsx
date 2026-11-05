@@ -25,7 +25,8 @@ import { useMasterIds } from "../lib/masterThread";
  * delete, the type and the options back to App by thread id. The end group
  * is the project plan's chip when there is one, the live-agents cue while a
  * subagent of the thread on screen is live (chrome/AgentsCue.tsx, its own
- * subscriber), then ⋯, then Panel.
+ * subscriber), then ⋯, then Panel. The home
+ * draws no strip: the thread on screen's title, then the same end group.
  */
 
 export type ThreadHeaderProps = {
@@ -101,15 +102,18 @@ export function ThreadHeader({
   });
   const host = useThreadHost(model.activeId);
   const masterIds = useMasterIds();
-  // The active chip sits on either row: a settled thread on screen is on the shelf.
-  const activeChip =
-    model.live.find((c) => c.id === model.activeId) ??
-    model.dormant.find((c) => c.id === model.activeId) ??
+  // The active chip sits on either row: a settled thread on screen is on the
+  // shelf; on the home, with no strip, it is the bar's title.
+  const chipOf = (id: string | null) =>
+    model.live.find((c) => c.id === id) ??
+    model.dormant.find((c) => c.id === id) ??
+    (model.heading?.id === id ? model.heading : null) ??
     null;
+  const activeChip = chipOf(model.activeId);
 
   const commitRename = (id: string, title: string) => {
     setRenamingId(null);
-    const chip = model.live.find((c) => c.id === id) ?? model.dormant.find((c) => c.id === id);
+    const chip = chipOf(id);
     if (title && chip && title !== chip.thread.title) onRename(id, title);
   };
 

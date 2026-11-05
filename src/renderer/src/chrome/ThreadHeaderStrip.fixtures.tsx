@@ -171,4 +171,28 @@ export default [
       trailing: <NewThreadChooser workspaceId={null} empty onStart={() => {}} />,
     },
   },
+  {
+    // The home has no strip: its chats are the column's Chats list, so the
+    // bar is the thread on screen's title and the end group.
+    name: "The home: the chat on screen's title, no strip",
+    props: {
+      ...common,
+      model: {
+        activeId: "h",
+        live: [],
+        dormant: [],
+        heading: chip("h", "Why the rail flickers on wake", {}, { projectId: null }),
+        list: [],
+      },
+      trailing: <NewThreadChooser workspaceId={null} empty={false} onStart={() => {}} />,
+    },
+  },
+  {
+    name: "The home with its draft on screen: the end group alone",
+    props: {
+      ...common,
+      model: { activeId: null, live: [], dormant: [], heading: null, list: [] },
+      trailing: <NewThreadChooser workspaceId={null} empty onStart={() => {}} />,
+    },
+  },
 ];
