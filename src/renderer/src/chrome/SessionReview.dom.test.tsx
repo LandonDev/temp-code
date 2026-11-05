@@ -288,6 +288,8 @@ describe('SessionReview Undo and Keep', () => {
     expect(keepButton.disabled).toBe(true)
     expect(undoButton.disabled).toBe(true)
     expect(keepButton.getAttribute('aria-busy')).toBe('true')
+    expect(keepButton.querySelector('[data-slot=busy-label]')?.getAttribute('data-idle')).toBe('Keep')
+    expect(undoButton.querySelector('[data-slot=busy-label]')?.getAttribute('data-idle')).toBe('Undo')
     expect(undoButton.getAttribute('aria-busy')).toBeNull()
     await act(async () => settle({ files }))
     expect((screen.getByRole('button', { name: 'Keep' }) as HTMLButtonElement).disabled).toBe(false)

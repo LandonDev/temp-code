@@ -2,12 +2,11 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { InboxProviderMark } from "../../chrome/InboxProviderMark";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Progress } from "../../components/ui/progress";
-import { Spinner } from "../../components/ui/spinner";
 import { SettingSwitch } from "../../components/setting-switch";
 import {
   loadTranscriptAnchor,
@@ -235,8 +234,7 @@ function LinearSettings() {
           >
             {connected ? (
               <Button variant="secondary" size="sm" onClick={() => void onDisconnect()} disabled={busy}>
-                {busy ? <Spinner className="size-3.5" /> : null}
-                Disconnect
+                <BusyLabel busy={busy} label="Disconnect" />
               </Button>
             ) : (
               <Button variant="secondary" size="sm" onClick={() => setConnecting(true)}>
@@ -327,8 +325,7 @@ function ConnectLinearDialog({
             Cancel
           </Button>
           <Button onClick={() => void submit()} disabled={busy || !token.trim()}>
-            {busy ? <Spinner className="size-3.5" /> : null}
-            Connect
+            <BusyLabel busy={busy} label="Connect" />
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -405,8 +402,7 @@ function UpdateRow() {
         onClick={() => void (actionable ? updateStore.install() : updateStore.check(true))}
         disabled={busy}
       >
-        {busy ? <Spinner className="size-3.5" /> : null}
-        {updateActionLabel(snapshot.phase, { canApply, retry })}
+        <BusyLabel busy={busy} label={updateActionLabel(snapshot.phase, { canApply, retry })} busyLabel="Check for updates" />
       </Button>
     </PageRow>
   );

@@ -1,5 +1,5 @@
 import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Button } from "@renderer/components/ui/button";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@renderer/components/ui/collapsible";
 import {
   DropdownMenu,
@@ -644,8 +644,7 @@ function TopRow({
       )}
       {rules.canPublish ? (
         <Button variant="ghost" size="sm" disabled={!!busy} onClick={actions.sync}>
-          {busy === "sync" ? <Spinner /> : null}
-          Publish
+          <BusyLabel busy={busy === "sync"} label="Publish" />
         </Button>
       ) : rules.canSync ? (
         <Tooltip>
@@ -654,8 +653,7 @@ function TopRow({
               <Button variant="ghost" size="sm" disabled={!!busy} onClick={actions.sync} aria-label={`Sync with ${index.upstream}`} />
             }
           >
-            {busy === "sync" ? <Spinner /> : null}
-            Sync
+            <BusyLabel busy={busy === "sync"} label="Sync" />
             <span className="text-xs tabular-nums text-muted-foreground">{distance(index.behind, index.ahead)}</span>
           </TooltipTrigger>
           <TooltipContent>Pull, then push {index.upstream}</TooltipContent>
@@ -668,8 +666,7 @@ function TopRow({
       ) : rules.canCreatePr ? (
         <Tooltip>
           <TooltipTrigger render={<Button variant="ghost" size="sm" disabled={!!busy} onClick={actions.createPr} />}>
-            {busy === "pr" ? <Spinner /> : null}
-            Create PR
+            <BusyLabel busy={busy === "pr"} label="Create PR" />
           </TooltipTrigger>
           <TooltipContent>{index.defaultBranch ? `Into ${index.defaultBranch}` : "Open a pull request"}</TooltipContent>
         </Tooltip>
@@ -685,7 +682,7 @@ function TopRow({
             }
           >
             {busy === "pull" || busy === "push" || busy === "stash" || busy === "stage-all" || busy === "unstage-all" ? (
-              <Spinner className="size-3" />
+              <BusyLabel busy label="" />
             ) : (
               <MoreHorizontal className="size-3.5" />
             )}
@@ -957,8 +954,7 @@ function CommitFooter({
               <Button size="sm" className="min-w-0 flex-1 rounded-r-none" disabled={!rules.canCommit} onClick={() => actions.commit("none")} />
             }
           >
-            {committing ? <Spinner /> : null}
-            Commit
+            <BusyLabel busy={committing} label="Commit" />
           </TooltipTrigger>
           <TooltipContent>Commit {MOD}↩</TooltipContent>
         </Tooltip>

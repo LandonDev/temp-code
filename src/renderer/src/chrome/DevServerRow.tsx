@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useStore } from "zustand";
 import { Tip } from "../components/tip";
-import { Button } from "../components/ui/button";
+import { BusyLabel, Button } from "../components/ui/button";
 import { Item, ItemActions, ItemContent, ItemTitle } from "../components/ui/item";
-import { Spinner } from "../components/ui/spinner";
 import { openUrl, portOpen } from "../lib/devPorts";
 import { stopLiveServer, type LiveServer } from "../lib/devServers";
 import { macBridgeStore } from "../lib/macBridge";
@@ -92,8 +91,7 @@ export function DevServerRow({ server, picked = false, onPick }: { server: LiveS
             stop();
           }}
         >
-          {pending ? <Spinner aria-hidden className="size-3" /> : null}
-          Stop
+          <BusyLabel busy={pending} label="Stop" />
         </Button>
       </ItemActions>
     </Item>

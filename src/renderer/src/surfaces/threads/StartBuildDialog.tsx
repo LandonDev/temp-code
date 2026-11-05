@@ -3,10 +3,9 @@ import type { ThreadRules } from "@server/shared/rules";
 import { AccessPicker } from "../../chrome/AccessPicker";
 import { ModelPicker } from "../../chrome/ModelPicker";
 import { ThreadTune, normalizeTune } from "../../chrome/ThreadTune";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
-import { Spinner } from "../../components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { mergeModelSettings, nativeModelId, resolveModel } from "../../lib/models";
 import type { HarnessId, RuntimeMode, Session } from "../../lib/session";
@@ -158,14 +157,7 @@ export function StartBuildDialog({
             Cancel
           </Button>
           <Button disabled={busy} onClick={() => void start()}>
-            {busy ? (
-              <>
-                <Spinner />
-                Starting…
-              </>
-            ) : (
-              "Start"
-            )}
+            <BusyLabel busy={busy} label="Start" busyLabel="Starting…" />
           </Button>
         </DialogFooter>
       </DialogContent>

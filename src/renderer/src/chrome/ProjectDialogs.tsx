@@ -17,12 +17,11 @@ import {
   AlertDialogTitle,
   Dialog,
 } from "@renderer/components/ui/dialog";
-import { Spinner } from "@renderer/components/ui/spinner";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@renderer/components/ui/sheet";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { PageRowsSkeleton } from "@renderer/components/page";
 import { ChoiceSelect } from "../components/choice-select";
-import { Button } from "@renderer/components/ui/button";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@renderer/components/ui/select";
 import { ChoiceToggle } from "../components/choice-toggle";
@@ -803,8 +802,7 @@ export function ProjectTeardownDialog({
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <AlertDialogAction variant="destructive" disabled={pending} onClick={() => void confirm()}>
-              {pending ? <Spinner /> : null}
-              Delete project
+              <BusyLabel busy={pending} label="Delete project" />
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

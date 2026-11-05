@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ProjectPlanState } from "@server/shared/contract-projectplan";
 import { nextMilestone, parseProjectPlan, type Milestone } from "@server/shared/projectPlan";
 import { Pin } from "../../chrome/icons";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { Item, ItemButton, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "../../components/ui/item";
 import { Spinner } from "../../components/ui/spinner";
@@ -260,24 +260,10 @@ export function ProjectPlanOptions({
       {next ? (
         <>
           <Button disabled={busy !== null} onClick={plan}>
-            {busy === "plan" ? (
-              <>
-                <Spinner />
-                Planning…
-              </>
-            ) : (
-              `Plan milestone ${next.index}`
-            )}
+            <BusyLabel busy={busy === "plan"} label={`Plan milestone ${next.index}`} busyLabel="Planning…" />
           </Button>
           <Button variant="secondary" disabled={busy !== null} onClick={orchestrate}>
-            {busy === "orchestrate" ? (
-              <>
-                <Spinner />
-                Orchestrating…
-              </>
-            ) : (
-              `Orchestrate milestone ${next.index}`
-            )}
+            <BusyLabel busy={busy === "orchestrate"} label={`Orchestrate milestone ${next.index}`} busyLabel="Orchestrating…" />
           </Button>
         </>
       ) : (

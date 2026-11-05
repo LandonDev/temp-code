@@ -21,11 +21,10 @@ import { WindowControls } from "../chrome/WindowControls";
 import { useDragResize } from "../hooks/useDragResize";
 import { useSashKeys } from "../hooks/useSashKeys";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
-import { Button } from "../components/ui/button";
+import { BusyLabel, Button } from "../components/ui/button";
 import { GroupInput, InputGroup } from "../components/ui/input";
 import { ItemButton } from "../components/ui/item";
 import { Skeleton } from "../components/ui/skeleton";
-import { Spinner } from "../components/ui/spinner";
 import { StatusMark } from "../components/ui/status";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
@@ -497,7 +496,7 @@ export function InboxView({
                 />
               }
             >
-              {loading || revalidating ? <Spinner className="size-3" /> : <RefreshCw />}
+              {loading || revalidating ? <BusyLabel busy label="" /> : <RefreshCw />}
             </TooltipTrigger>
             <TooltipContent>Refresh</TooltipContent>
           </Tooltip>
@@ -1153,8 +1152,7 @@ function InboxDetail({
                     .finally(() => setStarting(false));
                 }}
               >
-                {starting ? <Spinner className="size-3.5" /> : null}
-                Send to agent
+                <BusyLabel busy={starting} label="Send to agent" />
               </Button>
               {linear ? (
                 <InboxProjectPicker projects={projects} value={startProject} onChange={setStartProject} />

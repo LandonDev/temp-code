@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../../components/ui/dialog";
-import { Spinner } from "../../components/ui/spinner";
 import { Textarea } from "../../components/ui/textarea";
 
 /** Asks what should change in the project plan and sends it as a turn in
@@ -65,14 +64,7 @@ export function RevisePlanDialog({
             Cancel
           </Button>
           <Button disabled={busy} onClick={() => void send()}>
-            {busy ? (
-              <>
-                <Spinner />
-                Sending…
-              </>
-            ) : (
-              "Send"
-            )}
+            <BusyLabel busy={busy} label="Send" busyLabel="Sending…" />
           </Button>
         </DialogFooter>
       </DialogContent>

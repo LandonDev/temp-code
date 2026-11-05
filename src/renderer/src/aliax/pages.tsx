@@ -7,7 +7,7 @@ import type { StatsBundle, StatsStatus } from "@shared/aliaxStats";
 import { CANCELLED, SIGN_IN_REFRESHED } from "@shared/signInWords";
 import { RefreshCw } from "@renderer/chrome/icons";
 import { Page } from "@renderer/components/page";
-import { Button } from "@renderer/components/ui/button";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@renderer/components/ui/dialog";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
@@ -133,7 +133,7 @@ export function AccountsPage(): React.JSX.Element {
       actions={
         <Tooltip>
           <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Refresh usage" disabled={refreshing} onClick={() => void reload()} />}>
-            {refreshing ? <Spinner className="size-3.5" /> : <RefreshCw />}
+            {refreshing ? <BusyLabel busy label="" /> : <RefreshCw />}
           </TooltipTrigger>
           <TooltipContent>Refresh usage</TooltipContent>
         </Tooltip>
@@ -253,7 +253,7 @@ export function StatsPage(): React.JSX.Element {
       description={description}
       actions={
         <Button variant="ghost" size="sm" disabled={reindexing} onClick={() => void reindex()}>
-          {reindexing ? <Spinner className="size-3.5" /> : <RefreshCw />}
+          {reindexing ? <BusyLabel busy label="" /> : <RefreshCw />}
           Reindex
         </Button>
       }

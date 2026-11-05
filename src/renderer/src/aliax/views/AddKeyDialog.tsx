@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Field } from "@renderer/chrome/DialogField";
-import { Button } from "@renderer/components/ui/button";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@renderer/components/ui/dialog";
 import { Input } from "@renderer/components/ui/input";
-import { Spinner } from "@renderer/components/ui/spinner";
 
 export type AddKeyResult = { ok: true; name?: string } | { ok: false; error: string };
 
@@ -104,8 +103,7 @@ export function AddKeyDialog({
             Cancel
           </Button>
           <Button disabled={!ready} aria-busy={verifying || undefined} onClick={() => void add()}>
-            {verifying ? <Spinner className="size-3.5" /> : null}
-            Add
+            <BusyLabel busy={verifying} label="Add" />
           </Button>
         </DialogFooter>
       </DialogContent>

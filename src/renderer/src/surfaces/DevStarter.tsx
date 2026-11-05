@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import type { DevTarget } from "@server/shared/contract-devservers";
 import { ChoiceSelect } from "../components/choice-select";
-import { Button } from "../components/ui/button";
+import { BusyLabel, Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
-import { Spinner } from "../components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { devPane } from "../lib/devPane";
@@ -144,8 +143,7 @@ export function DevStarter({ starter }: { starter: DevStarterState }) {
           <ChoiceSelect label="Dev server target" size="sm" value="" options={NO_TARGETS} disabled onChange={noop} className="min-w-0 flex-1" />
         )}
         <Button size="sm" disabled={!target || !envId || starting || starter.asking} onClick={() => void starter.run()}>
-          {starting ? <Spinner className="size-3.5" /> : null}
-          Run
+          <BusyLabel busy={starting} label="Run" />
         </Button>
       </div>
       {starter.asking ? (

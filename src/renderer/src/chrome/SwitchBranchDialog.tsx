@@ -1,7 +1,6 @@
 import { WandSparkles } from "./icons";
 import { useRef, useState } from "react";
-import { Button } from "@renderer/components/ui/button";
-import { Spinner } from "@renderer/components/ui/spinner";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { ErrorLine, errorText } from "./ConfirmDialog";
 import { Tip } from "../components/tip";
@@ -99,7 +98,7 @@ function Body({
               onClick={() => void generate()}
               className="absolute end-1 top-1 text-muted-foreground"
             >
-              {generating ? <Spinner /> : <WandSparkles />}
+              {generating ? <BusyLabel busy label="" /> : <WandSparkles />}
             </Button>
           </Tip>
         </div>
@@ -110,12 +109,10 @@ function Body({
           Cancel
         </Button>
         <Button variant="secondary" disabled={!canCommit} onClick={() => onCommit(trimmed)}>
-          {busy === "commit" ? <Spinner /> : null}
-          Commit & switch
+          <BusyLabel busy={busy === "commit"} label="Commit & switch" />
         </Button>
         <Button disabled={waiting} onClick={onStash}>
-          {busy === "stash" ? <Spinner /> : null}
-          Stash & switch
+          <BusyLabel busy={busy === "stash"} label="Stash & switch" />
         </Button>
       </div>
     </>

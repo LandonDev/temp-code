@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { COMPACTING_WORDS } from "@shared/statusWords";
-import { Button } from "../components/ui/button";
+import { BusyLabel, Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import { Spinner } from "../components/ui/spinner";
 import { cn } from "../lib/cn";
@@ -66,7 +66,7 @@ export function ContextMeter({
         warn && "hover:text-warning aria-expanded:text-warning",
       )}
     >
-      {compacting ? <Spinner className="size-3.5" aria-label={COMPACTING_WORDS} /> : <ContextRing ratio={ratio} />}
+      {compacting ? <span role="status" aria-label={COMPACTING_WORDS}><BusyLabel busy label="" /></span> : <ContextRing ratio={ratio} />}
       <span className="tabular-nums @max-[25rem]/composer-bar:hidden">{percent}%</span>
     </Button>
   );

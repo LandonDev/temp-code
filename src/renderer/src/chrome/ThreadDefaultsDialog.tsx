@@ -4,8 +4,7 @@ import { ErrorLine } from "./ConfirmDialog";
 import { FieldRow } from "./DialogField";
 import { ChoiceSelect } from "../components/choice-select";
 import { PageRow, PageRowsSkeleton, PageSection } from "../components/page";
-import { Button } from "../components/ui/button";
-import { Spinner } from "../components/ui/spinner";
+import { BusyLabel, Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { ModalPanel, useClosingDialog } from "./Modal";
 import {
@@ -213,8 +212,7 @@ export function ThreadDefaultsDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={pending || !value}>
-              {pending ? <Spinner /> : null}
-              Save
+              <BusyLabel busy={pending} label="Save" />
             </Button>
           </div>
         </form>

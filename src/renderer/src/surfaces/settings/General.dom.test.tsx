@@ -158,6 +158,15 @@ describe("General", () => {
     expect(updateActionLabel("error", { canApply: true, retry: true })).toBe("Retry");
   });
 
+  it("reserves the download label before Update starts", async () => {
+    update.snapshot = { phase: "available", currentVersion: "1.0.300", availableVersion: "1.0.301", canApply: true };
+    page();
+    await act(async () => {});
+    const button = screen.getByRole("button", { name: "Update" });
+    expect(button.querySelector("[data-slot=busy-label]")?.getAttribute("data-busy-text")).toBe("Check for updates");
+    expect(button.querySelector("[data-slot=spinner]")).toBeNull();
+  });
+
   it("draws the release row with its version and one updater button in every phase", async () => {
     const phases: Record<string, unknown>[] = [
       { phase: "idle", currentVersion: "1.0.300", canApply: true },

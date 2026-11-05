@@ -79,7 +79,7 @@ function BusyLabel({ busy, label, busyLabel = label }: { busy: boolean; label: s
       <span className="inline-flex items-center justify-center gap-1">
         {busy ? (
           <>
-            <Spinner />
+            <Spinner aria-hidden style={{ width: "var(--busy-space, 1rem)", height: "var(--busy-space, 1rem)" }} />
             {busyLabel}
           </>
         ) : (

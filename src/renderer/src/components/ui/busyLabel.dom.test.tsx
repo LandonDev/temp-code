@@ -7,6 +7,13 @@ import { Spinner } from "./spinner";
 afterEach(cleanup);
 
 describe("BusyLabel", () => {
+  it.each(["xs", "sm", "default"] as const)("sizes the spinner from the same reserved width in a %s button", (size) => {
+    const { container } = render(<Button size={size}><BusyLabel busy label="Keep" /></Button>);
+    const spinner = container.querySelector<HTMLElement>("[data-slot=spinner]")!;
+    expect(spinner.style.width).toBe("var(--busy-space, 1rem)");
+    expect(spinner.style.height).toBe(spinner.style.width);
+  });
+
   it("holds both widths in one column, the spinner only while busy, so the button never changes width", () => {
     const { rerender, container } = render(
       <Button size="xs">
@@ -30,7 +37,8 @@ describe("BusyLabel", () => {
     );
     expect(label().className).toBe(before);
     expect(container.querySelectorAll("[data-slot=spinner]")).toHaveLength(1);
-    expect(screen.getByRole("button").textContent).toBe("Stopping…");
+    expect(screen.getByRole("button", { name: "Stopping…" }).textContent).toBe("Stopping…");
+    expect(container.querySelector("[data-slot=spinner]")!.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("a confirm keeps its verb: busyLabel defaults to the label", () => {

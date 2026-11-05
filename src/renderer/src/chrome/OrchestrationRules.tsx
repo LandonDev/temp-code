@@ -7,7 +7,7 @@ import { ChoiceSelect, type Choice } from "../components/choice-select";
 import { PageRow, PageSection } from "../components/page";
 import { ItemButton, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
 import { SettingSwitch } from "../components/setting-switch";
-import { Button } from "../components/ui/button";
+import { BusyLabel, Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import { Skeleton } from "../components/ui/skeleton";
@@ -554,7 +554,7 @@ export function RuleDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={!task.trim()}>
-              Save
+              <BusyLabel busy={false} label="Save" />
             </Button>
           </DialogFooter>
         </form>

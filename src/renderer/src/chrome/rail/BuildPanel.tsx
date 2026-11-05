@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { BuildRun, BuildTarget, EffectiveBuild, RemoteStatus } from "@server/shared/build";
 import { ChoiceSelect, type Choice } from "@renderer/components/choice-select";
-import { Button } from "@renderer/components/ui/button";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
 import { Item, ItemActions, ItemContent } from "@renderer/components/ui/item";
 import { Progress } from "@renderer/components/ui/progress";
 import { Skeleton } from "@renderer/components/ui/skeleton";
-import { Spinner } from "@renderer/components/ui/spinner";
 import { StatusMark, type ThreadState } from "@renderer/components/ui/status";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { cn } from "@renderer/lib/cn";
@@ -346,8 +345,7 @@ function OriginLine({
           {text}
         </span>
         <Button size="xs" variant="secondary" disabled={disabled || pulling} aria-busy={pulling || undefined} onClick={onFetch}>
-          {pulling ? <Spinner className="size-3" aria-hidden="true" role="presentation" aria-label={undefined} /> : null}
-          Fetch
+          <BusyLabel busy={pulling} label="Fetch" />
         </Button>
       </div>
       {pulling && progress?.percent != null ? <Progress value={progress.percent} fill="muted" aria-label="Fetching" className="mt-1" /> : null}

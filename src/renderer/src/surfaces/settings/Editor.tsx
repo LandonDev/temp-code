@@ -27,7 +27,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageEmpty, PageRow, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Keys, MOD_CAP } from "./keys";
 import { CONSOLE } from "../../components/ui/console";
@@ -207,7 +207,10 @@ export function EditorPage() {
       .catch((error) => setNote(error instanceof Error ? error.message : String(error)));
   };
 
+  const [accepting, setAccepting] = useState(false);
   const accept = () => {
+    if (accepting) return;
+    setAccepting(true);
     void registry.primary()
       .request("idea.acceptEula")
       .then(() => {
@@ -215,7 +218,8 @@ export function EditorPage() {
         retryBlockedEnsures();
         refreshEngine();
       })
-      .catch((error) => setNote(error instanceof Error ? error.message : String(error)));
+      .catch((error) => setNote(error instanceof Error ? error.message : String(error)))
+      .finally(() => setAccepting(false));
   };
 
   const [checking, setChecking] = useState(false);
@@ -317,8 +321,7 @@ export function EditorPage() {
         />
         <PageRow title="IntelliJ engine" description={note ?? engineState ?? loading}>
           <Button variant="secondary" size="sm" disabled={checking} onClick={engine?.accepted ? checkUpdate : openGate}>
-            {checking ? <Spinner className="size-3.5" /> : null}
-            {engine?.accepted ? "Check for update" : "Accept EULA"}
+            <BusyLabel busy={checking} label={engine?.accepted ? "Check for update" : "Accept EULA"} />
           </Button>
         </PageRow>
       </PageSection>
@@ -344,8 +347,8 @@ export function EditorPage() {
           )}
           <DialogFooter>
             <DialogClose render={<Button variant="secondary" />}>Cancel</DialogClose>
-            <Button disabled={!eula} onClick={accept}>
-              Accept and enable
+            <Button disabled={!eula || accepting} onClick={accept}>
+              <BusyLabel busy={accepting} label="Accept and enable" />
             </Button>
           </DialogFooter>
         </DialogContent>

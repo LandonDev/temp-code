@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Button } from "@renderer/components/ui/button";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { ItemButton, ItemContent, ItemMedia, ItemTitle } from "@renderer/components/ui/item";
 import { Skeleton } from "@renderer/components/ui/skeleton";
-import { Spinner } from "@renderer/components/ui/spinner";
 import { DialogFooter, ErrorLine, errorText } from "./ConfirmDialog";
 import { ChevronRight, Folder, FolderPlus } from "./icons";
 import { Modal, useModalClose } from "./Modal";
@@ -260,8 +259,7 @@ function FolderPicker({ environmentId, onClose, onPick, pending, setPending }: P
                   Cancel
                 </Button>
                 <Button type="submit" variant="secondary" disabled={!newFolder.trim() || pending}>
-                  {pending ? <Spinner className="size-3.5" /> : null}
-                  Create and use
+                  <BusyLabel busy={pending} label="Create and use" />
                 </Button>
               </form>
             )}

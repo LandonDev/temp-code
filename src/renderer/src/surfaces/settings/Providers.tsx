@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
 import { PageRow, PageSection } from "../../components/page";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
-import { Spinner } from "../../components/ui/spinner";
 import {
   getHarnessAvailabilitySnapshot,
   harnessInstallCommand,
@@ -121,8 +120,7 @@ function ProviderRow({
     >
       {doctor?.found && UPDATABLE.has(harness) ? (
         <Button variant="secondary" size="sm" onClick={() => void onUpdate()} disabled={updating}>
-          {updating ? <Spinner className="size-3.5" /> : null}
-          Update
+          <BusyLabel busy={updating} label="Update" />
         </Button>
       ) : install ? (
         <CopyButton text={install} label="Copy install command" />

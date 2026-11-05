@@ -1,9 +1,8 @@
 import { useEffect, useId, useState } from "react";
 import type { ProfileView, ServiceId } from "aliax-core/shared/types";
-import { Button } from "@renderer/components/ui/button";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@renderer/components/ui/dialog";
 import { Input } from "@renderer/components/ui/input";
-import { Spinner } from "@renderer/components/ui/spinner";
 import { ErrorLine, errorText } from "@renderer/chrome/ConfirmDialog";
 import { ToggleGroup, ToggleGroupItem } from "@renderer/components/ui/toggle-group";
 import { ACCOUNT_COLORS, DEFAULT_COLOR } from "@aliax/lib/accounts";
@@ -101,8 +100,7 @@ export function EditAccountDialog({
             Cancel
           </Button>
           <Button disabled={pending} onClick={() => void save()}>
-            {pending ? <Spinner /> : null}
-            Save
+            <BusyLabel busy={pending} label="Save" />
           </Button>
         </DialogFooter>
       </DialogContent>

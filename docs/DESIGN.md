@@ -526,7 +526,12 @@ Inbox, Notes and the folder picker.
 
 A surface that waits shows a `Skeleton` in the shape of what is coming when
 the wait is a load, and a `Spinner` with a word ("Loading…", "Starting…")
-when it is an action. A list with nothing in it shows one `Empty`: a title,
+when it is an action. A button uses `BusyLabel` to reserve both states
+at rest; its spinner is hidden from assistive tech so the verb stays its
+name. `lib/busyLabelGuard.test.ts` refuses a bare Spinner in Button or
+AlertDialogAction children, including a primitive's render slot. An icon
+button keeps its name on the button and uses an empty BusyLabel for its
+busy glyph. A list with nothing in it shows one `Empty`: a title,
 one line, at most one action; never an illustration or a dashed box. A
 list the person narrowed (a typed filter, the filter menu) says so in that
 line and offers Clear filters as its action. A

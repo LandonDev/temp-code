@@ -308,6 +308,9 @@ app replaces itself from the feed, and only from the feed.
 - File headers, file previews and implementation tallies use `Counts` from
   `chrome/rail/changeRows.tsx`: sans, tabular numbers at the line's size,
   4px between values; it shares the transcript's numeric renderer.
+- A busy button uses `BusyLabel` to hold both widths at rest.
+  `lib/busyLabelGuard.test.ts` refuses bare Spinner children, including
+  render slots; icon buttons keep their name on the button.
 - Buttons and focus: the solid `Button` variants (default, secondary,
   destructive) are raised, Kobra's `t-raise` on the `--raise-*` tokens in
   index.css (a shadowed fill layer behind the label, pressing in to 0.985);

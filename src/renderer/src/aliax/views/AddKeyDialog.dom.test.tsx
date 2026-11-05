@@ -39,7 +39,8 @@ describe("AddKeyDialog", () => {
     expect(submit).toHaveBeenCalledWith({ name: "Work", key: "LLM_1607_abc" });
     expect(add.disabled).toBe(true);
     expect(add.getAttribute("aria-busy")).toBe("true");
-    expect(within(dialog).getByRole("status")).toBeTruthy();
+    expect(add.querySelector("[data-slot=busy-label]")?.getAttribute("data-busy")).toBe("true");
+    expect(within(dialog).getByRole("button", { name: "Add" })).toBe(add);
     await act(async () => answer({ ok: true, name: "Work" }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onAdded).toHaveBeenCalledWith("Work");

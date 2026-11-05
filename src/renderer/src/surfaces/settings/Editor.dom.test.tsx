@@ -3,6 +3,8 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const host = vi.hoisted(() => ({
+  accept: null as null | (() => void),
+  acceptCalls: 0,
   lsp: null as null | ((rows: unknown[]) => void),
   eula: null as null | ((eula: { build: string; text: string }) => void),
   check: null as null | ((r: { current: string; latest: string; updated: boolean }) => void),
@@ -14,7 +16,9 @@ vi.mock("../../lib/connection", () => ({
   registry: {
     primary: () => ({
       request: (method: string) =>
-        method === "lsp.status"
+        method === "idea.acceptEula"
+          ? new Promise<void>((resolve) => { host.accept = resolve; host.acceptCalls++; })
+          : method === "lsp.status"
           ? new Promise((resolve) => (host.lsp = resolve))
           : method === "idea.eula"
             ? new Promise((resolve) => (host.eula = resolve))
@@ -32,6 +36,8 @@ vi.mock("../../lib/sounds", () => ({ playCue: vi.fn() }));
 const { EditorPage, lspFigures } = await import("./Editor");
 
 beforeEach(() => {
+  host.accept = null;
+  host.acceptCalls = 0;
   host.lsp = null;
   host.editor = null;
 });
@@ -103,6 +109,24 @@ describe("Editor", () => {
     expect(screen.getByText("intellij-server 263.1")).toBeTruthy();
     expect((screen.getByRole("button", { name: "Accept and enable" }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByRole("button", { name: "Cancel" }).dataset.variant).toBe("secondary");
+  });
+
+  it("holds Accept and enable's width and sends once while acceptance waits", async () => {
+    host.engine = { dist: true, accepted: false, build: "263.1" };
+    render(<EditorPage />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Accept EULA" }));
+    await act(async () => host.eula?.({ build: "263.1", text: "You may use it." }));
+    const accept = screen.getByRole<HTMLButtonElement>("button", { name: "Accept and enable" });
+    const widths = accept.querySelector("[data-slot=busy-label]")!.className;
+    fireEvent.click(accept);
+    fireEvent.click(accept);
+    expect(host.acceptCalls).toBe(1);
+    expect(accept.disabled).toBe(true);
+    expect(accept.querySelector("[data-slot=busy-label]")!.className).toBe(widths);
+    expect(accept.querySelector("[data-slot=busy-label]")!.getAttribute("data-busy")).toBe("true");
+    await act(async () => host.accept?.());
+    host.engine = undefined;
   });
 
   it("shows a spinner in Check for update while it checks", async () => {

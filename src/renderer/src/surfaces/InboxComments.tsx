@@ -1,5 +1,5 @@
 import { openUrl } from "../lib/native";
-import { Button } from "../components/ui/button";
+import { BusyLabel, Button } from "../components/ui/button";
 import { Tip } from "../components/tip";
 import {
   useEffect,
@@ -189,8 +189,7 @@ export function InboxCommentForm({
           {error}
         </p>
         <Button type="submit" size="sm" variant="secondary" disabled={!canPost}>
-          {posting ? <Spinner aria-hidden className="size-3" /> : null}
-          {posting ? "Posting…" : replyTo ? "Reply" : "Comment"}
+          <BusyLabel busy={posting} label={replyTo ? "Reply" : "Comment"} busyLabel="Posting…" />
         </Button>
       </div>
     </form>

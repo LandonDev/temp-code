@@ -1,8 +1,7 @@
 import { sessionStore } from "../lib/tcserver/store";
 import { COMPOSER_SURFACE } from "./ComposerBar";
 import { ChevronRight } from "./icons";
-import { Button } from "../components/ui/button";
-import { Spinner } from "../components/ui/spinner";
+import { BusyLabel, Button } from "../components/ui/button";
 import { useCallback, useEffect, useRef, useState, type Ref } from "react";
 import {
   keepSessionChanges,
@@ -249,8 +248,7 @@ function StripAction({
       onClick={onClick}
       className="text-muted-foreground hover:text-foreground"
     >
-      {running ? <Spinner aria-hidden className="size-3" /> : null}
-      {word}
+      <BusyLabel busy={running} label={word} />
     </Button>
   );
 }

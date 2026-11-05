@@ -2,13 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadToast } from "../../components/ui/toaster";
 import type { CommitInfo, CompareResult, FileChange, MergeResult } from "@server/shared/domain";
 import { Alert, AlertDescription, AlertTitle } from "@renderer/components/ui/alert";
-import { Button } from "@renderer/components/ui/button";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@renderer/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@renderer/components/ui/dropdown-menu";
 import { ItemButton, ItemActions, ItemContent, ItemMedia } from "@renderer/components/ui/item";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@renderer/components/ui/select";
 import { Skeleton } from "@renderer/components/ui/skeleton";
-import { Spinner } from "@renderer/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { cn } from "@renderer/lib/cn";
 import { timeAgo } from "../../lib/format";
@@ -285,7 +284,7 @@ export function AgainstHead({ model }: { model: AgainstModel }) {
                 />
               }
             >
-              {moving ? <Spinner className="size-3.5" /> : <MoreHorizontal className="size-3.5" />}
+              {moving ? <BusyLabel busy label="" /> : <MoreHorizontal className="size-3.5" />}
             </TooltipTrigger>
             <TooltipContent>Merge or rebase</TooltipContent>
           </Tooltip>

@@ -1,7 +1,6 @@
 import { Plus, Search, File, Trash2 } from "../chrome/icons";
-import { Button } from "../components/ui/button";
+import { BusyLabel, Button } from "../components/ui/button";
 import { Tip, TruncateTip } from "../components/tip";
-import { Spinner } from "../components/ui/spinner";
 import { GroupInput, Input, InputGroup } from "../components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
@@ -250,7 +249,7 @@ export function NotesView({
           className="shrink-0 text-muted-foreground"
         >
           {creating ? (
-            <Spinner className="size-3.5" />
+            <BusyLabel busy label="" />
           ) : (
             <Plus className="size-3.5" />
           )}
