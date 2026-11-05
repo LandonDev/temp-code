@@ -63,11 +63,14 @@ export function EditorAlert({
   aside?: string;
   actions: readonly EditorAlertAction[];
 }) {
+  // With actions the first line is the 24px button's: the text pads to it
+  // so the mark, centred 4px down, stays on that line however the text wraps.
+  const tall = Boolean(aside) || actions.length > 0;
   return (
     <div className="shrink-0 px-3 py-2">
-      <Alert role={role} variant={tone} className="py-1.5">
-        <AlertDescription className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-          <span className="min-w-0 grow basis-40 text-pretty text-foreground">{text}</span>
+      <Alert role={role} variant={tone} className={cn("py-1.5", tall ? "[&>[data-slot=alert-mark]]:mt-1" : "[&>[data-slot=alert-mark]]:mt-0")}>
+        <AlertDescription className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-4">
+          <span className={cn("min-w-0 grow basis-40 text-pretty text-foreground", tall && "py-1")}>{text}</span>
           {aside || actions.length > 0 ? (
             <span data-alert-end className="ms-auto flex shrink-0 items-center gap-2">
               {aside ? <span className="text-muted-foreground">{aside}</span> : null}

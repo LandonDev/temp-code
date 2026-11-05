@@ -60,4 +60,18 @@ describe("FileNoteBar", () => {
     expect(probe.container.textContent).toContain("Couldn’t open: No editor found");
     expect(alert().className).toContain("bg-destructive/10");
   });
+
+  it("sets the mark on the first line, 8px from the text, for a one-line note and one with actions", () => {
+    probe = mountProbe(<FileNoteBar note={{ text: "IntelliJ IDEA is not installed" }} />);
+    const mark = () => probe!.container.querySelector<HTMLElement>('[data-slot="alert-mark"]')!;
+    expect(mark().getAttribute("class")).toContain("self-start");
+    expect(mark().getAttribute("class")).not.toContain("self-center");
+    expect(alert().className).toContain("gap-x-2 ");
+    expect(alert().className).toContain("[&>[data-slot=alert-mark]]:mt-0");
+    probe.unmount();
+    probe = mountProbe(<FileNoteBar note={{ text: "No Mac copy" }} readOnly />);
+    // The aside makes the first line the 24px button's: the text pads to it and the mark sits 4px down.
+    expect(alert().className).toContain("[&>[data-slot=alert-mark]]:mt-1");
+    expect(probe.container.querySelector('[data-slot="alert-description"] > span')!.className).toContain("py-1");
+  });
 });
