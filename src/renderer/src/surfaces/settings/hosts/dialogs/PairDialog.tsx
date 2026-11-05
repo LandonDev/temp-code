@@ -7,6 +7,7 @@ import { DialogFooter, ErrorLine, errorText } from "../../../../chrome/ConfirmDi
 import { Field, FieldRow } from "../../../../chrome/DialogField";
 import { Modal, useModalClose } from "../../../../chrome/Modal";
 import { CopyButton } from "../CopyButton";
+import { Facts } from "../Facts";
 import { rpc } from "../rpc";
 import { CapsPicker, Countdown, Secret, grantText } from "./fields";
 
@@ -46,12 +47,10 @@ function Code({ made, onClose, onChanged }: Props & { made: Made }) {
               </code>
               <CopyButton text={made.code} label="Copy code" />
             </div>
-            <p className="flex flex-wrap gap-x-2 text-xs tabular-nums text-muted-foreground">
-              <span>{grantText(made.pairing.caps)}</span>
-              <span>
-                <Countdown prefix="expires in" at={made.pairing.expiresAt} />
-              </span>
-            </p>
+            <Facts
+              className="text-xs text-muted-foreground"
+              parts={[grantText(made.pairing.caps), <Countdown key="expires" prefix="expires in" at={made.pairing.expiresAt} />]}
+            />
           </div>
         </div>
         <Secret label="Link" value={made.url} />

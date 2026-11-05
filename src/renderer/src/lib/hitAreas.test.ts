@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 /* Hit areas reach 24px and insets sit on the 12px line (docs/DESIGN.md "Spacing"). */
 const ROOT = resolve(__dirname, "..");
 const read = (file: string) => readFileSync(join(ROOT, file), "utf8");
+const STRETCH = "after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']";
 
 describe("hit areas and insets", () => {
   it("stretch the small targets to 24px with an ::after", () => {
@@ -15,6 +16,10 @@ describe("hit areas and insets", () => {
     // 20px actions: 2px above and below.
     expect(read("chrome/MessageQueue.tsx")).toContain("relative h-5 px-1 text-xs font-normal text-muted-foreground after:absolute after:inset-x-0 after:-inset-y-0.5 after:content-['']");
     expect(read("chrome/ConnectionLine.tsx")).toContain("h-5 px-1.5 text-xs font-normal text-muted-foreground after:absolute after:inset-x-0 after:-inset-y-0.5 after:content-['']");
+    // Settings' 16px text links: 4px above and below, nothing around them clipping it.
+    expect(read("surfaces/settings/General.tsx")).toContain(`h-auto px-0 text-xs ${STRETCH}`);
+    expect(read("surfaces/settings/hosts/Devices.tsx")).toContain(`hover:text-foreground ${STRETCH}`);
+    expect(read("chrome/ThreadDefaultsDialog.tsx")).toContain(`h-auto px-0 text-xs ${STRETCH}`);
   });
 
   it("end the right panel's header on its rows' 12px Stop column, and start a dock tab's label on the terminal's 12px", () => {

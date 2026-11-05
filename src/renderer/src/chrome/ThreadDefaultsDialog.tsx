@@ -5,6 +5,7 @@ import { homeNote } from "../lib/settingsHome";
 import { FieldRow } from "./DialogField";
 import { ChoiceSelect } from "../components/choice-select";
 import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
+import { Facts } from "../surfaces/settings/hosts/Facts";
 import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { ModalPanel, useClosingDialog } from "./Modal";
@@ -181,13 +182,15 @@ function OverridingWorkspaces({ environmentId }: { environmentId: string }) {
   const overriding = workspaces.filter((w) => w.environmentId === environmentId && defaults.get(scopeKey(w.environmentId, w.id))?.overridden);
   if (overriding.length === 0) return null;
   return (
-    <p className="flex flex-wrap items-center gap-x-2 pt-3 text-xs text-muted-foreground" data-testid="defaults-overrides">
+    <p className="flex flex-wrap items-center gap-x-1 py-3 text-xs text-muted-foreground" data-testid="defaults-overrides">
       Overridden in
-      {overriding.map((w) => (
-        <Button key={w.id} variant="link" size="xs" className="h-auto px-0 text-xs" onClick={() => openWorkspaceSettings(w.id)}>
-          {w.name}
-        </Button>
-      ))}
+      <Facts
+        parts={overriding.map((w) => (
+          <Button key={w.id} variant="link" size="xs" className="h-auto px-0 text-xs after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']" onClick={() => openWorkspaceSettings(w.id)}>
+            {w.name}
+          </Button>
+        ))}
+      />
     </p>
   );
 }

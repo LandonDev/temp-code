@@ -3,7 +3,6 @@ import { InboxProviderMark } from "../../chrome/InboxProviderMark";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Checkbox } from "../../components/ui/checkbox";
 import { Dialog } from "../../components/ui/dialog";
 import { DialogFooter } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
@@ -259,11 +258,7 @@ function LinearSettings() {
         <PageSection title="Teams in the inbox">
           {teams.map((team) => (
             <PageRow key={team.id} title={team.name} description={team.key || undefined}>
-              <Checkbox
-                aria-label={team.name}
-                checked={!hiddenTeamIds.includes(team.id)}
-                onCheckedChange={() => toggleTeam(team.id)}
-              />
+              <SettingSwitch label={team.name} on={!hiddenTeamIds.includes(team.id)} onChange={() => toggleTeam(team.id)} />
             </PageRow>
           ))}
         </PageSection>
@@ -386,7 +381,7 @@ function UpdateRow() {
             {canApply ? (
               <>
                 {" "}
-                <Button variant="link" size="xs" className="h-auto px-0 text-xs" onClick={() => void openUrl(MANUAL_DOWNLOAD_URL)}>
+                <Button variant="link" size="xs" className="h-auto px-0 text-xs after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']" onClick={() => void openUrl(MANUAL_DOWNLOAD_URL)}>
                   Download the installer
                 </Button>
               </>

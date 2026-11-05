@@ -255,8 +255,8 @@ conflict copies under Memory), Remembered approvals and Devices follow as
 their own sections. A paired host's section holds Deploy with its log,
 Running threads and Sync with Sync now; "Mac bridge for <host>" follows
 (Access, the running and held calls, the forwarded ports, Settings… for the
-caps, forwarding and shared folders). Facts on one line are `Facts` spans,
-never dots; numbers are `CommitField`s; switches `SettingSwitch`; options
+caps, forwarding and shared folders). Facts on one line are `Facts` spans (one comma
+sentence, each 4px from the next; `lib/factsGuard.test.ts`), never dots; numbers are `CommitField`s; switches `SettingSwitch`; options
 `ChoiceSelect`. A refused change is said under its own row (a client's
 Revoke under that client, a port under Port, Sync now under Sync); only the
 listener's own failure sits under Remote access. A refused field puts the

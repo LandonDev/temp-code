@@ -138,7 +138,7 @@ describe("General", () => {
     expect(screen.queryByText(/Short cues/)).toBeNull();
   });
 
-  it("lists the teams with a box each, hidden ones unchecked", async () => {
+  it("lists the teams with a switch each, as every on/off setting is, hidden ones off", async () => {
     linear.connected = true;
     linear.teams = [
       { id: "t1", name: "Core", key: "COR" },
@@ -146,8 +146,9 @@ describe("General", () => {
     ];
     page();
     await waitFor(() => screen.getByRole("region", { name: "Teams in the inbox" }));
-    expect(screen.getByRole("checkbox", { name: "Core" }).getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByRole("checkbox", { name: "Web" }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("switch", { name: "Core" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("switch", { name: "Web" }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByRole("checkbox")).toBeNull();
     expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();
   });
 

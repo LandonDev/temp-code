@@ -100,26 +100,6 @@ export function PlanSettingsFields({
   );
 }
 
-/** The words of a plan set's summary, each its own fact. */
-export function planSettingsParts(s: PlanSettings): string[] {
-  const parts = [s.autoImplement ? "Auto-start" : "Start by hand"];
-  if (s.implementModel) parts.push(findModel(s.implementModel)?.name ?? s.implementModel);
-  if (s.implementReasoning) parts.push(EFFORT_LABELS[s.implementReasoning]);
-  if (s.implementContext) parts.push(s.implementContext === "1m" ? "1M" : "200k");
-  return parts;
-}
-
-/** The summary as separate facts, 8px apart; `extra` adds one more (global). */
-export function PlanSettingsSummary({ settings, extra }: { settings: PlanSettings; extra?: string }) {
-  return (
-    <span className="inline-flex flex-wrap gap-x-2">
-      {[...planSettingsParts(settings), ...(extra ? [extra] : [])].map((part) => (
-        <span key={part}>{part}</span>
-      ))}
-    </span>
-  );
-}
-
 /** The global group on Settings → Thread defaults: self-loading, saves on
  *  every change, rows in their shape until the set loads. */
 export function PlanSettingsEditor() {

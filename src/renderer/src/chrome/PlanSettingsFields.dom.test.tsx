@@ -16,7 +16,7 @@ vi.mock("../lib/tcserver/plans", () => ({
 vi.mock("../lib/models", () => ({ allModels: () => [], findModel: () => ({ name: "Opus 5.5" }), nativeModelId: (m: { id: string }) => m.id }));
 vi.mock("../components/choice-select", async () => await import("../components/choice-select-body"));
 
-const { PlanSettingsEditor, PlanSettingsSummary } = await import("./PlanSettingsFields");
+const { PlanSettingsEditor } = await import("./PlanSettingsFields");
 
 afterEach(cleanup);
 
@@ -46,17 +46,5 @@ describe("Plans", () => {
     render(<PlanSettingsEditor />);
     expect(screen.getByRole("switch", { name: "Auto-start" })).toBeTruthy();
     expect(screen.getByRole("combobox", { name: "Build model" })).toBeTruthy();
-  });
-
-  it("summarises a set as separate facts, never a dotted line", () => {
-    render(
-      <PlanSettingsSummary
-        settings={{ ...DEFAULT_PLAN_SETTINGS, autoImplement: true, implementModel: "opus", implementContext: "1m" }}
-        extra="global"
-      />,
-    );
-    const parts = [...document.querySelectorAll("span > span")].map((el) => el.textContent);
-    expect(parts).toEqual(["Auto-start", "Opus 5.5", "1M", "global"]);
-    expect(document.body.textContent).not.toContain("·");
   });
 });

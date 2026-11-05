@@ -208,15 +208,23 @@ function DeviceRow({
         <>
           {detail}
           {holder ? (
-            <span data-holder className="block truncate">
-              {onOpenSession ? (
-                <Button variant="link" size="xs" className="h-auto max-w-full truncate px-0 text-xs font-normal text-muted-foreground hover:text-foreground" onClick={() => onOpenSession(holder.sessionId)}>
-                  {holderText(holder)}
+            onOpenSession ? (
+              // The 16px link reaches 24px; its words truncate inside it, so nothing clips the hit area.
+              <span data-holder className="flex min-w-0">
+                <Button
+                  variant="link"
+                  size="xs"
+                  className="h-auto max-w-full min-w-0 shrink px-0 text-xs font-normal text-muted-foreground hover:text-foreground after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']"
+                  onClick={() => onOpenSession(holder.sessionId)}
+                >
+                  <span className="min-w-0 truncate">{holderText(holder)}</span>
                 </Button>
-              ) : (
-                holderText(holder)
-              )}
-            </span>
+              </span>
+            ) : (
+              <span data-holder className="block truncate">
+                {holderText(holder)}
+              </span>
+            )
           ) : null}
         </>
       }

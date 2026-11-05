@@ -1,15 +1,24 @@
+import type { ReactNode } from "react";
 import { cn } from "../../../lib/cn";
 
 /**
- * Facts on one line, as separate spans 8px apart that wrap, in tabular
- * figures. Never joined by a middle dot (docs/DESIGN.md "Settings").
+ * Facts of one kind on one line, as one comma sentence ("App, operate,
+ * never used"): separate spans that wrap between facts, each 4px from the
+ * next (docs/DESIGN.md "Typography and text hierarchy": about a space), the
+ * comma drawn after every fact but the last, so space never separates two
+ * facts alone; tabular figures. Never joined by a middle dot. A fact may be
+ * a node of its own tone (a warning).
  */
-export function Facts({ parts, className }: { parts: readonly string[]; className?: string }) {
-  if (parts.length === 0) return null;
+export function Facts({ parts, className }: { parts: readonly ReactNode[]; className?: string }) {
+  const shown = parts.filter((part) => part !== null && part !== false && part !== undefined && part !== "");
+  if (shown.length === 0) return null;
   return (
-    <span data-slot="facts" className={cn("inline-flex min-w-0 flex-wrap gap-x-2 tabular-nums", className)}>
-      {parts.map((part, i) => (
-        <span key={`${i}:${part}`}>{part}</span>
+    <span
+      data-slot="facts"
+      className={cn("inline-flex min-w-0 flex-wrap gap-x-1 tabular-nums [&>span:not(:last-child)]:after:content-[',']", className)}
+    >
+      {shown.map((part, i) => (
+        <span key={typeof part === "string" ? `${i}:${part}` : i}>{part}</span>
       ))}
     </span>
   );

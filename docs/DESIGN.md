@@ -301,6 +301,9 @@ accessible name, a toast, a notification) it is "Word: Detail"
 (`plainStatus`, src/shared/statusWords.ts). No visible text separates two
 facts with a run of spaces, a middle dot, a pipe or a bullet;
 `lib/spaceGuard.test.ts` fails on a run of spaces in any renderer literal.
+A run of facts of one kind is one comma sentence (`Facts`,
+surfaces/settings/hosts/Facts.tsx: a span each, 4px apart, the comma drawn
+after all but the last), never facts set apart by space alone.
 
 Other rules: nothing is said twice (a count in the title is not repeated in
 the body); nothing is explained that the layout already shows; labels are

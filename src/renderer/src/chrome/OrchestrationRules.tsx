@@ -6,6 +6,7 @@ import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import { ChevronRight, Plus } from "./icons";
 import { HarnessIcon } from "./HarnessIcon";
 import { useConfirm } from "./ConfirmDialog";
+import { Facts } from "../surfaces/settings/hosts/Facts";
 import { ChoiceSelect, type Choice } from "../components/choice-select";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
 import { ItemButton, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
@@ -493,12 +494,14 @@ function RuleRow({
         <ItemContent className="min-w-0">
           <ItemTitle className={rule.enabled ? undefined : "text-muted-foreground"}>{rule.task}</ItemTitle>
           <ItemDescription id={factsId} className="line-clamp-none">
-            <span className="flex flex-wrap items-center gap-2">
-              {rule.enabled ? null : <span>Off</span>}
-              <span>{model?.label ?? modelId}</span>
-              {model?.reasoning.length ? <span>{EFFORT_LABELS[rule.reasoning]}</span> : null}
-              {orchestratorsOnly ? <span>Orchestrators only</span> : !approved ? <span className="text-warning">Not approved</span> : null}
-            </span>
+            <Facts
+              parts={[
+                rule.enabled ? null : "Off",
+                model?.label ?? modelId,
+                model?.reasoning.length ? EFFORT_LABELS[rule.reasoning] : null,
+                orchestratorsOnly ? "Orchestrators only" : !approved ? <span className="text-warning">Not approved</span> : null,
+              ]}
+            />
           </ItemDescription>
         </ItemContent>
         <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
