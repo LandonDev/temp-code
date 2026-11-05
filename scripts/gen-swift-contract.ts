@@ -295,6 +295,8 @@ export const SUBSET: SubsetEntry[] = [
   method('session.rowBody', z.object({ row: W.EventRowSchema })),
   method('session.subscribe', z.null()),
   method('session.unsubscribe', z.null()),
+  // the thread the phone's screen shows, so its rows reach it as they land (docs/IOS-DESIGN.md "Streaming")
+  method('session.focus', z.null()),
   method('session.send', z.null()),
   method('session.interrupt', z.null()),
   method('session.approve', z.null()),

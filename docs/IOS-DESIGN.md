@@ -1969,7 +1969,7 @@ left in a view.
 | Needs-you row appearing | `base` ease-out, opacity and 4 pt translateY; removal `fast`, opacity only | `.rowAppearTransition()` (`Motion.appear(reduced:)`, `Motion.rowAppear`, `Motion.rowLeave`, `Motion.travel`) |
 | Last-activity line changing | `fast` cross-fade with 2 pt blur; the row never changes height | `SwapText`, `.swapTransition()` (`Motion.swap(reduced:)`, `Motion.crossFade`, `Motion.crossFadeBlur`) |
 | Counts and elapsed | `contentTransition(.numericText())` on `fast` | `.numeric(value)` (`Motion.numeric`), `CountText`, `ElapsedText`, `AgoText` |
-| Streaming text | the jitter-buffer reveal (`SmoothText`): paced at the measured arrival rate behind a 120–500 ms playout lag, painted every 33 ms, no fade and no translate; a chip's target types in and cross-fades 150 ms with 2 pt blur when replaced; edit counts tick with `numericText`; reduced motion reveals per batch | `SmoothTextReveal`, `StreamingAssistantRow`, `LiveChipLabel` (`Motion.swap`, `Motion.crossFade`) |
+| Streaming text | the desktop's jitter buffer (`SmoothText`, smoothText.ts as of 0b82ddad, in UTF-16 units): the base pace is the arrival rate over the last 1.5 s (a gap counted 1 s at most, a burst at 1,500/s over a step), clamped 25–1,500 units/s, 400 before the first gap; a lead held behind the live end, seeded 250 ms (every host is remote to the phone), never under twice the gaps' 90th percentile (100–800 ms), an underrun growing it 1.5 times or by the wait, its excess decaying on a 6 s time constant; each spurt holds until a lead and a step are in hand; the pace leans up to 1.5 times while more than the lead is buffered, and every character shows within 1.5 s of arriving; the stream's end drains at the same pace, only a rewrite of the shown prefix and a hidden row snap. Whole words every 100 ms (`revealCut`: a token past 24 units cut where the pace reaches, never inside a grapheme; a bare block marker and a table's header row held until they have content; never inside an open fence), on a timer between steps, no display frames. A row that joins the last turn after the transcript opened is born live and reveals from its first word even when it mounts settled; history and a row scrolled back in show whole. A chip's target types in and cross-fades on `fast` with 2 pt blur when replaced; edit counts tick with `numericText` | `SmoothTextReveal`, `StreamingAssistantRow`, `BornRows`, `LiveChipLabel` (`Motion.swap`, `Motion.crossFade`) |
 | Status dot to spinner | cross-fade over `fast` | `StatusDot` (`Motion.crossFade`) |
 | A glyph trading state (Send ↔ Stop, outline ↔ fill, pin ↔ unpin) | scale 0.25 → 1, opacity 0 → 1, blur 4 → 0, spring `duration 0.3, bounce 0`; reduced motion: opacity on the swap curve over `fast` | `.iconSwapTransition()` with `.id(symbol)` in a `ZStack` (`Motion.iconSwap(reduced:)`, `Motion.iconSwap`, `Motion.iconSwapScale`, `Motion.iconSwapBlur`, `Motion.iconFade`); `TypeGlyph(active:)` uses the symbol replace effect instead, since Glyphs builds without Motion |
 | Send button filling | fill and glyph color 150 ms ease-out when text arrives or leaves; the arrow ↔ stop square is the glyph-trading row above, the circle never moves | `Motion.crossFade` on the fill; `.id(stops)` with `Motion.iconSwap(reduced:)` on the glyph |
@@ -2068,9 +2068,14 @@ keyboard action. Every animated change has a static cue as well.
   once per boot (`bootResume`, deduped by the boot's time in the cache).
 - **Measure.** Scroll a 2,000-row thread at 120 Hz with the Instruments
   animation hitch template; a hitch over 8 ms in the transcript is a bug.
-- **Streaming.** A streaming row's text is paced by `SmoothTextReveal`
-  inside the row's own state, so a paint changes one row's body and nothing
-  in the fold; the revealed prefix goes through the incremental markdown
+- **Streaming.** The thread screen names its thread to the host while it
+  is on screen and the app is active (`session.focus { sessionId, shown }`,
+  `FocusSignal`; operate, so a read key sends nothing; null when the app
+  leaves the screen, again after a reconnect), so its rows leave the host's
+  push coalescer as they land instead of in 33–250 ms batches. A streaming
+  row's text is paced by `SmoothTextReveal` inside the row's own state, a
+  step every 100 ms on a timer (no display link), so a step changes one
+  row's body and nothing in the fold; the revealed prefix goes through the incremental markdown
   path (the last block only). Partial tool calls and live edits update one
   row in place by `callId` and by path; a batch of N rows is one write to
   the thread's state. The list anchors its bottom edge on size changes.

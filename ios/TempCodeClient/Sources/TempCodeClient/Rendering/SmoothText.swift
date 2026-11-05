@@ -1,422 +1,482 @@
 import Foundation
 import Observation
-#if canImport(UIKit)
-import UIKit
-#endif
 
-// MARK: - The jitter buffer
-
-/// The desktop's smooth streaming reveal (src/renderer/src/surfaces/
-/// smoothText.ts), function for function. Text arrives in chunks whose size
-/// and spacing depend on the path: a local harness sends a delta every few
-/// ms, the tunnel sends a frame every 33–100 ms with jitter and the odd
-/// stall. The pacer decouples what ARRIVED from what is SHOWN and works as
-/// a jitter buffer: it measures the arrival rate and a high percentile of
-/// the gaps between arrivals, reveals at that rate behind a playout lag of
-/// about two such gaps (clamped), leans gently toward that lag, eases down
-/// as the buffer runs low, and falls back to an exponential catch-up before
-/// the rhythm is known and once the stream ends.
+/// The desktop's streaming reveal (surfaces/smoothText.ts), in UTF-16 units.
+/// Text arrives in chunks whose size and spacing depend on the path: every
+/// host is another machine to the phone, so frames land every 33–250 ms
+/// with jitter, the odd stall, and now and then a whole reply inside a few
+/// ms. The reveal decouples what ARRIVED from what is SHOWN and works as an
+/// adaptive jitter buffer, as a media player plays packets that arrive
+/// unevenly:
 ///
-/// Positions are counts of UTF-8 code units (`text.utf8.count` is O(1) on a
-/// native string, and deltas only ever append). The constants keep the
-/// desktop's names and values; "chars" in a name reads as units here, the
-/// same number for ASCII and within a few percent for prose.
+/// - It measures the stream: the arrival rate over the last `rateWindowMs`
+///   (a gap counted `pauseMs` at most, a burst counted at `baseMaxCps` over
+///   a step at most) is the base pace, clamped to `floorCps`–`baseMaxCps`,
+///   `defaultCps` before the first gap; a high percentile of the gaps sets
+///   the lead's floor.
+/// - It holds a lead behind the live end, seeded `leadRemoteMs` (the phone's
+///   every host is remote), never under twice the gaps' 90th percentile
+///   (within `leadMinMs`–`leadMaxMs`). An underrun grows it `leadGrowth`
+///   times or by the wait, whichever is more; with no underrun its excess
+///   decays toward the floor on `leadDecayMs`.
+/// - Each spurt (the first chunk, the chunk that ends an underrun) holds
+///   until a lead and a step of text are in hand, or as long has passed.
+/// - Then it reveals at the base pace, never slower while text is in hand,
+///   leaning faster (at most `maxSurge` times) while more than the lead is
+///   buffered, and every character shows within `catchUpMs` of arriving
+///   (arrivals inside one step sharing a due time).
+/// - The stream's end drains at the same pace with no hold; only a rewrite
+///   of the shown prefix and a hidden row snap.
+/// - Steps come every `MotionValues.revealStep` (100 ms) and show whole
+///   words (`revealCut`); between steps the clock waits on a timer and asks
+///   for no display frames.
 public enum SmoothText {
-    public static let tauStreamMs = 320.0
-    public static let tauDrainMs = 90.0
     public static let floorCps = 25.0
-    public static let maxLag = 900.0
-    /// Paint at most this often: markdown re-lays at ~30 fps, not 120.
-    public static let paintEveryMs = 33.0
-    /// Frame deltas clamp here so a background app does not dump everything at once.
-    public static let maxFrameMs = 100.0
-    /// The lag held behind the live end is this many high-percentile gaps…
+    /// A step's dt never counts past this, so a stalled clock does not dump everything.
+    public static let maxFrameMs = 250.0
+    /// The seed lead on the host's own machine; the phone never has one.
+    public static let leadLocalMs = 100.0
+    /// The seed lead for a thread on another host: every thread, on the phone.
+    public static let leadRemoteMs = 250.0
+    public static let leadMinMs = 100.0
+    public static let leadMaxMs = 800.0
+    public static let leadGrowth = 1.5
+    public static let leadDecayMs = 6_000.0
+    public static let catchUpMs = 1_500.0
+    public static let defaultCps = 400.0
+    public static let baseMaxCps = 1_500.0
     public static let targetLagGaps = 2.0
-    /// …and never less than this (a local stream: deltas every few ms)…
-    public static let minLagMs = 120.0
-    /// …nor more than this (a choppy link: past it, waiting costs more than a hitch).
-    public static let maxLagMs = 500.0
-    /// The gap percentile the lag covers: most gaps, not the one-off stall.
     public static let gapPercentile = 0.9
-    /// Recent gaps kept for the percentile.
     public static let gapSamples = 32
-    /// The rate's moving average forgets with this time constant.
-    public static let rateTauMs = 1500.0
-    /// How hard the pace leans toward the target lag.
-    public static let lagGain = 0.3
-    /// The pace never runs faster than this many times the arrival rate.
+    public static let rateWindowMs = 1_500.0
+    public static let leadGain = 0.3
     public static let maxSurge = 1.5
-    /// A gap this long is a pause (the model thinking, a tool running), not
-    /// jitter: the next arrival starts a new spurt and the estimates keep
-    /// what they knew.
-    public static let pauseMs = 1000.0
+    public static let pauseMs = 1_000.0
+    /// A step of whole words this often (ms).
+    public static let stepMs = MotionValues.revealStep * 1_000
 
-    /// One frame of the exponential catch-up: where the revealed position
-    /// lands after `dt` ms, given the live end and whether the stream is
-    /// still open. The pacer's fallback before it knows the stream's rhythm
-    /// and its drain once the stream ends.
-    public static func advanceReveal(pos: Double, end: Double, dt: Double, live: Bool) -> Double {
-        let remaining = end - pos
-        if remaining <= 0 { return end }
-        let step = max(
-            remaining * (1 - exp(-dt / (live ? tauStreamMs : tauDrainMs))),
-            dt * floorCps / 1000
-        )
-        let next = min(end, pos + step)
-        return end - next > maxLag ? end - maxLag : next
-    }
-
-    /// True when the already-revealed prefix changed under us (a rewrite,
-    /// not an append). Compares the first `revealed` UTF-8 units of both.
+    /// True when the shown prefix changed under the reveal (a rewrite, not an append).
     public static func isRewrite(prev: String, next: String, revealed: Double) -> Bool {
         let whole = Int(revealed.rounded(.down))
-        return !next.utf8.prefix(whole).elementsEqual(prev.utf8.prefix(whole))
+        return !next.utf16.prefix(whole).elementsEqual(prev.utf16.prefix(whole))
     }
 
-    /// The first `units` UTF-8 units of `text`, rounded down to a whole
-    /// scalar and then to a whole grapheme, so a 4-byte scalar never shows
-    /// half-built and an emoji never shows without its modifier.
-    public static func prefix(of text: String, units: Int) -> Substring {
-        let utf8 = text.utf8
-        guard units < utf8.count else { return text[...] }
-        guard units > 0 else { return text[text.startIndex..<text.startIndex] }
-        var i = utf8.index(utf8.startIndex, offsetBy: units)
-        // Back out of a scalar's continuation bytes (10xxxxxx).
-        while i > utf8.startIndex, i < utf8.endIndex, utf8[i] & 0xC0 == 0x80 {
-            i = utf8.index(before: i)
+    /// The first `units` UTF-16 units of `text`, never splitting a surrogate pair.
+    public static func prefix(of text: String, units: Int) -> String {
+        let utf16 = text.utf16
+        guard units < utf16.count else { return text }
+        var cut = max(0, units)
+        if cut > 0, UTF16.isLeadSurrogate(utf16[utf16.index(utf16.startIndex, offsetBy: cut - 1)]) { cut -= 1 }
+        return String(decoding: utf16.prefix(cut), as: UTF16.self)
+    }
+
+    // MARK: Where a step ends
+
+    /// Where the shown text ends when the pace has reached `pos` (UTF-16):
+    /// the last word boundary at or before it (just past a whitespace run),
+    /// or `pos` itself in a token longer than `MotionValues.longToken` with
+    /// no boundary, moved back to the start of a grapheme (so never inside a
+    /// surrogate pair or a joined emoji). While revealing, a trailing line
+    /// that is only a block marker (`#`, `-`, `1.`, `- [ ]`, under any `>`)
+    /// is held to its line start until it has content, and a trailing table
+    /// to its first line until its delimiter row is whole; neither inside an
+    /// open code fence. Once nothing is left to reveal the cut is the whole text.
+    public static func revealCut(_ text: String, pos: Int, revealing: Bool) -> Int {
+        let units = Array(text.utf16)
+        guard revealing else { return units.count }
+        var cut = max(0, min(pos, units.count))
+        if cut == 0 { return 0 }
+        var boundary = cut
+        while boundary > 0, !isSpace(units[boundary - 1]) { boundary -= 1 }
+        if cut - boundary <= MotionValues.longToken {
+            cut = boundary
+        } else {
+            cut = graphemeStart(text, at: cut)
         }
-        // A scalar-aligned index inside a grapheme rounds down to the
-        // Character boundary in a String subscript (Swift 5.7 index rounding).
-        return text[..<Self.characterBoundary(text, at: i)]
+        return holdBlockStart(text, units: units, cut: cut)
     }
 
-    /// The nearest Character boundary at or before a scalar-aligned index.
-    static func characterBoundary(_ text: String, at i: String.Index) -> String.Index {
-        guard i > text.startIndex, i < text.endIndex else { return i }
-        // `index(after:)` rounds a mid-grapheme index down to its Character
-        // before stepping; stepping back then lands on that Character's start.
-        let next = text.index(after: i)
-        let start = text.index(before: next)
-        return start <= i ? start : i
+    /// JavaScript's `\s` on one UTF-16 unit.
+    static func isSpace(_ unit: UInt16) -> Bool {
+        switch unit {
+        case 0x09...0x0D, 0x20, 0xA0, 0x1680, 0x2000...0x200A, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF: true
+        default: false
+        }
+    }
+
+    /// `offset` moved back to the start of the grapheme it falls inside.
+    static func graphemeStart(_ text: String, at offset: Int) -> Int {
+        let utf16 = text.utf16
+        guard offset > 0, offset < utf16.count else { return offset }
+        let index = utf16.index(utf16.startIndex, offsetBy: offset)
+        let start = text.rangeOfComposedCharacterSequence(at: index).lowerBound
+        return utf16.distance(from: utf16.startIndex, to: start)
+    }
+
+    nonisolated(unsafe) private static let bareMarker = try! Regex(#"^(?:[ \t]*>)*[ \t]*(?:#{1,6}|[-*+](?:[ \t]+\[[ xX]?\]?)?|\d{1,9}[.)])?[ \t]*$"#)
+    nonisolated(unsafe) private static let tableDelimiter = try! Regex(#"^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$"#)
+    nonisolated(unsafe) private static let fence = try! Regex(#"^[ \t]{0,3}(?:```|~~~)"#)
+    nonisolated(unsafe) private static let tableLine = try! Regex(#"^[ \t]*\|"#)
+
+    /// The cut pulled back to the start of a trailing bare marker or an unfinished table.
+    static func holdBlockStart(_ text: String, units: [UInt16], cut: Int) -> Int {
+        let shown = String(decoding: units[0..<cut], as: UTF16.self)
+        let lines = shown.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var starts: [Int] = []
+        var at = 0
+        for line in lines {
+            starts.append(at)
+            at += line.utf16.count + 1
+        }
+        // Inside an open fence a `-` or a `|` is code.
+        var fenced = false
+        for line in lines.dropLast() where line.prefixMatch(of: fence) != nil { fenced.toggle() }
+        let lastIndex = lines.count - 1
+        let last = lines[lastIndex]
+        if fenced || last.prefixMatch(of: fence) != nil { return cut }
+        if !last.isEmpty, last.wholeMatch(of: bareMarker) != nil { return starts[lastIndex] }
+        // The trailing run of lines that start with `|`; it stands once its
+        // second line is a whole delimiter row (a newline after it).
+        let end = last.isEmpty ? lastIndex - 1 : lastIndex
+        guard end >= 0, lines[end].prefixMatch(of: tableLine) != nil else { return cut }
+        var first = end
+        while first > 0, lines[first - 1].prefixMatch(of: tableLine) != nil { first -= 1 }
+        let delimiterWhole = first + 1 < lastIndex && lines[first + 1].wholeMatch(of: tableDelimiter) != nil
+        return delimiterWhole ? cut : starts[first]
     }
 }
 
-/// The jitter buffer's state: what is shown, what arrived, and what the
-/// stream's rhythm has been. Plain data, so the clock and the tests share it.
-public struct Pacer: Sendable {
-    /// Fractional revealed length (UTF-8 units).
-    public var pos: Double
-    /// Arrived length (the live end).
-    public var end: Double
-    /// When the last chunk arrived (ms); `.nan` before the first.
-    public var lastArrival: Double
-    /// Gaps folded into the averages since the pacer started.
-    public var samples: Int
-    /// Moving averages of units per arrival and ms between arrivals.
-    public var avgChars: Double
-    public var avgGap: Double
-    /// Recent gaps (ms), oldest first.
-    public var gaps: [Double]
-
-    public init(length: Double) {
-        pos = length
-        end = length
-        lastArrival = .nan
-        samples = 0
-        avgChars = 0
-        avgGap = 0
-        gaps = []
+/// The jitter buffer's state, the desktop's `Pacer`: what is shown, what
+/// arrived (UTF-16 units) and the stream's rhythm. Plain data, so the
+/// reveal and the tests share it.
+public struct Pacer: Sendable, Equatable {
+    public struct Mark: Sendable, Equatable {
+        public var at: Double
+        public var value: Double
     }
 
-    /// The shown text jumps to `length` (mount, a rewrite, a hidden pane);
-    /// the stream's rhythm is kept.
+    /// Fractional revealed length.
+    public var pos: Double
+    /// Arrived length: the live end.
+    public var end: Double
+    /// When the last chunk arrived (ms), NaN before the first.
+    public var lastArrival = Double.nan
+    /// Gaps learned from since the pacer started.
+    public var samples = 0
+    /// The rate's window, oldest first: when each arrival landed on the
+    /// rate's clock and the chars counted up to it.
+    public var window: [Mark] = []
+    /// Recent gaps (ms), oldest first.
+    public var gaps: [Double] = []
+    /// The lead (ms of text at the base pace) held behind the live end.
+    public var lead: Double
+    /// A spurt waits to start.
+    public var holding = false
+    /// When the current spurt's first chunk arrived (ms).
+    public var spurtAt = Double.nan
+    /// When the shown text reached the live end while live (ms), NaN otherwise.
+    public var dryAt = Double.nan
+    /// The arrivals not yet wholly shown, one per step: where each ended
+    /// (`value`) and when it landed (`at`), for the catch-up's due times.
+    public var due: [Mark] = []
+
+    public init(length: Double, leadMs: Double = SmoothText.leadRemoteMs) {
+        pos = length
+        end = length
+        lead = leadMs
+    }
+
+    public static func == (lhs: Pacer, rhs: Pacer) -> Bool {
+        func same(_ a: Double, _ b: Double) -> Bool { a == b || (a.isNaN && b.isNaN) }
+        return lhs.pos == rhs.pos && lhs.end == rhs.end && same(lhs.lastArrival, rhs.lastArrival) && lhs.samples == rhs.samples
+            && lhs.window == rhs.window && lhs.gaps == rhs.gaps && lhs.lead == rhs.lead && lhs.holding == rhs.holding
+            && same(lhs.spurtAt, rhs.spurtAt) && same(lhs.dryAt, rhs.dryAt) && lhs.due == rhs.due
+    }
+
+    /// The shown text jumps to `length` (a rewrite, a hidden row); the
+    /// stream's rhythm and the lead are kept.
     public mutating func snap(to length: Double) {
         pos = length
         end = length
+        holding = false
+        dryAt = .nan
+        due = []
     }
 
     /// The text grew to `end` at `now` (ms).
-    public mutating func noteArrival(end: Double, now: Double) {
-        let chars = end - self.end
+    public mutating func noteArrival(end newEnd: Double, now: Double) {
+        let chars = newEnd - end
         if chars <= 0 {
-            self.end = end
-            if pos > end { pos = end }
+            end = newEnd
+            if pos > newEnd { pos = newEnd }
+            for i in due.indices { due[i].value = min(due[i].value, newEnd) }
             return
         }
+        let first = lastArrival.isNaN
         let gap = now - lastArrival
-        self.end = end
+        end = newEnd
         lastArrival = now
-        // The first chunk, or the first after a pause: no gap to learn from.
-        if !(gap >= 0) || gap > SmoothText.pauseMs { return }
+        // Arrivals inside one step share an entry, due with the first of them.
+        if let last = due.indices.last, now - due[last].at < SmoothText.stepMs {
+            due[last].value = newEnd
+        } else {
+            due.append(Mark(at: now, value: newEnd))
+        }
+        if !dryAt.isNaN {
+            // This chunk ends an underrun: the lead was too short for this link.
+            let lead = currentLead
+            self.lead = min(SmoothText.leadMaxMs, max(lead * SmoothText.leadGrowth, lead + min(now - dryAt, SmoothText.pauseMs)))
+            dryAt = .nan
+            startSpurt(now)
+        } else if first {
+            startSpurt(now)
+        }
+        if first {
+            window = [Mark(at: 0, value: 0)]
+            return
+        }
+        // A burst counts at baseMaxCps over a step at most: the catch-up plays it out.
+        let counted = min(chars, max(gap, SmoothText.stepMs) * SmoothText.baseMaxCps / 1_000)
+        let lastMark = window[window.count - 1]
+        let at = lastMark.at + min(max(0, gap), SmoothText.pauseMs)
+        window.append(Mark(at: at, value: lastMark.value + counted))
+        // One arrival at or before the window's start stays as its anchor.
+        while window.count > 2, window[1].at <= at - SmoothText.rateWindowMs { window.removeFirst() }
         samples += 1
-        // A plain mean while the averages fill, then time-weighted, so a
-        // stream of 7 ms deltas and one of 100 ms frames forget at the same pace.
-        let a = max(1 / Double(samples), 1 - exp(-gap / SmoothText.rateTauMs))
-        avgChars += a * (chars - avgChars)
-        avgGap += a * (gap - avgGap)
+        // A pause is not jitter: the lead's floor learns from the gaps under it.
+        if gap > SmoothText.pauseMs { return }
         gaps.append(gap)
         if gaps.count > SmoothText.gapSamples { gaps.removeFirst() }
     }
 
-    /// Units per ms the stream has been arriving at; 0 before the first gap.
-    public var arrivalRate: Double {
-        samples > 0 && avgGap > 0 ? avgChars / avgGap : 0
+    private mutating func startSpurt(_ now: Double) {
+        holding = true
+        spurtAt = now
     }
 
-    /// The `gapPercentile` gap of the recent arrivals (ms).
+    /// Chars per ms the stream has been arriving at; 0 before the first gap.
+    public var arrivalRate: Double {
+        guard window.count >= 2 else { return 0 }
+        let span = window[window.count - 1].at - window[0].at
+        return span > 0 ? (window[window.count - 1].value - window[0].value) / span : 0
+    }
+
+    /// The base pace (chars per ms): the arrival rate within its clamps,
+    /// `defaultCps` before the stream has shown one.
+    public var basePace: Double {
+        let rate = arrivalRate
+        if rate <= 0 { return SmoothText.defaultCps / 1_000 }
+        return min(SmoothText.baseMaxCps / 1_000, max(SmoothText.floorCps / 1_000, rate))
+    }
+
+    /// The 90th-percentile gap of the recent arrivals (ms).
     public var highGap: Double {
-        if gaps.isEmpty { return 0 }
+        guard !gaps.isEmpty else { return 0 }
         let sorted = gaps.sorted()
         return sorted[min(sorted.count - 1, Int((SmoothText.gapPercentile * Double(sorted.count)).rounded(.down)))]
     }
 
-    /// The lag (ms of text) the pacer holds behind the live end.
-    public var targetLagMs: Double {
-        min(SmoothText.maxLagMs, max(SmoothText.minLagMs, SmoothText.targetLagGaps * highGap))
+    /// The least lead the stream's gaps call for (ms).
+    public var leadFloor: Double {
+        min(SmoothText.leadMaxMs, max(SmoothText.leadMinMs, SmoothText.targetLagGaps * highGap))
     }
 
-    /// One frame: advance the shown position by `dt` ms at `now` and return
-    /// it. While live and once the rate is known, the pace is the arrival
-    /// rate leaned toward the target lag. The lag is the playout delay: how
-    /// much text will be left when the next chunk is due, which is the
-    /// buffer now plus the time since the last arrival (up to a usual gap)
-    /// minus the mean gap. It holds still while the buffer drains between
-    /// two chunks, so the pace does not wobble with the chunking; only a
-    /// chunk later than usual reads as the buffer running low.
+    /// The lead held now (ms): its own, never under the floor.
+    public var currentLead: Double { max(leadFloor, lead) }
+
+    /// The pace (chars per ms) that shows every arrival within `catchUpMs` of when it landed.
+    public mutating func catchUpPace(now: Double) -> Double {
+        while let first = due.first, first.value <= pos { due.removeFirst() }
+        var pace = 0.0
+        for d in due {
+            pace = max(pace, (d.value - pos) / max(SmoothText.stepMs, d.at + SmoothText.catchUpMs - now))
+        }
+        return pace
+    }
+
+    /// One step: the shown position advanced by `dt` ms at `now`. The lead
+    /// decays toward its floor; a holding spurt waits until a lead and a
+    /// step of text are in hand or as long has passed (live only); then the
+    /// pace is the base, leaned faster above the lead, never under the
+    /// catch-up's. With nothing in hand while live an underrun begins.
     @discardableResult
     public mutating func step(dt: Double, now: Double, live: Bool) -> Double {
-        let rate = arrivalRate
-        if !live || rate <= 0 {
-            pos = SmoothText.advanceReveal(pos: pos, end: end, dt: dt, live: live)
-            return pos
-        }
-        let remaining = end - pos
-        if remaining <= 0 {
+        let floor = leadFloor
+        if lead > floor, dryAt.isNaN { lead = floor + (lead - floor) * exp(-dt / SmoothText.leadDecayMs) }
+        let inHand = end - pos
+        if inHand <= 0 {
             pos = end
+            if live, dryAt.isNaN { dryAt = now }
             return pos
         }
-        let target = targetLagMs
-        let bufferMs = remaining / rate
-        let since = max(0, now - lastArrival)
-        let usual = max(avgGap, highGap)
-        let lagMs = bufferMs + min(since, usual) - avgGap
-        let error = (lagMs - target) / target
-        var gain = min(SmoothText.maxSurge, max(0, 1 + SmoothText.lagGain * error))
-        // Running low (a stall): ease down as the buffer empties instead of
-        // running into the live end at full pace. A steady stream never gets
-        // here: its buffer bottoms out at the target lag.
-        let low = target / 3
-        if bufferMs < low { gain *= bufferMs / low }
-        let step = max(rate * gain * dt, dt * SmoothText.floorCps / 1000)
-        let next = min(end, pos + step)
-        pos = end - next > SmoothText.maxLag ? end - SmoothText.maxLag : next
+        let base = basePace
+        let lead = currentLead
+        let bufferMs = inHand / base
+        if holding {
+            // Enough that a lead is left once the first step has shown its share.
+            let enough = lead + SmoothText.stepMs
+            if live, bufferMs < enough, now - spurtAt < enough { return pos }
+            holding = false
+        }
+        // The lead is what is left once this step has shown its share.
+        let gain = min(SmoothText.maxSurge, 1 + SmoothText.leadGain * max(0, bufferMs - dt - lead) / lead)
+        let pace = max(base * gain, catchUpPace(now: now))
+        pos = min(end, pos + pace * dt)
+        if live, pos >= end { dryAt = now }
         return pos
     }
 }
 
-extension Pacer: Equatable {
-    /// `lastArrival` is `.nan` before the first chunk; two fresh pacers are equal.
-    public static func == (lhs: Pacer, rhs: Pacer) -> Bool {
-        lhs.pos == rhs.pos && lhs.end == rhs.end
-            && (lhs.lastArrival == rhs.lastArrival || (lhs.lastArrival.isNaN && rhs.lastArrival.isNaN))
-            && lhs.samples == rhs.samples && lhs.avgChars == rhs.avgChars && lhs.avgGap == rhs.avgGap && lhs.gaps == rhs.gaps
-    }
-}
-
-// MARK: - The reveal clock
-
-/// A frame source the reveal clock ticks on: a display link on iOS, a timer
-/// elsewhere, a hand-cranked one in tests. `onFrame` gets the frame time in
-/// ms on a monotonic clock, never wall time.
+/// When the reveal's next step runs: a timer between steps, never a display
+/// frame. Tests crank a hand clock.
 @MainActor
-public protocol RevealTicker: AnyObject {
-    var onFrame: ((Double) -> Void)? { get set }
-    func start()
-    func stop()
+public protocol RevealClock: AnyObject {
+    /// Monotonic ms.
+    var now: Double { get }
+    /// Runs `fire` with the time once `ms` have passed; a second call
+    /// replaces the first.
+    func schedule(afterMs ms: Double, _ fire: @escaping @MainActor (Double) -> Void)
+    func cancel()
 }
 
 /// The desktop's `useSmoothText` for one row: owns a `Pacer`, notes every
-/// text change as an arrival, steps on the ticker's frames and publishes
-/// the revealed prefix (`revealedUnits`) at most every `paintEveryMs`. A
-/// row mounts baselined to its whole text, so history and a cache paint
-/// show at once and only text that arrives while the row is on screen is
-/// paced. Lives on the main actor: a step is a few floating-point
-/// operations, and the published value must land there anyway.
+/// text change as an arrival, steps every `stepMs` on its clock and
+/// publishes the shown prefix (`revealedUnits`, UTF-16, cut at whole words)
+/// only when it changes. A row mounts baselined to its whole text (history,
+/// a row scrolled back in), unless it was born live (`fromStart`): then it
+/// reveals from its first word, whatever its first text carried.
 @MainActor @Observable
 public final class SmoothTextReveal {
-    /// UTF-8 units of the text to show. Published only when it changes, at
-    /// most every 33 ms while the pacer moves; equals the whole text's count
-    /// whenever nothing streams.
+    /// UTF-16 units shown: the whole text whenever nothing is left to reveal.
     public private(set) var revealedUnits: Int
-    /// Reduced motion: no pacing; every arrival shows whole (per batch).
-    public var paced: Bool
+    /// The pacer's shown position before the word cut (a test seam).
+    public var pacedUnits: Int { Int(pacer.pos.rounded(.down)) }
 
     @ObservationIgnored private var pacer: Pacer
-    /// Observed: a final text of the same length as the deltas (a rewrite
-    /// that keeps `revealedUnits`) still redraws the row.
+    /// Observed: a final text of the same length as the deltas still redraws the row.
     private var prev: String
     @ObservationIgnored private var live: Bool
+    @ObservationIgnored private var born: Bool
+    @ObservationIgnored private var running = false
     @ObservationIgnored private var lastFrame = 0.0
-    @ObservationIgnored private var lastPaint = 0.0
-    @ObservationIgnored private let ticker: any RevealTicker
-    @ObservationIgnored private let now: () -> Double
+    @ObservationIgnored private var lastPaint = -Double.infinity
+    @ObservationIgnored private let clock: any RevealClock
 
     /// - Parameters:
-    ///   - ticker: the frame source; nil picks the platform's (a display link under UIKit, a timer elsewhere).
-    ///   - now: ms on a monotonic clock, for tests.
-    public init(text: String, streaming: Bool, paced: Bool = true, ticker: (any RevealTicker)? = nil, now: @escaping () -> Double = SmoothTextReveal.monotonicMs) {
-        let count = text.utf8.count
+    ///   - fromStart: the row was born live: reveal from its first word.
+    ///   - leadMs: the seed lead; every host is remote to the phone.
+    ///   - clock: nil picks a timer on the main run loop.
+    public init(text: String, streaming: Bool, fromStart: Bool = false, leadMs: Double = SmoothText.leadRemoteMs, clock: (any RevealClock)? = nil) {
+        let count = fromStart ? 0 : text.utf16.count
         revealedUnits = count
-        self.paced = paced
-        pacer = Pacer(length: Double(count))
-        prev = text
+        pacer = Pacer(length: Double(count), leadMs: leadMs)
+        prev = fromStart ? "" : text
         live = streaming
-        self.ticker = ticker ?? Self.platformTicker()
-        self.now = now
-        self.ticker.onFrame = { [weak self] frameTime in self?.frame(at: frameTime) }
+        born = fromStart
+        self.clock = clock ?? TimerRevealClock()
+        if fromStart { update(text: text, streaming: streaming) }
     }
 
-    /// The revealed prefix of the text, cut on a grapheme.
-    public var revealed: Substring {
-        SmoothText.prefix(of: prev, units: revealedUnits)
-    }
+    /// The revealed prefix of the text.
+    public var revealed: String { SmoothText.prefix(of: prev, units: revealedUnits) }
 
-    /// The row's text changed (an append, the final rewrite) or its streaming
-    /// flag moved. The desktop hook's layout effect: a rewrite or an unpaced
-    /// row snaps to the whole text; an append is an arrival the pacer learns
-    /// from, and the clock runs until the shown position reaches the end.
+    /// Text is still to be shown: the row stays on its streaming render.
+    public var revealing: Bool { revealedUnits < prev.utf16.count }
+
+    /// The row's text changed or its streaming flag moved. A settled row
+    /// whose text changes with nothing in hand (and not born live) shows it
+    /// at once; a stream, or one still draining, paces it; a rewrite of the
+    /// shown prefix snaps.
     public func update(text: String, streaming: Bool) {
-        let count = Double(text.utf8.count)
+        let count = Double(text.utf16.count)
         live = streaming
-        if !paced || SmoothText.isRewrite(prev: prev, next: text, revealed: pacer.pos) {
+        let pacing = streaming || pacer.pos < pacer.end || born
+        born = false
+        if !pacing || SmoothText.isRewrite(prev: prev, next: text, revealed: pacer.pos) {
             pacer.snap(to: count)
-            publish(Int(count))
         } else {
-            pacer.noteArrival(end: count, now: now())
+            pacer.noteArrival(end: count, now: clock.now)
         }
         prev = text
         if pacer.pos >= count {
-            ticker.stop()
+            running = false
+            clock.cancel()
+            publish(Int(count))
             return
         }
-        lastFrame = now()
-        ticker.start()
+        // A reveal under way keeps its clock: its next step counts the time since the last one.
+        if !running { lastFrame = clock.now }
+        running = true
+        next(clock.now)
     }
 
-    /// The pane left the screen (or the app did): show everything, stop the clock.
+    /// The row left the screen (or the app did): show everything, stop the clock.
     public func snap() {
-        let count = prev.utf8.count
+        let count = prev.utf16.count
         pacer.snap(to: Double(count))
+        running = false
+        clock.cancel()
         publish(count)
-        ticker.stop()
     }
 
-    private func frame(at now: Double) {
-        let dt = min(max(0, now - lastFrame), SmoothText.maxFrameMs)
+    private func next(_ now: Double) {
+        clock.schedule(afterMs: max(0, lastPaint + SmoothText.stepMs - now)) { [weak self] at in self?.tick(at) }
+    }
+
+    private func tick(_ now: Double) {
+        let dt = min(now - lastFrame, SmoothText.maxFrameMs)
         lastFrame = now
         let end = pacer.end
-        if end - pacer.pos <= 0 {
-            ticker.stop()
-            return
-        }
+        // Stepped even with nothing in hand, so the pacer marks the underrun.
         pacer.step(dt: dt, now: now, live: live)
         if pacer.pos >= end {
+            running = false
             lastPaint = now
             publish(Int(end))
-            ticker.stop()
             return
         }
-        if now - lastPaint >= SmoothText.paintEveryMs {
+        if now - lastPaint >= SmoothText.stepMs {
             lastPaint = now
             publish(Int(pacer.pos.rounded(.down)))
         }
+        next(now)
     }
 
-    /// Written only on a change, so a frame between paints observes nothing.
+    /// The word cut of the pacer's position, written only on a change.
     private func publish(_ units: Int) {
-        if revealedUnits != units { revealedUnits = units }
+        let total = prev.utf16.count
+        let shown = SmoothText.revealCut(prev, pos: units, revealing: live || units < total)
+        if revealedUnits != shown { revealedUnits = shown }
     }
 
-    /// Milliseconds on the system's monotonic clock (mach_absolute_time on
-    /// Darwin, the same clock a display link stamps its frames with).
+    /// Milliseconds on the system's monotonic clock.
     nonisolated public static func monotonicMs() -> Double {
         Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000
     }
-
-    private static func platformTicker() -> any RevealTicker {
-        #if canImport(UIKit)
-        DisplayLinkTicker()
-        #else
-        TimerTicker()
-        #endif
-    }
 }
 
-#if canImport(UIKit)
-/// A `CADisplayLink` on the main run loop in the common modes, 80–120 Hz
-/// where the display offers it. The link's target is a relay that holds
-/// the ticker weakly, so the display link never retains the ticker; a
-/// link whose ticker is gone invalidates itself on its next frame.
+/// A one-shot timer on the main run loop: the step's wait, never a frame.
 @MainActor
-final class DisplayLinkTicker: RevealTicker {
-    var onFrame: ((Double) -> Void)?
-    private var link: CADisplayLink?
-
-    /// The display link's target; the link fires on the main run loop, so
-    /// the main-actor check on the `@objc` entry holds.
-    @MainActor
-    private final class Relay: NSObject {
-        weak var ticker: DisplayLinkTicker?
-
-        @objc func fire(_ link: CADisplayLink) {
-            guard let ticker else {
-                link.invalidate()
-                return
-            }
-            ticker.onFrame?(link.timestamp * 1000)
-        }
-    }
-
-    func start() {
-        if link != nil { return }
-        let relay = Relay()
-        relay.ticker = self
-        let link = CADisplayLink(target: relay, selector: #selector(Relay.fire(_:)))
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
-        link.add(to: .main, forMode: .common)
-        self.link = link
-    }
-
-    func stop() {
-        link?.invalidate()
-        link = nil
-    }
-}
-#else
-/// A 60 Hz timer on the main run loop, for macOS (the package's tests and
-/// a Mac host of the client).
-@MainActor
-final class TimerTicker: RevealTicker {
-    var onFrame: ((Double) -> Void)?
+final class TimerRevealClock: RevealClock {
     private var timer: Timer?
 
-    func start() {
-        if timer != nil { return }
-        let timer = Timer(timeInterval: 1 / 60, repeats: true) { [weak self] timer in
-            guard let self else {
-                timer.invalidate()
-                return
+    var now: Double { SmoothTextReveal.monotonicMs() }
+
+    func schedule(afterMs ms: Double, _ fire: @escaping @MainActor (Double) -> Void) {
+        timer?.invalidate()
+        let timer = Timer(timeInterval: ms / 1_000, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.timer = nil
+                fire(SmoothTextReveal.monotonicMs())
             }
-            MainActor.assumeIsolated { self.onFrame?(SmoothTextReveal.monotonicMs()) }
         }
-        timer.tolerance = 0.002
+        timer.tolerance = 0.004
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
     }
 
-    func stop() {
+    func cancel() {
         timer?.invalidate()
         timer = nil
     }
 }
-#endif

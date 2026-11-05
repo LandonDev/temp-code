@@ -201,6 +201,32 @@ public enum Methods {
         public typealias Output = NoOutput
     }
 
+    public enum SessionFocus: ContractMethod {
+        public static let name = "session.focus"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String?
+            public let shown: Patch<String>?
+
+            public init(sessionId: String?, shown: Patch<String>? = nil) {
+                self.sessionId = sessionId
+                self.shown = shown
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case sessionId, shown
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(sessionId, forKey: .sessionId)
+                try container.encodeIfPresent(shown, forKey: .shown)
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
     public enum SessionSend: ContractMethod {
         public static let name = "session.send"
 

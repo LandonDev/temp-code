@@ -39,6 +39,8 @@ struct TranscriptView: View {
     /// The group key each step was drawn under, so history joining above
     /// never renames a group (read and written outside observation).
     @State private var keyMemory = RowKeyMemory()
+    /// Which rows were born live (read and written outside observation).
+    @State private var bornRows = BornRows()
     @Environment(\.scenePhase) private var scenePhase
 
     /// Rows a cold open shows, and one page back.
@@ -48,6 +50,7 @@ struct TranscriptView: View {
         let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory)
         let shown = rows.count > window ? Array(rows.suffix(window)) : rows
         let moreAbove = rows.count > window || thread.moreBefore
+        let _ = bornRows.open(at: thread.isLoading ? nil : thread.fold.lastSeq)
         ScrollViewReader { proxy in
             List {
                 if moreAbove {
@@ -65,7 +68,7 @@ struct TranscriptView: View {
                 }
                 ForEach(shown) { row in
                     VStack(alignment: .leading, spacing: 0) {
-                        TranscriptRow(row: row, client: client, sessionId: sessionId, forceOpen: openGroups.contains(row.id))
+                        TranscriptRow(row: row, client: client, sessionId: sessionId, forceOpen: openGroups.contains(row.id), born: bornRows.claim(row))
                             .equatable()
                     }
                     .id(row.id)
@@ -401,6 +404,26 @@ private struct TranscriptScrollControls: View {
         }
         .padding(.bottom, 12)
         .animation(Motion.jump, value: state.atBottom)
+    }
+}
+
+/// The rows born live: a row whose first seq came after the transcript
+/// opened (or a provisional one) joins the last turn and reveals from its
+/// first word, once; history, a page loaded above and a row scrolled back
+/// in show whole. A plain class the view holds outside observation.
+final class BornRows {
+    private(set) var openedAt: Int?
+    private var claimed: Set<TranscriptRowID> = []
+
+    /// The first loaded paint fixes the line between history and live.
+    func open(at lastSeq: Int?) {
+        if openedAt == nil, let lastSeq { openedAt = lastSeq }
+    }
+
+    /// True the first time a live-born row is built, never again.
+    func claim(_ row: TranscriptRowModel) -> Bool {
+        guard let openedAt, let seq = row.anchorSeq, seq > openedAt || seq < 0 else { return false }
+        return claimed.insert(row.id).inserted
     }
 }
 

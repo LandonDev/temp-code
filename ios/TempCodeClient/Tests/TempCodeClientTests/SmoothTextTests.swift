@@ -2,364 +2,359 @@ import Foundation
 import Testing
 @testable import TempCodeClient
 
-// The port of src/renderer/src/surfaces/smoothText.test.ts, suite for suite
-// and assertion for assertion. The constants keep the desktop's values, so
-// the same thresholds hold.
-
-private func close(_ a: Double, _ b: Double, digits: Int) -> Bool {
-    abs(a - b) < pow(10, -Double(digits)) / 2
-}
-
-@Suite struct AdvanceRevealTests {
-    @Test func `reveals remaining × (1 − e^(−dt/τ)) while streaming`() {
-        let next = SmoothText.advanceReveal(pos: 0, end: 1000, dt: SmoothText.tauStreamMs, live: true)
-        #expect(close(next, 1000 * (1 - exp(-1)), digits: 6))
-    }
-
-    @Test func `drains faster once the stream ends`() {
-        let live = SmoothText.advanceReveal(pos: 0, end: 1000, dt: 50, live: true)
-        let drain = SmoothText.advanceReveal(pos: 0, end: 1000, dt: 50, live: false)
-        #expect(drain > live)
-        #expect(close(drain, 1000 * (1 - exp(-50 / SmoothText.tauDrainMs)), digits: 6))
-    }
-
-    @Test func `never moves slower than the 25 chars/s floor`() {
-        // 2 chars left: exponential step would be tiny; the floor wins.
-        let next = SmoothText.advanceReveal(pos: 98, end: 100, dt: 16, live: true)
-        #expect(close(next - 98, 16 * SmoothText.floorCps / 1000, digits: 9))
-    }
-
-    @Test func `never overshoots the live end`() {
-        #expect(SmoothText.advanceReveal(pos: 99.9, end: 100, dt: 1000, live: false) == 100)
-        #expect(SmoothText.advanceReveal(pos: 100, end: 100, dt: 16, live: true) == 100)
-    }
-
-    @Test func `skips ahead when the lag exceeds the cap`() {
-        let next = SmoothText.advanceReveal(pos: 0, end: 5000, dt: 16, live: true)
-        #expect(5000 - next == SmoothText.maxLag)
-    }
-
-    @Test func `converges to the end in a bounded number of frames`() {
-        var pos = 0.0
-        var frames = 0
-        while pos < 400, frames < 1000 {
-            pos = SmoothText.advanceReveal(pos: pos, end: 400, dt: 16, live: true)
-            frames += 1
-        }
-        #expect(pos == 400)
-        // Exponential toward the tail then the floor: well under a second of frames.
-        #expect(frames < 300)
-    }
-}
+/// The desktop's smoothText.test.ts on the Swift port, in UTF-16 units: the
+/// pacer's rules, the word cut, and the simulated streams of 2026-11-05
+/// (docs/TRANSCRIPT.md "The stream reveals a phrase at a time").
 
 @Suite struct IsRewriteTests {
-    @Test func `treats an append as no rewrite`() {
+    @Test func `an append is no rewrite, a change inside the shown prefix is, one past it is not`() {
         #expect(!SmoothText.isRewrite(prev: "hello", next: "hello world", revealed: 5))
-    }
-
-    @Test func `flags a change inside the revealed prefix`() {
-        #expect(SmoothText.isRewrite(prev: "hello", next: "jello world", revealed: 5))
-    }
-
-    @Test func `ignores changes past the revealed position`() {
-        // "hello " is shared; the first differing glyph sits at index 6.
-        #expect(!SmoothText.isRewrite(prev: "hello world", next: "hello there", revealed: 6))
+        #expect(SmoothText.isRewrite(prev: "hello world", next: "help world", revealed: 5))
         #expect(!SmoothText.isRewrite(prev: "hello world", next: "hello there", revealed: 6.9))
         #expect(SmoothText.isRewrite(prev: "hello world", next: "hello there", revealed: 7))
     }
 }
 
-// ── the jitter buffer, simulated ─────────────────────────────────────
-//
-// A stream at cps chars/s reaches the renderer as one of the patterns
-// below; a 60 fps loop notes what arrived by each frame (the store bumps
-// once per frame, so that is when the row sees it) and steps the reveal.
-// The measure is the reveal speed per frame while the stream is live,
-// after a warm-up: its coefficient of variation (sd / mean) is how jerky
-// the text reads. `legacy` runs the backlog-proportional catch-up the
-// pacer replaced, for comparison.
+private let cps = 500.0
 
-enum StreamSim {
-    static let cps = 300.0
-    static let durationMs = 8000.0
-    static let warmupMs = 1500.0
-    static let frameMs = 1000.0 / 60
+private func afterStart(_ run: SimRun) -> [SimStep] {
+    guard let first = run.steps.firstIndex(where: { $0.chars > 0 }) else { return [] }
+    return Array(run.steps[first...])
+}
 
-    struct Arrival {
-        var t: Double
-        var chars: Double
-    }
-
-    /// The desktop test's LCG, so every run repeats.
-    static func prng(_ seed: UInt32) -> () -> Double {
-        var s = seed
-        return {
-            s = s &* 1664525 &+ 1013904223
-            return Double(s) / 4294967296.0
-        }
-    }
-
-    /// A local harness: a delta every 7 ms of a varying few chars.
-    static func localDeltas() -> [Arrival] {
-        let r = prng(1)
-        var out: [Arrival] = []
-        var owed = 0.0
-        var t = 0.0
-        while t < durationMs {
-            owed += cps * 7 / 1000
-            let chars = max(1, (owed * (0.5 + r())).rounded())
-            owed -= chars
-            out.append(Arrival(t: t, chars: chars))
-            t += 7
-        }
-        return out
-    }
-
-    /// A remote host: a frame every `every` ms, each sent frame delivered
-    /// `delay` ms later and never before the one ahead of it.
-    static func frames(every: Double, delay: (Double) -> Double) -> [Arrival] {
-        var out: [Arrival] = []
-        var last = 0.0
-        var t = 0.0
-        while t < durationMs {
-            last = max(last, t + delay(t))
-            out.append(Arrival(t: last, chars: cps * every / 1000))
-            t += every
-        }
-        return out
-    }
-
-    static func steady100() -> [Arrival] { frames(every: 100) { _ in 20 } }
-    static func jittered100() -> [Arrival] {
-        let r = prng(7)
-        return frames(every: 100) { _ in 20 + 60 * r() }
-    }
-    static func jittered33() -> [Arrival] {
-        let r = prng(3)
-        return frames(every: 33) { _ in 20 + 30 * r() }
-    }
-    /// The link holds everything for `stallMs` after the frame sent at 4 s:
-    /// one gap of 100 + stallMs ms, then the held frames land together.
-    static func stalled(_ stallMs: Double) -> [Arrival] {
-        frames(every: 100) { t in 20 + (t > 4000 && t < 4000 + stallMs + 100 ? 4000 + stallMs + 100 - t : 0) }
-    }
-
-    struct Stats {
-        var cov: Double
-        var mean: Double
-        var min: Double
-        var max: Double
-    }
-
-    struct Run {
-        var cov: Double
-        var mean: Double
-        var min: Double
-        var max: Double
-        /// Mean ms of text between shown and arrived.
-        var lagMs: Double
-        /// Speeds by frame time, for a window of the run.
-        var speeds: [(t: Double, v: Double)]
-    }
-
-    static func simulate(_ arrivals: [Arrival], legacy: Bool = false) -> Run {
-        var pacer = Pacer(length: 0)
-        var legacyPos = 0.0
-        var end = 0.0
-        var next = 0
-        var speeds: [(t: Double, v: Double)] = []
-        var lag = 0.0
-        let live = arrivals[arrivals.count - 1].t
-        var t = 0.0
-        while t <= live {
-            while next < arrivals.count, arrivals[next].t <= t {
-                end += arrivals[next].chars
-                next += 1
-            }
-            pacer.noteArrival(end: end, now: t)
-            let before = legacy ? legacyPos : pacer.pos
-            let after: Double
-            if legacy {
-                legacyPos = SmoothText.advanceReveal(pos: legacyPos, end: end, dt: frameMs, live: true)
-                after = legacyPos
-            } else {
-                after = pacer.step(dt: frameMs, now: t, live: true)
-            }
-            if t >= arrivals[0].t + warmupMs {
-                speeds.append((t, (after - before) / frameMs * 1000))
-                lag += (end - after) / cps * 1000
-            }
-            t += frameMs
-        }
-        let s = stats(speeds.map(\.v))
-        return Run(cov: s.cov, mean: s.mean, min: s.min, max: s.max, lagMs: lag / Double(speeds.count), speeds: speeds)
-    }
-
-    static func stats(_ vs: [Double]) -> Stats {
-        let mean = vs.reduce(0, +) / Double(vs.count)
-        let sd = (vs.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(vs.count)).squareRoot()
-        return Stats(cov: sd / mean, mean: mean, min: vs.min() ?? 0, max: vs.max() ?? 0)
+/// No empty step with text in hand once a spurt started (a hold aside), and
+/// no step past the faster of the surge on the base pace and the catch-up's
+/// pace on the largest backlog of the last catch-up window, plus one long token.
+private func keepsTheRules(_ run: SimRun) {
+    for s in afterStart(run) where s.inHand > 0 && !s.held { #expect(s.chars > 0, "step at \(s.t)") }
+    for s in run.steps {
+        let recent = run.steps.filter { $0.t <= s.t && $0.t > s.t - SmoothText.catchUpMs }
+        let backlog = recent.map(\.inHand).max() ?? 0
+        let bound = max(SmoothText.maxSurge * s.base * s.dt, backlog * s.dt / (SmoothText.catchUpMs - SmoothText.stepMs)) + Double(MotionValues.longToken)
+        #expect(s.chars <= bound + 1e-9, "step at \(s.t)")
     }
 }
 
-@Suite struct JitterBufferSimulationTests {
-    typealias Sim = StreamSim
-    let cps = StreamSim.cps
+private func speedCov(_ run: SimRun, from: Double, to: Double = .infinity) -> Double {
+    cov(run.steps.filter { $0.live && $0.t >= from && $0.t < to && $0.chars > 0 }.map { $0.chars / $0.dt })
+}
 
-    @Test func `local deltas every 7 ms: as smooth as before, keeping up with the stream at the minimum lag`() {
-        let now = Sim.simulate(Sim.localDeltas())
-        let before = Sim.simulate(Sim.localDeltas(), legacy: true)
-        #expect(now.cov < 0.05)
-        #expect(now.cov <= before.cov + 0.005)
-        #expect(abs(now.mean - cps) / cps < 0.02)
-        // at most the minimum lag plus a frame of arrivals; the old catch-up
-        // trailed by τ (about 320 ms)
-        #expect(now.lagMs < SmoothText.minLagMs + 2 * Sim.frameMs)
-        #expect(now.lagMs < before.lagMs)
+private func macRemote() -> [Arrival] {
+    var r = Prng(3)
+    return frames(every: 33, cps: cps, durationMs: 8_000) { _ in 100 * r.next() }
+}
+
+private func laggingBox(_ durationMs: Double = 8_000) -> [Arrival] {
+    var r = Prng(5)
+    return frames(every: 250, cps: cps, durationMs: durationMs) { _ in 60 * r.next() }
+}
+
+private func stalledBox(_ durationMs: Double = 8_000) -> [Arrival] {
+    laggingBox(durationMs).map { $0.t > 4_000 && $0.t < 5_000 ? Arrival(t: 5_000, chars: $0.chars) : $0 }
+}
+
+private let whole = 3_342.0
+private func wholeReply() -> [Arrival] {
+    (0..<143).map { i in Arrival(t: 1_000 + Double(i) * 20 / 143, chars: i < 142 ? 23 : whole - 23 * 142) }
+}
+
+private let burstChars = 1_632.0
+private func burstFrame() -> (arrivals: [Arrival], at: Double) {
+    var r = Prng(9)
+    var arrivals = frames(every: 33, cps: cps, durationMs: 6_000) { _ in 20 * r.next() }
+    let k = arrivals.count / 2
+    arrivals[k].chars = burstChars
+    return (arrivals, arrivals[k].t)
+}
+
+@Suite struct JitterBufferSimTests {
+    @Test func `the Mac's remote cadence: an even pace at the stream's rate, no underrun`() {
+        let run = simulate(macRemote(), leadMs: SmoothText.leadRemoteMs)
+        keepsTheRules(run)
+        #expect(run.underruns.isEmpty)
+        #expect(speedCov(run, from: 1_500) < 0.1)
+        let live = run.steps.filter { $0.live && $0.t >= 1_500 }
+        let pace = live.reduce(0) { $0 + $1.chars } / (live[live.count - 1].t - live[0].t) * 1_000
+        #expect(abs(pace - cps) / cps < 0.1)
+        #expect(run.doneAt - run.endAt < 2 * SmoothText.leadRemoteMs + SmoothText.stepMs)
     }
 
-    @Test func `steady 100 ms frames: an even pace, where the old catch-up surged on every frame`() {
-        let now = Sim.simulate(Sim.steady100())
-        let before = Sim.simulate(Sim.steady100(), legacy: true)
-        #expect(now.cov < 0.05)
-        #expect(before.cov > 0.05)
-        #expect(abs(now.mean - cps) / cps < 0.02)
-        // the playout delay is twice the gap, plus half a gap on average
-        #expect(now.lagMs > 200)
-        #expect(now.lagMs < 300)
+    @Test func `a lagging box at 250 ± 60 ms: an even pace after warm-up, at most one underrun`() {
+        let run = simulate(laggingBox(), leadMs: SmoothText.leadRemoteMs)
+        keepsTheRules(run)
+        #expect(run.underruns.count <= 1)
+        #expect(speedCov(run, from: 1_500) < 0.15)
+        #expect(run.pacer.currentLead >= 500)
     }
 
-    @Test func `100 ms frames with 0–60 ms of jitter: still an even pace`() {
-        let now = Sim.simulate(Sim.jittered100())
-        let before = Sim.simulate(Sim.jittered100(), legacy: true)
-        #expect(now.cov < 0.05)
-        #expect(before.cov > 0.05)
-        #expect(now.lagMs < SmoothText.maxLagMs)
+    @Test func `a 1 s stall: exactly one underrun, the lead grown after it, back near its floor ten steady seconds on`() throws {
+        let run = simulate(stalledBox(16_000), leadMs: SmoothText.leadRemoteMs)
+        keepsTheRules(run)
+        #expect(run.underruns.count == 1)
+        let underrun = try #require(run.underruns.first)
+        #expect(underrun > 4_000 && underrun < 5_000)
+        let before = try #require(run.steps.last { $0.t < underrun }).lead
+        let after = try #require(run.steps.first { $0.t > 5_000 }).lead
+        #expect(after > before)
+        #expect(speedCov(run, from: 5_500) < 0.15)
+        let later = try #require(run.steps.first { $0.t >= 15_000 })
+        #expect(later.lead > later.floor)
+        #expect(later.lead <= 1.1 * later.floor)
     }
 
-    @Test func `33 ms frames with jitter (the remote events window): an even pace at the minimum lag`() {
-        let now = Sim.simulate(Sim.jittered33())
-        #expect(now.cov < 0.05)
-        #expect(now.lagMs < SmoothText.minLagMs + 50)
+    @Test func `a whole reply inside 20 ms: over at least ten steps, all of it within the catch-up`() {
+        let run = simulate(wholeReply(), leadMs: SmoothText.leadRemoteMs, endAt: 1_050)
+        keepsTheRules(run)
+        #expect(run.steps.filter { $0.chars > 0 }.count >= 10)
+        #expect(run.doneAt - 1_000 <= SmoothText.catchUpMs + 2 * SmoothText.stepMs)
+        let drain = run.steps.filter { !$0.live && $0.chars > 0 }
+        #expect(drain.count >= 10)
+        for s in drain { #expect(s.chars < whole / 5) }
     }
 
-    @Test func `a 300 ms gap (a frame 200 ms late, the edge of the buffer): an even pace`() {
-        let now = Sim.simulate(Sim.stalled(200))
-        let before = Sim.simulate(Sim.stalled(200), legacy: true)
-        #expect(now.cov < 0.05)
-        #expect(before.cov > 0.1)
-        #expect(now.min > 0.4 * cps)
-        #expect(now.max < 1.05 * cps)
+    @Test func `one 1,632-unit frame in a 33 ms stream: played out over steps, no underrun after`() {
+        let (arrivals, at) = burstFrame()
+        let run = simulate(arrivals, leadMs: SmoothText.leadRemoteMs)
+        keepsTheRules(run)
+        let during = run.steps.filter { $0.t >= at && $0.t <= at + SmoothText.catchUpMs + 2 * SmoothText.stepMs }
+        #expect(during.filter { $0.chars > 0 }.count >= 10)
+        let shownBy = during.reduce(0) { $0 + $1.chars }
+        let before = run.steps.filter { $0.t < at }.reduce(0) { $0 + $1.chars }
+        let arrivedWith = arrivals.filter { $0.t <= at }.reduce(0) { $0 + $1.chars }
+        #expect(before + shownBy >= arrivedWith - 1e-6)
+        #expect(run.underruns.isEmpty)
     }
 
-    @Test func `one 300 ms stall (a 400 ms gap): eases down and back without stopping or surging, and is even again within a second`() {
-        let now = Sim.simulate(Sim.stalled(300))
-        let before = Sim.simulate(Sim.stalled(300), legacy: true)
-        // The buffer (twice the 100 ms gap) cannot cover a frame 300 ms late:
-        // when the frame is first overdue 200 ms of text is left for 300 ms of
-        // wait, so any reveal that does not see the future dips here (its CoV
-        // over this run cannot go much under 0.07). It never stops and never
-        // surges...
-        #expect(now.min > 0.1 * cps)
-        #expect(now.max < 1.15 * cps)
-        #expect(before.max > 1.5 * cps)
-        #expect(now.cov < before.cov)
-        // ...and away from it the pace is as even as a steady stream's.
-        let calm = { (from: Double, to: Double) in Sim.stats(now.speeds.filter { $0.t >= from && $0.t < to }.map(\.v)) }
-        #expect(calm(0, 4000).cov < 0.05)
-        #expect(calm(5500, Sim.durationMs).cov < 0.05)
+    @Test func `local deltas every 7 ms: a lead under 150 ms, the pace within 2 % of the stream`() {
+        let local = 300.0
+        let run = simulate(localDeltas(cps: local, durationMs: 8_000), leadMs: SmoothText.leadLocalMs)
+        keepsTheRules(run)
+        #expect(run.underruns.isEmpty)
+        let live = run.steps.filter { $0.live && $0.t >= 1_500 }
+        let pace = live.reduce(0) { $0 + $1.chars } / (live[live.count - 1].t - live[0].t) * 1_000
+        #expect(abs(pace - local) / local < 0.02)
+        let lagMs = live.reduce(0) { $0 + ($1.inHand - $1.chars) } / Double(live.count) / local * 1_000
+        #expect(lagMs < 150)
+        #expect(speedCov(run, from: 1_500) < 0.05)
     }
 }
 
 @Suite struct PacerTests {
-    /// Twenty-one 30-unit chunks 100 ms apart: 300 units/s with 100 ms gaps.
-    private func steady() -> Pacer {
-        var p = Pacer(length: 0)
-        for i in 0...20 { p.noteArrival(end: 30 * Double(i + 1), now: 100 * Double(i)) }
+    /// A pacer that has seen `n` 30-unit chunks every 100 ms (300 units/s).
+    private func steady(_ n: Int = 20, leadMs: Double = SmoothText.leadLocalMs) -> Pacer {
+        var p = Pacer(length: 0, leadMs: leadMs)
+        for i in 0...n { p.noteArrival(end: Double(30 * (i + 1)), now: Double(100 * i)) }
         return p
     }
 
-    @Test func `learns nothing from the first chunk and reveals it with the exponential catch-up`() {
-        var p = Pacer(length: 0)
-        p.noteArrival(end: 50, now: 0)
-        #expect(p.arrivalRate == 0)
-        let stepped = p.step(dt: 16, now: 16, live: true)
-        #expect(close(stepped, SmoothText.advanceReveal(pos: 0, end: 50, dt: 16, live: true), digits: 9))
+    @Test func `seeded with the host's lead, starting where it mounts`() {
+        let p = Pacer(length: 10)
+        #expect(p.pos == 10 && p.end == 10)
+        #expect(p.currentLead == SmoothText.leadRemoteMs)
+        #expect(Pacer(length: 0, leadMs: SmoothText.leadLocalMs).currentLead == SmoothText.leadLocalMs)
     }
 
-    @Test func `measures the arrival rate and holds a lag of twice the high gap, within its clamps`() {
+    @Test func `the rate over its window, and a lead floor of twice the high gap within its clamps`() {
         let p = steady()
-        #expect(close(p.arrivalRate * 1000, 300, digits: 6))
-        #expect(close(p.targetLagMs, 200, digits: 6))
+        #expect(abs(p.arrivalRate * 1_000 - 300) < 1e-6)
+        #expect(abs(p.leadFloor - 200) < 1e-6)
         var fast = Pacer(length: 0)
-        for i in 0...50 { fast.noteArrival(end: 2 * Double(i + 1), now: 7 * Double(i)) }
-        #expect(fast.targetLagMs == SmoothText.minLagMs)
+        for i in 0...50 { fast.noteArrival(end: Double(2 * (i + 1)), now: Double(7 * i)) }
+        #expect(fast.leadFloor == SmoothText.leadMinMs)
         var slow = Pacer(length: 0)
-        for i in 0...10 { slow.noteArrival(end: 300 * Double(i + 1), now: 900 * Double(i)) }
-        #expect(slow.targetLagMs == SmoothText.maxLagMs)
+        for i in 0...10 { slow.noteArrival(end: Double(300 * (i + 1)), now: Double(900 * i)) }
+        #expect(slow.leadFloor == SmoothText.leadMaxMs)
     }
 
-    @Test func `a pause past pauseMs starts a new spurt without dragging the rate down`() {
-        var p = steady()
-        let rate = p.arrivalRate
-        p.noteArrival(end: 30 * 22, now: 2000 + SmoothText.pauseMs + 1)
-        #expect(p.arrivalRate == rate)
+    @Test func `frames that land together count whole`() {
+        var p = Pacer(length: 0)
+        for i in 0...40 { p.noteArrival(end: Double(17 * (i + 1)), now: Double(66 * (i / 2))) }
+        #expect(p.arrivalRate * 1_000 > 480)
+        #expect(p.arrivalRate * 1_000 < 540)
     }
 
-    @Test func `drains with the end-of-stream catch-up once the stream ends`() {
-        var p = steady()
-        p.pos = 400
-        let drained = p.step(dt: 16, now: 2016, live: false)
-        #expect(close(drained, SmoothText.advanceReveal(pos: 400, end: 630, dt: 16, live: false), digits: 9))
+    @Test func `the base pace: the default before a gap, the rate within its clamps`() {
+        var p = Pacer(length: 0)
+        p.noteArrival(end: 40, now: 0)
+        #expect(p.basePace == SmoothText.defaultCps / 1_000)
+        #expect(abs(steady().basePace * 1_000 - 300) < 1e-6)
+        var all = Pacer(length: 0)
+        for a in wholeReply() { all.noteArrival(end: all.end + a.chars, now: a.t) }
+        #expect(all.basePace == SmoothText.baseMaxCps / 1_000)
+        var trickle = Pacer(length: 0)
+        for i in 0...5 { trickle.noteArrival(end: Double(i + 1), now: Double(900 * i)) }
+        #expect(trickle.basePace == SmoothText.floorCps / 1_000)
     }
 
-    @Test func `keeps the lag cap: a torrent skips ahead`() {
+    @Test func `a burst counts at the base's cap over a step at most`() {
         var p = steady()
-        p.noteArrival(end: 5000, now: 2050)
-        let shown = p.step(dt: 16, now: 2066, live: true)
-        #expect(p.end - shown == SmoothText.maxLag)
+        p.noteArrival(end: p.end + burstChars, now: 2_100)
+        #expect(p.basePace * 1_000 < 500)
+    }
+
+    @Test func `an underrun grows the lead 1.5 times or by the wait, up to its cap, and starts a spurt`() {
+        func grow(_ lead: Double, _ stallMs: Double) -> Pacer {
+            var p = Pacer(length: 0, leadMs: lead)
+            p.noteArrival(end: 10, now: 0)
+            p.pos = 10
+            p.dryAt = 1_000
+            p.noteArrival(end: 20, now: 1_000 + stallMs)
+            return p
+        }
+        #expect(grow(200, 50).lead == 300)
+        #expect(grow(200, 400).lead == 600)
+        #expect(grow(400, 600).lead == SmoothText.leadMaxMs)
+        #expect(grow(100, 600).lead == 700)
+        #expect(grow(100, 5 * SmoothText.pauseMs).lead == SmoothText.leadMaxMs)
+        let p = grow(200, 50)
+        #expect(p.holding)
+        #expect(p.dryAt.isNaN)
+    }
+
+    @Test func `a pause past pauseMs counts as pauseMs on the rate's clock`() {
+        let rates = [SmoothText.pauseMs, 5 * SmoothText.pauseMs].map { pause in
+            var p = steady()
+            p.noteArrival(end: p.end + 30, now: 2_000 + pause)
+            return p.arrivalRate
+        }
+        #expect(abs(rates[1] - rates[0]) < 1e-9)
+    }
+
+    @Test func `a spurt holds until a lead and a step of text are in hand, or as long has passed`() {
+        let enough = SmoothText.leadLocalMs + SmoothText.stepMs
+        var short = Pacer(length: 0, leadMs: SmoothText.leadLocalMs)
+        short.noteArrival(end: 50, now: 0)
+        #expect(short.holding)
+        #expect(short.step(dt: 100, now: 100, live: true) == 0)
+        #expect(short.step(dt: 100, now: enough, live: true) > 0)
+        var long = Pacer(length: 0, leadMs: SmoothText.leadLocalMs)
+        long.noteArrival(end: 100, now: 0)
+        #expect(long.step(dt: 10, now: 10, live: true) > 0)
+        var ended = Pacer(length: 0, leadMs: SmoothText.leadLocalMs)
+        ended.noteArrival(end: 50, now: 0)
+        #expect(ended.step(dt: 10, now: 10, live: false) > 0)
+    }
+
+    @Test func `the base pace inside the lead, faster above it, never past the surge`() {
+        var p = steady(20, leadMs: 200)
+        p.holding = false
+        p.due = []
+        p.pos = p.end - 0.3 * 300
+        let at = p.pos
+        p.step(dt: 100, now: 2_010, live: true)
+        #expect(abs(p.pos - at - 30) < 1e-6)
+        var q = steady(20, leadMs: 200)
+        q.holding = false
+        q.due = []
+        q.pos = q.end - 0.3 * 3_000
+        let from = q.pos
+        q.step(dt: 100, now: 2_010, live: true)
+        #expect(q.pos - from <= SmoothText.maxSurge * 30 + 1e-9)
+        #expect(q.pos - from > 30)
+    }
+
+    @Test func `the catch-up's pace is the backlog over the time it has left`() {
+        var p = Pacer(length: 0)
+        p.noteArrival(end: 3_000, now: 0)
+        #expect(abs(p.catchUpPace(now: 0) - 3_000 / SmoothText.catchUpMs) < 1e-9)
+        p.pos = 1_000
+        #expect(abs(p.catchUpPace(now: 500) - 2_000 / (SmoothText.catchUpMs - 500)) < 1e-9)
+        #expect(abs(p.catchUpPace(now: SmoothText.catchUpMs + 500) - 2_000 / SmoothText.stepMs) < 1e-9)
+    }
+
+    @Test func `the lead's excess decays toward its floor, and not during an underrun`() {
+        var p = Pacer(length: 100, leadMs: SmoothText.leadMaxMs)
+        p.noteArrival(end: 200, now: 0)
+        p.step(dt: SmoothText.leadDecayMs, now: SmoothText.leadDecayMs, live: false)
+        #expect(abs(p.lead - (SmoothText.leadMinMs + (SmoothText.leadMaxMs - SmoothText.leadMinMs) * exp(-1))) < 1e-6)
+        var dry = Pacer(length: 0, leadMs: SmoothText.leadMaxMs)
+        dry.dryAt = 0
+        dry.step(dt: 1_000, now: 1_000, live: true)
+        #expect(dry.lead == SmoothText.leadMaxMs)
+    }
+
+    @Test func `an underrun is marked when the shown text reaches the live end while live`() {
+        var p = steady()
+        p.holding = false
+        p.pos = p.end - 1
+        p.step(dt: 100, now: 2_010, live: true)
+        #expect(p.pos == p.end)
+        #expect(p.dryAt == 2_010)
+        var ended = steady()
+        ended.holding = false
+        ended.pos = ended.end - 1
+        ended.step(dt: 100, now: 2_010, live: false)
+        #expect(ended.dryAt.isNaN)
     }
 
     @Test func `never passes the live end`() {
         var p = steady()
+        p.holding = false
         p.pos = 629.99
-        let first = p.step(dt: 100, now: 2100, live: true)
-        #expect(first == 630)
-        let second = p.step(dt: 16, now: 2116, live: true)
-        #expect(second == 630)
-    }
-
-    @Test func `two fresh pacers are equal, nan and all`() {
-        #expect(Pacer(length: 0) == Pacer(length: 0))
-        var moved = Pacer(length: 0)
-        moved.noteArrival(end: 1, now: 0)
-        #expect(moved != Pacer(length: 0))
+        #expect(p.step(dt: 100, now: 2_100, live: true) == 630)
+        #expect(p.step(dt: 16, now: 2_116, live: true) == 630)
     }
 }
 
-@Suite struct SmoothTextPrefixTests {
-    @Test func `ASCII cuts exactly`() {
-        #expect(SmoothText.prefix(of: "hello world", units: 5) == "hello")
-        #expect(SmoothText.prefix(of: "hello", units: 0) == "")
-        #expect(SmoothText.prefix(of: "hello", units: 5) == "hello")
-        #expect(SmoothText.prefix(of: "hello", units: 50) == "hello")
+@Suite struct RevealCutTests {
+    private func shown(_ text: String, _ pos: Int, _ revealing: Bool = true) -> String {
+        SmoothText.prefix(of: text, units: SmoothText.revealCut(text, pos: pos, revealing: revealing))
     }
 
-    @Test func `units inside a 4-byte scalar round down to the scalar`() {
-        let text = "ab😀cd"   // 😀 is 4 bytes: units 2...5
-        #expect(SmoothText.prefix(of: text, units: 2) == "ab")
-        #expect(SmoothText.prefix(of: text, units: 3) == "ab")
-        #expect(SmoothText.prefix(of: text, units: 5) == "ab")
-        #expect(SmoothText.prefix(of: text, units: 6) == "ab😀")
-        #expect(SmoothText.prefix(of: text, units: 7) == "ab😀c")
+    @Test func `ends at a word boundary, never inside a word`() {
+        #expect(shown("the transcript reads", 8) == "the ")
+        #expect(shown("the transcript reads", 15) == "the transcript ")
+        #expect(shown("the transcript reads", 4) == "the ")
+        #expect(shown("the transcript reads", 3) == "")
+        #expect(shown("one\ntwo three", 6) == "one\n")
+        #expect(shown("the transcri", 12) == "the ")
     }
 
-    @Test func `a cut between a thumb and its skin tone shows neither`() {
-        let text = "ok 👍🏽 go"   // 👍 (4 bytes) + 🏽 (4 bytes), one grapheme
-        #expect(SmoothText.prefix(of: text, units: 3) == "ok ")
-        #expect(SmoothText.prefix(of: text, units: 7) == "ok ")
-        #expect(SmoothText.prefix(of: text, units: 9) == "ok ")
-        #expect(SmoothText.prefix(of: text, units: 11) == "ok 👍🏽")
-        #expect(SmoothText.prefix(of: text, units: 12) == "ok 👍🏽 ")
+    @Test func `a token past the long-token length is cut where the pace reaches`() {
+        let url = "see https://example.com/a/very/long/path/to/a/file.ts"
+        let pos = 4 + MotionValues.longToken + 6
+        #expect(shown(url, pos) == SmoothText.prefix(of: url, units: pos))
+        #expect(shown("see " + String(repeating: "x", count: MotionValues.longToken), 4 + MotionValues.longToken) == "see ")
+    }
+
+    @Test func `never splits a surrogate pair or a joined emoji`() {
+        let text = String(repeating: "a", count: MotionValues.longToken + 2) + "😀😀"
+        let pos = MotionValues.longToken + 3
+        #expect(SmoothText.revealCut(text, pos: pos, revealing: true) == pos - 1)
+        let family = String(repeating: "b", count: MotionValues.longToken + 2) + "👨‍👩‍👧"
+        let inside = MotionValues.longToken + 2 + 4
+        #expect(SmoothText.revealCut(family, pos: inside, revealing: true) == MotionValues.longToken + 2)
+    }
+
+    @Test(arguments: [
+        ("# ", "# Title "), ("### ", "### Title "), ("- ", "- item "), ("* ", "* item "), ("+ ", "+ item "),
+        ("1. ", "1. item "), ("2) ", "2) item "), ("- [ ] ", "- [ ] task "), ("- [x] ", "- [x] done "),
+        ("> - ", "> - quoted "), ("> ", "> quoted "),
+    ])
+    func `holds a bare block marker until its line has content`(marker: String, full: String) {
+        let before = "Intro line\n"
+        #expect(shown(before + full, (before + marker).utf16.count) == before)
+        #expect(shown(before + full, (before + full).utf16.count) == before + full)
+    }
+
+    @Test func `holds a table's header row until its delimiter row is whole`() {
+        let table = "Text\n| a | b |\n|---|---|\n| 1 | 2 |\n"
+        let header = "Text\n| a | b |\n"
+        #expect(shown(table, header.utf16.count) == "Text\n")
+        #expect(shown(table, header.utf16.count + 5) == "Text\n")
+        #expect(shown(table, header.utf16.count + "|---|---|\n".utf16.count) == header + "|---|---|\n")
+        #expect(shown(table, table.utf16.count) == table)
+    }
+
+    @Test func `holds nothing inside an open code fence`() {
+        let code = "```sh\nls\n| grep x\n- \n"
+        #expect(shown(code, code.utf16.count) == code)
+    }
+
+    @Test func `cuts at words while draining, and shows everything once nothing is left`() {
+        #expect(shown("the reply has ended", 9, true) == "the ")
+        for text in ["the transcri", "Intro\n- ", "| a | b |\n|--", String(repeating: "x", count: 40)] {
+            #expect(SmoothText.revealCut(text, pos: 3, revealing: false) == text.utf16.count)
+        }
     }
 }

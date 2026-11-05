@@ -82,6 +82,7 @@ socket only: `mac.*`, `macBridge.policy.*`, `macBridge.decide`,
 | `session.changes` | `SessionChanges` (the launch mirror's reconcile; `reset` leaves both lists out) | read |
 | `session.search`, `search.project`, `notes.search` | `SessionSearchResult`, `ProjectSearchResult`, `NoteSearchResult` | read |
 | `session.subscribe`, `session.unsubscribe` | none | read |
+| `session.focus` | none (the thread the phone shows, `sessionId` and `shown`; null when the app leaves the screen) | operate |
 | `session.send`, `session.interrupt`, `session.answer`, `session.continue` | none | operate |
 | `session.reroute` | `RerouteAnswer` | operate |
 | `session.approve`, `session.permission` | none | approve |

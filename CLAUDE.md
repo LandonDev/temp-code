@@ -2414,9 +2414,14 @@ proof and the sizing rules; the pieces, by name:
   for the proof only; an action runs once, on the screen the launch route
   opened, through the same calls the buttons make. The test server's
   `TC_TEST_FLEET=large` seeds a twelve-agent fleet in all four groups.
-- Streaming (27): `Rendering/SmoothText.swift` is the desktop's jitter
-  buffer in Swift (`Pacer`, `SmoothTextReveal` on a display link, 33 ms
-  paints, UTF-8 positions); the fold gives a partial-born tool item a
+- Streaming (27, rewritten by the desktop-pass A4): `Rendering/SmoothText.swift`
+  is the desktop's jitter buffer in Swift as of 0b82ddad (`Pacer`, the rate
+  window, the 250 ms seeded lead, the catch-up, `revealCut`'s whole-word
+  steps every 100 ms; `SmoothTextReveal` on a timer `RevealClock`, no
+  display link; UTF-16 positions; born-live rows through `BornRows` in
+  TranscriptView), and the thread screen names its thread with
+  `session.focus { sessionId, shown }` (`FocusSignal`, in the phone's
+  subset); the fold gives a partial-born tool item a
   provisional id and the final row's seq, folds `live-edits` into the
   running edit tool by path (`ToolItem.live`, `ThreadFold.liveEdits`), and
   `EnvironmentClient.append` applies a batch in place;

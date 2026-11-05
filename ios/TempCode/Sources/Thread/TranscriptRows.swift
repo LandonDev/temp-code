@@ -15,15 +15,18 @@ struct TranscriptRow: View, Equatable {
     let sessionId: String
     /// The view opened this group itself (a search landing inside it).
     var forceOpen = false
+    /// The row joined the last turn after the transcript opened: its prose
+    /// reveals from its first word.
+    var born = false
 
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.row == rhs.row && lhs.forceOpen == rhs.forceOpen && lhs.client === rhs.client && lhs.sessionId == rhs.sessionId
+        lhs.row == rhs.row && lhs.forceOpen == rhs.forceOpen && lhs.born == rhs.born && lhs.client === rhs.client && lhs.sessionId == rhs.sessionId
     }
 
     var body: some View {
         switch row {
         case .item(let entry):
-            ItemRow(entry: entry, client: client, sessionId: sessionId)
+            ItemRow(entry: entry, client: client, sessionId: sessionId, born: born)
         case .group(let group):
             ActivityPhaseRow(group: group, client: client, sessionId: sessionId, forceOpen: forceOpen)
         case .turnEnd(let end):
@@ -39,13 +42,14 @@ private struct ItemRow: View {
     let entry: ThreadEntry
     let client: EnvironmentClient
     let sessionId: String
+    var born = false
 
     var body: some View {
         switch entry.item {
         case .user(let turn):
             UserTurnRow(turn: turn, client: client)
         case .assistant(let block):
-            AssistantRow(block: block)
+            AssistantRow(block: block, born: born)
         case .thinking(let block):
             // Thinking rides in a phase; this is only ever a stray.
             ThinkingStep(block: block)
@@ -221,13 +225,14 @@ extension Attachment {
 /// working strip says "Thinking").
 struct AssistantRow: View {
     let block: TextBlock
+    var born = false
 
     var body: some View {
         if block.text.isEmpty, block.streaming {
             EmptyView()
         } else {
             // One identity across the final row, so the reveal drains before the markdown settles.
-            StreamingAssistantRow(block: block)
+            StreamingAssistantRow(block: block, born: born)
         }
     }
 }

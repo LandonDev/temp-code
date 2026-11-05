@@ -2,37 +2,39 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-// The rows that change while a turn streams. None of them animates: the
-// reveal is a pacing of data (`SmoothTextReveal`), seen hundreds of times a
-// day, so there is no fade, no translate and no veil. Only a replaced chip
-// target cross-fades (150 ms, 2 pt of blur), and only under full motion.
+// The rows that change while a turn streams. The reveal is a pacing of
+// data (`SmoothTextReveal`, the desktop's jitter buffer): whole words every
+// 100 ms on a timer, no display frames. Only a replaced chip target
+// cross-fades, and only under full motion.
 
 /// The agent's answer: `AssistantRow` sends every non-empty block here, so
 /// the row keeps its state when the final row lands. A block mounted settled
-/// (history, a cache paint) carries no pacer and is the markdown at once. A
-/// block mounted streaming is paced by the jitter buffer inside this row's
-/// own state, so a paint re-runs this body and nothing in the fold; the
+/// (history, a cache paint, a row scrolled back in) carries no reveal and is
+/// the markdown at once, unless it was born live (`born`: it joined the last
+/// turn after the transcript opened), which reveals from its first word
+/// even when it mounts settled. A streaming block is paced inside this row's
+/// own state, so a step re-runs this body and nothing in the fold; the
 /// revealed prefix goes through the markdown's incremental path (the last
-/// changed block only). When the final row arrives the pacer drains the text
-/// still held back (τ 90 ms) and only then the settled markdown takes over.
+/// changed block only). When the final row arrives the reveal drains what
+/// it still holds at the stream's pace, and only then the settled markdown
+/// takes over.
 struct StreamingAssistantRow: View {
     let block: TextBlock
     @State private var reveal: SmoothTextReveal?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
-    init(block: TextBlock) {
+    init(block: TextBlock, born: Bool = false) {
         self.block = block
-        _reveal = State(initialValue: block.streaming ? SmoothTextReveal(text: block.text, streaming: true, paced: !UIAccessibility.isReduceMotionEnabled) : nil)
+        _reveal = State(initialValue: block.streaming || born ? SmoothTextReveal(text: block.text, streaming: block.streaming, fromStart: born) : nil)
     }
 
     var body: some View {
-        if let reveal, block.streaming || reveal.revealedUnits < block.text.utf8.count {
-            let shown = String(reveal.revealed)
+        if let reveal, block.streaming || reveal.revealing {
+            let shown = reveal.revealed
             Group {
                 if !shown.isEmpty {
                     // The incremental path, never the async one: that would
-                    // flicker between plain and styled on every paint.
+                    // flicker between plain and styled on every step.
                     MarkdownView(seq: block.seq, text: shown, streaming: true)
                         .textSelection(.enabled)
                         .padding(.vertical, 6)
@@ -40,12 +42,9 @@ struct StreamingAssistantRow: View {
             }
             .onChange(of: block.text) { reveal.update(text: block.text, streaming: block.streaming) }
             .onChange(of: block.streaming) { reveal.update(text: block.text, streaming: block.streaming) }
-            .onChange(of: reduceMotion) {
-                reveal.paced = !reduceMotion
-                reveal.update(text: block.text, streaming: block.streaming)
-            }
             .onChange(of: scenePhase) { if scenePhase != .active { reveal.snap() } }
             .onDisappear { reveal.snap() }
+            .onChange(of: reveal.revealedUnits, initial: true) { LayoutProbe.note("revealedUnits", String(reveal.revealedUnits)) }
         } else {
             MarkdownView(seq: block.seq, text: block.text)
                 .textSelection(.enabled)

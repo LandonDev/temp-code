@@ -240,7 +240,11 @@ public final class EnvironmentClient {
     /// The thread on screen right now, if it is one of this host's. It resumes
     /// first on a new session, and only its rows publish with the view's own
     /// motion; a thread nobody is looking at publishes through `quietly`.
-    public var visibleThread: String?
+    public var visibleThread: String? {
+        didSet { if visibleThread != oldValue { syncFocus() } }
+    }
+    /// What this socket last told the host it shows (`session.focus`).
+    @ObservationIgnored var focusSignal = FocusSignal()
     /// Home's list of this host's threads is on screen.
     public var listVisible = false
     /// How a change nobody is looking at is published. The app sets this to
@@ -597,6 +601,18 @@ public final class EnvironmentClient {
         return request
     }
 
+    /// Names the thread on screen to the host (`session.focus { sessionId,
+    /// shown }`), so its rows leave the push coalescer as they land and its
+    /// own notices stay off the phone while it is on screen; null once the
+    /// app leaves the screen. Once per change, again after a reconnect; a
+    /// key below operate sends nothing.
+    func syncFocus() {
+        guard let value = focusSignal.want(visibleThread, canSend: block(needs: .operate) == nil) else { return }
+        Task { [weak self] in
+            _ = try? await self?.request(Methods.SessionFocus.self, .init(sessionId: value, shown: value.map(Patch.set) ?? .clear))
+        }
+    }
+
     // MARK: - the socket's events
 
     private func handle(_ event: SessionEvent) async {
@@ -613,6 +629,9 @@ public final class EnvironmentClient {
                 relayObserver?(self, [presence], false)
             }
             subscriptions.sessionChanged()
+            // A new socket has told the host nothing: name the thread on screen again.
+            focusSignal.reconnected()
+            syncFocus()
             // The thread on screen catches up first, the rest of the open set
             // after it, while the shell lists alongside: the person came back
             // to the thread they left, not to the list.
@@ -631,6 +650,7 @@ public final class EnvironmentClient {
             await socket.markFresh(true)
             await push?.sync(self)
         case .closed:
+            focusSignal.reconnected()
             subscriptions.sessionChanged()
             extras.connectionLost()
             for id in Array(historyLoads.keys) { cancelHistory(id) }
