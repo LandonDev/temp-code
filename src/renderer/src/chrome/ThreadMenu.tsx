@@ -98,7 +98,7 @@ export function ThreadMenu({
   };
 
   return (
-    <div className="mr-1.5 flex shrink-0 items-center gap-0.5" data-tauri-drag-region="false">
+    <div className="flex shrink-0 items-center gap-0.5" data-tauri-drag-region="false">
       <RowsMenu
         label="Thread menu"
         tip={{ label: "Thread menu" }}

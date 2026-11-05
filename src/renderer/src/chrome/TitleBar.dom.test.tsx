@@ -243,6 +243,52 @@ describe("TitleBar's controls", () => {
     expect(back.className).not.toContain("opacity-40");
   });
 
+  const withRail = (open: boolean, run: () => void) => {
+    const rail = shellStore.getState().projectRailOpen;
+    shellStore.setState({ projectRailOpen: open });
+    try {
+      run();
+    } finally {
+      shellStore.setState({ projectRailOpen: rail });
+    }
+  };
+
+  it("ends 12px from the window's edge, with no padded group after Panel when the rail is open", () => {
+    withRail(true, () => {
+      bar();
+      const panel = screen.getByRole("button", { name: "Panel" });
+      expect(document.querySelector("[data-stand-ins]")).toBeNull();
+      // The bar's content box carries the inset; the thread menu's group adds none of its own.
+      const content = panel.closest(".pe-3")!;
+      expect(content.parentElement!.tagName).toBe("HEADER");
+      expect(panel.parentElement!.className).not.toMatch(/(^|\s)m[er]-/);
+    });
+  });
+
+  it("with the rail closed in a project, the stand-ins follow Panel 2px apart and drop New thread for the strip's +", () => {
+    withRail(false, () => {
+      bar();
+      const group = document.querySelector<HTMLElement>("[data-stand-ins]")!;
+      expect(group.className).toContain("ps-0.5");
+      expect(group.className).toContain("gap-0.5");
+      expect(group.className).not.toMatch(/(^|\s)px-/);
+      expect(screen.getByRole("button", { name: "Go to file" })).toBeTruthy();
+      // One control named New thread: the strip's, which opens the type chooser.
+      const plus = screen.getAllByRole("button", { name: /New thread/ });
+      expect(plus).toHaveLength(1);
+      expect(group.contains(plus[0])).toBe(false);
+    });
+  });
+
+  it("with the rail closed on the home, which draws no +, the New thread stand-in stays", () => {
+    withRail(false, () => {
+      Element.prototype.scrollIntoView = () => {};
+      bar({ header: { ...header, model: { live: [], dormant: [], activeId: null, heading: null } } });
+      const group = document.querySelector<HTMLElement>("[data-stand-ins]")!;
+      expect(group.contains(screen.getByRole("button", { name: "New thread" }))).toBe(true);
+    });
+  });
+
   it("keeps the traffic lights' 78px only on macOS", () => {
     const rail = shellStore.getState().projectRailOpen;
     shellStore.setState({ projectRailOpen: false });

@@ -317,40 +317,46 @@ function TitleBarComponent({
   // gone, so the picker stays here.
   const showProjectButton =
     railClosed && Boolean(onSelectProject) && !showCurrentProject;
-  const trailingControls = (
-    <div className="flex h-10 shrink-0 items-stretch">
-      <div className="flex items-center gap-0.5 px-2">
+  // The rail's stand-ins while it is closed, 2px after the end group like
+  // the rest of it. The strip's + opens the type chooser, so a project's
+  // view drops the ⌘N stand-in: one control, one name. The home draws no +.
+  const showInbox = projectless && railClosed && !!onOpenInbox;
+  const showNotes = projectless && railClosed && !!onOpenNotes;
+  const showFind = railClosed && !projectless;
+  const showNew = showFind && header.model.heading !== undefined;
+  const showSettings = projectless && railClosed && !!onOpenSettings;
+  const standIns =
+    showInbox || showNotes || showFind || showSettings ? (
+      <div className="flex h-10 shrink-0 items-center gap-0.5 ps-0.5" data-stand-ins>
         <TooltipProvider>
-        {projectless && railClosed && onOpenInbox ? (
-          <IconButton label="Inbox" onClick={onOpenInbox}>
-            <Inbox className="size-3.5" />
-          </IconButton>
-        ) : null}
-        {projectless && railClosed && onOpenNotes ? (
-          <IconButton label="Notes" onClick={onOpenNotes}>
-            <StickyNote className="size-3.5" />
-          </IconButton>
-        ) : null}
-        {railClosed && !projectless ? (
-          <>
+          {showInbox ? (
+            <IconButton label="Inbox" onClick={onOpenInbox}>
+              <Inbox className="size-3.5" />
+            </IconButton>
+          ) : null}
+          {showNotes ? (
+            <IconButton label="Notes" onClick={onOpenNotes}>
+              <StickyNote className="size-3.5" />
+            </IconButton>
+          ) : null}
+          {showFind ? (
             <IconButton label="Go to file" shortcut={shortcutFor("App", "Go to File")} onClick={onGoToFile}>
               <Search className="size-3.5" />
             </IconButton>
+          ) : null}
+          {showNew ? (
             <IconButton label="New thread" shortcut={shortcutFor("Tabs", "New Thread")} onClick={onNew}>
               <Plus className="size-3.5" />
             </IconButton>
-          </>
-        ) : null}
-        {!projectRailOpen && !showCurrentProject && onOpenSettings ? (
-          <IconButton label="Settings" shortcut={shortcutFor("App", "Settings")} onClick={onOpenSettings} intent={settingsChunk.intent}>
-            <Settings className="size-3.5" />
-          </IconButton>
-        ) : null}
+          ) : null}
+          {showSettings ? (
+            <IconButton label="Settings" shortcut={shortcutFor("App", "Settings")} onClick={onOpenSettings} intent={settingsChunk.intent}>
+              <Settings className="size-3.5" />
+            </IconButton>
+          ) : null}
         </TooltipProvider>
       </div>
-      {!IS_MAC ? <WindowControls /> : null}
-    </div>
-  );
+    ) : null;
 
   // "deep" drags from anywhere in the subtree. The bare attribute only drags
   // on a direct hit, which left every label and spacer dead. Tauri still
@@ -390,8 +396,10 @@ function TitleBarComponent({
         </CwdPicker>
       ) : null}
 
+      {/* The bar's content ends 12px from the window's edge, the right
+          panel's inset, so Panel sits over the panel's last button. */}
       <div
-        className={`flex min-w-0 flex-1 items-stretch${
+        className={`flex min-w-0 flex-1 items-stretch pe-3${
           showProjectButton ? " border-l border-border" : ""
         }`}
       >
@@ -411,8 +419,9 @@ function TitleBarComponent({
             }}
           />
         </div>
-        {trailingControls}
+        {standIns}
       </div>
+      {!IS_MAC ? <WindowControls /> : null}
     </header>
   );
 }

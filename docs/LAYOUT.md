@@ -146,9 +146,13 @@ orchestration) with the panel open or closed, never on a subagent's tab,
 fades in on `--dur-fast` and leaves at once. The live chips, New thread and the end group
 share one 40px row box, so all of them sit on one 28px line at y 6. The
 scroll arrows belong to the live row: they sit over its own box, never over
-the end group. The rail-closed
-stand-ins (Inbox, Notes, Go to File, New Thread, Settings) and the Windows
-controls keep their places, each named on hover with its key by a `Tip`.
+the end group. The bar's content ends 12px from the window's edge, the right
+panel's inset, so Panel sits over the panel's last button. The rail-closed
+stand-ins (Inbox, Notes, Go to File, New Thread, Settings) follow Panel 2px
+after it, as the end group's controls sit, each named on hover with its key
+by a `Tip`, and are drawn only when there is one; the New Thread stand-in
+only on the home, since everywhere else the strip's + is the bar's one New
+thread. The Windows controls sit flush at the bar's end, after the inset.
 In the classic strip one right-click menu serves the tabs and the group
 chips: a tab's thread rows then its group rows, a group's Customize… and
 its verbs.
