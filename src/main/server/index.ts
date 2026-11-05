@@ -46,6 +46,7 @@ import { MemorySync, handleMemory } from './remote/memorySync'
 import { ProjectLinker } from './remote/projectLinks'
 import { ProjectSettingsSync } from './remote/projectSettingsSync'
 import { RulesSync } from './remote/rulesSync'
+import { AwaySync } from './remote/awaySync'
 import { SessionMover, handleSessionMove } from './remote/sessionMover'
 import { claudeConfigDir, codexHomeDir } from './sessionMove'
 import { PeerCalls, handlePeerRequest, type LinkRequest } from './remote/peerCalls'
@@ -557,6 +558,13 @@ export async function startServer(
     deliversNotices: () => apns !== null || hub !== null,
     build
   })
+  // Away from computer (away.ts): the person's state, mirrored with the peers
+  // (remote/awaySync.ts); while on, threads decide without asking.
+  const away = new AwayService({
+    getSetting: (key) => store.getSetting(key),
+    setSetting: (key, value) => store.setSetting(key, value),
+    environmentId
+  })
   const peers = new Peers(
     { store, environmentId },
     {
@@ -568,6 +576,7 @@ export async function startServer(
         projectLinker.linkUp(id)
         projectSettings.linkUp(id)
         rulesSync.linkUp(id)
+        void awaySync.linkUp(id)
         void sessionMover.settleWith(id)
         relayServer.linkUp(id)
         void macBridge.linkUp(id)
@@ -584,6 +593,7 @@ export async function startServer(
         projectLinker.onPeerPush(from, push)
         projectSettings.onPeerPush(from, push)
         rulesSync.onPeerPush(from, push)
+        if (awaySync.onPeerPush(from, push)) return
         // A linked host's dev servers, forwarded here (remote/macPorts.ts).
         if (push.push === 'ports') return void macPorts.onPorts(from, push.ports)
         if (push.push === 'ports.data') return macPorts.onData(from, push.streamId, push.seq, push.data)
@@ -643,6 +653,9 @@ export async function startServer(
   // (remote/rulesSync.ts).
   const rulesSync = new RulesSync({ environmentId, platform: hostPlatform(), registry, store, peers })
   rulesSync.start()
+  // Away from computer: one state on every host, newest wins (remote/awaySync.ts).
+  const awaySync = new AwaySync({ away, peers })
+  awaySync.start()
   // Moving one thread between this host and a peer (remote/sessionMover.ts).
   const sessionMover = new SessionMover({
     host: {
@@ -1239,13 +1252,6 @@ export async function startServer(
   const lowSeam = process.env.TEMP_CODE_E2E_MEMORY_LOW === '1' && !!process.env.TEMP_CODE_USER_DATA
   setWarmMemoryFloor(() => lowSeam || admission.memoryLow())
   admission.start()
-  // Away from computer (away.ts): the person's state, mirrored with the peers
-  // (remote/awaySync.ts); while on, threads decide without asking.
-  const away = new AwayService({
-    getSetting: (key) => store.getSetting(key),
-    setSetting: (key, value) => store.setSetting(key, value),
-    environmentId
-  })
   // Threads the last shutdown cut mid-turn come back once everything
   // listens (run() below); the renderer hears the count once per boot.
   const bootResumer = new BootResumer({ store, registry })
@@ -3094,6 +3100,7 @@ export async function startServer(
       projectLinker.close()
       projectSettings.close()
       rulesSync.close()
+      awaySync.close()
       uploads.close()
       sessionMover.close()
       relayServer.close()

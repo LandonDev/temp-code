@@ -936,6 +936,30 @@ group folds the conflict copies on this machine open under its Memory switch
 box, `tc-local memory.status` and the `[memory-sync]` lines in the journal.
 Proof: the memory step of `bun run script:e2e-harness-sync`.
 
+### Away from computer: one state on every host
+
+Away from computer is the person's state, not a project's, so every host
+keeps its own copy and they agree by time. Each host stores
+`{ enabled, at, by }` in its settings table (`away`, src/main/server/away.ts)
+beside the stretch's tally of decisions per thread (`away:decided`, reset
+when away turns on). There is no home host: a flip must work while the box is
+out of reach.
+
+The Mac drives it over the links it holds (`src/main/server/remote/awaySync.ts`):
+
+- A flip on the Mac goes to every open link as `away.apply` (admin). The box
+  takes a state only when its `at` is newer.
+- The box pushes `away` to every socket on each change, so a flip at the
+  box's /ui reaches every Mac's link. The Mac applies it when newer and never
+  sends it back.
+- On link-up each side reads the other's `away.get`, and the older side takes
+  the newer state. A flip made while the box was down reaches it here.
+
+Wall clocks decide, so a skew of seconds matters only for flips seconds
+apart; the next link-up settles it. `away.set` needs approve, since it denies
+approvals for every thread. Proof: `remote/awaySync.test.ts` (a flip with the
+box down then up, the box's flip reaching two Macs, no echo).
+
 ### Integrations and API keys: placed by hand
 
 The harness sync never carries a secret, so the keys and config files the
