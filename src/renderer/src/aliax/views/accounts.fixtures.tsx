@@ -3,7 +3,7 @@ const HOUR = 3_600_000
 const DAY = 24 * HOUR
 const fn = 'fn'
 const actions = {
-  onCapture: fn, onAdd: fn, onReauth: fn, onUse: fn, onDelete: fn, onRefresh: fn,
+  onCapture: fn, onAdd: fn, onReauth: fn, onUse: fn, onRemove: fn, onRefresh: fn,
   onSetupToken: fn, onConvertAll: fn, onSetHome: fn, onSync: fn, onAddKey: fn
 }
 

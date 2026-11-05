@@ -37,8 +37,8 @@ export interface AccountsActions {
   onAddKey: (serviceId: ServiceId) => void;
   onReauth: (serviceId: ServiceId, email?: string) => void;
   onUse: (serviceId: ServiceId, name: string) => void;
-  /** Rejects with the host's refusal, which the row's confirm shows. */
-  onDelete: (serviceId: ServiceId, name: string) => Promise<void>;
+  /** A row's Remove…: the page owns the confirm, so it outlives the row it removes. */
+  onRemove: (serviceId: ServiceId, profile: ProfileView) => void;
   onRefresh: () => void;
   onSetupToken: (serviceId: ServiceId, identity: { name: string; email?: string }) => void;
   /** Every Claude account not yet holding a one-year token, in one go. */
@@ -195,7 +195,7 @@ function ProviderSection({ service, props, now, columns }: { service: ServiceVie
             onUse={() => props.onUse(service.id, p.name)}
             onAction={(kind) => act(p, kind)}
             onSetupToken={() => props.onSetupToken(service.id, { name: p.name, email: p.email })}
-            onRemove={() => props.onDelete(service.id, p.name)}
+            onRemove={() => props.onRemove(service.id, p)}
             onEdited={props.onRefresh}
           />
         ))

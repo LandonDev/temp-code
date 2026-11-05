@@ -57,7 +57,7 @@ beforeEach(() => {
     onAddKey: vi.fn(),
     onReauth: vi.fn(),
     onUse: vi.fn(),
-    onDelete: vi.fn(async () => {}),
+    onRemove: vi.fn(),
     onRefresh: vi.fn(),
     onSetupToken: vi.fn(),
     onConvertAll: vi.fn(),
@@ -99,30 +99,12 @@ describe("AccountsView", () => {
     expect(props.onSetHome).toHaveBeenCalledWith("claude", "env_box");
   });
 
-  it("Remove asks first, and only its Remove removes", () => {
+  it("Remove… hands the page the account to ask about, and the row draws no confirm", () => {
     render(<AccountsView {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "More actions for Spare" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove…" }));
-    const dialog = screen.getByRole("alertdialog");
-    expect(within(dialog).getByText("Remove Spare?")).toBeTruthy();
-    expect(props.onDelete).not.toHaveBeenCalled();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
-    expect(props.onDelete).toHaveBeenCalledWith("claude-code", "b@x.com");
-  });
-
-  it("Remove's refusal is the confirm's red line, and the confirm stays", async () => {
-    props.onDelete = vi.fn(async () => {
-      throw new Error("The account is in use");
-    });
-    render(<AccountsView {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Spare" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Remove…" }));
-    await act(async () => {
-      fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove" }));
-    });
-    const dialog = screen.getByRole("alertdialog");
-    expect(dialog.textContent).toContain("The account is in use");
-    expect((within(dialog).getByRole("button", { name: "Remove" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(props.onRemove).toHaveBeenCalledWith("claude-code", expect.objectContaining({ name: "b@x.com", nickname: "Spare" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
   it("opens a row's usage details from the keyboard and returns focus on Escape", async () => {
@@ -230,10 +212,7 @@ describe("AccountsView", () => {
       fireEvent.click(screen.getByRole("button", { name: "More actions for Work" }));
       expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Remove…"]);
       fireEvent.click(screen.getByRole("menuitem", { name: "Remove…" }));
-      const dialog = screen.getByRole("alertdialog");
-      expect(within(dialog).getByText("The key is deleted from every host. Adding it again brings it back.")).toBeTruthy();
-      fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
-      expect(props.onDelete).toHaveBeenCalledWith("meta", "Work");
+      expect(props.onRemove).toHaveBeenCalledWith("meta", expect.objectContaining({ name: "Work", kind: "key" }));
     });
 
     it("offers no refreshing host, and an empty one says No keys saved", () => {

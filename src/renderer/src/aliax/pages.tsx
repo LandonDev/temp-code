@@ -9,10 +9,11 @@ import { RefreshCw } from "@renderer/chrome/icons";
 import { Page } from "@renderer/components/page";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Dialog } from "@renderer/components/ui/dialog";
-import { DialogFooter, ErrorLine } from "@renderer/chrome/ConfirmDialog";
+import { ConfirmDialog, DialogFooter, ErrorLine } from "@renderer/chrome/ConfirmDialog";
 import { ModalBody, ModalPanel } from "@renderer/chrome/Modal";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
+import { displayName } from "@aliax/lib/accounts";
 import { compact, localDayTime } from "@aliax/lib/viz";
 import { AccountsSkeleton, AccountsView } from "@aliax/views/accounts";
 import { AddKeyDialog } from "@aliax/views/AddKeyDialog";
@@ -20,6 +21,9 @@ import { StatsView } from "@aliax/views/stats";
 import { useAliax } from "./useAliax";
 
 type Result = { ok: boolean; error?: string; notes?: string[]; name?: string };
+
+/** The account a Remove… asked about, held until the confirm's exit has played. */
+type Removing = { serviceId: ServiceId; name: string; label: string; keyed: boolean };
 
 /** A sign-in under way: the service, the address it was started for, and the error that stopped it. */
 type Login = { serviceId: ServiceId; hint?: string; error: string | null };
@@ -31,6 +35,9 @@ export function AccountsPage(): React.JSX.Element {
   const [login, setLogin] = useState<Login | null>(null);
   /** The key service whose Add key… dialog is open. */
   const [keyFor, setKeyFor] = useState<ServiceId | null>(null);
+  // The page, not the row, holds the Remove confirm: the refreshed list drops
+  // the row before the confirm's exit plays.
+  const [removing, setRemoving] = useState<Removing | null>(null);
   // Each sign-in attempt's number: an answer for an attempt the person cancelled says nothing.
   const attempt = useRef(0);
   // The hosts this machine shares accounts with: the snapshot's peers, named by the registry.
@@ -168,7 +175,7 @@ export function AccountsPage(): React.JSX.Element {
           onAddKey={setKeyFor}
           onReauth={(id, email) => void addAccount(id, email)}
           onUse={(id, name) => void onUse(id, name)}
-          onDelete={remove}
+          onRemove={(serviceId, profile) => setRemoving({ serviceId, name: profile.name, label: displayName(profile), keyed: profile.kind === "key" })}
           onRefresh={() => void refresh(true)}
           onSetupToken={(_id, identity) => void convert(identity.name)}
           onConvertAll={() => void convert()}
@@ -176,6 +183,18 @@ export function AccountsPage(): React.JSX.Element {
           onSync={(id) => void onSync(id)}
         />
       )}
+
+      {removing ? (
+        <ConfirmDialog
+          title={`Remove ${removing.label}?`}
+          body={removing.keyed ? "The key is deleted from every host. Adding it again brings it back." : "Its saved sign-in is deleted. Signing in again brings it back."}
+          confirmLabel="Remove"
+          danger
+          onCancel={() => setRemoving(null)}
+          onConfirm={() => remove(removing.serviceId, removing.name)}
+          onDone={() => setRemoving(null)}
+        />
+      ) : null}
 
       <AddKeyDialog
         open={keyFor !== null}

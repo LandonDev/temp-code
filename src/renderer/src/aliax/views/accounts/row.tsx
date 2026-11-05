@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { maskedKey, type AccountHeadroom, type KeyProfileView, type MintState } from "@shared/accounts";
 import type { ProfileView, ServiceId, UsageReport } from "aliax-core/shared/types";
-import { ConfirmDialog } from "@renderer/chrome/ConfirmDialog";
 import { MoreHorizontal } from "@renderer/chrome/icons";
 import { PageRow } from "@renderer/components/page";
 import { Button } from "@renderer/components/ui/button";
@@ -31,14 +30,13 @@ export interface AccountRowProps {
   onUse: () => void;
   onAction: (kind: RowAction["kind"]) => void;
   onSetupToken: () => void;
-  /** Runs inside the confirm; a rejection is its red line and it stays open. */
-  onRemove: () => Promise<void>;
+  /** Remove…: the page asks, holding its confirm past this row (a removed row leaves before the confirm's exit plays). */
+  onRemove: () => void;
   onEdited: () => void;
 }
 
 export function AccountRow({ serviceId, profile, report, headroom, columns, now, owner, mint, billingUrl, switching, onUse, onAction, onSetupToken, onRemove, onEdited }: AccountRowProps) {
   const [editing, setEditing] = useState(false);
-  const [removing, setRemoving] = useState(false);
   const name = displayName(profile);
   const line = rowLine(profile, report, owner, mint, now, limitOf(report, headroom, now));
   const keyed = profile.kind === "key";
@@ -91,24 +89,13 @@ export function AccountRow({ serviceId, profile, report, headroom, columns, now,
             ) : null}
             {billingUrl && !keyed ? <DropdownMenuItem onClick={() => void window.aliax.openExternal(billingUrl)}>Manage plan</DropdownMenuItem> : null}
             {keyed ? null : <DropdownMenuSeparator />}
-            <DropdownMenuItem variant="destructive" onClick={() => setRemoving(true)}>
+            <DropdownMenuItem variant="destructive" onClick={onRemove}>
               Remove…
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </span>
       <EditAccountDialog open={editing} onOpenChange={setEditing} serviceId={serviceId} profile={profile} onSaved={onEdited} />
-      {removing ? (
-        <ConfirmDialog
-          title={`Remove ${name}?`}
-          body={keyed ? "The key is deleted from every host. Adding it again brings it back." : "Its saved sign-in is deleted. Signing in again brings it back."}
-          confirmLabel="Remove"
-          danger
-          onCancel={() => setRemoving(false)}
-          onConfirm={onRemove}
-          onDone={() => setRemoving(false)}
-        />
-      ) : null}
     </PageRow>
   );
 }

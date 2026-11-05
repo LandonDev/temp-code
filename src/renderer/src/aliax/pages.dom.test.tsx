@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectModalShape } from '@renderer/chrome/modalShape.testkit'
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ServiceView, UsageReport } from 'aliax-core/shared/types'
 import type { StatsBundle } from '@shared/aliaxStats'
 import { emptyAccounts, type AccountsSnapshot } from '@server/shared/accounts'
@@ -89,12 +89,16 @@ const emptyBundle = (): StatsBundle => ({
   flow: []
 })
 
+/** A test may hold the usage refresh a forced reload runs, to see the page mid-removal. */
+let heldRefresh: Promise<unknown> | null = null
+
 class FakeLink implements Link {
   environmentId = 'local'
   profile = 'local' as const
   connected = true
   request<T>(method: string): Promise<T> {
     if (method === 'accounts.list') return Promise.resolve(snapshot() as T)
+    if (method === 'accounts.refresh' && heldRefresh) return heldRefresh.then(() => snapshot() as T)
     return Promise.reject(new Error(`unexpected ${method}`))
   }
   onPush(_listener: (push: ServerPush) => void): () => void {
@@ -136,6 +140,7 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
+  heldRefresh = null
   cleanup()
   toasts.success.mockReset()
   toasts.error.mockReset()
@@ -240,6 +245,75 @@ describe('AccountsPage', () => {
     expect(text).toBe('Added New')
     expect(options.description).toBe('Saved without its claude.ai session')
     expect(options.action?.label).toBe('Switch to it')
+  })
+})
+
+describe('AccountsPage, removing an account', () => {
+  const withSpare = (): ServiceView[] => {
+    const list = services()
+    list[0].profiles.push({ name: 'b@x.com', email: 'b@x.com', nickname: 'Spare', createdAt: 2, active: false })
+    return list
+  }
+  const askRemoveSpare = async () => {
+    aliax.listServices.mockResolvedValue(withSpare())
+    render(<AccountsPage />)
+    await act(flush)
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for Spare' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove…' }))
+    return screen.getByRole('alertdialog')
+  }
+
+  it('asks first, naming the account, and only its Remove removes', async () => {
+    const dialog = await askRemoveSpare()
+    expect(within(dialog).getByText('Remove Spare?')).toBeTruthy()
+    expect(within(dialog).getByText('Its saved sign-in is deleted. Signing in again brings it back.')).toBeTruthy()
+    expect(aliax.remove).not.toHaveBeenCalled()
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }))
+    })
+    expect(aliax.remove).toHaveBeenCalledWith('claude-code', 'b@x.com')
+  })
+
+  it("a refusal is the confirm's red line, and the confirm stays", async () => {
+    aliax.remove.mockResolvedValue({ ok: false, error: 'The account is in use' })
+    const dialog = await askRemoveSpare()
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }))
+    })
+    await act(flush)
+    expect(screen.getByRole('alertdialog').textContent).toContain('The account is in use')
+    expect((within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Remove' }) as HTMLButtonElement).disabled).toBe(false)
+    expect(toasts.error).not.toHaveBeenCalled()
+  })
+
+  it('the confirm outlives its row: the list lands without the account, and the dialog still plays its exit', async () => {
+    let release = () => {}
+    heldRefresh = new Promise<void>((resolve) => (release = resolve))
+    const dialog = await askRemoveSpare()
+    // The removal re-reads the list, which no longer has Spare.
+    aliax.listServices.mockResolvedValue(services())
+    const ended: boolean[] = []
+    // jsdom runs no animation, so the exit's mark is the popup turning closed while it is still mounted.
+    const watch = new MutationObserver(() => ended.push(dialog.hasAttribute('data-closed')))
+    watch.observe(dialog, { attributes: true })
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }))
+    })
+    await act(flush)
+    // The row is gone; the confirm is still on screen, its verb spinning.
+    expect(screen.queryByRole('button', { name: 'More actions for Spare' })).toBeNull()
+    expect(screen.getByRole('alertdialog')).toBe(dialog)
+    expect(dialog.getAttribute('aria-busy')).toBe('true')
+    await act(async () => {
+      release()
+      await flush()
+    })
+    await act(flush)
+    expect(toasts.success).toHaveBeenCalledWith('Removed')
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    watch.disconnect()
+    // It closed itself (its exit, then onDone), never by leaving with its row.
+    expect(ended).toContain(true)
   })
 })
 
