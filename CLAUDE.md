@@ -166,7 +166,11 @@ Two separate steps, on purpose, over one gate.
    - If the hook skipped (tree was dirty at commit time, or the gate was
      red), the next green commit releases everything since; you can also
      run `bun scripts/release.ts "notes"` yourself (`--full` to run the
-     typecheck the hash would skip).
+     typecheck the hash would skip). `--notes-file <path>` in the notes'
+     place reads them from a file: the batch's release step and the
+     Publish button pass theirs that way, since Linux refuses one argv or
+     environment string over 128 KiB (a batch of forty landings once failed
+     with `spawn E2BIG`).
    - Worker log: /tmp/temp-code-auto-release.log, with the per-step times.
    - Never commit with a broken typecheck "to fix later" — that blocks the
      train.
@@ -223,7 +227,10 @@ Two separate steps, on purpose, over one gate.
    src/main/server/hostJobs.ts, src/shared/contract-host.ts,
    src/renderer/src/surfaces/settings/hosts/Deploy.tsx).
    Publish… on This Mac's Mac release row runs `bun scripts/release.ts
-   "<notes>"` then `bun run release:publish` through the login shell in the
+   --notes-file <tmp>` (the notes in a file under the tmp dir, named by
+   `TC_RELEASE_NOTES_FILE` and removed when the scripts close; a peer's
+   publish with the train off carries no notes) then `bun run
+   release:publish` through the login shell in the
    checkout the `release.checkout` setting names (default
    ~/IdeaProjects/temp-code, the field beside the button), the notes
    prefilled from the commit subjects since the last `v1.0.*` tag; it refuses
@@ -3261,8 +3268,11 @@ this is the short one.
   `summary` line in the master's words. The kinds: `land` (always first;
   a list without one gets it); `gate` (the commit tier once on the project
   checkout at the project branch's head); `release` (`bun
-  scripts/release.ts "<master title; landed subjects>" --push`: the tag,
-  and master with it pushed to origin; with nothing new since the last
+  scripts/release.ts --notes-file <tmp> --push`, the notes the master's
+  title then each landed subject's first line, cut at whole subjects to
+  16 KiB with "… and N more" (`boundNotes`, `RELEASE_NOTES_MAX` in batch.ts),
+  written to a file under the tmp dir that gateRun.ts removes when the run
+  ends: the tag, and master with it pushed to origin; with nothing new since the last
   tag the step is skipped as "nothing to release since release-N" and a
   publish or deploy after it takes that version); `publish` (the Mac's publish job
   for that commit over the peer link, "Releases" above; a person's

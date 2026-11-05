@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { GATE_LOG_TAIL, isErrorLine, type GateStep } from '@shared/gate'
 import { trackChild } from './spawnBudget'
@@ -9,7 +9,10 @@ import { trackChild } from './spawnBudget'
  * One gate step as a child process (shared/gate.ts says where each runs):
  * `typecheck` is `bun run typecheck` in a branch's worktree, `gate` is
  * `bun scripts/gate.ts --tier commit [--since <ref>]` on the project
- * checkout, `release` is `bun scripts/release.ts "<notes>"` there. Output
+ * checkout, `release` is `bun scripts/release.ts --notes-file <tmp> --push`
+ * there, the notes written to a file under the host's tmp dir and removed
+ * when the run ends (Linux refuses one argv string over 128 KiB: a batch of
+ * forty landings once failed with `spawn E2BIG`). Output
  * is one merged stream; the caller hears every line (the batch streams the
  * gate's `✓ step 12s` lines as its detail) and gets the tail back.
  *
@@ -29,7 +32,7 @@ export interface GateRunOptions {
   since?: string
   /** `release`: push the branch and the release tag to origin after tagging (`--push`) */
   push?: boolean
-  /** `release`: the notes */
+  /** `release`: the notes, handed to release.ts in a file (`--notes-file`) */
   notes?: string
   onLine?: (line: string) => void
   env?: NodeJS.ProcessEnv
@@ -93,14 +96,15 @@ export function gateEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv
   return out
 }
 
-export function gateCommand(opts: Pick<GateRunOptions, 'step' | 'since' | 'notes' | 'push'>): string[] {
+/** The step's argv after bun; a release names the file its notes were written to. */
+export function gateCommand(opts: Pick<GateRunOptions, 'step' | 'since' | 'push'> & { notesFile?: string }): string[] {
   switch (opts.step) {
     case 'typecheck':
       return ['run', 'typecheck']
     case 'gate':
       return ['scripts/gate.ts', '--tier', 'commit', ...(opts.since ? ['--since', opts.since] : [])]
     case 'release':
-      return ['scripts/release.ts', opts.notes?.trim() || 'batch release', ...(opts.push ? ['--push'] : [])]
+      return ['scripts/release.ts', '--notes-file', opts.notesFile ?? '/dev/null', ...(opts.push ? ['--push'] : [])]
   }
 }
 
@@ -128,6 +132,14 @@ export function tailOf(log: string, n = GATE_LOG_TAIL): string {
   return lines.slice(-n).join('\n')
 }
 
+/** A release's notes in a file of their own under the tmp dir; `remove` takes the file and its dir. */
+export function writeNotesFile(notes: string | undefined, dir: string = tmpdir()): { path: string; remove: () => void } {
+  const own = mkdtempSync(join(dir, 'tc-release-notes-'))
+  const path = join(own, 'notes.txt')
+  writeFileSync(path, notes?.trim() || 'batch release')
+  return { path, remove: () => rmSync(own, { recursive: true, force: true }) }
+}
+
 /** Runs the step and answers its outcome; never throws for a red run. */
 export function runGateStep(opts: GateRunOptions): Promise<GateRunResult> {
   const rules = parseGateStub(opts.stub ?? process.env.TEMP_CODE_GATE_STUB)
@@ -151,10 +163,13 @@ export function runGateStep(opts: GateRunOptions): Promise<GateRunResult> {
         opts.onLine?.(line)
       }
     }
+    let notes: { path: string; remove: () => void } | null = null
     let child
     try {
-      child = trackChild(spawn(bunBinary(env), gateCommand(opts), { cwd: opts.cwd, env, stdio: ['ignore', 'pipe', 'pipe'] }))
+      if (opts.step === 'release') notes = writeNotesFile(opts.notes)
+      child = trackChild(spawn(bunBinary(env), gateCommand({ ...opts, notesFile: notes?.path }), { cwd: opts.cwd, env, stdio: ['ignore', 'pipe', 'pipe'] }))
     } catch (err) {
+      notes?.remove()
       const msg = err instanceof Error ? err.message : String(err)
       resolve({ ok: false, log: `could not start ${opts.step}: ${msg}`, ms: Date.now() - started, exitCode: null })
       return
@@ -170,6 +185,7 @@ export function runGateStep(opts: GateRunOptions): Promise<GateRunResult> {
     })
     child.on('close', (code) => {
       clearTimeout(timer)
+      notes?.remove()
       if (partial.trim()) feed(Buffer.from('\n'))
       resolve({ ok: code === 0, log: tailOf(lines.join('\n')), ms: Date.now() - started, exitCode: code, firstError })
     })

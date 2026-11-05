@@ -53,3 +53,21 @@ export function commitsSince(tag: string, cwd: string, env: NodeJS.ProcessEnv = 
   if (Number(merges) > 0) commits.push({ subject: 'merge', files: [] })
   return commits
 }
+
+export interface ReleaseArgs {
+  notes: string | null
+  full: boolean
+  push: boolean
+}
+
+/** release.ts's arguments: the notes positionally (the post-commit train, a
+ *  hand run) or as `--notes-file <path>` (a batch's release step and the
+ *  Publish button: Linux refuses one argv or environment string over
+ *  128 KiB, and a batch's notes once passed it with `spawn E2BIG`). */
+export function parseReleaseArgs(args: readonly string[], readFile: (path: string) => string): ReleaseArgs {
+  const at = args.indexOf('--notes-file')
+  const file = at >= 0 ? args[at + 1] : undefined
+  const rest = args.filter((_, i) => at < 0 || (i !== at && i !== at + 1))
+  const raw = file ? readFile(file) : rest.find((a) => !a.startsWith('--'))
+  return { notes: raw?.trim() || null, full: rest.includes('--full'), push: rest.includes('--push') }
+}

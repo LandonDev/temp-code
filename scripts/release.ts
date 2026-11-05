@@ -1,5 +1,8 @@
 /**
- * Cut a local release: `bun scripts/release.ts "one-line notes" [--full] [--push]`.
+ * Cut a local release: `bun scripts/release.ts "one-line notes" [--full] [--push]`,
+ * or `--notes-file <path>` in the notes' place (a batch's release step and
+ * the Publish button pass their notes that way: Linux refuses one argv
+ * string over 128 KiB).
  *
  * Gates on a clean tree and the gate's `commit` tier (scripts/gate.ts:
  * typecheck, vitest and a real build, run at once), plus the `publish` tier
@@ -21,7 +24,7 @@
  */
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
-import { commitsSince, nothingLine, nothingToRelease } from './releaseCheck'
+import { commitsSince, nothingLine, nothingToRelease, parseReleaseArgs } from './releaseCheck'
 
 // The post-commit hook exports GIT_AUTHOR_*, GIT_INDEX_FILE and friends.
 // Leaked into the gate they make every git command in a test act as the
@@ -33,12 +36,9 @@ const env = Object.fromEntries(
 const run = (cmd: string, args: string[]): string =>
   execFileSync(cmd, args, { encoding: 'utf8', stdio: ['inherit', 'pipe', 'inherit'], env })
 
-const args = process.argv.slice(2)
-const full = args.includes('--full')
-const push = args.includes('--push')
-const notes = args.find((a) => !a.startsWith('--'))?.trim()
+const { notes, full, push } = parseReleaseArgs(process.argv.slice(2), (path) => readFileSync(path, 'utf8'))
 if (!notes) {
-  console.error('usage: bun scripts/release.ts "one-line release notes" [--full] [--push]')
+  console.error('usage: bun scripts/release.ts "one-line release notes" | --notes-file <path> [--full] [--push]')
   process.exit(1)
 }
 
@@ -86,7 +86,8 @@ if (!/^  "version": "1\.0\.\d+",$/m.test(pkg)) {
 }
 writeFileSync('package.json', pkg.replace(/^  "version": "1\.0\.\d+",$/m, `  "version": "1.0.${n}",`))
 run('git', ['add', 'release.json', 'package.json'])
-run('git', ['commit', '-m', `release: v${n} — ${notes}`])
+// The message goes in on stdin: notes from a file may be longer than one argv string may be.
+execFileSync('git', ['commit', '-F', '-'], { input: `release: v${n} — ${notes}`, stdio: ['pipe', 'pipe', 'inherit'], env })
 run('git', ['tag', `release-${n}`])
 if (push) {
   const branch = run('git', ['rev-parse', '--abbrev-ref', 'HEAD']).trim()

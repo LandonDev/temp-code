@@ -1,8 +1,8 @@
 import { EventEmitter } from 'node:events'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import type { HostLogPush } from '@shared/contract-host'
 import {
@@ -340,6 +340,44 @@ describe('Publisher', () => {
     }
   })
 
+  it('long notes reach release.ts in a file, not argv or the environment; the file goes when the scripts close; a peer publish carries none', async () => {
+    // A fake login shell on the real spawn path: it records its argv, its
+    // environment's longest value and the notes file it was pointed at.
+    const home = join(root, 'home')
+    checkoutAt(join(home, 'IdeaProjects', 'temp-code'))
+    const out = join(root, 'shell-out')
+    mkdirSync(out)
+    const shell = join(root, 'fake-shell')
+    writeFileSync(
+      shell,
+      `#!/bin/sh\nn=$(ls "${out}" | wc -l)\nprintf '%s\\n' "$@" > "${out}/argv-$n"\nenv | awk '{ if (length($0) > m) m = length($0) } END { print m }' > "${out}/env-$n"\nif [ -n "$TC_RELEASE_NOTES_FILE" ]; then cp "$TC_RELEASE_NOTES_FILE" "${out}/notes-$n"; echo "$TC_RELEASE_NOTES_FILE" > "${out}/path-$n"; fi\n`
+    )
+    chmodSync(shell, 0o755)
+    const publisher = new Publisher({
+      store: store(),
+      home,
+      shell,
+      git: fakeGit({ tag: 'v1.0.270', subjects: ['one'] }).git,
+      feedVersion: async () => '1.0.270',
+      env: { PATH: '/usr/bin:/bin', HOME: home }
+    })
+    const notes = Array.from({ length: 60 }, (_, i) => `Subject ${i} `.padEnd(3_000, 'x')).join('; ')
+    await publisher.publish(notes)
+    await vi.waitFor(() => expect(publisher.log.status.phase).toBe('done'))
+    const argv = readFileSync(join(out, 'argv-0'), 'utf8').trim().split('\n')
+    expect(argv[0]).toBe('-lc')
+    expect(argv.every((a) => Buffer.byteLength(a) < 4096)).toBe(true)
+    expect(Number(readFileSync(join(out, 'env-0'), 'utf8'))).toBeLessThan(4096)
+    expect(readFileSync(join(out, 'notes-0'), 'utf8')).toBe(notes)
+    const file = readFileSync(join(out, 'path-0'), 'utf8').trim()
+    await vi.waitFor(() => expect(existsSync(file)).toBe(false))
+    // A peer's publish of the release the box cut: no notes file at all.
+    await publisher.publish(notes, { train: false })
+    await vi.waitFor(() => expect(readdirSync(out).filter((f) => f.startsWith('argv-'))).toHaveLength(2))
+    await vi.waitFor(() => expect(publisher.log.status.phase).toBe('done'))
+    expect(readdirSync(out).filter((f) => f.startsWith('notes-'))).toHaveLength(1)
+  })
+
   it('publishes HEAD without the train when a peer already cut the release, using that version for the target and feed check', async () => {
     const home = join(root, 'home')
     // Deliberately different from HEAD: no-train mode must use package.json, not n + 1.
@@ -363,7 +401,7 @@ describe('Publisher', () => {
     expect(status.target).toBe('v1.0.273')
     expect(spawned).toEqual([expect.objectContaining({ cwd: checkout, train: false })])
     expect(releaseCommand({ train: false })).toBe(withToolPath('bun run release:publish'))
-    expect(releaseCommand()).toBe(withToolPath('bun scripts/release.ts "$TC_RELEASE_NOTES" && bun run release:publish'))
+    expect(releaseCommand()).toBe(withToolPath('bun scripts/release.ts --notes-file "$TC_RELEASE_NOTES_FILE" && bun run release:publish'))
     expect(releaseCommand({ train: false })).toMatch(/^for d in .*; export PATH; bun run release:publish$/)
     expect(releaseCommand({ train: true })).toBe(releaseCommand())
     children[0].emit('exit', 0, null)

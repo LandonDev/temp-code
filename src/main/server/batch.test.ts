@@ -1,15 +1,16 @@
-import { realpathSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BOARD_WATCH_MS, type BatchBoard, type BatchPushState, type BatchState } from '@shared/contract-batch'
 import type { DeployStatus, HostLogPush } from '@shared/contract-host'
 import type { AgentEvent, EventRow, SessionMeta } from '@shared/events'
-import { Batches, handleBatch, releaseOutcome, releaseTag, spawnShellStep, type BatchesDeps, type PublishRun } from './batch'
+import { Batches, RELEASE_NOTES_MAX, boundNotes, handleBatch, releaseOutcome, releaseTag, spawnShellStep, type BatchesDeps, type PublishRun } from './batch'
 import { BoardDigests, type BoardPush } from './boardDigest'
 import { BoardWatch } from './boardWatch'
 import { FocusSet } from './focus'
 import { GateQueue } from './gateQueue'
-import type { GateRunOptions, GateRunResult } from './gateRun'
+import { runGateStep, type GateRunOptions, type GateRunResult } from './gateRun'
 import type { Landed } from './mergeReview'
 
 const meta = (id: string, patch: Partial<SessionMeta> = {}): SessionMeta =>
@@ -448,6 +449,50 @@ describe('Batches: the end of the batch', () => {
     expect(w.runs).toHaveLength(2)
   })
 
+  it('a release of 60 paragraph-long subjects: the spawn names a notes file, the file holds the bounded notes, and it is removed after', async () => {
+    // A fake bun on the real spawn path (runGateStep finds BUN_INSTALL's
+    // first): it records its argv and the notes file it was handed.
+    const root = mkdtempSync(join(tmpdir(), 'tc-batch-notes-'))
+    const tmp = join(root, 'tmp')
+    mkdirSync(join(root, 'bin'))
+    mkdirSync(tmp)
+    const bun = join(root, 'bin', 'bun')
+    writeFileSync(
+      bun,
+      `#!/bin/sh\nif [ "$1" = scripts/release.ts ]; then\n  printf '%s\\n' "$@" > "${root}/argv"\n  cp "$3" "${root}/notes"\n  echo 'released v277 (tag release-277, package.json 1.0.277)'\nelse\n  echo '✓ typecheck 1s'\nfi\n`
+    )
+    chmodSync(bun, 0o755)
+    const env = { ...process.env, BUN_INSTALL: root, TMPDIR: tmp }
+    const w = world()
+    const subjects = Array.from({ length: 60 }, (_, i) => `Subject ${i} `.padEnd(3_000, 'x') + '\n\nbody that never ships')
+    const b = w.make({ runGate: (o) => runGateStep({ ...o, cwd: root, env, stub: null }) })
+    w.set('b', { status: 'idle' })
+    b.landed(w.landed('a', 'feat-a', subjects.slice(0, 30)))
+    b.landed(w.landed('b', 'feat-b', subjects.slice(30)))
+    const saved = process.env.TMPDIR
+    process.env.TMPDIR = tmp
+    try {
+      await b.review('m')
+    } finally {
+      if (saved === undefined) delete process.env.TMPDIR
+      else process.env.TMPDIR = saved
+    }
+    expect(steps(b.get('m'))).toMatchObject({ gate: ['passed', expect.any(String)], release: ['passed', 'release-277 tagged'] })
+    const argv = readFileSync(join(root, 'argv'), 'utf8').trim().split('\n')
+    expect(argv[0]).toBe('scripts/release.ts')
+    expect(argv[1]).toBe('--notes-file')
+    expect(argv[3]).toBe('--push')
+    expect(argv.every((a) => Buffer.byteLength(a) < 4096)).toBe(true)
+    const notes = readFileSync(join(root, 'notes'), 'utf8')
+    expect(Buffer.byteLength(notes)).toBeLessThanOrEqual(RELEASE_NOTES_MAX)
+    expect(notes).toMatch(/^T m; Subject 0 x+; Subject 1 x+;/)
+    expect(notes).not.toContain('body that never ships')
+    expect(notes).toMatch(/; … and \d+ more$/)
+    expect(existsSync(argv[2])).toBe(false)
+    expect(readdirSync(tmp)).toEqual([])
+    rmSync(root, { recursive: true, force: true })
+  })
+
   it('a list of land alone: nothing run, the master still told', async () => {
     const w = world()
     const b = w.make()
@@ -600,7 +645,7 @@ describe('Batches: the end of the batch', () => {
     w.set('b', { status: 'idle' })
     await b.review('m')
     expect(w.runs.map((r) => r.step)).toEqual(['gate', 'gate', 'release'])
-    expect(steps(b.get('m')).release).toEqual(['passed', 'release-277 tagged'])
+    expect(steps(b.get('m'))).toMatchObject({ gate: ['passed', expect.any(String)], release: ['passed', 'release-277 tagged'] })
   })
 
   it("a red gate step's detail reads the step's printed tail first, the notice carries the same words, and fail() keeps it", async () => {
@@ -1982,5 +2027,26 @@ describe('the stall watch', () => {
     w.tick(31 * 60_000)
     await new Promise((r) => setTimeout(r, 40))
     expect(w.reports).toHaveLength(1)
+  })
+})
+
+describe('boundNotes', () => {
+  it('keeps the title and each subject\'s first line, whole, within the bound, and counts the rest', () => {
+    expect(boundNotes('  T  m ', ['a: one\n\nbody', 'b:   two'])).toBe('T m; a: one; b: two')
+    const subjects = Array.from({ length: 60 }, (_, i) => `s${i} `.padEnd(3_000, 'x'))
+    const out = boundNotes('Master', subjects)
+    expect(Buffer.byteLength(out)).toBeLessThanOrEqual(RELEASE_NOTES_MAX)
+    const parts = out.split('; ')
+    expect(parts[0]).toBe('Master')
+    expect(parts.slice(1, -1)).toEqual(subjects.slice(0, parts.length - 2))
+    expect(parts.at(-1)).toBe(`… and ${60 - (parts.length - 2)} more`)
+    expect(parts.length - 2).toBe(5)
+  })
+
+  it('a title past the bound is cut to fit beside the tail; an empty title leads with the subjects', () => {
+    const out = boundNotes('t'.repeat(40_000), ['a'], 1_000)
+    expect(Buffer.byteLength(out)).toBeLessThanOrEqual(1_000)
+    expect(out).toMatch(/^t+; a$/)
+    expect(boundNotes('', ['a', 'b'])).toBe('a; b')
   })
 })

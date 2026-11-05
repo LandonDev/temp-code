@@ -355,7 +355,7 @@ kind:
 | --- | --- |
 | `land` | the landings; always first (a list without one gets `{ id: 'land', name: 'Land' }` at the front) |
 | `gate` | `bun scripts/gate.ts --tier commit` once on the project checkout at the project branch's head |
-| `release` | `bun scripts/release.ts "<master title; landed subjects>" --push`: the tag, and master with it, pushed to origin; with nothing new since the last `release-N` the step is skipped as "nothing to release since release-N" and the steps after it take that version |
+| `release` | `bun scripts/release.ts --notes-file <tmp> --push`, the notes (the master's title, then each landed subject's first line, cut at whole subjects to 16 KiB with "… and N more") in a temp file removed after the run: the tag, and master with it, pushed to origin; with nothing new since the last `release-N` the step is skipped as "nothing to release since release-N" and the steps after it take that version |
 | `publish` | the Mac's publish job for that commit over the peer link (below); a person's decision; skipped "needs a release" without a release before it |
 | `deploy` | the box's deploy trigger (docs/box.md "Deploy from the app"): `v1.0.N` when a publish passed, `master` otherwise; skipped "needs a release" when no release step comes before it (a skipped release step counts) |
 | `shell` | `run` through the login shell in `cwd` (default the project checkout), detached in its own process group, stdout and stderr line by line into the step's log; exit 0 passes, anything else fails with "exit N after 3s · <last line>" |

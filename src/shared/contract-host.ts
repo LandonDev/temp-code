@@ -10,7 +10,7 @@ import { z } from 'zod'
 //    the request and reads the log and exit files. Admin: the Mac calls it
 //    over the box's link.
 //  - `publish` on the Mac: `host.publish {notes}` runs the local train
-//    (`bun scripts/release.ts "…"`) and `bun run release:publish` in the
+//    (`bun scripts/release.ts --notes-file <tmp>`) and `bun run release:publish` in the
 //    checkout the `release.checkout` setting names. Local only: it signs and
 //    uploads from this machine's Keychain, and no key ever reaches it.
 //

@@ -28,6 +28,7 @@ import {
 import { PhaseTracker, formatDuration } from '@shared/releasePhases'
 import { updatePhaseLine, type SelfUpdateOutcome } from '../updateTrigger'
 import { loginShell, withToolPath } from './loginShell'
+import { writeNotesFile } from './gateRun'
 import { trackChild } from './spawnBudget'
 
 /**
@@ -49,7 +50,7 @@ import { trackChild } from './spawnBudget'
  *    watching: the trigger is not installed, and the refusal names the one
  *    command to run.
  *  - Publisher, the Mac's side of the Mac release row's Publish…: `bun
- *    scripts/release.ts "<notes>"` then `bun run release:publish` through
+ *    scripts/release.ts --notes-file <tmp>` then `bun run release:publish` through
  *    the login shell in the checkout `release.checkout` names, in a process
  *    group Stop can kill. It refuses what the scripts refuse (a dirty tree,
  *    a branch other than master, a version the feed already serves) before
@@ -608,18 +609,29 @@ async function fetchFeedVersion(): Promise<string | null> {
 /** Cut then publish by default; peers publish the release already cut on the box. */
 export function releaseCommand({ train = true }: { train?: boolean } = {}): string {
   if (!train) return withToolPath('bun run release:publish')
-  return withToolPath('bun scripts/release.ts "$TC_RELEASE_NOTES" && bun run release:publish')
+  return withToolPath('bun scripts/release.ts --notes-file "$TC_RELEASE_NOTES_FILE" && bun run release:publish')
 }
 
+/** The notes reach release.ts in a file (`TC_RELEASE_NOTES_FILE`), removed
+ *  when the scripts close: Linux refuses one argv or environment string over
+ *  128 KiB. A peer's publish (train off) cuts nothing and carries no notes. */
 function spawnReleaseScripts(opts: { cwd: string; notes: string; shell: string; env: NodeJS.ProcessEnv; train: boolean }): ChildProcess {
-  return trackChild(
-    spawn(opts.shell, ['-lc', releaseCommand({ train: opts.train })], {
-      cwd: opts.cwd,
-      env: { ...opts.env, TC_RELEASE_NOTES: opts.notes },
-      detached: true,
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
-  )
+  const file = opts.train ? writeNotesFile(opts.notes) : null
+  try {
+    const child = trackChild(
+      spawn(opts.shell, ['-lc', releaseCommand({ train: opts.train })], {
+        cwd: opts.cwd,
+        env: file ? { ...opts.env, TC_RELEASE_NOTES_FILE: file.path } : opts.env,
+        detached: true,
+        stdio: ['ignore', 'pipe', 'pipe']
+      })
+    )
+    if (file) child.once('close', file.remove)
+    return child
+  } catch (err) {
+    file?.remove()
+    throw err
+  }
 }
 
 // ── the dispatch ────────────────────────────────────────────────────────

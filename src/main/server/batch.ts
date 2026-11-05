@@ -48,8 +48,8 @@ import type { SessionRegistry } from './sessions'
  * archive-children (the same, and every done child archived). The
  * built-in kinds: `gate` (the commit tier once on the project checkout at
  * the project branch's head); `release` (`bun scripts/release.ts
- * "<notes>" --push` after a green gate: the tag, and master with it pushed
- * to origin); `publish` (the Mac's publish job for that commit: over the
+ * --notes-file <tmp> --push` after a green gate, the notes bounded by
+ * boundNotes: the tag, and master with it pushed to origin); `publish` (the Mac's publish job for that commit: over the
  * peer link from the box, remote/peerPublish.ts, or the Mac's own
  * Publisher when the master lives on the Mac, remote/macPublish.ts
  * LocalPublish); `deploy` (the box's deploy trigger, docs/box.md "Deploy
@@ -1240,7 +1240,7 @@ export class Batches {
           break
         }
         case 'release': {
-          const notes = this.notes(master, row).replace(/\s+/g, ' ')
+          const notes = this.notes(master, row)
           const release = await this.runStep(master, row, spec, { cwd: project.cwd, branch: target!, notes })
           if (!release.ok) {
             this.fail(master, row, spec.id, `The batch's release FAILED: ${lastLine(release.log)}\n\n${logTail(release.log, GATE_TEXT_TAIL)}`)
@@ -1513,7 +1513,7 @@ export class Batches {
         this.save(row)
         return `${passed}. ${releaseSpec ? 'Release left for later (release: false).' : 'The batch\'s steps name no release.'}`
       }
-      const notes = (args.notes?.trim() || this.notes(master, row)).replace(/\s+/g, ' ')
+      const notes = args.notes?.trim() ? boundNotes(args.notes, []) : this.notes(master, row)
       const release = await this.runStep(master, row, releaseSpec, { cwd: project.cwd, branch: target, notes })
       if (!release.ok) return `${passed}, but the release FAILED: ${lastLine(release.log)}\n\n${logTail(release.log, GATE_TEXT_TAIL)}`
       const out = releaseOutcome(release.log)
@@ -1644,10 +1644,9 @@ export class Batches {
     return ok
   }
 
-  /** The release's notes: the master's title, then the landed children's subjects. */
+  /** The release's notes: the master's title, then the landed children's subjects (boundNotes). */
   notes(master: SessionMeta, row: StoredBatch): string {
-    const subjects = row.landed.flatMap((id) => row.subjects[id] ?? [])
-    return [master.title.trim(), ...subjects].filter(Boolean).join('; ')
+    return boundNotes(master.title, row.landed.flatMap((id) => row.subjects[id] ?? []))
   }
 
   // ── the stall watch ──────────────────────────────────────────────────
@@ -1809,6 +1808,39 @@ function failedAt(log: string): string {
     if (m) return m[1]
   }
   return 'the gate'
+}
+
+/** What a batch's release.json `notes` may hold: What's New and the GitHub
+ *  release read them, and forty landings of paragraph-long subjects once
+ *  made a string past Linux's 128 KiB argv limit. */
+export const RELEASE_NOTES_MAX = 16 * 1024
+
+/** The batch's release notes on one line: the title, then each subject's
+ *  first line, joined by "; " and cut at whole subjects to `max` UTF-8
+ *  bytes, "… and N more" naming what was cut. */
+export function boundNotes(title: string, subjects: readonly string[], max = RELEASE_NOTES_MAX): string {
+  const line = (s: string): string => (s.split('\n')[0] ?? '').replace(/\s+/g, ' ').trim()
+  const bytes = (s: string): number => Buffer.byteLength(s)
+  const rest = subjects.map(line).filter(Boolean)
+  const tail = (n: number): string => `… and ${n} more`
+  let out = line(title)
+  // A title alone past the bound keeps what fits before the tail.
+  const room = max - bytes(`; ${tail(rest.length)}`)
+  while (bytes(out) > room) out = out.slice(0, Math.floor(out.length * 0.9))
+  const parts = out ? [out] : []
+  let size = bytes(out)
+  for (let i = 0; i < rest.length; i++) {
+    const add = bytes(rest[i]) + (parts.length ? 2 : 0)
+    const left = rest.length - i - 1
+    const reserve = left ? bytes(`; ${tail(left)}`) : 0
+    if (size + add + reserve > max) {
+      parts.push(tail(rest.length - i))
+      break
+    }
+    parts.push(rest[i])
+    size += add
+  }
+  return parts.join('; ')
 }
 
 /** release.ts's last line names the tag: "released v277 (tag release-277, …)". */

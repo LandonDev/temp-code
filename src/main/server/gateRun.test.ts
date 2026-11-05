@@ -9,9 +9,8 @@ describe('gateRun', () => {
   it('names each step\'s command', () => {
     expect(gateCommand({ step: 'typecheck' })).toEqual(['run', 'typecheck'])
     expect(gateCommand({ step: 'gate', since: 'abc' })).toEqual(['scripts/gate.ts', '--tier', 'commit', '--since', 'abc'])
-    expect(gateCommand({ step: 'release', notes: 'n', push: true })).toEqual(['scripts/release.ts', 'n', '--push'])
-    expect(gateCommand({ step: 'release', notes: 'n' })).toEqual(['scripts/release.ts', 'n'])
-    expect(gateCommand({ step: 'release', notes: 'n' })).toEqual(['scripts/release.ts', 'n'])
+    expect(gateCommand({ step: 'release', notesFile: '/tmp/x/notes.txt', push: true })).toEqual(['scripts/release.ts', '--notes-file', '/tmp/x/notes.txt', '--push'])
+    expect(gateCommand({ step: 'release', notesFile: '/tmp/x/notes.txt' })).toEqual(['scripts/release.ts', '--notes-file', '/tmp/x/notes.txt'])
   })
 
   it('a stub rule decides the run by step and branch, lines reach the listener, nothing spawns', async () => {

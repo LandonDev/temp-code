@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { commitsSince, isBookkeeping, nothingLine, nothingToRelease } from './releaseCheck'
+import { commitsSince, isBookkeeping, nothingLine, nothingToRelease, parseReleaseArgs } from './releaseCheck'
 
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')))
 const dirs: string[] = []
@@ -79,5 +79,30 @@ describe('releaseCheck', () => {
     expect(r.git('rev-parse', 'HEAD').trim()).toBe(head)
     expect(r.git('tag', '--list').trim().split('\n')).toEqual(['release-5', 'release-6'])
     expect(JSON.parse(readFileSync(join(r.dir, 'release.json'), 'utf8')).n).toBe(6)
+  })
+
+  it('release.ts takes its notes positionally or from --notes-file, the path never read as notes', () => {
+    const files: Record<string, string> = { '/tmp/n.txt': '  a long note; b\n' }
+    const read = (p: string): string => files[p]!
+    expect(parseReleaseArgs(['hand notes', '--full'], read)).toEqual({ notes: 'hand notes', full: true, push: false })
+    expect(parseReleaseArgs(['--notes-file', '/tmp/n.txt', '--push'], read)).toEqual({ notes: 'a long note; b', full: false, push: true })
+    expect(parseReleaseArgs(['--push', '--notes-file', '/tmp/n.txt'], read).notes).toBe('a long note; b')
+    expect(parseReleaseArgs(['--push'], read).notes).toBeNull()
+    files['/tmp/empty'] = '  \n'
+    expect(parseReleaseArgs(['--notes-file', '/tmp/empty'], read).notes).toBeNull()
+  })
+
+  it.runIf(bun)('release.ts reads --notes-file', () => {
+    const r = repo()
+    r.commit('release: v6 — x', { 'release.json': JSON.stringify({ n: 6, notes: 'x', ts: 1 }, null, 2) + '\n', 'package.json': '{\n  "name": "x",\n  "version": "1.0.6",\n  "private": true\n}\n' })
+    r.git('tag', 'release-6')
+    const file = join(r.dir, '..', `notes-${Date.now()}.txt`)
+    writeFileSync(file, 'x'.repeat(200_000))
+    const out = spawnSync('bun', [resolve(__dirname, 'release.ts'), '--notes-file', file], { cwd: r.dir, env, encoding: 'utf8' })
+    rmSync(file)
+    expect(out.status).toBe(0)
+    expect(out.stdout.trim()).toBe('nothing to release since release-6 (package.json 1.0.6)')
+    const none = spawnSync('bun', [resolve(__dirname, 'release.ts'), '--notes-file', join(r.dir, 'missing.txt')], { cwd: r.dir, env, encoding: 'utf8' })
+    expect(none.status).not.toBe(0)
   })
 })
