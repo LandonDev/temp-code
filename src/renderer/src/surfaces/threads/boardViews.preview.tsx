@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { registry } from "../../lib/connection/registry";
-import type { Session } from "../../lib/session";
-import type { Block } from "../../lib/tcserver/types";
+import type { Block, Session } from "../../lib/session";
 import type { ResearchSource, TodoItem } from "../../lib/tcserver/todos";
 import { ImplementationView } from "./ImplementationView";
 import { PlanView } from "./PlanView";
