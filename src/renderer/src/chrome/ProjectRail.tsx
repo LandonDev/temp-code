@@ -92,7 +92,6 @@ import { UpdateRow, useUpdateRowState } from "./UpdateRow";
 import { SignInRow, useSignInTarget } from "./SignInRow";
 import { UsageMeter } from "./UsageMeter";
 import { RailWorking } from "./RailWorking";
-import { cn } from "../lib/cn";
 import { useGitDiffStats } from "../lib/gitIndexStore";
 import type { GitDiffStats } from "../lib/fs";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";

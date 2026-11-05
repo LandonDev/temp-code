@@ -389,7 +389,7 @@ describe("the rail", () => {
     expect(root.textContent).not.toContain("No workspaces yet");
   });
 
-  it("only the selected row asks git for its diff, and shows it muted after its glyph, in the hover actions' slot", async () => {
+  it("only the selected row asks git for its diff, and shows it muted before its glyph", async () => {
     git.asked = [];
     const root = await mountRail([LOCAL, BOX], {}, undefined, { cwd: MAC_PATH });
     const enabled = [...new Set(git.asked.filter(([, on]) => on).map(([cwd]) => cwd))];
@@ -400,13 +400,11 @@ describe("the rail", () => {
     // Green and red stay in the Changes section; here it is the trailing muted.
     expect(diff.outerHTML).not.toMatch(/text-success|text-destructive/);
     expect(diff.className).toContain("@max-[15rem]/railrow:hidden");
-    // It shares the actions' slot and fades as they show: no display toggle on hover.
+    // It fades as the hover actions cover it: no display toggle on hover.
     const yielding = diff.closest("[data-rail-yield]")!;
     expect(yielding.className).toContain("group-hover/row:opacity-0");
     expect(yielding.className).not.toMatch(/group-hover\/row:(hidden|inline-flex)/);
-    expect(yielding.parentElement!.hasAttribute("data-rail-slot")).toBe(true);
-    expect(yielding.parentElement!.contains(selected.querySelector('[aria-label="Workspace options"]'))).toBe(true);
-    expect(selected.querySelector('[aria-label^="Needs you, "]')!.compareDocumentPosition(diff) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(diff.compareDocumentPosition(selected.querySelector('[aria-label^="Needs you, "]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(selected.querySelector("button")?.getAttribute("aria-label")).toContain("3 files changed, +12, -4");
     expect(other.querySelector("[data-workspace-diff]")).toBeNull();
   });

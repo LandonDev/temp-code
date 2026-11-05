@@ -106,10 +106,14 @@ describe("a board row's model mark", () => {
       expect(cls).toContain("group-focus-visible:delay-(--dur-instant)");
       expect(cls).toContain("group-has-focus-visible:delay-(--dur-instant)");
       expect(cls).toContain("duration-(--dur-fast)");
-      expect(cls).toContain("motion-reduce:transition-opacity");
+      // Reduced motion keeps the fade (the actions' pointer turning on with it).
+      expect(cls).toMatch(/motion-reduce:transition-(opacity|\[opacity,pointer-events\])/);
       // A click on the row holds neither.
       expect(cls).not.toContain("focus-within");
     }
     expect(actions).toContain("pointer-events-none");
+    // Nothing acts before it shows: the pointer waits the same delay as the fade.
+    expect(actions).toContain("transition-[opacity,pointer-events]");
+    expect(actions).toContain("transition-discrete");
   });
 });

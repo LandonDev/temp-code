@@ -35,12 +35,11 @@ type Props = {
   trailing?: ReactNode;
   /** The trailing node is a control of its own (a status glyph that opens
    *  a popover): it sits beside the row's button instead of inside it, and
-   *  the hover actions follow it in a slot of their own. */
+   *  the hover actions lie over the button's end right before it, on the
+   *  row's fill (a `group` row's: the workspace rows are the only ones). */
   trailingInteractive?: boolean;
-  /** A plain mark after an interactive trailing control (the selected
-   *  workspace's diff). It shares the hover actions' slot, which is as wide
-   *  as the wider of the two at rest, and fades out as they fade in: the
-   *  name never reflows. */
+  /** A plain mark between the name and an interactive trailing control (the
+   *  selected workspace's diff): it fades out as the hover actions cover it. */
   trailingYield?: ReactNode;
   /** At most two actions, in order at the row's end on hover and focus;
    *  their presses never reach the row. */
@@ -81,6 +80,17 @@ const RESERVE = ["", "min-w-5", "min-w-11"] as const;
  *  mouse click does not hold them. The fade rides this wrapper, so the button
  *  keeps its own hover fill. */
 const REVEAL = `inline-flex ${reveal("row", { row: true, overlay: true })}`;
+/** Held shown while an action's menu is open. */
+const SHOWN = "pointer-events-auto opacity-100 delay-(--dur-instant)";
+/** The actions over the end of a row's button, before an interactive
+ *  trailing control: one reveal for the pair, on the row's own fill (its
+ *  hover, pressed and selected tones), whose first 12px fade the name out
+ *  under them (a still mask; only the opacity moves), 4px from the control,
+ *  its end rounded with the row's where no control follows. */
+const OVERLAY = `absolute inset-y-0 right-0 flex items-center gap-0.5 rounded-e-md pr-1 pl-3 [mask-image:linear-gradient(to_right,transparent,var(--foreground)_12px)] ${reveal("row", { row: true, overlay: true })}`;
+const GROUP_FILL =
+  "bg-sidebar-group group-hover/row:bg-sidebar-group-hover group-has-[[aria-expanded=true]]/row:bg-sidebar-group-selected group-has-[>[data-slot=button]:active]/row:bg-sidebar-group-selected";
+const GROUP_FILL_SELECTED = "bg-sidebar-group-selected group-hover/row:bg-sidebar-group-selected";
 
 /**
  * A rail row: 28px, a 16px glyph when it has one, a 13px label, at most one
@@ -120,30 +130,12 @@ export function RailRow({
   const tip = tooltip ?? (cut ? text : null);
   const actions = hoverActions.slice(0, 2);
   const group = surface === "group";
-  const hasTrailing = trailing != null || actions.length > 0 || (trailingInteractive && trailingYield != null);
-  // Beside an interactive control (a status glyph) the actions and the plain
-  // mark they replace share one slot after it: both are always in the line,
-  // the slot holds the wider, and they cross over by opacity. A plain
-  // trailing node instead reserves the actions' place and yields it.
-  const sharedSlot =
-    trailingInteractive && (actions.length > 0 || trailingYield != null) ? (
-      <span data-rail-slot className="grid shrink-0 items-center justify-items-end">
-        {trailingYield != null ? (
-          <span data-rail-yield className={cn("[grid-area:1/1]", actions.length > 0 && YIELDS)}>
-            {trailingYield}
-          </span>
-        ) : null}
-        {actions.length > 0 ? (
-          <span data-rail-actions className="flex items-center gap-0.5 [grid-area:1/1]">
-            <TooltipProvider>
-              {actions.map((action) => (
-                <HoverAction key={action.label} action={action} />
-              ))}
-            </TooltipProvider>
-          </span>
-        ) : null}
-      </span>
-    ) : null;
+  // Beside an interactive control (a status glyph) the actions lie over the
+  // end of the row's button, on the row's own fill, right before the control:
+  // the name keeps its whole room at rest and is covered, never reflowed, as
+  // they fade in. A plain trailing node instead reserves their place and yields it.
+  const overlay = trailingInteractive && actions.length > 0;
+  const hasTrailing = trailing != null || (actions.length > 0 && !trailingInteractive);
   const trailingSlot = hasTrailing ? (
     <span
       data-rail-trailing
@@ -154,9 +146,9 @@ export function RailRow({
       )}
     >
       {trailing}
-      {sharedSlot}
     </span>
   ) : null;
+  const expanded = actions.some((action) => action.expanded);
   const hasGlyph = glyph != null || !!Icon;
   const rowProps = {
     variant: "ghost" as const,
@@ -183,6 +175,11 @@ export function RailRow({
       <span ref={text ? labelRef : undefined} className="min-w-12 flex-1 truncate text-left">
         {label}
       </span>
+      {trailingInteractive && trailingYield != null ? (
+        <span data-rail-yield className={cn("shrink-0 text-xs tabular-nums text-muted-foreground", overlay && YIELDS)}>
+          {trailingYield}
+        </span>
+      ) : null}
       {trailingInteractive ? null : trailingSlot}
     </>
   );
@@ -220,6 +217,22 @@ export function RailRow({
       ) : (
         <Button {...rowProps}>{content}</Button>
       )}
+      {overlay ? (
+        // A zero-width anchor before the control: the actions reach left from it.
+        <span data-rail-anchor className="relative flex self-stretch">
+          <span
+            data-rail-actions
+            data-rail-reveal
+            className={cn(OVERLAY, GROUP_FILL, selected && GROUP_FILL_SELECTED, expanded && SHOWN)}
+          >
+            <TooltipProvider>
+              {actions.map((action) => (
+                <HoverAction key={action.label} action={action} bare />
+              ))}
+            </TooltipProvider>
+          </span>
+        </span>
+      ) : null}
       {trailingInteractive ? trailingSlot : null}
       {actions.length > 0 && !trailingInteractive ? (
         <span data-rail-actions className="pointer-events-none absolute top-1/2 right-1 flex -translate-y-1/2 items-center gap-0.5">
@@ -236,14 +249,14 @@ export function RailRow({
 }
 
 /** A 24px icon Button with its Tooltip, shown on the row's hover and focus:
- *  over the row's end (fading in over the trailing mark), or in the slot after
- *  an interactive trailing node (fading in over the mark that shares it). */
-function HoverAction({ action }: { action: RailRowAction }) {
+ *  over the row's end (fading in over the trailing mark), or `bare` inside
+ *  the overlay before an interactive trailing node, which fades as one. */
+function HoverAction({ action, bare = false }: { action: RailRowAction; bare?: boolean }) {
   const { icon: Icon } = action;
   return (
     <span
-      data-rail-reveal
-      className={cn(REVEAL, action.expanded && "pointer-events-auto opacity-100 delay-(--dur-instant)")}
+      data-rail-reveal={bare ? undefined : ""}
+      className={bare ? "inline-flex" : cn(REVEAL, action.expanded && SHOWN)}
     >
       <Tooltip>
         <TooltipTrigger

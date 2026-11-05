@@ -145,9 +145,10 @@ describe("RailRow", () => {
     expect(screen.queryByRole("button", { name: "Three" })).toBeNull();
   });
 
-  it("an interactive trailing control stays shown, with the hover actions in a slot after it that is always in the line", () => {
+  it("an interactive trailing control stays shown, the hover actions over the button's end right before it", () => {
     const { container } = render(
       <RailRow
+        surface="group"
         icon={Inbox}
         label="alpha"
         trailingInteractive
@@ -158,53 +159,52 @@ describe("RailRow", () => {
     const slot = container.querySelector("[data-rail-trailing]")!;
     expect(slot.className).not.toContain("group-hover/row:opacity-0");
     const action = screen.getByRole("button", { name: "Workspace options" });
-    expect(slot.contains(action)).toBe(true);
-    const reveal = action.closest("[data-rail-reveal]")!;
-    // At rest it keeps its place at opacity 0: no display toggle, so the name never reflows.
-    expect(reveal.className).not.toMatch(/(^| )hidden( |$)/);
-    expect(reveal.className).not.toMatch(/group-hover\/row:(inline-flex|flex|block)/);
-    expect(reveal.className).toMatch(/(^| )opacity-0( |$)/);
-    expect(reveal.className).toContain("group-hover/row:opacity-100");
-    expect(reveal.className).toContain("group-hover/row:delay-(--delay-hover)");
-    // It takes no pointer until it shows.
-    expect(reveal.className).toContain("pointer-events-none");
-    expect(reveal.className).toContain("group-hover/row:pointer-events-auto");
-    expect(screen.getByRole("button", { name: "chip" }).compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Not in the line: over the row's button, anchored before the control.
+    expect(slot.contains(action)).toBe(false);
+    const overlay = action.closest("[data-rail-actions]")!;
+    expect(overlay.className).toContain("absolute");
+    expect(overlay.className).toContain("right-0");
+    expect(overlay.parentElement!.hasAttribute("data-rail-anchor")).toBe(true);
+    expect(overlay.parentElement!.nextElementSibling).toBe(slot);
+    // One reveal for the pair: it waits, fades, and takes no pointer until it shows.
+    expect(overlay.className).toMatch(/(^| )opacity-0( |$)/);
+    expect(overlay.className).toContain("group-hover/row:opacity-100");
+    expect(overlay.className).toContain("group-hover/row:delay-(--delay-hover)");
+    expect(overlay.className).toContain("pointer-events-none");
+    expect(overlay.className).toContain("group-hover/row:pointer-events-auto");
+    // On the row's own fill, its first 12px fading the name out under it.
+    expect(overlay.className).toContain("group-hover/row:bg-sidebar-group-hover");
+    expect(overlay.className).toContain("[mask-image:linear-gradient(to_right,transparent,var(--foreground)_12px)]");
+    expect(screen.getByRole("button", { name: "chip" }).compareDocumentPosition(action) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   });
 
-  it("a plain mark beside an interactive control shares the actions' slot, so the name's room is the same at rest and on hover", () => {
+  it("a plain mark beside an interactive control stays in the name's line and fades as the actions cover it: nothing reflows", () => {
     const actions = [
       { label: "Pin workspace", icon: Pin, onClick: () => {} },
       { label: "Workspace options", icon: MoreHorizontal, onClick: () => {} },
     ];
-    const row = (diff: boolean) =>
-      render(
-        <RailRow
-          label="a long workspace name"
-          trailingInteractive
-          trailing={<button type="button">chip</button>}
-          trailingYield={diff ? <span>+212 −48</span> : null}
-          hoverActions={actions}
-        />,
-      ).container;
-    for (const container of [row(true), row(false)]) {
-      const shared = container.querySelector("[data-rail-slot]")!;
-      // One grid cell holds both, so the slot is as wide as the wider at rest.
-      const cells = [...shared.children];
-      for (const cell of cells) expect(cell.className).toContain("[grid-area:1/1]");
-      const group = container.querySelector("[data-rail-actions]")!;
-      expect(cells).toContain(group);
-      // Nothing in the line toggles its display on the row's hover or focus.
-      expect(container.innerHTML).not.toMatch(/group-(hover|has-focus-visible)\/row:(hidden|inline-flex|flex|block)/);
-      const mark = container.querySelector("[data-rail-yield]");
-      if (mark) {
-        expect(mark.textContent).toBe("+212 −48");
-        // The mark crosses over with the actions on the reveal's own timing.
-        expect(mark.className).toContain("group-hover/row:opacity-0");
-        expect(mark.className).toContain("group-hover/row:delay-(--delay-hover)");
-        expect(mark.className).toContain("group-has-[[data-rail-action][aria-expanded=true]]/row:opacity-0");
-      }
-    }
+    const { container } = render(
+      <RailRow
+        surface="group"
+        selected
+        label="a long workspace name"
+        trailingInteractive
+        trailing={<button type="button">chip</button>}
+        trailingYield={<span>+212 −48</span>}
+        hoverActions={actions}
+      />,
+    );
+    const mark = container.querySelector("[data-rail-yield]")!;
+    expect(mark.textContent).toBe("+212 −48");
+    expect(screen.getByRole("button", { name: /^a long workspace name/ }).contains(mark)).toBe(true);
+    expect(mark.className).toContain("group-hover/row:opacity-0");
+    expect(mark.className).toContain("group-hover/row:delay-(--delay-hover)");
+    expect(mark.className).toContain("group-has-[[data-rail-action][aria-expanded=true]]/row:opacity-0");
+    // A selected row's overlay takes the selected fill on hover too.
+    expect(container.querySelector("[data-rail-actions]")!.className).toContain("group-hover/row:bg-sidebar-group-selected");
+    // Nothing in the row toggles its display on hover or focus, and no slot is reserved.
+    expect(container.innerHTML).not.toMatch(/group-(hover|has-focus-visible)\/row:(hidden|inline-flex|flex|block)/);
+    expect(container.querySelector("[data-rail-trailing]")!.className).not.toMatch(/min-w-/);
   });
 
   it("an open action menu keeps the mark under it hidden, so the two never draw over each other", () => {
