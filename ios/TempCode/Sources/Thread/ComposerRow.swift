@@ -94,7 +94,7 @@ struct ComposerRowView: View {
         return Group {
             if modelAccess == .editable {
                 ModelMenu(choice: choice, effort: true) { label }
-                    .tint(Color(.secondaryLabel))
+                    .quietMenu()
                     .accessibilityLabel("Model: \(words)")
             } else {
                 label
@@ -137,7 +137,7 @@ struct ComposerRowView: View {
                     label
                 }
                 .menuOrder(.fixed)
-                .tint(Color(.secondaryLabel))
+                .quietMenu()
             } else {
                 label
                     .accessibilityElement(children: .ignore)
@@ -201,6 +201,14 @@ private struct MeterView: View {
 }
 
 private extension View {
+    /// A menu drawn as its label alone: no system padding (the row's widths
+    /// are the label's), no accent tint (the row is quiet).
+    func quietMenu() -> some View {
+        menuStyle(.button)
+            .buttonStyle(.plain)
+            .tint(Color(.secondaryLabel))
+    }
+
     /// A row control's touch reaches 44 pt tall while it lays out at the row's 24.
     func rowHit() -> some View {
         frame(minHeight: ComposerMetrics.row)
