@@ -55,4 +55,15 @@ describe("Completed turn", () => {
     await act(async () => host.answer?.({ verify: true, build: false, commit: "off" }));
     expect(screen.getByRole("switch", { name: "Checks" })).toBeTruthy();
   });
+
+  it("puts the held value back when the host refuses a save, under its red line", async () => {
+    render(<TurnPassEditor workspaceId="w1" />);
+    await act(async () => host.answer?.({ verify: true, build: false, commit: "off" }));
+    const build = screen.getByRole("switch", { name: "Fresh build" });
+    fireEvent.click(build);
+    expect(build.getAttribute("aria-checked")).toBe("true");
+    await act(async () => host.refuse?.(new Error("Refused by the host")));
+    expect(screen.getByRole("switch", { name: "Fresh build" }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("alert").textContent).toBe("Refused by the host");
+  });
 });

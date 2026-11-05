@@ -122,11 +122,14 @@ export function TurnPassEditor({ workspaceId }: { workspaceId: string }) {
   const [error, setError] = useState<string | null>(null);
 
   const change = (next: TurnPass) => {
+    // A refusal puts back the value the host still holds, under its red line.
+    const held = value;
     read.set(next);
     setError(null);
-    saveTurnPass(workspaceId, next).catch((err) =>
-      setError(err instanceof Error ? err.message : String(err)),
-    );
+    saveTurnPass(workspaceId, next).catch((err) => {
+      if (held) read.set(held);
+      setError(err instanceof Error ? err.message : String(err));
+    });
   };
 
   return (
