@@ -2,7 +2,7 @@ import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { registry } from "../lib/connection";
 import { useEnvironmentStatuses } from "../lib/connection/status";
 import { loadToast } from "../components/ui/toaster";
-import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import { ChevronRight, Plus } from "./icons";
 import { HarnessIcon } from "./HarnessIcon";
 import { ChoiceSelect, type Choice } from "../components/choice-select";
