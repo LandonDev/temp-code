@@ -27,6 +27,19 @@ public struct LinePhase: Sendable, Hashable {
 
     public static let thinking = LinePhase(key: "thinking", words: "Thinking")
 
+    /// The host's words for a wait before the turn's first content, from the
+    /// meta: the detail when the host sends one, else the activity line,
+    /// its older separators (two spaces, " · ") read as the comma the host
+    /// writes now ("Waiting for the provider, 25 s"); nil when it says nothing.
+    public static func hostWords(statusDetail: String?, activity: String?) -> String? {
+        guard let raw = (statusDetail ?? activity)?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
+        if let phase = StripWords.phase(activity: raw) {
+            guard let detail = phase.detail, let first = detail.first else { return phase.title }
+            return "\(phase.title), \(first.lowercased())\(detail.dropFirst())"
+        }
+        return raw.replacing(/\s·\s|\s{2,}/, with: ", ")
+    }
+
     /// First match wins: Sending while the person's message is not echoed;
     /// the host's word for the wait while nothing of the turn's own has come
     /// (keyed by its words up to the first comma); the wait on agents
@@ -247,6 +260,16 @@ public struct MorphModel: Sendable, Hashable {
         }
     }
 
+    /// New words under the same key: drawn at once, no morph. While the old
+    /// words leave they are what arrives next.
+    public mutating func replace(_ next: String) {
+        switch stage {
+        case .still: stage = .still(next)
+        case .arriving: stage = .arriving(next)
+        case .leaving(let current, _): stage = .leaving(current, next: next)
+        }
+    }
+
     /// Moves the morph on to `now`.
     public mutating func tick(at now: Double) {
         switch stage {
@@ -357,6 +380,16 @@ public enum WatchWords {
         return bg?.batch != nil ? "the batch's steps" : "background work"
     }
 
+    /// The thread watches: its status says so, or it settled while its
+    /// subagents still work (`settledWithAgents`).
+    public static func isWatching(_ meta: SessionMeta) -> Bool {
+        switch meta.status {
+        case .watching: true
+        case .idle, .done: !(meta.background?.agents.isEmpty ?? true)
+        default: false
+        }
+    }
+
     /// Watching past the stale mark on nothing but its own tasks (`nowMs`).
     public static func isStale(_ meta: SessionMeta, nowMs: Int) -> Bool {
         guard meta.status == .watching, let bg = meta.background, let since = bg.watchingSince,
@@ -365,8 +398,11 @@ public enum WatchWords {
     }
 }
 
-/// The turn's closing words: "Worked for 2m 4s", or "Worked" until the time lands.
+/// The turn's closing words: "Worked for 2m 4s", or "Worked" until the time
+/// lands; "Stopped" for a turn the person stopped.
 public enum TurnEndWords {
+    public static let stopped = "Stopped"
+
     public static func worked(ms: Int?) -> String {
         guard let ms else { return "Worked" }
         return "Worked for \(ThoughtLine.spanWords(ms: ms))"

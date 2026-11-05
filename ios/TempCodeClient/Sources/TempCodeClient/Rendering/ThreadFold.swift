@@ -533,10 +533,26 @@ public struct ThreadFold: Sendable, Hashable {
         }
     }
 
-    /// The turn ending closes every open user section, each with its own timer.
+    /// The turn ending closes every open user section, each with its own
+    /// timer, and ends every text still streaming: a turn over on the host
+    /// streams nothing more, so its rows drain and its closing line can land
+    /// even when a block's final row never came.
     private mutating func closeUserTurns(at ts: Int, cost: Double?) {
         var lastUser: Int?
         for index in items.indices {
+            switch items[index].item {
+            case .assistant(var block) where block.streaming:
+                block.streaming = false
+                block.doneTs = block.doneTs ?? ts
+                items[index].item = .assistant(block)
+                continue
+            case .thinking(var block) where block.streaming:
+                block.streaming = false
+                block.doneTs = block.doneTs ?? ts
+                items[index].item = .thinking(block)
+                continue
+            default: break
+            }
             guard case .user(var turn) = items[index].item else { continue }
             lastUser = index
             if turn.completedTs == nil {

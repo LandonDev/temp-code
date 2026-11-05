@@ -56,6 +56,14 @@ private func entry(_ item: TranscriptItem) -> ThreadEntry { ThreadEntry(item: it
         #expect(phase.key == "thought:1")
     }
 
+    @Test func `the host's words read the detail first and the older separators as a comma`() {
+        #expect(LinePhase.hostWords(statusDetail: "Waiting for the provider, 25 s", activity: "Waiting for the provider  25 s") == "Waiting for the provider, 25 s")
+        #expect(LinePhase.hostWords(statusDetail: nil, activity: "Rate limited · retry 3 in 32 s") == "Rate limited, retry 3 in 32 s")
+        #expect(LinePhase.hostWords(statusDetail: nil, activity: "Starting the CLI") == "Starting the CLI")
+        #expect(LinePhase.hostWords(statusDetail: nil, activity: "Compacting  context") == "Compacting, context")
+        #expect(LinePhase.hostWords(statusDetail: " ", activity: nil) == nil)
+    }
+
     @Test func `streaming prose is the mark alone, else Thinking`() {
         #expect(LinePhase.of(turn: [user, entry(textItem(2, "Here", streaming: true))], activity: nil).words == "")
         #expect(LinePhase.of(turn: [user], activity: nil) == .thinking)
@@ -166,6 +174,18 @@ private func entry(_ item: TranscriptItem) -> ThreadEntry { ThreadEntry(item: it
         #expect(morph.stage == .still("B"))
     }
 
+    @Test func `new words under one key are drawn at once, never morphed`() {
+        var morph = MorphModel("Waiting, 25 s", reduced: false)
+        morph.replace("Waiting, 30 s")
+        #expect(morph.stage == .still("Waiting, 30 s"))
+        morph.set("Reading a.ts", at: 0)
+        morph.replace("Reading b.ts")
+        #expect(morph.stage == .leaving("Waiting, 30 s", next: "Reading b.ts"))
+        morph.tick(at: MotionValues.swapOut)
+        morph.replace("Reading c.ts")
+        #expect(morph.stage == .arriving("Reading c.ts"))
+    }
+
     @Test func `the same words change nothing; a retarget while leaving keeps one leaving`() {
         var morph = MorphModel("A", reduced: false)
         morph.set("A", at: 0)
@@ -198,6 +218,17 @@ private func entry(_ item: TranscriptItem) -> ThreadEntry { ThreadEntry(item: it
         #expect(WatchWords.waitSubject(["a", "b"]) == "2 subagents")
     }
 
+    @Test func `watching is the status, or a settled thread whose subagents still work`() {
+        func meta(_ status: SessionStatus, agents: [String] = []) -> SessionMeta {
+            SessionMeta(id: "t", parentId: nil, projectId: "p1", workspaceId: nil, threadType: .chat, planPath: nil, provider: .claude, model: "claude-sonnet-5-5", reasoning: .low, agentType: .implementer, title: "A thread", cwd: "/tmp/repo", status: status, pinned: false, archived: false, permission: .edits, fast: false, ultrafast: false, context1m: false, busySince: nil, pausedAt: nil, frozenActiveElapsed: nil, nativeId: nil, background: bg(agents: agents), createdAt: 1, updatedAt: 1)
+        }
+        #expect(WatchWords.isWatching(meta(.watching)))
+        #expect(!WatchWords.isWatching(meta(.idle)))
+        #expect(WatchWords.isWatching(meta(.idle, agents: ["c1"])))
+        #expect(WatchWords.isWatching(meta(.done, agents: ["c1"])))
+        #expect(!WatchWords.isWatching(meta(.running, agents: ["c1"])))
+    }
+
     @Test func `a long title is cut at a word`() {
         let cut = WatchWords.cutAtWord("Review the payment flow and every webhook it calls on the way", max: 48)
         #expect(cut.count <= 48)
@@ -210,5 +241,85 @@ private func entry(_ item: TranscriptItem) -> ThreadEntry { ThreadEntry(item: it
         #expect(TurnEndWords.worked(ms: nil) == "Worked")
         #expect(TurnEndWords.worked(ms: 124_000) == "Worked for 2m 4s")
         #expect(TurnEndWords.worked(ms: 300) == "Worked for 1s")
+        #expect(TurnEndWords.stopped == "Stopped")
+    }
+}
+
+/// The end row from Send to close: `TurnLineInput.of` (TurnEnd.tsx's
+/// rules) and `TurnLineModel` (WorkingLine.tsx's `TurnLine`).
+@Suite struct TurnLineTests {
+    private func end(open: Bool, ms: Int? = 12_000, stopped: Bool = false, awaits: Bool = false) -> TurnEnd {
+        TurnEnd(userSeq: 1, open: open, durationMs: open ? nil : ms, completedTs: open ? nil : 13_000, answer: "", stopped: stopped, awaitsUser: awaits)
+    }
+
+    private let reading = LinePhase(key: "call:a", words: "Reading a.ts")
+
+    @Test func `open: the phase; held by a pause or a card; over and revealing: the mark alone; over: the closing words`() {
+        let live = TurnLineInput.of(end(open: true), paused: false, revealing: false, phase: reading)
+        #expect(live.live && !live.held && live.phase == reading && live.closing == nil)
+        #expect(TurnLineInput.of(end(open: true), paused: true, revealing: false, phase: reading).held)
+        #expect(TurnLineInput.of(end(open: true, awaits: true), paused: false, revealing: false, phase: reading).held)
+        let draining = TurnLineInput.of(end(open: false), paused: false, revealing: true, phase: reading)
+        #expect(draining.live && draining.phase == TurnLineInput.draining && draining.closing == nil)
+        #expect(TurnLineInput.of(end(open: false), paused: false, revealing: false, phase: reading).closing == "Worked for 12s")
+        // A Stop is over before the host settles the turn, and a pause cannot hold it.
+        let stopped = TurnLineInput.of(end(open: true, stopped: true), paused: true, revealing: false, phase: reading)
+        #expect(!stopped.held && stopped.closing == "Stopped")
+    }
+
+    @Test func `a line live in this row morphs into its closing words only after the hold`() {
+        let open = TurnLineInput.of(end(open: true), paused: false, revealing: false, phase: reading)
+        var model = TurnLineModel(open, at: 0)
+        #expect(model.look.saying && model.look.visible && model.look.open && model.look.words == "Reading a.ts")
+        let closed = TurnLineInput.of(end(open: false), paused: false, revealing: false, phase: .thinking)
+        let early = model.update(closed, at: 0.1)
+        #expect(early.look.saying && early.look.key == "call:a")
+        #expect(early.due == MotionValues.wordHold)
+        let late = model.update(closed, at: MotionValues.wordHold)
+        #expect(!late.look.saying && late.look.key == TurnLineModel.closedKey && late.look.words == "Worked for 12s")
+    }
+
+    @Test func `a settled turn's row shows its closing line at once; a pending one waits unless it was live`() {
+        let settled = TurnLineInput.of(end(open: false), paused: false, revealing: false, phase: .thinking)
+        let model = TurnLineModel(settled, at: 5)
+        #expect(model.look.visible && !model.look.saying && model.look.words == "Worked for 12s")
+        let pending = TurnLineInput.of(end(open: false, ms: nil), paused: false, revealing: false, phase: .thinking)
+        #expect(pending.pending && pending.closing == "Worked")
+        #expect(!TurnLineModel(pending, at: 0).look.visible)
+        var live = TurnLineModel(TurnLineInput.of(end(open: true), paused: false, revealing: false, phase: reading), at: 0)
+        #expect(live.update(pending, at: 1).look.words == "Worked")
+    }
+
+    @Test func `a held line folds with its words kept and opens again on the same key`() {
+        var model = TurnLineModel(TurnLineInput.of(end(open: true), paused: false, revealing: false, phase: reading), at: 0)
+        let folded = model.update(TurnLineInput.of(end(open: true), paused: true, revealing: false, phase: reading), at: 1)
+        #expect(folded.look.visible && !folded.look.open && folded.look.saying && folded.look.key == "call:a")
+        let back = model.update(TurnLineInput.of(end(open: true), paused: false, revealing: false, phase: reading), at: 2)
+        #expect(back.look.open && back.look.key == "call:a")
+    }
+
+    @Test func `the drain keeps the mark and says nothing more`() {
+        var model = TurnLineModel(TurnLineInput.of(end(open: true), paused: false, revealing: false, phase: reading), at: 0)
+        let draining = model.update(TurnLineInput.of(end(open: false), paused: false, revealing: true, phase: reading), at: 1)
+        #expect(draining.look.saying && draining.look.words == "")
+        let done = model.update(TurnLineInput.of(end(open: false), paused: false, revealing: false, phase: reading), at: 2)
+        #expect(!done.look.saying && done.look.words == "Worked for 12s")
+    }
+
+    @Test func `the tracker waits a reveal step after the end for a row that saw its turn open, and looks again while it drains`() {
+        var tracker = TurnLineTracker()
+        _ = tracker.update(end(open: true), paused: false, revealing: false, phase: reading, at: 0)
+        // The end lands before its last text row has reported: the mark stays one step.
+        let first = tracker.update(end(open: false), paused: false, revealing: false, phase: .thinking, at: 1)
+        #expect(first.look.saying && first.look.words == "")
+        #expect(first.due == 1 + MotionValues.revealStep)
+        let draining = tracker.update(end(open: false), paused: false, revealing: true, phase: .thinking, at: 1.2)
+        #expect(draining.due == 1.2 + MotionValues.revealStep)
+        let done = tracker.update(end(open: false), paused: false, revealing: false, phase: .thinking, at: 1.6)
+        #expect(!done.look.saying && done.look.words == "Worked for 12s" && done.due == nil)
+        // A row that mounts on a settled turn draws its closing line at once.
+        var settled = TurnLineTracker()
+        let mounted = settled.update(end(open: false), paused: false, revealing: false, phase: .thinking, at: 5)
+        #expect(!mounted.look.saying && mounted.look.visible && mounted.due == nil && !settled.everLive)
     }
 }

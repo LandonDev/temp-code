@@ -17,25 +17,24 @@ import TempCodeContract
 /// - `follow`: while the reader is scrolled up, the follow rule writes
 ///   nothing, whatever lands.
 ///
-/// The parts later slices build (the reveal, the phrase fade, the phase
-/// hold, the word morph, the closing line's drain) are named here as
-/// `Check`s a scenario awaits; a slice that builds one implements its
-/// check in `run` and the scenarios that await it start asserting it.
+/// and the parts later slices built: the reveal, the phrase fade and the
+/// drain (TranscriptScenarioReveal.swift), the phase hold, the word morph
+/// and the closing line waiting for the drain (TranscriptScenarioLine.swift),
+/// the steer word (TranscriptScenarioSteer.swift).
+/// A scenario lists in `awaits` a check it is not held to.
 public struct TranscriptScenario: Sendable {
     public enum Check: String, Hashable, Sendable, CaseIterable {
-        /// Built: keys, the end row, the follow rule.
+        /// Keys, the end row, the follow rule.
         case keys, endRow, follow
-        /// Awaited: the jitter-buffer reveal (A4), the phrase fade (A5),
-        /// the phase hold and the word morph (A6), the drain before the
-        /// closing line (A6).
+        /// The jitter-buffer reveal (A4), the phrase fade (A5), the phase
+        /// hold and the word morph (A6), the drain before the closing line
+        /// (A5, A6).
         case reveal, fade, hold, morph, drain
-        /// Built: the steer word under its bubble moves only forward (A9).
+        /// The steer word under its bubble moves only forward (A9).
         case steer
 
-        /// The checks `run` implements today (the reveal, fade and drain
-        /// in TranscriptScenarioReveal.swift, the steer word in
-        /// TranscriptScenarioSteer.swift).
-        public static let built: Set<Check> = [.keys, .endRow, .follow, .reveal, .fade, .drain, .steer]
+        /// The checks `run` implements.
+        public static let built: Set<Check> = Set(allCases)
     }
 
     public enum Step: Sendable {
@@ -49,6 +48,8 @@ public struct TranscriptScenario: Sendable {
         case history([EventRow])
         /// The rows are replayed whole (a resync, a remount): a refold.
         case refold
+        /// The thread pauses (`true`) or resumes: the open turn's line folds and reopens.
+        case paused(Bool)
     }
 
     public struct Push: Sendable {
@@ -91,6 +92,10 @@ public struct ScenarioReport: Sendable {
     public var drainedAt: [Int: Double] = [:]
     /// The rows after the last push, for a test that looks further.
     public var rows: [TranscriptRowModel] = []
+    /// What the end rows did, in order ("@ms <key> morph A → B", "fold", "open").
+    public var lineEvents: [String] = []
+    /// The words each end row rests on after the last push, by its key.
+    public var lineWords: [Int: String] = [:]
     public var passed: Bool { violations.isEmpty }
 }
 
@@ -110,10 +115,20 @@ public enum ScenarioRunner {
         var rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: memory)
         remember(rows, into: &seenKeys)
         let reveals = RevealProbes(history: state.entries, reduced: scenario.reducedMotion)
+        let lines = LineProbes(reduced: scenario.reducedMotion)
+        lines.sample(rows, drain: reveals.drain, at: 0, checks: report.checked, label: "\(scenario.name) before the first push")
+        // Time moves in reveal steps and stops at every hold's end, sampling the lines at each.
+        func advance(to target: Double, label: String) {
+            while reveals.now < target {
+                let step = min(target, reveals.now + SmoothText.stepMs, max(lines.nextDue ?? .infinity, reveals.now + 1))
+                reveals.advance(to: step, checks: report.checked, label: label)
+                lines.sample(rows, drain: reveals.drain, at: step, checks: report.checked, label: label)
+            }
+        }
 
         for push in scenario.pushes.sorted(by: { $0.atMs < $1.atMs }) {
             let at = "\(scenario.name) @\(push.atMs)ms \(push.label)"
-            reveals.advance(to: Double(push.atMs), checks: report.checked, label: at)
+            advance(to: Double(push.atMs), label: at)
             switch push.step {
             case .send(let text):
                 _ = state.addPending(text: text, sentAt: push.atMs)
@@ -127,6 +142,8 @@ public enum ScenarioRunner {
                 state.refold()
             case .refold:
                 state.refold()
+            case .paused(let paused):
+                lines.paused = paused
             }
             let next = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: memory)
             if report.checked.contains(.keys) {
@@ -142,11 +159,20 @@ public enum ScenarioRunner {
                 report.violations.append("\(at): the follow rule wrote \(write) while the reader was up")
             }
             reveals.sync(state.entries, checks: report.checked, label: at)
+            lines.sample(next, drain: reveals.drain, at: reveals.now, checks: report.checked, label: at)
             remember(next, into: &seenKeys)
             rows = next
         }
-        reveals.finish(checks: report.checked, label: "\(scenario.name) after the last push")
+        let after = "\(scenario.name) after the last push"
+        advance(to: reveals.finishTarget, label: after)
+        reveals.finish(checks: report.checked, label: after)
+        // The last hold ends and every closing word lands.
+        advance(to: reveals.now + MotionValues.wordHold * 1_000 + SmoothText.stepMs, label: after)
+        lines.finish(at: reveals.now, checks: report.checked, label: after)
         report.violations += reveals.violations
+        report.violations += lines.violations
+        report.lineEvents = lines.events
+        for row in rows { if case .turnEnd(let end) = row { report.lineWords[end.userKey] = lines.words(row.id) } }
         report.drainedAt = reveals.drainedAt
         report.rows = rows
         return report
@@ -157,8 +183,7 @@ public enum ScenarioRunner {
         switch row {
         case .item(let entry): identity(entry)
         case .group(let group): group.entries.first.map(identity)
-        case .turnEnd(let end): "end:\(end.userSeq)"
-        case .thinkingTail: nil
+        case .turnEnd(let end): "end:\(end.userKey)"
         }
     }
 

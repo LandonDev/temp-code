@@ -6,8 +6,8 @@ import TempCodeContract
 /// The desktop's ten "no jerk in any scenario" cases
 /// (AgentTranscript.scenarios.dom.test.tsx) through the phone's pure runner:
 /// every row keeps its key, the end row is its message's from Send to the
-/// close, and nothing scrolls while the reader is up. The checks later
-/// slices build are listed in each scenario's `awaits` until they land.
+/// close, and nothing scrolls while the reader is up; the reveal, the fade,
+/// the drain, the phase hold and the word morph hold in every one.
 private func row(_ seq: Int, _ ts: Int, _ event: AgentEvent, ephemeral: Bool = false) -> EventRow {
     EventRow(sessionId: "s", seq: seq, ts: ts, event: event, ephemeral: ephemeral ? true : nil)
 }
@@ -31,10 +31,12 @@ private func done(_ id: String, _ output: String = "ok") -> AgentEvent {
 private let complete = AgentEvent.turnComplete(TurnCompleteEvent())
 
 @MainActor
-private func expectClean(_ scenario: TranscriptScenario) {
+@discardableResult
+private func expectClean(_ scenario: TranscriptScenario) -> ScenarioReport {
     let report = ScenarioRunner.run(scenario)
     #expect(report.violations == [], "\(scenario.name)")
     #expect(report.checked.contains(.keys))
+    return report
 }
 
 @MainActor
@@ -55,12 +57,15 @@ private func expectClean(_ scenario: TranscriptScenario) {
     }
 
     @Test func `a fast turn: the echo, prose and the close inside 100 ms`() {
-        expectClean(TranscriptScenario("fast turn", awaits: [.hold, .drain], pushes: [
+        let report = expectClean(TranscriptScenario("fast turn", pushes: [
             .init(atMs: 0, "send", .send("hi")),
             .init(atMs: 30, "the echo", .rows([row(1, 30, user("hi"))])),
             .init(atMs: 60, "prose", .rows([row(2, 60, prose("Hello."))])),
             .init(atMs: 90, "the close", .rows([row(3, 90, complete)])),
         ]))
+        // Sending shows its 300 ms, the mark alone while the reply reveals, then the closing words.
+        #expect(report.lineEvents.map { $0.split(separator: " ", maxSplits: 2).last.map(String.init) ?? "" } == ["morph sending → writing", "morph writing → closed"], "\(report.lineEvents)")
+        #expect(report.lineWords.values.first == "Worked for 1s")
     }
 
     @Test func `a long call with no output, then a burst of three`() {
@@ -77,11 +82,14 @@ private func expectClean(_ scenario: TranscriptScenario) {
         var pushes: [TranscriptScenario.Push] = [.init(atMs: 0, "send", .send("think")), .init(atMs: 10, "echo", .rows([row(1, 10, user("think"))]))]
         for i in 0..<10 { pushes.append(.init(atMs: 100 + 100 * i, "sentence \(i)", .rows([row(2 + i, 100 + 100 * i, thought("Sentence \(i). "))]))) }
         for i in 0..<5 { pushes.append(.init(atMs: 2_000 + 2_000 * i, "slow \(i)", .rows([row(12 + i, 2_000 + 2_000 * i, thought("Slow \(i). "))]))) }
-        expectClean(TranscriptScenario("thought cadence", awaits: [.hold], pushes: pushes))
+        let report = expectClean(TranscriptScenario("thought cadence", pushes: pushes))
+        // Ten sentences inside a second: the hold lets a few paint; the slow ones each paint.
+        let thoughts = report.lineEvents.filter { $0.contains("→ thought:") }
+        #expect(thoughts.count >= 5 && thoughts.count < 15, "\(report.lineEvents)")
     }
 
     @Test func `a steer, a compaction mid-turn and a Stop each change in place`() {
-        expectClean(TranscriptScenario("steer pause stop", awaits: [.morph], pushes: [
+        let report = expectClean(TranscriptScenario("steer pause stop", pushes: [
             .init(atMs: 0, "send", .send("start")),
             .init(atMs: 20, "echo, a call", .rows([row(1, 20, user("start")), row(2, 40, tool("a", "Bash"))])),
             .init(atMs: 500, "the person steers", .send("also check the docs")),
@@ -92,6 +100,34 @@ private func expectClean(_ scenario: TranscriptScenario) {
             .init(atMs: 40_000, "compaction done", .rows([row(7, 40_000, .compaction(CompactionEvent(phase: .done, preTokens: 100_000, postTokens: 20_000)))])),
             .init(atMs: 41_000, "Stop", .rows([row(8, 41_000, .error(ErrorEvent(message: "stopped", stopped: true))), row(9, 41_010, complete)])),
         ]))
+        // The steer's turn ends on Stopped, through one morph from the phase it was saying.
+        #expect(report.lineWords.values.contains("Stopped"), "\(report.lineWords)")
+        #expect(report.lineEvents.last?.hasSuffix("→ closed") == true, "\(report.lineEvents)")
+    }
+
+    @Test func `a pause folds the line with its words and the resume opens the same line`() {
+        let report = expectClean(TranscriptScenario("pause", pushes: [
+            .init(atMs: 0, "send", .send("go")),
+            .init(atMs: 20, "echo, a long command", .rows([row(1, 20, user("go")), row(2, 40, tool("a", "Bash", ["command": .string("sleep 60")]))])),
+            .init(atMs: 2_000, "pause", .paused(true)),
+            .init(atMs: 9_000, "resume", .paused(false)),
+            .init(atMs: 12_000, "it settles, the close", .rows([row(3, 12_000, done("a")), row(4, 12_100, prose("Done.")), row(5, 12_200, complete)])),
+        ]))
+        let folds = report.lineEvents.filter { $0.contains(" fold ") || $0.contains(" open ") }
+        #expect(folds.count == 2, "\(report.lineEvents)")
+        #expect(folds.first?.hasSuffix("fold call:a") == true && folds.last?.hasSuffix("open call:a") == true, "\(report.lineEvents)")
+        #expect(report.lineWords.values.first?.hasPrefix("Worked for") == true)
+    }
+
+    @Test func `an approval folds the line and the decision opens it again`() {
+        let report = expectClean(TranscriptScenario("approval", pushes: [
+            .init(atMs: 0, "send", .send("go")),
+            .init(atMs: 20, "echo, a command", .rows([row(1, 20, user("go")), row(2, 40, tool("a", "Bash"))])),
+            .init(atMs: 500, "it asks", .rows([row(3, 500, .approvalRequest(ApprovalRequestEvent(requestId: "r", toolName: "Bash")))])),
+            .init(atMs: 4_000, "allowed", .rows([row(4, 4_000, .approvalResolved(ApprovalResolvedEvent(requestId: "r", allow: true)))])),
+        ]))
+        let folds = report.lineEvents.filter { $0.contains(" fold ") || $0.contains(" open ") }
+        #expect(folds.count == 2 && folds.first?.contains(" fold ") == true, "\(report.lineEvents)")
     }
 
     @Test func `a steer word that goes back or goes away is a jerk`() {
@@ -107,7 +143,7 @@ private func expectClean(_ scenario: TranscriptScenario) {
     }
 
     @Test func `a subagent spawned, waited on and finished`() {
-        expectClean(TranscriptScenario("subagent", awaits: [.drain], pushes: [
+        expectClean(TranscriptScenario("subagent", pushes: [
             .init(atMs: 0, "send", .send("review it")),
             .init(atMs: 20, "echo, the spawn", .rows([row(1, 20, user("review it")), row(2, 40, tool("sp", "mcp__orchestrator__spawn_agent", ["task": .string("Review the payment flow")]))])),
             .init(atMs: 200, "spawned", .rows([row(3, 200, done("sp", "{\"agentId\":\"c1\"}"))])),
@@ -180,8 +216,13 @@ private func expectClean(_ scenario: TranscriptScenario) {
         #expect(ScenarioRunner.keyJerks(from: old, to: new, seen: seen, at: "t").count == 1)
     }
 
+<<<<<<< HEAD
     @Test func `the built checks: keys, the end row, the follow rule, the reveal, the fade, the drain and the steer word`() {
         #expect(TranscriptScenario.Check.built == [.keys, .endRow, .follow, .reveal, .fade, .drain, .steer])
+=======
+    @Test func `every check is built`() {
+        #expect(TranscriptScenario.Check.built == [.keys, .endRow, .follow, .reveal, .fade, .hold, .morph, .drain])
+>>>>>>> eeaab27e (The phone's end row is one model from Send to the turn's close. TranscriptRows gives every turn one end row under its message's key: the working line while the turn runs or its message waits for the echo (TurnEnd.open, with the turn's entries, its Stop and whether a card waits), the closing line once it settled; the thinking tail is gone. TurnLineInput (TurnEnd.tsx's rules) and TurnLineModel (WorkingLine.tsx's TurnLine) decide what the row draws: each phase held 300 ms, the closing words only after the hold, a held turn folded with its words kept, a Stop said as Stopped, a settled row's closing line at once; TurnLineTracker adds the drain's two gaps (look again each reveal step while the turn is over and revealing, and a one-step grace after the end for a row that saw its turn open). While the last turn is open, what the line says is no row: a streaming thought and a call the line tells; a phase of thoughts alone draws nothing, and a thought shows only in a phase opened by hand. The person's Stop row draws nothing. A turn's end now ends every text still streaming, so a block whose final row never came cannot hold the closing line back. The header's subtitle drops the turn's phase. The scenario runner builds its last checks (TranscriptScenarioLine.swift): the phase hold, the word morph through MorphModel (with replace for new words under one key) and the closing line never showing while the turn reveals; the fast-turn, thought-cadence, steer-and-Stop, subagent and burst scenarios assert them, with new pause and approval scenarios. LinePhase.hostWords reads the host's wait words, WatchWords.isWatching the watching rule.)
     }
 }
 

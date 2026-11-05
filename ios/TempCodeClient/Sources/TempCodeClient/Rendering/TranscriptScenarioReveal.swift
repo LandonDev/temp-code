@@ -53,7 +53,7 @@ final class RevealProbes {
     private(set) var violations: [String] = []
     /// When each turn stopped revealing, ms on the scenario's clock.
     private(set) var drainedAt: [Int: Double] = [:]
-    private var now: Double = 0
+    private(set) var now: Double = 0
 
     init(history: [ThreadEntry], reduced: Bool) {
         self.reduced = reduced
@@ -139,10 +139,12 @@ final class RevealProbes {
         probes[key] = probe
     }
 
+    /// How far `finish` plays: the catch-up and the fade past the last text.
+    var finishTarget: Double { max(now, probes.values.map(\.arrivedAt).max() ?? now) + Self.deadlineMs }
+
     /// After the last push: every turn drained in time.
     func finish(checks: Set<TranscriptScenario.Check>, label: String) {
-        let last = probes.values.map(\.arrivedAt).max() ?? now
-        advance(to: max(now, last) + Self.deadlineMs, checks: checks, label: label)
+        advance(to: finishTarget, checks: checks, label: label)
         guard checks.contains(.drain) else { return }
         for turn in Set(probes.values.filter { !$0.streaming }.map(\.turn)) where drain.revealing(turn: turn) {
             violations.append("\(label): turn \(turn) still revealing \(Int(Self.deadlineMs)) ms after its last text")

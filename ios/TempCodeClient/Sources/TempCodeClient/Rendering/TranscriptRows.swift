@@ -60,8 +60,18 @@ public struct ActivityGroup: Hashable, Sendable {
     public var id: TranscriptRowID { TranscriptRowID(key: key) }
 
     /// A lone step is not a group: it draws as its row with the kind's mark,
-    /// never under a header repeating it.
-    public var isSingle: Bool { entries.count == 1 }
+    /// never under a header repeating it. Thoughts are not counted: they show
+    /// only in a group a person opened.
+    public var isSingle: Bool { calls.count == 1 }
+
+    /// The steps that are not thoughts.
+    public var calls: [ThreadEntry] {
+        entries.filter { if case .thinking = $0.item { false } else { true } }
+    }
+
+    /// The steps a phase shows: every one in a group the person opened, else
+    /// its calls and edits alone (a thought is no row; the working line said it).
+    public func shown(byHand: Bool) -> [ThreadEntry] { byHand ? entries : calls }
 
     /// The edits in the phase: a closed phase still shows what it changed.
     public var edits: [ToolItem] {
@@ -84,44 +94,61 @@ public struct ActivityGroup: Hashable, Sendable {
     }
 }
 
-/// A settled turn's closing line: "Worked for 12s", and the clock time at its trailing edge.
+/// A turn's end row, one row from Send to the turn's close under its
+/// message's key: the working line while the turn is open (`open`, with
+/// the turn's entries for its words), the closing line once it settled
+/// ("Worked for 12s", or Stopped). The app's `TurnLineRow` draws both, so
+/// the row never remounts when the turn ends.
 public struct TurnEnd: Hashable, Sendable {
     public var userSeq: Int
     /// The user row's key: the end row's.
     public var userKey: Int
-    /// The user turn's `completedTs` less its `ts`, never negative.
-    public var durationMs: Int
-    public var completedTs: Int
+    /// The turn runs, or its message waits for the host's echo.
+    public var open: Bool
+    /// The user turn's `completedTs` less its `ts`, never negative; nil while open.
+    public var durationMs: Int?
+    public var completedTs: Int?
     /// The turn's assistant prose joined by blank lines: what Copy answer copies.
     public var answer: String
+    /// The person stopped it: its stopped error row, which draws nothing, landed.
+    public var stopped: Bool
+    /// An approval undecided or a question unanswered: the card says so, the line folds away.
+    public var awaitsUser: Bool
+    /// The open turn's entries, its message first: what the working line
+    /// reads. Empty once the turn is over, so a settled row compares cheaply.
+    public var turn: [ThreadEntry]
+    /// The thread's last turn: the Watching line hangs under it.
+    public var last: Bool
 
-    public init(userSeq: Int, userKey: Int? = nil, durationMs: Int, completedTs: Int, answer: String) {
+    public init(userSeq: Int, userKey: Int? = nil, open: Bool = false, durationMs: Int?, completedTs: Int?, answer: String, stopped: Bool = false, awaitsUser: Bool = false, turn: [ThreadEntry] = [], last: Bool = false) {
         self.userSeq = userSeq
         self.userKey = userKey ?? userSeq
+        self.open = open
         self.durationMs = durationMs
         self.completedTs = completedTs
         self.answer = answer
+        self.stopped = stopped
+        self.awaitsUser = awaitsUser
+        self.turn = turn
+        self.last = last
     }
 
     public var id: TranscriptRowID { TranscriptRowID(key: userKey, end: true) }
 }
 
-/// What the transcript list shows, one row each: a thread entry on its own,
-/// a phase of the agent's work, a turn's closing line, or the "Thinking"
-/// line a live turn ends on while it has nothing to show yet.
+/// What the transcript list shows, one row each: a thread entry on its
+/// own, a phase of the agent's work, or a turn's end row (its working line,
+/// then its closing line).
 public enum TranscriptRowModel: Identifiable, Hashable, Sendable {
     case item(ThreadEntry)
     case group(ActivityGroup)
     case turnEnd(TurnEnd)
-    /// The user row's key.
-    case thinkingTail(Int)
 
     public var id: TranscriptRowID {
         switch self {
         case .item(let entry): TranscriptRowID(key: entry.key)
         case .group(let group): group.id
         case .turnEnd(let end): end.id
-        case .thinkingTail(let key): TranscriptRowID(key: key, end: true)
         }
     }
 
@@ -130,8 +157,7 @@ public enum TranscriptRowModel: Identifiable, Hashable, Sendable {
         switch self {
         case .item(let entry): entry.seq
         case .group(let group): group.entries.first?.seq
-        case .turnEnd(let end): end.userSeq
-        case .thinkingTail: nil
+        case .turnEnd(let end): end.open ? nil : end.userSeq
         }
     }
 }
@@ -166,7 +192,13 @@ public enum TranscriptRows {
 
     /// The rows for `entries`. `turnOpen` is the fold's `board.turnOpen`:
     /// while true, the last phase of the last turn (with nothing after it)
-    /// is live, and a turn with nothing to show yet ends on "Thinking".
+    /// is live and the last turn's end row is its working line, as it is
+    /// from the moment a message is sent (a pending row, seq below zero). A
+    /// settled turn's end row is its closing line. The person's Stop row is
+    /// no row: the end row says Stopped. While the last turn is open, what
+    /// its working line says is no row either: a thought still streaming
+    /// and a call the line tells (`LinePhase.told`), which joins its phase
+    /// once it settles. A phase of thoughts alone draws nothing.
     public static func rows(_ entries: [ThreadEntry], turnOpen: Bool, memory: RowKeyMemory? = nil) -> [TranscriptRowModel] {
         var rows: [TranscriptRowModel] = []
         rows.reserveCapacity(entries.count + 8)
@@ -174,13 +206,22 @@ public enum TranscriptRows {
         var turnUser: UserTurn?
         var turnUserKey = 0
         var answer: [String] = []
-        /// The last entry drawn or ignored in the turn being built: the thinking tail reads it.
-        var tailEntry: ThreadEntry?
+        /// Where the turn being built starts in `entries`, and what it holds.
+        var turnStart = 0
+        var turnStopped = false
+        var turnAwaits = false
+        // The open last turn: where it starts, and the calls its working line tells.
+        let lastUser = entries.lastIndex { if case .user = $0.item { true } else { false } }
+        let openTurn: Bool = lastUser.map { index in
+            guard case .user(let user) = entries[index].item else { return false }
+            return user.seq < 0 || (turnOpen && user.completedTs == nil)
+        } ?? false
+        let told: Set<String> = openTurn ? Set(LinePhase.told(Array(entries[lastUser!...])).map(\.callId)) : []
 
         /// Group keys given out in this build: a key is drawn once.
         var drawn: Set<Int> = []
         func flushRun() {
-            for var phase in phases(run) {
+            for var phase in phases(run) where !phase.calls.isEmpty {
                 // A group keeps the key it was drawn under before, whatever joined
                 // above it; else its first step's, else any step's not yet drawn.
                 let remembered = memory.map { memory in phase.entries.compactMap { memory.groups[$0.key] } } ?? []
@@ -191,25 +232,52 @@ public enum TranscriptRows {
             }
             run = []
         }
-        func closeTurn() {
+        func closeTurn(open: Bool, end: Int) {
             flushRun()
-            if let turnUser, turnUser.seq >= 0, let completedTs = turnUser.completedTs {
-                rows.append(.turnEnd(TurnEnd(userSeq: turnUser.seq, userKey: turnUserKey, durationMs: max(0, completedTs - turnUser.ts), completedTs: completedTs, answer: answer.joined(separator: "\n\n"))))
+            if let turnUser {
+                let joined = answer.joined(separator: "\n\n")
+                if open {
+                    rows.append(.turnEnd(TurnEnd(userSeq: turnUser.seq, userKey: turnUserKey, open: true, durationMs: nil, completedTs: nil, answer: joined, stopped: turnStopped, awaitsUser: turnAwaits, turn: Array(entries[turnStart..<end]))))
+                } else if turnUser.seq >= 0, let completedTs = turnUser.completedTs {
+                    rows.append(.turnEnd(TurnEnd(userSeq: turnUser.seq, userKey: turnUserKey, durationMs: max(0, completedTs - turnUser.ts), completedTs: completedTs, answer: joined, stopped: turnStopped)))
+                }
             }
             turnUser = nil
             answer = []
+            turnStopped = false
+            turnAwaits = false
         }
 
         for (index, entry) in entries.enumerated() {
-            tailEntry = entry
             if case .user(let turn) = entry.item {
-                closeTurn()
+                closeTurn(open: false, end: index)
                 turnUser = turn
                 turnUserKey = entry.key
+                turnStart = index
                 rows.append(.item(entry))
                 continue
             }
+            if turnUser != nil {
+                switch entry.item {
+                case .system(let line) where line.kind == .error && line.stopped:
+                    // The person's Stop: the end row says it.
+                    turnStopped = true
+                    continue
+                case .approval(let approval) where approval.allowed == nil:
+                    turnAwaits = true
+                case .question(let question) where question.answers == nil && !question.resolved:
+                    turnAwaits = true
+                default: break
+                }
+            }
             if ignored(entry) || repeatsNextProse(entries, index) { continue }
+            if openTurn, let lastUser, index > lastUser {
+                switch entry.item {
+                case .thinking(let block) where block.streaming: continue
+                case .tool(let tool) where told.contains(tool.callId): continue
+                default: break
+                }
+            }
             if folds(entry) {
                 run.append(entry)
                 continue
@@ -224,11 +292,10 @@ public enum TranscriptRows {
             group.live = true
             rows[rows.count - 1] = .group(group)
         }
-        let user = turnUser
-        let userKey = turnUserKey
-        closeTurn()
-        if turnOpen, let user, user.seq >= 0, user.completedTs == nil, showsThinkingTail(tailEntry) {
-            rows.append(.thinkingTail(userKey))
+        closeTurn(open: openTurn && turnUser != nil, end: entries.count)
+        if let at = rows.lastIndex(where: { if case .turnEnd = $0 { true } else { false } }), case .turnEnd(var end) = rows[at] {
+            end.last = true
+            rows[at] = .turnEnd(end)
         }
         return rows
     }
@@ -334,18 +401,6 @@ public enum TranscriptRows {
         text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
-    /// `showsThinkingTail`: a live turn with nothing to show yet ends in a
-    /// "Thinking" shimmer, after the prompt or behind a thought or an answer
-    /// with no words yet. The next content takes that slot.
-    static func showsThinkingTail(_ last: ThreadEntry?) -> Bool {
-        guard let last else { return false }
-        switch last.item {
-        case .user: return true
-        case .thinking(let block), .assistant(let block): return !hasWords(block.text)
-        default: return false
-        }
-    }
-
     /// The row that shows a seq: its own item row, or the phase it is inside.
     public static func rowID(containing seq: Int, in rows: [TranscriptRowModel]) -> TranscriptRowID? {
         for row in rows {
@@ -354,20 +409,11 @@ public enum TranscriptRows {
                 if entry.seq == seq { return row.id }
             case .group(let group):
                 if group.entries.contains(where: { $0.seq == seq }) { return row.id }
-            case .turnEnd, .thinkingTail:
+            case .turnEnd:
                 continue
             }
         }
         return nil
-    }
-
-    /// "Worked for 12s", "Worked for 2m 5s", "Worked for 2m"; under a second rounds up to 1s.
-    public static func workedLabel(ms: Int) -> String {
-        let total = max(1, Int((Double(ms) / 1_000).rounded()))
-        if total < 60 { return "Worked for \(total)s" }
-        let minutes = total / 60
-        let seconds = total % 60
-        return seconds == 0 ? "Worked for \(minutes)m" : "Worked for \(minutes)m \(seconds)s"
     }
 
     /// `proseSummary`: a thought's first paragraph as one plain line, code
