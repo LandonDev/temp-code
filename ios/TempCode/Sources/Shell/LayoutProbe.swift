@@ -12,9 +12,8 @@ import UIKit
 /// notes any view left, and `classified`, the pose `DuoPose.classify` reads
 /// off the window — and `Documents/layout-events.json`, the append log of
 /// every change of `window`, `hSize`, `vSize`, `orientation`, `hinge.state`
-/// and every notes key (`[{ t, key, from, to }]`, 5,000 at most, cleared at
-/// launch: a streaming turn's scroll writes alone reach 25 a second, and the
-/// fold run reads a minute and a half of them). The proof's `pose_check` holds a shot to the row for its pose;
+/// and every notes key (`[{ t, key, from, to }]`, 500 at most, cleared at
+/// launch; the Duo fold run's sampler merges it every 400 ms). The proof's `pose_check` holds a shot to the row for its pose;
 /// the fold cycle reads the events.
 ///
 /// The transcript's rows are counted by key (`rowInit`, `rowAppeared`,
@@ -181,11 +180,9 @@ enum LayoutProbe {
             schedule()
         }
 
-        static let eventCap = 5_000
-
         func event(_ key: String, from: String?, to: String?) {
             events.append(["t": ms, "key": key, "from": from ?? NSNull(), "to": to ?? NSNull()])
-            if events.count > Self.eventCap { events.removeFirst(events.count - Self.eventCap) }
+            if events.count > 500 { events.removeFirst(events.count - 500) }
         }
 
         var ms: Int { Int(Date().timeIntervalSince(launched) * 1000) }

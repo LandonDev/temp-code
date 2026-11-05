@@ -2705,7 +2705,7 @@ proof and the sizing rules; the pieces, by name:
   (`notes.draftChars`), one hSize, window and sidebar change per step,
   `revealedUnits` never decreasing, the reader's end or `topRow` kept and no
   row made twice; scripts/ios-duo-checks.test.ts tests both. The app writes
-  `Documents/layout-report.json` and `layout-events.json` (5,000 events) from
+  `Documents/layout-report.json` and `layout-events.json` (500 events, merged by the fold run's scripts/lib/duo_fold_sampler.py) from
   `LayoutProbe` (ios/TempCode/Sources/Shell/LayoutProbe.swift, DEBUG, on
   RootView's root; `LayoutProbe.note(key, value)` from any view; the shell notes `sidebar`, `sidebar.width` and `split.width`, the thread screen `columns`, `measure` and `body.frame`, the dock `composer.frame`, `slot.frame`, `dock.backing` and `draftChars`;
   `LayoutProbe.route` from RootView and ThreadScreen). project.yml allows

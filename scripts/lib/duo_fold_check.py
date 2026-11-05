@@ -25,7 +25,7 @@ if not (routes[0].get('thread') and routes[0].get('segment') == 'chat'): failure
 # The draft: the typed length, unchanged in all four.
 drafts = [r.get('notes', {}).get('draftChars') for r in reports]
 if drafts != [draft] * 4: failures.append(f'draft {drafts}, typed {draft}')
-# The log must reach back past the first stop (it keeps the newest 5,000).
+# The merged log must reach back past the first stop (the app keeps the newest 500).
 if events and events[0]['t'] > A['t']: failures.append(f"the event log starts at {events[0]['t']} ms, after the first stop at {A['t']} ms")
 # Each step is exactly one hSize flip, one window change and one sidebar change.
 steps = [(A['t'], B['t'], 'regular', 'compact', '466x678', 'hidden', 'stack'), (B['t'], C['t'], 'compact', 'regular', '951x669', 'stack', 'hidden'), (C['t'], D['t'], 'regular', 'compact', '466x678', 'hidden', 'stack')]

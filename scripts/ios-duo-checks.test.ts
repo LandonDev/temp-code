@@ -1,8 +1,8 @@
 // The iPhone Duo proof's two checks (scripts/lib/duo_pose_check.py and
 // duo_fold_check.py, run by scripts/ios-sim-proof.sh) on hand-made reports:
 // the shapes the app writes, at the numbers the simulator gave on 2026-11-05.
-import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { spawn, spawnSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -256,5 +256,26 @@ describe('duo_fold_check.py', () => {
     const dropped = foldCheck('bottom', { atBottom: [1, 1, 0, 1] })
     expect(dropped.status).toBe(1)
     expect(dropped.out).toContain('C: off the bottom')
+  })
+})
+
+describe('duo_fold_sampler.py', () => {
+  it('keeps every event the app rotated out of its 500, and samples the reveal and the draft', async () => {
+    const docs = scratch()
+    const out = scratch()
+    const at = (t: number, key: string) => ({ t, key, from: null, to: String(t) })
+    writeFileSync(join(docs, 'layout-events.json'), JSON.stringify([at(1, 'hSize'), at(2, 'write')]))
+    writeFileSync(join(docs, 'layout-report.json'), JSON.stringify({ notes: { revealedUnits: '40', draftChars: '61' } }))
+    const sampler = spawn('python3', [join(lib, 'duo_fold_sampler.py'), docs, out])
+    await new Promise((ok) => setTimeout(ok, 600))
+    // The app's log moved on: the first event fell out of its window.
+    writeFileSync(join(docs, 'layout-events.json'), JSON.stringify([at(2, 'write'), at(3, 'window')]))
+    await new Promise((ok) => setTimeout(ok, 600))
+    const done = new Promise((ok) => sampler.on('exit', ok))
+    sampler.kill('SIGTERM')
+    await done
+    const events = JSON.parse(readFileSync(join(out, 'events.json'), 'utf8')) as Array<{ t: number }>
+    expect(events.map((e) => e.t)).toEqual([1, 2, 3])
+    expect(readFileSync(join(out, 'samples.txt'), 'utf8').split('\n')[0]).toBe('40 61')
   })
 })

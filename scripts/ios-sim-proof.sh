@@ -953,15 +953,12 @@ duo_fold_run() {
   # The scrolled-up run leaves the bottom 2 s after landing; the turn starts once the reader is where they will stay.
   sleep 4
   control /stream '{"sessionId":"ios-impl","cps":120,"seconds":90}' >/dev/null
-  ( while :; do
-      python3 -c 'import json,sys; n=json.load(open(sys.argv[1])).get("notes",{}); print(n.get("revealedUnits",""), n.get("draftChars",""))' "$container/Documents/layout-report.json" 2>/dev/null || true
-      sleep 0.4
-    done ) > "$dir/samples.txt" &
+  python3 "$here/lib/duo_fold_sampler.py" "$container/Documents" "$dir" &
   sampler=$!
   sleep 6
   # A stop that fails its check keeps the run's events and row counts for the reading.
   cycle_snap() {
-    snap "$1" || { cp "$container/Documents/layout-events.json" "$dir/events.json" 2>/dev/null; cp "$container/Documents/row-inits.json" "$dir/row-inits.json" 2>/dev/null; kill "$sampler" 2>/dev/null; return 1; }
+    snap "$1" || { kill "$sampler" 2>/dev/null; wait "$sampler" 2>/dev/null; cp "$container/Documents/row-inits.json" "$dir/row-inits.json" 2>/dev/null; return 1; }
   }
   export SHOT_KIND=implementation SHOT_DRAFT=${#DUO_DRAFT}
   SHOT_SIDEBAR=hidden cycle_snap "cycle-$run-1-unfolded"
@@ -976,7 +973,6 @@ duo_fold_run() {
   unset SHOT_KIND SHOT_DRAFT
   sleep 1
   kill "$sampler" 2>/dev/null; wait "$sampler" 2>/dev/null || true
-  cp "$container/Documents/layout-events.json" "$dir/events.json"
   cp "$container/Documents/row-inits.json" "$dir/row-inits.json" 2>/dev/null || echo '{}' > "$dir/row-inits.json"
   control /finish '{"sessionId":"ios-impl"}' >/dev/null
   sleep 1

@@ -2745,7 +2745,7 @@ a change settles, with `window`, `screen`, `scale`, `fps`, `hSize`, `vSize`,
 `classified` (the pose `DuoPose.classify` reads off the window) and `pose`
 (the `TC_DUO_POSE` the app was launched with); `Documents/layout-events.json`
 is the log of every change of `window`, `hSize`, `vSize`, `orientation`,
-`hinge.state` and each notes key (`{ t, key, from, to }`, 5,000 at most,
+`hinge.state` and each notes key (`{ t, key, from, to }`, 500 at most,
 cleared at launch). Any view says `LayoutProbe.note("sidebar", "visible")`;
 a repeated value is not an event. The shell and the thread screen note
 `sidebar.width`, `columns` (hero, gap, chat in two panes, else the mode),
@@ -2762,9 +2762,10 @@ undecided, the sidebar hidden and a draft typed (`draft:`), a turn streaming
 into it from the test server (`POST /stream`, 120 characters a second for
 90 s), then folded, unfolded (recorded to `cycle-<run>-unfold.mov`) and
 folded again with the app running, four shots. scripts/lib/duo_fold_check.py
-asserts from the reports, `layout-events.json` (the newest 5,000 changes,
-which must reach back past the first stop), a sample of `revealedUnits` every
-400 ms and `row-inits.json`: the route identical in all four; the draft
+asserts from the reports, `layout-events.json` (merged every 400 ms by
+scripts/lib/duo_fold_sampler.py, since the app keeps the newest 500; the
+merge must reach back past the first stop), a sample of `revealedUnits` at
+the same beat and `row-inits.json`: the route identical in all four; the draft
 (`notes.draftChars`, the composer's UTF-16 length) the typed length in all
 four; exactly one `hSize` flip, one `window` change and one `sidebar` change
 (`hidden` ⇄ `stack`) per step; `revealedUnits` never decreasing, and growing
