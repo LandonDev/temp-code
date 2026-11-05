@@ -145,7 +145,9 @@ a surface above `/10`.
 Weight and colour make the hierarchy, not size jumps: a title is `font-medium`
 foreground, its detail `muted-foreground` at the next size down. Code is the
 mono face one size below its surroundings. Tracking: `-0.01em` from 16px
-up, none below. Numbers in tables and tallies are `tabular-nums`. A clock
+up, none below. Numbers in tables and tallies are `tabular-nums`. File headers, approval
+previews and implementation tallies use changeRows' `Counts`: sans at the
+line's size, 4px between values, sharing the transcript's numeric renderer. A clock
 time has one form, `clockTime` (lib/duration.ts): the locale's hour and
 minute, 12-hour with AM/PM where it writes it so ("Landed 12:08 PM",
 "Finished 2:02 PM"), never a hand-padded "14:02"; `tabular-nums` where it

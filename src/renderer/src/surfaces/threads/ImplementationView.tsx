@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence } from "motion/react";
 import { ChevronRight, FileText } from "../../chrome/icons";
+import { Counts } from "../../chrome/rail/changeRows";
 import { Button } from "../../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
 import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
@@ -447,8 +448,7 @@ function PastPass({
                 {done}/{data.todos.length}
               </span>
             ) : null}
-            {stat.adds > 0 ? <span className="text-success">+{stat.adds}</span> : null}
-            {stat.dels > 0 ? <span className="text-destructive">−{stat.dels}</span> : null}
+            <Counts additions={stat.adds} deletions={stat.dels} />
             <ChevronRight className={cn("size-3.5 text-muted-foreground group-data-[panel-open]/pass:rotate-90", DISCLOSURE_CHEVRON)} />
           </span>
         </span>

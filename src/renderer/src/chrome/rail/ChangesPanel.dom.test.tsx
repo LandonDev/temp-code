@@ -239,14 +239,14 @@ describe("ChangesPanel", () => {
     h.index = indexOf({ files: [file("a.ts", { ...both, stagedCounts: { additions: 1, deletions: 1 }, unstagedCounts: { additions: 2, deletions: 0 } })] });
     const { rerender, container } = mount();
     await flush();
-    const rowText = (group: string) => container.querySelector(`[data-menu-id="${group === "Staged" ? "s" : "u"}:a.ts"]`)!.textContent;
-    expect(rowText("Staged")).toContain("+1 −1");
+    const rowText = (group: string) => container.querySelector(`[data-menu-id="${group === "Staged" ? "s" : "u"}:a.ts"]`)!.querySelector("[data-slot=counts]")!.textContent;
+    expect(rowText("Staged")).toBe("+1−1");
     expect(rowText("Changes")).toContain("+2");
     expect(rowText("Changes")).not.toContain("−");
     h.index = indexOf({ files: [file("a.ts", both)] });
     rerender(<ChangesPanel cwd="/p" onOpenDiff={onOpenDiff} />);
-    expect(rowText("Staged")).toContain("+3 −1");
-    expect(rowText("Changes")).toContain("+3 −1");
+    expect(rowText("Staged")).toBe("+3−1");
+    expect(rowText("Changes")).toBe("+3−1");
   });
 
   it("a row opens its diff against HEAD; a deleted file does not open", async () => {

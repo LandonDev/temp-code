@@ -242,6 +242,7 @@ describe("the implementation board", () => {
     expect(pass.className).not.toContain("hover:bg-muted");
     expect(pass.textContent).toContain("Build the thing");
     expect(pass.textContent).toContain("1/1");
+    expect(pass.querySelector("[data-slot=counts]")?.textContent).toBe("+4−1");
     expect(screen.getByText("Now test it")).toBeTruthy();
     expect(document.querySelector('[data-change-row="src/a.ts"]')).toBeNull();
     fireEvent.click(pass);

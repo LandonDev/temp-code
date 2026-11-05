@@ -23,7 +23,9 @@ describe("FilePreview", () => {
   it("names the file and its counts on one header row", () => {
     const { container } = render(<FilePreview preview={preview} status="accepted" cwd="/repo" />);
     expect(container.textContent).toContain("src/app.ts");
-    const counts = container.querySelector(".tabular-nums")!;
+    const counts = container.querySelector("[data-slot=counts]")!;
+    expect(counts.className).toContain("font-sans");
+    expect(counts.className).toContain("gap-1");
     expect(counts.textContent).toBe("+2−1");
   });
 

@@ -27,7 +27,7 @@ describe("FileHeader", () => {
     const { container, rerender } = render(<FileHeader folder={null} diff={diff()} save={{ status: "idle" }} />);
     expect(container.textContent).toContain("+4");
     expect(container.textContent).toContain("−2");
-    expect(container.querySelector(".tabular-nums")).not.toBeNull();
+    expect(container.querySelector("[data-slot=counts]")!.className).toContain("gap-1");
     rerender(<FileHeader folder={null} diff={diff({ deletions: 0 })} save={{ status: "idle" }} />);
     expect(container.textContent).toContain("+4");
     expect(container.textContent).not.toContain("−");

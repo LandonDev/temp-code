@@ -1,6 +1,7 @@
 import type { MouseEvent, ReactNode } from "react";
 import type { MarkdownViewMode } from "../chrome/MarkdownModeToggle";
 import { ChevronDown, ChevronUp, Plus, Undo2 } from "../chrome/icons";
+import { Counts } from "../chrome/rail/changeRows";
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
@@ -69,10 +70,7 @@ export function FileHeader({ folder, diff, markdown, save = IDLE, children }: Fi
             </span>
           ) : null}
           {diff && (diff.additions > 0 || diff.deletions > 0) ? (
-            <span className="flex shrink-0 items-center gap-2 font-mono tabular-nums">
-              {diff.additions > 0 ? <span className="text-success">+{diff.additions}</span> : null}
-              {diff.deletions > 0 ? <span className="text-destructive">−{diff.deletions}</span> : null}
-            </span>
+            <Counts additions={diff.additions} deletions={diff.deletions} />
           ) : null}
         </div>
         <SaveWord save={save} />

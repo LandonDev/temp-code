@@ -1,20 +1,15 @@
 import { cn } from "@renderer/lib/cn";
+import { Counts as DiffCounts } from "../../surfaces/transcript/Counts";
 import { basename } from "../../lib/fs";
 
 /* The pieces of a changed-file row the Changes section's two groups share
    (ChangesPanel's index rows, ChangesAgainst's rows against a target). */
 
 /** `+n −n` in the diff colours; New for a file git has not seen, Deleted for one that is gone. */
-export function Counts({ status, additions, deletions }: { status: string; additions: number; deletions: number }) {
-  if (status === "untracked" || status === "added") return <span className="text-xs text-muted-foreground">New</span>;
-  if (status === "deleted") return <span className="text-xs text-muted-foreground">Deleted</span>;
-  return (
-    <span className="text-xs tabular-nums">
-      {additions > 0 ? <span className="text-success">+{additions}</span> : null}
-      {additions > 0 && deletions > 0 ? " " : null}
-      {deletions > 0 ? <span className="text-destructive">−{deletions}</span> : null}
-    </span>
-  );
+export function Counts({ status, additions, deletions, className }: { status?: string; additions: number; deletions: number; className?: string }) {
+  if (status === "untracked" || status === "added") return <span data-slot="counts" className={cn("font-sans text-muted-foreground", className)}>New</span>;
+  if (status === "deleted") return <span data-slot="counts" className={cn("font-sans text-muted-foreground", className)}>Deleted</span>;
+  return <DiffCounts added={additions} removed={deletions} className={cn("font-sans", className)} />;
 }
 
 /** A file's name with its folder after it, the folder truncating first. */

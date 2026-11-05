@@ -4,6 +4,7 @@ import { MAX_PREVIEW_LINES } from "../lib/harness/preview";
 import { displayPath, resolveWorkspacePath } from "../lib/paths";
 import { RenderCache, cacheKey } from "../lib/renderCache";
 import type { ToolPreview, ToolPreviewLine } from "../lib/session";
+import { Counts } from "./rail/changeRows";
 import { FileTypeIcon } from "./FileTypeIcon";
 
 type Status = "pending" | "accepted" | "rejected";
@@ -102,11 +103,8 @@ export function FilePreview({ preview, status, cwd, onOpenFile }: Props) {
             {label}
           </span>
         )}
-        <span className="ms-auto flex shrink-0 items-center gap-2 font-mono text-[12px] tabular-nums">
-          {added > 0 ? <span className="text-success">+{added}</span> : null}
-          {deleted > 0 ? (
-            <span className="text-destructive">−{deleted}</span>
-          ) : null}
+        <span className="ms-auto flex shrink-0 items-center gap-2 text-[12px]">
+          <Counts additions={added} deletions={deleted} />
           {status === "rejected" ? (
             <span className="font-sans text-muted-foreground">Rejected</span>
           ) : null}
