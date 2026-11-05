@@ -256,6 +256,8 @@ describe("the draft row", () => {
     const others = [...row.querySelectorAll<HTMLElement>("button:not([data-thread-type-picker]), input, label")].filter(
       (el) => !el.closest("[data-composer-master]") || el.tagName === "LABEL",
     );
+    // Inset as the box's row and the row under the box are, so its glyphs sit on the model's and `+`'s axis.
+    expect(classes(row)).toContain("px-1.5");
     // The project, the branch, Master thread and the name field.
     expect(others.length).toBeGreaterThanOrEqual(4);
     for (const el of others) expect(classes(el)).toContain("h-6");

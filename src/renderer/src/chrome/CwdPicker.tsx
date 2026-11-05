@@ -107,7 +107,8 @@ export function CwdPicker({
     >
       {children ?? (
         <>
-          {inProject ? <FolderGlyph path={cwd} /> : <Folder className="size-4 shrink-0" />}
+          {/* 14px, as the row's other glyphs: its centre sits on the model's and `+`'s. */}
+          {inProject ? <FolderGlyph path={cwd} className="size-3.5 shrink-0" /> : <Folder className="size-3.5 shrink-0" />}
           <span className="truncate font-mono text-xs">{label}</span>
         </>
       )}

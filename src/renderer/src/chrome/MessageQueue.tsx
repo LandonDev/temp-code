@@ -109,7 +109,7 @@ export function MessageQueue({
 
   return (
     <div className="mb-2">
-      <p className="mb-1 px-1 text-xs font-medium text-muted-foreground">
+      <p className="mb-1 px-1.5 text-xs font-medium text-muted-foreground">
         {awaiting ? (
           'Queued until the wait finishes'
         ) : (

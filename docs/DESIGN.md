@@ -653,7 +653,9 @@ left, the field, Send (a 28px circle) at the right, 6px from the sides and
 8px from the top and bottom, so the empty box is 46px with its hairline. The
 field's first line is centred on the controls' 28px line; each further line
 grows the box upward by 22px while its bottom stays, and the controls stay
-on the bottom line. Under the box, 4px below it, a 24px row holds the model
+on the bottom line. The rows over and under the box (the slot, the queue's
+heading, the row under the box, the draft row) take the box row's 6px inset,
+so their first glyph sits on `+`'s axis. Under the box, 4px below it, a 24px row holds the model
 at the left and the context meter and the permission mode at the right,
 ghost controls in 12px muted text; it is always there, so nothing moves on
 focus, and at a narrow width it gives way in order (the meter's percent,

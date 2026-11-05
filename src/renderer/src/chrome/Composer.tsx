@@ -1166,7 +1166,7 @@ export function DraftRow({
   return (
     <Collapsible open={draft}>
       <CollapsibleContent>
-        <div data-composer-draft-row className="flex h-7 min-w-0 items-center gap-1 pt-1 text-xs text-muted-foreground">
+        <div data-composer-draft-row className="flex h-7 min-w-0 items-center gap-1 px-1.5 pt-1 text-xs text-muted-foreground">
           {hideProjectPicker ? null : (
             <CwdPicker
               cwd={cwd}

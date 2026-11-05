@@ -81,12 +81,14 @@ describe("ComposerBar, the row under the box", () => {
     }
   });
 
-  it("is a 24px size container 4px under the box, with the box's edges, and the mode is a quiet 24px control", () => {
+  it("is a 24px size container 4px under the box, inset as the box's row is, and the mode is a quiet 24px control", () => {
     const { container } = bar("claude");
     const row = container.querySelector<HTMLElement>("[data-composer-bar]")!;
     expect(row.className).toContain("@container/composer-bar");
     expect(row.className.split(" ")).toEqual(expect.arrayContaining(["mt-1", "h-6", "items-center"]));
-    expect(row.className).not.toMatch(/\b(mx|px|ms|me)-/);
+    // 6px in, the box's own row's inset, so the model's glyph sits on `+`'s axis (both 21px from the box's edge).
+    expect(row.className.split(" ")).toContain("px-1.5");
+    expect(row.className).not.toMatch(/\b(mx|ms|me)-/);
     const mode = screen.getByRole("combobox", { name: "Permission mode: Supervised" });
     expect(mode.className.split(" ")).toEqual(
       expect.arrayContaining(["data-[size=sm]:h-6", "text-xs", "text-muted-foreground", "hover:bg-foreground/5"]),

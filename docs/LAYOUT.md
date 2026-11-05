@@ -702,7 +702,9 @@ Send's glyph is what Enter would do: send, queue or steer, and Pause while
 the box is empty mid-turn (`SendButton`).
 
 Under the box, 4px below it, one 24px row (chrome/ComposerBar.tsx), always
-there so nothing moves on focus, its edges the box's: at the left the model
+there so nothing moves on focus, inset 6px as the box's own row is, so the
+model's glyph sits on `+`'s axis (both centred 21px from the box's edge) and
+the permission mode ends over Send: at the left the model
 button, which reads the model and the effort ("Opus 5.5  High") and opens
 the model menu: providers, search, the list, then the model's settings as
 rows (Effort, Context, Speed only for the tiers the serving CLI lists, any
@@ -774,8 +776,8 @@ beside a thread in a split stays. At boot the host archives a day-old root
 thread with a placeholder title and no rows, which an older New thread…
 made at the click (`archiveEmptyThreads`).
 
-Under the row under the box, 4px below it with the same edges (its
-pickers' glyphs on the model's), one more quiet row (`DraftRow`) holds
+Under the row under the box, 4px below it with the same 6px inset (its
+pickers' 14px glyphs on the model's and `+`'s axis), one more quiet row (`DraftRow`) holds
 project, host, branch and type (chrome/ThreadTypeChip.tsx: the type's tinted
 glyph 4px from its name in the row's 24px box, the select's 28px `sm`
 stepped down, each item the same glyph over its hint) on the shell's

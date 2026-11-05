@@ -48,7 +48,7 @@ export function ComposerBar({
   context?: ReactNode;
 }) {
   return (
-    <div data-composer-bar className="@container/composer-bar mt-1 flex h-6 min-w-0 items-center gap-1">
+    <div data-composer-bar className="@container/composer-bar mt-1 flex h-6 min-w-0 items-center gap-1 px-1.5">
       {model}
       <div className="ms-auto flex shrink-0 items-center gap-1">
         {context}
