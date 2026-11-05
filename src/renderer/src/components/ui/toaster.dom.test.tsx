@@ -154,6 +154,26 @@ describe("a toast's buttons and motion", () => {
     expect(dismiss.classList).not.toContain("!bg-muted");
   });
 
+  it("draws a sticky toast's close as a 24px ghost at the top right, its words clear of it", async () => {
+    render(<Toaster />);
+    const toast = await loadToast();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      toast.error("Stop all failed", { closeButton: true, duration: Infinity });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const close = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>("[data-close-button]");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    for (const cls of ["!right-2", "!top-2", "!size-6", "!transform-none", "!rounded-md", "!bg-transparent", "!shadow-none", "!transition-none"]) expect(close.classList).toContain(cls);
+    expect(close.closest("[data-sonner-toast]")!.className).toContain("has-[[data-close-button]]:!pe-10");
+    const icon = document.querySelector<HTMLElement>("[data-sonner-toast] [data-icon]")!;
+    expect(icon.classList).toContain("!m-0");
+    expect(icon.classList).toContain("!w-auto");
+  });
+
   it("speaks the status vocabulary: a warning is waiting's amber glyph, an error failed's red one", async () => {
     render(<Toaster />);
     const toast = await loadToast();

@@ -115,7 +115,7 @@ export function Toaster(props: ToasterProps) {
         visibleToasts={4}
         icons={{
           success: <ToastGlyph state="done" />,
-          info: <Info className="size-4" />,
+          info: <Info className="size-3.5" />,
           warning: <ToastGlyph state="waiting" />,
           error: <ToastGlyph state="failed" />,
           loading: <Spinner />,
@@ -124,10 +124,15 @@ export function Toaster(props: ToasterProps) {
           unstyled: false,
           classNames: {
             // The glyph sits on the title's first line, not the middle of two.
-            toast: "!items-start !gap-2 !rounded-xl !border-0 !bg-popover !text-popover-foreground !shadow-overlay !ring-1 !ring-border !text-[13px]",
+            // A closable toast keeps its words clear of the close: 8px in, 24px wide, 8px after.
+            toast: "!items-start !gap-2 !rounded-xl !border-0 !bg-popover !text-popover-foreground !shadow-overlay !ring-1 !ring-border !text-[13px] has-[[data-close-button]]:!pe-10",
             title: "!font-medium !leading-5",
             description: "!text-xs !leading-4 !text-muted-foreground",
-            icon: "!h-5",
+            // The glyph's own box, 8px from the title (the toast's gap), not sonner's 16px box and margins.
+            icon: "!h-5 !w-auto !m-0",
+            // A 24px ghost at the top right: no circle, no second focus band, no timing of sonner's.
+            closeButton:
+              "!left-auto !right-2 !top-2 !size-6 !transform-none !rounded-md !border-0 !bg-transparent !shadow-none !text-muted-foreground hover:!bg-foreground/7 hover:!text-foreground !transition-none",
             // Our raised buttons: sonner's own button paints a background, a 4px radius
             // and its own sizes, so those are reset for the raise's fill layer to show.
             actionButton: cn(buttonVariants({ variant: "default", size: "xs" }), TOAST_BUTTON, "!text-primary-foreground"),
