@@ -20,6 +20,14 @@ describe("StatusMark", () => {
     vi.clearAllMocks();
   });
 
+  it("takes its word's baseline: the root aligns its items on the baseline and the glyph's box centres itself", () => {
+    const { container } = render(<StatusMark state="plan-ready" detail="3 tasks" />);
+    const root = container.querySelector<HTMLElement>("[data-slot=status-mark]")!.className.split(/\s+/);
+    expect(root).toContain("items-baseline");
+    expect(root).not.toContain("items-center");
+    expect(container.querySelector("[data-slot=status-glyph]")!.className.split(/\s+/)).toContain("self-center");
+  });
+
   it("draws working as a turning spinner", () => {
     const { container } = render(<StatusMark state="working" />);
     expect(container.querySelector("[data-slot=spinner][data-turning]")).not.toBeNull();

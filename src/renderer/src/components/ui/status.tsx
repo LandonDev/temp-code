@@ -192,7 +192,7 @@ function GlyphBox({ state, still }: { state: ThreadState; still?: boolean }) {
     return () => clearTimeout(timer);
   }, [leaving]);
   return (
-    <span data-slot="status-glyph" className="relative grid size-3.5 shrink-0 place-items-center">
+    <span data-slot="status-glyph" className="relative grid size-3.5 shrink-0 place-items-center self-center">
       {leaving ? (
         <span key={`out-${leaving.key}`} aria-hidden data-glyph-out className="glyph-out absolute inset-0 grid place-items-center" onAnimationEnd={() => setLeaving(null)}>
           <Glyph state={leaving.state} still={still} />
@@ -244,7 +244,9 @@ export function StatusMark({
       data-slot="status-mark"
       data-state={state}
       aria-label={text === null ? plainStatus(STATUS_WORD[state], typeof detail === "string" ? detail : null) : undefined}
-      className={cn("inline-flex min-w-0 items-center gap-2 text-xs", TONE_CLASS[STATUS_TONE[state]], className)}
+      // Its baseline is its word's (the glyph's box centres itself), so a
+      // mark after a title on one line shares the title's baseline.
+      className={cn("inline-flex min-w-0 items-baseline gap-2 text-xs", TONE_CLASS[STATUS_TONE[state]], className)}
       {...props}
     >
       {/* One 14px box for every state, so a change of state never moves the word. */}

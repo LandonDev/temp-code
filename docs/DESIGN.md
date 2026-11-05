@@ -313,8 +313,10 @@ state the row cannot otherwise show, and never beside a title.
 ## Status vocabulary
 
 `StatusMark` (components/ui/status.tsx) is the only status-to-glyph, -word
-and -colour map. Every rail row, tab, strip, board row, card and the phone's
-rows say exactly this:
+and -colour map. Its baseline is its word's (the glyph's 14px box centres
+itself), so a mark after a title on one line shares the title's baseline.
+Every rail row, tab, strip, board row, card and the phone's rows say
+exactly this:
 
 | State | Glyph | Word | Tone |
 | --- | --- | --- | --- |
