@@ -179,7 +179,7 @@ function MarkdownCode({
         className={`rounded-sm bg-muted px-1 py-px font-mono text-[calc(1em-1px)] text-foreground box-decoration-clone ${
           text.length <= SHORT_TOKEN ? "whitespace-nowrap" : ""
         } ${
-          open ? "cursor-pointer decoration-muted-foreground underline-offset-2 hover:underline" : ""
+          open ? "focus-ring cursor-pointer decoration-muted-foreground underline-offset-2 hover:underline" : ""
         } ${className ?? ""}`}
         role={open ? "link" : undefined}
         tabIndex={open ? 0 : undefined}

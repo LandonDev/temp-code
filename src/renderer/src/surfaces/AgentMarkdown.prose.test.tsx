@@ -84,6 +84,16 @@ describe("AgentMarkdown prose", () => {
     expect(onOpenFile).toHaveBeenCalledWith("/repo/src/lib/a.ts", undefined, undefined);
   });
 
+  it("an inline file link takes focus-ring, and the one ring names every link role", () => {
+    const view = render(<AgentMarkdown text="See `src/lib/a.ts` here." cwd="/repo" onOpenFile={vi.fn()} />);
+    const code = view.container.querySelector("code")!;
+    expect(code.getAttribute("tabindex")).toBe("0");
+    expect(code.className.split(/\s+/)).toContain("focus-ring");
+    const css = readFileSync(resolve(__dirname, "../index.css"), "utf8");
+    const ring = css.slice(css.indexOf(".focus-ring:focus-visible,"), css.indexOf("outline: 2px solid var(--color-accent)"));
+    expect(ring).toContain('[role="link"]:focus-visible');
+  });
+
   it("plain inline code is not a link", () => {
     const view = render(<AgentMarkdown text="Run `bun test` now." cwd="/repo" onOpenFile={vi.fn()} />);
     const code = view.container.querySelector("code")!;

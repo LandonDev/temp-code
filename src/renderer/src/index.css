@@ -429,6 +429,7 @@ html.theme-light {
 .focus-ring:focus-visible,
 button:focus-visible,
 a:focus-visible,
+[role="link"]:focus-visible,
 [role="button"]:focus-visible,
 [role="option"]:focus-visible,
 [role="menuitem"]:focus-visible,

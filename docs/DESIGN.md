@@ -251,7 +251,8 @@ above a dialog so a picker inside one is never hidden), `--layer-toast`
 ### Focus
 
 One ring: index.css draws a 2px `accent` outline inset 2px on every
-button, link, option, menu item and tab, unlayered so it beats a utility's
+button, link (an `a` or anything with `role="link"`, an inline file link
+in the prose among them), option, menu item and tab, unlayered so it beats a utility's
 `outline-none`, and so a row in a tight list never clips it. An element it
 does not name (a scroll region, a `pre`, a `div` with `tabIndex`, a checkbox
 root) takes `focus-ring`, the same outline. Nothing draws a second band
