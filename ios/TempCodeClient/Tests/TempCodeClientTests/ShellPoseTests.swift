@@ -61,11 +61,12 @@ import Testing
         #expect(SidebarColumn.of(halfOpen: true, foldX: 200) == SidebarColumn(min: 260, ideal: 260, max: 320))
     }
 
-    @Test("on the unfolded Duo's 951 pt window the 260 pt sidebar leaves a 691 pt detail: two panes, the chat over 360") func theUnfoldedDuoDetail() {
-        let detail: CGFloat = 951 - SidebarColumn.of(halfOpen: false, foldX: 475).ideal
-        #expect(detail == 691)
-        #expect(ThreadPose.mode(segments: 2, regularWidth: true, width: detail) == .twoPane)
-        let columns = ThreadPose.columns(width: detail, hairline: 1, division: nil)
+    @Test("the unfolded Duo's detail as measured: 547 pt beside the 320 pt sidebar iOS keeps and the 84 pt tab rail, the pager; 680 and up, two panes") func theUnfoldedDuoDetail() {
+        let detail: CGFloat = 951 - 320 - 84
+        #expect(detail == 547)
+        #expect(ThreadPose.mode(segments: 2, regularWidth: true, width: detail) == .pager)
+        #expect(ThreadPose.mode(segments: 2, regularWidth: true, width: 951 - 84) == .twoPane)
+        let columns = ThreadPose.columns(width: 951 - 84, hairline: 1, division: nil)
         #expect(columns.chat >= ThreadPose.minChat)
         #expect(ReadingMeasure.columnFrame(width: detail) == detail)
     }

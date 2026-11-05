@@ -186,8 +186,11 @@ detail column's own size class is the system's and is not promised.
 `columnVisibility` always carries the expanded preference (the remembered
 toggle), so the sidebar arrives with the expansion. In the overlay pose a
 pick hides the sidebar, as Mail's does. The sidebar asks for the
-desktop's 260 pt workspace column, never past 320 (`SidebarColumn`), which
-leaves the detail about 690 pt at 951. While the hinge is half open
+desktop's 260 pt workspace column, never past 320 (`SidebarColumn`), but
+iOS 27.1 keeps the column at 320 in the unfolded Duo's window whatever it
+is asked (a range and a fixed 260 both measure 320, `sidebar.width`), and
+the tab rail at the right edge takes 84, so the detail is 547 pt at 951
+and a two-segment thread there is the pager. While the hinge is half open
 (`UIHingeInteraction`, iOS 27.1) the sidebar's ideal width is the window's
 centre line, so the seam sits on the fold.
 
@@ -587,7 +590,7 @@ than the window). The rules are the client package's
 | --- | --- | --- | --- |
 | Folded portrait | 466×678, compact×regular | 466 | The phone's screen, unchanged |
 | Folded landscape | 678×466, compact×compact | 678 | The pager; the header is one line; the segment bar leaves while the field has focus |
-| Unfolded landscape | 951×669, regular×regular | 951, or about 690 beside the shell's 260 pt sidebar | Hero and chat side by side, the chat at least 360 |
+| Unfolded landscape | 951×669, regular×regular | 951 less the 84 pt tab rail, or 547 beside the sidebar (iOS keeps it at 320) | Hero and chat side by side from 680 pt, the chat at least 360; the pager beside the sidebar |
 | Unfolded portrait | 669×951, regular×regular | 669 with the sidebar hidden, about 350 with it shown | Side by side at 669; the pager beside the sidebar |
 
 **Two panes** when the column is regular width and at least 680 pt
