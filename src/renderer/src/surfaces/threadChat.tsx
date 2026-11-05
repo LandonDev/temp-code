@@ -45,7 +45,7 @@ import { AgentTranscript } from "./AgentTranscript";
 import { DeferredMount } from "./DeferredMount";
 import { ChatColumn, type ChatOpts, type ChatSlots } from "./threads/chatSlots";
 import { WorkingStrip } from "./threads/WorkingStrip";
-import { rightPanel } from "../lib/rightPanel";
+import { rightPanel, watchSection } from "../lib/rightPanel";
 import { desktopOnly } from "../lib/nativeWeb";
 import { askOnGesture } from "../lib/preconnect";
 import { useKept } from "../lib/keptValue";
@@ -365,7 +365,8 @@ export function useThreadChat({
   const start = useCallback(() => serverCommands.startNow(sessionId).catch(() => undefined), [sessionId]);
   const stop = useCallback(() => onStop(sessionId), [onStop, sessionId]);
   const disarmNewPass = useCallback(() => setNewPassArmed(false), []);
-  const openActivity = useCallback(() => rightPanel.open(sessionId, "activity"), [sessionId]);
+  // The Watching line opens what the thread watches: its subagents, else its background work.
+  const openActivity = useCallback(() => rightPanel.open(sessionId, watchSection(sessionStore.metaOf(sessionId)?.background)), [sessionId]);
   // The composer and the strip read no streamed text: they keep the session
   // they drew until something else in it changes.
   const chrome = useKept(session, sameSessionChrome);

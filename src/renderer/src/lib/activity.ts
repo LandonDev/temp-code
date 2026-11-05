@@ -13,11 +13,11 @@ import type { SessionMeta } from "./tcserver/types";
  * A thread's background work as the right panel's Activity section and the
  * watching strip read it: the meta's `background` (CLAUDE.md "Background
  * work and watching") joined with the thread's dev servers and its running
- * Mac calls. One row per task, one summary row for the live subagents (the
- * Agents section lists them), one for a master's batch.
+ * Mac calls. One row per task and one for a master's batch; subagents are
+ * the Agents section's, never a row here.
  */
 
-export type ActivityKind = BackgroundTaskKind | "subagents" | "batch" | "dev" | "mac";
+export type ActivityKind = BackgroundTaskKind | "batch" | "dev" | "mac";
 
 export type StopTarget =
   | { type: "task"; sessionId: string; taskId: string }
@@ -32,8 +32,8 @@ export interface ActivityRow {
   detail?: string;
   since: number;
   stop?: StopTarget;
-  /** What a click opens: the task's output, the Agents section, the dev servers pane. */
-  open?: "log" | "agents" | "dev";
+  /** What a click opens: the task's output, the dev servers pane. */
+  open?: "log" | "dev";
   /** `log` rows: the task whose output session.taskLog reads. */
   taskId?: string;
   /** `dev` rows: the dev servers pane's key for the server. */
@@ -42,8 +42,6 @@ export interface ActivityRow {
 
 export interface ActivitySources {
   meta: Pick<SessionMeta, "id" | "status" | "background">;
-  /** The live subagents' metas (background.agents), for the summary row's age. */
-  agents: Pick<SessionMeta, "busySince" | "createdAt">[];
   /** Dev servers the thread or one of its subagents opened. */
   devServers: LiveServer[];
   /** The thread's Mac calls in flight. */
@@ -54,22 +52,11 @@ export interface ActivitySources {
 const LOG_KINDS: ReadonlySet<ActivityKind> = new Set(["shell"]);
 const upperFirst = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** The rows, subagents and batch first, then oldest first. */
+/** The rows, the batch first, then oldest first. */
 export function activityRows(src: ActivitySources): ActivityRow[] {
   const bg = src.meta.background;
   const head: ActivityRow[] = [];
   const rest: ActivityRow[] = [];
-  if (bg?.agents.length) {
-    const since = Math.min(...src.agents.map((a) => a.busySince ?? a.createdAt));
-    const n = bg.agents.length;
-    head.push({
-      key: "subagents",
-      kind: "subagents",
-      label: `${n} ${n === 1 ? "subagent" : "subagents"}`,
-      since: Number.isFinite(since) ? since : (bg.watchingSince ?? Date.now()),
-      open: "agents",
-    });
-  }
   // A master watching with every batch thread done and nothing else live waits on its batch's steps
   // (a finished batch keeps its tally, so its own monitor alone is no steps row).
   const steps = src.meta.status === "watching" && !bg?.tasks.length && !bg?.agents.length;
@@ -130,7 +117,7 @@ function opened(server: LiveServer, callId: string | undefined, command: string 
 
 /** A row's age turns amber once its thread watches stale and the row is that old: tasks, crons and the batch only (the rest have their own liveness). */
 export function rowStale(row: ActivityRow, meta: Pick<SessionMeta, "status" | "background">, now: number): boolean {
-  if (row.kind === "subagents" || row.kind === "dev" || row.kind === "mac") return false;
+  if (row.kind === "dev" || row.kind === "mac") return false;
   return isStaleWatch(meta, now) && now - row.since > STALE_WATCH_MS;
 }
 
@@ -167,11 +154,9 @@ export function useActivity(threadId: string): { rows: ActivityRow[]; meta: Sess
   const macCalls = useMacBridgeRunning({ environmentId: meta?.environmentId, sessionId: threadId });
   const rows = useMemo(() => {
     if (!meta) return [];
-    const agentIds = new Set(meta.background?.agents ?? []);
     const tree = treeIds(threadId, metas);
     return activityRows({
       meta,
-      agents: metas.filter((m) => agentIds.has(m.id)),
       devServers: threadServers(servers, tree),
       macCalls,
     });

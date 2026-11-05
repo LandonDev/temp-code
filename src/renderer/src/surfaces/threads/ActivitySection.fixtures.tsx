@@ -29,6 +29,6 @@ const server = {
   command: "bun run dev",
   startedAt: now - 60_000,
 } satisfies LiveServer;
-const rows = activityRows({ meta, agents: [{ busySince: now - 5 * 60_000, createdAt: 0 }], devServers: [server], macCalls: [] });
+const rows = activityRows({ meta, devServers: [server], macCalls: [] });
 
-export default [{ name: "a watching thread's activity", props: { threadId: "s1", rows, meta, onOpenAgents: () => {} } }];
+export default [{ name: "a watching thread's activity", props: { threadId: "s1", rows, meta } }];

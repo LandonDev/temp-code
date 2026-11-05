@@ -324,7 +324,13 @@ app replaces itself from the feed, and only from the feed.
   double-click reset. Keyboard resize commits at once; `useDragResize`
   exposes `resizeTo` and `reset` to clamp, paint and save without a spring.
 - The right side of a thread is one panel (`lib/rightPanel.ts`,
-  `surfaces/RightPanel.tsx`; docs/LAYOUT.md "The right side"); Modal and
+  `surfaces/RightPanel.tsx`; docs/LAYOUT.md "The right side"): Agents first
+  and its default whenever the thread has subagents, Activity only with rows
+  of the thread's own; a toggle in place slides it in from the edge or back
+  out over the thread on transform and opacity (`usePaneMotion` in
+  surfaces/threads/ThreadView.tsx), the thread taking its width at once;
+  the composer's slash menu moves on the popup recipe (`POPUP_MOTION`,
+  chrome/CommandPopover.tsx). Modal and
   ConfirmDialog ride `components/ui/dialog.tsx`. Its Changes section is one
   virtual list (`chrome/rail/changesItems.ts` through the rail's
   `VirtualRows` on a native scroller whose size comes from the
@@ -392,7 +398,9 @@ app replaces itself from the feed, and only from the feed.
   switch confirm among them), the failure card's account list (`accountsChunk`),
   the transcript's message list rows under their chevron (`messageListChunk`),
   a workspace's threads beside the rail (`workspaceThreadsChunk`), the
-  file and symbol pickers (`pickersChunk`, mounted while open), a box
+  file and symbol pickers (`pickersChunk`, mounted while open), the
+  composer's slash and @ menu (`commandMenuChunk`, mounted from a
+  composer's first match on), a box
   thread's waiting Mac bridge card (`macBridgeChunk`) and the
   rail's virtualizer (`virtualChunk`; the rail lists its cards plainly until it
   lands, chrome/railRows.tsx). A mount
@@ -1744,22 +1752,22 @@ names the far child).
 - Renderer: `lib/activity.ts` joins the meta's `background`, the thread's
   dev servers (its tree's ledger rows and the runs the pane started for it,
   `threadServers`) and its running Mac calls into
-  `activityRows` (subagents as one summary row, a master's batch as one,
-  then oldest first; a background shell that opened a listed dev server is
+  `activityRows` (a master's batch as one row, then oldest first; never a
+  row for subagents, which the Agents section lists; a background shell that opened a listed dev server is
   that server's row, matched by call id, else by command; `rowStale`, `hasActivity`, `stopActivity`, `stopAll` =
   `session.killBackground`). `surfaces/threads/ActivitySection.tsx` is the
   right panel's Activity section: 28px rows (glyph, label, the age, Stop;
   a failed Stop toasts), a shell row folding open onto its command and its
   `session.taskLog` output (a monitor writes no file
-  the host can read, so it opens nothing; a failed read says so), the
-  subagents row opening the Agents section, a dev server row the dev
-  servers pane. The slot above the composer (`WorkingStrip`, its rule
+  the host can read, so it opens nothing; a failed read says so), a dev
+  server row the dev servers pane. The slot above the composer (`WorkingStrip`, its rule
   `composerSlotOf` in lib/threadStripModel.ts) holds only the open turn's
   elapsed time and Stop while it works or waits, and the held rows (paused
   with Stop and Continue, stopped with Resume, queued with Start now); a
   watching thread leaves it empty and the transcript's closing line under
   the last settled turn says "Watching" with the stretch's age, amber past
-  `STALE_WATCH_MS`, and opens the section (`WatchingLine` in
+  `STALE_WATCH_MS`, and opens Agents when it waits on subagents, else
+  Activity (`watchSection` in lib/rightPanel.ts; `WatchingLine` in
   surfaces/transcript/TurnEnd.tsx, `onOpenActivity` through AgentTranscript).
   The thread on screen is left out of the paused banner (every thread has
   the slot, an orchestration parent's too, and no transcript draws the live

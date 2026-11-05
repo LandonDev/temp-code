@@ -9,6 +9,7 @@ import {
   rightPanel,
   sectionsFor,
   shownSection,
+  watchSection,
   type PanelFacts,
 } from "./rightPanel";
 
@@ -17,10 +18,7 @@ const quiet: PanelFacts = {
   project: false,
   checkout: false,
   agents: 0,
-  liveAgents: 0,
-  backgroundTasks: 0,
-  watching: false,
-  devRunning: false,
+  activity: 0,
   debug: false,
 };
 
@@ -49,19 +47,32 @@ describe("sectionsFor", () => {
     });
   });
 
-  it("subagents add agents and take the default, live or done; live ones add activity and win it", () => {
+  it("subagents lead the header and take the default, live or done, even beside activity", () => {
     expect(sectionsFor({ ...quiet, project: true, checkout: true, agents: 2 })).toEqual({
       sections: ["agents", "changes", "notes", "files", "build"],
       defaultSection: "agents",
     });
-    expect(sectionsFor({ ...quiet, agents: 2, liveAgents: 1 }).sections).toEqual(["activity", "agents", "notes"]);
-    expect(sectionsFor({ ...quiet, agents: 2, liveAgents: 1 }).defaultSection).toBe("activity");
+    expect(sectionsFor({ ...quiet, agents: 2, activity: 1 })).toEqual({ sections: ["agents", "activity", "notes"], defaultSection: "agents" });
   });
 
-  it("a watching master's wait, background tasks and a dev server each open a section; its batch never opens Agents", () => {
-    expect(sectionsFor({ ...quiet, watching: true }).sections).toEqual(["activity", "notes"]);
-    expect(sectionsFor({ ...quiet, backgroundTasks: 1 }).sections).toEqual(["activity", "notes"]);
-    expect(sectionsFor({ ...quiet, project: true, checkout: true, devRunning: true }).sections[0]).toBe("activity");
+  it("Activity exists only with rows, and takes the default only without subagents", () => {
+    expect(sectionsFor({ ...quiet, activity: 1 })).toEqual({ sections: ["activity", "notes"], defaultSection: "activity" });
+    expect(sectionsFor({ ...quiet, project: true, checkout: true }).sections).not.toContain("activity");
+  });
+
+  it("the Watching line opens Agents for a thread waiting on subagents, else Activity", () => {
+    expect(watchSection({ agents: ["a1"] })).toBe("agents");
+    expect(watchSection({ agents: [] })).toBe("activity");
+    expect(watchSection(null)).toBe("activity");
+  });
+
+  it("a section the person picked is remembered per thread over the default", () => {
+    rightPanel.reset();
+    const available = sectionsFor({ ...quiet, project: true, checkout: true, agents: 2 });
+    expect(shownSection(rightPanel.get("t1").section, available)).toBe("agents");
+    rightPanel.set("t1", { section: "changes" });
+    expect(shownSection(rightPanel.get("t1").section, available)).toBe("changes");
+    expect(shownSection(rightPanel.get("t2").section, available)).toBe("agents");
   });
 
   it("the asked section shows when it exists, else the default", () => {

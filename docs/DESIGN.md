@@ -416,15 +416,16 @@ under the pointer.
 ## Panels, modals, menus, popovers, sheets
 
 The right side is one panel, one width (320px, resizable), one header, with
-sections that exist only when they have content (Activity, Agents, Changes,
-Notes) and a segmented control of icon segments that lists only those
-sections, each named on hover and by its accessible name; its default
-section follows the thread's state. An Activity row, folded, is one 28px line
+sections that exist only when they have content (Agents, Activity, Changes,
+Notes) and a 40px header of flat icon buttons, the selected one filled, that
+lists only those sections, each named on hover and by its accessible name;
+its default section follows the thread's state, Agents first. An Activity row, folded, is one 28px line
 of plain words (glyph, label, age, Stop); a shell's command shows only in
 its fold, as the first line of its output. It yields to the thread, which never
 goes under 360px beside it. It is a docked column, not a drawer or
-a sheet, and it never animates its width (it toggles; the content fades
-over `--dur-fast`). The bottom dock holds the terminal and the dev servers
+a sheet, and it never animates its width: the thread takes its width at
+once and the pane slides in from the edge or back out over it (the motion
+table). The bottom dock holds the terminal and the dev servers
 pane. Nothing else floats at the side of a thread.
 
 A modal (`Dialog`) is for a form, a CRUD action or a decision that needs the
@@ -542,7 +543,9 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Context menu (transitions) | fade at the pointer, `--dur-fast` | fade, `--dur-fast` | same |
 | Tooltip (13px regular on 20px lines, 24px tall) | after 300ms (`TOOLTIP` in lib/ease.ts), fade + scale 0.98→1, `--dur-fast` `--ease-drawer`; neighbours in one `TooltipProvider` (a closing line's or a notice's actions, the title bar's groups, a split view's header, a rail row's hover actions) open at once within the 120ms grace, the label moving instead of reopening | fade + scale →0.98, `--dur-fast` | fade |
 | Toast (sonner, on `--layer-toast`; index.css overrides its 400-500ms defaults, out-specifying its injected stylesheet) | rise and fade, `--dur-base` `--ease-out`, no height or shadow transition | fade, `--dur-fast` `--ease-exit` | fade, `--dur-fast` |
-| Right panel, rail | no width animation; content fades `--dur-fast` | same | same |
+| Right panel (a toggle in place; the thread takes its width at once, so no frame lays out the transcript) | slides in from the row's right edge (`translate-x-full`→0) and fades, `--dur-slow` `--ease-out`; mounted open (a tab switch, a launch) it is just there; a section's body fades `--dur-fast` | drawn over the thread, inert: a quarter of its width back out and a fade, `--dur-fast` `--ease-exit` | fade only |
+| Rail | no width animation; content fades `--dur-fast` | same | same |
+| The composer's slash and @ menu (transitions; the entry is `@starting-style`) | fade + rise 4px from the box's edge, `--dur-base` `--ease-out`; a row keeps its element as the filter narrows, and the frame's height follows the list on the same transition | its last rows stay, inert, while it fades 1px back down, `--dur-fast` `--ease-exit`; typing it open again turns it back | fade only |
 | Tab indicator | segmented: the pill glides on `SPRING_LAYOUT_CSS` (`TabsIndicator`); line tabs and the tab strip: instant | — | jump |
 | Press, a raised button (`default`, `secondary`, `destructive`) | its fill layer scales 0.985 (0.997 × 0.985 full width) while the label stays put, `--dur-fast` | release, `--dur-hover` | none |
 | Press, ghost, link, outline and every row (a rail row, an Item, a toggle, a tab, a hover action) | the fill steps to `foreground/12` at once; nothing scales | back over `--dur-hover` | same |
@@ -589,7 +592,7 @@ being produced shimmers (`WorkingText`); nothing else does.
 | Progress bar | the indicator slides by `translateX` inside its clipped, rounded track, `--dur-slow` (a scale would squash its round ends) | — | none |
 
 Rules: animate `transform` and `opacity` (and height only through the
-collapsible, or the question card's frame between its questions); every animation is interruptible and starts from the current
+collapsible, the question card's frame between its questions, or the slash menu's frame); every animation is interruptible and starts from the current
 value; nothing animates on a keystroke; nothing overshoots without a
 gesture; every animated class carries its `motion-reduce:` guard.
 

@@ -26,7 +26,7 @@ component builds each surface, and how**. Nothing here is built yet.
 ┌─ titlebar ── traffic lights ─ workspace / project ──── activity pill ─ panel toggle ─┐
 ├────────────┬───────────────────────────────────────────────────┬─────────────────────┤
 │ sidebar    │  thread strip (tabs + new-thread)                 │ right panel         │
-│            │  ───────────────────────────────────────────────  │ Activity · Agents · │
+│            │  ───────────────────────────────────────────────  │ Agents · Activity · │
 │ workspaces │  thread view (per type)                           │ Changes · Notes …   │
 │  projects  │                                                   │ (the sections the   │
 │            │  prompt bar (floating)                            │  thread's state has)│
@@ -283,18 +283,23 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   screen (⌃D's Debug); `useRightPanel(id)`
   reads it.
 - **Sections.** `sectionsFor(facts)` is pure, one line per section, in the
-  header's order: Activity when background tasks, live subagents, a
-  watching master's wait or a running dev server exist; Agents when the
-  thread has subagents of its own (a master's batch lives on its board,
-  never here); Changes when its cwd is a project checkout, or when it is a
+  header's order: Agents when the thread has subagents of its own (a
+  master's batch lives on its board, never here); Activity when it has
+  rows (`activityRows`: the thread's own background tasks with Stop, a
+  master's batch, the dev servers its tree opened, its running Mac calls;
+  never a row for subagents, which are Agents', and never on another
+  thread's dev server); Changes when its cwd is a project checkout, or when it is a
   loose chat whose workspace's folder is a git repository (`checkout`,
   read on the workspace's path); Notes for every root; Files with Changes;
   Build for a thread of a project (never a loose chat, even in a project's
   folder; dev servers live in the bottom dock's tab),
   and Debug for one on a dev build or once "Debug this file" asked for it
-  on the thread. The default is Activity if it exists, else Agents when
-  the thread has subagents (live or done), else Changes, else Notes; a remembered section that no
-  longer exists falls back to the default.
+  on the thread. The default is Agents when the thread has subagents (live
+  or done), else Activity, else Changes, else Notes; the section the person
+  picks is remembered per thread, and a remembered section that no longer
+  exists falls back to the default. The transcript's Watching line opens
+  Agents when the thread waits on subagents, else Activity (`watchSection`).
+  There is no Watching section: a wait on subagents is the Agents rows.
 - **Frame.** A docked column, 320px by default, 260 to 480 by the sash on
   its left edge, and it yields to the thread: the thread column never goes
   under 360px (`THREAD_MIN`), so in a narrow row the panel is drawn
@@ -303,13 +308,25 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   widens; meanwhile the title bar's toggle is disabled with "No room for the
   panel" on hover, View › Show Panel is greyed and ⌘⇧R does nothing
   (ThreadView measures its row; `rightPanel.setRoom`, `usePanelRoom`). On
-  `bg-sidebar` with the `border-border` hairline; a 36px
-  header of a segmented control (`PanelSections`: `Tabs variant="default"`
-  of 28px icon segments, each named by its aria-label and a tooltip, the
-  pill gliding between them; seven fit at 260px, so nothing scrolls) and a
-  close button; the section's body
+  `bg-sidebar` with the `border-border` hairline; a 40px header
+  (`PanelHeader`), the title bar's row height, so its buttons sit 6px from
+  its line and the title bar's: the sections (`PanelSections`: flat 28px
+  ghost icon buttons 2px apart with no track, each named by its aria-label
+  and a tooltip, the selected one's `foreground/7` fill gliding between
+  them on the layout spring; seven fit on one line at 260px, so nothing
+  wraps or scrolls) from the 12px inset, and Hide at the same inset on the
+  right, under one tooltip provider; the section's body
   below (`ActivitySection`, `FleetList`, `NotesBody`, `ChangesPanel`,
-  `FileTree`, `BuildPanel`, `DebugPanel`). It toggles, never tweens its width; the body fades in
+  `FileTree`, `BuildPanel`, `DebugPanel`). It never tweens its width: a
+  toggle in place gives the thread its new width at once (one layout; the
+  transcript's anchor row holds it) and moves the pane on transform and
+  opacity alone (`usePaneMotion` in ThreadView, `PANE_MOTION`): opening, it
+  slides in from the row's right edge over `--dur-slow`; closing, it stays
+  drawn over the widened thread, inert, sliding a quarter of its width back
+  out and fading over `--dur-fast`; a toggle mid-move turns back from where
+  it is; under reduced motion it fades. The row clips on x alone, so a
+  split's neighbour never sees it. A pane that mounts open (a tab switch, a
+  launch) is just there, and the sash's drag is immediate. The body fades in
   over `--dur-fast`. Closed is closed: the thread header's button, ⌘⇧R and
   View › Show Panel reopen it on its last section. An agent's
   detail (`fleet.detailId`, surfaces/threads/fleet/AgentDetail.tsx) is a

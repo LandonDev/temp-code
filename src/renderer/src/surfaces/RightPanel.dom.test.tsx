@@ -7,38 +7,23 @@ const state = vi.hoisted(() => ({
   workspaces: [] as { id: string; environmentId: string; path: string; git: boolean }[],
   agents: [] as SessionMeta[],
   meta: null as SessionMeta | null,
-  devRunning: false,
 }));
 
 vi.mock("../lib/threads/agents", () => ({
   useAgents: () => state.agents,
-  useMetaById: () => state.meta,
-  fleetCounts: (agents: SessionMeta[]) => ({
-    working: agents.filter((a) => a.status === "running").length,
-    waiting: agents.filter((a) => a.status === "waiting").length,
-    failed: 0,
-    done: 0,
-  }),
 }));
 vi.mock("../lib/tcserver/workspaces", () => ({
   useProjects: () => [{ id: "p1", environmentId: "local", cwd: "/p", name: "P" }],
   useWorkspaces: () => state.workspaces,
 }));
 vi.mock("../lib/tcserver/projects", () => ({ projectForCwd: (cwd: string) => (cwd === "/p" ? { id: "p1", environmentId: "local", cwd: "/p", name: "P" } : undefined) }));
-vi.mock("../lib/devServers", () => ({ useDevRunning: () => state.devRunning }));
 // The joined activity rows: one per background task on the meta is enough for the frame.
 vi.mock("../lib/activity", () => ({
   useActivity: () => ({ rows: (state.meta?.background?.tasks ?? []).map((task) => ({ id: task.id, kind: task.kind, label: task.label })), meta: state.meta }),
 }));
 vi.mock("../hooks/useGitFileStatuses", () => ({ useGitFileStatuses: () => ({}) }));
 vi.mock("./threads/fleet/FleetPanel", () => ({ FleetList: () => <div data-testid="agents-body">agents</div> }));
-vi.mock("./threads/ActivitySection", () => ({
-  ActivitySection: ({ onOpenAgents }: { onOpenAgents: () => void }) => (
-    <button type="button" data-testid="activity-body" onClick={onOpenAgents}>
-      activity
-    </button>
-  ),
-}));
+vi.mock("./threads/ActivitySection", () => ({ ActivitySection: () => <div data-testid="activity-body">activity</div> }));
 vi.mock("./threads/NotesPanel", () => ({ NotesBody: () => <div data-testid="notes-body">notes</div> }));
 vi.mock("../chrome/rail/ChangesPanel", () => ({ ChangesPanel: () => <div data-testid="changes-body">changes</div> }));
 vi.mock("../chrome/rail/BuildPanel", () => ({ BuildPanel: () => <div>build</div> }));
@@ -65,7 +50,6 @@ beforeEach(() => {
   state.agents = [];
   state.workspaces = [];
   state.meta = null;
-  state.devRunning = false;
 });
 afterEach(() => {
   cleanup();
@@ -122,35 +106,69 @@ describe("RightPanel", () => {
     expect(r.container.querySelector("aside")).toBeNull();
   });
 
-  it("shows the sections the thread's state has, opens on the default and switches", () => {
+  it("a thread watching its subagents opens on Agents, with no Activity section of its own", () => {
     state.agents = [agent("a1", "running"), agent("a2", "done")];
+    state.meta = { id: "s1", status: "watching", background: { tasks: [], agents: ["a1"], batch: null, watchingSince: 1 } } as unknown as SessionMeta;
     rightPanel.open("s1");
     render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
     const tabs = screen.getAllByRole("tab").map((t) => t.getAttribute("aria-label"));
-    expect(tabs).toEqual(["Activity", "Agents", "Changes", "Notes", "Files", "Build", "Debug"]); // a dev build (vitest) lists Debug
-    // The Activity section's subagents row opens the Agents section.
-    fireEvent.click(screen.getByTestId("activity-body"));
-    expect(rightPanel.get("s1").section).toBe("agents");
-    fireEvent.click(screen.getByRole("tab", { name: "Activity" }));
-    fireEvent.click(screen.getByRole("tab", { name: "Agents" }));
+    expect(tabs).toEqual(["Agents", "Changes", "Notes", "Files", "Build", "Debug"]); // a dev build (vitest) lists Debug
     expect(screen.getByTestId("agents-body")).toBeTruthy();
-    expect(rightPanel.get("s1").section).toBe("agents");
+    // A pick is remembered for the thread.
     fireEvent.click(screen.getByRole("tab", { name: "Notes" }));
     expect(screen.getByTestId("notes-body")).toBeTruthy();
+    expect(rightPanel.get("s1").section).toBe("notes");
   });
 
-  it("the header is a segmented control of named icon segments, with no scroll box", () => {
+  it("subagents beside a background task still open on Agents; Activity sits second", () => {
+    state.agents = [agent("a1", "running")];
+    state.meta = { id: "s1", status: "running", background: { tasks: [{ id: "t1", label: "x", kind: "shell", startedAt: 0 }], agents: ["a1"], batch: null, watchingSince: null } } as unknown as SessionMeta;
+    rightPanel.open("s1");
+    render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-label")).slice(0, 2)).toEqual(["Agents", "Activity"]);
+    expect(screen.getByTestId("agents-body")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Activity" }));
+    expect(screen.getByTestId("activity-body")).toBeTruthy();
+  });
+
+  it("the header is a 40px row of flat 28px icon buttons on the 12px inset, the selected one's fill gliding, no track", () => {
     rightPanel.open("s1");
     render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
     const list = screen.getByRole("tablist", { name: "Panel sections" });
-    expect(list.getAttribute("data-variant")).toBe("default");
     expect(list.className).not.toMatch(/overflow/);
-    expect(list.querySelector("[data-slot=tabs-indicator]")).toBeTruthy();
+    expect(list.className.split(/\s+/)).toEqual(expect.arrayContaining(["bg-transparent", "p-0", "gap-0.5"]));
+    const pill = list.querySelector<HTMLElement>("[data-slot=tabs-indicator]")!;
+    expect(pill.className).toContain("bg-foreground/7");
+    const header = list.closest(".border-b") as HTMLElement;
+    expect(header.className.split(/\s+/)).toEqual(expect.arrayContaining(["h-10", "px-3"]));
     for (const tab of screen.getAllByRole("tab")) {
       expect(tab.getAttribute("aria-label")).toBeTruthy();
       expect(tab.textContent).toBe("");
       expect(tab.querySelector("svg")).toBeTruthy();
+      expect(tab.className.split(/\s+/)).toEqual(expect.arrayContaining(["size-7", "rounded-lg"]));
     }
+  });
+
+  it("arrives from the right edge on transitions, and leaves over the thread, inert, until its fade ends", () => {
+    rightPanel.open("s1");
+    const onLeft = vi.fn();
+    const { container, rerender } = render(<RightPanel session={session} motion="arrive" onLeft={onLeft} onOpenFile={noop} onOpenDiff={noop} />);
+    const pane = container.querySelector("aside")!;
+    const classes = () => pane.className.split(/\s+/);
+    expect(classes()).toEqual(expect.arrayContaining(["transition-[translate,opacity]", "duration-(--dur-slow)", "ease-(--ease-out)", "starting:translate-x-full", "starting:opacity-0", "motion-reduce:transition-opacity"]));
+    expect(classes().some((c) => /^transition-\[.*width/.test(c) || c === "transition-all")).toBe(false);
+    expect(pane.hasAttribute("data-ending-style")).toBe(false);
+    rightPanel.close("s1");
+    rerender(<RightPanel session={session} motion="leave" onLeft={onLeft} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(container.querySelector("aside")).toBe(pane);
+    expect(pane.hasAttribute("data-ending-style")).toBe(true);
+    expect(pane.hasAttribute("inert")).toBe(true);
+    expect(classes()).toEqual(expect.arrayContaining(["absolute", "right-0", "data-ending-style:translate-x-1/4", "data-ending-style:opacity-0", "data-ending-style:duration-(--dur-fast)", "data-ending-style:ease-(--ease-exit)"]));
+    expect(classes()).not.toContain("relative");
+    fireEvent.transitionEnd(pane, { propertyName: "translate" });
+    expect(onLeft).not.toHaveBeenCalled();
+    fireEvent.transitionEnd(pane, { propertyName: "opacity" });
+    expect(onLeft).toHaveBeenCalledTimes(1);
   });
 
   it("a remembered section that no longer exists falls back to the default; the close button closes", () => {
@@ -218,7 +236,7 @@ describe("RightPanel", () => {
     r.unmount();
   });
 
-  it("a background task alone gives the thread its Activity section, shown first", () => {
+  it("a background task alone gives the thread its Activity section, its default", () => {
     state.meta = { id: "s1", status: "idle", background: { tasks: [{ id: "t1", label: "x", kind: "shell", startedAt: 0 }], agents: [], batch: null, watchingSince: null } } as unknown as SessionMeta;
     rightPanel.open("s1");
     render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);

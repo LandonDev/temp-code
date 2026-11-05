@@ -1,8 +1,9 @@
 import { lazy, Suspense, useContext, useMemo } from "react";
 import { Button } from "@renderer/components/ui/button";
+import { cn } from "@renderer/lib/cn";
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "@renderer/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { Activity, Bug, Folder, GitCompare, Hammer, StickyNote, Users, X, type IconComponent } from "../chrome/icons";
 import { BuildPanel } from "../chrome/rail/BuildPanel";
 import { ChangesPanel } from "../chrome/rail/ChangesPanel";
@@ -10,7 +11,6 @@ import { FileTree } from "../chrome/FileTree";
 import { useDragResize } from "../hooks/useDragResize";
 import { useSashKeys } from "../hooks/useSashKeys";
 import { useGitFileStatuses } from "../hooks/useGitFileStatuses";
-import { useDevRunning } from "../lib/devServers";
 import {
   PANEL_MAX,
   PANEL_MIN,
@@ -29,7 +29,7 @@ import type { Session } from "../lib/session";
 import { projectForCwd } from "../lib/tcserver/projects";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useProjects, useWorkspaces } from "../lib/tcserver/workspaces";
-import { fleetCounts, useAgents, useMetaById } from "../lib/threads/agents";
+import { useAgents } from "../lib/threads/agents";
 import { useActivity } from "../lib/activity";
 import { ActivitySection } from "./threads/ActivitySection";
 import { FleetList } from "./threads/fleet/FleetPanel";
@@ -52,8 +52,9 @@ const SECTION_ICON: Record<Section, IconComponent> = {
   debug: Bug,
 };
 
-/** The header's segmented control: one 28px icon segment per section, named
- *  by its aria-label and a tooltip, the pill gliding between them. */
+/** The header's sections: flat 28px ghost icon buttons 2px apart, named by
+ *  their aria-label and a tooltip, with no track; the selected one's fill is
+ *  the pill, gliding between them on the layout spring. */
 export function PanelSections({
   sections,
   value,
@@ -65,14 +66,14 @@ export function PanelSections({
 }) {
   return (
     <Tabs value={value} onValueChange={(next) => onChange(next as Section)} className="min-w-0 flex-1">
-      <TabsList aria-label="Panel sections" className="relative p-0.5">
-        <TabsIndicator />
+      <TabsList aria-label="Panel sections" data-slot="panel-sections" className="relative gap-0.5 bg-transparent p-0 group-data-[orientation=horizontal]/tabs:h-7">
+        <TabsIndicator className="bg-foreground/7" />
         {sections.map((s) => {
           const Icon = SECTION_ICON[s];
           return (
             <Tooltip key={s}>
               <TooltipTrigger
-                render={<TabsTrigger value={s} aria-label={SECTION_LABEL[s]} className={`size-7 flex-none p-0 ${TABS_PILL_TRIGGER}`} />}
+                render={<TabsTrigger value={s} aria-label={SECTION_LABEL[s]} className={`size-7 flex-none rounded-lg p-0 not-data-active:hover:bg-foreground/5 ${TABS_PILL_TRIGGER}`} />}
               >
                 <Icon className="size-3.5" />
               </TooltipTrigger>
@@ -82,6 +83,27 @@ export function PanelSections({
         })}
       </TabsList>
     </Tabs>
+  );
+}
+
+/** The panel's 40px header, the same height as the title bar's row above it, so the buttons sit with 6px of air between its line and the title bar's: the sections on the 12px inset and Hide at its end. */
+export function PanelHeader({ sections, value, onChange, onClose }: { sections: readonly Section[]; value: Section; onChange: (section: Section) => void; onClose: () => void }) {
+  return (
+    <TooltipProvider>
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-3">
+        <PanelSections sections={sections} value={value} onChange={onChange} />
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button variant="ghost" size="icon-xs" aria-label="Hide panel" className="text-muted-foreground hover:text-foreground" onClick={onClose} />
+          }
+        >
+          <X className="size-3.5" />
+        </TooltipTrigger>
+        <TooltipContent>Hide panel ⌘⇧R</TooltipContent>
+      </Tooltip>
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -96,14 +118,33 @@ export type RightPanelProps = {
   maxWidth?: number;
   /** The review file the focused tab shows, relative to the git root. */
   selectedPath?: string;
+  /** How the pane moves (ThreadView): `arrive` slides it in from the row's right edge when it opens in place; `leave` keeps it drawn over the thread, inert, while it slides back out after a close. */
+  motion?: PanelMotion;
+  /** The leave's slide ended: ThreadView unmounts the pane. */
+  onLeft?: () => void;
 };
+
+export type PanelMotion = "arrive" | "leave";
+
+/** The pane's move on the tokens: in from the right edge over `--dur-slow`
+ *  (a panel's entrance), out a quarter of its width and faded over
+ *  `--dur-fast` (every exit), on transitions so a toggle mid-move turns back
+ *  from where it is; opacity alone under reduced motion. Translate and
+ *  opacity only: the thread column takes its width once, at the click, so no
+ *  frame lays out the transcript. */
+export const PANE_MOTION = "transition-[translate,opacity] duration-(--dur-slow) ease-(--ease-out) motion-reduce:transition-opacity";
+export const PANE_ARRIVE = "starting:translate-x-full starting:opacity-0";
+export const PANE_LEAVE =
+  "pointer-events-none absolute inset-y-0 right-0 z-20 data-ending-style:translate-x-1/4 data-ending-style:opacity-0 data-ending-style:duration-(--dur-fast) data-ending-style:ease-(--ease-exit)";
 
 /**
  * The one column at a root thread's right edge (docs/LAYOUT.md "The right
- * side"): a 36px header of the sections that exist for the thread's state
- * and a close button, the section's body under it. It toggles, never
- * tweens its width; the body fades in over `--dur-fast`. Closed is closed:
- * the thread header's button and ⌘⇧R reopen it on its last section.
+ * side"): a 40px header of the sections that exist for the thread's state
+ * and a close button, the section's body under it. Opened in place it
+ * slides in from the right edge and closed it slides back out over the
+ * thread (PANE_MOTION); it never tweens its width, and a section's body
+ * fades in over `--dur-fast`. Closed is closed: the thread header's button
+ * and ⌘⇧R reopen it on its last section.
  */
 export function RightPanel(props: RightPanelProps) {
   const { session } = props;
@@ -136,38 +177,22 @@ export function RightPanel(props: RightPanelProps) {
     onReset: reset,
   });
 
-  if (!state.open || !section) return null;
+  const leaving = props.motion === "leave";
+  if ((!state.open && !leaving) || !section) return null;
 
   return (
     <aside
       ref={attachPane}
       aria-label="Thread panel"
-      className="relative flex shrink-0 flex-col border-l border-border bg-sidebar"
+      data-ending-style={leaving ? "" : undefined}
+      inert={leaving}
+      onTransitionEnd={(e) => {
+        if (leaving && e.target === e.currentTarget && e.propertyName === "opacity") props.onLeft?.();
+      }}
+      className={cn("relative flex shrink-0 flex-col border-l border-border bg-sidebar", PANE_MOTION, props.motion === "arrive" && PANE_ARRIVE, leaving && PANE_LEAVE)}
       style={{ width: props.width ?? state.width, contain: "strict" }}
     >
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border pr-3 pl-2">
-        <PanelSections
-          sections={available.sections}
-          value={section}
-          onChange={(next) => rightPanel.set(session.id, { section: next })}
-        />
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label="Hide panel"
-                className="text-muted-foreground hover:text-foreground"
-                onClick={() => rightPanel.close(session.id)}
-              />
-            }
-          >
-            <X className="size-3.5" />
-          </TooltipTrigger>
-          <TooltipContent>Hide panel ⌘⇧R</TooltipContent>
-        </Tooltip>
-      </div>
+      <PanelHeader sections={available.sections} value={section} onChange={(next) => rightPanel.set(session.id, { section: next })} onClose={() => rightPanel.close(session.id)} />
       <div
         key={section}
         className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-(--dur-fast) flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -190,31 +215,24 @@ type PanelPlace = { facts: PanelFacts; project: ProjectMeta | undefined; workspa
 /** The thread's state as the facts `sectionsFor` reads, and the project (or a loose chat's git workspace) the sections key by. */
 function usePanelFacts(session: Session, state: PanelState): PanelPlace {
   const agents = useAgents(session.id);
-  const meta = useMetaById(session.id);
   const projects = useProjects();
   const workspaces = useWorkspaces();
   const project =
     (session.cwd && session.cwd !== "~" ? projectForCwd(session.cwd, projects) : undefined) ??
     projects.find((p) => p.id === session.projectId && p.environmentId === session.environmentId);
   const workspace = project?.cwd ? undefined : looseWorkspace(session, workspaces);
-  const devRunning = useDevRunning(project?.id);
   const activity = useActivity(session.id).rows;
-  const counts = fleetCounts(agents);
-  const status = meta?.status ?? session.status;
   const facts = useMemo<PanelFacts>(
     () => ({
       root: !session.parentId,
       project: !!session.projectId && !!project?.cwd,
       checkout: !!project?.cwd || !!workspace,
       agents: agents.length,
-      liveAgents: counts.working + counts.waiting,
-      // The rows A6 joins: background tasks, subagents, a batch, dev servers and Mac bridge calls.
-      backgroundTasks: activity.length,
-      watching: status === "watching",
-      devRunning,
+      // The rows A6 joins: background tasks, a batch, the thread's dev servers and Mac bridge calls.
+      activity: activity.length,
       debug: DEBUG_SECTION || state.debug,
     }),
-    [session, project, workspace, agents.length, counts.working, counts.waiting, status, devRunning, activity.length, state.debug],
+    [session, project, workspace, agents.length, activity.length, state.debug],
   );
   return { facts, project, workspace };
 }
@@ -243,7 +261,7 @@ function SectionBody({
   const actions = useContext(SessionActionsContext);
   switch (section) {
     case "activity":
-      return <ActivitySection threadId={session.id} onOpenAgents={() => rightPanel.open(session.id, "agents")} />;
+      return <ActivitySection threadId={session.id} />;
     case "agents":
       return (
         <FleetList

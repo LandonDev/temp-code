@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ProjectFile } from "../lib/fs";
 import type { SessionMeta } from "../lib/tcserver/types";
@@ -15,16 +15,63 @@ const file = (path: string): ProjectFile => ({ path, relative: path, name: path.
 const props = { active: 0, projectId: null, projects: [], onActive: vi.fn(), onAccept: vi.fn() };
 
 describe("CommandPopover", () => {
-  it("opens with no motion and swaps modes in place: it answers a keystroke", () => {
+  it("enters on @starting-style and leaves on data-ending-style, inert, until its fade ends", () => {
     const at: PopoverMatches = { mode: "file", rows: [{ kind: "file", file: file("src/a.ts") }] };
     const { container, rerender } = render(<CommandPopover matches={at} {...props} />);
-    const list = container.querySelector<HTMLElement>("[data-command-popover]")!;
-    expect(list.getAttribute("style")).toBeNull();
+    const frame = container.querySelector<HTMLElement>("[data-command-popover]")!;
+    const classes = frame.className.split(/\s+/);
+    for (const c of ["starting:opacity-0", "starting:translate-y-1", "data-ending-style:opacity-0", "data-ending-style:translate-y-px", "data-ending-style:duration-(--dur-fast)", "data-ending-style:ease-(--ease-exit)", "motion-reduce:transition-opacity"])
+      expect(classes).toContain(c);
+    expect(classes.some((c) => /animate-|fade-in|slide-in/.test(c))).toBe(false);
+    expect(frame.hasAttribute("data-ending-style")).toBe(false);
+    // Closing keeps the last rows on screen while they fade, inert.
     rerender(<CommandPopover matches={{ mode: "command", rows: [] }} {...props} />);
+    const leaving = container.querySelector<HTMLElement>("[data-command-popover]")!;
+    expect(leaving).toBe(frame);
+    expect(leaving.hasAttribute("data-ending-style")).toBe(true);
+    expect(leaving.hasAttribute("inert")).toBe(true);
+    expect(leaving.textContent).toContain("a.ts");
+    fireEvent.transitionEnd(leaving, { propertyName: "opacity" });
     expect(container.querySelector("[data-command-popover]")).toBeNull();
-    rerender(<CommandPopover matches={at} {...props} />);
-    rerender(<CommandPopover matches={{ ...at, rows: [...at.rows, { kind: "file", file: file("src/b.ts") }] }} {...props} />);
-    expect(container.querySelectorAll("[data-command-popover]")).toHaveLength(1);
+  });
+
+  it("turns around when it reopens mid-exit, and is gone after twice its exit when no fade ends", () => {
+    vi.useFakeTimers();
+    try {
+      const at: PopoverMatches = { mode: "file", rows: [{ kind: "file", file: file("src/a.ts") }] };
+      const { container, rerender } = render(<CommandPopover matches={at} {...props} />);
+      const frame = container.querySelector<HTMLElement>("[data-command-popover]")!;
+      rerender(<CommandPopover matches={null} {...props} />);
+      rerender(<CommandPopover matches={at} {...props} />);
+      expect(container.querySelector("[data-command-popover]")).toBe(frame);
+      expect(frame.hasAttribute("data-ending-style")).toBe(false);
+      expect(frame.hasAttribute("inert")).toBe(false);
+      rerender(<CommandPopover matches={null} {...props} />);
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(container.querySelector("[data-command-popover]")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a row's element as the filter narrows, and its frame's height follows the list", () => {
+    const cmd = (name: string): PopoverMatches["rows"][number] => ({ name, scope: "user", source: "skill", description: "" }) as never;
+    const wide: PopoverMatches = { mode: "command", rows: [cmd("alpha"), cmd("beta"), cmd("gamma")] };
+    const { container, rerender } = render(<CommandPopover matches={wide} {...props} />);
+    const gamma = [...container.querySelectorAll("[role=option]")].find((r) => r.textContent?.includes("gamma"));
+    rerender(<CommandPopover matches={{ mode: "command", rows: [cmd("gamma")] }} {...props} />);
+    const after = container.querySelector("[role=option]");
+    expect(after).toBe(gamma);
+    const frame = container.querySelector<HTMLElement>("[data-command-popover]")!;
+    // jsdom lays nothing out: an unmeasured list leaves the frame its natural height.
+    expect(frame.style.height).toBe("");
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(64);
+    rerender(<CommandPopover matches={{ mode: "command", rows: [cmd("alpha"), cmd("gamma")] }} {...props} />);
+    expect(frame.style.height).toBe("64px");
+    vi.restoreAllMocks();
+    expect(frame.className).toContain("transition-[opacity,translate,height]");
   });
 
   it("marks a thread row with its live status, and gives a settled one the thread glyph", () => {

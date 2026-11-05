@@ -44,7 +44,7 @@ import type { HandoffComposerCard } from '../lib/handoff'
 import { looksLikeProject, type RecentProject } from '../lib/recents'
 import type { Attachment, HarnessId, RuntimeMode } from '../lib/session'
 import { harnessSupportsAttachments } from '../lib/session'
-import { CommandPopover, type AtMatch, type PopoverMatches } from './CommandPopover'
+import type { AtMatch, PopoverMatches } from './CommandPopover'
 import { AttachmentChip, openAttachmentImages } from './AttachmentChip'
 import {
   AttachmentUploadError,
@@ -82,10 +82,12 @@ import {
 } from './ComposerInput'
 import { saveComposerDraft, takeComposerDraft } from '../lib/composerDrafts'
 import { projectDrafts } from '../lib/projectDrafts'
-import { lightboxChunk } from '../surfaces/chunks'
+import { commandMenuChunk, lightboxChunk } from '../surfaces/chunks'
 
 // The image viewer rides its own chunk (surfaces/chunks.ts); a thumbnail's hover warms it.
 const Lightbox = lightboxChunk.surface('Lightbox')
+// The slash and @ menu rides its own chunk, warmed in the idle slot after the first thread opens.
+const CommandPopover = commandMenuChunk.surface('CommandPopover')
 import {
   loadNotes,
   peekNotes,
@@ -362,6 +364,9 @@ export function Composer({
     return { mode: 'file', rows: [...fileHits, ...threadHits, ...noteHits] }
   }, [commands, executionCwd, live, mentionable, metas, notes, projectId, sessionId])
   const rows = matches?.rows.length ?? 0
+  // Mounted from the first match on, so its close keeps its fade.
+  const [menuUsed, setMenuUsed] = useState(false)
+  if (rows > 0 && !menuUsed) setMenuUsed(true)
   const selectionKey = live ? `${live.mode}:${live.query}` : ''
   const active =
     selection.key === selectionKey ? Math.min(selection.index, Math.max(0, rows - 1)) : 0
@@ -861,14 +866,16 @@ export function Composer({
       <Lightbox />
       <TooltipProvider>
         <div ref={frameRef} className="relative overflow-visible">
-          <CommandPopover
-            matches={matches}
-            active={active}
-            projectId={projectId}
-            projects={projects}
-            onActive={setActive}
-            onAccept={accept}
-          />
+          {menuUsed ? (
+            <CommandPopover
+              matches={matches}
+              active={active}
+              projectId={projectId}
+              projects={projects}
+              onActive={setActive}
+              onAccept={accept}
+            />
+          ) : null}
           {topSlot}
           <div
             ref={boxRef}

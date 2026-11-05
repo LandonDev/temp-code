@@ -12,7 +12,9 @@ import type { Session } from "../../lib/session";
 vi.mock("../chunks", () => ({
   threadViewsChunk: { surface: () => () => null },
   rightPanelChunk: {
-    surface: () => (props: { width?: number }) => <aside aria-label="Thread panel" data-width={props.width} />,
+    surface: () => (props: { width?: number; motion?: string; onLeft?: () => void }) => (
+      <aside aria-label="Thread panel" data-width={props.width} data-motion={props.motion ?? ""} onTransitionEnd={props.onLeft} />
+    ),
   },
 }));
 vi.mock("./ChatView", () => ({ ChatView: () => <div data-chat /> }));
@@ -80,5 +82,40 @@ describe("ThreadView's panel", () => {
     expect(rightPanel.hasRoom("t1")).toBe(false);
     unmount();
     expect(rightPanel.hasRoom("t1")).toBe(true);
+  });
+
+  it("slides only on a toggle in place: a pane mounted open is just there, a close leaves until its slide ends", () => {
+    rightPanel.open("t1");
+    view();
+    act(() => resize(1200));
+    expect(panel()?.getAttribute("data-motion")).toBe("");
+    act(() => rightPanel.close("t1"));
+    expect(panel()?.getAttribute("data-motion")).toBe("leave");
+    expect(panel()?.getAttribute("data-width")).toBe("320");
+    act(() => rightPanel.open("t1"));
+    expect(panel()?.getAttribute("data-motion")).toBe("arrive");
+    act(() => rightPanel.close("t1"));
+    act(() => {
+      panel()!.dispatchEvent(new Event("transitionend", { bubbles: true }));
+    });
+    expect(panel()).toBeNull();
+  });
+
+  it("a leave whose slide never ends is gone after twice the exit's time; the row clips on x alone", () => {
+    vi.useFakeTimers();
+    try {
+      rightPanel.open("t1");
+      const { container } = view();
+      act(() => resize(1200));
+      expect((container.firstChild as HTMLElement).className).toContain("overflow-x-clip");
+      act(() => rightPanel.close("t1"));
+      expect(panel()).not.toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(panel()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

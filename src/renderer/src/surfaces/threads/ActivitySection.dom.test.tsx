@@ -49,20 +49,19 @@ const background: BackgroundWork = {
   watchingSince: now - 2 * STALE_WATCH_MS,
 };
 const meta = { id: "s1", status: "watching" as const, background };
-const rows = activityRows({ meta, agents: [{ busySince: now - 60_000, createdAt: 0 }], devServers: [server], macCalls: [] });
+const rows = activityRows({ meta, devServers: [server], macCalls: [] });
 
-function mount(onOpenAgents = vi.fn()) {
-  render(<ActivityRows threadId="s1" rows={rows} meta={meta} onOpenAgents={onOpenAgents} />);
-  return onOpenAgents;
+function mount() {
+  render(<ActivityRows threadId="s1" rows={rows} meta={meta} />);
 }
 const rowOf = (kind: string): HTMLElement => document.querySelector(`[data-kind="${kind}"]`) as HTMLElement;
 
 describe("ActivitySection", () => {
-  it("lists subagents first, then oldest first, each one plain line, and the stale monitor's age in amber", () => {
+  it("lists the thread's own work oldest first, each one plain line, and never a subagents row: Agents lists them", () => {
     mount();
     const kinds = [...document.querySelectorAll("[data-kind]")].map((e) => e.getAttribute("data-kind"));
-    expect(kinds).toEqual(["subagents", "monitor", "shell", "dev"]);
-    expect(rowOf("subagents").textContent).toContain("3 subagents");
+    expect(kinds).toEqual(["monitor", "shell", "dev"]);
+    expect(document.body.textContent).not.toContain("subagents");
     // Folded, a shell row is its label alone: the command shows only in its fold.
     expect(rowOf("shell").textContent).toContain("Serve the app");
     expect(document.body.textContent).not.toContain("bun run dev --port 5173");
@@ -73,8 +72,8 @@ describe("ActivitySection", () => {
     expect(rowOf("monitor").querySelector(".text-warning")).toBeNull();
     expect(rowOf("shell").querySelector(".text-warning")).toBeNull();
     expect(rowOf("shell").textContent).toContain("10m");
-    // The subagents row has no Stop; its slot stays so the ages line up.
-    expect(rowOf("subagents").querySelector('[aria-label="Stop"]')).toBeNull();
+    // Each task and the dev server carries its Stop.
+    for (const kind of ["monitor", "shell", "dev"]) expect(rowOf(kind).querySelector('[aria-label="Stop"]')).not.toBeNull();
   });
 
   it("Stop reaches the task's session.stopTask and the dev server's own stop", () => {
@@ -83,12 +82,6 @@ describe("ActivitySection", () => {
     expect(stopTask).toHaveBeenCalledWith("s1", "t1");
     fireEvent.click(rowOf("dev").querySelector('[aria-label="Stop"]')!);
     expect(stopLiveServer).toHaveBeenCalledWith(server);
-  });
-
-  it("the subagents row opens the Agents section", () => {
-    const onOpenAgents = mount();
-    fireEvent.click(rowOf("subagents"));
-    expect(onOpenAgents).toHaveBeenCalledTimes(1);
   });
 
   it("clicking the shell row opens its log from session.taskLog", async () => {
@@ -115,7 +108,7 @@ describe("ActivitySection", () => {
 
   it("a shell row whose command is its label opens on the output alone", async () => {
     const plain = { ...meta, background: { ...background, agents: [], tasks: [{ id: "t2", label: "sleep 90", kind: "shell" as const, startedAt: now, command: "sleep 90" }] } };
-    render(<ActivityRows threadId="s1" rows={activityRows({ meta: plain, agents: [], devServers: [], macCalls: [] })} meta={plain} />);
+    render(<ActivityRows threadId="s1" rows={activityRows({ meta: plain, devServers: [], macCalls: [] })} meta={plain} />);
     fireEvent.click(rowOf("shell"));
     expect(await screen.findByText(/listening on :5173/)).toBeTruthy();
     expect(document.querySelector('[data-slot="task-command"]')).toBeNull();
@@ -123,7 +116,7 @@ describe("ActivitySection", () => {
 
   it("turns an old task's age amber once the thread waits on its own tasks alone", () => {
     const alone = { ...meta, background: { ...background, agents: [] } };
-    render(<ActivityRows threadId="s1" rows={activityRows({ meta: alone, agents: [], devServers: [], macCalls: [] })} meta={alone} />);
+    render(<ActivityRows threadId="s1" rows={activityRows({ meta: alone, devServers: [], macCalls: [] })} meta={alone} />);
     expect(rowOf("monitor").querySelector(".text-warning")?.textContent).toBe("1h");
     expect(rowOf("shell").querySelector(".text-warning")).toBeNull();
   });

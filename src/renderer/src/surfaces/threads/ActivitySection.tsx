@@ -6,7 +6,7 @@ import { Item, ItemActions, ItemContent, ItemMedia } from "@renderer/components/
 import { Spinner } from "@renderer/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { cn } from "@renderer/lib/cn";
-import { Bot, Clock, Eye, Globe, Laptop, Layers, Square, Terminal, Users, Workflow } from "../../chrome/icons";
+import { Bot, Clock, Eye, Globe, Laptop, Layers, Square, Terminal, Workflow } from "../../chrome/icons";
 import { usePaneVisible } from "../../hooks/paneVisibility";
 import { rowStale, stopActivity, useActivity, type ActivityKind, type ActivityRow } from "../../lib/activity";
 import { devPane } from "../../lib/devPane";
@@ -21,8 +21,8 @@ import { useSlowClock } from "../../lib/turnClock";
  * card, no separators. A row carries its kind's glyph, the work in the
  * model's words, its age, and Stop. A shell row opens under it onto its
  * command and its live output (session.taskLog, every 1.5 s while open and
- * on screen; a read that fails says so and keeps what it had); the subagents
- * row opens the Agents section; a dev server opens the dev servers pane.
+ * on screen; a read that fails says so and keeps what it had); a dev server
+ * opens the dev servers pane. Subagents are the Agents section's alone.
  * Rows have no enter or leave motion: a row leaves when its push says the
  * work ended, and an open log closes with it.
  */
@@ -34,7 +34,6 @@ const GLYPH: Record<ActivityKind, ComponentType<{ className?: string }>> = {
   workflow: Workflow,
   cron: Clock,
   other: Clock,
-  subagents: Users,
   batch: Layers,
   dev: Globe,
   mac: Laptop,
@@ -49,17 +48,10 @@ const LOG_KEEP = 64 * 1024;
 // eslint-disable-next-line no-control-regex
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 
-export function ActivitySection({
-  threadId,
-  onOpenAgents,
-}: {
-  threadId: string;
-  /** The subagents row: switch the panel to its Agents section. */
-  onOpenAgents?: () => void;
-}) {
+export function ActivitySection({ threadId }: { threadId: string }) {
   const { rows, meta } = useActivity(threadId);
   if (!meta) return null;
-  return <ActivityRows threadId={threadId} rows={rows} meta={meta} onOpenAgents={onOpenAgents} />;
+  return <ActivityRows threadId={threadId} rows={rows} meta={meta} />;
 }
 
 /** The rows alone, given the join (ActivitySection; tests). */
@@ -67,12 +59,10 @@ export const ActivityRows = memo(function ActivityRows({
   threadId,
   rows,
   meta,
-  onOpenAgents,
 }: {
   threadId: string;
   rows: ActivityRow[];
   meta: Pick<SessionMeta, "status" | "background">;
-  onOpenAgents?: () => void;
 }) {
   const shown = usePaneVisible();
   const now = useSlowClock(shown && rows.length > 0);
@@ -82,7 +72,6 @@ export const ActivityRows = memo(function ActivityRows({
 
   const activate = (row: ActivityRow): void => {
     if (row.open === "log") setOpenKey(open === row.key ? null : row.key);
-    else if (row.open === "agents") onOpenAgents?.();
     else if (row.open === "dev") devPane.open(row.devKey);
   };
 
@@ -98,7 +87,7 @@ export const ActivityRows = memo(function ActivityRows({
               now={now}
               stale={now > 0 && rowStale(row, meta, now)}
               expanded={open === row.key}
-              onActivate={row.open && (row.open !== "agents" || onOpenAgents) ? () => activate(row) : undefined}
+              onActivate={row.open ? () => activate(row) : undefined}
               live={shown}
             />
           ))}

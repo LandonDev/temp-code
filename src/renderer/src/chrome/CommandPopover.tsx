@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { addonTitle } from "../lib/addonNames";
 import { SECTION_LABELS } from "../lib/composerTriggers";
 import type { ProjectFile } from "../lib/fs";
@@ -6,6 +6,7 @@ import type { ProjectMeta, SessionMeta, SlashCommand } from "../lib/tcserver/typ
 import { StatusMark, threadStateOf } from "../components/ui/status";
 import { MENU_ROW } from "../components/ui/menu-row";
 import { timeAgo } from "../lib/duration";
+import { DUR } from "../lib/ease";
 import { marksAtRest } from "../lib/threadStripModel";
 import { AddonMark } from "./AddonMark";
 import { FileText, MessageSquare, StickyNote } from "./icons";
@@ -14,9 +15,17 @@ import { FileText, MessageSquare, StickyNote } from "./icons";
  * The composer's autocomplete, ported from temp-code's PromptBar: one flat
  * keyboard list rising above the box. `/` rows are the provider's commands
  * sectioned by source; `@` rows are project files, then threads, then notes.
- * It exists only while there is something to pick, and opens with no
- * motion: it answers a keystroke.
+ * It exists only while there is something to pick. It moves as every popup
+ * does, on transitions (POPUP_MOTION): it rises 4px from the box's edge and
+ * fades in, and on close keeps its last rows, inert, while it fades back
+ * down, so typing past it turns it around from where it is. A row keeps its
+ * element as the filter narrows; the frame's height follows the list on
+ * the same transition.
  */
+
+/** The popup recipe, risen from the box's edge below it: fade + 4px, `--dur-base` in, `--dur-fast` back a quarter of the way out; opacity alone under reduced motion. */
+export const POPUP_MOTION =
+  "origin-bottom transition-[opacity,translate,height] duration-(--dur-base) ease-(--ease-out) starting:opacity-0 starting:translate-y-1 data-ending-style:opacity-0 data-ending-style:translate-y-px data-ending-style:duration-(--dur-fast) data-ending-style:ease-(--ease-exit) motion-reduce:transition-opacity";
 
 export type AtMatch =
   | { kind: "file"; file: ProjectFile }
@@ -52,7 +61,30 @@ export function CommandPopover({
   onAccept: (index: number) => void;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
   const open = !!matches && matches.rows.length > 0;
+  // The rows on screen: the live ones while open, the last ones while it leaves.
+  const [held, setHeld] = useState<PopoverMatches | null>(open ? matches : null);
+  if (open && held !== matches) setHeld(matches);
+  const ending = !open && !!held;
+  const shown = open ? matches : held;
+
+  // The frame's height is the list's, so a narrowing filter glides it.
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    const list = listRef.current;
+    if (!frame || !list || !open) return;
+    // Unmeasured (a pane not laid out), it keeps its natural height.
+    const height = list.offsetHeight;
+    frame.style.height = height > 0 ? `${height}px` : "";
+  }, [open, matches]);
+
+  // Gone once the fade ends; a pane that never paints it is gone after twice its time.
+  useEffect(() => {
+    if (!ending) return;
+    const timer = setTimeout(() => setHeld(null), DUR.fast * 2000);
+    return () => clearTimeout(timer);
+  }, [ending]);
 
   useEffect(() => {
     listRef.current
@@ -72,23 +104,31 @@ export function CommandPopover({
     className: `${ROW} ${n === active ? "bg-muted" : ""}`,
   });
 
-  if (!open) return null;
+  if (!shown) return null;
+  const rows = shown;
   return (
     <div
+      ref={frameRef}
       data-command-popover
-      className="absolute right-0 bottom-full left-0 z-30 mb-2 rounded-xl bg-popover text-popover-foreground shadow-overlay ring-1 ring-border [--scrollbar-inset:var(--radius-xl)]"
+      data-ending-style={ending ? "" : undefined}
+      inert={ending}
+      aria-hidden={ending || undefined}
+      onTransitionEnd={(e) => {
+        if (ending && e.target === e.currentTarget && e.propertyName === "opacity") setHeld(null);
+      }}
+      className={`absolute right-0 bottom-full left-0 z-30 mb-2 overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-overlay ring-1 ring-border [--scrollbar-inset:var(--radius-xl)] ${POPUP_MOTION} ${ending ? "pointer-events-none" : ""}`}
     >
       <div
         ref={listRef}
         role="listbox"
-        aria-label={matches.mode === "command" ? "Skills and commands" : "Files and threads"}
+        aria-label={rows.mode === "command" ? "Skills and commands" : "Files and threads"}
         className="max-h-72 overflow-y-auto overscroll-none rounded-xl p-1 [--scrollbar-inset:var(--radius-xl)]"
       >
-        {matches.mode === "command"
-          ? matches.rows.map((c, n) => (
+        {rows.mode === "command"
+          ? rows.rows.map((c, n) => (
               <Fragment key={`${c.scope}:${c.name}`}>
                 {SECTION_LABELS[c.source] !==
-                SECTION_LABELS[matches.rows[n - 1]?.source as SlashCommand["source"]] ? (
+                SECTION_LABELS[rows.rows[n - 1]?.source as SlashCommand["source"]] ? (
                   <p className="px-3 pt-2 pb-1 text-[11px] font-medium text-muted-foreground first:pt-1">
                     {SECTION_LABELS[c.source]}
                   </p>
@@ -111,11 +151,11 @@ export function CommandPopover({
                 </div>
               </Fragment>
             ))
-          : matches.rows.map((m, n) => {
+          : rows.rows.map((m, n) => {
               // Grouped render over one flat keyboard list: a quiet
               // label where one kind ends and the next begins.
-              const prev = matches.rows[n - 1]?.kind;
-              const mixed = matches.rows.some((x) => x.kind !== m.kind);
+              const prev = rows.rows[n - 1]?.kind;
+              const mixed = rows.rows.some((x) => x.kind !== m.kind);
               const label =
                 mixed && prev !== m.kind && m.kind !== "file" ? (
                   <div className="px-3 pt-2 pb-1 text-[11px] font-medium text-muted-foreground">

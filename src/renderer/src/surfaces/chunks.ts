@@ -57,6 +57,9 @@ export const customizeChunk = defineChunk("customize", () => import("../chrome/C
  *  the fleet switches' confirm (chrome/dialogs.ts). */
 export const dialogsChunk = defineChunk("dialogs", () => import("../chrome/dialogs"));
 
+/** The composer's slash and @ menu (chrome/CommandPopover.tsx), mounted once a composer first has matches and warmed in the idle slot. */
+export const commandMenuChunk = defineChunk("commandMenu", () => import("../chrome/CommandPopover"));
+
 /** The file and symbol pickers, mounted while open (chrome/pickers.ts). */
 export const pickersChunk = defineChunk("pickers", () => import("../chrome/pickers"));
 
@@ -92,6 +95,7 @@ export const allChunks = {
   customizeChunk,
   dialogsChunk,
   pickersChunk,
+  commandMenuChunk,
   macBridgeChunk,
   virtualChunk,
   messageListChunk,

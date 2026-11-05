@@ -2,7 +2,8 @@
 /**
  * Every thread's chat carries the timer slot above the composer, an
  * orchestration parent's included; no transcript draws the live turn under
- * it, and the transcript's watching line opens the Activity section.
+ * it, and the transcript's watching line opens what the thread watches:
+ * Agents for its subagents, else Activity.
  */
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -13,8 +14,12 @@ const h = vi.hoisted(() => ({
   openActivity: [] as unknown[],
   stripProps: [] as Record<string, unknown>[],
   panelOpen: [] as unknown[][],
+  metas: {} as Record<string, { background: unknown }>,
 }));
-vi.mock("../lib/rightPanel", () => ({ rightPanel: { open: (...args: unknown[]) => h.panelOpen.push(args) } }));
+vi.mock("../lib/rightPanel", async (importOriginal) => ({
+  watchSection: (await importOriginal<typeof import("../lib/rightPanel")>()).watchSection,
+  rightPanel: { open: (...args: unknown[]) => h.panelOpen.push(args) },
+}));
 vi.mock("./threads/WorkingStrip", async (importOriginal) => {
   const real = await importOriginal<typeof import("./threads/WorkingStrip")>();
   return {
@@ -24,7 +29,11 @@ vi.mock("./threads/WorkingStrip", async (importOriginal) => {
     },
   };
 });
-vi.mock("../lib/tcserver/store", () => ({ sessionStore: { isDraft: () => false }, useQueue: () => [], useSessionMetasWhen: () => [] }));
+vi.mock("../lib/tcserver/store", () => ({
+  sessionStore: { isDraft: () => false, metaOf: (id: string) => h.metas[id] ?? null },
+  useQueue: () => [],
+  useSessionMetasWhen: () => [],
+}));
 vi.mock("../chrome/ConnectionLine", () => ({ useEnvironmentBlock: () => ({ degraded: null, name: "local", text: null }), ConnectionLine: () => null }));
 vi.mock("../chrome/Composer", () => ({ Composer: () => <div data-testid="composer" /> }));
 vi.mock("../chrome/MacBridgeCards", () => ({ MacBridgeThreadCards: () => null }));
@@ -79,6 +88,7 @@ afterEach(() => {
   h.openActivity = [];
   h.stripProps = [];
   h.panelOpen = [];
+  h.metas = {};
 });
 
 describe("useThreadChat", () => {
@@ -90,7 +100,7 @@ describe("useThreadChat", () => {
     expect(h.liveState.every((v) => v === false)).toBe(true);
   });
 
-  it("hands the transcript one stable onOpenActivity that opens the Activity section, and the strip no approval or activity handler", () => {
+  it("hands the transcript one stable onOpenActivity that opens Activity, or Agents for a thread waiting on subagents, and the strip no approval or activity handler", () => {
     const session = thread({ threadType: "chat", status: "running", busy: true, busySince: Date.now() });
     const { rerender } = render(<Chat session={session} />);
     rerender(<Chat session={{ ...session, activity: "Running bun" }} />);
@@ -99,6 +109,10 @@ describe("useThreadChat", () => {
     expect(new Set(opens).size).toBe(1);
     opens[0]!();
     expect(h.panelOpen).toEqual([["t1", "activity"]]);
+    // A thread waiting on subagents opens on Agents.
+    h.metas.t1 = { background: { tasks: [], agents: ["c1"], batch: null, watchingSince: 1 } };
+    opens[0]!();
+    expect(h.panelOpen.at(-1)).toEqual(["t1", "agents"]);
     expect(h.stripProps.length).toBeGreaterThan(0);
     for (const props of h.stripProps) {
       expect(props).not.toHaveProperty("onApproval");

@@ -34,7 +34,7 @@ const mac = (status: MacBridgeRequest["status"]): MacBridgeRequest =>
 beforeEach(() => vi.clearAllMocks());
 
 describe("activityRows", () => {
-  it("puts subagents and the batch first, then every source oldest first", () => {
+  it("puts the batch first, then every source oldest first, and never a row for subagents", () => {
     const rows = activityRows({
       meta: {
         id: "s1",
@@ -50,12 +50,10 @@ describe("activityRows", () => {
           watchingSince: 10,
         }),
       },
-      agents: [{ busySince: 30, createdAt: 1 }, { busySince: null, createdAt: 20 }],
       devServers: [server],
       macCalls: [mac("running"), mac("held")],
     });
     expect(rows.map((r) => [r.kind, r.label, r.since])).toEqual([
-      ["subagents", "3 subagents", 20],
       ["batch", "4 of 7 batch threads", 10],
       ["cron", "Scheduled wake-up (*/5 * * * *)", 50],
       ["shell", "Serve the app", 100],
@@ -67,8 +65,7 @@ describe("activityRows", () => {
     expect(byKind.shell).toMatchObject({ detail: "bun run dev", open: "log", taskId: "t1", stop: { type: "task", sessionId: "s1", taskId: "t1" } });
     expect(byKind.cron.stop).toBeUndefined();
     expect(byKind.cron.open).toBeUndefined();
-    expect(byKind.subagents).toMatchObject({ open: "agents" });
-    expect(byKind.subagents.stop).toBeUndefined();
+    expect(byKind.subagents).toBeUndefined();
     expect(byKind.batch.stop).toBeUndefined();
     expect(byKind.dev).toMatchObject({ open: "dev", devKey: "env/r1", stop: { type: "dev" } });
     expect(byKind.monitor.detail).toBeUndefined();
@@ -89,7 +86,6 @@ describe("activityRows", () => {
           ],
         }),
       },
-      agents: [],
       devServers: [],
       macCalls: [],
     });
@@ -100,13 +96,12 @@ describe("activityRows", () => {
 
   it("keeps a batch-steps row while a master watches with every batch thread done", () => {
     const master = (status: "watching" | "idle") =>
-      activityRows({ meta: { id: "m", status, background: bg({ batch: { out: 0, total: 3 }, watchingSince: 5 }) }, agents: [], devServers: [], macCalls: [] });
+      activityRows({ meta: { id: "m", status, background: bg({ batch: { out: 0, total: 3 }, watchingSince: 5 }) }, devServers: [], macCalls: [] });
     expect(master("watching").map((r) => [r.kind, r.label])).toEqual([["batch", "Batch steps"]]);
     expect(master("idle")).toEqual([]);
     // A finished batch keeps its tally: a master watching only its own monitor shows the monitor alone.
     const monitorOnly = activityRows({
       meta: { id: "m", status: "watching", background: bg({ batch: { out: 0, total: 3 }, tasks: [{ id: "t", label: "tail", kind: "monitor", startedAt: 1 }] }) },
-      agents: [],
       devServers: [],
       macCalls: [],
     });
@@ -114,17 +109,17 @@ describe("activityRows", () => {
   });
 
   it("is empty with nothing live, and hasActivity says so", () => {
-    const rows = activityRows({ meta: { id: "s1", status: "idle", background: null }, agents: [], devServers: [], macCalls: [] });
+    const rows = activityRows({ meta: { id: "s1", status: "idle", background: null }, devServers: [], macCalls: [] });
     expect(rows).toEqual([]);
     expect(hasActivity(rows)).toBe(false);
-    expect(hasActivity(activityRows({ meta: { id: "s1", status: "idle", background: null }, agents: [], devServers: [server], macCalls: [] }))).toBe(true);
+    expect(hasActivity(activityRows({ meta: { id: "s1", status: "idle", background: null }, devServers: [server], macCalls: [] }))).toBe(true);
   });
 });
 
 describe("a background shell that opened a dev server", () => {
   const shell = (callId?: string) => ({ id: "t1", label: "Start the dev server", kind: "shell" as const, startedAt: 100, command: "bun run dev", ...(callId ? { callId } : {}) });
   const rowsFor = (tasks: BackgroundWork["tasks"], devServers: LiveServer[]) =>
-    activityRows({ meta: { id: "s1", status: "running", background: bg({ tasks }) }, agents: [], devServers, macCalls: [] });
+    activityRows({ meta: { id: "s1", status: "running", background: bg({ tasks }) }, devServers, macCalls: [] });
 
   it("is that server's row when they share a call", () => {
     const rows = rowsFor([shell("c1")], [{ ...server, callId: "c1", command: "bun run dev --port 5173" }]);
@@ -159,13 +154,12 @@ describe("rowStale", () => {
   const now = 10 * STALE_WATCH_MS;
   const stale = { status: "watching" as const, background: bg({ watchingSince: now - STALE_WATCH_MS - 1 }) };
   const old = now - STALE_WATCH_MS - 5;
-  it("marks old tasks, crons and the batch of a stale watcher, never subagents, dev servers or Mac calls", () => {
+  it("marks old tasks, crons and the batch of a stale watcher, never dev servers or Mac calls", () => {
     const row = (kind: string, since = old) => ({ key: kind, kind, label: kind, since }) as never;
     expect(rowStale(row("monitor"), stale, now)).toBe(true);
     expect(rowStale(row("cron"), stale, now)).toBe(true);
     expect(rowStale(row("batch"), stale, now)).toBe(true);
     expect(rowStale(row("monitor", now - 60_000), stale, now)).toBe(false);
-    expect(rowStale(row("subagents"), stale, now)).toBe(false);
     expect(rowStale(row("dev"), stale, now)).toBe(false);
     expect(rowStale(row("mac"), stale, now)).toBe(false);
     expect(rowStale(row("monitor"), { status: "running", background: stale.background }, now)).toBe(false);
@@ -181,7 +175,7 @@ describe("stopActivity", () => {
     const request = mac("running");
     await stopActivity({ key: "k", kind: "mac", label: "x", since: 0, stop: { type: "mac", request } });
     expect(stopMacBridgeAll).toHaveBeenCalledWith([request]);
-    await stopActivity({ key: "k", kind: "subagents", label: "x", since: 0 });
+    await stopActivity({ key: "k", kind: "batch", label: "x", since: 0 });
     await stopAll("s1");
     expect(killBackground).toHaveBeenCalledWith("s1");
   });

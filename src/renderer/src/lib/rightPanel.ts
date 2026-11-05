@@ -12,7 +12,7 @@ import { useSyncExternalStore } from "react";
 
 export type Section = "activity" | "agents" | "changes" | "notes" | "files" | "build" | "debug";
 
-export const SECTIONS: readonly Section[] = ["activity", "agents", "changes", "notes", "files", "build", "debug"];
+export const SECTIONS: readonly Section[] = ["agents", "activity", "changes", "notes", "files", "build", "debug"];
 
 export const SECTION_LABEL: Record<Section, string> = {
   activity: "Activity",
@@ -55,14 +55,8 @@ export type PanelFacts = {
   checkout: boolean;
   /** Subagents of the thread, live or settled. */
   agents: number;
-  /** Subagents working or waiting. */
-  liveAgents: number;
-  /** Background shells and monitors the host reports. */
-  backgroundTasks: number;
-  /** A watching master waiting on its batch. */
-  watching: boolean;
-  /** A dev server of the project runs. */
-  devRunning: boolean;
+  /** The Activity section's rows (lib/activity.ts): background tasks, a master's batch, the thread's dev servers, its Mac calls. */
+  activity: number;
   /** A dev build, or the debug setting on: the Debug section is listed. */
   debug: boolean;
 };
@@ -72,25 +66,31 @@ export type PanelSections = { sections: Section[]; defaultSection: Section | nul
 /** The sections that exist for a thread in this state, in the header's order, and the one shown first. */
 export function sectionsFor(facts: PanelFacts): PanelSections {
   if (!facts.root) return { sections: [], defaultSection: null };
-  const activity = facts.backgroundTasks > 0 || facts.liveAgents > 0 || facts.watching || facts.devRunning;
+  const activity = facts.activity > 0;
   // One line per section, in the header's order; an area that retires a section deletes its line.
   const sections: Section[] = [];
-  if (activity) sections.push("activity");
   // A master's batch lives on its board, never here: agents means its own subagents.
   if (facts.agents > 0) sections.push("agents");
+  if (activity) sections.push("activity");
   if (facts.checkout) sections.push("changes");
   sections.push("notes");
   if (facts.checkout) sections.push("files");
   if (facts.project) sections.push("build");
   if (facts.project && facts.debug) sections.push("debug");
-  const defaultSection: Section = activity
-    ? "activity"
-    : facts.agents > 0
-      ? "agents"
+  // Subagents first: what a thread watches is its agents far more often than a shell.
+  const defaultSection: Section = facts.agents > 0
+    ? "agents"
+    : activity
+      ? "activity"
       : facts.checkout
         ? "changes"
         : "notes";
   return { sections, defaultSection };
+}
+
+/** The section a thread's Watching line opens: its subagents when it waits on any, else its Activity. */
+export function watchSection(background: { agents: readonly string[] } | null | undefined): Section {
+  return background?.agents.length ? "agents" : "activity";
 }
 
 /** The section the panel shows: the one asked for when it exists, else the default. */

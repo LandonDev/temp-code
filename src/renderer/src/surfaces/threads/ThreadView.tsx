@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { DUR } from "../../lib/ease";
+import type { PanelMotion } from "../RightPanel";
 import type { OpenFileFn } from "../../lib/search";
 import type { Session } from "../../lib/session";
 import type { ChatSource } from "./chatSlots";
@@ -39,7 +41,10 @@ export type ThreadViewProps = ChatSource & {
  *  panel at its edge (surfaces/RightPanel.tsx); a subagent has none. The
  *  panel yields to the thread: it shrinks so the thread keeps `THREAD_MIN`,
  *  and in a row too narrow for `PANEL_MIN` beside it, it is not drawn (its
- *  open state stays, so it returns when the row widens). */
+ *  open state stays, so it returns when the row widens). A toggle in place
+ *  moves it (`usePaneMotion`): the thread takes its new width at once and
+ *  the pane slides in from the row's edge, or slides back out over the
+ *  thread; a pane that mounts open (a tab switch, a launch) is just there. */
 export function ThreadView(props: ThreadViewProps) {
   const { session } = props;
   const master = isMasterThread(session);
@@ -54,16 +59,20 @@ export function ThreadView(props: ThreadViewProps) {
     rightPanel.setRoom(session.id, fit !== null);
   }, [fit, root, session.id]);
   useEffect(() => (root ? () => rightPanel.setRoom(session.id, true) : undefined), [root, session.id]);
+  const pane = usePaneMotion(session.id, panel.open, fit);
   const view = master ? <MasterView {...props} /> : typeView(props);
   if (!root) return view;
   return (
-    <div ref={setRow} className="relative flex min-h-0 min-w-0 flex-1">
+    // Clipped on x alone: the arriving pane never paints over a split's neighbour, and popovers still overflow up.
+    <div ref={setRow} className="relative flex min-h-0 min-w-0 flex-1 overflow-x-clip">
       {view}
-      {panel.open && fit !== null ? (
+      {pane.drawn ? (
         <RightPanel
           session={session}
-          width={fit}
+          width={pane.width ?? undefined}
           maxWidth={rowWidth === null ? undefined : rowWidth - THREAD_MIN}
+          motion={pane.motion}
+          onLeft={pane.onLeft}
           onOpenFile={props.onOpenFile}
           onOpenDiff={props.onOpenDiff}
           onOpenSession={props.onOpenSession}
@@ -71,6 +80,33 @@ export function ThreadView(props: ThreadViewProps) {
       ) : null}
     </div>
   );
+}
+
+/**
+ * Whether the pane is drawn and how it moves. It arrives only when the
+ * thread's panel opens while this view shows that thread; once closed it
+ * stays drawn, leaving, at the width it had, until its slide ends (or twice
+ * the exit's time, for a pane that never paints it). A reopen mid-leave turns
+ * the same element back. A row too narrow for it hides it at once.
+ */
+export function usePaneMotion(id: string, open: boolean, fit: number | null): { drawn: boolean; width: number | null; motion?: PanelMotion; onLeft: () => void } {
+  const [was, setWas] = useState({ id, open });
+  const [motion, setMotion] = useState<PanelMotion | undefined>(undefined);
+  const [held, setHeld] = useState<number | null>(fit);
+  if (was.id !== id || was.open !== open) {
+    setWas({ id, open });
+    setMotion(was.id !== id ? undefined : open ? "arrive" : "leave");
+  }
+  if (open && fit !== null && fit !== held) setHeld(fit);
+  const leaving = !open && motion === "leave" && held !== null;
+  const onLeft = (): void => setMotion(undefined);
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = setTimeout(() => setMotion(undefined), DUR.fast * 2000);
+    return () => clearTimeout(timer);
+  }, [leaving]);
+  const shown = open && fit !== null;
+  return { drawn: shown || leaving, width: shown ? fit : held, motion: shown || leaving ? motion : undefined, onLeft };
 }
 
 /** The element's width, following its resizes; null until first measured. */
