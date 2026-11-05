@@ -38,7 +38,7 @@ describe("ThreadListPopover", () => {
     for (const el of [age, restore]) expect(el.className).toContain("[grid-area:1/1]");
     // Restore waits at rest; on hover or keyboard focus it shows as the age leaves, after the hover delay.
     expect(restore.className.split(/\s+/)).toEqual(expect.arrayContaining(["opacity-0", "group-hover/item:opacity-100", "group-focus-visible/item:opacity-100", "group-hover/item:delay-(--delay-hover)"]));
-    expect(age.className.split(/\s+/)).toEqual(expect.arrayContaining(["group-hover/item:opacity-0", "group-focus-visible/item:opacity-0", "group-hover/item:delay-(--delay-hover)"]));
+    expect(age.className.split(/\s+/)).toEqual(expect.arrayContaining(["group-hover/item:opacity-0", "group-focus-visible/item:opacity-0", "group-hover/item:delay-(--delay-hover)", "group-focus-visible/item:delay-(--dur-instant)"]));
     fireEvent.click(row("b"));
     expect(onPick).toHaveBeenCalledWith("b");
   });

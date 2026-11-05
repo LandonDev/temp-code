@@ -262,20 +262,28 @@ describe("AgentRowView", () => {
     expect(actions).toContain("group-has-focus-visible:delay-(--dur-instant)");
     // A click holds nothing: focus-within is never the trigger.
     expect(actions).not.toContain("focus-within");
-    // Line one's end gives way under them on the same timing; the model line stays put.
-    const head = container.querySelector("[data-row-head]")!.className;
-    expect(head).toContain("group-hover:[mask-size:100%_100%]");
-    expect(head).toContain("group-hover:delay-(--delay-hover)");
-    expect(head).toContain("group-focus-visible:delay-(--dur-instant)");
-    expect(head).not.toContain("focus-within");
+    // Line one keeps their place at its end, and what sits there yields by
+    // opacity on the same timing: no mask moves; the model line stays put.
+    const head = container.querySelector("[data-row-head]")!;
+    expect(head.className).not.toContain("mask");
+    const end = head.querySelector("[data-row-end]")!;
+    expect(end.className).toContain("min-w-6");
+    const yielding = end.firstElementChild!.className;
+    expect(yielding).toContain("group-hover:opacity-0");
+    expect(yielding).toContain("group-hover:delay-(--delay-hover)");
+    expect(yielding).toContain("group-focus-visible:delay-(--dur-instant)");
+    expect(yielding).not.toContain("focus-within");
     expect(container.querySelector("[data-model-line]")!.className).not.toContain("group-hover");
     expect(container.querySelector("[data-model]")!.className).not.toContain("opacity-0");
   });
 
-  it("masks line one only when the row has actions", () => {
+  it("reserves line one's end only for the actions it has", () => {
     const { meta, status } = row("Port module 4");
-    const { container } = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
-    expect(container.querySelector("[data-row-head]")!.className).not.toContain("mask");
+    const bare = render(<AgentRowView meta={meta} status={status} onOpen={() => {}} />);
+    expect(bare.container.querySelector("[data-row-end]")).toBeNull();
+    bare.unmount();
+    const both = render(<AgentRowView meta={{ ...meta, status: "running" }} status={status} onOpen={() => {}} onOpenSession={() => {}} onStop={() => {}} />);
+    expect(both.container.querySelector("[data-row-end]")!.className).toContain("min-w-12.5");
   });
 
   it("opens the detail on click, Enter and Space, and marks the selected row", () => {

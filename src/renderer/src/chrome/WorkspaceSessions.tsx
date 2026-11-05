@@ -34,7 +34,7 @@ import { AGENT_GLYPHS, THREAD_MENU_ICONS } from "../surfaces/threads/threadTypes
 import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
 import { STATUS_ON_TIP, STATUS_WORD, StatusMark, type ThreadState } from "../components/ui/status";
 import { plainStatus } from "@shared/statusWords";
-import { yields } from "../components/ui/reveal";
+import { reveal, yields } from "../components/ui/reveal";
 import { Button } from "../components/ui/button";
 import { ItemButton } from "../components/ui/item";
 import { Input } from "../components/ui/input";
@@ -144,6 +144,8 @@ function MoreRow({ hidden, onMore }: { hidden: number; onMore: () => void }) {
   );
 }
 
+const MORE_REVEAL = `${reveal("row", { row: true, overlay: true })} data-popup-open:pointer-events-auto data-popup-open:opacity-100 data-popup-open:delay-(--dur-instant)`;
+
 /** A row's one hover action: ⋯, the same menu a right-click opens, as the
  *  menu's trigger. It takes the trailing slot's place by opacity, as the
  *  rail's rows do: hover waits, so a pointer crossing the column flashes
@@ -160,8 +162,9 @@ function moreTrigger(className?: string) {
       onKeyDown={(e) => e.stopPropagation()}
       className={cn(
         "text-muted-foreground hover:text-foreground",
-        // The one reveal's timing (reveal.ts) on the trigger itself, which a menu renders as its own.
-        "pointer-events-none opacity-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-hover/row:delay-(--delay-hover) group-has-focus-visible/row:pointer-events-auto group-has-focus-visible/row:opacity-100 group-has-focus-visible/row:delay-(--dur-instant) data-popup-open:pointer-events-auto data-popup-open:opacity-100 data-popup-open:delay-(--dur-instant) motion-reduce:transition-opacity",
+        // The one reveal (reveal.ts) on the trigger itself, which a menu renders
+        // as its own: its own open state holds it.
+        MORE_REVEAL,
         className,
       )}
     >

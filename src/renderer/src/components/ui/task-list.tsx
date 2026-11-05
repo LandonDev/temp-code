@@ -6,6 +6,7 @@ import { duration, TIME_SHOWN_FROM_MS, useNow } from "@renderer/lib/duration";
 import { canvasMeasure, cssFont, fitCard, type Measure } from "@renderer/lib/taskListWidth";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, DISCLOSURE_CHEVRON } from "./collapsible";
 import { ROW_PRESS } from "./press";
+import { reveal } from "./reveal";
 
 /**
  * A task list an agent works through: a header with a donut of done over
@@ -147,9 +148,8 @@ function TaskRow({ task }: { task: Task }) {
               aria-hidden
               className={cn(
                 "mt-1 flex shrink-0 transition-opacity duration-(--dur-fast) ease-(--ease-out) motion-reduce:transition-opacity",
-                // The one reveal's timing (reveal.ts): hover waits, keyboard focus shows it at once.
-                open &&
-                  "opacity-0 group-hover/steps:opacity-100 group-hover/steps:delay-(--delay-hover) group-focus-visible/steps:opacity-100 group-focus-visible/steps:delay-(--dur-instant) motion-reduce:transition-opacity",
+                // The one reveal (reveal.ts): hover waits, keyboard focus shows it at once.
+                open && reveal("steps", { row: true }),
               )}
             >
               <ChevronRight className={cn("size-3 text-muted-foreground", DISCLOSURE_CHEVRON, open && "rotate-90")} />

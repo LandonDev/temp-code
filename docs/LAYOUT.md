@@ -1264,8 +1264,9 @@ favicon, the title, the host, the claim; the address in a tooltip).
   context"; and on a settled row how long it ran at the line's end ("4m
   12s", "Finished 2:02 PM" on hover). On hover, after `--delay-hover`, or
   keyboard focus Open (the agent's thread) and, while a turn runs, Stop
-  appear at line one's end, the line's last 72px fading out under them
-  (a mask that grows over `--dur-fast`, nothing reflowing). Rows read the meta (`agentStatus`); a row loads its
+  appear at line one's end, in a place the line keeps for them at rest
+  (24px, or 50px with Stop; the title truncates before it), the host glyph
+  there fading out under them (`yields`, nothing reflowing). Rows read the meta (`agentStatus`); a row loads its
   transcript only to quote a waiting agent or a failure the meta lacks.
   Nothing in the list moves.
 - **A row opens the agent's detail**, a 672px Sheet from the window's

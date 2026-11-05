@@ -3,7 +3,7 @@ import { ExternalLink, Square } from "../../../chrome/icons";
 import { TruncateTip } from "../../../components/tip";
 import { Button } from "../../../components/ui/button";
 import { Item } from "../../../components/ui/item";
-import { reveal } from "../../../components/ui/reveal";
+import { reveal, yields } from "../../../components/ui/reveal";
 import { STATUS_WORD, StatusMark, type ThreadState } from "../../../components/ui/status";
 import { actionFailed } from "../../../lib/threadActionToast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
@@ -40,7 +40,7 @@ import { useAgentStatus } from "./useFleetModel";
  *
  * On hover (after `--delay-hover`) or keyboard focus Open (the agent's own
  * thread) and, while a turn runs, Stop appear at line one's end, the line's
- * last 72px fading out under them. A click or Enter opens the agent's
+ * place kept for them at rest, its host glyph fading out under them. A click or Enter opens the agent's
  * detail. `AgentRowView` draws from props alone; `AgentRow` reads the
  * status and the store's host glyph.
  */
@@ -52,14 +52,11 @@ const DEPTH_CLASS = ["", "w-auto ms-4", "w-auto ms-8", "w-auto ms-12"] as const;
 /** States drawn on one line: nothing more to say than how long it ran. */
 const SETTLED = new Set<ThreadState>(["done", "idle", "stopped"]);
 
-/** Line one's end gives way to the actions as they reveal: a mask sized past
- *  the line at rest closes over its last 72px, fading over the 16px before
- *  the 56px the actions take, after `--delay-hover` on hover, at once on
- *  keyboard focus (a click holds nothing) and on leaving; under reduced
- *  motion it snaps (the transition narrows to opacity). Only `mask-size`
- *  moves, so nothing reflows. */
-const YIELDS =
-  "[mask-image:linear-gradient(to_left,transparent_56px,black_72px)] [mask-repeat:no-repeat] [mask-size:calc(100%_+_72px)_100%] transition-[mask-size] duration-(--dur-fast) ease-(--ease-out) group-hover:[mask-size:100%_100%] group-hover:delay-(--delay-hover) group-focus-visible:[mask-size:100%_100%] group-focus-visible:delay-(--dur-instant) group-has-focus-visible:[mask-size:100%_100%] group-has-focus-visible:delay-(--dur-instant) motion-reduce:transition-opacity";
+/** Line one keeps the actions' place at its end (one 24px action, or two),
+ *  so the title truncates before them at rest and never runs under them; the
+ *  host glyph there yields to them on the one reveal's timing. */
+const RESERVE = ["", "min-w-6", "min-w-12.5"] as const;
+const YIELDS = yields("");
 
 /** The actions: the shared hover reveal, at once on the row's keyboard
  *  focus, taking no pointer at rest. */
@@ -128,7 +125,7 @@ export function AgentRowView({
   const time = agentTime(meta, Date.now());
   const name = [title, statusText, tally?.spoken, time ? duration(time.ms) : null, modelMarkTip(meta, role, modelContextWord(meta))].filter(Boolean).join(", ");
   const stoppable = !!onStop && hasRunningTurn(meta);
-  const actions = !!onOpenSession || stoppable;
+  const actionCount = (onOpenSession ? 1 : 0) + (stoppable ? 1 : 0);
 
   const own = (e: { currentTarget: EventTarget; target: EventTarget }) => (e.currentTarget as Node).contains(e.target as Node);
   const onKey = (e: KeyboardEvent) => {
@@ -162,13 +159,19 @@ export function AgentRowView({
       <span className="flex h-5 items-center justify-center" data-row-glyph>
         <StatusMark state={state} word={false} aria-hidden />
       </span>
-      <span className={cn("flex h-5 min-w-0 items-center gap-2", actions && YIELDS)} data-row-head>
+      <span className="flex h-5 min-w-0 items-center gap-2" data-row-head>
         <TruncateTip text={title}>
           <span className={cn("min-w-0 flex-1 truncate text-[13px] leading-5 font-medium", settled ? "text-muted-foreground" : "text-foreground")} data-row-title>
             {title}
           </span>
         </TruncateTip>
-        {hostGlyph(meta.environmentId)}
+        {actionCount > 0 ? (
+          <span data-row-end className={cn("flex shrink-0 justify-end", RESERVE[actionCount])}>
+            <span className={cn("flex", YIELDS)}>{hostGlyph(meta.environmentId)}</span>
+          </span>
+        ) : (
+          hostGlyph(meta.environmentId)
+        )}
       </span>
 
       {/* Line two: what the state is about, then the tally and the time. */}

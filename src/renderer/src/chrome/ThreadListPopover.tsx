@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Input } from "../components/ui/input";
+import { reveal, yields } from "../components/ui/reveal";
+import { cn } from "../lib/cn";
 import { ItemButton, ItemActions, ItemContent, ItemMedia, ItemTitle } from "../components/ui/item";
 import { timeAgo } from "../lib/duration";
 import type { ThreadType } from "../lib/tcserver/types";
@@ -8,10 +10,10 @@ import { ArchiveRestore } from "./icons";
 
 const SEARCH_PAST = 6;
 
-/** The hover reveal (DESIGN "Motion values"): waits `--delay-hover`, then
- *  fades `--dur-fast`; keyboard focus shows it at once, leaving is at once. */
-const REVEAL =
-  "transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/item:delay-(--delay-hover) group-focus-visible/item:delay-(--dur-instant) motion-reduce:transition-opacity";
+/** An archived row's Restore over its age: the one hover reveal and its
+ *  yield (DESIGN "Motion values"), at once on the row's keyboard focus. */
+const RESTORE = reveal("item", { row: true });
+const AGE_YIELDS = yields("item");
 
 /** A thread the list names: its title, type and age. */
 export type ListedThread = { id: string; title: string; type: ThreadType | null; updatedAt: number };
@@ -73,14 +75,14 @@ export function ThreadListPopover({
             <ItemActions className="grid shrink-0 justify-items-end gap-0 text-xs text-muted-foreground">
               <span
                 data-listed-age
-                className={`tabular-nums [grid-area:1/1]${restore ? ` ${REVEAL} group-hover/item:opacity-0 group-focus-visible/item:opacity-0` : ""}`}
+                className={cn("tabular-nums [grid-area:1/1]", restore && AGE_YIELDS)}
               >
                 {timeAgo(thread.updatedAt)}
               </span>
               {restore ? (
                 <span
                   data-listed-restore
-                  className="flex items-center gap-1 opacity-0 [grid-area:1/1] transition-opacity duration-(--dur-fast) ease-(--ease-out) group-hover/item:opacity-100 group-hover/item:delay-(--delay-hover) group-focus-visible/item:opacity-100 group-focus-visible/item:delay-(--dur-instant) motion-reduce:transition-opacity"
+                  className={cn("flex items-center gap-1 [grid-area:1/1]", RESTORE)}
                 >
                   <ArchiveRestore className="size-3.5" />
                   Restore
