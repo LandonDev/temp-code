@@ -30,7 +30,7 @@ type Props = {
   onArchiveSession: (sessionId: string, archived: boolean) => void;
   onDeleteSession: (sessionId: string) => void;
   onRestoreProject?: (path: string) => void;
-  onDeleteProject?: (path: string) => void;
+  onDeleteProject?: (path: string) => Promise<void> | void;
   onOpenWhatsNew: (version: string, markdown?: string) => void;
 };
 

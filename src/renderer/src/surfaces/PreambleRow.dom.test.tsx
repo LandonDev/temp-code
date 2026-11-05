@@ -14,6 +14,9 @@ describe('PreambleRow', () => {
     const button = getByRole('button')
     expect(button.textContent).toBe('Project rules212 words')
     expect(button.textContent).not.toContain('·')
+    // The lead in medium, the count regular: two facts parted by weight.
+    expect(button.querySelector('span')!.className).toContain('font-medium')
+    expect(button.querySelector('.tabular-nums')!.className).not.toContain('font-medium')
     // A fixed 24px trigger whose words lift at once on hover; the one
     // disclosure chevron trails the count, 8px after it, and only it turns.
     for (const c of ['h-6', 'px-2', 'gap-1', 'hover:text-foreground']) expect(button.className).toContain(c)

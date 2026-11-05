@@ -4,6 +4,7 @@ import { emptyNotes, notesAsBrief, notesEmpty } from "@shared/notes";
 import { Button } from "@renderer/components/ui/button";
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
 import { Skeleton } from "@renderer/components/ui/skeleton";
+import { StatusMark } from "@renderer/components/ui/status";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import { cn } from "@renderer/lib/cn";
@@ -129,7 +130,7 @@ export function NotesBody({ session }: { session: Session }) {
 /** The state line's words: a save in flight or failed wins over the age. */
 export function notesStateLine(saving: SaveState, updatedAt: number | null): string | null {
   if (saving === "saving") return "Saving…";
-  if (saving === "failed") return "Not saved";
+  if (saving === "failed") return "Save failed";
   if (!updatedAt) return null;
   const ago = timeAgo(updatedAt);
   return ago === "now" ? "Updated just now" : `Updated ${ago} ago`;
@@ -189,7 +190,12 @@ export function NotesView({
     <div className="flex min-h-0 flex-1 flex-col" data-slot="notes-section">
       <TooltipProvider>
         <div data-slot="section-top" className="flex h-9 shrink-0 items-center justify-between gap-2 px-3">
-          <span className={cn("truncate text-xs tabular-nums", saving === "failed" ? "text-destructive" : "text-muted-foreground")}>{state}</span>
+          {saving === "failed" ? (
+            // A failed save in the one status vocabulary, as a file pane's header says it.
+            <StatusMark state="failed" word="Save failed" className="min-w-0 text-xs" />
+          ) : (
+            <span className="truncate text-xs tabular-nums text-muted-foreground">{state}</span>
+          )}
           {loading ? null : (
             <div className="flex items-center gap-0.5">
               {has || editing ? <CopyBrief text={editing ? draft : text} title={title} /> : null}

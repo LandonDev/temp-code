@@ -95,7 +95,8 @@ export function InboxPrDiff({ diff }: Props) {
 
   return (
     <div className="inbox-pr-diff flex flex-col gap-3">
-      <div className="flex items-center gap-3 text-xs">
+      {/* "3 files" and its tally are two values of one line: 4px apart. */}
+      <div className="flex items-center gap-1 text-xs">
         <span className="text-muted-foreground">{fileLabel}</span>
         <Counts additions={diff.additions} deletions={diff.deletions} className="text-xs" />
         <TooltipProvider>
@@ -162,7 +163,7 @@ function PrFileCard({
         data-slot="button"
         render={<Button variant="ghost" size="sm" className="w-full justify-start gap-2 rounded-none px-2.5 text-left font-normal" />}
       >
-        <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground", DISCLOSURE_CHEVRON, expanded && "rotate-90")} />
+        <ChevronRight className={cn("size-3 shrink-0 text-muted-foreground", DISCLOSURE_CHEVRON, expanded && "rotate-90")} />
         <FileTypeIcon name={name} isDir={false} size={16} />
         <TruncateTip text={label}>
           <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">{label}</span>

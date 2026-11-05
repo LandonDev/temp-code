@@ -19,19 +19,25 @@ const state = vi.hoisted(() => ({
 
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 vi.mock("../../chrome/PlanSettingsFields", () => ({ PlanSettingsEditor: () => <section aria-label="Plans" /> }));
-vi.mock("../../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "local" }) } }));
+const link = vi.hoisted(() => ({ environmentId: "local", connected: true, onOpen: () => () => {} }));
+vi.mock("../../lib/connection", () => ({ registry: { primary: () => link } }));
 vi.mock("../../lib/settings", () => ({
   openWorkspaceSettings: (id: string) => state.open(id),
   loadClaudeHooks: () => false,
   saveClaudeHooks: (on: boolean) => state.hooks(on),
 }));
-const probe = vi.hoisted(() => ({ answered: true }));
+const probe = vi.hoisted(() => ({
+  answer: "installed" as "installed" | "none" | "pending" | "refused",
+  reads: 0,
+}));
 vi.mock("../../lib/harness/availability", () => ({
-  getHarnessAvailabilitySnapshot: () => 0,
-  subscribeHarnessAvailability: () => () => {},
-  probeHarnessAvailability: async () => {},
-  hasProbedHarnessAvailability: () => probe.answered,
-  isHarnessAvailable: (id: string) => id === "claude" || id === "codex",
+  readHarnessAvailability: () => {
+    probe.reads += 1;
+    if (probe.answer === "pending") return new Promise(() => {});
+    if (probe.answer === "refused") return Promise.reject(new Error("doctor.get failed: no handler"));
+    const on = probe.answer === "installed";
+    return Promise.resolve({ claude: on, codex: on, cursor: false, grok: false, opencode: false, pi: false, omp: false, fx: false, muse: false });
+  },
 }));
 vi.mock("../../lib/models", async (original) => ({
   ...(await original<typeof import("../../lib/models")>()),
@@ -73,7 +79,8 @@ const { ThreadDefaultsPage } = await import("./ThreadDefaults");
 const { ThreadDefaultsDialog, ThreadDefaultsEditor } = await import("../../chrome/ThreadDefaultsDialog");
 
 beforeEach(() => {
-  probe.answered = true;
+  probe.answer = "installed";
+  probe.reads = 0;
   state.failed = false;
   state.retry.mockClear();
   state.ladder = ["low", "medium", "high"];
@@ -211,22 +218,42 @@ describe("Thread defaults", () => {
     expect(document.body.textContent).toContain("Follows the global defaults.");
   });
 
-  it("lists a picker switch per installed CLI, and saves its visibility", () => {
+  it("lists a picker switch per installed CLI, and saves its visibility", async () => {
     render(<ThreadDefaultsPage />);
     const picker = screen.getByRole("region", { name: "Model picker" });
-    const switches = within(picker).getAllByRole("switch");
+    const switches = await within(picker).findAllByRole("switch");
     expect(switches).toHaveLength(2);
     fireEvent.click(switches[0]);
     expect(state.picker).toHaveBeenCalledWith("claude", false);
   });
 
   it("holds the Model picker's rows in their shape until the CLI probe answers", () => {
-    probe.answered = false;
+    probe.answer = "pending";
     render(<ThreadDefaultsPage />);
     const picker = screen.getByRole("region", { name: "Model picker" });
     expect(within(picker).queryAllByRole("switch")).toHaveLength(0);
     const rows = [...picker.querySelectorAll<HTMLElement>("[data-slot=page-row-skeleton]")];
     expect(rows.map((r) => r.dataset.control)).toEqual(["switch", "switch"]);
+  });
+
+  it("says a refused probe with Retry instead of hiding the Model picker as if no CLI were installed", async () => {
+    probe.answer = "refused";
+    render(<ThreadDefaultsPage />);
+    const picker = screen.getByRole("region", { name: "Model picker" });
+    const alert = await within(picker).findByRole("alert");
+    expect(alert.textContent).toBe("doctor.get failed: no handler");
+    expect(picker.querySelector("[data-slot=page-row-skeleton]")).toBeNull();
+    probe.answer = "installed";
+    fireEvent.click(within(picker).getByRole("button", { name: "Retry" }));
+    expect(await within(picker).findAllByRole("switch")).toHaveLength(2);
+    expect(probe.reads).toBe(2);
+  });
+
+  it("leaves the Model picker out only when the host answered with no CLI", async () => {
+    probe.answer = "none";
+    render(<ThreadDefaultsPage />);
+    await act(async () => {});
+    expect(screen.queryByRole("region", { name: "Model picker" })).toBeNull();
   });
 
   it("ends the skeleton when defaults.get does not answer: the error and Retry, no made-up set", () => {

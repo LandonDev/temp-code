@@ -331,6 +331,15 @@ describe("the Watching line's age", () => {
     expect(age(container)).toBe("5m 45s");
   });
 
+  it("parts the subject from the age with a comma; the word alone takes none", () => {
+    const { container, unmount } = render(<WatchingLine since={t - 60_000} subject="Review the perf pass" />);
+    const mark = container.querySelector<HTMLElement>('[data-slot="status-mark"]')!;
+    expect(mark.className).toContain("[&_[data-slot=status-detail]]:after:content-[',']");
+    unmount();
+    const bare = render(<WatchingLine since={t - 60_000} />);
+    expect(bare.container.querySelector<HTMLElement>('[data-slot="status-mark"]')!.className).not.toContain("content-[',']");
+  });
+
   it("holds still in a hidden pane", () => {
     const { container } = render(
       <PaneVisibilityContext.Provider value={false}>

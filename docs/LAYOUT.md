@@ -300,7 +300,9 @@ pair. The editor asks the catalog again at each mount. A provider with no
 models says so in one 12px muted row that wraps ("No models until Muse Code
 is installed and signed in"); a model the rules name that the
 catalog lacks keeps its row, its name muted with "not on this host" 4px
-after it, and its select (`staleModels`). An empty list is one 12px muted
+after it, and its select (`staleModels`). The name cell takes what the
+controls leave and no more, so a long name is cut there with its tooltip
+(`TruncateTip`), never pushing the effort pair past the table's edge. An empty list is one 12px muted
 line in its section. When the rules live on another host (`rules.get`'s
 `home`, docs/box.md "Orchestration rules and thread defaults: one copy, on
 the box") the first section's description says "Saved on box", 4px under a
@@ -331,9 +333,14 @@ as many to a line as hold a whole 136px column (two in a 400px window), so
 a label and its reset are never cut to a letter; the failure card's account
 picker stacks the same way once its popover is capped. While usage loads
 each column is its skeleton, and through a Refresh the columns stay those
-of the last reports (`useAliax`'s `layout`), so nothing moves when they
-land; a key's row waits as one 16px line over the window columns, where its
-words land. A reset that is still cut says its whole time on hover before
+of the last reports (`useAliax`'s `layout`) and each row waits in the shape
+its own last report landed in (its windows' cells, or the one 16px line of
+"No usage yet" or a key's words, its Rate bar still drawn, since a refresh
+never masks headroom), so nothing moves when they land; a key's row waits as
+one 16px line over the window columns, where its words land. Stacked, a
+row's trailing empty columns hide, so a row with fewer cells never opens an
+empty grid line, and the tracks are filled, not fitted, so its cells keep
+the page's widths. A reset that is still cut says its whole time on hover before
 how long until then ("Resets Thu 9:00 AM, in 2d").
 
 A window's column is its label and the share left (amber when low), the 4px
@@ -347,7 +354,7 @@ lines. An account out of room (the gateways' cooldown, the provider's own
 limit, or every window spent; `limitOf`) says so on its state line, the
 `StatusMark` word "Limited" in amber with "Resets 4:15 PM" after it, the
 latest reset of what binds it, or the word alone when one of them names no
-time. Nothing on the page says the live threads of an account: the renderer
+time or when a bar on the row already says that reset under it (`barResets`). Nothing on the page says the live threads of an account: the renderer
 does not hold that count.
 
 ### The Stats page
@@ -529,7 +536,7 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     leaves it out of every listing behind the section (git status and
     numstats, Stage all, Stash, the commit message's draft).
   - **Notes** (`NotesBody`): the state line ("Updated 2m ago", "Saving…",
-    "Not saved" in red), Copy as brief and a pencil at the top; the pencil
+    "Save failed" as the failed `StatusMark`, as a file pane's header says it), Copy as brief and a pencil at the top; the pencil
     swaps the rendered notes (`AgentMarkdown size="compact"`) for the
     source in place and becomes Done (Escape too); a thread write while the
     person types is one line with Load theirs. None is one Empty with
@@ -1317,7 +1324,7 @@ favicon, the title, the host, the claim; the address in a tooltip).
   Nothing in the list moves.
 - **A row opens the agent's detail**, a 672px Sheet from the window's
   right edge (fleet/AgentDetail.tsx, its content
-  fleet/AgentDetailBody.tsx): the title, the status in full, one muted
+  fleet/AgentDetailBody.tsx, its header fleet/AgentDetailHeader.tsx): the title, the status in full, one muted
   tabular line (the model line and host glyph, then one comma run: branch,
   +a −d, tasks, context, cost), the transcript (its skeleton while the
   sheet slides in), and a field that steers a live agent and messages a

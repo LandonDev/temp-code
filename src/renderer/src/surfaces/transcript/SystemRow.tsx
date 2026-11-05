@@ -34,7 +34,8 @@ export function HandoffDivider({ block }: { block: Block }) {
         role="status"
         aria-label={`Preparing a handoff to ${to}`}
         glyph={<StatusMark state="working" word={false} still />}
-        lead={<WorkingText>{`Preparing a handoff to ${to}`}</WorkingText>}
+        shrinkLead
+        lead={<WorkingText className="min-w-0 truncate">{`Preparing a handoff to ${to}`}</WorkingText>}
       />
     );
   }

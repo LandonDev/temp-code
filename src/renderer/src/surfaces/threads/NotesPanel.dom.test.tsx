@@ -150,10 +150,11 @@ describe("NotesBody", () => {
     fireEvent.change(screen.getByLabelText("Notes source"), { target: { value: "## Goal\n\nlost?\n" } });
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await flush();
-    expect(screen.getByText("Not saved").className).toContain("text-destructive");
+    const mark = screen.getByText("Save failed").closest<HTMLElement>('[data-slot="status-mark"]')!;
+    expect(mark.dataset.state).toBe("failed");
   });
 
-  it("a first draft that failed to save stays: Not saved, and the pencil brings it back to retry", async () => {
+  it("a first draft that failed to save stays: Save failed, and the pencil brings it back to retry", async () => {
     request.mockImplementationOnce(() => Promise.resolve({ text: "", updatedAt: null, path: null }));
     render(<NotesBody session={session} />);
     await flush();
@@ -163,7 +164,7 @@ describe("NotesBody", () => {
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await flush();
     expect(screen.queryByText("No notes yet")).toBeNull();
-    expect(screen.getByText("Not saved")).toBeTruthy();
+    expect(screen.getByText("Save failed")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Edit notes" }));
     expect((screen.getByLabelText("Notes source") as HTMLTextAreaElement).value).toBe("## Goal\n\nfirst\n");
     fireEvent.click(screen.getByRole("button", { name: "Done" }));

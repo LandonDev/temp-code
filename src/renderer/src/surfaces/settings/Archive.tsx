@@ -60,7 +60,7 @@ export function ArchivePage({
     options?: { confirmed?: boolean },
   ) => void;
   onRestoreProject?: (path: string) => void;
-  onDeleteProject?: (path: string) => void;
+  onDeleteProject?: (path: string) => Promise<void> | void;
 }) {
   const archivedProjectLabel = useArchivedProjectLabel();
   const [filters, setFilters] = useState(loadSessionSidebarFilters);

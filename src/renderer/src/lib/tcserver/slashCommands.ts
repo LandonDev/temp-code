@@ -97,6 +97,13 @@ class SlashCommandStore {
       if (!known) this.store(key, { at: Date.now(), commands: EMPTY, failed: true });
       return Promise.resolve(known?.commands ?? EMPTY);
     }
+    // A failed list is dropped before it is asked again, so the menu says
+    // Loading… meanwhile, never the old failure followed by the list.
+    if (this.state.get(key)?.failed) {
+      const next = new Map(this.state);
+      next.delete(key);
+      this.set(next);
+    }
     const request = link
       .request<SlashCommand[]>("commands.list", { provider: provider as ProviderId, cwd })
       .then((commands): Omit<CommandEntry, "at"> => ({ commands: Array.isArray(commands) ? commands : EMPTY }))

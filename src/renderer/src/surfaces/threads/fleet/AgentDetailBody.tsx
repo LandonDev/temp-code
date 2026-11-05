@@ -1,28 +1,22 @@
 import { useMemo, useRef, useState } from "react";
-import { HostGlyph } from "../../../chrome/HostGlyph";
 import { ArrowUp } from "../../../chrome/icons";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
-import { StatusMark } from "../../../components/ui/status";
 import { respondHarnessApproval } from "../../../lib/harness";
 import type { OpenFileFn } from "../../../lib/search";
 import * as commands from "../../../lib/tcserver/commands";
 import { asHarness } from "../../../lib/tcserver/store";
-import type { SessionMeta } from "../../../lib/tcserver/types";
 import {
   agentStatus,
   isLiveStatus,
   useMetaById,
   useSessionById,
-  type AgentStatus,
 } from "../../../lib/threads/agents";
 import { AgentTranscript } from "../../AgentTranscript";
+import { AgentDetailHeader } from "./AgentDetailHeader";
 import { SurfaceSkeleton } from "../../SurfaceSkeleton";
-import { AGENT_GLYPHS } from "../threadTypes";
 import { useContextReading } from "../../../lib/contextCache";
-import { ModelLine } from "../ModelMark";
-import { AgentNumbersLine } from "./rowBits";
-import { agentNumbers, fleetStats, type NumberPart } from "./useFleetModel";
+import { agentNumbers, fleetStats } from "./useFleetModel";
 
 /**
  * What an open subagent shows, inside whatever container holds it (the
@@ -31,55 +25,6 @@ import { agentNumbers, fleetStats, type NumberPart } from "./useFleetModel";
  * otherwise. The container owns the entrance, the backdrop, Escape and the
  * close button; the header's Open sits clear of that button.
  */
-
-/** The header: the role glyph and title, the status as on the row but in
- *  full, and the numbers line led by the host, model, effort and branch. */
-export function AgentDetailHeader({
-  meta,
-  status,
-  parts,
-  branch = null,
-  onOpen,
-}: {
-  meta: Pick<SessionMeta, "title" | "agentType" | "environmentId" | "provider" | "model" | "reasoning">;
-  status: AgentStatus;
-  parts: NumberPart[];
-  /** The agent's checkout when it differs from the parent's. */
-  branch?: string | null;
-  onOpen?: () => void;
-}) {
-  const Glyph = AGENT_GLYPHS[meta.agentType];
-  return (
-    <div className="flex shrink-0 items-start gap-3 py-4 pr-12 pl-5">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex min-w-0 items-center gap-2">
-          {Glyph ? <Glyph className="size-4 shrink-0 text-muted-foreground" /> : null}
-          <h2 className="truncate text-base font-semibold leading-6 tracking-[-0.01em] text-foreground">{meta.title || "Subagent"}</h2>
-        </div>
-        <StatusMark
-          state={status.state}
-          word={status.phrase ? status.detail : true}
-          detail={status.phrase ? undefined : status.detail}
-          className="mt-0.5 items-start [&_[data-slot=status-detail]]:whitespace-normal [&_[data-slot=status-word]]:whitespace-normal"
-        />
-        <AgentNumbersLine
-          className="mt-1"
-          lead={[
-            <ModelLine key="model" meta={meta} />,
-            <HostGlyph key="host" environmentId={meta.environmentId} />,
-            branch,
-          ]}
-          parts={parts}
-        />
-      </div>
-      {onOpen ? (
-        <Button variant="ghost" size="sm" onClick={onOpen}>
-          Open
-        </Button>
-      ) : null}
-    </div>
-  );
-}
 
 /** An open subagent, read from the store: its header, transcript (once the
  *  container's entrance settled, `ready`) and the steer field. */

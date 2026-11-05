@@ -37,6 +37,7 @@ export function NoticeLine({
   actions,
   tone = "muted",
   wrap = false,
+  shrinkLead = false,
   className,
   children,
   ...rest
@@ -53,6 +54,9 @@ export function NoticeLine({
   tone?: "muted" | "strong";
   /** Let the lead wrap instead of truncating (plain system text). */
   wrap?: boolean;
+  /** The lead carries its own details (they morph with it): it takes the
+   *  line's width and shrinks, so their run truncates inside it. */
+  shrinkLead?: boolean;
   className?: string;
   children?: ReactNode;
   role?: string;
@@ -90,7 +94,7 @@ export function NoticeLine({
               // The weight parts a lead from its details; a lone lead or a sentence stays regular.
               !step && run.length > 0 && "font-medium",
               fold && NOTICE_LIFT,
-              wrap ? "min-w-0 whitespace-pre-wrap break-words" : "shrink-0",
+              wrap ? "min-w-0 whitespace-pre-wrap break-words" : shrinkLead ? "flex min-w-0" : "shrink-0",
             )}
           >
             {lead}
@@ -98,16 +102,7 @@ export function NoticeLine({
           {target != null ? (
             <span className={cn("text-foreground", wrap ? "" : "min-w-0 truncate")}>{target}</span>
           ) : null}
-          {run.length ? (
-            <span data-slot="notice-details" className={cn("text-muted-foreground", wrap ? "" : "min-w-0 truncate")}>
-              {run.map((detail, i) => (
-                <Fragment key={i}>
-                  {i > 0 ? joiner(run[i - 1]) : null}
-                  {detail}
-                </Fragment>
-              ))}
-            </span>
-          ) : null}
+          {run.length ? <DetailRun items={run} wrap={wrap} /> : null}
           {trailing ? <span className="ms-1 flex shrink-0 items-center">{trailing}</span> : null}
           {fold ? (
             <ChevronRight
@@ -138,6 +133,34 @@ export function NoticeLine({
 
 /** A line that opens lifts its lead and chevron at once, on hover and on its trigger's keyboard focus alike. */
 const NOTICE_LIFT = "group-hover/notice:text-foreground group-has-focus-visible/notice:text-foreground";
+
+/**
+ * A notice's details as one muted comma run that truncates with one
+ * ellipsis. Every detail after the first is one unbreakable box carrying the
+ * comma before it, so a cut drops the whole detail with its comma and the
+ * ellipsis never lands on punctuation ("no blocking findings…", never
+ * "no blocking findings, a…"); the first is cut mid-phrase only when it alone
+ * is too wide.
+ */
+export function DetailRun({ items, wrap = false, className }: { items: ReactNode[]; wrap?: boolean; className?: string }) {
+  return (
+    <span data-slot="notice-details" className={cn("text-muted-foreground", wrap ? "" : "min-w-0 truncate", className)}>
+      {items.map((detail, i) =>
+        i === 0 || wrap ? (
+          <Fragment key={i}>
+            {i > 0 ? joiner(items[i - 1]) : null}
+            {detail}
+          </Fragment>
+        ) : (
+          <span key={i} data-slot="notice-detail" className="inline-block whitespace-pre">
+            {joiner(items[i - 1])}
+            {detail}
+          </span>
+        ),
+      )}
+    </span>
+  );
+}
 
 /** A comma between details, unless the one before already ends its phrase ("Backfill the old rows? Yes"). */
 function joiner(before: ReactNode): string {

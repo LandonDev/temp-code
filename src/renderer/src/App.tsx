@@ -2185,9 +2185,8 @@ export default function App() {
     [chooseFolder, onSelectProject],
   );
 
-  const onRemoveProject = useCallback(
-    (path: string, options: { purgeData: boolean }) => {
-      const normalized = normalizeProjectPath(path);
+  const removeLocally = useCallback(
+    (normalized: string, options: { purgeData: boolean }) => {
       const wasCurrent = sameProjectPath(projectStore.getState().projectCwd, normalized);
       const remaining = options.purgeData
         ? forgetProject(normalized)
@@ -2202,10 +2201,6 @@ export default function App() {
       const projectSessions = sessions.filter((_, index) =>
         sameProjectPath(rebased[index].cwd, normalized),
       );
-      if (options.purgeData) {
-        const removed = workspaceByPath(workspaceStore.getSnapshot().workspaces, normalized);
-        if (removed) void deleteWorkspace(removed.id).catch(() => undefined);
-      }
       const projectSessionIds = new Set(
         projectSessions.map((session) => session.id),
       );
@@ -2281,6 +2276,17 @@ export default function App() {
       }
     },
     [activeTabId, onSelectProject],
+  );
+
+  const onRemoveProject = useCallback(
+    (path: string, options: { purgeData: boolean }): Promise<void> | void => {
+      const normalized = normalizeProjectPath(path);
+      // Removing asks the host first: its refusal is the confirm's red line, and nothing here is gone yet.
+      const removed = options.purgeData ? workspaceByPath(workspaceStore.getSnapshot().workspaces, normalized) : undefined;
+      if (removed) return deleteWorkspace(removed.id).then(() => removeLocally(normalized, options));
+      removeLocally(normalized, options);
+    },
+    [removeLocally],
   );
 
   const onRestoreProject = useCallback(

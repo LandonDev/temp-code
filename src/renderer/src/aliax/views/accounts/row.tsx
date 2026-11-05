@@ -11,7 +11,7 @@ import { cn } from "@renderer/lib/cn";
 import { DEFAULT_COLOR, displayName } from "@aliax/lib/accounts";
 import { EditAccountDialog } from "@aliax/views/edit-account-dialog";
 import { limitOf, rowLine, type OwnerView, type RowAction } from "./rowLine";
-import { planFacts, RowFacts, UsageBars, type BarColumns } from "./usage";
+import { barResets, planFacts, RowFacts, UsageBars, type BarColumns } from "./usage";
 
 export { barColumns, MAX_BARS, planFacts, ResetTime, RowFacts, UsageBars, type BarColumns, type PlanFact, type PlanLine } from "./usage";
 
@@ -19,6 +19,8 @@ export interface AccountRowProps {
   serviceId: ServiceId;
   profile: ProfileView;
   report?: UsageReport;
+  /** The row's last report while a Refresh masks `report` (the page's `layout`). */
+  last?: UsageReport;
   headroom?: AccountHeadroom;
   columns: BarColumns;
   now: number;
@@ -35,7 +37,7 @@ export interface AccountRowProps {
   onEdited: () => void;
 }
 
-export function AccountRow({ serviceId, profile, report, headroom, columns, now, owner, mint, billingUrl, switching, onUse, onAction, onSetupToken, onRemove, onEdited }: AccountRowProps) {
+export function AccountRow({ serviceId, profile, report, last, headroom, columns, now, owner, mint, billingUrl, switching, onUse, onAction, onSetupToken, onRemove, onEdited }: AccountRowProps) {
   const [editing, setEditing] = useState(false);
   const name = displayName(profile);
   const line = rowLine(profile, report, owner, mint, now, limitOf(report, headroom, now));
@@ -53,11 +55,12 @@ export function AccountRow({ serviceId, profile, report, headroom, columns, now,
       className="@max-3xl/accounts:gap-y-2 @max-3xl/accounts:[&>[data-slot=item-actions]]:contents [&>[data-slot=item-actions]]:gap-3"
       media={<span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: profile.color ?? DEFAULT_COLOR }} />}
       title={<span className={cn("truncate", profile.active ? null : "font-normal text-muted-foreground")}>{name}</span>}
-      description={plan.name || plan.detail.length || line || mask ? <RowFacts line={line} plan={plan} mask={mask} now={now} onAction={onAction} /> : undefined}
+      description={plan.name || plan.detail.length || line || mask ? <RowFacts line={line} plan={plan} mask={mask} now={now} shownResets={barResets(report, columns, now)} onAction={onAction} /> : undefined}
     >
       <UsageBars
         name={name}
         report={report}
+        last={last}
         headroom={headroom}
         columns={columns}
         now={now}

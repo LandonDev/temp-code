@@ -81,7 +81,10 @@ describe("slashCommandStore", () => {
     expect(slashCommandStore.peek("local", "claude", "/repo")).toEqual([]);
     expect(slashCommandStore.getSnapshot().get(commandKey("local", "claude", "/repo"))?.failed).toBe(true);
     link.fail = false;
-    await slashCommandStore.refresh("local", "claude", "/repo");
+    const again = slashCommandStore.refresh("local", "claude", "/repo");
+    // While it is asked again the failure is gone: the menu reads Loading…, never the old failure first.
+    expect(slashCommandStore.getSnapshot().has(commandKey("local", "claude", "/repo"))).toBe(false);
+    await again;
     expect(slashCommandStore.getSnapshot().get(commandKey("local", "claude", "/repo"))?.failed).toBeFalsy();
   });
 

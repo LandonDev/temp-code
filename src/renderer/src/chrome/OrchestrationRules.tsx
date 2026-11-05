@@ -3,6 +3,7 @@ import { registry } from "../lib/connection";
 import { useEnvironmentStatuses } from "../lib/connection/status";
 import { loadToast } from "../components/ui/toaster";
 import { Fragment, useEffect, useId, useMemo, useState } from "react";
+import { TruncateTip } from "../components/tip";
 import { ChevronRight, Plus } from "./icons";
 import { HarnessIcon } from "./HarnessIcon";
 import { confirmAction } from "./ConfirmDialog";
@@ -392,7 +393,7 @@ function CapSelect({
  * widest rung, "Extra high"), so the pairs line up down the table.
  */
 const MODEL_ROW = "@max-[36rem]/page:flex @max-[36rem]/page:flex-wrap @max-[36rem]/page:items-center @max-[36rem]/page:gap-x-3 @max-[36rem]/page:gap-y-1 @max-[36rem]/page:py-2";
-const MODEL_NAME = "@max-[36rem]/page:h-5 @max-[36rem]/page:basis-full @max-[36rem]/page:px-0";
+const MODEL_NAME = "@max-[36rem]/page:h-5 @max-[36rem]/page:max-w-none @max-[36rem]/page:basis-full @max-[36rem]/page:px-0";
 const MODEL_CONTROL = "@max-[36rem]/page:h-auto @max-[36rem]/page:px-0";
 
 /** One model's policy. With no `model` the rules name a model this host's
@@ -425,9 +426,16 @@ function ModelRow({
   const max = range[range.length - 1];
   return (
     <TableRow data-stale={model ? undefined : ""} className={MODEL_ROW}>
-      <TableCell className={cn("w-full truncate", MODEL_NAME, approved && model ? "text-foreground" : "text-muted-foreground")}>
-        {name}
-        {model ? null : <span className="ms-1 text-xs">not on this host</span>}
+      {/* `max-w-0` bounds the cell to what the controls leave, so a long name
+          (a stale id and "not on this host") is cut here, never pushing the
+          effort pair past the table's edge. */}
+      <TableCell className={cn("w-full max-w-0", MODEL_NAME, approved && model ? "text-foreground" : "text-muted-foreground")}>
+        <TruncateTip text={model ? name : `${name}, not on this host`}>
+          <span data-slot="model-name" className="block truncate">
+            {name}
+            {model ? null : <span className="ms-1 text-xs">not on this host</span>}
+          </span>
+        </TruncateTip>
       </TableCell>
       <TableCell className={MODEL_CONTROL}>
         <ChoiceSelect

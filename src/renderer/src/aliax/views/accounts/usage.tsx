@@ -34,10 +34,11 @@ const CELL = "flex min-w-0 flex-1 basis-0 flex-col gap-1 @3xl/accounts:w-34 @3xl
 /**
  * The cells' box. Stacked under the name, the cells wrap as many to a line as
  * hold a whole column (8.5rem: two in a 400px window), so a label and its
- * reset are never cut to "We…" and "Resets 1…"; from 48rem they are the
- * table's fixed columns in one line.
+ * reset are never cut to "We…" and "Resets 1…"; the tracks are filled, not
+ * fitted, so a row with fewer cells keeps the page's column widths. From
+ * 48rem they are the table's fixed columns in one line.
  */
-const CELLS = "grid grid-cols-[repeat(auto-fit,minmax(min(8.5rem,100%),1fr))] gap-3 @3xl/accounts:flex";
+const CELLS = "grid grid-cols-[repeat(auto-fill,minmax(min(8.5rem,100%),1fr))] gap-3 @3xl/accounts:flex";
 /** The bars' box: the window columns and Rate, growing by how many it holds under 48rem. */
 const GROW = "min-w-0 flex-[var(--grow)_1_0%] @3xl/accounts:flex-none";
 /** The status words of a row with no windows, over the window columns it stands in for (`--span`). */
@@ -124,7 +125,32 @@ function WindowDetail({ w, now }: { w: UsageWindow; now: number }) {
   );
 }
 
-const spacer = (key: string) => <span key={key} aria-hidden data-slot="usage-cell" className={CELL} />;
+/**
+ * An empty column that keeps a row's cells on the page's columns. Stacked
+ * there is no table to line up with, so one that ends a row is hidden
+ * (`trailing`): it would start an empty grid line and its gap.
+ */
+const spacer = (key: string, trailing = false) => (
+  <span key={key} aria-hidden data-slot="usage-cell" className={cn(CELL, trailing ? "@max-3xl/accounts:hidden" : null)} />
+);
+
+/** One window's cell while its report loads: the 16px label line, the 4px bar, the 16px reset line. */
+const cellSkeleton = (key: number) => (
+  <span key={key} data-slot="usage-cell" className={CELL}>
+    <span className="flex h-4 items-center">
+      <Skeleton className="h-3 w-full" />
+    </span>
+    <Skeleton className="h-1 w-full" />
+    <span className="flex h-4 items-center">
+      <Skeleton className="h-3 w-2/3" />
+    </span>
+  </span>
+);
+
+/** The reset times a row's bars already say under them, as words: the state line never says one twice. */
+export function barResets(report: UsageReport | undefined, columns: BarColumns, now: number): string[] {
+  return (report?.windows.slice(0, columns.windows) ?? []).flatMap((w) => (w.resetsAt !== undefined && w.resetsAt > now ? [resetWords(w.resetsAt, now)] : []));
+}
 
 /**
  * The bars while their report loads, in the shape that lands: each cell its
@@ -152,23 +178,13 @@ export function UsageCellsSkeleton({
         <span data-slot="usage-words-skeleton" className={cn(SPAN, "flex h-4 items-center")} style={{ "--span": keyed.span } as CSSProperties}>
           <Skeleton className="h-3 w-24 max-w-full" />
         </span>
-        {keyed.rate ? spacer("rate") : null}
+        {keyed.rate ? spacer("rate", true) : null}
       </span>
     );
   }
   return (
     <span data-slot="usage-cells" className={cn(CELLS, readOnly ? null : "py-1.5", className)} aria-busy="true">
-      {Array.from({ length: cells }, (_, i) => (
-        <span key={i} data-slot="usage-cell" className={CELL}>
-          <span className="flex h-4 items-center">
-            <Skeleton className="h-3 w-full" />
-          </span>
-          <Skeleton className="h-1 w-full" />
-          <span className="flex h-4 items-center">
-            <Skeleton className="h-3 w-2/3" />
-          </span>
-        </span>
-      ))}
+      {Array.from({ length: cells }, (_, i) => cellSkeleton(i))}
     </span>
   );
 }
@@ -187,6 +203,7 @@ export function UsageBars({
   headroom,
   columns,
   now,
+  last,
   keyed = false,
   readOnly = false,
   className,
@@ -194,6 +211,8 @@ export function UsageBars({
   className?: string;
   name: string;
   report: UsageReport | undefined;
+  /** The row's last report while a Refresh masks `report`: its skeleton takes the shape that report landed in. */
+  last?: UsageReport;
   headroom: AccountHeadroom | undefined;
   columns: BarColumns;
   now: number;
@@ -203,18 +222,31 @@ export function UsageBars({
   readOnly?: boolean;
 }) {
   const span = Math.max(1, columns.windows);
-  if (report === undefined)
+  // Nothing seen yet: the page's columns, every one waiting.
+  if (report === undefined && last === undefined)
     return <UsageCellsSkeleton cells={span + (columns.rate ? 1 : 0)} keyed={keyed ? { span, rate: columns.rate } : undefined} readOnly={readOnly} className={className} />;
-  const windows = report.windows.slice(0, columns.windows);
+  // A Refresh: the row waits in the shape its last report landed in, and the
+  // Rate bar, which a refresh never masks, stays.
+  const loading = report === undefined;
+  const shape = (report ?? last)!;
+  const windows = shape.windows.slice(0, columns.windows);
   const rate = headroom ? headroomLook(headroom, now) : null;
   const count = windows.length + (rate ? 1 : 0);
-  const status = keyed ? keyStatus(report) : null;
-  const note = keyed ? null : report.windows.length === 0 ? (report.rateLimit ? "No usage yet" : (report.note ?? report.extra ?? "Usage unavailable")) : null;
-  const words = note ?? status?.text ?? null;
+  const status = keyed && !loading ? keyStatus(shape) : null;
+  const note = keyed || loading ? null : shape.windows.length === 0 ? (shape.rateLimit ? "No usage yet" : (shape.note ?? shape.extra ?? "Usage unavailable")) : null;
+  const words: ReactNode =
+    loading && (keyed || shape.windows.length === 0) ? (
+      <span className="flex h-4 items-center">
+        <Skeleton className="h-3 w-24 max-w-full" />
+      </span>
+    ) : (
+      (note ?? status?.text ?? null)
+    );
   const grow = { "--grow": (windows.length > 0 ? span : 0) + (columns.rate ? 1 : 0) } as CSSProperties;
   const cells = (
     <>
-      {windows.map((w) => {
+      {windows.map((w, i) => {
+        if (loading) return cellSkeleton(i);
         const left = Math.round(percentLeft(w));
         const label = windowName(w.label);
         const resets = w.resetsAt !== undefined && w.resetsAt > now ? w.resetsAt : null;
@@ -232,7 +264,7 @@ export function UsageBars({
           />
         );
       })}
-      {windows.length > 0 ? Array.from({ length: Math.max(0, columns.windows - windows.length) }, (_, i) => spacer(`w${i}`)) : null}
+      {windows.length > 0 ? Array.from({ length: Math.max(0, columns.windows - windows.length) }, (_, i) => spacer(`w${i}`, !rate && !columns.rate)) : null}
       {rate ? (
         <Bar
           label="Rate"
@@ -243,7 +275,7 @@ export function UsageBars({
           name={`Rate: ${rate.until ? `${rate.text} for ${rate.until}` : rate.text}`}
         />
       ) : columns.rate ? (
-        spacer("rate")
+        spacer("rate", true)
       ) : null}
     </>
   );
@@ -251,15 +283,21 @@ export function UsageBars({
     <span data-slot="usage-cells" className={cn("flex items-start gap-3", className)}>
       {words !== null ? (
         <span
-          className={cn(SPAN, "truncate text-xs leading-4", readOnly ? null : "py-1.5", status?.tone === "warning" ? "text-warning" : "text-muted-foreground")}
+          data-slot={loading ? "usage-words-skeleton" : undefined}
+          className={cn(
+            SPAN,
+            "truncate text-xs leading-4",
+            readOnly ? null : "py-1.5",
+            status?.tone === "warning" ? "text-warning" : "text-muted-foreground",
+          )}
           style={{ "--span": span } as CSSProperties}
         >
           {words}
         </span>
       ) : null}
       {count > 0 ? (
-        readOnly ? (
-          <span className={cn(GROW, CELLS)} style={grow}>
+        readOnly || loading ? (
+          <span className={cn(GROW, CELLS, loading && !readOnly ? "py-1.5" : null)} style={grow} aria-busy={loading || undefined}>
             {cells}
           </span>
         ) : (
@@ -299,7 +337,7 @@ export function UsageBars({
           </Popover>
         )
       ) : columns.rate ? (
-        spacer("rate")
+        spacer("rate", true)
       ) : null}
     </span>
   );
@@ -353,20 +391,25 @@ export function RowFacts({
   plan,
   mask,
   now,
+  shownResets = [],
   onAction,
 }: {
   line: RowLine | null;
   plan: PlanLine;
   mask?: string | null;
   now: number;
+  /** The resets the row's bars already say (`barResets`): Limited says its own only when no bar does. */
+  shownResets?: string[];
   onAction?: (kind: RowAction["kind"]) => void;
 }) {
   if (!line && !hasPlan(plan) && !mask) return null;
+  const limitReset = line?.limited?.resetsAt ?? null;
+  const ownReset = limitReset !== null && !shownResets.includes(resetWords(limitReset, now)) ? limitReset : null;
   return (
     <>
       {mask ? <span className="tabular-nums">{mask}</span> : null}
       {line?.limited ? (
-        <StatusMark state="waiting" glyph={false} word={line.text} detail={line.limited.resetsAt !== null ? <ResetTime at={line.limited.resetsAt} now={now} /> : undefined} />
+        <StatusMark state="waiting" glyph={false} word={line.text} detail={ownReset !== null ? <ResetTime at={ownReset} now={now} /> : undefined} />
       ) : line ? (
         // Two facts, as a status says them: the state in medium weight and its tone, the detail regular and muted 4px after it.
         <span data-slot="row-line" className="flex flex-wrap items-center gap-x-1">

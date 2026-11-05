@@ -144,10 +144,11 @@ export function probeDoctor(
     .request<Doctor>("doctor.get")
     .then((doctor) => {
       probe.last = doctor;
+      // Stamped on an answer only: a failed read is asked again, never served from the cache.
+      probe.at = Date.now();
       return doctor;
     })
     .finally(() => {
-      probe.at = Date.now();
       probe.inflight = null;
     });
   return probe.inflight;

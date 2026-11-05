@@ -1,4 +1,4 @@
-// A18: the agent detail's header in three states, for a static look.
+// A18: the agent detail's header (AgentDetailHeader.tsx) in four states, for a static look.
 import { setHarnessModels } from "../../../lib/models";
 import { agentStatus } from "../../../lib/threads/agents";
 import { FLEET, fixtureMeta } from "./fleetFixture";

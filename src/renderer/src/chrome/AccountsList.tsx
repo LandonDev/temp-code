@@ -3,7 +3,7 @@ import type { ProfileView, UsageReport } from "aliax-core/shared/types";
 import { Check, Pin } from "./icons";
 import { displayName } from "../aliax/lib/accounts";
 import { limitOf, rowLine } from "../aliax/views/accounts/rowLine";
-import { barColumns, planFacts, RowFacts, UsageBars, type BarColumns } from "../aliax/views/accounts/usage";
+import { barColumns, barResets, planFacts, RowFacts, UsageBars, type BarColumns } from "../aliax/views/accounts/usage";
 import { cn } from "../lib/cn";
 import { sourceLine, type AccountScope } from "../lib/accountScope";
 import type { AccountHeadroom, AccountProvider, MintState, ProviderAccounts } from "@server/shared/accounts";
@@ -153,7 +153,7 @@ function AccountRow({
           </span>
           {line || plan.name || plan.detail.length ? (
             <span data-slot="account-facts" className="flex min-w-0 flex-col text-xs leading-4 text-muted-foreground">
-              <RowFacts line={line} plan={plan} now={now} />
+              <RowFacts line={line} plan={plan} now={now} shownResets={barResets(report, columns, now)} />
             </span>
           ) : null}
         </span>

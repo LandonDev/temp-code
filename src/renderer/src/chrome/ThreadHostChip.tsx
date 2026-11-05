@@ -16,6 +16,7 @@ import {
   useMoving,
 } from "../lib/threadMove";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { Facts } from "../surfaces/settings/hosts/Facts";
 import { retargetDraft } from "./DraftHostPicker";
 import { useToastSync } from "./toastSync";
 import { Server } from "./icons";
@@ -101,7 +102,8 @@ export function useThreadHost(sessionId: string | null): {
 }
 
 /** The confirm before a thread with messages moves, saying what travels
- *  (`session.move.preview`). The result, or the refusal, arrives as a toast. */
+ *  (`session.move.preview`), its facts one comma run. The move runs inside
+ *  the confirm: a refusal is its red line, the result a toast. */
 export function MoveThreadConfirm({
   sessionId,
   to,
@@ -130,13 +132,7 @@ export function MoveThreadConfirm({
     <ConfirmDialog
       title={`Move this thread to ${toName}?`}
       body={`Its subagents and pages move with it; undo history stays on ${fromName}.`}
-      note={
-        <span className="flex flex-wrap gap-x-2">
-          {movePreviewParts(preview).map((part) => (
-            <span key={part}>{part}</span>
-          ))}
-        </span>
-      }
+      note={<Facts parts={movePreviewParts(preview)} />}
       confirmLabel="Move thread"
       onCancel={onClose}
       // The move runs inside the confirm: a refusal is its red line, not a toast.

@@ -20,6 +20,9 @@ describe("InboxPrDiff", () => {
     const before = row.querySelector("svg")!;
     const open = () => row.getAttribute("aria-expanded") === "true";
     expect(before.getAttribute("class")).toContain("duration-(--dur-base)");
+    // 12px beside the 12px path, as every disclosure beside 12-13px words.
+    expect(before.getAttribute("class")).toContain("size-3");
+    expect(before.getAttribute("class")).not.toContain("size-3.5");
     expect(before.getAttribute("class")?.includes("rotate-90")).toBe(open());
     const was = open();
     fireEvent.click(row);
@@ -43,6 +46,9 @@ describe("InboxPrDiff", () => {
     const { container } = render(<InboxPrDiff diff={diff} />);
     const counts = [...container.querySelectorAll<HTMLElement>("[data-slot=counts]")];
     expect(counts.map((c) => c.textContent)).toEqual(["+3−2", "+1−1", "+2−1"]);
+    // "2 files" sits 4px from its tally.
+    expect(counts[0].parentElement!.className).toContain("gap-1");
+    expect(counts[0].parentElement!.className).not.toContain("gap-3");
     for (const c of counts) {
       expect(c.className).toContain("font-sans");
       expect(c.className).toContain("gap-1");

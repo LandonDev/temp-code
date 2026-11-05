@@ -69,3 +69,25 @@ describe("Rail foot", () => {
     expect(screen.getByRole("button", { name: /^Settings/ })).toBeTruthy();
   });
 });
+
+describe("Remove workspace", () => {
+  it("waits on the host's removal and keeps a refusal in the confirm, its words the host's", async () => {
+    const { act, waitFor, within } = await import("@testing-library/react");
+    const { requestProjectRailAction } = await import("../lib/projectRailActions");
+    let refuse: (err: Error) => void = () => {};
+    const onRemoveProject = vi.fn(() => new Promise<void>((_, reject) => (refuse = reject)));
+    render(
+      <ProjectRail cwd="~" recents={[]} busyPaths={new Set()} onSelectProject={() => {}} onOpenProject={() => {}} onRemoveProject={onRemoveProject} />,
+    );
+    act(() => requestProjectRailAction({ kind: "remove", path: "/x/alpha" }));
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
+    expect(onRemoveProject).toHaveBeenCalledWith("/x/alpha", { purgeData: true });
+    // The verb waits on the host's work.
+    await waitFor(() => expect(dialog.getAttribute("aria-busy")).toBe("true"));
+    await act(async () => refuse(new Error("workspace.delete refused: threads are running")));
+    expect(dialog.textContent).toContain("threads are running");
+    expect(screen.getByRole("alertdialog")).toBe(dialog);
+    expect(dialog.getAttribute("aria-busy")).toBeNull();
+  });
+});

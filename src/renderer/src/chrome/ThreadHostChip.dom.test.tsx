@@ -24,13 +24,13 @@ afterEach(() => {
 });
 
 describe("the move confirm", () => {
-  it("says what travels as one fact per element, set apart by margin, never a middle dot", async () => {
+  it("says what travels as one comma run of facts, never a middle dot or space alone", async () => {
     render(<MoveThreadConfirm sessionId="s1" to="env_box" toName="box" fromName="This Mac" onClose={() => {}} />);
     const branch = await screen.findByText("Branch ios/home travels too");
     const line = branch.parentElement!;
     expect(Array.from(line.children, (c) => c.textContent)).toEqual(["Branch ios/home travels too", "3 uncommitted files travel too"]);
     expect(screen.getByText("Its subagents and pages move with it; undo history stays on This Mac.")).toBeTruthy();
-    expect(line.className).toContain("gap-x-2");
+    expect(line.dataset.slot).toBe("facts");
     expect(document.querySelector("[data-confirm-note]")?.textContent).not.toContain("·");
   });
 });

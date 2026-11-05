@@ -222,10 +222,17 @@ export function WatchingLine({
   const shown = usePaneVisible();
   const now = useClock(since != null && shown);
   const said = plainStatus(STATUS_WORD.watching, subject ?? null);
+  const aged = since != null && now > 0;
   const body = (
     <>
-      <StatusMark state="watching" detail={subject} className={cn("min-w-0 text-[13px]", onOpen && WATCH_LIFT)} />
-      {since != null && now > 0 ? (
+      {/* The subject and the age are two facts of one style: a comma parts them, as Facts does
+          ("Watching Review the perf pass, 3m"); the word alone needs none, its weight parts it. */}
+      <StatusMark
+        state="watching"
+        detail={subject}
+        className={cn("min-w-0 text-[13px]", onOpen && WATCH_LIFT, subject && aged && "[&_[data-slot=status-detail]]:after:content-[',']")}
+      />
+      {aged ? (
         <span aria-hidden className={cn(stale && "text-warning")}>
           {duration(Math.max(0, now - since))}
         </span>

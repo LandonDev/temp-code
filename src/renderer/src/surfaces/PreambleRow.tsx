@@ -5,7 +5,8 @@ import { cn } from "../lib/cn";
 
 /**
  * The project rules a thread's first message opened with, folded to one
- * line above the brief the person wrote: "Project rules  212 words", its
+ * line above the brief the person wrote: "Project rules 212 words" (the
+ * lead medium, the count regular), its
  * chevron trailing as every disclosure's does and its text ending on the
  * bubble's right edge (the row's 8px padding hangs past it). The
  * caret opens the text in place; the bubble's own clamp toggle never sees
@@ -21,7 +22,8 @@ export function PreambleRow({ text, words }: { text: string; words: number }) {
         onClick={stop}
         className="-mr-2 flex h-6 w-fit items-center gap-1 self-end rounded-md px-2 text-xs text-muted-foreground hover:text-foreground"
       >
-        <span>Project rules</span>
+        {/* The lead in medium, its count regular: two facts part by weight, never by space alone. */}
+        <span className="font-medium">Project rules</span>
         <span className="tabular-nums">
           {words} word{words === 1 ? "" : "s"}
         </span>

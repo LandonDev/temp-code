@@ -164,7 +164,7 @@ type Props = {
   /** Add a workspace: this machine's folder dialog, or a host's folders when `environmentId` is another machine. */
   /** The folder picker; Add workspace passes its own title. */
   onOpenProject: (environmentId?: string, title?: string) => void;
-  onRemoveProject?: (path: string, options: { purgeData: boolean }) => void;
+  onRemoveProject?: (path: string, options: { purgeData: boolean }) => Promise<void> | void;
   activeSessionId?: string;
   onSelectAgent?: (sessionId: string) => void;
   onOpenWhatsNew?: (version: string, markdown?: string) => void;
@@ -437,9 +437,8 @@ export function ProjectRail({
     [groupLabels, workspaces],
   );
 
-  const onConfirmDelete = () => {
-    if (removing) onRemoveProject?.(removing.path, { purgeData: true });
-  };
+  // The host's work, so the verb waits and a refusal stays in the confirm.
+  const onConfirmDelete = () => (removing ? onRemoveProject?.(removing.path, { purgeData: true }) : undefined);
 
   // The draggable rows: a linked row moves as one, by its lead folder.
   const pinnedIds = rows.pinned.map((item) => item.path);

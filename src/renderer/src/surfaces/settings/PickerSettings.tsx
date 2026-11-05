@@ -1,33 +1,44 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
-import { PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
+import { Button } from "../../components/ui/button";
+import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
-import {
-  getHarnessAvailabilitySnapshot,
-  hasProbedHarnessAvailability,
-  isHarnessAvailable,
-  probeHarnessAvailability,
-  subscribeHarnessAvailability,
-} from "../../lib/harness/availability";
+import { registry } from "../../lib/connection";
+import { useHostRead } from "../../lib/connection/hostRead";
+import { readHarnessAvailability } from "../../lib/harness/availability";
 import { isPickerProviderVisible, savePickerProviderVisible } from "../../lib/models";
 import { HARNESSES, HARNESS_TITLE, type HarnessId } from "../../lib/session";
 import { loadClaudeHooks, saveClaudeHooks } from "../../lib/settings";
 
 /** Which installed CLIs the model picker lists, on Settings › Thread defaults. */
 export function PickerSection() {
-  useSyncExternalStore(subscribeHarnessAvailability, getHarnessAvailabilitySnapshot, getHarnessAvailabilitySnapshot);
-  useEffect(() => {
-    void probeHarnessAvailability();
-  }, []);
-  // Its rows in their shape until the probe answers, so the sections under it never move down.
-  if (!hasProbedHarnessAvailability()) {
+  const link = registry.primary();
+  // The page's read (docs/DESIGN.md "A page…"): a failure says so with Retry, never "no CLI installed".
+  const read = useHostRead(link, () => readHarnessAvailability({ environmentId: link.environmentId }));
+  const availability = read.value;
+  if (!availability && read.error) {
+    return (
+      <PageSection
+        title="Model picker"
+        action={
+          <Button variant="ghost" size="sm" onClick={read.retry}>
+            Retry
+          </Button>
+        }
+      >
+        <PageError>{read.error}</PageError>
+      </PageSection>
+    );
+  }
+  // Its rows in their shape until the host answers, so the sections under it never move down.
+  if (!availability) {
     return (
       <PageSection title="Model picker">
         <PageRowsSkeleton rows={2} media control="switch" />
       </PageSection>
     );
   }
-  const installed = HARNESSES.filter((harness) => isHarnessAvailable(harness));
+  const installed = HARNESSES.filter((harness) => availability[harness]);
   if (installed.length === 0) return null;
   return (
     <PageSection title="Model picker">

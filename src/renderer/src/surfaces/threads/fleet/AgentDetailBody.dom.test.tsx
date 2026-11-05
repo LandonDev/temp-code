@@ -38,7 +38,8 @@ vi.mock("../../AgentTranscript", () => ({
   },
 }));
 
-import { AgentDetailBody, AgentDetailHeader } from "./AgentDetailBody";
+import { AgentDetailBody } from "./AgentDetailBody";
+import { AgentDetailHeader } from "./AgentDetailHeader";
 import { setHarnessModels, resetHarnessModelOverlays } from "../../../lib/models";
 import { TurnEnd } from "../../transcript/TurnEnd";
 import type { TurnSession } from "../../turnState";

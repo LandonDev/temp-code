@@ -8,7 +8,7 @@ import { formatTokens } from "../lib/contextUsage";
 import { useClock } from "../lib/turnClock";
 import { usePaneVisible } from "../hooks/paneVisibility";
 import { spanWords } from "./transcript/thinking";
-import { NoticeLine } from "./transcript/NoticeLine";
+import { DetailRun, NoticeLine } from "./transcript/NoticeLine";
 import { SwapIcon } from "../motion/IconSwap";
 import { MorphText } from "../motion/MorphText";
 import { cn } from "../lib/cn";
@@ -37,6 +37,7 @@ export function CompactionCard({ block }: { block: Block }) {
       glyph={<SwapIcon state={phase}>{GLYPH[phase]}</SwapIcon>}
       tone={failed ? "strong" : "muted"}
       wrap={failed}
+      shrinkLead={!failed}
       lead={
         <MorphText state={phase} className="min-w-0">
           <span className="flex min-w-0 items-center gap-1">
@@ -88,11 +89,7 @@ function outcomeDetails(meta: NonNullable<Block["compaction"]>): string[] {
 
 /** The details as one muted comma run that truncates once, as a notice's are. */
 function Details({ items }: { items: string[] }) {
-  return (
-    <span data-slot="notice-details" className="min-w-0 truncate text-muted-foreground tabular-nums">
-      {items.join(", ")}
-    </span>
-  );
+  return <DetailRun items={items} className="tabular-nums" />;
 }
 
 /** The time since the compaction started; a hidden pane does not tick. */

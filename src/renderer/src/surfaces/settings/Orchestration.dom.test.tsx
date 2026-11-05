@@ -528,6 +528,18 @@ describe("every provider of the host's catalog", () => {
     expect(saved().models["claude:retired"]).toEqual({ approved: true });
   });
 
+  it("bounds a model's name to what the controls leave, cut with its tip, so the effort pair stays in the table", () => {
+    render(<OrchestrationPage />);
+    const cell = screen.getByText("not on this host").closest("td")!;
+    // The cell takes the rest of the row and no more; the name truncates inside it.
+    expect(cell.className).toContain("w-full");
+    expect(cell.className).toContain("max-w-0");
+    expect(cell.className).toContain("@max-[36rem]/page:max-w-none");
+    const name = cell.querySelector<HTMLElement>("[data-slot=model-name]")!;
+    expect(name.className).toContain("truncate");
+    expect(name.textContent).toBe("retirednot on this host");
+  });
+
   it("offers only providers with models in a rule's dialog", async () => {
     render(<OrchestrationPage />);
     const dialog = await openRule("Bulk work");

@@ -135,6 +135,23 @@ describe("probeDoctor", () => {
     expect(link.calls).toHaveLength(2);
     expect(availabilityFromDoctor(first)).toMatchObject({ claude: true, codex: false, cursor: true, fx: false, grok: false });
   });
+
+  it("caches no failure: a refused read is asked again, and the availability probe stays unprobed", async () => {
+    const link = fakeLink({});
+    let refuse = true;
+    link.request = <T,>(method: string): Promise<T> => {
+      link.calls.push(method);
+      return refuse ? Promise.reject(new Error("refused")) : Promise.resolve({ claude: { found: true } } as T);
+    };
+    const { hasProbedHarnessAvailability, readHarnessAvailability, probeHarnessAvailability } = await import("../harness/availability");
+    await expect(readHarnessAvailability({ environmentId: "local" })).rejects.toThrow("refused");
+    await probeHarnessAvailability({ environmentId: "local" });
+    expect(hasProbedHarnessAvailability("local")).toBe(false);
+    expect(link.calls).toHaveLength(2);
+    refuse = false;
+    await readHarnessAvailability({ environmentId: "local" });
+    expect(hasProbedHarnessAvailability("local")).toBe(true);
+  });
 });
 
 describe("provider defaults", () => {

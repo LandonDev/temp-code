@@ -288,9 +288,18 @@ describe("AccountsView", () => {
       const mark = document.querySelector('[data-slot="status-mark"]') as HTMLElement;
       expect(mark.className).toContain("text-warning");
       expect(mark.querySelector('[data-slot="status-word"]')?.textContent).toBe("Limited");
-      expect(mark.querySelector('[data-slot="status-detail"]')?.textContent).toBe(`Resets ${dayClockTime(thursday, now)}`);
+      // The Weekly bar beside it already says when it refills: the line never says it twice.
+      expect(mark.querySelector('[data-slot="status-detail"]')).toBeNull();
+      expect(resets()).toContain(`Resets ${dayClockTime(thursday, now)}`);
       // No glyph: Limited is not Needs you.
       expect(mark.querySelector("svg")).toBeNull();
+    });
+
+    it("says Limited with its reset when no bar on the row says it", () => {
+      const until = now + 3 * HOUR;
+      render(<AccountsView {...props} now={now} usage={{ "claude-code": [{ profileName: "a@x.com", windows: [], rateLimit: { provider: "claude", until } }] }} />);
+      const mark = document.querySelector('[data-slot="status-mark"]') as HTMLElement;
+      expect(mark.querySelector('[data-slot="status-detail"]')?.textContent).toBe(`Resets ${clockTime(until)}`);
     });
 
     it("says Limited alone when what binds it names no time", () => {
@@ -414,13 +423,49 @@ describe("a row's bars while its report loads", () => {
     // Refresh masks every report; `layout` keeps the ones the columns came from.
     render(<AccountsView {...props} usage={{}} layout={{ "claude-code": [report] }} />);
     const main = screen.getByText("Main").closest('[data-slot="page-row"]') as HTMLElement;
-    const loading = main.querySelector<HTMLElement>('[data-slot="usage-cells"][aria-busy="true"]')!;
+    const loading = main.querySelector<HTMLElement>('[data-slot="usage-cells"] [aria-busy="true"]')!;
+    expect(loading.className).toContain("py-1.5");
     expect(loading.querySelectorAll("[data-slot=usage-cell]")).toHaveLength(3);
     cleanup();
     // With no layout, nothing to keep: one window column and Rate's.
     render(<AccountsView {...props} usage={{}} />);
     const bare = screen.getByText("Main").closest('[data-slot="page-row"]') as HTMLElement;
     expect(bare.querySelectorAll('[data-slot="usage-cells"][aria-busy="true"] [data-slot=usage-cell]')).toHaveLength(2);
+  });
+
+  it("wait in the shape each row's last report landed in through a Refresh, Rate's bar kept", () => {
+    const views: ServiceView[] = [
+      {
+        ...services()[0],
+        profiles: [
+          { name: "a@x.com", email: "a@x.com", nickname: "Main", createdAt: 1, active: true },
+          { name: "old@x.com", email: "old@x.com", createdAt: 2, active: false },
+          { name: "one@x.com", email: "one@x.com", createdAt: 3, active: false },
+        ],
+      },
+    ];
+    const last = {
+      "claude-code": [
+        report,
+        { profileName: "old@x.com", windows: [], rateLimit: { provider: "claude" as const } },
+        { profileName: "one@x.com", windows: [report.windows[0]] },
+      ],
+    };
+    render(<AccountsView {...props} views={views} usage={{}} layout={last} />);
+    const rowOf = (name: string) => screen.getByText(name).closest('[data-slot="page-row"]') as HTMLElement;
+    // Main: its two windows wait, and its Rate bar, which a refresh never masks, stays drawn.
+    const main = rowOf("Main");
+    expect(main.querySelectorAll("[data-slot=usage-cell] [data-slot=skeleton]").length).toBeGreaterThan(0);
+    expect(main.querySelector('[role=progressbar][aria-label^="Rate"]')).not.toBeNull();
+    // old@x.com landed on "No usage yet": it waits on that one line, not three bars.
+    const old = rowOf("old@x.com");
+    expect(old.querySelector("[data-slot=usage-words-skeleton]")).not.toBeNull();
+    expect([...old.querySelectorAll("[data-slot=usage-cell]")].filter((c) => c.children.length > 0)).toHaveLength(0);
+    // one@x.com had one window: one waiting cell, then the empty columns; stacked, the row-ending ones hide.
+    const one = rowOf("one@x.com");
+    const cells = [...one.querySelectorAll<HTMLElement>("[data-slot=usage-cell]")];
+    expect(cells.filter((c) => c.children.length > 0)).toHaveLength(1);
+    expect(cells.at(-1)!.className).toContain("@max-3xl/accounts:hidden");
   });
 
   it("is one 16px line over the window columns for a key, the shape its words land in", () => {
@@ -448,7 +493,7 @@ describe("a row's bars while its report loads", () => {
   it("stack two to a line under the name: each a whole column wide, never cut to a letter", () => {
     render(<AccountsView {...props} />);
     const details = screen.getByRole("button", { name: "Usage details for Main" });
-    expect(details.className).toContain("grid-cols-[repeat(auto-fit,minmax(min(8.5rem,100%),1fr))]");
+    expect(details.className).toContain("grid-cols-[repeat(auto-fill,minmax(min(8.5rem,100%),1fr))]");
     // From 48rem, the table's one line again.
     expect(details.className).toContain("@3xl/accounts:flex");
   });

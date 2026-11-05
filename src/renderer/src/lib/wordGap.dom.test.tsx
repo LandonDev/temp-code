@@ -78,8 +78,10 @@ describe("a line's words sit 4px apart, its glyph and chevron 8px", () => {
     const glyph = screen.getByTestId("glyph").parentElement!;
     const chevron = container.querySelector("[data-slot=notice-line] svg:not([data-testid])")!;
     expect(space(glyph, text("Context compacted"))).toBe(8);
-    expect(space(text("Context compacted"), text("414K → 3.6K, 1m 29s"))).toBe(4);
-    expect(space(text("414K → 3.6K, 1m 29s"), chevron)).toBe(8);
+    const run = container.querySelector("[data-slot=notice-details]")!;
+    expect(run.textContent).toBe("414K → 3.6K, 1m 29s");
+    expect(space(text("Context compacted"), run)).toBe(4);
+    expect(space(run, chevron)).toBe(8);
   });
 
   it("the compaction line: a medium lead, its details one comma run 4px after it, the glyph 8px before", () => {
@@ -88,7 +90,8 @@ describe("a line's words sit 4px apart, its glyph and chevron 8px", () => {
     );
     const glyph = container.querySelector("[data-slot=notice-line] > div > span")!;
     const lead = text("Context compacted");
-    const run = text("414K → 3.6K, 1m 29s");
+    const run = container.querySelector("[data-slot=notice-details]")!;
+    expect(run.textContent).toBe("414K → 3.6K, 1m 29s");
     expect(lead.className).toContain("font-medium");
     expect(container.querySelectorAll("[data-slot=notice-details]")).toHaveLength(1);
     expect(space(lead, run)).toBe(4);

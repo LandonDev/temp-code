@@ -102,6 +102,8 @@ function ProviderSection({ service, props, now, columns }: { service: ServiceVie
   const showHome = environments.length > 0 && service.id !== "cursor" && !keyed;
   const menu = service.installed && (service.canSaveCurrent || convertible > 0 || showHome);
   const reportOf = (p: ProfileView) => reports?.find((r) => r.profileName === p.name);
+  // While a Refresh masks the reports, each row's last one shapes its skeleton.
+  const lastOf = (p: ProfileView) => props.layout?.[service.id]?.find((r) => r.profileName === p.name);
   const ownerFor = (p: ProfileView): OwnerView | null => {
     if (!p.owner || p.static) return null;
     const env = environments.find((e) => e.id === p.owner);
@@ -188,6 +190,7 @@ function ProviderSection({ service, props, now, columns }: { service: ServiceVie
             serviceId={service.id}
             profile={p}
             report={reportOf(p)}
+            last={lastOf(p)}
             headroom={rates?.[p.name]}
             columns={columns}
             now={now}

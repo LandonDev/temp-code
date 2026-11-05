@@ -29,7 +29,7 @@ const CLI: Record<HarnessId, { name: string; install?: string }> = {
 const NONE: HarnessAvailability = Object.fromEntries(HARNESSES.map((id) => [id, false])) as HarnessAvailability;
 
 /** Per environment (thread K2): the box has its own CLIs. */
-type Probe = { availability: HarnessAvailability; inflight: Promise<void> | null; probedAt: number };
+type Probe = { availability: HarnessAvailability; inflight: Promise<HarnessAvailability> | null; probedAt: number };
 const probes = new Map<string, Probe>();
 const probeOf = (environmentId: string): Probe => {
   let probe = probes.get(environmentId);
@@ -86,24 +86,39 @@ export function harnessUnavailableHint(id: HarnessId): string {
 export function probeHarnessAvailability(
   options?: { force?: boolean; environmentId?: string },
 ): Promise<void> {
+  return readHarnessAvailability(options).then(
+    () => undefined,
+    () => undefined,
+  );
+}
+
+/**
+ * The probe as a read: the host's answer, or its failure. A failed read is
+ * never stamped as probed, so it never stands in as "no CLI installed"; the
+ * pickers keep every provider until the host has answered.
+ */
+export function readHarnessAvailability(
+  options?: { force?: boolean; environmentId?: string },
+): Promise<HarnessAvailability> {
   const environmentId = options?.environmentId ?? here();
   const probe = probeOf(environmentId);
   if (probe.inflight) return probe.inflight;
-  probe.inflight = probeDoctor(environmentId, options)
+  const inflight = probeDoctor(environmentId, options)
     .then((doctor) => {
       const found = availabilityFromDoctor(doctor);
       const next = { ...probe.availability };
       for (const id of HARNESSES) next[id] = isLiveHarness(id) && found[id];
       probe.availability = next;
-    })
-    .catch(() => undefined)
-    .finally(() => {
       probe.probedAt = Date.now();
+      return next;
+    })
+    .finally(() => {
       probe.inflight = null;
       // After the stamp, so a reader of hasProbedHarnessAvailability sees the answer and the stamp together.
       emit();
     });
-  return probe.inflight;
+  probe.inflight = inflight;
+  return inflight;
 }
 
 /** An environment was forgotten: its probe goes with it. */

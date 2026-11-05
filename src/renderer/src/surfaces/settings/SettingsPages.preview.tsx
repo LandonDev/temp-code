@@ -8,6 +8,7 @@ import { registry, type Link } from "../../lib/connection";
 import { NO_ANSWER } from "../../lib/connection/openRead";
 import { bindServer } from "../../lib/native";
 import { dropHarnessAvailability } from "../../lib/harness/availability";
+import { registerBuiltinHarnesses } from "../../lib/harness/register";
 import { resetCatalogProbes } from "../../lib/tcserver/catalog";
 import { resetPlanSettingsForTests } from "../../lib/tcserver/plans";
 import { rulesStore, type RulesCatalog } from "../../lib/tcserver/rules";
@@ -109,6 +110,8 @@ const link = {
 } as unknown as Link;
 
 Object.assign(registry, { primary: () => link, linkOf: () => link, link: () => link });
+// The live harnesses, as the app registers them at boot: the Model picker lists the CLIs the host found.
+registerBuiltinHarnesses();
 // Linear's reads go through lib/native's server router, which the app binds at boot.
 bindServer({ linkOf: () => link });
 

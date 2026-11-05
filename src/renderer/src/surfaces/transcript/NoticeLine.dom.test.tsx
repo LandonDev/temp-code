@@ -26,6 +26,22 @@ describe("NoticeLine", () => {
     expect(container.textContent).not.toMatch(/[·|•]/);
   });
 
+  it("carries each later detail with its comma as one box, so a cut never ends on punctuation", () => {
+    const { container } = render(<NoticeLine lead="Reviewed by Sol" details={["no blocking findings", "a minor", "merged"]} />);
+    const run = container.querySelector<HTMLElement>('[data-slot="notice-details"]')!;
+    expect(run.textContent).toBe("no blocking findings, a minor, merged");
+    const boxes = [...run.querySelectorAll<HTMLElement>('[data-slot="notice-detail"]')];
+    expect(boxes.map((b) => b.textContent)).toEqual([", a minor", ", merged"]);
+    for (const box of boxes) expect(box.className).toContain("inline-block");
+  });
+
+  it("a lead that carries its details shrinks, so their run truncates inside the column", () => {
+    const { container } = render(<NoticeLine shrinkLead lead={<span>Context compacted</span>} />);
+    const lead = container.querySelector<HTMLElement>('[data-slot="notice-line"] .flex-1 > span')!;
+    expect(lead.className).toContain("min-w-0");
+    expect(lead.className).not.toContain("shrink-0");
+  });
+
   it("takes no comma after a detail that ends its own phrase", () => {
     const { container } = render(<NoticeLine lead="Answered" details={["Backfill the old rows?", "Yes"]} />);
     expect(container.querySelector('[data-slot="notice-details"]')!.textContent).toBe("Backfill the old rows? Yes");
