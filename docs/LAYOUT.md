@@ -1040,7 +1040,10 @@ alone, with no header.
 The main view IS the plan file (`.temp-code/plan-<thread>.md`), rendered
 as the document column and streaming as it is written. The chat sits
 beside it while the plan takes shape and folds once the plan is written or
-handed off; a question forces it open. Header: "Plan" and the task count,
+handed off; a question forces it open. Header: the plan's own `#` heading
+(the thread's title until it has one; the document then starts under it,
+never repeating it as its first line; a project plan keeps "Project plan")
+and the task count,
 which once the plan is written and settled with no build yet is the Plan
 ready mark with the count as its detail;
 before the handoff one primary **Start build** opens `StartBuildDialog`
@@ -1048,7 +1051,8 @@ before the handoff one primary **Start build** opens `StartBuildDialog`
 then Build (Implement or Orchestrate), Model with its effort and Access as
 label-and-control rows, the orchestration rules only for Orchestrate;
 Start calls `plan.implement`, one build). After the handoff the header names the build
-(the build's tinted type glyph, "Implementation" and its `StatusMark`) and
+(the build's tinted type glyph, "Implementation" and its `StatusMark`, each
+8px from the next) and
 opens it. With the chat folded,
 a heading outline sits at the left edge when the board leaves it room
 beside the centred 672px document (a container query on the board,

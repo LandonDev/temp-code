@@ -6,7 +6,7 @@ import { StatusMark, threadStateOf } from "../../components/ui/status";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { sessionStore } from "../../lib/tcserver/store";
 import type { SessionMeta, ThreadType } from "../../lib/tcserver/types";
-import { planTasks, splitSections, type Section } from "../../lib/threads/planDoc";
+import { planHeading, planTasks, splitSections, type Section } from "../../lib/threads/planDoc";
 import { usePlanFile } from "../../hooks/usePlanFile";
 import { isSettledPlanning } from "../../hooks/usePlanReady";
 import { projectPlanComplete } from "@server/shared/projectPlan";
@@ -87,6 +87,12 @@ export function PlanView(props: ThreadViewProps) {
     return out;
   }, [sections, projectPlan]);
   const complete = projectPlan && !!doc && projectPlanComplete(doc);
+  // The header's title is the plan's own `#` heading, as the implementation
+  // view's is, so "Plan" is never said twice; the document then starts
+  // under it rather than repeating it as its first line.
+  const heading = projectPlan ? null : planHeading(doc ?? "");
+  const title = projectPlan ? "Project plan" : (heading ?? (session.title || "Plan"));
+  const titleSection = heading ? sections.findIndex((s) => s.level === 1 && s.heading === heading) : -1;
   const milestoneDetail = useMemo(() => {
     if (!projectPlan || !planState?.milestones.length) return null;
     const done = planState.milestones.filter((m) => m.done).length;
@@ -207,7 +213,7 @@ export function PlanView(props: ThreadViewProps) {
               >
                 <AgentMarkdown
                   size="document"
-                  text={s.body}
+                  text={i === titleSection ? s.body.replace(/^#\s+.*(\n|$)/, "") : s.body}
                   streaming={running && i === sections.length - 1}
                   cwd={session.cwd}
                   onOpenFile={props.onOpenFile}
@@ -252,7 +258,7 @@ export function PlanView(props: ThreadViewProps) {
         hasBoard={hasDoc}
         collapsed={collapsed}
         onToggleChat={setChatOpen}
-        title={projectPlan ? "Project plan" : "Plan"}
+        title={title}
         detail={headerDetail}
         actions={headerActions}
         held={heldRowOf(props, session)}
@@ -315,7 +321,7 @@ function HandoffButton({ spawned, onOpen }: { spawned: SessionMeta; onOpen: () =
       <TooltipTrigger render={<Button variant="ghost" size="sm" className="gap-2" onClick={onOpen} />}>
         <TypeGlyph type={type} className="size-3.5" />
         {BUILD_NOUN[type] ?? THREAD_LABELS[type]}
-        <StatusMark className="ml-1" state={threadStateOf(spawned.status, { settled: true })} />
+        <StatusMark state={threadStateOf(spawned.status, { settled: true })} />
       </TooltipTrigger>
       <TooltipContent>Open the build</TooltipContent>
     </Tooltip>

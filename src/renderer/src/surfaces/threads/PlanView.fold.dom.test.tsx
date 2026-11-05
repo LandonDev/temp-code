@@ -29,8 +29,13 @@ vi.mock("../../chrome/ThreadTune", () => ({ ThreadTune: () => null, normalizeTun
 vi.mock("../../lib/models", () => ({ mergeModelSettings: (_m: unknown, s: unknown) => s, nativeModelId: (m: string) => m, resolveModel: () => null }));
 vi.mock("../AgentMarkdown", () => ({ AgentMarkdown: ({ text }: { text: string }) => <pre data-md>{text}</pre> }));
 vi.mock("./SplitShell", () => ({
-  SplitShell: (p: { board: React.ReactNode; collapsed: boolean; onToggleChat: (open: boolean) => void }) => (
+  SplitShell: (p: { board: React.ReactNode; collapsed: boolean; title?: React.ReactNode; detail?: React.ReactNode; actions?: React.ReactNode; onToggleChat: (open: boolean) => void }) => (
     <div data-collapsed={String(p.collapsed)}>
+      <header data-view-header>
+        <span data-view-title>{p.title}</span>
+        <span data-view-detail>{p.detail}</span>
+        {p.actions}
+      </header>
       {p.board}
       <button type="button" onClick={() => p.onToggleChat(false)}>
         fold
@@ -116,5 +121,35 @@ describe("PlanView's chat fold", () => {
     cleanup();
     render(<PlanView {...props(session({ id: "other" }))} />);
     expect(collapsed()).toBe("false");
+  });
+
+});
+
+describe("PlanView's header", () => {
+  it("is titled by the plan's # heading, never \"Plan\" twice, and the document starts under it", () => {
+    doc = "# Ship the raids\n\nWhy we do it.\n\n## Tasks\n- [ ] one\n- [ ] two\n";
+    render(<PlanView {...props(session({ status: "idle" }))} />);
+    expect(document.querySelector("[data-view-title]")?.textContent).toBe("Ship the raids");
+    const header = document.querySelector("[data-view-header]") as HTMLElement;
+    expect(header.textContent).not.toMatch(/Plan.*Plan/);
+    const body = [...document.querySelectorAll("[data-md]")].map((e) => e.textContent).join("");
+    expect(body).not.toContain("# Ship the raids");
+    expect(body).toContain("Why we do it.");
+  });
+
+  it("falls back to the thread's title before the plan has a heading", () => {
+    doc = "## Tasks\n- [ ] one\n";
+    render(<PlanView {...props(session({}))} />);
+    expect(document.querySelector("[data-view-title]")?.textContent).toBe("A plan");
+  });
+
+  it("points at the build with its status glyph 8px from its word", () => {
+    doc = "# Ship the raids\n\n## Tasks\n- [ ] one\n";
+    metas.impl = { id: "impl", environmentId: "local", threadType: "implementation", status: "running", title: "Build" };
+    render(<PlanView {...props(session({ status: "idle", implementationId: "impl" } as Partial<Session>))} />);
+    const handoff = screen.getByRole("button", { name: /Implementation/ });
+    expect(handoff.className).toContain("gap-2");
+    expect((handoff.querySelector("[data-slot=status-mark]") as HTMLElement).className).not.toContain("ml-1");
+    delete metas.impl;
   });
 });
