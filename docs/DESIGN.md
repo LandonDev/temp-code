@@ -88,6 +88,16 @@ as often as fills, so each reaches 4.5:1 as small text on `background`,
 `sidebar`, `card` and a selected (`muted`) row in both themes; the light
 theme's are the darker steps for that (`lib/statusContrast.test.ts`).
 
+The chart tokens (`--chart-1..4`, aliax/charts) colour thin marks, so each
+reaches 3:1 on `background` and `card` in both themes
+(`lib/chartContrast.test.ts`). Colour follows the entity, never its rank: a
+provider keeps its slot on every chart (Claude `chart-1`, Codex `chart-2`),
+a model takes its provider's slots (`chart-1` then `chart-3`, `chart-2` then
+`chart-4`) and anything past them folds into Other in `muted-foreground`.
+Every chart and the heatmap read a hover out the same way
+(`ChartTooltipContent`: the popover's fill, `rounded-xl`, 12px inset), and
+their ticks are 12px.
+
 The `sidebar-group` steps are a container's surface, never an item's: a
 thread row stays bare in every list. They are opaque steps away from
 `sidebar`, each at least 0.01 of OKLab L past the one before and the

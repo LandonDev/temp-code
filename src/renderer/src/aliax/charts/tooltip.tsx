@@ -25,7 +25,7 @@ export function ChartTooltipContent({
   const rows = payload.filter((e) => typeof e.value === "number");
   if (!rows.length) return null;
   return (
-    <div data-slot="chart-tooltip" className="min-w-36 rounded-lg bg-popover px-2.5 py-2 text-xs text-popover-foreground shadow-overlay ring-1 ring-border">
+    <div data-slot="chart-tooltip" className="min-w-36 rounded-xl bg-popover px-3 py-2 text-xs text-popover-foreground shadow-overlay ring-1 ring-border">
       {label !== undefined && label !== "" ? <div className="mb-1 text-muted-foreground">{labelFormatter ? labelFormatter(label) : label}</div> : null}
       {rows.map((e) => {
         const name = String(e.name ?? e.dataKey ?? "");

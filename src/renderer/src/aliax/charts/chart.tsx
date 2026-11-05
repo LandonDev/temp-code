@@ -3,12 +3,12 @@ import { ResponsiveContainer } from "recharts";
 
 /**
  * The defaults every chart shares, written once: horizontal grid lines on
- * the border token, axes with no lines and 11px muted ticks, lines 2px with
+ * the border token, axes with no lines and 12px muted ticks (11px is a key cap's), lines 2px with
  * no dots, bars rounded on their data end, and no series ever animates.
  */
 export const GRID = { vertical: false, stroke: "var(--border)" } as const;
 
-const TICK = { fill: "var(--muted-foreground)", fontSize: 11, fontVariantNumeric: "tabular-nums" } as const;
+export const TICK = { fill: "var(--muted-foreground)", fontSize: 12, fontVariantNumeric: "tabular-nums" } as const;
 
 export const AXIS = { axisLine: false, tickLine: false, tick: TICK, tickMargin: 8 } as const;
 

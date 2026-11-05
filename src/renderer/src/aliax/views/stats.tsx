@@ -10,6 +10,7 @@ import { SERIES, SERVICE_SERIES } from "@aliax/charts/palette";
 import { ChartTooltipContent } from "@aliax/charts/tooltip";
 import { TIMEZONE, clip, compact, compactTick, modelLabel, shortDay } from "@aliax/lib/viz";
 import { Heatmap } from "./stats/heatmap";
+import { modelMix, OTHER_KEY } from "./stats/modelMix";
 
 const PROVIDER: Record<string, string> = { codex: "Codex", "claude-code": "Claude Code" };
 
@@ -58,6 +59,8 @@ function NoData({ days = 30 }: { days?: number }) {
 }
 
 function PaceChart({ series }: { series: PaceSeries }) {
+  // The cycle is drawn in its provider's colour, as on every other chart.
+  const color = SERVICE_SERIES[series.service as keyof typeof SERVICE_SERIES] ?? SERIES[0];
   const weekly = series.periodMs > 86_400_000;
   const data = series.points.map((p) => ({
     hours: Math.round(p.hours * 10) / 10,
@@ -69,7 +72,7 @@ function PaceChart({ series }: { series: PaceSeries }) {
     <>
       <ChartLegend
         items={[
-          { label: "This cycle", color: SERIES[0] },
+          { label: "This cycle", color },
           { label: "Usual", color: "var(--muted-foreground)" },
         ]}
       />
@@ -91,7 +94,7 @@ function PaceChart({ series }: { series: PaceSeries }) {
           />
           <Area dataKey="usual" name="Usual range" stroke="none" fill="var(--foreground)" fillOpacity={0.08} connectNulls isAnimationActive={false} activeDot={false} />
           <Line {...LINE} dataKey="median" name="Usual" stroke="var(--muted-foreground)" strokeWidth={1.5} connectNulls />
-          <Line {...LINE} dataKey="current" name="This cycle" stroke={SERIES[0]} connectNulls />
+          <Line {...LINE} dataKey="current" name="This cycle" stroke={color} connectNulls />
         </ComposedChart>
       </ChartFrame>
     </>
@@ -131,24 +134,7 @@ function StatsSkeleton() {
  * directly under its heading. Data in, sections out: StatsPage loads.
  */
 export function StatsView({ data, status }: { data: StatsBundle | null; status: StatsStatus | null }) {
-  const modelMix = useMemo(() => {
-    if (!data) return { rows: [], models: [] as string[] };
-    const models = data.byModel.slice(0, 4).map((m) => m.name);
-    const byDay = new Map<string, Record<string, number | string>>();
-    for (const r of data.modelDaily) {
-      if (!models.includes(r.model)) continue;
-      const row = byDay.get(r.day) ?? { day: r.day };
-      row[r.model] = ((row[r.model] as number | undefined) ?? 0) + r.value;
-      byDay.set(r.day, row);
-    }
-    const rows = [...byDay.values()]
-      .map((row) => {
-        for (const m of models) row[m] ??= 0;
-        return row;
-      })
-      .sort((a, b) => String(a.day).localeCompare(String(b.day)));
-    return { rows, models };
-  }, [data]);
+  const mix = useMemo(() => (data ? modelMix(data) : { series: [], rows: [] }), [data]);
 
   const nothing = data !== null && data.totals.turns === 0 && data.pace.length === 0;
   // A first index is a load: the page's line says how far it has got.
@@ -217,23 +203,23 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
       </Section>
 
       <Section title="Model mix">
-        {modelMix.rows.length === 0 ? (
+        {mix.rows.length === 0 ? (
           <NoData />
         ) : (
           <>
-            <ChartLegend items={modelMix.models.map((m, i) => ({ label: modelLabel(m), color: SERIES[i] }))} />
+            <ChartLegend items={mix.series.map((m) => ({ label: m.key === OTHER_KEY ? m.name : modelLabel(m.name), color: m.color }))} />
             <ChartFrame label="Model mix">
-              <AreaChart data={modelMix.rows} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
+              <AreaChart data={mix.rows} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
                 <CartesianGrid {...GRID} />
                 <XAxis {...AXIS} dataKey="day" tickFormatter={shortDay} minTickGap={24} />
                 <YAxis {...AXIS} width={44} tickFormatter={compactTick} />
                 <ChartTooltip
                   cursor={LINE_CURSOR}
                   isAnimationActive={false}
-                  content={(props) => tooltip(props, { labelFormatter: (v) => shortDay(String(v)), valueFormatter: compact, nameFormatter: modelLabel })}
+                  content={(props) => tooltip(props, { labelFormatter: (v) => shortDay(String(v)), valueFormatter: compact, nameFormatter: (n) => (n === "Other" ? n : modelLabel(n)) })}
                 />
-                {modelMix.models.map((m, i) => (
-                  <Area key={m} {...LINE} dataKey={m} name={m} stackId="mix" stroke={SERIES[i]} strokeWidth={1.5} fill={SERIES[i]} fillOpacity={0.2} />
+                {mix.series.map((m) => (
+                  <Area key={m.key} {...LINE} dataKey={m.key} name={m.name} stackId="mix" stroke={m.color} strokeWidth={1.5} fill={m.color} fillOpacity={0.2} />
                 ))}
               </AreaChart>
             </ChartFrame>

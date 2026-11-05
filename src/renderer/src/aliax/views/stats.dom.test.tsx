@@ -56,6 +56,13 @@ describe("Stats", () => {
     expect(headline.firstElementChild!.className).toContain("font-medium");
   });
 
+  it("draws a pace cycle in its provider's colour: Codex is chart-2", () => {
+    render(<StatsView data={STATS} status={null} />);
+    const pace = screen.getByRole("region", { name: "Pace" });
+    const swatch = pace.querySelector("[data-slot=chart-legend] span span") as HTMLElement;
+    expect(swatch.style.backgroundColor).toBe("var(--chart-2)");
+  });
+
   it("loads under the same seven headings", () => {
     render(<StatsView data={null} status={null} />);
     expect(headings()).toEqual(ORDER);

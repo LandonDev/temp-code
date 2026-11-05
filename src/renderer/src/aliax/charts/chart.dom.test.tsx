@@ -3,7 +3,8 @@ import type { ReactNode } from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Line, LineChart } from "recharts";
-import { ChartFrame, LINE } from "./chart";
+import { ChartFrame, LINE, TICK } from "./chart";
+import { ChartTooltipContent } from "./tooltip";
 import { ChartLegend } from "./legend";
 import { SERIES, ramp } from "./palette";
 
@@ -62,6 +63,14 @@ describe("the chart module", () => {
     expect(frame?.getAttribute("aria-label")).toBe("Two lines");
     const strokes = [...container.querySelectorAll(".recharts-line-curve")].map((p) => p.getAttribute("stroke"));
     expect(strokes).toEqual(["var(--chart-1)", "var(--chart-2)"]);
+  });
+
+  it("ticks at 12px and floats its readout on a popover's radius and 12px inset", () => {
+    expect(TICK.fontSize).toBe(12);
+    const { container } = render(<ChartTooltipContent active label="Oct 9" payload={[{ name: "Output", value: 3, color: SERIES[0] }]} />);
+    const tip = container.querySelector("[data-slot=chart-tooltip]")!;
+    expect(tip.className).toContain("px-3");
+    expect(tip.className).toContain("rounded-xl");
   });
 
   it("ramps from the background to the first chart colour", () => {

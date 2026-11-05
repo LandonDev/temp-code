@@ -6,7 +6,7 @@ export function ChartLegend({ items }: { items: LegendItem[] }) {
   return (
     <div data-slot="chart-legend" className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
       {items.map((item) => (
-        <span key={item.label} className="flex items-center gap-1.5">
+        <span key={item.label} className="flex items-center gap-2">
           <span aria-hidden className="size-2 rounded-sm" style={{ backgroundColor: item.color }} />
           {item.label}
         </span>

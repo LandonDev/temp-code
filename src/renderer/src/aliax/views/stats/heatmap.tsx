@@ -3,6 +3,7 @@ import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import type { StatsBundle } from "@shared/aliaxStats";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { compact } from "@aliax/lib/viz";
+import { ChartTooltipContent } from "@aliax/charts/tooltip";
 import { RAMP_STEPS, ramp } from "@aliax/charts/palette";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -19,16 +20,17 @@ export const cellLabel = (dow: number, hour: number, value: number): string => `
 /**
  * Output by weekday and hour: a 7×24 grid, the hour labels in the cells' own
  * columns so each sits over the hour it names. One tooltip serves every
- * cell; the cell under the pointer names what it shows.
+ * cell, drawn as every chart's readout (ChartTooltipContent): the hour,
+ * then its output with the cell's swatch.
  */
 export function Heatmap({ data }: { data: StatsBundle["heatmap"] }) {
   const handle = useMemo(() => TooltipPrimitive.createHandle(), []);
-  const [hovered, setHovered] = useState<string | null>(null);
+  const [hovered, setHovered] = useState<{ dow: number; hour: number; value: number } | null>(null);
   const max = Math.max(1, ...data.map((d) => d.value));
   const lookup = new Map(data.map((d) => [`${d.dow}:${d.hour}`, d.value]));
   return (
     <div data-slot="heatmap" className="flex flex-col gap-1">
-      <div className="grid grid-cols-[2rem_repeat(24,minmax(0,1fr))] gap-[3px]">
+      <div className="grid grid-cols-[2rem_repeat(24,minmax(0,1fr))] gap-1">
         <span />
         {Array.from({ length: 24 }, (_, h) => (
           <span key={h} className="text-center text-xs leading-none text-muted-foreground tabular-nums">
@@ -51,7 +53,7 @@ export function Heatmap({ data }: { data: StatsBundle["heatmap"] }) {
                       role="img"
                       aria-label={label}
                       data-step={step}
-                      onPointerEnter={() => setHovered(label)}
+                      onPointerEnter={() => setHovered({ dow, hour, value })}
                       className={step === 0 ? "h-4 rounded-sm ring-1 ring-border ring-inset" : "h-4 rounded-sm"}
                       style={step === 0 ? undefined : { backgroundColor: ramp(step) }}
                     />
@@ -63,12 +65,22 @@ export function Heatmap({ data }: { data: StatsBundle["heatmap"] }) {
         ))}
       </div>
       <Tooltip handle={handle}>
-        <TooltipContent>{hovered}</TooltipContent>
+        {/* The popup is bare: the chart readout draws the floating layer. */}
+        <TooltipContent className="min-h-0 max-w-none rounded-none bg-transparent p-0 text-popover-foreground">
+          {hovered ? (
+            <ChartTooltipContent
+              active
+              label={`${DOW_FULL[hovered.dow]} ${hourLong(hovered.hour)}`}
+              payload={[{ name: "Output", value: hovered.value, color: ramp(stepOf(hovered.value, max)) }]}
+              valueFormatter={compact}
+            />
+          ) : null}
+        </TooltipContent>
       </Tooltip>
-      <div className="flex items-center justify-end gap-1.5 pt-2 text-xs text-muted-foreground">
+      <div data-slot="heatmap-ramp" className="flex items-center justify-end gap-1 pt-2 text-xs text-muted-foreground">
         <span>0</span>
         {Array.from({ length: RAMP_STEPS }, (_, i) => (
-          <span key={i} aria-hidden data-ramp className="size-2.5 rounded-sm" style={{ backgroundColor: ramp(i + 1) }} />
+          <span key={i} aria-hidden data-ramp className="size-2 rounded-sm" style={{ backgroundColor: ramp(i + 1) }} />
         ))}
         <span className="tabular-nums">{compact(max)}</span>
       </div>
