@@ -56,7 +56,7 @@ struct HomeView: View {
                 .listStyle(.plain)
                 .listSectionSpacing(10)
                 .animation(painted ? Motion.rowAppear : nil, value: eventKey(home.hosts))
-                .task(id: clients.first?.hasShell) { await performLaunch(clients) }
+                .task(id: LaunchKey(shell: clients.first?.hasShell == true, workspaces: clients.first?.workspaces.count ?? 0)) { await performLaunch(clients) }
                 .task {
                     // The cached paint lands in the first frames; whatever lands after this is an event.
                     try? await Task.sleep(for: .milliseconds(300))
@@ -126,6 +126,12 @@ struct HomeView: View {
         hosts.map { "\($0.environmentId):\($0.status):\($0.notes.map(\.id).joined(separator: "|"))" }.joined(separator: ",")
     }
 
+    /// What the launch hook waits on: the live list, or (for `new-chat-wait`) the cached workspaces.
+    private struct LaunchKey: Hashable {
+        let shell: Bool
+        let workspaces: Int
+    }
+
     /// The new-thread sheet the last run had up (return flow, thread 14).
     private func restoreSheet() {
         guard case .newThread(let environmentId, let workspaceId, let projectId)? = router.restoredSheet,
@@ -137,7 +143,9 @@ struct HomeView: View {
     /// DEBUG only: the proof opens the workspace's chat draft, a fleet
     /// confirm, or makes a chat in the first workspace by its draft.
     private func performLaunch(_ clients: [EnvironmentClient]) async {
-        guard let client = clients.first, client.hasShell, let workspace = client.workspaces.first else { return }
+        // `new-chat-wait` opens the draft from the cached workspaces while the host is still down.
+        let waits = TestHooks.action == "new-chat-wait"
+        guard let client = clients.first, client.hasShell || waits, let workspace = client.workspaces.first else { return }
         if (TestHooks.sheet == "project-settings" || TestHooks.sheet == "preamble"), !launched, let project = client.projects.first(where: { !$0.archived }) {
             // Project settings for the first project (the Duo set); `preamble` pushes the editor inside it.
             launched = true

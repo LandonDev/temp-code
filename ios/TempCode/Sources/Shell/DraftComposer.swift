@@ -35,6 +35,8 @@ struct DraftComposer: View {
     @State private var picking = false
     @State private var picked: [PhotosPickerItem] = []
     @State private var sentCount = 0
+    /// The host the picker was last seeded for from the draft's saved pick.
+    @State private var seededHost: String?
     private let store = ProjectDraftStore.shared
     #if DEBUG
     /// The launch action ran (a shell rebuilt by the send must not run it again).
@@ -161,7 +163,10 @@ struct DraftComposer: View {
             picked = []
             Task { await add(items) }
         }
-        .onChange(of: key, initial: true) { draft = store.draft(key) ?? ProjectDraft() }
+        .onChange(of: key, initial: true) {
+            draft = store.draft(key) ?? ProjectDraft()
+            seededHost = nil
+        }
         // The drafts wait 500 ms of quiet before they are written; leaving writes them now.
         .onChange(of: scenePhase) { if scenePhase != .active { store.flush() } }
         .onDisappear { store.flush() }
@@ -175,9 +180,11 @@ struct DraftComposer: View {
         // A host whose link was down answered nothing: its coming up runs this again.
         .task(id: target.map { CatalogChoice.trigger($0.client) }) {
             guard let client = target?.client else { return }
-            if let provider = draft.provider, let model = draft.model {
+            // The saved pick seeds the picker once per host; the link coming and going keeps the picker.
+            if seededHost != client.environment.id, let provider = draft.provider, let model = draft.model {
                 choice = CatalogChoice(provider: provider, model: model, reasoning: draft.reasoning)
             }
+            seededHost = client.environment.id
             await choice.load(client)
         }
         .onChange(of: choice.key) { keepChoice() }
