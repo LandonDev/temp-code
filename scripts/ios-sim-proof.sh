@@ -44,7 +44,8 @@
 #           is down (the test server's /hold: "Waiting for <host>" in the row)
 #           and sent once the host is back, the catalog's asks erring twice with the
 #           link open (/fail: "Couldn't load models" with Retry on a draft and a
-#           thread's composer), a message to an agent, pin, archive and rename;
+#           thread's composer), Resume on a thread whose harness is gone (its turn
+#           working again under its one message), a message to an agent, pin, archive and rename;
 #           the composer empty, with text and mid-turn at the largest
 #           accessibility size; the key shots in dark too. TC_TEST_CONTROL_URL is the test server's
 #           control panel; the set reads back what landed.
@@ -600,6 +601,9 @@ actions_set() {
   TC_SHEET="new" shot "act-catalog-failed-draft-light" home "" "" "" 8
   control /fail '{"method":"catalog.get","count":2}' >/dev/null
   shot "act-catalog-failed-thread-light" thread "gateway refuse" "" "" 8
+  # Resume on the seeded "Stopped: the harness is gone" thread: the host writes starting
+  # then running and no message, and the same turn works again under its one message.
+  TC_ACTION="resume" shot "act-resume-stopped-light" thread "Rename the config keys again" "" "" 10
   TC_ACTION="send:Check the tests too" shot "act-agent-light" thread "thread screens" fleet agent
   TC_ACTION="pin" shot "act-pin-thread-light" thread "gateway refuse"
   shot "act-pin-home-light" home
