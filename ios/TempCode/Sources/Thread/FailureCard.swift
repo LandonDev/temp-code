@@ -59,7 +59,7 @@ struct FailureCard: View {
                             .transcriptType(TranscriptType.line)
                             .foregroundStyle(.secondary)
                     } else {
-                        // As many on a line as fit, 8 pt apart, the next line under it (the desktop's flex-wrap); each as wide as its label.
+                        // As many on a line as fit, 8 pt apart, the next line under it (the desktop's flex-wrap); each as wide as its label, a label longer than the line wrapping inside its button.
                         FlowLayout(spacing: TranscriptMetrics.glyphGap) { actionButtons(actions) }
                         .controlSize(.small)
                         .disabled(busy || pending != nil || block != nil)
@@ -103,14 +103,14 @@ struct FailureCard: View {
             if action.id == .pickModel {
                 // The composer's model menu; the pick continues the thread on it.
                 ModelMenu(choice: choice, onPick: continueOn) {
-                    Text(label(action)).lineLimit(1)
+                    Text(label(action))
                 }
                 .menuStyle(.button)
                 .failureAction(solid: index == 0)
                 .disabled(choice.catalog == nil)
             } else {
                 Button { act(action.id) } label: {
-                    Text(label(action)).lineLimit(1)
+                    Text(label(action))
                 }
                 .failureAction(solid: index == 0)
             }
