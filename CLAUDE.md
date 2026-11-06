@@ -2893,7 +2893,8 @@ proof and the sizing rules; the pieces, by name:
   `failureActions` as `FailureActions` (`Rendering/Notices.swift`, with
   `GateText` and `ReviewText`; the phone's reach is Route automatically,
   Continue on another model through the composer's model menu, and Retry,
-  label-sized, the first solid) and speaks `session.continue` (with the
+  label-sized and wrapping as the desktop's flex-wrap, `Design/FlowLayout.swift`
+  over `FlowRows`, the first solid) and speaks `session.continue` (with the
   picked model for Continue on another model),
   `session.reroute` and `review.override` (`Client/NoticeActions.swift`).
   The fleet switches, the Resources sheet and the archive prompt (thread

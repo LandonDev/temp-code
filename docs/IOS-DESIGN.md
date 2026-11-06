@@ -957,7 +957,9 @@ The failure card follows the desktop's recipe (surfaces/FailureCard.tsx):
 a card at radius 8 with 12 in, the summary in the line type at medium
 beside the red glyph, the cause muted 2 pt under it, everything under the
 summary on its text edge, at most three actions, each sized to its label
-at that edge: the first solid, the rest quiet (bordered in the label
+and wrapping from that edge as the desktop's flex-wrap does (as many on a
+line as fit, 8 pt apart, the next line 8 pt under it; `FlowLayout` over the
+client package's `FlowRows`, so a large text size falls one per line): the first solid, the rest quiet (bordered in the label
 colour), Retry last. The phone's set is the desktop's within its reach
 (`FailureActions`): Route automatically, Continue on another model (the
 composer's model menu; the pick continues the thread on it through

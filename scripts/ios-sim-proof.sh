@@ -555,6 +555,10 @@ actions_set() {
   TC_ACTION="queue:After this turn" shot "act-queue-light" thread "Thread B"
   # A capped turn on a key that may act: Route automatically solid, Continue on another model and Retry quiet.
   shot "act-failure-light" thread "A capped turn"
+  # The same actions at an accessibility size: one per line, none clipped.
+  xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
+  shot "act-failure-a11y" thread "A capped turn"
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
   TC_ACTION="pause" shot "act-pause-light" thread "Thread B"
   TC_ACTION="stop" shot "act-stop-light" thread "Thread B"
   TC_ACTION="approve" shot "act-approve-light" thread "Run the test suite"

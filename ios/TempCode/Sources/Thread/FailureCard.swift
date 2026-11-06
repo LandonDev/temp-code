@@ -59,11 +59,8 @@ struct FailureCard: View {
                             .transcriptType(TranscriptType.line)
                             .foregroundStyle(.secondary)
                     } else {
-                        // Side by side while every label fits on one line, else stacked; each as wide as its label.
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: TranscriptMetrics.glyphGap) { actionButtons(actions) }
-                            VStack(alignment: .leading, spacing: TranscriptMetrics.glyphGap) { actionButtons(actions) }
-                        }
+                        // As many on a line as fit, 8 pt apart, the next line under it (the desktop's flex-wrap); each as wide as its label.
+                        FlowLayout(spacing: TranscriptMetrics.glyphGap) { actionButtons(actions) }
                         .controlSize(.small)
                         .disabled(busy || pending != nil || block != nil)
                         if let block {
