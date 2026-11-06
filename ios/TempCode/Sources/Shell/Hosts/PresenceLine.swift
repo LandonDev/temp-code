@@ -78,11 +78,11 @@ struct RelayStripLine: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .transition(.opacity)
                 } else {
-                    Color.clear.frame(height: 0)
+                    EmptyView()
                 }
             }
         } else {
-            Color.clear.frame(height: 0)
+            EmptyView()
         }
     }
 }
