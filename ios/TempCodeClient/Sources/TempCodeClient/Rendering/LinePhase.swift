@@ -26,6 +26,8 @@ public struct LinePhase: Sendable, Hashable {
     }
 
     public static let thinking = LinePhase(key: "thinking", words: "Thinking")
+    /// The wait's verb, as `WatchWords.waitLine` words it.
+    public static let waitVerb = "Waiting on"
 
     /// The host's words for a wait before the turn's first content, from the
     /// meta: the detail when the host sends one, else the activity line,
@@ -43,19 +45,23 @@ public struct LinePhase: Sendable, Hashable {
     /// First match wins: Sending while the person's message is not echoed;
     /// the host's word for the wait while nothing of the turn's own has come
     /// (keyed by its words up to the first comma); the wait on agents
-    /// (`waitWords`); the running calls the line tells, one by its verb and
+    /// (`waitOn`, `WaitSteps.waitOn`'s words: an agent's title or "2
+    /// subagents"), drawn like a call: "Waiting on" muted, what it waits on
+    /// in the primary step; the running calls the line tells, one by its verb and
     /// object, several by the group's present-tense phrase; a thought
     /// streaming, as its newest finished sentence in Thinking's place; prose
     /// streaming, as the mark alone; else Thinking. `turn` is the open
     /// turn's entries, its user row first.
-    public static func of(turn: [ThreadEntry], activity: String?, waitWords: String? = nil, cwd: String? = nil) -> LinePhase {
+    public static func of(turn: [ThreadEntry], activity: String?, waitOn: String? = nil, cwd: String? = nil) -> LinePhase {
         let last = turn.last
         if let last, case .user(let user) = last.item, user.seq < 0 { return LinePhase(key: "sending", words: "Sending") }
         if !started(turn), let activity = activity?.trimmingCharacters(in: .whitespaces), !activity.isEmpty {
             let head = activity.split(separator: ",", maxSplits: 1).first.map(String.init) ?? activity
             return LinePhase(key: "host:\(head)", words: activity)
         }
-        if let waitWords, !waitWords.isEmpty { return LinePhase(key: "wait", words: waitWords) }
+        if let waitOn, !waitOn.isEmpty {
+            return LinePhase(key: "wait", words: "\(waitVerb) \(waitOn)", verb: waitVerb, object: waitOn)
+        }
         let calls = told(turn)
         if calls.count == 1 {
             let phrase = ToolPhrase.of(calls[0], live: true, cwd: cwd)

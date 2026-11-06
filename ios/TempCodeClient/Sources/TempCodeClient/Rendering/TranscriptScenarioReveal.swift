@@ -8,8 +8,12 @@ import Foundation
 /// - `reveal`: the shown text never shrinks (a rewrite aside), a burst is
 ///   paced rather than shown whole, and once a block's final text is in,
 ///   every character shows within the pacer's catch-up after it arrived.
-/// - `fade`: no block has more than `maxYoung` young runs, and none under
-///   reduced motion.
+/// - `fade`: read as the row reads it, block by block through the
+///   streaming markdown (`MarkdownCache.streamingDocument`, open spans
+///   closed): no block has more than `maxYoung` young runs, none under
+///   reduced motion, and a block's plain text only grows, so its fade
+///   never starts over (an unclosed `**` once showed raw, then the closed
+///   span rewrote the paragraph and it faded in again from blank).
 /// - `drain`: the turn reports revealing while any of its text is unshown
 ///   or fading, and stops within the catch-up and the fade after its last
 ///   text arrived.
@@ -44,6 +48,8 @@ final class RevealProbes {
         var streaming: Bool
         var arrivedAt: Double
         var shown = 0
+        /// Each prose block's plain text last sampled, by its index.
+        var plains: [Int: String] = [:]
     }
 
     let reduced: Bool
@@ -54,6 +60,10 @@ final class RevealProbes {
     /// When each turn stopped revealing, ms on the scenario's clock.
     private(set) var drainedAt: [Int: Double] = [:]
     private(set) var now: Double = 0
+    /// Bumped whenever a row's shown text grew (the row asks for a pin).
+    private(set) var revision = 0
+    /// The streaming markdown each probe reads through, as a row does.
+    private let markdown = MarkdownCache()
 
     init(history: [ThreadEntry], reduced: Bool) {
         self.reduced = reduced
@@ -80,7 +90,10 @@ final class RevealProbes {
                     if probe.text != block.text || probe.streaming != block.streaming {
                         if block.text != probe.text { probe.arrivedAt = now }
                         // A rewrite of the shown text may show less; only growth must never shrink.
-                        if !block.text.hasPrefix(probe.text) { probe.shown = 0 }
+                        if !block.text.hasPrefix(probe.text) {
+                            probe.shown = 0
+                            probe.plains = [:]
+                        }
                         let grew = block.text.count - probe.text.count
                         probe.text = block.text
                         probe.streaming = block.streaming
@@ -122,12 +135,21 @@ final class RevealProbes {
                 violations.append("\(label) @\(Int(now))ms: block \(key) still hidden (\(units)/\(total) streaming=\(probe.streaming) \(probe.text.prefix(30)))")
             }
         }
+        if units != probe.shown { revision += 1 }
         probe.shown = units
-        let runs = probe.ledger.segments(for: probe.reveal.revealed, at: now / 1_000, reduced: reduced)
-        if checks.contains(.fade) {
+        let revealed = probe.reveal.revealed
+        let document = revealed.isEmpty ? nil : markdown.streamingDocument(seq: key, text: revealed)
+        for (index, block) in (document?.blocks ?? []).enumerated() {
+            guard let plain = block.plainProse else { continue }
+            let runs = probe.ledger.segments(for: plain, at: now / 1_000, reduced: reduced)
+            guard checks.contains(.fade) else { continue }
             let young = runs.filter(\.young).count
             if young > StreamRevealLedger.maxYoung { violations.append("\(label) @\(Int(now))ms: \(young) young runs") }
             if reduced, young > 0 { violations.append("\(label) @\(Int(now))ms: a run fades under reduced motion") }
+            if let was = probe.plains[index], !plain.hasPrefix(was) {
+                violations.append("\(label) @\(Int(now))ms: block \(index) of row \(key) was rewritten (\(was.suffix(24).debugDescription) → \(plain.suffix(24).debugDescription)), so its fade started over")
+            }
+            probe.plains[index] = plain
         }
         let on = probe.streaming || probe.reveal.revealing || probe.ledger.fading(at: now / 1_000)
         let was = drain.revealing(turn: probe.turn)

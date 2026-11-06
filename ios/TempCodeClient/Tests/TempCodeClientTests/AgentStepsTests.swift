@@ -47,6 +47,22 @@ import TempCodeContract
         #expect(WaitSteps.openWait([open]) != nil)
         let prose = ThreadEntry(item: textItem(2, "still going"))
         #expect(WaitSteps.openWait([open, prose]) == nil)
+        let running = ThreadEntry(item: toolItem(3, name: "Bash"))
+        #expect(WaitSteps.openWait([open, running]) == nil)
+        let asking = ThreadEntry(item: .approval(ApprovalItem(seq: 4, ts: 4, request: ApprovalRequestEvent(requestId: "r", toolName: "Bash"), allowed: nil, auto: false)))
+        #expect(WaitSteps.openWait([open, asking]) == nil)
+        let decided = ThreadEntry(item: .approval(ApprovalItem(seq: 4, ts: 4, request: ApprovalRequestEvent(requestId: "r", toolName: "Bash"), allowed: true, auto: false)))
+        #expect(WaitSteps.openWait([open, decided]) != nil)
+    }
+
+    @Test func `the working line's wait comes from the turn's open wait, never the meta`() {
+        let one = ThreadEntry(item: .tool(wait(["env_box:c1"], running: true)))
+        #expect(WaitSteps.waitOn([one]) { $0 == "c1" ? "Review the flow" : nil } == "Review the flow")
+        #expect(WaitSteps.waitOn([ThreadEntry(item: .tool(wait(["a", "b"], running: true)))]) == "2 subagents")
+        let returned = ThreadEntry(item: .tool(wait(["a"], output: #"{"agentId":"a","status":"idle"}"#)))
+        #expect(WaitSteps.waitOn([returned]) == nil)
+        let phase = LinePhase.of(turn: [one], activity: nil, waitOn: WaitSteps.waitOn([one]) { _ in "Review the flow" })
+        #expect(phase.verb == "Waiting on" && phase.object == "Review the flow")
     }
 
     @Test func `the step's word by status`() {

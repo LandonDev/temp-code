@@ -114,6 +114,18 @@ public struct RevealSegment: Sendable, Equatable {
     }
 }
 
+/// Whether a streaming row stays on its streaming render (the view's
+/// `StreamingAssistantRow.revealing`): the stream runs, the reveal holds
+/// text back, a step is still fading, or the reveal published a step the
+/// fade has not drawn yet. Without the last a reply short enough to land
+/// whole in its first step ("OK.") swapped to the settled render before its
+/// one step was drawn, so it never faded.
+public enum StreamRowRule {
+    public static func onStreamingRender(streaming: Bool, revealing: Bool, fading: Bool, revealedUnits: Int, drawnUnits: Int) -> Bool {
+        streaming || revealing || fading || revealedUnits > drawnUnits
+    }
+}
+
 /// Which turns still have text being revealed (the desktop's
 /// surfaces/revealDrain.ts). A row that reveals streamed text reports
 /// itself from its first step until its reveal has drained: every step

@@ -19,4 +19,11 @@ import Testing
         #expect(!TranscriptLanding.snapsToBottom(enteringBackground: true, atBottom: true), "already at the bottom: nothing moves")
         #expect(!TranscriptLanding.snapsToBottom(enteringBackground: false, atBottom: false), "within a session the reader keeps their place and the Jump pill")
     }
+
+    @Test func `a second row named to an open transcript lands on it; the same row or none changes nothing`() {
+        #expect(TranscriptLanding.onRetarget(from: 120, to: 812) == .row(812))
+        #expect(TranscriptLanding.onRetarget(from: nil, to: 812) == .row(812))
+        #expect(TranscriptLanding.onRetarget(from: 812, to: 812) == nil)
+        #expect(TranscriptLanding.onRetarget(from: 812, to: nil) == nil)
+    }
 }

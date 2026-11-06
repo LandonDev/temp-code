@@ -40,6 +40,10 @@ struct StreamFadeRenderer: TextRenderer {
 final class StreamFadeState {
     private(set) var ledger = StreamRevealLedger()
     var reduced = false
+    /// The UTF-16 units the streaming render last drew: a step the reveal
+    /// published that the fade has not drawn yet keeps the row streaming,
+    /// so a reply short enough to land in one step still fades in.
+    var drawnUnits = 0
 
     /// `armed`: a row born live mounts empty, so its very first words fade too.
     init(armed: Bool = false) {

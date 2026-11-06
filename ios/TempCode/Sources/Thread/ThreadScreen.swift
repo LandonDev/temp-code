@@ -258,6 +258,12 @@ struct ThreadScreen: View {
         .onChange(of: segments, initial: true) {
             if landingSeq != nil { model.choose(segments.contains(.log) ? .log : .chat) }
         }
+        // A second search hit in this thread keeps the screen (the shell keys it by thread) and lands on its row.
+        .onChange(of: targetSeq) { old, new in
+            guard let landing = TranscriptLanding.onRetarget(from: old, to: new) else { return }
+            landingSeq = landing.seq
+            model.choose(segments.contains(.log) ? .log : .chat)
+        }
         .onChange(of: page) { _, now in
             // A report while the pager settles after a resize, or from two-pane, is the layout's, not the person's.
             if let now, now != segment, !pagerSettling, !twoPaneShown { model.choose(now) }

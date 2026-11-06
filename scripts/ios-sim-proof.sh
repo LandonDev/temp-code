@@ -63,6 +63,8 @@
 #   push    A notification tap (L6): a payload shaped like the hub's, routed
 #           through the delegate at launch, lands on the named thread's row;
 #           the navigation report proves the seq; Settings shows the row.
+#   retarget A second search hit in the 2,000-row thread while it is open
+#           (TC_TARGET_SEQ_NEXT): the navigation report proves the second row.
 #   features The screens the 2026-10-22 batch added (master board and rules,
 #           project plan, notices, failures, preamble, handoff, streaming, notes,
 #           the account menu, resources, queued, stopped, the gate row, the
@@ -299,6 +301,8 @@ launch_app() {
   SIMCTL_CHILD_TC_TEST_OPEN="$open" \
   SIMCTL_CHILD_TC_TEST_SIDEBAR="${TC_SIDEBAR:-}" \
   SIMCTL_CHILD_TC_TEST_TARGET_SEQ="${TC_TARGET_SEQ:-}" \
+  SIMCTL_CHILD_TC_TEST_TARGET_SEQ_NEXT="${TC_TARGET_SEQ_NEXT:-}" \
+  SIMCTL_CHILD_TC_TEST_STREAM_DRAG="${TC_STREAM_DRAG:-}" \
   SIMCTL_CHILD_TC_TEST_HISTORY="${TC_HISTORY_RUN:-}" \
   SIMCTL_CHILD_TC_TEST_SCROLL="${TC_SCROLL_RUN:-}" \
   SIMCTL_CHILD_TC_TEST_ACTION="${TC_ACTION:-}" \
@@ -422,6 +426,24 @@ scroll_set() {
   else
     echo "ios-sim-proof: no scroll report" >&2
   fi
+}
+
+# A second search hit in a thread already open lands on its row: the
+# screen stays mounted (the shell keys it by thread) and retargets.
+retarget_set() {
+  appearance light
+  local container
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
+  [ -n "$container" ] && rm -f "$container/Documents/navigation-report.json"
+  TC_TARGET_SEQ=41 TC_TARGET_SEQ_NEXT=1500 shot "search-second-hit" thread "2,000 rows" chat "" 10
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data)
+  cp "$container/Documents/navigation-report.json" "$OUT/navigation-second.json"
+  python3 - "$OUT/navigation-second.json" <<'CHECK'
+import json, sys
+second = json.loads(open(sys.argv[1]).read())
+assert second['target'] == second['item'] == 1500, second
+print('ios-sim-proof: a second search hit in an open thread lands PASS')
+CHECK
 }
 
 # Exact old-row navigation and complete boards, read back from DEBUG reports.
@@ -1153,14 +1175,36 @@ stream_set() {
   # TC_STREAM_REDUCED=1: the same run under reduce motion, so the fade's cost reads as the difference.
   if [ "${TC_STREAM_REDUCED:-}" = 1 ]; then reduce_motion true; sleep 8; fi
   container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data)
-  rm -f "$container/Documents/transcript-report.json" "$container/Documents/stream-report.json"
+  rm -f "$container/Documents/transcript-report.json" "$container/Documents/stream-report.json" "$container/Documents/drag-hold.json"
+  # TC_STREAM_DRAG=1: a finger stands in for a slow drag up, held mid-stream; recorded as drag-hold.mov.
+  local recorder=""
   TC_STREAM_RUN=1 launch_app thread "Streaming on the phone" chat
   # The recorder starts 2 s after the landing and runs 22 s; the stream (about 15 s) plays inside it.
   wait_for "$container/Documents/transcript-report.json" 60 || echo "ios-sim-proof: stream: no landing report" >&2
   sleep 2
   sysctl -n vm.loadavg > "$OUT/stream-load.txt"
+  if [ "${TC_STREAM_DRAG:-}" = 1 ]; then
+    xcrun simctl io "$TC_SIM_UDID" recordVideo --force "$OUT/drag-hold.mov" >/dev/null 2>&1 &
+    recorder=$!
+  fi
   control /stream '{}' >/dev/null
   wait_for "$container/Documents/stream-report.json" 40 || true
+  if [ -n "$recorder" ]; then kill -INT "$recorder" 2>/dev/null; wait "$recorder" 2>/dev/null || true; fi
+  if [ "${TC_STREAM_DRAG:-}" = 1 ]; then
+    cp "$container/Documents/drag-hold.json" "$OUT/drag-hold.json" 2>/dev/null || { echo "ios-sim-proof: no drag-hold report" >&2; return 5; }
+    python3 - "$OUT/drag-hold.json" <<'CHECK' || return 5
+import json, sys
+r = json.load(open(sys.argv[1]))
+print('ios-sim-proof: drag hold ' + json.dumps(r))
+failures = []
+if r['pins']: failures.append(f"{r['pins']} pins ran while the finger was down")
+if abs(r['max'] - r['held']) > 20 or abs(r['min'] - r['held']) > 20: failures.append(f"the offset moved from {r['held'] / 10} to {r['min'] / 10}..{r['max'] / 10} under the finger")
+if r['samples'] < 100: failures.append(f"only {r['samples']} samples")
+for f in failures: print('ios-sim-proof: DRAG FAIL ' + f, file=sys.stderr)
+sys.exit(5 if failures else 0)
+CHECK
+    echo "ios-sim-proof: drag hold PASS"
+  fi
   cp "$container/Documents/stream-report.json" "$OUT/stream-report.json" 2>/dev/null || { echo "ios-sim-proof: no stream report" >&2; return 5; }
   [ "${TC_STREAM_REDUCED:-}" = 1 ] && { reduce_motion false; python3 -c 'import json,sys; p=sys.argv[1]; r=json.load(open(p)); r["reduced"]=1; json.dump(r, open(p, "w"))' "$OUT/stream-report.json"; }
   cp "$container/Documents/layout-report.json" "$OUT/stream-layout.json" 2>/dev/null || echo '{}' > "$OUT/stream-layout.json"
@@ -1205,6 +1249,7 @@ case "$SET" in
   box-actions) box_actions_set ;;
   push) push_set ;;
   features) features_set ;;
+  retarget) retarget_set ;;
   glass) glass_set ;;
   return) return_set ;;
   all) shell_set; threads_set; scroll_set; actions_set; push_set; host_gone_set ;;

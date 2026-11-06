@@ -25,8 +25,12 @@ private func entry(_ item: TranscriptItem) -> ThreadEntry { ThreadEntry(item: it
         #expect(started.key.hasPrefix("thought:") || started.key == "thinking")
     }
 
-    @Test func `the wait on agents comes before calls`() {
-        #expect(LinePhase.of(turn: [user, entry(toolItem(2, name: "Bash"))], activity: nil, waitWords: "Waiting on Review the flow").words == "Waiting on Review the flow")
+    @Test func `the wait on agents comes before calls, drawn like a call`() {
+        let phase = LinePhase.of(turn: [user, entry(toolItem(2, name: "Bash"))], activity: nil, waitOn: "Review the flow")
+        #expect(phase.words == "Waiting on Review the flow")
+        #expect(phase.key == "wait")
+        #expect(phase.verb == "Waiting on")
+        #expect(phase.object == "Review the flow")
     }
 
     @Test func `one running call by its verb and object, several by the group's phrase`() {
@@ -321,5 +325,20 @@ private func entry(_ item: TranscriptItem) -> ThreadEntry { ThreadEntry(item: it
         var settled = TurnLineTracker()
         let mounted = settled.update(end(open: false), paused: false, revealing: false, phase: .thinking, at: 5)
         #expect(!mounted.look.saying && mounted.look.visible && mounted.due == nil && !settled.everLive)
+    }
+
+    @Test func `a drain that never reports off is believed only for the bound past the turn's end`() {
+        var tracker = TurnLineTracker()
+        _ = tracker.update(end(open: true), paused: false, revealing: false, phase: reading, at: 0)
+        _ = tracker.update(end(open: false), paused: false, revealing: true, phase: .thinking, at: 1)
+        let inside = tracker.update(end(open: false), paused: false, revealing: true, phase: .thinking, at: 1 + TurnLineTracker.drainBound - 0.05)
+        #expect(inside.look.saying && inside.look.words == "")
+        // Past the bound the closing line lands, and once its hold is over nothing wakes the row again.
+        _ = tracker.update(end(open: false), paused: false, revealing: true, phase: .thinking, at: 1 + TurnLineTracker.drainBound)
+        let closed = tracker.update(end(open: false), paused: false, revealing: true, phase: .thinking, at: 1 + TurnLineTracker.drainBound + 1)
+        #expect(!closed.look.saying && closed.look.words == "Worked for 12s")
+        #expect(closed.due == nil)
+        // The bound is the reveal's own promise: the catch-up and its last fade.
+        #expect(TurnLineTracker.drainBound >= SmoothText.catchUpMs / 1_000 + StreamRevealLedger.fade)
     }
 }

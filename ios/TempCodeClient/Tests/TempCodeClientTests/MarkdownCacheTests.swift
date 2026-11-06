@@ -150,4 +150,34 @@ import Testing
         }
         #expect(small.runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true })
     }
+
+    @MainActor @Test func `a paragraph past the streaming limit is styled from the settle's first frame, not plain then styled`() async {
+        let cache = MarkdownCache()
+        let huge = String(repeating: "**x** ", count: 2_000)
+        _ = cache.streamingDocument(seq: 3, text: huge)
+        // The settled call while its parse runs: the stand-in is the whole parse, styled.
+        let standIn = cache.document(seq: 3, text: huge)
+        #expect(standIn == MarkdownDocument.parse(huge))
+        guard case .paragraph(let styled)? = standIn?.blocks.first else {
+            Issue.record("shape")
+            return
+        }
+        #expect(styled.runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true })
+        let settled = await cache.render(seq: 3, text: huge)
+        #expect(settled == standIn)
+    }
+
+    @MainActor @Test func `a prefetched row is ready before it mounts`() async {
+        let cache = MarkdownCache(syncLimit: 0)
+        cache.prefetch(seq: 9, text: "**ready**")
+        cache.prefetch(seq: 9, text: "**ready**")
+        let document = await cache.render(seq: 9, text: "**ready**")
+        #expect(cache.isReady(seq: 9, text: "**ready**"))
+        #expect(cache.document(seq: 9, text: "**ready**") == document)
+        #expect(cache.parses == 1, "one parse however many asks")
+        // A short text is parsed at its mount; nothing to fetch ahead.
+        let short = MarkdownCache()
+        short.prefetch(seq: 1, text: "a")
+        #expect(short.parses == 0)
+    }
 }

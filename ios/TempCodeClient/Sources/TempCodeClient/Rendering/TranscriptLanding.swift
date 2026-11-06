@@ -17,6 +17,14 @@ public enum TranscriptLanding: Hashable, Sendable {
         return .row(targetSeq)
     }
 
+    /// A transcript already open is named a row again (a second search hit
+    /// in the same thread, which keeps its screen): a new row lands on it;
+    /// nil, or the row it already landed on, changes nothing.
+    public static func onRetarget(from old: Int?, to new: Int?) -> TranscriptLanding? {
+        guard let new, new != old else { return nil }
+        return .row(new)
+    }
+
     /// The row to land on, nil for the bottom.
     public var seq: Int? {
         if case .row(let seq) = self { return seq }

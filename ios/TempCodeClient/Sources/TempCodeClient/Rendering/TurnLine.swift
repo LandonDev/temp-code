@@ -118,8 +118,18 @@ public struct TurnLineModel: Sendable {
 /// same pass as the turn's end may not have reported yet, so for a row that
 /// saw its turn open, the first reveal step after the end counts as
 /// revealing; a row that mounts on a settled turn draws its closing line at
-/// once.
+/// once. The drain is believed for `drainBound` past the turn's end and no
+/// longer: every character shows within the reveal's catch-up, so a row
+/// that never reported its drain off (it left the screen mid-report, or its
+/// turn had no key) cannot hold the closing line, or wake the row each
+/// step, forever.
 public struct TurnLineTracker: Sendable {
+    /// The reveal's own promise: every character within the catch-up (two
+    /// steps of slack), then its last fade, seconds past the turn's end.
+    public static var drainBound: Double {
+        (SmoothText.catchUpMs + 2 * SmoothText.stepMs) / 1_000 + StreamRevealLedger.fade
+    }
+
     public private(set) var model: TurnLineModel?
     private var sawOpen = false
     private var overAt: Double?
@@ -136,7 +146,10 @@ public struct TurnLineTracker: Sendable {
         } else if overAt == nil {
             overAt = now
         }
-        let grace = sawOpen && over && now - (overAt ?? now) < MotionValues.revealStep
+        let sinceOver = now - (overAt ?? now)
+        let grace = sawOpen && over && sinceOver < MotionValues.revealStep
+        // Past the bound a drain that never reported off is not believed.
+        let revealing = revealing && !(over && sinceOver >= Self.drainBound)
         let input = TurnLineInput.of(end, paused: paused, revealing: revealing || grace, phase: phase)
         var result: (look: TurnLineModel.Look, due: Double?)
         if var model {

@@ -41,11 +41,14 @@ struct StreamingAssistantRow: View {
         _fade = State(initialValue: StreamFadeState(armed: born))
     }
 
-    /// Still on the streaming render: the stream runs, the reveal holds text back, or a step is still fading.
+    /// Still on the streaming render: the stream runs, the reveal holds text
+    /// back, a step is still fading, or a step has not been drawn by the
+    /// fade yet (a reply that lands whole in its first step fades too).
     private var revealing: Bool {
         guard let reveal else { return false }
         _ = fadeEnded
-        return block.streaming || reveal.revealing || fade.fading
+        return StreamRowRule.onStreamingRender(streaming: block.streaming, revealing: reveal.revealing, fading: fade.fading,
+                                               revealedUnits: reveal.revealedUnits, drawnUnits: fade.drawnUnits)
     }
 
     var body: some View {
@@ -55,6 +58,7 @@ struct StreamingAssistantRow: View {
         if let reveal, revealing {
             let shown = reveal.revealed
             let _ = fade.reduced = reduceMotion
+            let _ = fade.drawnUnits = reveal.revealedUnits
             Group {
                 if !shown.isEmpty {
                     // The incremental path, never the async one: that would
@@ -73,9 +77,14 @@ struct StreamingAssistantRow: View {
                 fade.disarm()
                 reveal.snap()
             }
-            // Settle once the last fade has run out (each step restarts the wait).
-            .task(id: fade.lastStepAt) {
-                try? await Task.sleep(for: .seconds(StreamRevealLedger.fade))
+            // Settle once the last fade has run out: each step restarts the
+            // wait, read once the step is drawn (a task starts after the body).
+            .task(id: reveal.revealedUnits) {
+                while !Task.isCancelled {
+                    let left = fade.lastStepAt + StreamRevealLedger.fade - StreamFadeState.now
+                    if left <= 0 { break }
+                    try? await Task.sleep(for: .seconds(left))
+                }
                 if !Task.isCancelled { fadeEnded += 1 }
             }
             .onChange(of: reveal.revealedUnits, initial: true) {

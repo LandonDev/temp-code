@@ -77,8 +77,10 @@ public enum WaitSteps {
         }
     }
 
-    /// The wait the turn is in now: its last open wait, when nothing after it
-    /// speaks (prose, a thought) or still runs beside it.
+    /// The wait the turn is in now (the desktop's `openWaitOf`): its last
+    /// open wait, when nothing after it speaks (prose, a thought) or still
+    /// runs beside it (a running call, an undecided approval). With another
+    /// call running the turn reads as that work, which is true.
     public static func openWait(_ turn: [ThreadEntry]) -> ToolItem? {
         for entry in turn.reversed() {
             switch entry.item {
@@ -87,11 +89,21 @@ public enum WaitSteps {
                 if tool.status == .running { return nil }
             case .assistant(let block), .thinking(let block):
                 if !block.text.isEmpty { return nil }
+            case .approval(let approval):
+                if approval.allowed == nil { return nil }
             default:
                 continue
             }
         }
         return nil
+    }
+
+    /// What the open wait waits on, as the working line says it after
+    /// "Waiting on": one agent by its title, several counted; nil with no
+    /// open wait. The turn's own call decides, never the meta.
+    public static func waitOn(_ turn: [ThreadEntry], titleOf: (String) -> String? = { _ in nil }) -> String? {
+        guard let wait = openWait(turn) else { return nil }
+        return WatchWords.waitSubject(ids(wait), titleOf: titleOf)
     }
 
     /// The step's word for an agent's settled status: Finished, Failed, Needs you, Stopped, Paused.

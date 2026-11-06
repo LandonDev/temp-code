@@ -163,6 +163,49 @@ private func expectClean(_ scenario: TranscriptScenario) -> ScenarioReport {
         expectClean(TranscriptScenario("scrolled up", pushes: pushes))
     }
 
+    @Test func `an inline span streams open: no raw mark, and the paragraph's fade never starts over`() {
+        let deltas = ["Run **very", " important** checks, then `bun", " test --watch` and", " read [the", " docs](https://ex", "ample.com/a) ~~twice~~", " _right", " now_ please."]
+        var pushes: [TranscriptScenario.Push] = [.init(atMs: 0, "send", .send("go")), .init(atMs: 10, "echo", .rows([row(1, 10, user("go"))]))]
+        for (i, delta) in deltas.enumerated() {
+            pushes.append(.init(atMs: 200 + 180 * i, "delta \(i)", .rows([row(2 + i, 200 + 180 * i, prose(delta))])))
+        }
+        pushes.append(.init(atMs: 2_000, "the close", .rows([row(20, 2_000, prose(deltas.joined(), delta: false)), row(21, 2_010, complete)])))
+        let report = expectClean(TranscriptScenario("unclosed span", pushes: pushes))
+        #expect(report.checked.contains(.fade))
+    }
+
+    @Test func `a slow drag up mid-stream is never pulled back to the bottom; back at the bottom it follows again`() {
+        var pushes: [TranscriptScenario.Push] = [.init(atMs: 0, "send", .send("go")), .init(atMs: 10, "echo", .rows([row(1, 10, user("go"))]))]
+        for i in 0..<10 {
+            pushes.append(.init(atMs: 100 + 60 * i, "delta \(i)", .rows([row(2 + i, 100 + 60 * i, prose("word \(i) "))])))
+        }
+        pushes.append(.init(atMs: 400, "the finger goes down and drags slowly up", .reader(.dragging)))
+        pushes.append(.init(atMs: 1_400, "let go past the slack: up", .reader(.up)))
+        pushes.append(.init(atMs: 2_000, "back at the bottom", .reader(.bottom)))
+        for i in 0..<5 {
+            pushes.append(.init(atMs: 2_100 + 60 * i, "more \(i)", .rows([row(20 + i, 2_100 + 60 * i, prose("more \(i) "))])))
+        }
+        pushes.append(.init(atMs: 2_600, "the close", .rows([row(30, 2_600, complete)])))
+        let report = expectClean(TranscriptScenario("drag mid-stream", pushes: pushes))
+        #expect(report.pins > 0, "the reader at the bottom is followed")
+    }
+
+    @Test func `the follow check fails on a pin that should not happen`() {
+        // A rule that ignored the finger would pin a drag still inside the slack.
+        let dragging = ReaderProbe(place: .dragging, atBottom: true, moving: false)
+        #expect(dragging.check(at: "drag").violation != nil)
+        let up = ReaderProbe(place: .up, atBottom: true, moving: false)
+        #expect(up.check(at: "up").violation != nil)
+        // The real places: the drag and the reader up write nothing, the bottom pins.
+        var reader = ReaderProbe()
+        reader.move(to: .dragging)
+        #expect(reader.check(at: "drag") == (false, nil))
+        reader.move(to: .up)
+        #expect(reader.check(at: "up") == (false, nil))
+        reader.move(to: .bottom)
+        #expect(reader.check(at: "bottom") == (true, nil))
+    }
+
     @Test func `a resync replaying the same rows keeps every key`() {
         expectClean(TranscriptScenario("resync", pushes: [
             .init(atMs: 0, "send", .send("go")),

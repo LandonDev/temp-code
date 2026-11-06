@@ -23,7 +23,7 @@ Sources/TempCodeClient
                 Batches (each master's BatchState, the push coalesced to two landings a second)
   Rendering/    ThreadFold (rows → stamped items + BoardState), Transcript (item types), Board,
                 ResearchBoard, Fleet, PlanDoc, Inbox, DiffDocument (the diff screen's lines,
-                hunks and column geometry), MarkdownBlocks, MarkdownCache, PlanDocument,
+                hunks and column geometry), MarkdownBlocks, MarkdownClose, MarkdownCache, PlanDocument,
                 PlanPages, ProjectPlan, ProjectPairs, CrossHost, PathHost (two hosts: pairs, cross-host
                 children, the host of a path), TranscriptRows (entries → the list's rows:
                 items, groups of the work between two paragraphs with GroupFold, turn
@@ -237,8 +237,11 @@ diff screen and lines the blocks up with the host's file metadata).
 **MarkdownCache** (`@MainActor @Observable`) parses a
 row's markdown into `RenderedBlock`s with inline `AttributedString`s off
 the main actor (`@concurrent`), keyed by environment, session, seq and text hash: a read is
-synchronous, a miss parses and lands as an observable change, a changed
-row shows plain text until its own parse lands. **PlanDocument** is the
+synchronous, a miss parses and lands as an observable change; `prefetch`
+starts a row's parse before it mounts, and a changed row keeps its height
+undrawn until its own parse lands, never plain text first. A streaming
+row's last block has its open inline spans closed first (**MarkdownClose**,
+the desktop's remend), so no raw mark shows mid-stream. **PlanDocument** is the
 plan page's parser: the file's frontmatter lifted out, then blocks with
 nested and task lists (depth, ordinals, checkboxes), pipe tables with
 alignments, fences, quotes and rules, inline markdown resolved; `sections(

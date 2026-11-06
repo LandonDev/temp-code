@@ -18,8 +18,12 @@ extension EnvironmentValues {
 }
 
 /// The agent's prose as the page: body size, no container, parsed off the
-/// main actor once per text version. Until the parse lands the row shows
-/// its plain text at the same size, so nothing shifts but the styling.
+/// main actor once per text version, ahead of the row's mount for the
+/// transcript's window (`MarkdownCache.prefetch`), so a row draws styled
+/// from its first frame. A row whose parse has not landed yet keeps its
+/// height estimate (its plain text laid out, not drawn) and draws the
+/// styled document when it lands, never plain text first; a row that was
+/// streaming keeps its whole streaming render, the same document.
 /// A `streaming` row parses on the main actor, incrementally: only the
 /// block that changed (normally the last) is parsed again, so the earlier
 /// blocks keep their render and nothing flickers between plain and styled.
@@ -38,15 +42,13 @@ struct MarkdownView: View {
             MarkdownBlocksView(document: ThreadCaches.markdown.streamingDocument(scope: scope, seq: seq, text: text), dim: dim, fade: fade)
         } else if let document = ThreadCaches.markdown.document(scope: scope, seq: seq, text: text) {
             MarkdownBlocksView(document: document, dim: dim)
-        } else if ThreadCaches.markdown.hasStreamingSlot(scope: scope, seq: seq) {
-            // A row that just drained: its streaming render, whole, until the settled
-            // parse lands. The two are the same document, so the swap changes nothing.
-            MarkdownBlocksView(document: ThreadCaches.markdown.streamingDocument(scope: scope, seq: seq, text: text, settled: true), dim: dim)
         } else {
+            // The parse is on its way: the row's height, nothing drawn.
             Text(text)
                 .transcriptType(TranscriptType.prose)
-                .foregroundStyle(dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .hidden()
+                .accessibilityHidden(true)
         }
     }
 }

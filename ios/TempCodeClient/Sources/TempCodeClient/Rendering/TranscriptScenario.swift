@@ -14,8 +14,10 @@ import TempCodeContract
 ///   anything else by its seq);
 /// - `endRow`: the turn's end row keeps one key, its message's, from Send
 ///   to the turn's close;
-/// - `follow`: while the reader is scrolled up, the follow rule writes
-///   nothing, whatever lands.
+/// - `follow`: the reader's place is played as the view keeps it
+///   (`FollowRule.atBottom` over the geometry and the reader's own scroll):
+///   while they are up, or their finger is on the list, nothing pins,
+///   whatever lands or reveals; at the bottom and at rest every change pins.
 ///
 /// and the parts later slices built: the reveal, the phrase fade and the
 /// drain (TranscriptScenarioReveal.swift), the phase hold, the word morph
@@ -42,14 +44,19 @@ public struct TranscriptScenario: Sendable {
         case send(String)
         /// The host's rows, folded as a push folds them.
         case rows([EventRow])
-        /// The reader scrolls up (`true`) or back to the bottom.
-        case readerUp(Bool)
+        /// Where the reader is: at the bottom, dragging (a slow drag up still
+        /// inside the bottom's slack, the finger down), or up and let go.
+        case reader(ReaderPlace)
         /// Older rows join above (a page loaded), then the thread refolds.
         case history([EventRow])
         /// The rows are replayed whole (a resync, a remount): a refold.
         case refold
         /// The thread pauses (`true`) or resumes: the open turn's line folds and reopens.
         case paused(Bool)
+    }
+
+    public enum ReaderPlace: String, Sendable {
+        case bottom, dragging, up
     }
 
     public struct Push: Sendable {
@@ -96,7 +103,51 @@ public struct ScenarioReport: Sendable {
     public var lineEvents: [String] = []
     /// The words each end row rests on after the last push, by its key.
     public var lineWords: [Int: String] = [:]
+    /// How many times the follow rule pinned (pushes and reveal steps).
+    public var pins = 0
     public var passed: Bool { violations.isEmpty }
+}
+
+extension TranscriptScenario.Step {
+    /// The reader scrolls up (`true`, let go) or back to the bottom.
+    public static func readerUp(_ up: Bool) -> Self { .reader(up ? .up : .bottom) }
+}
+
+/// The reader's place as the view keeps it: the geometry, the finger, and
+/// `FollowRule.atBottom` over both.
+struct ReaderProbe {
+    var place: TranscriptScenario.ReaderPlace = .bottom
+    var atBottom = true
+    var moving = false
+
+    mutating func move(to next: TranscriptScenario.ReaderPlace) {
+        place = next
+        switch next {
+        case .bottom:
+            moving = false
+            atBottom = FollowRule.atBottom(was: atBottom, geometry: true, readerMoving: false, offBottomWrite: false).atBottom
+        case .dragging:
+            // The finger is down and the offset still inside the bottom's 64 pt slack.
+            moving = true
+            atBottom = FollowRule.atBottom(was: atBottom, geometry: true, readerMoving: true, offBottomWrite: false).atBottom
+        case .up:
+            // Dragged past the slack, then let go once the list came to rest.
+            moving = true
+            atBottom = FollowRule.atBottom(was: atBottom, geometry: false, readerMoving: true, offBottomWrite: false).atBottom
+            moving = false
+        }
+    }
+
+    /// The follow rule's write for a change, and what is wrong with it.
+    func check(at label: String) -> (pinned: Bool, violation: String?) {
+        let write = FollowRule.write(for: .rowsChanged, atBottom: atBottom, readerMoving: moving)
+        switch (place, write) {
+        case (.bottom, .pin): return (true, nil)
+        case (.bottom, _): return (false, "\(label): the reader at the bottom was left behind (\(write))")
+        case (_, .none): return (false, nil)
+        default: return (write == .pin, "\(label): the follow rule wrote \(write) while the reader was \(place.rawValue)")
+        }
+    }
 }
 
 public enum ScenarioRunner {
@@ -108,7 +159,13 @@ public enum ScenarioRunner {
         var state = ThreadState()
         state.append(scenario.history, trim: false)
         let memory = RowKeyMemory()
-        var readerUp = false
+        var reader = ReaderProbe()
+        func follow(_ label: String) {
+            guard report.checked.contains(.follow) else { return }
+            let (pinned, violation) = reader.check(at: label)
+            if pinned { report.pins += 1 }
+            if let violation, !report.violations.contains(violation) { report.violations.append(violation) }
+        }
         var seenKeys: [String: TranscriptRowID] = [:]
         var endKeys: [Int: TranscriptRowID] = [:]
         var steers: [Int: SteerEvent.State] = [:]
@@ -121,7 +178,10 @@ public enum ScenarioRunner {
         func advance(to target: Double, label: String) {
             while reveals.now < target {
                 let step = min(target, reveals.now + SmoothText.stepMs, max(lines.nextDue ?? .infinity, reveals.now + 1))
+                let grown = reveals.revision
                 reveals.advance(to: step, checks: report.checked, label: label)
+                // A reveal step grew a row: the row asks the follow rule to pin.
+                if reveals.revision != grown { follow("\(label) @\(Int(step))ms a reveal step") }
                 lines.sample(rows, drain: reveals.drain, at: step, checks: report.checked, label: label)
             }
         }
@@ -135,8 +195,8 @@ public enum ScenarioRunner {
             case .rows(let incoming):
                 state.append(incoming, trim: false)
                 state.settle(incoming)
-            case .readerUp(let up):
-                readerUp = up
+            case .reader(let place):
+                reader.move(to: place)
             case .history(let older):
                 state.rows = (older + state.rows).sorted { ($0.ephemeral == true ? Int.max : $0.seq) < ($1.ephemeral == true ? Int.max : $1.seq) }
                 state.refold()
@@ -155,9 +215,7 @@ public enum ScenarioRunner {
             if report.checked.contains(.steer) {
                 report.violations += steerJerks(next, last: &steers, at: at)
             }
-            if report.checked.contains(.follow), readerUp, case let write = FollowRule.write(for: .rowsChanged, atBottom: false), write != .none {
-                report.violations.append("\(at): the follow rule wrote \(write) while the reader was up")
-            }
+            if case .reader = push.step {} else { follow(at) }
             reveals.sync(state.entries, checks: report.checked, label: at)
             lines.sample(next, drain: reveals.drain, at: reveals.now, checks: report.checked, label: at)
             remember(next, into: &seenKeys)

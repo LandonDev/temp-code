@@ -346,9 +346,26 @@ private func burstFrame() -> (arrivals: [Arrival], at: Double) {
         #expect(shown(table, table.utf16.count) == table)
     }
 
-    @Test func `holds nothing inside an open code fence`() {
+    @Test func `holds no marker or table inside an open code fence`() {
         let code = "```sh\nls\n| grep x\n- \n"
         #expect(shown(code, code.utf16.count) == code)
+    }
+
+    @Test func `an open fence's code line shows once its newline comes, or by words once released`() {
+        let code = "```ts\nconst a = 1\nconst b = await load(path)"
+        let whole = "```ts\nconst a = 1\n"
+        #expect(shown(code, code.utf16.count) == whole)
+        #expect(SmoothText.revealCut(code, pos: code.utf16.count, revealing: true, holdOpenLine: false) == "```ts\nconst a = 1\nconst b = await ".utf16.count)
+        // The closing fence shows as typed.
+        let closing = whole + "```\n"
+        #expect(shown(closing, closing.utf16.count) == closing)
+    }
+
+    @Test func `holds a table row that is only its pipes until a cell has content`() {
+        let table = "| a | b |\n|---|---|\n| 1 | 2 |\n| "
+        #expect(shown(table, table.utf16.count) == "| a | b |\n|---|---|\n| 1 | 2 |\n")
+        let typed = table + "x | "
+        #expect(shown(typed, typed.utf16.count) == typed)
     }
 
     @Test func `cuts at words while draining, and shows everything once nothing is left`() {

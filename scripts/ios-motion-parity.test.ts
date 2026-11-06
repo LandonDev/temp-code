@@ -85,6 +85,7 @@ describe("the phone's motion values", () => {
     expect(phone.revealFade).toBe(REVEAL.fadeMs / 1000);
     expect(phone.revealFade).toBe(cssMs("dur-reveal"));
     expect(phone.longToken).toBe(REVEAL.longTokenChars);
+    expect(phone.revealLineHold).toBe(REVEAL.lineHoldMs / 1000);
     expect(phone.wordHold).toBe(WORD_HOLD_MS / 1000);
     expect(phone.foldHold).toBe(FOLD_HOLD_MS / 1000);
     expect(phone.copied).toBe(COPIED_MS / 1000);

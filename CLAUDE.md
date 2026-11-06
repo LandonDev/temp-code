@@ -2543,8 +2543,12 @@ proof and the sizing rules; the pieces, by name:
   `preamble`), the
   `Board`, `ResearchBoard`, `Fleet`, `PlanDoc` and `Inbox` selectors (the
   Inbox's sort, status words, seen marks and the patch split by file), the
-  `MarkdownCache` that parses rows off the main actor (and a streaming
-  row's changed block only, on it: `streamingDocument`), `TranscriptRows`
+  `MarkdownCache` that parses rows off the main actor (ahead of their
+  mount for the transcript's window, `prefetch`; a row whose parse has not
+  landed keeps its height undrawn, never plain text first) and a streaming
+  row's changed block only, on it (`streamingDocument`, the last block's
+  open inline spans closed first by `MarkdownClose`, the desktop's remend),
+  `TranscriptRows`
   (entries → the list's rows, the desktop's transcriptRows.ts: an item,
   a group of everything between two paragraphs (`ActivityGroup`: a lone
   step is its own row under the same key; `GroupFold` opens the working
@@ -2606,9 +2610,13 @@ proof and the sizing rules; the pieces, by name:
 - Streaming (27, rewritten by the desktop-pass A4): `Rendering/SmoothText.swift`
   is the desktop's jitter buffer in Swift as of 0b82ddad (`Pacer`, the rate
   window, the 250 ms seeded lead, the catch-up, `revealCut`'s whole-word
-  steps every 100 ms; `SmoothTextReveal` on a timer `RevealClock`, no
+  steps every 100 ms with the desktop's later holds: an open fence's code
+  line until its newline, then `revealLineHold` 0.6 s, and a table row of
+  bare pipes; `SmoothTextReveal` on a timer `RevealClock`, no
   display link; UTF-16 positions; born-live rows through the client
-  package's `BornRows`, claimed by TranscriptView on appearance), and the
+  package's `BornRows`, claimed by TranscriptView on appearance, a reply
+  that lands in one step kept on the streaming render until its fade by
+  `StreamRowRule`), and the
   thread screen names its thread with
   `session.focus { sessionId, shown }` (`FocusSignal`, in the phone's
   subset); the fold gives a partial-born tool item a
@@ -2632,8 +2640,11 @@ proof and the sizing rules; the pieces, by name:
   closing-line checks in `Rendering/TranscriptScenarioLine.swift`;
   `FollowRule.atBottom`
   decides the reader's place (only their own scroll or a deliberate scroll
-  to a row leaves the bottom; growth under them pins), pins coalesce onto
-  the next main-queue turn, and TranscriptView's DEBUG `TranscriptTrace`
+  to a row leaves the bottom; growth under them pins), nothing pins while
+  their finger is down or the list decelerates (`FollowRule.write(readerMoving:)`),
+  pins coalesce to one per main-queue turn (`PinQueue`), the closing line
+  believes the drain for `TurnLineTracker.drainBound` past the turn's end
+  and no longer, and TranscriptView's DEBUG `TranscriptTrace`
   notes every scroll write and every offset drop that stays two frames
   (`write`, `jumpUp` in layout-events.json), which the transcript set
   fails on; the test server's `POST /scenario` gives each play its own ids

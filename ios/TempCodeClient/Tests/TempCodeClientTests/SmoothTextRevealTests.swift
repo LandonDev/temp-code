@@ -167,4 +167,21 @@ private let prose = String(repeating: "the gateway forwards every request ", cou
         }
         #expect(seen == seen.sorted(), "never decreasing")
     }
+
+    @Test func `a code line held open is released to word steps after the line hold, and the next line holds afresh`() {
+        let rig = Rig(text: "", streaming: true, fromStart: true)
+        let head = "```ts\nconst a = 1\n"
+        let open = head + "const b = await load(path) "
+        rig.reveal.update(text: open, streaming: true)
+        rig.run(limitMs: 500)
+        #expect(rig.reveal.revealed == head, "held to the line's start")
+        // The pacer is at rest: the clock still wakes the row once the hold is over.
+        rig.run(limitMs: MotionValues.revealLineHold * 1_000 + 200)
+        #expect(rig.reveal.revealed == open, "released to words")
+        let next = open + "\nconst c = b.map(fn) "
+        rig.reveal.update(text: next, streaming: true)
+        // The wait above was an underrun, so the lead grew: the spurt holds longer before it steps.
+        rig.run(limitMs: 1_200)
+        #expect(rig.reveal.revealed == open + "\n", "the next line holds afresh: \(rig.reveal.revealed.debugDescription)")
+    }
 }

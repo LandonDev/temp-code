@@ -8,6 +8,20 @@ import Testing
         return ledger
     }
 
+    @Test func `a short reply born live stays on the streaming render until its one step is drawn and faded`() {
+        // "OK." lands whole in its first step: nothing left to reveal, nothing fading yet, but not drawn.
+        #expect(StreamRowRule.onStreamingRender(streaming: false, revealing: false, fading: false, revealedUnits: 3, drawnUnits: 0))
+        // Drawn: the fade is running.
+        #expect(StreamRowRule.onStreamingRender(streaming: false, revealing: false, fading: true, revealedUnits: 3, drawnUnits: 3))
+        // Drawn and faded: the settled render.
+        #expect(!StreamRowRule.onStreamingRender(streaming: false, revealing: false, fading: false, revealedUnits: 3, drawnUnits: 3))
+        // The ledger arms for a born row: the step it draws fades.
+        var ledger = StreamRevealLedger()
+        ledger.arm()
+        #expect(ledger.segments(for: "OK.", at: 10) == [RevealSegment(from: 0, to: 3, bornAt: 10)])
+        #expect(ledger.fading(at: 10.1))
+    }
+
     @Test func `text held before arming is shown, never faded`() {
         var ledger = StreamRevealLedger()
         #expect(ledger.segments(for: "Held when the row mounted.", at: 10) == [RevealSegment(from: 0, to: 26, bornAt: nil)])

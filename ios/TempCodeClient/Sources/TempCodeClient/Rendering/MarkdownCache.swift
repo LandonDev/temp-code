@@ -13,6 +13,19 @@ public enum RenderedBlock: Sendable, Hashable {
     case table([[AttributedString]])
 }
 
+extension RenderedBlock {
+    /// The plain text a streaming row's phrase fade reads for this block
+    /// (a list's items joined by newlines); nil for a block that never
+    /// fades (code, a table, a rule).
+    public var plainProse: String? {
+        switch self {
+        case .paragraph(let text), .heading(_, let text), .quote(let text): String(text.characters)
+        case .list(let items, _): items.map { String($0.characters) }.joined(separator: "\n")
+        case .code, .rule, .table: nil
+        }
+    }
+}
+
 /// One row's markdown, parsed once per text version.
 public struct MarkdownDocument: Sendable, Hashable {
     public var blocks: [RenderedBlock]
@@ -123,22 +136,46 @@ public final class MarkdownCache {
             streaming[streamKey] = nil
             return document
         }
-        if inflight.insert(key).inserted {
-            let generation = self.generation
-            Task {
-                self.parses += 1
-                let document = await MarkdownDocument.render(text)
-                guard self.generation == generation else { return }
-                row.document = document
-                self.inflight.remove(key)
-                // The settled parse supersedes the row's streaming slot.
-                self.streaming[streamKey] = nil
-            }
-        }
-        // A row that was streaming keeps its incremental render until the
-        // settled parse lands, so it never drops to plain text in between.
-        if streaming[streamKey] != nil { return streamingDocument(scope: scope, seq: seq, text: text) }
+        startParse(key, row: row, text: text, streamKey: streamKey)
+        // A row that was streaming keeps its render until the settled parse
+        // lands, so it never drops to plain text in between: the whole render
+        // (`settled`), which is the settled parse's document, so a paragraph
+        // past `streamingBlockLimit` is styled from this frame on too.
+        if streaming[streamKey] != nil { return streamingDocument(scope: scope, seq: seq, text: text, settled: true) }
         return nil
+    }
+
+    /// Parses a row's text off the main actor ahead of its mount (the
+    /// transcript asks for the rows of its window), so the row draws its
+    /// styled document from its first frame. A short text parses at the
+    /// mount anyway; a ready or running parse is left alone.
+    public func prefetch(scope: MarkdownScope = MarkdownScope(), seq: Int, text: String) {
+        guard text.utf8.count > syncLimit else { return }
+        let key = Key(scope: scope, seq: seq, textHash: text.hashValue)
+        guard short[key] == nil, !inflight.contains(key) else { return }
+        let row = slot(key)
+        guard row.document == nil else { return }
+        startParse(key, row: row, text: text, streamKey: StreamKey(scope: scope, seq: seq))
+    }
+
+    /// Whether a row's document is ready to draw now (the test's probe).
+    public func isReady(scope: MarkdownScope = MarkdownScope(), seq: Int, text: String) -> Bool {
+        let key = Key(scope: scope, seq: seq, textHash: text.hashValue)
+        return short[key] != nil || rows[key]?.document != nil
+    }
+
+    private func startParse(_ key: Key, row: MarkdownRow, text: String, streamKey: StreamKey) {
+        guard inflight.insert(key).inserted else { return }
+        let generation = self.generation
+        Task {
+            self.parses += 1
+            let document = await MarkdownDocument.render(text)
+            guard self.generation == generation else { return }
+            row.document = document
+            self.inflight.remove(key)
+            // The settled parse supersedes the row's streaming slot.
+            self.streaming[streamKey] = nil
+        }
     }
 
     @discardableResult
@@ -162,13 +199,20 @@ public final class MarkdownCache {
     /// `streamingBlockLimit` stays a plain paragraph until the next boundary,
     /// so one huge paragraph never re-parses whole on every delta.
     ///
-    /// `settled` drops the plain-paragraph shortcut, so the document equals
-    /// `MarkdownDocument.parse` for the same text: the row that has drained
-    /// draws it while the settled parse is still on its way, and the swap
-    /// changes nothing on screen.
+    /// While live the last block's open inline spans are closed first
+    /// (`MarkdownClose`, the desktop's remend), so no raw mark shows and a
+    /// span closing mid-stream only grows the styled text; the closed source
+    /// is what the slot keeps, so a later call without it parses that block
+    /// again.
+    ///
+    /// `settled` drops the plain-paragraph shortcut and the closing, so the
+    /// document equals `MarkdownDocument.parse` for the same text: the row
+    /// that has drained draws it while the settled parse is still on its
+    /// way, and the swap changes nothing on screen.
     public func streamingDocument(scope: MarkdownScope = MarkdownScope(), seq: Int, text: String, settled: Bool = false) -> MarkdownDocument {
         let key = StreamKey(scope: scope, seq: seq)
-        let source = MarkdownBlocks.split(text)
+        var source = MarkdownBlocks.split(text)
+        if !settled, let last = source.indices.last, !Self.wasShortcut(source[last]) { source[last] = MarkdownClose.block(source[last]) }
         let last = streaming[key]
         var rendered: [RenderedBlock] = []
         rendered.reserveCapacity(source.count)

@@ -44,6 +44,7 @@ struct TranscriptView: View {
     /// Which rows were born live (read and written outside observation).
     @State private var bornRows = BornRows()
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.markdownScope) private var markdownScope
     /// Which turns still reveal text (A6's closing line waits on it).
     @State private var revealDrain = RevealDrain()
     /// The pin a revealing row asks for at each step (one reference; set in the body, read by rows).
@@ -131,6 +132,8 @@ struct TranscriptView: View {
             .task(id: sessionId) { cwd = client.session(sessionId)?.cwd }
             // The window keeps the row it starts at; a resize clears it and the next pass records the new one.
             .onChange(of: shown.first?.id, initial: true) { _, top in windowTop = top }
+            // The window's settled replies parse off the main actor before their rows mount, newest first.
+            .onChange(of: "\(shown.first?.id.key ?? 0)|\(shown.count)|\(thread.fold.lastSeq)", initial: true) { prefetch(shown) }
             .contentMargins(.vertical, 8, for: .scrollContent)
             // The measure: the inset past the 16 pt row inset that centres a column no wider than the cap.
             .contentMargins(.horizontal, measured ? ReadingMeasure.sideInset(width: listWidth) - ReadingMeasure.edge : 0, for: .scrollContent)
@@ -215,7 +218,8 @@ struct TranscriptView: View {
                 } else { pinTail(proxy: proxy) }
                 openFirstGroupForProof(rows: rows, proxy: proxy)
             }
-            .task(id: thread.isLoading) {
+            // Keyed by the target too: a new row named to an open transcript lands again.
+            .task(id: "\(thread.isLoading)|\(targetSeq ?? -1)") {
                 guard !thread.isLoading, client.threads[sessionId] != nil else { return }
                 await land(proxy: proxy)
             }
@@ -237,6 +241,8 @@ struct TranscriptView: View {
     private var endInsets: EdgeInsets { EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16) }
 
     @State private var initializedScroll = false
+    /// The pin the turn's asks coalesce into (plain storage).
+    @State private var pins = PinQueue()
     /// The keys of the rows on screen (plain storage: an appear re-renders nothing).
     @State private var onScreen = OnScreenRows()
     @State private var proofScrollView: UIScrollView?
@@ -268,6 +274,15 @@ struct TranscriptView: View {
         #if DEBUG
         LayoutProbe.note("topRow", top.map(RowInitLedger.key) ?? "none")
         #endif
+    }
+
+    /// Starts the parse of every settled reply in the window that has none,
+    /// newest first, so each row draws styled from its first frame.
+    private func prefetch(_ rows: [TranscriptRowModel]) {
+        for row in rows.reversed() {
+            guard case .item(let entry) = row, case .assistant(let block) = entry.item, !block.streaming else { continue }
+            ThreadCaches.markdown.prefetch(scope: markdownScope, seq: block.seq, text: block.text)
+        }
     }
 
     /// The width changed: capture the anchor once (or keep the one a step
@@ -432,9 +447,45 @@ struct TranscriptView: View {
         // ThreadState is a value: read the client's current one at each call. Rows, partials included, show the stream landing.
         recorder.start(sourceRows: thread.rows.count, items: TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen).count,
                        scrollView: proofScrollView, driver: .stream(pinned: { state.atBottom }, seq: { client.threads[sessionId]?.rows.count ?? 0 }))
-        try? await Task.sleep(for: .seconds(TestHooks.streamSeconds))
+        if TestHooks.streamDrag {
+            try? await Task.sleep(for: .seconds(4))
+            await dragHoldProof(proofScrollView)
+            try? await Task.sleep(for: .seconds(max(0, TestHooks.streamSeconds - 9)))
+        } else {
+            try? await Task.sleep(for: .seconds(TestHooks.streamSeconds))
+        }
         _ = recorder.stop()
         self.recorder = nil
+    }
+
+    /// DEBUG proof (`TC_TEST_STREAM_DRAG`): a finger stands in for a slow
+    /// drag 40 pt up mid-stream, inside the bottom's 64 pt slack, and holds
+    /// 3 s while the reply keeps streaming. Every offset of the hold is kept
+    /// against the one the drag left, and the pins that ran are counted:
+    /// nothing may pull the reader back while the finger is down.
+    private func dragHoldProof(_ scroll: UIScrollView) async {
+        let state = scrollState
+        state.readerMoving = true
+        for _ in 0..<20 {
+            scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: scroll.contentOffset.y - 2), animated: false)
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        let held = scroll.contentOffset.y
+        let pinsBefore = pins.ran
+        var low = held, high = held, samples = 0
+        let rowsBefore = client.threads[sessionId]?.rows.count ?? 0
+        for _ in 0..<180 {
+            try? await Task.sleep(for: .milliseconds(16))
+            low = min(low, scroll.contentOffset.y)
+            high = max(high, scroll.contentOffset.y)
+            samples += 1
+        }
+        let tenths = { (y: CGFloat) in Int((y * 10).rounded()) }
+        TestHooks.recordDragHold(["held": tenths(held), "min": tenths(low), "max": tenths(high), "samples": samples,
+                                  "pins": pins.ran - pinsBefore, "rowsLanded": (client.threads[sessionId]?.rows.count ?? 0) - rowsBefore,
+                                  "atBottom": state.atBottom ? 1 : 0])
+        // The finger lifts inside the slack: the reader is at the bottom again, and the next step pins.
+        state.readerMoving = false
     }
 
     /// The window holds the newest `count` rows from here on.
@@ -457,18 +508,25 @@ struct TranscriptView: View {
     }
 
     /// Pin on data changes, not on scroll geometry changes. Replacing the
-    /// scroll view's size anchor at an edge forces a full layout pass.
+    /// scroll view's size anchor at an edge forces a full layout pass, so
+    /// the asks of one main-queue turn (each reveal step, each push, each
+    /// change in the row count) coalesce into one pin on the next turn
+    /// (`PinQueue`). Never while the reader's finger is down or the list
+    /// still decelerates (`FollowRule`).
     private func pinTail(proxy: ScrollViewProxy) {
+        let state = scrollState
+        let landing = targetStatus != nil
         func follows() -> Bool {
-            FollowRule.write(for: .rowsChanged, atBottom: scrollState.atBottom, landing: targetStatus != nil, reflowHeld: scrollState.reflowHeld) == .pin
+            FollowRule.write(for: .rowsChanged, atBottom: state.atBottom, landing: landing, reflowHeld: state.reflowHeld, readerMoving: state.readerMoving) == .pin
         }
-        guard follows() else { return }
+        guard follows(), pins.ask() else { return }
         Task { @MainActor in
             await Task.yield()
-            guard follows() else { return }
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            TranscriptTrace.write("pinTail"); withTransaction(transaction) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
+            pins.run(follows) {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                TranscriptTrace.write("pinTail"); withTransaction(transaction) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
+            }
         }
     }
 

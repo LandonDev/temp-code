@@ -288,6 +288,13 @@ struct RootView: View {
             let wanted = model.launchThread.map { needle in candidates.filter { $0.title.localizedCaseInsensitiveContains(needle) } } ?? candidates
             if let session = wanted.first ?? candidates.first {
                 home.open(.thread(environmentId: environmentId, sessionId: session.id, seq: TestHooks.targetSeq))
+                if let next = TestHooks.targetSeqNext {
+                    // The second hit names a row of the same thread, whose screen stays mounted.
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(4))
+                        home.open(.thread(environmentId: environmentId, sessionId: session.id, seq: next))
+                    }
+                }
                 // The sidebar over the detail in the overlay pose, for the shot; `open` just hid it.
                 if TestHooks.open == "sidebar" { home.sidebarShown = true }
                 if let shown = TestHooks.sidebar { home.sidebarShown = shown }

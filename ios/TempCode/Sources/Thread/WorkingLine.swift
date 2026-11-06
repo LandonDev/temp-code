@@ -81,13 +81,13 @@ struct TurnLineRow: View {
     }
 
     /// What the line says while the turn runs: the host's words for a wait
-    /// before the turn's own content, a wait on agents by title, else what
-    /// the turn's rows say (`LinePhase.of`).
+    /// before the turn's own content, the turn's open wait on agents by
+    /// title (`WaitSteps.waitOn`, read from the turn, drawn like a call),
+    /// else what the turn's rows say (`LinePhase.of`).
     private func phase(_ meta: SessionMeta?) -> LinePhase {
         guard end.open else { return .thinking }
-        let awaiting = meta?.awaiting ?? []
-        let wait = awaiting.isEmpty ? nil : WatchWords.waitLine(awaiting) { client.session($0)?.title }
-        return LinePhase.of(turn: end.turn, activity: LinePhase.hostWords(statusDetail: meta?.statusDetail, activity: meta?.activity), waitWords: wait, cwd: cwd)
+        let waitOn = WaitSteps.waitOn(end.turn) { client.session($0)?.title }
+        return LinePhase.of(turn: end.turn, activity: LinePhase.hostWords(statusDetail: meta?.statusDetail, activity: meta?.activity), waitOn: waitOn, cwd: cwd)
     }
 }
 

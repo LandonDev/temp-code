@@ -48,17 +48,48 @@ public enum FollowRule {
 
     /// The write for `event`. `atBottom` is the reader's place, `landing`
     /// a landing on a named row in flight, `reflowHeld` a width change
-    /// restoring its own anchor.
-    public static func write(for event: Event, atBottom: Bool, landing: Bool = false, reflowHeld: Bool = false) -> Write {
+    /// restoring its own anchor, `readerMoving` the reader's own scroll (a
+    /// finger down, or the list still decelerating from it). Rows changing
+    /// never pin under a moving reader: a slow drag up stays inside the
+    /// bottom's slack for its first 64 pt, and a pin there would put the
+    /// reader back at the bottom at every reveal step.
+    public static func write(for event: Event, atBottom: Bool, landing: Bool = false, reflowHeld: Bool = false, readerMoving: Bool = false) -> Write {
         switch event {
         case .opened:
             return landing ? .none : .snap
         case .rowsChanged:
-            return atBottom && !landing && !reflowHeld ? .pin : .none
+            return atBottom && !landing && !reflowHeld && !readerMoving ? .pin : .none
         case .jump:
             return .glide
         case .enteringBackground:
             return TranscriptLanding.snapsToBottom(enteringBackground: true, atBottom: atBottom) ? .snap : .none
         }
+    }
+}
+
+/// Pins coalesce: however many times a main-queue turn asks (each reveal
+/// step, each push, each change in the row count), one pin runs, on the
+/// next turn, and it asks the follow rule again then.
+@MainActor
+public final class PinQueue {
+    public private(set) var queued = false
+    /// How many pins ran (the test's count).
+    public private(set) var ran = 0
+
+    public init() {}
+
+    /// Whether this ask should schedule the pin: false while one is queued.
+    public func ask() -> Bool {
+        guard !queued else { return false }
+        queued = true
+        return true
+    }
+
+    /// The queued pin runs now; `write` is called only when the rule still pins.
+    public func run(_ follows: () -> Bool, _ write: () -> Void) {
+        queued = false
+        guard follows() else { return }
+        ran += 1
+        write()
     }
 }

@@ -78,10 +78,15 @@ public enum SmoothText {
     /// no boundary, moved back to the start of a grapheme (so never inside a
     /// surrogate pair or a joined emoji). While revealing, a trailing line
     /// that is only a block marker (`#`, `-`, `1.`, `- [ ]`, under any `>`)
-    /// is held to its line start until it has content, and a trailing table
-    /// to its first line until its delimiter row is whole; neither inside an
-    /// open code fence. Once nothing is left to reveal the cut is the whole text.
-    public static func revealCut(_ text: String, pos: Int, revealing: Bool) -> Int {
+    /// is held to its line start until it has content, a trailing table to
+    /// its first line until its delimiter row is whole, and a row being
+    /// typed to its line start until a cell has content; neither inside an
+    /// open code fence. Inside one a code line shows whole once its newline
+    /// arrives: the cut is held to the line's start, unless `holdOpenLine`
+    /// is false (the line has been held `MotionValues.revealLineHold`), when
+    /// it steps by words like prose. Once nothing is left to reveal the cut
+    /// is the whole text.
+    public static func revealCut(_ text: String, pos: Int, revealing: Bool, holdOpenLine: Bool = true) -> Int {
         let units = Array(text.utf16)
         guard revealing else { return units.count }
         var cut = max(0, min(pos, units.count))
@@ -93,7 +98,7 @@ public enum SmoothText {
         } else {
             cut = graphemeStart(text, at: cut)
         }
-        return holdBlockStart(text, units: units, cut: cut)
+        return holdBlockStart(text, units: units, cut: cut, holdOpenLine: holdOpenLine)
     }
 
     /// JavaScript's `\s` on one UTF-16 unit.
@@ -117,9 +122,12 @@ public enum SmoothText {
     nonisolated(unsafe) private static let tableDelimiter = try! Regex(#"^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$"#)
     nonisolated(unsafe) private static let fence = try! Regex(#"^[ \t]{0,3}(?:```|~~~)"#)
     nonisolated(unsafe) private static let tableLine = try! Regex(#"^[ \t]*\|"#)
+    /// A table row with nothing but its pipes yet.
+    nonisolated(unsafe) private static let bareRow = try! Regex(#"^[ \t]*\|[ \t|]*$"#)
 
-    /// The cut pulled back to the start of a trailing bare marker or an unfinished table.
-    static func holdBlockStart(_ text: String, units: [UInt16], cut: Int) -> Int {
+    /// The cut pulled back to the start of a trailing bare marker, an
+    /// unfinished table or, with `holdOpenLine`, an open fence's unfinished line.
+    static func holdBlockStart(_ text: String, units: [UInt16], cut: Int, holdOpenLine: Bool = true) -> Int {
         let shown = String(decoding: units[0..<cut], as: UTF16.self)
         let lines = shown.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         var starts: [Int] = []
@@ -133,6 +141,8 @@ public enum SmoothText {
         for line in lines.dropLast() where line.prefixMatch(of: fence) != nil { fenced.toggle() }
         let lastIndex = lines.count - 1
         let last = lines[lastIndex]
+        // A code line shows once its newline has come; the closing fence as typed.
+        if fenced, last.prefixMatch(of: fence) == nil { return holdOpenLine ? starts[lastIndex] : cut }
         if fenced || last.prefixMatch(of: fence) != nil { return cut }
         if !last.isEmpty, last.wholeMatch(of: bareMarker) != nil { return starts[lastIndex] }
         // The trailing run of lines that start with `|`; it stands once its
@@ -142,7 +152,9 @@ public enum SmoothText {
         var first = end
         while first > 0, lines[first - 1].prefixMatch(of: tableLine) != nil { first -= 1 }
         let delimiterWhole = first + 1 < lastIndex && lines[first + 1].wholeMatch(of: tableDelimiter) != nil
-        return delimiterWhole ? cut : starts[first]
+        guard delimiterWhole else { return starts[first] }
+        // A row being typed with no cell content yet would draw as an empty row.
+        return end == lastIndex && last.wholeMatch(of: bareRow) != nil ? starts[lastIndex] : cut
     }
 }
 
@@ -360,6 +372,10 @@ public final class SmoothTextReveal {
     @ObservationIgnored private var running = false
     @ObservationIgnored private var lastFrame = 0.0
     @ObservationIgnored private var lastPaint = -Double.infinity
+    /// The code line held to its start (`at`, UTF-16) and since when (ms).
+    @ObservationIgnored private var lineHold: (at: Int, since: Double)?
+    /// The pacer's position the last publish cut.
+    @ObservationIgnored private var lastUnits = 0
     @ObservationIgnored private let clock: any RevealClock
 
     /// - Parameters:
@@ -442,10 +458,35 @@ public final class SmoothTextReveal {
         next(now)
     }
 
-    /// The word cut of the pacer's position, written only on a change.
+    /// The word cut of the pacer's position, written only on a change. A
+    /// code line held open past `MotionValues.revealLineHold` (a long line,
+    /// or a model that writes code with no newline for a while) steps by
+    /// words from then on, so every character still shows within the
+    /// catch-up's promise. The hold is keyed by the line's start, so the
+    /// next line holds afresh; with the pacer at rest the clock wakes the
+    /// row once the hold is over.
     private func publish(_ units: Int) {
+        lastUnits = units
         let total = prev.utf16.count
-        let shown = SmoothText.revealCut(prev, pos: units, revealing: live || units < total)
+        let revealing = live || units < total
+        let held = SmoothText.revealCut(prev, pos: units, revealing: revealing)
+        let free = SmoothText.revealCut(prev, pos: units, revealing: revealing, holdOpenLine: false)
+        var shown = held
+        if held < free {
+            let now = clock.now
+            if lineHold?.at != held { lineHold = (held, now) }
+            let release = (lineHold?.since ?? now) + MotionValues.revealLineHold * 1_000
+            if now >= release {
+                shown = free
+            } else if !running {
+                clock.schedule(afterMs: release - now) { [weak self] _ in
+                    guard let self, !self.running else { return }
+                    self.publish(self.lastUnits)
+                }
+            }
+        } else {
+            lineHold = nil
+        }
         if revealedUnits != shown { revealedUnits = shown }
     }
 

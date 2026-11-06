@@ -50,7 +50,13 @@ enum TestHooks {
     /// the bottom while the proof's `POST /stream` plays; Documents/stream-report.json.
     static let stream = env["TC_TEST_STREAM"] == "1"
     static let streamSeconds = env["TC_TEST_STREAM_SECONDS"].flatMap(Double.init) ?? 22
+    /// With `stream`: 4 s in, a finger stands in for a slow drag 40 pt up
+    /// (inside the bottom's slack) and holds 3 s while the reply streams;
+    /// Documents/drag-hold.json says whether anything pulled it back.
+    static let streamDrag = env["TC_TEST_STREAM_DRAG"] == "1"
     static let targetSeq = env["TC_TEST_TARGET_SEQ"].flatMap(Int.init)
+    /// A second search hit in the same thread, opened once the first has landed.
+    static let targetSeqNext = env["TC_TEST_TARGET_SEQ_NEXT"].flatMap(Int.init)
     static let history = env["TC_TEST_HISTORY"] == "1"
     /// An action the thread screen performs once its rows are in, through the
     /// same calls the buttons make: `send:<text>`, `stop`, `approve`, `deny`,
@@ -79,7 +85,9 @@ enum TestHooks {
     static let scrollUp = false
     static let stream = false
     static let streamSeconds = 0.0
+    static let streamDrag = false
     static let targetSeq: Int? = nil
+    static let targetSeqNext: Int? = nil
     static let history = false
     static let action: String? = nil
     static let sheet: String? = nil
@@ -225,6 +233,14 @@ enum TestHooks {
         var seqAtStart: Int
         var seq: Int
         var atBottom: Bool
+    }
+
+    /// The drag-hold run's samples (`TC_TEST_STREAM_DRAG`), offsets in tenths of a point.
+    static func recordDragHold(_ fields: [String: Int]) {
+        #if DEBUG
+        guard streamDrag else { return }
+        writeReport("drag-hold", fields)
+        #endif
     }
 
     #if DEBUG

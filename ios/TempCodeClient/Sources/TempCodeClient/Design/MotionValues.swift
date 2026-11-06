@@ -126,6 +126,8 @@ public enum MotionValues {
     public static let revealFade: Double = 0.4
     /// A token longer than this many UTF-16 units is cut where the pace reaches.
     public static let longToken: Int = 24
+    /// An open fence's unfinished code line is held this long, then steps by words.
+    public static let revealLineHold: Double = 0.6
 
     // MARK: Holds
 
