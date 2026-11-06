@@ -184,9 +184,9 @@ private let pendingApproval: [AgentEvent] = [
 
 @Suite struct ThreadHeaderLineTests {
     private typealias Line = ThreadHeaderLine
-    /// Type and model, then the account part a routed (Claude) thread always carries.
-    private let identity: [Line.Part] = [.type(.implementation), .model("claude-sonnet-5-5")]
-    private let type: [Line.Part] = [.type(.implementation), .model("claude-sonnet-5-5"), .account(nil)]
+    /// The type, then the account part a routed (Claude) thread always carries.
+    private let identity: [Line.Part] = [.type(.implementation)]
+    private let type: [Line.Part] = [.type(.implementation), .account(nil)]
 
     private func line(_ status: SessionStatus, host: String? = nil, parentId: String? = nil, isMaster: Bool? = nil, activity: String? = nil, busySince: Int? = 500, frozen: Int? = nil, live: Bool? = nil) -> Line {
         Line(session: meta("t", parentId: parentId, status: status, updatedAt: 900, frozenActiveElapsed: frozen, activity: activity, agentType: .reviewer, threadType: .implementation, isMaster: isMaster, busySince: busySince, treeHasLiveWork: live), hostName: host)
@@ -198,23 +198,19 @@ private let pendingApproval: [AgentEvent] = [
         switch status {
         case .running, .starting:
             #expect(line.mark == .spinner)
-            #expect(line.parts == type + [.elapsed(since: 500)])
-            #expect(line.live)
+            #expect(line.parts == type)
         case .watching:
             #expect(line.mark == .dot(.info))
-            #expect(line.parts == type + [.elapsed(since: 500)])
-            #expect(line.live)
+            #expect(line.parts == type)
         case .waiting:
             #expect(line.mark == .dot(.warning))
             #expect(line.parts == type)
-            #expect(!line.live)
         case .error:
             #expect(line.mark == .dot(.destructive))
             #expect(line.parts == type)
         case .paused:
             #expect(line.mark == .paused)
-            #expect(line.parts == type + [.frozen(ms: 4_000)])
-            #expect(!line.live)
+            #expect(line.parts == type, "the frozen time is the slot's")
         case .queued:
             #expect(line.mark == .dot(.tertiary))
             #expect(line.parts == [.words("Queued")])
@@ -224,14 +220,25 @@ private let pendingApproval: [AgentEvent] = [
         case .idle, .done, .unknown:
             #expect(line.mark == .empty)
             #expect(line.parts == type)
-            #expect(!line.live)
+        }
+    }
+
+    @Test("one clock and one model: the line moves with neither the time nor the model", arguments: [SessionStatus.starting, .running, .watching, .waiting, .paused, .idle])
+    func oneClockOneModel(status: SessionStatus) {
+        for parentId in [nil, "p"] as [String?] {
+            let early = line(status, parentId: parentId, busySince: 500, frozen: 4_000)
+            let late = line(status, parentId: parentId, busySince: 90_000, frozen: 61_000)
+            #expect(early == late, "the slot is the one clock")
+            let other = meta("t", parentId: parentId, status: status, updatedAt: 900, agentType: .reviewer, model: "claude-opus-5-5", threadType: .implementation)
+            let same = meta("t", parentId: parentId, status: status, updatedAt: 900, agentType: .reviewer, threadType: .implementation)
+            #expect(Line(session: other, hostName: nil) == Line(session: same, hostName: nil), "the composer's row names the model")
         }
     }
 
     @Test("the host leads only when given, and withoutHost drops it") func theHostLeadsOnlyWhenGivenAndWithouthostDropsIt() {
         let with = line(.running, host: "box")
-        #expect(with.parts == [.host("box")] + type + [.elapsed(since: 500)])
-        #expect(with.withoutHost == type + [.elapsed(since: 500)])
+        #expect(with.parts == [.host("box")] + type)
+        #expect(with.withoutHost == type)
         #expect(line(.running).parts.first == .type(.implementation))
         #expect(with.compact == identity)
     }
@@ -260,9 +267,9 @@ private let pendingApproval: [AgentEvent] = [
 
     @Test("a running turn's phase is the working line's, never the header's") func aRunningTurnsPhaseIsTheWorkingLines() {
         let limited = line(.running, host: "box", activity: "Rate limited · retry 3 in 32 s")
-        #expect(limited.parts == [.host("box")] + type + [.elapsed(since: 500)])
-        #expect(line(.running, activity: "Waiting for the provider, 25 s").parts == type + [.elapsed(since: 500)])
-        #expect(line(.starting, activity: "Starting the CLI").parts == type + [.elapsed(since: 500)])
+        #expect(limited.parts == [.host("box")] + type)
+        #expect(line(.running, activity: "Waiting for the provider, 25 s").parts == type)
+        #expect(line(.starting, activity: "Starting the CLI").parts == type)
         #expect(line(.idle, activity: "Initializing").parts == type, "a settled thread has no phase")
     }
 
@@ -273,40 +280,30 @@ private let pendingApproval: [AgentEvent] = [
     }
 
     @Test("a subagent names its role; a master says so before its type") func aSubagentNamesItsRoleAMasterSaysSoBeforeItsType() {
-        #expect(line(.idle, parentId: "p").parts == [.agent(.reviewer), .model("claude-sonnet-5-5"), .account(nil)])
+        #expect(line(.idle, parentId: "p").parts == [.agent(.reviewer), .account(nil)])
         #expect(line(.idle, parentId: "p", isMaster: true).parts.first == .agent(.reviewer))
         #expect(line(.idle, isMaster: true).parts == [.master] + type)
         #expect(line(.idle, host: "box", isMaster: true).parts == [.host("box"), .master] + type)
     }
 
-    @Test("paused shows the frozen elapsed only when the host has one") func pausedShowsTheFrozenElapsedOnlyWhenTheHostHasOne() {
-        #expect(line(.paused, frozen: 61_000).parts == type + [.frozen(ms: 61_000)])
-        #expect(line(.paused).parts == type)
-    }
-
-    @Test("the elapsed starts at busySince, else at the last update") func theElapsedStartsAtBusysinceElseAtTheLastUpdate() {
-        #expect(line(.running, busySince: nil).parts.last == .elapsed(since: 900))
-    }
-
-    @Test("an idle root whose subagents still work shows the spinner with no elapsed") func anIdleRootWhoseSubagentsStillWorkShowsTheSpinnerWithNoElapsed() {
+    @Test("an idle root whose subagents still work shows the spinner") func anIdleRootWhoseSubagentsStillWorkShowsTheSpinner() {
         let tree = line(.idle, live: true)
         #expect(tree.mark == .spinner)
         #expect(tree.parts == type)
-        #expect(!tree.live)
         #expect(line(.done, live: false).mark == .empty)
     }
 
     @Test("a root with no type reads as a chat") func aRootWithNoTypeReadsAsAChat() {
         let chat = Line(session: meta("t", status: .idle), hostName: nil)
-        #expect(chat.parts == [.type(.chat), .model("claude-sonnet-5-5"), .account(nil)])
+        #expect(chat.parts == [.type(.chat), .account(nil)])
     }
 
-    @Test("the account part follows the model for a routed provider and names the thread's account") func theAccountPartFollowsTheModel() {
+    @Test("the account part follows the type for a routed provider and names the thread's account") func theAccountPartFollowsTheType() {
         let routed = Line(session: meta("t", status: .idle, account: "work@example.com"), hostName: nil)
-        #expect(routed.parts == [.type(.chat), .model("claude-sonnet-5-5"), .account("work@example.com")])
-        #expect(routed.compact == [.type(.chat), .model("claude-sonnet-5-5")])
+        #expect(routed.parts == [.type(.chat), .account("work@example.com")])
+        #expect(routed.compact == [.type(.chat)])
         let cursor = Line(session: meta("t", status: .idle, provider: .cursor), hostName: nil)
-        #expect(cursor.parts == [.type(.chat), .model("claude-sonnet-5-5")])
+        #expect(cursor.parts == [.type(.chat)])
     }
 }
 

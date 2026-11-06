@@ -38,24 +38,27 @@ struct MorphText<Value: Equatable, Content: View>: View {
     }
 
     var body: some View {
-        ZStack(alignment: .leading) {
-            // The arriving words at the width they will take, never shown: the glide's end.
-            content(value)
-                .lineLimit(1)
-                .environment(\.measuring, true)
-                .hidden()
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { targetWidth = $0 }
-                .accessibilityHidden(true)
-            content(leaving ?? value)
-                .lineLimit(1)
-                .fixedSize(horizontal: stage == .arriving && !reduced, vertical: false)
-                .offset(y: offset)
-                .opacity(opacity)
-                .frame(width: boxWidth, alignment: .leading)
-                .clipped()
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { shownWidth = $0 }
-        }
-        .onChange(of: Keyed(key: key, value: value)) { old, new in
+        content(leaving ?? value)
+            .lineLimit(1)
+            .fixedSize(horizontal: stage == .arriving && !reduced, vertical: false)
+            .offset(y: offset)
+            .opacity(opacity)
+            .frame(width: boxWidth, alignment: .leading)
+            .clipped()
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { shownWidth = $0 }
+            // The arriving words at the width they will take, never shown: the
+            // glide's end. Measured behind the box, never sizing it, so the box
+            // keeps the old words' width until the glide carries it over.
+            .background(alignment: .leading) {
+                content(value)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .environment(\.measuring, true)
+                    .hidden()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { targetWidth = $0 }
+                    .accessibilityHidden(true)
+            }
+            .onChange(of: Keyed(key: key, value: value)) { old, new in
             guard old.key != new.key else { return }
             morph(from: old.value)
         }

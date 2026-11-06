@@ -291,6 +291,21 @@ public struct MorphModel: Sendable, Hashable {
         }
     }
 
+    /// The box's width at `now` (nil: the words' own): the old words' while
+    /// they leave, then gliding from it to the new words' as they arrive, on
+    /// the swap curve. The new words are measured apart and never size the
+    /// box, so the glide is what carries the width. No glide under reduced motion.
+    public func boxWidth(old: Double, new: Double, at now: Double) -> Double? {
+        guard !reduced else { return nil }
+        switch stage {
+        case .still: return nil
+        case .leaving: return old
+        case .arriving:
+            let t = min(1, max(0, (now - startedAt) / inDuration))
+            return old + (new - old) * MotionValues.easeSwap.value(at: t)
+        }
+    }
+
     /// How far up the words on screen sit (pt) and how opaque they are, at `now`.
     public func pose(at now: Double) -> (offset: Double, opacity: Double) {
         let t: Double

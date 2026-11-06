@@ -169,6 +169,8 @@ public struct ThreadHeaderLine: Equatable, Sendable {
         case empty, spinner, dot(Tone), paused, stopped
     }
 
+    /// The line names the thread, never its model or its time: the
+    /// composer's row says the model and the slot above it the one clock.
     public enum Part: Equatable, Sendable {
         /// Slot (a): thread 22 renders this as its host chip and dot.
         case host(String)
@@ -178,14 +180,8 @@ public struct ThreadHeaderLine: Equatable, Sendable {
         case type(ThreadType)
         /// A subagent's role.
         case agent(AgentType)
-        /// `ModelName.short` of the id.
-        case model(String)
         /// The account the thread spends from (`session.account`), nil for Auto; only for a provider the gateway routes (thread 24's chip).
         case account(String?)
-        /// Ticks; only while live.
-        case elapsed(since: Int)
-        /// Paused: the frozen elapsed, in ms.
-        case frozen(ms: Int)
         /// A state's word ("Queued", "Stopped"), and its reason drawn as a
         /// quieter text beside it ("Waiting for X", "The harness is gone").
         case words(String, detail: String? = nil)
@@ -193,31 +189,24 @@ public struct ThreadHeaderLine: Equatable, Sendable {
 
     public let mark: Mark
     public let parts: [Part]
-    /// The line ticks (running, starting, watching).
-    public let live: Bool
-
 
     public init(session: SessionMeta, hostName: String?) {
         var parts: [Part] = []
         if let hostName { parts.append(.host(hostName)) }
         let root = session.parentId == nil
         if root, session.isMaster == true { parts.append(.master) }
-        var identity: [Part] = root ? [.type(session.threadType ?? .chat), .model(session.model)] : [.agent(session.agentType), .model(session.model)]
+        var identity: [Part] = root ? [.type(session.threadType ?? .chat)] : [.agent(session.agentType)]
         if RoutedProvider.routes(session.provider) { identity.append(.account(session.account)) }
-        let since = session.busySince ?? session.updatedAt
-        var live = false
         let mark: Mark
         switch session.status {
         case .running, .starting:
-            mark = .spinner
             // The turn's phase (the CLI starting, the provider slow or
             // refusing) is the transcript's working line, never the header's.
-            parts += identity + [.elapsed(since: since)]
-            live = true
+            mark = .spinner
+            parts += identity
         case .watching:
             mark = .dot(.info)
-            parts += identity + [.elapsed(since: since)]
-            live = true
+            parts += identity
         case .waiting:
             mark = .dot(.warning)
             parts += identity
@@ -227,7 +216,6 @@ public struct ThreadHeaderLine: Equatable, Sendable {
         case .paused:
             mark = .paused
             parts += identity
-            if let frozen = session.frozenActiveElapsed { parts.append(.frozen(ms: frozen)) }
         case .queued:
             mark = .dot(.tertiary)
             let queued = StatusWords.queuedLine(session)
@@ -236,13 +224,12 @@ public struct ThreadHeaderLine: Equatable, Sendable {
             mark = .stopped
             parts.append(.words(StripWords.stopped.title, detail: StripWords.stopped.detail))
         case .idle, .done, .unknown:
-            // A settled root whose subagents still work shows the spinner, with no elapsed: the time is the child's.
+            // A settled root whose subagents still work shows the spinner.
             mark = session.treeHasLiveWork == true ? .spinner : .empty
             parts += identity
         }
         self.mark = mark
         self.parts = parts
-        self.live = live
     }
 
     /// The line under the title, or nil inside a project's shell: there the
@@ -260,19 +247,19 @@ public struct ThreadHeaderLine: Equatable, Sendable {
 
     /// Compact height (folded landscape): a 32 pt bar has no room for a line
     /// under the title, so the header draws the mark leading the title on one
-    /// line and no words. The mark says the state; the type, the model and
-    /// the account are in the composer's menu and the row the person came
-    /// from, and the strip still shows the elapsed.
+    /// line and no words. The mark says the state; the type and the account
+    /// are in the row the person came from, the model in the composer's row,
+    /// and the slot shows the elapsed.
     public var compactHeight: [Part] { [] }
 
-    /// The shortest form: the words alone ("Queued", "Stopped") or the type and the model.
+    /// The shortest form: the words alone ("Queued", "Stopped") or the type.
     public var compact: [Part] {
         if case .words(let words, _)? = parts.last {
             return [.words(words)]
         }
         return withoutHost.filter {
             switch $0 {
-            case .type, .agent, .model: true
+            case .type, .agent: true
             default: false
             }
         }

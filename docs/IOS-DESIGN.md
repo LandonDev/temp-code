@@ -546,27 +546,26 @@ bare chat** (outside every workspace) keep the thread's own header, the way
 Messages and Notes title a screen: back, the title inline, and under it one
 quiet line read off `ThreadHeaderLine` (client package,
 `Rendering/ThreadFrame.swift`): the status mark, the type label tinted (a
-subagent's role instead; "Master" first on a master), the model, the
-account chip, and the elapsed ticking once a second in tabular digits while
-the thread is live. The host's name leads that line, in the tertiary step,
-only when more than one host is paired; the line drops the host, then
-compacts to the type and the model (or the one word "Queued" / "Stopped",
-alone), before the title truncates. The line's
+subagent's role instead; "Master" first on a master) and the account chip.
+Never the model or a clock: the composer's row names the model and the slot
+above the composer is the one clock, so the header says neither twice. The
+host's name leads that line, in the tertiary step, only when more than one
+host is paired; the line drops the host, then compacts to the type (or the
+one word "Queued" / "Stopped", alone), before the title truncates. The line's
 mark and words by status:
 
 | status | mark | after the host |
 | --- | --- | --- |
-| running, starting | spinner | type, model, account, elapsed (the turn's phase is the transcript's working line, never the header's) |
-| watching | info dot, still live | type, model, account, elapsed |
-| waiting | warning dot | type, model, account |
-| error | destructive dot | type, model, account |
-| paused | pause mark | type, model, account, the frozen elapsed |
+| running, starting | spinner | type, account (the turn's phase is the transcript's working line, never the header's) |
+| watching | info dot | type, account |
+| waiting | warning dot | type, account |
+| error | destructive dot | type, account |
+| paused | pause mark | type, account (the frozen time is the slot's) |
 | queued | quiet dot | "Queued", then the host's reason ("Waiting for X") quieter |
 | stopped | the still square | "Stopped", then "The harness is gone" quieter |
-| idle, done | none (the line stays centered) | type, model, account |
+| idle, done | none (the line stays centered) | type, account |
 
-An idle root whose subagents still work shows the spinner with no elapsed:
-the time is the child's. Rename… in the menu (and, outside the shell, a
+An idle root whose subagents still work shows the spinner. Rename… in the menu (and, outside the shell, a
 long press on the title) swaps the title for a field in place; Done or
 losing focus commits a changed, non-empty title and anything else reverts;
 the trailing toolbar group hides while the field is up so it gets the
@@ -2373,7 +2372,7 @@ left in a view.
 | Streaming text | the desktop's jitter buffer (`SmoothText`, smoothText.ts as of 0b82ddad, in UTF-16 units): the base pace is the arrival rate over the last 1.5 s (a gap counted 1 s at most, a burst at 1,500/s over a step), clamped 25–1,500 units/s, 400 before the first gap; a lead held behind the live end, seeded 250 ms (every host is remote to the phone), never under twice the gaps' 90th percentile (100–800 ms), an underrun growing it 1.5 times or by the wait, its excess decaying on a 6 s time constant; each spurt holds until a lead and a step are in hand; the pace leans up to 1.5 times while more than the lead is buffered, and every character shows within 1.5 s of arriving; the stream's end drains at the same pace, only a rewrite of the shown prefix and a hidden row snap. Whole words every 100 ms (`revealCut`: a token past 24 units cut where the pace reaches, never inside a grapheme; a bare block marker, a table's header row and a row that is only its pipes held until they have content, none of those inside an open fence; inside one a code line shows whole once its newline comes, and one held open `revealLineHold` (0.6 s) steps by words from then on, the clock waking the row once the hold is over), on a timer between steps, no display frames. A row that joins the last turn after the transcript opened is born live and reveals from its first word even when it mounts settled; the opening seq waits for the loaded thread; SwiftUI may prepare a row more than once, so preparation reads its eligibility and appearance consumes it; history and a row scrolled back in show whole. A reply short enough to land whole in its first step stays on the streaming render until that step is drawn and faded (`StreamRowRule`), so it fades like a long one. Each step fades in as one run over `revealFade` (0.4 s, linear; the desktop's `.stream-step`): the streaming block's text is one `Text` interpolated from its runs, the settled prefix as one and each step younger than the fade as its own (at most four; older young steps join the prefix), each young run carrying `StreamFadeAttribute` with its arrival, drawn at its opacity by `StreamFadeRenderer`, a `TextRenderer` under a `TimelineView` on a finite schedule (`FadeSchedule` over `RevealSegment.fadeTicks`, 30 Hz) that ends with the youngest run's fade (`RevealSegment.fadeEnd`), whether or not anything redraws the row after it. A per-block ledger keyed by the block's first 32 characters (`StreamRevealLedger`) keeps old steps merged into the prefix; a block reparsed into another text fades in whole; text a row held when it mounted shows without a fade; paragraphs, headings, quotes and list items fade, code, tables and rules never; no rise; under reduced motion the word steps stay and nothing fades. The row stays on the streaming render until the drain and its last fade are done, then swaps to the settled parse, the same document (`streamingDocument(settled:)` stands in until the settled parse lands), so nothing on screen changes; while it reveals it reports to the thread's `RevealDrain` under its turn, which the closing line waits on. A running step reads in the present tense on its row and settles into the past tense in place | `SmoothTextReveal`, `StreamingAssistantRow`, `StreamFadeText`, `StreamRevealLedger`, `RevealDrain`, `BornRows` |
 | Working mark | three 3 pt dots in a 14 pt box gather into one and part every 1.6 s (the left and middle gather by 42 % and part at 58 %, the right by 50 % and 66 %, each leg on the breathing curve), offset and scale only; enters and leaves as a glyph trading state does | `WorkingMark` (`Motion.markDots`, `Motion.breathe`, `Motion.markDot`); the three dots at rest under reduced motion |
 | The shimmer | the band crosses the working words every 3 s, offset only | `WorkingText` (`Motion.shimmerLegs`); muted words under reduced motion |
-| Word morph | the old words lift 3 pt and fade over `swapOut`, then the new rise 3 pt over `base` on the swap curve while the box glides its width over `base`, the arriving words clipped, never cut with an ellipsis; new words under one key drawn at once; nothing on mount | `MorphText` (`Motion.swapOut`, `Motion.swapIn`, `Motion.morphLift`); reduced motion fades out, then in, `fast` each, no lift and no glide |
+| Word morph | the old words lift 3 pt and fade over `swapOut`, then the new rise 3 pt over `base` on the swap curve while the box glides its width over `base` from the old words' width to the new (the new words are measured behind the box and never size it, `MorphModel.boxWidth`), the arriving words clipped, never cut with an ellipsis; new words under one key drawn at once; nothing on mount | `MorphText` (`Motion.swapOut`, `Motion.swapIn`, `Motion.morphLift`); reduced motion fades out, then in, `fast` each, no lift and no glide |
 | The working line settling | once every row of the turn has finished revealing: the mark leaves as a glyph trading state, the words morph into the closing words and slide 22 pt to the prose edge on `base` and the swap curve | `TurnLineRow` (`Motion.settleSlide`); the morph's fades and no slide under reduced motion |
 | The working line held, the Watching line | folds closed and opens again on the layout spring, the words kept; never unmounted while on screen | `Motion.layout`; opacity on `fast` under reduced motion |
 | Status dot to spinner | cross-fade over `fast` | `StatusDot` (`Motion.crossFade`) |

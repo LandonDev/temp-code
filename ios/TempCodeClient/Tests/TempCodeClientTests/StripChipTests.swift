@@ -49,8 +49,14 @@ private func chip(_ meta: SessionMeta, selected: Bool = false, unseen: Bool = fa
         #expect(!chip(meta("a"), selected: true, unseen: true).look(onShelf: false).medium)
         #expect(!chip(meta("a"), unseen: true).look(onShelf: true).medium)
         #expect(!chip(meta("a")).look(onShelf: false).medium)
-        #expect(chip(meta("a")).look(onShelf: false).reservesMediumWidth)
-        #expect(chip(meta("a"), selected: true, unseen: true).look(onShelf: false).reservesMediumWidth)
+        // The room is measured at one weight whether the chip reads unread or read, so turning one never widens it.
+        let read = chip(meta("a")).look(onShelf: false)
+        let unread = chip(meta("a"), unseen: true).look(onShelf: false)
+        #expect(read.titleWeight == .regular)
+        #expect(unread.titleWeight == .medium)
+        #expect(read.widthWeight == unread.widthWeight)
+        #expect(read.widthWeight == .medium, "the room is the wider weight's")
+        #expect(chip(meta("a"), unseen: true).look(onShelf: true).widthWeight == .medium)
     }
 
     @Test func `Master is said on a pinned master's live chip alone`() {

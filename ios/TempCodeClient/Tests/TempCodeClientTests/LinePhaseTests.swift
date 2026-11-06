@@ -168,6 +168,23 @@ private func entry(_ item: TranscriptItem) -> ThreadEntry { ThreadEntry(item: it
         #expect(start.opacity == 0)
     }
 
+    @Test func `the box keeps the old words' width while they leave, then glides to the new words' as they arrive`() {
+        var morph = MorphModel("Thinking", reduced: false)
+        #expect(morph.boxWidth(old: 60, new: 120, at: 0) == nil, "at rest the words size their own box")
+        morph.set("Reading format.ts", at: 0)
+        #expect(morph.boxWidth(old: 60, new: 120, at: MotionValues.swapOut / 2) == 60, "the new words never size the box early")
+        morph.tick(at: MotionValues.swapOut)
+        #expect(morph.boxWidth(old: 60, new: 120, at: MotionValues.swapOut) == 60, "the glide starts from the old width")
+        let mid = morph.boxWidth(old: 60, new: 120, at: MotionValues.swapOut + MotionValues.base / 2) ?? 0
+        #expect(mid > 60 && mid < 120, "midway the box is between the two: the glide is visible")
+        #expect(morph.boxWidth(old: 60, new: 120, at: MotionValues.swapOut + MotionValues.base) == 120)
+        morph.tick(at: MotionValues.swapOut + MotionValues.base + 0.01)
+        #expect(morph.boxWidth(old: 60, new: 120, at: 1) == nil)
+        var reduced = MorphModel("A", reduced: true)
+        reduced.set("Bbbb", at: 0)
+        #expect(reduced.boxWidth(old: 10, new: 40, at: 0.01) == nil, "no glide under reduced motion")
+    }
+
     @Test func `reduced motion fades out then in, fast each, with no lift`() {
         var morph = MorphModel("A", reduced: true)
         morph.set("B", at: 0)

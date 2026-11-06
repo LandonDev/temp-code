@@ -217,12 +217,12 @@ private struct StripChipView: View {
                 glyph(look.glyph)
                 // The medium copy, hidden, holds the width; the drawn title sits over it.
                 Text(title)
-                    .transcriptType(type, weight: .medium)
+                    .transcriptType(type, weight: look.widthWeight.font)
                     .lineLimit(1)
                     .hidden()
                     .overlay(alignment: .leading) {
                         Text(title)
-                            .transcriptType(type, weight: look.medium ? .medium : .regular)
+                            .transcriptType(type, weight: look.titleWeight.font)
                             .foregroundStyle(chip.selected || look.medium ? .primary : .secondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
@@ -292,6 +292,15 @@ private struct EdgeFade: View {
             LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing).frame(width: Layout.textEdge)
             Color.black
             LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: Layout.textEdge)
+        }
+    }
+}
+
+private extension StripTitleWeight {
+    var font: Font.Weight {
+        switch self {
+        case .regular: .regular
+        case .medium: .medium
         }
     }
 }

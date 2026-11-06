@@ -91,9 +91,18 @@ public struct StripChipLook: Sendable, Hashable {
     public var medium: Bool
     /// The muted "Master" after the title, on the live row.
     public var master: Bool
-    /// The title always reserves its medium width, so a chip never widens
-    /// when it turns unread or read.
-    public var reservesMediumWidth: Bool { true }
+    /// The weight the title is drawn at: medium while unread on the live row.
+    public var titleWeight: StripTitleWeight { medium ? .medium : .regular }
+    /// The weight the title's room is measured at (the hidden copy the drawn
+    /// title sits over): always the wider medium, whatever the drawn weight,
+    /// so a chip never widens when it turns unread or read.
+    public var widthWeight: StripTitleWeight { .medium }
+}
+
+/// A strip chip's title weight, as the view draws or measures it.
+public enum StripTitleWeight: Sendable, Hashable {
+    case regular
+    case medium
 }
 
 extension StripChip {

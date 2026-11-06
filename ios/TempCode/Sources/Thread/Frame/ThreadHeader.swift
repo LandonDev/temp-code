@@ -4,8 +4,9 @@ import TempCodeContract
 
 /// The navigation bar's principal item, the way Messages and Notes title a
 /// screen: the thread's title, and under it one quiet line read off
-/// `ThreadHeaderLine`: the status mark, the type tinted, the model, and the
-/// elapsed ticking in tabular digits while the thread is live. The host
+/// `ThreadHeaderLine`: the status mark, the type tinted (a subagent's role)
+/// and the account; never the model or a clock, which the composer's row
+/// and the slot above it say. The host
 /// leads that line only when more than one is paired, and only when it
 /// fits; the line drops the host, then compacts, before the title does.
 /// Long-press (or Rename… in the menu) swaps the title for a field in
@@ -91,33 +92,22 @@ struct ThreadHeader: View {
         return session.title
     }
 
-    /// The one line under the title. A live line ticks once a second; the
-    /// whole row sits inside the timeline so one clock drives it.
+    /// The one line under the title.
     private struct Subtitle: View {
         let client: EnvironmentClient
         let line: ThreadHeaderLine
         let session: SessionMeta
 
         var body: some View {
-            if line.live {
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    row(now: context.date)
-                }
-            } else {
-                row(now: .now)
-            }
-        }
-
-        private func row(now: Date) -> some View {
             HStack(spacing: 6) {
                 if line.mark != .empty {
                     HeaderMark(status: session.status, spinning: line.mark == .spinner)
                         .transition(.opacity)
                 }
                 ViewThatFits(in: .horizontal) {
-                    HeaderParts(client: client, session: session, parts: line.parts, now: now)
-                    HeaderParts(client: client, session: session, parts: line.withoutHost, now: now)
-                    HeaderParts(client: client, session: session, parts: line.compact, now: now)
+                    HeaderParts(client: client, session: session, parts: line.parts)
+                    HeaderParts(client: client, session: session, parts: line.withoutHost)
+                    HeaderParts(client: client, session: session, parts: line.compact)
                 }
             }
             .font(.caption)
@@ -142,19 +132,17 @@ struct HeaderMark: View {
 }
 
 /// The subtitle's parts side by side, 8 pt apart, told apart by their own
-/// weight and color (the type tinted at medium weight, the model and agent
-/// in secondary, the host, "Master" and the clock in tertiary), never by a
-/// dot between them.
+/// weight and color (the type tinted at medium weight, the agent's role in
+/// secondary, the host and "Master" in tertiary), never by a dot between them.
 private struct HeaderParts: View {
     let client: EnvironmentClient
     let session: SessionMeta
     let parts: [ThreadHeaderLine.Part]
-    let now: Date
 
     var body: some View {
         HStack(spacing: 8) {
             ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
-                HeaderPartView(client: client, session: session, part: part, now: now)
+                HeaderPartView(client: client, session: session, part: part)
             }
         }
     }
@@ -166,7 +154,6 @@ struct HeaderPartView: View {
     let client: EnvironmentClient
     let session: SessionMeta
     let part: ThreadHeaderLine.Part
-    let now: Date
 
     var body: some View {
         switch part {
@@ -178,17 +165,8 @@ struct HeaderPartView: View {
             Text(type.label).fontWeight(.medium).foregroundStyle(type.tint)
         case .agent(let agent):
             Text(agent.label)
-        case .model(let id):
-            Text(ModelName.short(id))
         case .account:
             AccountChip(client: client, session: session)
-        case .elapsed(let since):
-            let text = TimeFormat.elapsed(since: since, now: now)
-            Text(text)
-                .foregroundStyle(.tertiary)
-                .numeric(text)
-        case .frozen(let ms):
-            Text(TimeFormat.duration(ms: ms)).monospacedDigit().foregroundStyle(.tertiary)
         case .words(let words, let detail):
             HStack(spacing: 6) {
                 Text(words)
