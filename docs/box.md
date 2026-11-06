@@ -416,6 +416,38 @@ straight in"). What each harness tells the host, as probed on the box on
   is Queued and becomes Received at the first output of the turn that
   carries it.
 
+**A steer waits for the running call, and the row says so.** The CLI reads
+a message streamed into its open turn only at its next model request: after
+the tool call it is running, or the compaction it is in. The box's database
+(2026-11-05/06) showed every steer stamped Sent at once and Received
+exactly at the tool result: one into a Bash `until … sleep 5` loop that ran
+to its 600 s cap (thread uUd0anM5QrVq, 08:22:39 → 08:29:33, answered 3 s
+later), one into a 3 min `batch_gate` (fcd98e15, 19:21:36 → 19:24:25), one
+into a `mac_run` and one into a Maven build that the person Stopped after
+1m26s and 41s and resent (the model then got both), and two sent during a
+manual compaction of 95 s and 133 s that rode the next turn. Nothing was
+open at the provider in any of them, nothing was lost, and no rate-limit
+retry ran. What was wrong was the row: the claude driver's `send()` said
+`running` and then `waiting-provider` for every message into a live CLI, so
+the steer's user row opened a turn group in the transcript whose working
+line read "Waiting for the provider" for the whole call, and the running
+call dropped out of sight; the first-output watchdog was armed too, with
+the CLI rightly silent until its call returned. Now a send into an open
+turn announces nothing (`announcesSend` in drivers/claude.ts: no status, no
+phase, no watchdog), a `running` repeated on a running row keeps the turn's
+activity, and while a confirming driver's steer is unread the row reads
+the turn's own word with the message behind it: "Running the gate, then
+your message", "Compacting context, then your message"
+(`thenYourMessage` in shared/statusWords.ts, `steerUnread` in sessions.ts;
+Received, or the turn settling, ends it). A Bash call is named by its first
+command past a `cd`, an `export` or a `NAME=value` (`commandLead`). The
+message cannot be made to reach the model sooner: no harness interrupts a
+running tool for input, and the call is the model's own work; a person who
+wants it read now Stops the call, as before. Proof: `bun run
+script:e2e-steer-ack` reads the row through the slow call ("Running sleep,
+then your message", no `running` row from the steer, "Running echo" once
+read); unit: sessions-phases.test.ts and claude-steer.test.ts.
+
 ### Surviving a restart: threads mid-turn come back
 
 `box-update` (and any `systemctl stop`) ends the service with SIGTERM to the

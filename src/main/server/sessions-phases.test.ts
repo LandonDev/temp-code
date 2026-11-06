@@ -26,6 +26,7 @@ vi.mock('./drivers', () => ({
         emits.set(id, ctx.emit)
         dead.delete(id)
         return {
+          confirmsSteers: true,
           send: async (text: string) => {
             if (dead.has(id)) throw new Error('harness gone')
             sends.set(id, [...(sends.get(id) ?? []), text])
@@ -115,6 +116,42 @@ it('a live handle reads Initializing after the send, kept through a repeated run
   expect(registry.get(id)?.activity).toBe('Initializing')
   emit(id, { type: 'status', status: 'idle' })
   emit(id, { type: 'status', status: 'running' })
+  expect(registry.get(id)?.activity).toBe('Thinking')
+})
+
+it("a steer into a running call says the call, then your message, until the model reads it; a running's repeat keeps the call", async () => {
+  // The box, 2026-11-06: a steer sent into a 600 s Bash call read "Waiting
+  // for the provider" for seven minutes while nothing was out at the
+  // provider; the CLI reads a message only at its next request.
+  const id = await live()
+  emit(id, { type: 'tool-call', callId: 'c1', name: 'mcp__app__batch_gate', input: {} })
+  expect(registry.get(id)?.activity).toBe('Running the gate')
+  expect(registry.queueAdd(id, 'and screenshots', { steer: true }).kind).toBe('steered')
+  await settle()
+  // The fake's send repeats `running`: the call's words stay, never Thinking.
+  const held = 'Running the gate, then your message'
+  expect(registry.get(id)).toMatchObject({ activity: held, statusDetail: held, activityKind: 'edit' })
+  emit(id, { type: 'phase', phase: 'waiting-provider' })
+  expect(registry.get(id)?.activity).toBe('Waiting for the provider, then your message')
+  emit(id, { type: 'phase', phase: null })
+  expect(registry.get(id)?.activity).toBe('Thinking, then your message')
+  emit(id, { type: 'tool-call', callId: 'c2', name: 'Bash', input: { command: 'cd /x && bun run gate' } })
+  expect(registry.get(id)?.activity).toBe('Running bun, then your message')
+  const steerId = (registry.eventsAfter(id, 0).findLast((r) => r.event.type === 'user-text')!.event as { steerId?: string }).steerId!
+  emit(id, { type: 'tool-result', callId: 'c2', output: 'ok', isError: false })
+  emit(id, { type: 'steer', steerId, state: 'received', how: 'in-turn' })
+  expect(registry.get(id)?.activity).toBe('Running bun')
+})
+
+it('a steer the turn settled on is said for the next turn, not as waiting on it', async () => {
+  const id = await live()
+  registry.queueAdd(id, 'note this', { steer: true })
+  await settle()
+  expect(registry.get(id)?.activity).toBe('Thinking, then your message')
+  emit(id, { type: 'status', status: 'idle' })
+  expect(registry.get(id)?.activity ?? null).toBeNull()
+  await registry.send(id, 'next')
+  await settle()
   expect(registry.get(id)?.activity).toBe('Thinking')
 })
 
@@ -311,4 +348,19 @@ it('describeTool words every tool the strip can meet; an unknown name is humaniz
   for (const [name, words] of table) expect(say(name), name).toBe(words)
   expect(say('Skill', { skill: 'impeccable' })).toBe('Using skill impeccable')
   expect(say('Skill', {})).toBe('Using a skill')
+})
+
+it('a Bash call is named by its first command past a cd, an export or a variable', async () => {
+  const id = await live()
+  const say = (command: string): string | null | undefined => {
+    emit(id, { type: 'tool-call', callId: `c-${command}`, name: 'Bash', input: { command } })
+    return registry.get(id)?.activity
+  }
+  expect(say('cd /srv/agents/work/wt/gang-vanilla && MAVEN_OPTS="-X" mvn -q package')).toBe('Running mvn')
+  expect(say("cd /x/y && python3 - <<'EOF'\nprint(1)\nEOF")).toBe('Running python3')
+  expect(say('export LIBGL_ALWAYS_SOFTWARE=1 JAVA_TOOL_OPTIONS="-Da=b" && exec /srv/x/run.sh')).toBe('Running run.sh')
+  expect(say('until grep -q done /tmp/run.log; do sleep 5; done')).toBe('Running until')
+  expect(say('cd /x; bun test')).toBe('Running bun')
+  expect(say('cd /x')).toBe('Running cd')
+  expect(say('   ')).toBe('Running a command')
 })

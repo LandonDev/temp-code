@@ -102,6 +102,13 @@ export function providerWaitWords(seconds: number): string {
   return `Waiting for the provider, ${seconds} s`
 }
 
+/** A message sent into an open turn that the model has not read yet: it is
+ *  behind whatever the turn does, which the CLI finishes first ("Running the
+ *  gate, then your message", "Compacting context, then your message"). */
+export function thenYourMessage(line: string): string {
+  return `${line}, then your message`
+}
+
 /** A compaction in progress, from its start to its outcome: the activity,
  *  the context meter and the transcript's row all say it. */
 export const COMPACTING_WORDS = 'Compacting context'

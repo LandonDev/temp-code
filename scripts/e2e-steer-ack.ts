@@ -85,9 +85,20 @@ const s1 = lastSteerId(id)
 check('its user row carries a steerId', !!s1, s1)
 const sent = await waitFor(id, (r) => r.event.type === 'steer' && r.event.steerId === s1 && r.event.state === 'sent').catch(() => null)
 check('stamped sent once the harness had it', !!sent, sent ? `${sent.ts - call.ts} ms after the call` : '')
+// The CLI reads the steer only when the call returns: the row says the call
+// and that the message is behind it, never the provider (the box, 2026-11-06:
+// "Waiting for the provider" through a 600 s call).
+await waitFor(id, (r) => r.event.type === 'tool-call' && !r.event.partial && typeof (r.event.input as { command?: unknown } | undefined)?.command === 'string')
+const during = registry.get(id)
+check('the row says the call, then your message', during?.activity === 'Running sleep, then your message', `${during?.activity ?? 'null'} / ${during?.statusDetail ?? 'null'}`)
+const steerRow = rows(id).findLast((r) => r.event.type === 'user-text')
+const between = rows(id, steerRow?.seq ?? 0).filter((r) => r.seq < (sent?.seq ?? Infinity))
+check('the steer wrote no running status', !between.some((r) => r.event.type === 'status' && r.event.status === 'running'), between.map((r) => r.event.type).join(','))
 const received = await waitFor(id, (r) => r.event.type === 'steer' && r.event.steerId === s1 && r.event.state === 'received').catch(() => null)
 const how = received?.event.type === 'steer' ? received.event.how : undefined
 check('stamped received in-turn', how === 'in-turn', `${how ?? 'never'}${received && sent ? `, ${received.ts - sent.ts} ms after sent` : ''}`)
+const read = registry.get(id)?.activity ?? ''
+check('once read, the row stops saying your message', !/then your message/.test(read), read)
 const end1 = await waitFor(id, isSettle)
 if (received) {
   const after = rows(id, received.seq).filter((r) => r.seq < end1.seq)

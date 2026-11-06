@@ -5,7 +5,7 @@ import type { DriverCtx } from './types'
 
 vi.mock('electron', () => ({ nativeImage: {} }))
 
-const { handleMessage, newStreamState } = await import('./claude')
+const { announcesSend, handleMessage, newStreamState } = await import('./claude')
 
 /**
  * A steer's read signal: the CLI lists the client uuids a turn consumed
@@ -75,4 +75,14 @@ it('an unknown uuid, a subagent frame and a plain send never stamp', () => {
   handleMessage(ctx, state, status(['other']))
   expect(steers()).toEqual([])
   expect(state.steers.has('s1')).toBe(true)
+})
+
+it("a send into an open turn announces nothing: the CLI reads it at its next request, after the running call, so the turn's own word stands and the first-output watchdog stays unarmed", () => {
+  // The box, 2026-11-06: steers into a 600 s Bash call and a 3 min gate were
+  // read exactly at the tool result; the row said "Waiting for the provider"
+  // meanwhile, with nothing out at the provider.
+  state.working = true
+  expect(announcesSend(state)).toBe(false)
+  state.working = false
+  expect(announcesSend(state)).toBe(true)
 })

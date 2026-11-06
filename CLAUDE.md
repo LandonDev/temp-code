@@ -3601,7 +3601,19 @@ this is the short one.
   prompt). Under the bubble the transcript says one 12px word, Sent,
   Received, Queued for the next turn or Not delivered, its time and how in
   a tooltip (transcript/UserMessage.tsx `SteerLine`, lib/steerWords.ts);
-  the phone the same (`SteerStamp`, TranscriptRows.swift; its time is the locale's clock, `TimeFormat.clock`). Proof: `bun run
+  the phone the same (`SteerStamp`, TranscriptRows.swift; its time is the locale's clock, `TimeFormat.clock`). The CLI reads a
+  steer only at its next model request, after the call it is running or
+  the compaction it is in (the box, 2026-11-06: one waited through a 600 s
+  Bash call, one through a 3 min gate; nothing was open at the provider),
+  so a send into an open turn announces nothing (`announcesSend`,
+  drivers/claude.ts: no `running`, no `waiting-provider`, no first-output
+  watchdog), a `running` repeated on a running row keeps the turn's
+  activity, and while a confirming driver's steer is unread the row reads
+  the turn's own word with the message behind it, "Running the gate, then
+  your message" (`thenYourMessage` in shared/statusWords.ts, `steerUnread`
+  in sessions.ts; a Bash call is named by its first command past a `cd`,
+  an `export` or a `NAME=value`, `commandLead`), never a provider wait of
+  its own. Proof: `bun run
   script:e2e-steer-ack` (docs/box.md "A steer says it was received"). And a send releases the
   thread's pending `wait_for_agent` as the steer does
   (`resolveSteerWaiters`): a master's wait in flight returns

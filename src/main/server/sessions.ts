@@ -18,7 +18,7 @@ import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
-import { COMPACTING_WORDS, providerWaitWords, retryWords } from '@shared/statusWords'
+import { COMPACTING_WORDS, providerWaitWords, retryWords, thenYourMessage } from '@shared/statusWords'
 import type { SessionBatchResult } from '@shared/contract'
 import { batchChildIds, runSessionBatch, type SessionBatchAction } from './sessionBatch'
 import { ThreadScheduler, type QueuedLine } from './scheduler'
@@ -371,6 +371,19 @@ function activityOf(event: AgentEvent): Activity | null | undefined {
 const fileOf = (p: unknown): string | null =>
   typeof p === 'string' && p ? (p.split('/').pop() ?? null) : null
 
+/** The command a Bash call is named by: the first word of its first segment
+ *  that is not a `cd`, an `export` or a `NAME=value` ("cd /x && MAVEN_OPTS=-X
+ *  mvn package" is mvn); a line that is only those keeps its first word. */
+function commandLead(command: string): string {
+  const words = (seg: string): string[] => seg.trim().split(/\s+/).filter(Boolean)
+  const segments = command.split(/\s*(?:&&|\|\||;|\n)\s*/)
+  for (const seg of segments) {
+    const rest = words(seg).filter((w, i, all) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w) && !(i === 0 && all.length > 1 && w === 'exec'))
+    if (rest.length && rest[0] !== 'cd' && rest[0] !== 'export') return rest[0]
+  }
+  return words(command)[0] ?? ''
+}
+
 function describeTool(name: string, input: unknown): Activity {
   const i = (input ?? {}) as Record<string, unknown>
   switch (name) {
@@ -385,7 +398,7 @@ function describeTool(name: string, input: unknown): Activity {
         kind: 'edit'
       }
     case 'Bash': {
-      const cmd = typeof i.command === 'string' ? i.command.trim().split(/\s+/)[0] : ''
+      const cmd = typeof i.command === 'string' ? commandLead(i.command) : ''
       return { text: cmd ? `Running ${fileOf(cmd) ?? cmd}` : 'Running a command', kind: 'edit' }
     }
     case 'Grep':
@@ -4594,13 +4607,16 @@ export class SessionRegistry {
     // A compaction is the activity from its start to its outcome or the
     // turn's end; a `running` meanwhile (a message sent mid-compaction)
     // keeps it, and an outcome with none open (a done after a pause)
-    // changes nothing.
+    // changes nothing. A `running` on a row already running (a driver's
+    // word for a steer into its open turn) keeps the turn's own word: the
+    // call it runs, which the steer waits behind, never Thinking.
     let compactionClosed = false
     if (event.type === 'compaction') {
       if (event.phase === 'start') this.compacting.add(sessionId)
       else compactionClosed = this.compacting.delete(sessionId)
     } else if (event.type === 'status' && !PHASE_STATUSES.has(event.status)) this.compacting.delete(sessionId)
     const kept = event.type === 'status' && (event.status === 'running' || event.status === 'starting') ? this.phases.get(sessionId) : undefined
+    const repeated = event.type === 'status' && event.status === 'running' && persisted?.status === 'running'
     const act =
       event.type === 'compaction'
         ? event.phase === 'start'
@@ -4612,7 +4628,9 @@ export class SessionRegistry {
           ? COMPACTING_ACTIVITY
           : kept
             ? activityOf(kept)
-            : activityOf(event)
+            : repeated
+              ? undefined
+              : activityOf(event)
     const actMoved = act !== undefined && act?.text !== this.activities.get(sessionId)?.text
     if (actMoved) {
       if (act === null) this.activities.delete(sessionId)
@@ -5092,6 +5110,10 @@ export class SessionRegistry {
       ...(opts.how ? { how: opts.how } : {}),
       ...(opts.reason ? { reason: opts.reason } : {})
     })
+    // The row's words follow the steer (statusWordsOf: "…, then your
+    // message" while it is unread), so the stamp pushes the meta.
+    const meta = this.row(sessionId)
+    if (meta && isWorking(meta.status)) this.notifyMeta(meta)
   }
 
   /** The first output of a turn: a steer whose driver does not confirm,
@@ -5898,13 +5920,27 @@ export class SessionRegistry {
     }
     // A request out at the provider past the threshold, with nothing finer known
     // (Thinking, or the driver's own provider word): say so with its seconds.
+    // A steer the model has not read yet is behind whatever the turn does
+    // (the CLI reads it at its next request): "Running the gate, then your
+    // message", never a wait of its own.
     const live = session.status === 'running' || session.status === 'starting'
+    const held = live && this.steerUnread(session.id)
     if (live && awaiting?.size) {
       const line = waitLine([...awaiting.keys()], titleOf)
-      return { activity: line, statusDetail: line }
+      const said = held ? thenYourMessage(line) : line
+      return { activity: said, statusDetail: said }
     }
     const text = live && (!act || act === 'Thinking' || act === WAITING_PROVIDER_LINE) ? (this.providerWaitLine(session.id) ?? act) : act
-    return { activity: text, statusDetail: live ? text : null }
+    const said = held && text ? thenYourMessage(text) : text
+    return { activity: said, statusDetail: live ? said : null }
+  }
+
+  /** A steer sent into the thread's open turn that the model has not read:
+   *  at `sent`, and its turn still open (a settle marks it for the next
+   *  turn, which carries it in). */
+  private steerUnread(sessionId: string): boolean {
+    for (const s of this.steers.get(sessionId)?.values() ?? []) if (s.state === 'sent' && !s.fallback) return true
+    return false
   }
 
   /** Set during an account refresh pass: metas wait here and go out once

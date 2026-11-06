@@ -312,6 +312,20 @@ export function phaseAfterSend(state: Pick<StreamState, 'initialized' | 'phase'>
   return state.phase === 'cli-starting' ? 'cli-starting' : 'initializing'
 }
 
+/** Whether a send says `running` and its phase, and arms the first-output
+ *  watchdog. A turn of its own does. A message into an open turn (a steer)
+ *  does not: the CLI reads it only at its next model request, after the
+ *  call it is running or the compaction it is in (the box, 2026-11-06: a
+ *  steer into a 600 s Bash call and one into a 3 min gate were each read
+ *  at the tool result, while the row said "Waiting for the provider" with
+ *  nothing out at the provider), so the provider's word would be false,
+ *  the turn's own word stands (the registry adds "then your message"
+ *  while the steer is unread) and the CLI's silence until the call
+ *  returns is no silence to recover from. */
+export function announcesSend(state: Pick<StreamState, 'working'>): boolean {
+  return !state.working
+}
+
 /**
  * How long a notice turn's result is held before it is taken as the turn's
  * own. A CLI resumed on a transcript whose background task died answers the
@@ -1891,25 +1905,29 @@ export const claudeDriver: HarnessDriver = {
       confirmsSteers: true,
       async send(text: string, attachments?: Attachment[], opts?: SendOpts): Promise<void> {
         if (dead) throw new Error('harness gone')
-        // A steer into a CLI with no turn open runs as a turn of its own.
+        // A steer into a CLI with no turn open runs as a turn of its own;
+        // into an open turn it is read after the running call (announcesSend).
         const midTurn = state.working
+        const announces = announcesSend(state)
         state.working = true
         noteSend(state)
-        emit({ type: 'status', status: 'running' })
-        // Until the CLI's init has come once, the wait is its boot; on a live
-        // CLI it is the provider's. Said again after the running, before
-        // anything is awaited (nothing yet when the spawn is still to come).
-        const word = phaseAfterSend(state)
-        if (word) {
-          state.phase = null
-          setPhase(ctx, state, word)
+        if (announces) {
+          emit({ type: 'status', status: 'running' })
+          // Until the CLI's init has come once, the wait is its boot; on a live
+          // CLI it is the provider's. Said again after the running, before
+          // anything is awaited (nothing yet when the spawn is still to come).
+          const word = phaseAfterSend(state)
+          if (word) {
+            state.phase = null
+            setPhase(ctx, state, word)
+          }
         }
         // The harness only runs a LEADING /command natively; mid-message
         // and additional skill references get expanded server-side.
         const expanded = await expandSlashRefs('claude', session.cwd, text)
         if (opts?.steerId) state.steers.set(opts.steerId, { afterResult: !midTurn })
         input.push(expanded, attachments, opts?.steerId)
-        state.sentAt = Date.now()
+        if (announces) state.sentAt = Date.now()
       },
       interrupt(): void {
         void q.interrupt()

@@ -7,7 +7,8 @@ import {
   plainStatus,
   providerWaitWords,
   retryWords,
-  sentenceStart
+  sentenceStart,
+  thenYourMessage
 } from './statusWords'
 
 describe('statusWords', () => {
@@ -85,5 +86,10 @@ describe('statusWords', () => {
 
   it('words the provider wait with a comma', () => {
     expect(providerWaitWords(25)).toBe('Waiting for the provider, 25 s')
+  })
+
+  it('puts an unread steer behind what the turn does', () => {
+    expect(thenYourMessage('Running the gate')).toBe('Running the gate, then your message')
+    expect(plainStatus('Working', thenYourMessage('Compacting context'))).toBe('Working: Compacting context, then your message')
   })
 })
