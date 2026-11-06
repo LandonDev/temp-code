@@ -83,11 +83,11 @@ struct ThreadStripView: View {
             .scrollIndicators(.hidden)
             .mask { EdgeFade() }
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-            // The selected chip into view on a change of selection, of the chips (a restore
-            // paints them whole), or of the row's width (a fold); never animated.
+            // The selected chip (else a send in flight) into view on a change of selection, of the
+            // chips (a restore paints them whole), or of the row's width (a fold); never animated.
             .onChange(of: scrollKey(chips), initial: true) {
-                guard let selected = chips.first(where: \.selected)?.id else { return }
-                Motion.withoutAnimation { proxy.scrollTo(selected, anchor: nil) }
+                guard let target = StripModel(live: chips, shelf: []).scrollTarget else { return }
+                Motion.withoutAnimation { proxy.scrollTo(target, anchor: nil) }
             }
         }
     }
@@ -127,7 +127,7 @@ struct ThreadStripView: View {
     }
 
     private func scrollKey(_ chips: [StripChip]) -> String {
-        "\(chips.first(where: \.selected)?.id ?? "")|\(chips.map(\.id).joined(separator: ","))|\(Int(width))"
+        "\(StripModel(live: chips, shelf: []).scrollTarget ?? "")|\(chips.map(\.id).joined(separator: ","))|\(Int(width))"
     }
 }
 

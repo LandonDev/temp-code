@@ -234,7 +234,8 @@ in flight is a live chip at the row's end (`DraftSending`, the desktop's
 `draft` strip thread): the typed name or the message's first line, the
 working mark in its glyph slot, no tap and no menu, never saved, selected
 once its thread is on screen, gone the moment the thread's meta lands and
-its own chip takes the place. `ProjectLanding.active` is the desktop's `activeLanding`: the
+its own chip takes the place; while nothing is selected the row scrolls to
+it (`StripModel.scrollTarget`). `ProjectLanding.active` is the desktop's `activeLanding`: the
 scope's most recent active root by its last event, a batch thread standing
 in for its master, none when the thread on screen is already in the scope.
 The strip (`StripMetrics` in Tokens.swift) is a 40 pt live row: the live

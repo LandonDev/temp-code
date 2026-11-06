@@ -101,11 +101,14 @@ private func shown(_ env: String, _ sid: String) -> (environmentId: String, sess
         #expect(inFlight.live[1].sending && !inFlight.live[1].selected)
         #expect(inFlight.live[1].look(onShelf: false).glyph == .status(.working))
         #expect(inFlight.saveIds == ["h1:run"])
+        // Nothing selected: the row scrolls to the send in flight.
+        #expect(inFlight.scrollTarget == "h1:sending-9")
         // The create answered and the shell opened the thread; its meta has not landed.
         sending.sessionId = "new"
         let opened = ThreadStrip.model(scope: scope, shown: shown("h1", "new"), order: ["h1:run"], hosts: quiet, sending: sending)
         #expect(opened.live.last?.id == "h1:new")
         #expect(opened.live.last?.selected == true)
+        #expect(opened.scrollTarget == "h1:new")
         // Landed: its own chip takes the place.
         let landed = [host("h1", workspaces: [workspace], projects: projects, sessions: [meta("run", projectId: "p1", status: .running), meta("new", projectId: "p1", status: .running, updatedAt: 200)])]
         let after = ThreadStrip.model(scope: ThreadStrip.scope(key: "h1:p1", hosts: landed)!, shown: shown("h1", "new"), order: ["h1:run"], hosts: landed, sending: sending)

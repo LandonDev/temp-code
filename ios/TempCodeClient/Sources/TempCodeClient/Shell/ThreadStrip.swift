@@ -120,6 +120,12 @@ public struct StripModel: Sendable, Hashable {
     /// What the order may keep: the live row less the outside chip.
     public var saveIds: [String] { live.filter { !$0.outside }.map(\.id) }
 
+    /// The chip the row scrolls into view: the selected one, else a draft's
+    /// send in flight (the thread the person just sent is where they look).
+    public var scrollTarget: String? {
+        (live + shelf).first(where: \.selected)?.id ?? live.first(where: \.sending)?.id
+    }
+
     /// New Thread leads the row, in words, when no chip is live: the row's
     /// scroll is left out so nothing pushes it off the leading edge.
     public var leadsWithNewThread: Bool { live.isEmpty }

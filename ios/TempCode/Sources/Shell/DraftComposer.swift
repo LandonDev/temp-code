@@ -356,6 +356,8 @@ private struct DraftRow: View {
             .textInputAutocapitalization(.sentences)
             .frame(minWidth: titleMin)
             .rowHit()
+            // It gives way first: the pickers and Master's reason keep their words.
+            .layoutPriority(-1)
             .accessibilityLabel("Thread name")
     }
 
