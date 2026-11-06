@@ -2,11 +2,13 @@
 
     python3 scripts/lib/duo_fold_check.py <layout dir> <bottom|scrolled-up> <draft length>
 
-Reads <layout dir>/{unfolded,folded}/cycle-<run>-<n>-<pose>.json (+ .transcript.json)
+Reads <layout dir>/{unfolded,folded}/cycle-<run>-<n>-<pose>.json (+ .transcript.json;
+each stop's dock band and solid backing through duo_band.py)
 and <layout dir>/cycle-<run>/{events.json,samples.txt,row-inits.json}; writes
 cycle-<run>/report.json. Exit 1 on a failure.
 """
 import json, pathlib, sys
+from duo_band import band_problems
 out, run, draft = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 d = out / f'cycle-{run}'
 names = [('unfolded', 1), ('folded', 2), ('unfolded', 3), ('folded', 4)]
@@ -37,6 +39,12 @@ for start, end, frm, to, window, sfrm, sto in steps:
     if not (len(windows) == 1 and windows[0]['to'] == window): failures.append(f'window {start}..{end}: {windows}')
     sides = [e for e in inside if e['key'] == 'sidebar']
     if not (len(sides) == 1 and sides[0]['from'] == sfrm and sides[0]['to'] == sto): failures.append(f'sidebar {start}..{end}: {sides}')
+# The dock's band at every stop: a turn streams, so the slot holds the timer on a
+# solid backing, and the dock is its parts' height through every flip (duo_band.py).
+for (p, i), r in zip(names, reports):
+    notes = r.get('notes', {})
+    if notes.get('dock.backing') != 'solid': failures.append(f"stop {i} ({p}): dock.backing {notes.get('dock.backing')}, want solid")
+    failures += [f'stop {i} ({p}): {x}' for x in band_problems(notes)]
 # The reveal never goes back (a re-made row would start it again from nothing).
 units = []
 for line in (d / 'samples.txt').read_text().splitlines():
@@ -67,4 +75,4 @@ print('ios-sim-proof: fold cycle ' + json.dumps(summary))
 if failures:
     for f in failures: print(f'ios-sim-proof: FOLD CYCLE FAIL ({run}) {f}', file=sys.stderr)
     sys.exit(1)
-print(f'ios-sim-proof: fold cycle {run} PASS (route and draft kept, one flip per step, the reveal never went back, the reader kept, no row made twice)')
+print(f'ios-sim-proof: fold cycle {run} PASS (route and draft kept, one flip per step, the dock its parts height, the reveal never went back, the reader kept, no row made twice)')

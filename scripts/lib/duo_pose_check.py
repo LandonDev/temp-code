@@ -14,9 +14,12 @@ column (SHOT_KIND: chat is one segment, every other type two; two panes from
 680 at regular width) and the columns (TwoPaneColumns: the chat at least 360,
 a hero of 320 up to half and 672, the fold's band as the gap); the text
 measure (768, 640 for a lone plan, or the column less 32); the composer's box
-on the column's edges; SHOT_DRAFT, the draft's length. Exit 1 on a mismatch.
+on the column's edges; SHOT_DRAFT, the draft's length; and the dock's band
+(duo_band.py: the dock its parts' height, the fade behind it no taller, the
+bar at most a system bar more). Exit 1 on a mismatch.
 """
 import json, math, os, struct, sys
+from duo_band import band_problems
 png, report, pose, label = sys.argv[1:5]
 posefile = sys.argv[5] if len(sys.argv) > 5 else ''
 rows = {
@@ -59,6 +62,8 @@ if (r.get('route') or {}).get('thread') and 'composer.frame' in notes and 'measu
             problems.append(f'slot ends at {sy + sh}, composer starts at {cy}')
         if notes.get('dock.backing') != 'solid':
             problems.append(f"slot over a {notes.get('dock.backing')} backing")
+    # The band behind the dock is the dock's parts' height (duo_band.py).
+    problems += band_problems(notes)
     dock = f"{pose}/{label} dock: composer {cw} column {measure} slot {slot} backing {notes.get('dock.backing')} columns {notes.get('columns')} sidebar {notes.get('sidebar.width')}"
     if problems:
         print(f'ios-sim-proof: DOCK MISMATCH {dock}: ' + '; '.join(problems), file=sys.stderr)

@@ -62,6 +62,10 @@ struct BottomDock: View {
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LayoutProbe.note("composer.frame", LayoutProbe.rect($0)) }
                 #endif
         }
+        // The dock is its parts' height in every pose and at every size change, never
+        // what the bar offers: the band behind it (`BottomEdgeFade`) and the scroll edge
+        // effect over the transcript are this height and the fade above it.
+        .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, ComposerBar.edge)
         .padding(.top, 6)
         .padding(.bottom, 6)

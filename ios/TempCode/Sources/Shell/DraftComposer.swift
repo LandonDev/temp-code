@@ -151,6 +151,8 @@ struct DraftComposer: View {
                 }
             }
         }
+        // Its parts' height, never what the bottom bar offers (BottomDock's rule).
+        .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, ComposerBar.edge)
         .padding(.vertical, 6)
         .background(alignment: .top) { BottomEdgeFade() }

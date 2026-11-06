@@ -55,8 +55,11 @@ struct WorkingStripView: View {
                     .transition(fade)
             }
         }
-        // 28 pt at least, taller with a large text size, never clipped.
+        // 28 pt at least, taller with a large text size, never clipped, and never
+        // more than its words: the bottom bar offers the whole column, and an empty
+        // slot (reserved at regular width) took it after an unfold, a 347 pt band.
         .frame(minHeight: ComposerMetrics.slot)
+        .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity)
         .animation(reduceMotion ? nil : Motion.fast, value: slot)
         .accessibilityElement(children: .contain)

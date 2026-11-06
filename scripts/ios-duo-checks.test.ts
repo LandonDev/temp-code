@@ -81,6 +81,9 @@ const besideSidebar: Notes = {
   columns: 'pager',
   'slot.frame': 'none',
   'dock.backing': 'clear',
+  'dock.frame': '320,554,547,58',
+  'dock.fade.frame': '320,554,547,58',
+  'dock.bar.frame': '0,554,867,58',
   draftChars: '0'
 }
 // The sidebar hidden: 867 pt, two panes; the board fits 400 pt, a hairline, the chat 466.7.
@@ -176,6 +179,22 @@ describe('duo_pose_check.py', () => {
     expect(far.out).toContain('the column starts at 520, the sidebar ends at 456')
   })
 
+  it('holds the band behind the dock to the dock, and the dock to its parts', () => {
+    const record = poseRecord({ mode: 'twoPane', width: 867, columns: { hero: 400, gap: 0.3, chat: 466.7 } })
+    const env = { SHOT_KIND: 'implementation', SHOT_SIDEBAR: 'hidden' }
+    expect(poseCheck(report(twoPane), record, env).status).toBe(0)
+    // A dock taller than the composer and its padding: the bar offered it the column.
+    const tall = poseCheck(report({ ...twoPane, 'dock.frame': '400,160,467,452', 'dock.fade.frame': '400,160,467,452' }), record, env)
+    expect(tall.status).toBe(1)
+    expect(tall.out).toContain('dock 452 pt tall, its parts 58')
+    const band = poseCheck(report({ ...twoPane, 'dock.fade.frame': '400,160,467,452' }), record, env)
+    expect(band.out).toContain('band 452 pt tall, dock 58')
+    const bar = poseCheck(report({ ...twoPane, 'dock.bar.frame': '0,300,867,312' }), record, env)
+    expect(bar.out).toContain('bar 312 pt tall')
+    const missing = poseCheck(report({ ...twoPane, 'dock.frame': '' }), record, env)
+    expect(missing.out).toContain('no dock.frame')
+  })
+
   it('holds the draft to what was typed, and a thread shot to its pose record', () => {
     const draft = poseCheck(report(besideSidebar), poseRecord({ mode: 'pager', width: 547 }), { SHOT_KIND: 'implementation', SHOT_DRAFT: '61' })
     expect(draft.status).toBe(1)
@@ -206,9 +225,17 @@ describe('duo_fold_check.py', () => {
     { t: 35_000, key: 'window', from: '951x669', to: '466x678' },
     { t: 35_010, key: 'sidebar', from: 'hidden', to: 'stack' }
   ]
+  // A turn streams through the cycle: the slot's timer over the composer on a solid band, 118 pt.
+  const streamingDock: Notes = {
+    'dock.backing': 'solid',
+    'slot.frame': '368,475,483,28',
+    'composer.frame': '368,507,483,74',
+    'dock.frame': '352,469,515,118',
+    'dock.fade.frame': '352,469,515,118'
+  }
   function foldCheck(
     run: 'bottom' | 'scrolled-up',
-    change: { samples?: string; draft?: string[]; violations?: unknown[]; tops?: number[]; atBottom?: number[]; events?: unknown[] } = {}
+    change: { samples?: string; draft?: string[]; violations?: unknown[]; tops?: number[]; atBottom?: number[]; events?: unknown[]; dock?: Array<Notes | undefined> } = {}
   ): { status: number | null; out: string } {
     const dir = scratch()
     mkdirSync(join(dir, 'unfolded'))
@@ -217,7 +244,7 @@ describe('duo_fold_check.py', () => {
     stops.forEach((stop, i) => {
       const name = `cycle-${run}-${i + 1}-${stop.pose}`
       const atBottom = change.atBottom?.[i] ?? (run === 'bottom' ? 1 : 0)
-      writeFileSync(join(dir, stop.pose, `${name}.json`), JSON.stringify({ t: stop.t, route: { tab: 'home', depth: 2, thread: 'ios-impl', segment: 'chat' }, transcriptAtBottom: atBottom, notes: { draftChars: change.draft?.[i] ?? '61', sidebar: stop.sidebar } }))
+      writeFileSync(join(dir, stop.pose, `${name}.json`), JSON.stringify({ t: stop.t, route: { tab: 'home', depth: 2, thread: 'ios-impl', segment: 'chat' }, transcriptAtBottom: atBottom, notes: { draftChars: change.draft?.[i] ?? '61', sidebar: stop.sidebar, ...(change.dock?.[i] ?? streamingDock) } }))
       const top = change.tops?.[i] ?? (run === 'bottom' ? -1 : 412)
       writeFileSync(join(dir, stop.pose, `${name}.transcript.json`), JSON.stringify({ atBottom, topRow: top, reflowAnchor: i === 0 ? 0 : run === 'bottom' ? 1 : 2 }))
     })
@@ -256,6 +283,18 @@ describe('duo_fold_check.py', () => {
     const dropped = foldCheck('bottom', { atBottom: [1, 1, 0, 1] })
     expect(dropped.status).toBe(1)
     expect(dropped.out).toContain('C: off the bottom')
+  })
+
+  it('holds the dock band at every stop: its parts\' height on a solid backing', () => {
+    const third = (dock: Notes): Array<Notes | undefined> => [undefined, undefined, { ...streamingDock, ...dock }, undefined]
+    expect(foldCheck('bottom').status).toBe(0)
+    // The unfold of 2026-11-06: the slot took the column the bar offered.
+    const grown = foldCheck('bottom', { dock: third({ 'slot.frame': '368,166,483,337', 'dock.frame': '352,160,515,427', 'dock.fade.frame': '352,160,515,427' }) })
+    expect(grown.status).toBe(1)
+    expect(grown.out).toContain('stop 3 (unfolded): slot 337 pt tall')
+    const faded = foldCheck('bottom', { dock: third({ 'dock.backing': 'fade' }) })
+    expect(faded.status).toBe(1)
+    expect(faded.out).toContain('stop 3 (unfolded): dock.backing fade, want solid')
   })
 })
 
