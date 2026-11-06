@@ -3098,7 +3098,15 @@ proof and the sizing rules; the pieces, by name:
   LayoutProbe's `rowInits` by row key over `RowInitLedger`, or the
   scrolled-up offset moved; `TC_PROOF_SET=stream` writes
   `stream-report.json` from FrameRecorder's `stream` driver while `POST
-  /stream` plays pinned at the bottom; `TC_TEST_NO_HARNESS=1` keeps the
+  /stream` plays pinned at the bottom; `TC_PROOF_SET=glide` (with
+  `TC_DUO_POSE=folded`; folded and unfolded, `TC_GLIDE_POSES`) taps a tool
+  group of the seeded "Where does the gateway pick an account?" open and
+  shut three times at the bottom and 700 pt up, recorded, and
+  scripts/lib/group_glide_check.py judges what was drawn (each cell's
+  presentation frame, `TC_TEST_GROUP_GLIDE`): heights and rows in steps,
+  one way, the rows above still for a reader up and the rows under still
+  at the bottom, the group never over the row under it (the tap's glide is
+  `ListGlide`, docs/IOS-DESIGN.md "Groups"); `TC_TEST_NO_HARNESS=1` keeps the
   test server's seeded threads from booting CLIs; the 2026-11-05 baseline
   and why the transcript stays a `List` are in docs/IOS-DESIGN.md
   "Performance"), or

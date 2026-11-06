@@ -1027,6 +1027,25 @@ at(THREAD_CHAT, [
   status('idle')
 ])
 
+// The glide proof's thread (ios-sim-proof.sh `glide_set`): eight turns of
+// prose around a group of four reads, so a multi-step group is on screen at
+// the bottom and again 700 pt up.
+export const THREAD_GROUPS = 'ios-groups'
+await makeTyped(THREAD_GROUPS, 'chat', 'Where does the gateway pick an account?')
+for (let i = 0; i < 8; i++) {
+  at(THREAD_GROUPS, [
+    { type: 'user-text', text: `Step ${i + 1}: where does the gateway read the account for a codex thread?` },
+    answer(`gp${i}`, `Looking at the routing for pass ${i + 1}. The scope rides the port, so the reads start at the listener and follow the route into core.`),
+    ...read(`g${i}a`, 'src/main/server/gateway.ts'),
+    ...read(`g${i}b`, 'src/main/server/endpoint.ts'),
+    ...read(`g${i}c`, 'src/main/server/upstream.ts'),
+    ...read(`g${i}d`, 'src/main/server/accountScore.ts'),
+    answer(`ga${i}`, `The account comes from \`chooseAccount\`: the scope names the thread, the registry names its route, and the forward swaps the credential in. Nothing in the CLI decides it.\n\nPass ${i + 1} found nothing new.`),
+    { type: 'turn-complete', costUsd: 0.01, inputTokens: 1_000, outputTokens: 100 }
+  ])
+}
+at(THREAD_GROUPS, [status('idle')])
+
 // A chat with 2,000 rows, for the scroll proof.
 export const THREAD_LONG = 'ios-long'
 await makeTyped(THREAD_LONG, 'chat', '2,000 rows')

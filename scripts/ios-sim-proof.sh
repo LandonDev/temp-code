@@ -32,8 +32,9 @@
 #           a frame later than its expected interval plus 8 ms.
 #   glide   A tool group tapped open and shut three times, folded and
 #           unfolded (TC_GLIDE_POSES), the reader at the bottom then 700 pt
-#           up, each run recorded; scripts/lib/group_glide_check.py holds the
-#           offsets (still when up, one way and in steps at the bottom).
+#           up, each run recorded; scripts/lib/group_glide_check.py holds
+#           what was drawn (rows in steps, the ones above still when up, the
+#           ones under still at the bottom, no overlap).
 #   box     TC_TEST_THREADS ("title part|title part|…", else TC_TEST_THREAD):
 #           both segments of each named thread, light only, for a real host.
 #   actions The steering shots: a read key's disabled composer and card, then
@@ -1282,13 +1283,16 @@ CHECK
 }
 
 # The tool group's glide (TC_TEST_GROUP_GLIDE): in each pose (TC_GLIDE_POSES,
-# folded and unfolded on the Duo), the lowest multi-step group on screen of
-# TC_GLIDE_THREAD is tapped open and shut three times through its own line,
-# the reader at the bottom and then 700 pt up, each run recorded
-# (glide/<pose>-<run>.mov). scripts/lib/group_glide_check.py holds the
-# offsets: still for a reader up, one way and in steps at the bottom, no jumpUp.
+# folded and unfolded on the Duo), a multi-step group on screen of
+# TC_GLIDE_THREAD (default the test server's ios-groups chat; the lowest at
+# the bottom, the highest up) is tapped open and shut three times through
+# its own line, the reader at the bottom and then 700 pt up, each run
+# recorded (glide/<pose>-<run>.mov). scripts/lib/group_glide_check.py holds
+# what was drawn: heights and rows in steps and one way, the rows above
+# still for a reader up, the rows under still at the bottom, the group never
+# over the row under it, no jumpUp once the taps start.
 glide_set() {
-  local pose run container thread=${TC_GLIDE_THREAD:-Why does the gateway refuse http for Codex?} recorder failed=0
+  local pose run container thread=${TC_GLIDE_THREAD:-Where does the gateway pick an account?} recorder failed=0
   mkdir -p "$OUT/glide"
   for pose in ${TC_GLIDE_POSES:-folded unfolded}; do
     fold "$pose"

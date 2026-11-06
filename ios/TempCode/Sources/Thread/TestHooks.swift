@@ -82,9 +82,10 @@ enum TestHooks {
     /// With `TC_TEST_ROUTE=notification`: "title part|seq", a payload the delegate routes like a tap.
     static let notification = env["TC_TEST_NOTIFICATION"].flatMap { $0.isEmpty ? nil : $0 }
     /// The glide proof: `bottom` or `up` (the reader 700 pt up first). Once the
-    /// thread lands, the lowest tool group on screen is tapped open and shut
-    /// three times through the line's own path (`TranscriptFollow.resize`), the
-    /// list's offset and content height sampled every frame through each;
+    /// thread lands, a tool group on screen (the lowest at the bottom, the
+    /// highest up) is tapped open and shut three times through the line's own
+    /// path (`TranscriptFollow.resize`), the list's offset, content height and
+    /// each visible cell's presentation frame sampled every 8 ms through each;
     /// Documents/group-glide.json (scripts/lib/group_glide_check.py reads it).
     static let groupGlide = env["TC_TEST_GROUP_GLIDE"].flatMap { $0.isEmpty ? nil : $0 }
     #else

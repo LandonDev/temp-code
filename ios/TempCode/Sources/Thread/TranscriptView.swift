@@ -482,8 +482,9 @@ struct TranscriptView: View {
     }
 
     #if DEBUG
-    /// The glide proof (`TestHooks.groupGlide`): the lowest tool group on
-    /// screen tapped open and shut three times through the line's own path,
+    /// The glide proof (`TestHooks.groupGlide`): a tool group on screen (the
+    /// lowest at the bottom, the highest up reading) tapped open and shut
+    /// three times through the line's own path,
     /// the list's offset and content height sampled every 8 ms for 0.9 s after
     /// each tap; Documents/group-glide.json.
     private func groupGlideProof() async {
@@ -496,14 +497,19 @@ struct TranscriptView: View {
             try? await Task.sleep(for: .milliseconds(800))
         }
         let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory, waits: thread.fold.waitOutcomes, statusOf: waitStatus)
-        let target = rows.last { row in
+        // At the bottom the lowest group, so the follow shows; up reading the
+        // highest, so the rows sliding under it are on screen and not behind the dock.
+        let multiStep = { (row: TranscriptRowModel) -> Bool in
             guard onScreen.ids.contains(row.id), case .group(let group) = row else { return false }
             return !group.lone
         }
+        let target = TestHooks.groupGlide == "up" ? rows.first(where: multiStep) : rows.last(where: multiStep)
         guard let target, case .group(let group) = target else {
             LayoutProbe.note("proof", "no-group-on-screen")
             return
         }
+        // The taps start here: the check counts no jumpUp before (the proof's own 700 pt above).
+        LayoutProbe.note("proof", "glide-taps")
         var phases: [[String: Any]] = []
         for index in 0..<6 {
             let started = Date()
@@ -511,11 +517,15 @@ struct TranscriptView: View {
             let before = [Double(scroll.contentOffset.y), Double(scroll.contentSize.height)]
             proofTap = ProofGroupTap(key: group.key, tick: index + 1)
             var samples: [[Double]] = []
+            // What is on screen: the presentation bounds and each visible cell's presentation frame (item, top, height).
+            var shown: [[String: Any]] = []
             while Date().timeIntervalSince(started) < 0.9 {
-                samples.append([Date().timeIntervalSince(started), Double(scroll.contentOffset.y), Double(scroll.contentSize.height)])
+                let t = Date().timeIntervalSince(started)
+                samples.append([t, Double(scroll.contentOffset.y), Double(scroll.contentSize.height)])
+                shown.append(Self.onScreen(scroll, at: t))
                 try? await Task.sleep(for: .milliseconds(8))
             }
-            phases.append(["opening": index % 2 == 0, "atBottom": atBottom, "before": before, "samples": samples])
+            phases.append(["opening": index % 2 == 0, "atBottom": atBottom, "before": before, "samples": samples, "shown": shown])
             try? await Task.sleep(for: .milliseconds(600))
         }
         let report: [String: Any] = ["mode": TestHooks.groupGlide ?? "", "group": group.key, "phases": phases]
@@ -524,6 +534,27 @@ struct TranscriptView: View {
             try? data.write(to: documents.appending(path: "group-glide.json"), options: .atomic)
         }
         LayoutProbe.note("proof", "group-glide")
+    }
+
+    /// The glide proof's frame of what is drawn: the scroll view's presentation
+    /// offset and, per visible cell, its item and its presentation top and
+    /// height on screen (the model values jump to the end of an animation).
+    private static func onScreen(_ scroll: UIScrollView, at t: Double) -> [String: Any] {
+        let offset = Double(scroll.layer.presentation()?.bounds.origin.y ?? scroll.contentOffset.y)
+        var cells: [[Double]] = []
+        if let list = scroll as? UICollectionView {
+            for cell in list.visibleCells {
+                guard let item = list.indexPath(for: cell)?.item else { continue }
+                let frame = (cell.layer.presentation() ?? cell.layer).frame
+                cells.append([Double(item), Double(frame.minY) - offset, Double(frame.height)])
+            }
+            // A row leaving the screen is drawn by its still image while it glides out.
+            for still in list.subviews where still.accessibilityIdentifier == ListGlide.stillID {
+                let frame = (still.layer.presentation() ?? still.layer).frame
+                cells.append([Double(still.tag), Double(frame.minY) - offset, Double(frame.height)])
+            }
+        }
+        return ["t": t, "offset": offset, "height": Double(scroll.bounds.height), "cells": cells]
     }
     #endif
 
@@ -688,11 +719,12 @@ struct TranscriptView: View {
 
     /// A person's tap that resizes its row in place (a tool group opening
     /// or folding), the desktop's height glide: the row's height and the
-    /// rows under it move on the layout spring in one transaction, nothing
-    /// above moves, and a reader at the bottom is followed on that same
-    /// spring (the scroll to the end rides the transaction). Pins and the
-    /// bottom's verdict wait while it glides (`HandGlide`); its end asks for
-    /// one pin. Reduced motion changes it at once and pins.
+    /// rows under it move on the layout spring as one motion, nothing above
+    /// moves, and a reader at the bottom is followed on that same spring.
+    /// UIKit runs it (`ListGlide`: a `List` animates no cell frame from a
+    /// SwiftUI transaction). Pins and the bottom's verdict wait while it
+    /// glides (`HandGlide`); its end asks for one pin. Reduced motion
+    /// changes it at once and pins.
     private func handResize(proxy: ScrollViewProxy, _ change: () -> Void) {
         let write = FollowRule.write(for: .handResize, atBottom: scrollState.atBottom, landing: targetStatus != nil,
                                      reflowHeld: scrollState.reflowHeld, readerMoving: scrollState.readerMoving)
@@ -703,9 +735,10 @@ struct TranscriptView: View {
         }
         scrollState.glide.begin(at: Self.now)
         TranscriptTrace.write("handResize")
-        withAnimation(Motion.layout) {
-            change()
-            if write == .glide { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
+        if let list = listScroll.scroll {
+            ListGlide.run(list, follow: write == .glide, change: change)
+        } else {
+            withAnimation(Motion.layout) { change() }
         }
         let wait = scrollState.glide.remaining(at: Self.now)
         Task { @MainActor in

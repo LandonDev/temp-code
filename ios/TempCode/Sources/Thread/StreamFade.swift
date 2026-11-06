@@ -91,7 +91,8 @@ struct ProofGroupTap: Equatable {
 /// landing, and a `List` keeps no bottom on size changes, so each shown
 /// step asks the follow rule to pin. `resize` runs a person's tap that
 /// resizes its row in place (a tool group opening or folding) as one glide
-/// on the layout spring (`FollowRule.Event.handResize`, `HandGlide`).
+/// on the layout spring (`FollowRule.Event.handResize`, `HandGlide`,
+/// `ListGlide`).
 @MainActor
 final class TranscriptFollow {
     var pin: () -> Void = {}

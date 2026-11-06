@@ -1292,14 +1292,23 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
   by hand before the list scrolls to it. A tap that resizes its row in place
   (the group's line, a step's body, a thought, a gate's log, a long bubble's
   Show more) opens and folds on the layout spring as one glide, the
-  desktop's height glide (`TranscriptFollow.resize`): the row and the rows
-  under it move in the same transaction, nothing above moves, and a reader
-  at the bottom is followed on that spring (the scroll to the end rides the
-  transaction, `FollowRule.Event.handResize`); a reader up is left where
-  they are. While it glides (`HandGlide`: the spring's 0.37 s and a frame)
-  no pin runs and the bottom's verdict holds, and its end asks for one pin:
-  a pin with animations off landing mid-spring is what threw the rows.
-  Reduced motion changes it at once.
+  desktop's height glide (`TranscriptFollow.resize`): the row's height and
+  the rows under it move together and nothing above moves; a reader at the
+  bottom is followed on the same spring (`FollowRule.Event.handResize`), so
+  the rows under it hold and the rows above ride up or down; a reader up is
+  left where they are. A `List` never animates its cells from a SwiftUI
+  transaction (the cell took its new height in one frame and the rows under
+  it jumped), so `ListGlide` (Thread/ListGlide.swift) makes the change with
+  no SwiftUI animation and lays it out inside a UIKit spring of the same
+  physics: the cells' frames, a row coming on screen (it starts where its
+  neighbours were), a row leaving it (a still image of its cell, as it was
+  last on screen, glides out) and the follow's offset move as one motion;
+  each row clips to its cell while it runs, so an opening table never draws
+  over the rows sliding down; the content fades on its transitions' own
+  animations and the chevron turns on its own. While it glides
+  (`HandGlide`: the spring's 0.37 s and a frame) no pin runs and the
+  bottom's verdict holds, and its end asks for one pin. Reduced motion
+  changes it at once.
 - **Steps**: every row sits on one grid (`ActionLine`, the package's
   `ActionRow`, the desktop's actionModel.ts): the 14 pt glyph slot, 8 pt to
   the verb (secondary), the object (primary, truncating first; a path in

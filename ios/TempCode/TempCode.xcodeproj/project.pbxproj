@@ -26,6 +26,7 @@
 		223FC5CC35CD814B2FBC0E89 /* ActivityCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 387DBAC71502B6ED41C9A864 /* ActivityCoordinator.swift */; };
 		23614D8185C5D979DC52454E /* DiffScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A24AC0457A2C05A169F1C11C /* DiffScreen.swift */; };
 		24AC734036A7AFF3146054A5 /* HostBuildRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5540D24130B97B147B763D83 /* HostBuildRow.swift */; };
+		25CDEB92E0D323C86DB62C81 /* ListGlide.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F92C8E618A22AC688535D2B /* ListGlide.swift */; };
 		271AF1E8895AE817A5BAC8D0 /* ProjectShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDA991F2A407C3A22B3D689E /* ProjectShell.swift */; };
 		28D82E2D2310815FA5C4B701 /* ProjectPlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 776798E4452947B1F6C08838 /* ProjectPlanView.swift */; };
 		2AD4C0EEE3EDB9E757479616 /* AddEnvironmentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62C74571D102E72FCC26E83C /* AddEnvironmentSheet.swift */; };
@@ -245,6 +246,7 @@
 		4AA9BBB868F0F7D8F8A33E08 /* ThreadSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadSheets.swift; sourceTree = "<group>"; };
 		4CCE13F137D385301840056A /* TempCodeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempCodeApp.swift; sourceTree = "<group>"; };
 		4EE83DE45CD4E7D370BB1E46 /* FleetSwitches.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetSwitches.swift; sourceTree = "<group>"; };
+		4F92C8E618A22AC688535D2B /* ListGlide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListGlide.swift; sourceTree = "<group>"; };
 		508047E81022749520DE4946 /* TempCodeUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TempCodeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		51400173BFA6DC97604EF445 /* TempCodeContract */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TempCodeContract; path = ../TempCodeContract; sourceTree = SOURCE_ROOT; };
 		5205F9177D20AB027FD7DFB0 /* AgentDetailScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDetailScreen.swift; sourceTree = "<group>"; };
@@ -533,6 +535,7 @@
 				D0C37EA8A82BD49ED74E5BB2 /* HostChip.swift */,
 				B4263565C8F709660A270F3C /* HtmlRenderView.swift */,
 				B455EA664C6E5B789FF91ACE /* ImplementationBoardView.swift */,
+				4F92C8E618A22AC688535D2B /* ListGlide.swift */,
 				CECDD2123E55285B3360307E /* MarkdownView.swift */,
 				3E0F7543C59BDFAF1793E3F8 /* NotesSheet.swift */,
 				B749BB519961CCE1AFC4DE30 /* NotesStyles.swift */,
@@ -875,6 +878,7 @@
 				380CD9B79D786017B8802496 /* InboxStore.swift in Sources */,
 				10B04AD6410CA80C6A34113D /* InboxView.swift in Sources */,
 				BAA13CB6B01BC86A33123E34 /* LayoutProbe.swift in Sources */,
+				25CDEB92E0D323C86DB62C81 /* ListGlide.swift in Sources */,
 				8A1EC209985F3CA16F1171D5 /* LiveText.swift in Sources */,
 				2E0B5C7F69476698594FCD4B /* MacBridgeRows.swift in Sources */,
 				AF490DAE7016CD0573402789 /* MacDevicesSection.swift in Sources */,
