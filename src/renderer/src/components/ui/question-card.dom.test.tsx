@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -8,6 +8,17 @@ import { QuestionCard, type Question } from "./question-card";
 afterEach(cleanup);
 
 const one: Question[] = [{ prompt: "Which?", options: [{ label: "Alpha" }, { label: "Beta" }, { label: "Other", freeform: true }] }];
+
+/** One key typed into a field as a browser delivers it: keydown, the text,
+ *  keyup. jsdom has no activation behaviour, so this plays Chromium's: a
+ *  Space or Enter inside a button clicks that button. */
+const typeKey = (field: HTMLInputElement, key: string) => {
+  fireEvent.keyDown(field, { key });
+  if (key.length === 1) fireEvent.change(field, { target: { value: field.value + key } });
+  fireEvent.keyUp(field, { key });
+  const host = field.parentElement?.closest("button");
+  if (host && (key === " " || key === "Enter")) fireEvent.click(host);
+};
 
 describe("QuestionCard's motion", () => {
   const two: Question[] = [
@@ -91,6 +102,56 @@ describe("QuestionCard", () => {
     expect(onSubmitAnswers).toHaveBeenCalledWith([["Beta"]]);
   });
 
+  it("typing in the free-form field, Space and Enter included, never unpicks its row", () => {
+    const onSubmitAnswers = vi.fn();
+    const { container } = render(<QuestionCard questions={one} onSubmitAnswers={onSubmitAnswers} />);
+    const field = screen.getByRole("textbox", { name: "Other" });
+    // The field is no child of a button: that is what turned its Space into a click.
+    expect(field.closest("button")).toBeNull();
+    expect(container.querySelector("button input")).toBeNull();
+    const other = screen.getByRole("button", { name: "Other" });
+    fireEvent.click(other);
+    expect(other.getAttribute("aria-pressed")).toBe("true");
+    field.focus();
+    for (const key of ["a", " ", "b", "Enter"]) typeKey(field as HTMLInputElement, key);
+    expect(other.getAttribute("aria-pressed")).toBe("true");
+    expect((field as HTMLInputElement).value).toBe("a b");
+    // A letter typed in the field picks nothing; ⌘⏎ still submits the typed text.
+    expect(screen.getByRole("button", { name: "Alpha" }).getAttribute("aria-pressed")).toBe("false");
+    fireEvent.keyDown(field, { key: "Enter", metaKey: true });
+    expect(onSubmitAnswers).toHaveBeenCalledWith([["a b"]]);
+  });
+
+  it("the free-form row: a click picks it and focuses the field, its letter picks it, the field is a tab stop only once picked", () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = render(<QuestionCard questions={one} />);
+      const field = screen.getByRole("textbox", { name: "Other" }) as HTMLInputElement;
+      const other = screen.getByRole("button", { name: "Other" });
+      expect(field.readOnly).toBe(true);
+      expect(field.tabIndex).toBe(-1);
+      // The toggle covers the row; the field sits under it until the row is picked.
+      expect(other.className.split(" ")).toEqual(expect.arrayContaining(["absolute", "inset-0", "rounded-lg"]));
+      expect(field.className.split(" ")).not.toContain("relative");
+      fireEvent.click(other);
+      act(() => vi.runAllTimers());
+      expect(document.activeElement).toBe(field);
+      expect(field.readOnly).toBe(false);
+      expect(field.tabIndex).toBe(0);
+      expect(field.className.split(" ")).toContain("relative");
+      const row = container.querySelector<HTMLElement>('[data-slot="question-option"]:has(input)')!;
+      expect(row.className.split(" ")).toContain("bg-foreground/10");
+      fireEvent.click(other);
+      expect(other.getAttribute("aria-pressed")).toBe("false");
+      const alpha = screen.getByRole("button", { name: "Alpha" });
+      alpha.focus();
+      fireEvent.keyDown(alpha, { key: "c" });
+      expect(other.getAttribute("aria-pressed")).toBe("true");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a single-select question keeps one pick; a multi-select one takes several and submits them together", () => {
     const onSubmitAnswers = vi.fn();
     const questions: Question[] = [
@@ -140,13 +201,13 @@ describe("QuestionCard", () => {
     expect(prompt.className.split(" ")).toEqual(expect.arrayContaining(["text-sm", "leading-[22px]"]));
     const list = card.querySelector<HTMLElement>("ul")!;
     expect(list.className.split(" ")).toEqual(expect.arrayContaining(["-mx-2", "mt-2", "gap-1"]));
-    const rows = [...list.querySelectorAll<HTMLElement>("button[aria-pressed]")];
+    const rows = [...list.querySelectorAll<HTMLElement>('[data-slot="question-option"]')];
     expect(rows).toHaveLength(3);
     for (const row of rows) {
       // A menu row's 8px radius, 8px above and below the 20px line; no border, no transition: a fill changes at once.
       expect(row.className.split(" ")).toEqual(expect.arrayContaining(["min-h-9", "py-2", "px-2", "gap-3", "rounded-lg", "active:bg-foreground/12"]));
       expect(row.className).not.toMatch(/\bborder\b|transition|duration/);
-      const cap = row.firstElementChild as HTMLElement;
+      const cap = row.querySelector<HTMLElement>('[data-slot="question-key"]')!;
       expect(cap.textContent).toMatch(/^[ABC]$/);
       expect(cap.className.split(" ")).toEqual(expect.arrayContaining(["size-5", "rounded-sm", "leading-none"]));
     }

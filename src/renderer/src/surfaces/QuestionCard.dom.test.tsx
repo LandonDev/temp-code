@@ -59,7 +59,7 @@ describe("QuestionCard", () => {
     const onAnswer = vi.fn();
     const view = render(<QuestionCard question={meta([spec("Which?", ["A"])])} onAnswer={onAnswer} />);
     const field = view.container.querySelector<HTMLInputElement>('input[placeholder="Other"]')!;
-    fireEvent.click(field.closest("button")!);
+    fireEvent.click(screen.getByRole("button", { name: "Other" }));
     fireEvent.change(field, { target: { value: "Neither" } });
     fireEvent.click(advance());
     expect(onAnswer).toHaveBeenCalledWith("q1", [["Neither"]]);

@@ -14,7 +14,8 @@ import { Kbd, KbdGroup } from "./kbd";
  * composer never submits it. With more than one question (`showProgress`)
  * the title row ends with where the person is ("2 of 3"). The caller's status
  * glyph goes in `icon`, flat beside the title. Answers come back as one array
- * of labels per question (the typed text for a free-form pick).
+ * of labels per question (the typed text for a free-form pick). The free-form
+ * row's field sits beside its toggle, never inside it, so typing never unpicks it.
  */
 export type QuestionOption = { label: string; description?: string; freeform?: boolean };
 export type Question = { prompt: string; description?: string; options: Array<QuestionOption>; multiSelect?: boolean };
@@ -230,53 +231,70 @@ export function QuestionCard({
                     const active = choices.includes(index);
                     const key = KEYS[index];
                     const optionId = `${id}-${qIndex}-${index}`;
-                    return (
-                      <li key={option.label}>
-                        <button
-                          type="button"
-                          aria-pressed={active}
-                          aria-labelledby={option.freeform ? undefined : `${optionId}-label`}
-                          aria-describedby={option.description ? `${optionId}-description` : undefined}
-                          onClick={(event) => {
-                            if (active && event.target instanceof HTMLInputElement) return;
-                            pick(index);
-                          }}
-                          className={cn(OPTION, active ? "bg-foreground/10" : "hover:bg-foreground/5")}
-                        >
-                          {/* The cap sits on the label's first line: 20px, the line's own height. */}
-                          <span
-                            aria-hidden
-                            data-slot="question-key"
-                            className={cn(
-                              "pointer-events-none flex size-5 shrink-0 items-center justify-center rounded-sm text-[11px] leading-none font-medium tabular-nums",
-                              active ? "bg-primary text-primary-foreground" : "bg-foreground/7 text-muted-foreground",
-                            )}
-                          >
-                            {key}
-                          </span>
-                          {option.freeform ? (
+                    const fill = active ? "bg-foreground/10" : "hover:bg-foreground/5";
+                    // The cap sits on the label's first line: 20px, the line's own height.
+                    const cap = (
+                      <span
+                        aria-hidden
+                        data-slot="question-key"
+                        className={cn(
+                          "pointer-events-none flex size-5 shrink-0 items-center justify-center rounded-sm text-[11px] leading-none font-medium tabular-nums",
+                          active ? "bg-primary text-primary-foreground" : "bg-foreground/7 text-muted-foreground",
+                        )}
+                      >
+                        {key}
+                      </span>
+                    );
+                    if (option.freeform) {
+                      // The field is no child of the toggle: a button wrapping an input turns the
+                      // field's Space and Enter into clicks that unpick the row. The toggle covers
+                      // the row; the field rises above it once the row is picked.
+                      return (
+                        <li key={option.label}>
+                          <div data-slot="question-option" className={cn("relative", OPTION, fill)}>
+                            <button type="button" aria-pressed={active} aria-label={option.label} onClick={() => pick(index)} className="absolute inset-0 rounded-lg" />
+                            {cap}
                             <input
                               ref={(node) => {
                                 fields.current[qIndex] = node;
                               }}
                               value={typed[qIndex] ?? ""}
                               readOnly={!active}
+                              tabIndex={active ? undefined : -1}
+                              aria-label={option.label}
                               placeholder={option.label}
                               onChange={(event) => setTyped((all) => ({ ...all, [qIndex]: event.target.value }))}
-                              className="h-5 w-full cursor-[inherit] bg-transparent text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground"
+                              className={cn(
+                                "h-5 w-full bg-transparent text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground",
+                                active && "relative",
+                              )}
                             />
-                          ) : (
-                            <span className="flex min-w-0 flex-col">
-                              <span id={`${optionId}-label`} className="text-sm leading-5 text-foreground">
-                                {option.label}
-                              </span>
-                              {option.description ? (
-                                <span id={`${optionId}-description`} className="text-[13px] leading-5 text-muted-foreground">
-                                  {option.description}
-                                </span>
-                              ) : null}
+                          </div>
+                        </li>
+                      );
+                    }
+                    return (
+                      <li key={option.label}>
+                        <button
+                          type="button"
+                          data-slot="question-option"
+                          aria-pressed={active}
+                          aria-labelledby={`${optionId}-label`}
+                          aria-describedby={option.description ? `${optionId}-description` : undefined}
+                          onClick={() => pick(index)}
+                          className={cn(OPTION, fill)}
+                        >
+                          {cap}
+                          <span className="flex min-w-0 flex-col">
+                            <span id={`${optionId}-label`} className="text-sm leading-5 text-foreground">
+                              {option.label}
                             </span>
-                          )}
+                            {option.description ? (
+                              <span id={`${optionId}-description`} className="text-[13px] leading-5 text-muted-foreground">
+                                {option.description}
+                              </span>
+                            ) : null}
+                          </span>
                         </button>
                       </li>
                     );
