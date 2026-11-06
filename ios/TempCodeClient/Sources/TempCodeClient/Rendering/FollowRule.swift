@@ -67,6 +67,25 @@ public enum FollowRule {
     }
 }
 
+/// What the top sentinel's appearance does (the view's `extend`). The
+/// reader scrolled up to it (off the bottom, or a finger on the list): the
+/// page joins above and the reader's row holds its place. At the bottom
+/// with nothing moving, the sentinel shows only because the list threw its
+/// offset (re-estimating rows mid-update, as it does just after a thread
+/// opens), so the list pins and loads nothing: a page joining above a reader
+/// at the bottom dropped the offset with it, a jump of thousands of points
+/// that stayed on screen until the pin. Content too short to fill the screen
+/// shows the sentinel at rest: its page loads and the reader stays at the
+/// bottom.
+public enum SentinelReach: Hashable, Sendable {
+    case page, pin, pageAtBottom
+
+    public static func of(atBottom: Bool, readerMoving: Bool, contentFills: Bool) -> SentinelReach {
+        if !atBottom || readerMoving { return .page }
+        return contentFills ? .pin : .pageAtBottom
+    }
+}
+
 /// Pins coalesce: however many times a main-queue turn asks (each reveal
 /// step, each push, each change in the row count), one pin runs, on the
 /// next turn, and it asks the follow rule again then.

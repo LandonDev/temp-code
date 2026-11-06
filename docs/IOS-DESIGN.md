@@ -2646,7 +2646,14 @@ keyboard action. Every animated change has a static cue as well.
   deliberate scroll away (`offBottomWrite`) ends once the reader is back
   at the bottom by any road, and a top sentinel that shows while the
   reader is at the bottom and not scrolling (the list threw the offset)
-  loads its page and keeps the reader at the bottom. After these, no run
+  pins and loads nothing (`SentinelReach`; only content too short to fill
+  the screen loads its page there, keeping the reader at the bottom). It
+  once loaded the page: in every reduced-motion and scrolled-up run of the
+  transcript set the list threw its offset about 700 ms after the thread
+  opened (the body growing 49 pt as the slot settled), the page of 75 rows
+  joined above the reader, and the offset fell about 3,000 pt with the
+  content height unchanged until the next pin, sometimes past two frames
+  (the reduced-motion `jumpUp` of 2026-11-05, ~824 ms after landing). After these, no run
   of the transcript set leaves the bottom. What is left, and what the set
   still fails on: one or two visible drops a run (a `jumpUp` is a drop
   still there after two frames; shorter ones never reach the screen) at

@@ -660,9 +660,15 @@ struct TranscriptView: View {
     /// the top changes that group's id.
     private func extend(proxy: ScrollViewProxy, rows: [TranscriptRowModel], shown: [TranscriptRowModel]) async {
         guard let top = shown.first else { return }
-        // The sentinel shows while the reader is at the bottom and not scrolling only when the list
-        // threw its offset (re-estimating rows mid-update): load the page, keep the reader at the bottom.
-        let deliberate = !scrollState.atBottom || scrollState.readerMoving
+        let fills = listScroll.scroll.map { $0.contentSize.height > $0.bounds.height } ?? true
+        let reach = SentinelReach.of(atBottom: scrollState.atBottom, readerMoving: scrollState.readerMoving, contentFills: fills)
+        // At the bottom with nothing moving the list threw its offset: pin, and grow nothing above the reader.
+        if reach == .pin {
+            TranscriptTrace.write("sentinel pinned")
+            pinTail(proxy: proxy)
+            return
+        }
+        let deliberate = reach == .page
         // Where the reader is against the window's first row, before the page joins above it.
         let held = deliberate ? place(of: top.id) : nil
         extending = true
