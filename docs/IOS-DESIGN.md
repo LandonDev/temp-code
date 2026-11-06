@@ -794,8 +794,10 @@ tap on the box's padding puts the caret in the field.
 
 The button follows the desktop's `SendButton` (`ComposerRules`, the client
 package's port of `decideComposerAction`): Send (the arrow) with no turn
-open; steer (the corner glyph) mid-turn with text, which goes into the live
-turn; Pause (`session.pause`, the pause glyph on the label color) mid-turn
+open; steer (the corner glyph) mid-turn with text or a photo, which goes
+into the live turn as the desktop's composer sends it (`queue.add { steer:
+true }`; a photo the host queues goes in through `queue.steer`), so the
+bubble's word reads Sent, then Received; Pause (`session.pause`, the pause glyph on the label color) mid-turn
 with the box empty; a paused thread's text queues. A long press mid-turn
 with text offers "Queue for the next turn" (`queue.add`, the desktop's
 ⌘-click): past the system's long press (0.5 s) the button shows the queue
@@ -805,7 +807,10 @@ next turn" above the box until the next edit or the turn's end. The glyphs
 trade on the icon swap; with nothing to do the button is plain glass with a
 quiet glyph, and the accent fills it as text arrives. Mid-turn means the
 host runs, starts or waits on the person, or a send of this device's is
-out; a watching master is not mid-turn, so its button is Send. Stop lives in
+out: from the click until the host's status moves (the turn starts, is
+held, or a status row lands after the echo), so the echo arriving before
+the host's `starting` never flashes Send between two Pauses, and the
+click's clock is dropped once the turn it opened has closed; a watching master is not mid-turn, so its button is Send. Stop lives in
 the slot. The field's placeholder is "Steer" for a root implementation or
 orchestration thread or a master of any type, "Message the agent" for a
 subagent, "Message" otherwise. `+` opens Photos. A model or effort picked
@@ -842,15 +847,17 @@ reaches the host until the first send: `session.create { firstMessage }`
 (`ThreadDraft.firstMessage`, `master`), or with photos the create, the
 uploads into the new thread, then the send, and `session.archive` when the
 send fails (`session.delete` is not the phone's; `DraftSend`). The send
-opens the new thread in the shell; only what it carried leaves the draft
-(`ProjectDraft.remaining`, `DraftSend.remainingPhotos`): the field and `+`
-stay open while the create runs, and text or photos added meanwhile stay
-for the next thread. Send waits for the host's catalog (`DraftSend.canSend`:
+opens the new thread in the shell. The box empties at the click, as the
+desktop's composer does: the sent text, name and photos ride the strip's
+chip (`ProjectDraftStore.take`), the field and `+` stay open while the
+create runs, and what is written or picked meanwhile is the next draft; a
+failed create gives the sent words and photos back ahead of it
+(`ProjectDraftStore.restore`). Send waits for the host's catalog (`DraftSend.canSend`:
 no send with an empty model, which would skip the host's thread defaults),
 and switching the draft's host loads that host's catalog anew
 (`CatalogLoad`). While the create runs the button's glyph is a spinner
 (the icon swap, "Sending" to VoiceOver) and the strip draws the thread's
-chip. A refusal keeps the draft with the reason above the box. The draft
+chip. A refusal puts the sent draft back with the reason above the box. The draft
 row's name field, "Name this thread" in the row's detail type after the
 type chip (the desktop's DraftTitleField: one line, at most 80 characters,
 the placeholder quiet and the typed name primary, giving way before the

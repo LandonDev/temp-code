@@ -446,6 +446,22 @@ server.registry.append('ios-question', { type: 'status', status: 'running' })
 server.registry.append('ios-question', { type: 'question-request', requestId: 'seed-question', questions: [{ question: 'Round half up or to even?', header: 'Rounding', options: [{ label: 'Half up', description: 'Round 2.5 to 3 and -2.5 to -3, the rule the billing ledger already uses for invoices' }, { label: 'To even' }] }] })
 server.registry.append('ios-question', { type: 'status', status: 'waiting', detail: 'awaiting an answer' })
 
+// Dynamic Type's proof (the features set's accessibility-large shot): a
+// running chat whose transcript holds inline code in prose, a settled group
+// of reads and a search (its table), and a live call under the working
+// line, so the slot's timer shows above the composer too.
+await make('ios-dynamic-type', { projectId: project.id, threadType: 'chat', title: 'Read the config loader' })
+server.registry.append('ios-dynamic-type', { type: 'user-text', text: 'Why does the loader skip `config.local.json`?' })
+server.registry.append('ios-dynamic-type', { type: 'status', status: 'running' })
+for (const [callId, file] of [['dt1', 'src/config/loader.ts'], ['dt2', 'src/config/paths.ts'], ['dt3', 'src/config/merge.ts']] as const) {
+  server.registry.append('ios-dynamic-type', { type: 'tool-call', callId, name: 'Read', input: { file_path: file } })
+  server.registry.append('ios-dynamic-type', { type: 'tool-result', callId, output: 'export {}', isError: false })
+}
+server.registry.append('ios-dynamic-type', { type: 'tool-call', callId: 'dt4', name: 'Grep', input: { pattern: 'local.json', path: 'src' } })
+server.registry.append('ios-dynamic-type', { type: 'tool-result', callId: 'dt4', output: 'src/config/paths.ts:12', isError: false })
+server.registry.append('ios-dynamic-type', { type: 'assistant-text', text: 'The loader reads `paths.local` only when `NODE_ENV` is `development`, so a test run never sees `config.local.json`.', delta: false, msgId: 'dt-m1', blockIndex: 0 })
+server.registry.append('ios-dynamic-type', { type: 'tool-call', callId: 'dt5', name: 'Bash', input: { command: 'bun test src/config', description: 'Run the config tests' } })
+
 // A running implementation with tasks, and an orchestration fleet with a working explorer and a settled reviewer.
 await make('ios-running', { projectId: project.id, threadType: 'implementation', title: 'Add the billing export' })
 server.registry.append('ios-running', { type: 'user-text', text: 'Add a CSV export to the billing page', newPass: true })
@@ -1331,9 +1347,18 @@ const realCreate = registry.create.bind(registry)
 const realRename = registry.rename.bind(registry)
 const realSetArchived = registry.setArchived.bind(registry)
 const realSetPinned = registry.setPinned.bind(registry)
+// A send whose text is HELD_START_TEXT echoes at once and starts its turn
+// HELD_START_MS later, the gap a real host has between the user row and
+// `starting`: the proof's two frames inside it show the composer still busy.
+const HELD_START_TEXT = 'Hold the start'
+const HELD_START_MS = 4_000
 stub('send', async (sessionId, text, opts) => {
   record('send', sessionId, { text, newPass: opts?.newPass ?? null, provider: opts?.provider ?? null, model: opts?.model ?? null, reasoning: opts?.reasoning ?? null })
   registry.append(sessionId, { type: 'user-text', text, model: opts?.model, reasoning: opts?.reasoning, newPass: opts?.newPass })
+  if (text === HELD_START_TEXT) {
+    setTimeout(() => registry.append(sessionId, { type: 'status', status: 'running' }), HELD_START_MS)
+    return
+  }
   registry.append(sessionId, { type: 'status', status: 'running' })
 })
 // The composer's long press (and a paused thread's tap): the message waits for the next turn.

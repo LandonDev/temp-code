@@ -535,6 +535,13 @@ actions_set() {
   rm -f "$OUT/shots/00-pairing.png"
   control /actions/clear >/dev/null
   TC_ACTION="send:Hello from the phone" shot "act-send-light" thread "Thread B"
+  # A send whose turn the host starts 4 s after the echo: two frames inside
+  # the gap, both busy (Pause and the slot's timer), never Send between.
+  TC_ACTION="send:Hold the start" shot "act-send-held-1-light" thread "Thread A" "" "" 2
+  sleep 1
+  snap "act-send-held-2-light"
+  sleep 4
+  control /finish >/dev/null
   # The composer's button in each of its states: Send with a draft, steer
   # with a draft that wraps (the box grows), Pause on a running empty box.
   TC_ACTION="draft:Check the totals" shot "act-draft-send-light" thread "gateway refuse"
@@ -582,7 +589,7 @@ actions_set() {
   python3 - "$(control /actions)" <<'PY'
 import json, sys
 kinds = [a["kind"] for a in json.loads(sys.argv[1])["actions"]]
-want = {"send": 5, "steer": 1, "steer-sent": 1, "steer-received": 1, "queue": 1, "pause": 1, "stop": 1, "approve": 2, "answer": 1, "create": 3, "pin": 1, "rename": 1, "archive": 1}
+want = {"send": 6, "steer": 1, "steer-sent": 1, "steer-received": 1, "queue": 1, "pause": 1, "stop": 1, "approve": 2, "answer": 1, "create": 3, "pin": 1, "rename": 1, "archive": 1}
 counts = {k: kinds.count(k) for k in want}
 missing = {k: v for k, v in want.items() if counts[k] < v}
 # The new chat is made by its draft: one create whose first message is the draft's text.
@@ -764,6 +771,8 @@ features_set() {
   shot failures-a11y thread "Every way a turn fails"
   shot account-a11y thread "On the work account" "" account
   shot notices-a11y thread "Land the export endpoint" chat
+  # Rows grow with the type, never clip: inline code, a group's table, the working line and the slot.
+  shot transcript-a11y thread "Read the config loader"
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
   # A wait whose result passed 2 KiB (the host sends its head alone): each agent is still a step.
   shot wait-omitted-light thread "SQLite on the phone" chat

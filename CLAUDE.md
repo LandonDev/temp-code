@@ -2479,8 +2479,10 @@ proof and the sizing rules; the pieces, by name:
   is `session.create { firstMessage }`, or create, upload, send and
   `session.archive` on a failed send, `sendDraft`; while it runs the button
   spins and the strip draws its chip (`DraftSending`, live until the meta
-  lands); it opens the thread in the shell, and only what it carried leaves
-  the draft (`ProjectDraft.remaining`); every New thread focuses the draft,
+  lands); the box empties at the click (`ProjectDraftStore.take`: what was
+  sent rides the chip, what is typed meanwhile is the next draft) and only a
+  failed create gives the sent text, name and photos back (`restore`); it
+  opens the thread in the shell; every New thread focuses the draft,
   `NewThreadPresenter.compose`); `key` is the strip scope's
   key (a project's `ProjectPairs.key`, `loose:…` for a workspace's loose
   chats), `thread` the chip id `<env>:<sid>`. `ShellPaths.place` puts every
@@ -2617,7 +2619,7 @@ proof and the sizing rules; the pieces, by name:
   `TC_TEST_OPEN=chip|group|diff|page|agent|agents|rename|agent-detail|report|source|item|item-diff|account`,
   `TC_TEST_SCROLL=1`, the Search tab's `TC_TEST_SEARCH=<query>` and
   `TC_TEST_SEARCH_SCOPE=files`, and L5's
-  `TC_TEST_ACTION=send:<text>|stop|approve|deny|answer:<label>|start-build|
+  `TC_TEST_ACTION=send:<text>|steer:<text>|stop|approve|deny|answer:<label>|start-build|
   rename:<title>|pin|archive|new-chat` and `TC_TEST_SHEET=start|new`) exist
   for the proof only; an action runs once, on the screen the launch route
   opened, through the same calls the buttons make. The test server's
@@ -2806,7 +2808,11 @@ proof and the sizing rules; the pieces, by name:
   then it scrolls; a keystroke snaps the height, a paste of more than one
   line eases it over `base`. The button is the desktop's `SendButton` on the
   client package's `ComposerRules` and `ComposerIntent`: Send; steer (the
-  corner glyph) mid-turn with text; Pause (`session.pause`) mid-turn with
+  corner glyph) mid-turn with text or a photo, `queue.add { steer: true }`
+  as the desktop's composer (`steer` in Actions: the host's `steered`
+  answer, its user row's `steerId` and the `steer` rows put Sent, then
+  Received, under the bubble; a photo's queued answer goes in through
+  `queue.steer`); Pause (`session.pause`) mid-turn with
   the box empty; a paused thread's text queues; a long press mid-turn with
   text shows the queue glyph until release and queues for the next turn
   (`queue.add`); a watching master's button is Send; the glyphs trade on the
@@ -2830,7 +2836,10 @@ proof and the sizing rules; the pieces, by name:
   package's `ComposerSlot`, which was `WorkingPhase`: while a turn works or
   waits the turn's elapsed from the click (`ThreadState.sentAt`, stamped by
   a send into a thread with no turn open and never stepped back by the
-  host's `busySince`) and Stop, "Stopping…" while it is out; Paused with
+  host's `busySince`; `sending` holds the slot and the button busy from the
+  click until the host's status moves, never ended by the echo alone, and
+  the click is ignored once its turn closed, `ThreadState.observe`,
+  `sendEcho`, `sentTurn`) and Stop, "Stopping…" while it is out; Paused with
   Stop and Continue and a master's batch line, Stopped with Resume, Queued
   with its reason and Start now, worded by `StripWords`; nothing for
   watching, failed, idle or done, and no flavour words; 28 pt kept at
