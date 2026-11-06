@@ -72,7 +72,19 @@ extension EnvironmentValues {
     @Entry var revealDrain: RevealDrain? = nil
     /// The transcript's follow: a revealing row grew (a step shown), pin if the reader is at the bottom.
     @Entry var transcriptFollow: TranscriptFollow? = nil
+    #if DEBUG
+    /// The glide proof's tap on a group (`TestHooks.groupGlide`).
+    @Entry var proofGroupTap: ProofGroupTap? = nil
+    #endif
 }
+
+#if DEBUG
+/// The glide proof's tap: the group's key and a count, so each tap is a change.
+struct ProofGroupTap: Equatable {
+    var key: Int
+    var tick: Int
+}
+#endif
 
 /// The transcript's pin, handed to its rows by one stable reference so a
 /// step re-renders no row: a row's reveal grows the row without a new row

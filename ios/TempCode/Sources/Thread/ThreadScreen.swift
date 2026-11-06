@@ -488,6 +488,10 @@ struct ThreadScreen: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.bottom, barInset)
+        #if DEBUG
+        // The whole bar the scroll edge effect spans: the dock and the inset a floating bar adds.
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LayoutProbe.note("dock.bar.frame", LayoutProbe.rect($0)) }
+        #endif
         .background {
             BarRegionProbe { region, safeArea in
                 barInset = Duo.barInset(region: region, safeArea: safeArea)
@@ -554,6 +558,9 @@ struct ThreadScreen: View {
                        width: CGFloat, mode: ThreadLayoutMode, columns: TwoPaneColumns) -> some View {
         let twoPane = mode == .twoPane
         let chatInset = twoPane ? max(0, pagerBottom - bodyBottom) : 0
+        #if DEBUG
+        let _ = LayoutProbe.note("chatInset", String(Int(chatInset.rounded())))
+        #endif
         return ScrollView(.horizontal) {
             // Top-aligned: in two-pane the hero runs under the dock, and the chat must not centre against it.
             HStack(alignment: .top, spacing: 0) {

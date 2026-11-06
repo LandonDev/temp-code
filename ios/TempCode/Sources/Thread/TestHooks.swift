@@ -81,6 +81,12 @@ enum TestHooks {
     static let sheet = env["TC_TEST_SHEET"].flatMap { $0.isEmpty ? nil : $0 }
     /// With `TC_TEST_ROUTE=notification`: "title part|seq", a payload the delegate routes like a tap.
     static let notification = env["TC_TEST_NOTIFICATION"].flatMap { $0.isEmpty ? nil : $0 }
+    /// The glide proof: `bottom` or `up` (the reader 700 pt up first). Once the
+    /// thread lands, the lowest tool group on screen is tapped open and shut
+    /// three times through the line's own path (`TranscriptFollow.resize`), the
+    /// list's offset and content height sampled every frame through each;
+    /// Documents/group-glide.json (scripts/lib/group_glide_check.py reads it).
+    static let groupGlide = env["TC_TEST_GROUP_GLIDE"].flatMap { $0.isEmpty ? nil : $0 }
     #else
     static let segment: ThreadSegment? = nil
     static let open: String? = nil
@@ -96,6 +102,7 @@ enum TestHooks {
     static let action: String? = nil
     static let sheet: String? = nil
     static let notification: String? = nil
+    static let groupGlide: String? = nil
     #endif
     /// True once per key: a hook that several rows read fires on the first.
     static func once(_ key: String) -> Bool {

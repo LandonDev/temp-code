@@ -33,6 +33,9 @@ struct ActionGroup: View {
     @Environment(\.accessibilityReduceMotion) private var reduced
     @Environment(\.displayScale) private var scale
     @Environment(\.transcriptFollow) private var follow
+    #if DEBUG
+    @Environment(\.proofGroupTap) private var proofTap
+    #endif
     @State private var fold: GroupFold
     /// The hold ran its time with the reader scrolled up: the fold waits for the bottom.
     @State private var awaitingBottom = false
@@ -84,6 +87,14 @@ struct ActionGroup: View {
         .onChange(of: awaitingBottom ? scroll?.atBottom : nil) { _, atBottom in
             if atBottom == true { letGo() }
         }
+        #if DEBUG
+        // The glide proof taps the line through the button's own path.
+        .onChange(of: proofTap) { _, tap in
+            guard let tap, tap.key == group.key, !group.lone else { return }
+            let open = fold.isOpen(lone: false)
+            TranscriptFollow.resize(follow) { take(open: !open) }
+        }
+        #endif
         .onChange(of: forceOpen) { _, now in
             guard now, fold.hand != true else { return }
             // The view's own opening (a landing): not a choice the person made, so not kept.

@@ -116,7 +116,7 @@ struct TranscriptView: View {
                         // The list's own scroll view: a restore reads a row's frame from its layout.
                         ScrollProofProbe { scroll in
                             listScroll.scroll = scroll
-                            if (TestHooks.scroll || TestHooks.scrollUp || TestHooks.stream), proofScrollView !== scroll { proofScrollView = scroll }
+                            if (TestHooks.scroll || TestHooks.scrollUp || TestHooks.stream || TestHooks.groupGlide != nil), proofScrollView !== scroll { proofScrollView = scroll }
                         }
                     }
                     .listRowInsets(EdgeInsets())
@@ -129,6 +129,9 @@ struct TranscriptView: View {
             .environment(scrollState)
             .environment(\.revealDrain, revealDrain)
             .environment(\.transcriptFollow, follow)
+            #if DEBUG
+            .environment(\.proofGroupTap, proofTap)
+            #endif
             .environment(\.transcriptCwd, cwd)
             .task(id: sessionId) { cwd = client.session(sessionId)?.cwd }
             .task(id: waitIds) { await watchWaits(waitIds) }
@@ -230,6 +233,13 @@ struct TranscriptView: View {
                 scrollRan = true
                 await scrollProof(proxy: proxy)
             }
+            #if DEBUG
+            .task(id: TestHooks.groupGlide == nil ? "" : "\(thread.isLoading)|\(rows.isEmpty)") {
+                guard TestHooks.groupGlide != nil, !thread.isLoading, !rows.isEmpty, !scrollRan else { return }
+                scrollRan = true
+                await groupGlideProof()
+            }
+            #endif
             .task(id: TestHooks.scrollUp || TestHooks.stream ? "\(thread.isLoading)|\(rows.isEmpty)" : "") {
                 guard TestHooks.scrollUp || TestHooks.stream, !thread.isLoading, !rows.isEmpty, !scrollRan else { return }
                 scrollRan = true
@@ -258,6 +268,10 @@ struct TranscriptView: View {
     @State private var initializedScroll = false
     /// The pin the turn's asks coalesce into (plain storage).
     @State private var pins = PinQueue()
+    #if DEBUG
+    /// The glide proof's current tap.
+    @State private var proofTap: ProofGroupTap?
+    #endif
     /// The keys of the rows on screen (plain storage: an appear re-renders nothing).
     @State private var onScreen = OnScreenRows()
     @State private var proofScrollView: UIScrollView?
@@ -466,6 +480,51 @@ struct TranscriptView: View {
                                     seqAtStart: thread.fold.lastSeq, seq: thread.fold.lastSeq, atBottom: scrollState.atBottom)
         noteHold(nil)
     }
+
+    #if DEBUG
+    /// The glide proof (`TestHooks.groupGlide`): the lowest tool group on
+    /// screen tapped open and shut three times through the line's own path,
+    /// the list's offset and content height sampled every 8 ms for 0.9 s after
+    /// each tap; Documents/group-glide.json.
+    private func groupGlideProof() async {
+        try? await Task.sleep(for: .seconds(2))
+        guard let scroll = await proofScroller() else { return }
+        if TestHooks.groupGlide == "up" {
+            // The proof stands in for the reader's drag.
+            scrollState.offBottomWrite = true
+            scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: max(-scroll.adjustedContentInset.top, scroll.contentOffset.y - 700)), animated: false)
+            try? await Task.sleep(for: .milliseconds(800))
+        }
+        let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory, waits: thread.fold.waitOutcomes, statusOf: waitStatus)
+        let target = rows.last { row in
+            guard onScreen.ids.contains(row.id), case .group(let group) = row else { return false }
+            return !group.lone
+        }
+        guard let target, case .group(let group) = target else {
+            LayoutProbe.note("proof", "no-group-on-screen")
+            return
+        }
+        var phases: [[String: Any]] = []
+        for index in 0..<6 {
+            let started = Date()
+            let atBottom = scrollState.atBottom
+            proofTap = ProofGroupTap(key: group.key, tick: index + 1)
+            var samples: [[Double]] = []
+            while Date().timeIntervalSince(started) < 0.9 {
+                samples.append([Date().timeIntervalSince(started), Double(scroll.contentOffset.y), Double(scroll.contentSize.height)])
+                try? await Task.sleep(for: .milliseconds(8))
+            }
+            phases.append(["opening": index % 2 == 0, "atBottom": atBottom, "samples": samples])
+            try? await Task.sleep(for: .milliseconds(600))
+        }
+        let report: [String: Any] = ["mode": TestHooks.groupGlide ?? "", "group": group.key, "phases": phases]
+        if let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
+           let data = try? JSONSerialization.data(withJSONObject: report) {
+            try? data.write(to: documents.appending(path: "group-glide.json"), options: .atomic)
+        }
+        LayoutProbe.note("proof", "group-glide")
+    }
+    #endif
 
     /// The list's scroll view once the probe has found it (10 s at most); the proof notes a miss.
     private func proofScroller() async -> UIScrollView? {
