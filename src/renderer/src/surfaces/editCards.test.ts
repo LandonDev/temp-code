@@ -17,6 +17,21 @@ describe("isInternalPath", () => {
     expect(isInternalPath("/p/.temp-code")).toBe(true);
     expect(isInternalPath("/Users/me/.temp-code/worktrees/x/src/a.ts")).toBe(false);
     expect(isInternalPath("/p/src/a.ts")).toBe(false);
+    expect(isInternalPath("/p/.temp-code/plans/plan-x.md")).toBe(true);
+    expect(isInternalPath("/p/.temp-code/attachments/s1/notes.md")).toBe(true);
+    expect(isInternalPath("/p/.temp-code/reports/abc/findings.md")).toBe(true);
+    expect(isInternalPath("/p/.temp-code/PROJECT-archive.md")).toBe(true);
+  });
+
+  it("leaves the user's own code under .temp-code as edits", () => {
+    expect(
+      isInternalPath(
+        "/srv/agents/home/.temp-code/u35-a1-clone/src/main/java/me/landon/game/graveyard/GraveyardAtmosphere.java",
+      ),
+    ).toBe(false);
+    expect(isInternalPath("/srv/agents/home/.temp-code/worktrees/w1/src/a.ts")).toBe(false);
+    expect(isInternalPath("/p/.temp-code/clone/PROJECT.md")).toBe(false);
+    expect(isInternalPath("/p/.temp-code/new-thing/plans/a.md")).toBe(false);
   });
   it("names what a set of internal paths is", () => {
     expect(memoryLabel(["/p/.temp-code/PROJECT.md"])).toBe("project memory");

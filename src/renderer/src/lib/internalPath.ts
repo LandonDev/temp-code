@@ -1,12 +1,16 @@
 /**
- * Which paths belong to the app rather than to the user. Writes under a
- * project's `.temp-code/` are bookkeeping (memory, plans, thread notes) and
- * read as "Updated project memory", not as file edits; the one exception is
- * `~/.temp-code/worktrees/…`, where whole checkouts live and every file is
- * the user's own.
+ * Which paths belong to the app rather than to the user. The app's own
+ * bookkeeping under a `.temp-code/` dir (memory, plans, reports, thread
+ * notes, attachments, tool caches) reads as "Updated project memory" and the
+ * like, not as file edits. Only the files and folders the app writes count:
+ * everything else under `.temp-code/` (`worktrees/`, a thread's own clone,
+ * anything new) is the user's own code and renders as an edit.
  */
-export const isInternalPath = (p: string): boolean =>
-  /(^|\/)\.temp-code(\/(?!worktrees\/)|$)/.test(p);
+const APP_FILES = String.raw`PROJECT\.md|PROJECT-archive\.md|plan-[^/]+\.md|moved-changes\.patch`;
+const APP_DIRS = "attachments|plans|reports|refs|threads|builds|dev-server|intellij-server|jdtls";
+const INTERNAL = new RegExp(String.raw`(^|/)\.temp-code(/(?:(?:${APP_FILES})$|(?:${APP_DIRS})(?:/|$))|/?$)`);
+
+export const isInternalPath = (p: string): boolean => INTERNAL.test(p);
 
 /** A capture's own files — the nanoid name means nothing to anyone. */
 export const isAppshotPath = (p: string): boolean => /-appshot\.(png|jpg|md)$/.test(p);
