@@ -2445,7 +2445,13 @@ keyboard action. Every animated change has a static cue as well.
   on the stream set stands a finger in for a slow drag 40 pt up 4 s in,
   held 3 s while the reply streams (`drag-hold.json`, `drag-hold.mov`):
   pass is no pin while the finger is down and the offset where the drag
-  left it. `retarget` opens a second search hit in the open 2,000-row
+  left it (2026-11-05: no pin and the offset held to the point while 498
+  rows landed). `markup` plays `POST /stream { markup: true }` (an opening
+  paragraph of bold, code, a link, a strike and italics) at 30 characters
+  a second and shoots it mid-stream: a span open at the cut reads styled,
+  never as raw marks. Rows that land under a held finger take the reader off the
+  bottom, so once it lifts they stay where they are with Jump to latest:
+  they took the list. `retarget` opens a second search hit in the open 2,000-row
   thread (`TC_TARGET_SEQ_NEXT`) and reads the row it landed on from the
   navigation report. The pure runner's follow check plays the reader as
   the view keeps them (`.reader(.bottom | .dragging | .up)` through

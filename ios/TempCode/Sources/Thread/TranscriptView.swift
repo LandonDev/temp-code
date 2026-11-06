@@ -514,10 +514,9 @@ struct TranscriptView: View {
     /// (`PinQueue`). Never while the reader's finger is down or the list
     /// still decelerates (`FollowRule`).
     private func pinTail(proxy: ScrollViewProxy) {
-        let state = scrollState
-        let landing = targetStatus != nil
         func follows() -> Bool {
-            FollowRule.write(for: .rowsChanged, atBottom: state.atBottom, landing: landing, reflowHeld: state.reflowHeld, readerMoving: state.readerMoving) == .pin
+            FollowRule.write(for: .rowsChanged, atBottom: scrollState.atBottom, landing: targetStatus != nil,
+                             reflowHeld: scrollState.reflowHeld, readerMoving: scrollState.readerMoving) == .pin
         }
         guard follows(), pins.ask() else { return }
         Task { @MainActor in

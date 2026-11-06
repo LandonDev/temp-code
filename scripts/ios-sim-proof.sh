@@ -63,6 +63,7 @@
 #   push    A notification tap (L6): a payload shaped like the hub's, routed
 #           through the delegate at launch, lands on the named thread's row;
 #           the navigation report proves the seq; Settings shows the row.
+#   markup  Inline spans streamed slowly, shot mid-stream: no raw marks.
 #   retarget A second search hit in the 2,000-row thread while it is open
 #           (TC_TARGET_SEQ_NEXT): the navigation report proves the second row.
 #   features The screens the 2026-10-22 batch added (master board and rules,
@@ -1210,7 +1211,7 @@ CHECK
   cp "$container/Documents/layout-report.json" "$OUT/stream-layout.json" 2>/dev/null || echo '{}' > "$OUT/stream-layout.json"
   snap "stream-end"
   python3 - "$OUT/stream-report.json" <<'CHECK'
-import json, sys
+import json, os, sys
 r = json.load(open(sys.argv[1]))
 print('ios-sim-proof: stream load ' + open(sys.argv[1].replace('stream-report.json', 'stream-load.txt')).read().strip())
 print('ios-sim-proof: stream ' + json.dumps({k: r[k] for k in ('frames', 'maxFramesPerSecond', 'expectedMs', 'hitches', 'worstMs', 'meanMs', 'over16Ms', 'unpinnedFrames', 'firstUnpinnedAtS', 'repinnedAtS', 'seqStart', 'seqEnd', 'hitchAtS')}))
@@ -1223,12 +1224,28 @@ reduced = r.get('reduced', 0)
 if not fades and not reduced: failures.append('no step of the streamed answer faded in')
 if fades and reduced: failures.append(f'{fades} faded draws under reduced motion')
 if r['frames'] < r['seconds'] * 50: failures.append(f"only {r['frames']} frames in {r['seconds']:.1f} s")
-if r['unpinnedFrames']: failures.append(f"the reader left the bottom on {r['unpinnedFrames']} frames")
+# A finger held on the list while rows land below takes the reader off the bottom: the drag run's own check holds it.
+if r['unpinnedFrames'] and os.environ.get('TC_STREAM_DRAG') != '1': failures.append(f"the reader left the bottom on {r['unpinnedFrames']} frames")
 if r['hitches'] or r['worstMs'] > r['expectedMs'] + 8: failures.append(f"{r['hitches']} frames later than {r['expectedMs']:.1f} + 8 ms, worst {r['worstMs']:.1f} ms")
 for f in failures: print('ios-sim-proof: STREAM FAIL ' + f, file=sys.stderr)
 sys.exit(5 if failures else 0)
 CHECK
   echo "ios-sim-proof: stream PASS"
+}
+
+# Inline spans streamed slowly (POST /stream with markup): shots mid-stream,
+# where a span is open, show no raw marks (MarkdownClose).
+markup_set() {
+  [ -n "${TC_TEST_CONTROL_URL:-}" ] || { echo "ios-sim-proof: the markup set needs TC_TEST_CONTROL_URL" >&2; return 2; }
+  appearance light
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data)
+  rm -f "$container/Documents/transcript-report.json"
+  launch_app thread "Streaming on the phone" chat
+  wait_for "$container/Documents/transcript-report.json" 60 || echo "ios-sim-proof: markup: no landing report" >&2
+  sleep 2
+  control /stream '{"markup":true,"cps":30,"seconds":12}' >/dev/null
+  sleep 2
+  for i in 1 2 3 4 5 6; do snap "markup-$i"; sleep 0.6; done
 }
 
 case "$SET" in
@@ -1250,6 +1267,7 @@ case "$SET" in
   push) push_set ;;
   features) features_set ;;
   retarget) retarget_set ;;
+  markup) markup_set ;;
   glass) glass_set ;;
   return) return_set ;;
   all) shell_set; threads_set; scroll_set; actions_set; push_set; host_gone_set ;;

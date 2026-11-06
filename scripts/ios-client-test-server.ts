@@ -20,7 +20,7 @@
  *                                 answers, creates, renames, archives and pins the stubs recorded
  *   POST /actions/clear         → forgets them
  *   POST /finish { sessionId, text? }  → ends a simulated turn: the reply, turn-complete, idle (and stops a /stream)
- *   POST /stream { sessionId?, cps?, seconds?, seed? }  → plays a bursty streaming turn with a growing Edit and
+ *   POST /stream { sessionId?, cps?, seconds?, seed?, markup? }  → plays a bursty streaming turn with a growing Edit and
  *                                 live edits into ios-streaming; 409 while one runs
  *   POST /scenario { sessionId? }  → plays the no-jerk timeline (scripts/lib/soakScenarios.ts) as host events on a
  *                                chat at real speed, one at a time; answers { started, ms } (POST /finish stops it)
@@ -1627,7 +1627,9 @@ let streamRun: { sessionId: string; stopped: boolean } | null = null
 let scenarioRun: { sessionId: string; stop: () => void } | null = null
 /** How many times the timeline has been played, for its per-play ids. */
 let scenarioPlays = 0
-const streamAnswer = (length: number): string => {
+/** `markup`: the answer opens on a paragraph of inline spans, so a proof can shoot them open mid-stream. */
+const STREAM_MARKUP = 'Read **the routing table** first, then `gateway.scopedCodexUrl(threadId)` and [the gateway notes](https://example.com/gateway) before you ~~guess~~ _measure_ the headroom.'
+const streamAnswer = (length: number, markup = false): string => {
   const parts = [
     'The gateway forwards every request a harness makes and swaps in the account the thread is routed to. ' + streamParagraph(1),
     '- the plain-http port carries the thread scope\n- one https port per codex thread\n- every answer feeds the headroom store',
@@ -1635,11 +1637,11 @@ const streamAnswer = (length: number): string => {
     streamParagraph(2),
     streamParagraph(3)
   ]
-  let text = ''
-  for (let i = 0; text.length < length; i++) text += (i === 0 ? '' : '\n\n') + parts[i % parts.length]
+  let text = markup ? STREAM_MARKUP : ''
+  for (let i = 0; text.length < length; i++) text += (i === 0 && !markup ? '' : '\n\n') + parts[i % parts.length]
   return text.slice(0, length)
 }
-async function playStream(sessionId: string, cps: number, seconds: number, seed: number): Promise<void> {
+async function playStream(sessionId: string, cps: number, seconds: number, seed: number, markup = false): Promise<void> {
   const run = { sessionId, stopped: false }
   streamRun = run
   const live = (): boolean => !run.stopped
@@ -1650,7 +1652,7 @@ async function playStream(sessionId: string, cps: number, seconds: number, seed:
   }
   const cwd = repo
   const path = 'src/gateway/route.ts'
-  const answer = streamAnswer(Math.round(cps * seconds))
+  const answer = streamAnswer(Math.round(cps * seconds), markup)
   try {
     registry.append(sessionId, { type: 'user-text', text: 'Explain the gateway in detail' })
     registry.append(sessionId, { type: 'status', status: 'running' })
@@ -1859,7 +1861,7 @@ const control = createServer((req, res) => {
         // A bursty streaming turn into a thread; one at a time.
         if (streamRun) return answer(409, { error: `a stream is running on ${streamRun.sessionId}` })
         const sessionId = String(body.sessionId ?? THREAD_STREAM)
-        void playStream(sessionId, Number(body.cps ?? 300), Number(body.seconds ?? 12), Number(body.seed ?? 1)).catch((err) => console.error('[stream]', err))
+        void playStream(sessionId, Number(body.cps ?? 300), Number(body.seconds ?? 12), Number(body.seed ?? 1), body.markup === true).catch((err) => console.error('[stream]', err))
         return answer(200, { started: sessionId })
       }
       case '/scenario': {
