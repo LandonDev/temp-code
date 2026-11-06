@@ -727,6 +727,28 @@ on the column's edges; the draft's length when one was typed. The fold run
 is a streaming implementation thread with a draft and an undecided approval,
 started at the bottom and then 700 pt up.
 
+**Where the phone still differs from the desktop** (2026-11-05: the six
+unfolded shots beside `ui:preview` of the desktop's ActionGroup and
+FailureCard fixtures). The transcript's rows match: one group per stretch,
+the lone row, the table's frame, hairlines and grid, the verb muted and the
+object loud, the counts, the end row's "Worked for", the compaction row.
+What does not:
+
+- The failure card's actions fill the card's width in two halves, the last
+  one solid blue. The desktop sizes each button to its label at the text's
+  edge, the first action solid and the rest quiet, Retry last. The phone
+  also has no Continue on another model (the line sends the person to the
+  desktop for it).
+- The fleet's sections carry a count ("Running 3"); the desktop's board
+  sections read their word alone.
+- In the proof rig the phone pairs the same server several times (the test
+  server's relayed loopback hosts), and the strip and the fleet list a
+  thread once per pairing, so titles repeat; whether the fleet should fold
+  them is open.
+- One offset jump per transcript run remains, at turn 6 when the working
+  line reopens while a table changes (A7, A8 and C2 measured it on master
+  too); the reader never leaves the bottom and no row is made twice.
+
 ### The composer, the strip, the cards' actions, the sheets
 
 The composer is the desktop's box (docs/LAYOUT.md "Composer") drawn on
