@@ -276,6 +276,17 @@ public final class EnvironmentClient {
     /// answer, or a `session.list` walk that reached its end (one cut short
     /// counts nothing). A bare thread waits on it (`ShellPaths.awaitsListing`).
     public private(set) var completeLists = 0
+    /// Moves when the workspace or project list changes (a list answer or
+    /// their push): a bare thread's place reads them (`ShellPaths.awaitsListing`).
+    public private(set) var catalogStamp = 0
+    /// Moves when a watched thread's placing fields change, or it comes or
+    /// goes (`watchPlacing`); no other push writes it, so a shell waiting on
+    /// one bare thread observes nothing else of the sessions.
+    public private(set) var placingStamp = 0
+    /// Every listed thread's placing fields (`BareSettle.placing`), outside
+    /// observation; the watched ids among them move `placingStamp`.
+    @ObservationIgnored private var placingIndex: [String: String] = [:]
+    @ObservationIgnored private var placingWatched: Set<String> = []
     /// Where the session list last came from.
     public private(set) var shellSource: ShellSource = .none
     /// The `session.changes` head the list was last reconciled to, from the
@@ -375,6 +386,8 @@ public final class EnvironmentClient {
             workspaces = shell.workspaces
             projects = shell.projects
             sessions = shell.sessions
+            catalogStamp += 1
+            reindexPlacing(shell.sessions, gone: [])
             if !shell.sessions.isEmpty { shellSource = .cache }
         }
         listCursor = try? await cache.cursor(environment.id)
@@ -413,6 +426,7 @@ public final class EnvironmentClient {
         workspaces = []
         projects = []
         sessions = []
+        reindexPlacing([], gone: Set(placingIndex.keys))
         threads = [:]
         listCursor = nil
         shellSource = .none
@@ -762,11 +776,11 @@ public final class EnvironmentClient {
         // A list that comes back as it was is not republished: a catch-up
         // that confirms what the cache painted moves nothing on screen.
         if let list = await workspacesList {
-            if list != workspaces { publishList { workspaces = list } }
+            if list != workspaces { publishList { workspaces = list }; catalogStamp += 1 }
             try? await cache.replaceWorkspaces(environment.id, list)
         }
         if let list = await projectsList {
-            if list != projects { publishList { projects = list } }
+            if list != projects { publishList { projects = list }; catalogStamp += 1 }
             try? await cache.replaceProjects(environment.id, list)
         }
         let answer = await changes
@@ -856,10 +870,10 @@ public final class EnvironmentClient {
         case .presence(let value):
             relayObserver?(self, value.hosts, true)
         case .workspaces(let value):
-            if value.workspaces != workspaces { publishList { workspaces = value.workspaces } }
+            if value.workspaces != workspaces { publishList { workspaces = value.workspaces }; catalogStamp += 1 }
             try? await cache.replaceWorkspaces(environment.id, value.workspaces)
         case .projects(let value):
-            if value.projects != projects { publishList { projects = value.projects } }
+            if value.projects != projects { publishList { projects = value.projects }; catalogStamp += 1 }
             try? await cache.replaceProjects(environment.id, value.projects)
         case .sessions(let value):
             // A thread listed here again (moved back) is no longer away.
@@ -952,6 +966,7 @@ public final class EnvironmentClient {
         // A list that did not change in order or membership is not republished:
         // a catch-up that confirms what was already true moves nothing.
         if sorted != sessions { publishList { sessions = sorted } }
+        reindexPlacing(metas, gone: [])
         // The thread on screen is seen as of this meta: on return its rows
         // land before the list reconciles, so the earlier mark would read
         // the stale `updatedAt` and the fresh meta would make it unseen.
@@ -962,9 +977,34 @@ public final class EnvironmentClient {
         Task { try? await cache.upsertSessions(env, metas) }
     }
 
+    /// A shell's bare thread: what its meta's placing fields read now (nil
+    /// while this host names none), read outside observation, with
+    /// `placingStamp` observed so the reader runs again only when it moves.
+    public func watchPlacing(_ id: String) -> String? {
+        _ = placingStamp
+        placingWatched.insert(id)
+        return placingIndex[id]
+    }
+
+    private func reindexPlacing(_ metas: [SessionMeta], gone: Set<String>) {
+        var moved = false
+        for meta in metas {
+            let placing = BareSettle.placing(of: meta)
+            if placingIndex[meta.id] != placing {
+                placingIndex[meta.id] = placing
+                if placingWatched.contains(meta.id) { moved = true }
+            }
+        }
+        for id in gone where placingIndex.removeValue(forKey: id) != nil {
+            if placingWatched.contains(id) { moved = true }
+        }
+        if moved { placingStamp += 1 }
+    }
+
     private func removeSessions(_ ids: [String]) {
         let gone = Set(ids)
         publishList { sessions.removeAll { gone.contains($0.id) } }
+        reindexPlacing([], gone: gone)
         for id in ids {
             quietly { threads[id] = nil }
             subscriptions.remove(id)

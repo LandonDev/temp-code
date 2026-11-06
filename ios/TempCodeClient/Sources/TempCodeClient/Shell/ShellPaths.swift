@@ -85,14 +85,17 @@ public enum ShellPaths {
     /// detail's root (`relisted`), nothing pushed over it. A root still bare
     /// after its host's complete list is `settled` with what decided it: the
     /// count of that host's complete lists (`lists`, 0 before the first; a
-    /// walk cut short is no list) and how the host names the thread (`meta`:
-    /// absent, or the fields that place it). It is looked at again only when
-    /// either moves (the host's next list, a push that brings the thread or
-    /// moves it), so the lists (`hosts`, every host's rows) are not built on
-    /// every unrelated push while it shows. Only `hosts` builds them.
-    public nonisolated static func awaitsListing(_ root: Route?, stackEmpty: Bool, settled: inout BareSettle?, lists: (String) -> Int, meta: (String, String) -> SessionMeta?, hosts: () -> [HomeHostInput]) -> Bool {
+    /// walk cut short is no list), its workspace and project lists' stamp
+    /// (`catalog`: their push, or a list answer after one that failed) and
+    /// how the host names the thread (`placing`: absent, or the fields that
+    /// place it, `BareSettle.placing`). It is looked at again only when one
+    /// of them moves. The three are the client's stamps and its untracked
+    /// index (`EnvironmentClient.completeLists`, `catalogStamp`,
+    /// `watchPlacing`), so a push that moves none of them re-runs nothing,
+    /// and the lists (`hosts`, every host's rows) are built only then.
+    public nonisolated static func awaitsListing(_ root: Route?, stackEmpty: Bool, settled: inout BareSettle?, lists: (String) -> Int, catalog: (String) -> Int, placing: (String, String) -> String?, hosts: () -> [HomeHostInput]) -> Bool {
         guard let root, case .thread(let environmentId, let sessionId, _) = root, stackEmpty else { return false }
-        let now = BareSettle(root: root, lists: lists(environmentId), placing: meta(environmentId, sessionId).map { BareSettle.placing(of: $0) })
+        let now = BareSettle(root: root, lists: lists(environmentId), catalog: catalog(environmentId), placing: placing(environmentId, sessionId))
         if now == settled { return false }
         if relisted(root, hosts: hosts()) != nil { return true }
         if now.lists > 0 { settled = now }
@@ -226,16 +229,18 @@ public struct NavigationSnapshot: Codable, Hashable, Sendable {
 }
 
 /// What left a bare thread bare (`ShellPaths.awaitsListing`): its route, the
-/// host's complete lists so far, and the fields its place reads, nil while
-/// the host has not named it.
+/// host's complete lists so far, its workspace and project lists' stamp, and
+/// the fields its place reads, nil while the host has not named it.
 public struct BareSettle: Sendable, Hashable {
     public var root: Route
     public var lists: Int
+    public var catalog: Int
     public var placing: String?
 
-    public init(root: Route, lists: Int, placing: String?) {
+    public init(root: Route, lists: Int, catalog: Int = 0, placing: String?) {
         self.root = root
         self.lists = lists
+        self.catalog = catalog
         self.placing = placing
     }
 

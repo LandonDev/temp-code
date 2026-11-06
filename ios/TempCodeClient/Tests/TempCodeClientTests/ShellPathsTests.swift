@@ -91,7 +91,7 @@ private let everyRoute: [Route] = [
         var settled: BareSettle?
         var built = 0
         func awaits(_ root: Route, lists: Int, hosts: HomeHostInput, stack: Bool = true) -> Bool {
-            ShellPaths.awaitsListing(root, stackEmpty: stack, settled: &settled, lists: { _ in lists }, meta: { _, id in hosts.sessions.first { $0.id == id } }, hosts: { built += 1; return [hosts] })
+            ShellPaths.awaitsListing(root, stackEmpty: stack, settled: &settled, lists: { _ in lists }, catalog: { _ in 0 }, placing: { _, id in hosts.sessions.first { $0.id == id }.map { BareSettle.placing(of: $0) } }, hosts: { built += 1; return [hosts] })
         }
         // Before the first complete list: looked for on every pass, and placed once it lands.
         #expect(!awaits(open("e", "a"), lists: 0, hosts: empty))
@@ -120,7 +120,7 @@ private let everyRoute: [Route] = [
         var settled: BareSettle?
         var built = 0
         func awaits(lists: Int, hosts: HomeHostInput) -> Bool {
-            ShellPaths.awaitsListing(open("e", "a"), stackEmpty: true, settled: &settled, lists: { _ in lists }, meta: { _, id in hosts.sessions.first { $0.id == id } }, hosts: { built += 1; return [hosts] })
+            ShellPaths.awaitsListing(open("e", "a"), stackEmpty: true, settled: &settled, lists: { _ in lists }, catalog: { _ in 0 }, placing: { _, id in hosts.sessions.first { $0.id == id }.map { BareSettle.placing(of: $0) } }, hosts: { built += 1; return [hosts] })
         }
         // An early-ended walk counts no list (EnvironmentClient.completeLists): nothing settles.
         #expect(!awaits(lists: 0, hosts: before))
@@ -134,6 +134,23 @@ private let everyRoute: [Route] = [
         #expect(awaits(lists: 1, hosts: listed))
         #expect(ShellPaths.relisted(open("e", "a"), hosts: [listed])?.root == .project(key: "e:p1", thread: "e:a"))
         #expect(built == 3)
+    }
+
+    @Test func `a workspaces or projects push looks at a settled bare thread again`() {
+        // A failed workspace.list at launch: the list is whole, the workspaces are not, so the thread opens bare.
+        let listed = fixture()
+        let noWorkspaces = HomeHostInput(environmentId: "e", name: "e", workspaces: [], projects: [], sessions: listed.sessions)
+        var settled: BareSettle?
+        var built = 0
+        func awaits(catalog: Int, hosts: HomeHostInput) -> Bool {
+            ShellPaths.awaitsListing(open("e", "a"), stackEmpty: true, settled: &settled, lists: { _ in 1 }, catalog: { _ in catalog }, placing: { _, id in hosts.sessions.first { $0.id == id }.map { BareSettle.placing(of: $0) } }, hosts: { built += 1; return [hosts] })
+        }
+        #expect(!awaits(catalog: 1, hosts: noWorkspaces))
+        #expect(!awaits(catalog: 1, hosts: noWorkspaces))
+        #expect(built == 1)
+        // The workspaces push lands: the stamp moves, the thread is placed.
+        #expect(awaits(catalog: 2, hosts: listed))
+        #expect(built == 2)
     }
 
     @Test func `a thread opened bare before its host listed it moves into its shell once the list lands`() {

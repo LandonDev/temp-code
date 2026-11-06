@@ -103,10 +103,13 @@ public enum WaitSteps {
     /// the agents' metas) when that was a settled one. With `memory` the
     /// first status read for an agent decides it from then on
     /// (`WaitOutcomeMemory`): a settled one is the wait's outcome, so a later
-    /// run of that agent never takes its step out of the history, and one
-    /// still at work is not one the wait returned on, so its settling later
-    /// never adds a step. An agent no host knows yet waits for its first
-    /// read. Any other entry comes back as it was.
+    /// run of that agent never takes its step out of the history, and, for a
+    /// wait that returns on the first (`any`, the host's default), one still
+    /// at work is not one the wait returned on, so its settling later never
+    /// adds a step. An `all` wait returned on every agent it names
+    /// (`gathersAll`): one still at work there is a meta behind the wait's
+    /// row and stays undecided until it settles. An agent no host knows yet
+    /// waits for its first read. Any other entry comes back as it was.
     public static func resolved(_ entry: ThreadEntry, statusOf: (String) -> String?, memory: WaitOutcomeMemory? = nil) -> ThreadEntry {
         guard case .tool(var tool) = entry.item, isWait(tool), tool.status != .running,
               case .omitted(let body, _) = tool.output else { return entry }
@@ -118,9 +121,11 @@ public enum WaitSteps {
                 if settled.contains(status) {
                     memory?.keep(call: tool.callId, agent: id, status: status)
                     out.append(Outcome(id: id, status: status))
-                } else {
+                } else if !gathersAll(tool) {
                     // Still at work when the returned wait was first read: not
-                    // one it returned on, and never one later.
+                    // one it returned on, and never one later. An `all` wait
+                    // returned on every agent, so one that reads at work is only
+                    // a meta behind the wait's row: it stays undecided until it settles.
                     memory?.keepNotReturned(call: tool.callId, agent: id)
                 }
             }
@@ -129,6 +134,14 @@ public enum WaitSteps {
         var entry = entry
         entry.item = .tool(tool)
         return entry
+    }
+
+    /// Whether the wait gathers every agent it names before it returns: the
+    /// host's `mode: "all"` over more than one agent (orchestration.ts
+    /// `orchWaitForAgent`; any other mode, or none, returns on the first).
+    public static func gathersAll(_ tool: ToolItem) -> Bool {
+        guard case .object(let input)? = tool.input, input["mode"]?.stringValue == "all" else { return false }
+        return ids(tool).count > 1
     }
 
     /// Every wait in `entries` whose body was omitted, resolved; the array itself when there is none.

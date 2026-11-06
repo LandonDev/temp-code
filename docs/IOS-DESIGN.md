@@ -137,9 +137,14 @@ into its shell the moment the list lands, unless something was pushed over
 it (`ShellPaths.relisted`, `ShellNavigator.placeListed`); once a complete
 list from its host (`EnvironmentClient.completeLists`: a change-log answer
 or a walk that reached its end; one cut short counts nothing) still leaves
-it bare, it is looked at again only on that host's next complete list or a
-push that names the thread or moves it (`ShellPaths.awaitsListing`,
-`BareSettle`), so a bare chat builds no lists per unrelated push. A card's tap lands the shell
+it bare, it is looked at again only on that host's next complete list,
+its workspaces or projects push (`catalogStamp`: a `workspace.list` that
+failed at launch is made good by the next one) or a push that names the
+thread or moves it (`ShellPaths.awaitsListing`, `BareSettle`). The shell
+reads those as the client's stamps and its untracked index of each
+thread's placing fields (`completeLists`, `catalogStamp`, `watchPlacing`
+behind `placingStamp`), never the host's sessions, so a push that moves
+none of them re-runs nothing and builds no lists. A card's tap lands the shell
 (`ShellPaths.land`, the desktop's project home): the project's most recent
 active thread (`ProjectLanding`, a batch thread's master in its place),
 else the thread last on screen there, else the draft, and a project left on
@@ -1365,11 +1370,15 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
   its head alone: `WaitSteps.resolved` reads the agents the head names
   with their status, then each other agent the call named by its own
   session's status where that is a settled one, read once: the fold's
-  `WaitOutcomeMemory` keeps the first status read per wait and agent, a
-  settled one as the step and one still at work as no agent the wait
-  returned on, so the agent running again never takes the step out of the
-  history and one settling later never adds one (an agent no host knows
-  yet waits for its first read); the
+  `WaitOutcomeMemory` keeps the first settled status per wait and agent,
+  so the agent running again never takes the step out of the history; a
+  wait that returns on the first (`mode: "any"`, the host's default) marks
+  an agent still at work at its first read as not returned on, so its
+  settling later never adds a step, while an `all` wait over two or more
+  agents (`WaitSteps.gathersAll`) returned on every one, so an agent that
+  reads at work there (its idle meta landing after the wait's row) stays
+  undecided until it settles; an agent no host knows yet waits for its
+  first read; the
   transcript reads the statuses the waits still need through a small map
   kept outside its body (`WaitStatuses`, `WaitSteps.unsettledAgents`), so
   a meta push that moves no named agent re-runs nothing): the state's still glyph,

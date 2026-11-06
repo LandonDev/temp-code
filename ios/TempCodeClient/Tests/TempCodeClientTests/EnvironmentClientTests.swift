@@ -581,6 +581,33 @@ private func seqs(_ rows: [EventRow]) -> [Int] { rows.map(\.seq) }
         #expect(await rig.wait { rig.client.completeLists == 1 })
     }
 
+    @Test func `a watched thread's placing stamp moves only when its place does; the lists' stamp on their push`() async throws {
+        let rig = try ClientRig()
+        await rig.client.start()
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        await rig.answerShell(fake, sessions: [clientSession("s1"), clientSession("s2")])
+        #expect(await rig.wait { rig.client.completeLists == 1 })
+        #expect(rig.client.watchPlacing("s1") == BareSettle.placing(of: clientSession("s1")))
+        #expect(rig.client.watchPlacing("s9") == nil)
+        let stamp = rig.client.placingStamp
+        let catalog = rig.client.catalogStamp
+        // Another thread's push, and the watched one's that moves nothing of its place: no stamp.
+        fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: [clientSession("s2", title: "Renamed", updatedAt: 5), clientSession("s1", title: "Also renamed", updatedAt: 6)]))))
+        #expect(await rig.wait { rig.client.session("s1")?.title == "Also renamed" })
+        #expect(rig.client.placingStamp == stamp)
+        // The watched thread named for the first time (s9 lands), and moved into a project: the stamp moves.
+        let moved = sampleSession("s1", projectId: "p2", updatedAt: 7, threadType: .chat)
+        fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: [clientSession("s9", updatedAt: 8), moved]))))
+        #expect(await rig.wait { rig.client.session("s9") != nil && rig.client.session("s1")?.projectId == "p2" })
+        #expect(rig.client.placingStamp > stamp)
+        #expect(rig.client.watchPlacing("s9") != nil)
+        // The workspaces push moves the lists' stamp.
+        #expect(rig.client.catalogStamp == catalog)
+        fake.deliver(#"{"push":"workspaces","workspaces":\#(json([sampleWorkspace("w1"), sampleWorkspace("w2")]))}"#)
+        #expect(await rig.wait { rig.client.catalogStamp > catalog })
+    }
+
     @Test func `on a new session the open thread catches up before the shell has listed`() async throws {
         let cache = try SessionCache.inMemory()
         try await cache.store("env_test", sessionId: "s1", rows: (1...50).map { textRow("s1", seq: $0) }, moreBefore: true)

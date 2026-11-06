@@ -63,8 +63,10 @@ import TempCodeContract
     }
 
     /// A real wait's result passes 2 KiB (the reply rides in it), so the host sends a remote socket its head alone.
-    private func omittedWait(_ seq: Int, ids: [String], head: String) -> ThreadEntry {
-        let input: JSONValue = .object(["agentIds": .array(ids.map(JSONValue.string))])
+    private func omittedWait(_ seq: Int, ids: [String], head: String, mode: String? = nil) -> ThreadEntry {
+        var fields: [String: JSONValue] = ["agentIds": .array(ids.map(JSONValue.string))]
+        if let mode { fields["mode"] = .string(mode) }
+        let input: JSONValue = .object(fields)
         let body = OmittedBody(omitted: true, bytes: 9_400, lines: 120, head: head)
         return item(.tool(ToolItem(seq: seq, ts: 1_000 + seq, callId: "w\(seq)", name: "mcp__orchestrator__wait_for_agent", display: nil, input: input, partial: false, preview: nil, parentCallId: nil, inputOmitted: false, output: .omitted(body, seq: seq), status: .done, reauth: nil)))
     }
@@ -123,6 +125,42 @@ import TempCodeContract
         let fold = ThreadFold()
         fold.waitOutcomes.keep(call: "w3", agent: "a", status: "idle")
         #expect(ThreadFold(keys: fold.keys, provisionalFrom: fold).waitOutcomes.status(call: "w3", agent: "a") == "idle")
+    }
+
+    @Test func `an all wait keeps an agent whose idle meta lands after the wait's row; an any wait does not`() {
+        // The parent's row lands while B's meta still reads running: the host returned the
+        // `all` wait on both, so B's step comes once its idle meta lands, and stays.
+        let all = [userEntry(1, completedTs: 2_000), omittedWait(3, ids: ["a", "b"], head: #"{"status":"#, mode: "all")]
+        guard case .tool(let allTool) = all[1].item else { Issue.record("no wait"); return }
+        #expect(WaitSteps.gathersAll(allTool))
+        let waits = WaitOutcomeMemory()
+        var statuses = ["a": "idle", "b": "running"]
+        #expect(group(TranscriptRows.rows(all, turnOpen: false, waits: waits, statusOf: { statuses[$0] }), 1)?.stepRows == 1)
+        #expect(!waits.decided(call: "w3", agent: "b"))
+        #expect(WaitSteps.unsettledAgents(all, memory: waits) == ["b"])
+        statuses["b"] = "idle"
+        let landed = TranscriptRows.rows(all, turnOpen: false, waits: waits, statusOf: { statuses[$0] })
+        #expect(group(landed, 1)?.stepRows == 2)
+        #expect(waits.status(call: "w3", agent: "b") == "idle")
+        // Snapshotted as before: B running again later keeps its step.
+        statuses["b"] = "running"
+        #expect(group(TranscriptRows.rows(all, turnOpen: false, waits: waits, statusOf: { statuses[$0] }), 1)?.stepRows == 2)
+        #expect(WaitSteps.unsettledAgents(all, memory: waits) == [])
+        // `any` (and no mode, the host's default): B at work at the first read was not returned on.
+        for mode in ["any", nil] as [String?] {
+            let any = [userEntry(1, completedTs: 2_000), omittedWait(5, ids: ["a", "b"], head: #"{"status":"#, mode: mode)]
+            guard case .tool(let anyTool) = any[1].item else { Issue.record("no wait"); return }
+            #expect(!WaitSteps.gathersAll(anyTool))
+            let memory = WaitOutcomeMemory()
+            var now = ["a": "idle", "b": "running"]
+            #expect(group(TranscriptRows.rows(any, turnOpen: false, waits: memory, statusOf: { now[$0] }), 1)?.stepRows == 1)
+            #expect(memory.decided(call: "w5", agent: "b"))
+            now["b"] = "idle"
+            #expect(group(TranscriptRows.rows(any, turnOpen: false, waits: memory, statusOf: { now[$0] }), 1)?.stepRows == 1)
+        }
+        // An `all` over one agent returns as `any` does.
+        guard case .tool(let one) = omittedWait(7, ids: ["a"], head: "", mode: "all").item else { Issue.record("no wait"); return }
+        #expect(!WaitSteps.gathersAll(one))
     }
 
     @Test func `the wait statuses map reads only the ids asked, and an id it has not read falls back`() {

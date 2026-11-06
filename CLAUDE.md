@@ -2516,7 +2516,9 @@ proof and the sizing rules; the pieces, by name:
   its shell by `ShellPaths.place`; a notification tap opens Home's shell, a
   search hit the same shell in Search's detail; a thread opened bare before
   its host listed it moves into its shell when the list lands, or when a
-  later push names it (a walk cut short settles nothing,
+  later push names it or the host's workspaces or projects push lands (a
+  walk cut short settles nothing; the shell reads the client's stamps,
+  `completeLists`, `catalogStamp` and `watchPlacing`, never its sessions;
   `ShellPaths.relisted`, `awaitsListing`), the pose is the
   client package's `ShellPose` published as `\.shellPose` (read it, never
   `horizontalSizeClass`, for a shell decision), the thread strip
