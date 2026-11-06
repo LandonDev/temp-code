@@ -79,7 +79,9 @@ struct StreamingAssistantRow: View {
                 if !Task.isCancelled { fadeEnded += 1 }
             }
             .onChange(of: reveal.revealedUnits, initial: true) {
+                #if DEBUG
                 LayoutProbe.note("revealedUnits", String(reveal.revealedUnits))
+                #endif
                 // The step grew the row: the reader at the bottom stays there through the drain.
                 follow?.pin()
             }

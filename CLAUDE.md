@@ -2707,7 +2707,7 @@ proof and the sizing rules; the pieces, by name:
   row made twice; scripts/ios-duo-checks.test.ts tests both. The app writes
   `Documents/layout-report.json` and `layout-events.json` (500 events, merged by the fold run's scripts/lib/duo_fold_sampler.py) from
   `LayoutProbe` (ios/TempCode/Sources/Shell/LayoutProbe.swift, DEBUG, on
-  RootView's root; `LayoutProbe.note(key, value)` from any view; the shell notes `sidebar`, `sidebar.width` and `split.width`, the thread screen `columns`, `measure` and `body.frame`, the dock `composer.frame`, `slot.frame`, `dock.backing` and `draftChars`;
+  RootView's root; `LayoutProbe.note(key, value)` from any view, inside `#if DEBUG` (scripts/ios-debug-guard.test.ts refuses a DEBUG-only type outside one; every proof set compiles Release first); the shell notes `sidebar`, `sidebar.width` and `split.width`, the thread screen `columns`, `measure` and `body.frame`, the dock `composer.frame`, `slot.frame`, `dock.backing` and `draftChars`;
   `LayoutProbe.route` from RootView and ThreadScreen). project.yml allows
   portrait and both landscapes (scripts/ios-project.test.ts pins it); 27.1
   symbols live in the app target under a runtime `#available` only. `bun run
@@ -3027,7 +3027,7 @@ proof and the sizing rules; the pieces, by name:
   a real server with a read key that lives only in the test process
   environment); both run in the release gate. The test server seeds one
   thread per type with realistic rows and a 2,000-row chat. Simulator proof:
-  `bun scripts/ios-sim-proof-local.ts` (every segment of every type, a chip
+  `bun scripts/ios-sim-proof-local.ts` (every set compiles the Release configuration first and stops on a break, then every segment of every type, a chip
   opened, the diff, the agent detail, light and dark, then the scroll run
   whose frame report lands in /tmp/tc-ios-proof/scroll-report.json;
   `TC_PROOF_SET=transcript` plays the no-jerk timeline through the test

@@ -2769,7 +2769,10 @@ a change settles, with `window`, `screen`, `scale`, `fps`, `hSize`, `vSize`,
 is the log of every change of `window`, `hSize`, `vSize`, `orientation`,
 `hinge.state` and each notes key (`{ t, key, from, to }`, 500 at most,
 cleared at launch). Any view says `LayoutProbe.note("sidebar", "visible")`;
-a repeated value is not an event. The shell and the thread screen note
+a repeated value is not an event. Every call sits inside `#if DEBUG`, as does every
+other DEBUG-only type's use: scripts/ios-debug-guard.test.ts refuses one
+outside, and every proof set compiles the Release configuration before its
+Debug build and stops on a break. The shell and the thread screen note
 `sidebar.width`, `columns` (hero, gap, chat in two panes, else the mode),
 `measure` (the text column), `composer.frame`, `slot.frame` ("none" while
 the slot takes no room) and `dock.backing`; `pose_check` holds every thread

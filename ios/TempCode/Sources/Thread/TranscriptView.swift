@@ -70,7 +70,9 @@ struct TranscriptView: View {
         let moreAbove = start > 0 || thread.moreBefore
         let turns = TranscriptView.turnKeys(rows)
         let _ = bornRows.open(thread: client.threads[sessionId])
+        #if DEBUG
         let _ = LayoutProbe.note("bornOpenedAt", bornRows.openedAt.map(String.init) ?? "waiting")
+        #endif
         ScrollViewReader { proxy in
             let _ = follow.pin = { pinTail(proxy: proxy) }
             List {
@@ -676,6 +678,7 @@ enum TranscriptTrace {
     }
 }
 
+#if DEBUG
 private struct TranscriptTraceModifier: ViewModifier {
     let topRow: () -> TranscriptRowID?
     @State private var last: CGPoint?
@@ -707,6 +710,7 @@ private struct TranscriptTraceModifier: ViewModifier {
         }
     }
 }
+#endif
 
 extension View {
     @ViewBuilder

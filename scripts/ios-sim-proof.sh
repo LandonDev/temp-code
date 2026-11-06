@@ -114,6 +114,8 @@
 # environment through unchanged, so `TC_DUO_POSE=unfolded TC_PROOF_SET=features
 # bun scripts/ios-sim-proof-local.ts` is the whole invocation.
 #
+# Every set compiles the Release configuration first and stops on a break.
+#
 # simctl drives it rather than XCUITest: with the Command Line Tools selected
 # as the developer directory, xcodebuild's test runner cannot reach the
 # simulator's service hub (ios/TempCode/UITests holds the XCUITest version
@@ -175,6 +177,14 @@ fi
 open -g -a "$DEVELOPER_DIR/Applications/Simulator.app" --args -CurrentDeviceUDID "$TC_SIM_UDID" 2>/dev/null || true
 
 xcodegen generate --quiet
+# Release first: the proof machinery is DEBUG only, so a probe call outside
+# #if DEBUG compiles here and breaks the build that ships. Signed as the Debug
+# build is (project.yml's ad hoc settings); its products sit beside Debug's.
+echo "ios-sim-proof: compiling Release for $SIM ($TC_SIM_UDID)"
+xcodebuild build -project TempCode.xcodeproj -scheme TempCode -configuration Release \
+  -destination "platform=iOS Simulator,id=$TC_SIM_UDID" \
+  -derivedDataPath "$DERIVED" -quiet 2>&1 | scrub
+[ -d "$DERIVED/Build/Products/Release-iphonesimulator/TempCode.app" ] || { echo "ios-sim-proof: the Release build failed" >&2; exit 1; }
 echo "ios-sim-proof: building for $SIM ($TC_SIM_UDID)"
 xcodebuild build -project TempCode.xcodeproj -scheme TempCode \
   -destination "platform=iOS Simulator,id=$TC_SIM_UDID" \
