@@ -65,6 +65,8 @@ struct MarkdownView: View {
 /// with a hanging marker, code in a bordered block in the code type, a
 /// quote behind a 2 pt rule, tables as a bordered grid that scrolls sideways.
 struct MarkdownBlocksView: View {
+    /// Inline code scales with the paragraph it sits in.
+    @Environment(\.dynamicTypeSize) private var typeSize
     let document: MarkdownDocument
     var dim = false
     /// A streaming row's fade: prose blocks (paragraphs, headings, quotes,
@@ -76,9 +78,9 @@ struct MarkdownBlocksView: View {
             ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .paragraph(let text):
-                    prose(text.inlineStyled(), type: TranscriptType.prose)
+                    prose(text.inlineStyled(typeSize), type: TranscriptType.prose)
                 case .heading(let level, let text):
-                    prose(text.inlineStyled(), type: level <= 1 ? TranscriptType.proseH1 : level == 2 ? TranscriptType.proseH2 : TranscriptType.proseH3)
+                    prose(text.inlineStyled(typeSize), type: level <= 1 ? TranscriptType.proseH1 : level == 2 ? TranscriptType.proseH2 : TranscriptType.proseH3)
                         .padding(.top, level <= 2 ? TranscriptMetrics.Gap.line * 2 : TranscriptMetrics.Gap.line)
                 case .list(let items, let ordered):
                     let itemRuns = listRuns(items)
@@ -91,7 +93,7 @@ struct MarkdownBlocksView: View {
                 case .code(let code, let language):
                     CodeBlock(text: code, language: language, type: TranscriptType.code, maxLines: 40)
                 case .quote(let text):
-                    prose(text.inlineStyled(), type: TranscriptType.prose)
+                    prose(text.inlineStyled(typeSize), type: TranscriptType.prose)
                         .foregroundStyle(.secondary)
                         .padding(.leading, 12)
                         .padding(.vertical, 2)
@@ -208,6 +210,8 @@ struct CodeBlock: View {
 /// A pipe table: header row semibold, rows parted by hairlines, scrolling
 /// sideways when the columns outgrow the phone.
 private struct MarkdownTable: View {
+    /// Inline code scales with the paragraph it sits in.
+    @Environment(\.dynamicTypeSize) private var typeSize
     let rows: [[AttributedString]]
 
     var body: some View {
@@ -216,7 +220,7 @@ private struct MarkdownTable: View {
                 ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
                     GridRow {
                         ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
-                            Text(cell.inlineStyled())
+                            Text(cell.inlineStyled(typeSize))
                                 .transcriptType(TranscriptType.line, weight: index == 0 ? .semibold : .regular)
                                 .monospacedDigit()
                                 .foregroundStyle(index == 0 ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
@@ -238,12 +242,14 @@ private struct MarkdownTable: View {
 extension AttributedString {
     /// Inline code in the code type on the desktop's wash, so a `name`
     /// sits in the line instead of standing out of it; the rest keeps the
-    /// paragraph's font. (A run's background has no radius of its own; at
-    /// text height the square wash reads as the desktop's 4 px.)
-    func inlineStyled() -> AttributedString {
+    /// paragraph's font. The code type scales with the view's Dynamic Type
+    /// as the paragraph around it does. (A run's background has no radius
+    /// of its own; at text height the square wash reads as the desktop's 4 px.)
+    func inlineStyled(_ typeSize: DynamicTypeSize) -> AttributedString {
         var styled = self
+        let code = TranscriptType.code.scaledFont(typeSize)
         for run in styled.runs where run.inlinePresentationIntent?.contains(.code) == true {
-            styled[run.range].font = TranscriptType.code.font
+            styled[run.range].font = code
             styled[run.range].backgroundColor = Color(.tertiarySystemFill)
         }
         return styled
@@ -252,6 +258,8 @@ extension AttributedString {
 
 /// One list item; a `[ ]` or `[x]` prefix becomes a checkbox glyph.
 private struct ListItemRow: View {
+    /// Inline code scales with the paragraph it sits in.
+    @Environment(\.dynamicTypeSize) private var typeSize
     let item: AttributedString
     let index: Int
     let ordered: Bool
@@ -272,7 +280,7 @@ private struct ListItemRow: View {
                     .monospacedDigit()
                     .frame(minWidth: 18, alignment: .trailing)
             }
-            itemText(text.inlineStyled(), checked: checked)
+            itemText(text.inlineStyled(typeSize), checked: checked)
                 .foregroundStyle(checked == true ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
         }
     }

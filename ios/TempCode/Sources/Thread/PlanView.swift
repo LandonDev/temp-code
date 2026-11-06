@@ -203,6 +203,8 @@ struct PlanDocumentView: View {
 /// One block in the document's type. `first` is the document's first block,
 /// which takes no space above.
 struct PlanBlockView: View {
+    /// Inline code scales with the paragraph it sits in.
+    @Environment(\.dynamicTypeSize) private var typeSize
     let block: PlanBlock
     let first: Bool
 
@@ -214,11 +216,11 @@ struct PlanBlockView: View {
     var body: some View {
         switch block {
         case .paragraph(let text):
-            Text(text.inlineStyled())
+            Text(text.inlineStyled(typeSize))
                 .font(.body)
                 .lineSpacing(PlanType.lineSpacing)
         case .heading(let level, let text):
-            Text(text.inlineStyled())
+            Text(text.inlineStyled(typeSize))
                 .font(PlanType.heading(level))
                 .tracking(PlanType.tracking(level))
                 .padding(.top, first ? 0 : PlanType.spaceAbove(level))
@@ -229,7 +231,7 @@ struct PlanBlockView: View {
         case .code(let code, _):
             PlanCodeView(text: code)
         case .quote(let text):
-            Text(text.inlineStyled())
+            Text(text.inlineStyled(typeSize))
                 .font(.body)
                 .lineSpacing(PlanType.lineSpacing)
                 .foregroundStyle(.secondary)
@@ -295,6 +297,8 @@ struct PlanCodeView: View {
 /// starts after it and wraps to its own edge; each depth moves one column
 /// in. A task item carries the board's status glyph.
 private struct PlanListView: View {
+    /// Inline code scales with the paragraph it sits in.
+    @Environment(\.dynamicTypeSize) private var typeSize
     let items: [PlanListItem]
     @ScaledMetric(relativeTo: .body) private var column: CGFloat = 26
 
@@ -307,7 +311,7 @@ private struct PlanListView: View {
                         .fixedSize()
                         .padding(.trailing, 8)
                         .frame(width: column, alignment: .trailing)
-                    Text(item.text.inlineStyled())
+                    Text(item.text.inlineStyled(typeSize))
                         .font(.body)
                         .lineSpacing(PlanType.lineSpacing)
                         .foregroundStyle(item.checked == true ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
@@ -373,6 +377,8 @@ private struct PlanTableView: View {
 }
 
 private struct PlanCell: View {
+    /// Inline code scales with the paragraph it sits in.
+    @Environment(\.dynamicTypeSize) private var typeSize
     let text: AttributedString
     let alignment: PlanTable.Alignment
     let header: Bool
@@ -385,7 +391,7 @@ private struct PlanCell: View {
         // A horizontal scroll view proposes no width: a short cell takes
         // its own, a long one wraps at the cell width.
         let long = text.characters.count > PlanType.cellWrapAfter
-        Text(text.inlineStyled())
+        Text(text.inlineStyled(typeSize))
             .font(header ? PlanType.table.weight(.semibold) : PlanType.table)
             .monospacedDigit()
             .multilineTextAlignment(alignment == .center ? .center : alignment == .trailing ? .trailing : .leading)

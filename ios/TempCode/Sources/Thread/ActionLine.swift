@@ -67,7 +67,8 @@ struct ActionLine: View {
         }
         .transcriptType(TranscriptType.line)
         .padding(.horizontal, inTable ? TranscriptMetrics.tableInset : 0)
-        .frame(height: inTable ? TranscriptMetrics.tableRow : TranscriptMetrics.line)
+        // A minimum, never a clip: at a large text size the line grows with its type.
+        .frame(minHeight: inTable ? TranscriptMetrics.tableRow : TranscriptMetrics.line)
         .contentShape(Rectangle())
     }
 }

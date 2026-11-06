@@ -356,7 +356,10 @@ enum TranscriptType {
 /// The transcript's lengths (`TranscriptLengths` in the client package):
 /// rows, gaps, radii, the bubble, the column and the composer's.
 enum TranscriptMetrics {
+    /// A row's minimum height, never a fixed frame: a row grows with its
+    /// type at a large Dynamic Type size instead of clipping it.
     static let line = CGFloat(TranscriptLengths.line)
+    /// A table row's minimum height, as `line`.
     static let tableRow = CGFloat(TranscriptLengths.tableRow)
     static let glyphSlot = CGFloat(TranscriptLengths.glyphSlot)
     /// The line type's line box: a notice's glyph sits centred in its first line.
@@ -439,6 +442,14 @@ extension TypeSpec.Style {
         case .callout: .callout
         }
     }
+    var uiTextStyle: UIFont.TextStyle {
+        switch self {
+        case .subheadline: .subheadline
+        case .footnote: .footnote
+        case .caption: .caption1
+        case .callout: .callout
+        }
+    }
 }
 
 extension TypeSpec.Weight {
@@ -497,6 +508,14 @@ extension TypeSpec {
     /// which also scales and sets the line box.
     var font: Font {
         .system(size: size, weight: weight.font, design: mono ? .monospaced : .default)
+    }
+
+    /// The token as a font scaled to `typeSize` the way `.transcriptType`
+    /// scales it, for a run inside a scaled paragraph (inline code).
+    func scaledFont(_ typeSize: DynamicTypeSize) -> Font {
+        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(typeSize))
+        let scaled = UIFontMetrics(forTextStyle: style.uiTextStyle).scaledValue(for: size, compatibleWith: traits)
+        return .system(size: scaled, weight: weight.font, design: mono ? .monospaced : .default)
     }
 }
 

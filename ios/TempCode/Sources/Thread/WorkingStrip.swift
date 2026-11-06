@@ -11,7 +11,7 @@ import TempCodeContract
 /// Stop and Continue; Stopped when the harness is gone, with Resume;
 /// Queued with the host's reason and Start now. Nothing else: what the
 /// thread does is the transcript's working line. While empty, a locked
-/// relayed host's one line. One 28 pt row in the detail type on the
+/// relayed host's one line. One row, 28 pt at least (it grows with a large text size), in the detail type on the
 /// transcript's column edges, its actions small glass capsules at the
 /// trailing edge. Between states and as it empties only opacity moves, over
 /// `fast` (at once under reduced motion); the outgoing row stays inert
@@ -55,7 +55,8 @@ struct WorkingStripView: View {
                     .transition(fade)
             }
         }
-        .frame(height: ComposerMetrics.slot)
+        // 28 pt at least, taller with a large text size, never clipped.
+        .frame(minHeight: ComposerMetrics.slot)
         .frame(maxWidth: .infinity)
         .animation(reduceMotion ? nil : Motion.fast, value: slot)
         .accessibilityElement(children: .contain)

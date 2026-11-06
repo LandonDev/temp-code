@@ -297,7 +297,7 @@ private struct EdgeFade: View {
 }
 
 private extension StripTitleWeight {
-    var font: Font.Weight {
+    var font: TypeSpec.Weight {
         switch self {
         case .regular: .regular
         case .medium: .medium

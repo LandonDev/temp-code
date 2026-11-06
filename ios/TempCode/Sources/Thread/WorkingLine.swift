@@ -39,7 +39,8 @@ struct TurnLineRow: View {
                 line(look)
                     // Held (a card, a pause) the line is folded out of sight: its mark and shimmer stand still.
                     .environment(\.workingStill, !look.open)
-                    .frame(height: look.open ? TranscriptMetrics.line : 0, alignment: .top)
+                    // Open, the line's minimum (it grows with a large text size); closed, folded to nothing.
+                    .frame(minHeight: look.open ? TranscriptMetrics.line : 0, maxHeight: look.open ? nil : 0, alignment: .top)
                     .clipped()
                     .opacity(look.open ? 1 : 0)
                     // The 8 pt from the turn's last row is the row's own, folding with it.
@@ -277,7 +278,7 @@ private struct WatchingLine: View {
         Group {
             if opened || watching {
                 content(ticking: watching)
-                    .frame(height: watching ? TranscriptMetrics.line : 0, alignment: .top)
+                    .frame(minHeight: watching ? TranscriptMetrics.line : 0, maxHeight: watching ? nil : 0, alignment: .top)
                     .clipped()
                     .opacity(watching ? 1 : 0)
                     .padding(.top, watching ? TranscriptMetrics.Gap.line : 0)
