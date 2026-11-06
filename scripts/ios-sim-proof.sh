@@ -939,7 +939,7 @@ duo_fold_cycle() {
   echo "ios-sim-proof: the unfolds are recorded in $OUT/cycle-*-unfold.mov"
 }
 duo_fold_run() {
-  local run=$1 part="Add dark mode to the settings" container sampler recorder
+  local run=$1 part="Add dark mode to the settings" container sampler recorder=""
   local dir="$OUT/layout/cycle-$run"
   rm -rf "$dir"; mkdir -p "$dir"
   appearance light
@@ -958,7 +958,7 @@ duo_fold_run() {
   sleep 6
   # A stop that fails its check keeps the run's events and row counts for the reading.
   cycle_snap() {
-    snap "$1" || { kill "$sampler" 2>/dev/null; wait "$sampler" 2>/dev/null; cp "$container/Documents/row-inits.json" "$dir/row-inits.json" 2>/dev/null; return 1; }
+    snap "$1" || { kill "$sampler" 2>/dev/null; wait "$sampler" 2>/dev/null; [ -n "${recorder:-}" ] && kill -INT "$recorder" 2>/dev/null; cp "$container/Documents/row-inits.json" "$dir/row-inits.json" 2>/dev/null; return 1; }
   }
   export SHOT_KIND=implementation SHOT_DRAFT=${#DUO_DRAFT}
   SHOT_SIDEBAR=hidden cycle_snap "cycle-$run-1-unfolded"
@@ -968,6 +968,7 @@ duo_fold_run() {
   sleep 1
   fold ul live; sleep 3; SHOT_SIDEBAR=hidden cycle_snap "cycle-$run-3-unfolded"
   kill -INT "$recorder" 2>/dev/null; wait "$recorder" 2>/dev/null || true
+  recorder=""
   rm -f "$OUT/record.err"
   fold fp live; sleep 3; cycle_snap "cycle-$run-4-folded"
   unset SHOT_KIND SHOT_DRAFT
