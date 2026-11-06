@@ -70,29 +70,31 @@ public struct TurnLineModel: Sendable {
     }
 
     public static let closedKey = "closed"
-    /// A held line reopens this long after its hold ends: the card that held
-    /// it (a question answered, an approval decided) folds over `base`
-    /// first. Two rows changing height in one update made the List lose the
-    /// heights of the rows above the reader for a frame (the offset dropped
-    /// by thousands of points until the next pin); one after the other, it
-    /// keeps them.
-    public static let reopenAfterHold = MotionValues.base + MotionValues.revealStep / 2
+    /// A line folds this long after its hold starts and reopens this long
+    /// after it ends: the card that holds it lands (a question asked, an
+    /// approval asked) or folds (answered, decided) over `base` first. Two
+    /// rows changing height in one update made the List lose the heights of
+    /// the rows above the reader for a frame (the offset dropped by
+    /// thousands of points until the next pin); one after the other, it
+    /// keeps them. A hold shorter than this never folds the line.
+    public static let holdSettle = MotionValues.base + MotionValues.revealStep / 2
 
     private var phaseHold: HeldPhase
     private var wordHold: HeldPhase
     /// Live once for this row: the line stays, and a pending closing is drawn.
     public private(set) var everLive: Bool
     public private(set) var look: Look
-    private var wasHeld: Bool
-    /// While the hold has ended and the line waits to reopen: when it does.
-    private var reopenAt: Double?
+    /// The hold the line shows: the input's, `holdSettle` late.
+    private var heldShown: Bool
+    /// While the input's hold differs from the one shown: when the line follows it.
+    private var settleAt: Double?
 
     public init(_ input: TurnLineInput, at now: Double) {
         phaseHold = HeldPhase(input.phase, at: now)
         let phased = input.live || (input.held && input.closing == nil)
         wordHold = HeldPhase(LinePhase(key: phased ? input.phase.key : Self.closedKey, words: ""), at: now)
         everLive = input.live
-        wasHeld = input.held
+        heldShown = input.held
         look = Look(visible: false, open: false, saying: false, key: Self.closedKey, phase: input.phase, words: "")
         _ = update(input, at: now)
     }
@@ -109,19 +111,26 @@ public struct TurnLineModel: Sendable {
         let closedShown = word.shown.key == Self.closedKey && !phased
         let ending = !phased && !closedShown && everLive
         let saying = phased || ending
-        if wasHeld, !input.held { reopenAt = now + Self.reopenAfterHold }
-        if input.held { reopenAt = nil }
-        wasHeld = input.held
-        if let at = reopenAt, now >= at { reopenAt = nil }
+        if input.held == heldShown {
+            settleAt = nil
+        } else {
+            let at = settleAt ?? now + Self.holdSettle
+            if now >= at {
+                heldShown = input.held
+                settleAt = nil
+            } else {
+                settleAt = at
+            }
+        }
         look = Look(
             visible: everLive || closing != nil,
-            open: !input.held && reopenAt == nil && (input.live || closing != nil || ending),
+            open: !heldShown && (input.live || input.held || closing != nil || ending),
             saying: saying,
             key: saying ? phase.key : Self.closedKey,
             phase: phase,
             words: saying ? phase.words : (closing ?? "")
         )
-        let dues = [held.due, word.due, reopenAt].compactMap { $0 }
+        let dues = [held.due, word.due, settleAt].compactMap { $0 }
         return (look, dues.min())
     }
 }

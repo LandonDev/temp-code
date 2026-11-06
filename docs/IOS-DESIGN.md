@@ -769,9 +769,6 @@ What does not:
   server's relayed loopback hosts), and the strip and the fleet list a
   thread once per pairing, so titles repeat; whether the fleet should fold
   them is open.
-- One offset jump per transcript run remains, at turn 6 when the working
-  line reopens while a table changes (A7, A8 and C2 measured it on master
-  too); the reader never leaves the bottom and no row is made twice.
 
 ### The composer, the strip, the cards' actions, the sheets
 
@@ -1167,10 +1164,13 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
   prose streams; else Thinking. A card that waits on the person (an
   approval undecided, a question unanswered) or a paused, stopped or
   queued thread folds the line closed with its words kept, its mark and
-  shimmer standing still while folded; the resume opens it again
-  `TurnLineModel.reopenAfterHold` (0.23 s) after the hold ends, so the
-  card that held it folds first and the two rows never change height in
-  one update. The person's Stop row draws nothing: the line morphs to
+  shimmer standing still while folded; the resume opens it again. The
+  line follows a hold `TurnLineModel.holdSettle` (0.23 s) late at both
+  ends, so the card that holds it lands or folds first and two rows never
+  change height in one update (together they made the `List` drop the
+  heights of the rows above the reader for a frame, the offset falling by
+  thousands of points until the next pin); a hold shorter than that never
+  folds it. The person's Stop row draws nothing: the line morphs to
   Stopped. Once the turn is over and `RevealDrain` says no row of it still
   reveals (the line looks again each reveal step, the drain tells no one;
   believed for `TurnLineTracker.drainBound`, 2.1 s past the turn's end, the

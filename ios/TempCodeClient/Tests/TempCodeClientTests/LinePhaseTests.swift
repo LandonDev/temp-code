@@ -295,23 +295,27 @@ private func entry(_ item: TranscriptItem) -> ThreadEntry { ThreadEntry(item: it
     }
 
     @Test func `a held line folds with its words kept and opens again on the same key`() {
-        var model = TurnLineModel(TurnLineInput.of(end(open: true), paused: false, revealing: false, phase: reading), at: 0)
-        let folded = model.update(TurnLineInput.of(end(open: true), paused: true, revealing: false, phase: reading), at: 1)
-        #expect(folded.look.visible && !folded.look.open && folded.look.saying && folded.look.key == "call:a")
-        // The hold ends: the card above folds first, the line reopens after it, on its own update.
         let resumed = TurnLineInput.of(end(open: true), paused: false, revealing: false, phase: reading)
+        let paused = TurnLineInput.of(end(open: true), paused: true, revealing: false, phase: reading)
+        var model = TurnLineModel(resumed, at: 0)
+        // The hold starts: the card lands first, the line folds after it, on its own update.
+        let landing = model.update(paused, at: 1)
+        #expect(landing.look.open && landing.look.saying && landing.due == 1 + TurnLineModel.holdSettle)
+        let folded = model.update(paused, at: 1 + TurnLineModel.holdSettle)
+        #expect(folded.look.visible && !folded.look.open && folded.look.saying && folded.look.key == "call:a")
+        // The hold ends: the card folds first, the line reopens after it.
         let waiting = model.update(resumed, at: 2)
         #expect(!waiting.look.open && waiting.look.key == "call:a")
-        #expect(waiting.due == 2 + TurnLineModel.reopenAfterHold)
-        let back = model.update(resumed, at: 2 + TurnLineModel.reopenAfterHold)
+        #expect(waiting.due == 2 + TurnLineModel.holdSettle)
+        let back = model.update(resumed, at: 2 + TurnLineModel.holdSettle)
         #expect(back.look.open && back.look.key == "call:a")
-        // Held again before it reopened: it waits for the next hold's end.
-        var again = TurnLineModel(resumed, at: 0)
-        _ = again.update(TurnLineInput.of(end(open: true, awaits: true), paused: false, revealing: false, phase: reading), at: 1)
-        _ = again.update(resumed, at: 2)
-        let reheld = again.update(TurnLineInput.of(end(open: true, awaits: true), paused: false, revealing: false, phase: reading), at: 2.1)
-        #expect(!reheld.look.open)
-        #expect(!again.update(resumed, at: 2.2).look.open)
+        // A hold shorter than the settle never folds the line.
+        var brief = TurnLineModel(resumed, at: 0)
+        _ = brief.update(TurnLineInput.of(end(open: true, awaits: true), paused: false, revealing: false, phase: reading), at: 1)
+        #expect(brief.update(resumed, at: 1.1).look.open)
+        #expect(brief.update(resumed, at: 2).look.open)
+        // A line mounted held is folded at once.
+        #expect(!TurnLineModel(paused, at: 0).look.open)
     }
 
     @Test func `the drain keeps the mark and says nothing more`() {

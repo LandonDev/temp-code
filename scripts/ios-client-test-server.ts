@@ -509,6 +509,9 @@ say('ios-chat-workspace', 'Why is the build slow today?', 'The cache was cold.')
   const htmlRender = { sessionId: 'ios-chat-workspace', pageId, title: 'Build time this week', height: 220, heights: [[320, 220], [400, 208], [864, 196]] }
   server.registry.append('ios-chat-workspace', { type: 'user-text', text: 'Chart the build times this week' })
   server.registry.append('ios-chat-workspace', { type: 'tool-call', callId: 'h1', name: 'mcp__app__html_render', input: { title: htmlRender.title, height: 220 } })
+  // A read beside the page, in parallel: the page leads the run until it lands as its own row.
+  server.registry.append('ios-chat-workspace', { type: 'tool-call', callId: 'h1-read', name: 'Read', input: { file_path: join(repo, 'package.json') } })
+  server.registry.append('ios-chat-workspace', { type: 'tool-result', callId: 'h1-read', output: '{ "name": "temp-code" }', isError: false })
   server.registry.append('ios-chat-workspace', { type: 'tool-result', callId: 'h1', output: JSON.stringify({ htmlRender, message: 'Shown to the reader above your reply.' }), isError: false })
   server.registry.append('ios-chat-workspace', { type: 'assistant-text', text: 'Wednesday ran cold after the lockfile change.', delta: false, msgId: 'ios-chat-workspace-m2', blockIndex: 0 })
   server.registry.append('ios-chat-workspace', { type: 'turn-complete' })
