@@ -361,6 +361,13 @@ Like every slot that takes room, the line has its own band: the dock's
 backing is solid from the slot's top down (`ComposerSlot.backing`, `.solid`;
 `BottomEdgeFade(solid:)`), so a board row scrolling beneath never shows
 through the words. With no slot the composer floats on the soft edge alone.
+The dock is its parts' height in every pose and at every size change: the
+slot, the composer and the dock itself take their ideal height
+(`fixedSize(vertical:)`), never what the bottom bar offers. The bar offers
+the whole column, and on 2026-11-06 the empty slot reserved at regular width
+(a flexible `Color.clear`) took it after a live unfold of an idle master: a
+437 pt dock whose band blurred the whole transcript, which a launch straight
+into unfolded never showed.
 Asleep and unreachable block through the composer's own line, Send
 disabled: "The Mac is asleep: reading only until it wakes", "The Mac is
 unreachable since 9:14" (the lane is held by the box's word, the socket's
@@ -1282,7 +1289,17 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
   call becoming a table glides its row 12 pt to the inset on the layout
   spring while the frame fades in over 0.18 s; reduced motion fades the
   frame over 0.12 s and moves nothing. A search hit inside a group opens it
-  by hand before the list scrolls to it.
+  by hand before the list scrolls to it. A tap that resizes its row in place
+  (the group's line, a step's body, a thought, a gate's log, a long bubble's
+  Show more) opens and folds on the layout spring as one glide, the
+  desktop's height glide (`TranscriptFollow.resize`): the row and the rows
+  under it move in the same transaction, nothing above moves, and a reader
+  at the bottom is followed on that spring (the scroll to the end rides the
+  transaction, `FollowRule.Event.handResize`); a reader up is left where
+  they are. While it glides (`HandGlide`: the spring's 0.37 s and a frame)
+  no pin runs and the bottom's verdict holds, and its end asks for one pin:
+  a pin with animations off landing mid-spring is what threw the rows.
+  Reduced motion changes it at once.
 - **Steps**: every row sits on one grid (`ActionLine`, the package's
   `ActionRow`, the desktop's actionModel.ts): the 14 pt glyph slot, 8 pt to
   the verb (secondary), the object (primary, truncating first; a path in
@@ -2954,9 +2971,13 @@ outside, and every proof set compiles the Release configuration before its
 Debug build and stops on a break. The shell and the thread screen note
 `sidebar.width`, `columns` (hero, gap, chat in two panes, else the mode),
 `measure` (the text column), `composer.frame`, `slot.frame` ("none" while
-the slot takes no room) and `dock.backing`; `pose_check` holds every thread
-shot to the dock's rule (the composer as wide as the column, and a slot
-that ends above the composer on a solid band) and, from its
+the slot takes no room), `dock.backing`, `dock.frame`, `dock.fade.frame`
+(the band behind it), `dock.bar.frame` (the dock and a floating system bar's
+inset) and `chatInset`; `pose_check` holds every thread
+shot to the dock's rule (the composer as wide as the column, a slot
+that ends above the composer on a solid band, and the band of
+scripts/lib/duo_band.py: the dock its parts' height, the slot no taller than
+the composer, the band no taller than the dock, the bar at most 48 pt more) and, from its
 `pose-<sessionId>.json`, to the pose rules (scripts/lib/duo_pose_check.py).
 
 The fold cycle (`duo_fold_cycle`, the `duo` set's last step) runs twice,
@@ -2976,10 +2997,24 @@ four; exactly one `hSize` flip, one `window` change and one `sidebar` change
 in the bottom run; at the bottom, `transcriptAtBottom` 1 and the reflow
 anchored on the end after every fold; scrolled up, the same `topRow` at all
 four stops with the reflow anchored on that row; no row on screen made its
-state twice (`RowInitLedger`). The shell notes `sidebar` (`stack`,
+state twice (`RowInitLedger`); and at every stop a solid `dock.backing` and
+the dock band of duo_band.py. Then `duo_unfold_idle` opens each type at rest
+folded, in dark, unfolds it with the app running and holds its band through
+`pose_check`. The shell notes `sidebar` (`stack`,
 `visible`, `overlay` or `hidden`), `sidebar.width` and `split.width` from
 Home's split, the thread screen `body.frame`, and the composer `draftChars`.
 scripts/ios-duo-checks.test.ts runs both checks on hand-made reports.
+
+The glide set (`TC_PROOF_SET=glide`, `glide_set`) holds a tapped group's
+glide: in each of `TC_GLIDE_POSES` (folded and unfolded) the app
+(`TC_TEST_GROUP_GLIDE=bottom|up`, TranscriptView's `groupGlideProof`) taps
+the lowest multi-step group on screen of `TC_GLIDE_THREAD` open and shut
+three times through its own line, the reader at the bottom and then 700 pt
+up, sampling the list's offset and content height every 8 ms
+(`group-glide.json`), each run recorded. scripts/lib/group_glide_check.py
+(tested in scripts/ios-glide-check.test.ts): a reader up never moves; at
+the bottom the offset moves one way in steps, none over half the travel;
+the content height changes; no `jumpUp`.
 `TC_DUO_POSES`, `TC_DUO_KINDS`, `TC_DUO_HALF_OPEN=0` and `TC_FOLD_RUNS`
 narrow a hand run. Rotation is the device's (`hinge orient`), never an
 app-side hook: the app must follow the device as it does for a person.

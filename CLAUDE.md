@@ -2673,7 +2673,12 @@ proof and the sizing rules; the pieces, by name:
   decides the reader's place (only their own scroll or a deliberate scroll
   to a row leaves the bottom; growth under them pins), nothing pins while
   their finger is down or the list decelerates (`FollowRule.write(readerMoving:)`),
-  pins coalesce to one per main-queue turn (`PinQueue`), the closing line
+  pins coalesce to one per main-queue turn (`PinQueue`), a tap that
+  resizes its row in place (a group's line, a step's body, a gate log, Show
+  more) glides on the layout spring through `TranscriptFollow.resize`
+  (`FollowRule.Event.handResize`: a reader at the bottom followed in the same
+  transaction, one up left still; no pin while `HandGlide` runs; proof
+  `TC_PROOF_SET=glide`, scripts/lib/group_glide_check.py), the closing line
   believes the drain for `TurnLineTracker.drainBound` past the turn's end
   and no longer, and TranscriptView's DEBUG `TranscriptTrace`
   notes every scroll write and every offset drop that stays two frames
@@ -2742,11 +2747,14 @@ proof and the sizing rules; the pieces, by name:
   edge, half open past the fold's band, to the window less its safe area), the mode and columns `ThreadPose`
   gives that column (a board beside the sidebar is the pager, by the
   person's choice: no UIKit workaround), the measure (768, or the column
-  less 32) and the composer on the column's edges; scripts/lib/
+  less 32), the composer on the column's edges and the dock's band
+  (scripts/lib/duo_band.py: the dock its parts' height, the band and the bar
+  no taller); scripts/lib/
   duo_fold_check.py holds the fold run to the route, the draft
   (`notes.draftChars`), one hSize, window and sidebar change per step,
-  `revealedUnits` never decreasing, the reader's end or `topRow` kept and no
-  row made twice; scripts/ios-duo-checks.test.ts tests both. The app writes
+  `revealedUnits` never decreasing, the reader's end or `topRow` kept, no
+  row made twice and the dock band at every stop; `duo_unfold_idle` unfolds
+  each type at rest live; scripts/ios-duo-checks.test.ts tests both. The app writes
   `Documents/layout-report.json` and `layout-events.json` (500 events, merged by the fold run's scripts/lib/duo_fold_sampler.py) from
   `LayoutProbe` (ios/TempCode/Sources/Shell/LayoutProbe.swift, DEBUG, on
   RootView's root; `LayoutProbe.note(key, value)` from any view, inside `#if DEBUG` (scripts/ios-debug-guard.test.ts refuses a DEBUG-only type outside one; every proof set compiles Release first); the shell notes `sidebar`, `sidebar.width` and `split.width`, the thread screen `columns`, `measure` and `body.frame`, the dock `composer.frame`, `slot.frame`, `dock.backing` and `draftChars`;
@@ -2858,7 +2866,8 @@ proof and the sizing rules; the pieces, by name:
   Stop and Continue and a master's batch line, Stopped with Resume, Queued
   with its reason and Start now, worded by `StripWords`; nothing for
   watching, failed, idle or done, and no flavour words; 28 pt kept at
-  regular width, at compact width it rises in on the layout spring and
+  regular width (its ideal height, never what the bottom bar offers: an
+  empty reserved slot once took the column after an unfold), at compact width it rises in on the layout spring and
   leaves inert on a `fast` fade); `CardActions.swift` (Allow,
   Deny and Answer under the live cards in `TranscriptRows.swift`: the
   decision shows on the tap as Allowed or Denied and goes once, a refusal
