@@ -363,7 +363,7 @@ struct TranscriptView: View {
     /// The window as the list holds it now: its rows' ids, and the rows above them (the sentinel, the empty state).
     private func currentWindow() -> (shown: [TranscriptRowID], lead: Int) {
         guard let state = client.threads[sessionId] else { return ([], 0) }
-        let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory)
+        let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory, statusOf: agentStatus)
         let start = TranscriptRows.windowStart(rows, top: windowTop, count: window)
         return (rows[start...].map(\.id), start > 0 || state.moreBefore || rows.isEmpty ? 1 : 0)
     }
