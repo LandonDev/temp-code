@@ -84,6 +84,11 @@ import {
   withShellLog
 } from './lib/ios-seeds'
 import { openDb, Store } from '../src/main/server/db'
+
+// A proof set pairs some of these codes late: the features set pairs the
+// second host after a Release compile, a Debug build and forty shots, past a
+// code's ten-minute default. Two hours outlasts any set.
+const PROOF_PAIRING_TTL_MS = 2 * 60 * 60_000
 import { ENVIRONMENTS_PREFIX } from '../src/main/server/remote/environments'
 import type { MacBridgeRequest } from '../src/shared/contract-macbridge'
 import type { AgentEvent, FailureKind } from '../src/shared/events'
@@ -229,7 +234,7 @@ if (process.env.TC_IOS_SECOND_HOST === '1') {
   await server.registry.create({ id: THREAD_CROSS_HOST_CHILD, parentId: THREAD_CROSS_HOST, provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'low', agentType: 'explorer', permission: 'edits', projectId: secondProject.id, title: 'Map the Mac build' })
   talk(THREAD_CROSS_HOST_CHILD, 'Map the Mac build', 'Xcode 26 builds the app in 40 s.')
   const secondKey = await server.remoteAuth.createKey({ name: 'ios-test-second', audience: 'client', caps: [], createdBy: 'local' })
-  const secondPairing = server.remoteAuth.createPairing({ name: 'ios-sim-second', audience: 'client', caps: [], createdBy: 'local' })
+  const secondPairing = server.remoteAuth.createPairing({ name: 'ios-sim-second', audience: 'client', caps: [], createdBy: 'local', ttlMs: PROOF_PAIRING_TTL_MS })
   const stop = (): void => {
     void server.close().then(() => process.exit(0))
   }
@@ -1227,16 +1232,16 @@ server.notes.upsert({ id: SEARCH_NOTE, title: 'Cutover checklist', body: 'Before
 
 // ── the key, and a pairing link for the simulator rehearsal ─────────────
 const created = await server.remoteAuth.createKey({ name: 'ios-test', audience: 'client', caps: [], createdBy: 'local' })
-const pairing = server.remoteAuth.createPairing({ name: 'ios-sim', audience: 'client', caps: [], createdBy: 'local' })
+const pairing = server.remoteAuth.createPairing({ name: 'ios-sim', audience: 'client', caps: [], createdBy: 'local', ttlMs: PROOF_PAIRING_TTL_MS })
 // A second key and pairing that may act: the action tests and the proof's
 // steering shots use these; the read-only ones show the disabled states.
 const operate = await server.remoteAuth.createKey({ name: 'ios-test-operate', audience: 'client', caps: ['operate', 'approve'], createdBy: 'local' })
-const operatePairing = server.remoteAuth.createPairing({ name: 'ios-sim-operate', audience: 'client', caps: ['operate', 'approve'], createdBy: 'local' })
+const operatePairing = server.remoteAuth.createPairing({ name: 'ios-sim-operate', audience: 'client', caps: ['operate', 'approve'], createdBy: 'local', ttlMs: PROOF_PAIRING_TTL_MS })
 // A key that operates but never approves: the forbidden path of the approval card.
 const operateOnly = await server.remoteAuth.createKey({ name: 'ios-test-operate-only', audience: 'client', caps: ['operate'], createdBy: 'local' })
 // An admin key and pairing: the host detail's deploy row, log sheet and sync lines (iOS thread 21).
 const admin = await server.remoteAuth.createKey({ name: 'ios-test-admin', audience: 'client', caps: ['operate', 'approve', 'admin'], createdBy: 'local' })
-const adminPairing = server.remoteAuth.createPairing({ name: 'ios-sim-admin', audience: 'client', caps: ['operate', 'approve', 'admin'], createdBy: 'local' })
+const adminPairing = server.remoteAuth.createPairing({ name: 'ios-sim-admin', audience: 'client', caps: ['operate', 'approve', 'admin'], createdBy: 'local', ttlMs: PROOF_PAIRING_TTL_MS })
 
 // ── the Mac bridge's calls for the host detail (iOS thread 21) ──────────
 // Two of the saved host's calls past the prompt, as a Mac lists them in
@@ -1743,9 +1748,9 @@ const control = createServer((req, res) => {
     if (req.method !== 'POST') return answer(404, { error: 'not found' })
     const body = await readJson(req)
     switch (url.pathname) {
-      // A fresh acting pairing for a set that pairs late: a code lasts ten minutes from its mint.
+      // A fresh acting pairing for a set that pairs late, minted at the ask.
       case '/pairing': {
-        const fresh = server.remoteAuth.createPairing({ name: 'ios-sim-operate', audience: 'client', caps: ['operate', 'approve'], createdBy: 'local' })
+        const fresh = server.remoteAuth.createPairing({ name: 'ios-sim-operate', audience: 'client', caps: ['operate', 'approve'], createdBy: 'local', ttlMs: PROOF_PAIRING_TTL_MS })
         return answer(200, { link: `http://127.0.0.1:${server.remote?.port}/pair#${fresh.code}` })
       }
       case '/drop': {
