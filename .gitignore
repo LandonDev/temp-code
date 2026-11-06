@@ -27,3 +27,5 @@ ios/TempCodeContract/.swiftpm/
 
 # The device build's team id (scripts/ios-device.sh): never committed.
 ios/TempCode/Local.xcconfig
+__pycache__/
+*.pyc
