@@ -372,13 +372,14 @@ struct GateStep: View {
     let gate: GateNotice
     var inTable = false
     @State private var open = false
+    @Environment(\.transcriptFollow) private var follow
 
     var body: some View {
         let lines = GateText.lineCount(gate.log)
         let opens = !gate.ok && lines > 0
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(open ? Motion.collapse : Motion.expand) { open.toggle() }
+                TranscriptFollow.resize(follow) { open.toggle() }
             } label: {
                 NoticeLine(lead: GateText.lead(gate), details: [gate.branch, GateText.tail(gate) ?? ""], inTable: inTable, chevron: opens ? open : nil) {
                     StepStateMark(state: gate.ok ? .done : .failed)

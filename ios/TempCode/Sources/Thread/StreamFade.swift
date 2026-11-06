@@ -77,10 +77,18 @@ extension EnvironmentValues {
 /// The transcript's pin, handed to its rows by one stable reference so a
 /// step re-renders no row: a row's reveal grows the row without a new row
 /// landing, and a `List` keeps no bottom on size changes, so each shown
-/// step asks the follow rule to pin.
+/// step asks the follow rule to pin. `resize` runs a person's tap that
+/// resizes its row in place (a tool group opening or folding) as one glide
+/// on the layout spring (`FollowRule.Event.handResize`, `HandGlide`).
 @MainActor
 final class TranscriptFollow {
     var pin: () -> Void = {}
+    var resize: (_ change: () -> Void) -> Void = { change in withAnimation(Motion.layout) { change() } }
+
+    /// A hand's resize through the transcript the row is in, else on the layout spring alone.
+    static func resize(_ follow: TranscriptFollow?, _ change: () -> Void) {
+        if let follow { follow.resize(change) } else { withAnimation(Motion.layout) { change() } }
+    }
 }
 
 enum FadedText {

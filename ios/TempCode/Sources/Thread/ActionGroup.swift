@@ -32,6 +32,7 @@ struct ActionGroup: View {
     @Environment(TranscriptScrollState.self) private var scroll: TranscriptScrollState?
     @Environment(\.accessibilityReduceMotion) private var reduced
     @Environment(\.displayScale) private var scale
+    @Environment(\.transcriptFollow) private var follow
     @State private var fold: GroupFold
     /// The hold ran its time with the reader scrolled up: the fold waits for the bottom.
     @State private var awaitingBottom = false
@@ -97,7 +98,7 @@ struct ActionGroup: View {
     private func line(open: Bool) -> some View {
         let phrase = group.phrase(cwd: cwd) { client.session($0)?.title }
         return Button {
-            withAnimation(open ? Motion.collapse : Motion.expand) { take(open: !open) }
+            TranscriptFollow.resize(follow) { take(open: !open) }
         } label: {
             ActionLine(glyph: ActionGlyph(look: .symbol(group.kind.symbol)), verb: phrase, adds: self.group.adds, dels: self.group.dels, failed: self.group.failed, chevron: open)
         }
@@ -227,6 +228,7 @@ private struct ToolStep: View {
     let onHand: () -> Void
     @Environment(\.transcriptCwd) private var cwd
     @State private var open: Bool
+    @Environment(\.transcriptFollow) private var follow
     @State private var whole: EventRow?
     @State private var loading = false
 
@@ -258,7 +260,7 @@ private struct ToolStep: View {
             } else {
                 Button {
                     if !open { onHand() }
-                    withAnimation(open ? Motion.collapse : Motion.expand) { open.toggle() }
+                    TranscriptFollow.resize(follow) { open.toggle() }
                 } label: {
                     lineView(row, chevron: open)
                 }
@@ -300,12 +302,13 @@ private struct ThoughtStep: View {
     let inTable: Bool
     let onHand: () -> Void
     @State private var open = false
+    @Environment(\.transcriptFollow) private var follow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
                 if !open { onHand() }
-                withAnimation(open ? Motion.collapse : Motion.expand) { open.toggle() }
+                TranscriptFollow.resize(follow) { open.toggle() }
             } label: {
                 ActionLine(glyph: ActionGlyph(look: .symbol(ActivityGroup.Kind.think.symbol)), verb: "Thought", chevron: open, inTable: inTable)
             }

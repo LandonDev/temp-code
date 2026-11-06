@@ -16,6 +16,10 @@ public enum FollowRule {
         case jump
         /// The app is going to the background.
         case enteringBackground
+        /// A person's tap resized a row in place (a tool group opening or
+        /// folding): at the bottom the list follows on the row's own spring,
+        /// up reading it is left alone, so only the rows under it move.
+        case handResize
     }
 
     public enum Write: Hashable, Sendable {
@@ -40,7 +44,11 @@ public enum FollowRule {
     /// joining above, a reflow restoring a row) takes a reader off the
     /// bottom. Growth under a reader at the bottom keeps them there and asks
     /// for a pin.
-    public static func atBottom(was: Bool, geometry: Bool, readerMoving: Bool, offBottomWrite: Bool) -> (atBottom: Bool, pin: Bool) {
+    /// While a hand's resize glides (`gliding`, `HandGlide`) the place holds
+    /// as it was and nothing pins: the row grows on a spring and a pin with
+    /// no motion would throw the rows mid-glide.
+    public static func atBottom(was: Bool, geometry: Bool, readerMoving: Bool, offBottomWrite: Bool, gliding: Bool = false) -> (atBottom: Bool, pin: Bool) {
+        if gliding, !readerMoving { return (was, false) }
         if geometry { return (true, false) }
         if readerMoving || offBottomWrite || !was { return (false, false) }
         return (true, true)
@@ -53,18 +61,43 @@ public enum FollowRule {
     /// never pin under a moving reader: a slow drag up stays inside the
     /// bottom's slack for its first 64 pt, and a pin there would put the
     /// reader back at the bottom at every reveal step.
-    public static func write(for event: Event, atBottom: Bool, landing: Bool = false, reflowHeld: Bool = false, readerMoving: Bool = false) -> Write {
+    /// `gliding` a hand's resize under way: rows changing wait for its end.
+    public static func write(for event: Event, atBottom: Bool, landing: Bool = false, reflowHeld: Bool = false, readerMoving: Bool = false, gliding: Bool = false) -> Write {
         switch event {
         case .opened:
             return landing ? .none : .snap
         case .rowsChanged:
-            return atBottom && !landing && !reflowHeld && !readerMoving ? .pin : .none
+            return atBottom && !landing && !reflowHeld && !readerMoving && !gliding ? .pin : .none
+        case .handResize:
+            return atBottom && !landing && !reflowHeld && !readerMoving ? .glide : .none
         case .jump:
             return .glide
         case .enteringBackground:
             return TranscriptLanding.snapsToBottom(enteringBackground: true, atBottom: atBottom) ? .snap : .none
         }
     }
+}
+
+/// The stretch a hand's resize glides through: from the tap until the
+/// layout spring settles (`MotionValues.layout`) and one frame more. Pins
+/// and the bottom's verdict wait for its end (`FollowRule`), and the end
+/// asks for one pin, so a row that landed meanwhile is caught up at rest.
+public struct HandGlide: Sendable, Hashable {
+    /// Past the spring's settle: one frame at 60 Hz and a little.
+    public static let slack: Double = 0.05
+    public private(set) var until: Double = 0
+
+    public init() {}
+
+    /// A tap at `now`: the glide runs to the spring's end (a second tap mid-glide extends it).
+    public mutating func begin(at now: Double, duration: Double = MotionValues.layout) {
+        until = max(until, now + duration + Self.slack)
+    }
+
+    public func active(at now: Double) -> Bool { now < until }
+
+    /// Seconds from `now` until the glide is over (zero once it is).
+    public func remaining(at now: Double) -> Double { max(0, until - now) }
 }
 
 /// What the top sentinel's appearance does (the view's `extend`). The

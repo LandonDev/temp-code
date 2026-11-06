@@ -86,6 +86,7 @@ struct UserTurnRow: View {
     let turn: UserTurn
     let client: EnvironmentClient
     @State private var expanded = false
+    @Environment(\.transcriptFollow) private var follow
 
     private static let foldLines = 6
 
@@ -138,7 +139,7 @@ struct UserTurnRow: View {
         .contentShape(RoundedRectangle.corner(TranscriptMetrics.bubbleRadius))
         .onTapGesture {
             guard folds else { return }
-            withAnimation(expanded ? Motion.collapse : Motion.expand) { expanded.toggle() }
+            TranscriptFollow.resize(follow) { expanded.toggle() }
         }
         .contextMenu {
             if !turn.text.isEmpty {

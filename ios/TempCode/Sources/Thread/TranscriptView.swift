@@ -45,6 +45,7 @@ struct TranscriptView: View {
     /// Which rows were born live (read and written outside observation).
     @State private var bornRows = BornRows()
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.markdownScope) private var markdownScope
     /// Which turns still reveal text (A6's closing line waits on it).
     @State private var revealDrain = RevealDrain()
@@ -71,6 +72,7 @@ struct TranscriptView: View {
         #endif
         ScrollViewReader { proxy in
             let _ = follow.pin = { pinTail(proxy: proxy) }
+            let _ = follow.resize = { change in handResize(proxy: proxy, change) }
             List {
                 if moreAbove {
                     TopSentinel(loading: thread.isLoadingOlder) {
@@ -155,7 +157,8 @@ struct TranscriptView: View {
                 guard !scrollState.reflowHeld else { return }
                 // A deliberate scroll away counts until the reader is back at the bottom, by any road.
                 if now { scrollState.offBottomWrite = false }
-                let verdict = FollowRule.atBottom(was: scrollState.atBottom, geometry: now, readerMoving: scrollState.readerMoving, offBottomWrite: scrollState.offBottomWrite)
+                let verdict = FollowRule.atBottom(was: scrollState.atBottom, geometry: now, readerMoving: scrollState.readerMoving,
+                                                  offBottomWrite: scrollState.offBottomWrite, gliding: scrollState.glide.active(at: TranscriptView.now))
                 if scrollState.atBottom != verdict.atBottom { scrollState.atBottom = verdict.atBottom }
                 if verdict.pin { pinTail(proxy: proxy) }
                 #if DEBUG
@@ -609,7 +612,8 @@ struct TranscriptView: View {
     private func pinTail(proxy: ScrollViewProxy) {
         func follows() -> Bool {
             FollowRule.write(for: .rowsChanged, atBottom: scrollState.atBottom, landing: targetStatus != nil,
-                             reflowHeld: scrollState.reflowHeld, readerMoving: scrollState.readerMoving) == .pin
+                             reflowHeld: scrollState.reflowHeld, readerMoving: scrollState.readerMoving,
+                             gliding: scrollState.glide.active(at: TranscriptView.now)) == .pin
         }
         guard follows(), pins.ask() else { return }
         Task { @MainActor in
@@ -621,6 +625,37 @@ struct TranscriptView: View {
             }
         }
     }
+
+    /// A person's tap that resizes its row in place (a tool group opening
+    /// or folding), the desktop's height glide: the row's height and the
+    /// rows under it move on the layout spring in one transaction, nothing
+    /// above moves, and a reader at the bottom is followed on that same
+    /// spring (the scroll to the end rides the transaction). Pins and the
+    /// bottom's verdict wait while it glides (`HandGlide`); its end asks for
+    /// one pin. Reduced motion changes it at once and pins.
+    private func handResize(proxy: ScrollViewProxy, _ change: () -> Void) {
+        let write = FollowRule.write(for: .handResize, atBottom: scrollState.atBottom, landing: targetStatus != nil,
+                                     reflowHeld: scrollState.reflowHeld, readerMoving: scrollState.readerMoving)
+        if reduceMotion {
+            Motion.withoutAnimation { change() }
+            pinTail(proxy: proxy)
+            return
+        }
+        scrollState.glide.begin(at: Self.now)
+        TranscriptTrace.write("handResize")
+        withAnimation(Motion.layout) {
+            change()
+            if write == .glide { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
+        }
+        let wait = scrollState.glide.remaining(at: Self.now)
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(wait))
+            guard !scrollState.glide.active(at: Self.now) else { return }
+            pinTail(proxy: proxy)
+        }
+    }
+
+    static var now: Double { Date().timeIntervalSinceReferenceDate }
 
     /// Opens on the asked row once it is in the loaded rows: the window
     /// widens to hold it, a group holding it is opened first (no animation),
@@ -732,6 +767,8 @@ final class TranscriptScrollState {
     var reflowHeld = false
     /// The reader's finger is on the list or it is still decelerating from one.
     @ObservationIgnored var readerMoving = false
+    /// A person's tap resizing a row glides until this ends (`HandGlide`).
+    @ObservationIgnored var glide = HandGlide()
     /// The view scrolled to a row away from the bottom on purpose (a landing,
     /// a page above, a reflow's row); cleared by the reader's scroll or a write to the bottom.
     @ObservationIgnored var offBottomWrite = false

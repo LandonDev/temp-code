@@ -33,3 +33,39 @@ import Testing
         #expect(pins.ask())
     }
 }
+
+@Suite struct FollowRuleHandGlideTests {
+    @Test func `a hand's resize follows at the bottom on its spring and leaves a reader up alone`() {
+        #expect(FollowRule.write(for: .handResize, atBottom: true) == .glide)
+        #expect(FollowRule.write(for: .handResize, atBottom: false) == .none)
+        #expect(FollowRule.write(for: .handResize, atBottom: true, readerMoving: true) == .none)
+        #expect(FollowRule.write(for: .handResize, atBottom: true, reflowHeld: true) == .none)
+    }
+
+    @Test func `nothing pins while the glide runs, and the reader's place holds through it`() {
+        #expect(FollowRule.write(for: .rowsChanged, atBottom: true, gliding: true) == .none)
+        // The growth below a reader at the bottom reads as off the bottom mid-glide: held, no pin.
+        #expect(FollowRule.atBottom(was: true, geometry: false, readerMoving: false, offBottomWrite: false, gliding: true) == (true, false))
+        // A reader up stays up even when the fold's shrink brings the end into view mid-glide.
+        #expect(FollowRule.atBottom(was: false, geometry: true, readerMoving: false, offBottomWrite: false, gliding: true) == (false, false))
+        // The reader's own scroll still decides.
+        #expect(FollowRule.atBottom(was: true, geometry: false, readerMoving: true, offBottomWrite: false, gliding: true) == (false, false))
+        // Once it is over the growth under them pins again.
+        #expect(FollowRule.atBottom(was: true, geometry: false, readerMoving: false, offBottomWrite: false) == (true, true))
+    }
+
+    @Test func `the glide runs from the tap to the layout spring's settle, extended by a second tap`() {
+        var glide = HandGlide()
+        #expect(!glide.active(at: 0))
+        glide.begin(at: 10)
+        #expect(glide.active(at: 10 + MotionValues.layout))
+        #expect(!glide.active(at: 10 + MotionValues.layout + HandGlide.slack))
+        #expect(abs(glide.remaining(at: 10.1) - (MotionValues.layout + HandGlide.slack - 0.1)) < 1e-9)
+        glide.begin(at: 10.2)
+        #expect(glide.active(at: 10.2 + MotionValues.layout))
+        // An earlier tap never shortens it.
+        glide.begin(at: 9)
+        #expect(glide.until == 10.2 + MotionValues.layout + HandGlide.slack)
+        #expect(glide.remaining(at: 100) == 0)
+    }
+}
