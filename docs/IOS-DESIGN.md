@@ -2998,7 +2998,7 @@ in the bottom run; at the bottom, `transcriptAtBottom` 1 and the reflow
 anchored on the end after every fold; scrolled up, the same `topRow` at all
 four stops with the reflow anchored on that row; no row on screen made its
 state twice (`RowInitLedger`); and at every stop a solid `dock.backing` and
-the dock band of duo_band.py. Then `duo_unfold_idle` opens each type at rest
+the dock band of duo_band.py. Before it, `duo_unfold_idle` opens each type at rest
 folded, in dark, unfolds it with the app running and holds its band through
 `pose_check`. The shell notes `sidebar` (`stack`,
 `visible`, `overlay` or `hidden`), `sidebar.width` and `split.width` from

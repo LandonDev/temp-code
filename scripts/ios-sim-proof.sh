@@ -111,7 +111,7 @@
 #           duo_fold_cycle (a streaming implementation thread with a draft and an
 #           undecided approval, folded and unfolded twice with the app running,
 #           at the bottom and 700 pt up; four shots and a .mov each;
-#           scripts/lib/duo_fold_check.py, each stop's dock band too), then
+#           scripts/lib/duo_fold_check.py, each stop's dock band too), after
 #           duo_unfold_idle (every type at rest, dark, opened folded and
 #           unfolded live, its dock band held). Every shot's layout report and
 #           pose-<sessionId>.json must match the pose's row and the thread
@@ -1044,8 +1044,9 @@ duo_set() {
     duo_shots_shell
     duo_shots_thread
   fi
-  duo_fold_cycle
+  # At rest first: the fold cycle leaves a draft typed and the field focused.
   duo_unfold_idle
+  duo_fold_cycle
   echo "ios-sim-proof: duo set PASS ($(find "$OUT/layout" -name '*.json' ! -name '*.pose.json' ! -name '*.transcript.json' | wc -l | tr -d ' ') pose checks); shots in $OUT/shots/<pose>/, reports in $OUT/layout/<pose>/"
 }
 
