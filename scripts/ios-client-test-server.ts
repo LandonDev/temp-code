@@ -1063,6 +1063,14 @@ at(THREAD_FAILURES, [
   { type: 'status', status: 'error' }
 ])
 
+// One cap on a routed thread with room elsewhere: the card's three actions.
+await makeTyped('ios-capped', 'chat', 'A capped turn')
+at('ios-capped', [
+  { type: 'user-text', text: 'Summarise the export.', newPass: true },
+  fail('rate_limited', 'landon@example.com', 'landon@example.com hit its 5-hour limit', 'The usage window is spent until it resets; another account with room can take the thread.'),
+  { type: 'status', status: 'error' }
+])
+
 export const THREAD_PREAMBLE = 'ios-preamble'
 await makeTyped(THREAD_PREAMBLE, 'implementation', 'Rename the config keys (with rules)')
 const rules = '- Work in your own git worktree: `git worktree add .claude/worktrees/rename-the-config-keys -b rename-the-config-keys master`.\n- Run typecheck and the tests you wrote; land with merge_branch.\n- Never touch /Applications/TempCode.app.'

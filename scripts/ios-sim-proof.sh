@@ -537,7 +537,7 @@ actions_set() {
   TC_ACTION="send:Hello from the phone" shot "act-send-light" thread "Thread B"
   # A send whose turn the host starts 4 s after the echo: two frames inside
   # the gap, both busy (Pause and the slot's timer), never Send between.
-  TC_ACTION="send:Hold the start" shot "act-send-held-1-light" thread "Thread A" "" "" 2
+  TC_ACTION="send:Hold the start" shot "act-send-held-1-light" thread "Thread A" "" "" 3
   sleep 1
   snap "act-send-held-2-light"
   sleep 4
@@ -549,10 +549,12 @@ actions_set() {
   shot "act-pause-button-light" thread "Index the archive"
   # A steer mid-turn (queue.add { steer: true }): its bubble says Sent, then
   # Received once the host's stand-in marks it read (12 s later).
-  TC_ACTION="steer:Use the archive table instead" shot "act-steer-sent-light" thread "Index the archive" "" "" 4
+  TC_ACTION="steer:Use the archive table instead" shot "act-steer-sent-light" thread "Index the archive" chat "" 4
   sleep 10
-  shot "act-steer-received-light" thread "Index the archive"
+  shot "act-steer-received-light" thread "Index the archive" chat
   TC_ACTION="queue:After this turn" shot "act-queue-light" thread "Thread B"
+  # A capped turn on a key that may act: Route automatically solid, Continue on another model and Retry quiet.
+  shot "act-failure-light" thread "A capped turn"
   TC_ACTION="pause" shot "act-pause-light" thread "Thread B"
   TC_ACTION="stop" shot "act-stop-light" thread "Thread B"
   TC_ACTION="approve" shot "act-approve-light" thread "Run the test suite"
