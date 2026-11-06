@@ -508,13 +508,14 @@ struct TranscriptView: View {
         for index in 0..<6 {
             let started = Date()
             let atBottom = scrollState.atBottom
+            let before = [Double(scroll.contentOffset.y), Double(scroll.contentSize.height)]
             proofTap = ProofGroupTap(key: group.key, tick: index + 1)
             var samples: [[Double]] = []
             while Date().timeIntervalSince(started) < 0.9 {
                 samples.append([Date().timeIntervalSince(started), Double(scroll.contentOffset.y), Double(scroll.contentSize.height)])
                 try? await Task.sleep(for: .milliseconds(8))
             }
-            phases.append(["opening": index % 2 == 0, "atBottom": atBottom, "samples": samples])
+            phases.append(["opening": index % 2 == 0, "atBottom": atBottom, "before": before, "samples": samples])
             try? await Task.sleep(for: .milliseconds(600))
         }
         let report: [String: Any] = ["mode": TestHooks.groupGlide ?? "", "group": group.key, "phases": phases]

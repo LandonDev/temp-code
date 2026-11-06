@@ -30,6 +30,10 @@
 #   stream  POST /stream plays a bursty turn while the reader is pinned at the
 #           bottom and every frame is recorded (stream-report.json); fails on
 #           a frame later than its expected interval plus 8 ms.
+#   glide   A tool group tapped open and shut three times, folded and
+#           unfolded (TC_GLIDE_POSES), the reader at the bottom then 700 pt
+#           up, each run recorded; scripts/lib/group_glide_check.py holds the
+#           offsets (still when up, one way and in steps at the bottom).
 #   box     TC_TEST_THREADS ("title part|title part|…", else TC_TEST_THREAD):
 #           both segments of each named thread, light only, for a real host.
 #   actions The steering shots: a read key's disabled composer and card, then
@@ -322,6 +326,7 @@ launch_app() {
   SIMCTL_CHILD_TC_TEST_SCROLL_UP="${TC_SCROLL_UP_RUN:-}" \
   SIMCTL_CHILD_TC_TEST_STREAM="${TC_STREAM_RUN:-}" \
   SIMCTL_CHILD_TC_TEST_STREAM_SECONDS="${TC_STREAM_SECONDS:-}" \
+  SIMCTL_CHILD_TC_TEST_GROUP_GLIDE="${TC_GROUP_GLIDE:-}" \
     xcrun simctl launch --terminate-running-process "$TC_SIM_UDID" "$BUNDLE" >/dev/null
 }
 appearance() { xcrun simctl ui "$TC_SIM_UDID" appearance "$1" >/dev/null 2>&1 || true; }
@@ -1252,6 +1257,36 @@ print('ios-sim-proof: transcript PASS (no row on screen made its state twice, re
 CHECK
 }
 
+# The tool group's glide (TC_TEST_GROUP_GLIDE): in each pose (TC_GLIDE_POSES,
+# folded and unfolded on the Duo), the lowest multi-step group on screen of
+# TC_GLIDE_THREAD is tapped open and shut three times through its own line,
+# the reader at the bottom and then 700 pt up, each run recorded
+# (glide/<pose>-<run>.mov). scripts/lib/group_glide_check.py holds the
+# offsets: still for a reader up, one way and in steps at the bottom, no jumpUp.
+glide_set() {
+  local pose run container thread=${TC_GLIDE_THREAD:-Why does the gateway refuse http for Codex?} recorder failed=0
+  mkdir -p "$OUT/glide"
+  for pose in ${TC_GLIDE_POSES:-folded unfolded}; do
+    fold "$pose"
+    for run in bottom up; do
+      container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data)
+      rm -f "$container/Documents/group-glide.json" "$container/Documents/layout-events.json"
+      xcrun simctl io "$TC_SIM_UDID" recordVideo --display="$LIT" --codec h264 --force "$OUT/glide/$POSE-$run.mov" >/dev/null 2>"$OUT/glide/record.err" &
+      recorder=$!
+      TC_SIDEBAR=hidden TC_GROUP_GLIDE=$run launch_app thread "$thread" chat
+      wait_for "$container/Documents/group-glide.json" 40 || echo "ios-sim-proof: glide $POSE/$run: no report" >&2
+      sleep 1
+      kill -INT "$recorder" 2>/dev/null; wait "$recorder" 2>/dev/null || true
+      cp "$container/Documents/group-glide.json" "$OUT/glide/$POSE-$run.json" 2>/dev/null || echo '{}' > "$OUT/glide/$POSE-$run.json"
+      cp "$container/Documents/layout-events.json" "$OUT/glide/$POSE-$run.events.json" 2>/dev/null || echo '[]' > "$OUT/glide/$POSE-$run.events.json"
+      python3 "$here/lib/group_glide_check.py" "$OUT/glide/$POSE-$run.json" "$OUT/glide/$POSE-$run.events.json" "$POSE/$run" || failed=1
+    done
+  done
+  rm -f "$OUT/glide/record.err"
+  [ "$failed" = 0 ] || { echo "ios-sim-proof: glide set FAIL" >&2; return 1; }
+  echo "ios-sim-proof: glide set PASS; recordings in $OUT/glide/"
+}
+
 # The stream report: frames recorded (FrameRecorder's stream driver) while
 # POST /stream plays a bursty turn into "Streaming on the phone" with the
 # reader pinned at the bottom. Pass: no frame later than its expected
@@ -1348,6 +1383,7 @@ case "$SET" in
   scroll) scroll_set ;;
   transcript) transcript_set ;;
   stream) stream_set ;;
+  glide) glide_set ;;
   box) box_set ;;
   actions) actions_set ;;
   catalog) catalog_set ;;
