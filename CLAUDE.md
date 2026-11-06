@@ -2676,9 +2676,10 @@ proof and the sizing rules; the pieces, by name:
   pins coalesce to one per main-queue turn (`PinQueue`), a tap that
   resizes its row in place (a group's line, a step's body, a gate log, Show
   more) glides on the layout spring through `TranscriptFollow.resize`
-  (`FollowRule.Event.handResize`: a reader at the bottom followed in the same
-  transaction, one up left still; no pin while `HandGlide` runs; proof
-  `TC_PROOF_SET=glide`, scripts/lib/group_glide_check.py), the closing line
+  (`FollowRule.Event.handResize`: a reader at the bottom followed on the same
+  spring, one up left still; UIKit runs it, `ListGlide`, since a `List`
+  animates no cell from a SwiftUI transaction; no pin while `HandGlide` runs;
+  proof `TC_PROOF_SET=glide`, scripts/lib/group_glide_check.py), the closing line
   believes the drain for `TurnLineTracker.drainBound` past the turn's end
   and no longer, and TranscriptView's DEBUG `TranscriptTrace`
   notes every scroll write and every offset drop that stays two frames

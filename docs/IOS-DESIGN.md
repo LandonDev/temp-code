@@ -3017,13 +3017,23 @@ scripts/ios-duo-checks.test.ts runs both checks on hand-made reports.
 The glide set (`TC_PROOF_SET=glide`, `glide_set`) holds a tapped group's
 glide: in each of `TC_GLIDE_POSES` (folded and unfolded) the app
 (`TC_TEST_GROUP_GLIDE=bottom|up`, TranscriptView's `groupGlideProof`) taps
-the lowest multi-step group on screen of `TC_GLIDE_THREAD` open and shut
+a multi-step group on screen of `TC_GLIDE_THREAD` (default the test
+server's "Where does the gateway pick an account?", eight turns of prose
+and four-read groups; the lowest group at the bottom, the highest up, so
+the rows that move are on screen and not behind the dock) open and shut
 three times through its own line, the reader at the bottom and then 700 pt
-up, sampling the list's offset and content height every 8 ms
-(`group-glide.json`), each run recorded. scripts/lib/group_glide_check.py
-(tested in scripts/ios-glide-check.test.ts): a reader up never moves; at
-the bottom the offset moves one way in steps, none over half the travel;
-the content height changes; no `jumpUp`.
+up, sampling every 8 ms the list's offset and content height and what is
+drawn: each visible cell's presentation frame and the still images of rows
+leaving (`group-glide.json`), each run recorded.
+scripts/lib/group_glide_check.py (tested in scripts/ios-glide-check.test.ts)
+judges the drawn frames, since the model values jump to the end of a UIKit
+animation: the group's height and every row move one way in steps, none
+over half its travel; for a reader up the rows above and the offset hold;
+at the bottom the rows under the group hold; the group never draws over
+the row under it; a row drawn before the tap stays drawn until it leaves
+the list's bounds; the content height changes; no `jumpUp` once the taps
+start (the reader-up run's own 700 pt scroll comes before its `glide-taps`
+mark).
 `TC_DUO_POSES`, `TC_DUO_KINDS`, `TC_DUO_HALF_OPEN=0` and `TC_FOLD_RUNS`
 narrow a hand run. Rotation is the device's (`hinge orient`), never an
 app-side hook: the app must follow the device as it does for a person.
