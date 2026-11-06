@@ -151,7 +151,7 @@ public enum ReviewText {
 
 /// What the failure card offers on the phone: at most three, Retry last.
 public struct FailureAction: Sendable, Hashable, Identifiable {
-    public enum ID: String, Sendable, Hashable { case route, retry }
+    public enum ID: String, Sendable, Hashable { case route, pickModel, retry }
 
     public let id: ID
     public let label: String
@@ -162,11 +162,13 @@ public struct FailureAction: Sendable, Hashable, Identifiable {
     }
 }
 
-/// The desktop's failureActions with the phone's reach: it can route and
-/// retry; signing in, adding a key, picking an account or a model are
-/// desktop work, so the note names them instead. `routed` is the provider
-/// the thread's accounts come from (`RoutedProvider(provider:model:catalog:)`),
-/// nil for a thread no account routes. `roomElsewhere` is a cap's verdict
+/// The desktop's failureActions within the phone's reach: Route
+/// automatically, Continue on another model (the composer's model menu,
+/// then `session.continue` on the pick) and Retry. The desktop's sign-in,
+/// key and account rows have no phone counterpart and leave the set; no line
+/// sends the person to the desktop. `routed` is the provider the thread's
+/// accounts come from (`RoutedProvider(provider:model:catalog:)`), nil for a
+/// thread no account routes. `roomElsewhere` is a cap's verdict
 /// (`Failure.roomElsewhere`): false means no other account has room for the
 /// model, so Route is left out and another model is the way on.
 public enum FailureActions {
@@ -174,14 +176,20 @@ public enum FailureActions {
 
     public static func actions(kind: FailureKind, routed: RoutedProvider?, roomElsewhere: Bool? = nil) -> [FailureAction] {
         let ids: [FailureAction.ID] = switch kind {
-        case .accountUnknown where routed == .meta:
-            // A Meta thread with no key on the host: the fix is a key, not a route.
+        case .accountUnknown where routed == .meta, .keyInvalid:
+            // A Meta thread with no key, or a refused key: the fix is a key, not a route.
             [.retry]
-        case .rateLimited where routed != .meta && roomElsewhere == false, .quota where routed != .meta && roomElsewhere == false:
-            [.retry]
-        case .oauthExpired, .accountUnknown, .tokenExpired, .rateLimited, .quota:
+        case .rateLimited where routed == .meta, .quota where routed == .meta:
+            // A Meta key's limit lifts on its own and its quota is billing: the keys, not the model.
+            [.route, .retry]
+        case .rateLimited, .quota:
+            // A cap is per account and model: another account while one has room, else another model.
+            routed != nil && roomElsewhere != false ? [.route, .pickModel, .retry] : [.pickModel, .retry]
+        case .oauthExpired, .accountUnknown, .tokenExpired:
             routed != nil ? [.route, .retry] : [.retry]
-        case .keyInvalid, .modelUnavailable, .network, .harnessCrashed, .turnEnded, .unknown, .unrecognized:
+        case .modelUnavailable:
+            [.pickModel, .retry]
+        case .network, .harnessCrashed, .turnEnded, .unknown, .unrecognized:
             [.retry]
         }
         // Retry closes every set, whatever the kind added before it; the cap leaves room for it.
@@ -192,30 +200,10 @@ public enum FailureActions {
         return ordered.map { FailureAction(id: $0) }
     }
 
-    /// The desktop actions the phone lacks, named in one line; nil when none apply.
-    public static func note(kind: FailureKind, routed: RoutedProvider?, roomElsewhere: Bool? = nil) -> String? {
-        switch kind {
-        case .rateLimited where routed != .meta, .quota where routed != .meta:
-            // A cap is per account and model: another account while one has room, else another model.
-            routed != nil && roomElsewhere != false ? "Pick another account or model on the desktop." : "Pick another model on the desktop."
-        case .keyInvalid:
-            "Add a new key on the desktop."
-        case .accountUnknown where routed == .meta:
-            "Add a Meta key on the desktop."
-        case .oauthExpired:
-            routed != nil ? "Sign in on the Mac, or pick another account on the desktop." : nil
-        case .accountUnknown, .tokenExpired, .rateLimited, .quota:
-            routed != nil ? "Pick another account on the desktop." : nil
-        case .modelUnavailable:
-            "Pick another model on the desktop."
-        case .network, .harnessCrashed, .turnEnded, .unknown, .unrecognized:
-            nil
-        }
-    }
-
     public static func label(_ id: FailureAction.ID) -> String {
         switch id {
         case .route: "Route automatically"
+        case .pickModel: "Continue on another model"
         case .retry: "Retry"
         }
     }
@@ -224,6 +212,7 @@ public enum FailureActions {
     public static func pendingLabel(_ id: FailureAction.ID) -> String {
         switch id {
         case .route: "Routing…"
+        case .pickModel: "Continuing…"
         case .retry: "Retrying…"
         }
     }

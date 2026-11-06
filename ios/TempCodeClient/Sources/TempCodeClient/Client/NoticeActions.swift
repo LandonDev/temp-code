@@ -6,10 +6,10 @@ import TempCodeContract
 /// `Actions.block` the way `approve` does and throws an `ActionError`.
 extension EnvironmentClient {
     /// The failure card's Retry: `session.continue`, the desktop's continueSession.
-    public func continueThread(_ sessionId: String) async throws {
+    public func continueThread(_ sessionId: String, model: TurnModel? = nil) async throws {
         if let block = operateBlock { throw ActionError.blocked(block) }
         do {
-            _ = try await request(Methods.SessionContinue.self, .init(sessionId: sessionId))
+            _ = try await request(Methods.SessionContinue.self, .init(sessionId: sessionId, provider: model?.provider, model: model?.model, reasoning: model?.reasoning))
         } catch {
             throw ActionError.wrap(error)
         }

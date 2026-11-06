@@ -58,9 +58,7 @@ struct ImplementationBoardView: View {
                             .padding(.vertical, 12)
                     }
                     if !agents.isEmpty {
-                        SectionHeader("Agents") {
-                            CountText(agents.count)
-                        }
+                        SectionHeader("Agents")
                         FleetRows(agents: agents, client: client)
                     }
                     if empty {

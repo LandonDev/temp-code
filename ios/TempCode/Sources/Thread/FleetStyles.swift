@@ -457,7 +457,7 @@ struct AgentRow: View {
 // MARK: - the sections
 
 /// The fleet in its groups, Running, Waiting, Queued, Done, each under the
-/// kit's section header with its count; hairlines between rows, inset to
+/// kit's section header with its word alone; hairlines between rows, inset to
 /// the text edge. Rows that change group move with the kit's row motion,
 /// and nothing moves on the first non-empty paint. `clients` is keyed by
 /// host id, as are the host names (shown on remote rows) and the transport
@@ -483,10 +483,9 @@ struct FleetSections: View {
     @ViewBuilder
     private func rows(_ sections: [Fleet.AgentSection]) -> some View {
         ForEach(sections) { section in
-            SectionHeader(section.group.title) {
-                CountText(section.agents.count)
-            }
-            .rowAppearTransition()
+            // The word alone, as the desktop's board sections read: the rows are the count.
+            SectionHeader(section.group.title)
+                .rowAppearTransition()
             ForEach(Array(section.agents.enumerated()), id: \.element.id) { index, agent in
                 if index > 0 {
                     Hairline(inset: FleetLayout.textInset)

@@ -124,66 +124,54 @@ private func review(_ outcome: ReviewOutcome, blocking: Int = 0, minor: Int = 0,
         #expect(actions.last?.label == "Retry")
     }
 
-    @Test func `a routed account failure offers Route automatically and names the desktop's actions`() {
+    @Test func `a routed account failure offers Route automatically, and no set sends the person to the desktop`() {
         for routed in [RoutedProvider.claude, .codex] {
-            #expect(FailureActions.actions(kind: .oauthExpired, routed: routed).map(\.label) == ["Route automatically", "Retry"])
-            #expect(FailureActions.note(kind: .oauthExpired, routed: routed) == "Sign in on the Mac, or pick another account on the desktop.")
-            for kind in [FailureKind.accountUnknown, .tokenExpired] {
+            for kind in [FailureKind.oauthExpired, .accountUnknown, .tokenExpired] {
                 #expect(FailureActions.actions(kind: kind, routed: routed).map(\.label) == ["Route automatically", "Retry"])
-                #expect(FailureActions.note(kind: kind, routed: routed) == "Pick another account on the desktop.")
             }
         }
     }
 
-    @Test func `a cap routes while another account has room, else names another model on the desktop`() {
+    @Test func `a cap routes while another account has room and offers another model, else another model alone`() {
         for routed in [RoutedProvider.claude, .codex] {
             for kind in [FailureKind.rateLimited, .quota] {
                 for room in [true, nil] as [Bool?] {
-                    #expect(FailureActions.actions(kind: kind, routed: routed, roomElsewhere: room).map(\.label) == ["Route automatically", "Retry"])
-                    #expect(FailureActions.note(kind: kind, routed: routed, roomElsewhere: room) == "Pick another account or model on the desktop.")
+                    #expect(FailureActions.actions(kind: kind, routed: routed, roomElsewhere: room).map(\.label) == ["Route automatically", "Continue on another model", "Retry"])
                 }
-                #expect(FailureActions.actions(kind: kind, routed: routed, roomElsewhere: false).map(\.label) == ["Retry"])
-                #expect(FailureActions.note(kind: kind, routed: routed, roomElsewhere: false) == "Pick another model on the desktop.")
+                #expect(FailureActions.actions(kind: kind, routed: routed, roomElsewhere: false).map(\.label) == ["Continue on another model", "Retry"])
             }
         }
         // Not routed: another model is the only way on.
-        #expect(FailureActions.note(kind: .rateLimited, routed: nil) == "Pick another model on the desktop.")
+        #expect(FailureActions.actions(kind: .rateLimited, routed: nil).map(\.id) == [.pickModel, .retry])
         // A Meta key's cap keeps its keys' set, whatever the room.
         #expect(FailureActions.actions(kind: .quota, routed: .meta, roomElsewhere: false).map(\.label) == ["Route automatically", "Retry"])
-        #expect(FailureActions.note(kind: .quota, routed: .meta, roomElsewhere: false) == "Pick another account on the desktop.")
     }
 
-    @Test func `a refused key is Retry with the desktop's new key named`() {
+    @Test func `a refused key and a Meta thread with no key are Retry alone, never a route`() {
         #expect(FailureActions.actions(kind: .keyInvalid, routed: .meta).map(\.label) == ["Retry"])
-        #expect(FailureActions.note(kind: .keyInvalid, routed: .meta) == "Add a new key on the desktop.")
-    }
-
-    @Test func `a Meta thread with no key asks for one on the desktop, never a route`() {
         #expect(FailureActions.actions(kind: .accountUnknown, routed: .meta).map(\.label) == ["Retry"])
-        #expect(FailureActions.note(kind: .accountUnknown, routed: .meta) == "Add a Meta key on the desktop.")
         // A throttled key still routes to another key.
         #expect(FailureActions.actions(kind: .rateLimited, routed: .meta).map(\.label) == ["Route automatically", "Retry"])
     }
 
-    @Test func `the model, the network and the harness get Retry alone`() {
-        #expect(FailureActions.actions(kind: .modelUnavailable, routed: .claude).map(\.label) == ["Retry"])
-        #expect(FailureActions.note(kind: .modelUnavailable, routed: .claude) == "Pick another model on the desktop.")
-        #expect(FailureActions.note(kind: .modelUnavailable, routed: nil) == "Pick another model on the desktop.")
+    @Test func `a model the host cannot run offers another; the network and the harness get Retry alone`() {
+        for routed in [RoutedProvider.claude, nil] {
+            #expect(FailureActions.actions(kind: .modelUnavailable, routed: routed).map(\.label) == ["Continue on another model", "Retry"])
+        }
         for kind in [FailureKind.network, .harnessCrashed, .turnEnded, .unknown, .unrecognized("x")] {
             #expect(FailureActions.actions(kind: kind, routed: .claude).map(\.label) == ["Retry"])
-            #expect(FailureActions.note(kind: kind, routed: .claude) == nil)
         }
     }
 
-    @Test func `an unrouted thread gets Retry alone and no account note, whatever the kind`() {
+    @Test func `an unrouted thread never routes`() {
         for kind in Self.kinds {
-            #expect(FailureActions.actions(kind: kind, routed: nil).map(\.label) == ["Retry"])
-            if kind != .modelUnavailable, kind != .keyInvalid, kind != .rateLimited, kind != .quota { #expect(FailureActions.note(kind: kind, routed: nil) == nil) }
+            #expect(!FailureActions.actions(kind: kind, routed: nil).contains { $0.id == .route })
         }
     }
 
     @Test func `the pending labels`() {
         #expect(FailureActions.pendingLabel(.route) == "Routing…")
         #expect(FailureActions.pendingLabel(.retry) == "Retrying…")
+        #expect(FailureActions.pendingLabel(.pickModel) == "Continuing…")
     }
 }

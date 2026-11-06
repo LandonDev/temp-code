@@ -758,13 +758,6 @@ the lone row, the table's frame, hairlines and grid, the verb muted and the
 object loud, the counts, the end row's "Worked for", the compaction row.
 What does not:
 
-- The failure card's actions fill the card's width in two halves, the last
-  one solid blue. The desktop sizes each button to its label at the text's
-  edge, the first action solid and the rest quiet, Retry last. The phone
-  also has no Continue on another model (the line sends the person to the
-  desktop for it).
-- The fleet's sections carry a count ("Running 3"); the desktop's board
-  sections read their word alone.
 - In the proof rig the phone pairs the same server several times (the test
   server's relayed loopback hosts), and the strip and the fleet list a
   thread once per pairing, so titles repeat; whether the fleet should fold
@@ -957,7 +950,12 @@ picked one on the fill step; the desktop's key tiles stay on the desktop.
 The failure card follows the desktop's recipe (surfaces/FailureCard.tsx):
 a card at radius 8 with 12 in, the summary in the line type at medium
 beside the red glyph, the cause muted 2 pt under it, everything under the
-summary on its text edge, at most three actions, Retry last. A key
+summary on its text edge, at most three actions, each sized to its label
+at that edge: the first solid, the rest quiet (bordered in the label
+colour), Retry last. The phone's set is the desktop's within its reach
+(`FailureActions`): Route automatically, Continue on another model (the
+composer's model menu; the pick continues the thread on it through
+`session.continue`) and Retry; no line sends the person to the desktop. A key
 that cannot approve sees the reason in the buttons' place; a link down for
 a moment sees them at half opacity with the reason under them.
 
@@ -1472,8 +1470,8 @@ step, radius and motion value is the kit's (`Layout`, `TextStep`, `Radius`,
 6. **Closing report**: a `Report` section header, then the agent's final
    markdown once all todos are complete, or the answer when a follow-up
    produced no todos.
-7. **Fleet**: when the thread spawned subagents, an `Agents` header with
-   the count and their rows under the plan, pushing to the agent's detail.
+7. **Fleet**: when the thread spawned subagents, an `Agents` header (its
+   word alone) and their rows under the plan, pushing to the agent's detail.
 8. **Landing**: after Changes, the host's own lines in the order they landed
    (`OutcomeRows`; the fold keeps every notice's payload on
    `SystemLine.notice`, `Board.isOutcome` picks the ones with a gate or a
@@ -1655,9 +1653,9 @@ Fleet (`Thread/FleetView.swift`): the goal in `body` text, then one status
 line with its mark (the orchestrator's own state while it runs, waits,
 fails, is paused, stopped or queued; else what it waits on: "Waiting on
 its subagents", also while a child is only queued, "A subagent needs you",
-"Done", "Done, one agent stopped"; the headers carry the counts, the line
-never repeats them), then the fleet in four groups under the design's
-section headers with a count: **Running**, **Waiting**, **Queued**,
+"Done", "Done, one agent stopped"; the line never counts), then the
+fleet in four groups under the design's section headers, each its word
+alone as the desktop's board sections read: **Running**, **Waiting**, **Queued**,
 **Done** (failed and stopped agents sit first in Done with their marks).
 Empty groups are left out. Log is the orchestrator's own transcript.
 

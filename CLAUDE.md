@@ -2882,7 +2882,10 @@ proof and the sizing rules; the pieces, by name:
   typed payloads the fold keeps on `SystemLine.notice`/`.failure` and
   `UserTurn.preamble`; the client package ports the desktop's
   `failureActions` as `FailureActions` (`Rendering/Notices.swift`, with
-  `GateText` and `ReviewText`) and speaks `session.continue`,
+  `GateText` and `ReviewText`; the phone's reach is Route automatically,
+  Continue on another model through the composer's model menu, and Retry,
+  label-sized, the first solid) and speaks `session.continue` (with the
+  picked model for Continue on another model),
   `session.reroute` and `review.override` (`Client/NoticeActions.swift`).
   The fleet switches, the Resources sheet and the archive prompt (thread
   iOS 20) sit on the client package's `Client/ThreadBatch.swift`,
@@ -2904,8 +2907,7 @@ proof and the sizing rules; the pieces, by name:
   absent on an older host and read as none; pins carry `meta`; a key's row,
   `AccountProfile.kind == .key`, draws no bar while it has room and says
   "pay as you go"); the failure card's `FailureActions` takes the same
-  provider (`key_invalid` and a keyless Meta thread are Retry with a line
-  naming the desktop). A failed thread's row and Home's cue read the
+  provider (`key_invalid` and a keyless Meta thread are Retry alone). A failed thread's row and Home's cue read the
   host's `failure.summary` (`Shell/FailureCue.swift`). The test server
   seeds two Claude accounts, one Meta key and a Meta thread (`ios-meta`,
   Muse Wonder on the claude harness) and answers `POST /accounts/headroom`.

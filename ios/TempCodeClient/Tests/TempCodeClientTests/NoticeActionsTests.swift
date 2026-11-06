@@ -46,9 +46,10 @@ private final class NoticeRig {
         throw TransportError.notConnected
     }
 
-    func request(_ fake: FakeWebSocket, _ method: String) async -> (id: String, method: String, params: JSONValue)? {
+    func request(_ fake: FakeWebSocket, _ method: String, count: Int = 1) async -> (id: String, method: String, params: JSONValue)? {
         for _ in 0..<4000 {
-            if let match = fake.sentRequests.first(where: { $0.method == method }) { return match }
+            let matching = fake.sentRequests.filter { $0.method == method }
+            if matching.count >= count { return matching[count - 1] }
             await Task.yield()
         }
         return nil
@@ -76,6 +77,12 @@ private final class NoticeRig {
         #expect(request.params == .object(["sessionId": .string("s1")]))
         fake.answer(id: request.id, result: "null")
         try await retrying.value
+        // Continue on another model: the same call carrying the pick.
+        let moving = Task { try await rig.client.continueThread("s1", model: TurnModel(provider: .codex, model: "gpt-6.1-sol", reasoning: .high)) }
+        let picked = try #require(await rig.request(fake, "session.continue", count: 2))
+        #expect(picked.params == .object(["sessionId": .string("s1"), "provider": .string("codex"), "model": .string("gpt-6.1-sol"), "reasoning": .string("high")]))
+        fake.answer(id: picked.id, result: "null")
+        try await moving.value
         await rig.client.stop()
     }
 

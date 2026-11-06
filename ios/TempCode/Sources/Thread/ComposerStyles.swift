@@ -109,6 +109,8 @@ final class CatalogChoice {
 struct ModelMenu<Content: View>: View {
     @Bindable var choice: CatalogChoice
     var effort = false
+    /// Called after a model is chosen (the failure card's Continue on another model).
+    var onPick: ((ModelKey) -> Void)?
     @ViewBuilder let label: Content
 
     var body: some View {
@@ -119,6 +121,7 @@ struct ModelMenu<Content: View>: View {
                         let key = ModelKey(provider: provider.id, model: model.id)
                         Button {
                             choice.choose(key)
+                            onPick?(key)
                         } label: {
                             if key == choice.key {
                                 Label(model.label, systemImage: "checkmark")

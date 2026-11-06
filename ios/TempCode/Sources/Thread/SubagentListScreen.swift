@@ -6,8 +6,8 @@ import TempCodeContract
 /// screen: every child of `rootSessionId` on every paired host, in its
 /// groups, Running, Waiting, Queued, Done, each row the agent's mark,
 /// title, meta, latest line and figures, live as the hosts stream. Nothing
-/// to pull; it updates in place. The section headers carry the counts; the
-/// bar names the thread. Agents on a host this phone is not paired with are
+/// to pull; it updates in place. The section headers carry their word alone;
+/// the bar names the thread. Agents on a host this phone is not paired with are
 /// counted once at the foot. Tap pushes the agent's detail, read from the
 /// agent's own host. Pushed from a thread's toolbar.
 struct SubagentListScreen: View {

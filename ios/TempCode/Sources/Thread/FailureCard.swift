@@ -4,9 +4,11 @@ import TempCodeContract
 
 /// The row a failed turn ends on, the desktop's FailureCard recipe: a card
 /// at radius 8, 12 in, the summary in the line type at medium beside the red
-/// glyph, the likely cause muted 2 pt under it, the note naming what only
-/// the desktop can do, and at most three actions this key can take, Retry
-/// last, everything under the summary on its text edge. The words are the host's
+/// glyph, the likely cause muted 2 pt under it, and at most three actions
+/// this key can take on the summary's text edge, each sized to its label:
+/// the first solid, the rest quiet, Retry last. Continue on another model
+/// opens the composer's model menu and continues on the pick
+/// (`session.continue` with the model). The words are the host's
 /// (failureKind.ts); nothing here reads the error text.
 struct FailureCard: View {
     let line: SystemLine
@@ -16,6 +18,8 @@ struct FailureCard: View {
     @State private var pending: FailureAction.ID?
     @State private var outcome: String?
     @State private var outcomeIsError = false
+    /// The composer's catalog, for Continue on another model.
+    @State private var choice = CatalogChoice(provider: .claude, model: "", reasoning: nil)
     /// The cause sits 2 pt under the summary (the desktop's `mt-0.5`).
     private static let causeGap: CGFloat = 2
 
@@ -30,7 +34,9 @@ struct FailureCard: View {
     var body: some View {
         let busy = busy
         let block = client.operateBlock
+        // Another model needs the thread's own model to start the menu from.
         let actions = FailureActions.actions(kind: failure.kind, routed: routed, roomElsewhere: failure.roomElsewhere)
+            .filter { $0.id != .pickModel || client.session(sessionId) != nil }
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: TranscriptMetrics.glyphGap) {
                 Image(systemName: "exclamationmark.triangle")
@@ -47,22 +53,16 @@ struct FailureCard: View {
                     .transcriptType(TranscriptType.line)
                     .foregroundStyle(.secondary)
                     .padding(.top, Self.causeGap)
-                if let note = FailureActions.note(kind: failure.kind, routed: routed, roomElsewhere: failure.roomElsewhere) {
-                    Text(note)
-                        .transcriptType(TranscriptType.detail)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, TranscriptMetrics.wordGap)
-                }
                 Group {
                     if let block, !block.isTransient {
                         Text(block.text(now: Date().timeIntervalSince1970 * 1000))
                             .transcriptType(TranscriptType.line)
                             .foregroundStyle(.secondary)
                     } else {
-                        // Side by side while every label fits on one line, else stacked full width.
+                        // Side by side while every label fits on one line, else stacked; each as wide as its label.
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: TranscriptMetrics.glyphGap) { actionButtons(actions) }
-                            VStack(spacing: TranscriptMetrics.glyphGap) { actionButtons(actions) }
+                            VStack(alignment: .leading, spacing: TranscriptMetrics.glyphGap) { actionButtons(actions) }
                         }
                         .controlSize(.small)
                         .disabled(busy || pending != nil || block != nil)
@@ -91,23 +91,31 @@ struct FailureCard: View {
         .onChange(of: busy) { _, now in
             if now { pending = nil }
         }
+        .task {
+            guard actions.contains(where: { $0.id == .pickModel }) else { return }
+            await choice.load(client)
+            if let session = client.session(sessionId) { choice.follow(session) }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(failure.summary)
     }
 
     @ViewBuilder
     private func actionButtons(_ actions: [FailureAction]) -> some View {
-        ForEach(actions) { action in
-            if action.id == .retry {
-                Button { act(action.id) } label: {
-                    Text(label(action)).lineLimit(1).frame(maxWidth: .infinity)
+        ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
+            if action.id == .pickModel {
+                // The composer's model menu; the pick continues the thread on it.
+                ModelMenu(choice: choice, onPick: continueOn) {
+                    Text(label(action)).lineLimit(1)
                 }
-                .buttonStyle(.borderedProminent)
+                .menuStyle(.button)
+                .failureAction(solid: index == 0)
+                .disabled(choice.catalog == nil)
             } else {
                 Button { act(action.id) } label: {
-                    Text(label(action)).lineLimit(1).frame(maxWidth: .infinity)
+                    Text(label(action)).lineLimit(1)
                 }
-                .buttonStyle(.bordered)
+                .failureAction(solid: index == 0)
             }
         }
     }
@@ -117,7 +125,7 @@ struct FailureCard: View {
     }
 
     private func act(_ id: FailureAction.ID) {
-        guard pending == nil else { return }
+        guard pending == nil, id != .pickModel else { return }
         pending = id
         outcome = nil
         outcomeIsError = false
@@ -136,7 +144,26 @@ struct FailureCard: View {
                     if let account = answer.account { say("Now on \(account)") }
                     pending = .retry
                     try await client.continueThread(sessionId)
+                case .pickModel:
+                    break // the menu's pick runs `continueOn`
                 }
+            } catch {
+                settle(error)
+            }
+        }
+    }
+
+    /// Continue on another model: the thread continues on the pick (a pick of
+    /// its own model is a plain continue).
+    private func continueOn(_ key: ModelKey) {
+        guard pending == nil else { return }
+        pending = .pickModel
+        outcome = nil
+        outcomeIsError = false
+        let model = client.session(sessionId).flatMap { TurnModel.override(for: $0, provider: key.provider, model: key.model, reasoning: choice.reasoning) }
+        Task {
+            do {
+                try await client.continueThread(sessionId, model: model)
             } catch {
                 settle(error)
             }
@@ -154,5 +181,17 @@ struct FailureCard: View {
     private func say(_ text: String) {
         outcome = text
         AccessibilityNotification.Announcement(text).post()
+    }
+}
+
+private extension View {
+    /// The card's first action is solid; the rest are quiet, in the label colour.
+    @ViewBuilder
+    func failureAction(solid: Bool) -> some View {
+        if solid {
+            buttonStyle(.borderedProminent)
+        } else {
+            buttonStyle(.bordered).tint(.primary)
+        }
     }
 }
