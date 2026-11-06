@@ -1337,7 +1337,24 @@ stub('send', async (sessionId, text, opts) => {
   registry.append(sessionId, { type: 'status', status: 'running' })
 })
 // The composer's long press (and a paused thread's tap): the message waits for the next turn.
-stub('queueAdd', (sessionId, text) => {
+// A steer (`steer: true`, the composer's tap mid-turn) is handed over as the
+// host's steerLive does: the user row with its steerId, then its `steer`
+// rows, Sent at once and Received STEER_RECEIVED_MS later (the model read it),
+// each recorded so the proof reads both back.
+const STEER_RECEIVED_MS = 12_000
+stub('queueAdd', (sessionId, text, opts) => {
+  if (opts?.steer && !opts.attachments?.length) {
+    const steerId = `steer-${actions.length + 1}`
+    record('steer', sessionId, { text, steerId })
+    registry.append(sessionId, { type: 'user-text', text, steerId })
+    registry.append(sessionId, { type: 'steer', steerId, state: 'sent' })
+    record('steer-sent', sessionId, { steerId })
+    setTimeout(() => {
+      registry.append(sessionId, { type: 'steer', steerId, state: 'received', how: 'in-turn' })
+      record('steer-received', sessionId, { steerId })
+    }, STEER_RECEIVED_MS)
+    return { kind: 'steered', id: steerId }
+  }
   record('queue', sessionId, { text })
   return { kind: 'queued', item: { id: `q${actions.length}`, text, ts: Date.now() } }
 })

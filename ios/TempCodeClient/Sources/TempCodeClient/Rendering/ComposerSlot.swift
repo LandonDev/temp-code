@@ -56,18 +56,22 @@ public enum ComposerSlot: Hashable, Sendable {
 
     /// When the open turn's clock started: the click that opened it
     /// (`sentAt`, kept after the host's stamp lands so the timer never steps
-    /// back by the round trip), else the host's `busySince`.
-    public static func turnStart(sentAt: Int?, busySince: Int?) -> Int? {
-        sentAt ?? busySince
+    /// back by the round trip), else the host's `busySince`. `sentTurn` is
+    /// the host's stamp of the turn the click opened: a turn with another
+    /// stamp is a later one, and the click is ignored.
+    public static func turnStart(sentAt: Int?, busySince: Int?, sentTurn: Int? = nil) -> Int? {
+        guard let sentAt else { return busySince }
+        if let sentTurn, let busySince, sentTurn != busySince { return busySince }
+        return sentAt
     }
 
     /// The milliseconds the slot shows: the open turn's run from its start
     /// (nil under a second, as the desktop's timer is), a paused or stopped
     /// turn's frozen span (nil when none), nothing for queued or empty.
-    public static func elapsedMs(_ slot: ComposerSlot, sentAt: Int?, busySince: Int?, frozen: Int?, now: Int) -> Int? {
+    public static func elapsedMs(_ slot: ComposerSlot, sentAt: Int?, busySince: Int?, sentTurn: Int? = nil, frozen: Int?, now: Int) -> Int? {
         switch slot {
         case .timer:
-            guard let start = turnStart(sentAt: sentAt, busySince: busySince) else { return nil }
+            guard let start = turnStart(sentAt: sentAt, busySince: busySince, sentTurn: sentTurn) else { return nil }
             let run = max(0, now - start)
             return run >= 1000 ? run : nil
         case .paused, .stopped:
@@ -100,20 +104,23 @@ public enum DockBacking: String, Hashable, Sendable {
 /// none of it, so the composer, its glass and its row do not run again for
 /// a streamed word.
 public struct DockState: Sendable, Hashable {
-    /// A send waits for the host's echo.
+    /// A send is out: from the click until the host's status moves.
     public var sending: Bool
     /// When this device's send opened the turn (`ThreadState.sentAt`).
     public var sentAt: Int?
+    /// The host's stamp of the turn the click opened (`ThreadState.sentTurn`).
+    public var sentTurn: Int?
     /// A compaction is open in the turn.
     public var compacting: Bool
 
-    public init(sending: Bool = false, sentAt: Int? = nil, compacting: Bool = false) {
+    public init(sending: Bool = false, sentAt: Int? = nil, sentTurn: Int? = nil, compacting: Bool = false) {
         self.sending = sending
         self.sentAt = sentAt
+        self.sentTurn = sentTurn
         self.compacting = compacting
     }
 
     public init(_ thread: ThreadState) {
-        self.init(sending: thread.sending, sentAt: thread.sentAt, compacting: thread.fold.board.compacting)
+        self.init(sending: thread.sending, sentAt: thread.sentAt, sentTurn: thread.sentTurn, compacting: thread.fold.board.compacting)
     }
 }

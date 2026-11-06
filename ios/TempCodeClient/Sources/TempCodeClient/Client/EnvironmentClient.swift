@@ -27,13 +27,23 @@ public struct ThreadState: Sendable, Hashable {
     public var pending: [PendingTurn] = []
     /// The next optimistic row's key: below every provisional call's.
     public var nextPendingKey = -100_000
-    /// A send is on its way: from the call until the host starts the turn or echoes the text.
+    /// A send is on its way: from the click until the host's status moves
+    /// (the turn starts, is held, or a status row lands after the echo). The
+    /// echo alone never ends it, so the slot and the button hold busy
+    /// through the gap between the echo and the host's `starting`.
     public var sending = false
     /// When the person's click opened the turn the slot is timing (the
     /// desktop's `sentAt`): stamped by a send into a thread with no turn
     /// open, kept after the host's `busySince` lands so the timer never
     /// steps back by the round trip, cleared once the turn settles.
     public var sentAt: Int?
+    /// The seq of the clicked send's echo: a status row after it is the
+    /// host's word on the turn the click opened.
+    public var sendEcho: Int?
+    /// The host's `busySince` for the turn the click opened, once it showed
+    /// open: a later turn carries another, so a click that outlived its turn
+    /// never times the next one (`ComposerSlot.turnStart`).
+    public var sentTurn: Int?
     /// Approval decisions this device gave that the host has not confirmed yet, by request id.
     public var decisions: [String: Bool] = [:]
     /// Approvals whose decision is on the wire, by request id: a second tap sends nothing.
@@ -130,8 +140,13 @@ public struct ThreadState: Sendable, Hashable {
                     // The echo is drawn where the optimistic row was, under its key.
                     if let key = pending[at].key { fold.rekeyEcho(seq: row.seq, key: key) }
                     pending.remove(at: at)
+                    if sending || sentAt != nil { sendEcho = row.seq }
                 }
-                if pending.isEmpty { sending = false }
+            case .status(let event):
+                // The host's status after the echo: the turn moved, or it already closed.
+                guard let echo = sendEcho, row.seq > echo else { break }
+                sending = false
+                if !ComposerSlot.turnOpen(event.status) { clearClick() }
             case .approvalResolved(let event):
                 decisions[event.requestId] = nil
             case .questionResolved(let event):
@@ -140,6 +155,48 @@ public struct ThreadState: Sendable, Hashable {
                 break
             }
         }
+    }
+
+    /// A send leaves: busy from the click, and the clock stamped when no
+    /// turn is open (a steer into an open turn keeps that turn's clock).
+    /// Answers whether this click opened the turn.
+    @discardableResult
+    mutating func beginSend(status: SessionStatus?, at time: Int) -> Bool {
+        let opens = sentAt == nil && !ComposerSlot.turnOpen(status)
+        sending = true
+        if opens {
+            sentAt = time
+            sendEcho = nil
+            sentTurn = nil
+        }
+        return opens
+    }
+
+    /// The host's meta for this thread. A turn open or held is the status
+    /// moving: busy is the host's from here. Once the turn the click opened
+    /// has shown open and closed again, or the status settled with nothing
+    /// out, the click's clock goes.
+    mutating func observe(_ meta: SessionMeta) {
+        let open = ComposerSlot.turnOpen(meta.status)
+        if open {
+            sending = false
+            if sentAt != nil, sentTurn == nil { sentTurn = meta.busySince }
+        } else if meta.status == .paused || meta.status == .queued || meta.status == .stopped {
+            sending = false
+        }
+        if !open, !sending || sentTurn != nil { clearClick() }
+    }
+
+    private mutating func clearClick() {
+        sending = false
+        sentAt = nil
+        sendEcho = nil
+        sentTurn = nil
+    }
+
+    /// When the open turn's clock started, as the slot shows it.
+    public func turnStart(busySince: Int?) -> Int? {
+        ComposerSlot.turnStart(sentAt: sentAt, busySince: busySince, sentTurn: sentTurn)
     }
 
     /// A message this device sends, pending under the next optimistic key.
@@ -845,10 +902,8 @@ public final class EnvironmentClient {
         var byId = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
         for meta in metas {
             byId[meta.id] = meta
-            // The host started the turn: the strip moves from Sending… to the spinner.
-            if meta.status == .starting || meta.status == .running { threads[meta.id]?.sending = false }
-            // The turn settled (or paused, or never started): the click's clock goes with it.
-            if !ComposerSlot.turnOpen(meta.status), threads[meta.id]?.sending == false { threads[meta.id]?.sentAt = nil }
+            // The host's status moves the click's busy and clock (`ThreadState.observe`).
+            threads[meta.id]?.observe(meta)
         }
         let sorted = byId.values.sorted { ($0.updatedAt, $0.id) > ($1.updatedAt, $1.id) }
         // A list that did not change in order or membership is not republished:

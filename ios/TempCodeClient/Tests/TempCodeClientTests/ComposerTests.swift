@@ -8,6 +8,16 @@ private func session(_ id: String, status: SessionStatus, parentId: String? = ni
 }
 
 @Suite struct ComposerRulesTests {
+    @Test func `a photo is content: alone in the box mid-turn it steers, and the button acts once it is on the host`() {
+        #expect(ComposerRules.intent(status: .running, sending: false, hasText: false, hasPhotos: true) == .steer)
+        #expect(ComposerRules.intent(status: .running, sending: false, hasText: false, hasPhotos: false) == .pause)
+        #expect(ComposerRules.intent(status: .idle, sending: false, hasText: false, hasPhotos: true) == .send)
+        #expect(ComposerRules.offersQueue(status: .running, sending: false, hasText: false, hasPhotos: true))
+        #expect(ComposerRules.enabled(.steer, hasText: false, hasPhotos: true, photosSettled: true, inFlight: false))
+        #expect(ComposerRules.enabled(.steer, hasText: false, hasPhotos: true, photosSettled: false, inFlight: false) == false)
+        #expect(ComposerRules.enabled(.send, hasText: false, hasPhotos: false, photosSettled: true, inFlight: false) == false)
+    }
+
     @Test func `a turn is open while the host runs, starts or waits, or a send of this device's is out; watching is not`() {
         #expect(ComposerRules.busy(status: .running, sending: false))
         #expect(ComposerRules.busy(status: .starting, sending: false))
@@ -106,6 +116,8 @@ private func session(_ id: String, status: SessionStatus, parentId: String? = ni
         // Clicked at 10 000; the host stamped busySince 10 250 after the round trip.
         #expect(ComposerSlot.turnStart(sentAt: 10_000, busySince: 10_250) == 10_000)
         #expect(ComposerSlot.turnStart(sentAt: nil, busySince: 10_250) == 10_250, "a turn another device started")
+        #expect(ComposerSlot.turnStart(sentAt: 10_000, busySince: 10_250, sentTurn: 10_250) == 10_000, "the turn the click opened keeps the click")
+        #expect(ComposerSlot.turnStart(sentAt: 10_000, busySince: 90_000, sentTurn: 10_250) == 90_000, "a later turn never times from an old click")
         #expect(ComposerSlot.elapsedMs(.timer, sentAt: 10_000, busySince: 10_250, frozen: nil, now: 13_000) == 3_000)
         #expect(ComposerSlot.elapsedMs(.timer, sentAt: 10_000, busySince: 10_250, frozen: nil, now: 10_900) == nil, "under a second shows no time")
         #expect(ComposerSlot.elapsedMs(.timer, sentAt: nil, busySince: nil, frozen: nil, now: 13_000) == nil)

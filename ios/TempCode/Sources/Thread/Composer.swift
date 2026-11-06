@@ -133,21 +133,23 @@ struct ComposerBar: View {
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var hasText: Bool { !trimmed.isEmpty }
+    /// A photo is content as text is: alone in the box mid-turn it steers.
+    private var hasPhotos: Bool { !uploads.isEmpty }
 
     /// A turn is open (a watching master's is not): the button pauses or steers.
     private var turnOpen: Bool { ComposerRules.busy(status: session?.status, sending: dock.sending) }
 
     /// What the button does now.
     private var intent: ComposerIntent {
-        ComposerRules.intent(status: session?.status, sending: dock.sending, hasText: hasText, holding: holding)
+        ComposerRules.intent(status: session?.status, sending: dock.sending, hasText: hasText, hasPhotos: hasPhotos, holding: holding)
     }
 
-    private var offersQueue: Bool { ComposerRules.offersQueue(status: session?.status, sending: dock.sending, hasText: hasText) }
+    private var offersQueue: Bool { ComposerRules.offersQueue(status: session?.status, sending: dock.sending, hasText: hasText, hasPhotos: hasPhotos) }
 
     /// Every photo is on the host; one still going up or failed holds the send (never Pause).
     private var photosSettled: Bool { uploads.allSatisfy { $0.committed != nil } }
 
-    private var enabled: Bool { block == nil && ComposerRules.enabled(intent, hasText: hasText, photosSettled: photosSettled, inFlight: busy) }
+    private var enabled: Bool { block == nil && ComposerRules.enabled(intent, hasText: hasText, hasPhotos: hasPhotos, photosSettled: photosSettled, inFlight: busy) }
 
     /// `+`: the key operates and the host is reachable.
     private var canAttach: Bool { block == nil && client.environment.allows(.operate) }
@@ -293,13 +295,22 @@ struct ComposerBar: View {
     /// The button's tap: what its glyph says.
     private func act() {
         switch intent {
-        case .send, .steer: send()
+        case .send: send()
+        case .steer: steer()
         case .queue: queue()
         case .pause: pause()
         }
     }
 
-    /// A turn, or a steer into the live one (the host decides by the turn).
+    /// Into the live turn, as the desktop's composer steers (`queue.add
+    /// { steer: true }`): the bubble's word says Sent, then Received.
+    private func steer() {
+        submit { body, settings, attachments in
+            try await client.steer(sessionId, text: body, model: settings, attachments: attachments)
+        }
+    }
+
+    /// A turn into a thread with none open.
     private func send() {
         submit { body, settings, attachments in
             try await client.send(sessionId, text: body, model: settings, attachments: attachments)
@@ -321,7 +332,7 @@ struct ComposerBar: View {
     /// all three back (photos picked meanwhile stay).
     private func submit(_ deliver: @escaping (String, TurnModel?, [Attachment]) async throws -> Void) {
         let body = trimmed
-        guard !body.isEmpty, !busy, photosSettled else { return }
+        guard !body.isEmpty || !uploads.isEmpty, !busy, photosSettled else { return }
         busy = true
         // A keyboard action never animates: the field empties at once.
         Motion.withoutAnimation { text = "" }

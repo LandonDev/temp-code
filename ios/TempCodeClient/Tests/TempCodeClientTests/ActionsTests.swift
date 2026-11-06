@@ -255,8 +255,10 @@ final class ActingRig {
         #expect(rig.client.threads["s1"]?.pending.count == 1, "answered, not echoed yet")
         rig.push(fake, rows: [EventRow(sessionId: "s1", seq: 2, ts: 2, event: .userText(UserTextEvent(text: "hello from the phone", attachments: nil, model: nil, reasoning: nil, context1m: nil, fast: nil, ultrafast: nil, newPass: nil)))])
         #expect(await rig.wait { rig.client.threads["s1"]?.pending.isEmpty == true })
-        #expect(rig.client.threads["s1"]?.sending == false)
+        #expect(rig.client.threads["s1"]?.sending == true, "the echo alone is no status: busy holds until the host's moves")
         #expect(rig.client.threads["s1"]?.entries.count == 2, "the echo row stands in for the pending turn")
+        rig.push(fake, rows: [EventRow(sessionId: "s1", seq: 3, ts: 3, event: .status(StatusEvent(status: .starting)))])
+        #expect(await rig.wait { rig.client.threads["s1"]?.sending == false })
         await rig.client.stop()
     }
 
@@ -607,15 +609,18 @@ final class ActingRig {
         fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: [sampleSession("s1", updatedAt: 3, status: .running, busySince: clicked + 400)]))))
         #expect(await rig.wait { rig.client.sessions.first?.status == .running })
         #expect(rig.client.threads["s1"]?.sentAt == clicked, "the host's later busySince never moves the clock")
-        // A steer mid-turn is no new click.
-        let steering = Task { try await rig.client.send("s1", text: "and this") }
-        let steer = try #require(await rig.request(fake, "session.send", count: 2))
+        // A steer mid-turn is no new click: queue.add { steer: true }, as the desktop's composer.
+        let steering = Task { try await rig.client.steer("s1", text: "and this") }
+        let steer = try #require(await rig.request(fake, "queue.add"))
+        #expect(steer.params == .object(["sessionId": .string("s1"), "text": .string("and this"), "steer": .bool(true)]))
         #expect(rig.client.threads["s1"]?.sentAt == clicked)
-        fake.answer(id: steer.id, result: "null")
+        #expect(rig.client.threads["s1"]?.pending.last?.text == "and this", "the steer shows at once, as a send does")
+        fake.answer(id: steer.id, result: #"{"kind":"steered","id":"q1"}"#)
         try await steering.value
+        #expect(fake.sentRequests.contains { $0.method == "queue.steer" } == false, "a steered answer needs no second call")
         let echo = { (seq: Int, text: String) in EventRow(sessionId: "s1", seq: seq, ts: seq, event: .userText(UserTextEvent(text: text, attachments: nil, model: nil, reasoning: nil, context1m: nil, fast: nil, ultrafast: nil, newPass: nil))) }
         rig.push(fake, rows: [echo(2, "go"), echo(3, "and this")])
-        #expect(await rig.wait { rig.client.threads["s1"]?.sending == false })
+        #expect(await rig.wait { rig.client.threads["s1"]?.pending.isEmpty == true })
         fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: [sampleSession("s1", updatedAt: 4, status: .idle)]))))
         #expect(await rig.wait { rig.client.sessions.first?.status == .idle })
         #expect(rig.client.threads["s1"]?.sentAt == nil)
@@ -631,6 +636,70 @@ final class ActingRig {
         fake.refuse(id: request.id, error: "no")
         await #expect(throws: ActionError.self) { try await sending.value }
         #expect(rig.client.threads["s1"]?.sentAt == nil)
+        await rig.client.stop()
+    }
+
+    @Test func `a steer with a photo the host queued goes into the turn through queue.steer; a refusal drops its pending turn`() async throws {
+        let rig = try ActingRig()
+        let fake = try await rig.open()
+        let photo = Attachment(path: "/tmp/repo/.temp-code/attachments/s1/photo-1.jpeg", name: "photo-1.jpeg", mime: "image/jpeg", kind: .image)
+        let steering = Task { try await rig.client.steer("s1", text: "", attachments: [photo]) }
+        let add = try #require(await rig.request(fake, "queue.add"))
+        guard case .object(let params) = add.params else { throw TransportError.notConnected }
+        #expect(params["steer"] == .bool(true))
+        #expect(params["text"] == .string(""), "a photo alone is a steer")
+        fake.answer(id: add.id, result: #"{"kind":"queued","item":{"id":"q7","text":"","ts":5}}"#)
+        let now = try #require(await rig.request(fake, "queue.steer"))
+        #expect(now.params == .object(["sessionId": .string("s1"), "messageId": .string("q7")]))
+        fake.answer(id: now.id, result: "null")
+        try await steering.value
+        let refused = Task { try await rig.client.steer("s1", text: "no") }
+        let second = try #require(await rig.request(fake, "queue.add", count: 2))
+        fake.refuse(id: second.id, error: "s1 is moving")
+        await #expect(throws: ActionError.self) { try await refused.value }
+        #expect(rig.client.threads["s1"]?.pending.contains { $0.text == "no" } == false)
+        await rig.client.stop()
+    }
+
+    @Test func `a send holds busy through the echo and an idle push until the host's status moves`() async throws {
+        let rig = try ActingRig()
+        let fake = try await rig.open()
+        let sending = Task { try await rig.client.send("s1", text: "go") }
+        let request = try #require(await rig.request(fake, "session.send"))
+        fake.answer(id: request.id, result: "null")
+        try await sending.value
+        let echo = EventRow(sessionId: "s1", seq: 2, ts: 2, event: .userText(UserTextEvent(text: "go", attachments: nil, model: nil, reasoning: nil, context1m: nil, fast: nil, ultrafast: nil, newPass: nil)))
+        rig.push(fake, rows: [echo])
+        #expect(await rig.wait { rig.client.threads["s1"]?.pending.isEmpty == true })
+        // The user row's own meta push, still idle: no Send flash between Pause and Pause.
+        fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: [sampleSession("s1", updatedAt: 3, status: .idle)]))))
+        #expect(await rig.wait { rig.client.sessions.first?.updatedAt == 3 })
+        let held = try #require(rig.client.threads["s1"])
+        #expect(held.sending == true)
+        #expect(held.sentAt != nil)
+        #expect(ComposerRules.intent(status: .idle, sending: held.sending, hasText: false) == .pause)
+        #expect(ComposerSlot(status: .idle, sending: held.sending) == .timer)
+        fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: [sampleSession("s1", updatedAt: 4, status: .running, busySince: 50)]))))
+        #expect(await rig.wait { rig.client.threads["s1"]?.sending == false })
+        #expect(rig.client.threads["s1"]?.sentAt != nil, "the host's start keeps the click's clock")
+        await rig.client.stop()
+    }
+
+    @Test func `a turn the host opened and closed out of sight clears the click by its status rows`() async throws {
+        let rig = try ActingRig()
+        let fake = try await rig.open()
+        let sending = Task { try await rig.client.send("s1", text: "quick") }
+        let request = try #require(await rig.request(fake, "session.send"))
+        fake.answer(id: request.id, result: "null")
+        try await sending.value
+        // Only the rows reach us; the metas between were coalesced away.
+        rig.push(fake, rows: [
+            EventRow(sessionId: "s1", seq: 2, ts: 2, event: .userText(UserTextEvent(text: "quick", attachments: nil, model: nil, reasoning: nil, context1m: nil, fast: nil, ultrafast: nil, newPass: nil))),
+            EventRow(sessionId: "s1", seq: 3, ts: 3, event: .status(StatusEvent(status: .running))),
+            EventRow(sessionId: "s1", seq: 4, ts: 4, event: .status(StatusEvent(status: .idle)))
+        ])
+        #expect(await rig.wait { rig.client.threads["s1"]?.sending == false })
+        #expect(rig.client.threads["s1"]?.sentAt == nil, "a click never outlives the turn it opened")
         await rig.client.stop()
     }
 }

@@ -66,7 +66,7 @@ struct WorkingStripView: View {
         row {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let now = Int(context.date.timeIntervalSince1970 * 1000)
-                if let ms = ComposerSlot.elapsedMs(.timer, sentAt: dock.sentAt, busySince: session?.busySince, frozen: nil, now: now) {
+                if let ms = ComposerSlot.elapsedMs(.timer, sentAt: dock.sentAt, busySince: session?.busySince, sentTurn: dock.sentTurn, frozen: nil, now: now) {
                     let shown = TimeFormat.duration(ms: ms)
                     Text(shown)
                         .transcriptType(TranscriptType.detail)

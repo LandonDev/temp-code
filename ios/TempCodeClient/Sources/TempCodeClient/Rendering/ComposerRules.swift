@@ -36,27 +36,29 @@ public enum ComposerRules {
 
     /// The desktop's `decideComposerAction`: paused queues (it goes on
     /// Continue); with no turn open it sends; mid-turn an empty box pauses
-    /// and text steers, or queues while the long press holds.
-    public static func intent(status: SessionStatus?, sending: Bool, hasText: Bool, holding: Bool = false) -> ComposerIntent {
+    /// and content steers, or queues while the long press holds. A photo is
+    /// content as text is (`hasPhotos`): a photo in an otherwise empty box
+    /// mid-turn steers.
+    public static func intent(status: SessionStatus?, sending: Bool, hasText: Bool, hasPhotos: Bool = false, holding: Bool = false) -> ComposerIntent {
         if status == .paused { return .queue }
         if !busy(status: status, sending: sending) { return .send }
-        if !hasText { return .pause }
+        if !hasText && !hasPhotos { return .pause }
         return holding ? .queue : .steer
     }
 
     /// The long press offers "Queue for the next turn" only mid-turn with
-    /// text, where a tap would steer.
-    public static func offersQueue(status: SessionStatus?, sending: Bool, hasText: Bool) -> Bool {
-        intent(status: status, sending: sending, hasText: hasText) == .steer
+    /// content, where a tap would steer.
+    public static func offersQueue(status: SessionStatus?, sending: Bool, hasText: Bool, hasPhotos: Bool = false) -> Bool {
+        intent(status: status, sending: sending, hasText: hasText, hasPhotos: hasPhotos) == .steer
     }
 
     /// The button acts: Pause always (nothing to wait for), the rest once
-    /// there is text and every photo is on the host; never while an action
-    /// is already out.
-    public static func enabled(_ intent: ComposerIntent, hasText: Bool, photosSettled: Bool, inFlight: Bool) -> Bool {
+    /// there is text or a photo and every photo is on the host; never while
+    /// an action is already out.
+    public static func enabled(_ intent: ComposerIntent, hasText: Bool, hasPhotos: Bool = false, photosSettled: Bool, inFlight: Bool) -> Bool {
         guard !inFlight else { return false }
         if intent == .pause { return true }
-        return hasText && photosSettled
+        return (hasText || hasPhotos) && photosSettled
     }
 
     /// The hold that turns a steer into a queue: the system's long press.

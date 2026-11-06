@@ -396,11 +396,9 @@ extension EnvironmentClient {
     public func send(_ sessionId: String, text: String, model: TurnModel? = nil, attachments: [Attachment]? = nil, newPass: Bool? = nil) async throws {
         if let block = operateBlock { throw ActionError.blocked(block) }
         let sentAt = Int(Date().timeIntervalSince1970 * 1000)
-        // A send into a thread with no turn open starts the slot's clock at the click.
-        let opens = threads[sessionId]?.sentAt == nil && !ComposerSlot.turnOpen(sessions.first { $0.id == sessionId }?.status)
         let turn = threads[sessionId]?.addPending(text: text, sentAt: sentAt) ?? PendingTurn(text: text, sentAt: sentAt)
-        threads[sessionId]?.sending = true
-        if opens { threads[sessionId]?.sentAt = turn.sentAt }
+        // Busy from the click; a send into a thread with no turn open starts the slot's clock there.
+        let opens = threads[sessionId]?.beginSend(status: sessions.first { $0.id == sessionId }?.status, at: sentAt) ?? false
         let named = attachments.flatMap { $0.isEmpty ? nil : $0 }
         do {
             try await request(Methods.SessionSend.self, .init(sessionId: sessionId, text: text, provider: model?.provider, model: model?.model, reasoning: model?.reasoning, attachments: named, newPass: newPass))
@@ -410,6 +408,29 @@ extension EnvironmentClient {
                 threads[sessionId]?.sending = false
                 if opens { threads[sessionId]?.sentAt = nil }
             }
+            throw ActionError.wrap(error)
+        }
+    }
+
+    /// Text into the live turn, the desktop's composer steer: `queue.add
+    /// { steer: true }`, which the host answers `steered` when it handed the
+    /// text to the harness (its user row carries a `steerId`, and the
+    /// `steer` rows say Sent, then Received under the bubble). A steer with
+    /// photos, or one the harness could not take now, comes back `queued`
+    /// and goes into the turn at once through `queue.steer`. The turn shows
+    /// at once as pending, as a send does; the turn's clock stays.
+    public func steer(_ sessionId: String, text: String, model: TurnModel? = nil, attachments: [Attachment]? = nil) async throws {
+        if let block = operateBlock { throw ActionError.blocked(block) }
+        let sentAt = Int(Date().timeIntervalSince1970 * 1000)
+        let turn = threads[sessionId]?.addPending(text: text, sentAt: sentAt) ?? PendingTurn(text: text, sentAt: sentAt)
+        let named = attachments.flatMap { $0.isEmpty ? nil : $0 }
+        do {
+            let answer = try await request(Methods.QueueAdd.self, .init(sessionId: sessionId, text: text, provider: model?.provider, model: model?.model, reasoning: model?.reasoning, attachments: named, steer: true))
+            if case .queued(let queued) = answer {
+                try await request(Methods.QueueSteer.self, .init(sessionId: sessionId, messageId: queued.item.id))
+            }
+        } catch {
+            threads[sessionId]?.pending.removeAll { $0.id == turn.id }
             throw ActionError.wrap(error)
         }
     }

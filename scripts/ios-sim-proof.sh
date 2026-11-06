@@ -35,7 +35,8 @@
 #   actions The steering shots: a read key's disabled composer and card, then
 #           the app re-paired with TC_TEST_PAIR_LINK_OPERATE (a key that may act):
 #           the composer's button as Send, steer (a wrapping draft) and Pause,
-#           a send landing as the user row, a message queued for the next turn,
+#           a send landing as the user row, a steer's Sent then Received under
+#           its bubble, a message queued for the next turn,
 #           Pause and Stop mid-turn, approve and deny,
 #           a question answered, Start from the plan into a build, the
 #           workspace's chat draft and a new chat sent from it (one create
@@ -539,6 +540,11 @@ actions_set() {
   TC_ACTION="draft:Check the totals" shot "act-draft-send-light" thread "gateway refuse"
   TC_ACTION="draft:Also rerun the suite once the fix lands, then tell me what changed in the totals and why" shot "act-draft-steer-light" thread "Index the archive"
   shot "act-pause-button-light" thread "Index the archive"
+  # A steer mid-turn (queue.add { steer: true }): its bubble says Sent, then
+  # Received once the host's stand-in marks it read (12 s later).
+  TC_ACTION="steer:Use the archive table instead" shot "act-steer-sent-light" thread "Index the archive" "" "" 4
+  sleep 10
+  shot "act-steer-received-light" thread "Index the archive"
   TC_ACTION="queue:After this turn" shot "act-queue-light" thread "Thread B"
   TC_ACTION="pause" shot "act-pause-light" thread "Thread B"
   TC_ACTION="stop" shot "act-stop-light" thread "Thread B"
@@ -576,7 +582,7 @@ actions_set() {
   python3 - "$(control /actions)" <<'PY'
 import json, sys
 kinds = [a["kind"] for a in json.loads(sys.argv[1])["actions"]]
-want = {"send": 5, "queue": 1, "pause": 1, "stop": 1, "approve": 2, "answer": 1, "create": 3, "pin": 1, "rename": 1, "archive": 1}
+want = {"send": 5, "steer": 1, "steer-sent": 1, "steer-received": 1, "queue": 1, "pause": 1, "stop": 1, "approve": 2, "answer": 1, "create": 3, "pin": 1, "rename": 1, "archive": 1}
 counts = {k: kinds.count(k) for k in want}
 missing = {k: v for k, v in want.items() if counts[k] < v}
 # The new chat is made by its draft: one create whose first message is the draft's text.

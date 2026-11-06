@@ -361,6 +361,8 @@ struct ThreadScreen: View {
         switch parts[0] {
         case "send":
             try? await client.send(sessionId, text: argument)
+        case "steer":
+            try? await client.steer(sessionId, text: argument)
         case "stop":
             try? await client.stop(sessionId)
         case "pause":
