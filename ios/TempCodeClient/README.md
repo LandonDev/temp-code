@@ -160,7 +160,12 @@ the method (an older build; the cursor is dropped), the whole `session.list`
 walk runs as before, with the archived walk off the open handler, and the
 head taken BEFORE the walk is the cursor, so changes that land during the
 walk are replayed next time rather than lost; a walk cut short drops the
-cursor, so the next session lists whole again. `shellSource` says where the
+cursor, so the next session lists whole again. A `sessions`,
+`session-removed` or `session-moved` push (or a thread this device adopted)
+handled while a walk or a change-log answer is out wins over that answer:
+the answer never puts back a meta the push replaced and never drops as gone
+a thread the push brought in (`heardAt`), since any later change reaches the
+phone as a push of its own. `shellSource` says where the
 list came from last (`none`, `cache`, `changes`, `list`). `bootResume` is
 the host's restart notice (`BootResumeNotice`: count and the boot's time),
 set once per boot from the `boot-resume` push the host repeats on every
@@ -393,6 +398,20 @@ the child placed on the second host, the ghost child unpaired, `fs.media`
 stamped with its host) runs only with them. The simulator proof's
 `features` set pairs the second host last (`TC_TEST_PAIR_LINK_SECOND`) and
 shoots Home's linked project.
+
+Every test waits through `eventually` (Tests/TempCodeClientTests/Waiting.swift),
+which returns the moment its condition holds and gives up only after
+`waitDeadline` (60 s): the publish gate runs this suite beside the app's
+signing, where a test can sit unscheduled for many seconds, and a 3 s
+deadline once failed there with nothing wrong. A timer under test (the
+batch push's 500 ms window, the release watcher's fetches, the socket's
+backoff) runs on the injected `SocketClock`, and the test moves a
+`ManualClock` past it and awaits the timer itself (its task, or its sleeper on the clock); never a real sleep
+and a check. A wait proves that something happens; a negative check reads
+once, after the clock has moved past the moment it would have happened.
+`TC_TEST_NO_HARNESS=1 bun run ios:test:client` keeps the test server's
+seeded threads from booting CLIs (an agent shell's 8 GiB call cap kills a
+run that boots them).
 
 Both `ios:test` and `ios:test:client` run in the release gate
 (scripts/release.ts). Without the live environment the `LiveServerTests`

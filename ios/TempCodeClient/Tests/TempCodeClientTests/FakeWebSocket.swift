@@ -107,7 +107,7 @@ final class FakeWebSocket: WebSocketConnection {
 
     /// Waits until the transport has sent `count` requests.
     func waitForSent(_ count: Int) async {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             if state.withLock({ $0.sent.count }) >= count { return }
             try? await Task.sleep(for: .milliseconds(1))
@@ -155,7 +155,7 @@ final class FakeSocketFactory: Sendable {
 
     /// The n-th socket, waiting for it to be made.
     func socket(_ index: Int) async -> FakeWebSocket {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             if let socket = state.withLock({ $0.made.count > index ? $0.made[index] : nil }) { return socket }
             try? await Task.sleep(for: .milliseconds(1))

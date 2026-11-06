@@ -24,6 +24,7 @@ private func batchState(_ summary: String, masterId: String = "m") -> BatchState
 private final class BatchRig {
     let sockets = FakeSocketFactory()
     let keys = InMemoryKeyStore()
+    let clock = ManualClock(random: [0])
     let client: EnvironmentClient
 
     init(caps: [Capability] = [.read, .operate]) throws {
@@ -32,7 +33,7 @@ private final class BatchRig {
             let body = #"{"ticket":"t","expiresIn":30}"#
             return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         }
-        client = EnvironmentClient(environment: batchEnvironment(caps), keys: keys, cache: try SessionCache.inMemory(), api: api, connect: sockets.factory, clock: ManualClock(random: [0]))
+        client = EnvironmentClient(environment: batchEnvironment(caps), keys: keys, cache: try SessionCache.inMemory(), api: api, connect: sockets.factory, clock: clock)
     }
 
     /// Starts the client and says hello; the socket counts as open from then on.
@@ -45,16 +46,17 @@ private final class BatchRig {
     }
 
     func wait(_ predicate: () -> Bool) async -> Bool {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-        while ContinuousClock.now < deadline {
-            if predicate() { return true }
-            try? await Task.sleep(for: .milliseconds(1))
-        }
-        return false
+        await eventually(predicate)
+    }
+
+    /// The timer holding `masterId`'s next state, once it sleeps on the clock.
+    func armedTimer(_ masterId: String) async -> Task<Void, Never>? {
+        guard await wait({ self.clock.pendingSleeps == 1 }) else { return nil }
+        return client.batchTimers[masterId]
     }
 
     func request(_ fake: FakeWebSocket, _ method: String) async -> (id: String, method: String, params: JSONValue)? {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             if let sent = fake.sentRequests.first(where: { $0.method == method }) { return sent }
             try? await Task.sleep(for: .milliseconds(1))
@@ -72,26 +74,34 @@ private final class BatchRig {
         #expect(await rig.wait { rig.client.batchState("m")?.rules.summary == "first" })
     }
 
-    @Test("a second state inside the window waits and lands as the newest, about 500 ms after the first", .timeLimit(.minutes(1))) func coalesces() async throws {
+    @Test("a second state inside the window waits and lands as the newest, 500 ms after the first") func coalesces() async throws {
         let rig = try BatchRig()
         rig.client.applyBatch(batchState("first"))
         #expect(rig.client.batchState("m")?.rules.summary == "first")
+        await rig.clock.advance(ms: 100)
         rig.client.applyBatch(batchState("second"))
         rig.client.applyBatch(batchState("third"))
+        let timer = try #require(await rig.armedTimer("m"))
+        await rig.clock.advance(ms: 399)
+        #expect(rig.clock.pendingSleeps == 1)
         #expect(rig.client.batchState("m")?.rules.summary == "first")
-        try await Task.sleep(for: .milliseconds(1_200))
+        await rig.clock.advance(ms: 1)
+        await timer.value
         #expect(rig.client.batchState("m")?.rules.summary == "third")
+        #expect(rig.client.batchTimers["m"] == nil)
         // Another master has its own window.
         rig.client.applyBatch(batchState("other", masterId: "m2"))
         #expect(rig.client.batchState("m2")?.rules.summary == "other")
     }
 
-    @Test("an answer that lands supersedes a push waiting in the window", .timeLimit(.minutes(1))) func answerSupersedes() async throws {
+    @Test("an answer that lands supersedes a push waiting in the window") func answerSupersedes() async throws {
         let rig = try BatchRig()
         rig.client.applyBatch(batchState("first"))
         rig.client.applyBatch(batchState("stale push"))
+        let timer = try #require(await rig.armedTimer("m"))
         rig.client.publishBatch(batchState("answer"))
-        try await Task.sleep(for: .milliseconds(1_200))
+        await rig.clock.advance(ms: 500)
+        await timer.value
         #expect(rig.client.batchState("m")?.rules.summary == "answer")
     }
 

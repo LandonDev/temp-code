@@ -38,7 +38,7 @@ private final class PushRig {
 
     private func answer(_ fake: FakeWebSocket, status: PushStatus) async {
         var answered: Set<String> = []
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             for sent in fake.sentRequests where !answered.contains(sent.id) {
                 switch sent.method {
@@ -59,7 +59,7 @@ private final class PushRig {
     }
 
     func waitFor(_ fake: FakeWebSocket, _ method: String, count: Int = 1) async -> (id: String, method: String, params: JSONValue)? {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             let matching = fake.sentRequests.filter { $0.method == method }
             if matching.count >= count { return matching[count - 1] }
@@ -69,7 +69,7 @@ private final class PushRig {
     }
 
     func wait(_ predicate: () -> Bool) async -> Bool {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             if predicate() { return true }
             try? await Task.sleep(for: .milliseconds(1))

@@ -77,7 +77,7 @@ private final class RelayRig {
     /// Answers the shell listing and the push calls on a socket as the host would.
     func answer(_ fake: FakeWebSocket) async {
         var answered: Set<String> = []
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             for sent in fake.sentRequests where !answered.contains(sent.id) {
                 switch sent.method {
@@ -99,7 +99,7 @@ private final class RelayRig {
     }
 
     func wait(_ predicate: () -> Bool) async -> Bool {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             if predicate() { return true }
             try? await Task.sleep(for: .milliseconds(1))

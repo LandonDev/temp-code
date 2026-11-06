@@ -28,7 +28,8 @@ private final class NoticeRig {
         let fake = await sockets.socket(0)
         fake.hello(caps: environment.caps.map(\.rawValue))
         var answered: Set<String> = []
-        for _ in 0..<4000 {
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
+        while ContinuousClock.now < deadline {
             for sent in fake.sentRequests where !answered.contains(sent.id) {
                 switch sent.method {
                 case "workspace.list": fake.answer(id: sent.id, result: json([sampleWorkspace("w1")]))
@@ -41,18 +42,14 @@ private final class NoticeRig {
                 answered.insert(sent.id)
             }
             if client.status.transport == .open, client.status.fresh { return fake }
-            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(1))
         }
         throw TransportError.notConnected
     }
 
     func request(_ fake: FakeWebSocket, _ method: String, count: Int = 1) async -> (id: String, method: String, params: JSONValue)? {
-        for _ in 0..<4000 {
-            let matching = fake.sentRequests.filter { $0.method == method }
-            if matching.count >= count { return matching[count - 1] }
-            await Task.yield()
-        }
-        return nil
+        guard await eventually({ fake.sentRequests.filter { $0.method == method }.count >= count }) else { return nil }
+        return fake.sentRequests.filter { $0.method == method }[count - 1]
     }
 }
 

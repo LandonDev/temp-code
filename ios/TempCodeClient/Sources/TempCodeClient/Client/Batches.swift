@@ -8,7 +8,7 @@ import TempCodeContract
 /// board twice a second and the last state of a burst always lands.
 extension EnvironmentClient {
     /// How far apart two landings of one master's batch are, at least.
-    static let batchWindow: Duration = .milliseconds(500)
+    static let batchWindowMs: Double = 500
 
     /// The master's batch as last heard; nil until `batch.get` or the push.
     public func batchState(_ masterId: String) -> BatchState? { batches[masterId] }
@@ -22,19 +22,22 @@ extension EnvironmentClient {
 
     /// The push, coalesced: the first state in a window lands at once, the
     /// rest wait until the window after the last landing ends, and only the
-    /// newest of them lands.
+    /// newest of them lands. The window runs on the client's clock, so a test
+    /// moves it by hand.
     func applyBatch(_ state: BatchState) {
         let id = state.masterId
-        let now = ContinuousClock.now
-        guard let last = batchLanded[id], now - last < Self.batchWindow else {
+        let now = clock.now
+        guard let last = batchLanded[id], now - last < Self.batchWindowMs else {
             publishBatch(state)
             return
         }
         batchPending[id] = state
         guard batchTimers[id] == nil else { return }
-        let delay = Self.batchWindow - (now - last)
+        // Clamped: a wall clock stepped back never holds a state past one window.
+        let delay = min(Self.batchWindowMs, Self.batchWindowMs - (now - last))
+        let clock = clock
         batchTimers[id] = Task { [weak self] in
-            try? await Task.sleep(for: delay)
+            try? await clock.sleep(ms: delay)
             guard let self else { return }
             self.batchTimers[id] = nil
             if let pending = self.batchPending.removeValue(forKey: id) { self.publishBatch(pending) }
@@ -43,7 +46,7 @@ extension EnvironmentClient {
 
     /// Lands a state now; a state that waited behind it is superseded.
     func publishBatch(_ state: BatchState) {
-        batchLanded[state.masterId] = ContinuousClock.now
+        batchLanded[state.masterId] = clock.now
         batchPending[state.masterId] = nil
         if batches[state.masterId] != state { batches[state.masterId] = state }
     }

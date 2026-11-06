@@ -132,7 +132,7 @@ private final class StreamRig {
     }
 
     func wait(_ predicate: () -> Bool) async -> Bool {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             if predicate() { return true }
             try? await Task.sleep(for: .milliseconds(1))

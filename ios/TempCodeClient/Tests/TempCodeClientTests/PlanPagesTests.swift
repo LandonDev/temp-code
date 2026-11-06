@@ -28,14 +28,15 @@ private func long(_ marker: String) -> String {
     String(repeating: "A line of \(marker) prose that is long enough to matter.\n", count: 200)
 }
 
-/// Polls `document` until the parse of `text` lands; nil after two seconds.
+/// Polls `document` until the parse of `text` lands; nil past `waitDeadline`.
 @MainActor
 private func settled(_ pages: PlanPages, _ key: String, _ text: String) async -> PlanDocument? {
-    for _ in 0..<400 {
-        if let document = pages.document(key, text: text), document.textHash == text.hashValue { return document }
-        try? await Task.sleep(for: .milliseconds(5))
+    var document: PlanDocument?
+    _ = await eventually {
+        document = pages.document(key, text: text)
+        return document?.textHash == text.hashValue
     }
-    return nil
+    return document?.textHash == text.hashValue ? document : nil
 }
 
 @Suite struct PlanPagesTests {

@@ -33,7 +33,7 @@ private final class ExtrasRig {
     }
 
     func wait(_ predicate: () -> Bool) async -> Bool {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             if predicate() { return true }
             try? await Task.sleep(for: .milliseconds(1))
@@ -42,7 +42,7 @@ private final class ExtrasRig {
     }
 
     func waitAsync(_ predicate: () async -> Bool) async -> Bool {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             if await predicate() { return true }
             try? await Task.sleep(for: .milliseconds(1))
@@ -52,7 +52,7 @@ private final class ExtrasRig {
 
     /// The `count`-th request of `method` on `fake`, once it was sent.
     func request(_ fake: FakeWebSocket, _ method: String, count: Int = 1) async -> (id: String, method: String, params: JSONValue)? {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             let matching = fake.sentRequests.filter { $0.method == method }
             if matching.count >= count { return matching[count - 1] }

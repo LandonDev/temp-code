@@ -36,7 +36,7 @@ private final class ClientRig {
         var answered: Set<String> = []
         // A non-reset reconcile never asks for a session page.
         let wanted = changes?.reset == false ? 3 : 4
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             for sent in fake.sentRequests where !answered.contains(sent.id) {
                 switch sent.method {
@@ -58,7 +58,7 @@ private final class ClientRig {
 
     /// Waits until `predicate` holds on the main actor.
     func wait(_ predicate: () -> Bool) async -> Bool {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             if predicate() { return true }
             try? await Task.sleep(for: .milliseconds(1))
@@ -68,7 +68,7 @@ private final class ClientRig {
 
     /// Waits until the async `predicate` holds.
     func waitAsync(_ predicate: () async -> Bool) async -> Bool {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             if await predicate() { return true }
             try? await Task.sleep(for: .milliseconds(1))
@@ -82,7 +82,7 @@ private final class ClientRig {
     }
 
     func waitForRequest(_ fake: FakeWebSocket, _ method: String, count: Int = 1) async -> (id: String, method: String, params: JSONValue)? {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             let matching = sent(fake, method)
             if matching.count >= count { return matching[count - 1] }
@@ -139,6 +139,33 @@ private func seqs(_ rows: [EventRow]) -> [Int] { rows.map(\.seq) }
         #expect(rig.client.sessions.map(\.id).sorted() == ["s1", "s3"])
         #expect(rig.client.workspaces.map(\.id) == ["w1"])
         #expect(try await cache.cursor("env_test", sessionId: "s1") == 60)
+    }
+
+    @Test func `a push heard while the list is out is never undone by the page, and its new thread is never gone`() async throws {
+        let rig = try ClientRig()
+        await rig.client.start()
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        // The host pushed after it answered; the phone handled the push first.
+        _ = try #require(await rig.waitForRequest(fake, "session.list"))
+        fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: [clientSession("s1", title: "Renamed", updatedAt: 5), clientSession("s9", title: "Born", updatedAt: 6)]))))
+        #expect(await rig.wait { rig.client.session("s9") != nil })
+        await rig.answerShell(fake, sessions: [clientSession("s1", title: "Old"), clientSession("s2", title: "Listed")])
+        #expect(await rig.wait { rig.client.shellSource == .list })
+        #expect(rig.client.session("s1")?.title == "Renamed")
+        #expect(rig.client.session("s2")?.title == "Listed")
+        #expect(rig.client.session("s9")?.title == "Born")
+        // The next walk starts after the push: its page is the host's word again.
+        fake.deliver(#"{"push":"resync"}"#)
+        let changes = try #require(await rig.waitForRequest(fake, "session.changes", count: 2))
+        fake.answer(id: changes.id, result: json(SessionChanges(reset: false, seq: 2, generation: "g0", sessions: [clientSession("s1", title: "Renamed again")], removed: ["s9"])))
+        for method in ["workspace.list", "project.list"] {
+            let sent = try #require(await rig.waitForRequest(fake, method, count: 2))
+            fake.answer(id: sent.id, result: method == "workspace.list" ? json([sampleWorkspace("w1")]) : json([sampleProject("p1")]))
+        }
+        #expect(await rig.wait { rig.client.shellSource == .changes })
+        #expect(rig.client.session("s1")?.title == "Renamed again")
+        #expect(rig.client.session("s9") == nil)
     }
 
     @Test func `a resync reconciles the list and open thread on the same socket`() async throws {

@@ -38,7 +38,7 @@ private final class RegistryRig {
     }
 
     func wait(_ predicate: () -> Bool) async -> Bool {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             if predicate() { return true }
             try? await Task.sleep(for: .milliseconds(1))
@@ -51,7 +51,7 @@ private final class RegistryRig {
         let fake = await sockets[id]!.socket(0)
         fake.hello(environmentId: id)
         var answered: Set<String> = []
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline, answered.count < 4 {
             for sent in fake.sentRequests where !answered.contains(sent.id) {
                 switch sent.method {

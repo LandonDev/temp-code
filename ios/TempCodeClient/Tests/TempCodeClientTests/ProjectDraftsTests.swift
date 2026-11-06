@@ -134,7 +134,7 @@ import TempCodeContract
         #expect(store.draft("p")?.text == "abc")
         #expect(defaults.data(forKey: ProjectDraftStore.defaultsKey) == nil)
         // Written once the quiet passes (polled: a loaded run's main actor may be late).
-        for _ in 0..<100 where defaults.data(forKey: ProjectDraftStore.defaultsKey) == nil { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(await eventually { defaults.data(forKey: ProjectDraftStore.defaultsKey) != nil })
         #expect(ProjectDraftStore(defaults: defaults).draft("p")?.text == "abc")
         store.set("p", ProjectDraft(text: "abcd"))
         store.flush()

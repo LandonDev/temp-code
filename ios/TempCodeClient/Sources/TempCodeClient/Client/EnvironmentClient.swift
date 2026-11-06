@@ -290,12 +290,23 @@ public final class EnvironmentClient {
     public internal(set) var notes: [String: NotesState] = [:]
     /// The batch push's coalescing (Client/Batches.swift): when each master's state last landed, the
     /// newest one waiting for its window, and the timer that lands it. Bookkeeping, never observed.
-    @ObservationIgnored var batchLanded: [String: ContinuousClock.Instant] = [:]
+    @ObservationIgnored var batchLanded: [String: Double] = [:]
     @ObservationIgnored var batchPending: [String: BatchState] = [:]
     @ObservationIgnored var batchTimers: [String: Task<Void, Never>] = [:]
+    /// The order this device heard of each thread (the list walks in `refreshShell`): every
+    /// `sessions`, `session-removed` and `session-moved` push and every `adopt` stamps its ids
+    /// with the next count. A `session.list` page or a change-log answer is the host's state when
+    /// it answered, and the phone may handle a push the host sent after that answer before the
+    /// answer itself: a walk never undoes what was stamped after it began, nor drops a thread so
+    /// brought in for missing from its pages. A push older than the answer is followed by the push
+    /// of whatever changed since, so letting the push win always settles on the host's state.
+    @ObservationIgnored private var heardCount = 0
+    @ObservationIgnored private var heardAt: [String: Int] = [:]
 
     public let socket: TempCodeSocket
     public let cache: SessionCache
+    /// The client's own timers (the batch window) run on the clock the socket runs on.
+    @ObservationIgnored let clock: any SocketClock
     public let subscriptions: Subscriptions
     /// The host detail's Activity sections (Client/HostExtras.swift, iOS 21).
     public let extras: HostExtras
@@ -344,6 +355,7 @@ public final class EnvironmentClient {
         self.keys = keys
         self.cache = cache
         self.presence = presence
+        self.clock = clock
         self.socket = TempCodeSocket(environment: environment, keys: keys, api: api, connect: connect, clock: clock, configuration: configuration)
         self.subscriptions = Subscriptions(socket: socket)
         self.extras = HostExtras(socket: socket, environment: environment, clock: clock)
@@ -735,6 +747,7 @@ public final class EnvironmentClient {
     /// during the walk are replayed next time rather than lost.
     private func refreshShell() async {
         let cursor = listCursor
+        let begun = heardCount
         // The lists are independent: one round trip for the shell. With no
         // cursor the whole list goes out alongside, since it will be needed.
         async let workspacesList = try? socket.request(Methods.WorkspaceList.self, NoParams())
@@ -756,8 +769,9 @@ public final class EnvironmentClient {
         if let answer, !answer.reset, cursor != nil {
             // The change log carries archived metas too, and an archived
             // thread that left is in `removed`: no archived walk.
-            merge(answer.sessions ?? [])
-            if let removed = answer.removed, !removed.isEmpty { removeSessions(removed) }
+            merge(unheard(answer.sessions ?? [], since: begun))
+            let removed = unheard(answer.removed ?? [], since: begun)
+            if !removed.isEmpty { removeSessions(removed) }
             hasShell = true
             shellSource = .changes
             _ = await coldPage
@@ -766,9 +780,9 @@ public final class EnvironmentClient {
         let page: SessionPage? = cursor == nil
             ? await coldPage
             : try? await socket.request(Methods.SessionList.self, .init(archived: nil, projectId: nil, cursor: nil))
-        let (listed, complete) = await walk(pages: page, archived: false)
+        let (listed, complete) = await walk(pages: page, archived: false, since: begun)
         if complete {
-            let gone = sessions.filter { !$0.archived && !listed.contains($0.id) }.map(\.id)
+            let gone = unheard(sessions.filter { !$0.archived && !listed.contains($0.id) }.map(\.id), since: begun)
             if !gone.isEmpty { removeSessions(gone) }
         } else {
             // A walk cut short (a page lost as the socket dropped) listed less
@@ -799,21 +813,23 @@ public final class EnvironmentClient {
     /// `session.list` answers live or archived threads, never both; the shell
     /// needs the archived ones for its "n archived" rows.
     private func refreshArchived() async {
+        let begun = heardCount
         let first = try? await socket.request(Methods.SessionList.self, .init(archived: true, projectId: nil, cursor: nil))
-        let (listed, complete) = await walk(pages: first, archived: true)
+        let (listed, complete) = await walk(pages: first, archived: true, since: begun)
         if complete {
-            let gone = sessions.filter { $0.archived && !listed.contains($0.id) }.map(\.id)
+            let gone = unheard(sessions.filter { $0.archived && !listed.contains($0.id) }.map(\.id), since: begun)
             if !gone.isEmpty { removeSessions(gone) }
         }
     }
 
-    /// Merges every page from `first` on; `complete` says the walk reached the end.
-    private func walk(pages first: SessionPage?, archived: Bool) async -> (listed: Set<String>, complete: Bool) {
+    /// Merges every page from `first` on, except the threads heard of after `begun`;
+    /// `complete` says the walk reached the end.
+    private func walk(pages first: SessionPage?, archived: Bool, since begun: Int) async -> (listed: Set<String>, complete: Bool) {
         var listed: Set<String> = []
         var page = first
         for _ in 0..<40 {
             guard let current = page else { return (listed, false) }
-            merge(current.sessions)
+            merge(unheard(current.sessions, since: begun))
             for session in current.sessions { listed.insert(session.id) }
             guard let cursor = current.cursor else { return (listed, true) }
             page = try? await socket.request(Methods.SessionList.self, .init(archived: archived, projectId: nil, cursor: cursor))
@@ -841,8 +857,10 @@ public final class EnvironmentClient {
         case .sessions(let value):
             // A thread listed here again (moved back) is no longer away.
             for meta in value.sessions { moved[meta.id] = nil }
+            heard(value.sessions.map(\.id))
             merge(value.sessions)
         case .sessionRemoved(let value):
+            heard(value.sessionIds)
             removeSessions(value.sessionIds)
         case .sessionMoved(let value):
             // The thread now runs on another host (docs/box.md "Moving a thread
@@ -851,6 +869,7 @@ public final class EnvironmentClient {
             // remembers where it went for a screen that is open on it.
             let record = MovedThread(sessionId: value.id, to: value.to, subagents: value.sessionIds.filter { $0 != value.id }, at: Int(Date().timeIntervalSince1970 * 1000))
             for id in [value.id] + record.subagents { moved[id] = record }
+            heard(value.sessionIds)
             removeSessions(value.sessionIds)
         case .events(let value):
             guard threads[value.sessionId] != nil else { return }
@@ -894,7 +913,24 @@ public final class EnvironmentClient {
 
     /// A thread this device just created: in the list before the `sessions` push lands.
     func adopt(_ meta: SessionMeta) {
+        heard([meta.id])
         merge([meta])
+    }
+
+    /// Stamps `ids` as heard of now (`heardAt`).
+    private func heard(_ ids: [String]) {
+        heardCount += 1
+        for id in ids { heardAt[id] = heardCount }
+    }
+
+    /// The metas of a list answer that no push or adoption has overtaken since `begun`.
+    private func unheard(_ metas: [SessionMeta], since begun: Int) -> [SessionMeta] {
+        metas.filter { (heardAt[$0.id] ?? 0) <= begun }
+    }
+
+    /// The ids of a list answer that no push or adoption has overtaken since `begun`.
+    private func unheard(_ ids: [String], since begun: Int) -> [String] {
+        ids.filter { (heardAt[$0] ?? 0) <= begun }
     }
 
     private func merge(_ metas: [SessionMeta]) {

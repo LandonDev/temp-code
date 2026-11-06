@@ -30,11 +30,7 @@ private final class SaveRecorder {
 
 @MainActor
 private func wait(_ predicate: () -> Bool) async -> Bool {
-    for _ in 0..<1000 {
-        if predicate() { return true }
-        try? await Task.sleep(for: .milliseconds(2))
-    }
-    return false
+    await eventually(predicate)
 }
 
 private let quiet: Duration = .milliseconds(20)
@@ -62,8 +58,8 @@ private let filled = ThreadNotesDoc(text: "## Goal\n\nShip.\n", updatedAt: 1, pa
         let recorder = SaveRecorder()
         let editor = NotesEditor(quiet: .milliseconds(200)) { try await recorder.save($0) }
         editor.begin(from: filled)
+        // Back to back, so the second is inside the window however late this test runs.
         editor.change("## Goal\n\nShip i\n")
-        try? await Task.sleep(for: .milliseconds(5))
         editor.change("## Goal\n\nShip it.\n")
         #expect(await wait { editor.state == .saved })
         try? await Task.sleep(for: .milliseconds(40))

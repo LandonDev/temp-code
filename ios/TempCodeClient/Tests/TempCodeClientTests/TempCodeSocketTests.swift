@@ -67,25 +67,13 @@ private final class Rig: Sendable {
 
     /// Waits until the status satisfies `predicate`.
     func wait(until predicate: @Sendable (EnvironmentStatus) -> Bool) async -> Bool {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
         while ContinuousClock.now < deadline {
             if predicate(await socket.status) { return true }
             try? await Task.sleep(for: .milliseconds(1))
         }
         return false
     }
-}
-
-/// Waits up to three seconds for `condition`, polling every millisecond: a
-/// check that counted yields instead went red under the gate's parallel load
-/// when the cancel or the event landed a few yields late.
-func eventually(_ condition: @Sendable () -> Bool) async -> Bool {
-    let deadline = ContinuousClock.now.advanced(by: .seconds(3))
-    while ContinuousClock.now < deadline {
-        if condition() { return true }
-        try? await Task.sleep(for: .milliseconds(1))
-    }
-    return false
 }
 
 @Suite struct TempCodeSocketTests {

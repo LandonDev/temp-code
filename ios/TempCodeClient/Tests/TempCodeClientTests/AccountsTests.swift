@@ -315,7 +315,8 @@ private final class AccountsRig {
         let fake = await sockets.socket(0)
         fake.hello(caps: environment.caps.map(\.rawValue))
         var answered: Set<String> = []
-        for _ in 0..<4000 {
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
+        while ContinuousClock.now < deadline {
             for sent in fake.sentRequests where !answered.contains(sent.id) {
                 switch sent.method {
                 case "workspace.list": fake.answer(id: sent.id, result: json([workspace()]))
@@ -328,26 +329,18 @@ private final class AccountsRig {
                 answered.insert(sent.id)
             }
             if client.hasShell, client.status.transport == .open { return fake }
-            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(1))
         }
         throw TransportError.notConnected
     }
 
     func request(_ fake: FakeWebSocket, _ method: String, count: Int = 1) async -> (id: String, method: String, params: JSONValue)? {
-        for _ in 0..<4000 {
-            let matching = fake.sentRequests.filter { $0.method == method }
-            if matching.count >= count { return matching[count - 1] }
-            await Task.yield()
-        }
-        return nil
+        guard await eventually({ fake.sentRequests.filter { $0.method == method }.count >= count }) else { return nil }
+        return fake.sentRequests.filter { $0.method == method }[count - 1]
     }
 
     func wait(_ predicate: () -> Bool) async -> Bool {
-        for _ in 0..<4000 {
-            if predicate() { return true }
-            await Task.yield()
-        }
-        return false
+        await eventually(predicate)
     }
 }
 
