@@ -49,6 +49,9 @@
 #           the composer empty, with text and mid-turn at the largest
 #           accessibility size; the key shots in dark too. TC_TEST_CONTROL_URL is the test server's
 #           control panel; the set reads back what landed.
+#   catalog The catalog's asks erring twice with the link open (/fail): "Couldn't
+#           load models" with Retry on a draft and a thread's composer, light and
+#           dark (the actions set shoots the light pair too). Needs TC_TEST_CONTROL_URL.
 #   f4      Old and missing search hits, full board history, then the scroll budget.
 #   settings Settings, Hosts, a host's detail (TC_TEST_OPEN=host) and the pairing
 #           sheet (TC_TEST_SHEET=pair, and pair-error for a refused code), light
@@ -524,6 +527,27 @@ box_set() {
 # the buttons make (TC_TEST_ACTION), or opens a sheet (TC_TEST_SHEET); the
 # screen is read back off the simulator and the control panel says what landed.
 control() { curl -s -X POST "$TC_TEST_CONTROL_URL$1" -H 'Content-Type: application/json' -d "${2:-{\}}"; }
+# The catalog's asks err with the link open (/fail answers the next two catalog.get
+# with an error): one more ask after 2 s, then the row says "Couldn't load models"
+# with Retry, on a draft and on a thread's composer. A thread screen's toolbar asks
+# once more (the account chip's catalog), so a thread fails three; the thread is the
+# stopped one, with no failure card, whose model picker would ask as well.
+#   catalog_shots <prefix>
+catalog_shots() {
+  control /fail '{"method":"catalog.get","count":2}' >/dev/null
+  TC_SHEET="new" shot "$1-catalog-failed-draft-light" home "" "" "" 8
+  control /fail '{"method":"catalog.get","count":3}' >/dev/null
+  shot "$1-catalog-failed-thread-light" thread "Rename the config keys again" "" "" 8
+}
+catalog_set() {
+  [ -n "${TC_TEST_CONTROL_URL:-}" ] || { echo "ios-sim-proof: the catalog set needs TC_TEST_CONTROL_URL" >&2; return 2; }
+  appearance light
+  catalog_shots catalog
+  appearance dark
+  control /fail '{"method":"catalog.get","count":3}' >/dev/null
+  shot "catalog-catalog-failed-thread-dark" thread "Rename the config keys again" "" "" 8
+  appearance light
+}
 actions_set() {
   [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ] && [ -n "${TC_TEST_CONTROL_URL:-}" ] || { echo "ios-sim-proof: the actions set needs TC_TEST_PAIR_LINK_OPERATE and TC_TEST_CONTROL_URL" >&2; return 2; }
   appearance light
@@ -594,13 +618,7 @@ actions_set() {
   TC_ACTION="new-chat-wait" shot "act-draft-wait-light" home "" "" "" 4
   sleep 26
   snap "act-draft-wait-sent-light"
-  # The catalog's asks err with the link open (/fail answers the next two catalog.get
-  # with an error): one more ask after 2 s, then the row says "Couldn't load models"
-  # with Retry, on a draft and on a thread's composer.
-  control /fail '{"method":"catalog.get","count":2}' >/dev/null
-  TC_SHEET="new" shot "act-catalog-failed-draft-light" home "" "" "" 8
-  control /fail '{"method":"catalog.get","count":2}' >/dev/null
-  shot "act-catalog-failed-thread-light" thread "gateway refuse" "" "" 8
+  catalog_shots act
   # Resume on the seeded "Stopped: the harness is gone" thread: the host writes starting
   # then running and no message, and the same turn works again under its one message.
   TC_ACTION="resume" shot "act-resume-stopped-light" thread "Rename the config keys again" "" "" 10
@@ -1332,6 +1350,7 @@ case "$SET" in
   stream) stream_set ;;
   box) box_set ;;
   actions) actions_set ;;
+  catalog) catalog_set ;;
   box-actions) box_actions_set ;;
   push) push_set ;;
   features) features_set ;;
