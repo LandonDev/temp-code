@@ -66,7 +66,15 @@ struct BottomDock: View {
         .padding(.top, 6)
         .padding(.bottom, 6)
         // A slot that takes room has its own band, solid from its top (`ComposerSlot.backing`).
-        .background(alignment: .top) { BottomEdgeFade(solid: backing == .solid) }
+        .background(alignment: .top) {
+            BottomEdgeFade(solid: backing == .solid)
+                #if DEBUG
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LayoutProbe.note("dock.fade.frame", LayoutProbe.rect($0)) }
+                #endif
+        }
+        #if DEBUG
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LayoutProbe.note("dock.frame", LayoutProbe.rect($0)) }
+        #endif
         #if DEBUG
         .onChange(of: backing, initial: true) { LayoutProbe.note("dock.backing", backing.rawValue) }
         .onChange(of: occupies, initial: true) { if !occupies { LayoutProbe.note("slot.frame", "none") } }
