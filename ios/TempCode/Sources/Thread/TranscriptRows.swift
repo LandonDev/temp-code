@@ -655,57 +655,6 @@ private struct OptionRow: View {
     }
 }
 
-/// Chips that wrap: each row fills the width, then the next begins. Pure
-/// geometry, so it stays off the main actor like the protocol it adopts
-/// (named with its module: the kit's `Layout` enum shadows it here).
-nonisolated struct FlowLayout: SwiftUI.Layout {
-    var spacing: CGFloat = 6
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? .infinity
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        var maxX: CGFloat = 0
-        for subview in subviews {
-            let size = Self.size(of: subview, within: width)
-            if x > 0, x + size.width > width {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-            maxX = max(maxX, x - spacing)
-        }
-        return CGSize(width: width == .infinity ? maxX : width, height: y + rowHeight)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX
-        var y = bounds.minY
-        var rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = Self.size(of: subview, within: bounds.width)
-            if x > bounds.minX, x + size.width > bounds.maxX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-    }
-
-    /// A chip's own width, or the row's when it is wider: a long option wraps inside its chip instead of running past the card.
-    private static func size(of subview: LayoutSubview, within width: CGFloat) -> CGSize {
-        let ideal = subview.sizeThatFits(.unspecified)
-        guard width.isFinite, ideal.width > width else { return ideal }
-        return subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
-    }
-}
-
 // MARK: - quiet lines
 
 /// One quiet line: glyph and text in the secondary step; errors in destructive.

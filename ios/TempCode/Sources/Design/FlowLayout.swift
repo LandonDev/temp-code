@@ -7,8 +7,11 @@ import TempCodeClient
 /// keeps its ideal size, never wider than the line (a longer one is offered
 /// the line's width), so at an accessibility text size the views fall one
 /// per line on their own. The arithmetic is the client package's
-/// `FlowRows`, where it is tested.
-struct FlowLayout: Layout {
+/// `FlowRows`, where it is tested. Pure geometry, so it stays off the main
+/// actor like the protocol it adopts (named with its module: the kit's
+/// `Layout` enum shadows it). The failure card's actions and a user turn's
+/// attachment chips wrap with it.
+nonisolated struct FlowLayout: SwiftUI.Layout {
     var spacing: CGFloat
     var lineSpacing: CGFloat
 
