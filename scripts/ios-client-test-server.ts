@@ -31,6 +31,8 @@
  *   POST /notes { sessionId, text }      → writes a thread's notes.md (the `notes` push follows)
  *   POST /resources/remove { sessionId } → removes the thread's live resources; answers { results }
  *   POST /presence { environmentId, screen?, power? }  → flips a relayed host's screen or power (the relay seed)
+ *   POST /hold { seconds }      → the host goes down for that long: every remote socket dropped and every
+ *                                 upgrade refused until it ends (a draft opened while its host is away)
  *   POST /quit                  → closes everything
  *
  * TC_TEST_NO_HARNESS=1 swaps every built-in driver for an idle in-process
@@ -58,7 +60,7 @@
  * that host's id; the asleep one answers `unavailable: the Mac is asleep`;
  * the unreachable one is refused 503.
  */
-import { createServer } from 'node:http'
+import { createServer, Server as HttpServer } from 'node:http'
 import { execFileSync, spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -97,6 +99,19 @@ import type { ReviewNotice } from '../src/shared/review'
 import { DEFAULT_PLAN_SETTINGS } from '../src/shared/plans'
 import { DEFAULT_REVIEW_SETTINGS } from '../src/shared/review'
 import { startLoopbackHosts } from '../src/main/server/remote/relayLoopback'
+
+// `POST /hold`: while it lasts, every WebSocket upgrade on any listener of
+// this process is refused at the socket (the listener's own handler never
+// sees it), so a client reads the host as down and retries on its backoff.
+let holdUpgradesUntil = 0
+const emitServer = HttpServer.prototype.emit
+HttpServer.prototype.emit = function (this: HttpServer, event: string | symbol, ...args: unknown[]): boolean {
+  if (event === 'upgrade' && Date.now() < holdUpgradesUntil) {
+    ;(args[1] as { destroy(): void }).destroy()
+    return true
+  }
+  return emitServer.call(this, event, ...args)
+} as typeof HttpServer.prototype.emit
 
 const root = mkdtempSync(join(tmpdir(), 'tc-ios-client-'))
 configure({
@@ -1827,6 +1842,15 @@ const control = createServer((req, res) => {
           count++
         }
         return answer(200, { dropped: count })
+      }
+      case '/hold': {
+        holdUpgradesUntil = Date.now() + Math.max(0, Number(body.seconds ?? 8)) * 1000
+        let count = 0
+        for (const set of server.remote?.sockets.values() ?? []) for (const ws of set) {
+          ws.terminate()
+          count++
+        }
+        return answer(200, { dropped: count, until: holdUpgradesUntil })
       }
       case '/append': {
         const sessionId = String(body.sessionId ?? THREAD_A)

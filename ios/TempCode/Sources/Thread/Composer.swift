@@ -208,8 +208,8 @@ struct ComposerBar: View {
         // A hold whose text went (or whose turn ended) is no hold.
         .onChange(of: offersQueue) { _, offers in if !offers { holding = false } }
         .task(id: client.operateBlock) { await settleBlock() }
-        // The row under the box names the catalog's models, for every key.
-        .task { await choice.load(client) }
+        // The row under the box names the catalog's models, for every key; a host that comes up asks again.
+        .task(id: CatalogChoice.trigger(client)) { await choice.load(client) }
         #if DEBUG
         .task {
             guard TestHooks.open == "composer", block == nil else { return }
@@ -390,6 +390,10 @@ struct ComposerButton: View {
     @State private var pressed = false
     @State private var inside = true
     @State private var hold: Task<Void, Never>?
+    /// 28 pt at the default text size, grown with the field's type up to the touch's 44.
+    @ScaledMetric(relativeTo: .subheadline) private var scaledSide = ComposerMetrics.control
+    private var side: CGFloat { ComposerMetrics.side(scaledSide) }
+    private var outset: CGFloat { ComposerMetrics.hitOutset(side) }
 
     /// The glyph for an intent: the desktop's arrow, corner, list-plus and pause.
     static func symbol(_ intent: ComposerIntent) -> String {
@@ -420,12 +424,13 @@ struct ComposerButton: View {
             } else {
                 Image(systemName: Self.symbol(intent))
                     .font(.subheadline.weight(.semibold))
+                    .dynamicTypeSize(...ComposerMetrics.glyphCap)
                     .foregroundStyle(glyphColor)
                     .id(intent)
                     .transition(Motion.iconSwap(reduced: reduced))
             }
         }
-        .frame(width: ComposerMetrics.control, height: ComposerMetrics.control)
+        .frame(width: side, height: side)
         .tcGlass(in: Circle(), tint: tint)
         .animation(reduced ? Motion.iconFade : Motion.iconSwap, value: intent)
         .animation(reduced ? Motion.iconFade : Motion.iconSwap, value: busy)
@@ -433,10 +438,10 @@ struct ComposerButton: View {
         .scaleEffect(pressed && !reduced ? Motion.pressScale : 1)
         .opacity(pressed && reduced ? Motion.pressDim : 1)
         .animation(Motion.press, value: pressed)
-        .padding(ComposerMetrics.hitOutset)
+        .padding(outset)
         .contentShape(Rectangle())
         .gesture(press)
-        .padding(-ComposerMetrics.hitOutset)
+        .padding(-outset)
         .accessibilityElement()
         .accessibilityLabel(busy ? "Sending" : intent.label)
         .accessibilityAddTraits(.isButton)
@@ -450,8 +455,9 @@ struct ComposerButton: View {
     private var press: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                let square = CGRect(origin: .zero, size: CGSize(width: TranscriptMetrics.hitArea, height: TranscriptMetrics.hitArea))
-                inside = square.insetBy(dx: -ComposerMetrics.hitOutset, dy: -ComposerMetrics.hitOutset).contains(value.location)
+                let touch = side + 2 * outset
+                let square = CGRect(origin: .zero, size: CGSize(width: touch, height: touch))
+                inside = square.insetBy(dx: -outset, dy: -outset).contains(value.location)
                 if !pressed {
                     pressed = true
                     startHold()
@@ -486,7 +492,9 @@ struct ComposerButton: View {
 /// The box itself, the one drawing a thread's composer and a project's
 /// draft share: one glass shape at the field radius, `+` at the left (a bare
 /// 28 pt glyph inside the box's glass, never glass on glass, its touch
-/// reaching 44 pt, off once the turn holds four photos), the field in the
+/// reaching 44 pt, off once the turn holds four photos; at a larger text size
+/// it and the button grow with the type up to 44 pt and their glyphs stop at
+/// accessibility 1, so neither spills over the field), the field in the
 /// prose type, and the caller's button at the right; the controls stay on
 /// the bottom line as the field grows. `blocked` is the reason the key or
 /// the link cannot act: it takes the placeholder's place, the field is
@@ -500,6 +508,9 @@ struct ComposerBox<Trailing: View>: View {
     var attachEnabled = true
     let onAttach: () -> Void
     @ViewBuilder let button: Trailing
+    /// `+` at the text size in use: 28 pt at the default, never past the touch's 44.
+    @ScaledMetric(relativeTo: .subheadline) private var scaledSide = ComposerMetrics.control
+    private var side: CGFloat { ComposerMetrics.side(scaledSide) }
 
     var body: some View {
         HStack(alignment: .bottom, spacing: ComposerMetrics.gap) {
@@ -507,11 +518,12 @@ struct ComposerBox<Trailing: View>: View {
                 Button(action: onAttach) {
                     Image(systemName: "plus")
                         .font(.body.weight(.medium))
+                        .dynamicTypeSize(...ComposerMetrics.glyphCap)
                         .foregroundStyle(attachEnabled ? Color.primary : Color(.tertiaryLabel))
-                        .frame(width: ComposerMetrics.control, height: ComposerMetrics.control)
-                        .padding(ComposerMetrics.hitOutset)
+                        .frame(width: side, height: side)
+                        .padding(ComposerMetrics.hitOutset(side))
                         .contentShape(Rectangle())
-                        .padding(-ComposerMetrics.hitOutset)
+                        .padding(-ComposerMetrics.hitOutset(side))
                 }
                 .buttonStyle(.pressable)
                 .disabled(!attachEnabled)
@@ -525,7 +537,7 @@ struct ComposerBox<Trailing: View>: View {
                 .disabled(blocked != nil)
                 .padding(.vertical, ComposerMetrics.fieldPad)
                 .padding(.leading, canAttach ? 0 : ComposerMetrics.gap)
-                .frame(minHeight: ComposerMetrics.control)
+                .frame(minHeight: side)
                 .accessibilityLabel(blocked ?? "Message")
             if blocked == nil {
                 button

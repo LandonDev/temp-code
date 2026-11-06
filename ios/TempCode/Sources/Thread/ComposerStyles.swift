@@ -17,8 +17,9 @@ struct ModelKey: Hashable {
 /// providers in the desktop's order with the models the host can run (the
 /// host already hides what the installed CLI cannot), and the reasoning
 /// levels of the chosen model. Loads once per host (`CatalogLoad`: moved
-/// to another host, it drops the old catalog and loads that host's) and
-/// keeps the choice valid.
+/// to another host, it drops the old catalog and loads that host's; an
+/// empty answer, as from a host whose link was down, is asked again when the
+/// link comes up) and keeps the choice valid.
 @Observable
 final class CatalogChoice {
     var key: ModelKey
@@ -52,14 +53,20 @@ final class CatalogChoice {
     /// The model's name as the chip and the row show it: the catalog's label, else the id read short.
     var modelLabel: String { model?.label ?? ModelName.short(key.model) }
 
+    /// What a view keys its load task on (`.task(id:)`): the host and
+    /// whether its link is open, so a host that comes up loads again.
+    static func trigger(_ client: EnvironmentClient) -> CatalogLoad.Trigger {
+        CatalogLoad.Trigger(host: client.environment.id, transport: client.status.transport)
+    }
+
     func load(_ client: EnvironmentClient) async {
-        let host = client.environment.id
-        guard source.begin(host) else { return }
+        let trigger = Self.trigger(client)
+        guard source.begin(trigger) else { return }
         catalog = nil
         loading = true
         let loaded = await client.loadCatalog()
-        guard source.lands(host) else { return }
-        if loaded == nil { source.failed(host) }
+        guard source.lands(trigger) else { return }
+        source.finish(trigger, loaded: loaded != nil)
         catalog = loaded
         loading = false
         settle()

@@ -413,9 +413,15 @@ enum ComposerMetrics {
     static let edge = CGFloat(ComposerHeight.edge + ComposerHeight.ring)
     static let fieldPad = CGFloat(ComposerHeight.fieldPad)
     static let gap = CGFloat(ComposerHeight.gap)
+    /// `+` and the button: 28 pt at the default text size; read it through
+    /// `@ScaledMetric(relativeTo: .subheadline)` and `side(_:)`.
     static let control = TranscriptMetrics.composerControl
-    /// What a control's touch reaches beyond its 28 pt on each side, to 44.
-    static let hitOutset = (TranscriptMetrics.hitArea - TranscriptMetrics.composerControl) / 2
+    /// A control at the text size in use, grown with the prose type up to the 44 pt touch.
+    static func side(_ scaled: CGFloat) -> CGFloat { CGFloat(ComposerHeight.control(scaled: Double(scaled))) }
+    /// What a control's touch reaches beyond its side on each side, to 44.
+    static func hitOutset(_ side: CGFloat) -> CGFloat { CGFloat(ComposerHeight.hitOutset(control: Double(side))) }
+    /// The glyphs stop growing here, where they still sit inside a 44 pt control.
+    static let glyphCap = DynamicTypeSize.accessibility1
     static let maxLines = ComposerHeight.maxLines
     static let slot = TranscriptMetrics.slot
     /// Between the slot and the box.

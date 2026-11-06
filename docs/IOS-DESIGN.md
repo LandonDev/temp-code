@@ -783,7 +783,12 @@ The box is one glass shape at radius 12 in one `TCGlassContainer` (glass on
 iOS 26, the thin material and a hairline before): `+` at the left, a bare
 28 pt glyph with a 44 pt touch; the field in the prose type (15 on 22) with
 3 pt above and below, so its first line centres on the controls' 28 pt line;
-the button at the right, a 28 pt circle on prominent glass. The controls sit
+the button at the right, a 28 pt circle on prominent glass. At a larger
+text size both grow with the prose type (`@ScaledMetric` on `subheadline`)
+and stop at the 44 pt touch, their glyphs at accessibility 1
+(`ComposerHeight.control(scaled:)`, `ComposerMetrics.glyphCap`), so at
+the largest size neither spills over the field and the touch stays 44 pt
+(`ComposerHeight.hitOutset(control:)`). The controls sit
 6 pt from the box's sides and 8 pt from its top and bottom inside a 1 pt
 ring, so the empty box is 46 pt (`ComposerHeight`, `ComposerMetrics`). Each
 further line grows the box upward by 22 pt while `+` and the button stay on
@@ -855,7 +860,15 @@ failed create gives the sent words and photos back ahead of it
 (`ProjectDraftStore.restore`). Send waits for the host's catalog (`DraftSend.canSend`:
 no send with an empty model, which would skip the host's thread defaults),
 and switching the draft's host loads that host's catalog anew
-(`CatalogLoad`). While the create runs the button's glyph is a spinner
+(`CatalogLoad`). The load is keyed on the host and whether its link is open
+(`CatalogLoad.Trigger`): a draft opened before its host connected, or moved
+to a host that is reconnecting, asks again the moment the link comes up,
+and meanwhile the row says why in the model's place, "Waiting for <host>"
+in the row's detail type, tertiary (`CatalogLoad.waitLine`). The picker is
+the one source of the model and effort the create carries
+(`ProjectDrafts.threadDraft` takes what it shows): the draft's saved pick
+only seeds it, so after a host switch the send carries the model that host
+settled on, never the saved one. While the create runs the button's glyph is a spinner
 (the icon swap, "Sending" to VoiceOver) and the strip draws the thread's
 chip. A refusal puts the sent draft back with the reason above the box. The draft
 row's name field, "Name this thread" in the row's detail type after the

@@ -21,6 +21,9 @@ struct ComposerRowView: View {
     /// A project's draft: its mode before any thread exists, set here and
     /// sent with the create; nil on a thread, whose mode is `session.permission`.
     var draftMode: Binding<PermissionPolicy>?
+    /// A draft's catalog waiting on its host's link ("Waiting for box"): the
+    /// line takes the model's place until the catalog lands.
+    var waiting: String?
     /// The row's own width, measured; unmeasured, everything fits.
     @State private var width: CGFloat?
     /// The mode this device asked for, shown until the host's push carries it (or refuses it).
@@ -57,6 +60,7 @@ struct ComposerRowView: View {
         .frame(maxWidth: .infinity)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .onChange(of: session?.permission) { asked = nil }
+        .animation(Motion.crossFade, value: waiting)
     }
 
     private func content(_ fit: ComposerRow.Fit, truncates: Bool) -> some View {
@@ -78,7 +82,22 @@ struct ComposerRowView: View {
 
     // MARK: the model
 
+    @ViewBuilder
     private func model(_ fit: ComposerRow.Fit, truncates: Bool) -> some View {
+        if let waiting {
+            Text(waiting)
+                .transcriptType(TranscriptType.detail)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .fixedSize(horizontal: !truncates, vertical: false)
+                .transition(.opacity)
+        } else {
+            pickedModel(fit, truncates: truncates)
+        }
+    }
+
+    private func pickedModel(_ fit: ComposerRow.Fit, truncates: Bool) -> some View {
         let label = HStack(spacing: TranscriptMetrics.wordGap) {
             ProviderGlyph(provider: choice.key.provider)
             if fit.modelName {

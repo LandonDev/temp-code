@@ -14,7 +14,9 @@ import TempCodeContract
 /// admin key (a lesser key reads the reason in its place). Everything is
 /// kept in `ProjectDraftStore` as it changes (written after 500 ms of
 /// quiet), photos in memory only. Nothing reaches the host until the first
-/// send (`sendDraft`), which waits for the host's catalog; while the create
+/// send (`sendDraft`), which waits for the host's catalog (asked again when
+/// a host that was down comes up, the row saying "Waiting for <host>"
+/// meanwhile) and carries the model and effort the picker shows; while the create
 /// runs the button spins and the strip draws the thread's chip
 /// (`DraftSending`); the box empties at the click and stays open, so what
 /// is written meanwhile is the next draft, and a failed create gives the
@@ -142,7 +144,7 @@ struct DraftComposer: View {
                     }
                 }
                 if let client = target?.client {
-                    ComposerRowView(client: client, session: nil, choice: choice, draftMode: mode)
+                    ComposerRowView(client: client, session: nil, choice: choice, draftMode: mode, waiting: CatalogLoad.waitLine(hostName: client.environment.name, transport: client.status.transport, hasCatalog: choice.catalog != nil))
                     DraftRow(draft: draft, title: title, types: Self.types, copies: copies, newCopyHosts: newCopyHosts, masterBlock: ProjectDrafts.masterBlock(caps: client.environment.caps), setType: setType, setMaster: setMaster, setHost: setHost, newCopy: newCopy, titleDone: { focused = true })
                 }
             }
@@ -170,7 +172,8 @@ struct DraftComposer: View {
             store.focusRequest = nil
         }
         // The model and effort follow the catalog of the host the draft starts on; a pick is kept with the draft.
-        .task(id: target?.id) {
+        // A host whose link was down answered nothing: its coming up runs this again.
+        .task(id: target.map { CatalogChoice.trigger($0.client) }) {
             guard let client = target?.client else { return }
             if let provider = draft.provider, let model = draft.model {
                 choice = CatalogChoice(provider: provider, model: model, reasoning: draft.reasoning)
@@ -194,6 +197,14 @@ struct DraftComposer: View {
                 draft.text = "A chat started from its draft"
                 store.set(key, draft)
                 for _ in 0..<50 where choice.catalog == nil { try? await Task.sleep(for: .milliseconds(100)) }
+                send()
+            } else if action == "new-chat-wait" {
+                // A draft opened while its host is down (the test server's `/hold`): the row
+                // says "Waiting for <host>", and the send goes once the host is up and its catalog lands.
+                Self.launchActed = true
+                draft.text = "A chat sent once its host came up"
+                store.set(key, draft)
+                for _ in 0..<TestHooks.catalogWaitTicks where choice.catalog == nil { try? await Task.sleep(for: .milliseconds(100)) }
                 send()
             } else if action == "new-chat-held" {
                 // The send in flight for the shot: a named chat whose create the hook holds (`send`).
@@ -273,7 +284,7 @@ struct DraftComposer: View {
         // A keyboard action never animates: the field empties at once.
         Motion.withoutAnimation { draft = store.draft(key) ?? sent.taken }
         let client = target.client
-        let thread = ProjectDrafts.threadDraft(sent, workspaceId: target.workspace.id, projectId: target.project?.id, provider: choice.key.provider, model: choice.key.model)
+        let thread = ProjectDrafts.threadDraft(sent, workspaceId: target.workspace.id, projectId: target.project?.id, provider: choice.key.provider, model: choice.key.model, reasoning: choice.reasoning)
         store.beginSending(key, DraftSending(environmentId: client.environment.id, workspaceId: target.workspace.id, projectId: target.project?.id, title: DraftSending.title(of: sent, text: text), threadType: sent.threadType, provider: thread.provider, model: thread.model, startedAt: Int(Date().timeIntervalSince1970 * 1_000)))
         Task {
             defer { busy = false }

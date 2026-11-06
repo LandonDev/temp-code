@@ -155,7 +155,7 @@ struct HomeView: View {
         } else if let hook = TestHooks.action, hook.hasPrefix("batch:"), let action = TestHooks.batchAction(String(hook.dropFirst(6))), !launched {
             launched = true
             await FleetSwitches.shared.run(action, client: client, scope: .host(name: client.environment.name))
-        } else if TestHooks.action == "new-chat" || TestHooks.action == "new-chat-held", !launched {
+        } else if TestHooks.action == "new-chat" || TestHooks.action == "new-chat-held" || TestHooks.action == "new-chat-wait", !launched {
             // A chat made by its draft: New thread focuses the workspace's chat draft, whose composer types and sends (DraftComposer).
             launched = true
             presenter.compose(client, workspace, nil, type: .chat)

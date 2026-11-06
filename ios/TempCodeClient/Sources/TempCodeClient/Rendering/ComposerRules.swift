@@ -93,6 +93,20 @@ public enum ComposerHeight {
     public static let line = TranscriptScale.prose.lineHeight
     public static let maxHeight: Double = 160
 
+    /// `+` and the button at the text size in use: 28 pt at the default size,
+    /// growing with the prose type (`scaled`, the 28 pt read through the
+    /// field's text style) and stopping at the 44 pt touch, so a large glyph
+    /// never spills over the field and never takes the field's width.
+    public static func control(scaled: Double) -> Double {
+        min(max(scaled, control), TranscriptLengths.hitArea)
+    }
+
+    /// What a control's touch reaches beyond its drawn side, so the touch is
+    /// 44 pt at every size.
+    public static func hitOutset(control side: Double) -> Double {
+        max(0, (TranscriptLengths.hitArea - side) / 2)
+    }
+
     /// The box at `lines` lines of text, capped where it starts to scroll.
     public static func height(lines: Int) -> Double {
         min(maxHeight, natural(lines: lines))

@@ -114,9 +114,9 @@ import TempCodeContract
     @Test func `the name is cut at 80 characters and rides the create; an empty one is no title`() {
         #expect(ProjectDraft.cleanTitle(String(repeating: "a", count: 90))?.count == ProjectDraft.titleMax)
         #expect(ProjectDraft.cleanTitle("") == nil)
-        let named = ProjectDrafts.threadDraft(ProjectDraft(text: "go", title: "Ship the export"), workspaceId: "w", projectId: "p", provider: .claude, model: "m")
+        let named = ProjectDrafts.threadDraft(ProjectDraft(text: "go", title: "Ship the export"), workspaceId: "w", projectId: "p", provider: .claude, model: "m", reasoning: nil)
         #expect(named.params.title == "Ship the export")
-        let blank = ProjectDrafts.threadDraft(ProjectDraft(text: "go", title: "  "), workspaceId: "w", projectId: "p", provider: .claude, model: "m")
+        let blank = ProjectDrafts.threadDraft(ProjectDraft(text: "go", title: "  "), workspaceId: "w", projectId: "p", provider: .claude, model: "m", reasoning: nil)
         #expect(blank.params.title == nil)
     }
 
@@ -177,20 +177,65 @@ import TempCodeContract
 
     @Test func `a picker moved to another host loads that host's catalog, and drops an answer it no longer wants`() {
         var load = CatalogLoad()
-        let first = load.begin("mac"), again = load.begin("mac"), moved = load.begin("box")
+        let mac = CatalogLoad.Trigger(host: "mac", open: true), box = CatalogLoad.Trigger(host: "box", open: true)
+        let first = load.begin(mac), again = load.begin(mac), moved = load.begin(box)
         #expect(first && !again && moved)
-        #expect(!load.lands("mac"))
-        #expect(load.lands("box"))
-        load.failed("box")
-        let retried = load.begin("box")
-        #expect(retried)
+        #expect(!load.lands(mac))
+        #expect(load.lands(box))
+        load.finish(mac, loaded: true)
+        #expect(load.pending && !load.loaded, "the old host's answer moves nothing")
+        load.finish(box, loaded: false)
+        let retried = load.begin(box)
+        #expect(retried, "an empty answer is asked again")
+        load.finish(box, loaded: true)
+        let held = load.begin(box)
+        #expect(!held, "a landed catalog is kept")
+    }
+
+    @Test func `a draft opened before its host connects asks again when the link comes up`() {
+        var load = CatalogLoad()
+        let down = CatalogLoad.Trigger(host: "box", transport: .reconnecting)
+        let up = CatalogLoad.Trigger(host: "box", transport: .open)
+        #expect(down != up, "the link coming up is a new trigger, so the view's load task runs again")
+        let asked = load.begin(down)
+        #expect(asked)
+        // The link comes up while the first ask (which will throw notConnected) is still out.
+        let reasked = load.begin(up)
+        #expect(reasked, "the open link asks again without waiting on the doomed ask")
+        load.finish(down, loaded: false)
+        #expect(load.pending, "the doomed ask's empty answer is dropped")
+        load.finish(up, loaded: true)
+        #expect(load.loaded)
+        let again = load.begin(CatalogLoad.Trigger(host: "box", transport: .open))
+        #expect(!again)
+        // A switch to a host that is reconnecting: it waits, then asks again once that host is up.
+        let mac = CatalogLoad.Trigger(host: "mac", transport: .connecting)
+        let switched = load.begin(mac)
+        #expect(switched)
+        load.finish(mac, loaded: false)
+        let macUp = load.begin(CatalogLoad.Trigger(host: "mac", transport: .open))
+        #expect(macUp)
+    }
+
+    @Test func `the row says why while the catalog waits on its host's link`() {
+        #expect(CatalogLoad.waitLine(hostName: "box", transport: .reconnecting, hasCatalog: false) == "Waiting for box")
+        #expect(CatalogLoad.waitLine(hostName: "box", transport: .offline, hasCatalog: false) == "Waiting for box")
+        #expect(CatalogLoad.waitLine(hostName: "box", transport: .open, hasCatalog: false) == nil, "the ask is out")
+        #expect(CatalogLoad.waitLine(hostName: "box", transport: .reconnecting, hasCatalog: true) == nil, "a held catalog still picks")
+    }
+
+    @Test func `after a host switch the create carries what the picker shows, not the saved pick`() {
+        // The draft saved Codex on the Mac; the box has no Codex, so the picker settled on its Claude default.
+        let saved = ProjectDraft(text: "go", threadType: .chat, provider: .codex, model: "gpt-6.1-sol", reasoning: .xhigh, environmentId: "box")
+        let thread = ProjectDrafts.threadDraft(saved, workspaceId: "w1", projectId: "p1", provider: .claude, model: "claude-sonnet-5-5", reasoning: .medium)
+        #expect(thread.provider == .claude && thread.model == "claude-sonnet-5-5" && thread.reasoning == .medium)
     }
 }
 
 @MainActor
 @Suite struct DraftSendTests {
     private func draft(_ text: String) -> ThreadDraft {
-        var thread = ProjectDrafts.threadDraft(ProjectDraft(text: text, threadType: .chat), workspaceId: "w1", projectId: "p1", provider: .claude, model: "claude-sonnet-5-5")
+        var thread = ProjectDrafts.threadDraft(ProjectDraft(text: text, threadType: .chat), workspaceId: "w1", projectId: "p1", provider: .claude, model: "claude-sonnet-5-5", reasoning: nil)
         thread.firstMessage = nil
         return thread
     }
@@ -235,11 +280,11 @@ import TempCodeContract
     }
 
     @Test func `Master rides the create for a chat alone, and takes an admin key`() {
-        let chat = ProjectDrafts.threadDraft(ProjectDraft(threadType: .chat, master: true), workspaceId: "w1", projectId: nil, provider: .claude, model: "m")
+        let chat = ProjectDrafts.threadDraft(ProjectDraft(threadType: .chat, master: true), workspaceId: "w1", projectId: nil, provider: .claude, model: "m", reasoning: nil)
         #expect(chat.master == true && chat.needs == .admin)
-        let plan = ProjectDrafts.threadDraft(ProjectDraft(threadType: .planning, master: true), workspaceId: "w1", projectId: nil, provider: .claude, model: "m")
+        let plan = ProjectDrafts.threadDraft(ProjectDraft(threadType: .planning, master: true), workspaceId: "w1", projectId: nil, provider: .claude, model: "m", reasoning: nil)
         #expect(plan.master == nil && plan.needs == .operate)
-        let picked = ProjectDrafts.threadDraft(ProjectDraft(threadType: .implementation, provider: .codex, model: "gpt-6.1-sol", reasoning: .high, permission: .auto), workspaceId: "w1", projectId: "p1", provider: .claude, model: "m")
+        let picked = ProjectDrafts.threadDraft(ProjectDraft(threadType: .implementation, provider: .codex, model: "gpt-6.1-sol", reasoning: .high, permission: .auto), workspaceId: "w1", projectId: "p1", provider: .codex, model: "gpt-6.1-sol", reasoning: .high)
         #expect(picked.provider == .codex && picked.model == "gpt-6.1-sol" && picked.reasoning == .high)
         #expect(picked.needs == .approve, "full access takes approve")
     }

@@ -2477,7 +2477,11 @@ proof and the sizing rules; the pieces, by name:
   foreground), photos in memory; the first send waits for the host's
   catalog (`DraftSend.canSend`; a host switch reloads it, `CatalogLoad`) and
   is `session.create { firstMessage }`, or create, upload, send and
-  `session.archive` on a failed send, `sendDraft`; while it runs the button
+  `session.archive` on a failed send, `sendDraft`, carrying the model and
+  effort the picker shows (the draft's saved pick only seeds it); the
+  catalog load keys on the host and its link (`CatalogLoad.Trigger`), so a
+  draft opened while its host was down asks again when it comes up, its row
+  reading "Waiting for <host>" meanwhile; while it runs the button
   spins and the strip draws its chip (`DraftSending`, live until the meta
   lands); the box empties at the click (`ProjectDraftStore.take`: what was
   sent rides the chip, what is typed meanwhile is the next draft) and only a
@@ -2802,7 +2806,8 @@ proof and the sizing rules; the pieces, by name:
 - Steering (L5): `ios/TempCode/Sources/Thread/Composer.swift` (the
   desktop's composer box on every segment, drawn as one Liquid Glass shape
   at radius 12 in one `TCGlassContainer` floating over the transcript on
-  the transcript's column edges: `+` at the left (28 pt, 44 pt hit; Photos), the
+  the transcript's column edges: `+` at the left (28 pt, 44 pt hit; Photos;
+  it and the button grow with the type up to 44 pt, `ComposerHeight.control`), the
   field in the prose type, the one button at the right, a 28 pt circle on
   prominent glass; 46 pt empty, 22 pt more a line up to six lines (160 pt),
   then it scrolls; a keystroke snaps the height, a paste of more than one

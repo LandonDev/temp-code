@@ -165,6 +165,20 @@ private func session(_ id: String, status: SessionStatus, parentId: String? = ni
         #expect(ComposerHeight.side == 6 && ComposerHeight.edge == 8)
     }
 
+    @Test func `the controls are 28 pt at the default size, grow with the type and stop at the 44 pt touch`() {
+        #expect(ComposerHeight.control(scaled: 28) == 28)
+        #expect(ComposerHeight.control(scaled: 24) == 28, "a smaller text size keeps the 28 pt line")
+        #expect(ComposerHeight.control(scaled: 36) == 36)
+        #expect(ComposerHeight.control(scaled: 91) == 44, "the largest accessibility size stops at the touch")
+        #expect(ComposerHeight.hitOutset(control: 28) == 8, "28 pt reaches 44 by 8 a side")
+        #expect(ComposerHeight.hitOutset(control: 36) == 4)
+        #expect(ComposerHeight.hitOutset(control: 44) == 0)
+        for scaled in stride(from: 20.0, through: 100, by: 4) {
+            let side = ComposerHeight.control(scaled: scaled)
+            #expect(side + 2 * ComposerHeight.hitOutset(control: side) == TranscriptLengths.hitArea, "the touch is 44 pt at \(scaled)")
+        }
+    }
+
     @Test func `each further line grows the box by 22 pt up to 160, then the field scrolls`() {
         #expect(ComposerHeight.height(lines: 2) == 68)
         #expect(ComposerHeight.height(lines: 3) == 90)

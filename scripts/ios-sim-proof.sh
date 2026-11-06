@@ -40,8 +40,11 @@
 #           Pause and Stop mid-turn, approve and deny,
 #           a question answered, Start from the plan into a build, the
 #           workspace's chat draft and a new chat sent from it (one create
-#           carrying its first message), a message to an agent, pin, archive and rename;
-#           the key shots in dark too. TC_TEST_CONTROL_URL is the test server's
+#           carrying its first message), the same draft opened while its host
+#           is down (the test server's /hold: "Waiting for <host>" in the row)
+#           and sent once the host is back, a message to an agent, pin, archive and rename;
+#           the composer empty, with text and mid-turn at the largest
+#           accessibility size; the key shots in dark too. TC_TEST_CONTROL_URL is the test server's
 #           control panel; the set reads back what landed.
 #   f4      Old and missing search hits, full board history, then the scroll budget.
 #   settings Settings, Hosts, a host's detail (TC_TEST_OPEN=host) and the pairing
@@ -558,6 +561,13 @@ actions_set() {
   # The same actions at an accessibility size: one per line, none clipped.
   xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
   shot "act-failure-a11y" thread "A capped turn"
+  # The composer at the largest accessibility size: `+` and the button grow with the type
+  # to the 44 pt touch and stop there, neither over the field: empty, with text, mid-turn.
+  xcrun simctl ui "$TC_SIM_UDID" content_size accessibility-extra-extra-extra-large >/dev/null
+  shot "act-composer-empty-a11y-max" thread "gateway refuse"
+  TC_ACTION="draft:Check the totals" shot "act-composer-text-a11y-max" thread "gateway refuse"
+  shot "act-composer-midturn-a11y-max" thread "Index the archive"
+  TC_ACTION="draft:Use the archive table" shot "act-composer-steer-a11y-max" thread "Index the archive"
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
   TC_ACTION="pause" shot "act-pause-light" thread "Thread B"
   TC_ACTION="stop" shot "act-stop-light" thread "Thread B"
@@ -574,6 +584,13 @@ actions_set() {
   # A named chat's send in flight (the hook holds its create 15 s): the button spins, the strip has its chip.
   TC_ACTION="new-chat-held" shot "act-draft-sending-light" home "" "" "" 8
   sleep 14
+  # A draft opened while its host is down (/hold refuses every upgrade for 10 s): the
+  # row says "Waiting for <host>", Send stays off; once the host is back its catalog
+  # loads and the draft's send goes out (one create carrying its first message).
+  control /hold '{"seconds":10}' >/dev/null
+  TC_ACTION="new-chat-wait" shot "act-draft-wait-light" home "" "" "" 4
+  sleep 26
+  snap "act-draft-wait-sent-light"
   TC_ACTION="send:Check the tests too" shot "act-agent-light" thread "thread screens" fleet agent
   TC_ACTION="pin" shot "act-pin-thread-light" thread "gateway refuse"
   shot "act-pin-home-light" home
@@ -595,13 +612,16 @@ actions_set() {
   python3 - "$(control /actions)" <<'PY'
 import json, sys
 kinds = [a["kind"] for a in json.loads(sys.argv[1])["actions"]]
-want = {"send": 6, "steer": 1, "steer-sent": 1, "steer-received": 1, "queue": 1, "pause": 1, "stop": 1, "approve": 2, "answer": 1, "create": 3, "pin": 1, "rename": 1, "archive": 1}
+want = {"send": 7, "steer": 1, "steer-sent": 1, "steer-received": 1, "queue": 1, "pause": 1, "stop": 1, "approve": 2, "answer": 1, "create": 4, "pin": 1, "rename": 1, "archive": 1}
 counts = {k: kinds.count(k) for k in want}
 missing = {k: v for k, v in want.items() if counts[k] < v}
 # The new chat is made by its draft: one create whose first message is the draft's text.
 created = {a["sessionId"] for a in json.loads(sys.argv[1])["actions"] if a["kind"] == "create"}
 if not any(a["kind"] == "send" and a.get("text") == "A chat started from its draft" and a["sessionId"] in created for a in json.loads(sys.argv[1])["actions"]):
     missing["draft-first-message"] = 1
+# The draft opened while its host was down sends once the host is back and its catalog lands.
+if not any(a["kind"] == "send" and a.get("text") == "A chat sent once its host came up" and a["sessionId"] in created for a in json.loads(sys.argv[1])["actions"]):
+    missing["draft-after-wait"] = 1
 # The held draft's name rides its create as the thread's title.
 if not any(a["kind"] == "create" and a.get("title") == "Held mid-send" for a in json.loads(sys.argv[1])["actions"]):
     missing["draft-title"] = 1

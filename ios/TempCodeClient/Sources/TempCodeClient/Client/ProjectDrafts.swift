@@ -122,10 +122,13 @@ public struct ProjectDrafts: Codable, Sendable, Hashable {
     }
 
     /// The create a draft's first send makes, on the copy it starts in: its
-    /// type, model, effort and mode, Master for a chat, the text as the
-    /// first message (`DraftSend` decides whether the create carries it).
-    public static func threadDraft(_ draft: ProjectDraft, workspaceId: String, projectId: String?, provider: ProviderId, model: String) -> ThreadDraft {
-        var thread = ThreadDraft.thread(type: draft.threadType, workspaceId: workspaceId, projectId: projectId, provider: draft.provider ?? provider, model: draft.model ?? model, reasoning: draft.reasoning, permission: draft.permission, title: draft.title)
+    /// type and mode, Master for a chat, the text as the first message
+    /// (`DraftSend` decides whether the create carries it), and the model and
+    /// effort the picker shows. The picker is the one source of the model:
+    /// the draft's saved pick only seeds it, and after a host switch the
+    /// picker settles on what that host runs, which is what goes out.
+    public static func threadDraft(_ draft: ProjectDraft, workspaceId: String, projectId: String?, provider: ProviderId, model: String, reasoning: Reasoning?) -> ThreadDraft {
+        var thread = ThreadDraft.thread(type: draft.threadType, workspaceId: workspaceId, projectId: projectId, provider: provider, model: model, reasoning: reasoning, permission: draft.permission, title: draft.title)
         thread.master = draft.bornMaster ? true : nil
         return thread
     }
