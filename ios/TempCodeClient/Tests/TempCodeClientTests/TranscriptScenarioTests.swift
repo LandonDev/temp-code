@@ -174,6 +174,17 @@ private func expectClean(_ scenario: TranscriptScenario) -> ScenarioReport {
         #expect(report.checked.contains(.fade))
     }
 
+    @Test func `a link's text closed into brackets and a lone star read literally: the paragraph keeps what it showed`() {
+        let deltas = ["See [the docs", "] for more, then", " 5 *2 is", " ten.", "\n\nThe next", " paragraph."]
+        var pushes: [TranscriptScenario.Push] = [.init(atMs: 0, "send", .send("go")), .init(atMs: 10, "echo", .rows([row(1, 10, user("go"))]))]
+        for (i, delta) in deltas.enumerated() {
+            pushes.append(.init(atMs: 200 + 400 * i, "delta \(i)", .rows([row(2 + i, 200 + 400 * i, prose(delta))])))
+        }
+        pushes.append(.init(atMs: 3_000, "the close", .rows([row(20, 3_000, prose(deltas.joined(), delta: false)), row(21, 3_010, complete)])))
+        let report = expectClean(TranscriptScenario("marks rewritten", pushes: pushes))
+        #expect(report.checked.contains(.fade))
+    }
+
     @Test func `a slow drag up mid-stream is never pulled back to the bottom; back at the bottom it follows again`() {
         var pushes: [TranscriptScenario.Push] = [.init(atMs: 0, "send", .send("go")), .init(atMs: 10, "echo", .rows([row(1, 10, user("go"))]))]
         for i in 0..<10 {
@@ -278,6 +289,52 @@ private func expectClean(_ scenario: TranscriptScenario) -> ScenarioReport {
         // The end row sits last, under the steer's bubble and the work after it.
         #expect(report.rows.last?.id == TranscriptRowID(key: opener, end: true))
         #expect(report.lineWords[opener]?.hasPrefix("Worked for") == true, "\(report.lineWords)")
+    }
+
+    @Test func `a steer then a long reply: the closing line waits for the reply, which drains under the opener's turn`() {
+        let reply = String(repeating: "word ", count: 326)
+        let scenario = TranscriptScenario("steer then long reply", pushes: [
+            .init(atMs: 0, "send", .send("start")),
+            .init(atMs: 20, "echo", .rows([row(1, 20, user("start"))])),
+            .init(atMs: 500, "the person steers", .send("also check the docs")),
+            .init(atMs: 540, "the steer's echo", .rows([row(2, 540, user("also check the docs", steerId: "s1"))])),
+            .init(atMs: 900, "a long reply at once", .rows([row(3, 900, prose(reply))])),
+            .init(atMs: 930, "the close", .rows([row(4, 930, prose(reply, delta: false)), row(5, 930, complete)])),
+        ])
+        let report = expectClean(scenario)
+        guard let opener = report.rows.first?.id.key else { Issue.record("no rows"); return }
+        // The reply drained under the opener's turn, the one its closing line reads, after the close.
+        #expect((report.drainedAt[opener] ?? 0) > 930)
+        #expect(report.lineWords[opener]?.hasPrefix("Worked for") == true, "\(report.lineWords)")
+        // Keyed by the message each row follows (the steer's bubble opening a
+        // turn of its own), the reply reports elsewhere and the line lands early.
+        let byMessage = ScenarioRunner.run(scenario) { rows in
+            var keys: [TranscriptRowID: Int] = [:]
+            var turn: Int?
+            for row in rows {
+                if case .item(let entry) = row, case .user = entry.item { turn = entry.key }
+                if let turn { keys[row.id] = turn }
+            }
+            return keys
+        }
+        #expect(byMessage.violations.contains { $0.contains("of the turn still revealed its text") }, "\(byMessage.violations)")
+    }
+
+    @Test func `a message sent after the harness is gone opens a turn of its own`() {
+        let report = expectClean(TranscriptScenario("send after stopped", pushes: [
+            .init(atMs: 0, "send", .send("start")),
+            .init(atMs: 20, "echo, a call", .rows([row(1, 20, user("start")), row(2, 40, tool("a", "Bash"))])),
+            .init(atMs: 3_000, "the harness is gone", .rows([row(3, 3_000, .status(StatusEvent(status: .stopped)))])),
+            .init(atMs: 4_000, "the person sends", .send("try again")),
+            .init(atMs: 4_040, "the echo", .rows([row(4, 4_040, user("try again"))])),
+            .init(atMs: 4_300, "the reply", .rows([row(5, 4_300, prose("On it.", msg: "p9"))])),
+        ]))
+        let users = report.rows.compactMap { if case .item(let entry) = $0, case .user = entry.item { entry.key } else { nil } }
+        let ends = report.rows.compactMap { if case .turnEnd(let end) = $0 { end.userKey } else { nil } }
+        // Two turns, each with its own end row: the dead one closed, the new one working under its own message.
+        #expect(users.count == 2)
+        #expect(ends == users, "\(report.rows.map(\.id))")
+        #expect(report.rows.last?.id == TranscriptRowID(key: users[1], end: true))
     }
 
     @Test func `a page that leads a parallel group settles into its own row, and no two rows share a key`() {

@@ -35,7 +35,9 @@ public final class RowKeyMemory: @unchecked Sendable {
         /// What the row above a turn is, the only part of it the turn reads (the gap).
         enum Shape: Hashable { case item, group, end }
 
-        var entries: ArraySlice<ThreadEntry>
+        /// A copy, never a slice: a slice would keep the whole entries array
+        /// of the build it came from alive.
+        var entries: [ThreadEntry]
         /// The turn's place among the turns.
         var index: Int
         var above: Shape?
@@ -424,6 +426,23 @@ public enum TranscriptRows {
         return user.completedTs == closed
     }
 
+    /// Each row's turn: the key of its turn's opener, the key the turn's end
+    /// row carries (`TurnEnd.userKey`). A steer's bubble, and the reply after
+    /// it, join the opener's turn (`joins`), as the rows do, so a row reports
+    /// its reveal under the turn whose closing line waits on it. Rows before
+    /// any opener have no turn.
+    public static func turnKeys(_ rows: [TranscriptRowModel]) -> [TranscriptRowID: Int] {
+        var keys: [TranscriptRowID: Int] = [:]
+        var opener: (user: UserTurn, key: Int)?
+        for row in rows {
+            if case .item(let entry) = row, case .user(let user) = entry.item {
+                if let current = opener, joins(user, opener: current.user) {} else { opener = (user, entry.key) }
+            }
+            if let opener { keys[row.id] = opener.key }
+        }
+        return keys
+    }
+
     /// Where each turn starts in `entries`: the index of its opener (the
     /// person's row no open turn took in), or 0 for rows before any.
     static func turnStarts(_ entries: [ThreadEntry]) -> [Int] {
@@ -454,9 +473,10 @@ public enum TranscriptRows {
     /// from the last build when its entries, its place and the row above it
     /// are the same (the desktop's `settledRows`), so a delta builds the
     /// live turn's rows alone. `statusOf` reads an agent's session status
-    /// for a wait whose body the host left behind (`WaitSteps.resolved`).
-    public static func rows(_ entries: [ThreadEntry], turnOpen: Bool, memory: RowKeyMemory? = nil, statusOf: ((String) -> String?)? = nil) -> [TranscriptRowModel] {
-        let entries = WaitSteps.resolved(entries, statusOf: statusOf ?? { _ in nil })
+    /// for a wait whose body the host left behind (`WaitSteps.resolved`),
+    /// once per agent with `waits` (the fold's `waitOutcomes`).
+    public static func rows(_ entries: [ThreadEntry], turnOpen: Bool, memory: RowKeyMemory? = nil, waits: WaitOutcomeMemory? = nil, statusOf: ((String) -> String?)? = nil) -> [TranscriptRowModel] {
+        let entries = WaitSteps.resolved(entries, statusOf: statusOf ?? { _ in nil }, memory: waits)
         var rows: [TranscriptRowModel] = []
         rows.reserveCapacity(entries.count + 8)
         let starts = turnStarts(entries)
@@ -477,7 +497,7 @@ public enum TranscriptRows {
             let turn = entries[start..<end]
             let above = rows.last.map(RowKeyMemory.SettledTurn.shape)
             let turnKey = turn.first?.key ?? 0
-            if !last, let memory, let cached = memory.turns[turnKey], cached.index == number, cached.above == above, cached.entries == turn {
+            if !last, let memory, let cached = memory.turns[turnKey], cached.index == number, cached.above == above, cached.entries.count == turn.count, cached.entries.elementsEqual(turn) {
                 rows.append(contentsOf: cached.rows)
                 drawn.formUnion(cached.groupKeys)
                 kept[turnKey] = cached
@@ -488,7 +508,7 @@ public enum TranscriptRows {
             let told: Set<String> = open ? Set(LinePhase.told(Array(turn)).map(\.callId)) : []
             let groupKeys = appendTurn(turn, open: open, turnOpen: turnOpen, told: told, memory: memory, drawn: &drawn, into: &rows)
             if !last, memory != nil {
-                kept[turnKey] = RowKeyMemory.SettledTurn(entries: turn, index: number, above: above, rows: Array(rows[from...]), groupKeys: groupKeys)
+                kept[turnKey] = RowKeyMemory.SettledTurn(entries: Array(turn), index: number, above: above, rows: Array(rows[from...]), groupKeys: groupKeys)
             }
         }
         memory?.turns = kept

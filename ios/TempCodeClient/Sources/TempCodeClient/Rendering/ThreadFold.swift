@@ -285,14 +285,25 @@ public struct ThreadFold: Sendable, Hashable {
     private var nextProvisional = -1_000
     /// The keys rows were first drawn under, kept across a refold.
     public private(set) var keys = RowKeys()
+    /// What each omitted wait returned on, read once (`WaitSteps.resolved`), kept across a refold.
+    public private(set) var waitOutcomes = WaitOutcomeMemory()
 
     public init() {}
 
     /// A fold that keeps the keys an earlier fold gave out: a refold of the
-    /// same rows draws every row under the key it had.
+    /// same rows draws every row under the key it had, and every wait keeps
+    /// the outcomes it was read with.
     public init(keys: RowKeys, provisionalFrom previous: ThreadFold? = nil) {
         self.keys = keys
-        if let previous { nextProvisional = previous.nextProvisional }
+        if let previous {
+            nextProvisional = previous.nextProvisional
+            waitOutcomes = previous.waitOutcomes
+        }
+    }
+
+    /// The waits' outcomes `previous` read (a fold built off the actor from the whole history).
+    public mutating func carryWaitOutcomes(from previous: ThreadFold) {
+        waitOutcomes = previous.waitOutcomes
     }
 
     /// The host's echo of a message this device sent: its row takes the key
@@ -481,8 +492,10 @@ public struct ThreadFold: Sendable, Hashable {
             }
             // Logged end-of-turn signals close the turn even when the
             // turn-complete itself was lost; `watching` ends it too, since
-            // the harness is idle behind its background work.
-            if event.status == .idle || event.status == .error || event.status == .watching, board.turnOpen || board.inPass {
+            // the harness is idle behind its background work, and `stopped`
+            // (the harness is gone), so a message sent after it opens a turn
+            // of its own instead of joining the dead one (the desktop's fold).
+            if [.idle, .error, .watching, .stopped].contains(event.status), board.turnOpen || board.inPass {
                 board.turnOpen = false
                 board.inPass = false
                 closeUserTurns(at: row.ts, cost: nil)

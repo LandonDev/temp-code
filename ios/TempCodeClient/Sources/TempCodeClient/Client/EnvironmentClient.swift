@@ -624,6 +624,7 @@ public final class EnvironmentClient {
                     latest.rows = complete.rows
                     var fold = complete.fold
                     fold.carryLiveEdits(from: latest.fold)
+                    fold.carryWaitOutcomes(from: latest.fold)
                     latest.fold = fold
                     latest.moreBefore = false
                     latest.revision += 1

@@ -2646,10 +2646,13 @@ proof and the sizing rules; the pieces, by name:
   `EnvironmentClient.append` applies a batch in place;
   `Thread/StreamingRow.swift` holds the streaming assistant row; the phrase fade (A5) is the client package's
   `Rendering/StreamReveal.swift` (`StreamRevealLedger`: a ledger per block
-  by its first 32 characters, the settled prefix and at most four steps
-  younger than `revealFade` as runs, a reparsed block fading whole, none
-  before arming or under reduced motion; `RevealDrain`, the turns still
-  revealing, which the closing line waits on) drawn by
+  by its first 32 characters without their marks, the settled prefix and
+  at most four steps younger than `revealFade` as runs, a block whose
+  marks alone were rewritten keeping what it showed (`shownEnd`), a
+  reparsed block fading whole, none before arming or under reduced motion;
+  `RevealDrain`, the turns still revealing, which the closing line waits
+  on, each row reporting under its turn's opener, a steer's reply too,
+  `TranscriptRows.turnKeys`) drawn by
   `Thread/StreamFade.swift` (`StreamFadeRenderer`, a `TextRenderer` under a
   `TimelineView` that runs only while a run is young, over a `Text`
   interpolated from the runs; prose blocks only, never code or tables); a

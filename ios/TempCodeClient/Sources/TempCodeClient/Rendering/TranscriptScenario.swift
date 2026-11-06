@@ -153,7 +153,10 @@ struct ReaderProbe {
 public enum ScenarioRunner {
     /// Plays `scenario` and checks the built checks it does not await.
     @MainActor
-    public static func run(_ scenario: TranscriptScenario) -> ScenarioReport {
+    ///
+    /// `turnKeys` keys each row's reveal by its turn, as the view does; a
+    /// test hands another rule to prove the drain check catches it.
+    public static func run(_ scenario: TranscriptScenario, turnKeys: ([TranscriptRowModel]) -> [TranscriptRowID: Int] = TranscriptRows.turnKeys) -> ScenarioReport {
         var report = ScenarioReport()
         report.checked = TranscriptScenario.Check.built.subtracting(scenario.awaits)
         var state = ThreadState()
@@ -175,7 +178,7 @@ public enum ScenarioRunner {
         endsShown = Set(rows.map(\.id).filter(\.end))
         let reveals = RevealProbes(history: state.entries, reduced: scenario.reducedMotion)
         let lines = LineProbes(reduced: scenario.reducedMotion)
-        lines.sample(rows, drain: reveals.drain, at: 0, checks: report.checked, label: "\(scenario.name) before the first push")
+        lines.sample(rows, drain: reveals.drain, revealingRows: reveals.revealingRows, at: 0, checks: report.checked, label: "\(scenario.name) before the first push")
         // Time moves in reveal steps and stops at every hold's end, sampling the lines at each.
         func advance(to target: Double, label: String) {
             while reveals.now < target {
@@ -184,7 +187,7 @@ public enum ScenarioRunner {
                 reveals.advance(to: step, checks: report.checked, label: label)
                 // A reveal step grew a row: the row asks the follow rule to pin.
                 if reveals.revision != grown { follow("\(label) @\(Int(step))ms a reveal step") }
-                lines.sample(rows, drain: reveals.drain, at: step, checks: report.checked, label: label)
+                lines.sample(rows, drain: reveals.drain, revealingRows: reveals.revealingRows, at: step, checks: report.checked, label: label)
             }
         }
 
@@ -218,8 +221,8 @@ public enum ScenarioRunner {
                 report.violations += steerJerks(next, last: &steers, at: at)
             }
             if case .reader = push.step {} else { follow(at) }
-            reveals.sync(state.entries, checks: report.checked, label: at)
-            lines.sample(next, drain: reveals.drain, at: reveals.now, checks: report.checked, label: at)
+            reveals.sync(state.entries, turns: turnKeys(next), checks: report.checked, label: at)
+            lines.sample(next, drain: reveals.drain, revealingRows: reveals.revealingRows, at: reveals.now, checks: report.checked, label: at)
             remember(next, into: &seenKeys)
             rows = next
         }

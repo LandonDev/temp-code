@@ -85,22 +85,36 @@ public enum WaitSteps {
         }
     }
 
-    /// A settled wait whose body the host omitted (any result of 2 KiB or
-    /// more, to every remote socket), with `waitOutcomes` stamped: the
-    /// agents the body's head names with their status, then each other
-    /// agent the call named by the status its own session reads now
-    /// (`statusOf`, the agents' metas), when that status is a settled one.
-    /// Any other entry comes back as it was.
-    public static func resolved(_ entry: ThreadEntry, statusOf: (String) -> String?) -> ThreadEntry {
-        guard case .tool(var tool) = entry.item, isWait(tool), tool.status != .running,
-              case .omitted(let body, _) = tool.output else { return entry }
+    /// The agents a settled wait whose body the host omitted names in its
+    /// head, with the status they settled in then.
+    static func headOutcomes(_ body: OmittedBody) -> [Outcome] {
         var out: [Outcome] = []
         for match in body.head.matches(of: /"agentId"\s*:\s*"([^"]+)"\s*,\s*"status"\s*:\s*"(\w+)"/) {
             let id = String(match.1), status = String(match.2)
             if settled.contains(status), !out.contains(where: { $0.id == id }) { out.append(Outcome(id: id, status: status)) }
         }
+        return out
+    }
+
+    /// A settled wait whose body the host omitted (any result of 2 KiB or
+    /// more, to every remote socket), with `waitOutcomes` stamped: the
+    /// agents the body's head names with their status, then each other
+    /// agent the call named by the status its own session read (`statusOf`,
+    /// the agents' metas) when that was a settled one. With `memory` the
+    /// first settled status read for an agent is the wait's outcome from
+    /// then on (`WaitOutcomeMemory`): a later run of that agent never takes
+    /// its step out of the history. Any other entry comes back as it was.
+    public static func resolved(_ entry: ThreadEntry, statusOf: (String) -> String?, memory: WaitOutcomeMemory? = nil) -> ThreadEntry {
+        guard case .tool(var tool) = entry.item, isWait(tool), tool.status != .running,
+              case .omitted(let body, _) = tool.output else { return entry }
+        var out = headOutcomes(body)
         for id in ids(tool) where !out.contains(where: { $0.id == id }) {
-            if let status = statusOf(id), settled.contains(status) { out.append(Outcome(id: id, status: status)) }
+            if let kept = memory?.status(call: tool.callId, agent: id) {
+                out.append(Outcome(id: id, status: kept))
+            } else if let status = statusOf(id), settled.contains(status) {
+                memory?.keep(call: tool.callId, agent: id, status: status)
+                out.append(Outcome(id: id, status: status))
+            }
         }
         tool.waitOutcomes = out
         var entry = entry
@@ -109,12 +123,27 @@ public enum WaitSteps {
     }
 
     /// Every wait in `entries` whose body was omitted, resolved; the array itself when there is none.
-    public static func resolved(_ entries: [ThreadEntry], statusOf: (String) -> String?) -> [ThreadEntry] {
+    public static func resolved(_ entries: [ThreadEntry], statusOf: (String) -> String?, memory: WaitOutcomeMemory? = nil) -> [ThreadEntry] {
         guard entries.contains(where: { entry in
             if case .tool(let tool) = entry.item { return isWait(tool) && tool.output.isOmitted }
             return false
         }) else { return entries }
-        return entries.map { resolved($0, statusOf: statusOf) }
+        return entries.map { resolved($0, statusOf: statusOf, memory: memory) }
+    }
+
+    /// The agents whose session status the omitted waits in `entries` still
+    /// need: each one a settled wait named that neither its head nor
+    /// `memory` settled yet. Empty for a thread with no such wait, so the
+    /// transcript reads no session at all (`WaitStatuses`).
+    public static func unsettledAgents(_ entries: [ThreadEntry], memory: WaitOutcomeMemory?) -> Set<String> {
+        var out: Set<String> = []
+        for entry in entries {
+            guard case .tool(let tool) = entry.item, isWait(tool), tool.status != .running,
+                  case .omitted(let body, _) = tool.output else { continue }
+            let head = Set(headOutcomes(body).map(\.id))
+            for id in ids(tool) where !head.contains(id) && memory?.status(call: tool.callId, agent: id) == nil { out.insert(id) }
+        }
+        return out
     }
 
     /// The wait the turn is in now (the desktop's `openWaitOf`): its last
@@ -308,5 +337,53 @@ public enum FoldedStep {
             for (id, name) in spawnedNames(tool) { names[id] = name }
         }
         return names
+    }
+}
+
+/// What each omitted wait returned on, read once: wait call id → agent id
+/// → the settled status first read for it. A settled wait never changes,
+/// so its steps never re-read an agent that runs again later. Kept with the
+/// fold (`ThreadFold.waitOutcomes`) across refolds; a plain class written
+/// outside observation, like `RowKeyMemory`, and no part of the fold's
+/// equality (it only remembers what the rows already said).
+public final class WaitOutcomeMemory: @unchecked Sendable, Hashable {
+    private var outcomes: [String: [String: String]] = [:]
+
+    public init() {}
+
+    public func status(call: String, agent: String) -> String? { outcomes[call]?[agent] }
+
+    func keep(call: String, agent: String, status: String) {
+        outcomes[call, default: [:]][agent] = status
+    }
+
+    public static func == (lhs: WaitOutcomeMemory, rhs: WaitOutcomeMemory) -> Bool { true }
+    public func hash(into hasher: inout Hasher) {}
+}
+
+/// The session statuses the omitted waits of a transcript need
+/// (`WaitSteps.unsettledAgents`), read into a small map outside the
+/// transcript's body: the body reads this map, never the hosts' sessions,
+/// so a meta push that moves no named agent re-runs nothing.
+public struct WaitStatuses: Sendable, Equatable {
+    /// The ids read.
+    public var ids: Set<String> = []
+    /// Their statuses; an id the hosts do not know is left out.
+    public var statuses: [String: String] = [:]
+
+    public init() {}
+
+    /// Each id's status as `statusOf` reads it now.
+    public static func read(_ ids: Set<String>, statusOf: (String) -> String?) -> WaitStatuses {
+        var read = WaitStatuses()
+        read.ids = ids
+        for id in ids { if let status = statusOf(id) { read.statuses[id] = status } }
+        return read
+    }
+
+    /// An id's status from the map; one the map has not read yet (a wait
+    /// that just returned) from `unread`, until the next read covers it.
+    public func status(_ id: String, unread: (String) -> String?) -> String? {
+        ids.contains(id) ? statuses[id] : unread(id)
     }
 }

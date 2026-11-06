@@ -89,6 +89,40 @@ import TempCodeContract
         #expect(kinds(TranscriptRows.rows(headOnly, turnOpen: false)) == ["item 1", "group [3]", "end 1 last"])
     }
 
+    @Test func `an omitted wait keeps the outcome it was first read with, whatever the agent does later`() {
+        let entries = [userEntry(1, completedTs: 2_000), omittedWait(3, ids: ["a", "b"], head: #"{"status":"#)]
+        let waits = WaitOutcomeMemory()
+        var statuses = ["a": "idle", "b": "running"]
+        #expect(WaitSteps.unsettledAgents(entries, memory: waits) == ["a", "b"])
+        let first = TranscriptRows.rows(entries, turnOpen: false, waits: waits, statusOf: { statuses[$0] })
+        #expect(group(first, 1)?.stepRows == 1)
+        // a settled and is kept; b still runs, so it is still asked for.
+        #expect(waits.status(call: "w3", agent: "a") == "idle")
+        #expect(WaitSteps.unsettledAgents(entries, memory: waits) == ["b"])
+        // a runs again later: its step stays in the history.
+        statuses["a"] = "running"
+        let later = TranscriptRows.rows(entries, turnOpen: false, waits: waits, statusOf: { statuses[$0] })
+        guard case .tool(let tool)? = group(later, 1)?.calls.first?.item else { Issue.record("the wait's step left"); return }
+        #expect(WaitSteps.outcomes(tool) == [.init(id: "a", status: "idle")])
+        // Without the memory it reads the agent as it is now, and the step goes.
+        #expect(kinds(TranscriptRows.rows(entries, turnOpen: false, statusOf: { statuses[$0] })) == ["item 1", "end 1 last"])
+        // A refold keeps what the fold read.
+        let fold = ThreadFold()
+        fold.waitOutcomes.keep(call: "w3", agent: "a", status: "idle")
+        #expect(ThreadFold(keys: fold.keys, provisionalFrom: fold).waitOutcomes.status(call: "w3", agent: "a") == "idle")
+    }
+
+    @Test func `the wait statuses map reads only the ids asked, and an id it has not read falls back`() {
+        var asked: [String] = []
+        let read = WaitStatuses.read(["a", "gone"]) { id in asked.append(id); return id == "a" ? "running" : nil }
+        #expect(Set(asked) == ["a", "gone"])
+        #expect(read.statuses == ["a": "running"])
+        #expect(read.status("a", unread: { _ in "idle" }) == "running")
+        #expect(read.status("gone", unread: { _ in "idle" }) == nil)
+        #expect(read.status("new", unread: { _ in "idle" }) == "idle")
+        #expect(read == WaitStatuses.read(["a", "gone"]) { $0 == "a" ? "running" : nil })
+    }
+
     @Test func `everything between two paragraphs is one group`() {
         let rows = TranscriptRows.rows([userEntry(1), read(2), edit(3), run(4), read(5), item(textItem(6, ts: 1_006, "done")), run(7)], turnOpen: false)
         #expect(kinds(rows) == ["item 1", "group [2, 3, 4, 5]", "item 6", "group [7]"])
@@ -152,6 +186,16 @@ import TempCodeContract
         // A message after the close is a turn of its own.
         let next = TranscriptRows.rows([userEntry(1, completedTs: 9_000), read(2), userEntry(3, ts: 10_000), read(4)], turnOpen: true)
         #expect(kinds(next) == ["item 1", "group [2]", "end 1", "item 3", "group [4] live", "line 3 last"])
+    }
+
+    @Test func `a steer's bubble and the reply after it are the opener's turn, the key its end row carries`() {
+        let entries = [userEntry(1, completedTs: 9_000), read(2), steer(3, ts: 1_500, completedTs: 9_000), item(textItem(4, ts: 1_600, "Checked.")), userEntry(5, ts: 10_000), item(textItem(6, ts: 10_100, "Next."))]
+        let rows = TranscriptRows.rows(entries, turnOpen: true)
+        let keys = TranscriptRows.turnKeys(rows)
+        #expect(kinds(rows) == ["item 1", "group [2]", "item 3", "item 4", "end 1", "item 5", "item 6", "line 5 last"])
+        let first = entries[0].key, second = entries[4].key
+        #expect(rows.map { keys[$0.id] } == [first, first, first, first, first, second, second, second])
+        #expect(rows.compactMap { if case .turnEnd(let end) = $0 { end.userKey } else { nil } } == [first, second])
     }
 
     @Test func `a group never takes a key that left it: a page that settled keeps its own`() {

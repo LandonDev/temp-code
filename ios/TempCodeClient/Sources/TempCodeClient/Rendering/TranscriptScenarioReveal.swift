@@ -11,9 +11,11 @@ import Foundation
 /// - `fade`: read as the row reads it, block by block through the
 ///   streaming markdown (`MarkdownCache.streamingDocument`, open spans
 ///   closed): no block has more than `maxYoung` young runs, none under
-///   reduced motion, and a block's plain text only grows, so its fade
-///   never starts over (an unclosed `**` once showed raw, then the closed
-///   span rewrote the paragraph and it faded in again from blank).
+///   reduced motion, and no run born at a sample covers text the block
+///   already showed, so its fade never starts over (an unclosed `**` once
+///   showed raw, then the closed span rewrote the paragraph and it faded
+///   in again from blank; a link's text closed into literal brackets did
+///   the same until the ledger read a rewrite of the marks as one).
 /// - `drain`: the turn reports revealing while any of its text is unshown
 ///   or fading, and stops within the catch-up and the fade after its last
 ///   text arrived.
@@ -50,6 +52,8 @@ final class RevealProbes {
         var shown = 0
         /// Each prose block's plain text last sampled, by its index.
         var plains: [Int: String] = [:]
+        /// Each prose block's runs last sampled, by its index.
+        var runs: [Int: [RevealSegment]] = [:]
     }
 
     let reduced: Bool
@@ -57,6 +61,8 @@ final class RevealProbes {
     private var probes: [Int: Probe] = [:]
     private var known: Set<Int>
     private(set) var violations: [String] = []
+    /// The rows still revealing or fading, by their own key.
+    private(set) var revealingRows: Set<Int> = []
     /// When each turn stopped revealing, ms on the scenario's clock.
     private(set) var drainedAt: [Int: Double] = [:]
     private(set) var now: Double = 0
@@ -78,14 +84,14 @@ final class RevealProbes {
         }
     }
 
-    /// The fold after a push: new blocks get a probe, known ones their new text.
-    func sync(_ entries: [ThreadEntry], checks: Set<TranscriptScenario.Check>, label: String) {
-        var turn: Int?
+    /// The fold after a push: new blocks get a probe, known ones their new
+    /// text. `turns` is each row's turn as the view keys it
+    /// (`TranscriptRows.turnKeys`): a block reports under its row's turn.
+    func sync(_ entries: [ThreadEntry], turns: [TranscriptRowID: Int], checks: Set<TranscriptScenario.Check>, label: String) {
         for entry in entries {
             switch entry.item {
-            case .user: turn = entry.key
             case .assistant(let block):
-                guard let turn else { continue }
+                guard let turn = turns[TranscriptRowID(key: entry.key)] ?? probes[entry.key]?.turn else { continue }
                 if var probe = probes[entry.key] {
                     if probe.text != block.text || probe.streaming != block.streaming {
                         if block.text != probe.text { probe.arrivedAt = now }
@@ -93,6 +99,7 @@ final class RevealProbes {
                         if !block.text.hasPrefix(probe.text) {
                             probe.shown = 0
                             probe.plains = [:]
+                            probe.runs = [:]
                         }
                         let grew = block.text.count - probe.text.count
                         probe.text = block.text
@@ -146,12 +153,17 @@ final class RevealProbes {
             let young = runs.filter(\.young).count
             if young > StreamRevealLedger.maxYoung { violations.append("\(label) @\(Int(now))ms: \(young) young runs") }
             if reduced, young > 0 { violations.append("\(label) @\(Int(now))ms: a run fades under reduced motion") }
-            if let was = probe.plains[index], !plain.hasPrefix(was) {
+            // A rewrite of the marks may move what was shown; a run born since the last sample never covers it.
+            let before = Set(probe.runs[index]?.compactMap(\.bornAt) ?? [])
+            let born = runs.filter { $0.bornAt.map { !before.contains($0) } ?? false }
+            defer { probe.runs[index] = runs }
+            if let was = probe.plains[index], born.contains(where: { $0.from < StreamRevealLedger.shownEnd(was.count, in: was, onto: plain) }) {
                 violations.append("\(label) @\(Int(now))ms: block \(index) of row \(key) was rewritten (\(was.suffix(24).debugDescription) → \(plain.suffix(24).debugDescription)), so its fade started over")
             }
             probe.plains[index] = plain
         }
         let on = probe.streaming || probe.reveal.revealing || probe.ledger.fading(at: now / 1_000)
+        if on { revealingRows.insert(key) } else { revealingRows.remove(key) }
         let was = drain.revealing(turn: probe.turn)
         drain.report(turn: probe.turn, row: key, on: on)
         if was, !drain.revealing(turn: probe.turn) { drainedAt[probe.turn] = now }

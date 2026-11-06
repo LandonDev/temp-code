@@ -80,6 +80,20 @@ public enum ShellPaths {
         return placed.root == root ? nil : placed
     }
 
+    /// Whether the shell still waits on the lists for the bare thread at the
+    /// detail's root (`relisted`), nothing pushed over it. Once its host has
+    /// listed and the thread still opens bare (a chat outside every
+    /// workspace), that root is `settled` and never looked at again, so the
+    /// lists (`hosts`, every host's rows) are not built on every push while
+    /// it shows. Only `hosts` builds them; `listed` is the host's one flag.
+    public nonisolated static func awaitsListing(_ root: Route?, stackEmpty: Bool, settled: inout Route?, listed: (String) -> Bool, hosts: () -> [HomeHostInput]) -> Bool {
+        guard let root, case .thread(let environmentId, _, _) = root, stackEmpty, root != settled else { return false }
+        let hasListed = listed(environmentId)
+        if relisted(root, hosts: hosts()) != nil { return true }
+        if hasListed { settled = root }
+        return false
+    }
+
     /// A project's tap (its card, a search's project row): the shell with
     /// its landing. Already in that shell, nothing moves (a thread turning
     /// active never takes the person's place). Else the landing:
