@@ -86,7 +86,7 @@ struct ThreadStripView: View {
             // The selected chip (else a send in flight) into view on a change of selection, of the
             // chips (a restore paints them whole), or of the row's width (a fold); never animated.
             .onChange(of: scrollKey(chips), initial: true) {
-                guard let target = StripModel(live: chips, shelf: []).scrollTarget else { return }
+                guard let target = StripModel.scrollTarget(chips) else { return }
                 Motion.withoutAnimation { proxy.scrollTo(target, anchor: nil) }
             }
         }
@@ -127,7 +127,7 @@ struct ThreadStripView: View {
     }
 
     private func scrollKey(_ chips: [StripChip]) -> String {
-        "\(StripModel(live: chips, shelf: []).scrollTarget ?? "")|\(chips.map(\.id).joined(separator: ","))|\(Int(width))"
+        "\(StripModel.scrollTarget(chips) ?? "")|\(chips.map(\.id).joined(separator: ","))|\(Int(width))"
     }
 }
 

@@ -122,8 +122,11 @@ public struct StripModel: Sendable, Hashable {
 
     /// The chip the row scrolls into view: the selected one, else a draft's
     /// send in flight (the thread the person just sent is where they look).
-    public var scrollTarget: String? {
-        (live + shelf).first(where: \.selected)?.id ?? live.first(where: \.sending)?.id
+    public var scrollTarget: String? { Self.scrollTarget(live + shelf) }
+
+    /// The same rule over one row's chips.
+    public static func scrollTarget(_ chips: [StripChip]) -> String? {
+        chips.first(where: \.selected)?.id ?? chips.first(where: \.sending)?.id
     }
 
     /// New Thread leads the row, in words, when no chip is live: the row's
