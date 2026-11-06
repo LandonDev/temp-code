@@ -2468,13 +2468,19 @@ proof and the sizing rules; the pieces, by name:
   the thread its chip selects (`ThreadScreen`) or the project's draft (an
   empty body and Shell/DraftComposer.swift: the A10 box as `ComposerBox`,
   the A11 row with the draft's own mode, and the draft row with the type,
-  Master for a chat (admin) and the host of a linked project with New copy
-  through `project.ensureLinked`; the client's `ProjectDraftStore`, one
-  draft per link key or `loose:<workspace>`, 64 keys for 30 days in
-  UserDefaults `project.drafts.v1`, photos in memory; the first send is
-  `session.create { firstMessage }`, or create, upload, send and
-  `session.archive` on a failed send, `sendDraft`; it opens the thread in
-  the shell and clears the draft; every New thread focuses the draft,
+  "Name this thread" (80 characters, `ProjectDraft.title`, sent as
+  `session.create { title }`), Master for a chat (admin) and the host of a
+  linked project with New copy through `project.ensureLinked`; the client's
+  `ProjectDraftStore`, one draft per link key or `loose:<workspace>`, 64
+  keys for 30 days in UserDefaults `project.drafts.v1` written after 500 ms
+  of quiet (`flush` when the draft leaves the screen or the app the
+  foreground), photos in memory; the first send waits for the host's
+  catalog (`DraftSend.canSend`; a host switch reloads it, `CatalogLoad`) and
+  is `session.create { firstMessage }`, or create, upload, send and
+  `session.archive` on a failed send, `sendDraft`; while it runs the button
+  spins and the strip draws its chip (`DraftSending`, live until the meta
+  lands); it opens the thread in the shell, and only what it carried leaves
+  the draft (`ProjectDraft.remaining`); every New thread focuses the draft,
   `NewThreadPresenter.compose`); `key` is the strip scope's
   key (a project's `ProjectPairs.key`, `loose:…` for a workspace's loose
   chats), `thread` the chip id `<env>:<sid>`. `ShellPaths.place` puts every
@@ -2498,13 +2504,17 @@ proof and the sizing rules; the pieces, by name:
   ShellNavigator.swift: the sidebar's routes, the detail's root and stack,
   `open(route)` placing a route by `ShellPaths.column(of:)` and a thread in
   its shell by `ShellPaths.place`; a notification tap opens Home's shell, a
-  search hit the same shell in Search's detail), the pose is the
+  search hit the same shell in Search's detail; a thread opened bare before
+  its host listed it moves into its shell when the list lands,
+  `ShellPaths.relisted`), the pose is the
   client package's `ShellPose` published as `\.shellPose` (read it, never
   `horizontalSizeClass`, for a shell decision), the thread strip
   (Shell/ThreadStrip.swift over the package's `ThreadStrip` and
   `StripChip.look`, `StripMetrics` in Tokens.swift) sits at the project
   shell's top in every pose (a 40 pt live row, the status mark in the chip's
-  one glyph slot, New Thread after it; regular width adds the 32 pt shelf,
+  one glyph slot, a selected chip keeping its slot until another is
+  selected, New Thread after it, leading the row in words when no chip is
+  live; regular width adds the 32 pt shelf,
   compact width the Recent menu with Archived Threads at its foot), and the place is remembered under
   `navigation.memory.v3` (`NavigationSnapshot`; a v2 snapshot gives back its
   tab alone, `NavigationSnapshot.restore`; the Inbox's path has its own

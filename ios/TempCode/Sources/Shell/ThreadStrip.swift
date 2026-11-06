@@ -31,13 +31,15 @@ struct ThreadStripView: View {
 
     var body: some View {
         let hosts = HomeRows.inputs(model.registry.ordered)
-        let model = ThreadStrip.model(scope: scope, shown: shown, order: ThreadStripStore.shared.order(scope.key), hosts: hosts)
+        let model = ThreadStrip.model(scope: scope, shown: shown, order: ThreadStripStore.shared.order(scope.key), hosts: hosts, sending: ProjectDraftStore.shared.sending[scope.key])
         let strip = pose.isSplit ? model : model.compact
         let shelfShown = pose.isSplit && !strip.shelf.isEmpty
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                chipRow(strip.live, onShelf: false)
-                newThread(words: strip.live.isEmpty)
+                if !strip.leadsWithNewThread {
+                    chipRow(strip.live, onShelf: false)
+                }
+                newThread(words: strip.leadsWithNewThread)
                 if !pose.isSplit, !strip.shelf.isEmpty || !scope.archived.isEmpty {
                     RecentMenu(scope: scope, shelf: strip.shelf, open: open)
                 }
@@ -62,10 +64,17 @@ struct ThreadStripView: View {
             ScrollView(.horizontal) {
                 HStack(spacing: StripMetrics.chipGap) {
                     ForEach(chips) { chip in
-                        StripChipView(chip: chip, onShelf: onShelf) { open(chip) }
-                            .id(chip.id)
-                            // The thread's menu on a long press: the rows' own.
-                            .modifier(ChipActions(chip: chip))
+                        if chip.sending {
+                            // A send in flight: the chip says so and waits for its thread.
+                            StripChipView(chip: chip, onShelf: onShelf) {}
+                                .id(chip.id)
+                                .allowsHitTesting(false)
+                        } else {
+                            StripChipView(chip: chip, onShelf: onShelf) { open(chip) }
+                                .id(chip.id)
+                                // The thread's menu on a long press: the rows' own.
+                                .modifier(ChipActions(chip: chip))
+                        }
                     }
                 }
                 // The first chip's fill half the text edge in, so its glyph sits clear of the bar's back button.
@@ -107,6 +116,8 @@ struct ThreadStripView: View {
             .contentShape(Rectangle())
             .buttonStyle(.pressable)
             .foregroundStyle(.secondary)
+            // In words it leads the row where the first chip would sit.
+            .padding(.leading, words ? Layout.textEdge / 2 : 0)
             .frame(maxWidth: words ? .infinity : nil, alignment: .leading)
         }
     }

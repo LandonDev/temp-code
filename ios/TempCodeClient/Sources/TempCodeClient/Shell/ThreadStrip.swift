@@ -67,6 +67,9 @@ public struct StripChip: Sendable, Hashable, Identifiable {
     /// The thread on screen from outside the scope: the live row's last
     /// chip, never saved into the order.
     public var outside: Bool
+    /// A draft's first send whose meta has not landed (`DraftSending`): no
+    /// tap, no menu, until the thread's own chip takes its place.
+    public var sending = false
 
     public var id: String { "\(environmentId):\(meta.id)" }
 }
@@ -116,6 +119,10 @@ public struct StripModel: Sendable, Hashable {
     public var selected: StripChip? { (live + shelf).first(where: \.selected) }
     /// What the order may keep: the live row less the outside chip.
     public var saveIds: [String] { live.filter { !$0.outside }.map(\.id) }
+
+    /// New Thread leads the row, in words, when no chip is live: the row's
+    /// scroll is left out so nothing pushes it off the leading edge.
+    public var leadsWithNewThread: Bool { live.isEmpty }
 
     /// Compact width, where the shelf is the Recent menu: the thread on
     /// screen keeps a chip even when it is settled, at the live row's end
@@ -215,8 +222,15 @@ public enum ThreadStrip {
     /// thread on screen as an outside chip when the scope does not hold it,
     /// and the settled roots on the shelf, freshest first. The thread on
     /// screen (a subagent selects its root) is selected on whichever row
-    /// it sits.
-    public nonisolated static func model(scope: StripScope, shown: (environmentId: String, sessionId: String)?, order: [String], hosts: [HomeHostInput]) -> StripModel {
+    /// it sits. A selected chip already on the live row keeps its place
+    /// there until another is selected, though opening it marked it seen
+    /// or it settled meanwhile: the touch stand-in for the desktop's hover
+    /// hold, so a tapped chip never jumps away as its thread opens.
+    ///
+    /// `sending` is the scope's draft send in flight: a chip at the live
+    /// row's end, its glyph the working mark, never saved, selected once
+    /// the new thread is on screen, gone the moment its meta lands.
+    public nonisolated static func model(scope: StripScope, shown: (environmentId: String, sessionId: String)?, order: [String], hosts: [HomeHostInput], sending: DraftSending? = nil) -> StripModel {
         var shownRoot: (environmentId: String, meta: SessionMeta, unseen: Bool)?
         if let shown, let host = hosts.first(where: { $0.environmentId == shown.environmentId }), let meta = root(of: shown.sessionId, in: host.sessions) {
             shownRoot = (shown.environmentId, meta, ThreadGroups.isUnseen(meta, seen: host.seen, floor: host.floor))
@@ -227,9 +241,11 @@ public enum ThreadStrip {
         let roots = scope.roots.filter { !$0.item.meta.archived && $0.item.meta.parentId == nil }.sorted(by: freshestFirst)
         var live: [StripChip] = []
         var shelf: [StripChip] = []
+        let held = Set(order)
         for root in roots {
-            let isLive = isLive(root.item)
-            let chip = StripChip(environmentId: root.environmentId, meta: root.item.meta, selected: isShown(root.environmentId, root.item.meta.id), unseen: root.item.unseen, live: isLive, outside: false)
+            let selected = isShown(root.environmentId, root.item.meta.id)
+            let isLive = isLive(root.item) || (selected && held.contains(root.id))
+            let chip = StripChip(environmentId: root.environmentId, meta: root.item.meta, selected: selected, unseen: root.item.unseen, live: isLive, outside: false)
             if isLive { live.append(chip) } else { shelf.append(chip) }
         }
         let ordered = orderChips(order, live.map { ($0.id, $0.meta.updatedAt) })
@@ -239,7 +255,17 @@ public enum ThreadStrip {
             let item = ThreadItem(meta: shownRoot.meta, unseen: shownRoot.unseen)
             row.append(StripChip(environmentId: shownRoot.environmentId, meta: shownRoot.meta, selected: true, unseen: shownRoot.unseen, live: isLive(item), outside: true))
         }
+        if let sending, !landed(sending, hosts: hosts) {
+            let selected = sending.sessionId.map { id in shown.map { $0.environmentId == sending.environmentId && $0.sessionId == id } ?? false } ?? false
+            row.append(StripChip(environmentId: sending.environmentId, meta: sending.standIn, selected: selected, unseen: false, live: true, outside: true, sending: true))
+        }
         return StripModel(live: row, shelf: shelf)
+    }
+
+    /// The sent draft's thread is in its host's list: its own chip takes over.
+    public nonisolated static func landed(_ sending: DraftSending, hosts: [HomeHostInput]) -> Bool {
+        guard let id = sending.sessionId else { return false }
+        return hosts.first { $0.environmentId == sending.environmentId }?.sessions.contains { $0.id == id } ?? false
     }
 
     /// `orderChips`: the ids already in `order` keep their places, the ones

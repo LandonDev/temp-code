@@ -73,12 +73,116 @@ import TempCodeContract
         let store = ProjectDraftStore(defaults: defaults)
         store.set("p", ProjectDraft(text: "saved"))
         store.addPhoto("p", DraftPhoto(name: "a.png", mime: "image/png", data: Data([1, 2, 3])))
+        store.flush()
         let reopened = ProjectDraftStore(defaults: defaults)
         #expect(reopened.draft("p")?.text == "saved")
         #expect(reopened.photos["p"] == nil)
         store.clear("p")
         #expect(store.photos["p"] == nil)
         #expect(ProjectDraftStore(defaults: defaults).draft("p") == nil)
+    }
+}
+
+@Suite struct DraftSendInFlightTests {
+    private let photoA = DraftPhoto(name: "a.png", mime: "image/png", data: Data([1]))
+    private let photoB = DraftPhoto(name: "b.png", mime: "image/png", data: Data([2]))
+
+    @Test func `only what the send carried leaves the draft`() {
+        let sent = ProjectDraft(text: "Fix the login", threadType: .implementation, title: "Login")
+        // Nothing written meanwhile: the draft is done.
+        #expect(sent.remaining(after: sent) == nil)
+        // Words added after the send began stay; the sent words and the unchanged title leave.
+        var more = sent
+        more.text = "Fix the login\n\nand the logout too"
+        let left = more.remaining(after: sent)
+        #expect(left?.text == "and the logout too")
+        #expect(left?.title == nil)
+        #expect(left?.threadType == .implementation)
+        // A draft rewritten mid-flight stays whole; a title changed since stays.
+        var rewritten = sent
+        rewritten.text = "Fix the signup"
+        rewritten.title = "Signup"
+        #expect(rewritten.remaining(after: sent)?.text == "Fix the signup")
+        #expect(rewritten.remaining(after: sent)?.title == "Signup")
+        // Photos: each one sent leaves once, one picked meanwhile stays.
+        #expect(DraftSend.remainingPhotos([photoA, photoB], sent: [photoA]) == [photoB])
+        #expect(DraftSend.remainingPhotos([photoA], sent: [photoA]).isEmpty)
+    }
+
+    @Test func `send waits for the catalog's model and for the send in flight`() {
+        #expect(!DraftSend.canSend(text: "hi", sending: false, model: ""))
+        #expect(!DraftSend.canSend(text: "hi", sending: true, model: "claude-sonnet-5-5"))
+        #expect(!DraftSend.canSend(text: "  \n", sending: false, model: "claude-sonnet-5-5"))
+        #expect(DraftSend.canSend(text: "hi", sending: false, model: "claude-sonnet-5-5"))
+    }
+
+    @Test func `the name is cut at 80 characters and rides the create; an empty one is no title`() {
+        #expect(ProjectDraft.cleanTitle(String(repeating: "a", count: 90))?.count == ProjectDraft.titleMax)
+        #expect(ProjectDraft.cleanTitle("") == nil)
+        let named = ProjectDrafts.threadDraft(ProjectDraft(text: "go", title: "Ship the export"), workspaceId: "w", projectId: "p", provider: .claude, model: "m")
+        #expect(named.params.title == "Ship the export")
+        let blank = ProjectDrafts.threadDraft(ProjectDraft(text: "go", title: "  "), workspaceId: "w", projectId: "p", provider: .claude, model: "m")
+        #expect(blank.params.title == nil)
+    }
+
+    @Test func `an old draft on disk without a name still reads`() throws {
+        let old = Data(#"{"entries":{"p":{"text":"hi","threadType":"chat","master":false,"updatedAt":5}}}"#.utf8)
+        let drafts = try JSONDecoder().decode(ProjectDrafts.self, from: old)
+        #expect(drafts.entries["p"]?.text == "hi")
+        #expect(drafts.entries["p"]?.title == nil)
+    }
+
+    @MainActor @Test func `the store writes after a quiet spell, or at once on flush`() async throws {
+        let defaults = try #require(UserDefaults(suiteName: "drafts-quiet-\(UUID().uuidString)"))
+        let store = ProjectDraftStore(defaults: defaults, saveDelay: .milliseconds(80))
+        for text in ["a", "ab", "abc"] { store.set("p", ProjectDraft(text: text)) }
+        #expect(store.draft("p")?.text == "abc")
+        #expect(defaults.data(forKey: ProjectDraftStore.defaultsKey) == nil)
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(ProjectDraftStore(defaults: defaults).draft("p")?.text == "abc")
+        store.set("p", ProjectDraft(text: "abcd"))
+        store.flush()
+        #expect(ProjectDraftStore(defaults: defaults).draft("p")?.text == "abcd")
+    }
+
+    @MainActor @Test func `a send keeps what was written while it ran, and its chip lives until the meta lands`() throws {
+        let defaults = try #require(UserDefaults(suiteName: "drafts-sent-\(UUID().uuidString)"))
+        let store = ProjectDraftStore(defaults: defaults)
+        let sent = ProjectDraft(text: "first")
+        store.set("p", sent)
+        store.addPhoto("p", photoA)
+        store.beginSending("p", DraftSending(environmentId: "e", workspaceId: "w", projectId: "p1", title: "first", threadType: .chat, provider: .claude, model: "m", startedAt: 7))
+        #expect(store.sending["p"]?.chipId == "e:sending-7")
+        // Written while the create ran.
+        store.set("p", ProjectDraft(text: "first second"))
+        store.addPhoto("p", photoB)
+        store.created("p", sessionId: "s1")
+        store.sent("p", draft: sent, photos: [photoA])
+        #expect(store.draft("p")?.text == "second")
+        #expect(store.photos["p"] == [photoB])
+        #expect(store.sending["p"]?.chipId == "e:s1")
+        store.endSending("p")
+        #expect(store.sending["p"] == nil)
+        // Nothing written meanwhile: the draft is gone.
+        store.sent("p", draft: ProjectDraft(text: "second"), photos: [photoB])
+        #expect(store.draft("p") == nil)
+        #expect(store.photos["p"] == nil)
+    }
+
+    @Test func `the chip says the name, else the message's first line`() {
+        #expect(DraftSending.title(of: ProjectDraft(title: "Named"), text: "body") == "Named")
+        #expect(DraftSending.title(of: ProjectDraft(), text: "Look at the build\nmore") == "Look at the build")
+    }
+
+    @Test func `a picker moved to another host loads that host's catalog, and drops an answer it no longer wants`() {
+        var load = CatalogLoad()
+        let first = load.begin("mac"), again = load.begin("mac"), moved = load.begin("box")
+        #expect(first && !again && moved)
+        #expect(!load.lands("mac"))
+        #expect(load.lands("box"))
+        load.failed("box")
+        let retried = load.begin("box")
+        #expect(retried)
     }
 }
 

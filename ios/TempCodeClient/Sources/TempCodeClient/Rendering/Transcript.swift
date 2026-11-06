@@ -111,6 +111,10 @@ public struct ToolItem: Sendable, Hashable {
     /// A spawn_agent call: the children the host said it spawned
     /// (`agent-spawned`), in order; a child on another host as `<env>:<id>`.
     public var spawned: [String] = []
+    /// A wait whose result the host left behind (over 2 KiB, which most
+    /// replies pass): the agents it returned on, read from the body's head
+    /// and the agents' own sessions (`WaitSteps.resolved`). Nil otherwise.
+    public var waitOutcomes: [WaitSteps.Outcome]? = nil
 
     /// What the row shows after the name: a command, a path, a query.
     public var detail: String? {

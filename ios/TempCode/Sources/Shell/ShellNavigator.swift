@@ -57,6 +57,21 @@ final class ShellNavigator {
         }
     }
 
+    /// The detail's root is a thread that opened bare before its host listed
+    /// it, and with nothing pushed over it the lists now place it in a shell.
+    var awaitsListing: Bool {
+        guard case .thread? = detailRoot, detailStack.isEmpty else { return false }
+        return ShellPaths.relisted(detailRoot, hosts: hosts()) != nil
+    }
+
+    /// That thread into its shell once the list arrives (`ShellPaths.relisted`);
+    /// what the person pushed over it is never taken away.
+    func placeListed() {
+        guard detailStack.isEmpty, let placed = ShellPaths.relisted(detailRoot, hosts: hosts()) else { return }
+        detailRoot = placed.root
+        if let push = placed.push { detailStack.append(push) }
+    }
+
     /// A project card's tap: its shell on its landing, or, already there,
     /// the shell as it is with what was pushed over it gone.
     func openProject(_ key: String) {

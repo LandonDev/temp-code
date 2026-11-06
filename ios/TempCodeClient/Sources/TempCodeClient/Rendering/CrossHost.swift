@@ -79,6 +79,21 @@ public enum CrossHost {
         return out
     }
 
+    /// Where the agent a step names lives, and its session there: an
+    /// encoded `<env>:<session>` on its host; a bare id on the parent's host
+    /// (`home`) first, then on each other paired host in `hosts`' order (a
+    /// child spawned on the Mac keeps a bare id in some rows). nil when no
+    /// paired host holds it.
+    public static func find<T>(agentId: String, home: String, hosts: [String], lookup: (_ environmentId: String, _ sessionId: String) -> T?) -> (environmentId: String, value: T)? {
+        if let remote = decode(agentId) {
+            return lookup(remote.environmentId, remote.sessionId).map { (remote.environmentId, $0) }
+        }
+        for host in [home] + hosts.filter({ $0 != home }) {
+            if let found = lookup(host, agentId) { return (host, found) }
+        }
+        return nil
+    }
+
     /// The one line a row shows for a child on a host that is not paired. The wire carries the id only,
     /// never a name, so the line never names the host.
     public static let unpairedNote = "on a host this phone is not paired with"

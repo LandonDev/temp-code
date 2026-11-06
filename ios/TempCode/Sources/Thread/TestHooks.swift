@@ -66,6 +66,8 @@ enum TestHooks {
     /// `draft:<text>` (types the text into the composer and focuses it, sending nothing, so a
     /// fold shot proves the draft and the keyboard survive).
     static let action = env["TC_TEST_ACTION"].flatMap { $0.isEmpty ? nil : $0 }
+    /// `new-chat-held`: how long the draft's create is held before it goes out.
+    static let draftHoldSeconds = 15.0
     /// A sheet to open for the shot: `start` on a planning thread, `new` on Home,
     /// `fleet:pause|fleet:stop|fleet:archive` (the fleet confirm on Home),
     /// `resources` (the Resources sheet on a thread), `archive` (the archive prompt on a thread with resources).

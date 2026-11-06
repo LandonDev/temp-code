@@ -85,6 +85,21 @@ private let everyRoute: [Route] = [
         #expect(ShellPaths.place(.settings, hosts: hosts).root == .settings)
     }
 
+    @Test func `a thread opened bare before its host listed it moves into its shell once the list lands`() {
+        // A notification's tap on a cold launch: the host is paired but has listed nothing yet.
+        let listed = fixture()
+        let empty = HomeHostInput(environmentId: "e", name: "e", workspaces: [], projects: [], sessions: [])
+        let tapped = open("e", "a", seq: 7)
+        #expect(ShellPaths.place(tapped, hosts: [empty]).root == tapped)
+        #expect(ShellPaths.relisted(tapped, hosts: [empty]) == nil)
+        #expect(ShellPaths.relisted(tapped, hosts: [listed]) == .init(root: .project(key: "e:p1", thread: "e:a", seq: 7), push: nil))
+        // A subagent lands over its root's shell; a chat outside every workspace stays bare; a shell is no bare thread.
+        #expect(ShellPaths.relisted(open("e", "kid"), hosts: [listed])?.push == open("e", "kid"))
+        #expect(ShellPaths.relisted(open("e", "stray"), hosts: [listed]) == nil)
+        #expect(ShellPaths.relisted(.project(key: "e:p1", thread: "e:a"), hosts: [listed]) == nil)
+        #expect(ShellPaths.relisted(nil, hosts: [listed]) == nil)
+    }
+
     @Test func `folded and unfolded place a thread the same and a snapshot restores it equal`() throws {
         let hosts = [fixture()]
         // One placement, whatever the pose: the navigator puts the detail root on top of the sidebar or beside it.

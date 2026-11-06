@@ -426,6 +426,8 @@ enum ComposerMetrics {
     static let ringStroke: CGFloat = 2
     /// The ring's track under its arc.
     static let ringTrack = 0.25
+    /// The draft row's name field never narrows below two touch widths, so its placeholder reads.
+    static let titleMin = TranscriptMetrics.hitArea * 2
 }
 
 extension TypeSpec.Style {

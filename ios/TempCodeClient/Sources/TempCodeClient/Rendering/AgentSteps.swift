@@ -36,6 +36,11 @@ public enum WaitSteps {
     public struct Outcome: Sendable, Hashable {
         public var id: String
         public var status: String
+
+        public init(id: String, status: String) {
+            self.id = id
+            self.status = status
+        }
     }
 
     static let settled: Set<String> = ["done", "idle", "watching", "waiting", "failed", "error", "stopped", "paused"]
@@ -65,8 +70,11 @@ public enum WaitSteps {
     }
 
     /// What a settled wait returned on: each agent that settled, in order.
+    /// A body the host left behind reads what `resolved` stamped.
     public static func outcomes(_ tool: ToolItem) -> [Outcome] {
-        guard isWait(tool), tool.status != .running, case .whole(let detail) = tool.output,
+        guard isWait(tool), tool.status != .running else { return [] }
+        if let stamped = tool.waitOutcomes { return stamped }
+        guard case .whole(let detail) = tool.output,
               let data = detail.trimmingCharacters(in: .whitespacesAndNewlines).data(using: .utf8),
               let parsed = try? JSONSerialization.jsonObject(with: data) else { return [] }
         let rows = (parsed as? [Any]) ?? [parsed]
@@ -75,6 +83,38 @@ public enum WaitSteps {
                   let status = object["status"] as? String, settled.contains(status) else { return nil }
             return Outcome(id: id, status: status)
         }
+    }
+
+    /// A settled wait whose body the host omitted (any result of 2 KiB or
+    /// more, to every remote socket), with `waitOutcomes` stamped: the
+    /// agents the body's head names with their status, then each other
+    /// agent the call named by the status its own session reads now
+    /// (`statusOf`, the agents' metas), when that status is a settled one.
+    /// Any other entry comes back as it was.
+    public static func resolved(_ entry: ThreadEntry, statusOf: (String) -> String?) -> ThreadEntry {
+        guard case .tool(var tool) = entry.item, isWait(tool), tool.status != .running,
+              case .omitted(let body, _) = tool.output else { return entry }
+        var out: [Outcome] = []
+        for match in body.head.matches(of: /"agentId"\s*:\s*"([^"]+)"\s*,\s*"status"\s*:\s*"(\w+)"/) {
+            let id = String(match.1), status = String(match.2)
+            if settled.contains(status), !out.contains(where: { $0.id == id }) { out.append(Outcome(id: id, status: status)) }
+        }
+        for id in ids(tool) where !out.contains(where: { $0.id == id }) {
+            if let status = statusOf(id), settled.contains(status) { out.append(Outcome(id: id, status: status)) }
+        }
+        tool.waitOutcomes = out
+        var entry = entry
+        entry.item = .tool(tool)
+        return entry
+    }
+
+    /// Every wait in `entries` whose body was omitted, resolved; the array itself when there is none.
+    public static func resolved(_ entries: [ThreadEntry], statusOf: (String) -> String?) -> [ThreadEntry] {
+        guard entries.contains(where: { entry in
+            if case .tool(let tool) = entry.item { return isWait(tool) && tool.output.isOmitted }
+            return false
+        }) else { return entries }
+        return entries.map { resolved($0, statusOf: statusOf) }
     }
 
     /// The wait the turn is in now (the desktop's `openWaitOf`): its last

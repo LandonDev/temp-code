@@ -552,6 +552,9 @@ actions_set() {
   TC_ACTION="start-build" shot "act-start-light" thread "history onto the box" "" "" 20
   TC_SHEET="new" shot "act-new-draft-light" home
   TC_ACTION="new-chat" shot "act-new-chat-light" home "" "" "" 20
+  # A named chat's send in flight (the hook holds its create 15 s): the button spins, the strip has its chip.
+  TC_ACTION="new-chat-held" shot "act-draft-sending-light" home "" "" "" 8
+  sleep 14
   TC_ACTION="send:Check the tests too" shot "act-agent-light" thread "thread screens" fleet agent
   TC_ACTION="pin" shot "act-pin-thread-light" thread "gateway refuse"
   shot "act-pin-home-light" home
@@ -573,13 +576,16 @@ actions_set() {
   python3 - "$(control /actions)" <<'PY'
 import json, sys
 kinds = [a["kind"] for a in json.loads(sys.argv[1])["actions"]]
-want = {"send": 4, "queue": 1, "pause": 1, "stop": 1, "approve": 2, "answer": 1, "create": 2, "pin": 1, "rename": 1, "archive": 1}
+want = {"send": 5, "queue": 1, "pause": 1, "stop": 1, "approve": 2, "answer": 1, "create": 3, "pin": 1, "rename": 1, "archive": 1}
 counts = {k: kinds.count(k) for k in want}
 missing = {k: v for k, v in want.items() if counts[k] < v}
 # The new chat is made by its draft: one create whose first message is the draft's text.
 created = {a["sessionId"] for a in json.loads(sys.argv[1])["actions"] if a["kind"] == "create"}
 if not any(a["kind"] == "send" and a.get("text") == "A chat started from its draft" and a["sessionId"] in created for a in json.loads(sys.argv[1])["actions"]):
     missing["draft-first-message"] = 1
+# The held draft's name rides its create as the thread's title.
+if not any(a["kind"] == "create" and a.get("title") == "Held mid-send" for a in json.loads(sys.argv[1])["actions"]):
+    missing["draft-title"] = 1
 print("ios-sim-proof: actions landed " + json.dumps(counts))
 if missing:
     print("ios-sim-proof: MISSING " + json.dumps(missing), file=sys.stderr)
@@ -753,6 +759,15 @@ features_set() {
   shot account-a11y thread "On the work account" "" account
   shot notices-a11y thread "Land the export endpoint" chat
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+  # A wait whose result passed 2 KiB (the host sends its head alone): each agent is still a step.
+  shot wait-omitted-light thread "SQLite on the phone" chat
+  # A tapped unread chip keeps its slot as its thread opens: Thread B settles unread beside
+  # Thread A's shell, then opens (and is seen) in the same place.
+  if [ -n "${TC_TEST_CONTROL_URL:-}" ]; then
+    control /finish '{"sessionId":"ios-thread-b","text":"Settled while you were away."}' >/dev/null
+    shot chip-unread-light thread "Thread A"
+    shot chip-held-light thread "Thread B"
+  fi
   linked_set
 }
 

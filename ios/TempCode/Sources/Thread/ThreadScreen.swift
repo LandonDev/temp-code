@@ -182,7 +182,9 @@ struct ThreadScreen: View {
             ReportScreen(route: route)
                 .environment(\.markdownScope, MarkdownScope(environmentId: client.environment.id, sessionId: route.sessionId))
         }
-        .navigationDestination(for: ThreadScreenRoute.self) { route in ThreadScreen(client: client, sessionId: route.sessionId, targetSeq: route.targetSeq) }
+        .navigationDestination(for: ThreadScreenRoute.self) { route in
+            ThreadScreen(client: route.environmentId.flatMap { app.registry.client($0) } ?? client, sessionId: route.sessionId, targetSeq: route.targetSeq)
+        }
         .navigationDestination(item: $launchPush) { push in
             switch push {
             case .diff(let route): DiffScreen(client: client, route: route)
@@ -651,6 +653,9 @@ enum LaunchPush: Hashable, Identifiable {
 struct ThreadScreenRoute: Hashable {
     let sessionId: String
     var targetSeq: Int? = nil
+    /// The host the thread lives on when it is not this screen's (an agent
+    /// spawned on the paired Mac); nil for this screen's host.
+    var environmentId: String? = nil
 }
 
 /// Per-screen state: the segment chosen (remembered per thread), the plan or

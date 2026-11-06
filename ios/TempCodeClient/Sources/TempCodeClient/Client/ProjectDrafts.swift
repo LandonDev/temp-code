@@ -18,10 +18,16 @@ public struct ProjectDraft: Codable, Sendable, Hashable {
     public var master: Bool
     /// The host a project linked across hosts starts on.
     public var environmentId: String?
+    /// The name typed in the draft row ("Name this thread"), at most
+    /// `titleMax` characters; the first send makes it the thread's title.
+    public var title: String?
     /// When the draft last changed, ms.
     public var updatedAt: Int
 
-    public init(text: String = "", threadType: ThreadType = .chat, provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil, permission: PermissionPolicy? = nil, master: Bool = false, environmentId: String? = nil, updatedAt: Int = 0) {
+    /// The desktop's `DRAFT_TITLE_MAX`.
+    public static let titleMax = 80
+
+    public init(text: String = "", threadType: ThreadType = .chat, provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil, permission: PermissionPolicy? = nil, master: Bool = false, environmentId: String? = nil, title: String? = nil, updatedAt: Int = 0) {
         self.text = text
         self.threadType = threadType
         self.provider = provider
@@ -30,11 +36,35 @@ public struct ProjectDraft: Codable, Sendable, Hashable {
         self.permission = permission
         self.master = master
         self.environmentId = environmentId
+        self.title = title
         self.updatedAt = updatedAt
     }
 
     /// The Master pick is a chat's alone.
     public var bornMaster: Bool { master && threadType == .chat }
+
+    /// A name as the field keeps it: cut at `titleMax` characters, nil when empty.
+    public static func cleanTitle(_ title: String) -> String? {
+        title.isEmpty ? nil : String(title.prefix(titleMax))
+    }
+
+    /// What the draft keeps once its first send went out (`sent`, the draft
+    /// as the send read it): what was written while the create was in
+    /// flight. Text the send carried leaves; text added after it stays (a
+    /// draft rewritten mid-flight stays whole, so no word is lost); a title
+    /// changed since stays. The type, model and host stay with what is left.
+    /// Nil when nothing is left.
+    public func remaining(after sent: ProjectDraft) -> ProjectDraft? {
+        var left = self
+        if text == sent.text {
+            left.text = ""
+        } else if !sent.text.isEmpty, text.hasPrefix(sent.text) {
+            left.text = String(text.dropFirst(sent.text.count).drop(while: \.isWhitespace))
+        }
+        if title == sent.title { left.title = nil }
+        let empty = left.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (left.title ?? "").isEmpty
+        return empty ? nil : left
+    }
 }
 
 /// The drafts by key: 64 keys, 30 days, the oldest dropped first.
@@ -92,7 +122,7 @@ public struct ProjectDrafts: Codable, Sendable, Hashable {
     /// type, model, effort and mode, Master for a chat, the text as the
     /// first message (`DraftSend` decides whether the create carries it).
     public static func threadDraft(_ draft: ProjectDraft, workspaceId: String, projectId: String?, provider: ProviderId, model: String) -> ThreadDraft {
-        var thread = ThreadDraft.thread(type: draft.threadType, workspaceId: workspaceId, projectId: projectId, provider: draft.provider ?? provider, model: draft.model ?? model, reasoning: draft.reasoning, permission: draft.permission)
+        var thread = ThreadDraft.thread(type: draft.threadType, workspaceId: workspaceId, projectId: projectId, provider: draft.provider ?? provider, model: draft.model ?? model, reasoning: draft.reasoning, permission: draft.permission, title: draft.title)
         thread.master = draft.bornMaster ? true : nil
         return thread
     }
@@ -119,6 +149,22 @@ public enum DraftSend {
         case archiveOnFailure
     }
 
+    /// Send waits for the host's catalog: before it lands the model is
+    /// empty, and the host would skip the thread defaults. One send at a time.
+    public static func canSend(text: String, sending: Bool, model: String) -> Bool {
+        !sending && !model.isEmpty && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// The photos picked while the create was in flight: each one the send
+    /// carried leaves once, the rest stay.
+    public static func remainingPhotos(_ current: [DraftPhoto], sent: [DraftPhoto]) -> [DraftPhoto] {
+        var left = current
+        for photo in sent {
+            if let index = left.firstIndex(of: photo) { left.remove(at: index) }
+        }
+        return left
+    }
+
     public static func steps(text: String, photos: Int) -> [Step] {
         let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if photos == 0 { return [.create(firstMessage: message.isEmpty ? nil : message)] }
@@ -139,6 +185,51 @@ public struct DraftPhoto: Sendable, Hashable {
     }
 }
 
+/// A draft's first send while its create is in flight, the desktop's
+/// `draft` strip thread: a chip on the live row until the thread's meta
+/// lands (`ThreadStrip.model`). `sessionId` arrives with the create's answer.
+public struct DraftSending: Sendable, Hashable {
+    public var environmentId: String
+    /// The scope's lead workspace and project, for the stand-in meta.
+    public var workspaceId: String
+    public var projectId: String?
+    /// The draft's title, else the message's first line.
+    public var title: String
+    public var threadType: ThreadType
+    public var provider: ProviderId
+    public var model: String
+    public var sessionId: String?
+    /// When the send began, ms.
+    public var startedAt: Int
+
+    public init(environmentId: String, workspaceId: String, projectId: String?, title: String, threadType: ThreadType, provider: ProviderId, model: String, sessionId: String? = nil, startedAt: Int) {
+        self.environmentId = environmentId
+        self.workspaceId = workspaceId
+        self.projectId = projectId
+        self.title = title
+        self.threadType = threadType
+        self.provider = provider
+        self.model = model
+        self.sessionId = sessionId
+        self.startedAt = startedAt
+    }
+
+    /// What the chip says: the typed name, else the message's first line.
+    public static func title(of draft: ProjectDraft, text: String) -> String {
+        if let title = draft.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty { return title }
+        let line = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        return WatchWords.cutAtWord(line.trimmingCharacters(in: .whitespaces), max: 48)
+    }
+
+    /// The chip id: the thread's once the create answered, else one of the send's own.
+    public var chipId: String { "\(environmentId):\(sessionId ?? "sending-\(startedAt)")" }
+
+    /// The meta the chip draws until the real one lands: starting, so its glyph is the working mark.
+    public var standIn: SessionMeta {
+        SessionMeta(id: sessionId ?? "sending-\(startedAt)", parentId: nil, projectId: projectId, workspaceId: projectId == nil ? workspaceId : nil, threadType: threadType, planPath: nil, provider: provider, model: model, reasoning: .medium, agentType: .implementer, title: title, cwd: "", status: .starting, pinned: false, archived: false, permission: .edits, fast: false, ultrafast: false, context1m: false, busySince: startedAt, pausedAt: nil, frozenActiveElapsed: nil, nativeId: nil, createdAt: startedAt, updatedAt: startedAt)
+    }
+}
+
 /// `ProjectDrafts` in UserDefaults (`project.drafts.v1`), the photos in memory.
 @MainActor @Observable
 public final class ProjectDraftStore {
@@ -151,9 +242,16 @@ public final class ProjectDraftStore {
     public private(set) var drafts: ProjectDrafts
     /// Photos picked before the thread exists, by key; never written to disk.
     public private(set) var photos: [String: [DraftPhoto]] = [:]
+    /// The first sends in flight, by key: the strip's chip until the meta lands.
+    public private(set) var sending: [String: DraftSending] = [:]
+    /// How long a change waits for the next before the drafts are written:
+    /// the desktop's 500 ms, so typing never encodes every draft per key.
+    @ObservationIgnored private let saveDelay: Duration
+    @ObservationIgnored private var pendingSave: Task<Void, Never>?
 
-    public init(defaults: UserDefaults = .standard) {
+    public init(defaults: UserDefaults = .standard, saveDelay: Duration = .milliseconds(500)) {
         self.defaults = defaults
+        self.saveDelay = saveDelay
         drafts = defaults.data(forKey: Self.defaultsKey).flatMap { try? JSONDecoder().decode(ProjectDrafts.self, from: $0) } ?? ProjectDrafts()
     }
 
@@ -161,9 +259,10 @@ public final class ProjectDraftStore {
 
     public func draft(_ key: String) -> ProjectDraft? { drafts.draft(key, now: Self.now()) }
 
+    /// Kept at once in memory; written after `saveDelay` of quiet.
     public func set(_ key: String, _ draft: ProjectDraft) {
         drafts.set(key, draft, now: Self.now())
-        save()
+        scheduleSave()
     }
 
     /// New thread: the draft takes the type asked for, keeps its text, and its composer takes the keyboard.
@@ -187,7 +286,53 @@ public final class ProjectDraftStore {
         save()
     }
 
+    /// The first send went out: only what it carried leaves the draft
+    /// (`ProjectDraft.remaining`, `DraftSend.remainingPhotos`).
+    public func sent(_ key: String, draft sent: ProjectDraft, photos sentPhotos: [DraftPhoto]) {
+        let photosLeft = DraftSend.remainingPhotos(photos[key] ?? [], sent: sentPhotos)
+        let current = draft(key) ?? sent
+        if let left = current.remaining(after: sent) {
+            drafts.set(key, left, now: Self.now())
+        } else if photosLeft.isEmpty {
+            drafts.clear(key)
+        } else {
+            var bare = current
+            bare.text = ""
+            bare.title = nil
+            drafts.set(key, bare, now: Self.now())
+        }
+        photos[key] = photosLeft.isEmpty ? nil : photosLeft
+        save()
+    }
+
+    /// A first send began: the strip draws its chip.
+    public func beginSending(_ key: String, _ chip: DraftSending) { sending[key] = chip }
+
+    /// The create answered: the chip takes the thread's id and stands in until its meta lands.
+    public func created(_ key: String, sessionId: String) { sending[key]?.sessionId = sessionId }
+
+    /// The meta landed, or the send failed: the chip leaves.
+    public func endSending(_ key: String) { sending[key] = nil }
+
+    /// Writes now what waits for the quiet (the app leaving the foreground).
+    public func flush() {
+        guard pendingSave != nil else { return }
+        save()
+    }
+
+    private func scheduleSave() {
+        pendingSave?.cancel()
+        let delay = saveDelay
+        pendingSave = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            self?.save()
+        }
+    }
+
     private func save() {
+        pendingSave?.cancel()
+        pendingSave = nil
         if let data = try? JSONEncoder().encode(drafts) { defaults.set(data, forKey: Self.defaultsKey) }
     }
 }

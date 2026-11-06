@@ -891,6 +891,18 @@ at(THREAD_RESEARCH, [
   { type: 'research-source', callId: 's2', url: 'https://github.com/groue/GRDB.swift', agentId: 'ios-research-a2', agentLabel: 'Angle: GRDB', title: 'GRDB.swift: a toolkit for SQLite databases' },
   { type: 'research-source', callId: 'cite:1', url: 'https://github.com/groue/GRDB.swift', agentId: 'ios-research-a2', agentLabel: 'Angle: GRDB', claim: 'GRDB maps rows to Codable value types with no ORM layer' },
   { type: 'research-source', callId: 's3', url: 'https://www.sqlite.org/wal.html', agentId: 'ios-research-a2', agentLabel: 'Angle: GRDB', title: 'Write-Ahead Logging', claim: 'WAL lets one writer and many readers share the file' },
+  // A real wait's result carries each agent's reply, so it passes 2 KiB and a remote socket gets its
+  // head alone: the phone reads the first agent from the head and the second from its session.
+  { type: 'tool-call', callId: 'rw1', name: 'mcp__orchestrator__wait_for_agent', input: { agentIds: ['ios-research-a1', 'ios-research-a2'], mode: 'all' } },
+  {
+    type: 'tool-result',
+    callId: 'rw1',
+    isError: false,
+    output: JSON.stringify([
+      { agentId: 'ios-research-a1', status: 'idle', reply: 'bun:sqlite binds synchronously and ships with Bun. '.repeat(30) },
+      { agentId: 'ios-research-a2', status: 'idle', reply: 'GRDB maps rows to Codable value types with no ORM layer. '.repeat(30) }
+    ])
+  },
   answer('r2', 'The report is written: GRDB for the phone, bun:sqlite on the host.'),
   { type: 'turn-complete', costUsd: 0.27 },
   status('idle')

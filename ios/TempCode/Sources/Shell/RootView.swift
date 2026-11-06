@@ -128,6 +128,8 @@ struct RootView: View {
         .onChange(of: memoryKey) { remember() }
         .onChange(of: router.visible) { reportVisibility() }
         .onChange(of: router.lists) { reportVisibility() }
+        // A thread opened bare before its host listed it moves into its shell when the list lands.
+        .onChange(of: navigators.map(\.awaitsListing)) { for navigator in navigators { navigator.placeListed() } }
         .onChange(of: scenePhase) { reportVisibility() }
         // A notification or Live Activity tap: Home's sidebar at its root, the thread in its project's
         // shell in the detail, on its card.

@@ -336,8 +336,10 @@ public enum TranscriptRows {
     /// is one group. While the last turn is open a thought still streaming
     /// is no step, and a call the working line tells (`LinePhase.told`) is
     /// a step with no row; a group with nothing to draw (thoughts alone, or
-    /// one told call) is no row.
-    public static func rows(_ entries: [ThreadEntry], turnOpen: Bool, memory: RowKeyMemory? = nil) -> [TranscriptRowModel] {
+    /// one told call) is no row. `statusOf` reads an agent's session status
+    /// for a wait whose body the host left behind (`WaitSteps.resolved`).
+    public static func rows(_ entries: [ThreadEntry], turnOpen: Bool, memory: RowKeyMemory? = nil, statusOf: ((String) -> String?)? = nil) -> [TranscriptRowModel] {
+        let entries = WaitSteps.resolved(entries, statusOf: statusOf ?? { _ in nil })
         var rows: [TranscriptRowModel] = []
         rows.reserveCapacity(entries.count + 8)
         var run: [ThreadEntry] = []

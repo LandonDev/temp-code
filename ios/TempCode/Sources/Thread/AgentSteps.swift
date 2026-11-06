@@ -214,10 +214,17 @@ struct StepStateMark: View {
 
 // MARK: - agents in the run
 
-/// The store's session for an agent id, by its bare session id first.
+/// An agent a step names, found where it lives (`CrossHost.find`): an
+/// encoded id on its host, a bare one on the parent's host, then on any
+/// other paired host. Its client and its session there.
 @MainActor
-private func agentSession(_ id: String, in client: EnvironmentClient) -> SessionMeta? {
-    client.session(WatchWords.bareAgentId(id)) ?? client.session(id)
+func agentSession(_ id: String, home client: EnvironmentClient, registry: ClientRegistry) -> (client: EnvironmentClient, session: SessionMeta)? {
+    let hosts = registry.ordered.map(\.environment.id)
+    let found = CrossHost.find(agentId: id, home: client.environment.id, hosts: hosts) { host, sessionId in
+        let owner = host == client.environment.id ? client : registry.client(host)
+        return owner.flatMap { owner in owner.session(sessionId).map { (owner, $0) } }
+    }
+    return found?.value
 }
 
 /// An agent that settled, as one step of the run (a report, or an agent a
@@ -233,17 +240,18 @@ struct AgentStepLine: View {
     var inTable = false
     let client: EnvironmentClient
     @Environment(\.spawnedNames) private var names
+    @Environment(AppModel.self) private var app
 
     var body: some View {
-        let session = batch ? nil : agentSession(id, in: client)
+        let found = batch ? nil : agentSession(id, home: client, registry: app.registry)
         let spawn = names[id]
-        let name = AgentTitle.of(batch ? nil : id, titleOf: { client.session($0)?.title }, inputTitle: spawn?.title, stamped: stamped, task: spawn?.task)
+        let name = AgentTitle.of(batch ? nil : id, titleOf: { _ in found?.session.title }, inputTitle: spawn?.title, stamped: stamped, task: spawn?.task)
         let verb = WaitSteps.word(status)
         let line = ActionLine(verb: verb, object: batch ? "the batch" : name.title, inTable: inTable, mark: StepStateMark(state: StepStateMark.reported(status)))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(verb) \(batch ? "the batch" : name.full)")
-        if let session {
-            NavigationLink(value: ThreadScreenRoute(sessionId: session.id)) { line }
+        if let found {
+            NavigationLink(value: ThreadScreenRoute(sessionId: found.session.id, environmentId: found.client.environment.id)) { line }
                 .buttonStyle(.pressable)
         } else {
             line
@@ -260,16 +268,18 @@ struct SpawnChildLine: View {
     var name: SpawnedName?
     var inTable = false
     let client: EnvironmentClient
+    @Environment(AppModel.self) private var app
 
     var body: some View {
-        let session = agentSession(id, in: client)
-        let title = AgentTitle.of(id, titleOf: { client.session($0)?.title }, inputTitle: name?.title, task: name?.task)
+        let found = agentSession(id, home: client, registry: app.registry)
+        let session = found?.session
+        let title = AgentTitle.of(id, titleOf: { _ in session?.title }, inputTitle: name?.title, task: name?.task)
         let line = ActionLine(glyph: ActionGlyph(look: .symbol("person.2")), verb: "Spawned", object: title.title, inTable: inTable, trailing: session.map { StepStateMark.of($0.status) })
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Spawned \(title.full)")
             .accessibilityValue(session.map { StepStateMark.word(StepStateMark.of($0.status)) } ?? "")
-        if let session {
-            NavigationLink(value: ThreadScreenRoute(sessionId: session.id)) { line }
+        if let found {
+            NavigationLink(value: ThreadScreenRoute(sessionId: found.session.id, environmentId: found.client.environment.id)) { line }
                 .buttonStyle(.pressable)
         } else {
             line

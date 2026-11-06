@@ -62,6 +62,33 @@ import TempCodeContract
         #expect(kinds(nobody) == ["item 1", "end 1 last"])
     }
 
+    /// A real wait's result passes 2 KiB (the reply rides in it), so the host sends a remote socket its head alone.
+    private func omittedWait(_ seq: Int, ids: [String], head: String) -> ThreadEntry {
+        let input: JSONValue = .object(["agentIds": .array(ids.map(JSONValue.string))])
+        let body = OmittedBody(omitted: true, bytes: 9_400, lines: 120, head: head)
+        return item(.tool(ToolItem(seq: seq, ts: 1_000 + seq, callId: "w\(seq)", name: "mcp__orchestrator__wait_for_agent", display: nil, input: input, partial: false, preview: nil, parentCallId: nil, inputOmitted: false, output: .omitted(body, seq: seq), status: .done, reauth: nil)))
+    }
+
+    @Test func `a wait whose body was omitted reads its agents from the head and their sessions`() {
+        let head = #"[{"agentId":"a","status":"failed","reply":"The build broke at the linker step because the"#
+        let entries = [userEntry(1, completedTs: 2_000), omittedWait(3, ids: ["a", "b", "c"], head: head)]
+        // a from the head (its status then, not now), b from its session, c still running: no step.
+        let statuses = ["a": "running", "b": "idle", "c": "running"]
+        let rows = TranscriptRows.rows(entries, turnOpen: false, statusOf: { statuses[$0] })
+        #expect(kinds(rows) == ["item 1", "group [3]", "end 1 last"])
+        #expect(group(rows, 1)?.stepRows == 2)
+        #expect(group(rows, 1)?.failed == 1)
+        guard case .tool(let tool)? = group(rows, 1)?.calls.first?.item else { Issue.record("no wait"); return }
+        #expect(WaitSteps.outcomes(tool) == [.init(id: "a", status: "failed"), .init(id: "b", status: "idle")])
+    }
+
+    @Test func `an omitted wait with no settled agent is no row, and without sessions the head still speaks`() {
+        let entries = [userEntry(1, completedTs: 2_000), omittedWait(3, ids: ["b"], head: #"{"status":"timeout","note":"#)]
+        #expect(kinds(TranscriptRows.rows(entries, turnOpen: false, statusOf: { _ in "running" })) == ["item 1", "end 1 last"])
+        let headOnly = [userEntry(1, completedTs: 2_000), omittedWait(3, ids: ["a"], head: #"{"agentId":"a","status":"done","reply":"All"#)]
+        #expect(kinds(TranscriptRows.rows(headOnly, turnOpen: false)) == ["item 1", "group [3]", "end 1 last"])
+    }
+
     @Test func `everything between two paragraphs is one group`() {
         let rows = TranscriptRows.rows([userEntry(1), read(2), edit(3), run(4), read(5), item(textItem(6, ts: 1_006, "done")), run(7)], turnOpen: false)
         #expect(kinds(rows) == ["item 1", "group [2, 3, 4, 5]", "item 6", "group [7]"])

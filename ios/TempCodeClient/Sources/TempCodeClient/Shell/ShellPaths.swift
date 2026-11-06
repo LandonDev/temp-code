@@ -70,6 +70,16 @@ public enum ShellPaths {
         return Placement(root: .project(key: scope.key, thread: "\(environmentId):\(root.id)"), push: route)
     }
 
+    /// A thread that opened bare because its host had not listed it yet (a
+    /// notification's tap on a cold launch, a thread made a moment ago),
+    /// placed where `place` puts it now that the lists know it; nil while
+    /// it still opens bare, and for any other route.
+    public nonisolated static func relisted(_ root: Route?, hosts: [HomeHostInput]) -> Placement? {
+        guard let root, case .thread = root else { return nil }
+        let placed = place(root, hosts: hosts)
+        return placed.root == root ? nil : placed
+    }
+
     /// A project's tap (its card, a search's project row): the shell with
     /// its landing. Already in that shell, nothing moves (a thread turning
     /// active never takes the person's place). Else the landing:

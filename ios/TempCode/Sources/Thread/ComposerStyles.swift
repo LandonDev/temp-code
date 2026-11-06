@@ -16,8 +16,9 @@ struct ModelKey: Hashable {
 /// The host's catalog as the composer and the sheets pick from it:
 /// providers in the desktop's order with the models the host can run (the
 /// host already hides what the installed CLI cannot), and the reasoning
-/// levels of the chosen model. Loads once per client and keeps the choice
-/// valid.
+/// levels of the chosen model. Loads once per host (`CatalogLoad`: moved
+/// to another host, it drops the old catalog and loads that host's) and
+/// keeps the choice valid.
 @Observable
 final class CatalogChoice {
     var key: ModelKey
@@ -26,6 +27,7 @@ final class CatalogChoice {
     private(set) var loading = false
     /// The person picked a model or a level: the choice stops following the thread until `follow`.
     private(set) var picked = false
+    @ObservationIgnored private var source = CatalogLoad()
 
     init(provider: ProviderId, model: String, reasoning: Reasoning?) {
         key = ModelKey(provider: provider, model: model)
@@ -51,9 +53,14 @@ final class CatalogChoice {
     var modelLabel: String { model?.label ?? ModelName.short(key.model) }
 
     func load(_ client: EnvironmentClient) async {
-        guard catalog == nil, !loading else { return }
+        let host = client.environment.id
+        guard source.begin(host) else { return }
+        catalog = nil
         loading = true
-        catalog = await client.loadCatalog()
+        let loaded = await client.loadCatalog()
+        guard source.lands(host) else { return }
+        if loaded == nil { source.failed(host) }
+        catalog = loaded
         loading = false
         settle()
     }

@@ -372,6 +372,8 @@ struct ComposerButton: View {
     let offersQueue: Bool
     @Binding var holding: Bool
     let reduced: Bool
+    /// The send is out (a draft's create): a spinner holds the glyph's place, the button off.
+    var busy = false
     let onTap: () -> Void
     let onQueue: () -> Void
     @State private var pressed = false
@@ -400,15 +402,22 @@ struct ComposerButton: View {
 
     var body: some View {
         ZStack {
-            Image(systemName: Self.symbol(intent))
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(glyphColor)
-                .id(intent)
-                .transition(Motion.iconSwap(reduced: reduced))
+            if busy {
+                ProgressView()
+                    .controlSize(.small)
+                    .transition(Motion.iconSwap(reduced: reduced))
+            } else {
+                Image(systemName: Self.symbol(intent))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(glyphColor)
+                    .id(intent)
+                    .transition(Motion.iconSwap(reduced: reduced))
+            }
         }
         .frame(width: ComposerMetrics.control, height: ComposerMetrics.control)
         .tcGlass(in: Circle(), tint: tint)
         .animation(reduced ? Motion.iconFade : Motion.iconSwap, value: intent)
+        .animation(reduced ? Motion.iconFade : Motion.iconSwap, value: busy)
         .animation(Motion.crossFade, value: enabled)
         .scaleEffect(pressed && !reduced ? Motion.pressScale : 1)
         .opacity(pressed && reduced ? Motion.pressDim : 1)
@@ -418,7 +427,7 @@ struct ComposerButton: View {
         .gesture(press)
         .padding(-ComposerMetrics.hitOutset)
         .accessibilityElement()
-        .accessibilityLabel(intent.label)
+        .accessibilityLabel(busy ? "Sending" : intent.label)
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { if enabled { onTap() } }
         .accessibilityActions {

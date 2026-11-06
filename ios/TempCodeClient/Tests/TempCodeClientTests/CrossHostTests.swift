@@ -73,4 +73,19 @@ private func spawned(_ child: String, on host: String? = nil) -> AgentEvent {
         #expect(CrossHost.hostWord(CrossHost.Placement(environmentId: ghost, sessionId: "c", remote: true, paired: false), names: names) == nil)
         #expect(CrossHost.unpairedNote == "on a host this phone is not paired with")
     }
+
+    @Test func `find reads an encoded id on its host and a bare one on the parent's host, then the others`() {
+        let sessions = [box: ["here": "box child"], mac: ["far": "mac child", "here": "mac twin"]]
+        let lookup = { (host: String, id: String) in sessions[host]?[id] }
+        let encoded = CrossHost.find(agentId: "\(mac):far", home: box, hosts: [mac, box], lookup: lookup)
+        #expect(encoded?.environmentId == mac)
+        #expect(encoded?.value == "mac child")
+        // A bare id is the parent's host's first, even when another host holds the same id.
+        #expect(CrossHost.find(agentId: "here", home: box, hosts: [mac, box], lookup: lookup)?.value == "box child")
+        // A bare id the parent's host lacks is found on another paired host.
+        #expect(CrossHost.find(agentId: "far", home: box, hosts: [mac, box], lookup: lookup)?.environmentId == mac)
+        // An encoded id on a host that is not paired, or one no host holds, is nobody's.
+        #expect(CrossHost.find(agentId: "\(ghost):far", home: box, hosts: [mac, box], lookup: lookup) == nil)
+        #expect(CrossHost.find(agentId: "gone", home: box, hosts: [mac, box], lookup: lookup) == nil)
+    }
 }

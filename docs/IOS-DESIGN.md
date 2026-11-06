@@ -131,7 +131,10 @@ under the composer). `key` is the strip scope's key: a project's `ProjectPairs.k
 or `loose:…` for a workspace's loose chats, which get a shell of their own.
 Every root of a project or of a workspace's loose chats opens in its shell;
 a subagent opens its root's shell and pushes over it; a chat outside every
-workspace opens bare (`ShellPaths.place`). A card's tap lands the shell
+workspace opens bare (`ShellPaths.place`). A thread opened bare because its
+host had not listed it yet (a notification's tap on a cold launch) moves
+into its shell the moment the list lands, unless something was pushed over
+it (`ShellPaths.relisted`, `ShellNavigator.placeListed`). A card's tap lands the shell
 (`ShellPaths.land`, the desktop's project home): the project's most recent
 active thread (`ProjectLanding`, a batch thread's master in its place),
 else the thread last on screen there, else the draft, and a project left on
@@ -222,13 +225,23 @@ oldest first; a state change moves nothing), the settled roots sit on the
 shelf freshest first, the thread on screen is selected on whichever row it
 sits (a subagent selects its root), and a thread outside the scope (a batch
 child, another scope's root) is a temporary chip at the live row's end,
-never saved. `ProjectLanding.active` is the desktop's `activeLanding`: the
+never saved. A chip the person selects keeps its place on the live row
+until another is selected, though opening its thread marked it seen or it
+settled meanwhile: the touch stand-in for the desktop's hover hold, so a
+tapped unread chip never jumps to the shelf as its thread opens (a chip
+opened from the shelf stays there). A draft's first send whose create is
+in flight is a live chip at the row's end (`DraftSending`, the desktop's
+`draft` strip thread): the typed name or the message's first line, the
+working mark in its glyph slot, no tap and no menu, never saved, selected
+once its thread is on screen, gone the moment the thread's meta lands and
+its own chip takes the place. `ProjectLanding.active` is the desktop's `activeLanding`: the
 scope's most recent active root by its last event, a batch thread standing
 in for its master, none when the thread on screen is already in the scope.
 The strip (`StripMetrics` in Tokens.swift) is a 40 pt live row: the live
 chips 2 pt apart in a horizontal scroll with 16 pt of fade at each edge,
 then New Thread outside the scroll (its glyph, or the words "New Thread"
-while the row holds no chip). A live chip is 28 pt with 12 pt of padding on
+while the row holds no chip, when the empty scroll is left out and the
+words lead the row where the first chip would sit, `leadsWithNewThread`). A live chip is 28 pt with 12 pt of padding on
 `Radius.row`: one 14 pt glyph slot holding the type's tinted glyph at rest
 and the status mark in its place while the thread has a state worth one
 (`StripChip.look`, the desktop's `marksAtRest`: working, waiting, failed,
@@ -809,7 +822,7 @@ without animation. The list behind it dismisses the keyboard interactively.
 desktop's new-chat screen (lib/projectDrafts.ts), and a workspace's loose
 chats keep one of their own (`loose:<workspace>`): the client's
 `ProjectDraftStore` (Client/ProjectDrafts.swift) keeps, per link key, so a
-linked project's copies share it, the text, the type, the model and
+linked project's copies share it, the text, the name, the type, the model and
 effort, the permission mode, the Master pick of a chat and the host of a
 linked project, 64 keys for 30 days in UserDefaults (`project.drafts.v1`);
 its photos wait in memory for the run (a draft has no session to upload
@@ -829,8 +842,25 @@ reaches the host until the first send: `session.create { firstMessage }`
 (`ThreadDraft.firstMessage`, `master`), or with photos the create, the
 uploads into the new thread, then the send, and `session.archive` when the
 send fails (`session.delete` is not the phone's; `DraftSend`). The send
-opens the new thread in the shell and clears the draft; a refusal keeps it
-with the reason above the box. New thread (the strip's button, the card's
+opens the new thread in the shell; only what it carried leaves the draft
+(`ProjectDraft.remaining`, `DraftSend.remainingPhotos`): the field and `+`
+stay open while the create runs, and text or photos added meanwhile stay
+for the next thread. Send waits for the host's catalog (`DraftSend.canSend`:
+no send with an empty model, which would skip the host's thread defaults),
+and switching the draft's host loads that host's catalog anew
+(`CatalogLoad`). While the create runs the button's glyph is a spinner
+(the icon swap, "Sending" to VoiceOver) and the strip draws the thread's
+chip. A refusal keeps the draft with the reason above the box. The draft
+row's name field, "Name this thread" in the row's detail type after the
+type chip (the desktop's DraftTitleField: one line, at most 80 characters,
+the placeholder quiet and the typed name primary, giving way before the
+pickers, Return back to the message), is kept on the record as `title` and
+sent as `session.create { title }`; left empty, the host names the thread
+from the message, and a placeholder title never sticks (the host's
+`isPlaceholderTitle`). The store keeps every change in memory at once and
+writes the drafts after 500 ms of quiet (the desktop's debounce), and at
+once when the draft leaves the screen or the app leaves the foreground
+(`ProjectDraftStore.flush`). New thread (the strip's button, the card's
 menu, the workspace's bar, Home's long press) opens the shell on its draft
 and focuses it, setting the type when one is asked for and keeping the
 text (`NewThreadPresenter.compose`, `ProjectDraftStore.focus`). The New
@@ -1254,13 +1284,20 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
   a spawn lands on its `spawn_agent` call's row (the fold stamps each
   child on the call), with the child's state as a still dot after the
   words; a batch spawn is one "Spawned <title>" row per child; a report
-  and each agent a wait returned on is one step: the state's still glyph,
+  and each agent a wait returned on is one step (a real wait's result
+  carries each agent's reply and passes 2 KiB, so the host sends the phone
+  its head alone: `WaitSteps.resolved` reads the agents the head names
+  with their status, then each other agent the call named by its own
+  session's status where that is a settled one): the state's still glyph,
   then Finished, Failed, Needs you, Stopped or Paused and the title
   (`AgentTitle`: the store's title, the spawn's, the report's stamp, the
   task's first line, else "a subagent", cut at a word past 48); the
   batch's own report reads "Finished the batch" and opens nothing; a
   settled background task is "Task finished <label>". A row about an
-  agent the store lists pushes its thread. No step spins: the working
+  agent a paired host lists pushes its thread on that host: an encoded
+  `<env>:<id>` on its host, a bare id on the parent's host first, then on
+  any other paired host (`CrossHost.find`; `ThreadScreenRoute` carries the
+  host). No step spins: the working
   line is the transcript's one moving mark.
 - **Failure**: the host's verdict on a failed turn as a card: the summary,
   the cause, a note naming what only the desktop can do (sign in, pick an

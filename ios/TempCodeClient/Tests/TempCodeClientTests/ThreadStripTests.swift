@@ -67,6 +67,60 @@ private func shown(_ env: String, _ sid: String) -> (environmentId: String, sess
         #expect(model.shelf[0].selected)
     }
 
+    @Test func `a tapped live chip keeps its place until another is selected, though opening it marked it seen`() {
+        let sessions = [meta("first", projectId: "p1", status: .running, updatedAt: 40), meta("read", projectId: "p1", updatedAt: 60), meta("last", projectId: "p1", status: .running, updatedAt: 90)]
+        let order = ["h1:first", "h1:read", "h1:last"]
+        // Unread, it is live in its saved slot.
+        let unread = [host("h1", workspaces: [workspace], projects: projects, sessions: sessions)]
+        let unreadScope = ThreadStrip.scope(for: open("h1", "read"), hosts: unread)!
+        #expect(ThreadStrip.model(scope: unreadScope, shown: nil, order: order, hosts: unread).live.map(\.meta.id) == ["first", "read", "last"])
+        // Tapped: the thread opens and is seen; the chip stays where it was, selected, at either width.
+        let seenNow = [host("h1", workspaces: [workspace], projects: projects, sessions: sessions, seen: seen(["read"]))]
+        let scope = ThreadStrip.scope(for: open("h1", "read"), hosts: seenNow)!
+        let opened = ThreadStrip.model(scope: scope, shown: shown("h1", "read"), order: order, hosts: seenNow)
+        #expect(opened.live.map(\.meta.id) == ["first", "read", "last"])
+        #expect(opened.live[1].selected && !opened.live[1].outside)
+        #expect(opened.shelf.isEmpty)
+        #expect(opened.compact.live.map(\.meta.id) == ["first", "read", "last"])
+        #expect(opened.saveIds == order)
+        // Another selected: the settled, seen chip leaves for the shelf.
+        let moved = ThreadStrip.model(scope: scope, shown: shown("h1", "last"), order: order, hosts: seenNow)
+        #expect(moved.live.map(\.meta.id) == ["first", "last"])
+        #expect(moved.shelf.map(\.meta.id) == ["read"])
+        // A settled chip opened from the shelf was never on the row: it stays on the shelf.
+        let fromShelf = ThreadStrip.model(scope: scope, shown: shown("h1", "read"), order: ["h1:first", "h1:last"], hosts: seenNow)
+        #expect(fromShelf.shelf.map(\.meta.id) == ["read"])
+    }
+
+    @Test func `a draft's send in flight is a live chip until its meta lands, selected once its thread is on screen`() {
+        let quiet = [host("h1", workspaces: [workspace], projects: projects, sessions: [meta("run", projectId: "p1", status: .running)])]
+        let scope = ThreadStrip.scope(key: "h1:p1", hosts: quiet)!
+        var sending = DraftSending(environmentId: "h1", workspaceId: "wa", projectId: "p1", title: "Ship it", threadType: .implementation, provider: .claude, model: "m", startedAt: 9)
+        let inFlight = ThreadStrip.model(scope: scope, shown: nil, order: ["h1:run"], hosts: quiet, sending: sending)
+        #expect(inFlight.live.map(\.id) == ["h1:run", "h1:sending-9"])
+        #expect(inFlight.live[1].sending && !inFlight.live[1].selected)
+        #expect(inFlight.live[1].look(onShelf: false).glyph == .status(.working))
+        #expect(inFlight.saveIds == ["h1:run"])
+        // The create answered and the shell opened the thread; its meta has not landed.
+        sending.sessionId = "new"
+        let opened = ThreadStrip.model(scope: scope, shown: shown("h1", "new"), order: ["h1:run"], hosts: quiet, sending: sending)
+        #expect(opened.live.last?.id == "h1:new")
+        #expect(opened.live.last?.selected == true)
+        // Landed: its own chip takes the place.
+        let landed = [host("h1", workspaces: [workspace], projects: projects, sessions: [meta("run", projectId: "p1", status: .running), meta("new", projectId: "p1", status: .running, updatedAt: 200)])]
+        let after = ThreadStrip.model(scope: ThreadStrip.scope(key: "h1:p1", hosts: landed)!, shown: shown("h1", "new"), order: ["h1:run"], hosts: landed, sending: sending)
+        #expect(after.live.map(\.id) == ["h1:run", "h1:new"])
+        #expect(!after.live[1].sending)
+    }
+
+    @Test func `New Thread leads the row only while no chip is live`() {
+        let quiet = [host("h1", workspaces: [workspace], projects: projects, sessions: [meta("done", projectId: "p1", updatedAt: 60)], seen: seen(["done"]))]
+        let scope = ThreadStrip.scope(key: "h1:p1", hosts: quiet)!
+        #expect(ThreadStrip.model(scope: scope, shown: nil, order: [], hosts: quiet).leadsWithNewThread)
+        let busy = [host("h1", workspaces: [workspace], projects: projects, sessions: [meta("run", projectId: "p1", status: .running)])]
+        #expect(!ThreadStrip.model(scope: ThreadStrip.scope(key: "h1:p1", hosts: busy)!, shown: nil, order: [], hosts: busy).leadsWithNewThread)
+    }
+
     @Test func `a subagent selects its root`() {
         let sessions = [meta("root", projectId: "p1", status: .running, updatedAt: 90), meta("child", parentId: "root", projectId: "p1", status: .running, updatedAt: 95)]
         let hosts = [host("h1", workspaces: [workspace], projects: projects, sessions: sessions)]

@@ -38,6 +38,7 @@ struct TranscriptView: View {
     @State private var openGroups: Set<TranscriptRowID> = []
     /// The thread's working directory, read once: phase lines read paths relative to it.
     @State private var cwd: String?
+    @Environment(AppModel.self) private var app
     /// The group key each step was drawn under, so history joining above
     /// never renames a group (read and written outside observation).
     @State private var keyMemory = RowKeyMemory()
@@ -65,7 +66,7 @@ struct TranscriptView: View {
     static let page = 75
 
     var body: some View {
-        let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory)
+        let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory, statusOf: agentStatus)
         let start = TranscriptRows.windowStart(rows, top: windowTop, count: window)
         let shown = Array(rows[start...])
         let moreAbove = start > 0 || thread.moreBefore
@@ -364,7 +365,7 @@ struct TranscriptView: View {
             guard let now = client.threads[sessionId]?.rows.first?.seq, now < first else { break }
         }
         guard let state = client.threads[sessionId], !state.moreBefore, !state.entries.isEmpty else { return }
-        let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen)
+        let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, statusOf: agentStatus)
         resize(rows.count)
         try? await Task.sleep(for: .seconds(2))
         var setup = Transaction()
@@ -393,7 +394,7 @@ struct TranscriptView: View {
         proofScrollView.setContentOffset(CGPoint(x: proofScrollView.contentOffset.x, y: max(top, proofScrollView.contentOffset.y - 700)), animated: false)
         try? await Task.sleep(for: .milliseconds(500))
         let y = Double(proofScrollView.contentOffset.y)
-        let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory).count
+        let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory, statusOf: agentStatus).count
         #if DEBUG
         LayoutProbe.note("proof", "scrolled-up")
         // The reader's row once up: the fold run holds every later stop to it.
@@ -424,7 +425,7 @@ struct TranscriptView: View {
             next.minOffset = min(next.minOffset, Double(y))
             next.maxOffset = max(next.maxOffset, Double(y))
         }
-        next.rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory).count
+        next.rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory, statusOf: agentStatus).count
         next.seq = thread.fold.lastSeq
         next.atBottom = scrollState.atBottom
         hold = next
@@ -445,7 +446,7 @@ struct TranscriptView: View {
         let client = client
         let sessionId = sessionId
         // ThreadState is a value: read the client's current one at each call. Rows, partials included, show the stream landing.
-        recorder.start(sourceRows: thread.rows.count, items: TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen).count,
+        recorder.start(sourceRows: thread.rows.count, items: TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, statusOf: agentStatus).count,
                        scrollView: proofScrollView, driver: .stream(pinned: { state.atBottom }, seq: { client.threads[sessionId]?.rows.count ?? 0 }))
         if TestHooks.streamDrag {
             try? await Task.sleep(for: .seconds(4))
@@ -507,6 +508,12 @@ struct TranscriptView: View {
         TranscriptTrace.write("snapToBottom window=\(window)"); scrollState.offBottomWrite = false; withTransaction(transaction) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
     }
 
+    /// An agent's session status wherever it lives: a wait whose body the
+    /// host left behind reads its agents by this (`WaitSteps.resolved`).
+    private var agentStatus: (String) -> String? {
+        { [client, app] id in agentSession(id, home: client, registry: app.registry)?.session.status.rawValue }
+    }
+
     /// Pin on data changes, not on scroll geometry changes. Replacing the
     /// scroll view's size anchor at an edge forces a full layout pass, so
     /// the asks of one main-queue turn (each reveal step, each push, each
@@ -537,7 +544,7 @@ struct TranscriptView: View {
         targetStatus = "Loading search result…"
         guard let seq = await client.reveal(sessionId, seq: targetSeq),
               let state = client.threads[sessionId],
-              case let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory),
+              case let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory, statusOf: agentStatus),
               let id = TranscriptRows.rowID(containing: seq, in: rows),
               let index = rows.firstIndex(where: { $0.id == id }) else {
             if !Task.isCancelled {
@@ -581,7 +588,7 @@ struct TranscriptView: View {
         }
         var anchor = top.id
         if case .group = top, let anchorSeq, let state = client.threads[sessionId],
-           let found = TranscriptRows.rowID(containing: anchorSeq, in: TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory)) {
+           let found = TranscriptRows.rowID(containing: anchorSeq, in: TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory, statusOf: agentStatus)) {
             anchor = found
         }
         try? await Task.sleep(for: .milliseconds(16))
