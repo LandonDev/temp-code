@@ -94,7 +94,11 @@ struct TranscriptView: View {
                     }
                     .modifier(BornMotion(born: bornRows.isUnclaimed(row), rises: row.isUserTurn))
                     .id(row.id)
-                    .onAppear { bornRows.claim(row) }
+                    .onAppear {
+                        bornRows.claim(row)
+                        noteOnScreen(row.id, true, order: shown)
+                    }
+                    .onDisappear { noteOnScreen(row.id, false, order: shown) }
                     .environment(\.revealTurn, turns[row.id])
                     .rowInitProbe(row.id)
                     .accessibilityIdentifier("transcript-item")
@@ -128,8 +132,6 @@ struct TranscriptView: View {
             .contentMargins(.vertical, 8, for: .scrollContent)
             // The measure: the inset past the 16 pt row inset that centres a column no wider than the cap.
             .contentMargins(.horizontal, measured ? ReadingMeasure.sideInset(width: listWidth) - ReadingMeasure.edge : 0, for: .scrollContent)
-            // Read only, never assigned: the row at the top edge, for the reflow's anchor.
-            .scrollPosition(id: Binding(get: { scrollState.topRow }, set: { scrollState.topRow = $0 }), anchor: .top)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { was, now in
                 listWidth = now
                 if TranscriptReflow.widthChanged(was, now) { reflow(proxy: proxy) }
@@ -233,6 +235,8 @@ struct TranscriptView: View {
     private var endInsets: EdgeInsets { EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16) }
 
     @State private var initializedScroll = false
+    /// The keys of the rows on screen (plain storage: an appear re-renders nothing).
+    @State private var onScreen = OnScreenRows()
     @State private var proofScrollView: UIScrollView?
     @State private var scrollRan = false
     @State private var recorder: FrameRecorder?
@@ -249,6 +253,20 @@ struct TranscriptView: View {
     @State private var reflowTask: Task<Void, Never>?
     /// An `extend` in flight: no reflow runs over it.
     @State private var extending = false
+
+    /// The rows on screen, by their appear and disappear (no geometry, nothing
+    /// per frame); the earliest in list order is the top row, the reflow's
+    /// anchor for a reader off the bottom. Never moved while a reflow is open.
+    private func noteOnScreen(_ id: TranscriptRowID, _ on: Bool, order: [TranscriptRowModel]) {
+        if on { onScreen.ids.insert(id) } else { onScreen.ids.remove(id) }
+        guard !scrollState.reflowHeld else { return }
+        let top = TranscriptReflow.topRow(onScreen: onScreen.ids, order: order.map(\.id))
+        guard scrollState.topRow != top else { return }
+        scrollState.topRow = top
+        #if DEBUG
+        LayoutProbe.note("topRow", top.map(RowInitLedger.key) ?? "none")
+        #endif
+    }
 
     /// The width changed: capture the anchor once (or keep the one a step
     /// already captured), hold `atBottom`, and restore at each delay with
@@ -519,6 +537,11 @@ struct TranscriptView: View {
     }
 }
 
+/// The rows on screen, kept outside observation.
+final class OnScreenRows {
+    var ids: Set<TranscriptRowID> = []
+}
+
 /// Plain storage for the scrolled-up proof's samples.
 final class HoldBox {
     var hold: TestHooks.ScrollHold?
@@ -531,7 +554,7 @@ final class HoldBox {
 @MainActor @Observable
 final class TranscriptScrollState {
     var atBottom = true
-    /// The row at the top edge, as the list reports it; never assigned by the view.
+    /// The row at the top edge: the earliest row on screen (`noteOnScreen`); read by the reflow and the trace, never in a body.
     var topRow: TranscriptRowID?
     /// A reflow is open: `atBottom` holds its captured value.
     var reflowHeld = false

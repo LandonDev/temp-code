@@ -157,6 +157,15 @@ import Testing
         #expect(TranscriptReflow.widthChanged(951, 466))
     }
 
+    @Test("the top row is the earliest row on screen in list order") func theTopRowIsTheEarliestOnScreen() {
+        let order = [40, 41, 42, 43].map { TranscriptRowID(key: $0) }
+        #expect(TranscriptReflow.topRow(onScreen: [TranscriptRowID(key: 42), TranscriptRowID(key: 41)], order: order) == TranscriptRowID(key: 41))
+        #expect(TranscriptReflow.topRow(onScreen: [TranscriptRowID(key: 43)], order: order) == TranscriptRowID(key: 43))
+        #expect(TranscriptReflow.topRow(onScreen: [], order: order) == nil)
+        // A row the window no longer holds is no top row.
+        #expect(TranscriptReflow.topRow(onScreen: [TranscriptRowID(key: 7)], order: order) == nil)
+    }
+
     @Test("the restore runs at once, then twice more past the fold's steps") func theRestoreRunsAtOnceThenTwiceMore() {
         #expect(TranscriptReflow.restoreDelaysMs == [0, 250, 600])
     }

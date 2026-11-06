@@ -159,6 +159,14 @@ public enum TranscriptReflow {
         abs(to - from) > 1
     }
 
+    /// The row at the top edge: the earliest, in list order, of the rows on
+    /// screen. A `List` never reports `scrollPosition(id:)` on iOS 27.1 and
+    /// its cells get no geometry while UIKit scrolls them, so the transcript
+    /// keeps the keys its rows' `onAppear`/`onDisappear` bracket instead.
+    public static func topRow(onScreen: Set<TranscriptRowID>, order: [TranscriptRowID]) -> TranscriptRowID? {
+        onScreen.isEmpty ? nil : order.first(where: onScreen.contains)
+    }
+
     /// A fold resizes in steps about 200 ms apart with the rows re-wrapping
     /// between them; the anchor is restored at each of these delays after
     /// the last step and held until the last one. Each new step restarts
