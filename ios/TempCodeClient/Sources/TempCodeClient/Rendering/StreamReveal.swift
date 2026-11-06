@@ -76,15 +76,21 @@ public struct StreamRevealLedger: Sendable {
     /// A block's ledger key: its first `keyChars` characters without their
     /// marks, so a rewrite of the marks keeps the key.
     static func key(_ text: String) -> String {
-        String(skeleton(text).prefix(keyChars))
+        var key = ""
+        for character in text where !marks.contains(character) {
+            key.append(character)
+            if key.count == keyChars { break }
+        }
+        return key
     }
 
+    /// Read once per call: the key, and the text without marks only when a lookup needs it.
     private mutating func ledgerFor(_ text: String) -> Ledger {
         let key = Self.key(text)
-        let skeleton = Self.skeleton(text)
         var ledger = ledgers[key]
-        if ledger == nil {
+        if ledger == nil, ledgers.contains(where: { $0.key.count < Self.keyChars }) {
             // A block shorter than the key grows into a longer key.
+            let skeleton = Self.skeleton(text)
             if let (shortKey, short) = ledgers.first(where: { $0.key.count < Self.keyChars && skeleton.hasPrefix(Self.skeleton($0.value.text)) }) {
                 ledgers[shortKey] = nil
                 ledger = short
@@ -93,7 +99,7 @@ public struct StreamRevealLedger: Sendable {
         guard let ledger else { return Ledger() }
         if text.hasPrefix(ledger.text) { return ledger }
         // The same block with only its marks rewritten: the ledger moves onto the new text.
-        let was = Self.skeleton(ledger.text)
+        let skeleton = Self.skeleton(text), was = Self.skeleton(ledger.text)
         if skeleton.hasPrefix(was) || was.hasPrefix(skeleton) { return Self.moved(ledger, onto: text) }
         return Ledger()
     }
