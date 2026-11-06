@@ -544,7 +544,7 @@ struct ComposerBox<Trailing: View>: View {
                     .transition(.opacity)
             }
         }
-        .padding(.horizontal, ComposerMetrics.side)
+        .padding(.horizontal, ComposerMetrics.inset)
         .padding(.vertical, ComposerMetrics.edge)
         .frame(maxWidth: .infinity, alignment: .leading)
         .tcGlass(in: RoundedRectangle.corner(ComposerMetrics.radius))

@@ -543,6 +543,44 @@ private func seqs(_ rows: [EventRow]) -> [Int] { rows.map(\.seq) }
         #expect(rig.client.threads["s9"]?.isLoading == true)
     }
 
+    @Test func `a session.list walk cut short counts no complete list; a whole one does`() async throws {
+        let rig = try ClientRig()
+        await rig.client.start()
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        let workspaces = try #require(await rig.waitForRequest(fake, "workspace.list"))
+        fake.answer(id: workspaces.id, result: json([sampleWorkspace("w1")]))
+        let projects = try #require(await rig.waitForRequest(fake, "project.list"))
+        fake.answer(id: projects.id, result: json([sampleProject("p1")]))
+        let changes = try #require(await rig.waitForRequest(fake, "session.changes"))
+        fake.answer(id: changes.id, result: json(SessionChanges(reset: true, seq: 1, generation: "g0")))
+        let first = try #require(await rig.waitForRequest(fake, "session.list"))
+        fake.answer(id: first.id, result: json(SessionPage(sessions: [clientSession("s1")], cursor: "c2")))
+        let second = try #require(await rig.waitForRequest(fake, "session.list", count: 2))
+        #expect(second.params["cursor"] == .string("c2"))
+        fake.refuse(id: second.id, error: "internal: gone")
+        // The walk ended early: the shell is up, but no list was whole.
+        #expect(await rig.wait { rig.client.hasShell })
+        #expect(rig.client.completeLists == 0)
+        // The next session lists whole (the cursor was dropped), and that one counts.
+        fake.deliver(#"{"push":"resync"}"#)
+        for method in ["workspace.list", "project.list"] {
+            let sent = try #require(await rig.waitForRequest(fake, method, count: 2))
+            fake.answer(id: sent.id, result: method == "workspace.list" ? json([sampleWorkspace("w1")]) : json([sampleProject("p1")]))
+        }
+        let again = try #require(await rig.waitForRequest(fake, "session.changes", count: 2))
+        fake.answer(id: again.id, result: json(SessionChanges(reset: true, seq: 2, generation: "g0")))
+        // The live pages alone: the archived walk asks beside them.
+        var live: [(id: String, method: String, params: JSONValue)] = []
+        #expect(await rig.wait {
+            live = rig.sent(fake, "session.list").filter { $0.params["archived"] != .bool(true) }
+            return live.count >= 3
+        })
+        let whole = try #require(live.count >= 3 ? live[2] : nil)
+        fake.answer(id: whole.id, result: json(SessionPage(sessions: [clientSession("s1"), clientSession("s2")], cursor: nil)))
+        #expect(await rig.wait { rig.client.completeLists == 1 })
+    }
+
     @Test func `on a new session the open thread catches up before the shell has listed`() async throws {
         let cache = try SessionCache.inMemory()
         try await cache.store("env_test", sessionId: "s1", rows: (1...50).map { textRow("s1", seq: $0) }, moreBefore: true)

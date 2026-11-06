@@ -68,6 +68,7 @@ import { dirname, join } from 'node:path'
 import { deflateSync } from 'node:zlib'
 import { configure } from 'aliax-core'
 import { startServer } from '../src/main/server/index'
+import { failAnswers } from '../src/main/server/answerSeams'
 import { BUILT_IN_DRIVERS } from '../src/main/server/drivers'
 import type { DriverHandle } from '../src/main/server/drivers/types'
 import { emitLiveEdit } from '../src/main/server/livediff'
@@ -1842,6 +1843,13 @@ const control = createServer((req, res) => {
           count++
         }
         return answer(200, { dropped: count })
+      }
+      case '/fail': {
+        // The next `count` requests of `method` answer an error (a host that erred, its link still open).
+        const method = String(body.method ?? 'catalog.get')
+        const count = Math.max(1, Number(body.count ?? 1))
+        failAnswers.add(method, count)
+        return answer(200, { method, count })
       }
       case '/hold': {
         holdUpgradesUntil = Date.now() + Math.max(0, Number(body.seconds ?? 8)) * 1000

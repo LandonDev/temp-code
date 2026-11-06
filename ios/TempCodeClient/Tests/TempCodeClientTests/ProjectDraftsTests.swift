@@ -217,6 +217,53 @@ import TempCodeContract
         #expect(macUp)
     }
 
+    @Test func `an ask that errs over an open link is asked once more, then the row says it failed`() {
+        var load = CatalogLoad()
+        let up = CatalogLoad.Trigger(host: "box", open: true)
+        let asked1 = load.begin(up)
+        #expect(asked1)
+        load.finish(up, loaded: false)
+        #expect(load.retries && !load.failed, "the first failure asks again after retryMs")
+        #expect(CatalogLoad.retryMs == 2_000)
+        let asked2 = load.begin(up)
+        #expect(asked2, "the retry asks the same trigger again")
+        #expect(!load.retries && !load.failed, "nothing to say while it is out")
+        load.finish(up, loaded: false)
+        #expect(!load.retries && load.failed)
+        #expect(CatalogLoad.failedLine == "Couldn't load models")
+        // The person's Retry: one ask, and a failure says so again at once.
+        load.retry()
+        let asked3 = load.begin(up)
+        #expect(asked3)
+        load.finish(up, loaded: false)
+        #expect(load.failed && !load.retries)
+        load.retry()
+        let asked4 = load.begin(up)
+        #expect(asked4)
+        load.finish(up, loaded: true)
+        #expect(!load.failed && !load.retries)
+        // A link that was down says "Waiting for", never failed; its coming up starts afresh.
+        var down = CatalogLoad()
+        let off = CatalogLoad.Trigger(host: "box", open: false)
+        let asked5 = down.begin(off)
+        #expect(asked5)
+        down.finish(off, loaded: false)
+        #expect(!down.retries && !down.failed && down.failures == 0)
+        let asked6 = down.begin(up)
+        #expect(asked6)
+        down.finish(up, loaded: false)
+        #expect(down.retries, "a new link gets its own retry")
+        // Another host forgets the old host's failures.
+        var moved = CatalogLoad()
+        _ = moved.begin(up); moved.finish(up, loaded: false); _ = moved.begin(up); moved.finish(up, loaded: false)
+        #expect(moved.failed)
+        let mac = CatalogLoad.Trigger(host: "mac", open: true)
+        let asked7 = moved.begin(mac)
+        #expect(asked7)
+        moved.finish(mac, loaded: false)
+        #expect(moved.retries && !moved.failed)
+    }
+
     @Test func `the row says why while the catalog waits on its host's link`() {
         #expect(CatalogLoad.waitLine(hostName: "box", transport: .reconnecting, hasCatalog: false) == "Waiting for box")
         #expect(CatalogLoad.waitLine(hostName: "box", transport: .offline, hasCatalog: false) == "Waiting for box")

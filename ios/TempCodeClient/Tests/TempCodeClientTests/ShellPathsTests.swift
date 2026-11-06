@@ -85,28 +85,55 @@ private let everyRoute: [Route] = [
         #expect(ShellPaths.place(.settings, hosts: hosts).root == .settings)
     }
 
-    @Test func `a bare thread its host listed and left bare is never looked for again`() {
+    @Test func `a bare thread a complete list left bare is looked at again only when its host lists or names it`() {
         let listed = fixture()
         let empty = HomeHostInput(environmentId: "e", name: "e", workspaces: [], projects: [], sessions: [])
-        var settled: Route?
+        var settled: BareSettle?
         var built = 0
-        func awaits(_ root: Route, hasListed: Bool, hosts: HomeHostInput) -> Bool {
-            ShellPaths.awaitsListing(root, stackEmpty: true, settled: &settled, listed: { _ in hasListed }, hosts: { built += 1; return [hosts] })
+        func awaits(_ root: Route, lists: Int, hosts: HomeHostInput, stack: Bool = true) -> Bool {
+            ShellPaths.awaitsListing(root, stackEmpty: stack, settled: &settled, lists: { _ in lists }, meta: { _, id in hosts.sessions.first { $0.id == id } }, hosts: { built += 1; return [hosts] })
         }
-        // Before the list lands: looked for on every pass, and placed once it lands.
-        #expect(!awaits(open("e", "a"), hasListed: false, hosts: empty))
-        #expect(!awaits(open("e", "a"), hasListed: false, hosts: empty))
-        #expect(awaits(open("e", "a"), hasListed: true, hosts: listed))
+        // Before the first complete list: looked for on every pass, and placed once it lands.
+        #expect(!awaits(open("e", "a"), lists: 0, hosts: empty))
+        #expect(!awaits(open("e", "a"), lists: 0, hosts: empty))
+        #expect(settled == nil)
+        #expect(awaits(open("e", "a"), lists: 1, hosts: listed))
         #expect(built == 3)
-        // A chat outside every workspace: one look after the list, then none.
-        #expect(!awaits(open("e", "stray"), hasListed: true, hosts: listed))
-        #expect(settled == open("e", "stray"))
-        for _ in 0..<5 { #expect(!awaits(open("e", "stray"), hasListed: true, hosts: listed)) }
+        // A chat outside every workspace: one look after the list, then none on unrelated pushes.
+        #expect(!awaits(open("e", "stray"), lists: 1, hosts: listed))
+        #expect(settled?.root == open("e", "stray"))
+        for _ in 0..<5 { #expect(!awaits(open("e", "stray"), lists: 1, hosts: listed)) }
         #expect(built == 4)
-        // Another root is looked at again; something pushed over the root waits on nothing.
-        #expect(awaits(open("e", "a"), hasListed: true, hosts: listed))
-        #expect(!ShellPaths.awaitsListing(open("e", "a"), stackEmpty: false, settled: &settled, listed: { _ in true }, hosts: { built += 1; return [listed] }))
+        // The host's next complete list looks once more.
+        #expect(!awaits(open("e", "stray"), lists: 2, hosts: listed))
         #expect(built == 5)
+        // Another root is looked at again; something pushed over the root waits on nothing.
+        #expect(awaits(open("e", "a"), lists: 2, hosts: listed))
+        #expect(!awaits(open("e", "a"), lists: 2, hosts: listed, stack: false))
+        #expect(built == 6)
+    }
+
+    @Test func `a walk cut short settles nothing, and a later push naming the thread places it`() {
+        let listed = fixture()
+        // The thread's own sessions push has not landed: the host lists it nowhere yet.
+        let before = HomeHostInput(environmentId: "e", name: "e", workspaces: listed.workspaces, projects: listed.projects, sessions: listed.sessions.filter { $0.id != "a" })
+        var settled: BareSettle?
+        var built = 0
+        func awaits(lists: Int, hosts: HomeHostInput) -> Bool {
+            ShellPaths.awaitsListing(open("e", "a"), stackEmpty: true, settled: &settled, lists: { _ in lists }, meta: { _, id in hosts.sessions.first { $0.id == id } }, hosts: { built += 1; return [hosts] })
+        }
+        // An early-ended walk counts no list (EnvironmentClient.completeLists): nothing settles.
+        #expect(!awaits(lists: 0, hosts: before))
+        #expect(settled == nil)
+        // A complete list without it settles, with the host naming nothing.
+        #expect(!awaits(lists: 1, hosts: before))
+        #expect(settled == BareSettle(root: open("e", "a"), lists: 1, placing: nil))
+        #expect(!awaits(lists: 1, hosts: before))
+        #expect(built == 2)
+        // Its push lands: looked at again, and placed in its shell.
+        #expect(awaits(lists: 1, hosts: listed))
+        #expect(ShellPaths.relisted(open("e", "a"), hosts: [listed])?.root == .project(key: "e:p1", thread: "e:a"))
+        #expect(built == 3)
     }
 
     @Test func `a thread opened bare before its host listed it moves into its shell once the list lands`() {

@@ -303,7 +303,7 @@ public struct TurnEnd: Hashable, Sendable {
     public var userKey: Int
     /// The turn runs, or its message waits for the host's echo.
     public var open: Bool
-    /// The user turn's `completedTs` less its `ts`, never negative; nil while open.
+    /// The user turn's `completedTs` less its `ts` and its `downMs`, never negative; nil while open.
     public var durationMs: Int?
     public var completedTs: Int?
     /// The turn's assistant prose joined by blank lines: what Copy answer copies.
@@ -317,8 +317,12 @@ public struct TurnEnd: Hashable, Sendable {
     public var turn: [ThreadEntry]
     /// The thread's last turn: the Watching line hangs under it.
     public var last: Bool
+    /// The host put the turn down with its harness gone and a Resume reopened
+    /// it (`UserTurn.downMs`): its closing line turns back into the working
+    /// line, the one time a closed line may.
+    public var resumed: Bool
 
-    public init(userSeq: Int, userKey: Int? = nil, open: Bool = false, durationMs: Int?, completedTs: Int?, answer: String, stopped: Bool = false, awaitsUser: Bool = false, turn: [ThreadEntry] = [], last: Bool = false) {
+    public init(userSeq: Int, userKey: Int? = nil, open: Bool = false, durationMs: Int?, completedTs: Int?, answer: String, stopped: Bool = false, awaitsUser: Bool = false, turn: [ThreadEntry] = [], last: Bool = false, resumed: Bool = false) {
         self.userSeq = userSeq
         self.userKey = userKey ?? userSeq
         self.open = open
@@ -329,6 +333,7 @@ public struct TurnEnd: Hashable, Sendable {
         self.awaitsUser = awaitsUser
         self.turn = turn
         self.last = last
+        self.resumed = resumed
     }
 
     public var id: TranscriptRowID { TranscriptRowID(key: userKey, end: true) }
@@ -607,9 +612,9 @@ public enum TranscriptRows {
         if let opener {
             let joined = answer.joined(separator: "\n\n")
             if open {
-                rows.append(.turnEnd(TurnEnd(userSeq: opener.seq, userKey: openerKey, open: true, durationMs: nil, completedTs: nil, answer: joined, stopped: stopped, awaitsUser: awaits, turn: Array(turn))))
+                rows.append(.turnEnd(TurnEnd(userSeq: opener.seq, userKey: openerKey, open: true, durationMs: nil, completedTs: nil, answer: joined, stopped: stopped, awaitsUser: awaits, turn: Array(turn), resumed: opener.downMs > 0)))
             } else if opener.seq >= 0, let completedTs = opener.completedTs {
-                rows.append(.turnEnd(TurnEnd(userSeq: opener.seq, userKey: openerKey, durationMs: max(0, completedTs - opener.ts), completedTs: completedTs, answer: joined, stopped: stopped)))
+                rows.append(.turnEnd(TurnEnd(userSeq: opener.seq, userKey: openerKey, durationMs: max(0, completedTs - opener.ts - opener.downMs), completedTs: completedTs, answer: joined, stopped: stopped)))
             }
         }
         return groupKeys

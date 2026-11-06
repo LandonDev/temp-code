@@ -272,6 +272,10 @@ public final class EnvironmentClient {
     public internal(set) var batches: [String: BatchState] = [:]
     /// The shell has been listed at least once in this process.
     public private(set) var hasShell = false
+    /// How many complete lists the shell has had in this process: a change-log
+    /// answer, or a `session.list` walk that reached its end (one cut short
+    /// counts nothing). A bare thread waits on it (`ShellPaths.awaitsListing`).
+    public private(set) var completeLists = 0
     /// Where the session list last came from.
     public private(set) var shellSource: ShellSource = .none
     /// The `session.changes` head the list was last reconciled to, from the
@@ -774,6 +778,7 @@ public final class EnvironmentClient {
             let removed = unheard(answer.removed ?? [], since: begun)
             if !removed.isEmpty { removeSessions(removed) }
             hasShell = true
+            completeLists += 1
             shellSource = .changes
             _ = await coldPage
             return
@@ -785,6 +790,7 @@ public final class EnvironmentClient {
         if complete {
             let gone = unheard(sessions.filter { !$0.archived && !listed.contains($0.id) }.map(\.id), since: begun)
             if !gone.isEmpty { removeSessions(gone) }
+            completeLists += 1
         } else {
             // A walk cut short (a page lost as the socket dropped) listed less
             // than the head covers: the next session lists whole again.

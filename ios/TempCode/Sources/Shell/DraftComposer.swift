@@ -345,7 +345,7 @@ private struct DraftRow: View {
         .transcriptType(TranscriptType.detail)
         .foregroundStyle(.secondary)
         .lineLimit(1)
-        .padding(.horizontal, ComposerMetrics.side)
+        .padding(.horizontal, ComposerMetrics.inset)
         .frame(minHeight: ComposerMetrics.row)
     }
 

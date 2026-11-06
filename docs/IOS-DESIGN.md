@@ -134,9 +134,12 @@ a subagent opens its root's shell and pushes over it; a chat outside every
 workspace opens bare (`ShellPaths.place`). A thread opened bare because its
 host had not listed it yet (a notification's tap on a cold launch) moves
 into its shell the moment the list lands, unless something was pushed over
-it (`ShellPaths.relisted`, `ShellNavigator.placeListed`); once its host has
-listed and it still opens bare it is never looked for again
-(`ShellPaths.awaitsListing`), so a bare chat builds no lists per push. A card's tap lands the shell
+it (`ShellPaths.relisted`, `ShellNavigator.placeListed`); once a complete
+list from its host (`EnvironmentClient.completeLists`: a change-log answer
+or a walk that reached its end; one cut short counts nothing) still leaves
+it bare, it is looked at again only on that host's next complete list or a
+push that names the thread or moves it (`ShellPaths.awaitsListing`,
+`BareSettle`), so a bare chat builds no lists per unrelated push. A card's tap lands the shell
 (`ShellPaths.land`, the desktop's project home): the project's most recent
 active thread (`ProjectLanding`, a batch thread's master in its place),
 else the thread last on screen there, else the draft, and a project left on
@@ -866,7 +869,13 @@ and switching the draft's host loads that host's catalog anew
 (`CatalogLoad.Trigger`): a draft opened before its host connected, or moved
 to a host that is reconnecting, asks again the moment the link comes up,
 and meanwhile the row says why in the model's place, "Waiting for <host>"
-in the row's detail type, tertiary (`CatalogLoad.waitLine`). The picker is
+in the row's detail type, tertiary (`CatalogLoad.waitLine`). An ask that
+comes back with nothing while the link stays open (the host erred) is asked
+once more after 2 s (`CatalogLoad.retryMs`); when that fails too the row
+says "Couldn't load models" in the detail type, secondary, with Retry after
+it in the accent (its touch 44 pt), on a draft and a thread's composer
+alike (`CatalogLoad.failed`, `CatalogChoice.retry`); a failed Retry says so
+again at once. The picker is
 the one source of the model and effort the create carries
 (`ProjectDrafts.threadDraft` takes what it shows): the draft's saved pick
 only seeds it, so after a host switch the send carries the model that host
@@ -1089,7 +1098,13 @@ element and closes under it; every row reports its reveal under that
 turn's key (`TranscriptRows.turnKeys`, the end row's `userKey`), so the
 reply to a steer holds the closing line until it has drained. A
 `stopped` status (the harness gone) closes the turn as the desktop's fold
-does, so a message sent after it opens a turn of its own. Every turn but
+does, so a message sent after it opens a turn of its own; a Resume
+instead (the host writes starting then running and no message) reopens
+that turn, the desktop's `resumeTurnClock`: the working line comes back
+under the same message and the closing line states the whole span less
+the time it lay down (`UserTurn.downMs`), the span the strip counted. It
+is the one time a closing line turns back into the working line
+(`TurnEnd.resumed`, which the scenario runner's morph check admits). Every turn but
 the last takes its rows from the last build while its entries, its place
 and the row above it read the same (`RowKeyMemory`'s settled turns, a
 copy of each turn's entries, never a slice of an old build's array; the
@@ -1350,8 +1365,11 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
   its head alone: `WaitSteps.resolved` reads the agents the head names
   with their status, then each other agent the call named by its own
   session's status where that is a settled one, read once: the fold's
-  `WaitOutcomeMemory` keeps the first settled status per wait and agent,
-  so the agent running again never takes the step out of the history; the
+  `WaitOutcomeMemory` keeps the first status read per wait and agent, a
+  settled one as the step and one still at work as no agent the wait
+  returned on, so the agent running again never takes the step out of the
+  history and one settling later never adds one (an agent no host knows
+  yet waits for its first read); the
   transcript reads the statuses the waits still need through a small map
   kept outside its body (`WaitStatuses`, `WaitSteps.unsettledAgents`), so
   a meta push that moves no named agent re-runs nothing): the state's still glyph,

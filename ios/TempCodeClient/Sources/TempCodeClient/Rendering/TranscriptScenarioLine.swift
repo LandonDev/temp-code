@@ -61,6 +61,7 @@ final class LineProbes {
                 probes[row.id] = Probe(model: model, morph: MorphModel(model.look.words, reduced: reduced), key: model.look.key, paintedAt: t, open: model.look.open, due: nil, end: end)
                 continue
             }
+            let before = probe.end
             let (look, due) = probe.model.update(input, at: t)
             probe.due = due
             probe.end = end
@@ -68,7 +69,9 @@ final class LineProbes {
                 if checks.contains(.hold), t - probe.paintedAt < MotionValues.wordHold - 1e-6 {
                     violations.append("\(at): \(probe.key) painted \(Int((t - probe.paintedAt) * 1_000)) ms, under the hold")
                 }
-                if checks.contains(.morph), probe.key == TurnLineModel.closedKey {
+                // A Resume reopens a turn the host put down (`TurnEnd.resumed`): its line works again.
+                let reopened = end.open && end.resumed && !before.open
+                if checks.contains(.morph), probe.key == TurnLineModel.closedKey, !reopened {
                     violations.append("\(at): the closing line turned back into \(look.key)")
                 }
                 events.append("@\(Int(ms)) \(end.userKey) morph \(probe.key) → \(look.key)")

@@ -276,6 +276,9 @@ public struct ThreadFold: Sendable, Hashable {
     private var questionIndex: [String: Int] = [:]  // requestId → items index
     private var approvalIndex: [String: Int] = [:]
     private var openCompaction: Int?
+    /// The ts of the host's `stopped` close (the harness gone) while nothing
+    /// came after it: a busy status next is the Resume, which reopens that turn.
+    private var stoppedClose: Int?
     /// Files the thread is changing right now, from the `live-edits` push, by
     /// path; `liveEditOrder` is oldest first, so the cap drops the oldest.
     public private(set) var liveEdits: [String: LiveEditState] = [:]
@@ -342,6 +345,7 @@ public struct ThreadFold: Sendable, Hashable {
     public mutating func apply(_ row: EventRow) {
         switch row.event {
         case .userText(let event):
+            stoppedClose = nil
             board.beginTurn(ts: row.ts, lastTs: items.last?.ts, newPass: event.newPass)
             append(.user(UserTurn(seq: row.seq, ts: row.ts, text: event.text, attachments: event.attachments ?? [], model: event.model, reasoning: event.reasoning, completedTs: nil, costUsd: nil, preamble: event.preamble, steerId: event.steerId)))
         case .steer(let event):
@@ -499,7 +503,15 @@ public struct ThreadFold: Sendable, Hashable {
                 board.turnOpen = false
                 board.inPass = false
                 closeUserTurns(at: row.ts, cost: nil)
+                if event.status == .stopped { stoppedClose = row.ts }
+            } else if [.starting, .running].contains(event.status), let closed = stoppedClose {
+                // Resume on a turn the host put down with its harness gone
+                // (`resumeStopped` writes starting then running, no user
+                // row): the turn carries on, the desktop's resumeTurnClock.
+                reopenUserTurns(closedAt: closed, at: row.ts)
+                board.turnOpen = true
             }
+            if ![.stopped, .starting, .running].contains(event.status) { stoppedClose = nil }
             // The session meta carries status; an error's detail is worth a line.
             if let detail = event.detail, !detail.isEmpty, event.status == .error {
                 append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .status, text: detail, detail: nil, stopped: false)))
@@ -611,6 +623,18 @@ public struct ThreadFold: Sendable, Hashable {
         if let cost, let lastUser, case .user(var turn) = items[lastUser].item {
             turn.costUsd = cost
             items[lastUser].item = .user(turn)
+        }
+    }
+
+    /// Undoes the `stopped` close at `closedAt`: every user row it stamped
+    /// opens again, the time it lay down kept out of its clock.
+    private mutating func reopenUserTurns(closedAt: Int, at ts: Int) {
+        stoppedClose = nil
+        for index in items.indices {
+            guard case .user(var turn) = items[index].item, turn.completedTs == closedAt else { continue }
+            turn.completedTs = nil
+            turn.downMs += max(0, ts - closedAt)
+            items[index].item = .user(turn)
         }
     }
 

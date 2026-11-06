@@ -19,13 +19,16 @@ struct ModelKey: Hashable {
 /// levels of the chosen model. Loads once per host (`CatalogLoad`: moved
 /// to another host, it drops the old catalog and loads that host's; an
 /// empty answer, as from a host whose link was down, is asked again when the
-/// link comes up) and keeps the choice valid.
+/// link comes up; one that erred over an open link once more after 2 s, then
+/// `failed`) and keeps the choice valid.
 @Observable
 final class CatalogChoice {
     var key: ModelKey
     var reasoning: Reasoning?
     private(set) var catalog: Catalog?
     private(set) var loading = false
+    /// The catalog's asks failed over an open link, the retry too (`CatalogLoad.failed`).
+    private(set) var failed = false
     /// The person picked a model or a level: the choice stops following the thread until `follow`.
     private(set) var picked = false
     @ObservationIgnored private var source = CatalogLoad()
@@ -64,12 +67,27 @@ final class CatalogChoice {
         guard source.begin(trigger) else { return }
         catalog = nil
         loading = true
+        failed = false
         let loaded = await client.loadCatalog()
         guard source.lands(trigger) else { return }
         source.finish(trigger, loaded: loaded != nil)
         catalog = loaded
         loading = false
         settle()
+        // The host erred over an open link: once more after a short wait, then the row says so.
+        if source.retries {
+            try? await Task.sleep(for: .milliseconds(CatalogLoad.retryMs))
+            guard !Task.isCancelled, source.lands(trigger) else { return }
+            await load(client)
+            return
+        }
+        failed = source.failed
+    }
+
+    /// The row's Retry after "Couldn't load models".
+    func retry(_ client: EnvironmentClient) async {
+        source.retry()
+        await load(client)
     }
 
     /// The choice stays on a model the host has; the reasoning on a level the model offers.

@@ -146,6 +146,34 @@ import TempCodeContract
         #expect(fresh.board.todos.isEmpty)
     }
 
+    @Test func `Resume after the harness is gone reopens the stopped turn; a message sent instead opens its own`() {
+        func at(_ seq: Int, _ ts: Int, _ event: AgentEvent) -> EventRow { EventRow(sessionId: "s", seq: seq, ts: ts, event: event) }
+        let base = [at(1, 1_000, user("go")), at(2, 1_200, .status(StatusEvent(status: .running))), at(3, 4_000, .status(StatusEvent(status: .stopped)))]
+        let down = ThreadFold.fold(base)
+        #expect(!down.board.turnOpen)
+        guard case .user(let closed) = down.items[0].item else { Issue.record("no user row"); return }
+        #expect(closed.completedTs == 4_000)
+        // Resume: starting then running, no user row. The turn opens again.
+        var resumed = ThreadFold.fold(base + [at(4, 9_000, .status(StatusEvent(status: .starting))), at(5, 9_100, .status(StatusEvent(status: .running)))])
+        #expect(resumed.board.turnOpen)
+        guard case .user(let open) = resumed.items[0].item else { Issue.record("no user row"); return }
+        #expect(open.completedTs == nil)
+        #expect(open.downMs == 5_000)
+        resumed.apply(at(6, 10_000, .status(StatusEvent(status: .idle))))
+        guard case .user(let done) = resumed.items[0].item else { Issue.record("no user row"); return }
+        // The span: 3 s before the stop and 1 s after the Resume, the 5 s down left out.
+        #expect(done.completedTs == 10_000)
+        #expect(TranscriptRows.rows(resumed.items, turnOpen: resumed.board.turnOpen).compactMap { if case .turnEnd(let end) = $0 { end.durationMs } else { nil } } == [4_000])
+        // A message sent while stopped opens its own turn; the dead one stays closed.
+        let sent = ThreadFold.fold(base + [at(4, 9_000, user("again")), at(5, 9_050, .status(StatusEvent(status: .starting)))])
+        guard case .user(let first) = sent.items[0].item, case .user(let second) = sent.items[1].item else { Issue.record("no user rows"); return }
+        #expect(first.completedTs == 4_000 && first.downMs == 0)
+        #expect(second.completedTs == nil)
+        // A turn that ended on its own before the harness went stays ended.
+        let idle = ThreadFold.fold([at(1, 1_000, user("go")), at(2, 2_000, .status(StatusEvent(status: .idle))), at(3, 4_000, .status(StatusEvent(status: .stopped))), at(4, 9_000, .status(StatusEvent(status: .running)))])
+        #expect(!idle.board.turnOpen)
+    }
+
     @Test func `a stale open turn does not swallow the next request`() {
         let fold = ThreadFold.fold(rows([user("one"), todoWrite("t1", [("A", "completed")])]) + [EventRow(sessionId: "s", seq: 3, ts: 1_100 + 11 * 60_000, event: user("later"))])
         #expect(fold.board.round == 1)

@@ -1,4 +1,5 @@
 import Foundation
+import TempCodeContract
 
 /// The two columns of a tab's split.
 public enum ShellColumn: Sendable, Hashable {
@@ -81,16 +82,20 @@ public enum ShellPaths {
     }
 
     /// Whether the shell still waits on the lists for the bare thread at the
-    /// detail's root (`relisted`), nothing pushed over it. Once its host has
-    /// listed and the thread still opens bare (a chat outside every
-    /// workspace), that root is `settled` and never looked at again, so the
-    /// lists (`hosts`, every host's rows) are not built on every push while
-    /// it shows. Only `hosts` builds them; `listed` is the host's one flag.
-    public nonisolated static func awaitsListing(_ root: Route?, stackEmpty: Bool, settled: inout Route?, listed: (String) -> Bool, hosts: () -> [HomeHostInput]) -> Bool {
-        guard let root, case .thread(let environmentId, _, _) = root, stackEmpty, root != settled else { return false }
-        let hasListed = listed(environmentId)
+    /// detail's root (`relisted`), nothing pushed over it. A root still bare
+    /// after its host's complete list is `settled` with what decided it: the
+    /// count of that host's complete lists (`lists`, 0 before the first; a
+    /// walk cut short is no list) and how the host names the thread (`meta`:
+    /// absent, or the fields that place it). It is looked at again only when
+    /// either moves (the host's next list, a push that brings the thread or
+    /// moves it), so the lists (`hosts`, every host's rows) are not built on
+    /// every unrelated push while it shows. Only `hosts` builds them.
+    public nonisolated static func awaitsListing(_ root: Route?, stackEmpty: Bool, settled: inout BareSettle?, lists: (String) -> Int, meta: (String, String) -> SessionMeta?, hosts: () -> [HomeHostInput]) -> Bool {
+        guard let root, case .thread(let environmentId, let sessionId, _) = root, stackEmpty else { return false }
+        let now = BareSettle(root: root, lists: lists(environmentId), placing: meta(environmentId, sessionId).map { BareSettle.placing(of: $0) })
+        if now == settled { return false }
         if relisted(root, hosts: hosts()) != nil { return true }
-        if hasListed { settled = root }
+        if now.lists > 0 { settled = now }
         return false
     }
 
@@ -217,5 +222,25 @@ public struct NavigationSnapshot: Codable, Hashable, Sendable {
     public subscript(tab: AppTab) -> ColumnMemory {
         get { columns[tab] ?? ColumnMemory() }
         set { columns[tab] = newValue }
+    }
+}
+
+/// What left a bare thread bare (`ShellPaths.awaitsListing`): its route, the
+/// host's complete lists so far, and the fields its place reads, nil while
+/// the host has not named it.
+public struct BareSettle: Sendable, Hashable {
+    public var root: Route
+    public var lists: Int
+    public var placing: String?
+
+    public init(root: Route, lists: Int, placing: String?) {
+        self.root = root
+        self.lists = lists
+        self.placing = placing
+    }
+
+    /// The meta's fields `ShellPaths.place` reads: its project, workspace, parent and folder.
+    public static func placing(of meta: SessionMeta) -> String {
+        [meta.projectId ?? "", meta.workspaceId ?? "", meta.parentId ?? "", meta.cwd].joined(separator: "\u{1F}")
     }
 }
