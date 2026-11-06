@@ -1,4 +1,5 @@
 import { homedir, hostname } from 'node:os'
+import { dropAnswers, failAnswers, FAILED_ANSWER } from './answerSeams'
 import { vault } from 'aliax-core'
 import { configureMuseDirs } from './museConfigDirs'
 import { version as appVersion } from '../../../package.json'
@@ -344,20 +345,10 @@ const SLOW_REQUEST_MS = 500
  * only (TEMP_CODE_USER_DATA): the first `count` answers to `method` are
  * never sent, so a proof can drive a client through a lost response
  * (scripts/e2e-accounts-sync.ts, the takeover whose confirm answer drops).
+ * TEMP_CODE_FAIL_ANSWERS, the same shape: those requests are answered with
+ * an error (the phone's catalog retry and its "Couldn't load models").
+ * Both live in answerSeams.ts.
  */
-const dropAnswers = new Map<string, number>()
-if (process.env.TEMP_CODE_USER_DATA && process.env.TEMP_CODE_DROP_ANSWERS) {
-  for (const part of process.env.TEMP_CODE_DROP_ANSWERS.split(',')) {
-    const [method, count] = part.split(':')
-    if (method?.trim()) dropAnswers.set(method.trim(), Number(count) || 1)
-  }
-}
-const dropAnswer = (method: string): boolean => {
-  const left = dropAnswers.get(method) ?? 0
-  if (left <= 0) return false
-  dropAnswers.set(method, left - 1)
-  return true
-}
 
 export async function startServer(
   dbPath: string,
@@ -1627,7 +1618,8 @@ export async function startServer(
       }
       // `lane: 'ui'` rides beside the method (lane.ts); the schema strips it.
       const req: ClientRequest = (raw as { lane?: unknown }).lane === 'ui' ? Object.assign(parsed.data, { lane: 'ui' as const }) : parsed.data
-      if (dropAnswer(req.method)) dropped.add(req.id)
+      if (dropAnswers.take(req.method)) dropped.add(req.id)
+      if (failAnswers.take(req.method)) return sendFrame({ id: req.id, ok: false, error: FAILED_ANSWER })
       // TEMP_CODE_PEER_DELAY_MS (peerDelay.ts): a proof's slow box.
       if (PEER_DELAY_MS > 0) await peerDelay(principal.kind, PEER_DELAY_MS)
       if (principal.kind !== 'local') {

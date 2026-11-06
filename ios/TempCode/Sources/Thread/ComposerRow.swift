@@ -22,7 +22,9 @@ struct ComposerRowView: View {
     /// sent with the create; nil on a thread, whose mode is `session.permission`.
     var draftMode: Binding<PermissionPolicy>?
     /// A draft's catalog waiting on its host's link ("Waiting for box"): the
-    /// line takes the model's place until the catalog lands.
+    /// line takes the model's place until the catalog lands. A catalog whose
+    /// asks failed over an open link says "Couldn't load models" with Retry
+    /// there instead, on a draft and a thread alike (`CatalogChoice.failed`).
     var waiting: String?
     /// The row's own width, measured; unmeasured, everything fits.
     @State private var width: CGFloat?
@@ -55,12 +57,13 @@ struct ComposerRowView: View {
             }
             content(steps[steps.count - 1], truncates: true)
         }
-        .padding(.horizontal, ComposerMetrics.side)
+        .padding(.horizontal, ComposerMetrics.inset)
         .frame(minHeight: ComposerMetrics.row)
         .frame(maxWidth: .infinity)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .onChange(of: session?.permission) { asked = nil }
         .animation(Motion.crossFade, value: waiting)
+        .animation(Motion.crossFade, value: choice.failed)
     }
 
     private func content(_ fit: ComposerRow.Fit, truncates: Bool) -> some View {
@@ -92,9 +95,35 @@ struct ComposerRowView: View {
                 .truncationMode(.tail)
                 .fixedSize(horizontal: !truncates, vertical: false)
                 .transition(.opacity)
+        } else if choice.failed {
+            failedLine(truncates: truncates)
+                .transition(.opacity)
         } else {
             pickedModel(fit, truncates: truncates)
         }
+    }
+
+    /// The catalog's asks failed over an open link, the retry after 2 s too
+    /// (`CatalogLoad.failed`): the words in the row's detail type, then Retry,
+    /// the one action, in the accent; its touch reaches 44 pt.
+    private func failedLine(truncates: Bool) -> some View {
+        HStack(spacing: TranscriptMetrics.wordGap) {
+            Text(CatalogLoad.failedLine)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .fixedSize(horizontal: !truncates, vertical: false)
+            Button("Retry") { Task { await choice.retry(client) } }
+                .fontWeight(.medium)
+                .foregroundStyle(Color.accentColor)
+                .fixedSize()
+                .rowHit()
+                .padding(.horizontal, ComposerMetrics.rowHitOutset)
+                .contentShape(Rectangle())
+                .padding(.horizontal, -ComposerMetrics.rowHitOutset)
+                .buttonStyle(.pressableStatic)
+        }
+        .transcriptType(TranscriptType.detail)
     }
 
     private func pickedModel(_ fit: ComposerRow.Fit, truncates: Bool) -> some View {

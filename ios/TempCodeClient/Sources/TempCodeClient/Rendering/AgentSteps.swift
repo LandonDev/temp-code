@@ -101,19 +101,28 @@ public enum WaitSteps {
     /// agents the body's head names with their status, then each other
     /// agent the call named by the status its own session read (`statusOf`,
     /// the agents' metas) when that was a settled one. With `memory` the
-    /// first settled status read for an agent is the wait's outcome from
-    /// then on (`WaitOutcomeMemory`): a later run of that agent never takes
-    /// its step out of the history. Any other entry comes back as it was.
+    /// first status read for an agent decides it from then on
+    /// (`WaitOutcomeMemory`): a settled one is the wait's outcome, so a later
+    /// run of that agent never takes its step out of the history, and one
+    /// still at work is not one the wait returned on, so its settling later
+    /// never adds a step. An agent no host knows yet waits for its first
+    /// read. Any other entry comes back as it was.
     public static func resolved(_ entry: ThreadEntry, statusOf: (String) -> String?, memory: WaitOutcomeMemory? = nil) -> ThreadEntry {
         guard case .tool(var tool) = entry.item, isWait(tool), tool.status != .running,
               case .omitted(let body, _) = tool.output else { return entry }
         var out = headOutcomes(body)
         for id in ids(tool) where !out.contains(where: { $0.id == id }) {
-            if let kept = memory?.status(call: tool.callId, agent: id) {
-                out.append(Outcome(id: id, status: kept))
-            } else if let status = statusOf(id), settled.contains(status) {
-                memory?.keep(call: tool.callId, agent: id, status: status)
-                out.append(Outcome(id: id, status: status))
+            if let memory, memory.decided(call: tool.callId, agent: id) {
+                if let kept = memory.status(call: tool.callId, agent: id) { out.append(Outcome(id: id, status: kept)) }
+            } else if let status = statusOf(id) {
+                if settled.contains(status) {
+                    memory?.keep(call: tool.callId, agent: id, status: status)
+                    out.append(Outcome(id: id, status: status))
+                } else {
+                    // Still at work when the returned wait was first read: not
+                    // one it returned on, and never one later.
+                    memory?.keepNotReturned(call: tool.callId, agent: id)
+                }
             }
         }
         tool.waitOutcomes = out
@@ -141,7 +150,7 @@ public enum WaitSteps {
             guard case .tool(let tool) = entry.item, isWait(tool), tool.status != .running,
                   case .omitted(let body, _) = tool.output else { continue }
             let head = Set(headOutcomes(body).map(\.id))
-            for id in ids(tool) where !head.contains(id) && memory?.status(call: tool.callId, agent: id) == nil { out.insert(id) }
+            for id in ids(tool) where !head.contains(id) && memory?.decided(call: tool.callId, agent: id) != true { out.insert(id) }
         }
         return out
     }
@@ -341,20 +350,32 @@ public enum FoldedStep {
 }
 
 /// What each omitted wait returned on, read once: wait call id → agent id
-/// → the settled status first read for it. A settled wait never changes,
+/// → the settled status first read for it, or the mark that it was still at
+/// work then and so not one the wait returned on. A settled wait never changes,
 /// so its steps never re-read an agent that runs again later. Kept with the
 /// fold (`ThreadFold.waitOutcomes`) across refolds; a plain class written
 /// outside observation, like `RowKeyMemory`, and no part of the fold's
 /// equality (it only remembers what the rows already said).
 public final class WaitOutcomeMemory: @unchecked Sendable, Hashable {
     private var outcomes: [String: [String: String]] = [:]
+    /// Agents still at work at the wait's first read: wait call id → agent ids.
+    private var notReturned: [String: Set<String>] = [:]
 
     public init() {}
 
     public func status(call: String, agent: String) -> String? { outcomes[call]?[agent] }
 
+    /// Whether the agent's first read decided it: an outcome, or not one the wait returned on.
+    public func decided(call: String, agent: String) -> Bool {
+        outcomes[call]?[agent] != nil || notReturned[call]?.contains(agent) == true
+    }
+
     func keep(call: String, agent: String, status: String) {
         outcomes[call, default: [:]][agent] = status
+    }
+
+    func keepNotReturned(call: String, agent: String) {
+        notReturned[call, default: []].insert(agent)
     }
 
     public static func == (lhs: WaitOutcomeMemory, rhs: WaitOutcomeMemory) -> Bool { true }

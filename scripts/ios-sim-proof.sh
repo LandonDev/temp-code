@@ -42,7 +42,9 @@
 #           workspace's chat draft and a new chat sent from it (one create
 #           carrying its first message), the same draft opened while its host
 #           is down (the test server's /hold: "Waiting for <host>" in the row)
-#           and sent once the host is back, a message to an agent, pin, archive and rename;
+#           and sent once the host is back, the catalog's asks erring twice with the
+#           link open (/fail: "Couldn't load models" with Retry on a draft and a
+#           thread's composer), a message to an agent, pin, archive and rename;
 #           the composer empty, with text and mid-turn at the largest
 #           accessibility size; the key shots in dark too. TC_TEST_CONTROL_URL is the test server's
 #           control panel; the set reads back what landed.
@@ -591,6 +593,13 @@ actions_set() {
   TC_ACTION="new-chat-wait" shot "act-draft-wait-light" home "" "" "" 4
   sleep 26
   snap "act-draft-wait-sent-light"
+  # The catalog's asks err with the link open (/fail answers the next two catalog.get
+  # with an error): one more ask after 2 s, then the row says "Couldn't load models"
+  # with Retry, on a draft and on a thread's composer.
+  control /fail '{"method":"catalog.get","count":2}' >/dev/null
+  TC_SHEET="new" shot "act-catalog-failed-draft-light" home "" "" "" 8
+  control /fail '{"method":"catalog.get","count":2}' >/dev/null
+  shot "act-catalog-failed-thread-light" thread "gateway refuse" "" "" 8
   TC_ACTION="send:Check the tests too" shot "act-agent-light" thread "thread screens" fleet agent
   TC_ACTION="pin" shot "act-pin-thread-light" thread "gateway refuse"
   shot "act-pin-home-light" home

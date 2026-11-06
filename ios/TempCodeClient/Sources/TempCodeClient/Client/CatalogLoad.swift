@@ -4,7 +4,10 @@
 /// model the new host cannot run; an answer for an ask no longer wanted is
 /// dropped. An ask made while the host's link was down comes back empty
 /// (`notConnected`); the link coming up is a new `Trigger`, which asks again,
-/// so a draft opened before its host connected still gets its catalog.
+/// so a draft opened before its host connected still gets its catalog. An
+/// ask that comes back with nothing while the link stays open (the host
+/// erred) is asked once more after `retryMs`; a second failure is `failed`,
+/// which the row says as "Couldn't load models" with Retry (`retry()`).
 public struct CatalogLoad: Sendable, Hashable {
     /// What a picker's load is keyed on: the host it reads and whether that
     /// host's link is open. The view runs its load task by this value, so the
@@ -29,8 +32,26 @@ public struct CatalogLoad: Sendable, Hashable {
     public private(set) var pending = false
     /// A catalog for `asked.host` landed.
     public private(set) var loaded = false
+    /// Asks for `asked` that came back with nothing over an open link.
+    public private(set) var failures = 0
+
+    /// The wait before the one automatic second ask, ms.
+    public static let retryMs = 2_000
+    /// The row's words once the second ask failed too.
+    public static let failedLine = "Couldn't load models"
 
     public init() {}
+
+    /// The ask just failed over an open link for the first time: ask once more after `retryMs`.
+    public var retries: Bool { !pending && !loaded && asked?.open == true && failures == 1 }
+
+    /// The asks failed over an open link, the automatic second one too: the row says so with Retry.
+    public var failed: Bool { !pending && !loaded && asked?.open == true && failures >= 2 }
+
+    /// The person's Retry: one ask, and a failure says so again at once (no second automatic ask).
+    public mutating func retry() {
+        failures = max(failures, 1)
+    }
 
     /// The host asked for last.
     public var host: String? { asked?.host }
@@ -40,6 +61,8 @@ public struct CatalogLoad: Sendable, Hashable {
     /// (an empty answer, or the link coming up under an ask that will fail).
     public mutating func begin(_ trigger: Trigger) -> Bool {
         if let asked, asked.host == trigger.host, loaded || (pending && asked == trigger) { return false }
+        // Another host, or the link moved: the failures were another ask's.
+        if asked != trigger { failures = 0 }
         asked = trigger
         pending = true
         loaded = false
@@ -55,6 +78,7 @@ public struct CatalogLoad: Sendable, Hashable {
         guard asked == trigger else { return }
         pending = false
         self.loaded = loaded
+        if !loaded, trigger.open { failures += 1 }
     }
 
     /// The row's one line while the catalog waits on its host's link, in the

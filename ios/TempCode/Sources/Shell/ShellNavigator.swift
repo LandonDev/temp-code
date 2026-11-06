@@ -1,6 +1,7 @@
 import Observation
 import SwiftUI
 import TempCodeClient
+import TempCodeContract
 
 /// Where one tab is: the sidebar's routes, the route at the detail's root
 /// and whatever the detail pushed over it. The same values drive both
@@ -57,16 +58,19 @@ final class ShellNavigator {
         }
     }
 
-    /// Whether a host has listed its threads in this process; the root sets it.
-    @ObservationIgnored var listed: (String) -> Bool = { _ in false }
-    /// A bare root its host listed and left bare: not looked for again (`ShellPaths.awaitsListing`).
-    @ObservationIgnored private var settledBare: Route?
+    /// How many complete lists a host has had in this process; the root sets it.
+    @ObservationIgnored var lists: (String) -> Int = { _ in 0 }
+    /// A host's meta for a thread, by host and id; the root sets it.
+    @ObservationIgnored var meta: (String, String) -> SessionMeta? = { _, _ in nil }
+    /// A bare root its host's complete list left bare, and what decided it (`ShellPaths.awaitsListing`).
+    @ObservationIgnored private var settledBare: BareSettle?
 
     /// The detail's root is a thread that opened bare before its host listed
     /// it, and with nothing pushed over it the lists now place it in a shell.
-    /// Once the host has listed, a root still bare is never checked again.
+    /// A root a complete list left bare is checked again only on that host's
+    /// next list or a push that names the thread.
     var awaitsListing: Bool {
-        ShellPaths.awaitsListing(detailRoot, stackEmpty: detailStack.isEmpty, settled: &settledBare, listed: listed, hosts: hosts)
+        ShellPaths.awaitsListing(detailRoot, stackEmpty: detailStack.isEmpty, settled: &settledBare, lists: lists, meta: meta, hosts: hosts)
     }
 
     /// That thread into its shell once the list arrives (`ShellPaths.relisted`);

@@ -337,6 +337,34 @@ private func expectClean(_ scenario: TranscriptScenario) -> ScenarioReport {
         #expect(report.rows.last?.id == TranscriptRowID(key: users[1], end: true))
     }
 
+    @Test func `Resume after the harness is gone carries the turn on under one working line`() {
+        let pushes: [TranscriptScenario.Push] = [
+            .init(atMs: 0, "send", .send("start")),
+            .init(atMs: 20, "echo, a call", .rows([row(1, 20, user("start")), row(2, 40, .status(StatusEvent(status: .running))), row(3, 60, tool("a", "Bash"))])),
+            .init(atMs: 1_000, "the call lands", .rows([row(4, 1_000, done("a"))])),
+            .init(atMs: 3_000, "the harness is gone", .rows([row(5, 3_000, .status(StatusEvent(status: .stopped)))])),
+            .init(atMs: 8_000, "Resume", .rows([row(6, 8_000, .status(StatusEvent(status: .starting))), row(7, 8_100, .status(StatusEvent(status: .running)))])),
+            .init(atMs: 8_400, "the reply streams", .rows([row(8, 8_400, prose("Picking up where it stopped."))])),
+        ]
+        // While it runs: one message, one end row, and that row is the working line.
+        let live = ScenarioRunner.run(TranscriptScenario("resume after stopped, live", pushes: pushes))
+        #expect(live.violations == [], "\(live.violations)")
+        let liveEnds = live.rows.compactMap { if case .turnEnd(let end) = $0 { end } else { nil } }
+        #expect(liveEnds.count == 1)
+        #expect(liveEnds.first?.open == true, "\(live.rows.map(\.id))")
+        // Then the close: one turn, its closing line over the whole span less the time it lay down.
+        let report = expectClean(TranscriptScenario("resume after stopped", pushes: pushes + [
+            .init(atMs: 9_000, "the close", .rows([row(9, 9_000, prose("Picking up where it stopped.", delta: false)), row(10, 9_000, complete), row(11, 9_020, .status(StatusEvent(status: .idle)))])),
+        ]))
+        let users = report.rows.compactMap { if case .item(let entry) = $0, case .user = entry.item { entry.key } else { nil } }
+        let ends = report.rows.compactMap { if case .turnEnd(let end) = $0 { end } else { nil } }
+        #expect(users.count == 1)
+        #expect(ends.map(\.userKey) == users)
+        #expect(ends.first?.open == false)
+        #expect(ends.first?.durationMs == (3_000 - 20) + (9_000 - 8_000))
+        #expect(report.lineWords[users[0]]?.hasPrefix("Worked for") == true, "\(report.lineWords)")
+    }
+
     @Test func `a page that leads a parallel group settles into its own row, and no two rows share a key`() {
         let page = #"{"htmlRender":{"sessionId":"s1","pageId":"p1234567890abcde","title":"Chart","height":420},"message":"Shown above your reply."}"#
         let report = expectClean(TranscriptScenario("page leads a group", pushes: [

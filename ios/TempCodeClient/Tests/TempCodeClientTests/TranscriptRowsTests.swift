@@ -96,16 +96,29 @@ import TempCodeContract
         #expect(WaitSteps.unsettledAgents(entries, memory: waits) == ["a", "b"])
         let first = TranscriptRows.rows(entries, turnOpen: false, waits: waits, statusOf: { statuses[$0] })
         #expect(group(first, 1)?.stepRows == 1)
-        // a settled and is kept; b still runs, so it is still asked for.
+        // a settled and is kept; b still ran then, so the wait did not return
+        // on it: decided too, and never asked for again.
         #expect(waits.status(call: "w3", agent: "a") == "idle")
-        #expect(WaitSteps.unsettledAgents(entries, memory: waits) == ["b"])
-        // a runs again later: its step stays in the history.
+        #expect(waits.decided(call: "w3", agent: "b"))
+        #expect(waits.status(call: "w3", agent: "b") == nil)
+        #expect(WaitSteps.unsettledAgents(entries, memory: waits) == [])
+        // a runs again later and b settles: the steps are the ones first read.
         statuses["a"] = "running"
+        statuses["b"] = "idle"
         let later = TranscriptRows.rows(entries, turnOpen: false, waits: waits, statusOf: { statuses[$0] })
+        #expect(group(later, 1)?.stepRows == 1)
         guard case .tool(let tool)? = group(later, 1)?.calls.first?.item else { Issue.record("the wait's step left"); return }
         #expect(WaitSteps.outcomes(tool) == [.init(id: "a", status: "idle")])
-        // Without the memory it reads the agent as it is now, and the step goes.
-        #expect(kinds(TranscriptRows.rows(entries, turnOpen: false, statusOf: { statuses[$0] })) == ["item 1", "end 1 last"])
+        // An agent no host knew at the first read waits for its first read.
+        let unknown = WaitOutcomeMemory()
+        let cold = [userEntry(1, completedTs: 2_000), omittedWait(5, ids: ["z"], head: #"{"status":"#)]
+        #expect(kinds(TranscriptRows.rows(cold, turnOpen: false, waits: unknown, statusOf: { _ in nil })) == ["item 1", "end 1 last"])
+        #expect(WaitSteps.unsettledAgents(cold, memory: unknown) == ["z"])
+        #expect(group(TranscriptRows.rows(cold, turnOpen: false, waits: unknown, statusOf: { _ in "done" }), 1)?.stepRows == 1)
+        // Without the memory it reads the agents as they are now: a's step goes, b's comes.
+        let unkept = TranscriptRows.rows(entries, turnOpen: false, statusOf: { statuses[$0] })
+        guard case .tool(let now)? = group(unkept, 1)?.calls.first?.item else { Issue.record("no wait"); return }
+        #expect(WaitSteps.outcomes(now) == [.init(id: "b", status: "idle")])
         // A refold keeps what the fold read.
         let fold = ThreadFold()
         fold.waitOutcomes.keep(call: "w3", agent: "a", status: "idle")

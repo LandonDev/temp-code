@@ -25,6 +25,10 @@ public struct UserTurn: Sendable, Hashable {
     /// Set by the `turn-complete` (or the idle status) that closed it.
     public var completedTs: Int?
     public var costUsd: Double?
+    /// How long the turn lay down between the host's `stopped` close and a
+    /// Resume that reopened it: the closing line leaves it out, as the host's
+    /// strip does (`resumeStopped`), so the two agree.
+    public var downMs: Int = 0
     /// The project rules this first message opened with (the desktop's PreambleRow).
     public var preamble: PreambleStamp? = nil
     /// A person's steer into a running turn: the id its `steer` rows name.

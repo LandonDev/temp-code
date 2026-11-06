@@ -409,7 +409,7 @@ enum TranscriptMetrics {
 enum ComposerMetrics {
     static let radius = CGFloat(ComposerHeight.radius)
     /// From the box's outer edge to a control: the gap and the ring.
-    static let side = CGFloat(ComposerHeight.side + ComposerHeight.ring)
+    static let inset = CGFloat(ComposerHeight.side + ComposerHeight.ring)
     static let edge = CGFloat(ComposerHeight.edge + ComposerHeight.ring)
     static let fieldPad = CGFloat(ComposerHeight.fieldPad)
     static let gap = CGFloat(ComposerHeight.gap)

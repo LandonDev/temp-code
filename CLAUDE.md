@@ -2481,7 +2481,11 @@ proof and the sizing rules; the pieces, by name:
   effort the picker shows (the draft's saved pick only seeds it); the
   catalog load keys on the host and its link (`CatalogLoad.Trigger`), so a
   draft opened while its host was down asks again when it comes up, its row
-  reading "Waiting for <host>" meanwhile; while it runs the button
+  reading "Waiting for <host>" meanwhile, and an ask the host answers with
+  an error is asked once more after 2 s, then reads "Couldn't load models"
+  with Retry, on the draft and the thread composer alike (`CatalogLoad.failed`;
+  the seam `TEMP_CODE_FAIL_ANSWERS=method:count` on an isolated instance,
+  src/main/server/answerSeams.ts); while it runs the button
   spins and the strip draws its chip (`DraftSending`, live until the meta
   lands); the box empties at the click (`ProjectDraftStore.take`: what was
   sent rides the chip, what is typed meanwhile is the next draft) and only a
@@ -2511,8 +2515,9 @@ proof and the sizing rules; the pieces, by name:
   `open(route)` placing a route by `ShellPaths.column(of:)` and a thread in
   its shell by `ShellPaths.place`; a notification tap opens Home's shell, a
   search hit the same shell in Search's detail; a thread opened bare before
-  its host listed it moves into its shell when the list lands,
-  `ShellPaths.relisted`), the pose is the
+  its host listed it moves into its shell when the list lands, or when a
+  later push names it (a walk cut short settles nothing,
+  `ShellPaths.relisted`, `awaitsListing`), the pose is the
   client package's `ShellPose` published as `\.shellPose` (read it, never
   `horizontalSizeClass`, for a shell decision), the thread strip
   (Shell/ThreadStrip.swift over the package's `ThreadStrip` and
