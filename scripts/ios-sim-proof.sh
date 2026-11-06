@@ -111,7 +111,9 @@
 #           duo_fold_cycle (a streaming implementation thread with a draft and an
 #           undecided approval, folded and unfolded twice with the app running,
 #           at the bottom and 700 pt up; four shots and a .mov each;
-#           scripts/lib/duo_fold_check.py). Every shot's layout report and
+#           scripts/lib/duo_fold_check.py, each stop's dock band too), then
+#           duo_unfold_idle (every type at rest, dark, opened folded and
+#           unfolded live, its dock band held). Every shot's layout report and
 #           pose-<sessionId>.json must match the pose's row and the thread
 #           screen's rules (pose_check, scripts/lib/duo_pose_check.py); the set
 #           fails on the first that does not. TC_DUO_POSES, TC_DUO_KINDS,
@@ -1043,7 +1045,28 @@ duo_set() {
     duo_shots_thread
   fi
   duo_fold_cycle
+  duo_unfold_idle
   echo "ios-sim-proof: duo set PASS ($(find "$OUT/layout" -name '*.json' ! -name '*.pose.json' ! -name '*.transcript.json' | wc -l | tr -d ' ') pose checks); shots in $OUT/shots/<pose>/, reports in $OUT/layout/<pose>/"
+}
+
+# The live unfold of a thread at rest, every type, dark: opened folded, unfolded
+# with the app running, shot, and the dock's band held (duo_band.py through
+# pose_check). On 2026-11-06 an idle master's empty slot, reserved at regular
+# width, took the column the bottom bar offered after the unfold: a 437 pt band
+# of blur over the transcript, which a launch straight into unfolded never showed.
+duo_unfold_idle() {
+  local entry kind part segment
+  appearance dark
+  for entry in "${DUO_TYPES[@]}"; do
+    IFS='|' read -r kind part segment <<< "$entry"
+    case " ${TC_DUO_KINDS:-$kind} " in *" $kind "*) ;; *) continue ;; esac
+    fold fp
+    TC_SIDEBAR=hidden launch_app thread "$part" "$segment"
+    sleep "$SETTLE"
+    fold ul live; sleep 3
+    SHOT_KIND=$kind SHOT_SIDEBAR=hidden snap "unfold-idle-$kind"
+  done
+  appearance light
 }
 
 # The fold cycle, run twice (the reader at the bottom, then 700 pt up): one
