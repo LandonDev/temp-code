@@ -16,9 +16,9 @@ import TempCodeContract
 /// quiet), photos in memory only. Nothing reaches the host until the first
 /// send (`sendDraft`), which waits for the host's catalog; while the create
 /// runs the button spins and the strip draws the thread's chip
-/// (`DraftSending`), and the field stays open: what is written meanwhile
-/// stays in the draft, only what was sent leaves. The send opens the new
-/// thread in the shell.
+/// (`DraftSending`); the box empties at the click and stays open, so what
+/// is written meanwhile is the next draft, and a failed create gives the
+/// sent text and photos back. The send opens the new thread in the shell.
 struct DraftComposer: View {
     let scope: StripScope
     @Environment(AppModel.self) private var model
@@ -259,16 +259,19 @@ struct DraftComposer: View {
     }
 
     /// The first send: the thread made on the draft's copy and opened in the
-    /// shell. While the create runs the strip draws its chip; once it lands
-    /// only what was sent leaves the draft.
+    /// shell. The box empties at the click, as the desktop's composer does:
+    /// what was sent (its text, name and photos) rides the strip's chip while
+    /// the create runs, and what is written meanwhile is the next draft. Only
+    /// a failed create gives the sent words and photos back.
     private func send() {
-        let text = draft.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard canSend, let target else { return }
         busy = true
         sentCount += 1
         let key = key
-        let sent = draft
-        let sentPhotos = photos
+        let (sent, sentPhotos) = store.take(key)
+        let text = sent.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // A keyboard action never animates: the field empties at once.
+        Motion.withoutAnimation { draft = store.draft(key) ?? sent.taken }
         let client = target.client
         let thread = ProjectDrafts.threadDraft(sent, workspaceId: target.workspace.id, projectId: target.project?.id, provider: choice.key.provider, model: choice.key.model)
         store.beginSending(key, DraftSending(environmentId: client.environment.id, workspaceId: target.workspace.id, projectId: target.project?.id, title: DraftSending.title(of: sent, text: text), threadType: sent.threadType, provider: thread.provider, model: thread.model, startedAt: Int(Date().timeIntervalSince1970 * 1_000)))
@@ -281,14 +284,14 @@ struct DraftComposer: View {
                 #endif
                 let meta = try await client.sendDraft(thread, text: text, photos: sentPhotos)
                 store.created(key, sessionId: meta.id)
-                store.sent(key, draft: sent, photos: sentPhotos)
-                draft = store.draft(key) ?? ProjectDraft()
                 navigator.open(.thread(environmentId: client.environment.id, sessionId: meta.id, seq: nil))
                 // The chip stands in until the thread's meta lands in the host's list.
                 for _ in 0..<100 where client.session(meta.id) == nil { try? await Task.sleep(for: .milliseconds(100)) }
                 store.endSending(key)
             } catch {
                 store.endSending(key)
+                store.restore(key, draft: sent, photos: sentPhotos)
+                draft = store.draft(key) ?? sent
                 failure = (error as? ActionError)?.message ?? String(describing: error)
             }
         }

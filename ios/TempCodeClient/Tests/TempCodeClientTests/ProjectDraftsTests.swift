@@ -87,26 +87,21 @@ import TempCodeContract
     private let photoA = DraftPhoto(name: "a.png", mime: "image/png", data: Data([1]))
     private let photoB = DraftPhoto(name: "b.png", mime: "image/png", data: Data([2]))
 
-    @Test func `only what the send carried leaves the draft`() {
+    @Test func `the send takes the words at the click; a failure gives them back ahead of what came after`() {
         let sent = ProjectDraft(text: "Fix the login", threadType: .implementation, title: "Login")
-        // Nothing written meanwhile: the draft is done.
-        #expect(sent.remaining(after: sent) == nil)
-        // Words added after the send began stay; the sent words and the unchanged title leave.
-        var more = sent
-        more.text = "Fix the login\n\nand the logout too"
-        let left = more.remaining(after: sent)
-        #expect(left?.text == "and the logout too")
-        #expect(left?.title == nil)
-        #expect(left?.threadType == .implementation)
-        // A draft rewritten mid-flight stays whole; a title changed since stays.
-        var rewritten = sent
-        rewritten.text = "Fix the signup"
-        rewritten.title = "Signup"
-        #expect(rewritten.remaining(after: sent)?.text == "Fix the signup")
-        #expect(rewritten.remaining(after: sent)?.title == "Signup")
-        // Photos: each one sent leaves once, one picked meanwhile stays.
-        #expect(DraftSend.remainingPhotos([photoA, photoB], sent: [photoA]) == [photoB])
-        #expect(DraftSend.remainingPhotos([photoA], sent: [photoA]).isEmpty)
+        let taken = sent.taken
+        #expect(taken.text.isEmpty)
+        #expect(taken.title == nil)
+        #expect(taken.threadType == .implementation, "the type stays for the next draft")
+        // Nothing written meanwhile: the sent draft comes back whole.
+        #expect(taken.restoring(sent).text == "Fix the login")
+        #expect(taken.restoring(sent).title == "Login")
+        // Words and a name written while the create ran stay, after the sent words.
+        var later = taken
+        later.text = "and the logout too"
+        later.title = "Auth"
+        #expect(later.restoring(sent).text == "Fix the login\n\nand the logout too")
+        #expect(later.restoring(sent).title == "Auth")
     }
 
     @Test func `send waits for the catalog's model and for the send in flight`() {
@@ -146,28 +141,33 @@ import TempCodeContract
         #expect(ProjectDraftStore(defaults: defaults).draft("p")?.text == "abcd")
     }
 
-    @MainActor @Test func `a send keeps what was written while it ran, and its chip lives until the meta lands`() throws {
+    @MainActor @Test func `the box empties at the click, what is written meanwhile is the next draft, and a failure restores the send`() throws {
         let defaults = try #require(UserDefaults(suiteName: "drafts-sent-\(UUID().uuidString)"))
         let store = ProjectDraftStore(defaults: defaults)
-        let sent = ProjectDraft(text: "first")
-        store.set("p", sent)
+        store.set("p", ProjectDraft(text: "first", threadType: .research, title: "Named"))
         store.addPhoto("p", photoA)
+        let (sent, sentPhotos) = store.take("p")
+        #expect(sent.text == "first")
+        #expect(sentPhotos == [photoA])
+        #expect(store.draft("p")?.text == "", "the box is empty at the click")
+        #expect(store.draft("p")?.title == nil)
+        #expect(store.draft("p")?.threadType == .research)
+        #expect(store.photos["p"] == nil, "the photos went with the send")
         store.beginSending("p", DraftSending(environmentId: "e", workspaceId: "w", projectId: "p1", title: "first", threadType: .chat, provider: .claude, model: "m", startedAt: 7))
         #expect(store.sending["p"]?.chipId == "e:sending-7")
-        // Written while the create ran.
-        store.set("p", ProjectDraft(text: "first second"))
+        // Written while the create ran: the next draft.
+        store.set("p", ProjectDraft(text: "second", threadType: .research))
         store.addPhoto("p", photoB)
         store.created("p", sessionId: "s1")
-        store.sent("p", draft: sent, photos: [photoA])
-        #expect(store.draft("p")?.text == "second")
-        #expect(store.photos["p"] == [photoB])
         #expect(store.sending["p"]?.chipId == "e:s1")
         store.endSending("p")
         #expect(store.sending["p"] == nil)
-        // Nothing written meanwhile: the draft is gone.
-        store.sent("p", draft: ProjectDraft(text: "second"), photos: [photoB])
-        #expect(store.draft("p") == nil)
-        #expect(store.photos["p"] == nil)
+        #expect(store.draft("p")?.text == "second", "a create that landed leaves the later words alone")
+        // A create that fails gives the sent words, name and photos back, ahead of the later ones.
+        store.restore("p", draft: sent, photos: sentPhotos)
+        #expect(store.draft("p")?.text == "first\n\nsecond")
+        #expect(store.draft("p")?.title == "Named")
+        #expect(store.photos["p"] == [photoA, photoB])
     }
 
     @Test func `the chip says the name, else the message's first line`() {

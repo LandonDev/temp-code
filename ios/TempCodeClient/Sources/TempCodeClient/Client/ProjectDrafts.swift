@@ -48,22 +48,25 @@ public struct ProjectDraft: Codable, Sendable, Hashable {
         title.isEmpty ? nil : String(title.prefix(titleMax))
     }
 
-    /// What the draft keeps once its first send went out (`sent`, the draft
-    /// as the send read it): what was written while the create was in
-    /// flight. Text the send carried leaves; text added after it stays (a
-    /// draft rewritten mid-flight stays whole, so no word is lost); a title
-    /// changed since stays. The type, model and host stay with what is left.
-    /// Nil when nothing is left.
-    public func remaining(after sent: ProjectDraft) -> ProjectDraft? {
+    /// The draft once its first send took its words: the box empty and the
+    /// name cleared (both ride the sending chip), the type, model, mode and
+    /// host kept for what is written next.
+    public var taken: ProjectDraft {
         var left = self
-        if text == sent.text {
-            left.text = ""
-        } else if !sent.text.isEmpty, text.hasPrefix(sent.text) {
-            left.text = String(text.dropFirst(sent.text.count).drop(while: \.isWhitespace))
-        }
-        if title == sent.title { left.title = nil }
-        let empty = left.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (left.title ?? "").isEmpty
-        return empty ? nil : left
+        left.text = ""
+        left.title = nil
+        return left
+    }
+
+    /// A failed send gives its words back over what was written meanwhile:
+    /// the sent text first, the later words after a blank line, the later
+    /// name over the sent one.
+    public func restoring(_ sent: ProjectDraft) -> ProjectDraft {
+        var back = self
+        let later = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        back.text = later.isEmpty ? sent.text : sent.text + "\n\n" + text
+        back.title = title ?? sent.title
+        return back
     }
 }
 
@@ -153,16 +156,6 @@ public enum DraftSend {
     /// empty, and the host would skip the thread defaults. One send at a time.
     public static func canSend(text: String, sending: Bool, model: String) -> Bool {
         !sending && !model.isEmpty && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    /// The photos picked while the create was in flight: each one the send
-    /// carried leaves once, the rest stay.
-    public static func remainingPhotos(_ current: [DraftPhoto], sent: [DraftPhoto]) -> [DraftPhoto] {
-        var left = current
-        for photo in sent {
-            if let index = left.firstIndex(of: photo) { left.remove(at: index) }
-        }
-        return left
     }
 
     public static func steps(text: String, photos: Int) -> [Step] {
@@ -286,22 +279,25 @@ public final class ProjectDraftStore {
         save()
     }
 
-    /// The first send went out: only what it carried leaves the draft
-    /// (`ProjectDraft.remaining`, `DraftSend.remainingPhotos`).
-    public func sent(_ key: String, draft sent: ProjectDraft, photos sentPhotos: [DraftPhoto]) {
-        let photosLeft = DraftSend.remainingPhotos(photos[key] ?? [], sent: sentPhotos)
-        let current = draft(key) ?? sent
-        if let left = current.remaining(after: sent) {
-            drafts.set(key, left, now: Self.now())
-        } else if photosLeft.isEmpty {
-            drafts.clear(key)
-        } else {
-            var bare = current
-            bare.text = ""
-            bare.title = nil
-            drafts.set(key, bare, now: Self.now())
-        }
-        photos[key] = photosLeft.isEmpty ? nil : photosLeft
+    /// The first send leaves at the click: the box empties and its photos
+    /// go with the send (the chip carries what was sent), so what is written
+    /// while the create runs is the next draft. Answers what the send took.
+    public func take(_ key: String) -> (draft: ProjectDraft, photos: [DraftPhoto]) {
+        let sent = draft(key) ?? ProjectDraft()
+        let sentPhotos = photos[key] ?? []
+        drafts.set(key, sent.taken, now: Self.now())
+        photos[key] = nil
+        save()
+        return (sent, sentPhotos)
+    }
+
+    /// The send failed: its text, name and photos come back, ahead of
+    /// whatever was written and picked meanwhile.
+    public func restore(_ key: String, draft sent: ProjectDraft, photos sentPhotos: [DraftPhoto]) {
+        let current = draft(key) ?? sent.taken
+        drafts.set(key, current.restoring(sent), now: Self.now())
+        let picked = photos[key] ?? []
+        photos[key] = sentPhotos + picked
         save()
     }
 
