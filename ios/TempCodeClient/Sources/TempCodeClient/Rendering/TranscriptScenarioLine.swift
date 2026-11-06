@@ -11,7 +11,9 @@ import Foundation
 ///   and a turn that ended rests on its closing words ("Worked for …", or
 ///   Stopped for a turn the person stopped).
 /// - `drain`: the closing words never show while a row of the turn still
-///   reveals its text.
+///   reveals its text: a row between the turn's end row and the end row
+///   above it, read by the row's own key (`revealingRows`), so a row that
+///   reports its reveal under another turn's key is caught.
 @MainActor
 final class LineProbes {
     private struct Probe {
@@ -39,10 +41,17 @@ final class LineProbes {
     /// The soonest hold that ends, ms.
     var nextDue: Double? { probes.values.compactMap(\.due).min().map { $0 * 1_000 } }
 
-    func sample(_ rows: [TranscriptRowModel], drain: RevealDrain, at ms: Double, checks: Set<TranscriptScenario.Check>, label: String) {
+    func sample(_ rows: [TranscriptRowModel], drain: RevealDrain, revealingRows: Set<Int> = [], at ms: Double, checks: Set<TranscriptScenario.Check>, label: String) {
         let t = ms / 1_000
+        /// The keys of the rows since the last end row: the turn's own.
+        var turnRows: [Int] = []
         for row in rows {
-            guard case .turnEnd(let end) = row else { continue }
+            guard case .turnEnd(let end) = row else {
+                if case .item(let entry) = row { turnRows.append(entry.key) }
+                continue
+            }
+            let own = turnRows
+            turnRows = []
             let phase = LinePhase.of(turn: end.turn, activity: nil)
             let revealing = drain.revealing(turn: end.userKey)
             let input = TurnLineInput.of(end, paused: paused, revealing: revealing, phase: phase)
@@ -74,8 +83,12 @@ final class LineProbes {
                 events.append("@\(Int(ms)) \(end.userKey) \(look.open ? "open" : "fold") \(look.key)")
                 probe.open = look.open
             }
-            if checks.contains(.drain), revealing, look.visible, look.key == TurnLineModel.closedKey {
-                violations.append("\(at): the closing line showed while the turn still revealed its text")
+            if checks.contains(.drain), look.visible, look.key == TurnLineModel.closedKey {
+                if revealing {
+                    violations.append("\(at): the closing line showed while the turn still revealed its text")
+                } else if let key = own.first(where: revealingRows.contains) {
+                    violations.append("\(at): the closing line showed while row \(key) of the turn still revealed its text")
+                }
             }
             probes[row.id] = probe
         }

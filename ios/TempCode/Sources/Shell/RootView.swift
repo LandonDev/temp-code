@@ -79,7 +79,10 @@ struct RootView: View {
         .onChange(of: size.width, initial: true) { for navigator in navigators { navigator.windowWidth = size.width } }
         .onAppear {
             let registry = model.registry
-            for navigator in navigators { navigator.hosts = { HomeRows.inputs(registry.ordered) } }
+            for navigator in navigators {
+                navigator.hosts = { HomeRows.inputs(registry.ordered) }
+                navigator.listed = { registry.client($0)?.hasShell ?? false }
+            }
             // New thread opens the project's shell on Home with its draft focused.
             newThread.openDraft = { [home] client, workspace, project, type in
                 let environmentId = client.environment.id

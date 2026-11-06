@@ -6,12 +6,17 @@ import Observation
 /// 100 ms) fades in as one run over `MotionValues.revealFade`, linear.
 ///
 /// A ledger per block, keyed by the block's first `keyChars` characters of
-/// plain text, holds the text the block has shown and the steps it grew by:
-/// each call, the text past what the ledger holds is a new step. A block
-/// shorter than the key grows into the longer key. A block whose text no
-/// longer starts with its ledger's (a paragraph reparsed into a heading)
-/// starts a new ledger, so it fades in whole. Text the row held before it
-/// was armed is shown, never faded. Offsets are in Characters.
+/// plain text without their marks (`key`), holds the text the block has
+/// shown and the steps it grew by: each call, the text past what the
+/// ledger holds is a new step. A block
+/// shorter than the key grows into the longer key. A block whose marks
+/// alone changed (a link's text closed into literal brackets, a lone `*`
+/// read literally once the block is no longer the last) keeps its ledger:
+/// what it showed keeps its place in the new text (`shownEnd`) and only
+/// the text past it fades. A block whose text no longer starts with its
+/// ledger's otherwise (a paragraph reparsed into a heading) starts a new
+/// ledger, so it fades in whole. Text the row held before it was armed is
+/// shown, never faded. Offsets are in Characters.
 public struct StreamRevealLedger: Sendable {
     public static let keyChars = 32
     /// Young steps drawn as runs of their own; older young steps join the prefix.
@@ -57,7 +62,7 @@ public struct StreamRevealLedger: Sendable {
             if at > lastStepAt { lastStepAt = at }
         }
         ledger.text = text
-        ledgers[String(text.prefix(Self.keyChars))] = ledger
+        ledgers[Self.key(text)] = ledger
         if reduced { return [RevealSegment(from: 0, to: count, bornAt: nil)] }
         // Only steps inside this text: a ledger reached through a shorter text under the same key holds longer steps.
         let young = ledger.steps.filter { now - $0.at < Self.fade && $0.from < count }.suffix(Self.maxYoung)
@@ -68,18 +73,61 @@ public struct StreamRevealLedger: Sendable {
         return runs.filter { $0.to > $0.from }
     }
 
+    /// A block's ledger key: its first `keyChars` characters without their
+    /// marks, so a rewrite of the marks keeps the key.
+    static func key(_ text: String) -> String {
+        String(skeleton(text).prefix(keyChars))
+    }
+
     private mutating func ledgerFor(_ text: String) -> Ledger {
-        let key = String(text.prefix(Self.keyChars))
+        let key = Self.key(text)
+        let skeleton = Self.skeleton(text)
         var ledger = ledgers[key]
         if ledger == nil {
             // A block shorter than the key grows into a longer key.
-            if let (shortKey, short) = ledgers.first(where: { $0.key.count < Self.keyChars && text.hasPrefix($0.value.text) }) {
+            if let (shortKey, short) = ledgers.first(where: { $0.key.count < Self.keyChars && skeleton.hasPrefix(Self.skeleton($0.value.text)) }) {
                 ledgers[shortKey] = nil
                 ledger = short
             }
         }
-        guard let ledger, text.hasPrefix(ledger.text) else { return Ledger() }
-        return ledger
+        guard let ledger else { return Ledger() }
+        if text.hasPrefix(ledger.text) { return ledger }
+        // The same block with only its marks rewritten: the ledger moves onto the new text.
+        let was = Self.skeleton(ledger.text)
+        if skeleton.hasPrefix(was) || was.hasPrefix(skeleton) { return Self.moved(ledger, onto: text) }
+        return Ledger()
+    }
+
+    /// The characters an inline span's opening or closing adds or takes
+    /// away (MarkdownClose's marks and a link's parentheses).
+    static let marks: Set<Character> = ["*", "_", "~", "`", "[", "]", "(", ")"]
+
+    /// `text` without its marks: what a rewrite of the marks leaves alone.
+    static func skeleton(_ text: String) -> String {
+        String(text.filter { !marks.contains($0) })
+    }
+
+    /// Where the first `offset` characters of `old` end in `new`, both read
+    /// without their marks: past the last character they share.
+    static func shownEnd(_ offset: Int, in old: String, onto new: String) -> Int {
+        let kept = old.prefix(offset).filter { !marks.contains($0) }.count
+        guard kept > 0 else { return 0 }
+        var seen = 0
+        for (index, character) in new.enumerated() where !marks.contains(character) {
+            seen += 1
+            if seen == kept { return index + 1 }
+        }
+        return new.count
+    }
+
+    /// `ledger` read on `text`: what it showed stays shown, its steps where they fell.
+    static func moved(_ ledger: Ledger, onto text: String) -> Ledger {
+        var moved = Ledger()
+        moved.text = String(text.prefix(shownEnd(ledger.text.count, in: ledger.text, onto: text)))
+        moved.steps = ledger.steps.map { step in
+            Step(from: shownEnd(step.from, in: ledger.text, onto: text), to: shownEnd(step.to, in: ledger.text, onto: text), at: step.at)
+        }.filter { $0.to > $0.from }
+        return moved
     }
 }
 

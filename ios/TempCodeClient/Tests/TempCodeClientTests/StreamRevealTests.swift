@@ -65,6 +65,30 @@ import Testing
         #expect(runs == [RevealSegment(from: 0, to: 30, bornAt: 1.1)])
     }
 
+    @Test func `a rewrite of the marks keeps what was shown and fades only the new text`() {
+        var ledger = armed()
+        // A link's text, then its closing bracket with no address: the brackets turn literal.
+        _ = ledger.segments(for: "See the docs", at: 0)
+        let link = ledger.segments(for: "See [the docs] for more", at: 1)
+        #expect(link == [RevealSegment(from: 0, to: 13, bornAt: nil), RevealSegment(from: 13, to: 23, bornAt: 1)])
+        // A lone star read as an emphasis while the block was last, literal once it is not.
+        var star = armed()
+        _ = star.segments(for: "Then 5 2 is ten.", at: 0)
+        #expect(star.segments(for: "Then 5 *2 is ten.", at: 1) == [RevealSegment(from: 0, to: 17, bornAt: nil)])
+        // A young step keeps its place across the rewrite.
+        var young = armed()
+        _ = young.segments(for: "See the", at: 0)
+        _ = young.segments(for: "See the docs", at: 1)
+        #expect(young.segments(for: "See [the docs]", at: 1.05) == [RevealSegment(from: 0, to: 8, bornAt: nil), RevealSegment(from: 8, to: 13, bornAt: 1), RevealSegment(from: 13, to: 14, bornAt: 1.05)])
+    }
+
+    @Test func `the shown end is read past the marks`() {
+        #expect(StreamRevealLedger.shownEnd(12, in: "See the docs", onto: "See [the docs] for more") == 13)
+        #expect(StreamRevealLedger.shownEnd(0, in: "See the docs", onto: "See [the docs]") == 0)
+        #expect(StreamRevealLedger.shownEnd(4, in: "abcd", onto: "ab") == 2)
+        #expect(StreamRevealLedger.key("**Bold** start") == StreamRevealLedger.key("Bold start"))
+    }
+
     @Test func `a short block grows into the longer key and keeps its steps`() {
         var ledger = armed()
         _ = ledger.segments(for: "Short", at: 0)

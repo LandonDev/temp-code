@@ -57,11 +57,16 @@ final class ShellNavigator {
         }
     }
 
+    /// Whether a host has listed its threads in this process; the root sets it.
+    @ObservationIgnored var listed: (String) -> Bool = { _ in false }
+    /// A bare root its host listed and left bare: not looked for again (`ShellPaths.awaitsListing`).
+    @ObservationIgnored private var settledBare: Route?
+
     /// The detail's root is a thread that opened bare before its host listed
     /// it, and with nothing pushed over it the lists now place it in a shell.
+    /// Once the host has listed, a root still bare is never checked again.
     var awaitsListing: Bool {
-        guard case .thread? = detailRoot, detailStack.isEmpty else { return false }
-        return ShellPaths.relisted(detailRoot, hosts: hosts()) != nil
+        ShellPaths.awaitsListing(detailRoot, stackEmpty: detailStack.isEmpty, settled: &settledBare, listed: listed, hosts: hosts)
     }
 
     /// That thread into its shell once the list arrives (`ShellPaths.relisted`);

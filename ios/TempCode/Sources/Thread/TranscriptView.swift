@@ -50,27 +50,20 @@ struct TranscriptView: View {
     @State private var revealDrain = RevealDrain()
     /// The pin a revealing row asks for at each step (one reference; set in the body, read by rows).
     @State private var follow = TranscriptFollow()
-
-    /// Each row's turn: the key of the message it follows.
-    static func turnKeys(_ rows: [TranscriptRowModel]) -> [TranscriptRowID: Int] {
-        var keys: [TranscriptRowID: Int] = [:]
-        var turn: Int?
-        for row in rows {
-            if case .item(let entry) = row, case .user = entry.item { turn = entry.key }
-            if let turn { keys[row.id] = turn }
-        }
-        return keys
-    }
+    /// The statuses of the agents the omitted waits still need (`watchWaits`).
+    @State private var waitRead = WaitStatuses()
 
     /// Rows a cold open shows, and one page back.
     static let page = 75
 
     var body: some View {
-        let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory, statusOf: agentStatus)
+        let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory, waits: thread.fold.waitOutcomes, statusOf: waitStatus)
+        // The agents whose status the omitted waits still need, after this pass kept what it read.
+        let waitIds = WaitSteps.unsettledAgents(thread.entries, memory: thread.fold.waitOutcomes)
         let start = TranscriptRows.windowStart(rows, top: windowTop, count: window)
         let shown = Array(rows[start...])
         let moreAbove = start > 0 || thread.moreBefore
-        let turns = TranscriptView.turnKeys(rows)
+        let turns = TranscriptRows.turnKeys(rows)
         let gaps = TranscriptView.gaps(rows, from: start)
         let _ = bornRows.open(thread: client.threads[sessionId])
         #if DEBUG
@@ -136,6 +129,7 @@ struct TranscriptView: View {
             .environment(\.transcriptFollow, follow)
             .environment(\.transcriptCwd, cwd)
             .task(id: sessionId) { cwd = client.session(sessionId)?.cwd }
+            .task(id: waitIds) { await watchWaits(waitIds) }
             // The window keeps the row it starts at; a resize clears it and the next pass records the new one.
             .onChange(of: shown.first?.id, initial: true) { _, top in windowTop = top }
             // The window's settled replies parse off the main actor before their rows mount, newest first.
@@ -363,7 +357,7 @@ struct TranscriptView: View {
     /// The window as the list holds it now: its rows' ids, and the rows above them (the sentinel, the empty state).
     private func currentWindow() -> (shown: [TranscriptRowID], lead: Int) {
         guard let state = client.threads[sessionId] else { return ([], 0) }
-        let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory, statusOf: agentStatus)
+        let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory, waits: state.fold.waitOutcomes, statusOf: waitStatus)
         let start = TranscriptRows.windowStart(rows, top: windowTop, count: window)
         return (rows[start...].map(\.id), start > 0 || state.moreBefore || rows.isEmpty ? 1 : 0)
     }
@@ -430,7 +424,7 @@ struct TranscriptView: View {
             guard let now = client.threads[sessionId]?.rows.first?.seq, now < first else { break }
         }
         guard let state = client.threads[sessionId], !state.moreBefore, !state.entries.isEmpty else { return }
-        let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, statusOf: agentStatus)
+        let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, waits: state.fold.waitOutcomes, statusOf: waitStatus)
         resize(rows.count)
         try? await Task.sleep(for: .seconds(2))
         var setup = Transaction()
@@ -459,7 +453,7 @@ struct TranscriptView: View {
         proofScrollView.setContentOffset(CGPoint(x: proofScrollView.contentOffset.x, y: max(top, proofScrollView.contentOffset.y - 700)), animated: false)
         try? await Task.sleep(for: .milliseconds(500))
         let y = Double(proofScrollView.contentOffset.y)
-        let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory, statusOf: agentStatus).count
+        let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory, waits: thread.fold.waitOutcomes, statusOf: waitStatus).count
         #if DEBUG
         LayoutProbe.note("proof", "scrolled-up")
         // The reader's row once up: the fold run holds every later stop to it.
@@ -490,7 +484,7 @@ struct TranscriptView: View {
             next.minOffset = min(next.minOffset, Double(y))
             next.maxOffset = max(next.maxOffset, Double(y))
         }
-        next.rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory, statusOf: agentStatus).count
+        next.rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory, waits: thread.fold.waitOutcomes, statusOf: waitStatus).count
         next.seq = thread.fold.lastSeq
         next.atBottom = scrollState.atBottom
         hold = next
@@ -511,7 +505,7 @@ struct TranscriptView: View {
         let client = client
         let sessionId = sessionId
         // ThreadState is a value: read the client's current one at each call. Rows, partials included, show the stream landing.
-        recorder.start(sourceRows: thread.rows.count, items: TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, statusOf: agentStatus).count,
+        recorder.start(sourceRows: thread.rows.count, items: TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, waits: thread.fold.waitOutcomes, statusOf: waitStatus).count,
                        scrollView: proofScrollView, driver: .stream(pinned: { state.atBottom }, seq: { client.threads[sessionId]?.rows.count ?? 0 }))
         if TestHooks.streamDrag {
             try? await Task.sleep(for: .seconds(4))
@@ -579,6 +573,33 @@ struct TranscriptView: View {
         { [client, app] id in agentSession(id, home: client, registry: app.registry)?.session.status.rawValue }
     }
 
+    /// What the rows read an agent's status through: the map `watchWaits`
+    /// keeps, and the sessions themselves only for an agent it has not
+    /// read yet (the first pass, a wait that just returned).
+    private var waitStatus: (String) -> String? {
+        { [waitRead, agentStatus] id in waitRead.status(id, unread: agentStatus) }
+    }
+
+    /// Keeps `waitRead` to the statuses of `ids` (the agents the omitted
+    /// waits still need), read outside the body: it is written only when a
+    /// named agent's status moves, so no other meta push re-runs the body.
+    /// With no such agent nothing is read at all.
+    private func watchWaits(_ ids: Set<String>) async {
+        let status = agentStatus
+        while !Task.isCancelled {
+            let (changed, signal) = AsyncStream<Void>.makeStream()
+            let next = ids.isEmpty ? WaitStatuses() : withObservationTracking {
+                WaitStatuses.read(ids, statusOf: status)
+            } onChange: {
+                signal.yield()
+                signal.finish()
+            }
+            if next != waitRead { waitRead = next }
+            if ids.isEmpty { return }
+            for await _ in changed { break }
+        }
+    }
+
     /// Pin on data changes, not on scroll geometry changes. Replacing the
     /// scroll view's size anchor at an edge forces a full layout pass, so
     /// the asks of one main-queue turn (each reveal step, each push, each
@@ -609,7 +630,7 @@ struct TranscriptView: View {
         targetStatus = "Loading search result…"
         guard let seq = await client.reveal(sessionId, seq: targetSeq),
               let state = client.threads[sessionId],
-              case let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory, statusOf: agentStatus),
+              case let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory, waits: state.fold.waitOutcomes, statusOf: waitStatus),
               let id = TranscriptRows.rowID(containing: seq, in: rows),
               let index = rows.firstIndex(where: { $0.id == id }) else {
             if !Task.isCancelled {
@@ -655,7 +676,7 @@ struct TranscriptView: View {
         }
         var anchor = top.id
         if case .group = top, let anchorSeq, let state = client.threads[sessionId],
-           let found = TranscriptRows.rowID(containing: anchorSeq, in: TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory, statusOf: agentStatus)) {
+           let found = TranscriptRows.rowID(containing: anchorSeq, in: TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory, waits: state.fold.waitOutcomes, statusOf: waitStatus)) {
             anchor = found
         }
         try? await Task.sleep(for: .milliseconds(16))
