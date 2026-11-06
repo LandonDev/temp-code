@@ -45,7 +45,7 @@ const ALLOWED: Record<string, number> = {
   "Thread/ThreadScreen.swift": 1,
   "Thread/ToolChip.swift": 1,
   "Thread/TranscriptRows.swift": 1,
-  "Thread/TranscriptView.swift": 3,
+  "Thread/TranscriptView.swift": 2,
 };
 
 // A literal font size, a duration or curve written in place, a fixed row height.

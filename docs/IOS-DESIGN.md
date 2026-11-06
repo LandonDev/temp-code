@@ -672,8 +672,15 @@ frame. The anchor is captured once, `atBottom` is
 held while the geometry flickers, and the anchor is restored with no
 animation at 0, 250 and 600 ms after each width step, each new step
 restarting the run. A size change is not an open: `TranscriptLanding` is
-untouched. A reader inside a long reply lands at that reply's top (the
-`List` exposes no finer offset). What else a fold keeps, and by what:
+untouched. A reader inside a long reply keeps their place inside it: at
+the capture the view reads the top row's frame from the list's own
+layout (the `UICollectionView` under the `List`, the row's item found by
+`TranscriptReflow.item`, refused when the list holds another count than
+the window says) and keeps `TranscriptReflow.Place`, how far the row's
+top sits from the edge and the share of the row above it; each restore
+scrolls the row to the top, then puts the same share of the re-wrapped
+row above the edge. A page loading above (`extend`) keeps the same points
+the same way. What else a fold keeps, and by what:
 
 | State | Kept by |
 | --- | --- |
@@ -778,7 +785,10 @@ above the dock) keeps passing text from reading through the glass, and no
 divider is drawn; before iOS 26 the same call is a `safeAreaInset` on the
 bar material. The box and the slot above it share the transcript's column
 and edges (`ReadingMeasure.edge` from the screen, the column's width at
-most).
+most). The dock reads three fields of the thread's state and no more
+(`DockState`: a send waiting for its echo, the click that opened the turn,
+an open compaction), so a streamed word does not run the composer, its
+glass or its row again.
 
 The box is one glass shape at radius 12 in one `TCGlassContainer` (glass on
 iOS 26, the thin material and a hairline before): `+` at the left, a bare
@@ -1050,8 +1060,22 @@ a group and the step it grew from share one key, the first step's
 from a partial keeps its provisional key when its final row stamps the
 seq; the host's echo of a sent message keeps the optimistic row's key;
 `RowKeys` carries both across a refold); a group keeps its key when
-history joins above it (`RowKeyMemory`); the turn's end row is its
-message's key with `end` set, one row from Send to the close. The list, a
+history joins above it (`RowKeyMemory`), and only while that step is still
+in it: a key that left the run (a page that settled into its own row)
+stays with that row, so no two rows share a key; the turn's end row is
+its first message's key with `end` set, one row from Send to the close. A
+message that lands while its turn is open (a steer, a send mid-turn: the
+turn's close stamps both at once, `TranscriptRows.joins`) is a bubble
+inside that turn, never a turn of its own, so the end row stays one
+element and closes under it. Every turn but the last takes its rows from
+the last build while its entries, its place and the row above it read the
+same (`RowKeyMemory`'s settled turns, the desktop's `settledRows`), so a
+delta builds the live turn's rows alone. Rows sit apart by the desktop's
+`ROW_GAP` (`RowGap.above`, applied as each row's top inset): 16 above the
+thread's first row, 32 above the person's bubble, 16 from the bubble to
+its first reply, 4 between two lines, 12 around a block, 8 from a turn's
+last row to its end row (inside the end row's fold, so a folded line
+takes none) and 16 under the last row. The list, a
 search landing and the scroll proof all speak rows. The DEBUG
 `transcript-report.json` field `topRow` holds the stable row key (or -1),
 which can differ from its persisted seq after a partial call or a local send. What the list does to
@@ -1142,8 +1166,11 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
   newest sentence, said once as Thinking to VoiceOver; the mark alone while
   prose streams; else Thinking. A card that waits on the person (an
   approval undecided, a question unanswered) or a paused, stopped or
-  queued thread folds the line closed with its words kept; the resume
-  opens it again. The person's Stop row draws nothing: the line morphs to
+  queued thread folds the line closed with its words kept, its mark and
+  shimmer standing still while folded; the resume opens it again
+  `TurnLineModel.reopenAfterHold` (0.23 s) after the hold ends, so the
+  card that held it folds first and the two rows never change height in
+  one update. The person's Stop row draws nothing: the line morphs to
   Stopped. Once the turn is over and `RevealDrain` says no row of it still
   reveals (the line looks again each reveal step, the drain tells no one;
   believed for `TurnLineTracker.drainBound`, 2.1 s past the turn's end, the
@@ -1162,7 +1189,8 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
   title, else counted) and the watch's age ticking each second, amber past
   30 minutes on its own tasks (`WatchWords.isStale`). It opens the agents
   list when it watches subagents. Once shown it stays mounted, folding
-  closed when the watch ends.
+  closed when the watch ends; folded, its clock stops (`WatchTicks` in
+  Thread/WorkingLine.swift: one redraw and no more).
 - **Groups**: everything the agent did between two paragraphs, the
   desktop's `ActionGroup` (`Thread/ActionGroup.swift` with
   `ActionLine.swift`, over the client package's `ActivityGroup` and
@@ -1194,10 +1222,16 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
   only a card waiting on the person follows it) opens on its own at two
   steps and shows its newest five rows, the line still naming them all; a
   step landing fades and rises 4 pt over 0.18 s, the oldest of the five
-  leaves upward over 0.18 s. It folds 0.6 s after the work moves on
-  (`GroupFold.hold`; the fold animates only for a reader at the bottom). A
-  person's tap on the line or opening a row's body decides it from then
-  on, and a group opened by hand shows every row and its thoughts. Mounted
+  leaves upward over 0.18 s. It folds at least 0.6 s after the work moves
+  on (`GroupFold.hold`, one wait per hold, cancelled when the work comes
+  back), and only with the reader at the bottom: a reader scrolled up
+  keeps the group open until they are back there (`GroupFold.release`),
+  so a fold never moves what they read. A person's tap on the line or
+  opening a row's body decides it from then on, kept by the group's key
+  outside the row (`GroupHands`, `ThreadCaches.hands`: the newest 512
+  choices per thread, 64 threads), so a remount, a fold of the phone or a
+  window reset keeps it; a group opened by hand shows every row and its
+  thoughts. Mounted
   working it is open, mounted settled closed, neither animated. A lone
   call becoming a table glides its row 12 pt to the inset on the layout
   spring while the frame fades in over 0.18 s; reduced motion fades the
@@ -2338,7 +2372,7 @@ left in a view.
 | Needs-you row appearing | `base` ease-out, opacity and 4 pt translateY; removal `fast`, opacity only | `.rowAppearTransition()` (`Motion.appear(reduced:)`, `Motion.rowAppear`, `Motion.rowLeave`, `Motion.travel`) |
 | Last-activity line changing | `fast` cross-fade with 2 pt blur; the row never changes height | `SwapText`, `.swapTransition()` (`Motion.swap(reduced:)`, `Motion.crossFade`, `Motion.crossFadeBlur`) |
 | Counts and elapsed | `contentTransition(.numericText())` on `fast` | `.numeric(value)` (`Motion.numeric`), `CountText`, `ElapsedText`, `AgoText` |
-| Streaming text | the desktop's jitter buffer (`SmoothText`, smoothText.ts as of 0b82ddad, in UTF-16 units): the base pace is the arrival rate over the last 1.5 s (a gap counted 1 s at most, a burst at 1,500/s over a step), clamped 25–1,500 units/s, 400 before the first gap; a lead held behind the live end, seeded 250 ms (every host is remote to the phone), never under twice the gaps' 90th percentile (100–800 ms), an underrun growing it 1.5 times or by the wait, its excess decaying on a 6 s time constant; each spurt holds until a lead and a step are in hand; the pace leans up to 1.5 times while more than the lead is buffered, and every character shows within 1.5 s of arriving; the stream's end drains at the same pace, only a rewrite of the shown prefix and a hidden row snap. Whole words every 100 ms (`revealCut`: a token past 24 units cut where the pace reaches, never inside a grapheme; a bare block marker, a table's header row and a row that is only its pipes held until they have content, none of those inside an open fence; inside one a code line shows whole once its newline comes, and one held open `revealLineHold` (0.6 s) steps by words from then on, the clock waking the row once the hold is over), on a timer between steps, no display frames. A row that joins the last turn after the transcript opened is born live and reveals from its first word even when it mounts settled; the opening seq waits for the loaded thread; SwiftUI may prepare a row more than once, so preparation reads its eligibility and appearance consumes it; history and a row scrolled back in show whole. A reply short enough to land whole in its first step stays on the streaming render until that step is drawn and faded (`StreamRowRule`), so it fades like a long one. Each step fades in as one run over `revealFade` (0.4 s, linear; the desktop's `.stream-step`): the streaming block's text is one `Text` interpolated from its runs, the settled prefix as one and each step younger than the fade as its own (at most four; older young steps join the prefix), each young run carrying `StreamFadeAttribute` with its arrival, drawn at its opacity by `StreamFadeRenderer`, a `TextRenderer` under a `TimelineView(.animation(paused:))` that runs only while a run is young. A per-block ledger keyed by the block's first 32 characters (`StreamRevealLedger`) keeps old steps merged into the prefix; a block reparsed into another text fades in whole; text a row held when it mounted shows without a fade; paragraphs, headings, quotes and list items fade, code, tables and rules never; no rise; under reduced motion the word steps stay and nothing fades. The row stays on the streaming render until the drain and its last fade are done, then swaps to the settled parse, the same document (`streamingDocument(settled:)` stands in until the settled parse lands), so nothing on screen changes; while it reveals it reports to the thread's `RevealDrain` under its turn, which the closing line waits on. A running step reads in the present tense on its row and settles into the past tense in place | `SmoothTextReveal`, `StreamingAssistantRow`, `StreamFadeText`, `StreamRevealLedger`, `RevealDrain`, `BornRows` |
+| Streaming text | the desktop's jitter buffer (`SmoothText`, smoothText.ts as of 0b82ddad, in UTF-16 units): the base pace is the arrival rate over the last 1.5 s (a gap counted 1 s at most, a burst at 1,500/s over a step), clamped 25–1,500 units/s, 400 before the first gap; a lead held behind the live end, seeded 250 ms (every host is remote to the phone), never under twice the gaps' 90th percentile (100–800 ms), an underrun growing it 1.5 times or by the wait, its excess decaying on a 6 s time constant; each spurt holds until a lead and a step are in hand; the pace leans up to 1.5 times while more than the lead is buffered, and every character shows within 1.5 s of arriving; the stream's end drains at the same pace, only a rewrite of the shown prefix and a hidden row snap. Whole words every 100 ms (`revealCut`: a token past 24 units cut where the pace reaches, never inside a grapheme; a bare block marker, a table's header row and a row that is only its pipes held until they have content, none of those inside an open fence; inside one a code line shows whole once its newline comes, and one held open `revealLineHold` (0.6 s) steps by words from then on, the clock waking the row once the hold is over), on a timer between steps, no display frames. A row that joins the last turn after the transcript opened is born live and reveals from its first word even when it mounts settled; the opening seq waits for the loaded thread; SwiftUI may prepare a row more than once, so preparation reads its eligibility and appearance consumes it; history and a row scrolled back in show whole. A reply short enough to land whole in its first step stays on the streaming render until that step is drawn and faded (`StreamRowRule`), so it fades like a long one. Each step fades in as one run over `revealFade` (0.4 s, linear; the desktop's `.stream-step`): the streaming block's text is one `Text` interpolated from its runs, the settled prefix as one and each step younger than the fade as its own (at most four; older young steps join the prefix), each young run carrying `StreamFadeAttribute` with its arrival, drawn at its opacity by `StreamFadeRenderer`, a `TextRenderer` under a `TimelineView` on a finite schedule (`FadeSchedule` over `RevealSegment.fadeTicks`, 30 Hz) that ends with the youngest run's fade (`RevealSegment.fadeEnd`), whether or not anything redraws the row after it. A per-block ledger keyed by the block's first 32 characters (`StreamRevealLedger`) keeps old steps merged into the prefix; a block reparsed into another text fades in whole; text a row held when it mounted shows without a fade; paragraphs, headings, quotes and list items fade, code, tables and rules never; no rise; under reduced motion the word steps stay and nothing fades. The row stays on the streaming render until the drain and its last fade are done, then swaps to the settled parse, the same document (`streamingDocument(settled:)` stands in until the settled parse lands), so nothing on screen changes; while it reveals it reports to the thread's `RevealDrain` under its turn, which the closing line waits on. A running step reads in the present tense on its row and settles into the past tense in place | `SmoothTextReveal`, `StreamingAssistantRow`, `StreamFadeText`, `StreamRevealLedger`, `RevealDrain`, `BornRows` |
 | Working mark | three 3 pt dots in a 14 pt box gather into one and part every 1.6 s (the left and middle gather by 42 % and part at 58 %, the right by 50 % and 66 %, each leg on the breathing curve), offset and scale only; enters and leaves as a glyph trading state does | `WorkingMark` (`Motion.markDots`, `Motion.breathe`, `Motion.markDot`); the three dots at rest under reduced motion |
 | The shimmer | the band crosses the working words every 3 s, offset only | `WorkingText` (`Motion.shimmerLegs`); muted words under reduced motion |
 | Word morph | the old words lift 3 pt and fade over `swapOut`, then the new rise 3 pt over `base` on the swap curve while the box glides its width over `base`, the arriving words clipped, never cut with an ellipsis; new words under one key drawn at once; nothing on mount | `MorphText` (`Motion.swapOut`, `Motion.swapIn`, `Motion.morphLift`); reduced motion fades out, then in, `fast` each, no lift and no glide |

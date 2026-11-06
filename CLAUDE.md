@@ -2562,9 +2562,14 @@ proof and the sizing rules; the pieces, by name:
   (entries → the list's rows, the desktop's transcriptRows.ts: an item,
   a group of everything between two paragraphs (`ActivityGroup`: a lone
   step is its own row under the same key; `GroupFold` opens the working
-  group at two steps, shows its newest five, folds 0.6 s after the work
-  moves on, and a person's hand decides from then on), a turn's end row,
-  its working line then its closing line; stable ids), `ToolPhrase` (the
+  group at two steps, shows its newest five, folds at least 0.6 s after
+  the work moves on and only with the reader at the bottom, and a
+  person's hand decides from then on, kept by group key in `GroupHands`
+  outside the row), a turn's end row, its working line then its closing
+  line, one per turn (a message landing mid-turn, `joins`, is a bubble
+  inside it); stable ids, never two rows on one key; settled turns reuse
+  their rows from `RowKeyMemory`; `RowGap.above` the desktop's ROW_GAP),
+  `ToolPhrase` (the
   desktop's toolPhrase.ts), `GroupPhrase` (groupPhrase.ts, over
   `GroupStep` tool and host steps: heard from, the batch, tasks finished,
   gate, review, pass, hand-off, batch merge, away), `ActionRow` (the

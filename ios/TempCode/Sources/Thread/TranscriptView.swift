@@ -71,6 +71,7 @@ struct TranscriptView: View {
         let shown = Array(rows[start...])
         let moreAbove = start > 0 || thread.moreBefore
         let turns = TranscriptView.turnKeys(rows)
+        let gaps = TranscriptView.gaps(rows, from: start)
         let _ = bornRows.open(thread: client.threads[sessionId])
         #if DEBUG
         let _ = LayoutProbe.note("bornOpenedAt", bornRows.openedAt.map(String.init) ?? "waiting")
@@ -106,17 +107,21 @@ struct TranscriptView: View {
                     .environment(\.revealTurn, turns[row.id])
                     .rowInitProbe(row.id)
                     .accessibilityIdentifier("transcript-item")
-                    // The end row keeps its own vertical room, so a folded line takes none.
-                    .listRowInsets(row.id.end ? endInsets : rowInsets)
+                    // The gap above each row is the boundary's (`RowGap`); the end
+                    // row carries its own inside its fold, so a folded line takes none.
+                    .listRowInsets(row.id.end ? endInsets : gapInsets(gaps[row.id] ?? TranscriptMetrics.Gap.block))
                 }
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
+                // The room under the last row, and the anchor the pins scroll to.
                 Color.clear
-                    .frame(height: 1)
+                    .frame(height: TranscriptMetrics.Gap.last)
                     .id(TranscriptAnchor.bottom)
                     .background {
-                        if TestHooks.scroll || TestHooks.scrollUp || TestHooks.stream {
-                            ScrollProofProbe { scroll in if proofScrollView !== scroll { proofScrollView = scroll } }
+                        // The list's own scroll view: a restore reads a row's frame from its layout.
+                        ScrollProofProbe { scroll in
+                            listScroll.scroll = scroll
+                            if (TestHooks.scroll || TestHooks.scrollUp || TestHooks.stream), proofScrollView !== scroll { proofScrollView = scroll }
                         }
                     }
                     .listRowInsets(EdgeInsets())
@@ -135,7 +140,6 @@ struct TranscriptView: View {
             .onChange(of: shown.first?.id, initial: true) { _, top in windowTop = top }
             // The window's settled replies parse off the main actor before their rows mount, newest first.
             .onChange(of: "\(shown.first?.id.key ?? 0)|\(shown.count)|\(thread.fold.lastSeq)", initial: true) { prefetch(shown) }
-            .contentMargins(.vertical, 8, for: .scrollContent)
             // The measure: the inset past the 16 pt row inset that centres a column no wider than the cap.
             .contentMargins(.horizontal, measured ? ReadingMeasure.sideInset(width: listWidth) - ReadingMeasure.edge : 0, for: .scrollContent)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { was, now in
@@ -237,9 +241,22 @@ struct TranscriptView: View {
         }
     }
 
-    /// The desktop's 4 px between rows of a turn, at the page's 16 pt margin.
-    private var rowInsets: EdgeInsets { EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16) }
-    private var endInsets: EdgeInsets { EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16) }
+    /// The sentinel's and the empty state's room, at the page's 16 pt margin.
+    private var rowInsets: EdgeInsets { EdgeInsets(top: TranscriptMetrics.Gap.line, leading: ReadingMeasure.edge, bottom: TranscriptMetrics.Gap.line, trailing: ReadingMeasure.edge) }
+    private var endInsets: EdgeInsets { gapInsets(0) }
+    private func gapInsets(_ top: CGFloat) -> EdgeInsets { EdgeInsets(top: top, leading: ReadingMeasure.edge, bottom: 0, trailing: ReadingMeasure.edge) }
+
+    /// The gap above each shown row (`RowGap.above`), read from the row
+    /// before it in the whole list, so the window's first row keeps the gap
+    /// it had under the row above the window.
+    static func gaps(_ rows: [TranscriptRowModel], from start: Int) -> [TranscriptRowID: CGFloat] {
+        var gaps: [TranscriptRowID: CGFloat] = [:]
+        gaps.reserveCapacity(rows.count - start)
+        for index in rows.indices.dropFirst(start) {
+            gaps[rows[index].id] = CGFloat(RowGap.above(rows[index], after: index > 0 ? rows[index - 1] : nil))
+        }
+        return gaps
+    }
 
     @State private var initializedScroll = false
     /// The pin the turn's asks coalesce into (plain storage).
@@ -247,6 +264,8 @@ struct TranscriptView: View {
     /// The keys of the rows on screen (plain storage: an appear re-renders nothing).
     @State private var onScreen = OnScreenRows()
     @State private var proofScrollView: UIScrollView?
+    /// The list's scroll view and the reader's place a restore keeps (plain storage).
+    @State private var listScroll = ListScroll()
     @State private var scrollRan = false
     @State private var recorder: FrameRecorder?
     /// The scrolled-up run's held offsets (DEBUG proof only), outside observation so a sample re-renders nothing.
@@ -298,6 +317,7 @@ struct TranscriptView: View {
             guard let fresh = TranscriptReflow.anchor(atBottom: scrollState.atBottom, topRow: scrollState.topRow) else { return }
             anchor = fresh
             scrollState.reflowAnchor = fresh
+            if case .row(let id) = fresh { listScroll.place = place(of: id) }
             #if DEBUG
             TestHooks.recordTranscript(sessionId: sessionId, state: scrollState)
             #endif
@@ -331,6 +351,51 @@ struct TranscriptView: View {
             case .row(let id): TranscriptTrace.write("reflow.row \(id.key)"); scrollState.offBottomWrite = true; proxy.scrollTo(id, anchor: .top)
             }
         }
+        // The row is at the top edge, laid out at the new width: the reader's place inside it.
+        if case .row(let id) = anchor, let held = listScroll.place {
+            Task { @MainActor in
+                await Task.yield()
+                settle(id, at: held, rewrapped: true)
+            }
+        }
+    }
+
+    /// The window as the list holds it now: its rows' ids, and the rows above them (the sentinel, the empty state).
+    private func currentWindow() -> (shown: [TranscriptRowID], lead: Int) {
+        guard let state = client.threads[sessionId] else { return ([], 0) }
+        let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory)
+        let start = TranscriptRows.windowStart(rows, top: windowTop, count: window)
+        return (rows[start...].map(\.id), start > 0 || state.moreBefore || rows.isEmpty ? 1 : 0)
+    }
+
+    /// The row's frame in the list's own layout: where its top sits against the top edge.
+    private func frame(of id: TranscriptRowID) -> (UICollectionView, CGRect)? {
+        guard let list = listScroll.scroll as? UICollectionView, list.numberOfSections == 1 else { return nil }
+        let (shown, lead) = currentWindow()
+        guard let item = TranscriptReflow.item(of: id, shown: shown, lead: lead, items: list.numberOfItems(inSection: 0)),
+              let frame = list.layoutAttributesForItem(at: IndexPath(item: item, section: 0))?.frame else { return nil }
+        return (list, frame)
+    }
+
+    /// Where the reader is inside the row, read before a restore moves anything.
+    private func place(of id: TranscriptRowID) -> TranscriptReflow.Place? {
+        guard let (list, frame) = frame(of: id) else { return nil }
+        return TranscriptReflow.Place(rowTop: frame.minY, rowHeight: frame.height, edge: list.contentOffset.y + list.adjustedContentInset.top)
+    }
+
+    /// Puts the reader back at `place` inside the row, which a scroll to its
+    /// top has laid out: the same share of a re-wrapped row above the edge,
+    /// else the same points. No motion; a row the layout cannot find stays at its top.
+    private func settle(_ id: TranscriptRowID, at place: TranscriptReflow.Place, rewrapped: Bool) {
+        guard let (list, frame) = frame(of: id) else { return }
+        let inset = list.adjustedContentInset
+        let lowest = -inset.top
+        let highest = max(lowest, list.contentSize.height + inset.bottom - list.bounds.height)
+        let y = min(highest, max(lowest, place.edge(rowTop: frame.minY, rowHeight: frame.height, rewrapped: rewrapped) - inset.top))
+        guard abs(y - list.contentOffset.y) > 0.5 else { return }
+        TranscriptTrace.write("place \(id.key)")
+        scrollState.offBottomWrite = true
+        list.setContentOffset(CGPoint(x: list.contentOffset.x, y: y), animated: false)
     }
 
     /// DEBUG only: `TC_TEST_OPEN=group` opens the first group and lands on it, once; `last-group` the last.
@@ -577,6 +642,8 @@ struct TranscriptView: View {
         // The sentinel shows while the reader is at the bottom and not scrolling only when the list
         // threw its offset (re-estimating rows mid-update): load the page, keep the reader at the bottom.
         let deliberate = !scrollState.atBottom || scrollState.readerMoving
+        // Where the reader is against the window's first row, before the page joins above it.
+        let held = deliberate ? place(of: top.id) : nil
         extending = true
         defer { extending = false }
         let anchorSeq = top.anchorSeq
@@ -600,7 +667,19 @@ struct TranscriptView: View {
         var transaction = Transaction()
         transaction.disablesAnimations = true
         TranscriptTrace.write("extend \(anchor.key)"); scrollState.offBottomWrite = true; withTransaction(transaction) { proxy.scrollTo(anchor, anchor: .top) }
+        if let held {
+            await Task.yield()
+            settle(anchor, at: held, rewrapped: false)
+        }
     }
+}
+
+/// The list's scroll view, found once, and the reader's place a reflow
+/// keeps; plain storage, outside observation.
+@MainActor
+final class ListScroll {
+    weak var scroll: UIScrollView?
+    var place: TranscriptReflow.Place?
 }
 
 /// The rows on screen, kept outside observation.

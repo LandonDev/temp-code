@@ -4,6 +4,13 @@ import TempCodeClient
 /// The markdown cache every row reads; one per process.
 enum ThreadCaches {
     static let markdown = MarkdownCache()
+    /// Every thread's group choices (`GroupHands`), by host and thread.
+    private static let handsBook = GroupHands.Book()
+
+    @MainActor
+    static func hands(client: EnvironmentClient, sessionId: String) -> GroupHands {
+        handsBook.hands("\(client.environment.id)|\(sessionId)")
+    }
 }
 
 private struct MarkdownScopeKey: EnvironmentKey {

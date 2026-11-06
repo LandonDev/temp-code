@@ -139,6 +139,63 @@ import TempCodeContract
         #expect(group(earlier, 1)?.working == false)
     }
 
+    private func steer(_ seq: Int, ts: Int, completedTs: Int? = nil) -> ThreadEntry {
+        item(.user(UserTurn(seq: seq, ts: ts, text: "and the docs", attachments: [], model: nil, reasoning: nil, completedTs: completedTs, costUsd: nil, steerId: "s\(seq)")))
+    }
+
+    @Test func `a message that lands mid-turn joins it: one end row, the opener's, last`() {
+        let open = TranscriptRows.rows([userEntry(1), read(2), steer(3, ts: 1_500), read(4)], turnOpen: true)
+        #expect(kinds(open) == ["item 1", "group [2]", "item 3", "group [4] live", "line 1 last"])
+        // The close stamps both at once: one turn still, its closing line under the steer.
+        let closed = TranscriptRows.rows([userEntry(1, completedTs: 9_000), read(2), steer(3, ts: 1_500, completedTs: 9_000), read(4)], turnOpen: false)
+        #expect(kinds(closed) == ["item 1", "group [2]", "item 3", "group [4]", "end 1 last"])
+        // A message after the close is a turn of its own.
+        let next = TranscriptRows.rows([userEntry(1, completedTs: 9_000), read(2), userEntry(3, ts: 10_000), read(4)], turnOpen: true)
+        #expect(kinds(next) == ["item 1", "group [2]", "end 1", "item 3", "group [4] live", "line 3 last"])
+    }
+
+    @Test func `a group never takes a key that left it: a page that settled keeps its own`() {
+        let memory = RowKeyMemory()
+        let running = item(toolItem(2, ts: 1_002, name: "mcp__app__html_render", callId: "r"))
+        let other = item(toolItem(3, ts: 1_003, doneTs: 1_050, callId: "b"))
+        let before = TranscriptRows.rows([userEntry(1), running, other], turnOpen: true, memory: memory)
+        #expect(group(before, 1)?.key == 2)
+        let page = ThreadEntry(item: .tool(ToolItem(seq: 2, ts: 1_002, callId: "r", name: "mcp__app__html_render", display: nil, input: nil, partial: false, preview: nil, parentCallId: nil, inputOmitted: false, output: .whole(#"{"htmlRender":{"sessionId":"s1","pageId":"p1234567890abcde","title":"Chart","height":420}}"#), status: .done, reauth: nil, doneTs: 1_100)), key: 2)
+        let after = TranscriptRows.rows([userEntry(1), page, other], turnOpen: true, memory: memory)
+        let ids = after.map(\.id)
+        #expect(Set(ids).count == ids.count, "\(kinds(after))")
+        #expect(kinds(after) == ["item 1", "item 2", "group [3] live", "line 1 last"])
+    }
+
+    @Test func `the gap above a row is the boundary's, the desktop's ROW_GAP`() {
+        let rows = TranscriptRows.rows([
+            userEntry(1, completedTs: 9_000), read(2), item(textItem(3, ts: 1_003, "Prose.")), read(4), steer(5, ts: 1_500, completedTs: 9_000), item(textItem(6, ts: 1_006, "Done.")),
+            userEntry(7, ts: 10_000), read(8), item(errorItem(9, "boom")),
+        ], turnOpen: true)
+        #expect(kinds(rows) == ["item 1", "group [2]", "item 3", "group [4]", "item 5", "item 6", "end 1", "item 7", "group [8]", "item 9", "line 7 last"])
+        let gaps = rows.indices.map { RowGap.above(rows[$0], after: $0 > 0 ? rows[$0 - 1] : nil) }
+        #expect(gaps == [16, 16, 12, 12, 32, 16, 8, 32, 16, 12, 8])
+        // Two lines sit 4 apart; a group under a thought line too.
+        let lines = TranscriptRows.rows([userEntry(1), read(2), item(.compaction(CompactionItem(seq: 3, ts: 1_003, phase: .done)))], turnOpen: false)
+        #expect(RowGap.above(lines[2], after: lines[1]) == 4)
+    }
+
+    @Test func `a settled turn keeps its rows from the last build while it reads the same`() {
+        let memory = RowKeyMemory()
+        let history = [userEntry(1, completedTs: 2_000), read(2), read(3), item(textItem(4, ts: 1_004, "Done.")), userEntry(5, ts: 3_000)]
+        let first = TranscriptRows.rows(history, turnOpen: true, memory: memory)
+        #expect(memory.keptTurns == 1)
+        let grown = history + [read(6)]
+        let second = TranscriptRows.rows(grown, turnOpen: true, memory: memory)
+        #expect(memory.keptTurns == 1)
+        // The same rows a build from nothing makes, the settled turn's taken whole.
+        #expect(second == TranscriptRows.rows(grown, turnOpen: true))
+        #expect(Array(second.prefix(4)) == Array(first.prefix(4)))
+        // A settled turn whose entries changed (a replayed row) is built again.
+        let replayed = [userEntry(1, completedTs: 2_000), read(2), read(7), item(textItem(4, ts: 1_004, "Done.")), userEntry(5, ts: 3_000), read(6)]
+        #expect(TranscriptRows.rows(replayed, turnOpen: true, memory: memory) == TranscriptRows.rows(replayed, turnOpen: true))
+    }
+
     @Test func `a settled turn ends with its duration and answer; the last turn, open or pending, ends on its working line`() {
         let rows = TranscriptRows.rows([
             userEntry(1, ts: 1_000, completedTs: 13_400),
@@ -149,7 +206,8 @@ import TempCodeContract
             item(textItem(6, ts: 20_001, "streaming", streaming: true)),
             item(.user(UserTurn(seq: -100_000, ts: 30_000, text: "queued", attachments: [], model: nil, reasoning: nil, completedTs: nil, costUsd: nil))),
         ], turnOpen: true)
-        #expect(kinds(rows) == ["item 1", "item 2", "group [3]", "item 4", "end 1", "item 5", "item 6", "item -100000", "line -100000 last"])
+        // A message sent mid-turn joins it: the open turn keeps its one end row, its opener's.
+        #expect(kinds(rows) == ["item 1", "item 2", "group [3]", "item 4", "end 1", "item 5", "item 6", "item -100000", "line 5 last"])
         guard case .turnEnd(let end) = rows[4] else { return }
         #expect(end.durationMs == 12_400)
         #expect(end.completedTs == 13_400)
@@ -265,43 +323,67 @@ import TempCodeContract
 /// `GroupFold`: how a group opens and folds (the desktop's ActionGroup with useFoldHold).
 @Suite struct GroupFoldTests {
     @Test func `mounted working it is open, mounted settled closed; a lone step is always its row`() {
-        #expect(GroupFold(working: true).isOpen(lone: false, at: 0))
-        #expect(!GroupFold(working: false).isOpen(lone: false, at: 0))
-        #expect(GroupFold(working: false).isOpen(lone: true, at: 0))
+        #expect(GroupFold(working: true).isOpen(lone: false))
+        #expect(!GroupFold(working: false).isOpen(lone: false))
+        #expect(GroupFold(working: false).isOpen(lone: true))
     }
 
-    @Test func `it folds the hold after the work moves on, and not before`() {
+    @Test func `it folds once the hold is let go after its time, and not before`() {
         var fold = GroupFold(working: true)
         fold.set(working: false, at: 10)
-        #expect(fold.isOpen(lone: false, at: 10))
-        #expect(fold.isOpen(lone: false, at: 10 + GroupFold.hold - 0.01))
-        #expect(!fold.isOpen(lone: false, at: 10 + GroupFold.hold))
+        #expect(fold.isOpen(lone: false))
+        #expect(fold.holding)
+        let early = fold.release(at: 10 + GroupFold.hold - 0.01)
+        #expect(!early)
+        #expect(fold.isOpen(lone: false))
+        // Past its time the hold stays until the view lets it go (a reader scrolled up waits).
+        #expect(fold.isOpen(lone: false))
+        let late = fold.release(at: 10 + GroupFold.hold + 5)
+        #expect(late)
+        #expect(!fold.isOpen(lone: false))
+        #expect(!fold.holding)
         // Work coming back inside the hold keeps it open with no hold left.
         var back = GroupFold(working: true)
         back.set(working: false, at: 10)
         back.set(working: true, at: 10.2)
-        #expect(back.isOpen(lone: false, at: 20))
+        #expect(back.isOpen(lone: false))
         #expect(back.heldUntil == nil)
+        let none = back.release(at: 20)
+        #expect(!none)
     }
 
     @Test func `a person's hand decides from then on`() {
         var closed = GroupFold(working: true)
-        closed.toggle(lone: false, at: 1)
+        closed.toggle(lone: false)
         #expect(closed.hand == false)
-        #expect(!closed.isOpen(lone: false, at: 1))
+        #expect(!closed.isOpen(lone: false))
         closed.set(working: false, at: 2)
         closed.set(working: true, at: 3)
-        #expect(!closed.isOpen(lone: false, at: 3))
+        #expect(!closed.isOpen(lone: false))
         // Opening a row's body keeps it open past the hold.
         var kept = GroupFold(working: true)
         kept.decide()
         kept.set(working: false, at: 5)
-        #expect(kept.isOpen(lone: false, at: 100))
+        #expect(kept.isOpen(lone: false))
+        #expect(!kept.holding)
         // A decision already made is not overturned by a body opening.
         var shut = GroupFold(working: false)
         shut.choose(open: false)
         shut.decide()
         #expect(shut.hand == false)
+    }
+
+    @Test func `a hand outlives the row: kept by group key, the newest kept`() {
+        let book = GroupHands.Book()
+        let hands = book.hands("env|s1")
+        hands.set(7, open: true)
+        // The row remounts: a new fold reads the choice back.
+        #expect(book.hands("env|s1").choice(7) == true)
+        #expect(GroupFold(working: false, hand: book.hands("env|s1").choice(7)).isOpen(lone: false))
+        #expect(book.hands("env|s2").choice(7) == nil)
+        for key in 0..<(GroupHands.capacity + 10) { hands.set(1_000 + key, open: false) }
+        #expect(hands.count == GroupHands.capacity)
+        #expect(hands.choice(7) == nil)
     }
 
     @Test func `a working group shows its newest five rows, a decided one every row`() {

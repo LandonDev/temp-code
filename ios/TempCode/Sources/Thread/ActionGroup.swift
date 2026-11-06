@@ -14,11 +14,14 @@ import TempCodeContract
 /// While the turn works in it the group opens on its own at two steps and
 /// shows its newest five rows (the line still naming them all); a step
 /// landing fades in and rises 4 pt, the oldest leaves upward. When the work
-/// moves on it waits `GroupFold.hold` and folds. A person's tap on the line,
-/// or opening a row's body, decides it from then on, and a group opened by
-/// hand shows every row and its thoughts. Mounted working it shows open,
-/// mounted settled closed, neither animated. Reduced motion fades the frame
-/// over `fast` and moves nothing.
+/// moves on it waits `GroupFold.hold` and folds; with the reader scrolled
+/// up it waits until they are back at the bottom, so a fold never moves
+/// what they read, and a work that comes back cancels the wait. A person's
+/// tap on the line, or opening a row's body, decides it from then on (kept
+/// by the group's key in `ThreadCaches.hands`, so it outlives the row), and
+/// a group opened by hand shows every row and its thoughts. Mounted working
+/// it shows open, mounted settled closed, neither animated. Reduced motion
+/// fades the frame over `fast` and moves nothing.
 struct ActionGroup: View {
     let group: ActivityGroup
     let client: EnvironmentClient
@@ -30,8 +33,10 @@ struct ActionGroup: View {
     @Environment(\.accessibilityReduceMotion) private var reduced
     @Environment(\.displayScale) private var scale
     @State private var fold: GroupFold
-    /// A hold letting go redraws the group.
-    @State private var tick = 0
+    /// The hold ran its time with the reader scrolled up: the fold waits for the bottom.
+    @State private var awaitingBottom = false
+    /// The person's choices on this thread's groups (plain storage, outside the row).
+    private let hands: GroupHands
     /// Rows a person has seen: shown at mount, or when a hand opened the group. Any other row rises in.
     @State private var seen: Set<Int>
 
@@ -42,16 +47,16 @@ struct ActionGroup: View {
         self.forceOpen = forceOpen
         // The proof's `chip` hook opens a call's omitted body: its group opens with it.
         let opened = forceOpen || (TestHooks.open == "chip" && group.tools.contains { $0.output.isOmitted })
-        _fold = State(initialValue: GroupFold(working: group.working, hand: opened ? true : nil))
+        hands = ThreadCaches.hands(client: client, sessionId: sessionId)
+        _fold = State(initialValue: GroupFold(working: group.working, hand: opened ? true : hands.choice(group.key)))
         _seen = State(initialValue: Set(group.shown(byHand: opened).map(\.key)))
     }
 
     private static var now: Double { Date().timeIntervalSinceReferenceDate }
 
     var body: some View {
-        let _ = tick
         let lone = group.lone
-        let open = fold.isOpen(lone: lone, at: Self.now)
+        let open = fold.isOpen(lone: lone)
         let rows = Array(fold.visible(group.shown(byHand: fold.hand == true), lone: lone))
         VStack(alignment: .leading, spacing: 0) {
             if !lone {
@@ -65,16 +70,26 @@ struct ActionGroup: View {
         .environment(\.spawnedNames, FoldedStep.spawnedNames(group.entries))
         .onChange(of: group.working) { _, working in
             fold.set(working: working, at: Self.now)
-            guard !working, fold.hand == nil else { return }
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(GroupFold.hold))
-                // Folding animates only for a reader at the bottom: above them nothing moves.
-                withAnimation(scroll?.atBottom == true && !reduced ? Motion.collapse : nil) { tick += 1 }
-            }
+            if working { awaitingBottom = false }
+        }
+        // One wait per hold: work coming back (a new hold, or none) cancels it.
+        .task(id: fold.holding ? fold.heldUntil : nil) {
+            guard fold.holding, let until = fold.heldUntil else { return }
+            try? await Task.sleep(for: .seconds(max(0, until - Self.now)))
+            guard !Task.isCancelled else { return }
+            letGo()
+        }
+        // Read only while a fold waits on the reader: no other group follows the bottom.
+        .onChange(of: awaitingBottom ? scroll?.atBottom : nil) { _, atBottom in
+            if atBottom == true { letGo() }
         }
         .onChange(of: forceOpen) { _, now in
             guard now, fold.hand != true else { return }
-            Motion.withoutAnimation { take(open: true) }
+            // The view's own opening (a landing): not a choice the person made, so not kept.
+            Motion.withoutAnimation {
+                fold.choose(open: true)
+                seen.formUnion(group.entries.map(\.key))
+            }
         }
     }
 
@@ -92,9 +107,22 @@ struct ActionGroup: View {
         .accessibilityHint(open ? "Hides the steps" : "Shows the steps")
     }
 
-    /// A person's hand: their choice holds from now on, and every row they open onto is seen.
+    /// The hold has run its time: the group folds now if the reader is at
+    /// the bottom (on the collapse; nothing above them moves while they are
+    /// up), else once they are back.
+    private func letGo() {
+        guard fold.holding else { awaitingBottom = false; return }
+        guard scroll?.atBottom != false else { awaitingBottom = true; return }
+        awaitingBottom = false
+        withAnimation(reduced ? nil : Motion.collapse) { _ = fold.release(at: Self.now) }
+    }
+
+    /// A person's hand: their choice holds from now on, outlives the row,
+    /// and every row they open onto is seen.
     private func take(open: Bool) {
         fold.choose(open: open)
+        hands.set(group.key, open: open)
+        awaitingBottom = false
         if open { seen.formUnion(group.entries.map(\.key)) }
     }
 
@@ -103,6 +131,8 @@ struct ActionGroup: View {
             ForEach(Array(rows.enumerated()), id: \.element.key) { index, entry in
                 ActionStep(entry: entry, inTable: !lone, settled: group.settled, client: client, sessionId: sessionId) {
                     fold.decide()
+                    if let hand = fold.hand { hands.set(group.key, open: hand) }
+                    awaitingBottom = false
                     seen.formUnion(group.entries.map(\.key))
                 }
                 .overlay(alignment: .top) {

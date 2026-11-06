@@ -20,7 +20,7 @@ struct WorkingStripView: View {
     let client: EnvironmentClient
     let sessionId: String
     let session: SessionMeta?
-    let thread: ThreadState
+    let dock: DockState
     let slot: ComposerSlot
     /// The slot action out on the wire, so only its control says so.
     @State private var acting: Acting?
@@ -66,7 +66,7 @@ struct WorkingStripView: View {
         row {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let now = Int(context.date.timeIntervalSince1970 * 1000)
-                if let ms = ComposerSlot.elapsedMs(.timer, sentAt: thread.sentAt, busySince: session?.busySince, frozen: nil, now: now) {
+                if let ms = ComposerSlot.elapsedMs(.timer, sentAt: dock.sentAt, busySince: session?.busySince, frozen: nil, now: now) {
                     let shown = TimeFormat.duration(ms: ms)
                     Text(shown)
                         .transcriptType(TranscriptType.detail)

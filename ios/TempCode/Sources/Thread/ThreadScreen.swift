@@ -478,7 +478,7 @@ struct ThreadScreen: View {
                     .frame(width: columns.hero + columns.gap, height: 1)
                     .allowsHitTesting(false)
             }
-            BottomDock(client: client, sessionId: sessionId, session: session, thread: thread, focused: $composerFocused, regularWidth: regularWidth, draft: draftSeed)
+            BottomDock(client: client, sessionId: sessionId, session: session, dock: DockState(thread), focused: $composerFocused, regularWidth: regularWidth, draft: draftSeed)
                 .frame(maxWidth: mode == .single ? ReadingMeasure.columnFrame(width: width) : .infinity)
                 #if DEBUG
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { TestHooks.recordDock(height: $0, focused: TestHooks.open == "composer") }

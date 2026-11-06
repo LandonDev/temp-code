@@ -16,7 +16,7 @@ import TempCodeContract
 struct ComposerRowView: View {
     let client: EnvironmentClient
     let session: SessionMeta?
-    var thread: ThreadState?
+    var dock: DockState?
     @Bindable var choice: CatalogChoice
     /// A project's draft: its mode before any thread exists, set here and
     /// sent with the create; nil on a thread, whose mode is `session.permission`.
@@ -30,8 +30,8 @@ struct ComposerRowView: View {
 
     /// The harness squeezes the window: the meter's ring turns to a spinner.
     private var compacting: Bool {
-        guard let thread else { return false }
-        return thread.fold.board.compacting && ComposerRules.busy(status: session?.status, sending: thread.sending)
+        guard let dock else { return false }
+        return dock.compacting && ComposerRules.busy(status: session?.status, sending: dock.sending)
     }
 
     private var modelAccess: ComposerRow.Access {

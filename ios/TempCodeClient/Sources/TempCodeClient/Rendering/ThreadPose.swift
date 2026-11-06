@@ -134,11 +134,11 @@ public enum ReadingMeasure {
 
 /// Where a transcript lands after its width changes (a fold, an unfold, the
 /// sidebar toggling, the mode switch): its end when the reader is there,
-/// else the row at the top edge, at the top. SwiftUI's `List` exposes no
-/// row-relative offset to restore, so a reader inside a long reply lands at
-/// that reply's top; the default (a constant offset over re-wrapped rows)
-/// drifts further. A size change is not an open: `TranscriptLanding` is
-/// untouched.
+/// else the row at the top edge, at the reader's place inside it (`Place`:
+/// SwiftUI's `List` exposes no row-relative offset, so the view reads the
+/// row's frame from the list's own layout and puts the same share of a
+/// re-wrapped row above the edge). A size change is not an open:
+/// `TranscriptLanding` is untouched.
 public enum TranscriptReflow {
     public enum Anchor: Equatable, Sendable {
         case end
@@ -165,6 +165,44 @@ public enum TranscriptReflow {
     /// keeps the keys its rows' `onAppear`/`onDisappear` bracket instead.
     public static func topRow(onScreen: Set<TranscriptRowID>, order: [TranscriptRowID]) -> TranscriptRowID? {
         onScreen.isEmpty ? nil : order.first(where: onScreen.contains)
+    }
+
+    /// Where the reader is inside a row: how far its top sits below the
+    /// list's top edge (`viewY`, negative once the row starts above it) and
+    /// the share of the row above that edge (`fraction`, 0 to 1).
+    public struct Place: Equatable, Sendable {
+        public var viewY: Double
+        public var fraction: Double
+
+        public init(viewY: Double, fraction: Double) {
+            self.viewY = viewY
+            self.fraction = fraction
+        }
+
+        /// From the row's frame in the list's content (`rowTop`, `rowHeight`)
+        /// and the content's y at the top edge (`edge`: the offset past the inset).
+        public init(rowTop: Double, rowHeight: Double, edge: Double) {
+            viewY = rowTop - edge
+            fraction = rowHeight > 0 ? min(1, max(0, (edge - rowTop) / rowHeight)) : 0
+        }
+
+        /// The content's y to put at the top edge so the reader is where they
+        /// were: the same share of the row above the edge when it re-wrapped
+        /// (`rewrapped`: a width change), else the same points; a row that
+        /// started below the edge keeps its distance from it.
+        public func edge(rowTop: Double, rowHeight: Double, rewrapped: Bool) -> Double {
+            guard viewY < 0, rewrapped else { return rowTop - viewY }
+            return rowTop + fraction * rowHeight
+        }
+    }
+
+    /// The list's item for a row: past the rows above the window (the
+    /// sentinel, the empty state: `lead`), the row's place in the window.
+    /// nil when the list holds a different count than the window says
+    /// (`items`), so a restore never lands on the wrong row.
+    public static func item(of id: TranscriptRowID, shown: [TranscriptRowID], lead: Int, items: Int) -> Int? {
+        guard items == lead + shown.count + 1, let index = shown.firstIndex(of: id) else { return nil }
+        return lead + index
     }
 
     /// A fold resizes in steps about 200 ms apart with the rows re-wrapping

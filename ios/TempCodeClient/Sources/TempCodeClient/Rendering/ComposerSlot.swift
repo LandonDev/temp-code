@@ -94,3 +94,26 @@ public enum DockBacking: String, Hashable, Sendable {
     case fade
     case solid
 }
+
+/// What the dock (the slot, the composer, the row under it) reads of a
+/// thread's state, and nothing more: a delta into the transcript changes
+/// none of it, so the composer, its glass and its row do not run again for
+/// a streamed word.
+public struct DockState: Sendable, Hashable {
+    /// A send waits for the host's echo.
+    public var sending: Bool
+    /// When this device's send opened the turn (`ThreadState.sentAt`).
+    public var sentAt: Int?
+    /// A compaction is open in the turn.
+    public var compacting: Bool
+
+    public init(sending: Bool = false, sentAt: Int? = nil, compacting: Bool = false) {
+        self.sending = sending
+        self.sentAt = sentAt
+        self.compacting = compacting
+    }
+
+    public init(_ thread: ThreadState) {
+        self.init(sending: thread.sending, sentAt: thread.sentAt, compacting: thread.fold.board.compacting)
+    }
+}

@@ -168,9 +168,11 @@ public enum ScenarioRunner {
         }
         var seenKeys: [String: TranscriptRowID] = [:]
         var endKeys: [Int: TranscriptRowID] = [:]
+        var endsShown: Set<TranscriptRowID> = []
         var steers: [Int: SteerEvent.State] = [:]
         var rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: memory)
         remember(rows, into: &seenKeys)
+        endsShown = Set(rows.map(\.id).filter(\.end))
         let reveals = RevealProbes(history: state.entries, reduced: scenario.reducedMotion)
         let lines = LineProbes(reduced: scenario.reducedMotion)
         lines.sample(rows, drain: reveals.drain, at: 0, checks: report.checked, label: "\(scenario.name) before the first push")
@@ -210,7 +212,7 @@ public enum ScenarioRunner {
                 report.violations += keyJerks(from: rows, to: next, seen: seenKeys, at: at)
             }
             if report.checked.contains(.endRow) {
-                report.violations += endJerks(next, ends: &endKeys, at: at)
+                report.violations += endJerks(next, ends: &endKeys, shown: &endsShown, at: at)
             }
             if report.checked.contains(.steer) {
                 report.violations += steerJerks(next, last: &steers, at: at)
@@ -276,23 +278,37 @@ public enum ScenarioRunner {
         return jerks
     }
 
-    /// The end row is its message's: keyed on the user row's key, the same
-    /// from the first time it shows until the turn closes.
-    static func endJerks(_ rows: [TranscriptRowModel], ends: inout [Int: TranscriptRowID], at: String) -> [String] {
+    /// The end row is its turn's: keyed on the turn's first message (a
+    /// steer's bubble inside the turn takes none of its own), the same from
+    /// the first time it shows until the turn closes, and never gone while
+    /// that message shows (`shown`: the end rows of the last push).
+    static func endJerks(_ rows: [TranscriptRowModel], ends: inout [Int: TranscriptRowID], shown: inout Set<TranscriptRowID>, at: String) -> [String] {
         var jerks: [String] = []
-        var userKey: Int?
-        var userSeq: Int?
+        var openerKey: Int?
+        var openerSeq: Int?
+        var users: Set<Int> = []
+        var now: Set<TranscriptRowID> = []
         for row in rows {
             if case .item(let entry) = row, case .user(let turn) = entry.item {
-                userKey = entry.key
-                userSeq = turn.seq
+                users.insert(entry.key)
+                if openerKey == nil {
+                    openerKey = entry.key
+                    openerSeq = turn.seq
+                }
                 continue
             }
-            guard row.id.end, let userKey, let userSeq else { continue }
-            if row.id.key != userKey { jerks.append("\(at): the end row is keyed \(row.id.key), its message \(userKey)") }
-            if let first = ends[userSeq], first != row.id { jerks.append("\(at): the end row moved from key \(first.key) to \(row.id.key)") }
-            ends[userSeq] = ends[userSeq] ?? row.id
+            guard row.id.end else { continue }
+            now.insert(row.id)
+            defer { openerKey = nil; openerSeq = nil }
+            guard let openerKey, let openerSeq else { continue }
+            if row.id.key != openerKey { jerks.append("\(at): the end row is keyed \(row.id.key), its turn's message \(openerKey)") }
+            if let first = ends[openerSeq], first != row.id { jerks.append("\(at): the end row moved from key \(first.key) to \(row.id.key)") }
+            ends[openerSeq] = ends[openerSeq] ?? row.id
         }
+        for id in shown where !now.contains(id) && users.contains(id.key) {
+            jerks.append("\(at): the end row of message \(id.key) left while its message shows")
+        }
+        shown = now
         return jerks
     }
 }

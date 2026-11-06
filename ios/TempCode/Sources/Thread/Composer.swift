@@ -19,14 +19,14 @@ struct BottomDock: View {
     let client: EnvironmentClient
     let sessionId: String
     let session: SessionMeta?
-    let thread: ThreadState
+    let dock: DockState
     let focused: FocusState<Bool>.Binding
     /// The screen's width class: regular keeps the slot's room reserved.
     var regularWidth = false
     var draft: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var slot: ComposerSlot { ComposerSlot(status: session?.status, sending: thread.sending) }
+    private var slot: ComposerSlot { ComposerSlot(status: session?.status, sending: dock.sending) }
 
     /// A relayed host that is locked or asleep says so in the slot while it is empty.
     private var relayLine: Bool {
@@ -51,13 +51,13 @@ struct BottomDock: View {
         let backing = ComposerSlot.backing(occupies: occupies)
         VStack(spacing: ComposerMetrics.slotGap) {
             if occupies {
-                WorkingStripView(client: client, sessionId: sessionId, session: session, thread: thread, slot: slot)
+                WorkingStripView(client: client, sessionId: sessionId, session: session, dock: dock, slot: slot)
                     .transition(slotTransition)
                     #if DEBUG
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LayoutProbe.note("slot.frame", LayoutProbe.rect($0)) }
                     #endif
             }
-            ComposerBar(client: client, sessionId: sessionId, session: session, thread: thread, focused: focused, draft: draft)
+            ComposerBar(client: client, sessionId: sessionId, session: session, dock: dock, focused: focused, draft: draft)
                 #if DEBUG
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LayoutProbe.note("composer.frame", LayoutProbe.rect($0)) }
                 #endif
@@ -97,7 +97,7 @@ struct ComposerBar: View {
     let client: EnvironmentClient
     let sessionId: String
     let session: SessionMeta?
-    let thread: ThreadState
+    let dock: DockState
     /// The screen's focus state: it reads it for the segment bar rule in compact height.
     let focused: FocusState<Bool>.Binding
     /// DEBUG proof: text to type into the field and focus, once, without sending.
@@ -135,14 +135,14 @@ struct ComposerBar: View {
     private var hasText: Bool { !trimmed.isEmpty }
 
     /// A turn is open (a watching master's is not): the button pauses or steers.
-    private var turnOpen: Bool { ComposerRules.busy(status: session?.status, sending: thread.sending) }
+    private var turnOpen: Bool { ComposerRules.busy(status: session?.status, sending: dock.sending) }
 
     /// What the button does now.
     private var intent: ComposerIntent {
-        ComposerRules.intent(status: session?.status, sending: thread.sending, hasText: hasText, holding: holding)
+        ComposerRules.intent(status: session?.status, sending: dock.sending, hasText: hasText, holding: holding)
     }
 
-    private var offersQueue: Bool { ComposerRules.offersQueue(status: session?.status, sending: thread.sending, hasText: hasText) }
+    private var offersQueue: Bool { ComposerRules.offersQueue(status: session?.status, sending: dock.sending, hasText: hasText) }
 
     /// Every photo is on the host; one still going up or failed holds the send (never Pause).
     private var photosSettled: Bool { uploads.allSatisfy { $0.committed != nil } }
@@ -185,7 +185,7 @@ struct ComposerBar: View {
                 TCGlassContainer {
                     box
                 }
-                ComposerRowView(client: client, session: session, thread: thread, choice: choice)
+                ComposerRowView(client: client, session: session, dock: dock, choice: choice)
             }
         }
         .animation(reduceMotion ? nil : Motion.collapse, value: uploads.isEmpty)

@@ -142,6 +142,28 @@ import Testing
 }
 
 @Suite struct TranscriptReflowTests {
+    @Test func `a reader inside a row keeps their place in it: the share for a re-wrap, the points for a page above`() {
+        // The row starts 300 pt above the edge and is 1,000 tall: 30 % of it is above.
+        let place = TranscriptReflow.Place(rowTop: 2_000, rowHeight: 1_000, edge: 2_300)
+        #expect(place.viewY == -300 && place.fraction == 0.3)
+        // Re-wrapped to 1,400 pt at a new width, landed at 5,000: 30 % of it above the edge again.
+        #expect(place.edge(rowTop: 5_000, rowHeight: 1_400, rewrapped: true) == 5_420)
+        // A page joined above: the row moved, kept its height; the same 300 pt above the edge.
+        #expect(place.edge(rowTop: 9_000, rowHeight: 1_000, rewrapped: false) == 9_300)
+        // A row whose top sits below the edge (the window's first row under the sentinel) keeps its distance.
+        let below = TranscriptReflow.Place(rowTop: 124, rowHeight: 80, edge: 100)
+        #expect(below.viewY == 24 && below.fraction == 0)
+        #expect(below.edge(rowTop: 4_124, rowHeight: 80, rewrapped: true) == 4_100)
+    }
+
+    @Test func `a row's item is found only when the list holds what the window says`() {
+        let shown = [TranscriptRowID(key: 1), TranscriptRowID(key: 2), TranscriptRowID(key: 1, end: true)]
+        #expect(TranscriptReflow.item(of: TranscriptRowID(key: 2), shown: shown, lead: 1, items: 5) == 2)
+        #expect(TranscriptReflow.item(of: TranscriptRowID(key: 2), shown: shown, lead: 0, items: 4) == 1)
+        #expect(TranscriptReflow.item(of: TranscriptRowID(key: 2), shown: shown, lead: 1, items: 6) == nil)
+        #expect(TranscriptReflow.item(of: TranscriptRowID(key: 9), shown: shown, lead: 1, items: 5) == nil)
+    }
+
     @Test("the anchor is the end at the bottom, the top row otherwise, nil with neither") func theAnchorIsTheEndAtTheBottomTheTopRowOtherwise() {
         let row = TranscriptRowID(key: 40)
         #expect(TranscriptReflow.anchor(atBottom: true, topRow: row) == .end)

@@ -261,6 +261,48 @@ private func expectClean(_ scenario: TranscriptScenario) -> ScenarioReport {
         #expect(ScenarioRunner.keyJerks(from: old, to: new, seen: seen, at: "t").count == 1)
     }
 
+    @Test func `a steer mid-turn keeps the turn's one end row, which closes under the steer`() {
+        let report = expectClean(TranscriptScenario("steer end row", pushes: [
+            .init(atMs: 0, "send", .send("start")),
+            .init(atMs: 20, "echo, a call", .rows([row(1, 20, user("start")), row(2, 40, tool("a", "Bash")), row(3, 60, done("a"))])),
+            .init(atMs: 500, "the person steers", .send("also check the docs")),
+            .init(atMs: 540, "the steer's echo", .rows([row(4, 540, user("also check the docs", steerId: "s1"))])),
+            .init(atMs: 600, "steer received", .rows([row(5, 600, .steer(SteerEvent(steerId: "s1", state: .received)))])),
+            .init(atMs: 900, "the turn works on", .rows([row(6, 900, tool("b", "Read")), row(7, 950, done("b")), row(8, 1_000, prose("Checked."))])),
+            .init(atMs: 1_200, "the close", .rows([row(9, 1_200, prose("Checked.", delta: false)), row(10, 1_210, complete)])),
+        ]))
+        // The opener's key: the optimistic row's, which its echo kept.
+        guard let opener = report.rows.first?.id.key else { Issue.record("no rows"); return }
+        let ends = report.rows.filter(\.id.end)
+        #expect(ends.map(\.id) == [TranscriptRowID(key: opener, end: true)])
+        // The end row sits last, under the steer's bubble and the work after it.
+        #expect(report.rows.last?.id == TranscriptRowID(key: opener, end: true))
+        #expect(report.lineWords[opener]?.hasPrefix("Worked for") == true, "\(report.lineWords)")
+    }
+
+    @Test func `a page that leads a parallel group settles into its own row, and no two rows share a key`() {
+        let page = #"{"htmlRender":{"sessionId":"s1","pageId":"p1234567890abcde","title":"Chart","height":420},"message":"Shown above your reply."}"#
+        let report = expectClean(TranscriptScenario("page leads a group", pushes: [
+            .init(atMs: 0, "send", .send("chart it")),
+            .init(atMs: 20, "echo, the page and a read run side by side", .rows([row(1, 20, user("chart it")), row(2, 40, tool("r", "mcp__app__html_render")), row(3, 60, tool("b", "Read"))])),
+            .init(atMs: 300, "a third call joins", .rows([row(4, 300, tool("c", "Read")), row(5, 320, done("c"))])),
+            .init(atMs: 600, "the page lands: its own row", .rows([row(6, 600, done("r", page))])),
+            .init(atMs: 900, "the read lands", .rows([row(7, 900, done("b")), row(8, 950, complete)])),
+        ]))
+        let keys = report.rows.map(\.id)
+        #expect(Set(keys).count == keys.count)
+        #expect(report.rows.contains { if case .item(let entry) = $0, case .tool(let tool) = entry.item { tool.htmlRender != nil } else { false } })
+    }
+
+    @Test func `the runner catches an end row that leaves while its message shows`() {
+        let user = ThreadEntry(item: userItem(1, ts: 0, "go"), key: 1)
+        let end = TranscriptRowModel.turnEnd(TurnEnd(userSeq: 1, open: true, durationMs: nil, completedTs: nil, answer: ""))
+        var ends: [Int: TranscriptRowID] = [:]
+        var shown: Set<TranscriptRowID> = []
+        #expect(ScenarioRunner.endJerks([.item(user), end], ends: &ends, shown: &shown, at: "t").isEmpty)
+        #expect(ScenarioRunner.endJerks([.item(user)], ends: &ends, shown: &shown, at: "t").count == 1)
+    }
+
     @Test func `every check is built`() {
         #expect(TranscriptScenario.Check.built == [.keys, .endRow, .follow, .reveal, .fade, .hold, .morph, .drain, .steer])
     }

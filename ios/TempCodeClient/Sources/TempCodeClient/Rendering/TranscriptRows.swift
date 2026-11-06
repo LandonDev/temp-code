@@ -24,8 +24,35 @@ public struct TranscriptRowID: Hashable, Sendable {
 public final class RowKeyMemory: @unchecked Sendable {
     /// Step key → the key of the group it was drawn in.
     public internal(set) var groups: [Int: Int] = [:]
+    /// Each settled turn's rows from the last build, by its first entry's
+    /// key (the desktop's `settledRows`).
+    var turns: [Int: SettledTurn] = [:]
 
     public init() {}
+
+    /// A turn's rows, kept with what they were built from.
+    struct SettledTurn {
+        /// What the row above a turn is, the only part of it the turn reads (the gap).
+        enum Shape: Hashable { case item, group, end }
+
+        var entries: ArraySlice<ThreadEntry>
+        /// The turn's place among the turns.
+        var index: Int
+        var above: Shape?
+        var rows: [TranscriptRowModel]
+        var groupKeys: [Int]
+
+        static func shape(_ row: TranscriptRowModel) -> Shape {
+            switch row {
+            case .item: .item
+            case .group: .group
+            case .turnEnd: .end
+            }
+        }
+    }
+
+    /// Settled turns the last build reused or kept (a test seam).
+    var keptTurns: Int { turns.count }
 }
 
 /// Everything the agent did between two paragraphs, the desktop's
@@ -148,9 +175,12 @@ public struct ActivityGroup: Hashable, Sendable {
 /// How a group opens and folds, the desktop's ActionGroup with
 /// `useFoldHold`: a lone step is always open (it is its row); a person's
 /// hand (the line, or a row's body) decides from then on; otherwise it is
-/// open while the turn works in it and `hold` seconds after the work moves
-/// on, so the last step's settle shows before it folds. Mounted working it
-/// is open, mounted settled closed, neither animated.
+/// open while the turn works in it and until the view lets the hold go
+/// (`release`), at least `hold` seconds after the work moved on, so the
+/// last step's settle shows before it folds, and never while the reader is
+/// scrolled up (the view waits for them to be back at the bottom, so a fold
+/// never moves what they read). Mounted working it is open, mounted settled
+/// closed, neither animated.
 public struct GroupFold: Hashable, Sendable {
     /// `FOLD_HOLD_MS`.
     public static let hold: Double = 0.6
@@ -159,7 +189,7 @@ public struct GroupFold: Hashable, Sendable {
 
     /// nil while the group runs on its own; else what the person chose.
     public private(set) var hand: Bool?
-    /// While working ended less than `hold` ago: when the hold lets go.
+    /// While the work has ended and the fold not been let go: the earliest it may be.
     public private(set) var heldUntil: Double?
     private var working: Bool
 
@@ -175,31 +205,88 @@ public struct GroupFold: Hashable, Sendable {
         heldUntil = working ? nil : now + Self.hold
     }
 
-    public func isOpen(lone: Bool, at now: Double) -> Bool {
+    public func isOpen(lone: Bool) -> Bool {
         if lone { return true }
         if let hand { return hand }
-        return working || (heldUntil.map { now < $0 } ?? false)
+        return working || heldUntil != nil
+    }
+
+    /// A hold waits to be let go: the work ended and no hand decided.
+    public var holding: Bool { hand == nil && heldUntil != nil }
+
+    /// Lets the hold go once it has run its time: the group folds. Answers
+    /// whether it did (false before the time, or with nothing held).
+    @discardableResult
+    public mutating func release(at now: Double) -> Bool {
+        guard let until = heldUntil, now >= until else { return false }
+        heldUntil = nil
+        return true
     }
 
     /// The line was tapped: the person's choice is the opposite of what shows.
-    public mutating func toggle(lone: Bool, at now: Double) {
-        hand = !isOpen(lone: lone, at: now)
+    public mutating func toggle(lone: Bool) {
+        hand = !isOpen(lone: lone)
     }
 
     /// The person chose: open or closed from now on.
     public mutating func choose(open: Bool) {
         hand = open
+        heldUntil = nil
     }
 
     /// A row's body was opened: the group stays as it is, the person's from now on.
     public mutating func decide() {
         if hand == nil { hand = true }
+        heldUntil = nil
     }
 
     /// The rows a group shows: its newest `window` while it runs on its own,
     /// every one once a hand decided it (or a lone step's).
     public func visible<T>(_ rows: [T], lone: Bool) -> ArraySlice<T> {
         hand == nil && !lone ? rows.suffix(Self.window) : rows[...]
+    }
+}
+
+/// A person's choices on a thread's groups, by group key, outside any
+/// view's state: a group they opened or closed stays so when its row
+/// remounts (a window reset, a fold of the phone, the screen coming back).
+/// The newest `capacity` choices are kept.
+public final class GroupHands: @unchecked Sendable {
+    public static let capacity = 512
+    private var choices: [Int: Bool] = [:]
+    private var order: [Int] = []
+
+    public init() {}
+
+    public func choice(_ key: Int) -> Bool? { choices[key] }
+
+    public func set(_ key: Int, open: Bool) {
+        if choices.updateValue(open, forKey: key) == nil { order.append(key) }
+        if order.count > Self.capacity {
+            let over = order.count - Self.capacity
+            for key in order.prefix(over) { choices[key] = nil }
+            order.removeFirst(over)
+        }
+    }
+
+    public var count: Int { choices.count }
+
+    /// Every thread's choices, by a thread's key (its host and id), the newest `threads` kept.
+    public final class Book: @unchecked Sendable {
+        public static let threads = 64
+        private var byThread: [String: GroupHands] = [:]
+        private var order: [String] = []
+
+        public init() {}
+
+        public func hands(_ thread: String) -> GroupHands {
+            if let hands = byThread[thread] { return hands }
+            let hands = GroupHands()
+            byThread[thread] = hands
+            order.append(thread)
+            if order.count > Self.threads { byThread[order.removeFirst()] = nil }
+            return hands
+        }
     }
 }
 
@@ -305,7 +392,7 @@ public enum TranscriptRows {
     /// The harness's question call when its card follows in the turn: the
     /// card is the question (the desktop draws the call as the card), so
     /// the call is no step.
-    static func askedByCard(_ entries: [ThreadEntry], _ index: Int) -> Bool {
+    static func askedByCard(_ entries: ArraySlice<ThreadEntry>, _ index: Int) -> Bool {
         guard case .tool(let tool) = entries[index].item, ToolPhrase.kind(of: tool) == .question else { return false }
         for entry in entries[(index + 1)...] {
             switch entry.item {
@@ -327,6 +414,32 @@ public enum TranscriptRows {
         }
     }
 
+    /// Whether the person's row `user` joins the turn `opener` opened: it
+    /// arrived while that turn was open (a steer, or a send mid-turn), so the
+    /// turn's close stamped both at once, or neither is stamped yet. The turn
+    /// keeps one end row, its opener's, from Send to the close; the steer's
+    /// bubble is a row inside it (the desktop's end row is the turn's).
+    public static func joins(_ user: UserTurn, opener: UserTurn) -> Bool {
+        guard let closed = opener.completedTs else { return true }
+        return user.completedTs == closed
+    }
+
+    /// Where each turn starts in `entries`: the index of its opener (the
+    /// person's row no open turn took in), or 0 for rows before any.
+    static func turnStarts(_ entries: [ThreadEntry]) -> [Int] {
+        var starts: [Int] = []
+        var opener: UserTurn?
+        for (index, entry) in entries.enumerated() {
+            guard case .user(let user) = entry.item else { continue }
+            if let opener, joins(user, opener: opener) { continue }
+            if starts.isEmpty, index > 0 { starts.append(0) }
+            starts.append(index)
+            opener = user
+        }
+        if starts.isEmpty, !entries.isEmpty { starts.append(0) }
+        return starts
+    }
+
     /// The rows for `entries`, the desktop's `flattenTurns`. `turnOpen` is
     /// the fold's `board.turnOpen`: while true, the last turn's last group
     /// is live and the last turn's end row is its working line, as it is
@@ -336,99 +449,130 @@ public enum TranscriptRows {
     /// is one group. While the last turn is open a thought still streaming
     /// is no step, and a call the working line tells (`LinePhase.told`) is
     /// a step with no row; a group with nothing to draw (thoughts alone, or
-    /// one told call) is no row. `statusOf` reads an agent's session status
+    /// one told call) is no row. A message sent while a turn is open joins
+    /// it (`joins`). With `memory`, every turn but the last takes its rows
+    /// from the last build when its entries, its place and the row above it
+    /// are the same (the desktop's `settledRows`), so a delta builds the
+    /// live turn's rows alone. `statusOf` reads an agent's session status
     /// for a wait whose body the host left behind (`WaitSteps.resolved`).
     public static func rows(_ entries: [ThreadEntry], turnOpen: Bool, memory: RowKeyMemory? = nil, statusOf: ((String) -> String?)? = nil) -> [TranscriptRowModel] {
         let entries = WaitSteps.resolved(entries, statusOf: statusOf ?? { _ in nil })
         var rows: [TranscriptRowModel] = []
         rows.reserveCapacity(entries.count + 8)
-        var run: [ThreadEntry] = []
-        var turnUser: UserTurn?
-        var turnUserKey = 0
-        var answer: [String] = []
-        /// Where the turn being built starts in `entries`, and what it holds.
-        var turnStart = 0
-        var turnStopped = false
-        var turnAwaits = false
+        let starts = turnStarts(entries)
         // The open last turn: where it starts, and the calls its working line tells.
-        let lastUser = entries.lastIndex { if case .user = $0.item { true } else { false } }
-        let openTurn: Bool = lastUser.map { index in
+        let lastOpener: Int? = starts.last.flatMap { index in
+            if case .user = entries[index].item { return index } else { return nil }
+        }
+        let openTurn: Bool = lastOpener.map { index in
             guard case .user(let user) = entries[index].item else { return false }
             return user.seq < 0 || (turnOpen && user.completedTs == nil)
         } ?? turnOpen
-        let told: Set<String> = openTurn ? Set(LinePhase.told(Array(entries[(lastUser ?? 0)...])).map(\.callId)) : []
-        /// Where the open last turn's rows start: its groups are the ones that may work.
-        var openRowsFrom: Int?
-
         /// Group keys given out in this build: a key is drawn once.
         var drawn: Set<Int> = []
-        func flushRun(inOpenTurn: Bool) {
+        var kept: [Int: RowKeyMemory.SettledTurn] = [:]
+        for (number, start) in starts.enumerated() {
+            let end = number + 1 < starts.count ? starts[number + 1] : entries.count
+            let last = number == starts.count - 1
+            let turn = entries[start..<end]
+            let above = rows.last.map(RowKeyMemory.SettledTurn.shape)
+            let turnKey = turn.first?.key ?? 0
+            if !last, let memory, let cached = memory.turns[turnKey], cached.index == number, cached.above == above, cached.entries == turn {
+                rows.append(contentsOf: cached.rows)
+                drawn.formUnion(cached.groupKeys)
+                kept[turnKey] = cached
+                continue
+            }
+            let from = rows.count
+            let open = last && openTurn
+            let told: Set<String> = open ? Set(LinePhase.told(Array(turn)).map(\.callId)) : []
+            let groupKeys = appendTurn(turn, open: open, turnOpen: turnOpen, told: told, memory: memory, drawn: &drawn, into: &rows)
+            if !last, memory != nil {
+                kept[turnKey] = RowKeyMemory.SettledTurn(entries: turn, index: number, above: above, rows: Array(rows[from...]), groupKeys: groupKeys)
+            }
+        }
+        memory?.turns = kept
+        if let at = rows.lastIndex(where: { if case .turnEnd = $0 { true } else { false } }), case .turnEnd(var end) = rows[at] {
+            end.last = true
+            rows[at] = .turnEnd(end)
+        }
+        return rows
+    }
+
+    /// One turn's rows (or the rows before any turn): its opener and every
+    /// row up to the next opener, a steer's bubble among them, then its end
+    /// row. Answers the group keys it drew.
+    private static func appendTurn(_ turn: ArraySlice<ThreadEntry>, open: Bool, turnOpen: Bool, told: Set<String>, memory: RowKeyMemory?, drawn: inout Set<Int>, into rows: inout [TranscriptRowModel]) -> [Int] {
+        var run: [ThreadEntry] = []
+        var groupKeys: [Int] = []
+        var opener: UserTurn?
+        var openerKey = 0
+        var answer: [String] = []
+        var stopped = false
+        var awaits = false
+        /// Where the open turn's rows start: its groups are the ones that may work.
+        var openRowsFrom: Int?
+
+        func flushRun() {
             defer { run = [] }
-            var group = ActivityGroup(entries: run, settled: !inOpenTurn, told: inOpenTurn ? told : [])
+            var group = ActivityGroup(entries: run, settled: !open, told: open ? told : [])
             guard !group.calls.isEmpty, !(group.lone && group.shown(byHand: false).isEmpty) else { return }
             // A group keeps the key it was drawn under before, whatever joined
-            // above it; else its first step's, else any step's not yet drawn.
-            let remembered = memory.map { memory in group.entries.compactMap { memory.groups[$0.key] } } ?? []
+            // above it, while that step is still in it; else its first step's,
+            // else any step's not yet drawn. Never a key outside its own
+            // steps: one that left the run (a page that settled into its own
+            // row) keeps its key for that row.
+            let own = Set(group.entries.map(\.key))
+            let remembered = memory.map { memory in group.entries.compactMap { memory.groups[$0.key] }.filter(own.contains) } ?? []
             if let key = (remembered + group.entries.map(\.key)).first(where: { !drawn.contains($0) }) { group.key = key }
             drawn.insert(group.key)
+            groupKeys.append(group.key)
             if let memory { for entry in group.entries { memory.groups[entry.key] = group.key } }
             rows.append(.group(group))
         }
-        func closeTurn(open: Bool, end: Int) {
-            flushRun(inOpenTurn: open)
-            if let turnUser {
-                let joined = answer.joined(separator: "\n\n")
-                if open {
-                    rows.append(.turnEnd(TurnEnd(userSeq: turnUser.seq, userKey: turnUserKey, open: true, durationMs: nil, completedTs: nil, answer: joined, stopped: turnStopped, awaitsUser: turnAwaits, turn: Array(entries[turnStart..<end]))))
-                } else if turnUser.seq >= 0, let completedTs = turnUser.completedTs {
-                    rows.append(.turnEnd(TurnEnd(userSeq: turnUser.seq, userKey: turnUserKey, durationMs: max(0, completedTs - turnUser.ts), completedTs: completedTs, answer: joined, stopped: turnStopped)))
-                }
-            }
-            turnUser = nil
-            answer = []
-            turnStopped = false
-            turnAwaits = false
-        }
 
-        for (index, entry) in entries.enumerated() {
-            let inOpenTurn = openTurn && (lastUser.map { index > $0 } ?? true)
-            if case .user(let turn) = entry.item {
-                closeTurn(open: false, end: index)
-                turnUser = turn
-                turnUserKey = entry.key
-                turnStart = index
-                rows.append(.item(entry))
-                if openTurn, index == lastUser { openRowsFrom = rows.count }
+        for (index, entry) in zip(turn.indices, turn) {
+            if case .user(let user) = entry.item {
+                flushRun()
+                if opener == nil {
+                    opener = user
+                    openerKey = entry.key
+                    rows.append(.item(entry))
+                    if open { openRowsFrom = rows.count }
+                } else {
+                    // A steer: a bubble inside the open turn.
+                    rows.append(.item(entry))
+                }
                 continue
             }
-            if turnUser != nil {
+            if opener != nil {
                 switch entry.item {
                 case .system(let line) where line.kind == .error && line.stopped:
                     // The person's Stop: the end row says it.
-                    turnStopped = true
+                    stopped = true
                     continue
                 case .approval(let approval) where approval.allowed == nil:
-                    turnAwaits = true
+                    awaits = true
                 case .question(let question) where question.answers == nil && !question.resolved:
-                    turnAwaits = true
+                    awaits = true
                 default: break
                 }
             }
-            if ignored(entry) || repeatsNextProse(entries, index) || askedByCard(entries, index) { continue }
-            if inOpenTurn, case .thinking(let block) = entry.item, block.streaming { continue }
+            if ignored(entry) || repeatsNextProse(turn, index) || askedByCard(turn, index) { continue }
+            if open, case .thinking(let block) = entry.item, block.streaming { continue }
             if folds(entry) {
                 run.append(entry)
                 continue
             }
-            flushRun(inOpenTurn: inOpenTurn)
+            flushRun()
             if case .assistant(let block) = entry.item { answer.append(block.text) }
             rows.append(.item(entry))
         }
-        flushRun(inOpenTurn: openTurn)
+        flushRun()
         // The open turn's groups: the one it is in works (it is the turn's last
         // row, or only cards waiting on the person follow it), and is live
         // while the turn runs.
-        if openTurn, let from = openRowsFrom ?? (lastUser == nil ? 0 : nil), from < rows.count {
+        if open, let from = openRowsFrom ?? (opener == nil ? 0 : nil), from < rows.count {
             for at in (from..<rows.count).reversed() {
                 guard case .group(var group) = rows[at] else {
                     if waitsOnPerson(rows[at]) { continue }
@@ -440,12 +584,15 @@ public enum TranscriptRows {
                 break
             }
         }
-        closeTurn(open: openTurn && turnUser != nil, end: entries.count)
-        if let at = rows.lastIndex(where: { if case .turnEnd = $0 { true } else { false } }), case .turnEnd(var end) = rows[at] {
-            end.last = true
-            rows[at] = .turnEnd(end)
+        if let opener {
+            let joined = answer.joined(separator: "\n\n")
+            if open {
+                rows.append(.turnEnd(TurnEnd(userSeq: opener.seq, userKey: openerKey, open: true, durationMs: nil, completedTs: nil, answer: joined, stopped: stopped, awaitsUser: awaits, turn: Array(turn))))
+            } else if opener.seq >= 0, let completedTs = opener.completedTs {
+                rows.append(.turnEnd(TurnEnd(userSeq: opener.seq, userKey: openerKey, durationMs: max(0, completedTs - opener.ts), completedTs: completedTs, answer: joined, stopped: stopped)))
+            }
         }
-        return rows
+        return groupKeys
     }
 
     /// `toolCategory`: agent work, then edits, then reads and searches, then commands.
@@ -466,7 +613,7 @@ public enum TranscriptRows {
 
     /// A thought the harness then says again as the next paragraph, word
     /// for word: the paragraph shows it in full, the step would only repeat it.
-    static func repeatsNextProse(_ entries: [ThreadEntry], _ index: Int) -> Bool {
+    static func repeatsNextProse(_ entries: ArraySlice<ThreadEntry>, _ index: Int) -> Bool {
         guard case .thinking(let thought) = entries[index].item else { return false }
         for entry in entries[(index + 1)...] {
             if case .assistant(let block) = entry.item {
@@ -567,5 +714,52 @@ public final class BornRows {
         guard isUnclaimed(row) else { return false }
         claimed.insert(row.id)
         return true
+    }
+}
+
+/// The space above a row, the desktop's `ROW_GAP` and `gapAbove`
+/// (transcriptRows.ts): it belongs to the boundary between the row and the
+/// one before it. 16 above the thread's first row, 32 above the person's
+/// bubble (a turn starts there; a steer's bubble reads the same), 16 from
+/// a bubble to its first reply, 4 between two lines, 12 around a block,
+/// and 8 from a turn's last row to its end row, which that row carries
+/// inside its fold so a folded line takes none.
+public enum RowGap {
+    /// What a row draws: one 28 pt line, the person's bubble, or a block.
+    public enum Shape: Sendable, Hashable { case line, bubble, block }
+
+    public static func shape(_ row: TranscriptRowModel) -> Shape {
+        switch row {
+        case .group, .turnEnd: return .line
+        case .item(let entry):
+            switch entry.item {
+            case .user: return .bubble
+            case .assistant, .question: return .block
+            case .thinking, .compaction: return .line
+            case .tool(let tool): return tool.htmlRender != nil ? .block : .line
+            case .approval(let approval): return approval.allowed == nil ? .block : .line
+            case .system(let line):
+                switch line.kind {
+                case .error: return line.stopped ? .line : .block
+                case .plan: return .block
+                case .status:
+                    guard let notice = line.notice else { return .line }
+                    return (notice.noticeKind == .review && notice.review != nil) || (notice.noticeKind == .gate && notice.gate != nil) ? .block : .line
+                default: return .line
+                }
+            }
+        }
+    }
+
+    /// The gap above `row` when `previous` is the row before it in the list (nil for the first).
+    public static func above(_ row: TranscriptRowModel, after previous: TranscriptRowModel?) -> Double {
+        if case .turnEnd = row { return TranscriptLengths.gapClosing }
+        guard let previous else { return TranscriptLengths.gapFirst }
+        let shape = shape(row)
+        if shape == .bubble { return TranscriptLengths.gapTurn }
+        if case .turnEnd = previous { return TranscriptLengths.gapTurn }
+        let before = Self.shape(previous)
+        if before == .bubble { return TranscriptLengths.gapReply }
+        return before == .line && shape == .line ? TranscriptLengths.gapLine : TranscriptLengths.gapBlock
     }
 }

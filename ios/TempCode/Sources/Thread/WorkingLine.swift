@@ -37,10 +37,13 @@ struct TurnLineRow: View {
         VStack(alignment: .leading, spacing: 0) {
             if look.visible {
                 line(look)
+                    // Held (a card, a pause) the line is folded out of sight: its mark and shimmer stand still.
+                    .environment(\.workingStill, !look.open)
                     .frame(height: look.open ? TranscriptMetrics.line : 0, alignment: .top)
                     .clipped()
                     .opacity(look.open ? 1 : 0)
-                    .padding(.vertical, look.open ? TranscriptMetrics.Gap.line : 0)
+                    // The 8 pt from the turn's last row is the row's own, folding with it.
+                    .padding(.top, look.open ? TranscriptMetrics.Gap.closing : 0)
                     .animation(slide, value: look.saying)
             }
             if end.last, let meta {
@@ -144,11 +147,12 @@ private struct LineWords: Equatable {
 /// The working line's mark, the desktop's `WorkingMark`: three 3 pt dots
 /// in a 14 pt box that gather into one and part again every 1.6 s, the
 /// right one running behind the left, each moved by offset and scale alone.
-/// Still, the three dots at rest, under reduced motion and while the scene
-/// is not active.
+/// Still, the three dots at rest, under reduced motion, while the scene
+/// is not active and while its line is folded (`workingStill`).
 struct WorkingMark: View {
     @Environment(\.accessibilityReduceMotion) private var reduced
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.workingStill) private var still
 
     struct Pose {
         var x0 = Motion.markDots[0].restX
@@ -160,7 +164,7 @@ struct WorkingMark: View {
 
     var body: some View {
         Group {
-            if reduced || scenePhase != .active {
+            if reduced || still || scenePhase != .active {
                 dots(Pose())
             } else {
                 KeyframeAnimator(initialValue: Pose(), repeating: true) { pose in
@@ -204,21 +208,22 @@ struct WorkingMark: View {
 /// The one "words being produced" text, the desktop's `WorkingText`: the
 /// words muted (a call's object in the primary step), and over them a copy
 /// in the primary step seen through a band that crosses every 3 s, the band
-/// moved by its offset alone. Still muted words under reduced motion and
-/// while the scene is not active.
+/// moved by its offset alone. Still muted words under reduced motion, while
+/// the scene is not active and while its line is folded (`workingStill`).
 struct WorkingText: View {
     let words: String
     var verb: String?
     var object: String?
     @Environment(\.accessibilityReduceMotion) private var reduced
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.workingStill) private var still
     @Environment(\.measuring) private var measuring
 
     var body: some View {
         base
             .transcriptType(TranscriptType.line)
             .overlay {
-                if !reduced, !measuring, scenePhase == .active, !words.isEmpty {
+                if !reduced, !measuring, !still, scenePhase == .active, !words.isEmpty {
                     Text(words)
                         .transcriptType(TranscriptType.line)
                         .foregroundStyle(.primary)
@@ -258,7 +263,8 @@ struct WorkingText: View {
 /// what it watches (`WatchWords.watchSubject`: one subagent by its title,
 /// else counted) and the watch's age ticking each second, amber past 30
 /// minutes on its own tasks. A tap opens the agents list when it watches
-/// subagents. Once shown it stays mounted, folding closed when the watch ends.
+/// subagents. Once shown it stays mounted, folding closed when the watch
+/// ends; folded, its clock stops (`WatchTicks`).
 private struct WatchingLine: View {
     let meta: SessionMeta
     let client: EnvironmentClient
@@ -270,32 +276,32 @@ private struct WatchingLine: View {
         let watching = WatchWords.isWatching(meta)
         Group {
             if opened || watching {
-                content
+                content(ticking: watching)
                     .frame(height: watching ? TranscriptMetrics.line : 0, alignment: .top)
                     .clipped()
                     .opacity(watching ? 1 : 0)
-                    .padding(.vertical, watching ? TranscriptMetrics.Gap.line : 0)
+                    .padding(.top, watching ? TranscriptMetrics.Gap.line : 0)
             }
         }
         .animation(reduced ? Motion.fast : Motion.layout, value: watching)
         .onChange(of: watching, initial: true) { _, now in if now { opened = true } }
     }
 
-    @ViewBuilder private var content: some View {
+    @ViewBuilder private func content(ticking: Bool) -> some View {
         let agents = meta.background?.agents ?? []
         if let openAgents, !agents.isEmpty {
-            Button(action: openAgents) { words }
+            Button(action: openAgents) { words(ticking: ticking) }
                 .buttonStyle(.pressable)
                 .accessibilityHint("Opens the agents")
         } else {
-            words
+            words(ticking: ticking)
         }
     }
 
-    private var words: some View {
+    private func words(ticking: Bool) -> some View {
         let subject = WatchWords.watchSubject(meta.background) { client.session($0)?.title }
         let since = meta.background?.watchingSince
-        return TimelineView(.periodic(from: .now, by: 1)) { context in
+        return TimelineView(WatchTicks(ticking: ticking)) { context in
             let nowMs = Int(context.date.timeIntervalSince1970 * 1_000)
             let age = since.map { TimeFormat.duration(ms: max(0, nowMs - $0)) }
             HStack(spacing: 0) {
@@ -325,7 +331,23 @@ private struct WatchingLine: View {
     }
 }
 
+/// The Watching line's clock: a redraw each second while it shows, one and
+/// no more once it folded, so a line at rest wakes nothing.
+private struct WatchTicks: TimelineSchedule {
+    let ticking: Bool
+
+    func entries(from startDate: Date, mode: TimelineScheduleMode) -> AnyIterator<Date> {
+        var next: Date? = startDate
+        return AnyIterator {
+            defer { next = ticking ? next?.addingTimeInterval(1) : nil }
+            return next
+        }
+    }
+}
+
 extension EnvironmentValues {
     /// Opens the thread's agents list (the thread screen's), for the Watching line.
     @Entry var openAgents: (() -> Void)? = nil
+    /// The working line is folded (held): its mark and its shimmer stand still.
+    @Entry var workingStill: Bool = false
 }

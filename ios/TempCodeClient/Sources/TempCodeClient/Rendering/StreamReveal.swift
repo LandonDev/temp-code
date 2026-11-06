@@ -98,6 +98,22 @@ public struct RevealSegment: Sendable, Equatable {
 
     public var young: Bool { bornAt != nil }
 
+    /// When the youngest of `runs` is drawn whole (its arrival plus the
+    /// fade); nil when none fades. A redraw past it changes nothing.
+    public static func fadeEnd(_ runs: [RevealSegment]) -> Double? {
+        runs.compactMap(\.bornAt).max().map { $0 + StreamRevealLedger.fade }
+    }
+
+    /// The redraws a fade needs from `start` to `end` (seconds), `interval`
+    /// apart, the last at `end` so the youngest run lands at full opacity;
+    /// none once `end` has passed. The timeline stops after the last.
+    public static func fadeTicks(from start: Double, until end: Double, every interval: Double) -> [Double] {
+        guard end > start, interval > 0 else { return [] }
+        var ticks = Array(stride(from: start, to: end, by: interval))
+        ticks.append(end)
+        return ticks
+    }
+
     /// The opacity a run draws at `now`: linear over the fade.
     public func opacity(at now: Double) -> Double {
         guard let bornAt else { return 1 }

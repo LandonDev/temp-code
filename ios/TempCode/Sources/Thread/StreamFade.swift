@@ -113,11 +113,26 @@ struct StreamFadeText: View {
         // The transcript proof reads these: young runs drawn under full motion, none under reduced.
         let _ = LayoutProbe.count(young ? "streamFadeYoung" : "streamFadeSettled")
         #endif
-        // A 0.4 s linear fade reads the same at a 30 Hz redraw (12 steps of opacity), at half the work of every display frame.
-        TimelineView(.animation(minimumInterval: StreamRevealLedger.fade / 12, paused: !young)) { context in
+        // A 0.4 s linear fade reads the same at a 30 Hz redraw (12 steps of opacity), at half the
+        // work of every display frame; the timeline ends with the youngest run's fade, whether or
+        // not anything redraws the row after it.
+        TimelineView(FadeSchedule(until: RevealSegment.fadeEnd(runs) ?? 0, interval: StreamRevealLedger.fade / 12)) { context in
             text
                 .transcriptType(type)
                 .textRenderer(StreamFadeRenderer(now: context.date.timeIntervalSinceReferenceDate))
         }
+    }
+}
+
+/// The fade's redraws (`RevealSegment.fadeTicks`): a finite schedule, so the
+/// timeline stops on its own once no run is younger than the fade.
+private struct FadeSchedule: TimelineSchedule {
+    /// Reference-clock seconds.
+    let until: Double
+    let interval: Double
+
+    func entries(from startDate: Date, mode: TimelineScheduleMode) -> [Date] {
+        let ticks = RevealSegment.fadeTicks(from: startDate.timeIntervalSinceReferenceDate, until: until, every: interval)
+        return [startDate] + ticks.dropFirst().map(Date.init(timeIntervalSinceReferenceDate:))
     }
 }
