@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { AccountPins } from './accounts'
+import type { StartOn } from './defaults'
 
 /**
  * The workspace → project → thread hierarchy (docs/LAYOUT.md).
@@ -64,6 +65,8 @@ export interface ProjectMeta {
   linkId?: string | null
   /** When a setting of the project last changed here (ms); the follower compares it with the home's. */
   settingsUpdatedAt?: number | null
+  /** Where the project's new threads start when it is linked across hosts; null follows Thread defaults. */
+  startOn?: StartOn | null
   createdAt: number
 }
 

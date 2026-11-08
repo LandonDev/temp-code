@@ -232,6 +232,7 @@ export const RELAY_METHODS: Partial<Record<ClientRequest['method'], 'link' | 'sc
   // the Mac's project and workspace settings, as the phone's settings sheet edits them (admin on both hosts)
   'accounts.list': 'link',
   'project.setAccounts': 'link',
+  'project.setStartOn': 'link',
   'workspace.setAccounts': 'link',
   'project.setPreamble': 'link',
   'workspace.setPreamble': 'link',

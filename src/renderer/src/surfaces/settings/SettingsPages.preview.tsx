@@ -140,8 +140,18 @@ const PAGES: Record<string, { title: string; description?: string; body: () => R
   workspace: { title: "temp-code", description: "/srv/agents/work/temp-code", body: () => <WorkspacePage workspaceId="w1" /> },
 };
 
+/** Thread defaults' "New threads start on" asks only once a second host is saved. */
+const TWO_HOSTS = [
+  { id: "local", name: "This Mac", routes: [], credentialRef: "local" },
+  { id: "env_box", name: "box", routes: [], credentialRef: "env_box" },
+];
+const ownEnvironments = registry.environmentsSnapshot.bind(registry);
+
 export function SettingsPagePreview({ page, host }: { page: keyof typeof PAGES; host: HostMode }) {
-  useState(() => prepare(host));
+  useState(() => {
+    Object.assign(registry, { environmentsSnapshot: page === "defaults" ? () => TWO_HOSTS : ownEnvironments });
+    prepare(host);
+  });
   const { title, description, body } = PAGES[page];
   return (
     <Page title={title} description={description}>

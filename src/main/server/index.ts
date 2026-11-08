@@ -1884,6 +1884,11 @@ export async function startServer(
               registry.setProjectAccounts(req.params.projectId, req.params.pins)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'project.setStartOn':
+            if (!(await projectSettings.forward(req.params.projectId, req.method, req.params)))
+              registry.setProjectStartOn(req.params.projectId, req.params.startOn)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'workspace.setAccounts':
             registry.setWorkspaceAccounts(req.params.workspaceId, req.params.pins)
             sendFrame({ id: req.id, ok: true, result: null })

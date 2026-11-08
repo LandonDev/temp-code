@@ -11,7 +11,7 @@ import type { HarnessId } from "../../../lib/session";
 import { startThread } from "../../../lib/tcserver/commands";
 import type { ProjectMeta, SessionMeta, ThreadType, WorkspaceMeta } from "../../../lib/tcserver/types";
 import type { EnsureLinkedArgs } from "@server/shared/projectLinks";
-import { copiesOf, ensureLinkedArgs, ensureLinkedOn, probeOf, rememberLinkHost, type CopyProbe } from "../../../lib/projectHostChoice";
+import { copiesOf, ensureLinkedArgs, ensureLinkedOn, probeOf, type CopyProbe } from "../../../lib/projectHostChoice";
 import { useProjects, useWorkspaces } from "../../../lib/tcserver/workspaces";
 import { ChoiceSelect } from "../../../components/choice-select";
 import { ChoiceToggle } from "../../../components/choice-toggle";
@@ -188,7 +188,6 @@ function AddThreadForm({
         const made = await ensureLinkedOn(host, target.ensure);
         if (!made.project) throw new Error(made.note ?? `No copy of the project on ${chosen?.name ?? host}`);
         place = { projectId: made.project.id };
-        rememberLinkHost(target.ensure.projectLinkId, host);
       } else place = target;
       const meta = await startThread(
         {

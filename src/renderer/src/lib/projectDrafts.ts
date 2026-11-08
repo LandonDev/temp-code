@@ -263,12 +263,13 @@ export function planProjectDraft(args: {
   /** Every live copy of the record's project (empty for an unlinked one). */
   copies: readonly DraftCopy[];
   connected: (environmentId: string) => boolean;
-  primary: string;
+  /** The host "New threads start on" names for the project (lib/projectHostChoice.ts `chooseCopy`), when it has a copy. */
+  preferred: string | null;
   /** New thread… of a type (and its rules): the draft takes them. */
   threadType?: ThreadType;
   threadRules?: ThreadRules | null;
 }): DraftPlan {
-  const { record, inPane, hasMeta, copies, connected, primary } = args;
+  const { record, inPane, hasMeta, copies, connected, preferred } = args;
   if (!record || hasMeta(record.id)) return { kind: "seed" };
   const asked = args.threadType ?? null;
   const rules = args.threadRules ?? null;
@@ -282,7 +283,7 @@ export function planProjectDraft(args: {
   const own = copies.find((c) => c.environmentId === record.environmentId);
   if (own && connected(own.environmentId)) return at(null);
   const live = copies.filter((c) => connected(c.environmentId));
-  const copy = live.find((c) => c.environmentId === primary) ?? live[0];
+  const copy = live.find((c) => c.environmentId === preferred) ?? live[0];
   if (!copy) return at(null);
   return at({ environmentId: copy.environmentId, projectId: copy.id, workspaceId: copy.workspaceId ?? null, cwd: copy.cwd });
 }

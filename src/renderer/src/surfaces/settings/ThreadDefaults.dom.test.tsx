@@ -15,12 +15,17 @@ const state = vi.hoisted(() => ({
   open: vi.fn(),
   picker: vi.fn(),
   hooks: vi.fn(),
+  hosts: 1,
+  startOn: undefined as "box" | "mac" | undefined,
 }));
 
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 vi.mock("../../chrome/PlanSettingsFields", () => ({ PlanSettingsEditor: () => <section aria-label="Plans" /> }));
 const link = vi.hoisted(() => ({ environmentId: "local", connected: true, onOpen: () => () => {} }));
 vi.mock("../../lib/connection", () => ({ registry: { primary: () => link } }));
+vi.mock("../../lib/connection/status", () => ({
+  useEnvironments: () => Array.from({ length: state.hosts }, (_, i) => ({ id: i ? `env_${i}` : "local", name: i ? "box" : "This Mac" })),
+}));
 vi.mock("../../lib/settings", () => ({
   openWorkspaceSettings: (id: string) => state.open(id),
   loadClaudeHooks: () => false,
@@ -63,7 +68,7 @@ vi.mock("../../lib/tcserver/workspaces", () => ({
     state.failed
       ? undefined
       : {
-          defaults: { provider: "claude", model: "", reasoning: "medium", permission: "edits" },
+          defaults: { provider: "claude", model: "", reasoning: "medium", permission: "edits", ...(state.startOn ? { startOn: state.startOn } : {}) },
           overridden: state.overridden,
           home: state.home,
         },
@@ -92,6 +97,8 @@ beforeEach(() => {
   state.open.mockClear();
   state.picker.mockClear();
   state.hooks.mockClear();
+  state.hosts = 1;
+  state.startOn = undefined;
 });
 afterEach(cleanup);
 
@@ -107,6 +114,44 @@ describe("Thread defaults kept on the box", () => {
     expect(screen.getByText("box is offline")).toBeTruthy();
     expect((screen.getByRole("combobox", { name: "Provider" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("combobox", { name: "Permission mode" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("New threads start on", () => {
+  it("shows on the global set only once a second host is saved, the box by default", () => {
+    const { unmount } = render(<ThreadDefaultsPage />);
+    expect(screen.queryByRole("combobox", { name: "New threads start on" })).toBeNull();
+    unmount();
+    state.hosts = 2;
+    render(<ThreadDefaultsPage />);
+    const field = screen.getByRole("combobox", { name: "New threads start on" });
+    expect(field.textContent).toContain("Box");
+    expect(screen.getByText("For projects on more than one host.")).toBeTruthy();
+  });
+
+  it("saves the pick with the rest of the global set", async () => {
+    state.hosts = 2;
+    render(<ThreadDefaultsPage />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("combobox", { name: "New threads start on" }));
+    });
+    const option = await screen.findByRole("option", { name: "Mac" });
+    await act(async () => {
+      fireEvent.pointerDown(option, { pointerType: "mouse" });
+      fireEvent.click(option);
+    });
+    expect(state.save).toHaveBeenCalledWith("local", null, expect.objectContaining({ provider: "claude", startOn: "mac" }));
+  });
+
+  it("reads a saved Mac, and never shows on a workspace's own set", async () => {
+    state.hosts = 2;
+    state.startOn = "mac";
+    const { unmount } = render(<ThreadDefaultsPage />);
+    expect(screen.getByRole("combobox", { name: "New threads start on" }).textContent).toContain("Mac");
+    unmount();
+    render(<ThreadDefaultsDialog workspace={{ id: "w1", name: "Alpha", environmentId: "local" } as never} onClose={() => {}} />);
+    await screen.findByRole("dialog");
+    expect(screen.queryByRole("combobox", { name: "New threads start on" })).toBeNull();
   });
 });
 

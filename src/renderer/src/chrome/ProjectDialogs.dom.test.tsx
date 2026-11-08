@@ -171,6 +171,53 @@ describe('ProjectSettingsDialog on a linked project', () => {
   })
 })
 
+describe('ProjectSettingsDialog: New threads start on', () => {
+  const field = () => screen.getByRole('combobox', { name: 'New threads start on' })
+  const pick = async (name: string) => {
+    await act(async () => {
+      fireEvent.click(field())
+    })
+    const option = await screen.findByRole('option', { name })
+    await act(async () => {
+      fireEvent.pointerDown(option, { pointerType: 'mouse' })
+      fireEvent.click(option)
+    })
+  }
+
+  it('shows Thread defaults’ host until the project picks its own, and saves the pick on the box', async () => {
+    render(<ProjectSettingsDialog project={MAC} workspace={MAC_WS} onClose={() => {}} />)
+    expect(field().textContent).toContain('Box')
+    expect(screen.queryByRole('button', { name: 'Use global setting' })).toBeNull()
+    await pick('Mac')
+    expect(field().textContent).toContain('Mac')
+    await act(async () => {
+      fireEvent.click(saveButton())
+    })
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(writes()[0]).toEqual({ slot: BOX, method: 'project.setStartOn', params: { projectId: 'p_box', startOn: 'mac' } })
+  })
+
+  it('a project with its own host offers Use global setting, which saves null', async () => {
+    workspaceStore.hydrate([{ environmentId: BOX, workspaces: [BOX_WS], projects: [{ ...BOX_COPY, startOn: 'mac' }] }])
+    render(<ProjectSettingsDialog project={MAC} workspace={MAC_WS} onClose={() => {}} />)
+    expect(field().textContent).toContain('Mac')
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Use global setting' }))
+    })
+    expect(field().textContent).toContain('Box')
+    await act(async () => {
+      fireEvent.click(saveButton())
+    })
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    expect(writes()[0]).toMatchObject({ method: 'project.setStartOn', params: { projectId: 'p_box', startOn: null } })
+  })
+
+  it('a project on one host has no such section', () => {
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    expect(screen.queryByRole('combobox', { name: 'New threads start on' })).toBeNull()
+  })
+})
+
 describe('PreambleDialog on a linked project', () => {
   it('edits the box copy’s text and saves it there', async () => {
     render(<PreambleDialog scope={{ kind: 'project', project: MAC, workspace: MAC_WS }} onClose={() => {}} />)

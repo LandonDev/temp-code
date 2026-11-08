@@ -6,6 +6,7 @@ import { ReviewSettingsSchema } from './review'
 import { PlanSettingsSchema } from './plans'
 import { BuildConfigSchema } from './build'
 import { TurnPassSchema } from './turnpass'
+import { StartOnSchema, type StartOn } from './defaults'
 
 /**
  * One project across hosts (CLAUDE.md "One project across hosts").
@@ -159,6 +160,21 @@ export function settingsHomeOf(
   return (boxes.length ? boxes : ids)[0]
 }
 
+/**
+ * The host among `copies` that a "New threads start on" value names: for
+ * `box` a host that is not a Mac, for `mac` a Mac (a platform not heard yet
+ * counts as not darwin, as above), the environment id sorting first among
+ * several; null when no copy sits on such a host.
+ */
+export function startOnHostOf(
+  copies: readonly { environmentId: string }[],
+  platformOf: (environmentId: string) => string | undefined,
+  startOn: StartOn
+): string | null {
+  const ids = [...new Set(copies.map((c) => c.environmentId))].sort()
+  return ids.find((id) => (platformOf(id) === 'darwin') === (startOn === 'mac')) ?? null
+}
+
 // ── the wire shapes the link rides on ───────────────────────────────────
 
 /** The caller's project, as a cross-host start carries it (contract-crosshost.ts). */
@@ -215,6 +231,8 @@ export const ProjectSettingsBundleSchema = z.object({
   plans: PlanSettingsSchema.nullable(),
   build: BuildConfigSchema.nullable(),
   turnPass: TurnPassSchema.nullable(),
+  /** where the project's new threads start; null follows Thread defaults. Absent (an older host) leaves it as is. */
+  startOn: StartOnSchema.nullable().optional(),
   /** when a setting of the project last changed on its home (ms); null when never */
   updatedAt: z.number().int().nullable()
 })

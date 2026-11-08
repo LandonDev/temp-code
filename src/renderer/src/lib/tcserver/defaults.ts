@@ -1,4 +1,4 @@
-import { DEFAULT_THREAD_DEFAULTS } from "@server/shared/defaults";
+import { DEFAULT_THREAD_DEFAULTS, type StartOn } from "@server/shared/defaults";
 import { REASONING_LEVELS as LEVELS } from "@server/shared/catalog";
 import { HARNESSES, HARNESS_TITLE, RUNTIME_MODE_HINT, RUNTIME_MODE_LABEL, type HarnessId, type RuntimeMode } from "../session";
 import { modelsFor, resolveModel, type AgentModel } from "../models";
@@ -51,6 +51,15 @@ export const PERMISSION_HINTS = Object.fromEntries(
   PERMISSIONS.map((p) => [p, RUNTIME_MODE_HINT[modeForPolicy(p)]]),
 ) as Record<Permission, string>;
 
+/** "New threads start on": the box is a host that is not a Mac (lib/projectHostChoice.ts). */
+export const START_ON_OPTIONS: { value: StartOn; label: string }[] = [
+  { value: "box", label: "Box" },
+  { value: "mac", label: "Mac" },
+];
+
+/** Where a linked project's new threads start, said once for the row under the choice. */
+export const START_ON_HINT = "For projects on more than one host.";
+
 export const BUILT_IN_SCOPE: DefaultsScope = { defaults: DEFAULT_THREAD_DEFAULTS, overridden: false };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
@@ -67,7 +76,8 @@ export function coerceDefaults(raw: unknown): ThreadDefaults {
   const permission = ["safe", "edits", "auto"].includes(String(r.permission))
     ? (r.permission as Permission)
     : DEFAULT_THREAD_DEFAULTS.permission;
-  return { provider, model: typeof r.model === "string" ? r.model : "", reasoning, permission };
+  const startOn = r.startOn === "box" || r.startOn === "mac" ? (r.startOn as StartOn) : undefined;
+  return { provider, model: typeof r.model === "string" ? r.model : "", reasoning, permission, ...(startOn ? { startOn } : {}) };
 }
 
 /**
@@ -85,7 +95,11 @@ export function parseDefaultsScope(raw: unknown): DefaultsScope {
 }
 
 export const sameDefaults = (a: ThreadDefaults, b: ThreadDefaults): boolean =>
-  a.provider === b.provider && a.model === b.model && a.reasoning === b.reasoning && a.permission === b.permission;
+  a.provider === b.provider &&
+  a.model === b.model &&
+  a.reasoning === b.reasoning &&
+  a.permission === b.permission &&
+  a.startOn === b.startOn;
 
 /** The catalog model a set names: its own, else the provider's default. */
 export function modelForDefaults(d: Pick<ThreadDefaults, "provider" | "model">, environmentId?: string): AgentModel {

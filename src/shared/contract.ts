@@ -27,7 +27,7 @@ import { AGENT_TYPES, REASONING_LEVELS } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
 import { OrchestrationRulesSchema, ThreadRulesSchema } from './rules'
-import { ThreadDefaultsSchema } from './defaults'
+import { StartOnSchema, ThreadDefaultsSchema } from './defaults'
 import { PlanSettingsSchema } from './plans'
 import { AppshotSettingsSchema } from './appshots'
 import { AccountPinsSchema } from './contract-m3a'
@@ -242,6 +242,12 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('project.setAccounts'),
     params: z.object({ projectId: z.string(), pins: AccountPinsSchema })
+  }),
+  // Where a linked project's new threads start (defaults.ts StartOnSchema); null follows Thread defaults.
+  z.object({
+    id: z.string(),
+    method: z.literal('project.setStartOn'),
+    params: z.object({ projectId: z.string(), startOn: StartOnSchema.nullable() })
   }),
   z.object({
     id: z.string(),

@@ -1720,12 +1720,25 @@ names the far child).
   by `rememberPlatform`, preload for this machine; `lib/hostPlatform.ts`)
   marks every thread and agent row with two or more hosts: the rail, ChildRow,
   the right panel's Agents rows, the spawn row, the Inbox, search, the master board.
-  `lib/projectHostChoice.ts` picks a new thread's host (the thread on
-  screen's, else the last used for the link, else this machine, else the
-  first connected host with a copy) and `chrome/DraftHostPicker.tsx` in the
-  composer retargets an unsent draft, making the copy through
-  `project.ensureLinked` on pick; the master board's add sheet offers every
-  host the same way.
+  `lib/projectHostChoice.ts` picks a new thread's host (`chooseCopy`: the
+  thread on screen's when it is in the project, else the host "New threads
+  start on" names when it has a copy and its link is open, else another
+  connected host with a copy, else the named one offline; the draft
+  rebuild's `preferredHost` reads the same). "New threads start on" is
+  `box` (a host that is not a Mac, `startOnHostOf` in
+  src/shared/projectLinks.ts, `settingsHomeOf`'s rule) or `mac`: the global
+  value is `ThreadDefaults.startOn` (absent = the box; only the global set's
+  counts; its row on Settings → Thread defaults shows with two or more
+  hosts), a project's own is `ProjectMeta.startOn` (`projects.start_on`,
+  `project.setStartOn`, admin, forwarded to the settings home, in the
+  settings bundle; the project sheet's New threads section with "Use global
+  setting", linked projects only); `startOnOf` takes the copy stamped last.
+  No last-used host is remembered (`monocode.linkHosts` is gone):
+  `chrome/DraftHostPicker.tsx` in the composer retargets one unsent draft,
+  making the copy through `project.ensureLinked` on pick; the master board's
+  add sheet offers every host the same way and starts on the master's host
+  (the thread on screen). The phone's draft row does not read the setting
+  yet: it starts on the draft's saved host, else the project's lead copy.
 - **Threads across copies.** `@thread:<env_…>:<id>` names a thread on
   another host (threadMentions.ts; the composer's picker emits the host's
   own id; the attachment carries `environmentId`); sessions.ts reads its

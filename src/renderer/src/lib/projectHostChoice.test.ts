@@ -2,7 +2,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectMeta } from "./tcserver/types";
 
-const h = vi.hoisted(() => ({ open: new Set<string>(["local", "box"]), primary: "local" }));
+const h = vi.hoisted(() => ({
+  open: new Set<string>(["local", "box"]),
+  primary: "local",
+  platforms: { local: "darwin", mini: "darwin", box: "linux" } as Record<string, string>,
+  globalStartOn: undefined as "box" | "mac" | undefined,
+}));
+vi.mock("./hostPlatform", () => ({ platformOf: (id: string) => h.platforms[id] }));
+vi.mock("./tcserver/workspaces", () => ({
+  workspaceStore: {
+    defaultsAt: (env: string, ws: string | null) =>
+      env === h.primary && ws === null && h.globalStartOn
+        ? { defaults: { provider: "claude", model: "", reasoning: "medium", permission: "edits", startOn: h.globalStartOn }, overridden: true }
+        : undefined,
+  },
+}));
 vi.mock("./connection/registry", () => ({
   registry: {
     get primaryEnvironmentId() {
@@ -17,10 +31,10 @@ import {
   chooseCopy,
   copiesOf,
   ensureLinkedArgs,
-  loadLinkHosts,
   newThreadContext,
+  preferredHost,
   probeOf,
-  rememberLinkHost,
+  startOnOf,
 } from "./projectHostChoice";
 
 const project = (over: Partial<ProjectMeta>): ProjectMeta => ({
@@ -45,6 +59,7 @@ beforeEach(() => {
   localStorage.clear();
   h.open = new Set(["local", "box"]);
   h.primary = "local";
+  h.globalStartOn = undefined;
 });
 
 describe("copiesOf", () => {
@@ -57,48 +72,75 @@ describe("copiesOf", () => {
 });
 
 describe("chooseCopy", () => {
-  const base = { copies: [mac, box], remembered: undefined, primary: "local", connected: (id: string) => h.open.has(id) };
+  const base = {
+    copies: [mac, box],
+    startOn: "box" as const,
+    platformOf: (id: string) => h.platforms[id],
+    connected: (id: string) => h.open.has(id),
+  };
 
   it("the active pane's thread's host first, when that thread is in the project", () => {
-    expect(chooseCopy({ ...base, active: { environmentId: "box", projectId: "p-box" }, remembered: "local" })?.id).toBe("p-box");
+    expect(chooseCopy({ ...base, active: { environmentId: "local", projectId: "p-mac" } })?.id).toBe("p-mac");
+    expect(chooseCopy({ ...base, startOn: "mac", active: { environmentId: "box", projectId: "p-box" } })?.id).toBe("p-box");
     // A thread elsewhere does not decide.
-    expect(chooseCopy({ ...base, active: { environmentId: "box", projectId: "unrelated" } })?.id).toBe("p-mac");
+    expect(chooseCopy({ ...base, active: { environmentId: "local", projectId: "unrelated" } })?.id).toBe("p-box");
   });
 
-  it("else the host last used for the link, while it has a copy", () => {
-    expect(chooseCopy({ ...base, remembered: "box" })?.id).toBe("p-box");
-    expect(chooseCopy({ ...base, remembered: "gone" })?.id).toBe("p-mac");
+  it("else the host the setting names: the box is a host that is not a Mac, the Mac one that is", () => {
+    expect(chooseCopy(base)?.id).toBe("p-box");
+    expect(chooseCopy({ ...base, startOn: "mac" })?.id).toBe("p-mac");
+    // Order of the copies does not matter.
+    expect(chooseCopy({ ...base, copies: [box, mac], startOn: "mac" })?.id).toBe("p-mac");
   });
 
-  it("else this machine with a copy, else the first connected host with one", () => {
-    expect(chooseCopy(base)?.id).toBe("p-mac");
-    expect(chooseCopy({ ...base, copies: [mini, box] })?.id).toBe("p-box");
+  it("else the other host with a copy, when the named host has none", () => {
+    expect(chooseCopy({ ...base, copies: [mac, mini] })?.id).toBe("p-mac");
+    expect(chooseCopy({ ...base, copies: [box], startOn: "mac" })?.id).toBe("p-box");
+  });
+
+  it("a host without a copy is never picked; an offline named host yields to a connected copy", () => {
     expect(chooseCopy({ ...base, copies: [mini] })).toBeUndefined();
+    h.open = new Set(["local"]);
+    expect(chooseCopy(base)?.id).toBe("p-mac");
+    // With no other copy reachable, the named one stays the pick.
+    h.open = new Set();
+    expect(chooseCopy(base)?.id).toBe("p-box");
   });
 });
 
-describe("the remembered hosts", () => {
-  it("round-trip per link id and survive a broken store", () => {
-    expect(loadLinkHosts()).toEqual({});
-    rememberLinkHost("pl_a", "box");
-    rememberLinkHost("pl_b", "local");
-    expect(loadLinkHosts()).toEqual({ pl_a: "box", pl_b: "local" });
-    localStorage.setItem("monocode.linkHosts", "{nope");
-    expect(loadLinkHosts()).toEqual({});
+describe("startOnOf", () => {
+  it("the project's own value, else the global one, else the box", () => {
+    expect(startOnOf([mac, box], undefined)).toBe("box");
+    expect(startOnOf([mac, box], "mac")).toBe("mac");
+    expect(startOnOf([{ ...mac, startOn: "mac", settingsUpdatedAt: 5 }, box], "box")).toBe("mac");
+    expect(startOnOf([{ ...mac, startOn: null }, box], "mac")).toBe("mac");
+  });
+
+  it("the copy stamped last speaks for the link", () => {
+    const follower = { ...mac, startOn: "mac" as const, settingsUpdatedAt: 1 };
+    const home = { ...box, startOn: null, settingsUpdatedAt: 9 };
+    expect(startOnOf([follower, home], "box")).toBe("box");
+    expect(startOnOf([{ ...follower, settingsUpdatedAt: 10 }, home], "box")).toBe("mac");
   });
 });
 
 describe("newThreadContext", () => {
   const ctx = { projectId: "p-mac", workspaceId: "w", cwd: "/Users/me/temp-code" };
 
-  it("moves a new thread onto the chosen copy", () => {
-    expect(newThreadContext(ctx, [mac, box], { environmentId: "box", projectId: "p-box" })).toEqual({
+  it("starts a new thread on the box by default, on the thread on screen's host when it is in the project", () => {
+    expect(newThreadContext(ctx, [mac, box], null)).toEqual({
       projectId: "p-box",
       workspaceId: "w-box",
       cwd: "/srv/agents/work/temp-code",
     });
-    rememberLinkHost("pl_a", "box");
-    expect(newThreadContext(ctx, [mac, box], null).projectId).toBe("p-box");
+    expect(newThreadContext(ctx, [mac, box], { environmentId: "local", projectId: "p-mac" })).toEqual(ctx);
+  });
+
+  it("follows Thread defaults, and a project's own setting over it", () => {
+    h.globalStartOn = "mac";
+    expect(newThreadContext(ctx, [mac, box], null).projectId).toBe("p-mac");
+    expect(newThreadContext(ctx, [mac, { ...box, startOn: "box", settingsUpdatedAt: 3 }], null).projectId).toBe("p-box");
+    expect(preferredHost([mac, box])).toBe("local");
   });
 
   it("leaves a project with one copy, an unlinked one and a loose chat alone", () => {

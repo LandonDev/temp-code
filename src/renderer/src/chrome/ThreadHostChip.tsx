@@ -1,7 +1,7 @@
 import { useEffect, useState, type JSX } from "react";
 import type { SessionMovePreview } from "@server/shared/contract-session-move";
 import { registry, useEnvironments, useEnvironmentStatuses } from "../lib/connection";
-import { copiesOf, ensureLinkedArgs, ensureLinkedOn, rememberLinkHost } from "../lib/projectHostChoice";
+import { copiesOf, ensureLinkedArgs, ensureLinkedOn } from "../lib/projectHostChoice";
 import { sessionStore, useQueue, useSessionChrome, useSessionMeta } from "../lib/tcserver/store";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
@@ -163,7 +163,6 @@ async function retargetDraftTo(
     })());
   if (!copy) throw new Error("no copy of the project on that host");
   retargetDraft(sessionId, copy);
-  rememberLinkHost(project.linkId, to);
 }
 
 const NOTICE_MS = 8_000;

@@ -1,6 +1,10 @@
 import type { EnsureLinkedArgs } from "@server/shared/projectLinks";
 import type { EnsureLinkedResult } from "@server/shared/wireSchemas";
+import { DEFAULT_START_ON, type StartOn } from "@server/shared/defaults";
+import { startOnHostOf } from "@server/shared/projectLinks";
 import { registry } from "./connection/registry";
+import { platformOf } from "./hostPlatform";
+import { workspaceStore } from "./tcserver/workspaces";
 import type { ProjectMeta, WorkspaceMeta } from "./tcserver/types";
 
 /**
@@ -9,41 +13,18 @@ import type { ProjectMeta, WorkspaceMeta } from "./tcserver/types";
  *
  * 1. the host of the thread in the active pane, when that thread is in the
  *    project;
- * 2. else the host last used for the link (remembered per link id in
- *    localStorage), while it still has a copy;
- * 3. else this machine, when it has a copy;
- * 4. else the first connected host with one.
+ * 2. else the host "New threads start on" names (the project's own setting,
+ *    else Thread defaults', else the box: `startOnOf`), when it has a copy
+ *    and its link is open;
+ * 3. else another connected host with a copy;
+ * 4. else the named host's copy, offline as it is.
  *
  * A host without a copy is never the default; the composer's draft host
  * picker (chrome/DraftHostPicker.tsx) and the master board's add sheet make
- * one there with `project.ensureLinked`. A thread's host never changes once
- * sent, except through the header chip's move.
+ * one there with `project.ensureLinked`. A pick there retargets that one
+ * draft and is not remembered. A thread's host never changes once sent,
+ * except through the header chip's move.
  */
-
-const KEY = "monocode.linkHosts";
-
-type Remembered = Record<string, string>;
-
-export function loadLinkHosts(): Remembered {
-  try {
-    const raw = localStorage.getItem(KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : null;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Remembered) : {};
-  } catch {
-    return {};
-  }
-}
-
-export function rememberLinkHost(linkId: string, environmentId: string): void {
-  const next = loadLinkHosts();
-  if (next[linkId] === environmentId) return;
-  next[linkId] = environmentId;
-  try {
-    localStorage.setItem(KEY, JSON.stringify(next));
-  } catch {
-    // private mode / quota
-  }
-}
 
 type Copy = Pick<ProjectMeta, "id" | "environmentId" | "linkId" | "archived">;
 
@@ -53,20 +34,50 @@ export function copiesOf<P extends Copy>(projects: readonly P[], linkId: string 
   return projects.filter((p) => p.linkId === linkId && !p.archived);
 }
 
+/** Pure: the value in force for a project. The copies agree once the
+ *  settings follower has run; the one stamped last speaks for them. A
+ *  project without its own follows `global` (Thread defaults), absent the box. */
+export function startOnOf(
+  copies: readonly Pick<ProjectMeta, "startOn" | "settingsUpdatedAt">[],
+  global: StartOn | undefined,
+): StartOn {
+  const newest = [...copies].sort((a, b) => (b.settingsUpdatedAt ?? -1) - (a.settingsUpdatedAt ?? -1))[0];
+  return newest?.startOn ?? global ?? DEFAULT_START_ON;
+}
+
+/** The global "New threads start on" (Thread defaults on this machine's
+ *  host, whose one copy lives on the box); the box until it has loaded. */
+export function globalStartOn(): StartOn | undefined {
+  return workspaceStore.defaultsAt(registry.primaryEnvironmentId, null)?.defaults.startOn;
+}
+
 /** Pure: the copy a new thread starts in (the rules above). */
 export function chooseCopy<P extends Copy>(args: {
   copies: readonly P[];
   /** The active pane's thread, when there is one. */
   active?: { environmentId: string; projectId?: string | null } | null;
-  remembered: string | undefined;
-  primary: string;
+  startOn: StartOn;
+  platformOf: (environmentId: string) => string | undefined;
   connected: (environmentId: string) => boolean;
 }): P | undefined {
-  const { copies, active, remembered, primary, connected } = args;
-  const on = (env: string | undefined) => (env ? copies.find((c) => c.environmentId === env) : undefined);
-  const activeCopy =
-    active?.projectId ? copies.find((c) => c.id === active.projectId && c.environmentId === active.environmentId) : undefined;
-  return activeCopy ?? on(remembered) ?? on(primary) ?? copies.find((c) => connected(c.environmentId));
+  const { copies, active, startOn, platformOf, connected } = args;
+  const activeCopy = active?.projectId
+    ? copies.find((c) => c.id === active.projectId && c.environmentId === active.environmentId)
+    : undefined;
+  if (activeCopy) return activeCopy;
+  const named = startOnHostOf(copies, platformOf, startOn);
+  const namedCopy = named ? copies.find((c) => c.environmentId === named) : undefined;
+  if (namedCopy && connected(namedCopy.environmentId)) return namedCopy;
+  return copies.find((c) => c !== namedCopy && connected(c.environmentId)) ?? namedCopy;
+}
+
+const linkOpen = (id: string) => registry.statusOf(id).transport === "open";
+
+/** The host a new thread of these copies starts on with nothing on screen to decide it. */
+export function preferredHost(copies: readonly ProjectMeta[]): string | null {
+  if (copies.length === 0) return null;
+  const copy = chooseCopy({ copies, startOn: startOnOf(copies, globalStartOn()), platformOf, connected: linkOpen });
+  return copy?.environmentId ?? null;
 }
 
 /** The context a new thread in `projectId` starts in: the chosen copy's, or
@@ -82,9 +93,9 @@ export function newThreadContext<C extends { projectId: string | null; workspace
   const copy = chooseCopy({
     copies,
     active,
-    remembered: loadLinkHosts()[project.linkId],
-    primary: registry.primaryEnvironmentId,
-    connected: (id) => registry.statusOf(id).transport === "open",
+    startOn: startOnOf(copies, globalStartOn()),
+    platformOf,
+    connected: linkOpen,
   });
   return copy ? { ...ctx, projectId: copy.id, workspaceId: copy.workspaceId, cwd: copy.cwd } : ctx;
 }

@@ -107,7 +107,7 @@ import {
 import { gitConfigMtime, githubRepoFromRemote, originRemoteUrl } from './gitRemote'
 import { stopProjectLsp } from './lsp'
 import { explicitModels, parseRules, type OrchestrationRules } from '@shared/rules'
-import { DEFAULT_THREAD_DEFAULTS, parseDefaults, type ThreadDefaults } from '@shared/defaults'
+import { DEFAULT_THREAD_DEFAULTS, parseDefaults, type StartOn, type ThreadDefaults } from '@shared/defaults'
 import type { PlanSettings } from '@shared/plans'
 import {
   completePlan,
@@ -2160,6 +2160,13 @@ export class SessionRegistry {
     this.touchProjectSettings(projectId)
   }
 
+  /** Where a linked project's new threads start; null follows Thread defaults. */
+  setProjectStartOn(projectId: string, startOn: StartOn | null): void {
+    if (!this.store.getProject(projectId)) throw new Error(`unknown project: ${projectId}`)
+    this.store.setProjectStartOn(projectId, startOn)
+    this.touchProjectSettings(projectId)
+  }
+
   /** A setting of the project changed here: stamp `settings_updated_at` and
    *  push the catalog, so a follower on another host (the Mac, for a project
    *  whose home is the box) hears it (shared/projectLinks.ts). */
@@ -2236,6 +2243,7 @@ export class SessionRegistry {
       plans: this.getPlanSettings(projectId),
       build: this.getProjectBuild(projectId),
       turnPass: this.getProjectTurnPass(projectId),
+      startOn: p.startOn ?? null,
       updatedAt: p.settingsUpdatedAt ?? null
     }
   }
@@ -2254,6 +2262,7 @@ export class SessionRegistry {
     setPlanSettings(this.store, projectId, bundle.plans)
     this.store.setSetting(`build:project:${projectId}`, bundle.build ? JSON.stringify(bundle.build) : null)
     this.store.setSetting(`turn-pass:project:${projectId}`, bundle.turnPass ? JSON.stringify(bundle.turnPass) : null)
+    if (bundle.startOn !== undefined) this.store.setProjectStartOn(projectId, bundle.startOn)
     this.touchProjectSettings(projectId, at)
     this.expectAccountsUnder((s) => s.projectId === projectId)
   }

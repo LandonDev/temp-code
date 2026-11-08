@@ -34,7 +34,6 @@ vi.mock("../../../lib/projectHostChoice", async (importOriginal) => ({
 vi.mock("../../../chrome/ModelPicker", () => ({ ModelPicker: () => <span /> }));
 
 import { AddThreadDialog, hostChoices } from "./AddThreadDialog";
-import { loadLinkHosts } from "../../../lib/projectHostChoice";
 import { tooltipChunk, warmTooltips } from "@renderer/components/ui/tooltip";
 
 const ws = (over: Partial<WorkspaceMeta>): WorkspaceMeta =>
@@ -129,7 +128,8 @@ describe("AddThreadDialog", () => {
     expect(h.ensure).toHaveBeenLastCalledWith("mini", expect.objectContaining({ projectLinkId: "pl_a" }));
     expect(h.startThread).toHaveBeenCalledTimes(1);
     expect(h.startThread.mock.calls[0][0]).toMatchObject({ environmentId: "mini", projectId: "p-mini", masterId: "m", startedBy: "m" });
-    expect(loadLinkHosts()).toEqual({ pl_a: "mini" });
+    // A pick retargets one draft; nothing is remembered for the next.
+    expect(localStorage.getItem("monocode.linkHosts")).toBeNull();
   });
 
   it("a host with no checkout is disabled with the host's note, and a host with a copy needs no dry run", async () => {

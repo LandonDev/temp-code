@@ -4079,7 +4079,8 @@ on one copy, its settings home: `settingsHomeOf` in
 `src/shared/projectLinks.ts` names the copy whose host is not a Mac (by the
 hello's `build.platform`), else the host whose id sorts first. The settings
 are one bundle (`project.settings.get` / `.set`): name, archived, preamble,
-account pins, review, plans, build and turn pass, with the time one of them
+account pins, review, plans, build, turn pass and where new threads start
+(`startOn`, `project.setStartOn`), with the time one of them
 last changed on its home (`projects.settings_updated_at`). Every setter
 stamps that time.
 
@@ -4096,6 +4097,7 @@ or an archive on the box reaches the Mac's row, and a Mac thread of the project 
 
 A settings write on the Mac for such a project (`project.rename`,
 `project.archive`, `project.setPreamble`, `project.setAccounts`,
+`project.setStartOn`,
 `project.settings.set`, and `review.set`, `plans.set`, `build.set`,
 `turnpass.set` for a project) goes to the box: the same method on the box's
 copy, then the box's bundle is written on the Mac, so the next pull has
@@ -4110,6 +4112,26 @@ project, and every write on the box itself, behave as before.
 Tests: `remote/projectSettingsSync.test.ts` (the pull, an older stamp, a
 rename and an archive following, the forwarded write, the refusal, the cold
 refusal) and the linked-project case in `projectPreamble.test.ts`.
+
+### One project across hosts: new threads start on the box
+
+A new thread in a project linked across hosts starts on the box unless
+something says otherwise (src/renderer/src/lib/projectHostChoice.ts
+`chooseCopy`): the host of the thread on screen when that thread is in the
+project, else the host "New threads start on" names when it has a copy and
+its link is open, else another connected host with a copy. The value is
+`box` (a host that is not a Mac, by the hello's `build.platform`, the
+`settingsHomeOf` rule) or `mac`. Settings → Thread defaults holds the global
+one as `startOn` on the global set (one copy, on the box, below; it shows
+once a second host is saved); a project overrides it from its settings
+sheet's New threads section (`project.setStartOn`, kept in the bundle above),
+with "Use global setting" to go back. The draft's host picker moves one
+draft; nothing remembers the last host used. The phone's draft row does not
+read the value yet.
+
+Tests: `lib/projectHostChoice.test.ts` (the order, the override, a host with
+no copy), `server/projectStartOn.test.ts`, `ThreadDefaults.dom.test.tsx`,
+`ProjectDialogs.dom.test.tsx`.
 
 ### Orchestration rules and thread defaults: one copy, on the box
 

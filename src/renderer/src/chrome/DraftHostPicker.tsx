@@ -13,7 +13,7 @@ import { ROW_CONTROL } from "./composerRow";
 import { cn } from "../lib/cn";
 import { HostGlyph } from "./HostGlyph";
 import { useEnvironmentStatuses, useEnvironments } from "../lib/connection/status";
-import { copiesOf, ensureLinkedArgs, ensureLinkedOn, probeOf, rememberLinkHost, type CopyProbe } from "../lib/projectHostChoice";
+import { copiesOf, ensureLinkedArgs, ensureLinkedOn, probeOf, type CopyProbe } from "../lib/projectHostChoice";
 import { sessionStore, useSessionChrome, useSessionMeta } from "../lib/tcserver/store";
 import type { ProjectMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
@@ -24,9 +24,9 @@ import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
  * and a menu of every connected host. A host with a copy takes the draft at
  * once; one without asks `project.ensureLinked` first (a dry run when the
  * menu opens, so a host with no checkout is disabled with its note) and the
- * copy is made on pick. Picking retargets the draft and is remembered for
- * the link (lib/projectHostChoice.ts). A sent thread moves through the
- * header's host chip instead.
+ * copy is made on pick. Picking retargets this one draft; the next new
+ * thread starts where "New threads start on" says (lib/projectHostChoice.ts).
+ * A sent thread moves through the header's host chip instead.
  */
 export function DraftHostPicker({ sessionId, onClose }: { sessionId: string; onClose?: () => void }) {
   const session = useSessionChrome(sessionId);
@@ -75,7 +75,6 @@ export function DraftHostPicker({ sessionId, onClose }: { sessionId: string; onC
     const copy = copies.find((c) => c.environmentId === environmentId);
     if (copy) {
       retargetDraft(sessionId, copy);
-      rememberLinkHost(project.linkId!, environmentId);
       setOpen(false);
       return;
     }
@@ -88,7 +87,6 @@ export function DraftHostPicker({ sessionId, onClose }: { sessionId: string; onC
         return;
       }
       retargetDraft(sessionId, result.project);
-      rememberLinkHost(project.linkId!, environmentId);
       setOpen(false);
     } catch (err) {
       setProbes((prev) => new Map(prev).set(environmentId, { state: "none", note: errorLine(err) }));

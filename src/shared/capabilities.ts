@@ -259,6 +259,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'build.set': 'admin',
   'appshots.set': 'admin',
   'project.setAccounts': 'admin',
+  'project.setStartOn': 'admin',
   'workspace.setAccounts': 'admin',
   'project.setPreamble': 'admin',
   'workspace.setPreamble': 'admin',

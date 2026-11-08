@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { StartOnSchema } from './defaults'
 import type { AccountPins, AccountProvider, AccountsSnapshot } from './accounts'
 import { BatchStateSchema } from './contract-batch'
 import type { DeployStatus, HostJobPhase, HostJobStatus } from './contract-host'
@@ -490,6 +491,7 @@ export const ProjectMetaSchema = z.object({
   preambleEnabled: z.boolean().optional(),
   linkId: z.string().nullable().optional(),
   settingsUpdatedAt: z.number().int().nullable().optional(),
+  startOn: StartOnSchema.nullable().optional(),
   createdAt: z.number().int()
 })
 

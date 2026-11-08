@@ -9,7 +9,10 @@ import { CheckRow, Field, FieldRow } from "./DialogField";
 import { Dialog } from "@renderer/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@renderer/components/ui/sheet";
 import { Skeleton } from "@renderer/components/ui/skeleton";
-import { PageRowsSkeleton } from "@renderer/components/page";
+import { PageRow, PageRowsSkeleton } from "@renderer/components/page";
+import { DEFAULT_START_ON, type StartOn } from "@server/shared/defaults";
+import { START_ON_OPTIONS } from "../lib/tcserver/defaults";
+import { useThreadDefaults } from "../lib/tcserver/workspaces";
 import { ChoiceSelect } from "../components/choice-select";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
@@ -37,6 +40,7 @@ import {
   listBranches,
   renameProject,
   setProjectAccounts,
+  setProjectStartOn,
   setProjectBranch,
 } from "../lib/tcserver/projects";
 import { archiveLinked, deleteLinked, liveHostFacts, useProjectHome } from "../lib/projectHome";
@@ -452,6 +456,7 @@ export function ProjectSettingsDialog({
       workspace={workspace}
       home={at.home}
       homeWorkspace={at.workspace ?? workspace}
+      linked={at.linked}
       note={note}
       blocked={at.blocked}
       onClose={onClose}
@@ -464,6 +469,7 @@ function ProjectSettingsBody({
   workspace,
   home,
   homeWorkspace,
+  linked,
   note,
   blocked,
   onClose,
@@ -474,6 +480,8 @@ function ProjectSettingsBody({
   /** The copy holding the settings, and its workspace. */
   home: ProjectMeta;
   homeWorkspace: WorkspaceMeta;
+  /** Another host holds a copy: only then does "New threads start on" mean anything. */
+  linked: boolean;
   note?: string;
   blocked: string | null;
   onClose: () => void;
@@ -545,6 +553,11 @@ function ProjectSettingsBody({
     plans !== undefined &&
     (planScope.overridden ? !plans || !samePlanSettings(plans, planScope.settings) : plans !== null);
 
+  // New threads: the project's own host, else Thread defaults' (one copy, on the box), else the box.
+  const globalStartOn = useThreadDefaults(registry.primary().environmentId, null)?.defaults.startOn ?? DEFAULT_START_ON;
+  const [startOn, setStartOn] = useState<StartOn | null>(home.startOn ?? null);
+  const startOnDirty = startOn !== (home.startOn ?? null);
+
   const nameDirty = name.trim() !== home.name && !!name.trim();
   const branchDirty =
     worktree && !!branch.trim() && branch.trim() !== (project.branch ?? "");
@@ -556,7 +569,7 @@ function ProjectSettingsBody({
   const passDirty = savedPass !== undefined && !samePass(pass ?? null, savedPass);
   const pinsDirty = !samePins(pins, home.accountPins ?? {});
   const { root, closeThen } = useClosingDialog(onClose, pending);
-  const dirty = nameDirty || branchDirty || buildDirty || passDirty || pinsDirty || plansDirty || reviewDirty;
+  const dirty = nameDirty || branchDirty || buildDirty || passDirty || pinsDirty || plansDirty || reviewDirty || startOnDirty;
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!dirty || pending || blocked) return;
@@ -575,6 +588,7 @@ function ProjectSettingsBody({
       if (reviewDirty) await saveReviewSettings(home.environmentId, home.id, review ?? null);
       if (pinsDirty) await setProjectAccounts(home.id, pins);
       if (plansDirty) await savePlanSettings(home.environmentId, home.id, plans ?? null);
+      if (startOnDirty) await setProjectStartOn(home.id, startOn);
       if (buildDirty) {
         await registry.linkOf(home.environmentId).request("build.set", {
           workspaceId: homeWorkspace.id,
@@ -625,6 +639,20 @@ function ProjectSettingsBody({
                   </>
                 ) : null}
               </div>
+              {linked ? (
+                <Section label="New threads">
+                  <PageRow title="Start on">
+                    <ChoiceSelect
+                      label="New threads start on"
+                      size="sm"
+                      value={startOn ?? globalStartOn}
+                      options={START_ON_OPTIONS}
+                      onChange={(next: string) => setStartOn(next as StartOn)}
+                    />
+                  </PageRow>
+                  {startOn ? linkButton("Use global setting", () => setStartOn(null)) : null}
+                </Section>
+              ) : null}
               <Section label="Completed turn">
                 <TurnPassFields value={shownPass} onChange={setPass} compact />
                 {pass ? linkButton("Use workspace setting", () => setPass(null)) : null}

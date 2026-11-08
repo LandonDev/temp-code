@@ -122,7 +122,7 @@ describe("planProjectDraft", () => {
     hasMeta: () => false,
     copies,
     connected: () => true,
-    primary: "local",
+    preferred: "local",
   };
 
   it("focuses the draft when a pane shows it", () => {

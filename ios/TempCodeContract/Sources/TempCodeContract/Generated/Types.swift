@@ -1074,6 +1074,29 @@ public struct WorkspaceIcon: Codable, Hashable, Sendable {
 }
 
 public struct ProjectMeta: Codable, Hashable, Sendable {
+    public enum StartOn: RawRepresentable, Codable, Hashable, Sendable {
+        case box
+        case mac
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "box": self = .box
+            case "mac": self = .mac
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .box: "box"
+            case .mac: "mac"
+            case .unknown(let value): value
+            }
+        }
+    }
+
     public let id: String
     public let workspaceId: String
     public let name: String
@@ -1086,9 +1109,10 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
     public let preambleEnabled: Bool?
     public let linkId: String?
     public let settingsUpdatedAt: Int?
+    public let startOn: StartOn?
     public let createdAt: Int
 
-    public init(id: String, workspaceId: String, name: String, mode: ProjectMode, branch: String?, cwd: String, archived: Bool, accountPins: AccountPins? = nil, preamble: String? = nil, preambleEnabled: Bool? = nil, linkId: String? = nil, settingsUpdatedAt: Int? = nil, createdAt: Int) {
+    public init(id: String, workspaceId: String, name: String, mode: ProjectMode, branch: String?, cwd: String, archived: Bool, accountPins: AccountPins? = nil, preamble: String? = nil, preambleEnabled: Bool? = nil, linkId: String? = nil, settingsUpdatedAt: Int? = nil, startOn: StartOn? = nil, createdAt: Int) {
         self.id = id
         self.workspaceId = workspaceId
         self.name = name
@@ -1101,11 +1125,12 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
         self.preambleEnabled = preambleEnabled
         self.linkId = linkId
         self.settingsUpdatedAt = settingsUpdatedAt
+        self.startOn = startOn
         self.createdAt = createdAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, workspaceId, name, mode, branch, cwd, archived, accountPins, preamble, preambleEnabled, linkId, settingsUpdatedAt, createdAt
+        case id, workspaceId, name, mode, branch, cwd, archived, accountPins, preamble, preambleEnabled, linkId, settingsUpdatedAt, startOn, createdAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -1122,6 +1147,7 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
         try container.encodeIfPresent(preambleEnabled, forKey: .preambleEnabled)
         try container.encodeIfPresent(linkId, forKey: .linkId)
         try container.encodeIfPresent(settingsUpdatedAt, forKey: .settingsUpdatedAt)
+        try container.encodeIfPresent(startOn, forKey: .startOn)
         try container.encode(createdAt, forKey: .createdAt)
     }
 }
@@ -4019,6 +4045,28 @@ public struct ProjectSettingsBundle: Codable, Hashable, Sendable {
             self.meta = meta
         }
     }
+    public enum StartOn: RawRepresentable, Codable, Hashable, Sendable {
+        case box
+        case mac
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "box": self = .box
+            case "mac": self = .mac
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .box: "box"
+            case .mac: "mac"
+            case .unknown(let value): value
+            }
+        }
+    }
 
     public let name: String
     public let archived: Bool
@@ -4029,9 +4077,10 @@ public struct ProjectSettingsBundle: Codable, Hashable, Sendable {
     public let plans: PlanSettings?
     public let build: BuildConfig?
     public let turnPass: TurnPass?
+    public let startOn: StartOn?
     public let updatedAt: Int?
 
-    public init(name: String, archived: Bool, preamble: String?, preambleEnabled: Bool, accountPins: AccountPins, review: ReviewSettings?, plans: PlanSettings?, build: BuildConfig?, turnPass: TurnPass?, updatedAt: Int?) {
+    public init(name: String, archived: Bool, preamble: String?, preambleEnabled: Bool, accountPins: AccountPins, review: ReviewSettings?, plans: PlanSettings?, build: BuildConfig?, turnPass: TurnPass?, startOn: StartOn? = nil, updatedAt: Int?) {
         self.name = name
         self.archived = archived
         self.preamble = preamble
@@ -4041,11 +4090,12 @@ public struct ProjectSettingsBundle: Codable, Hashable, Sendable {
         self.plans = plans
         self.build = build
         self.turnPass = turnPass
+        self.startOn = startOn
         self.updatedAt = updatedAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, archived, preamble, preambleEnabled, accountPins, review, plans, build, turnPass, updatedAt
+        case name, archived, preamble, preambleEnabled, accountPins, review, plans, build, turnPass, startOn, updatedAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -4059,6 +4109,7 @@ public struct ProjectSettingsBundle: Codable, Hashable, Sendable {
         try container.encode(plans, forKey: .plans)
         try container.encode(build, forKey: .build)
         try container.encode(turnPass, forKey: .turnPass)
+        try container.encodeIfPresent(startOn, forKey: .startOn)
         try container.encode(updatedAt, forKey: .updatedAt)
     }
 }

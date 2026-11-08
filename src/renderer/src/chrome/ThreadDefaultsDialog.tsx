@@ -1,4 +1,6 @@
 import { registry } from "../lib/connection";
+import { useEnvironments } from "../lib/connection/status";
+import { DEFAULT_START_ON, type StartOn } from "@server/shared/defaults";
 import { useEffect, useState } from "react";
 import { DialogFooter, ErrorLine } from "./ConfirmDialog";
 import { homeNote } from "../lib/settingsHome";
@@ -12,6 +14,8 @@ import { ModalPanel, useClosingDialog } from "./Modal";
 import {
   EFFORT_LABELS,
   PERMISSION_HINTS,
+  START_ON_HINT,
+  START_ON_OPTIONS,
   PERMISSION_LABELS,
   effortLadder,
   modelForDefaults,
@@ -66,17 +70,20 @@ function useDefaultsRows(value: ThreadDefaults, onChange: Change, environmentId?
   };
 }
 
-/** Settings-page rows; the Reasoning row only when the model has a ladder. */
+/** Settings-page rows; the Reasoning row only when the model has a ladder,
+ *  "New threads start on" only on the global set (`startOn`). */
 export function ThreadDefaultsFields({
   value,
   onChange,
   environmentId,
   disabled,
+  startOn = false,
 }: {
   value: ThreadDefaults;
   onChange: Change;
   environmentId?: string;
   disabled?: boolean;
+  startOn?: boolean;
 }) {
   const rows = useDefaultsRows(value, onChange, environmentId);
   return (
@@ -95,6 +102,17 @@ export function ThreadDefaultsFields({
       <PageRow title="Permission mode" description={PERMISSION_HINTS[value.permission]}>
         <ChoiceSelect label="Permission mode" disabled={disabled} {...rows.permission} />
       </PageRow>
+      {startOn ? (
+        <PageRow title="New threads start on" description={START_ON_HINT}>
+          <ChoiceSelect
+            label="New threads start on"
+            disabled={disabled}
+            value={value.startOn ?? DEFAULT_START_ON}
+            options={START_ON_OPTIONS}
+            onChange={(next: string) => onChange({ ...value, startOn: next as StartOn })}
+          />
+        </PageRow>
+      ) : null}
     </>
   );
 }
@@ -122,6 +140,10 @@ export function ThreadDefaultsEditor({ workspaceId }: { workspaceId: string | nu
 function DefaultsEditor({ environmentId, workspaceId }: { environmentId: string; workspaceId: string | null }) {
   const scope = useThreadDefaults(environmentId, workspaceId);
   const failure = useThreadDefaultsError(environmentId, workspaceId);
+  // Which host a new thread starts on is a question only with two hosts, and only the global set answers it.
+  const multiHost = useEnvironments().length > 1;
+  const startOn = workspaceId === null && multiHost;
+  const skeleton = startOn ? [...DEFAULTS_SKELETON, { description: true }] : DEFAULTS_SKELETON;
   const [error, setError] = useState<string | null>(null);
   const save = (next: ThreadDefaults | null) => {
     setError(null);
@@ -164,7 +186,13 @@ function DefaultsEditor({ environmentId, workspaceId }: { environmentId: string;
       }
     >
       {scope ? (
-        <ThreadDefaultsFields value={scope.defaults} onChange={save} environmentId={environmentId} disabled={blocked} />
+        <ThreadDefaultsFields
+          value={scope.defaults}
+          onChange={save}
+          environmentId={environmentId}
+          disabled={blocked}
+          startOn={startOn}
+        />
       ) : failure ? (
         // The global page's section has no title, so no heading line: its Retry ends the error line.
         <PageError
@@ -179,7 +207,7 @@ function DefaultsEditor({ environmentId, workspaceId }: { environmentId: string;
           {failure.error}
         </PageError>
       ) : (
-        <PageRowsSkeleton rows={DEFAULTS_SKELETON} />
+        <PageRowsSkeleton rows={skeleton} />
       )}
       {workspaceId === null ? <OverridingWorkspaces environmentId={environmentId} /> : null}
       {error ? <PageError>{error}</PageError> : null}

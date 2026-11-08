@@ -2,7 +2,7 @@ import { NO_RELEASE_NOTES } from "./lib/releaseNotes";
 import { markKeyNav } from "./lib/navByKey";
 import { registry } from "./lib/connection";
 import { environmentOfCwd } from "./lib/tcserver/projects";
-import { copiesOf, newThreadContext } from "./lib/projectHostChoice";
+import { copiesOf, newThreadContext, preferredHost } from "./lib/projectHostChoice";
 import {
   draftKeyOf,
   draftPicks,
@@ -715,13 +715,14 @@ export default function App() {
         catalog,
       );
       const linkId = ctx.projectId ? catalog.projects.find((p) => p.id === ctx.projectId)?.linkId : null;
+      const copies = copiesOf(catalog.projects, linkId);
       const plan = planProjectDraft({
         record: projectDrafts.get(key),
         inPane: (id) => openSessionIds(workspaceTabsStore.getState().tabs).has(id),
         hasMeta: (id) => !!sessionStore.metaOf(id),
-        copies: copiesOf(catalog.projects, linkId),
+        copies,
         connected: (id) => registry.statusOf(id).transport === "open",
-        primary: registry.primaryEnvironmentId,
+        preferred: preferredHost(copies),
         threadType: opts.threadType,
         threadRules: opts.threadRules,
       });

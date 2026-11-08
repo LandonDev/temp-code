@@ -172,8 +172,8 @@ export class ProjectSettingsSync {
   /** This copy's settings, written on a home that never stamped one; its name and archive stay the home's. */
   private async seed(link: Link, localId: string, peer: ProjectMeta): Promise<void> {
     const mine = this.deps.registry.getProjectSettings(localId)
-    const { preamble, accountPins, review, plans, build, turnPass } = mine
-    if (preamble === null && !Object.values(accountPins).some(Boolean) && !review && !plans && !build && !turnPass) return
+    const { preamble, accountPins, review, plans, build, turnPass, startOn } = mine
+    if (preamble === null && !Object.values(accountPins).some(Boolean) && !review && !plans && !build && !turnPass && !startOn) return
     await link.request('project.settings.set', {
       projectId: peer.id,
       bundle: { ...mine, name: peer.name, archived: peer.archived }

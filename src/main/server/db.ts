@@ -14,6 +14,7 @@ import { dirname } from 'node:path'
 import { seedRowJson } from './wire'
 import type { AgentEvent, EventRow, Failure, PreambleStamp, SessionMeta, SessionStatus } from '@shared/events'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
+import type { StartOn } from '@shared/defaults'
 import type { GithubInboxRepo } from '@shared/contract-github'
 import { ACCOUNT_PROVIDERS, type AccountPins } from '@shared/accounts'
 import { parseThreadRules } from '@shared/rules'
@@ -281,6 +282,8 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE workspaces ADD COLUMN link_id TEXT`,
     `ALTER TABLE projects ADD COLUMN link_id TEXT`,
     `ALTER TABLE projects ADD COLUMN settings_updated_at INTEGER`,
+    // Where a linked project's new threads start ('box' | 'mac'); null follows Thread defaults.
+    `ALTER TABLE projects ADD COLUMN start_on TEXT`,
     // A dev server's row (kind 'port'): the listening pid, the tool call that opened it, and what the process is.
     `ALTER TABLE thread_resources ADD COLUMN pid INTEGER`,
     `ALTER TABLE thread_resources ADD COLUMN call_id TEXT`,
@@ -1380,6 +1383,7 @@ export class Store {
       preamble_enabled: number
       link_id: string | null
       settings_updated_at: number | null
+      start_on: string | null
       created_at: number
     }[]
     return rows.map((r) => ({
@@ -1395,6 +1399,7 @@ export class Store {
       preambleEnabled: r.preamble_enabled !== 0,
       linkId: r.link_id,
       settingsUpdatedAt: r.settings_updated_at,
+      startOn: r.start_on === 'box' || r.start_on === 'mac' ? r.start_on : null,
       createdAt: r.created_at
     }))
   }
@@ -1405,6 +1410,11 @@ export class Store {
     this
       .stmt(`UPDATE projects SET preamble = ?, preamble_enabled = ? WHERE id = ?`)
       .run(preamble, enabled ? 1 : 0, id)
+  }
+
+  /** Where the project's new threads start; null follows Thread defaults. */
+  setProjectStartOn(id: string, startOn: StartOn | null): void {
+    this.stmt(`UPDATE projects SET start_on = ? WHERE id = ?`).run(startOn, id)
   }
 
   setProjectAccounts(id: string, pins: AccountPins): void {

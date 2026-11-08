@@ -44,7 +44,6 @@ vi.mock("../lib/projectHostChoice", async (importOriginal) => ({
 }));
 
 import { DraftHostPicker } from "./DraftHostPicker";
-import { loadLinkHosts } from "../lib/projectHostChoice";
 import { menuChunk } from "../surfaces/chunks";
 import { warmMenus } from "./menuRows";
 
@@ -118,7 +117,7 @@ describe("DraftHostPicker", () => {
     expect(container.querySelector("[data-draft-host-picker]")).toBeNull();
   });
 
-  it("lists every connected host, the draft's checked; a host with a copy takes the draft and is remembered", async () => {
+  it("lists every connected host, the draft's checked; a host with a copy takes the draft", async () => {
     h.ensure.mockResolvedValue({ cwd: null, exists: false, project: null, note: "no checkout of temp-code" });
     h.statuses.set("mini", { transport: "offline" });
     render(<DraftHostPicker sessionId="d" />);
@@ -130,7 +129,8 @@ describe("DraftHostPicker", () => {
     expect(h.ensure).not.toHaveBeenCalled();
     fireEvent.click(option("box"));
     expect(h.sessions[0]).toMatchObject({ environmentId: "box", projectId: "p-box", workspaceId: "w-box", cwd: "/srv/agents/work/temp-code" });
-    expect(loadLinkHosts()).toEqual({ pl_a: "box" });
+    // A pick retargets one draft; nothing is remembered for the next.
+    expect(localStorage.getItem("monocode.linkHosts")).toBeNull();
   });
 
   it("a host with no checkout is disabled with its note", async () => {
@@ -160,7 +160,8 @@ describe("DraftHostPicker", () => {
     await flush();
     expect(h.ensure).toHaveBeenLastCalledWith("mini", expect.objectContaining({ projectLinkId: "pl_a" }));
     expect(h.sessions[0]).toMatchObject({ environmentId: "mini", projectId: "p-mini", workspaceId: "w-mini", cwd: "/work/temp-code" });
-    expect(loadLinkHosts()).toEqual({ pl_a: "mini" });
+    // A pick retargets one draft; nothing is remembered for the next.
+    expect(localStorage.getItem("monocode.linkHosts")).toBeNull();
   });
 });
 

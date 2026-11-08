@@ -1,3 +1,4 @@
+import type { StartOn } from "@server/shared/defaults";
 import type { AccountPins } from "@server/shared/accounts";
 import { registry, type Link } from "../connection";
 import { hostForPath } from "../pathHost";
@@ -74,6 +75,13 @@ export async function setProjectAccounts(
 ): Promise<void> {
   const link = linkOfProject(projectId);
   await link.request("project.setAccounts", { projectId, pins });
+  await workspaceStore.refresh(link);
+}
+
+/** Where the project's new threads start when it is linked across hosts (null follows Thread defaults). */
+export async function setProjectStartOn(projectId: string, startOn: StartOn | null): Promise<void> {
+  const link = linkOfProject(projectId);
+  await link.request("project.setStartOn", { projectId, startOn });
   await workspaceStore.refresh(link);
 }
 
