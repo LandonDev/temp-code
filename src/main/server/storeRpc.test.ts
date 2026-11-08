@@ -5,7 +5,7 @@ import type { AddonInput, AddonRow, AddonSpec } from '@shared/contract-addons'
 import type { SkillFile, SkillInput, SkillMeta } from '@shared/contract-skills'
 import { AddonStore } from './addonStore'
 import { SkillStore } from './skillStore'
-import { isStoreMethod, storeRpc, writerOf, type StoreRpcDeps } from './storeRpc'
+import { isStoreMethod, storePushes, storeRpc, writerOf, type StoreRpcDeps } from './storeRpc'
 
 const LOCAL: Principal = { kind: 'local' }
 const phone: Principal = { kind: 'remote', keyId: 'k1', name: 'Phone', audience: 'client', caps: ['read', 'operate', 'admin'] }
@@ -118,6 +118,24 @@ describe('storeRpc', () => {
     deps.sync = null
     await rpc().handle({ method: 'addons.set', params: { addon: addon() } }, LOCAL)
     expect(await rpc().handle({ method: 'addons.list' }, LOCAL)).toMatchObject({ home: null })
+  })
+
+  it('pushes each list once per burst of changes, to every listener', async () => {
+    const pushes = storePushes(deps.addons, deps.skills, 10)
+    const seen: string[] = []
+    const off = pushes.onPush((p) => seen.push(`${p.push}:${p.push === 'addons' ? p.addons.length : p.push === 'skills' ? p.skills.length : Object.keys(p.status).length}`))
+    const a = deps.addons.set(addon(), { kind: 'person' })
+    deps.addons.set(addon({ name: 'linear' }), { kind: 'person' })
+    deps.addons.setStatus(a.id, { state: 'ready', tools: 1, at: 1 })
+    deps.skills.set(skill(), { kind: 'person' })
+    expect(seen).toEqual([])
+    await new Promise((r) => setTimeout(r, 30))
+    expect(seen.sort()).toEqual(['addon-status:1', 'addons:2', 'skills:1'])
+    off()
+    deps.addons.remove(a.id)
+    await new Promise((r) => setTimeout(r, 30))
+    expect(seen).toHaveLength(3)
+    pushes.close()
   })
 
   it('a refusal from the home reaches the caller, nothing written here', async () => {

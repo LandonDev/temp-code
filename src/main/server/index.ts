@@ -47,6 +47,10 @@ import { MemorySync, handleMemory } from './remote/memorySync'
 import { ProjectLinker } from './remote/projectLinks'
 import { ProjectSettingsSync } from './remote/projectSettingsSync'
 import { RulesSync } from './remote/rulesSync'
+import { StoreSync } from './remote/storeSync'
+import { AddonStore } from './addonStore'
+import { SkillStore } from './skillStore'
+import { storePushes, storeRpc } from './storeRpc'
 import { AwaySync } from './remote/awaySync'
 import { SessionMover, handleSessionMove } from './remote/sessionMover'
 import { claudeConfigDir, codexHomeDir } from './sessionMove'
@@ -439,6 +443,14 @@ export async function startServer(
   })
   setProjectPlans(projectPlans)
   const launchMirror = new LaunchMirror(db)
+  // The add-on registry and the skills store: one copy, on the box (remote/storeSync.ts below).
+  const addonStore = new AddonStore(db)
+  const skillStore = new SkillStore(db)
+  registry.onWorkspaceDeleted((workspaceId) => {
+    addonStore.dropWorkspace(workspaceId)
+    skillStore.dropWorkspace(workspaceId)
+  })
+  const storePush = storePushes(addonStore, skillStore)
   // The list change log a client's launch mirror resumes from (`session.changes`).
   const listChanges = new ListChangeLog()
   registry.onMeta((m) => listChanges.changed(m.id))
@@ -570,6 +582,7 @@ export async function startServer(
         projectLinker.linkUp(id)
         projectSettings.linkUp(id)
         rulesSync.linkUp(id)
+        storeSync.linkUp(id)
         void awaySync.linkUp(id)
         void sessionMover.settleWith(id)
         relayServer.linkUp(id)
@@ -587,6 +600,7 @@ export async function startServer(
         projectLinker.onPeerPush(from, push)
         projectSettings.onPeerPush(from, push)
         rulesSync.onPeerPush(from, push)
+        storeSync.onPeerPush(from, push)
         if (awaySync.onPeerPush(from, push)) return
         // A linked host's dev servers, forwarded here (remote/macPorts.ts).
         if (push.push === 'ports') return void macPorts.onPorts(from, push.ports)
@@ -658,6 +672,10 @@ export async function startServer(
     peerCatalogs
   })
   rulesSync.start()
+  // Add-ons and skills: one copy on the same home, both tables followed together (remote/storeSync.ts).
+  const storeSync = new StoreSync({ environmentId, home: rulesSync, addons: addonStore, skills: skillStore, store, peers })
+  storeSync.start()
+  const stores = storeRpc({ addons: addonStore, skills: skillStore, sync: storeSync })
   // Away from computer: one state on every host, newest wins (remote/awaySync.ts).
   const awaySync = new AwaySync({ away, peers })
   awaySync.start()
@@ -1602,6 +1620,8 @@ export async function startServer(
     const offBootResume = bootResumer.onDone((notice) => sendFrame({ push: 'boot-resume', ...notice }))
     // Away from computer: every change of the state or the tally, to every client.
     const offAway = away.onChange((snapshot) => sendFrame({ push: 'away', ...snapshot }))
+    // Add-ons and skills: every list after a change, and this host's add-on status, to every client.
+    const offStores = storePush.onPush(sendFrame)
 
     ws.on('message', async (data) => {
       let raw: unknown
@@ -2171,6 +2191,17 @@ export async function startServer(
             })
             break
           }
+          // The add-on registry and the skills store (storeRpc.ts): one copy, on the box.
+          case 'addons.list':
+          case 'addons.set':
+          case 'addons.remove':
+          case 'addons.tools':
+          case 'skills.list':
+          case 'skills.get':
+          case 'skills.set':
+          case 'skills.remove':
+            sendFrame({ id: req.id, ok: true, result: await stores.handle(req, principal) })
+            break
           case 'rules.set':
             if (!(await rulesSync.forward(req.method, req.params.workspaceId, req.params.rules)))
               registry.setOrchestrationRules(req.params.workspaceId, req.params.rules)
@@ -2925,6 +2956,7 @@ export async function startServer(
       focus.drop(connection)
       offBootResume()
       offAway()
+      offStores()
       offMeta()
       offNotes()
       offBatch()
@@ -3141,6 +3173,8 @@ export async function startServer(
       projectLinker.close()
       projectSettings.close()
       rulesSync.close()
+      storeSync.close()
+      storePush.close()
       awaySync.close()
       uploads.close()
       sessionMover.close()

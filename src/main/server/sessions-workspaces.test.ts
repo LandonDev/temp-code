@@ -108,6 +108,15 @@ it('deleting a workspace leaves the others’ repos intact', async () => {
   expect(store.listWorkspaces().map((w) => w.githubRepo)).toEqual(['o/b'])
 })
 
+it('deleting a workspace tells its listeners, so its add-ons and skills leave with it', async () => {
+  const a = await registry.createWorkspace(await checkout('gone', null))
+  const heard: string[] = []
+  const off = registry.onWorkspaceDeleted((id) => heard.push(id))
+  await registry.deleteWorkspace(a.id)
+  off()
+  expect(heard).toEqual([a.id])
+})
+
 it('a trailing slash answers the existing workspace, including legacy path spelling', async () => {
   const folder = await checkout('slash', null)
   const workspace = await registry.createWorkspace(folder)

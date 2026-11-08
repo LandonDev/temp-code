@@ -1,8 +1,8 @@
 import { addonProblem, type Writer } from '@shared/addons'
 import { allows, principalCaps, type Principal } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
-import type { AddonInput, AddonRow, AddonsList, AddonToolsAnswer, StoreHome } from '@shared/contract-addons'
-import type { Skill, SkillInput, SkillMeta, SkillsList } from '@shared/contract-skills'
+import type { AddonInput, AddonRow, AddonsList, AddonsPush, AddonStatusPush, AddonToolsAnswer, StoreHome } from '@shared/contract-addons'
+import type { Skill, SkillInput, SkillMeta, SkillsList, SkillsPush } from '@shared/contract-skills'
 import { skillProblem } from '@shared/skills'
 import type { AddonStore } from './addonStore'
 import { fileBytes, type SkillStore } from './skillStore'
@@ -20,7 +20,9 @@ import type { StoreWrite } from './remote/storeSync'
 
 export const STORE_METHODS = ['addons.list', 'addons.set', 'addons.remove', 'addons.tools', 'skills.list', 'skills.get', 'skills.set', 'skills.remove'] as const
 export type StoreMethod = (typeof STORE_METHODS)[number]
-export type StoreRequest = Pick<Extract<ClientRequest, { method: StoreMethod }>, 'method' | 'params'>
+type MethodAndParams<T> = T extends { method: unknown; params?: unknown } ? Pick<T, 'method' | 'params'> : never
+/** One of the eight requests, without its id: each method keeps its own params. */
+export type StoreRequest = MethodAndParams<Extract<ClientRequest, { method: StoreMethod }>>
 export const isStoreMethod = (method: string): method is StoreMethod => (STORE_METHODS as readonly string[]).includes(method)
 
 export interface StoreRpcDeps {
@@ -30,6 +32,49 @@ export interface StoreRpcDeps {
   sync: { forward(method: StoreWrite, params: unknown, workspaceId: string | null): Promise<boolean>; homeFor(workspaceId: string | null): StoreHome } | null
   /** An add-on removed here (not by a follow): the home deletes its grant profile (the add-on OAuth build wires it). */
   onAddonRemoved?: (id: string) => void
+}
+
+export type StorePush = AddonsPush | AddonStatusPush | SkillsPush
+/** A follow writes many rows at once: the pushes of one burst go out once, this long after its first change. */
+export const STORE_PUSH_MS = 50
+
+/**
+ * The `addons`, `addon-status` and `skills` pushes, each the whole list,
+ * once per burst of changes, to every listener (each client socket). The
+ * Mac's link hears the box's and follows (remote/storeSync.ts).
+ */
+export function storePushes(addons: AddonStore, skills: SkillStore, delayMs = STORE_PUSH_MS) {
+  const listeners = new Set<(push: StorePush) => void>()
+  const dirty = new Set<StorePush['push']>()
+  let timer: NodeJS.Timeout | null = null
+  const flush = (): void => {
+    timer = null
+    const kinds = [...dirty]
+    dirty.clear()
+    for (const kind of kinds) {
+      const push: StorePush =
+        kind === 'addons' ? { push: 'addons', addons: addons.list() } : kind === 'skills' ? { push: 'skills', skills: skills.list() } : { push: 'addon-status', status: addons.status() }
+      for (const fn of listeners) fn(push)
+    }
+  }
+  const mark = (kind: StorePush['push']) => (): void => {
+    dirty.add(kind)
+    timer ??= setTimeout(flush, delayMs)
+    timer.unref?.()
+  }
+  const offs = [addons.onChange(mark('addons')), addons.onStatus(mark('addon-status')), skills.onChange(mark('skills'))]
+  return {
+    onPush(fn: (push: StorePush) => void): () => void {
+      listeners.add(fn)
+      return () => listeners.delete(fn)
+    },
+    close(): void {
+      for (const off of offs) off()
+      if (timer) clearTimeout(timer)
+      timer = null
+      listeners.clear()
+    }
+  }
 }
 
 /** A person's write: the local socket is "You", a remote key its name. */

@@ -618,6 +618,14 @@ export class SessionRegistry {
     for (const listener of this.catalogListeners) listener(kind)
   }
 
+  private workspaceDeleteListeners = new Set<(workspaceId: string) => void>()
+
+  /** A workspace was deleted: what it owned elsewhere (its add-ons and skills) leaves with it. */
+  onWorkspaceDeleted(listener: (workspaceId: string) => void): () => void {
+    this.workspaceDeleteListeners.add(listener)
+    return () => this.workspaceDeleteListeners.delete(listener)
+  }
+
   setPinned(sessionId: string, pinned: boolean): void {
     const next = this.store.updateSession(sessionId, { pinned })
     if (!next) throw new Error(`unknown session: ${sessionId}`)
@@ -2090,6 +2098,7 @@ export class SessionRegistry {
     }
     const projectIds = this.store.deleteWorkspace(workspaceId)
     for (const pid of projectIds) await this.deleteProjectSessions(pid)
+    for (const listener of this.workspaceDeleteListeners) listener(workspaceId)
     this.notifyCatalog('workspaces')
     this.notifyCatalog('projects')
   }
