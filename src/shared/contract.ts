@@ -23,6 +23,8 @@ import { PortsRequestSchemas } from './contract-ports'
 import { DevServerRequestSchemas } from './contract-devservers'
 import { AdmissionRequestSchemas } from './contract-admission'
 import { AwayRequestSchemas } from './contract-away'
+import { AddonAddArgsSchema, AddonCallArgsSchema, AddonFindArgsSchema, AddonRemoveArgsSchema, AddonRequestSchemas } from './contract-addons'
+import { SkillRemoveArgsSchema, SkillRequestSchemas, SkillWriteArgsSchema } from './contract-skills'
 import { AGENT_TYPES, REASONING_LEVELS } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -164,6 +166,9 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...AdmissionRequestSchemas,
   // Away from computer (contract-away.ts): the switch, its tally and the peer leg.
   ...AwayRequestSchemas,
+  // The add-on registry and the skills store (contract-addons.ts, contract-skills.ts): one copy, on the box.
+  ...AddonRequestSchemas,
+  ...SkillRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
   z.object({
     id: z.string(),
@@ -672,6 +677,17 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('app.archiveThreads'),
     params: z.object({ sessionId: z.string(), which: z.enum(['done', 'all']).optional(), threadIds: z.array(z.string()).max(100).optional() })
   }),
+  // The codex and muse bridge's add-on and skill tools (addons.ts, skills.ts):
+  // the tool's arguments with the bridge's sessionId. The registry core and
+  // the skills store core answer them; until then the switch's unknown method.
+  z.object({ id: z.string(), method: z.literal('app.addonList'), params: z.object({ sessionId: z.string() }) }),
+  z.object({ id: z.string(), method: z.literal('app.addonAdd'), params: AddonAddArgsSchema.extend({ sessionId: z.string() }) }),
+  z.object({ id: z.string(), method: z.literal('app.addonRemove'), params: AddonRemoveArgsSchema.extend({ sessionId: z.string() }) }),
+  z.object({ id: z.string(), method: z.literal('app.addonFind'), params: AddonFindArgsSchema.extend({ sessionId: z.string() }) }),
+  z.object({ id: z.string(), method: z.literal('app.addonCall'), params: AddonCallArgsSchema.extend({ sessionId: z.string() }) }),
+  z.object({ id: z.string(), method: z.literal('app.skillList'), params: z.object({ sessionId: z.string() }) }),
+  z.object({ id: z.string(), method: z.literal('app.skillWrite'), params: SkillWriteArgsSchema.extend({ sessionId: z.string() }) }),
+  z.object({ id: z.string(), method: z.literal('app.skillRemove'), params: SkillRemoveArgsSchema.extend({ sessionId: z.string() }) }),
   // Appshots (M10): global capture settings, one settings-table row.
   z.object({
     id: z.string(),
@@ -1433,6 +1449,12 @@ export type ServerPush =
   | { push: 'release-available'; from: string; version: string }
   // Away from computer (contract-away.ts): the state and the stretch's tally, to every client socket.
   | import('./contract-away').AwayPush
+  // The add-on registry and the skills store (contract-addons.ts, contract-skills.ts): every row
+  // after any change, and this host's add-on status, to every client socket; the Mac's
+  // link hears the box's and follows (remote/storeSync.ts).
+  | import('./contract-addons').AddonsPush
+  | import('./contract-addons').AddonStatusPush
+  | import('./contract-skills').SkillsPush
   // Thread resources (contract-resources.ts): a thread's ledger rows after any change.
   | import('./contract-resources').ResourcesPush
   // Dev servers forwarded to the Mac (contract-ports.ts): the host's list and stream frames down a Mac's link, the Mac's forwards to its renderer.

@@ -79,7 +79,7 @@ interface Kind {
 }
 
 /** A shared scope: the global set, or a workspace both hosts hold. */
-interface Scope {
+export interface Scope {
   key: string
   local: string | null
   peer: string | null
@@ -194,7 +194,7 @@ export class RulesSync {
     await this.exchangeCatalogs(link)
     if (this.homeOf() !== id) return
     const seeded = new Set(this.seeded(id))
-    for (const scope of this.scopes(id)) {
+    for (const scope of this.sharedScopes(id)) {
       if (!seeded.has(scope.key)) {
         for (const kind of this.kinds) {
           await link.request(kind.set, { workspaceId: scope.peer, [kind.field]: kind.read(scope.local) })
@@ -275,8 +275,8 @@ export class RulesSync {
     )
   }
 
-  /** The global scope and every local workspace whose link the peer holds too. */
-  private scopes(id: string): Scope[] {
+  /** The global scope and every local workspace whose link the peer holds too (storeSync.ts reads the same). */
+  sharedScopes(id: string): Scope[] {
     const theirs = new Map((this.record(id)?.workspaces ?? []).map((w) => [w.linkId, w.id]))
     const out: Scope[] = [{ key: 'global', local: null, peer: null }]
     for (const ws of this.deps.registry.listWorkspaces()) {
@@ -296,7 +296,7 @@ export class RulesSync {
     if (home === this.deps.environmentId) return false
     const link = this.deps.peers.get(home)
     if (!link) return false
-    const scope = this.scopes(home).find((s) => s.local === workspaceId)
+    const scope = this.sharedScopes(home).find((s) => s.local === workspaceId)
     if (!scope) return false
     const kind = this.kinds.find((k) => k.set === method)!
     if (!link.connected) throw new Error(refusal(link.env.name))
@@ -323,7 +323,7 @@ export class RulesSync {
     const home = this.homeOf()
     if (home === this.deps.environmentId) return null
     const link = this.deps.peers.get(home)
-    if (!link || !this.scopes(home).some((s) => s.local === workspaceId)) return null
+    if (!link || !this.sharedScopes(home).some((s) => s.local === workspaceId)) return null
     return { name: link.env.name, online: link.connected }
   }
 }

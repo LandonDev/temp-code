@@ -128,7 +128,12 @@ describe('METHOD_CAPABILITY', () => {
         'host.deployStatus',
         'host.log',
         // A host's running cap (contract-admission.ts): a settings write.
-        'admission.set'
+        'admission.set',
+        // The add-on registry and the skills store (contract-addons.ts, contract-skills.ts): a stdio add-on runs as the person.
+        'addons.set',
+        'addons.remove',
+        'skills.set',
+        'skills.remove'
       ].sort()
     )
   })

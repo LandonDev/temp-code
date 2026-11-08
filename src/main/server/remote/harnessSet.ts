@@ -4,6 +4,7 @@ import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises'
 import { untilLoopIdle } from '../stalls'
 import { delimiter, dirname, join, posix, sep } from 'node:path'
 import type { HarnessClaudeJson, HarnessEntry } from '@shared/contract-harness'
+import { isSecretPath, validRelPath } from '@shared/secretPaths'
 
 /**
  * What the harness config sync carries (docs/box.md "Harness config: synced
@@ -73,22 +74,8 @@ const TEXT_EXT = /\.(md|json|toml|sh|mjs)$/i
 const SKIP_DIRS = new Set(['.git'])
 const SKIP_NAMES = new Set(['.DS_Store'])
 
-const SECRET_NAMES = new Set(['.credentials.json', 'auth.json', 'settings.local.json', '.claude.json'])
-const SECRET_EXT = /\.(pem|key|p8|p12|pfx)$/i
-
-/** Credentials and keys: excluded from every manifest and refused on landing, whatever the rules say. */
-export function isSecretPath(relPath: string): boolean {
-  const base = relPath.split('/').pop() ?? relPath
-  return SECRET_NAMES.has(base) || SECRET_EXT.test(base)
-}
-
-/** A relPath as the wire may carry it: posix, normalized, relative, no `..`, no `.`, no empty segment. */
-export function validRelPath(relPath: string): boolean {
-  if (typeof relPath !== 'string' || relPath.length === 0 || relPath.length > 1024) return false
-  if (relPath.includes('\0') || relPath.includes('\\') || relPath.startsWith('/')) return false
-  if (posix.normalize(relPath) !== relPath) return false
-  return relPath.split('/').every((seg) => seg !== '' && seg !== '.' && seg !== '..')
-}
+// The secret and path rules live in src/shared/secretPaths.ts, where the skills store reads them too.
+export { isSecretPath, validRelPath }
 
 /** The rule a relPath falls under, or null when it is outside the set (or a secret, or a bad path). */
 export function ruleFor(relPath: string, rules: readonly SetRule[] = HARNESS_SET): SetRule | null {
