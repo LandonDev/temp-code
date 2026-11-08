@@ -117,6 +117,45 @@ describe("AgentTranscript born-live rows", () => {
     expect(born(container, "Answer a1")).toBe("false");
   });
 
+  it("a turn that settled while the tab was parked shows whole when the reader comes back", () => {
+    const { container, rerender } = render(<AgentTranscript sessionId="s" blocks={chat(1)} busy={false} visible />);
+    // The reader leaves (the tab parks), the next turn runs and settles meanwhile.
+    rerender(<AgentTranscript sessionId="s" blocks={chat(1)} busy={false} visible={false} />);
+    rerender(<AgentTranscript sessionId="s" blocks={[...chat(1), user("u1", 5), answer("a1", 6, true)]} busy visible={false} />);
+    rerender(<AgentTranscript sessionId="s" blocks={chat(2)} busy={false} visible={false} />);
+    rerender(<AgentTranscript sessionId="s" blocks={chat(2)} busy={false} visible />);
+    expect(born(container, "Answer a1")).toBe("false");
+    // Nothing of it fades in as a new turn either.
+    expect(container.querySelector(`[data-turn="u1"].z-fade-in`)).toBeNull();
+  });
+
+  it("a reply still streaming when the reader comes back continues from what arrived", () => {
+    const { container, rerender } = render(<AgentTranscript sessionId="s" blocks={chat(1)} busy={false} visible />);
+    rerender(<AgentTranscript sessionId="s" blocks={chat(1)} busy={false} visible={false} />);
+    rerender(<AgentTranscript sessionId="s" blocks={[...chat(1), user("u1", 5), answer("a1", 6, true)]} busy visible={false} />);
+    rerender(<AgentTranscript sessionId="s" blocks={[...chat(1), user("u1", 5), answer("a1", 6, true)]} busy visible />);
+    expect(born(container, "Answer a1")).toBe("false");
+    // A reply that joins after the reader is back is theirs to watch.
+    const next = [...chat(1), user("u1", 5), answer("a1", 6), read("t1"), answer("a1b", 8, true)];
+    rerender(<AgentTranscript sessionId="s" blocks={next} busy visible />);
+    expect(born(container, "Answer a1b")).toBe("true");
+  });
+
+  it("rows of the last turn that a page brings in above the tail show whole", () => {
+    // A tail-first paint cut inside the last turn: its head lands later, above.
+    const tail = [read("t2"), answer("a2b", 12)];
+    const { container, rerender } = render(<AgentTranscript sessionId="s" blocks={tail} busy={false} visible />);
+    rerender(<AgentTranscript sessionId="s" blocks={[...chat(2), user("u2", 9), answer("a2", 10), ...tail]} busy={false} visible />);
+    expect(born(container, "Answer a2")).toBe("false");
+    expect(born(container, "Answer a2b")).toBe("false");
+  });
+
+  it("a transcript that mounts before its rows load shows the loaded rows whole", () => {
+    const { container, rerender } = render(<AgentTranscript sessionId="s" blocks={[]} busy={false} visible />);
+    rerender(<AgentTranscript sessionId="s" blocks={chat(2)} busy={false} visible />);
+    expect(born(container, "Answer a1")).toBe("false");
+  });
+
   it("a born row scrolled out of the window and back shows whole", () => {
     const history = chat(40);
     const { container, rerender } = render(<AgentTranscript sessionId="s" blocks={history} busy visible />);

@@ -412,12 +412,21 @@ foreground, the same words the group line uses); the components only draw it.
     hand; it reveals at the same pace with no hold, and the last step shows
     the whole text. Only a rewrite and a hidden pane snap.
   - **A row born live reveals from its first word.** AgentTranscript keeps
-    the row keys it opened with; a row that joins the last turn after that
-    and was never shown is born live (`RowBornContext`), and its assistant
-    prose passes `revealFromStart`, so a row whose first commit already
-    carried most of the reply, or the whole of it settled, still reveals.
-    History, a page loaded above and a row scrolled back into view show
-    whole.
+    a mark, the last row it holds as history (`watchFrom`): set by its
+    first rows, moved to the end on every render while its pane is parked
+    and whenever the mark's row is gone (a reset). A row past the mark, in
+    the last turn and never shown, landed while the reader watched: it is
+    born live (`RowBornContext`), and its assistant prose passes
+    `revealFromStart`, so a row whose first commit already carried most of
+    the reply, or the whole of it settled, still reveals. Everything else
+    shows whole: history, a page loaded above (inside the last turn too),
+    a row scrolled back into view, and a turn that ran or settled while the
+    tab was parked, which is drawn whole on the first paint after the
+    reader comes back; a reply still streaming then shows what arrived and
+    streams on from there. The tab once kept only the keys it opened with,
+    so a reply that settled while the reader was away played its whole
+    reveal again when they came back. Tests:
+    AgentTranscript.born.dom.test.tsx, AgentTranscript.return.test.tsx.
 
   It steps every `REVEAL.stepMs` (100 ms), waiting on a timer between
   steps, so a step carries what 100 ms of the stream holds (about 35 to 45
@@ -512,9 +521,10 @@ foreground, the same words the group line uses); the components only draw it.
   browser condition; electron.vite.config.ts aliases
   `decode-named-character-reference` to its plain build for the whole
   renderer, since a worker has no document.
-- **Nothing animates on scroll.** A row born after the transcript opened
-  fades in once, on its first mount; one that leaves the window and comes
-  back is history. The fade is `--dur-fast` (120 ms) of opacity, off under reduced
+- **Nothing animates on scroll.** A turn born while the reader watches
+  (past the mark above) fades in once, on its first mount; one that leaves
+  the window and comes back is history, and so is a turn that ran while
+  the tab was parked. The fade is `--dur-fast` (120 ms) of opacity, off under reduced
   motion. Jumps glide the scroll offset; under reduced motion they land.
 
 ## No jerk in any scenario

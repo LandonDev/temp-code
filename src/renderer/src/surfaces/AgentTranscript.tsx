@@ -672,8 +672,9 @@ export const AgentTranscript = memo(function AgentTranscript({
   useMemo(() => {
     rowLayout.setRows(rows.map((row) => ({ key: row.key, estimate: estimateRowHeight(row) })));
   }, [rows, rowLayout]);
-  // Turns born after mount fade in; the ones the transcript opened with, and
-  // the pages loaded above them, are already history. A row fades once, on
+  // Turns born after mount fade in, as rows past the reader's mark (below);
+  // the ones the transcript opened with, the ones that ran while its pane
+  // was parked and the pages loaded above are history. A row fades once, on
   // its first mount: one that leaves the window and comes back as the
   // reader scrolls is history too (`shownRows`), so nothing animates on
   // scroll.
@@ -681,14 +682,18 @@ export const AgentTranscript = memo(function AgentTranscript({
   if (!initialTurns.current) {
     initialTurns.current = new Set(turns.map((turn) => rowKeyOf(turn[0])));
   }
-  // A row that joins the live turn after open was born live: its prose
-  // reveals from its first word, however much its first commit carried. One
-  // there at open, one of a page loaded above (never the last turn) and one
-  // scrolled back into view show whole.
-  const initialRowKeys = useRef<Set<string> | null>(null);
-  if (!initialRowKeys.current) {
-    initialRowKeys.current = new Set(rows.map((row) => row.key));
+  // The reader watches from a mark: the last row the transcript held as
+  // history, set by its first rows and moved to the end on every render
+  // while the pane is parked, so a turn that ran or settled while the reader
+  // was away is history when they come back. A row past the mark landed
+  // while they watched; one before it (a page loaded above, even inside the
+  // last turn) is history. A mark whose row is gone (a reset) moves to the
+  // end. The closing row is no mark: a turn's rows land before it.
+  const watchFrom = useRef<string | null>(null);
+  if (!visible || watchFrom.current === null || rowLayout.indexOf(watchFrom.current) < 0) {
+    watchFrom.current = lastItemKey(rows);
   }
+  const watchIndex = watchFrom.current === null ? Infinity : rowLayout.indexOf(watchFrom.current);
   const shownRows = useRef(new Set<string>());
 
   /**
@@ -1102,12 +1107,14 @@ export const AgentTranscript = memo(function AgentTranscript({
               fresh={
                 row.kind !== "more" &&
                 !initialTurns.current!.has(row.turn.id) &&
+                // A closing row is born with its turn, so its turn's first row decides.
+                (row.kind === "end" ? rowLayout.indexOf(row.turn.id) : mounted.start + i) > watchIndex &&
                 !shownRows.current.has(row.key)
               }
               bornLive={
                 row.kind === "item" &&
                 row.turn.isLast &&
-                !initialRowKeys.current!.has(row.key) &&
+                mounted.start + i > watchIndex &&
                 !shownRows.current.has(row.key)
               }
               cwd={cwd}
@@ -1315,6 +1322,12 @@ function sameRowViewProps(a: RowViewProps, b: RowViewProps): boolean {
     if (key === "row" ? !sameRow(a.row, b.row) : a[key] !== b[key]) return false;
   }
   return Object.keys(a).length === Object.keys(b).length;
+}
+
+/** The key of the last row that is not a turn's closing row or the history control. */
+function lastItemKey(rows: readonly TranscriptRow[]): string | null {
+  for (let i = rows.length - 1; i >= 0; i--) if (rows[i].kind === "item") return rows[i].key;
+  return null;
 }
 
 function lastUserBlockId(blocks: Block[]): string | undefined {
