@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { sha256Hex } from './sha256'
 import type { AddonSpec } from './contract-addons'
+import type { Principal } from './capabilities'
 
 /**
  * The add-on registry's pure rules (CLAUDE.md "Add-ons and skills: one
@@ -195,6 +196,19 @@ export function mayAllow(toolName: string | null | undefined, by: ApprovalBy): b
   if (by.kind === 'local') return true
   if (by.kind === 'remote') return by.caps.includes('admin')
   return false
+}
+
+/** A socket's principal as an approver: the local socket, or a remote key with its capabilities. */
+export const approverOf = (principal: Principal): ApprovalBy => (principal.kind === 'local' ? { kind: 'local' } : { kind: 'remote', caps: principal.caps })
+
+/**
+ * The guard at every place an allow reaches `registry.approve`
+ * (`session.approve`, a far parent's `thread.answer`, an MCP key's prompt
+ * answer): throws ADDON_APPROVE_REFUSAL when `by` may not allow a card
+ * `toolName` raised. A deny always passes.
+ */
+export function assertMayAnswer(toolName: string | null | undefined, allow: boolean, by: ApprovalBy): void {
+  if (allow && !mayAllow(toolName, by)) throw new Error(ADDON_APPROVE_REFUSAL)
 }
 
 const SAFE_ARG = /^[A-Za-z0-9_@%+=:,./-]+$/

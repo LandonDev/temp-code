@@ -535,6 +535,14 @@ describe('get_session, list_pending, respond', () => {
       kind: 'plan'
     })
 
+    // An add-on's card: no key here may allow it, even one with approve; a deny passes.
+    server.registry.append(t.id, { type: 'approval-request', requestId: 'a2', toolName: 'addon_add', title: 'Add the add-on github', input: {} })
+    const addon = await respond(ctx(approver), { session: t.id, requestId: 'a2', allow: true }).catch((e: unknown) => e)
+    expect(addon).toBeInstanceOf(FacadeError)
+    expect((addon as FacadeError).code).toBe('forbidden')
+    expect((addon as Error).message).toBe('forbidden: approving an add-on needs a person with an admin key')
+    expect(await respond(ctx(approver), { session: t.id, requestId: 'a2', allow: false })).toMatchObject({ ok: true, kind: 'permission' })
+
     server.registry.append(t.id, { type: 'error', message: 'harness died' })
     server.registry.append(t.id, { type: 'status', status: 'error' })
     expect(await getSession(ctx(), { session: t.id })).toMatchObject({

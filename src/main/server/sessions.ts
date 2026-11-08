@@ -636,6 +636,8 @@ export class SessionRegistry {
   /** Approvals raised through requestApproval, per session: requestId →
    *  settle. Drivers with their own prompt loop (codex) keep theirs. */
   private pendingApprovals = new Map<string, Map<string, (allow: boolean, auto?: boolean) => void>>()
+  /** The tool each of those approvals guards, by `<sessionId>\0<requestId>`: an add-on's card is allowed only by a person with admin (addons.ts mayAllow). */
+  private pendingApprovalTools = new Map<string, string>()
   private starting = new Map<string, Promise<DriverHandle>>()
   private subscribers = new Map<string, Set<SessionListener>>()
   private metaListeners = new Set<MetaListener>()
@@ -3611,6 +3613,8 @@ export class SessionRegistry {
       this.pendingApprovals.set(sessionId, pending)
     }
     const map = pending
+    const toolKey = `${sessionId}\0${requestId}`
+    this.pendingApprovalTools.set(toolKey, req.toolName)
     this.append(sessionId, {
       type: 'approval-request',
       requestId,
@@ -3623,6 +3627,7 @@ export class SessionRegistry {
     return new Promise((resolve) => {
       const finish = (allow: boolean, auto = false): void => {
         if (!map.delete(requestId)) return
+        this.pendingApprovalTools.delete(toolKey)
         clearTimeout(timer)
         this.append(sessionId, { type: 'approval-resolved', requestId, allow, auto })
         this.append(sessionId, { type: 'status', status: 'running' })
@@ -3632,6 +3637,11 @@ export class SessionRegistry {
       map.set(requestId, finish)
       req.signal?.addEventListener('abort', () => finish(false, true), { once: true })
     })
+  }
+
+  /** The tool a pending approval raised through requestApproval guards, or null (none pending, or a driver's own prompt). */
+  pendingApprovalTool(sessionId: string, requestId: string): string | null {
+    return this.pendingApprovalTools.get(`${sessionId}\0${requestId}`) ?? null
   }
 
   private denyPendingApprovals(sessionId: string): void {

@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { LIVE_STATUSES } from '@shared/session-lifecycle'
+import { assertMayAnswer } from '@shared/addons'
 import { isAbsolute, join } from 'node:path'
 import type { ServerPush } from '@shared/contract'
 import {
@@ -482,6 +483,8 @@ export class CrossHostThreads {
           throw new Error(`${a.requestId} is not this thread's pending request${pending ? ` (current: ${pending.requestId})` : ' (nothing pending)'}`)
         if (pending.kind === 'approval') {
           if (a.allow === undefined) throw new Error('this thread is waiting on a permission approval: pass allow')
+          // A parent model's answer_agent: it may never allow its child's add-on.
+          assertMayAnswer(pending.toolName, a.allow, { kind: 'model' })
           await this.deps.registry.approve(a.sessionId, a.requestId, a.allow)
           line(`${a.allow ? 'allowed' : 'denied'} ${a.requestId} on ${a.sessionId}`)
           return { ok: true, kind: 'approval' }

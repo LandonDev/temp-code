@@ -2,6 +2,7 @@ import { hostname } from 'node:os'
 import { basename } from 'node:path'
 import { z } from 'zod'
 import { allows, type Capability, type Principal } from '@shared/capabilities'
+import { ADDON_APPROVE_REFUSAL, mayAllow } from '@shared/addons'
 import { relayState, type HostPresence, type PowerState, type RelayState, type ScreenState } from '@shared/contract-relay'
 import { CATALOG, modelInfo, resolveModel, visibleCatalog, type ProviderId } from '@shared/catalog'
 import type { FileChange, ProjectMeta, WorkspaceMeta } from '@shared/domain'
@@ -1033,6 +1034,8 @@ export async function respond(
         `This key cannot approve permission prompts: that needs the approve capability, and bot (MCP) keys are capped at read and operate. Tell the user to answer it in temp-code — thread "${meta.title}" asks: ${prompt.summary}.`
       )
     }
+    // A bot's answer: it may never allow an add-on (addons.ts).
+    if (input.allow && !mayAllow(prompt.tool, { kind: 'model' })) throw new FacadeError('forbidden', ADDON_APPROVE_REFUSAL)
     await reg.approve(meta.id, prompt.requestId, input.allow)
   }
   const now = reg.get(meta.id) ?? meta

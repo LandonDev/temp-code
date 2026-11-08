@@ -6,6 +6,8 @@ import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
 import type { DriverCtx } from './drivers/types'
 import type { AgentEvent } from '../../shared/events'
+import type { Principal } from '../../shared/capabilities'
+import { ADDON_APPROVE_REFUSAL, approverOf, assertMayAnswer } from '../../shared/addons'
 
 /** A fake second-class driver: every send asks for approval and reports the answer. */
 const answers: boolean[] = []
@@ -48,7 +50,9 @@ vi.mock('./drivers', () => ({
         send: async (text: string) => {
           const edit = text === 'edit'
           if (edit) ctx.emit({ type: 'tool-call', callId: 'c1', name: 'Edit', input: { file_path: 'a.js' } } as AgentEvent)
-          const allow = await ctx.requestApproval({ toolName: 'shell', input: { cmd: 'ls' } })
+          const allow = await ctx.requestApproval(
+            text === 'add it' ? { toolName: 'addon_add', title: 'Add the add-on github', input: {} } : { toolName: 'shell', input: { cmd: 'ls' } }
+          )
           answers.push(allow)
           if (edit) ctx.emit({ type: 'tool-result', callId: 'c1', output: '', isError: false } as AgentEvent)
           ctx.emit({ type: 'turn-complete' } as AgentEvent)
@@ -101,6 +105,33 @@ it('emits approval-request/waiting, then approval-resolved/running once approve(
   // A second answer for the same request is ignored.
   await registry.approve(s.id, req!.requestId, false)
   expect(answers).toEqual([true])
+})
+
+it('keeps the tool each pending approval guards: an add-on card is allowed only by a person with admin, and denied by anyone', async () => {
+  const nonAdmin: Principal = { kind: 'remote', keyId: 'k', name: 'Phone', audience: 'client', caps: ['read', 'operate', 'approve'] }
+  const admin: Principal = { ...nonAdmin, caps: ['read', 'admin'] }
+  const s = await registry.create({ cwd: root, provider: 'grok' })
+  const turn = registry.send(s.id, 'add it')
+  await settle()
+  const id = requestOf(s.id)!.requestId
+  const tool = registry.pendingApprovalTool(s.id, id)
+  expect(tool).toBe('addon_add')
+  // session.approve's guard, as index.ts runs it.
+  expect(() => assertMayAnswer(tool, true, approverOf(nonAdmin))).toThrow(ADDON_APPROVE_REFUSAL)
+  expect(() => assertMayAnswer(tool, true, approverOf(admin))).not.toThrow()
+  expect(() => assertMayAnswer(tool, true, approverOf({ kind: 'local' }))).not.toThrow()
+  expect(() => assertMayAnswer(tool, false, approverOf(nonAdmin))).not.toThrow()
+  await registry.approve(s.id, id, false)
+  await turn
+  expect(answers).toEqual([false])
+  expect(registry.pendingApprovalTool(s.id, id)).toBeNull()
+  // Any other card is the approve capability's, as before.
+  const next = registry.send(s.id, 'run it')
+  await settle()
+  const other = registry.eventsAfter(s.id, 0).map((r) => r.event).filter((e) => e.type === 'approval-request').at(-1) as { requestId: string }
+  expect(() => assertMayAnswer(registry.pendingApprovalTool(s.id, other.requestId), true, approverOf(nonAdmin))).not.toThrow()
+  await registry.approve(s.id, other.requestId, true)
+  await next
 })
 
 for (const [what, text, resolved] of [

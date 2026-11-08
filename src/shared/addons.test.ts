@@ -7,6 +7,8 @@ import {
   addonProblem,
   addonRemoveCard,
   approvalNeedsAdmin,
+  approverOf,
+  assertMayAnswer,
   exposedNames,
   looksSecret,
   mayAllow,
@@ -239,6 +241,14 @@ describe('the approval cards', () => {
     expect(mayAllow('Bash', { kind: 'model' })).toBe(true)
     expect(mayAllow(null, { kind: 'remote', caps: [] })).toBe(true)
     expect(ADDON_ADMIN_LINE).toBe('Needs an admin key')
+  })
+
+  it('turns a principal into an approver and guards an allow, never a deny', () => {
+    expect(approverOf({ kind: 'local' })).toEqual({ kind: 'local' })
+    expect(approverOf({ kind: 'remote', keyId: 'k', name: 'P', audience: 'client', caps: ['read', 'approve'] })).toEqual({ kind: 'remote', caps: ['read', 'approve'] })
+    expect(() => assertMayAnswer('addon_add', true, { kind: 'model' })).toThrow('forbidden: approving an add-on needs a person with an admin key')
+    expect(() => assertMayAnswer('addon_add', false, { kind: 'model' })).not.toThrow()
+    expect(() => assertMayAnswer('Bash', true, { kind: 'model' })).not.toThrow()
   })
 
   it('quotes an argument only when a shell needs it', () => {

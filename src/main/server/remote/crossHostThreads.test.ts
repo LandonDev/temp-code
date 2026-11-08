@@ -335,6 +335,17 @@ describe('CrossHostThreads', () => {
     expect(await svc.handle('thread.answer', { caller, args: { sessionId, requestId: 'q1', answers: [['a']] } }, ctx)).toEqual({ ok: true, kind: 'question' })
     expect(registry.answers).toEqual([{ id: sessionId, requestId: 'q1', answers: [['a']] }])
   })
+  it('thread.answer never allows an add-on card, a parent model being no person; it may deny one', async () => {
+    const { svc, registry } = service()
+    const { sessionId } = (await svc.handle('thread.start', { caller, args: startArgs }, ctx)) as { sessionId: string }
+    registry.append(sessionId, { type: 'approval-request', requestId: 'r1', toolName: 'mcp__app__addon_add' } as AgentEvent)
+    await expect(svc.handle('thread.answer', { caller, args: { sessionId, requestId: 'r1', allow: true } }, ctx)).rejects.toThrow(
+      'forbidden: approving an add-on needs a person with an admin key'
+    )
+    expect(registry.approvals).toEqual([])
+    expect(await svc.handle('thread.answer', { caller, args: { sessionId, requestId: 'r1', allow: false } }, ctx)).toEqual({ ok: true, kind: 'approval' })
+    expect(registry.approvals).toEqual([{ id: sessionId, requestId: 'r1', allow: false }])
+  })
   it('a settle is reported to the box over the link as crossHost.settled', async () => {
     vi.useFakeTimers()
     const { svc, registry, requests } = service()

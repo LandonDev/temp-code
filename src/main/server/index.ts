@@ -51,6 +51,7 @@ import { StoreSync } from './remote/storeSync'
 import { AddonStore } from './addonStore'
 import { SkillStore } from './skillStore'
 import { storePushes, storeRpc } from './storeRpc'
+import { approverOf, assertMayAnswer } from '@shared/addons'
 import { AwaySync } from './remote/awaySync'
 import { SessionMover, handleSessionMove } from './remote/sessionMover'
 import { claudeConfigDir, codexHomeDir } from './sessionMove'
@@ -2661,6 +2662,8 @@ export async function startServer(
             break
           }
           case 'session.approve':
+            // An add-on's card is allowed only by a person with admin (addons.ts).
+            assertMayAnswer(registry.pendingApprovalTool(req.params.sessionId, req.params.requestId), req.params.allow, approverOf(principal))
             await registry.approve(req.params.sessionId, req.params.requestId, req.params.allow)
             sendFrame({ id: req.id, ok: true, result: null })
             break
