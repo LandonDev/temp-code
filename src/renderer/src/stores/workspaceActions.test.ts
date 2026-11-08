@@ -27,10 +27,9 @@ import {
   leaveGroupIfMoved,
   openInBackground,
   openSessionIds,
-  projectTabTarget,
   replacePane,
   splitBeside,
-  workspaceTabTarget,
+  tabShowsProject,
 } from "./workspaceActions";
 
 function tab(id: string, over: Partial<WorkspaceTab> = {}): WorkspaceTab {
@@ -235,49 +234,13 @@ describe("workspace actions", () => {
   });
 });
 
-describe("projectTabTarget", () => {
-  const sessions = [session("s-a", "p1"), session("s-b", "p2"), session("s-c", "p1")];
+describe("tabShowsProject", () => {
+  const sessions = [session("s-a", "p1"), session("s-b", "p2")];
 
-  it("stays when the active tab already shows the project", () => {
-    const s = state([tab("a"), tab("b")], "a");
-    expect(projectTabTarget(s, sessions, "p1")).toEqual({ action: "stay" });
-  });
-
-  it("activates the most recently visited tab of the project", () => {
-    let s = state([tab("a"), tab("b"), tab("c")], "a");
-    s = settleVisits(setActiveTabId(s, "c"));
-    s = settleVisits(setActiveTabId(s, "b"));
-    expect(projectTabTarget(s, sessions, "p1")).toEqual({ action: "activate", tabId: "c" });
-  });
-
-  it("falls back to the first tab of the project, then to opening a thread", () => {
-    const s = state([tab("b"), tab("a"), tab("c")], "b");
-    expect(projectTabTarget(s, sessions, "p1")).toEqual({ action: "activate", tabId: "a" });
-    expect(projectTabTarget(s, sessions, "p9")).toEqual({ action: "open" });
-  });
-});
-
-describe("workspaceTabTarget", () => {
-  const at = (id: string, cwd: string): Session => ({ ...newSession("local", "claude", cwd), id });
-  const sessions = [at("s-a", "/repo"), at("s-b", "/other"), at("s-c", "/repo")];
-
-  it("prefers the tab holding the workspace's last thread", () => {
-    let s = state([tab("a"), tab("b"), tab("c")], "a");
-    s = settleVisits(setActiveTabId(s, "b"));
-    expect(workspaceTabTarget(s, sessions, "/repo", "s-c")?.id).toBe("c");
-  });
-
-  it("falls back to the most recently visited tab, then the first", () => {
-    let s = state([tab("a"), tab("b"), tab("c")], "a");
-    s = settleVisits(setActiveTabId(s, "c"));
-    s = settleVisits(setActiveTabId(s, "b"));
-    expect(workspaceTabTarget(s, sessions, "/repo", null)?.id).toBe("c");
-    expect(workspaceTabTarget(s, sessions, "/repo", "s-gone")?.id).toBe("c");
-    expect(workspaceTabTarget(state([tab("b"), tab("a"), tab("c")], "b"), sessions, "/repo", null)?.id).toBe("a");
-  });
-
-  it("is undefined when none of the workspace's tabs is open", () => {
-    expect(workspaceTabTarget(state([tab("b")], "b"), sessions, "/repo", "s-a")).toBeUndefined();
+  it("is true only while the active tab shows the project", () => {
+    expect(tabShowsProject(state([tab("a"), tab("b")], "a"), sessions, "p1")).toBe(true);
+    expect(tabShowsProject(state([tab("a"), tab("b")], "b"), sessions, "p1")).toBe(false);
+    expect(tabShowsProject(state([tab("a")], "a"), sessions, "p9")).toBe(false);
   });
 });
 

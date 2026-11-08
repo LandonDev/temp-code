@@ -157,14 +157,11 @@ import {
   resolveWorkspacePath,
 } from "./lib/paths";
 import { removeProjectData } from "./lib/projectData";
-import { activeLanding } from "./lib/projectLanding";
+import { landingOf, seenNow } from "./lib/projectLanding";
 import {
   contextForCwd,
   contextOfSession,
-  forgetLastSession,
   rebaseToWorkspace,
-  DRAFT_LANDING,
-  resolveLanding,
   resolveSessionContext,
   type ResolvedContext,
   workspacePathOfSession,
@@ -202,7 +199,7 @@ import {
   workspace,
   workspaceTabsStore,
 } from "./stores/workspace";
-import { openSessionIds, projectTabTarget, workspaceActions, workspaceTabTarget } from "./stores/workspaceActions";
+import { openSessionIds, tabShowsProject, workspaceActions } from "./stores/workspaceActions";
 import { refreshHistory, skipForgetSessionIds } from "./stores/subscriptions";
 import { editors, useEditors } from "./stores/editors";
 import { headerStore, tabProjectOf } from "./stores/header";
@@ -822,30 +819,14 @@ export default function App() {
       // of the pane, most visibly when that project's tab is already active.
       shell.closeViews();
       const tabs = workspaceTabsStore.getState();
-      const target = projectTabTarget(tabs, sessionStore.getSnapshot(), projectId);
-      if (target.action === "stay") return;
-      const metas = sessionStore.metas();
-      const catalog = workspaceStore.getSnapshot();
-      // Coming back from elsewhere: the most recent active thread first.
+      if (tabShowsProject(tabs, sessionStore.getSnapshot(), projectId)) return;
+      // Coming back from elsewhere: the one landing rule, else the draft.
       const shown = tabs.tabs.find((tab) => tab.id === tabs.activeTabId)?.focusedId;
-      const active = activeLanding({ projectId }, metas, catalog, shown)?.id;
-      // Left on its draft: the draft comes back, even with a thread tab open.
-      const landing = active ?? resolveLanding({ projectId }, metas, catalog);
-      if (landing === DRAFT_LANDING) {
-        openProjectDraft({ projectId }, { placement: "tab" });
-        return;
-      }
-      if (target.action === "activate" && !active) {
-        activateTab(target.tabId);
-        return;
-      }
-      // No pane of that project is open: land on the thread it was last on,
-      // else its draft, so the body never keeps showing another project's
-      // thread under this project's header.
+      const landing = landingOf({ projectId }, sessionStore.metas(), workspaceStore.getSnapshot(), seenNow(), shown)?.id;
       if (landing) void onSelectHistorySessionRef.current?.(landing);
       else openProjectDraft({ projectId }, { placement: "tab" });
     },
-    [activateTab, openProjectDraft],
+    [openProjectDraft],
   );
 
   const onProjectCreated = useCallback(
@@ -1816,7 +1797,6 @@ export default function App() {
         );
       }
       if (archived) {
-        forgetLastSession(sessionId);
         // The chip leaves the strip; its neighbour takes selection as a click
         // on it would, so a neighbour sharing a split takes the pane's focus.
         const next = archiveNeighbour(headerStore.getState().model, sessionId);
@@ -1866,7 +1846,6 @@ export default function App() {
         : "this session";
 
       if (!options?.confirmed && !(await confirmAction({ title: `Delete “${label}”?`, action: "Delete", danger: true }))) return;
-      forgetLastSession(sessionId);
       // Everything the next screen depends on, read before the delete: the
       // host's session-removed push lands ahead of its answer, after which
       // the deleted thread's project could no longer be known.
@@ -2068,77 +2047,32 @@ export default function App() {
         (activeWorkspace ? focusedFileTab(activeWorkspace)?.cwd : undefined);
       if (project.alreadyIn(currentCwd, normalized)) return;
 
-      // Its most recent active thread, else the thread this workspace was
-      // last on, comes back before any other open tab of it, and an open
-      // tab before a blank one.
-      const active = activeLanding({ workspacePath: normalized }, sessionStore.metas(), workspaceStore.getSnapshot())?.id;
-      const landing =
-        active ??
-        resolveLanding({ workspacePath: normalized }, sessionStore.metas(), workspaceStore.getSnapshot());
-      if (landing === DRAFT_LANDING) {
-        project.enterWorkspace(normalized);
-        openProjectDraft({ cwd: normalized }, { placement: "tab" });
-        return;
-      }
-      const match = workspaceTabTarget(
-        workspaceTabsStore.getState(),
-        rebaseToWorkspace(sessionStore.getSnapshot(), workspaceStore.getSnapshot()),
-        normalized,
-        landing,
-      );
-      if (match && !active) {
-        project.enterWorkspace(normalized);
-        if (landing && leafIds(match.layout).includes(landing)) focusOpenSession(landing);
-        else activateTab(match.id);
-        return;
-      }
-      if (landing) {
-        project.enterWorkspace(normalized);
-        void openLanding(landing, normalized);
-        return;
-      }
-
-      // Nothing to land on: the workspace's own draft, never a fresh one.
+      // The one landing rule, else the workspace's own draft.
+      const landing = landingOf({ workspacePath: normalized }, sessionStore.metas(), workspaceStore.getSnapshot(), seenNow())?.id;
       project.enterWorkspace(normalized);
-      openProjectDraft({ cwd: normalized }, { placement: "tab" });
+      if (landing) void openLanding(landing, normalized);
+      else openProjectDraft({ cwd: normalized }, { placement: "tab" });
     },
-    [activateTab, focusOpenSession, openLanding, openProjectDraft],
+    [openLanding, openProjectDraft],
   );
 
   /** Rail: the home, the chats outside every workspace. Its open tab stays
-   *  put; else the thread it was last on comes back, else a blank chat. */
+   *  put; else the one landing rule, else the home's draft. */
   const onOpenChats = useCallback(() => {
     shell.closeViews();
     project.setProjectCwd("~");
     const state = workspaceTabsStore.getState();
     const catalog = workspaceStore.getSnapshot();
     const open = filterTabsForWorkspace(state.tabs, sessionStore.getSnapshot(), catalog, null);
-    const inHome = open.some((tab) => tab.id === state.activeTabId);
-    const active = inHome ? null : activeLanding({ workspacePath: "~" }, sessionStore.metas(), catalog)?.id;
-    const landing = active ?? resolveLanding({ workspacePath: "~" }, sessionStore.metas(), catalog);
-    if (landing === DRAFT_LANDING) {
-      project.selectProject(null);
-      openProjectDraft({ projectId: null }, { placement: "tab" });
-      return;
-    }
-    if (landing && focusOpenSession(landing)) return;
-    if (inHome) return;
-    const recent = [...state.visits.back]
-      .reverse()
-      .map((id) => open.find((tab) => tab.id === id))
-      .find((tab) => tab !== undefined);
-    const target = recent ?? open[0];
-    if (target && !active) {
-      activateTab(target.id);
-      return;
-    }
+    if (open.some((tab) => tab.id === state.activeTabId)) return;
+    const landing = landingOf({ workspacePath: "~" }, sessionStore.metas(), catalog, seenNow())?.id;
     if (landing) {
       void openLanding(landing, "~");
       return;
     }
     project.selectProject(null);
     openProjectDraft({ projectId: null }, { placement: "tab" });
-  }, [activateTab, focusOpenSession, openLanding, openProjectDraft]);
+  }, [openLanding, openProjectDraft]);
 
   const newWorkspacePath = useShell((s) => s.newWorkspacePath);
   const newWorkspaceEnvironmentId = useShell((s) => s.newWorkspaceEnvironmentId);

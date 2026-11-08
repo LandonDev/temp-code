@@ -1,7 +1,7 @@
 import { aliasKeys } from "./linkedRail";
 import { looksLikeProject, normalizeProjectPath } from "./recents";
 import type { Session } from "./session";
-import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "./tcserver/types";
+import type { ProjectMeta, WorkspaceMeta } from "./tcserver/types";
 import { projectOf, workspaceByPath, workspaceIndex } from "./tcserver/workspaces";
 
 /**
@@ -114,7 +114,6 @@ export function rebaseToWorkspace<T extends Pick<Session, "cwd" | "projectId" | 
 // ── selection persistence ──────────────────────────────────────────────
 
 const SELECTED_KEY = "monocode.tc.selectedProject";
-const LAST_SESSION_KEY = "monocode.tc.lastSession";
 
 function readMap(storageKey: string): Record<string, string> {
   try {
@@ -177,71 +176,18 @@ export function saveSelectedProject(
   writeMap(SELECTED_KEY, next);
 }
 
-// ── the last thread per project / workspace ────────────────────────────
+// ── landings ───────────────────────────────────────────────────────────
 
-/** The landing of a scope left while its draft was on screen
- *  (lib/projectDrafts.ts): coming back opens the draft, not a thread. */
-export const DRAFT_LANDING = "draft:";
-
-/** Where a landing is remembered: a project, or a workspace folder. */
+/** A scope a person comes back to (lib/projectLanding.ts `landingOf`): a
+ *  project, or a workspace folder ("~" for the home). */
 export type LandingScope = { projectId: string } | { workspacePath: string };
 
-const scopeKey = (scope: LandingScope): string =>
-  "projectId" in scope
-    ? `proj:${scope.projectId}`
-    : `ws:${homeOrWorkspacePath(scope.workspacePath)}`;
-
-export function loadLastSession(scope: LandingScope): string | null {
-  const id = readMap(LAST_SESSION_KEY)[scopeKey(scope)];
-  return typeof id === "string" && id ? id : null;
-}
-
-export function saveLastSession(scope: LandingScope, sessionId: string): void {
-  const key = scopeKey(scope);
-  const next = readMap(LAST_SESSION_KEY);
-  if (next[key] === sessionId) return;
-  next[key] = sessionId;
-  writeMap(LAST_SESSION_KEY, next);
-}
-
-/** Every scope that remembered this thread lets it go (delete, archive). */
-export function forgetLastSession(sessionId: string): void {
-  const map = readMap(LAST_SESSION_KEY);
-  const keys = Object.keys(map).filter((key) => map[key] === sessionId);
-  if (keys.length === 0) return;
-  for (const key of keys) delete map[key];
-  writeMap(LAST_SESSION_KEY, map);
-}
-
-/** The rail key a session's landing is remembered under: its workspace's
- *  path, or the link's leader's for a copy on another host
- *  (lib/linkedRail.ts), so a linked row lands on any copy's last thread. */
+/** The rail key a session lands under: its workspace's path, or the link's
+ *  leader's for a copy on another host (lib/linkedRail.ts), so a linked row
+ *  reads every copy as one. */
 export function landingPathOfSession(
   session: Pick<Session, "cwd" | "projectId" | "workspaceId">,
   catalog: Catalog,
 ): string {
   return aliasKeys(catalog.workspaces).path(workspacePathOfSession(session, catalog));
-}
-
-/** The thread a scope lands on: the remembered one while it still exists,
- *  is not archived and still belongs to the scope (a moved workspace or a
- *  thread moved out of its project forgets), or `DRAFT_LANDING` when it was
- *  left on its draft. Null means open the scope's draft. */
-export function resolveLanding(
-  scope: LandingScope,
-  metas: readonly SessionMeta[],
-  catalog: Catalog,
-): string | null {
-  // A copy's path reads the link's leader's memory.
-  const keyed: LandingScope =
-    "projectId" in scope ? scope : { workspacePath: aliasKeys(catalog.workspaces).path(scope.workspacePath) };
-  const id = loadLastSession(keyed);
-  if (!id) return null;
-  if (id === DRAFT_LANDING) return DRAFT_LANDING;
-  const meta = metas.find((m) => m.id === id);
-  // A subagent renders on its parent's board and is never a landing.
-  if (!meta || meta.archived || meta.parentId) return null;
-  if ("projectId" in keyed) return meta.projectId === keyed.projectId ? id : null;
-  const here = homeOrWorkspacePath(keyed.workspacePath);
-  return homeOrWorkspacePath(landingPathOfSession(meta, catalog)) === here ? id : null;
 }

@@ -2330,9 +2330,12 @@ proof and the sizing rules; the pieces, by name:
   (src/shared/placeholderTitles.ts) is never sliced from the message nor
   replaced by the generated one, and an empty field leaves both as before;
   the phone's New thread sheet has the same row;
-  coming back to a project, a workspace or the home opens its most recent
-  active thread first, a batch thread's master on its board, then the
-  remembered thread or draft: `activeLanding` in lib/projectLanding.ts),
+  coming back to a project, a workspace or the home takes one rule,
+  `landingOf` in lib/projectLanding.ts: the newest root that runs or needs
+  you (a batch thread's master on its board), else the newest unread (the
+  rail's rule), else the newest unarchived root at rest, else the draft
+  only once nothing unarchived is left; never an archived thread, and no
+  remembered thread or open tab outranks it),
   and the host archives empty placeholder threads a day old at boot
   (`archiveEmptyThreads`); the board under Search, Inbox, Notes,
   Accounts or Settings is parked (`.board-parked`), never display:none.

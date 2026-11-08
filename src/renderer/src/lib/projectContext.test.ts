@@ -1,23 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  DRAFT_LANDING,
   contextForCwd,
   contextOfSession,
   folderKey,
-  forgetLastSession,
   homeOrWorkspacePath,
-  landingPathOfSession,
-  loadLastSession,
   loadSelectedProject,
   rebaseToWorkspace,
-  resolveLanding,
   resolveSessionContext,
   sameFolder,
-  saveLastSession,
   saveSelectedProject,
   workspacePathOfSession,
 } from "./projectContext";
-import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "./tcserver/types";
+import type { ProjectMeta, WorkspaceMeta } from "./tcserver/types";
 
 const workspaces: WorkspaceMeta[] = [
   { environmentId: "local", id: "w1", name: "repo", path: "/home/me/repo", git: true, createdAt: 1 },
@@ -148,121 +142,5 @@ describe("selected project persistence", () => {
   it("the key's own entry wins over a stale raw one", () => {
     localStorage.setItem(SELECTED, JSON.stringify({ "/home/me/repo": "p-mac", "/srv/work/repo": "p-wt" }));
     expect(loadSelectedProject("/srv/work/repo", linked)).toBe("p-mac");
-  });
-});
-
-describe("last thread per project / workspace", () => {
-  beforeEach(mockLocalStorage);
-  const meta = (id: string, over: Partial<SessionMeta> = {}): SessionMeta =>
-    ({
-      environmentId: "local",
-      id,
-      parentId: null,
-      projectId: "p1",
-      workspaceId: null,
-      archived: false,
-      cwd: "/home/me/.temp-code/worktrees/auth",
-      ...over,
-    }) as SessionMeta;
-
-  it("round-trips per project and per workspace folder, and forgets a thread everywhere", () => {
-    saveLastSession({ projectId: "p1" }, "s1");
-    saveLastSession({ workspacePath: "/home/me/repo/" }, "s1");
-    expect(loadLastSession({ projectId: "p1" })).toBe("s1");
-    expect(loadLastSession({ workspacePath: "/home/me/repo" })).toBe("s1");
-    expect(loadLastSession({ projectId: "p2" })).toBeNull();
-    forgetLastSession("s1");
-    expect(loadLastSession({ projectId: "p1" })).toBeNull();
-    expect(loadLastSession({ workspacePath: "/home/me/repo" })).toBeNull();
-  });
-
-  it("lands on the remembered thread while it is live and still in scope", () => {
-    saveLastSession({ projectId: "p1" }, "s1");
-    saveLastSession({ workspacePath: "/home/me/repo" }, "s1");
-    const metas = [meta("s1")];
-    expect(resolveLanding({ projectId: "p1" }, metas, catalog)).toBe("s1");
-    expect(resolveLanding({ workspacePath: "/home/me/repo/" }, metas, catalog)).toBe("s1");
-  });
-
-  it("seeds blank when the thread is missing, archived, or moved to another project", () => {
-    saveLastSession({ projectId: "p1" }, "s1");
-    expect(resolveLanding({ projectId: "p1" }, [], catalog)).toBeNull();
-    expect(resolveLanding({ projectId: "p1" }, [meta("s1", { archived: true })], catalog)).toBeNull();
-    expect(resolveLanding({ projectId: "p1" }, [meta("s1", { projectId: "p2" })], catalog)).toBeNull();
-    expect(resolveLanding({ projectId: "p2" }, [meta("s1")], catalog)).toBeNull();
-    expect(resolveLanding({ projectId: "p1" }, [meta("s1", { parentId: "root" })], catalog)).toBeNull();
-  });
-
-  it("a scope left on its draft lands on the draft, even with its old thread still live", () => {
-    saveLastSession({ projectId: "p1" }, "s1");
-    saveLastSession({ projectId: "p1" }, DRAFT_LANDING);
-    saveLastSession({ workspacePath: "/home/me/repo" }, DRAFT_LANDING);
-    const metas = [meta("s1")];
-    expect(resolveLanding({ projectId: "p1" }, metas, catalog)).toBe(DRAFT_LANDING);
-    expect(resolveLanding({ workspacePath: "/home/me/repo/" }, metas, catalog)).toBe(DRAFT_LANDING);
-    // Leaving it on a thread later lands on the thread again.
-    saveLastSession({ projectId: "p1" }, "s1");
-    expect(resolveLanding({ projectId: "p1" }, metas, catalog)).toBe("s1");
-  });
-
-  it("the newest thread wins a scope, and forgetting one leaves the others", () => {
-    saveLastSession({ projectId: "p1" }, "s1");
-    saveLastSession({ projectId: "p1" }, "s2");
-    saveLastSession({ projectId: "p2" }, "s1");
-    expect(loadLastSession({ projectId: "p1" })).toBe("s2");
-    forgetLastSession("s2");
-    expect(loadLastSession({ projectId: "p1" })).toBeNull();
-    expect(loadLastSession({ projectId: "p2" })).toBe("s1");
-  });
-
-  it("lands a linked workspace on any copy's last thread, whichever copy's path asks", () => {
-    const linked = {
-      projects,
-      workspaces: [
-        { ...workspaces[0], linkId: "wl_r" },
-        { environmentId: "env_box", id: "w-box", name: "repo", path: "/srv/work/repo", git: true, createdAt: 1, linkId: "wl_r" },
-      ],
-    };
-    const boxThread = meta("b1", { environmentId: "env_box", projectId: null, workspaceId: "w-box", cwd: "/srv/work/repo" });
-    // The subscription remembers a box thread under the leader's path.
-    expect(landingPathOfSession(boxThread, linked)).toBe("/home/me/repo");
-    saveLastSession({ workspacePath: landingPathOfSession(boxThread, linked) }, "b1");
-    expect(resolveLanding({ workspacePath: "/home/me/repo" }, [boxThread], linked)).toBe("b1");
-    expect(resolveLanding({ workspacePath: "/srv/work/repo" }, [boxThread], linked)).toBe("b1");
-  });
-
-  it("forgets a workspace landing once the workspace moved", () => {
-    saveLastSession({ workspacePath: "/home/me/repo" }, "s1");
-    const moved = {
-      projects,
-      workspaces: [{ ...workspaces[0], path: "/home/me/elsewhere" }],
-    };
-    expect(resolveLanding({ workspacePath: "/home/me/repo" }, [meta("s1")], moved)).toBeNull();
-    saveLastSession({ workspacePath: "/home/me/elsewhere" }, "s1");
-    expect(resolveLanding({ workspacePath: "/home/me/elsewhere" }, [meta("s1")], moved)).toBe("s1");
-    // A loose chat hangs off its workspace by id, so it moves with it too.
-    const loose = meta("s2", { projectId: null, workspaceId: "w1", cwd: "/home/me/repo" });
-    saveLastSession({ workspacePath: "/home/me/elsewhere" }, "s2");
-    expect(resolveLanding({ workspacePath: "/home/me/elsewhere" }, [loose], moved)).toBe("s2");
-  });
-
-  it("lands the home on its last loose chat, whatever home directory the server wrote", () => {
-    const loose = meta("s3", { projectId: null, workspaceId: null, cwd: "/home/me" });
-    saveLastSession({ workspacePath: "/home/me" }, "s3");
-    expect(loadLastSession({ workspacePath: "~" })).toBe("s3");
-    expect(resolveLanding({ workspacePath: "~" }, [loose], catalog)).toBe("s3");
-    // A workspace chat never lands the home.
-    const ws = meta("s4", { projectId: null, workspaceId: "w1", cwd: "/home/me/repo" });
-    saveLastSession({ workspacePath: "~" }, "s4");
-    expect(resolveLanding({ workspacePath: "~" }, [ws], catalog)).toBeNull();
-  });
-});
-
-describe("homeOrWorkspacePath", () => {
-  it("keeps a workspace folder and folds everything else into the home", () => {
-    expect(homeOrWorkspacePath("/home/me/repo/")).toBe("/home/me/repo");
-    expect(homeOrWorkspacePath("~")).toBe("~");
-    expect(homeOrWorkspacePath("/")).toBe("~");
-    expect(homeOrWorkspacePath("")).toBe("~");
   });
 });

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { leaf, newFileTab, newTab, newTerminalFile, type WorkspaceTab } from "../lib/layout";
-import { DRAFT_LANDING, loadSelectedProject, saveLastSession, saveSelectedProject } from "../lib/projectContext";
+import { loadSelectedProject, saveSelectedProject } from "../lib/projectContext";
 import { newSession, type Session } from "../lib/session";
 import { markSessionSeen, pruneLastSeen } from "../lib/sessionSeen";
 import { listSessionsByProject, saveWorkspaceSnapshot } from "../lib/sessionStore";
@@ -93,7 +93,6 @@ vi.mock("../lib/projectContext", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/projectContext")>()),
   loadSelectedProject: vi.fn(() => null),
   saveSelectedProject: vi.fn(),
-  saveLastSession: vi.fn(),
 }));
 vi.mock("../lib/recents", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/recents")>()),
@@ -364,36 +363,8 @@ describe("installActiveSessionSync", () => {
     teardown = installActiveSessionSync();
     expect(projectStore.getState().selectedProjectId).toBe("p1");
     expect(markSessionSeen).toHaveBeenCalledWith("s-a", 7);
-    expect(saveLastSession).toHaveBeenCalledWith({ projectId: "p1" }, "s-a");
     expect(migrateWorkspaces).toHaveBeenCalledTimes(1);
     expect(createWorkspace).toHaveBeenCalledWith("local", "/repo");
-  });
-
-  it("a remembered draft on screen is the landing of its project, every linked copy and its workspace", () => {
-    projectDrafts.reload();
-    setTabs([tab("a", { layout: leaf("d1"), focusedId: "d1" })]);
-    const draft = session("d1", { projectId: "p-mac", workspaceId: "w1", cwd: "/repo" });
-    sessionStore.mutate([draft]);
-    projectDrafts.put("link:pl_1", { ...draftPicksOf(draft), segments: [], attachments: [] });
-    vi.spyOn(workspaceStore, "getSnapshot").mockReturnValue(
-      catalog({
-        workspaces: [{ environmentId: "local", id: "w1", name: "repo", path: "/repo", git: true, createdAt: 1 }],
-        projects: [projectMeta("p-mac", { linkId: "pl_1" }), projectMeta("p-box", { environmentId: "env_box", linkId: "pl_1" })],
-      } as Partial<WorkspaceCatalog>),
-    );
-    teardown = installActiveSessionSync();
-    expect(saveLastSession).toHaveBeenCalledWith({ projectId: "p-mac" }, DRAFT_LANDING);
-    expect(saveLastSession).toHaveBeenCalledWith({ projectId: "p-box" }, DRAFT_LANDING);
-    expect(saveLastSession).toHaveBeenCalledWith({ workspacePath: "/repo" }, DRAFT_LANDING);
-  });
-
-  it("a draft with no record (a handoff, a second opinion) lands nowhere", () => {
-    projectDrafts.reload();
-    setTabs([tab("a", { layout: leaf("h1"), focusedId: "h1" })]);
-    sessionStore.mutate([session("h1", { projectId: "p1" })]);
-    vi.spyOn(workspaceStore, "getSnapshot").mockReturnValue(catalog({ projects: [projectMeta("p1")] }));
-    teardown = installActiveSessionSync();
-    expect(saveLastSession).not.toHaveBeenCalled();
   });
 
   it("never makes a local workspace for a window on another host", async () => {

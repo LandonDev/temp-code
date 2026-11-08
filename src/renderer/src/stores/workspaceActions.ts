@@ -17,7 +17,7 @@ import {
   type TabProjectLookup,
 } from "../lib/tabGroups";
 import { focusPane as focusPaneIn } from "../lib/workspaceFocus";
-import { applyBackgroundOpen, filterTabsForProject } from "../lib/workspaceTabGroups";
+import { applyBackgroundOpen } from "../lib/workspaceTabGroups";
 import {
   setActiveTabId,
   setTabs,
@@ -227,55 +227,14 @@ export function isolateTerminals(state: WorkspaceTabsState): WorkspaceTabsState 
   });
 }
 
-/**
- * The tab a workspace comes back on: the one holding the thread it was last
- * on (`landingId`), else its most recently visited open tab, else the first
- * one; undefined when none of its tabs is open.
- */
-export function workspaceTabTarget(
-  state: WorkspaceTabsState,
-  sessions: Session[],
-  path: string,
-  landingId: string | null,
-): WorkspaceTab | undefined {
-  const open = filterTabsForProject(state.tabs, sessions, path);
-  if (open.length === 0) return undefined;
-  const holding = landingId
-    ? open.find((tab) => leafIds(tab.layout).includes(landingId))
-    : undefined;
-  if (holding) return holding;
-  const recent = [...state.visits.back]
-    .reverse()
-    .map((id) => open.find((tab) => tab.id === id))
-    .find((tab) => tab !== undefined);
-  return recent ?? open[0];
-}
-
-export type ProjectTabTarget =
-  | { action: "stay" }
-  | { action: "activate"; tabId: string }
-  | { action: "open" };
-
-/**
- * Where a project card lands: nowhere when the active tab already shows the
- * project, else its most recently visited open tab, else the first one, else
- * the caller opens a thread.
- */
-export function projectTabTarget(
+/** The active tab already shows the project: a card click on it stays put. */
+export function tabShowsProject(
   state: WorkspaceTabsState,
   sessions: readonly Pick<Session, "id" | "projectId">[],
   projectId: string,
-): ProjectTabTarget {
-  const inProject = (tab: WorkspaceTab) =>
-    sessions.find((session) => session.id === tab.focusedId)?.projectId === projectId;
+): boolean {
   const current = state.tabs.find((tab) => tab.id === state.activeTabId);
-  if (current && inProject(current)) return { action: "stay" };
-  const recent = [...state.visits.back]
-    .reverse()
-    .map((id) => state.tabs.find((tab) => tab.id === id))
-    .find((tab) => tab && inProject(tab));
-  const target = recent ?? state.tabs.find(inProject);
-  return target ? { action: "activate", tabId: target.id } : { action: "open" };
+  return !!current && sessions.find((session) => session.id === current.focusedId)?.projectId === projectId;
 }
 
 /** Every open pane's session id across the window's tabs. */
