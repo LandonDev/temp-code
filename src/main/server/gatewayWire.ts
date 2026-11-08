@@ -10,10 +10,10 @@ import type { FailedOverInfo, NetworkInfo, RequestInfo, ResponseInfo, ScopedRequ
  * their message.
  */
 
-/** One end of the port, whatever carries it: Electron's MessagePortMain, or a pair in a test. */
-export interface Wire {
-  post(message: WireMessage): void
-  onMessage(fn: (message: WireMessage) => void): void
+/** One end of the port, whatever carries it: Electron's MessagePortMain, or a pair in a test. Generic over its messages, so the add-on host (addons/addonWire.ts) rides the same plumbing. */
+export interface Wire<M = WireMessage> {
+  post(message: M): void
+  onMessage(fn: (message: M) => void): void
   onClose(fn: () => void): void
   close(): void
 }
@@ -27,10 +27,10 @@ export interface PortLike {
   close(): void
 }
 
-export function portWire(port: PortLike): Wire {
-  const wire: Wire = {
+export function portWire<M = WireMessage>(port: PortLike): Wire<M> {
+  const wire: Wire<M> = {
     post: (message) => port.postMessage(message),
-    onMessage: (fn) => void port.on('message', (e) => fn(e.data as WireMessage)),
+    onMessage: (fn) => void port.on('message', (e) => fn(e.data as M)),
     onClose: (fn) => void port.on('close', fn),
     close: () => port.close()
   }
@@ -136,8 +136,8 @@ export type WireMessage =
 
 /** The other end went away while an ask was out. */
 export class WireGone extends Error {
-  constructor() {
-    super('the gateway process went away')
+  constructor(what = 'the gateway process') {
+    super(`${what} went away`)
   }
 }
 
@@ -148,24 +148,27 @@ export class GatewayControlTimeout extends Error {
   }
 }
 
-/** Asks by id over one wire, each settled by its reply or deadline. */
-export class Calls<C> {
+/** Asks by id over one wire, each settled by its reply or deadline (`timeout` names the error; the gateway's by default). */
+export class Calls<C, M = WireMessage> {
   private next = 1
   private readonly pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
 
-  constructor(private readonly wire: Pick<Wire, 'post'>) {}
+  constructor(
+    private readonly wire: Pick<Wire<M>, 'post'>,
+    private readonly timeout: (method: string, timeoutMs: number) => Error = (method, ms) => new GatewayControlTimeout(method, ms)
+  ) {}
 
   call<T>(call: C, { timeoutMs = 30_000 }: { timeoutMs?: number } = {}): Promise<T> {
     const id = this.next++
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
-        reject(new GatewayControlTimeout((call as { m: string }).m, timeoutMs))
+        reject(this.timeout((call as { m: string }).m, timeoutMs))
       }, timeoutMs)
       timer.unref?.()
       this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer })
       try {
-        this.wire.post({ t: 'ask', id, call } as WireMessage)
+        this.wire.post({ t: 'ask', id, call } as M)
       } catch (error) {
         this.pending.delete(id)
         clearTimeout(timer)
@@ -194,9 +197,9 @@ export class Calls<C> {
 }
 
 /** Answer one ask on `wire`: the handler's value, or its error's message. */
-export function answer(wire: Pick<Wire, 'post'>, id: number, run: () => Promise<unknown>): void {
+export function answer<M = WireMessage>(wire: Pick<Wire<M>, 'post'>, id: number, run: () => Promise<unknown>): void {
   run().then(
-    (value) => wire.post({ t: 'reply', id, ok: true, value: value ?? null }),
-    (e) => wire.post({ t: 'reply', id, ok: false, error: (e as Error)?.message ?? String(e) })
+    (value) => wire.post({ t: 'reply', id, ok: true, value: value ?? null } as M),
+    (e) => wire.post({ t: 'reply', id, ok: false, error: (e as Error)?.message ?? String(e) } as M)
   )
 }

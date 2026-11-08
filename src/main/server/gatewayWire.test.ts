@@ -51,6 +51,20 @@ describe('gateway control deadlines', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  it('serves another message type with its own timeout error and gone words', async () => {
+    vi.useFakeTimers()
+    type Msg = { t: 'ask'; id: number; call: { m: 'grant'; addonId: string } } | { t: 'reply'; id: number; ok: true; value: unknown }
+    const posted: Msg[] = []
+    const calls = new Calls<{ m: 'grant'; addonId: string }, Msg>({ post: (m) => { posted.push(m) } }, (method, ms) => new Error(`${method} after ${ms}`))
+    const slow = calls.call({ m: 'grant', addonId: 'ad_1' }, { timeoutMs: 10 })
+    expect(posted).toEqual([{ t: 'ask', id: 1, call: { m: 'grant', addonId: 'ad_1' } }])
+    const failed = expect(slow).rejects.toThrow('grant after 10')
+    await vi.advanceTimersByTimeAsync(10)
+    await failed
+    expect(new WireGone('the add-on host').message).toBe('the add-on host went away')
+    expect(new WireGone().message).toBe('the gateway process went away')
+  })
+
   it('a timed-out coalesced credential ask leaves asking so the next miss asks again', async () => {
     vi.useFakeTimers()
     const posted: WireMessage[] = []
