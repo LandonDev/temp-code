@@ -17,7 +17,7 @@ import {
   type LinkRequestOptions,
 } from "../connection";
 import { modeForPolicy } from "./access";
-import { applyRowBody, emptyFold, foldEvent, foldOptimisticUser, type FoldState } from "./fold";
+import { applyRowBody, emptyFold, foldEvent, foldOptimisticUser, reconcilePending, type FoldState } from "./fold";
 import type { EventsPage, SessionChanges, SessionPage } from "@server/shared/wire";
 import type { MirrorCursor, MirrorHost } from "@server/shared/launchMirror";
 import { HISTORY_PAGE_ROWS } from "@server/shared/wireBudgets";
@@ -1728,12 +1728,14 @@ class SessionStore {
           if (i + HEAD_CHUNK < rows.length) await new Promise((r) => setTimeout(r, 0));
           if (!live()) return false;
         }
-        const pending = entry.session.blocks.filter((b) => b.pending);
+        // The person's unechoed rows meet the refolded log: an echo among
+        // the rows stands for its row, the rest stay pending in their place.
+        state = reconcilePending(state, entry.session.blocks.filter((b) => b.pending));
         entry.lastSeq = Math.max(state.lastSeq, entry.lastSeq);
         entry.nextId = Math.max(state.nextId, entry.nextId);
         entry.session = {
           ...entry.session,
-          blocks: pending.length ? [...state.blocks, ...pending] : state.blocks,
+          blocks: state.blocks,
           thread: state.thread,
           ...contextAfterFold(entry.session.context, state.context),
         };
@@ -1881,12 +1883,12 @@ class SessionStore {
     if (!live()) return;
     // Pushes that landed while the head folded are in `since`, after the tail.
     for (const row of head.since) state = foldEvent(state, row, cwd);
-    const pending = entry.session.blocks.filter((b) => b.pending);
+    state = reconcilePending(state, entry.session.blocks.filter((b) => b.pending));
     entry.lastSeq = Math.max(state.lastSeq, entry.lastSeq);
     entry.nextId = Math.max(state.nextId, entry.nextId);
     entry.session = {
       ...entry.session,
-      blocks: pending.length ? [...state.blocks, ...pending] : state.blocks,
+      blocks: state.blocks,
       thread: state.thread,
       ...contextAfterFold(entry.session.context, state.context),
     };

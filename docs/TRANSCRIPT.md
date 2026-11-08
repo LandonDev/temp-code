@@ -189,7 +189,17 @@ foreground, the same words the group line uses); the components only draw it.
   above text still appearing. The echo of the person's message renames
   the block but not its row: the claim keeps the optimistic key
   (`Block.rowKey`, `rowKeyOf` in transcriptRows.ts), so the bubble and the
-  line stay the same elements and no fade plays again. A call's counts and
+  line stay the same elements and no fade plays again. The same holds when
+  the echo arrives inside a refold instead of a push: an older page on a
+  remote host (`loadOlder`) or the head of a local tail-first paint
+  (`fetchHead`) folds the rows from nothing and then `reconcilePending`
+  (lib/tcserver/fold.ts) matches each optimistic row still pending to a
+  persisted user row past the seq its send followed (`Block.pendingAfter`),
+  which stands for it with the row's key; a row whose echo is not in the
+  loaded rows stays pending, first when its echo lies before them, last when
+  the host has not written it. A pending row is never appended under the
+  stream once its echo has folded: that left the working line on Sending for
+  the rest of the turn. A call's counts and
   chevron are part of its words, inside the morph, and leave with them.
 - **The closing line** (`transcript/TurnEnd.tsx`): "Worked for 2m 4s" and
   four hover-only icon actions (`transcript/IconAction.tsx`: a ghost

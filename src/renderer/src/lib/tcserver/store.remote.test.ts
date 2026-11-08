@@ -4,6 +4,7 @@ import { ConnectionLostError } from "../connection";
 import { newSession } from "../session";
 import type { EventRow, ServerPush, SessionMeta } from "./types";
 import type { EventsPage, OmittedBody, SessionPage, SessionChanges } from "@server/shared/wire";
+import { workingPhase } from "../../surfaces/transcript/workingPhase";
 
 /**
  * The store over a remote socket: pages of the list, bounded pages of the
@@ -300,6 +301,46 @@ describe("remote profile: history", () => {
     expect(texts).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2"]);
     expect(sessionStore.get("s1")!.blocks[0].id).toBe("u:41");
     expect(sessionStore.hasOlderHistory("s1")).toBe(true);
+  });
+
+  it("an optimistic row whose echo is behind a reset tail is claimed when its page lands, never left pending under the stream", async () => {
+    link.pages = [[wireMeta({ id: "s1" })]];
+    link.events.set("s1", turns("s1"));
+    await boot(link);
+    await sessionStore.ensureLoaded("s1");
+    sessionStore.appendOptimisticUser("s1", "prompt 7");
+    const sent = sessionStore.get("s1")!.blocks.at(-1)!;
+    expect(sent).toMatchObject({ pending: true, pendingAfter: 12 });
+    // The host wrote the echo at 13 and streamed for minutes; the socket
+    // shed its pushes, and the resume found the gap past its budget and
+    // answered a fresh tail that starts after the echo.
+    const stream: EventRow[] = [row("s1", 13, { type: "user-text", text: "prompt 7" })];
+    for (let seq = 14; seq <= 24; seq++) stream.push(row("s1", seq, { type: "assistant-text", text: `step ${seq}`, delta: false }));
+    link.events.set("s1", [...turns("s1"), ...stream]);
+    link.resume = { rows: stream.slice(-4), moreBefore: true, moreAfter: false, reset: true };
+    await sessionStore.resync(link);
+    let blocks = sessionStore.get("s1")!.blocks;
+    expect(blocks[0]).toMatchObject({ pending: true, text: "prompt 7" });
+    expect(blocks.at(-1)).toMatchObject({ role: "assistant", text: "step 24" });
+    // An older page that stops short of the echo keeps the row pending
+    // where it was: first, ahead of the stream, never under it.
+    expect(await sessionStore.loadOlder("s1")).toBe(true);
+    blocks = sessionStore.get("s1")!.blocks;
+    expect(blocks[0]).toMatchObject({ pending: true, text: "prompt 7" });
+    expect(blocks.at(-1)).toMatchObject({ role: "assistant", text: "step 24" });
+    expect(blocks.filter((b) => b.pending)).toHaveLength(1);
+    // The page that holds the echo: the echo takes the row's key, the pending row is gone.
+    expect(await sessionStore.loadOlder("s1")).toBe(true);
+    blocks = sessionStore.get("s1")!.blocks;
+    expect(blocks.some((b) => b.pending)).toBe(false);
+    const echo = blocks.find((b) => b.role === "user" && b.text === "prompt 7")!;
+    expect(echo).toMatchObject({ id: "u:13", rowKey: sent.id, seq: 13 });
+    expect(blocks.map((b) => b.text).slice(-2)).toEqual(["step 23", "step 24"]);
+    // The working line over the live turn no longer reads Sending.
+    expect(workingPhase(blocks.slice(blocks.indexOf(echo)), null).key).not.toBe("sending");
+    // The claim tells the view nothing new is pending: the history continues to the first row.
+    expect(await sessionStore.loadOlder("s1")).toBe(true);
+    expect(sessionStore.get("s1")!.blocks.filter((b) => b.role === "user" && b.text === "prompt 7")).toHaveLength(1);
   });
 
   it("a pane restored from the saved layout paints the tail once its host lists it, never the oldest page", async () => {

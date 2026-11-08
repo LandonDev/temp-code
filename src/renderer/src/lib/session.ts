@@ -216,6 +216,9 @@ export type Block = {
   steer?: SteerStamp;
   /** Optimistic user turn the server has not echoed yet. */
   pending?: boolean;
+  /** The newest persisted seq folded when this unechoed row was made: its
+   *  echo is a user row past it (`reconcilePending` after a refold). */
+  pendingAfter?: number;
   /** When this window sent it (ms): the bubble plays its entrance from
    *  here, so the echo's remount resumes mid-flight and a later remount
    *  finds the entrance long over. Blocks loaded from the server have none. */

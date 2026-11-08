@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { toolCallLabel } from "../../surfaces/transcriptActivity";
 import { pendingApprovalIndex } from "../session";
 import { turnEndsStopped } from "../turnOutcome";
-import { emptyFold, foldAll, foldEvent, foldOptimisticUser } from "./fold";
+import { emptyFold, foldAll, foldEvent, foldOptimisticUser, reconcilePending } from "./fold";
 import type { AgentEvent, EventRow } from "./types";
 
 const CWD = "/repo";
@@ -64,6 +64,71 @@ describe("foldEvent", () => {
     expect(s.blocks[0].id).toBe("u:1");
     expect(s.blocks[0].rowKey).toBe(optimistic);
     expect(flattenTurns(groupTurns(s.blocks), true).rows.map((row) => row.key)).toEqual(before);
+  });
+
+  it("reconcilePending: a refold's echo past the seq the send followed stands for the optimistic row", () => {
+    // Two turns folded, then a send: the optimistic row follows seq 4.
+    const live = foldOptimisticUser(foldAll(rows([
+      { type: "user-text", text: "go" },
+      { type: "assistant-text", text: "done", delta: false },
+      { type: "user-text", text: "again" },
+      { type: "assistant-text", text: "done", delta: false },
+    ]), CWD), "go", [{ id: "a1", name: "x.png", mimeType: "image/png", kind: "image", size: 3, previewUrl: "blob:x" }]);
+    const pending = live.blocks.filter((b) => b.pending);
+    expect(pending[0].pendingAfter).toBe(4);
+    // The log refolded whole: the echo at 5 and the stream after it.
+    const refold = foldAll(rows([
+      { type: "user-text", text: "go" },
+      { type: "assistant-text", text: "done", delta: false },
+      { type: "user-text", text: "again" },
+      { type: "assistant-text", text: "done", delta: false },
+      { type: "user-text", text: "go", attachments: [{ path: "/tmp/x.png", name: "x.png", kind: "image" }] },
+      { type: "assistant-text", text: "working", delta: false },
+    ]), CWD);
+    const s = reconcilePending(refold, pending);
+    expect(s.blocks.some((b) => b.pending)).toBe(false);
+    expect(s.blocks).toHaveLength(6);
+    // The old "go" at seq 1 is history, not the echo; the one past seq 4 is.
+    expect(s.blocks[0]).toMatchObject({ id: "u:1" });
+    expect(s.blocks[0].rowKey).toBeUndefined();
+    expect(s.blocks[4]).toMatchObject({ id: "u:5", rowKey: pending[0].id, born: pending[0].born });
+    expect(s.blocks[4].attachments?.[0].previewUrl).toBe("blob:x");
+    expect(s.blocks[5]).toMatchObject({ text: "working" });
+  });
+
+  it("reconcilePending: a row with no echo in the refold stays pending, first when its echo lies before the loaded rows, last when the host has not written it", () => {
+    const pending = foldOptimisticUser({ ...emptyFold(), lastSeq: 12 }, "prompt 7").blocks;
+    // An older page that stops short of the echo: rows 17..20, the echo behind them.
+    const short = foldAll(rows([
+      { type: "assistant-text", text: "step 17", delta: false, msgId: "m", blockIndex: 0 },
+      { type: "assistant-text", text: "step 18", delta: false, msgId: "m", blockIndex: 1 },
+    ]).map((r, i) => ({ ...r, seq: 17 + i })), CWD);
+    const ahead = reconcilePending(short, pending);
+    expect(ahead.blocks.map((b) => b.text)).toEqual(["prompt 7", "step 17", "step 18"]);
+    expect(ahead.blocks[0].pending).toBe(true);
+    // The whole log through seq 12 and nothing since: the echo is not written yet.
+    const current = foldAll(rows([{ type: "user-text", text: "prompt 6" }, { type: "assistant-text", text: "answer 6", delta: false }]).map((r, i) => ({ ...r, seq: 11 + i })), CWD);
+    const behind = reconcilePending(current, pending);
+    expect(behind.blocks.map((b) => b.text)).toEqual(["prompt 6", "answer 6", "prompt 7"]);
+    expect(behind.blocks[2].pending).toBe(true);
+    expect(reconcilePending(current, [])).toBe(current);
+  });
+
+  it("reconcilePending: text decides first, then order, and two sends take two echoes in turn", () => {
+    let live = foldOptimisticUser({ ...emptyFold(), lastSeq: 2 }, "one");
+    live = foldOptimisticUser(live, "two");
+    const pending = live.blocks.filter((b) => b.pending);
+    // The host trimmed the first message's text; the second came back as typed.
+    const refold = foldAll(rows([
+      { type: "user-text", text: "zero" },
+      { type: "assistant-text", text: "ok", delta: false },
+      { type: "user-text", text: "one (trimmed)" },
+      { type: "user-text", text: "two" },
+    ]), CWD);
+    const s = reconcilePending(refold, pending);
+    expect(s.blocks.some((b) => b.pending)).toBe(false);
+    expect(s.blocks[2]).toMatchObject({ id: "u:3", rowKey: pending[0].id });
+    expect(s.blocks[3]).toMatchObject({ id: "u:4", rowKey: pending[1].id });
   });
 
   it("the first message's project preamble lands on the block, fresh and on a claim", () => {

@@ -135,6 +135,7 @@ export function foldOptimisticUser(
     text,
     startedAt: now,
     pending: true,
+    pendingAfter: state.lastSeq,
     born: now,
     ...(attachments.length > 0 ? { attachments } : {}),
     ...(extra?.secondOpinion ? { secondOpinion: extra.secondOpinion } : {}),
@@ -147,6 +148,62 @@ export function foldOptimisticUser(
     thread,
     blocks: stampTail([...sealLastStream(state.blocks), block], thread, now),
   };
+}
+
+/** The echo takes the optimistic row's place on screen: its key (the row
+ *  never changes key), its entrance, its previews and its chips. */
+function claimPending(echo: Block, pending: Block): Block {
+  return {
+    ...echo,
+    rowKey: pending.rowKey ?? pending.id,
+    ...(pending.born !== undefined ? { born: pending.born } : {}),
+    ...(pending.attachments?.length ? { attachments: pending.attachments } : {}),
+    ...(pending.secondOpinion ? { secondOpinion: pending.secondOpinion } : {}),
+    ...(pending.noteCard ? { noteCard: pending.noteCard } : {}),
+  };
+}
+
+/**
+ * After a refold from the rows alone (a head paged in, an older page), the
+ * optimistic rows the entry still holds meet the refolded log. Each is
+ * matched to its echo: a persisted user row past the seq the send followed
+ * (`pendingAfter`), the same text first, else the next in order; the echo
+ * stands and takes the row's key (`claimPending`). One with no echo in the
+ * log yet stays pending: FIRST when the loaded rows start past the seq it
+ * followed (its echo lies in the gap before them, where the next older page
+ * or the live claim will find it), LAST when nothing persisted since could
+ * hold it (the host has not written it). Appended last after the echo had
+ * folded, a pending row sat under the whole stream and the working line
+ * read Sending for the rest of the turn.
+ */
+export function reconcilePending(state: FoldState, pending: Block[]): FoldState {
+  if (pending.length === 0) return state;
+  let blocks = state.blocks;
+  const taken = new Set<number>();
+  const before: Block[] = [];
+  const after: Block[] = [];
+  let firstSeq = Infinity;
+  for (const b of blocks) if (b.seq !== undefined && b.seq < firstSeq) firstSeq = b.seq;
+  let from = 0;
+  for (const p of pending) {
+    const floor = p.pendingAfter ?? 0;
+    const candidates: number[] = [];
+    for (let i = from; i < blocks.length; i++) {
+      const b = blocks[i];
+      if (b.role === "user" && !b.pending && b.seq !== undefined && b.seq > floor && !taken.has(i)) candidates.push(i);
+    }
+    const idx = candidates.find((i) => blocks[i].text === p.text) ?? candidates[0];
+    if (idx === undefined) {
+      (floor + 1 < firstSeq ? before : after).push(p);
+      continue;
+    }
+    taken.add(idx);
+    from = idx + 1;
+    if (blocks === state.blocks) blocks = blocks.slice();
+    blocks[idx] = claimPending(blocks[idx], p);
+  }
+  if (before.length === 0 && after.length === 0 && blocks === state.blocks) return state;
+  return { ...state, blocks: [...before, ...blocks, ...after] };
 }
 
 const OPEN_STATUSES = new Set(["starting", "running", "waiting"]);

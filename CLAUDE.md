@@ -906,7 +906,16 @@ routed to (aliax-core's `forward`). Two listeners:
   TurnEnd keeps the mark till then). Once live the line is never unmounted:
   held (a card, a pause) it folds on `.collapsible-auto`, a Stop morphs it
   to Stopped at once, and the echo keeps the optimistic row's key
-  (`Block.rowKey`). A thought is no transcript row (a group opened by hand shows "Thought").
+  (`Block.rowKey`). A refold from the rows alone (an older page on a remote
+  host, the head of a local tail-first paint) runs `reconcilePending`
+  (lib/tcserver/fold.ts): the optimistic row records the seq its send
+  followed (`Block.pendingAfter`), and a persisted user row past it in the
+  refolded log is its echo (same text first, else the next in order) and
+  takes the row's key; one with no echo yet stays pending first when the
+  loaded rows start past that seq, last otherwise. Before it the refold
+  appended the pending row under the whole stream and the line read Sending
+  for the rest of the turn (a box master on 2026-11-08, after a resume that
+  reset to a tail behind the echo). A thought is no transcript row (a group opened by hand shows "Thought").
   The timer above the composer counts from the click: `appendOptimisticUser`
   stamps `sentAt` when no turn is open, `turnStartOf` prefers it over the
   host's later `busySince`, the settle clears it, and the slot shows at once
