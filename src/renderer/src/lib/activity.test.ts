@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MacBridgeRequest } from "@server/shared/contract-macbridge";
 import type { BackgroundWork } from "@server/shared/events";
 import { STALE_WATCH_MS } from "@server/shared/watch";
+import type { ComputerSessionRow } from "@server/shared/contract-computer";
+import type { ComputerEntry } from "./computerSessions";
 import type { LiveServer } from "./devServers";
 
 const { stopTask, killBackground, stopLiveServer, stopMacBridgeAll } = vi.hoisted(() => ({
@@ -14,6 +16,8 @@ vi.mock("./tcserver/commands", () => ({ stopTask, killBackground }));
 vi.mock("./devServers", () => ({ stopLiveServer, useLiveDevServers: () => [] }));
 vi.mock("./macBridge", () => ({ stopMacBridgeAll, useMacBridgeRunning: () => [] }));
 vi.mock("./tcserver/store", () => ({ useSessionMeta: () => null, useSessionMetas: () => [] }));
+const { stopComputer } = vi.hoisted(() => ({ stopComputer: vi.fn(() => Promise.resolve()) }));
+vi.mock("./computerSessions", () => ({ stopComputer, useComputerEntries: () => [] }));
 
 const { activityRows, hasActivity, rowStale, stopActivity, stopAll, threadServers } = await import("./activity");
 
@@ -178,5 +182,57 @@ describe("stopActivity", () => {
     await stopActivity({ key: "k", kind: "batch", label: "x", since: 0 });
     await stopAll("s1");
     expect(killBackground).toHaveBeenCalledWith("s1");
+  });
+});
+
+describe("computer rows", () => {
+  const row = (over: Partial<ComputerSessionRow> = {}): ComputerSessionRow => ({
+    threadId: "s1",
+    since: 500,
+    lastCallAt: 600,
+    apps: [
+      { name: "TextEdit", bundleId: "com.apple.TextEdit", window: "Untitled" },
+      { name: "Mail", bundleId: "com.apple.mail", window: "Inbox" },
+    ],
+    running: null,
+    tier: "ax",
+    ...over,
+  });
+  const entry = (r: ComputerSessionRow, previewable = true): ComputerEntry => ({ host: "local", row: r, previewable, ...(previewable ? { previewHost: "local", previewKey: r.threadId } : {}) });
+  const rows = (computer: ComputerEntry[], macCalls: MacBridgeRequest[] = []) =>
+    activityRows({ meta: { id: "s1", status: "running", background: bg({}) }, devServers: [], macCalls, computer });
+
+  it("is one row per session: the window in its last app, the tier in a person's words, its age, Stop and the preview", () => {
+    const e = entry(row());
+    const [r] = rows([e]);
+    expect(r).toMatchObject({ key: "computer:local:s1", kind: "computer", label: "Untitled in TextEdit", tierWords: "in the background", since: 500, open: "preview", stop: { type: "computer", entry: e } });
+    expect(rows([entry(row({ tier: "process" }))])[0].tierWords).toBe("to the app");
+    expect(rows([entry(row({ tier: "session" }))])[0].tierWords).toBe("on the screen");
+  });
+
+  it("names the app alone for an untitled window, says Computer use before any app, and leaves the tier out until one ran", () => {
+    expect(rows([entry(row({ apps: [{ name: "Finder", bundleId: null, window: null }] }))])[0].label).toBe("Finder");
+    const first = rows([entry(row({ apps: [], tier: null }))])[0];
+    expect(first.label).toBe("Computer use");
+    expect(first).not.toHaveProperty("tierWords");
+  });
+
+  it("opens only when this desktop can preview it, or for what it waits on", () => {
+    expect(rows([entry(row(), false)])[0]).not.toHaveProperty("open");
+    expect(rows([entry(row({ running: { tool: "computer_act", words: "Waiting for the Mac to be free", startedAt: 1, held: true } }), false)])[0].open).toBe("preview");
+    expect(rows([entry(row({ asking: { line: "Click Save in TextEdit?" } }), false)])[0].open).toBe("preview");
+  });
+
+  it("sorts with the other rows by age, a subagent's session among them, and drops a bridged computer call's Mac row", () => {
+    const sub = entry(row({ threadId: "sub1", since: 100 }));
+    const call = { ...mac("running"), kind: "computer" } as unknown as MacBridgeRequest;
+    expect(rows([entry(row()), sub], [call, mac("running")]).map((r) => r.key)).toEqual(["computer:local:sub1", "mac:m-running", "computer:local:s1"]);
+  });
+
+  it("never turns amber, and its Stop is computer.stop", async () => {
+    const [r] = rows([entry(row())]);
+    expect(rowStale(r, { status: "watching", background: bg({ watchingSince: 0 }) }, 10 * STALE_WATCH_MS)).toBe(false);
+    await stopActivity(r);
+    expect(stopComputer).toHaveBeenCalledWith(r.computer);
   });
 });

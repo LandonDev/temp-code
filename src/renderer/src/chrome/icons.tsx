@@ -8,6 +8,7 @@ import Add01Icon from "@hugeicons/core-free-icons/Add01Icon";
 import AtIcon from "@hugeicons/core-free-icons/AtIcon";
 import Attachment01Icon from "@hugeicons/core-free-icons/Attachment01Icon";
 import CornerDownRightIcon from "@hugeicons/core-free-icons/CornerDownRightIcon";
+import CursorInWindowIcon from "@hugeicons/core-free-icons/CursorInWindowIcon";
 import SlashIcon from "@hugeicons/core-free-icons/SlashIcon";
 import AddSquareIcon from "@hugeicons/core-free-icons/AddSquareIcon";
 import AlertCircleIcon from "@hugeicons/core-free-icons/AlertCircleIcon";
@@ -204,6 +205,8 @@ export const Telescope = wrap(Telescope01Icon, "Telescope");
 export const Users = wrap(UserMultipleIcon, "Users");
 export const ChartBar = wrap(BarChartIcon, "ChartBar");
 export const AppWindow = wrap(AppWindowIcon, "AppWindow");
+/** Computer use: an app window driven by the agent (the Activity row, a computer call's row). */
+export const SquareMousePointer = wrap(CursorInWindowIcon, "SquareMousePointer");
 export const Archive = wrap(ArchiveIcon, "Archive");
 export const ArchiveRestore = wrap(ArchiveRestoreIcon, "ArchiveRestore");
 export const ArrowDownCircle = wrap(CircleArrowDown01Icon, "ArrowDownCircle");

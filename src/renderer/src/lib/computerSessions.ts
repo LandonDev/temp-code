@@ -1,8 +1,12 @@
+import { useEffect, useMemo } from 'react'
 import { useStore } from 'zustand'
 import { createStore } from 'zustand/vanilla'
 import type { ComputerSessionRow, ComputerSessionsAnswer } from '@server/shared/contract-computer'
-import { registry } from './connection/registry'
+import { macComputerKey } from '@server/shared/contract-maccomputer'
+import { LOCAL_ENVIRONMENT_ID, registry } from './connection/registry'
 import type { EnvLink } from './connection/link'
+import { nativePlatform } from './native'
+import { isWebMode } from './nativeWeb'
 
 /**
  * Each connected host's live computer sessions (docs/computer-protocol.md
@@ -10,7 +14,9 @@ import type { EnvLink } from './connection/link'
  * link-up with `computer.sessions`, then kept by the host's `computer` push.
  * A box thread bridged to a Mac has its row on the box's own push, re-keyed
  * to the thread, with the Mac's id and name (`macPeer`, `macName`) and, while
- * a card waits there, `asking`.
+ * a card waits there, `asking`. The Activity section reads a thread's tree's
+ * rows as entries (`useComputerEntries`): only this Mac's desktop can preview
+ * a session, and only one its own service runs.
  */
 
 interface ComputerSessionsState {
@@ -90,4 +96,60 @@ const asksSelector = (s: ComputerSessionsState): ComputerAsk[] => {
 
 export function useComputerAsks(): ComputerAsk[] {
   return useStore(store, asksSelector)
+}
+
+export interface ComputerEntry {
+  /** the host whose row this is: the thread's own */
+  host: string
+  row: ComputerSessionRow
+  /** this desktop can draw the session's window */
+  previewable: boolean
+  /** the link the preview asks (this Mac's) and the key its service knows the session by */
+  previewHost?: string
+  previewKey?: string
+}
+
+export interface PreviewContext {
+  /** the desktop app (not the browser /ui) on a Mac */
+  macDesktop: boolean
+  /** this Mac's real environment id, once its hello said it */
+  localId: string | null
+}
+
+function previewContext(): PreviewContext {
+  return {
+    macDesktop: !isWebMode() && nativePlatform() === 'darwin',
+    localId: registry.statusOf(LOCAL_ENVIRONMENT_ID).lastHello?.environmentId ?? null
+  }
+}
+
+/** The entries of a thread's tree on its host, one per session, with what this desktop can preview. */
+export function entriesOf(rows: readonly ComputerSessionRow[], tree: ReadonlySet<string>, threadHost: string, ctx: PreviewContext): ComputerEntry[] {
+  return rows.flatMap((row) => {
+    if (!tree.has(row.threadId)) return []
+    const entry: ComputerEntry = { host: threadHost, row, previewable: false }
+    if (!ctx.macDesktop) return [entry]
+    if (threadHost === LOCAL_ENVIRONMENT_ID && !row.macPeer) {
+      return [{ ...entry, previewable: true, previewHost: LOCAL_ENVIRONMENT_ID, previewKey: row.threadId }]
+    }
+    // A box thread driving this Mac: its session lives in this Mac's service, under the bridge's key.
+    if (row.macPeer && ctx.localId && row.macPeer === ctx.localId && threadHost !== LOCAL_ENVIRONMENT_ID) {
+      return [{ ...entry, previewable: true, previewHost: LOCAL_ENVIRONMENT_ID, previewKey: macComputerKey(threadHost, row.threadId) }]
+    }
+    return [entry]
+  })
+}
+
+/** The computer entries of a thread's tree on the thread's host, live. */
+export function useComputerEntries(tree: ReadonlySet<string>, threadHost: string | undefined): ComputerEntry[] {
+  useEffect(startComputerSessions, [])
+  const rows = useStore(store, (s) => (threadHost ? (s.byHost[threadHost] ?? EMPTY) : EMPTY))
+  return useMemo(() => (threadHost && rows.length ? entriesOf(rows, tree, threadHost, previewContext()) : []), [rows, tree, threadHost])
+}
+
+/** Stop on the row: computer use ends for the thread's turn, on the thread's own host. */
+export async function stopComputer(entry: ComputerEntry): Promise<void> {
+  const link = registry.link(entry.host)
+  if (!link) throw new Error('the host is not connected')
+  await link.request('computer.stop', { sessionId: entry.row.threadId })
 }

@@ -211,3 +211,32 @@ export function springEasing(spring: Spring, points = 32, rest = 0.005): { ms: n
 
 /** SPRING_LAYOUT as a CSS curve and its duration. */
 export const SPRING_LAYOUT_CSS = springEasing(SPRING_LAYOUT);
+
+/**
+ * The agent's click on a computer preview (surfaces/threads/ComputerPreview.tsx):
+ * a ring that grows from 0.6 at full opacity over `--dur-base` on `--ease-out`,
+ * holds `FOLD_HOLD_MS`, then fades over `--dur-slow`. One element, restarted
+ * for each click, transform and opacity alone so the compositor runs it;
+ * under reduced motion it appears and fades with no scale.
+ */
+export const CLICK_MARK: { keyframes: Keyframe[]; reduced: Keyframe[]; timing: KeyframeAnimationOptions } = (() => {
+  const grow = DUR.base * 1000;
+  const fade = DUR.slow * 1000;
+  const total = grow + FOLD_HOLD_MS + fade;
+  const held = (grow + FOLD_HOLD_MS) / total;
+  const out = bezier(EASE_OUT);
+  return {
+    keyframes: [
+      { transform: "scale(0.6)", opacity: 1, offset: 0, easing: out },
+      { transform: "scale(1)", opacity: 1, offset: grow / total },
+      { transform: "scale(1)", opacity: 1, offset: held, easing: out },
+      { transform: "scale(1)", opacity: 0, offset: 1 },
+    ],
+    reduced: [
+      { opacity: 1, offset: 0 },
+      { opacity: 1, offset: held, easing: out },
+      { opacity: 0, offset: 1 },
+    ],
+    timing: { duration: total, fill: "forwards" },
+  };
+})();

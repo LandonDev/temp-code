@@ -151,3 +151,15 @@ describe("the folds that open on their own (components.css)", () => {
     expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.step-land\s*\{\s*transition: none;/);
   });
 });
+
+describe("CLICK_MARK", () => {
+  it("grows over --dur-base, holds FOLD_HOLD_MS and fades over --dur-slow, on transform and opacity alone", () => {
+    const { keyframes, reduced, timing } = ease.CLICK_MARK;
+    expect(timing.duration).toBe(DUR.base * 1000 + ease.FOLD_HOLD_MS + DUR.slow * 1000);
+    expect(keyframes[0]).toMatchObject({ transform: "scale(0.6)", opacity: 1, offset: 0 });
+    expect(keyframes[1].offset).toBeCloseTo((DUR.base * 1000) / Number(timing.duration));
+    expect(keyframes.at(-1)).toMatchObject({ opacity: 0, offset: 1 });
+    for (const k of [...keyframes, ...reduced]) for (const p of Object.keys(k)) expect(["transform", "opacity", "offset", "easing"]).toContain(p);
+    expect(reduced.some((k) => "transform" in k)).toBe(false);
+  });
+});

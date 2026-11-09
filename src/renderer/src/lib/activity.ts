@@ -3,6 +3,8 @@ import { unwrapBashCommand } from "@server/shared/bashMarks";
 import type { BackgroundTaskKind } from "@server/shared/events";
 import type { MacBridgeRequest } from "@server/shared/contract-macbridge";
 import { STALE_WATCH_MS, isStaleWatch } from "@server/shared/watch";
+import { COMPUTER_TIER_WORDS } from "@server/shared/statusWords";
+import { stopComputer, useComputerEntries, type ComputerEntry } from "./computerSessions";
 import { stopLiveServer, useLiveDevServers, type LiveServer } from "./devServers";
 import { stopMacBridgeAll, useMacBridgeRunning } from "./macBridge";
 import { killBackground, stopTask } from "./tcserver/commands";
@@ -12,17 +14,19 @@ import type { SessionMeta } from "./tcserver/types";
 /**
  * A thread's background work as the right panel's Activity section and the
  * watching strip read it: the meta's `background` (CLAUDE.md "Background
- * work and watching") joined with the thread's dev servers and its running
- * Mac calls. One row per task and one for a master's batch; subagents are
- * the Agents section's, never a row here.
+ * work and watching") joined with the thread's dev servers, its running
+ * Mac calls and its live computer sessions. One row per task, one for a
+ * master's batch and one per computer session; subagents are the Agents
+ * section's, never a row here.
  */
 
-export type ActivityKind = BackgroundTaskKind | "batch" | "dev" | "mac";
+export type ActivityKind = BackgroundTaskKind | "batch" | "dev" | "mac" | "computer";
 
 export type StopTarget =
   | { type: "task"; sessionId: string; taskId: string }
   | { type: "dev"; server: LiveServer }
-  | { type: "mac"; request: MacBridgeRequest };
+  | { type: "mac"; request: MacBridgeRequest }
+  | { type: "computer"; entry: ComputerEntry };
 
 export interface ActivityRow {
   key: string;
@@ -32,12 +36,16 @@ export interface ActivityRow {
   detail?: string;
   since: number;
   stop?: StopTarget;
-  /** What a click opens: the task's output, the dev servers pane. */
-  open?: "log" | "dev";
+  /** A computer row's tier in a person's words, drawn muted after the label ("in the background"). */
+  tierWords?: string;
+  /** What a click opens: the task's output, the dev servers pane, a computer session's preview. */
+  open?: "log" | "dev" | "preview";
   /** `log` rows: the task whose output session.taskLog reads. */
   taskId?: string;
   /** `dev` rows: the dev servers pane's key for the server. */
   devKey?: string;
+  /** `computer` rows: the session, for its preview and its lines. */
+  computer?: ComputerEntry;
 }
 
 export interface ActivitySources {
@@ -46,6 +54,8 @@ export interface ActivitySources {
   devServers: LiveServer[];
   /** The thread's Mac calls in flight. */
   macCalls: MacBridgeRequest[];
+  /** The live computer sessions of the thread's tree, on its host. */
+  computer?: ComputerEntry[];
 }
 
 /** Only a background shell writes an output file the host can tail; a monitor's events go to the model alone. */
@@ -96,7 +106,8 @@ export function activityRows(src: ActivitySources): ActivityRow[] {
     });
   }
   for (const request of src.macCalls) {
-    if (request.status !== "running") continue;
+    // A computer call through the bridge is its session's row, never a command's.
+    if (request.status !== "running" || (request.kind as string) === "computer") continue;
     rest.push({
       key: `mac:${request.id}`,
       kind: "mac",
@@ -105,8 +116,31 @@ export function activityRows(src: ActivitySources): ActivityRow[] {
       stop: { type: "mac", request },
     });
   }
+  for (const entry of src.computer ?? []) rest.push(computerRow(entry));
   rest.sort((a, b) => a.since - b.since);
   return [...head, ...rest];
+}
+
+/** "Untitled in TextEdit" for the app the session used last (the one its preview shows); the app alone when its window has no title; "Computer use" before any app. */
+export function computerLabel(entry: ComputerEntry): string {
+  const app = entry.row.apps[0];
+  if (!app) return "Computer use";
+  return app.window ? `${app.window} in ${app.name}` : app.name;
+}
+
+function computerRow(entry: ComputerEntry): ActivityRow {
+  const { row } = entry;
+  const opens = entry.previewable || row.running?.held === true || !!row.asking;
+  return {
+    key: `computer:${entry.host}:${row.threadId}`,
+    kind: "computer",
+    label: computerLabel(entry),
+    ...(row.tier ? { tierWords: COMPUTER_TIER_WORDS[row.tier] } : {}),
+    since: row.since,
+    stop: { type: "computer", entry },
+    ...(opens ? { open: "preview" as const } : {}),
+    computer: entry,
+  };
 }
 
 /** The server came from this task: by the call that opened it, else (an id missing) by its command. */
@@ -117,7 +151,7 @@ function opened(server: LiveServer, callId: string | undefined, command: string 
 
 /** A row's age turns amber once its thread watches stale and the row is that old: tasks, crons and the batch only (the rest have their own liveness). */
 export function rowStale(row: ActivityRow, meta: Pick<SessionMeta, "status" | "background">, now: number): boolean {
-  if (row.kind === "dev" || row.kind === "mac") return false;
+  if (row.kind === "dev" || row.kind === "mac" || row.kind === "computer") return false;
   return isStaleWatch(meta, now) && now - row.since > STALE_WATCH_MS;
 }
 
@@ -152,15 +186,17 @@ export function useActivity(threadId: string): { rows: ActivityRow[]; meta: Sess
   const metas = useSessionMetas();
   const servers = useLiveDevServers();
   const macCalls = useMacBridgeRunning({ environmentId: meta?.environmentId, sessionId: threadId });
+  const tree = useMemo(() => treeIds(threadId, metas), [metas, threadId]);
+  const computer = useComputerEntries(tree, meta?.environmentId);
   const rows = useMemo(() => {
     if (!meta) return [];
-    const tree = treeIds(threadId, metas);
     return activityRows({
       meta,
       devServers: threadServers(servers, tree),
       macCalls,
+      computer,
     });
-  }, [macCalls, meta, metas, servers, threadId]);
+  }, [computer, macCalls, meta, servers, tree]);
   return { rows, meta };
 }
 
@@ -170,6 +206,7 @@ export function stopActivity(row: ActivityRow): Promise<void> {
   if (!stop) return Promise.resolve();
   if (stop.type === "task") return stopTask(stop.sessionId, stop.taskId);
   if (stop.type === "dev") return stopLiveServer(stop.server);
+  if (stop.type === "computer") return stopComputer(stop.entry);
   return stopMacBridgeAll([stop.request]);
 }
 

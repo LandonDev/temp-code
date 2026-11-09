@@ -9,7 +9,7 @@ import { CONSOLE } from "@renderer/components/ui/console";
 import { TruncateTip, useTruncated } from "@renderer/components/tip";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { cn } from "@renderer/lib/cn";
-import { Bot, Clock, Eye, Globe, Laptop, Layers, Square, Terminal, Workflow } from "../../chrome/icons";
+import { Bot, Clock, Eye, Globe, Laptop, Layers, Square, SquareMousePointer, Terminal, Workflow } from "../../chrome/icons";
 import { usePaneVisible } from "../../hooks/paneVisibility";
 import { rowStale, stopActivity, useActivity, type ActivityKind, type ActivityRow } from "../../lib/activity";
 import { devPane } from "../../lib/devPane";
@@ -17,6 +17,9 @@ import { taskLog } from "../../lib/tcserver/commands";
 import type { SessionMeta } from "../../lib/tcserver/types";
 import { minuteAge } from "../../lib/duration";
 import { useSlowClock } from "../../lib/turnClock";
+import { computerPreviewChunk } from "../chunks";
+
+const ComputerPreview = computerPreviewChunk.surface("ComputerPreview");
 
 /**
  * The right panel's Activity section: what a thread has running in the
@@ -25,7 +28,10 @@ import { useSlowClock } from "../../lib/turnClock";
  * model's words, its age, and Stop. A shell row opens under it onto its
  * command and its live output (session.taskLog, every 1.5 s while open and
  * on screen; a read that fails says so and keeps what it had); a dev server
- * opens the dev servers pane. Subagents are the Agents section's alone.
+ * opens the dev servers pane; a computer session says its window and app and
+ * the tier of its last action, and opens in place, with no height animation,
+ * onto the window's live preview (ComputerPreview, lazy). Subagents are the
+ * Agents section's alone.
  * Rows have no enter or leave motion: a row leaves when its push says the
  * work ended, and an open log closes with it.
  */
@@ -40,6 +46,7 @@ const GLYPH: Record<ActivityKind, ComponentType<{ className?: string }>> = {
   batch: Layers,
   dev: Globe,
   mac: Laptop,
+  computer: SquareMousePointer,
 };
 
 /** How often an open log asks for more. */
@@ -74,7 +81,7 @@ export const ActivityRows = memo(function ActivityRows({
   const open = rows.some((r) => r.key === openKey) ? openKey : null;
 
   const activate = (row: ActivityRow): void => {
-    if (row.open === "log") setOpenKey(open === row.key ? null : row.key);
+    if (row.open === "log" || row.open === "preview") setOpenKey(open === row.key ? null : row.key);
     else if (row.open === "dev") devPane.open(row.devKey);
   };
 
@@ -137,6 +144,12 @@ function Row({
       {row.label}
     </span>
   );
+  // A computer row's tier sits 4px after the label, muted and a size down; the label gives way first.
+  const words = row.tierWords ? (
+    <span data-slot="activity-tier" className="shrink-0 text-xs leading-5 text-muted-foreground">
+      {row.tierWords}
+    </span>
+  ) : null;
   const item = (
     <Item size="xs" data-kind={row.kind} className={cn("min-h-7 flex-nowrap py-0", opens && ROW_HOLDS, expanded && "bg-muted hover:bg-muted")}>
       {opens ? (
@@ -146,10 +159,11 @@ function Row({
             render={
               <ItemButton
                 data-row-open
-                aria-label={row.label}
-                aria-expanded={row.open === "log" ? expanded : undefined}
+                aria-label={row.tierWords ? `${row.label}, ${row.tierWords}` : row.label}
+                aria-expanded={row.open === "log" || row.open === "preview" ? expanded : undefined}
                 onClick={onActivate}
                 className={ROW_OPEN}
+                {...(row.open === "preview" ? computerPreviewChunk.intent : {})}
               />
             }
           />
@@ -159,8 +173,9 @@ function Row({
       <ItemMedia className={cn(opens && ROW_SHOWS)}>
         <Glyph className="size-3.5 text-muted-foreground" />
       </ItemMedia>
-      <ItemContent className={cn("min-w-0", opens && ROW_SHOWS)}>
+      <ItemContent className={cn("min-w-0", words && "flex-row items-baseline gap-1", opens && ROW_SHOWS)}>
         {opens ? label : <TruncateTip text={row.label}>{label}</TruncateTip>}
+        {words}
       </ItemContent>
       <ItemActions className={cn("gap-1", opens && ROW_SHOWS)}>
         {now > 0 ? (
@@ -190,6 +205,15 @@ function Row({
       </ItemActions>
     </Item>
   );
+  if (row.open === "preview" && row.computer) {
+    // In place, no fold animation: the box fades in on its own (ComputerPreview).
+    return (
+      <div data-slot="computer-row">
+        {item}
+        {expanded ? <ComputerPreview entry={row.computer} open={expanded && live} /> : null}
+      </div>
+    );
+  }
   if (row.open !== "log" || !row.taskId) return item;
   return (
     <Collapsible open={expanded}>

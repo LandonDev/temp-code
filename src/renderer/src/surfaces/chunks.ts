@@ -77,6 +77,9 @@ export const messageListChunk = defineChunk("messageList", () => import("./Trans
 /** A review's notice in the transcript: its line, or the held review's card (ReviewCard). */
 export const reviewChunk = defineChunk("review", () => import("./ReviewCard"));
 
+/** A computer session's live preview under its Activity row (threads/ComputerPreview.tsx). */
+export const computerPreviewChunk = defineChunk("computerPreview", () => import("./threads/ComputerPreview"));
+
 /** Every chunk, for the tests and the idle warm-up. */
 export const allChunks = {
   settingsChunk,
@@ -106,4 +109,5 @@ export const allChunks = {
   virtualChunk,
   messageListChunk,
   reviewChunk,
+  computerPreviewChunk,
 };
