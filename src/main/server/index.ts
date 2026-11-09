@@ -81,6 +81,7 @@ import type { AppRef } from '@shared/computer/protocol'
 import { computerUnavailable } from './computer/binary'
 import { computerHooks, type ComputerHost } from './computer/mcp'
 import { ComputerPreviews, handleComputerPreview } from './computer/preview'
+import { SessionHolds, computerBannerHooks, handleComputerProofHold } from './computer/hold'
 import { ComputerRpc } from './computer/rpc'
 import { ComputerService } from './computer/service'
 import { ComputerSessions } from './computer/sessions'
@@ -1330,6 +1331,8 @@ export async function startServer(
   }
   computerHooks.current = computer
   const previews = computer ? new ComputerPreviews(computer) : null
+  const holds = computer ? new SessionHolds({ ...computer, banner: () => computerBannerHooks.current }) : null
+  // Wire slot.onHolder(holds.holder) here once the tier scheduler lands.
   // Computer use through the Mac bridge, the box side (computer/bridge.ts): where it cannot run here, a
   // thread whose bridge names a Mac that offers it gets the four tools, carried to that Mac.
   let computerBridge: ComputerBridge | null = null
@@ -2098,6 +2101,8 @@ export async function startServer(
         if (macBridged.handled) return sendFrame({ id: req.id, ok: true, result: macBridged.result })
         const preview = await handleComputerPreview(req, previews, { connection: previewConnection, send: sendFrame })
         if (preview.handled) return sendFrame({ id: req.id, ok: true, result: preview.result })
+        const proofHold = handleComputerProofHold(req, holds)
+        if (proofHold.handled) return sendFrame({ id: req.id, ok: true, result: proofHold.result })
         const devices = await handleHostDevices(req, hostDevices, { connection, send: sendFrame })
         if (devices.handled) return sendFrame({ id: req.id, ok: true, result: devices.result })
         const macTooled = await macTools.handle(req)
@@ -3585,6 +3590,7 @@ export async function startServer(
       storePush.close()
       computerRpc.close()
       computerBridge?.close()
+      holds?.close()
       void previews?.close()
       void computer?.service.close()
       awaySync.close()

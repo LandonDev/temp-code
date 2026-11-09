@@ -718,6 +718,18 @@ collapsible, the question card's frame between its questions, the slash menu's f
 value; nothing animates on a keystroke but the menu it opens; nothing overshoots without a
 gesture; every animated class carries its `motion-reduce:` guard.
 
+### The Mac's computer-use banner
+
+The main process's computer banner is an Operate surface: one passive,
+32px pill, “TempCode is using your Mac” in 13px foreground, with a 20px
+key cap in 11px type and muted “to stop” eight pixels after it while the
+Escape watch works. It uses the popover fill, border hairline and full
+radius, with no shadow or glow. It ignores clicks and never takes focus.
+The system theme sets its colours; `BANNER_TOKENS` mirrors index.css and
+its test holds them equal. The only motion is opacity: `--dur-base` on
+`--ease-out` in, `--dur-fast` on `--ease-exit` out before native hide;
+reduced motion uses `--dur-fast`. No position or size transition.
+
 ## The transcript
 
 The target is Claude desktop's Code tab with our tool icons and humanized

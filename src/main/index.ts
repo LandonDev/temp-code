@@ -1,3 +1,5 @@
+import { createComputerBanner } from './computerBanner'
+import { computerBannerHooks } from './server/computer/hold'
 import { app, shell, dialog, net, BrowserWindow, ipcMain, powerMonitor } from 'electron'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -179,6 +181,7 @@ app.whenReady().then(async () => {
     })
     attention.start()
   }
+  if (process.platform === 'darwin' && !headless) computerBannerHooks.current = createComputerBanner()
   server = await startServer(join(app.getPath('userData'), 'temp-code.db'), {
     prodData: isProdData(app.getPath('userData'), defaultUserData),
     appPath: app.getAppPath(),
