@@ -6,6 +6,10 @@ import CoreGraphics
 import Foundation
 import Input
 
+// Carbon's own Rect and Point come with AppKit; the wire's are meant here.
+typealias Rect = ComputerProtocol.Rect
+typealias Point = ComputerProtocol.Point
+
 // What the proof needs beside Input: the Mac-wide locks over flock (the Service shell's job
 // in the service), a small AX reader to find its scratch elements, the frontmost app and
 // pointer before and after every step, the idle gate, and the report.
