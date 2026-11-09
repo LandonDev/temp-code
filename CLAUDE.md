@@ -3797,7 +3797,8 @@ proof and the sizing rules; the pieces, by name:
 - The task benchmark (docs/computer-protocol.md §20): `bun run
   script:e2e-computer-bench` runs seven real desktop tasks (TextEdit, Chrome
   on bench.html, a dev instance's Settings, System Settings' one switch, a
-  save dialog) on Opus 5.5, GPT-6.1 Sol and Muse Wonder 1.0 side by side,
+  save dialog, which needs the session tier and runs only by hand with
+  `--session`) on Opus 5.5, GPT-6.1 Sol and Muse Wonder 1.0 side by side,
   one real thread per task, in the background tiers alone (the session tier
   refused; `--session` admits it only after 2 idle minutes), each end state
   read through the AX tree, the files or `defaults` (scripts/lib/benchChecks.ts).

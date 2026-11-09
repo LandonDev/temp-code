@@ -152,6 +152,11 @@ system, never the model's word.
 - **Never failed**: a lane whose model this Mac cannot run, a task skipped
   (the session tier, System Settings open, the person never pausing 5 s
   before a launch), a thread the scheduler held queued past 5 minutes.
+- **Ungated** (`TC_BENCH_UNGATED=1`, the person's leave for a hand run):
+  no idle wait before a launch, the front not judged; a locked or dark
+  screen still holds a launch.
+- **One proof at a time**: a run waits while another computer proof runs on
+  the Mac, at most 30 minutes, else it is skipped.
 - **The baseline** is `<git-dir>/temp-code-gate/computer-bench/baseline.json`
   in the checkout that publishes, one row per model, task and task version.
   A gate run that finds no baseline at all passes with "no baseline, first
@@ -165,6 +170,37 @@ system, never the model's word.
   the sign and the soaks; the script stops itself at 14 minutes
   (`BENCH_TIMING.budgetMs`) and the gate kills it at 15. Its report is the
   step's log, and `last.json` and `runs/` beside the baseline.
+
+## The bench's hand run
+
+A record the judge never reads. On 2026-11-09 (macOS 27.2, M4 Max, load 6
+to 9, `TC_BENCH_UNGATED=1`) one gate run finished whole in 511 s, and the
+`--runs 3 --report-only` table finished every Opus and GPT-6.1 Sol task
+before the Mac was yielded to another proof. Then the Mac locked with the
+person away, and the person decided to land. **Not run: the Mac was locked,
+the person away**:
+`TC_BENCH_UNGATED=1 bun run script:e2e-computer-bench -- --runs 3 --report-only`,
+the second `--gate`, `--reference codex` and `bun run gate --tier publish
+--only computer-bench`.
+
+| Task | claude-opus-5-5 | gpt-6.1-sol | muse-wonder-1.0 |
+|---|---|---|---|
+| textedit-write | 4/4, 2 calls, 760 ms a call | 0/5, no call | 0/1, Reminder |
+| chrome-read | 0/6, the check's read missed the page | 0/4, no call | 0/1, Reminder |
+| chrome-form | 0/6, status null; took the front | 0/6, no call | not reached |
+| chrome-delete | 0/6, status null; took the front | 0/6, no call | not reached |
+| devapp-form | 4/4, 8 calls, 845 ms a call | 0/6, no call | 0/4, Reminder |
+| settings-toggle | 2/2, 4 calls, 910 ms a call | 0/2, no call | 0/4, Reminder |
+| save-dialog | 0/6, target unchanged; over budget | 0/6, no call | 0/4, Reminder |
+
+The run's faults are fixed since: GPT-6.1 Sol never reached a tool (codex
+refused the rig's plain-http gateway; the rig now stops it), Muse's own
+reminder child counted as off route, an ungated run judged the front, and the
+check's read of a background Chrome came back without its page (now read
+again while thin, not yet proven on the Mac). `save-dialog` moved to the
+session tier. There is no baseline yet: the first gate run writes it from what
+passes, and passes with "no baseline, first run writes it". The plan's
+Findings (`.temp-code/plan-bXciwrVNLfYK.md`) has the rest.
 
 ## The command
 
@@ -255,7 +291,7 @@ these ran, so its numbers moved by up to 40 % between runs.
 | renderer-soak-chat | about 63 s (2026-11-02, by hand) | | 62 s by hand | 12 min | Mac only; the same window, after the board scene |
 | renderer-soak-typing | 47.8 s, 55.4 s (2026-11-05, a fresh clone) | | 62 s (2026-11-05, load 34) | 12 min | Mac only; its phases, after the chat scene |
 | renderer-soak-scroll | not measured (no Mac linked) | | about 40 s (2026-11-05, load 86) | 12 min | Mac only; four surfaces, after the typing scene |
-| computer-bench | BENCH_GATE_TIME | | n/a | 15 min | Mac only; three model lanes in its own lane, beside the build |
+| computer-bench | 511 s, one run (2026-11-09, ungated, before the codex route fix; failed: see "The bench's hand run") | | n/a | 15 min | Mac only; three model lanes in its own lane, beside the build |
 
 With the three commit lanes at once on the box, vitest finished at 42 s
 and typecheck at 43 s while the build was still running, so the commit
