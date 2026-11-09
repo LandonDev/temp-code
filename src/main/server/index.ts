@@ -56,7 +56,11 @@ import { AddonExposure } from './addons/exposure'
 import { hasAddons, workspaceIdOf } from './addons/scope'
 import { watchScopeFlips } from './addons/scopeFlip'
 import { appAddonAdd, appAddonCall, appAddonFind, appAddonList, appAddonRemove, type AddonToolDeps } from './addons/tools'
-import { addonGrantHook, grantSourceFor } from './addons/grants'
+import { addonGrantHook, grantSourceFor, vaultGrantSource } from './addons/grants'
+import { AddonGrants, addonGrantsHook, grantRpc } from './addons/addonGrants'
+import { oauthFlow } from './addons/oauthFlow'
+import { probeFields } from './addons/grantProbe'
+import { ADDON_SERVICE } from '@shared/addonGrant'
 import type { SpawnAddonHost } from './addons/addonWire'
 import { approverOf, assertMayAnswer } from '@shared/addons'
 import { AwaySync } from './remote/awaySync'
@@ -370,6 +374,14 @@ const SLOW_REQUEST_MS = 500
  * Both live in answerSeams.ts.
  */
 
+/** TEMP_CODE_OAUTH_BROWSER=follow: the browser an isolated instance does not have. The authorize URL's redirect is followed to the loopback callback. */
+async function followSignIn(url: string): Promise<void> {
+  const res = await fetch(url, { redirect: 'manual' })
+  const location = res.headers.get('location')
+  await res.body?.cancel().catch(() => {})
+  if (location) await (await fetch(location)).body?.cancel().catch(() => {})
+}
+
 export async function startServer(
   dbPath: string,
   options: {
@@ -390,6 +402,10 @@ export async function startServer(
     spawnGatewayChild?: SpawnGatewayChild
     /** Run every downstream MCP server of the add-on registry in a utility process of its own (addons/addonHost.ts); absent (tests, the in-process proofs), no add-on runs here. */
     spawnAddonHost?: SpawnAddonHost
+    /** The fetch an add-on sign-in and its values' probe ride (aliax's upstream().fetch); the global fetch when absent. */
+    addonFetch?: (input: string, init?: RequestInit) => Promise<Response>
+    /** Open a URL in the person's browser (shell.openExternal): a host without it, or headless, signs no add-on in. */
+    openExternal?: (url: string) => Promise<void>
     /** Run every helper child (git, gh, ps, ss, lsof) from the exec broker's utility process (execBroker.ts); in this process when absent (tests, the in-process proofs). */
     spawnExecBroker?: SpawnExecBroker
     /** This app's updater (update.ts selfUpdate): fetch a version just published, by this host's Publisher or on a peer's word. The installed Mac app only. */
@@ -637,7 +653,21 @@ export async function startServer(
       }
     }
   )
-  const accountSync: AccountSync = new AccountSync({ environmentId, store, peers, nudge: () => accounts.nudge(), refreshNow: () => accounts.rebuildNow(), headroom })
+  // Add-on grants (addons/addonGrants.ts) are built with the add-on host below; the sync reaches them through this.
+  let addonGrantsRef: AddonGrants | null = null
+  const accountSync: AccountSync = new AccountSync({
+    environmentId,
+    store,
+    peers,
+    nudge: () => accounts.nudge(),
+    refreshNow: () => accounts.rebuildNow(),
+    headroom,
+    addonHome: (id) => addonGrantsRef?.homeOf(id) ?? null,
+    addonKnown: (id) => addonStore.get(id) !== null,
+    onRemoved: (service, name) => {
+      if (service === ADDON_SERVICE) addonGrantsRef?.onRemoved(name)
+    }
+  })
   accountSyncHooks.current = accountSync
   // The user's Claude Code and Codex config, mirrored onto the same hosts
   // (remote/harnessSync.ts). A headless host (the box) receives and does not send.
@@ -702,7 +732,7 @@ export async function startServer(
   // Add-ons and skills: one copy on the same home, both tables followed together (remote/storeSync.ts).
   const storeSync = new StoreSync({ environmentId, home: rulesSync, addons: addonStore, skills: skillStore, store, peers })
   storeSync.start()
-  const stores = storeRpc({ addons: addonStore, skills: skillStore, sync: storeSync })
+  const stores = storeRpc({ addons: addonStore, skills: skillStore, sync: storeSync, onAddonRemoved: (id) => addonGrantsRef?.onAddonRemoved(id) })
   // The skills each CLI gets, written out under <userData>/harness on every
   // host (skills/materialize.ts), their path text localized through memory
   // sync's map of the peer's home; the drivers point a CLI at the generation.
@@ -772,10 +802,39 @@ export async function startServer(
       })
   }
   runSkillImport()
+  // Add-on grants (addons/addonGrants.ts): the vault-backed source, the keeper, one host for each
+  // write, the sweep, and the sign-in on a host with a browser. TEMP_CODE_OAUTH_BROWSER=follow, on an
+  // isolated instance, signs in with no browser: the authorize redirect is followed to the callback.
+  const grantFetch = options.addonFetch ?? ((input: string, init?: RequestInit) => fetch(input, init))
+  const browserSeam = !!process.env.TEMP_CODE_USER_DATA && process.env.TEMP_CODE_OAUTH_BROWSER === 'follow'
+  const openSignIn = browserSeam ? followSignIn : options.openExternal
+  const addonGrants: AddonGrants = new AddonGrants({
+    environmentId,
+    addons: addonStore,
+    accountSync,
+    scopeHome: (workspaceId) => (storeSync.homeFor(workspaceId) ? rulesSync.homeOf() : null),
+    peers,
+    hostName: (id) => hostNameOf(id) ?? id,
+    grantsChanged: (addonId) => addonHost.grantsChanged(addonId),
+    signIn:
+      (!isHeadless() || browserSeam) && openSignIn
+        ? oauthFlow({ fetch: grantFetch, open: openSignIn, trace: process.env.TEMP_CODE_ADDON_TRACE === '1' ? (line) => console.log(line) : undefined })
+        : null,
+    probe: (spec, fields) => probeFields(spec, fields, grantFetch)
+  })
+  addonGrantsRef = addonGrants
+  addonGrantsHook.current = addonGrants
+  const grantsRpc = grantRpc(addonGrants)
   // The add-on host (addons/addonHost.ts): every enabled add-on of this host's platform runs in a
-  // utility process of its own, its grant read fresh on each ask (the vault, or a test's file).
-  const addonGrants = grantSourceFor(addonStore, () => addonHost.grantsChanged(null))
-  const addonHost: AddonHost = new AddonHost({ store: addonStore, spawnChild: options.spawnAddonHost, grants: addonGrants, platform: () => hostPlatform(), cwd: () => workRoot(store).root })
+  // utility process of its own, its grant read fresh on each ask (the vault through AddonGrants, or a test's file).
+  const grantSeam = grantSourceFor(addonStore, () => addonHost.grantsChanged(null))
+  const addonHost: AddonHost = new AddonHost({
+    store: addonStore,
+    spawnChild: options.spawnAddonHost,
+    grants: grantSeam === vaultGrantSource ? addonGrants : grantSeam,
+    platform: () => hostPlatform(),
+    cwd: () => workRoot(store).root
+  })
   addonGrantHook.current = (addonId) => addonHost.grantsChanged(addonId)
   // Away from computer: one state on every host, newest wins (remote/awaySync.ts).
   const awaySync = new AwaySync({ away, peers })
@@ -1110,6 +1169,7 @@ export async function startServer(
   setGuardInstance(guardInstance)
   // After the instance mark: every stdio add-on server carries it beside TEMP_CODE_ADDON, so the sweep below reaps one the add-on host lost.
   await addonHost.start()
+  addonGrants.start()
   const guard = new ProcessGuard({
     ...hostGuardDeps(),
     instance: guardInstance,
@@ -1756,6 +1816,8 @@ export async function startServer(
     const offAway = away.onChange((snapshot) => sendFrame({ push: 'away', ...snapshot }))
     // Add-ons and skills: every list after a change, and this host's add-on status, to every client.
     const offStores = storePush.onPush(sendFrame)
+    // Add-on grants: every view of this host after a change, never a value.
+    const offGrants = addonGrants.onChange((grants) => sendFrame({ push: 'addon-grants', grants }))
 
     ws.on('message', async (data) => {
       let raw: unknown
@@ -2336,6 +2398,15 @@ export async function startServer(
           case 'skills.set':
           case 'skills.remove':
             sendFrame({ id: req.id, ok: true, result: await stores.handle(req, principal) })
+            break
+          // Add-on grants (addons/addonGrants.ts): the params of a setFields carry values and are never logged.
+          case 'addons.grant.list':
+          case 'addons.grant.setFields':
+          case 'addons.grant.clear':
+          case 'addons.grant.refresh':
+          case 'addons.grant.signIn':
+          case 'addons.grant.cancel':
+            sendFrame({ id: req.id, ok: true, result: await grantsRpc.handle(req.method, req.params) })
             break
           case 'rules.set':
             if (!(await rulesSync.forward(req.method, req.params.workspaceId, req.params.rules)))
@@ -3134,6 +3205,7 @@ export async function startServer(
       offBootResume()
       offAway()
       offStores()
+      offGrants()
       offMeta()
       offNotes()
       offBatch()
@@ -3341,6 +3413,8 @@ export async function startServer(
       devRuns.disposeAll()
       await gateway.stop()
       addonGrantHook.current = null
+      addonGrantsHook.current = null
+      addonGrants.close()
       setAppAddons(null)
       stopScopeFlips()
       addonExposure.dispose()

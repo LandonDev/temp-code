@@ -6,6 +6,8 @@ import { notifyAccountsChanged } from './aliaxPages'
 import { statsHost } from './aliax/stats/statsService'
 import { gateway } from './server/gateway'
 import { onAddonSecretSaved } from './server/addons/grants'
+import { addonGrantsHook } from './server/addons/addonGrants'
+import { ADDON_SERVICE } from '@shared/addonGrant'
 import { accountSyncHooks } from './server/remote/accountSync'
 import { fakeProviderRewrite, Upstream } from './server/upstream'
 
@@ -87,10 +89,12 @@ export function configureAliax(environmentId?: string): void {
       onAppEvent: (kind, service, account, detail) => statsHost().appEvent(kind, service, account, detail),
       onAccountsChanged: notifyAccountsChanged,
       onSecretSaved: (service, name, origin) => {
-        // The gateway's own process asks again for that service's credentials.
-        gateway()?.credentialsChanged(service)
-        // An add-on's grant reaches its downstream client at once (addons/grants.ts).
+        // The gateway's own process asks again for that service's credentials; it routes no add-on grant.
+        if (service !== ADDON_SERVICE) gateway()?.credentialsChanged(service)
+        // An add-on's grant reaches its downstream client at once (addons/grants.ts), and its keeper
+        // and view follow every save, a copy that landed by sync included (addons/addonGrants.ts).
         onAddonSecretSaved(service, name)
+        if (service === ADDON_SERVICE) addonGrantsHook.current?.onSaved(name)
         accountSyncHooks.current?.onSecretSaved(service, name, origin)
       },
       askOwner: (service, name, owner) => accountSyncHooks.current?.askOwner(service, name, owner) ?? Promise.resolve(null)

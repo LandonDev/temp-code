@@ -115,6 +115,15 @@ export class AddonGrants implements AddonGrantSource {
     ;(this.deps.log ?? ((l: string) => console.log(`[addons] ${l}`)))(line)
   }
 
+  /** This vault's add-on profiles; none where aliax-core is not configured (an in-process proof). */
+  private profiles(): ReturnType<typeof vault.profiles> {
+    try {
+      return vault.profiles(ADDON_SERVICE)
+    } catch {
+      return []
+    }
+  }
+
   private nameOf(addonId: string): string {
     return this.deps.addons.get(addonId)?.name ?? addonId
   }
@@ -128,7 +137,7 @@ export class AddonGrants implements AddonGrantSource {
     })
     this.sweepPeriod = setInterval(() => void this.sweep(), this.deps.sweepMs ?? ADDON_SWEEP_MS)
     this.sweepPeriod.unref?.()
-    for (const p of vault.profiles(ADDON_SERVICE)) this.schedule(p.name)
+    for (const p of this.profiles()) this.schedule(p.name)
     void this.sweep()
   }
 
@@ -310,7 +319,7 @@ export class AddonGrants implements AddonGrantSource {
   /** The one place a grant leaves with its add-on. */
   async sweep(only?: string): Promise<number> {
     let gone = 0
-    for (const p of vault.profiles(ADDON_SERVICE)) {
+    for (const p of this.profiles()) {
       if (only && p.name !== only) continue
       if (this.deps.addons.get(p.name)) continue
       this.cancelSignIn(p.name)

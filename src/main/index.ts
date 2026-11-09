@@ -189,6 +189,9 @@ app.whenReady().then(async () => {
     spawnGatewayChild,
     // So do the add-on registry's downstream MCP servers: the add-on host's own process (addonHostSpawn.ts).
     spawnAddonHost: spawnAddonHostChild,
+    // An add-on's sign-in and its values' probe ride the provider fetch; the sign-in opens the person's browser.
+    addonFetch: (input, init) => upstream().fetch(input, init),
+    openExternal: (url) => shell.openExternal(url),
     // So do the helper children (git, gh, ps): the exec broker forks them, never this process.
     // TEMP_CODE_EXEC_BROKER=0 keeps them here (the before side of scripts/e2e-exec-broker.ts).
     spawnExecBroker: process.env.TEMP_CODE_EXEC_BROKER === '0' ? undefined : spawnExecBrokerChild,
