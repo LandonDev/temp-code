@@ -1470,3 +1470,53 @@ Per computer call: its host time (the rig's wrapper, entering `ComputerSessions.
 ### 21.6 The reference
 
 `--reference codex` runs `gpt-6.1-sol` with no `computer_*` tool offered (`computerHooks.current` null for the pass), each message ending `Use your computer use tools for this task.`, so the thread uses the person's `cua_repl` plugin. Since that may take the pointer or the front, each run waits for the Mac to be idle 2 minutes (30 minutes at most, else skipped). It records each end state (never `policy`, whose field Codex's tools lack), wall and think time, and each `cua_repl` call's row time; no host time, the work being Codex's. Its table is a record for the plan's findings; the judge never reads it.
+
+
+## The unattended proof modes
+
+Run each from a built clone on the Mac:
+
+```sh
+bun run script:e2e-tc-computer -- --gate
+bun run script:e2e-computer-bridge -- --gate
+bun run script:e2e-computer-preview -- --gate
+```
+
+Each gate mode waits for `scripts/lib/gateBuild.ts` before compiling scratch
+helpers or reading the shipped service. It checks the native source stamp
+before calling `buildTcComputer`, so a stale service fails instead of rebuilding.
+It also waits for older computer proofs through `scripts/lib/proofOrder.ts`,
+with a bounded wait, and sets `TC_PROOF_UNGATED=1` itself. TC Probe is the only
+scratch app it drives; every action stays at the ax or process tier. The
+proofs kill their own children on success, failure, throws and handled signals.
+Reports and traces remain in their `/tmp/tc-…` proof dirs for the caller to
+copy and then remove. None of these modes uses a real model or the clipboard.
+
+| Mode | Runs | Skips |
+| --- | --- | --- |
+| tc-computer | Background launch, list, find, Ping at ax, the private-symbol fallback, window capture, cancelled wait, crash with held process input, restart and EOF | TextEdit, its reads and actions, the clipboard lock and paste |
+| computer-bridge | The existing box-half protocol over a local child pipe, with two isolated headless instances on this Mac; the box half sets `TEMP_CODE_BUILD_PLATFORM=linux` | SSH in gate mode; the default SSH pair still works as a hand run |
+| computer-preview | Legs 1–3 and 5: target, frames, clicks, stop and the frontmost-app and pointer check | Leg 4: "takes the person's Escape: hand run"; neither direct `escape.watch { on: true }` nor `SessionHolds` may take Escape in gate mode |
+
+`--pair local` also selects the bridge's local pair without `--gate`. Both
+local and SSH modes use the same age-based proof ordering. The local child
+belongs to its wrapper; it does not wait on its own parent as another proof.
+
+Accessibility must belong to the app that holds the shell's session
+(TempCode.app when Publish starts it). A missing grant fails by name without
+asking for it. Without Screen Recording, the proof skips capture and image
+checks, passes `screenshot: false` to host calls (the stdio bridge included),
+and seeds its own host's `computer.prompted.screenRecording` setting before
+startup. Direct wire reads use `screenshot: never`. The preview still checks
+its target and an ax Ping without starting a capture stream. The pure rule
+in `scripts/lib/computerProofGate.ts` refuses picture and permission-request
+calls without the grant; its test also checks the actual host does not prompt,
+even if the service reports a late Screen Recording error. The preview's
+request guard refuses `escape.watch { on: true }` in gate mode.
+
+These modes need an unlocked, awake Mac for AX and capture. They fail promptly
+if it is locked or dark; they do not unlock it, wake it or wait for the person.
+On 2026-11-09 the isolated clone built successfully in 56.8 s and both grants
+were present, but the Mac was locked. The live checks could not reach the
+three-green bar; those rows remain unproven until that bar passes. The patch
+handoff report records each attempted run and its result.

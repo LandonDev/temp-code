@@ -43,10 +43,13 @@ import { tmpdir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import { createInterface } from 'node:readline'
 
+import { waitForGateBuild } from './lib/gateBuild'
+import { computerProofMode, computerProofPolicy, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
+
+const GATE = computerProofMode(process.argv).gate
+if (GATE) process.env.TC_PROOF_UNGATED = '1'
 const REPO = resolve(import.meta.dir, '..')
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
-/** The Mac's other computer proofs: one at a time, so their scratch windows and the service's locks never cross. */
-const OTHER_PROOFS = /e2e-computer\.(ts|mjs)|e2e-tc-computer|input-proof|ax-reader-proof/
 const arg = (name: string): string | undefined => {
   const i = process.argv.indexOf(name)
   return i >= 0 ? process.argv[i + 1] : undefined
@@ -108,6 +111,7 @@ function launch(inst: Inst, extra: Record<string, string>): void {
       ? ['xvfb-run', '-a', '-s', '-screen 0 1280x800x24 -nolisten tcp', 'dbus-run-session', '--', electron, '.']
       : [electron, '.']
   const proc = spawn(argv[0], argv.slice(1), { cwd: REPO, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true })
+  proc.once('error', (error) => appendFileSync(inst.log, `launch failed: ${error.message}\n`))
   proc.stdout?.on('data', (c: Buffer) => appendFileSync(inst.log, c))
   proc.stderr?.on('data', (c: Buffer) => appendFileSync(inst.log, c))
   inst.proc = proc
@@ -160,11 +164,13 @@ async function boxHalf(): Promise<void> {
     process.exit(0)
   }
   process.on('SIGTERM', quit)
+  process.on('SIGINT', quit)
+  process.once('exit', () => { kill(box); rmSync(root, { recursive: true, force: true }) })
   // Entered as root and dropped to agents, the shell keeps root's XDG_RUNTIME_DIR and an AppArmor context
   // where Electron falls back to its setuid sandbox and aborts: this isolated test instance runs without either.
   const runtime = process.env.XDG_RUNTIME_DIR
   if (runtime && process.getuid && !runtime.endsWith(`/${process.getuid()}`)) delete process.env.XDG_RUNTIME_DIR
-  launch(box, { TEMP_CODE_REMOTE_PORT: String(port), TEMP_CODE_MAC_TOKEN_SEED: seed, TEMP_CODE_E2E_STATUS: '1', ELECTRON_DISABLE_SANDBOX: '1' })
+  launch(box, { ...(arg('--pair') === 'local' ? { TEMP_CODE_BUILD_PLATFORM: 'linux' } : {}), TEMP_CODE_REMOTE_PORT: String(port), TEMP_CODE_MAC_TOKEN_SEED: seed, TEMP_CODE_E2E_STATUS: '1', ELECTRON_DISABLE_SANDBOX: '1' })
   if (!(await until(120_000, () => existsSync(join(box.data, 'server.json'))))) {
     console.log(JSON.stringify({ ready: false, error: 'the box instance did not start', log: logOf(box).slice(-2_000) }))
     return quit()
@@ -284,23 +290,8 @@ async function orchestrator(): Promise<void> {
   const PROBE_APP = join(WORK, `${APP}.app`)
   const PROBE_BUNDLE_ID = 'dev.landon.tempcode.computer-bridge-probe'
   const LSREGISTER = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
-  // One computer proof on the Mac at a time: wait for another to finish (at most two hours).
-  const othersRunning = (): string[] => {
-    try {
-      return execFileSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' })
-        .split('\n')
-        .filter((l) => OTHER_PROOFS.test(l) && !l.includes('e2e-computer-bridge'))
-    } catch {
-      return []
-    }
-  }
-  if (othersRunning().length) {
-    console.log(`      another computer proof runs on this Mac; waiting for it: ${othersRunning()[0]?.trim().slice(0, 120)}`)
-    if (!(await until(2 * 60 * 60_000, () => othersRunning().length === 0))) {
-      console.log('STOP  another computer proof was still running after two hours')
-      process.exit(1)
-    }
-  }
+  if (GATE) await waitForGateBuild({ tree: REPO, log: console.log })
+  await waitForComputerProof(console.log)
   rmSync(WORK, { recursive: true, force: true })
   mkdirSync(WORK, { recursive: true })
   console.log('tiers ax and process only, TC Probe in the background; no idle gate, no model turn')
@@ -326,11 +317,12 @@ async function orchestrator(): Promise<void> {
 
   // the box half over SSH, its local socket forwarded to this Mac
   const sshWords = (process.env.TC_BOX_SSH || 'ssh box').split(/\s+/).filter(Boolean)
+  const localPair = computerProofMode(process.argv).localPair
   const clone = process.env.TC_BOX_CLONE
-  if (!clone) throw new Error('TC_BOX_CLONE names the clone of this branch on the box')
+  if (!localPair && !clone) throw new Error('TC_BOX_CLONE names the clone of this branch on the box')
   const boxBun = process.env.TC_BOX_BUN || '/srv/agents/home/.bun/bin/bun'
-  const boxPort = 20_000 + Math.floor(Math.random() * 20_000)
-  const tunnel = await freePort()
+  const boxPort = localPair ? await freePort() : 20_000 + Math.floor(Math.random() * 20_000)
+  const tunnel = localPair ? boxPort : await freePort()
 
   let scratchPid = 0
   const macRoot = mkdtempSync(join(tmpdir(), 'tc-computer-bridge-mac-'))
@@ -346,9 +338,12 @@ async function orchestrator(): Promise<void> {
     })
 
   const cleanup = async (): Promise<void> => {
-    await Promise.race([boxCall('quit').catch(() => null), sleep(5_000)])
+    if (ssh) await Promise.race([boxCall('quit').catch(() => null), sleep(5_000)])
     ssh?.kill()
     kill(mac)
+    if (!scratchPid) {
+      try { scratchPid = Number(execFileSync('pgrep', ['-f', `${PROBE_APP}/Contents/MacOS/`], { encoding: 'utf8' }).trim().split('\n')[0]) } catch { /* never launched */ }
+    }
     if (scratchPid)
       try {
         process.kill(scratchPid, 'SIGKILL')
@@ -367,6 +362,7 @@ async function orchestrator(): Promise<void> {
   }
   const copyFiles = (inst: Inst): void => {
     writeFileSync(join(WORK, 'mac-trace.log'), logOf(inst).split('\n').filter((l) => /\[computer\]|\[mac-bridge\]/.test(l)).join('\n'))
+    if (localPair) return
     const dir = process.env.TC_BOX_REPORT_DIR || '/srv/agents/work/temp-code/.temp-code/computer-bridge/mac'
     const host = sshWords[sshWords.length - 1]
     const opts = sshWords.slice(1, -1)
@@ -385,10 +381,23 @@ async function orchestrator(): Promise<void> {
     process.exit(1)
   }
 
+  process.once('exit', () => {
+    ssh?.kill()
+    kill(mac)
+    if (scratchPid) { try { process.kill(scratchPid, 'SIGKILL') } catch { /* gone */ } }
+  })
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => {
+    report.stopped = `received ${signal}`
+    void cleanup().finally(() => process.exit(1))
+  })
+
+  try {
   // ── setup: tc-computer, the probe, the grants, TC Probe ──
   const { buildTcComputer } = await import('./lib/tcComputerBuild')
+  if (GATE) requireGateNative(REPO)
   buildTcComputer({ root: REPO, require: true })
   execFileSync('xcrun', ['swiftc', '-O', '-o', PROBE, join(REPO, 'scripts/mac/computer-proof-probe.swift')], { stdio: 'pipe' })
+  execFileSync('codesign', ['-s', '-', '--force', PROBE], { stdio: 'pipe' })
   const frontmost = (): { pid: number; bundleId: string | null } => JSON.parse(execFileSync(PROBE, ['frontmost'], { encoding: 'utf8', timeout: 10_000 }))
   const screenReady = (): boolean => {
     const screen = JSON.parse(execFileSync(PROBE, ['screen'], { encoding: 'utf8', timeout: 10_000 })) as { locked: boolean; asleep: boolean }
@@ -397,14 +406,20 @@ async function orchestrator(): Promise<void> {
   /** AX sees no window on a locked or dark screen: wait for it to be unlocked and awake (at most 90 minutes), else stop. */
   const awaitScreen = async (): Promise<void> => {
     if (screenReady()) return
+    if (GATE) throw new Error('gate proof needs an unlocked, awake Mac')
     const t0 = Date.now()
     console.log('      the Mac is locked or dark; waiting for it')
     if (!(await until(90 * 60_000, screenReady))) await stop('not run: the Mac stayed locked or dark for 90 minutes')
     report.screenWaits.push({ at: new Date().toISOString(), ms: Date.now() - t0 })
   }
   const grants = JSON.parse(execFileSync(BIN, ['permissions'], { encoding: 'utf8' })) as { accessibility: boolean; screenRecording: boolean }
-  if (!grants.accessibility) await stop('Accessibility is off for TempCode: turn it on under System Settings → Privacy & Security → Accessibility, then run this again')
-  const pictures = grants.screenRecording
+  if (!grants.accessibility) await stop('Accessibility is off for the session holder (TempCode.app from Publish): turn it on under System Settings → Privacy & Security → Accessibility, then run this again')
+  const policy = computerProofPolicy(GATE, grants)
+  const pictures = policy.pictures
+  if (policy.settings.length) {
+    const sql = 'CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);' + policy.settings.map(([k, v]) => `INSERT OR REPLACE INTO settings VALUES ('${k}', '${v}');`).join('')
+    execFileSync('/usr/bin/sqlite3', [join(mac.data, 'temp-code.db')], { input: sql, stdio: ['pipe', 'pipe', 'pipe'] })
+  }
   if (!pictures) console.log('      Screen Recording is off: every step runs but the picture checks')
 
   mkdirSync(join(PROBE_APP, 'Contents/MacOS'), { recursive: true })
@@ -445,7 +460,7 @@ async function orchestrator(): Promise<void> {
   if (!scratchPid) await stop('open -n gave no TC Probe pid within 10 s')
   await sleep(1_000)
   // The person accepts a scratch window coming forward; it is noted, and their app put back.
-  if (frontmost().pid === scratchPid) {
+  if (!GATE && frontmost().pid === scratchPid) {
     report.bounce = 'TC Probe came to the front at launch'
     if (personBefore.bundleId)
       try {
@@ -459,8 +474,12 @@ async function orchestrator(): Promise<void> {
   // The Mac's key may log in as root, and Electron refuses to run as root: the half runs as the agents user then.
   const half = `${boxBun} scripts/e2e-computer-bridge.ts --box-half --port ${boxPort} --seed ${SEED}`
   const boxCommand = `cd ${clone} && if [ "$(id -u)" = 0 ]; then exec runuser -u agents -- env HOME=/srv/agents/home ${half}; else exec ${half}; fi`
-  ssh = spawn(sshWords[0], [...sshWords.slice(1, -1), '-o', 'ExitOnForwardFailure=yes', '-L', `127.0.0.1:${tunnel}:127.0.0.1:${boxPort}`, sshWords[sshWords.length - 1], boxCommand], {
+  ssh = localPair ? spawn(process.execPath, [join(REPO, 'scripts/e2e-computer-bridge.ts'), '--box-half', '--pair', 'local', '--port', String(boxPort), '--seed', SEED], { cwd: REPO, stdio: ['pipe', 'pipe', 'inherit'] }) : spawn(sshWords[0], [...sshWords.slice(1, -1), '-o', 'ExitOnForwardFailure=yes', '-L', `127.0.0.1:${tunnel}:127.0.0.1:${boxPort}`, sshWords[sshWords.length - 1], boxCommand], {
     stdio: ['pipe', 'pipe', 'inherit']
+  })
+  ssh.once('error', (error) => {
+    for (const answer of pending.values()) answer({ error: `box half: ${error.message}` })
+    pending.clear()
   })
   type ReadyLine = { ready: boolean; envId: string; key: string; threads: [string, string]; root: string; error?: string; log?: string }
   const halfLine: { ready: ReadyLine | null } = { ready: null }
@@ -480,11 +499,14 @@ async function orchestrator(): Promise<void> {
   const [t1, t2] = threads
   const token = (sid: string): string => tokenFor(SEED, 'computer', sid)
   let callSeq = 0
-  const computer = (sid: string, tool: string, args: Record<string, unknown>, images: 'parts' | 'none' = 'parts'): Promise<AppComputerAnswer> =>
-    boxCall<AppComputerAnswer>('app.computer', { sessionId: sid, token: token(sid), call: ++callSeq, tool, args, images }).then((a) => {
+  const computer = (sid: string, tool: string, args: Record<string, unknown>, images: 'parts' | 'none' = 'parts'): Promise<AppComputerAnswer> => {
+    const safeArgs = policy.observeArgs(args)
+    policy.assertRequest(tool, safeArgs)
+    return boxCall<AppComputerAnswer>('app.computer', { sessionId: sid, token: token(sid), call: ++callSeq, tool, args: safeArgs, images }).then((a) => {
       report.steps.push(...a.text.split('\n').filter((l) => / · (ax|process|session)\b/.test(l)))
       return a
     })
+  }
   const tools = (sid: string): Promise<{ tools: { name: string; description: string }[] }> => boxCall('app.computerTools', { sessionId: sid, token: token(sid) })
   const sessionsOnBox = async (): Promise<{ threadId: string; macPeer?: string; macName?: string; apps: { name: string }[]; running: { words: string } | null; asking?: { line: string } }[]> =>
     (await boxCall<{ sessions: never[] }>('computer.sessions', {})).sessions
@@ -511,7 +533,6 @@ async function orchestrator(): Promise<void> {
   const macActivity = (): Promise<{ calls: (BridgeRequest & { environmentId: string })[] }> => rpc(mac, 'macBridge.activity')
   const macCalls = (sid: string): number => logOf(mac).split('\n').filter((l) => l.includes(`thread=${sid} mac.computer `)).length
 
-  try {
     // 1. off
     await awaitScreen()
     check('off: the box lists no computer tools', (await tools(t1)).tools.length === 0)
@@ -652,13 +673,15 @@ async function orchestrator(): Promise<void> {
     const codexOut = await boxCall<{ content: { type: string; text?: string }[] }>('bridge', {
       sessionId: t2,
       images: 'none',
-      request: { method: 'tools/call', params: { name: 'computer_observe', arguments: { app: APP, window: APP, screenshot: true } } }
+      request: { method: 'tools/call', params: { name: 'computer_observe', arguments: policy.observeArgs({ app: APP, window: APP, screenshot: true }) } }
     })
     check(
       'codex: an observe answers text with its shot line and no image part',
       codexOut.content.every((c) => c.type === 'text') && (!pictures || (codexOut.content[0]?.text ?? '').includes('screenshot 1 (observation): ')),
       JSON.stringify(codexOut).slice(0, 300)
     )
+
+    if (!pictures) check('codex: the picture checks', 'skipped', 'Screen Recording is off')
 
     // 11. the switch off mid-turn
     await awaitScreen()

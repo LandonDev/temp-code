@@ -93,6 +93,8 @@ import {
   type StepResult,
   type WaitReport
 } from '../src/shared/computer/protocol'
+import { waitForGateBuild } from './lib/gateBuild'
+import { computerProofMode, computerProofPolicy, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
 import { OwnInput, personSince } from './lib/proofGate'
 import { buildTcComputer, type TcComputerBuildResult } from './lib/tcComputerBuild'
 
@@ -101,7 +103,12 @@ if (process.platform !== 'darwin') {
   process.exit(0)
 }
 
+const GATE = computerProofMode(process.argv).gate
+if (GATE) process.env.TC_PROOF_UNGATED = '1'
+let policy = computerProofPolicy(GATE, { accessibility: true, screenRecording: true })
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+let ownsWork = false
 const WORK = '/tmp/tc-computer-proof'
 const REPORT = join(WORK, 'report.json')
 const TRACE = join(WORK, 'trace.log')
@@ -523,6 +530,12 @@ class Service {
     params: ComputerParams<M>,
     timeoutMs = 30_000
   ): { id: number; answer: Promise<Answer<M>> } {
+    if (GATE && !policy.pictures) {
+      const p = params as Record<string, unknown>
+      if (method === 'state.get') params = { ...p, screenshot: 'never' } as ComputerParams<M>
+      if (method === 'action.run' || method === 'action.batch') params = { ...p, observe: { ...((p.observe ?? {}) as object), screenshot: 'never' } } as ComputerParams<M>
+    }
+    if (GATE) policy.assertRequest(method, params)
     const id = this.next++
     const frame = { jsonrpc: '2.0' as const, id, method, params }
     // the proof's own requests are held to the wire too
@@ -795,7 +808,10 @@ let tryAborted = false
 let stopLine: string | null = null
 
 async function run(): Promise<void> {
+  if (GATE) await waitForGateBuild({ tree: ROOT, log: console.log })
+  await waitForComputerProof(console.log)
   const runStart = Date.now()
+  ownsWork = true
   rmSync(WORK, { recursive: true, force: true })
   mkdirSync(WORK, { recursive: true })
   writeFileSync(TRACE, '')
@@ -803,6 +819,7 @@ async function run(): Promise<void> {
 
   const setup = new Chain()
   await setup.step('build tc-computer', async (data) => {
+    if (GATE) requireGateNative(ROOT)
     report.build = buildTcComputer({ root: ROOT, require: true })
     data.build = report.build
     check(existsSync(BIN), 'the binary is at resources/native/tc-computer', BIN)
@@ -816,6 +833,7 @@ async function run(): Promise<void> {
       })
     }
     swiftc('computer-proof-probe.swift', PROBE_TOOL)
+    execFileSync('codesign', ['-s', '-', '--force', PROBE_TOOL], { stdio: 'pipe' })
     mkdirSync(join(PROBE_APP, 'Contents/MacOS'), { recursive: true })
     swiftc('computer-probe-app.swift', join(PROBE_APP, 'Contents/MacOS/TC Probe'))
     writeFileSync(join(PROBE_APP, 'Contents/Info.plist'), probeInfoPlist())
@@ -837,16 +855,18 @@ async function run(): Promise<void> {
   if (!a || !granted) return
   if (!granted.accessibility) {
     stopLine =
-      'Accessibility is off for TempCode: turn it on in System Settings › Privacy & Security › Accessibility, then run this again.'
+      'Accessibility is off for the session holder (TempCode.app from Publish): turn it on in System Settings › Privacy & Security › Accessibility, then run this again.'
     return
   }
+  policy = computerProofPolicy(GATE, granted)
   const noPictures = granted.screenRecording ? null : 'Screen Recording is off for TempCode'
 
   // ── the two apps, under the launch rule ──
   // the first service has done its part; each try opens its own, so an aborted try leaves nothing running
   a.closeStdin()
   await within(a.exit, 2_000, 'the first service exiting')
-  const deadline = runStart + GATE_WAIT_MS
+  if (GATE && !(await screenAwake())) throw new Error('gate proof needs an unlocked, awake Mac')
+  const deadline = runStart + (GATE ? 10 * 60_000 : GATE_WAIT_MS)
   for (let attempt = 1; ; attempt++) {
     if (!(await awaitGap(deadline))) {
       record({
@@ -1072,11 +1092,65 @@ async function appSections(
     const exit = await within(miss.exit, 2_000, 'the private-miss service exiting')
     check(exit.code === 0, 'the private-miss service exits 0', exit)
   })
+  if (GATE) {
+    for (const name of [
+      'open a scratch TextEdit', 'TextEdit full read with geometry',
+      'TextEdit set_value', 'TextEdit process-tier click',
+      'a second clipboard holder', '2,500 characters through the pasteboard',
+      'TextEdit screenshot and region capture', 'a batch stops at its failed step',
+      'a batch of three good steps', 'an unchanged TextEdit read'
+    ])
+      record({ name, outcome: 'skipped', ms: 0, why: 'hand run: opens TextEdit or touches the clipboard' })
+    await probeApp.step('TC Probe window screenshot', async () => {
+      if (noPictures) throw skip(noPictures)
+      const shot = await a.call('capture.screenshot', { session: SESSION, app: { pid: probePid }, window: { id: probeWindowId } })
+      checkShotFile(shot)
+      check(Math.max(shot.width, shot.height) <= SHOT.defaultMaxEdge, 'screenshot fits the default edge', shot)
+    })
+    await probeApp.step('TC Probe cancelled wait', async (data) => {
+      const sent = a.send('action.run', { session: SESSION, app: { pid: probePid }, window: { id: probeWindowId }, action: { action: 'wait', duration: 5 }, tiers: ['ax'] })
+      await sleep(300)
+      const at = performance.now()
+      a.cancel(sent.id)
+      const answer = await sent.answer
+      check(answer.ok, 'cancel answers a result', answer)
+      failedStep(answer.result.step, 'cancelled')
+      check(!answer.result.observation, 'no observation after cancel')
+      data.ms = Math.round(performance.now() - at)
+      check(Number(data.ms) <= 500, 'cancel ends within 500 ms', data.ms)
+    })
+    await probeApp.step('TC Probe crash with held input and restart', async () => {
+      const target = { session: SESSION, app: { pid: probePid }, window: { id: probeWindowId } }
+      const read = await a.call('state.get', { ...target, mode: 'full', geometry: true, screenshot: 'never' })
+      const ping = findElement(read, 'Ping', (e) => e.role === 'button' && e.name === 'Ping')
+      check(ping.frame, 'Ping has geometry', ping)
+      const point: [number, number] = [ping.frame.x + ping.frame.w / 2, ping.frame.y + ping.frame.h / 2]
+      okStep((await a.call('action.run', { ...target, action: { action: 'mouse_move', coordinate: point }, tiers: ['process'], observe: { mode: 'none' } })).step)
+      check(okStep((await a.call('action.run', { ...target, action: { action: 'left_mouse_down' }, tiers: ['process'], observe: { mode: 'none' } })).step).tier === 'process', 'button held at process tier')
+      a.proc.kill('SIGKILL')
+      check((await within(a.exit, 2_000, 'crash')).signal === 'SIGKILL', 'service died by SIGKILL')
+      const b = new Service('gate restarted')
+      const { result } = await initialize(b, DATA)
+      check(result.epoch !== read.epoch, 'restart changes epoch')
+      check(await b.noteMatching((n) => n.method === 'log' && /releas/i.test(n.params.message), 3_000), 'restart releases held input')
+      await b.refused('action.run', { ...target, action: { action: 'cursor_position' }, tiers: ['process'] }, 'unknown_session')
+      await b.call('session.open', { session: SESSION })
+      const stale = await b.refused('action.run', { ...target, epoch: read.epoch, action: { action: 'left_click', element: ping.index }, tiers: ['ax'] }, 'stale_element')
+      check(stale.data?.reason === 'service-restarted', 'stale ref names restart', stale)
+      b.closeStdin()
+      check((await within(b.exit, 2_000, 'EOF')).code === 0, 'restarted service exits 0 on EOF')
+    })
+  }
   await probeApp.step('quit the probe app', async () => {
     process.kill(probePid, 'SIGTERM')
     await until(() => (alive(probePid) ? null : true), 5_000, 'probe app exit')
     probePid = 0
   })
+
+  if (GATE) {
+    if (!a.done) { a.closeStdin(); await within(a.exit, 2_000, 'gate service EOF') }
+    return
+  }
 
   // ── TextEdit ──
   const te = new Chain()
@@ -1505,6 +1579,7 @@ function probeInfoPlist(): string {
 
 /** Everything the run made, but the report and the trace. Never a prompt: TextEdit dies by SIGKILL. */
 async function cleanup(): Promise<void> {
+  if (!ownsWork) return
   const done = (what: string): void => void report.cleanup.push(what)
   if (textEditPid && alive(textEditPid)) {
     process.kill(textEditPid, 'SIGKILL')
@@ -1554,6 +1629,17 @@ async function cleanup(): Promise<void> {
       if (!KEEP.has(entry)) rmSync(join(WORK, entry), { recursive: true, force: true })
 }
 
+process.once('exit', () => {
+  if (!ownsWork) return
+  for (const pid of ownedPids()) { try { process.kill(pid, 'SIGKILL') } catch { /* gone */ } }
+  for (const svc of services) if (!svc.done) svc.proc.kill('SIGKILL')
+  for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+})
+for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => {
+  stopLine = `gate proof received ${signal}`
+  void cleanup().finally(() => process.exit(1))
+})
+
 let crashed: unknown = null
 try {
   await run()
@@ -1571,6 +1657,10 @@ report.stopped =
   (crashed
     ? `the proof itself failed: ${crashed instanceof Error ? (crashed.stack ?? crashed.message) : String(crashed)}`
     : null)
+if (!ownsWork) {
+  console.error(report.stopped ?? 'proof stopped before taking its turn')
+  process.exit(1)
+}
 mkdirSync(WORK, { recursive: true })
 writeFileSync(REPORT, `${JSON.stringify(report, null, 2)}\n`)
 

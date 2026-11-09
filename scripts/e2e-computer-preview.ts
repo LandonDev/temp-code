@@ -38,6 +38,8 @@ import { ComputerPreviews, type Viewer } from '../src/main/server/computer/previ
 import { SessionHolds, HOLD_LINGER_MS } from '../src/main/server/computer/hold'
 import { setSessionTierGate, REFUSE_SESSION_TIER } from '../src/main/server/computer/tierGate'
 import { buildTcComputer } from './lib/tcComputerBuild'
+import { waitForGateBuild } from './lib/gateBuild'
+import { computerProofMode, computerProofPolicy, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
 import { repoRoot } from './lib/repoRoot'
 import { buildProbeApp, cleanupProbeApp, launchTickingProbe, PROBE_APP_NAME, MAC_EXTRA_SOURCE, ScreenLost, ScreenWatch, type ProbeAppBuild } from './lib/tcProbeApp'
 
@@ -46,7 +48,11 @@ if (process.platform !== 'darwin') {
   process.exit(0)
 }
 
+const GATE = computerProofMode(process.argv).gate
+if (GATE) process.env.TC_PROOF_UNGATED = '1'
 const ROOT = repoRoot()
+if (GATE) await waitForGateBuild({ tree: ROOT, log: console.log })
+await waitForComputerProof(console.log)
 const WORK = '/tmp/tc-preview-proof'
 const REPORT = join(WORK, 'report.json')
 const TRACE = join(WORK, 'trace.log')
@@ -64,7 +70,7 @@ mkdirSync(WORK, { recursive: true })
 writeFileSync(TRACE, '')
 process.env.TEMP_CODE_COMPUTER_BIN = BIN
 
-type Outcome = 'passed' | 'failed' | 'inconclusive'
+type Outcome = 'passed' | 'failed' | 'inconclusive' | 'skipped'
 const report = {
   startedAt: new Date().toISOString(),
   finishedAt: '',
@@ -76,6 +82,10 @@ const report = {
   requests: [] as string[],
   bounce: null as string | null,
   cleanup: [] as string[]
+}
+const skipCheck = (name: string, detail: string): void => {
+  report.checks.push({ name, outcome: 'skipped', detail })
+  console.log(`SKIP  ${name}: ${detail}`)
 }
 const check = (name: string, ok: boolean | 'inconclusive', detail = ''): void => {
   const outcome: Outcome = ok === 'inconclusive' ? 'inconclusive' : ok ? 'passed' : 'failed'
@@ -98,6 +108,7 @@ let holds: SessionHolds | null = null
 async function cleanup(): Promise<void> {
   report.cleanup.push(...cleanupProbeApp(probeBuild, probePid))
   probePid = 0
+  probeBuild = null
   holds?.close()
   await previews?.close().catch(() => undefined)
   await service?.request('escape.watch', { on: false }).catch(() => undefined)
@@ -107,15 +118,19 @@ async function cleanup(): Promise<void> {
 }
 
 async function run(): Promise<void> {
+  if (GATE) requireGateNative(ROOT)
   const build = buildTcComputer({ root: ROOT, require: true })
   console.log(`tc-computer: ${build.built ? `built in ${build.ms} ms` : build.skipped}`)
   execFileSync('xcrun', ['swiftc', '-O', '-o', PROBE, join(ROOT, 'scripts/mac/computer-proof-probe.swift')], { stdio: 'pipe' })
   writeFileSync(`${TAPS}.swift`, MAC_EXTRA_SOURCE)
   execFileSync('xcrun', ['swiftc', '-O', '-o', TAPS, `${TAPS}.swift`], { stdio: 'pipe' })
+  for (const binary of [PROBE, TAPS]) execFileSync('codesign', ['-s', '-', '--force', binary], { stdio: 'pipe' })
   const taps = (pid: number): { taps: number; enabled: number } => JSON.parse(execFileSync(TAPS, ['taps', String(pid)], { encoding: 'utf8' })) as { taps: number; enabled: number }
   const grants = JSON.parse(execFileSync(BIN, ['permissions'], { encoding: 'utf8' })) as { accessibility: boolean; screenRecording: boolean }
-  if (!grants.accessibility || !grants.screenRecording)
-    throw new Error(`permissions: accessibility ${grants.accessibility}, screen recording ${grants.screenRecording}; the proof needs both and asks for neither`)
+  if (!grants.accessibility) throw new Error('Accessibility is off for the session holder (TempCode.app from Publish); enable its Accessibility grant')
+  if (!GATE && !grants.screenRecording) throw new Error('the hand-run preview needs Screen Recording; it asks for no grant')
+  const policy = computerProofPolicy(GATE, grants)
+  report.gate = GATE ? 'unattended: TC Probe only; no Escape watch or idle wait' : report.gate
   watch.start(PROBE)
 
   const start = Date.now()
@@ -124,11 +139,11 @@ async function run(): Promise<void> {
 
   probeBuild = buildProbeApp(ROOT, WORK, 'dev.landon.tempcode.computer-preview-probe')
   watch.check()
-  const launched = await launchTickingProbe(probeBuild, frontmost)
+  const launched = await launchTickingProbe(probeBuild, GATE ? () => ({ ...frontmost(), bundleId: null }) : frontmost)
   probePid = launched.pid
   report.bounce = launched.bounced
 
-  const settings = new Map<string, string>()
+  const settings = new Map<string, string>(policy.settings)
   service = new ComputerService({
     dataDir: join(WORK, 'data'),
     env: { ...process.env, TEMP_CODE_COMPUTER_TRACE: '1' },
@@ -141,6 +156,7 @@ async function run(): Promise<void> {
   svc.onNotification((n) => void (n.method === 'capture/frame' && sourceFrames.push(Date.now())))
   const request = svc.request.bind(svc)
   svc.request = (async (method: ComputerMethod, params: never, opts?: { signal?: AbortSignal; timeoutMs?: number }) => {
+    policy.assertRequest(method, params)
     report.requests.push(method)
     const result = await request(method, params, opts)
     const steps = method === 'action.run' ? [(result as { step: { status: string; tier?: Tier | null } }).step] : []
@@ -179,11 +195,12 @@ async function run(): Promise<void> {
   console.log('\n[1] one computer_observe makes TC Probe the target')
   let retargets = 0
   sessions.onTarget((id) => id === THREAD && retargets++)
-  const obs = await sessions.run(ctx, 'computer_observe', { app: APP, window: APP })
+  const obs = await sessions.run(ctx, 'computer_observe', policy.observeArgs({ app: APP, window: APP }))
   const target = sessions.previewTarget(THREAD)
   check('the observe answered', !obs.isError, (obs.body ?? '').split('\n')[0])
   check('TC Probe is the thread\'s preview target', !!target && target.app.pid === probePid && target.window.title === APP && retargets === 1, JSON.stringify(target))
 
+  if (policy.pictures) {
   // ── 2. frames ─────────────────────────────────────────────────────────
   console.log('\n[2] a preview at maxEdge 512, every frame acked')
   const connection = {}
@@ -223,7 +240,7 @@ async function run(): Promise<void> {
   const pingLine = parsedGeo.lines.find((l) => l.type === 'element' && l.role === 'button' && /Ping/.test(l.name ?? ''))
   const pingFrame = pingLine && pingLine.type === 'element' ? pingLine.frame : undefined
   check('the geometry read names Ping with a frame', !!space && !!pingFrame, `space ${space?.w}×${space?.h}, Ping ${JSON.stringify(pingFrame)}`)
-  const threadObs = parseObservation((await sessions.run(ctx, 'computer_observe', { app: APP, window: APP, full: true })).body ?? '')
+  const threadObs = parseObservation((await sessions.run(ctx, 'computer_observe', policy.observeArgs({ app: APP, window: APP, full: true }))).body ?? '')
   const ping = threadObs.lines.find((l) => l.type === 'element' && l.role === 'button' && /Ping/.test(l.name ?? ''))
   if (!ping || ping.type !== 'element') throw new Error("the thread's read shows no Ping button")
 
@@ -231,7 +248,7 @@ async function run(): Promise<void> {
     const before = got.clicks.length
     const tiersBefore = report.tiers.length
     const sent = Date.now()
-    const out = await sessions.run(ctx, 'computer_act', { app: APP, window: APP, action: 'left_click', element: ping.index })
+    const out = await sessions.run(ctx, 'computer_act', policy.observeArgs({ app: APP, window: APP, action: 'left_click', element: ping.index }))
     const tier = report.tiers.slice(tiersBefore).map((t) => t.tier).join(',')
     for (const until = Date.now() + 3_000; got.clicks.length === before && Date.now() < until; ) await sleep(25)
     const click = got.clicks[before]
@@ -269,6 +286,19 @@ async function run(): Promise<void> {
   check('stopped: no frame after', got.frames.length === atStop, `${got.frames.length - atStop} after`)
   check('no ended push while the session lived', !got.states.some((s) => s.state === 'ended'), got.states.map((s) => `${s.state}${s.reason ? ` ${s.reason}` : ''}`).join(', '))
 
+  } else {
+    skipCheck('preview frames and click picture coordinates', 'Screen Recording is off')
+    const read = await sessions.run(ctx, 'computer_observe', policy.observeArgs({ app: APP, window: APP, full: true }))
+    const ping = parseObservation(read.body ?? '').lines.find((l) => l.type === 'element' && l.role === 'button' && /Ping/.test(l.name ?? ''))
+    if (!ping || ping.type !== 'element') throw new Error('TC Probe has no Ping button')
+    const before = report.tiers.length
+    const clicked = await sessions.run(ctx, 'computer_act', policy.observeArgs({ app: APP, window: APP, action: 'left_click', element: ping.index }))
+    check('Ping ran at ax without a picture', !clicked.isError && report.tiers.slice(before).some((t) => t.tier === 'ax'))
+    const label = await sessions.run(ctx, 'computer_observe', policy.observeArgs({ app: APP, window: APP, full: true }))
+    check('the label reads pong', (label.body ?? '').includes('\"pong\"'))
+  }
+
+  if (policy.escapeWatch) {
   // ── 4. the escape watch ───────────────────────────────────────────────
   console.log('\n[4] escape.watch: the lease, off, and the hold')
   const servicePid = svc.state().pid ?? 0
@@ -311,6 +341,8 @@ async function run(): Promise<void> {
   const afterHold = taps(servicePid)
   check('released, it hides after its linger and the tap goes', banner.hide === 1 && Date.now() - released >= HOLD_LINGER_MS && afterHold.taps === 0, `hid after ${Date.now() - released} ms, taps ${JSON.stringify(afterHold)}`)
 
+  } else skipCheck('escape.watch and SessionHolds', "takes the person's Escape: hand run")
+
   // ── 5. the person ─────────────────────────────────────────────────────
   const app1 = frontmost()
   const p1 = pointer()
@@ -322,6 +354,16 @@ async function run(): Promise<void> {
     same ? '' : `app ${app0.pid} → ${app1.pid}, pointer ${p0.x},${p0.y} → ${p1.x},${p1.y}${personActive ? '; the person used the Mac meanwhile' : ''}`
   )
 }
+
+process.once('exit', () => {
+  cleanupProbeApp(probeBuild, probePid)
+  const pid = service?.state().pid
+  if (pid) { try { process.kill(pid, 'SIGKILL') } catch { /* gone */ } }
+})
+for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => {
+  watch.stop()
+  void cleanup().finally(() => process.exit(1))
+})
 
 const running = run()
 try {

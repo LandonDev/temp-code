@@ -2183,7 +2183,10 @@ why and the measured headline.
   script:e2e-tc-computer -- --gate`, `bun run script:e2e-computer-bridge
   -- --gate` (both halves on the Mac, the box half seamed linux) and `bun
   run script:e2e-computer-preview -- --gate` (the Escape leg skipped), then
-  `computer-bench`. The hand runs, each with what it needs:
+  `computer-bench`. Their shared rule (no picture and no prompt without
+  Screen Recording, a named failure without Accessibility, a locked screen
+  failing at once) is scripts/lib/computerProofGate.ts; docs/computer-protocol.md
+  "The unattended proof modes". The hand runs, each with what it needs:
   `script:e2e-tc-computer` whole (TextEdit and the paste: 5 idle minutes),
   `script:e2e-computer` (real Sonnet turns), `script:e2e-computer-bridge`
   over SSH (the real pair), `script:e2e-computer-ax` and
