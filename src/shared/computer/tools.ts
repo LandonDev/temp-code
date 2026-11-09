@@ -123,6 +123,13 @@ export type ComputerObserveInput = z.infer<typeof ComputerObserveInputSchema>
 export type ComputerActInput = z.infer<typeof ComputerActInputSchema>
 export type ComputerBatchInput = z.infer<typeof ComputerBatchInputSchema>
 
+/**
+ * What tool search matches the four deferred tools by on Claude (the SDK's
+ * `searchHint`); a placeholder Computer model instructions replaces.
+ */
+export const COMPUTER_SEARCH_HINT =
+  'computer use: read, click, type into and scroll the windows of Mac apps (TextEdit, Mail, Finder, a browser) through their accessibility tree; screenshots'
+
 /** One-line placeholders; Computer model instructions replaces them. */
 export const COMPUTER_TOOL_DESCRIPTIONS: Readonly<Record<ComputerToolName, string>> = {
   computer_apps: 'List the running apps and their windows.',
@@ -229,6 +236,8 @@ export const TierVerdictSchema = z.object({
    * a step at the next tier.
    */
   needsKeyWindow: z.boolean().optional(),
+  /** when the host last ran `input.probe` on this app, epoch ms: a probe runs once per app */
+  probedAt: z.number().int().optional(),
   /** epoch ms */
   updatedAt: z.number().int()
 })
