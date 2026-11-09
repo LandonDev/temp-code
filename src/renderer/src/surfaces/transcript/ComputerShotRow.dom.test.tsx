@@ -69,6 +69,8 @@ describe("ComputerShotRow", () => {
     const pictures = screen.getAllByRole("button");
     expect(pictures).toHaveLength(3);
     expect(pictures[0].parentElement!.className).toContain("gap-2");
+    // each keeps its own shape: the line never stretches a picture to the tallest one
+    expect(pictures[0].parentElement!.className).toContain("items-start");
     for (const p of pictures) expect(p.className).toContain("flex-1");
     expect(pictures[1].style.maxWidth).toBe(`${Math.round((240 * 800) / 1200)}px`);
   });

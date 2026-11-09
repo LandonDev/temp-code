@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { ComputerPreviewEndReason } from "@server/shared/contract-computer";
+import { forwardRef, useCallback, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
+import type { ComputerPreviewEndReason, ComputerSessionRow } from "@server/shared/contract-computer";
 import { Button } from "@renderer/components/ui/button";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { StatusMark } from "@renderer/components/ui/status";
@@ -22,7 +22,7 @@ import type { ComputerEntry } from "../../lib/computerSessions";
 /** The box's tallest; a taller window narrows inside it, centred. */
 export const PREVIEW_MAX_HEIGHT = 240;
 /** The stream's shape until its start answers. */
-const DEFAULT_ASPECT = 10 / 16;
+const DEFAULT_SIZE = { width: 16, height: 10 };
 
 const ENDED_WORDS: Record<ComputerPreviewEndReason, string> = {
   closed: "The preview stopped",
@@ -37,30 +37,122 @@ const RETRY: ReadonlySet<ComputerPreviewEndReason> = new Set(["restarted", "erro
 
 const prefersReducedMotion = (): boolean => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
-/** The box's size and the picture's inside it, for a stream of `w` × `h` in a box `boxWidth` wide. */
-export function previewBox(boxWidth: number, w: number | undefined, h: number | undefined): { height: number; pictureWidth: number } {
-  const aspect = w && h ? h / w : DEFAULT_ASPECT;
-  const height = Math.min(PREVIEW_MAX_HEIGHT, Math.round(boxWidth * aspect));
-  return { height, pictureWidth: Math.min(boxWidth, Math.round(height / aspect)) };
-}
-
-function previewName(state: PreviewState, entry: ComputerEntry): string {
-  const app = state.status === "live" ? state.app : (entry.row.apps[0]?.name ?? "");
-  const window = state.status === "live" ? state.window : (entry.row.apps[0]?.window ?? null);
+function previewName(state: PreviewState, row: ComputerSessionRow): string {
+  const app = state.status === "live" ? state.app : (row.apps[0]?.name ?? "");
+  const window = state.status === "live" ? state.window : (row.apps[0]?.window ?? null);
   if (!app) return "Preview of the computer session";
   return `Preview of ${window ? `${window} in ${app}` : app}`;
 }
+
+/** The ring the agent's click draws: a background halo under a foreground ring, so it reads on any window. */
+export const ClickMark = forwardRef(function ClickMark({ at, frozen }: { at?: [number, number]; frozen?: boolean }, ref: Ref<HTMLDivElement>) {
+  return (
+    <div
+      aria-hidden="true"
+      data-slot="click-mark-at"
+      className="pointer-events-none absolute size-0"
+      style={at ? { left: `${at[0] * 100}%`, top: `${at[1] * 100}%` } : undefined}
+    >
+      <div ref={ref} className={cn("absolute -top-2.5 -left-2.5 size-5", frozen ? "scale-90" : "opacity-0")} data-slot="click-mark">
+        <svg viewBox="0 0 20 20" className="size-5" fill="none">
+          <circle cx="10" cy="10" r="8.5" className="stroke-background stroke-[3]" />
+          <circle cx="10" cy="10" r="8.5" className="stroke-foreground stroke-[1.5]" />
+        </svg>
+      </div>
+    </div>
+  );
+});
+
+/** The line under the box: a card waiting on the Mac, else a held step, else why the preview stopped. */
+export function PreviewLine({ row, state, onRetry }: { row: ComputerSessionRow; state: PreviewState; onRetry?: () => void }): ReactNode {
+  if (row.asking) return <StatusMark state="waiting" detail={row.asking.line} data-slot="computer-asking" />;
+  if (row.running?.held) return <StatusMark state="queued" detail={row.running.words} data-slot="computer-held" />;
+  if (state.status !== "ended" && state.status !== "failed") return null;
+  const retry = state.status === "failed" || RETRY.has(state.reason);
+  return (
+    // A sentence that says what to do wraps rather than lose its end.
+    <span data-slot="computer-ended" className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-xs leading-4 text-muted-foreground">
+      <span className="min-w-0">{state.status === "ended" ? ENDED_WORDS[state.reason] : "The preview stopped"}</span>
+      {retry && onRetry ? (
+        <Button variant="link" size="xs" className="h-auto p-0 text-xs" onClick={onRetry}>
+          Retry
+        </Button>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * The box, pure: the pane's width, the stream's shape and at most 240px tall
+ * (CSS alone, so a static render has the right size), the picture centred
+ * in it on the `image-outline` edge, a skeleton until the first frame, and
+ * the line under it. `picture` is the canvas live, a still in a fixture.
+ */
+export const PreviewBox = forwardRef(function PreviewBox(
+  {
+    label,
+    size,
+    drawn,
+    picture,
+    mark,
+    line,
+    frames = 0,
+    marks = 0,
+    box = true,
+  }: {
+    /** false: the line alone (the session cannot be previewed here, or its preview ended and nothing more will come) */
+    box?: boolean;
+    label: string;
+    size?: { width: number; height: number } | null;
+    /** a frame is on the picture: the skeleton goes */
+    drawn: boolean;
+    picture: ReactNode;
+    mark?: ReactNode;
+    line?: ReactNode;
+    frames?: number;
+    marks?: number;
+  },
+  ref: Ref<HTMLDivElement>,
+) {
+  if (!box) return line ? <div className="px-2 pt-0.5 pb-2">{line}</div> : null;
+  const { width, height } = size && size.width > 0 && size.height > 0 ? size : DEFAULT_SIZE;
+  const aspect = `${width} / ${height}`;
+  return (
+    <div className="px-2 pt-0.5 pb-2" data-slot="computer-preview">
+      <div
+        ref={ref}
+        role="img"
+        aria-label={label}
+        data-frames={frames}
+        data-marks={marks}
+        className={cn("flex w-full justify-center overflow-hidden rounded-lg bg-card", FADE_IN)}
+        style={{ aspectRatio: aspect, maxHeight: PREVIEW_MAX_HEIGHT }}
+      >
+        <div data-slot="computer-picture" className="relative h-full max-w-full" style={{ aspectRatio: aspect }}>
+          {drawn ? null : <Skeleton className="absolute inset-0 rounded-lg" />}
+          {picture}
+          <div className="pointer-events-none absolute inset-0">{mark}</div>
+        </div>
+      </div>
+      {line ? <div className="pt-1">{line}</div> : null}
+    </div>
+  );
+});
+
+/** The class a frame's surface takes: the box's size, the image outline, hidden until its first frame. */
+export const pictureClass = (drawn: boolean): string =>
+  cn("block size-full rounded-lg outline outline-1 -outline-offset-1 outline-image-outline", !drawn && "invisible");
 
 export function ComputerPreview({ entry, open }: { entry: ComputerEntry; open: boolean }) {
   const paneShown = usePaneVisible();
   const docShown = useDocumentVisible();
   const frame = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const mark = useRef<HTMLDivElement>(null);
   const ring = useRef<HTMLDivElement>(null);
   const [boxWidth, setBoxWidth] = useState(0);
   const [marks, setMarks] = useState(0);
 
+  // The box's width decides the edge the stream is asked for; nothing else is measured.
   useLayoutEffect(() => {
     const el = frame.current;
     if (!el) return;
@@ -71,14 +163,13 @@ export function ComputerPreview({ entry, open }: { entry: ComputerEntry; open: b
     return () => ro.disconnect();
   }, []);
 
-  // The click mark: placed at the click's share of the picture, then one Web Animation restarted per click.
-  const pictureSize = useRef({ width: 0, height: 0 });
+  // The click mark sits at the click's share of the picture, so a resize keeps it right; the ring alone animates.
   const onClick = useCallback((x: number, y: number) => {
-    const at = mark.current;
     const el = ring.current;
+    const at = el?.parentElement;
     if (!at || !el) return;
-    const { width, height } = pictureSize.current;
-    at.style.transform = `translate(${Math.round(x * width)}px, ${Math.round(y * height)}px)`;
+    at.style.left = `${Math.min(1, Math.max(0, x)) * 100}%`;
+    at.style.top = `${Math.min(1, Math.max(0, y)) * 100}%`;
     el.getAnimations?.().forEach((a) => a.cancel());
     el.animate?.(prefersReducedMotion() ? CLICK_MARK.reduced : CLICK_MARK.keyframes, CLICK_MARK.timing);
     setMarks((n) => n + 1);
@@ -91,62 +182,25 @@ export function ComputerPreview({ entry, open }: { entry: ComputerEntry; open: b
     onClick,
   });
 
-  const dims = state.status === "live" || state.status === "starting" ? state : null;
-  const { height, pictureWidth } = previewBox(boxWidth || 1, dims?.width, dims?.height);
-  useEffect(() => {
-    pictureSize.current = { width: pictureWidth, height };
-  }, [height, pictureWidth]);
+  const hasLine = !!entry.row.asking || entry.row.running?.held === true || state.status === "ended" || state.status === "failed";
+  const line = hasLine ? <PreviewLine row={entry.row} state={state} onRetry={retry} /> : null;
+  // Nothing more will come into the box once it ended: the line alone, never a skeleton that reads as loading.
+  const over = state.status === "ended" || state.status === "failed";
 
-  const row = entry.row;
-  const line = row.asking ? (
-    <StatusMark state="waiting" detail={row.asking.line} data-slot="computer-asking" />
-  ) : row.running?.held ? (
-    <StatusMark state="queued" detail={row.running.words} data-slot="computer-held" />
-  ) : state.status === "ended" || state.status === "failed" ? (
-    <span data-slot="computer-ended" className="flex min-w-0 items-baseline gap-2 text-xs text-muted-foreground">
-      <span className="min-w-0 truncate">{state.status === "ended" ? ENDED_WORDS[state.reason] : "The preview stopped"}</span>
-      {state.status === "failed" || RETRY.has(state.reason) ? (
-        <Button variant="link" size="xs" className="h-auto p-0 text-xs" onClick={retry}>
-          Retry
-        </Button>
-      ) : null}
-    </span>
-  ) : null;
-
-  if (!entry.previewable) return line ? <div className="px-2 pt-0.5 pb-2">{line}</div> : null;
-
-  const live = state.status === "live" && state.frames > 0;
+  const drawn = state.status === "live" && state.frames > 0;
+  const size = state.status === "live" || state.status === "starting" ? (state.width && state.height ? { width: state.width, height: state.height } : null) : null;
   return (
-    <div className="px-2 pt-0.5 pb-2" data-slot="computer-preview">
-      <div
-        ref={frame}
-        role="img"
-        aria-label={previewName(state, entry)}
-        data-frames={state.status === "live" ? state.frames : 0}
-        data-marks={marks}
-        className={cn("relative flex w-full justify-center overflow-hidden rounded-lg bg-card", FADE_IN)}
-        style={{ height }}
-      >
-        <div className="relative h-full" style={{ width: pictureWidth }}>
-          {live ? null : <Skeleton className="absolute inset-0 rounded-lg" />}
-          <canvas
-            ref={canvas}
-            aria-hidden="true"
-            className={cn("block size-full rounded-lg outline outline-1 -outline-offset-1 outline-image-outline", !live && "invisible")}
-          />
-          {/* The mark sits at the click by its wrapper's translate; the ring alone animates. */}
-          <div ref={mark} aria-hidden="true" className="pointer-events-none absolute top-0 left-0 size-0">
-            <div ref={ring} className="absolute -top-2.5 -left-2.5 size-5 opacity-0" data-slot="click-mark">
-              <svg viewBox="0 0 20 20" className="size-5" fill="none">
-                {/* A background halo under a foreground ring, so the mark reads on any window. */}
-                <circle cx="10" cy="10" r="8.5" className="stroke-background stroke-[3]" />
-                <circle cx="10" cy="10" r="8.5" className="stroke-foreground stroke-[1.5]" />
-              </svg>
-            </div>
-          </div>
-        </div>
-      </div>
-      {line ? <div className="pt-1">{line}</div> : null}
-    </div>
+    <PreviewBox
+      ref={frame}
+      box={entry.previewable && !over}
+      label={previewName(state, entry.row)}
+      size={size}
+      drawn={drawn}
+      frames={state.status === "live" ? state.frames : 0}
+      marks={marks}
+      picture={<canvas ref={canvas} aria-hidden="true" className={pictureClass(drawn)} />}
+      mark={<ClickMark ref={ring} />}
+      line={line}
+    />
   );
 }

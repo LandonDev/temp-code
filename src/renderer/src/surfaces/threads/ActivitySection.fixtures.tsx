@@ -1,5 +1,7 @@
 // Fixtures for `bun run ui:preview src/renderer/src/surfaces/threads/ActivitySection.tsx#ActivityRows`.
+import type { ComputerSessionRow } from "@server/shared/contract-computer";
 import { activityRows } from "../../lib/activity";
+import type { ComputerEntry } from "../../lib/computerSessions";
 import type { LiveServer } from "../../lib/devServers";
 
 const now = Date.now();
@@ -31,4 +33,31 @@ const server = {
 } satisfies LiveServer;
 const rows = activityRows({ meta, devServers: [server], macCalls: [] });
 
-export default [{ name: "a watching thread's activity", props: { threadId: "s1", rows, meta } }];
+const working = { id: "s1", status: "running" as const, background: { tasks: [], agents: [], batch: null, watchingSince: null } };
+const session = (threadId: string, over: Partial<ComputerSessionRow>): ComputerEntry => ({
+  host: "env_box",
+  row: { threadId, since: now - 4 * 60_000, lastCallAt: now, apps: [{ name: "TextEdit", bundleId: "com.apple.TextEdit", window: "Untitled" }], running: null, tier: "ax", ...over },
+  previewable: false,
+});
+const tiers = activityRows({
+  meta: working,
+  devServers: [],
+  macCalls: [],
+  computer: [
+    session("s1", {}),
+    session("sub1", { since: now - 2 * 60_000, apps: [{ name: "Mail", bundleId: "com.apple.mail", window: "New Message" }], tier: "process" }),
+    session("sub2", { since: now - 60_000, apps: [{ name: "Finder", bundleId: "com.apple.finder", window: null }], tier: "session" }),
+    session("sub3", { since: now - 30_000, apps: [], tier: null }),
+  ],
+});
+const held = session("s1", { running: { tool: "computer_act", words: "Waiting for the Mac to be free, 2nd in line", startedAt: now, held: true } });
+const asking = session("s1", { asking: { line: "Click Save in TextEdit?" }, tier: "process" });
+const heldRows = activityRows({ meta: working, devServers: [], macCalls: [], computer: [held] });
+const askingRows = activityRows({ meta: working, devServers: [], macCalls: [], computer: [asking] });
+
+export default [
+  { name: "a watching thread's activity", props: { threadId: "s1", rows, meta } },
+  { name: "computer rows, one per tier word, beside a shell row", props: { threadId: "s1", rows: [...rows.filter((r) => r.kind === "shell"), ...tiers], meta: working } },
+  { name: "a computer row open on a card waiting on the Mac", props: { threadId: "s1", rows: askingRows, meta: working, initialOpen: askingRows[0].key } },
+  { name: "a computer row open on a held step", props: { threadId: "s1", rows: [...rows.filter((r) => r.kind === "shell"), ...heldRows], meta: working, initialOpen: heldRows[0].key } },
+];

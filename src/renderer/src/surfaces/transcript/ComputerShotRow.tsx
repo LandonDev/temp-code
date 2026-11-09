@@ -28,11 +28,12 @@ const SEVERAL_MAX = 240;
 /** What one line holds; the result attaches at most this many (MAX_IMAGE_PARTS). */
 const LINE_MAX = 4;
 
-type Media = { status: "pending" } | { status: "ready"; url: string } | { status: "missing" };
+export type ShotMedia = { status: "pending" } | { status: "ready"; url: string } | { status: "missing" };
 
-function useShotMedia(host: string, path: string): Media {
-  const [media, setMedia] = useState<Media>({ status: "pending" });
+function useShotMedia(host: string, path: string, known?: ShotMedia): ShotMedia {
+  const [media, setMedia] = useState<ShotMedia>(known ?? { status: "pending" });
   useEffect(() => {
+    if (known) return;
     let alive = true;
     setMedia({ status: "pending" });
     fileMedia(host, path).then(
@@ -42,8 +43,8 @@ function useShotMedia(host: string, path: string): Media {
     return () => {
       alive = false;
     };
-  }, [host, path]);
-  return media;
+  }, [host, path, known]);
+  return known ?? media;
 }
 
 const hostNameOf = (host: string): string | null => (host === registry.primaryEnvironmentId ? null : (registry.environment(host)?.name ?? "that host"));
@@ -53,6 +54,7 @@ function Picture({
   host,
   max,
   share,
+  known,
   onOpen,
 }: {
   shot: ComputerShot;
@@ -60,9 +62,10 @@ function Picture({
   max: number;
   /** one of several in a line: an equal share of it */
   share: boolean;
+  known?: ShotMedia;
   onOpen: (from: DOMRect, url: string | null) => void;
 }) {
-  const media = useShotMedia(host, shot.path);
+  const media = useShotMedia(host, shot.path, known);
   const box = useRef<HTMLButtonElement>(null);
   const aspect = shot.width / shot.height;
   if (media.status === "missing") {
@@ -105,9 +108,12 @@ export function ComputerShotRow({
   onApproval,
   onOpenFile,
   onOpenDiff,
+  media,
 }: {
   block: Block;
   host: string;
+  /** What each picture's host already said, by path (a fixture's still pictures); else fs.media asks. */
+  media?: Readonly<Record<string, ShotMedia>>;
   cwd?: string;
   onApproval?: (requestId: string | number, decision: ApprovalDecision) => void;
   onOpenFile?: OpenFileFn;
@@ -127,9 +133,17 @@ export function ComputerShotRow({
   return (
     <div data-slot="computer-shot-row" className="min-w-0">
       <ToolCall block={block} cwd={cwd} onApproval={onApproval} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff} />
-      <div className="mt-2 flex min-w-0 gap-2">
+      <div className="mt-2 flex min-w-0 items-start gap-2">
         {shots.map((shot, i) => (
-          <Picture key={shot.path} shot={shot} host={host} max={several ? SEVERAL_MAX : ONE_MAX} share={several} onOpen={(from, url) => open(i, from, url)} />
+          <Picture
+            key={shot.path}
+            shot={shot}
+            host={host}
+            max={several ? SEVERAL_MAX : ONE_MAX}
+            share={several}
+            known={media?.[shot.path]}
+            onOpen={(from, url) => open(i, from, url)}
+          />
         ))}
       </div>
     </div>

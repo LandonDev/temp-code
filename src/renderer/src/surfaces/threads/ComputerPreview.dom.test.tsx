@@ -8,7 +8,7 @@ import { PaneVisibilityContext } from "../../hooks/paneVisibility";
 import { CLICK_MARK } from "../../lib/ease";
 import { PREVIEW_QUIET_MS, previewEdge } from "../../lib/computerPreview";
 import type { ComputerEntry } from "../../lib/computerSessions";
-import { ComputerPreview, previewBox } from "./ComputerPreview";
+import { ComputerPreview } from "./ComputerPreview";
 
 /** A stand-in for this Mac's link: records requests in order and lets the test push. */
 class FakeLink {
@@ -105,14 +105,22 @@ describe("ComputerPreview", () => {
     mount();
     await flush();
     expect(link.calls[0]).toEqual({ method: "computer.preview.start", params: { threadId: "s1", maxEdge: previewEdge(304, window.devicePixelRatio) } });
-    expect(box().style.height).toBe(`${previewBox(304, 960, 600).height}px`);
+    expect(box().style.aspectRatio).toBe("960 / 600");
+    expect(box().style.maxHeight).toBe("240px");
     expect(box().getAttribute("aria-label")).toBe("Preview of Untitled in TextEdit");
     expect(box().querySelector("canvas")?.getAttribute("aria-hidden")).toBe("true");
   });
 
-  it("caps the box at 240px and narrows a tall window inside it, centred", () => {
-    expect(previewBox(304, 600, 1200)).toEqual({ height: 240, pictureWidth: 120 });
-    expect(previewBox(304, undefined, undefined).height).toBe(190);
+  it("sizes the box by the stream's shape alone, 16:10 until the start answers, and centres the picture in it", async () => {
+    link.answer = () => new Promise(() => {});
+    mount();
+    await flush();
+    expect(box().style.aspectRatio).toBe("16 / 10");
+    expect(box().className).toContain("justify-center");
+    const picture = box().querySelector<HTMLElement>('[data-slot="computer-picture"]')!;
+    expect(picture.className).toContain("h-full");
+    expect(picture.className).toContain("max-w-full");
+    expect(picture.querySelector('[data-slot="skeleton"]')).toBeTruthy();
   });
 
   it("draws a frame and only then acks it, with no transition on the picture", async () => {
@@ -183,12 +191,11 @@ describe("ComputerPreview", () => {
     mount();
     await flush();
     const at = box().querySelector('[data-slot="click-mark"]')!.parentElement as HTMLElement;
-    const { height, pictureWidth } = previewBox(304, 960, 600);
     await act(async () => link.push({ push: "computer-click", preview: "pv_1", at: [480, 300], width: 960, height: 600 }));
-    expect(at.style.transform).toBe(`translate(${pictureWidth / 2}px, ${height / 2}px)`);
+    expect([at.style.left, at.style.top]).toEqual(["50%", "50%"]);
     // a click sized for a stream that grew before its first frame landed
     await act(async () => link.push({ push: "computer-click", preview: "pv_1", at: [1280, 0], width: 1280, height: 800 }));
-    expect(at.style.transform).toBe(`translate(${pictureWidth}px, 0px)`);
+    expect([at.style.left, at.style.top]).toEqual(["100%", "0%"]);
     expect(animate).toHaveBeenCalledTimes(2);
     expect(animate).toHaveBeenLastCalledWith(CLICK_MARK.keyframes, CLICK_MARK.timing);
     expect(box().getAttribute("data-marks")).toBe("2");
@@ -218,6 +225,8 @@ describe("ComputerPreview", () => {
       await flush();
       await act(async () => link.push({ push: "computer-preview", preview: "pv_1", state: "ended", reason }));
       expect(screen.getByText(words)).toBeTruthy();
+      // Nothing more comes into the box: the line alone, no skeleton that reads as loading.
+      expect(screen.queryByRole("img")).toBeNull();
       expect(!!screen.queryByRole("button", { name: "Retry" }), reason).toBe(retry);
       if (retry) {
         await act(async () => screen.getByRole("button", { name: "Retry" }).click());
@@ -241,7 +250,7 @@ describe("ComputerPreview", () => {
     await flush();
     await act(async () => link.push({ push: "computer-preview", preview: "pv_1", state: "live", app: "Mail", window: "Inbox", width: 600, height: 1200 }));
     expect(box().getAttribute("aria-label")).toBe("Preview of Inbox in Mail");
-    expect(box().style.height).toBe("240px");
+    expect(box().style.aspectRatio).toBe("600 / 1200");
   });
 
   it("says what a held step waits on, and a card waiting on the Mac before that, in the status vocabulary", async () => {

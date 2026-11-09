@@ -69,14 +69,17 @@ export const ActivityRows = memo(function ActivityRows({
   threadId,
   rows,
   meta,
+  initialOpen = null,
 }: {
   threadId: string;
   rows: ActivityRow[];
   meta: Pick<SessionMeta, "status" | "background">;
+  /** The row shown open at mount (a fixture's open fold). */
+  initialOpen?: string | null;
 }) {
   const shown = usePaneVisible();
   const now = useSlowClock(shown && rows.length > 0);
-  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [openKey, setOpenKey] = useState<string | null>(initialOpen);
   // An open log closes with its row.
   const open = rows.some((r) => r.key === openKey) ? openKey : null;
 
@@ -146,7 +149,7 @@ function Row({
   );
   // A computer row's tier sits 4px after the label, muted and a size down; the label gives way first.
   const words = row.tierWords ? (
-    <span data-slot="activity-tier" className="shrink-0 text-xs leading-5 text-muted-foreground">
+    <span data-slot="activity-tier" className="ms-1 shrink-0 text-xs leading-5 text-muted-foreground">
       {row.tierWords}
     </span>
   ) : null;
@@ -173,7 +176,7 @@ function Row({
       <ItemMedia className={cn(opens && ROW_SHOWS)}>
         <Glyph className="size-3.5 text-muted-foreground" />
       </ItemMedia>
-      <ItemContent className={cn("min-w-0", words && "flex-row items-baseline gap-1", opens && ROW_SHOWS)}>
+      <ItemContent className={cn("min-w-0", words && "flex-row items-baseline", opens && ROW_SHOWS)}>
         {opens ? label : <TruncateTip text={row.label}>{label}</TruncateTip>}
         {words}
       </ItemContent>
