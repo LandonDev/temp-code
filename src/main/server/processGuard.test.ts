@@ -136,6 +136,23 @@ describe('the orphan sweep', () => {
     expect(w.log).toEqual([])
   })
 
+  it("an add-on's stdio server the add-on host lost is swept like a thread's: this instance's goes, another instance's stays", async () => {
+    const own: GuardInstance = { id: 'inst-own', sweepsUnmarked: false }
+    const server = (instance: string): string => env({ PATH: '/usr/bin', TEMP_CODE_ADDON: 'ad_fake', TEMP_CODE_INSTANCE: instance })
+    const w = world([proc(6000, 1, 6000, 'node fakeMcpServer.ts --stdio'), proc(6001, 1, 6001, 'node other-server.js')], { 6000: server('inst-own'), 6001: server('inst-other') }, { instance: own })
+    expect(markersOf(server('inst-own'))).toMatchObject({ threadId: null, instanceId: 'inst-own', addonId: 'ad_fake' })
+    await w.guard.tick()
+    later(w, ORPHAN_GRACE_MS - 1_000)
+    await w.guard.tick()
+    expect(w.kills).toEqual([])
+    later(w, 1_000)
+    await w.guard.tick()
+    expect(w.kills).toEqual(['SIGTERM 6000'])
+    expect(w.log).toEqual(['[guard] orphan thread=addon:ad_fake pid=6000 rss=49MB node fakeMcpServer.ts --stdio'])
+    // macOS reads the mark off `ps -E` too.
+    expect(markersOf(environFromPsE('node s.js PATH=/usr/bin TEMP_CODE_ADDON=ad_x\n', 'node s.js')).addonId).toBe('ad_x')
+  })
+
   it("the sweep is this instance's alone: its own marked orphan goes, another instance's stays, and one marked by no instance goes only on the prod data dir", async () => {
     const dev: GuardInstance = { id: 'inst-dev', sweepsUnmarked: false }
     const prod: GuardInstance = { id: 'inst-prod', sweepsUnmarked: true }

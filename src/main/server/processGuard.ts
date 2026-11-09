@@ -5,6 +5,7 @@ import type { EventRow } from '@shared/events'
 import { parseEnviron } from './portSweep'
 import { readProcTable } from './procScan'
 import { execFileOffBudget } from './spawnBudget'
+import { ADDON_MARK } from './addons/addonWire'
 
 /**
  * The process guard: an agent's tool processes never outlive their call,
@@ -35,7 +36,9 @@ import { execFileOffBudget } from './spawnBudget'
  *  2. The orphan sweep. Every tick, any process of this user whose parent
  *     is gone (ppid 1) that carries a thread's mark in its environment
  *     (`TEMP_CODE_THREAD`, the gateway's `~t=` scope in ANTHROPIC_BASE_URL,
- *     or CLAUDE_PID) and is not a ledger-known server or a backgrounded
+ *     or CLAUDE_PID), or an add-on's (`TEMP_CODE_ADDON`, on every stdio
+ *     server the add-on host starts: swept as thread `addon:<id>` once that
+ *     host is gone), and is not a ledger-known server or a backgrounded
  *     call's is killed once it has been orphaned for ORPHAN_GRACE_MS, with
  *     one log line naming the thread, the command and its RSS. Only this
  *     instance's, though: every harness and every wrapped call also
@@ -180,22 +183,24 @@ export function guardInstanceOf(
 }
 
 /** The thread, the call and the instance a process belongs to, read off its environment. */
-export function markersOf(environ: string | null): GuardMarkers & { claudePid: number | null } {
+export function markersOf(environ: string | null): GuardMarkers & { claudePid: number | null; addonId?: string } {
   if (!environ) return { threadId: null, callId: null, instanceId: null, claudePid: null }
   const base = parseEnviron(environ)
   let threadId = base.threadId
   let callId: string | null = null
   let instanceId: string | null = null
+  let addonId: string | null = null
   for (const entry of environ.split('\0')) {
     if (entry.startsWith(`${THREAD_MARK}=`)) threadId = entry.slice(THREAD_MARK.length + 1) || threadId
     else if (entry.startsWith(`${CALL_MARK}=`)) callId = entry.slice(CALL_MARK.length + 1) || null
     else if (entry.startsWith(`${INSTANCE_MARK}=`)) instanceId = entry.slice(INSTANCE_MARK.length + 1) || null
+    else if (entry.startsWith(`${ADDON_MARK}=`)) addonId = entry.slice(ADDON_MARK.length + 1) || null
   }
-  return { threadId, callId, instanceId, claudePid: base.claudePid }
+  return { threadId, callId, instanceId, claudePid: base.claudePid, ...(addonId ? { addonId } : {}) }
 }
 
 /** The environment keys the guard reads; on macOS `ps -E` prints them after the command line. */
-const MARK_KEYS = [THREAD_MARK, CALL_MARK, INSTANCE_MARK, 'CLAUDE_PID', 'ANTHROPIC_BASE_URL'] as const
+const MARK_KEYS = [THREAD_MARK, CALL_MARK, INSTANCE_MARK, ADDON_MARK, 'CLAUDE_PID', 'ANTHROPIC_BASE_URL'] as const
 
 /**
  * `ps -ww -E -o command= -p <pid>` (macOS: the command line, then the
@@ -435,7 +440,9 @@ export class ProcessGuard {
     let m = this.markers.get(key)
     if (!m) {
       const read = markersOf(await this.deps.environ(r.pid, r.args))
-      const threadId = read.threadId ?? (read.claudePid ? (this.deps.threadOfHarness?.(read.claudePid) ?? `claude:${read.claudePid}`) : null)
+      // An add-on's stdio server (addons/downstream.ts) is swept like a thread's process once the add-on host that ran it is gone.
+      const threadId =
+        read.threadId ?? (read.claudePid ? (this.deps.threadOfHarness?.(read.claudePid) ?? `claude:${read.claudePid}`) : read.addonId ? `addon:${read.addonId}` : null)
       m = { threadId, callId: read.callId, instanceId: read.instanceId }
       this.markers.set(key, m)
       if (this.markers.size > 5_000) this.markers.delete(this.markers.keys().next().value as string)

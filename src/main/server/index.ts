@@ -764,7 +764,6 @@ export async function startServer(
   const addonGrants = grantSourceFor(addonStore, () => addonHost.grantsChanged(null))
   const addonHost: AddonHost = new AddonHost({ store: addonStore, spawnChild: options.spawnAddonHost, grants: addonGrants, platform: () => hostPlatform(), cwd: () => workRoot(store).root })
   addonGrantHook.current = (addonId) => addonHost.grantsChanged(addonId)
-  await addonHost.start()
   // Away from computer: one state on every host, newest wins (remote/awaySync.ts).
   const awaySync = new AwaySync({ away, peers })
   awaySync.start()
@@ -1096,6 +1095,8 @@ export async function startServer(
   // instance's orphans are swept, and a call past the memory cap is killed with its result saying so.
   const guardInstance = guardInstanceOf(options.dataDir ?? dirname(dbPath), store, options.prodData ?? false)
   setGuardInstance(guardInstance)
+  // After the instance mark: every stdio add-on server carries it beside TEMP_CODE_ADDON, so the sweep below reaps one the add-on host lost.
+  await addonHost.start()
   const guard = new ProcessGuard({
     ...hostGuardDeps(),
     instance: guardInstance,
