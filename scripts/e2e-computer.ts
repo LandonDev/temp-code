@@ -35,8 +35,7 @@
 import { execFileSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { WebSocketServer } from 'ws'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -57,13 +56,15 @@ import { COMPUTER_TOOLS, computerToolJsonSchema } from '../src/shared/computer/t
 import type { ComputerMethod, Tier } from '../src/shared/computer/protocol'
 import type { AgentEvent, EventRow } from '../src/shared/events'
 import { buildTcComputer } from './lib/tcComputerBuild'
+import { repoRoot } from './lib/repoRoot'
 
 if (process.platform !== 'darwin') {
   console.log('skipped: macOS only')
   process.exit(0)
 }
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+// the checkout, wherever this file runs from: bundled, it sits in scripts/.out/
+const ROOT = repoRoot()
 const WORK = '/tmp/tc-computer-e2e'
 const REPORT = join(WORK, 'report.json')
 const TRACE = join(WORK, 'trace.log')
