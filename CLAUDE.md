@@ -3583,8 +3583,8 @@ proof and the sizing rules; the pieces, by name:
   `session` with the clipboard lock, the smart wait, capture, and the four
   `computer_*` tools whose verbs and parameter names are Anthropic's native
   computer-use set with `element` refs beside `coordinate`. In code: the
-  contract, Capture, Input, the AX reader and the service shell over them;
-  no host tools or UI yet.
+  contract, Capture, Input, the AX reader and the service shell over them,
+  and the TypeScript host (below); no UI yet.
 - The zod in src/shared/computer/ is the one source: `protocol.ts` (every
   method's params and result, the errors, the notifications, every number:
   waits, budgets, caps, lock paths), `observation.ts` (the grammar's tables,
@@ -3641,6 +3641,30 @@ proof and the sizing rules; the pieces, by name:
   its own only inside its posting calls plus half a second,
   scripts/lib/proofGate.ts; `TC_PROOF_UNGATED=1` drops the idle wait for a
   run the person sits beside).
+- The host is src/main/server/computer/ (docs/computer-protocol.md §17): on
+  a Mac with a screen, index.ts builds one `ComputerService` (binary.ts asks
+  for the binary at every spawn: `TEMP_CODE_COMPUTER_BIN`, else
+  resources/native/tc-computer; `TEMP_CODE_COMPUTER=0` turns it off; the box
+  never builds one), spawned on the first call, respawned with backoff, down
+  five minutes after five crashes in two, pinged while a call runs long, shut
+  down after ten idle minutes; `TEMP_CODE_COMPUTER_TRACE=1` logs every frame.
+  `ComputerSessions` keeps one session per thread: its calls one at a time,
+  the bound window, the element book, the epoch, `needsFull`, a live row from
+  the first call of a turn to its settle, the idle close at ten minutes; the
+  tier verdicts in `computer.tiers.<bundleId>` with the probe once per app; the
+  session tier refused (`no-scheduler`) until the tier scheduling build sets
+  its gate (`setSessionTierGate`). Every Mac thread, subagents included, gets
+  the four tools on its `app` server: deferred behind tool search on Claude
+  (computer/mcp.ts), listed by the bridge for codex (`images: none`) and Muse
+  (`parts`) behind a per-thread token of purpose `computer`. In `safe` and
+  `edits` every act or batch that sends input asks one card naming the app,
+  the window and each action (src/shared/computer/words.ts); reads never ask,
+  full access never asks. Stop on the Activity row (`computer.stop`) ends
+  computer use for the turn; `computer.sessions` and the `computer` push carry
+  the service state and the live rows. Proofs: the unit tests over
+  computer/fakeService.mjs on the box, and `bun run script:e2e-computer` on the
+  Mac (real claude threads on a scratch TextEdit pinned by pid, ax and process
+  tiers only, the person's app and pointer held still).
 - Fixtures: src/main/server/computer/fixtures/ (its README): hand-written
   wire frames for every method, error kind and notification, observation
   texts for every grammar case, `page/form.html`, and `apps/` trees and
