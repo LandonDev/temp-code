@@ -12,7 +12,9 @@ import { isHeadless } from '../../headless'
 
 /** TEMP_CODE_COMPUTER_BIN, else resources/native/tc-computer next to out/main. */
 export function computerBinaryPath(env: NodeJS.ProcessEnv = process.env): string {
-  return env.TEMP_CODE_COMPUTER_BIN || join(__dirname, '../../resources/native/tc-computer')
+  // An ES module bundle (the iOS client tests' server, under node) has no __dirname, and naming it there throws at boot.
+  const here = typeof __dirname === 'string' ? __dirname : process.cwd()
+  return env.TEMP_CODE_COMPUTER_BIN || join(here, '../../resources/native/tc-computer')
 }
 
 export interface AvailabilityProbe {

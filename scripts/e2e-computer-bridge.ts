@@ -160,7 +160,11 @@ async function boxHalf(): Promise<void> {
     process.exit(0)
   }
   process.on('SIGTERM', quit)
-  launch(box, { TEMP_CODE_REMOTE_PORT: String(port), TEMP_CODE_MAC_TOKEN_SEED: seed, TEMP_CODE_E2E_STATUS: '1' })
+  // Entered as root and dropped to agents, the shell keeps root's XDG_RUNTIME_DIR and an AppArmor context
+  // where Electron falls back to its setuid sandbox and aborts: this isolated test instance runs without either.
+  const runtime = process.env.XDG_RUNTIME_DIR
+  if (runtime && process.getuid && !runtime.endsWith(`/${process.getuid()}`)) delete process.env.XDG_RUNTIME_DIR
+  launch(box, { TEMP_CODE_REMOTE_PORT: String(port), TEMP_CODE_MAC_TOKEN_SEED: seed, TEMP_CODE_E2E_STATUS: '1', ELECTRON_DISABLE_SANDBOX: '1' })
   if (!(await until(120_000, () => existsSync(join(box.data, 'server.json'))))) {
     console.log(JSON.stringify({ ready: false, error: 'the box instance did not start', log: logOf(box).slice(-2_000) }))
     return quit()
@@ -457,7 +461,7 @@ async function orchestrator(): Promise<void> {
   ssh = spawn(sshWords[0], [...sshWords.slice(1, -1), '-o', 'ExitOnForwardFailure=yes', '-L', `127.0.0.1:${tunnel}:127.0.0.1:${boxPort}`, sshWords[sshWords.length - 1], boxCommand], {
     stdio: ['pipe', 'pipe', 'inherit']
   })
-  type ReadyLine = { ready: boolean; envId: string; key: string; threads: [string, string]; root: string; error?: string }
+  type ReadyLine = { ready: boolean; envId: string; key: string; threads: [string, string]; root: string; error?: string; log?: string }
   const halfLine: { ready: ReadyLine | null } = { ready: null }
   createInterface({ input: ssh.stdout! }).on('line', (line) => {
     let msg: { id?: number; ready?: boolean; result?: unknown; error?: string }
@@ -470,7 +474,7 @@ async function orchestrator(): Promise<void> {
     else if (msg.id !== undefined) pending.get(msg.id)?.(msg)
   })
   await until(180_000, () => halfLine.ready !== null)
-  if (!halfLine.ready?.ready) await stop(`the box half did not come up: ${halfLine.ready?.error ?? 'no ready line'}`)
+  if (!halfLine.ready?.ready) await stop(`the box half did not come up: ${halfLine.ready?.error ?? 'no ready line'}${halfLine.ready?.log ? `\n--- the box instance's log, its end ---\n${halfLine.ready.log}` : ''}`)
   const { envId: boxId, key, threads, root: boxRoot } = halfLine.ready as ReadyLine
   const [t1, t2] = threads
   const token = (sid: string): string => tokenFor(SEED, 'computer', sid)
