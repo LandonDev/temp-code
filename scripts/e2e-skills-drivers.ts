@@ -19,7 +19,7 @@
  *      past a 401 token_expired): the word, then a rewrite reaches the next
  *      turn. No codex CLI or no account that answers is `missing proof`,
  *      never a pass; the Mac's leg needs codex 0.164 or newer;
- *   6. Muse (where the catalog lists a Muse model; the box's is empty): a
+ *   6. Muse (where the catalog lists a Muse model): a
  *      thread on an account (its `muse serve` reads the file backend) and
  *      one on the CLI's own login (on a vault with no Muse account), each
  *      answering the word and the rewrite;
@@ -30,6 +30,8 @@
  * Nothing here writes into a home skill folder, runs against the person's
  * userData or touches the installed app.
  * Run: bun scripts/e2e-skills-drivers.ts [--host box|mac]   (build first: electron-vite build)
+ * Gate: add --gate for one temp-HOME instance, placeholder accounts and
+ * loopback fake providers. It waits for the gate build and never builds.
  */
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
@@ -37,8 +39,11 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readd
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { runSkillsDriversGate } from './lib/skillsDriversGate'
 
 const REPO = resolve(import.meta.dir, '..')
+// Keep the unattended proof apart from the hand run's real HOME and accounts.
+if (process.argv.includes('--gate')) process.exit(await runSkillsDriversGate(REPO))
 const KEEP = process.env.TC_SD_KEEP === '1'
 const hostArg = process.argv.indexOf('--host')
 const HOST = (hostArg > 0 ? process.argv[hostArg + 1] : process.platform === 'darwin' ? 'mac' : 'box') as 'box' | 'mac'
@@ -432,7 +437,7 @@ try {
     const next = await nextTurn(t.id)
     check(`muse (${label}): a rewrite reaches the next turn of the same thread`, replyOf(next).includes(word(current)), `${replyOf(next).slice(0, 200)} ${errorsOf(next).join(' | ')}`)
   }
-  if (!museModel) skip('muse', HOST === 'box' ? 'Meta serves this host an empty catalog (docs/box.md "Muse Code on the box")' : 'the catalog lists no Muse model')
+  if (!museModel) skip('muse', 'the catalog lists no Muse model')
   else {
     if (museAccounts.length) await museLeg('account', true)
     else skip('muse (account)', 'this host holds no Muse account')

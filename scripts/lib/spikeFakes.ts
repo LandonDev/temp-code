@@ -208,6 +208,8 @@ export interface AnthropicRequestRecord {
 }
 
 export class FakeAnthropic {
+  /** Optional in-memory inspection for isolated proofs; the spike still stores no bodies. */
+  inspect?: (body: unknown, record: AnthropicRequestRecord) => void
   url = ''
   requests: AnthropicRequestRecord[] = []
   needles: Record<string, string> = {}
@@ -293,6 +295,7 @@ export class FakeAnthropic {
         last: nonceHits(JSON.stringify(messages.at(-1) ?? ''), this.needles),
         fresh: rec.main ? nonceHits(JSON.stringify(messages.slice(from)), this.needles) : []
       }
+      this.inspect?.(body, rec)
       const next = rec.main ? this.script.shift() : undefined
       const call = next && 'tool' in next ? next.tool(tools) : null
       const id = `msg_tc_${++this.n}`
@@ -356,7 +359,7 @@ export const bashCall =
 
 // ── the fake Responses front (codex and Muse) ────────────────────────────────
 
-export type ResponsesAnswer = { text: string } | { shell: string }
+export type ResponsesAnswer = { text: string } | { shell: string | ((body: unknown) => string) } | { tool: (tools: ResponsesTool[]) => { name: string; namespace?: string; input: Record<string, unknown> } | null }
 
 export interface ResponsesRequestRecord {
   tag: string
@@ -379,7 +382,7 @@ export interface ResponsesRequestRecord {
   toolShapes: string[]
 }
 
-interface ResponsesTool {
+export interface ResponsesTool {
   type?: string
   name?: string
   parameters?: unknown
@@ -394,6 +397,10 @@ interface ResponsesTool {
  * `forward` turns it into a pass-through to another origin (a real run).
  */
 export class FakeResponses {
+  /** Optional in-memory inspection for isolated proofs; no body is retained by default. */
+  inspect?: (body: unknown, record: ResponsesRequestRecord) => void
+  /** Some app-server models send their tool definitions in input, rather than tools. */
+  isMain?: (body: unknown, role: string | null) => boolean
   url = ''
   requests: ResponsesRequestRecord[] = []
   needles: Record<string, string> = {}
@@ -492,8 +499,14 @@ export class FakeResponses {
       } catch {
         // answered as a plain turn
       }
-      const tools = Array.isArray(body.tools) ? body.tools : []
       const input = Array.isArray(body.input) ? body.input : []
+      const tools = [
+        ...(Array.isArray(body.tools) ? body.tools : []),
+        ...input.flatMap((item) => {
+          const extra = item as { type?: string; tools?: ResponsesTool[] }
+          return extra?.type === 'additional_tools' && Array.isArray(extra.tools) ? extra.tools : []
+        })
+      ]
       rec.model = body.model ?? null
       rec.tools = tools.map((t) => t.name ?? t.type ?? '?')
       const shape = (t: ResponsesTool, prefix = ''): string[] => {
@@ -502,15 +515,19 @@ export class FakeResponses {
         return [`${prefix}${t.name ?? '?'}[${t.type ?? 'function'}](${Object.entries(props).map(([k, v]) => `${k}: ${JSON.stringify(v?.type ?? '?')}`).join(', ')})`]
       }
       rec.toolShapes = tools.flatMap((t) => shape(t))
-      rec.main = rec.role ? rec.role === 'main' : tools.length > 0
+      rec.main = this.isMain ? this.isMain(body, rec.role) : rec.role ? rec.role === 'main' : tools.length > 0
       rec.hits = {
         instructions: nonceHits(JSON.stringify(body.instructions ?? ''), this.needles),
         input: nonceHits(JSON.stringify(input), this.needles),
         tools: nonceHits(JSON.stringify(tools), this.needles),
         last: nonceHits(JSON.stringify(input.at(-1) ?? ''), this.needles)
       }
+      this.inspect?.(body, rec)
       const next = rec.main ? this.script.shift() : undefined
-      const shellItem = next && 'shell' in next ? this.shellItem(tools, next.shell) : null
+      const selected = next && 'tool' in next ? next.tool(tools) : null
+      const shellItem = selected
+        ? { type: 'function_call', id: `fc_tc_${++this.n}`, call_id: `call_tc_${this.n}`, name: selected.name, ...(selected.namespace ? { namespace: selected.namespace } : {}), arguments: JSON.stringify(selected.input), status: 'completed' }
+        : next && 'shell' in next ? this.shellItem(tools, typeof next.shell === 'function' ? next.shell(body) : next.shell) : null
       const text = next && 'text' in next ? next.text : 'ok'
       rec.answered = shellItem ? `call:${(shellItem.name as string | undefined) ?? shellItem.type}` : 'text'
       return this.stream(res, body.model ?? 'fake', shellItem ?? null, text)
@@ -533,6 +550,8 @@ export class FakeResponses {
       // Muse 1.4.14 runs a namespaced call named either way (`bash` with `namespace: muse`, or `muse.bash`).
       return { type: 'function_call', id: `fc_tc_${this.n}`, call_id: id, name: fn.name, ...(fn.ns ? { namespace: fn.ns } : {}), arguments: JSON.stringify({ [key]: value }), status: 'completed' }
     }
+    const code = flat.find((t) => t.type === 'custom' && t.name === 'exec')
+    if (code) return { type: 'custom_tool_call', id: `ctc_tc_${this.n}`, call_id: id, name: code.name, ...(code.ns ? { namespace: code.ns } : {}), input: `const result = await tools.exec_command(${JSON.stringify({ cmd: command, max_output_tokens: 2000 })}); text(result);`, status: 'completed' }
     if (tools.some((t) => t.type === 'local_shell')) return { type: 'local_shell_call', id: `lsh_tc_${this.n}`, call_id: id, status: 'completed', action: { type: 'exec', command: ['bash', '-lc', command] } }
     return null
   }
@@ -547,10 +566,14 @@ export class FakeResponses {
     let item: Record<string, unknown>
     if (call) {
       item = call
-      events.push(ev('response.output_item.added', { output_index: 0, item: { ...call, status: 'in_progress', ...(call.type === 'function_call' ? { arguments: '' } : {}) } }))
+      events.push(ev('response.output_item.added', { output_index: 0, item: { ...call, status: 'in_progress', ...(call.type === 'function_call' ? { arguments: '' } : {}), ...(call.type === 'custom_tool_call' ? { input: '' } : {}) } }))
       if (call.type === 'function_call') {
         events.push(ev('response.function_call_arguments.delta', { item_id: call.id, output_index: 0, delta: call.arguments }))
         events.push(ev('response.function_call_arguments.done', { item_id: call.id, output_index: 0, arguments: call.arguments }))
+      }
+      if (call.type === 'custom_tool_call') {
+        events.push(ev('response.custom_tool_call_input.delta', { item_id: call.id, output_index: 0, delta: call.input }))
+        events.push(ev('response.custom_tool_call_input.done', { item_id: call.id, output_index: 0, input: call.input }))
       }
       events.push(ev('response.output_item.done', { output_index: 0, item: call }))
     } else {
