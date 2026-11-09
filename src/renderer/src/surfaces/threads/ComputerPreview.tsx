@@ -21,6 +21,8 @@ import type { ComputerEntry } from "../../lib/computerSessions";
 
 /** The box's tallest; a taller window narrows inside it, centred. */
 export const PREVIEW_MAX_HEIGHT = 240;
+/** The fold's insets either side of the box (PreviewBox's `px-2`). */
+const FOLD_INSETS = 16;
 /** The stream's shape until its start answers. */
 const DEFAULT_SIZE = { width: 16, height: 10 };
 
@@ -152,13 +154,15 @@ export function ComputerPreview({ entry, open }: { entry: ComputerEntry; open: b
   const [boxWidth, setBoxWidth] = useState(0);
   const [marks, setMarks] = useState(0);
 
-  // The box's width decides the edge the stream is asked for; nothing else is measured.
+  // The box's width decides the edge the stream is asked for; nothing else is measured. The measured
+  // element never unmounts (an ended preview drops its box), so Retry finds the width it had.
   useLayoutEffect(() => {
     const el = frame.current;
     if (!el) return;
-    setBoxWidth(el.clientWidth);
+    const inner = (w: number): number => Math.max(0, Math.round(w) - FOLD_INSETS);
+    setBoxWidth(inner(el.clientWidth));
     if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver((entries) => setBoxWidth(Math.round(entries[0]?.contentRect.width ?? el.clientWidth)));
+    const ro = new ResizeObserver((entries) => setBoxWidth(inner(entries[0]?.contentRect.width ?? el.clientWidth)));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -190,17 +194,18 @@ export function ComputerPreview({ entry, open }: { entry: ComputerEntry; open: b
   const drawn = state.status === "live" && state.frames > 0;
   const size = state.status === "live" || state.status === "starting" ? (state.width && state.height ? { width: state.width, height: state.height } : null) : null;
   return (
-    <PreviewBox
-      ref={frame}
-      box={entry.previewable && !over}
-      label={previewName(state, entry.row)}
-      size={size}
-      drawn={drawn}
-      frames={state.status === "live" ? state.frames : 0}
-      marks={marks}
-      picture={<canvas ref={canvas} aria-hidden="true" className={pictureClass(drawn)} />}
-      mark={<ClickMark ref={ring} />}
-      line={line}
-    />
+    <div ref={frame} data-slot="computer-preview-root">
+      <PreviewBox
+        box={entry.previewable && !over}
+        label={previewName(state, entry.row)}
+        size={size}
+        drawn={drawn}
+        frames={state.status === "live" ? state.frames : 0}
+        marks={marks}
+        picture={<canvas ref={canvas} aria-hidden="true" className={pictureClass(drawn)} />}
+        mark={<ClickMark ref={ring} />}
+        line={line}
+      />
+    </div>
   );
 }

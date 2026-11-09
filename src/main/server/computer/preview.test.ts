@@ -18,7 +18,7 @@ const cleanups: (() => Promise<void>)[] = []
 afterEach(async () => {
   for (const close of cleanups.splice(0).reverse()) await close()
 })
-async function setup(env: Record<string, string> = {}) {
+async function setup(env: Record<string, string> = {}, defer?: (fn: () => void) => void) {
   const clock = new ManualClock()
   const h = computerHarness({ env, clock })
   await h.run('computer_observe', { app: 'TextEdit' })
@@ -28,7 +28,7 @@ async function setup(env: Record<string, string> = {}) {
     receive = fn
     return subscribe(fn)
   })
-  const previews = new ComputerPreviews({ service: h.service, sessions: h.sessions, clock })
+  const previews = new ComputerPreviews({ service: h.service, sessions: h.sessions, clock, defer })
   subscription.mockRestore()
   cleanups.push(
     () => h.close(),
@@ -65,6 +65,18 @@ describe('ComputerPreviews over tc-computer', () => {
     await vi.waitFor(() =>
       expect(a.filter((f) => f.push === 'computer-frame').length).toBeGreaterThan(1)
     )
+  })
+  it('holds a click that came before the start answer and sends it once the watcher is ready', async () => {
+    let ready: (() => void) | null = null
+    const { h, previews, a, va, receive } = await setup({}, (fn) => (ready = fn))
+    const result = await previews.start(va, { threadId: 't1', maxEdge: 512 })
+    const stream = (starts(h).at(-1)!.params as { stream: string }).stream
+    receive({ method: 'capture/click', params: { stream, at: [10, 20], width: 512, height: 429 } })
+    expect(a.some((f) => f.push === 'computer-click')).toBe(false)
+    ready!()
+    expect(a.filter((f) => f.push === 'computer-click')).toEqual([{ push: 'computer-click', preview: result.preview, at: [10, 20], width: 512, height: 429 }])
+    receive({ method: 'capture/click', params: { stream, at: [1, 2], width: 512, height: 429 } })
+    expect(a.filter((f) => f.push === 'computer-click')).toHaveLength(2)
   })
   it('sends a watcher no frame until its start answer has gone out', async () => {
     const { previews, a, va } = await setup()

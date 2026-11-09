@@ -27,6 +27,8 @@ interface Watcher {
   id: string
   viewer: Viewer
   maxEdge: number
+  /** clicks that came before its start answer went out: sent once it is ready, since the client drops a push for an id it does not know */
+  early: ComputerClickPush[] | null
 }
 interface Stream {
   threadId: string
@@ -119,7 +121,8 @@ export class ComputerPreviews {
       this.streams.set(p.threadId, s)
     }
     const id = `preview_${++this.next}`
-    s.watchers.set(id, { id, viewer, maxEdge: p.maxEdge })
+    const watcher: Watcher = { id, viewer, maxEdge: p.maxEdge, early: [] }
+    s.watchers.set(id, watcher)
     s.gate.add(id, (f) => viewer.send({ ...f, preview: id }))
     if (!s.stream || p.maxEdge > s.edge) await this.restart(s)
     // Another start or retarget may have replaced the operation we awaited.
@@ -131,7 +134,12 @@ export class ComputerPreviews {
     // Frames go to this watcher only after its answer is on the socket (index.ts sends it once this
     // resolves): a frame naming an id the client has not been told would never be drawn or acked.
     const stream = s
-    ;(this.deps.defer ?? ((fn: () => void) => void setTimeout(fn, 0)))(() => stream.gate.ready(id))
+    ;(this.deps.defer ?? ((fn: () => void) => void setTimeout(fn, 0)))(() => {
+      stream.gate.ready(id)
+      const early = watcher.early ?? []
+      watcher.early = null
+      if (stream.watchers.get(id) === watcher) for (const click of early) viewer.send(click)
+    })
     return { preview: id, ...s.answer, ...(s.ended ? { ended: s.ended } : {}) }
   }
   ack(connection: object, preview: string, seq: number): void {
@@ -259,14 +267,11 @@ export class ComputerPreviews {
         seq
       )
     } else if (n.method === 'capture/click') {
-      for (const w of s.watchers.values())
-        w.viewer.send({
-          push: 'computer-click',
-          preview: w.id,
-          at: n.params.at,
-          width: n.params.width,
-          height: n.params.height
-        })
+      for (const w of s.watchers.values()) {
+        const click: ComputerClickPush = { push: 'computer-click', preview: w.id, at: n.params.at, width: n.params.width, height: n.params.height }
+        if (w.early) w.early.push(click)
+        else w.viewer.send(click)
+      }
     } else {
       this.ended(
         s,

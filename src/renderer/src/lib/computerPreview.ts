@@ -85,6 +85,8 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
       return;
     }
     let alive = true;
+    /** the preview ended: a frame still decoding must not bring the box back */
+    let over = false;
     let preview: string | null = null;
     let frames = 0;
     let shown: { app: string; window: string | null; width: number; height: number } | null = null;
@@ -96,7 +98,7 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
       if (el && ctx) {
         try {
           const bitmap = await createImageBitmap(frameBlob(push.data));
-          if (!alive) return bitmap.close();
+          if (!alive || over) return bitmap.close();
           if (el.width !== bitmap.width) el.width = bitmap.width;
           if (el.height !== bitmap.height) el.height = bitmap.height;
           ctx.drawImage(bitmap, 0, 0);
@@ -117,9 +119,11 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
         onClick.current(push.at[0] / push.width, push.at[1] / push.height);
       } else if (push.push === "computer-preview" && push.preview === preview) {
         if (push.state === "ended") {
+          over = true;
           setState({ status: "ended", reason: push.reason ?? "closed" });
           return;
         }
+        over = false;
         shown = {
           app: push.app ?? shown?.app ?? "",
           window: push.window !== undefined ? push.window : (shown?.window ?? null),
@@ -139,6 +143,7 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
         }
         preview = started.preview;
         if (started.ended) {
+          over = true;
           setState({ status: "ended", reason: started.ended });
           return;
         }

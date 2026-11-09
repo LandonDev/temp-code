@@ -36,6 +36,7 @@ class FakeLink {
 let link: FakeLink;
 let width = 304;
 let resize: ((width: number) => void) | null = null;
+let observed: Element | null = null;
 const drawn: unknown[] = [];
 const animate = vi.fn();
 let reduced = false;
@@ -49,7 +50,8 @@ beforeEach(() => {
   Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => width });
   globalThis.ResizeObserver = class {
     constructor(private fn: ResizeObserverCallback) {}
-    observe(): void {
+    observe(el: Element): void {
+      observed = el;
       resize = (w) => this.fn([{ contentRect: { width: w } } as ResizeObserverEntry], this as never);
     }
     disconnect(): void {
@@ -104,7 +106,7 @@ describe("ComputerPreview", () => {
   it("starts at the box's edge in device pixels and sizes the box to the stream", async () => {
     mount();
     await flush();
-    expect(link.calls[0]).toEqual({ method: "computer.preview.start", params: { threadId: "s1", maxEdge: previewEdge(304, window.devicePixelRatio) } });
+    expect(link.calls[0]).toEqual({ method: "computer.preview.start", params: { threadId: "s1", maxEdge: previewEdge(304 - 16, window.devicePixelRatio) } });
     expect(box().style.aspectRatio).toBe("960 / 600");
     expect(box().style.maxHeight).toBe("240px");
     expect(box().getAttribute("aria-label")).toBe("Preview of Untitled in TextEdit");
@@ -174,10 +176,10 @@ describe("ComputerPreview", () => {
     width = 300;
     mount();
     await flush();
-    await act(async () => resize?.(310));
+    await act(async () => resize?.(326));
     await act(async () => vi.advanceTimersByTime(PREVIEW_QUIET_MS));
     expect(link.methods().filter((m) => m === "computer.preview.start")).toHaveLength(1);
-    await act(async () => resize?.(600));
+    await act(async () => resize?.(616));
     await act(async () => vi.advanceTimersByTime(PREVIEW_QUIET_MS - 1));
     expect(link.methods().filter((m) => m === "computer.preview.start")).toHaveLength(1);
     await act(async () => vi.advanceTimersByTime(1));
@@ -243,6 +245,34 @@ describe("ComputerPreview", () => {
     await flush();
     expect(screen.getByText("The window is minimized")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("keeps measuring once the box goes, so Retry starts again at the width it had", async () => {
+    mount();
+    await flush();
+    await act(async () => link.push({ push: "computer-preview", preview: "pv_1", state: "ended", reason: "error" }));
+    expect(screen.queryByRole("img")).toBeNull();
+    // the element measured is still on the page: an ended preview's box leaving never zeroes the width
+    expect(observed && document.body.contains(observed)).toBe(true);
+    await act(async () => screen.getByRole("button", { name: "Retry" }).click());
+    await flush();
+    const starts = link.calls.filter((c) => c.method === "computer.preview.start");
+    expect(starts).toHaveLength(2);
+    expect(starts[1].params.maxEdge).toBe(previewEdge(304 - 16, window.devicePixelRatio));
+  });
+
+  it("drops a frame that finished decoding after the preview ended", async () => {
+    let decoded: (b: unknown) => void = () => {};
+    globalThis.createImageBitmap = vi.fn(() => new Promise((r) => (decoded = r))) as never;
+    mount();
+    await flush();
+    await act(async () => link.push(frame(1)));
+    await act(async () => link.push({ push: "computer-preview", preview: "pv_1", state: "ended", reason: "window-closed" }));
+    await act(async () => decoded({ width: 960, height: 600, close: vi.fn() }));
+    await flush();
+    expect(drawn).toHaveLength(0);
+    expect(screen.getByText("The window closed")).toBeTruthy();
+    expect(screen.queryByRole("img")).toBeNull();
   });
 
   it("follows the agent to another window on the same preview id", async () => {
