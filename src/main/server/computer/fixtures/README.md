@@ -61,6 +61,16 @@ half with a DOM id, and two buttons that replace the list with identical
 markup or with one value changed: every element under it is a new AX element,
 so the reader's rebuilt-element rule keeps their numbers or it does not.
 
+## `page/bench.html`
+
+The words comparison's page (scripts/compare-computer-words.ts, task set in
+scripts/lib/computerTasks.ts). `#seed=<n>&name=<word>` in its URL gives its
+title, `TempCode bench <word>`, and its 60 orders, which `seededOrders` in
+the task set reproduces; each row's Delete removes it and writes
+`Deleted <id>` into the status line, and the order form's Submit writes what
+it holds there and sends nothing. scripts/computer-tasks.test.ts runs its
+script under jsdom.
+
 ## `apps/<app>/<state>/`
 
 Real accessibility trees and screenshots, recorded on the Mac:
