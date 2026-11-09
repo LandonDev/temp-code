@@ -554,9 +554,9 @@ async function orchestrator(): Promise<void> {
 
     // 4. act
     await awaitScreen()
-    const field = seen.text.match(/\[(\d+)\] text field\b/)?.[1]
+    const field = seen.text.match(/\[(\d+)\] input\b/)?.[1]
     const ping = seen.text.match(/\[(\d+)\] button "Ping"/)?.[1]
-    if (!field || !ping) await stop('the scratch window shows no text field or Ping button')
+    if (!field || !ping) await stop('the scratch window shows no input or Ping button')
     const set = await computer(t1, 'computer_act', { app: APP, window: APP, action: 'set_value', element: Number(field), value: `Lunch ${NONCE}?` })
     check('act: set_value runs at ax and changes the window', !set.isError && /set_value .* · ax · changed/.test(set.text), set.text.slice(0, 300))
     const after = await computer(t1, 'computer_observe', { app: APP, window: APP })
