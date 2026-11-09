@@ -116,6 +116,8 @@ Every method's params and result are a zod schema in `COMPUTER_METHODS` (`protoc
 | `capture.screenshot` | `Target & { maxEdge?: number, region?: Region, format?: 'jpeg' \| 'png' }` | `Shot` |
 | `capture.stream.start` | `Target & { stream: string, fps?: number (1..15, default 4), maxEdge?: number (default 960) }` | `{ stream, width, height }` |
 | `capture.stream.stop` | `{ stream: string }` | `{}` |
+| `input.probe` | `Target & { classes?: ActionClass[] }` (default `['scroll', 'key', 'click']`) | `ProbeReport`: which classes the app honours at the `process` tier, each tried only where its state can be put back through AX (§14.6) |
+| `input.restoreSession` | `{}` | `SessionRestore`: what the `session` tier changed since the last restore, put back unless the person moved since (§14.5); `session_unavailable` when another holder keeps the session lock for 5 s |
 
 Notifications from the host: `$/cancel { id }`, `capture.stream.ack { stream, seq }`.
 
@@ -134,7 +136,8 @@ type BatchResult = { steps: StepResult[]; observation?: Observation; observation
 type StepResult =
   | { index: number; action: ComputerActionName; status: 'ok'; tier: Tier | null; effect: 'changed' | 'none' | 'unknown'
       element?: ElementBrief; input?: { via: 'ax-insert' | 'ax-value' | 'keys' | 'paste'; clipboard?: 'restored' | 'kept-person-copy' }
-      cursor?: Point; text?: string; shot?: Shot; waited?: WaitReport }
+      cursor?: Point; text?: string; shot?: Shot; waited?: WaitReport
+      session?: SessionChange }                       // on every step that ran at the session tier (§14.5)
   | { index: number; action: ComputerActionName; status: 'failed'; error: ComputerError }
   | { index: number; action: ComputerActionName; status: 'not-run' }
 ```
@@ -289,13 +292,13 @@ app "TextEdit" · window "Untitled" · 1280×1072 · focused [42] · changes sin
 
 ### 5.1 The action shape
 
-One flat object, the same on the wire, in `computer_act` and in each `computer_batch` entry: `action` plus that action's parameters. The first 17 are Anthropic's native member names with their parameter names and meanings unchanged; `element` and `start_element` are added beside `coordinate` and `start_coordinate`; the last three are ours.
+One flat object, the same on the wire, in `computer_act` and in each `computer_batch` entry: `action` plus that action's parameters. The first 17 are Anthropic's native member names with their parameter names and meanings unchanged; `element` and `start_element` are added beside `coordinate` and `start_coordinate`; the last four are ours.
 
 | `action` | Parameters | Notes |
 |---|---|---|
 | `screenshot` | none | the focus window; sets the session's space (§6) |
 | `zoom` | `region` | the region at full resolution, scaled to fit `maxEdge`; the space does not change |
-| `left_click`, `right_click`, `middle_click`, `double_click`, `triple_click` | `element?` or `coordinate?`, `text?` (modifiers) | neither: at the agent cursor |
+| `left_click`, `right_click`, `middle_click`, `double_click`, `triple_click` | `element?` or `coordinate?`, `text?` (modifiers), `duration?` (seconds, 0 < d ≤ 10) | neither: at the agent cursor; `duration` keeps the button down that long before the release, which `ax` cannot express |
 | `left_click_drag` | `start_element?` or `start_coordinate?`, `element?` or `coordinate?`, `text?` | press, drag, release |
 | `mouse_move` | `element?` or `coordinate?` | hover |
 | `left_mouse_down`, `left_mouse_up` | none | at the agent cursor |
@@ -307,9 +310,10 @@ One flat object, the same on the wire, in `computer_act` and in each `computer_b
 | `wait` | `duration` (seconds, ≤ 300, as native) | the smart wait capped at `duration` (§7): it returns once the window settles, which is what the native member is for ("pauses before the next action, for example while an application loads"), so no model ever sleeps blind |
 | `set_value` | `element`, `value` (string) | AX only |
 | `perform` | `element`, `name` (an action word the element lists, or a role default) | AX only |
-| `select_text` | `element`, `text?` (its first occurrence) or `range?` `[a, b]` (UTF-16) | AX only |
+| `select_text` | `element`, `text?` (its first occurrence) or `range?` `[a, b]` (UTF-16), `prefix?`, `suffix?`, `place?` (`select` \| `before` \| `after`) | AX only; the first match with `prefix` right before it and `suffix` right after it; `place` selects it (the default) or puts the caret before or after it; `prefix` and `suffix` never with `range`; no match is `text_not_found` |
+| `paste` | `text` (1..200,000 UTF-16 units), `format?` (`text` \| `markdown` \| `html`, default `text`), `element?` | `process` or `session` (Command-V under the clipboard lock, §5.3); class `type`; `step.input = { via: 'paste', clipboard }` |
 
-- `element` and `coordinate` exclude each other, and so do `start_element` and `start_coordinate`; `mouse_move` needs exactly one of `element`, `coordinate`; `left_click_drag` needs exactly one of `start_element`, `start_coordinate` and exactly one of `element`, `coordinate`; `zoom` needs `region`; `type`, `key` and `hold_key` need `text`; `scroll` needs `scroll_direction` and `scroll_amount`; `hold_key` and `wait` need `duration`; the three AX actions need `element`; `perform` needs `name` and `set_value` needs `value`; `select_text` takes exactly one of `text`, `range` (`range` with a ≤ b). An action refuses any parameter it does not take (`ACTION_PARAMS` is the table; `refineAction` the rules). `ComputerActionSchema` (`protocol.ts`) refines these per action; its JSON Schema is one flat object with no `oneOf`, so Codex and Muse read it as written, and it generates one Swift struct `ComputerAction` with optional fields.
+- `element` and `coordinate` exclude each other, and so do `start_element` and `start_coordinate`; `mouse_move` needs exactly one of `element`, `coordinate`; `left_click_drag` needs exactly one of `start_element`, `start_coordinate` and exactly one of `element`, `coordinate`; `zoom` needs `region`; `type`, `key`, `hold_key` and `paste` need a non-empty `text` (`paste` at most 200,000 UTF-16 units, no `coordinate`); `scroll` needs `scroll_direction` and `scroll_amount`; `hold_key` and `wait` need `duration`; the three AX actions need `element`; `perform` needs `name` and `set_value` needs `value`; `select_text` takes exactly one of `text`, `range` (`range` with a ≤ b). An action refuses any parameter it does not take (`ACTION_PARAMS` is the table; `refineAction` the rules). `ComputerActionSchema` (`protocol.ts`) refines these per action; its JSON Schema is one flat object with no `oneOf`, so Codex and Muse read it as written, and it generates one Swift struct `ComputerAction` with optional fields.
 - **Held input**: `left_mouse_down` holds the button until `left_mouse_up` from the same session on the same app. While it is held that session owns the app's action slot (another session's action on the app waits, then `app_busy`), every pointer action of that session uses the tier the down used (a call whose `tiers` lacks that tier fails that step `needs_tier { needed: <the held tier> }` without acting, and the button stays down), and a `session`-tier down keeps the Mac-wide session lock. The service lets go (button up at the agent cursor, every held key up) on `interrupted`, `$/cancel`, `session.close`, `shutdown`, stdin EOF, and 30 s after the down with no up.
 - **Modifiers** (`text` on clicks, drag and scroll): `shift`, `ctrl`, `alt`, `super`, `+`-joined. On the Mac `super` is Command and `alt` is Option; `cmd`, `command`, `opt` and `option` are accepted as aliases.
 - **Keys** (`key`, `hold_key`): X11 keysym names as Anthropic's examples use them (`Return`, `Tab`, `Escape`, `BackSpace`, `Delete`, `space`, `Up`, `Down`, `Left`, `Right`, `Home`, `End`, `Page_Up`, `Page_Down`, `F1`..`F20`, single characters), case-insensitive, joined with modifiers by `+` (`ctrl+s`, `super+shift+t`, `alt+Tab`). `KEY_NAMES` and `parseKeyCombo` in `observation.ts` are the table; the Input tiers thread maps them to virtual key codes.
@@ -325,23 +329,28 @@ One flat object, the same on the wire, in `computer_act` and in each `computer_b
 
 - Every `action.run` and `action.batch` carries `tiers`: the tiers the host allows, in order. The service uses the first allowed tier that can express the action and reports it in `step.tier`. It never chooses a tier the host did not allow; an action no allowed tier can express answers `needs_tier { needed }` without acting.
 - What each tier can express, **exactly**: `ax` takes, on an element and with no modifiers, `left_click` (AXPress; on a row or cell without AXPress, setting AXSelected), `double_click` where the element exposes AXOpen, `right_click` where it exposes AXShowMenu, `set_value`, `perform`, `select_text`, and `type` into an element whose AXSelectedText or AXValue is settable (§5.3); `process` takes every pointer, key, scroll and type action at a point or at an element's centre; `session` takes all of them. **Approximately**: `ax` can scroll a scroll area by whole pages (AXScroll<Dir>ByPage, one page per 5 wheel clicks, at least one). The service uses the first tier in `tiers` that expresses the action exactly, and an approximate one only when no allowed tier is exact; `step.tier` says which ran.
+- **`perform raise` needs the session tier** (a correction to this section as first written, made before any service existed): raising can put the window over the person's, so `perform` with `raise` runs only when `tiers` includes `session` (the AX call is the same) and reports `tier: 'session'`; otherwise `needs_tier { needed: 'session' }`. Every other `perform` stays `ax`. `expand` and `collapse` set AXExpanded (a row's AXDisclosing) where it is settable; they are role defaults of `row` and `disclosure`, never listed in `actions:`.
+- **Keys go only to a key window.** At the `process` tier a `key`, `hold_key`, `type` by keys or `paste` posts only when the app's AXFocusedWindow is the target window; anything else, no answer included, is `key_window_unavailable` with `keyWindow { id, title }` when another window is key, and nothing is posted. Mouse verbs are exempt (their window fields route them). The host retries that one step at the next tier (`ax` set value or insert for `type`, `session` for `key`) and records `needsKeyWindow` in the verdict.
 - Seen on the Mac: Finder rows carry no AXPress (select by AXSelected or a click, open by AXOpen on the cell); TextEdit's text area exposes AXValue and AXSelectedTextRange as settable and only AXShowMenu as an action.
-- **The verdict**: the host keeps, per bundle id and action class, the lowest tier that worked: `TierVerdictSchema` in `tools.ts`, `{ bundleId: string, classes: { [class]?: Tier }, misses: { [class]?: number } /* steps in a row with effect 'none' at the class's current tier */, updatedAt: number /* epoch ms */ }`, stored by Computer sessions and tools as setting `computer.tiers.<bundleId>` and read by Tier scheduling. A class with no entry starts at `process`. Classes (`ACTION_CLASSES`): `click` (clicks, mouse down and up), `drag`, `hover` (`mouse_move`), `scroll`, `key` (`key`, `hold_key`), `type`. The host learns from `effect`: a `process` step with `effect: 'none'` twice in a row in one class, where the same class then changed something at `session`, sets that class's verdict to `session`; a later `changed` at a lower tier lowers it. The host builds each call's `tiers` from the verdict; Tier scheduling decides when `session` may be in it.
-- **The person's input during a `session` step**: the service watches for real keyboard and pointer events it did not post (a global event monitor) and for Escape. Either stops the step at once with error `interrupted { by: 'person' }`, sends `session/interrupted`, and releases the Mac.
+- **The verdict**: the host keeps, per bundle id and action class, the lowest tier that worked: `TierVerdictSchema` in `tools.ts`, `{ bundleId: string, classes: { [class]?: Tier }, misses: { [class]?: number } /* steps in a row with effect 'none' at the class's current tier */, needsKeyWindow?: boolean /* this app's background windows have been seen not key: a record, not a ban */, updatedAt: number /* epoch ms */ }`, stored by Computer sessions and tools as setting `computer.tiers.<bundleId>` and read by Tier scheduling. A class with no entry starts at `process`. Classes (`ACTION_CLASSES`, the wire's `ActionClassSchema`): `click` (clicks, mouse down and up), `drag`, `hover` (`mouse_move`), `scroll`, `key` (`key`, `hold_key`), `type`. The host learns from `effect`: a `process` step with `effect: 'none'` twice in a row in one class, where the same class then changed something at `session`, sets that class's verdict to `session`; a later `changed` at a lower tier lowers it. The host builds each call's `tiers` from the verdict; Tier scheduling decides when `session` may be in it.
+- **The person's input during a `session` step**: the service watches for real keyboard and pointer events it did not post (a global event monitor; every event Input posts carries `eventSourceUserData = 0x74636370`, "tccp") and for Escape. Either stops the step at once with error `interrupted { by: 'person' }`, sends `session/interrupted`, and releases the Mac. A session step says what it changed (`step.session`, or the failed step's `error.session`); `input.restoreSession` puts it back (§14.5) when the host asks.
 
 ### 5.3 Typing and the clipboard lock
 
-`type` tries, in order, within the allowed tiers: (1) `ax-insert`, setting AXSelectedText on the element (or the focused element), which inserts at the caret like typing; (2) `ax-value` when only AXValue is settable and the element is empty or the whole value is selected; (3) `keys`, Unicode key events in chunks of 20 UTF-16 units (`CGEventKeyboardSetUnicodeString`) at `process` or `session`; (4) `paste`, only for text over 2,000 UTF-16 units or when (3) showed no effect. `step.input.via` says which ran.
+`type` tries, in order, within the allowed tiers: (1) `ax-insert`, setting AXSelectedText on the element (or the focused element), which inserts at the caret like typing; (2) `ax-value` when only AXValue is settable and the element is empty or the whole value is selected; (3) `keys`, Unicode key events in chunks of at most 20 UTF-16 units never cut inside a grapheme cluster (`CGEventKeyboardSetUnicodeString`; a line break posts Return and a tab Tab, as real keys) at `process` or `session`, for text of 2,000 units or less with no cluster over 20 units; (4) `paste`, plain text, for the text (3) does not take, or when (3) showed no change at all (`none`; never after `changed` or `unknown`, so text never goes in twice). `step.input.via` says which ran. A `type` or `paste` naming an `element` first sets AXFocused on it and waits up to 200 ms for it to be the app's focused element; else `action_unsupported` ("[n] can't take keyboard focus") and nothing is posted.
+
+The `paste` verb writes per `format`: `text` the plain string; `markdown` rendered HTML (`public.html`) and RTF (`public.rtf`) with the source as the plain string; `html` the HTML as given with its text (tags stripped, entities decoded) as the plain string. The renderers are Input's own (`MarkdownHTML.swift` walks `AttributedString`'s markdown intents; `RichTextRTF.swift` builds the attributed string), never WebKit's HTML import.
 
 The paste runs under the **clipboard lock**, one per Mac (`flock` on `$TMPDIR/tc-computer/clipboard.lock`, §1):
 
 1. take the lock (wait at most 2 s, else `clipboard_busy`);
-2. snapshot every pasteboard item with every type and its data, and the `changeCount`;
-3. write the text as plain string, note the new `changeCount`;
-4. post Command-V at the step's tier;
-5. wait for the element's value to change, at most 500 ms;
-6. restore the snapshot only if `changeCount` is still ours (`clipboard: 'restored'`); if the person copied in between, leave their copy (`clipboard: 'kept-person-copy'`);
-7. release the lock. It is never held over 2.5 s.
+2. check the destination and the key window (`process`) or the focused window (`session`); a failure leaves the clipboard untouched;
+3. snapshot every pasteboard item with every type and its data, and the `changeCount`; a `changeCount` that moved while it read, or a type whose data cannot be read (a promise its owner did not keep), is `clipboard_busy` ("the clipboard holds data that can't be saved") with nothing written;
+4. write the content, noting the `changeCount` after each of Input's own pasteboard calls, then check the destination and key window again;
+5. post Command-V at the step's tier;
+6. wait for the element's value to change, at most 500 ms;
+7. on every exit, a throw or a cancel included, restore the snapshot only if `changeCount` is still ours (`clipboard: 'restored'`); if the person copied in between, leave their copy (`clipboard: 'kept-person-copy'`);
+8. release the lock. It is never held over 2.5 s.
 
 Reading a `password` value is never possible; typing into one is.
 
@@ -423,8 +432,10 @@ A counting frame stamps `lastChange` with its display time, the mach clock AX's 
 ```ts
 type ComputerError = { kind: ComputerErrorKind; message: string } & Partial<{
   which: 'accessibility' | 'screenRecording'; candidates: string[]; element: number
-  reason: 'gone' | 'service-restarted'; available: string[]; needed: Tier
-  coordinate: Point; space: CoordinateSpace; by: 'person'
+  reason: 'gone' | 'service-restarted' | 'locked' | 'secure-input' | 'activation-refused' | 'in-use'
+  available: string[]; needed: Tier; coordinate: Point; space: CoordinateSpace; by: 'person'
+  keyWindow: { id: number; title: string }            // key_window_unavailable: the window that is key
+  session: SessionChange                              // a session step that failed after it began to change the Mac
 }>
 ```
 
@@ -449,8 +460,11 @@ type ComputerError = { kind: ComputerErrorKind; message: string } & Partial<{
 | `clipboard_busy` | the lock was not free in 2 s | |
 | `capture_failed` | ScreenCaptureKit refused or timed out | |
 | `timeout` | an AX call hung past 2 s (the app is not answering) | |
+| `text_not_found` | `select_text` found no match (with its prefix and suffix) | `element` |
+| `key_window_unavailable` | a `process`-tier key, `hold_key`, `type` by keys or `paste` whose target window is not the app's key window; nothing was posted | `keyWindow?` |
+| `session_unavailable` | the session tier cannot run: the screen is locked, secure input is on (keys only), activation was refused (the window did not get keyboard focus), or another service held the session lock for 5 s | `reason` |
 
-`message` is one plain sentence a model can act on ("[12] is gone; read the tree again"); the Computer model instructions thread owns the wording table (`COMPUTER_ERROR_WORDS`). `STEP_ONLY_ERROR_KINDS` (`action_unsupported`, `needs_tier`, `invalid_key`, `interrupted`, `app_busy`, `clipboard_busy`) only ever ride in a step; the rest can answer a request. In Swift a part throws `ComputerFailure` (ComputerCore) and the Service shell puts it where it belongs.
+`message` is one plain sentence a model can act on ("[12] is gone; read the tree again"); the Computer model instructions thread owns the wording table (`COMPUTER_ERROR_WORDS`). `STEP_ONLY_ERROR_KINDS` (`action_unsupported`, `needs_tier`, `invalid_key`, `interrupted`, `app_busy`, `clipboard_busy`, `text_not_found`, `key_window_unavailable`) only ever ride in a step; the rest can answer a request. In Swift a part throws `ComputerFailure` (ComputerCore) and the Service shell puts it where it belongs.
 
 **Notifications** from the service:
 
@@ -544,15 +558,17 @@ Every lookup of a pid matches the executable's path, never `pgrep -f` (which mat
 | `ComputerProtocol` | library | Foundation | Computer protocol spec: `Generated/` plus hand-written `Framing.swift` (`ContractMethod`, `RPCFrame` for every frame of either side, `RPCErrorObject`, `LineReader`, `encodeLine` and `decodeLine`, `$/cancel`) and `JSONValue.swift` |
 | `ComputerCore` | library | ComputerProtocol, ApplicationServices | Computer protocol spec: `Seams.swift`, the protocols below and `ComputerFailure`, no implementation |
 | `AXReader` | library | ComputerCore | AX reader |
-| `Input` | library | ComputerCore | Input tiers |
+| `Input` | library | ComputerCore, AppKit, Carbon, ApplicationServices | Input tiers (§14) |
 | `Capture` | library | ComputerProtocol, ComputerCore, ScreenCaptureKit | Capture: screenshots, the preview stream, the pixel watch (§6, §7) |
 | `ComputerService` | library | all four | Service shell |
 | `tc-computer` | executable | ComputerService | Service shell |
 | `ComputerProtocolTests` | test | ComputerProtocol | Computer protocol spec: decodes and round-trips every `fixtures/wire/*.json` in place, and the framing |
 | `capture-proof` | executable, never shipped | Capture | Capture: the live proof on the Mac (§6) |
 | `CaptureTests` | test | Capture | Capture: the geometry, naming, flow control, lifecycle, change judge, encoding, error mapping, the permission gate and the private-call scan; the Foundation-only suites run on Linux too |
+| `InputTests` | test | Input | Input tiers: the offline suites of §14.8; the pure ones run on Linux too |
+| `tc-input-proof` | executable, never shipped | Input | Input tiers: the live proof on the Mac (§14.8) |
 
-AXReader, Input, ComputerService and the executable start as one placeholder file each; Capture is built (§6, §7). `Seams.swift` fixes the joins the Service shell makes. Generated wire types (`ComputerAction`, `Tier`, `Rect`, `CoordinateSpace`, `Shot`, `ShotFormat`, `ElementBrief`, `ObservationStats`, `ObservationKind`, `WindowInfo`, `ComputerError`) are used as they are; the rest are defined here, in `ComputerCore`:
+AXReader, ComputerService and the executable start as one placeholder file each; Capture (§6, §7) and Input (§14) are built. `Seams.swift` fixes the joins the Service shell makes. Generated wire types (`ComputerAction`, `Tier`, `Rect`, `CoordinateSpace`, `Shot`, `ShotFormat`, `ElementBrief`, `ObservationStats`, `ObservationKind`, `WindowInfo`, `ComputerError`) are used as they are; the rest are defined here, in `ComputerCore`:
 
 ```swift
 public struct ObserveRequest: Sendable {              // the Service shell builds it from state.get / ObserveOptions
@@ -573,14 +589,26 @@ public struct ResolvedElement {                       // an index, live
 }
 public struct InputTarget {                           // the shell resolves it; Input acts on it
   public let pid: pid_t; public let windowID: UInt32; public let windowFrame: Rect   // screen points
+  public let window: AXUIElement                      // the resolved window: the key-window check, raise, minimized
   public let space: CoordinateSpace                   // to map coordinate → screen point
   public let element: ResolvedElement?; public let startElement: ResolvedElement?
   public var cursor: [Int]?                           // the agent cursor [x, y], session space
+  public let cancelled: @Sendable () -> Bool          // the shell's $/cancel flag; default { false }
 }
 public struct InputOutcome: Sendable {
   public var tier: Tier?; public var via: InputVia?   // .axInsert | .axValue | .keys | .paste (generated)
   public var clipboard: ClipboardOutcome?; public var cursor: [Int]?   // .restored | .keptPersonCopy
+  public var session: SessionChange?                  // what a session step changed → step.session
+  public var lastInputAt: UInt64?                     // mach_absolute_time of the last event or AX change; the smart wait counts from it
 }
+public protocol MacLock: Sendable { func acquire(within seconds: Double) -> MacLockHold? }   // the shell's flock, twice
+public protocol MacLockHold: AnyObject, Sendable { func release() }                       // idempotent
+public struct HeldRecord: Codable, Sendable, Equatable {   // the shell's crash ledger, <dataDir>/held.json
+  public enum Kind: String, Codable, Sendable { case button, key }
+  public var writer: Int32; public var pid: Int32; public var tier: Tier; public var kind: Kind
+  public var point: [Int]?; public var keyCodes: [UInt16]?; public var since: Double
+}
+public enum HeldEvent: Sendable, Equatable { case pressing(HeldRecord), released(pid: Int32, kind: HeldRecord.Kind) }
 public struct Frame: Sendable { public let seq: Int; public let jpeg: Data; public let width: Int; public let height: Int; public let ts: Double }
 public protocol StreamHandle: AnyObject {              // A3
   var startSize: (width: Int, height: Int) { get }    // capture.stream.start's width and height
@@ -611,9 +639,12 @@ public protocol ChangeSignal: AnyObject {             // AXReader: the AXObserve
   func signature() -> UInt64                          // the shallow signature of §7
   func busyIndicatorShowing() -> Bool
 }
-public protocol InputPerforming {                     // Input
-  func perform(_ action: ComputerAction, on target: InputTarget, tiers: [Tier]) throws -> InputOutcome   // throws needs_tier, invalid_key, interrupted, clipboard_busy
+public protocol InputPerforming {                     // Input; every call synchronous, off main
+  func perform(_ action: ComputerAction, on target: InputTarget, tiers: [Tier]) throws -> InputOutcome   // throws needs_tier, invalid_key, interrupted, clipboard_busy, key_window_unavailable, session_unavailable, …
+  func probe(_ target: InputTarget, classes: [ActionClass]) throws -> ProbeReport      // input.probe
+  func restoreSession() throws -> SessionRestore                                       // input.restoreSession
   func releaseHeld(pid: pid_t)                        // held-input cleanup, §5.1
+  func releaseStale(_ record: HeldRecord)             // a dead writer's record: its ups at its tier
 }
 public protocol WindowCapturing {                     // Capture
   // regionPoints: the region already mapped from session pixels to window points by the shell
@@ -627,14 +658,71 @@ Every struct here has an explicit `public init` taking all its fields (Swift's m
 
 ## 12. The generator
 
-`scripts/gen-swift-contract.ts` has a second target that leaves the iOS output alone (`check:swift-contract` holds it): `generate(subset, { methods, header, contract })` takes the method source (`CLIENT_METHODS`, the phone's `ClientRequestSchema` with the capability check, by default), the files' header and the body of `Contract.swift`, and `writeOrCheck` writes or diffs the files. `scripts/gen-swift-computer.ts` calls it with `COMPUTER_SUBSET` (every named type, the `StepResult`, `ComputerNotification` and `HostNotification` unions, then each method of `COMPUTER_METHODS`) and writes `native/tc-computer/Sources/ComputerProtocol/Generated/`. Its `Contract.swift` carries `computerProtocol` and `ComputerDefaults`: every constant group of `protocol.ts` (`SERVICE`, `AX_WALK`, `OBSERVATION_TEXT`, `OBSERVATION_BUDGET`, `SHOT`, `PREVIEW_STREAM`, `TYPING`, `LOCKS`, `ACTION_LIMITS`, `RPC_ERROR`) as `static let`s and the `COMPUTER_WAIT` rows as `WaitOptions`, so the service's defaults and the host's numbers have one home. A name the generator would turn into a Swift keyword or into `Type` gets a named type of its own (`RawAXValueType`) or another key (`internalError`).
+`scripts/gen-swift-contract.ts` has a second target that leaves the iOS output alone (`check:swift-contract` holds it): `generate(subset, { methods, header, contract })` takes the method source (`CLIENT_METHODS`, the phone's `ClientRequestSchema` with the capability check, by default), the files' header and the body of `Contract.swift`, and `writeOrCheck` writes or diffs the files. `scripts/gen-swift-computer.ts` calls it with `COMPUTER_SUBSET` (every named type, the `StepResult`, `ComputerNotification` and `HostNotification` unions, then each method of `COMPUTER_METHODS`) and writes `native/tc-computer/Sources/ComputerProtocol/Generated/`; `emitInputTables()` writes `native/tc-computer/Sources/Input/Generated/InputTables.swift` from `observation.ts` (`KEY_NAMES`, `MODIFIERS` and `MODIFIER_NAMES`, `ACTION_WORDS`, `DROPPED_ACTIONS`, `ROLE_TAGS`, `ROLE_DEFAULTS`, `TYPING_ROLES`), so Input keeps no hand-written table of names. Its `Contract.swift` carries `computerProtocol` and `ComputerDefaults`: every constant group of `protocol.ts` (`SERVICE`, `AX_WALK`, `OBSERVATION_TEXT`, `OBSERVATION_BUDGET`, `SHOT`, `PREVIEW_STREAM`, `TYPING`, `LOCKS`, `ACTION_LIMITS`, `RPC_ERROR`) as `static let`s and the `COMPUTER_WAIT` rows as `WaitOptions`, so the service's defaults and the host's numbers have one home. A name the generator would turn into a Swift keyword or into `Type` gets a named type of its own (`RawAXValueType`) or another key (`internalError`).
 
 - Scripts: `gen:swift-computer` and `check:swift-computer`, the latter inside `typecheck` beside `check:swift-contract`; `computer:test` (scripts/computer-test.sh, which picks an Xcode as scripts/ios-test.sh does) builds and tests the package.
-- The gate: `TYPECHECK_INPUTS` holds `native/tc-computer/Sources/ComputerProtocol/Generated/*`, so a hand edit to the generated files cannot ride a cached typecheck; the `computer-swift` step (publish tier, `mac: true`, lane `swift`) runs `bun run computer:test`; `TIER_PATHS` pulls the publish tier in for `native/tc-computer/**`, `src/shared/computer/**`, `scripts/gen-swift-computer.ts` and `scripts/computer-test.sh`. electron-builder leaves `native/**` out of the app (the built binary goes in through `resources/native`).
-- Tests: `src/shared/computer/{protocol,observation,tools}.test.ts`, `src/main/server/computer/computerFixtures.test.ts` (every fixture, the grammar on every observation text, the recorded apps against their meta, the privacy guard) and `scripts/gen-swift-computer.test.ts` (the generated names, the committed files, the iOS output unchanged), and `src/shared/computer/captureParity.test.ts` (Capture's tuning reads the wire's numbers from `ComputerDefaults`); in Swift, `ComputerProtocolTests` decodes and round-trips every `fixtures/wire` file in place, and the framing, and `CaptureTests` holds Capture's pure parts, its ScreenCaptureKit error mapping and its permission gate. On the box the Linux toolchain under `~/toolchains` builds and tests the whole package (the AX seams sit behind `canImport(ApplicationServices)`, every Capture file that needs a macOS framework behind `canImport(ScreenCaptureKit)`); the Mac runs `computer:test` in the publish gate.
+- The gate: `TYPECHECK_INPUTS` holds `native/tc-computer/Sources/ComputerProtocol/Generated/*` and `native/tc-computer/Sources/Input/Generated/*`, so a hand edit to the generated files cannot ride a cached typecheck; the `computer-swift` step (publish tier, `mac: true`, lane `swift`) runs `bun run computer:test`; `TIER_PATHS` pulls the publish tier in for `native/tc-computer/**`, `src/shared/computer/**`, `scripts/gen-swift-computer.ts` and `scripts/computer-test.sh`. electron-builder leaves `native/**` out of the app (the built binary goes in through `resources/native`).
+- Tests: `src/shared/computer/{protocol,observation,tools}.test.ts`, `src/main/server/computer/computerFixtures.test.ts` (every fixture, the grammar on every observation text, the recorded apps against their meta, the privacy guard) and `scripts/gen-swift-computer.test.ts` (the generated names, the committed files, the iOS output unchanged), and `src/shared/computer/captureParity.test.ts` (Capture's tuning reads the wire's numbers from `ComputerDefaults`); in Swift, `ComputerProtocolTests` decodes and round-trips every `fixtures/wire` file in place, and the framing, `CaptureTests` holds Capture's pure parts, its ScreenCaptureKit error mapping and its permission gate, and `InputTests` holds Input's (§14.8), and `src/main/server/computer/keyCombos.test.ts` holds the TypeScript key parser to the vectors `KeyComboTests` reads. On the box the Linux toolchain under `~/toolchains` builds and tests the whole package (the AX seams sit behind `canImport(ApplicationServices)`, every Capture file that needs a macOS framework behind `canImport(ScreenCaptureKit)`); the Mac runs `computer:test` in the publish gate.
 
 ## 13. Changing the contract
 
 - Change the zod first, then `bun run gen:swift-computer`, then this document, in one commit. A new method, error kind or notification needs its fixture under `fixtures/wire/`; the tests fail on any that has none.
 - Adding a method, an optional field, an error kind or an enum value keeps `COMPUTER_PROTOCOL` at 1; anything else bumps it.
 - Background on the box (gitignored, never copy into fixtures): `.temp-code/computer-spec/codex-cu.md` (how Codex's computer use works, with its confirmation categories) and `.temp-code/computer-spec/ax-findings.md` (the probe's AX walk and capture timings).
+
+## 14. Input as built
+
+`native/tc-computer/Sources/Input/` performs the actions of §5 on one window and says which tier it used. It builds to `InputPerforming` (§11); the Service shell routes `input.probe` and `input.restoreSession` to it, implements `MacLock` twice over `flock`, keeps the crash ledger from `onHeld`, and counts the smart wait from `lastInputAt`. Public API only: no SkyLight or other private call.
+
+### 14.1 Files
+
+Most of Input is **pure**: Foundation and the wire, no AppKit, CoreGraphics or AX, each piece generic over the system it touches, so its suites run on the box's Linux toolchain as well as on the Mac. `InputTiming` (every delay and cap), `KeyCombo` (the same parse as `observation.ts`), `KeyCodes`, `KeyLayout` (`USANSILayout`), `TextMatch`, `TierPlan`, `Geometry`, `EventPlan` (`SyntheticEvent`, `EventPlans`), `Evidence` (the typing and paste evidence, `TypingRoute`), `PersonMark` (`TC_EVENT_MARK`, `isPersonEvent`), `InputClock`, `EventRoute` (`EventSink` and the poster), `Held` (held input across calls), `SessionLedger`, `SessionFlow` (`SessionHost`, `PersonWatching`, the session driver), `ProbeRun` (`ProbeAccess`, `ProbeJudge`), `PasteFlow` (`PasteboardStore`) and `InputCore` (the event-posting verbs at `process` and `session`, the trip between calls, restore, the stale release). `MarkdownHTML` is Foundation but Mac-only (`AttributedString`'s markdown intents). The **live** layer reads and writes the Mac: `AX`, `EventMaker`, `EventSink` (`LiveEventSink`), `CurrentKeyLayout`, `PersonWatch`, `AXTier`, `ProcessTier`, `SessionTier` (`LiveSessionHost`), `Pasteboard` (`SystemPasteboard`, `PasteContent.make`), `RichTextRTF`, `Typing`, `Probe` (`LiveProbeAccess`) and `InputEngine`. `Names.swift` aliases the wire's `Rect`, `Point` and `WindowRef` over Carbon's inside the module; `Generated/InputTables.swift` is the generator's (§12).
+
+### 14.2 The engine
+
+`InputEngine(clipboardLock:, sessionLock:, onPersonInput:, onHeld:, sink:, pasteboard:, layout:, watch:, clock:)`. `perform`, `probe` and `restoreSession` are synchronous and refuse the main thread; the person watch (NSEvent monitors) and the key layout (TIS) run on main and are reached through a hop bounded at 1 s. `perform` parses the action's strings, reads the element's facts, chooses the tier (§14.3) and answers `needs_tier` before touching anything; `screenshot`, `zoom` and `wait` are the shell's and answer `action_unsupported`; `cursor_position` answers the agent cursor (the real pointer while a session-tier button is held). Before any AX call `AXIsProcessTrusted()`, and before posting `CGPreflightPostEventAccess()`: either missing is `permission_missing`. `target.cancelled()` is checked before every posted event and inside every pause; a cancel lets go of what the step holds and answers `cancelled`. AX errors map: invalid element → `stale_element { reason: 'gone' }`, unsupported action, attribute or argument → `action_unsupported`, cannot complete → `timeout`, API disabled → `permission_missing`; every element Input calls has a 2 s messaging timeout. Every event comes from a private-state `CGEventSource` and carries `eventSourceUserData = 0x74636370` ("tccp").
+
+Points: a session-space `[x, y]` maps to `frame.origin + point / scale` (frames in global points, never clamped; `out_of_bounds` outside the space); an element's point is the centre of its frame clipped to its scroll area and the window, after one `AXScrollToVisible` if nothing of it shows; a pointer verb with neither element nor coordinate uses the agent cursor, and with none answers `out_of_bounds` ("No pointer position yet"). At the session tier the frames are read again after activation.
+
+### 14.3 Choosing the tier
+
+The first tier in `tiers` that expresses the action exactly, else the first that approximates it, else `needs_tier` naming the lowest that could. A held button forces its tier on every action that posts events.
+
+| Action | `ax` | `process` | `session` |
+|---|---|---|---|
+| `left_click` | on an element, no modifiers, no `duration`: AXPress; a row or cell without it: its table's AXSelectedRows, else AXSelected | yes | yes |
+| `right_click` | AXShowMenu, no modifiers, no `duration` | yes | yes |
+| `double_click` | AXOpen, no modifiers, no `duration` | yes | yes |
+| `middle_click`, `triple_click`, `left_click_drag`, `mouse_move`, `left_mouse_down`, `left_mouse_up`, `key`, `hold_key`, `paste` | no | yes | yes |
+| `scroll` | approximately: AXScroll<Dir>ByPage on the element or its nearest scroll area, no modifiers, max(1, round(amount / 5)) pages | yes | yes |
+| `type` | the element (or the app's focused element) with AXSelectedText settable, or AXValue settable and empty or wholly selected | keys | keys |
+| `set_value`, `select_text`, `perform` | yes (`perform raise`: no) | no | `perform raise` only |
+
+### 14.4 The tiers
+
+- **`ax`**: AX actions and values, nothing else. `perform` takes a word the element lists, a role default, or `expand`/`collapse` on an expandable element; anything else answers `action_unsupported { available }` with the words it does take. `select_text` reads AXValue, finds the match (UTF-16, `prefix`/`suffix`), and sets AXSelectedTextRange per `place`; an unsettable range is `action_unsupported`.
+- **`process`**: `CGEventPostToPid` with the target window in fields 91 and 92, so a background window takes clicks, scrolls and drags without coming forward and the real pointer never moves. Modifiers go down as flagsChanged events before the action and up after, in reverse. The key-window rule (§5.2) holds for every key, `hold_key`, typing and paste. A minimized window takes no pointer verb (`window_minimized`). A drag goes to one pid, so it cannot drop onto another app.
+- **`session`**, in order: refuse a locked screen (`CGSSessionScreenIsLocked` of the session dictionary; a missing key passes, the host's presence is the first guard) and, for keys, secure input (`IsSecureEventInputEnabled`); arm the person watch; take the session lock in 50 ms tries for at most 5 s (`session_unavailable { reason: 'in-use' }`); record the app in front and the pointer; activate over AX (un-minimize, AXFrontmost, AXRaise, AXMain; never `NSRunningApplication.activate`, which macOS refuses to a background caller), polling 20 ms for 400 ms until the pid is front and its AXFocusedWindow is the target (`activation-refused`), the person checked before every write and once more after; read the frames again; post at the HID tap, pointer verbs moving the pointer first. On every exit the ledger gets where the step left the Mac and the result (or the error) its `SessionChange`. A session-tier button held past the call keeps the lock and the watch until its release.
+- **The person**: any watched event (key down, modifiers, moves, the three button downs, drags, the wheel) without the mark trips the watch. During a step it stops before the next event (within 10 ms in a pause), lets go of what the step holds and answers `interrupted`. Between calls, with session input held, it lets go of the held input and the lock, marks the ledger, calls `onPersonInput(pid)`, and that pid's next call answers `interrupted` once.
+
+### 14.5 What the session tier took, and restore
+
+The ledger keeps one record per service process: the app in front and the pointer before the first session step since the last restore, and where the last step left them. `input.restoreSession` first lets go of every held input (so it never waits on its own hold), takes the lock, and puts back each half:
+
+- both halves give way (`person-moved`) when the person tripped the watch, used the keyboard or mouse between two session steps, or since the last one ended (the HID idle time against the step's end);
+- the app half gives way when the app in front is not the one the step left there, or another app came forward meanwhile (NSWorkspace activations while no step ran); it is `app-gone` when the recorded app quit; `held` names the app it brought back;
+- the pointer half gives way when the pointer is more than 2 pt from where the step left it; it goes back with `CGWarpMouseCursorPosition`, no event to any app;
+- a half the steps never changed is `nothing`, and so is everything with no record. The record is cleared; a service restart loses it.
+
+### 14.6 The probe
+
+`input.probe` runs `process`-tier actions that change nothing lasting, judges each through AX and puts it back through AX; it never uses the session tier. A class is tried only where every value it will put back is readable and settable, else `untested` with the reason. `scroll`: one wheel click on a scroll area whose vertical bar is settable, judged by the bar's value. `key`: Right (Left at the end) on the focused text element, only when the window is key (`untested`, "the window is not key", otherwise, which the verdict's `needsKeyWindow` reads). `click`: a click at the left quarter of a character away from the caret, judged by the caret landing there; `drag`, when asked, a drag over two characters. `type` and `hover` are never probed. The candidate search reads at most 500 nodes; every element touched gets a messaging timeout of at most 0.25 s; no class starts past 1.5 s of the 2 s budget, and putting values back always runs to its end.
+
+### 14.7 Timing
+
+`InputTiming`, every number named; the Task benchmark may tune them: 8 ms between events, a 40 ms click, 60 ms between the pairs of a multi-click, 30 ms after a session move, a drag of 12 moves over 180 ms, 15 ms between wheel clicks, typing chunks of 20 units 10 ms apart, 300 ms for keys to show an effect, the paste's 500 ms wait inside its 2.5 s cap and 2 s lock wait, activation 400 ms polled at 20 ms, the session lock 5 s in 50 ms tries, the 30 s auto-release, the 10 s click `duration` cap, and the probe's 300 ms checks inside its 2 s.
+
+### 14.8 Proof
+
+- **Offline**, `swift test --package-path native/tc-computer --filter InputTests` on the Mac (`bun run computer:test` runs the whole package): `KeyComboTests` (every vector of `src/main/server/computer/fixtures/keys/combos.json`, which `keyCombos.test.ts` holds the TypeScript parser to), `KeyCodesTests`, `KeyLayoutTests`, `EventPlanTests`, `EvidenceTests`, `TierPlanTests`, `GeometryTests`, `TextMatchTests`, `PersonWatchTests`, `ProbeJudgeTests`, `ProbeDeadlineTests`, `SessionLedgerTests`, `SessionDriverTests`, `HeldTests`, `HeldWatchTests`, `PasteFlowTests`, and on the Mac alone `EventMakerTests`, `CurrentKeyLayoutTests`, `PasteboardTests` (a private named pasteboard, never the general one) and `RichTextTests`. The pure suites run on the box too, from a scratch package that links the sources (the Linux toolchain ships Swift Testing).
+- **Live**, `scripts/mac/input-proof.sh [--session] [--tempcode]` on the Mac: builds `tc-input-proof`, waits for 2 minutes with no input before launching anything, opens scratch windows (its own TextEdit, Chrome on its own profile with `fixtures/page/form.html`, and with `--tempcode` an isolated dev instance of the clone), names them to the binary by pid, and writes `/tmp/tc-input-proof/report.json`, `report.md` and `run.log`. Every `ax` and `process` leg must leave the frontmost app and the pointer where they were (a step the person moved during is void and run again, at most 3 times); the probe runs on each app beside the legs that did the same, and a disagreement between two tested results fails the proof. The session leg acts only while the person has been quiet 2 minutes, checked before every step, else "skipped: the person is active". Cleanup leaves no file, prompt or autosave.

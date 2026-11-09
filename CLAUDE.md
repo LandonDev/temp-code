@@ -3499,7 +3499,7 @@ proof and the sizing rules; the pieces, by name:
   `session` with the clipboard lock, the smart wait, capture, and the four
   `computer_*` tools whose verbs and parameter names are Anthropic's native
   computer-use set with `element` refs beside `coordinate`. In code so far:
-  the contract and the Capture module; no service, tools or UI.
+  the contract, the Capture module and Input; no service, tools or UI.
 - The zod in src/shared/computer/ is the one source: `protocol.ts` (every
   method's params and result, the errors, the notifications, every number:
   waits, budgets, caps, lock paths), `observation.ts` (the grammar's tables,
@@ -3548,6 +3548,27 @@ proof and the sizing rules; the pieces, by name:
   scenes 0–19 on its own inert windows below `.normal` and a second process
   of itself, SkyLight only in its PrivateSpaces.swift, which a unit test
   keeps out of every other target).
+- Input (native/tc-computer/Sources/Input/, docs/computer-protocol.md §14)
+  performs the actions on one window at the tier it reports: `ax` (AX actions
+  and values), `process` (CGEvents to the pid with the window fields 91/92;
+  keys only to a window that is key in its app, else `key_window_unavailable`
+  with nothing posted) and `session` (AX activation, the real pointer and
+  keyboard under the Mac-wide session lock, stopped by the person's first
+  unmarked event; every posted event carries `eventSourceUserData`
+  0x74636370). A session step reports its `SessionChange`;
+  `input.restoreSession` puts the app and the pointer back unless the person
+  moved since. `paste { text, format: text | markdown | html }` runs under
+  the clipboard lock and restores the person's clipboard on every exit.
+  `input.probe` tries scroll, key and click at `process`, each put back
+  through AX. Most of Input is pure and generic over the system it touches;
+  its suites run on the box from a scratch package that links the sources
+  (the Linux toolchain ships Swift Testing) and on the Mac with `bun run
+  computer:test`. The live proof is `scripts/mac/input-proof.sh [--session]
+  [--tempcode]` on the Mac (tc-input-proof, never shipped): nothing launches
+  until the Mac has had 2 minutes with no input, tier 1 and 2 legs must leave
+  the frontmost app and the pointer where they were, the session leg acts only
+  while the person has been quiet 2 minutes, checked before every step, and
+  cleanup leaves no file, prompt or autosave.
 
 ## The menu bar: one table
 src/shared/menuTree.ts is the menu as data, read by main (src/main/menu.ts),

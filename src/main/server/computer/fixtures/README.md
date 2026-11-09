@@ -11,7 +11,7 @@ Hand-written JSON-RPC frames, one file each, every one parsed by its schema
 in the vitest suite and decoded by `ComputerProtocolTests` in
 native/tc-computer.
 
-- `<method>.request.json` and `<method>.response.json` for each of the 14
+- `<method>.request.json` and `<method>.response.json` for each of the 16
   methods of `COMPUTER_METHODS` (src/shared/computer/protocol.ts), with ids,
   realistic params and results (TextEdit's probe document).
 - `error-<kind>.json` for each `ComputerErrorKind`. A kind a request can be
@@ -25,6 +25,15 @@ native/tc-computer.
 
 Add a file when you add a method, an error kind or a notification; the
 tests fail on any that has none.
+
+## `keys/combos.json`
+
+The key-combo vectors both parsers are held to: Anthropic's examples, every
+key name and modifier alias, `+` as a key, single characters and refusals,
+each `{ input, ok, modifiers (print order), key, text }`. `keyCombos.test.ts`
+holds `parseKeyCombo` in observation.ts to them and `KeyComboTests` in
+native/tc-computer/Tests/InputTests holds KeyCombo.swift; regenerate the
+expected values from the TypeScript parser only when the grammar changes.
 
 ## `observations/`
 
