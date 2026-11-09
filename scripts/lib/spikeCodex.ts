@@ -416,7 +416,9 @@ async function realCodex(ev: Evidence): Promise<Record<string, unknown>> {
   if (!c.upstream || !c.dev) return { skipped: 'needs --upstream and --dev-user-data (the Mac leg)' }
   const account = c.codexAccountOverride ?? c.dev.codexAccount
   if (!account) return { skipped: 'no Codex account on the dev instance' }
-  const model = await codexModel()
+  // A ChatGPT account refuses gpt-5.5 (the fake runs' model); a text turn needs no tools, so the cheapest gpt-6 row serves.
+  const models = await codexModels()
+  const model = models.find((x) => /luna/.test(x)) ?? models.find((x) => x !== 'gpt-5.5') ?? (await codexModel())
   const scope = { thread: `tc-spike-${ev.id}-${c.run}`, account, model }
   const r = mkRun(`${ev.id}-real`)
   await gitInit(r.cwd)
@@ -425,8 +427,9 @@ async function realCodex(ev: Evidence): Promise<Record<string, unknown>> {
   c.codexFront.forward = (url) => `http://127.0.0.1:${c.dev!.gatewayPort}${codexFrontPath(url, scope)}`
   const conn = await open(ev, r, home)
   try {
-    const thread = await startThread(conn, r.cwd)
-    const t = await turn(conn, thread, text('Reply with the single word ok.'), 180_000)
+    const res = await conn.request<{ thread?: { id?: string } }>('thread/start', threadParams(r.cwd, model))
+    if (!res.thread?.id) throw new Error('thread/start gave no thread id')
+    const t = await turn(conn, res.thread.id, text('Reply with the single word ok.'), 180_000)
     return { model, ok: t.completed && !t.error, status: t.status, error: t.error, text: t.text, paths: uniq(t.requests.map((q) => `${q.method} ${q.path}`)), answered: t.requests.map((q) => `${q.method} ${q.path} ${q.answered}`), routingLog: conn.routing, leaks: inventory(listTree(r.home)), home: inventory(listTree(home, 2)) }
   } finally {
     conn.close()
