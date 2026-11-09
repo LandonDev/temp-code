@@ -329,19 +329,13 @@ try {
   const cli = ofInstance().find((p) => p.env.has('CLAUDE_CONFIG_DIR') && /claude/.test(p.command))
   const configDir = cli?.env.get('CLAUDE_CONFIG_DIR')
   const ownedRoot = join(data, 'harness', 'claude-config', 'global')
-  // Where the environment cannot be read (macOS hides a hardened binary's from ps -E), the CLI's own
-  // state in the owned root says it ran there: only links are made there for it, never a sessions dir.
-  const ownState = (() => {
-    try {
-      return readdirSync(ownedRoot, { withFileTypes: true }).filter((d) => !d.isSymbolicLink()).map((d) => d.name)
-    } catch {
-      return []
-    }
-  })()
+  // Where the environment cannot be read (macOS's ps -E shows nothing for these binaries), the probe found by
+  // the Skill call says the same: it lives only in the store's folder, which only the owned root links.
+  const foundProbe = skillCalls.some((c) => c.includes(`"${SKILL}"`)) && replyOf(claude.rows).includes(word(1))
   check(
     'claude: the CLI runs under the owned root of its scope',
-    configDir !== undefined ? configDir === ownedRoot : ownState.some((n) => n === 'sessions' || n === 'session-env'),
-    configDir !== undefined ? `${configDir} (pid ${cli?.pid})` : `no CLI environment readable; its own entries there: ${ownState.join(',')}`
+    configDir !== undefined ? configDir === ownedRoot : foundProbe,
+    configDir !== undefined ? `${configDir} (pid ${cli?.pid})` : 'no CLI environment readable, and the CLI did not find the probe'
   )
   let resolved = ''
   try {
@@ -425,9 +419,13 @@ try {
     mkdirSync(cwd, { recursive: true })
     const t = await startThread({ provider: 'muse', model: museModel, cwd, workspaceId: null, title: `skills probe (muse, ${label})` })
     check(`muse (${label}): the reply holds the probe word`, replyOf(t.rows).includes(word(current)), `${replyOf(t.rows).slice(0, 200)} ${errorsOf(t.rows).join(' | ')}`)
-    const serve = ofInstance().find((p) => /muse/.test(p.command) && / serve/.test(p.command))
-    const xdg = serve?.env.get('XDG_CONFIG_HOME') ?? ''
-    check(`muse (${label}): \`muse serve\` runs under its ${expectFile ? 'account' : 'own'} dir${expectFile ? ' with the file backend' : ''}`, xdg.includes(`muse-accounts/${expectFile ? 'accounts' : 'own'}/`) && (serve?.env.get('TBH_CREDENTIAL_BACKEND') === 'file') === expectFile, `${xdg} ${serve?.env.get('TBH_CREDENTIAL_BACKEND')}`)
+    const serve = ofInstance().find((p) => /muse/.test(p.command) && / serve/.test(p.command) && p.env.has('XDG_CONFIG_HOME'))
+    const dir = `muse-accounts/${expectFile ? 'accounts' : 'own'}/`
+    // read_skill names the file it read: the skill came through this thread's own config dir.
+    const readFrom = t.rows.filter((r) => r.event.type === 'tool-result').map((r) => /path: (\S+SKILL\.md)/.exec(String((r.event as { output?: unknown }).output ?? ''))?.[1] ?? '').find(Boolean) ?? ''
+    check(`muse (${label}): the skill is read through its ${expectFile ? 'account' : 'own'} dir`, readFrom.includes(dir) && readFrom.endsWith(`/muse/skills/${SKILL}/SKILL.md`), readFrom)
+    if (serve) check(`muse (${label}): \`muse serve\` runs under that dir${expectFile ? ' with the file backend' : ''}`, (serve.env.get('XDG_CONFIG_HOME') ?? '').includes(dir) && (serve.env.get('TBH_CREDENTIAL_BACKEND') === 'file') === expectFile, `${serve.env.get('XDG_CONFIG_HOME')} ${serve.env.get('TBH_CREDENTIAL_BACKEND')}`)
+    else skip(`muse (${label}) environment`, "`muse serve`'s environment is not readable on this host (the unit tests hold the file backend)")
     current++
     await writeSkill(current)
     await pointed(current)
