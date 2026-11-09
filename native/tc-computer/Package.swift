@@ -44,7 +44,7 @@ let package = Package(
         // Input's offline suites; fixtures are read by path from the repository through #filePath.
         .testTarget(name: "InputTests", dependencies: ["Input"]),
         // The reader's rules on hand-built snapshots and the recorded fixtures' goldens; runs on the box and the Mac.
-        .testTarget(name: "AXTextTests", dependencies: ["AXText"], exclude: ["QuoteVectors.json"]),
+        .testTarget(name: "AXTextTests", dependencies: ["AXText"], exclude: ["QuoteVectors.json", "Fixtures"]),
         // The live side without a live app: error mapping, handles, window ids, the change signal. Mac only.
         .testTarget(name: "AXReaderTests", dependencies: ["AXReader", "AXText"])
     ]

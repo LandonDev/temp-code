@@ -1,0 +1,51 @@
+app "Electron" · window "New thread" · 1280×800 · focused [48]
+[1] window "New thread"
+  [2] group "New thread"
+    [6] web area "New thread"
+      [45] group actions: press
+        [7] group actions: press
+          [8] group "Workspaces"
+            [9] button "Back" disabled
+            [10] button "Forward" disabled
+            [11] checkbox "Workspaces" checked
+            [12] button "Search"
+            [13] button "Inbox"
+            [14] button "Mark all read"
+            [15] button "Notes"
+            [16] button "Chats"
+            [17] button "Accounts"
+            [18] button "Stats"
+            [19] button "Add workspace…"
+            [20] button "Sign in to Claude"
+            [21] button "Check for updates, v1.0.330"
+            [22] switch "Away from computer" unchecked
+            [23] button "Settings"
+            [24] splitter "Resize workspace rail" = "200"
+          [25] heading "Chats"
+          [26] button "New thread"
+          [46] pop up "Workspace options" expanded
+          [47] group actions: press
+            [48] menu "Workspace actions" focused actions: press, cancel
+              [49] menu item "New project" disabled actions: cancel
+              [50] menu item "New chat" actions: cancel
+              [51] menu item "Archive dormant threads" disabled actions: cancel
+          [28] splitter "Resize sidebar" = "260"
+          [52] pop up "Thread menu"
+          [30] checkbox "Panel" unchecked
+          [53] pop up "Add"
+          [32] text area "Message" = "How can I help you today?" actions: press
+          [33] button "Send" disabled
+          [54] pop up "Claude Code Fable 5.1 Medium"
+            [55] text = "Fable 5.1"
+            [56] text = "Medium"
+          [37] combo box "Permission mode: Supervised" = "Supervised" actions: press
+          [57] pop up "Project ~"
+            [58] text = "~"
+          [59] pop up "No git repository" disabled
+            [60] text = "No repo"
+          [42] combo box "Thread type" = "Chat" actions: press
+          [43] checkbox "Master thread" unchecked
+          [44] input "Thread name" actions: press
+  [3] button "close"
+  [4] button "full screen" actions: zoom window, show menu
+  [5] button "minimize"

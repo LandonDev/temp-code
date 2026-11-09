@@ -113,11 +113,43 @@ func numbers(_ text: String) -> [String: Int] {
         #expect(swapped.kind == .full && swapped.fullReason == .reordered)
     }
 
-    @Test func aShiftedPositionOrAnotherParentGetsANewNumber() {
+    @Test func aUniqueNameKeepsItsNumberWhateverItsPlace() {
         let reader = Reader()
         let first = numbers(reader.read(page(Tree(), [("A", nil), ("B", nil)])).text)
         let shifted = numbers(reader.read(page(Tree(start: 1000), [("New", nil), ("A", nil), ("B", nil)]), mode: .full).text)
-        #expect(shifted["button \"A\""] != first["button \"A\""] && shifted["button \"B\""] != first["button \"B\""])
+        #expect(shifted["button \"A\""] == first["button \"A\""] && shifted["button \"B\""] == first["button \"B\""])
+        #expect(shifted["button \"New\""] != nil && !first.values.contains(shifted["button \"New\""]!))
+    }
+
+    @Test func siblingsSharingANameOrNoNameNeedTheirPlace() {
+        // two "Delete" siblings: the strict place rule, so one put in front never takes the first one's number
+        let reader = Reader()
+        let t = Tree()
+        let rows = (0..<2).map { _ in t.node("AXButton", title: "Delete", frame: r(0), actions: ["AXPress"]) }
+        reader.read(snapshot([t.window(id: 900_000, rows + filler())]))
+        let u = Tree(start: 1000)
+        let rebuilt = [u.node("AXButton", title: "Delete", frame: r(0), actions: ["AXPress"])] + (0..<2).map { _ in u.node("AXButton", title: "Delete", frame: r(0), actions: ["AXPress"]) }
+        reader.read(snapshot([u.window(id: 900_000, [u.node("AXButton", title: "Insert", frame: r(0), actions: ["AXPress"])] + rebuilt + filler())]), mode: .full)
+        // three Delete buttons now: the name is no longer unique, so the place decides: the Delete at
+        // place 1 is the one that stood there (3), the others are new, and none takes the first's 2
+        #expect(rebuilt.map { reader.book.index(of: $0.id)! } == [3, 25, 26])
+        // unnamed: the place decides
+        let plain = Reader()
+        let v = Tree()
+        plain.read(snapshot([v.window(id: 900_000, [v.node("AXButton", frame: r(0), actions: ["AXPress"])] + filler())]))
+        let w = Tree(start: 2000)
+        let moved = w.node("AXButton", frame: r(0), actions: ["AXPress"])
+        plain.read(snapshot([w.window(id: 900_000, [w.node("AXButton", title: "First", frame: r(0), actions: ["AXPress"]), moved] + filler())]), mode: .full)
+        #expect(plain.book.index(of: moved.id) != 2)
+        // a sibling of the same name with a DOM id counts too: the name is not unique, the place decides
+        let mixed = Reader()
+        let before = mixed.read(page(Tree(), [("Save", "s"), ("Save", nil)])).text
+        #expect(before.contains("[3] button \"Save\"") && before.contains("[4] button \"Save\""))
+        let after = mixed.read(page(Tree(start: 1000), [("New", nil), ("Save", "s"), ("Save", nil)]), mode: .full).text
+        #expect(after.contains("[3] button \"Save\"") && !after.contains("[4] button \"Save\""))
+    }
+
+    @Test func anotherParentGetsANewNumber() {
 
         let other = Reader()
         let t = Tree()
@@ -146,6 +178,18 @@ func numbers(_ text: String) -> [String: Int] {
         let built = reader.read(page(Tree(start: 1000), [("A", "a")], value: "new"))
         #expect(built.kind == .diff)
         #expect(built.text.hasSuffix("\n~ [\(n)] input \"Field\" = \"new\""))
+    }
+
+    @Test func aNameMatchWithANewValueIsStillAChange() {
+        let reader = Reader()
+        let t = Tree()
+        let field = t.node("AXTextField", title: "Field", value: .string("old"), frame: r(0), settable: ["AXValue"])
+        reader.read(snapshot([t.window(id: 900_000, [field] + filler())]))
+        let u = Tree(start: 1000)
+        let rebuilt = u.node("AXTextField", title: "Field", value: .string("new"), frame: r(30), settable: ["AXValue"])
+        let built = reader.read(snapshot([u.window(id: 900_000, [u.node("AXButton", title: "New", frame: r(0), actions: ["AXPress"]), rebuilt] + filler())]))
+        #expect(reader.book.index(of: rebuilt.id) == 2)
+        #expect(built.kind == .diff && built.text.contains("\n~ [2] input \"Field\" = \"new\""))
     }
 
     @Test func aMoveOrANewOrderOfTheSameElementsForcesAFullRead() {

@@ -48,6 +48,14 @@ public struct BaseNode: Sendable, Equatable {
         if let dom, !dom.isEmpty { return "d\u{1}" + dom }
         return "r\u{1}\(role)\u{1}\(subrole ?? "")\u{1}\(name)\u{1}\(position)"
     }
+
+    /// Role, subrole and name without the place (the person's rule, 2026-11-09); only an element with no DOM id matches by it.
+    var nameKey: String? {
+        guard !name.isEmpty else { return nil }
+        return "n\u{1}\(role)\u{1}\(subrole ?? "")\u{1}\(name)"
+    }
+
+    var hasDOM: Bool { !(dom?.isEmpty ?? true) }
 }
 
 /// One read's indices: every kept element's number, its structure for the next base, and whether it forces a full read.
@@ -141,11 +149,26 @@ public final class IndexBook: @unchecked Sendable {
             taken.insert(root)
             newCounts[-1]?[flat[0].key]? -= 1
         }
-        // 2. parent first: a rebuilt element under its matched parent
+        // a name key counts every child of the parent, kept or matched or not, on each side: unique on both or no name match
+        var newNames: [Int: [String: Int]] = [:]
+        for f in flat { if let k = f.node.nameKey { newNames[f.parent, default: [:]][k, default: 0] += 1 } }
+        var baseNames: [Int: [String: Int]] = [:]
+        var baseByName: [Int: [String: Int]] = [:]
+        for (index, b) in structure {
+            guard let k = b.nameKey else { continue }
+            baseNames[b.parent, default: [:]][k, default: 0] += 1
+            baseByName[b.parent, default: [:]][k] = index
+        }
+        // 2. parent first: a rebuilt element under its matched parent; a name unique among the parent's
+        // children on both sides matches whatever its place, anything else needs its place too
         for (i, f) in flat.enumerated() where assigned[i] == nil {
             let p = f.parent >= 0 ? assigned[f.parent]! : 0
             let key = f.key
-            if newCounts[f.parent]?[key] == 1, baseCounts[p]?[key] == 1, let candidate = baseByKey[p]?[key], !taken.contains(candidate) {
+            if !f.node.hasDOM, let k = f.node.nameKey, newNames[f.parent]?[k] == 1, baseNames[p]?[k] == 1, let candidate = baseByName[p]?[k],
+               structure[candidate]?.hasDOM == false, !taken.contains(candidate) {
+                assigned[i] = candidate
+                taken.insert(candidate)
+            } else if newCounts[f.parent]?[key] == 1, baseCounts[p]?[key] == 1, let candidate = baseByKey[p]?[key], !taken.contains(candidate) {
                 assigned[i] = candidate
                 taken.insert(candidate)
             } else {
