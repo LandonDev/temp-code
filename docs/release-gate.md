@@ -150,6 +150,10 @@ one contract:
   matches.
 - **Two app instances at most**, and it kills what it started on any exit
   (scripts/lib/proofCleanup.ts for the store proofs).
+  The process scan in `scripts/lib/procScan.ts` allows 64 MiB of output on
+  macOS, where `ps` includes every process's environment. A scan failure
+  still fails the proof, with only its error code or exit status in the
+  error; captured environments and stderr never enter that error.
 - **It finds its CLIs the way the app does** (scripts/lib/gateCli.ts: the
   real user's login shell, then PATH, then the usual user bin dirs), never
   by the caller's PATH alone: the gate's children inherit a sparse one, and

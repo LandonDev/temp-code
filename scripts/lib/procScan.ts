@@ -1,5 +1,5 @@
 /** Process marks for the proofs, on Linux and macOS. Never shell-quote a command. */
-import { execFileSync } from 'node:child_process'
+import { execFileSync, type ExecFileSyncOptionsWithStringEncoding } from 'node:child_process'
 import { readdirSync, readFileSync } from 'node:fs'
 
 export interface ProcessRow {
@@ -34,15 +34,27 @@ interface ScanOptions {
   platform?: string
   listProc?: () => string[]
   read?: (path: string) => string
-  exec?: (file: string, args: string[]) => string
+  exec?: (file: string, args: string[], options: ExecFileSyncOptionsWithStringEncoding) => string
 }
 
 export function createProcScan(options: ScanOptions = {}) {
   const platform = options.platform ?? process.platform
   const read = options.read ?? ((path: string) => readFileSync(path, 'utf8'))
-  const exec =
-    options.exec ??
-    ((file: string, args: string[]) => execFileSync(file, args, { encoding: 'utf8' }))
+  const run = options.exec ?? execFileSync
+  const exec = (file: string, args: string[]): string => {
+    try {
+      // A busy Mac's full process environments can exceed Node's 1 MiB default.
+      return run(file, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: 'pipe' })
+    } catch (error) {
+      // Child-process errors retain stdout/stderr, including private environments.
+      // Fail the proof without passing that captured output to its log or cause.
+      const failure = error as { code?: unknown; status?: unknown }
+      const code = typeof failure?.code === 'string' && /^[A-Z0-9_]+$/.test(failure.code)
+        ? failure.code
+        : Number.isInteger(failure?.status) ? `exit ${failure.status}` : 'unknown error'
+      throw new Error(`process scan failed: ${code}`)
+    }
+  }
   return {
     processes(): ProcessRow[] {
       if (platform === 'darwin') return parsePs(exec('ps', ['-axwwE', '-o', 'pid=,command=']))

@@ -2023,6 +2023,8 @@ plan-8YMm3ynnFZYs.md (grants) and plan-vJP8mPAPorvc.md (pages).
   Both are publish rows with `--gate`, which skips the real-Claude leg;
   docs/release-gate.md "The store and computer proofs" has their times and
   the codex first-turn medians with and without add-ons.
+  Their process scans use scripts/lib/procScan.ts: macOS allows 64 MiB
+  of output and scan failures never log captured process environments.
 
 ## Skills: one store, materialized per host
 docs/box.md "Skills: one store, materialized per host" is the long
