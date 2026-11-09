@@ -86,7 +86,7 @@ beforeAll(async () => {
 }, 60_000)
 afterAll(async () => {
   await server.close()
-  rmSync(root, { recursive: true, force: true })
+  rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
 })
 
 type Reply = { status: number; headers: Headers; body: any; text: string }
