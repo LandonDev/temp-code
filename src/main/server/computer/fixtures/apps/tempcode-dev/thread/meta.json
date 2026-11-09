@@ -1,0 +1,39 @@
+{
+  "after" : {
+    "action" : "added a scratch workspace on an empty folder and opened a new thread in it over CDP, no message sent",
+    "state" : "first-run"
+  },
+  "app" : "tempcode-dev",
+  "appshot" : true,
+  "backingScale" : 2,
+  "macos" : "27.2.0",
+  "recordedAt" : "2026-11-09T00:47:33Z",
+  "recorder" : "record-computer-fixture 1",
+  "setup" : [
+    "an isolated TempCode dev instance (TEMP_CODE_USER_DATA=/tmp/tc-fixture-dev, its own Aliax vault and CLI config dirs, built from master), fresh data"
+  ],
+  "shot" : {
+    "bytes" : 60820,
+    "file" : "window.jpg",
+    "height" : 800,
+    "maxEdge" : 1280,
+    "scale" : 1,
+    "width" : 1280
+  },
+  "state" : "thread",
+  "walk" : {
+    "capped" : false,
+    "depth" : 24,
+    "ms" : 42,
+    "nodes" : 124
+  },
+  "window" : {
+    "frame" : {
+      "h" : 800,
+      "w" : 1280,
+      "x" : 960,
+      "y" : 436
+    },
+    "title" : "Scratch thread"
+  }
+}

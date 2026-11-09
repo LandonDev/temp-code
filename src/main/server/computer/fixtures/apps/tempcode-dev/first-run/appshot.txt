@@ -1,0 +1,38 @@
+New thread
+      Workspaces
+        [button] Back
+        [button] Forward
+        [button] Search
+        [button] Inbox
+        [button] Mark all read
+        [button] Notes
+        [button] Chats
+        [button] Accounts
+        [button] Stats
+        [button] Add workspace…
+        [button] Sign in to Claude
+        [button] Check for updates, v1.0.329
+        [checkbox] Away from computer
+        [button] Settings
+        200
+        Resize workspace rail
+      [menu button] Workspace options
+      260
+      Resize sidebar
+      [menu button] Thread menu
+      [checkbox] Panel
+      [menu button] Add
+      [input] How can I help you today?
+      [input] Message
+      [button] Send
+      [menu button] Claude Code Fable 5.1 Medium
+      [input] Supervised
+      [input] Permission mode: Supervised
+      [menu button] Project ~
+      [menu button] No git repository
+        No repo
+      [input] Chat
+      [input] Thread type
+      [checkbox] Master thread
+      [input] Thread name
+      Notifications alt+T

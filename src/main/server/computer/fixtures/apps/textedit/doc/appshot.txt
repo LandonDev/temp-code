@@ -1,0 +1,33 @@
+Untitled
+  [input] Hello from the probe
+Second line
+  0.1851851791143417
+  0.615384578704834
+  0.5
+  1.5
+  2.5
+  3.5
+  4.5
+  5.5
+  Formatting
+    [checkbox] bold
+    [checkbox] italic
+    [checkbox] underline
+    [checkbox] strikethrough
+    [button] Clear
+    [button] text color
+    [button] text background color
+    [menu button] Helvetica
+    [menu button] typeface
+    [menu button] Regular
+    [menu button] style
+    [input] 12
+    [input] font size
+    [checkbox] align left
+    [checkbox] align center
+    [checkbox] align right
+    [checkbox] fully justify
+    [menu button] list style
+    [menu button] 1.0
+    [menu button] line spacing
+  [menu button] document actions

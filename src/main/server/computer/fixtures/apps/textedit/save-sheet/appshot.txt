@@ -1,0 +1,16 @@
+save
+  -1
+  Where:
+  [menu button] Documents
+  [disclosure] show more options
+  Do you want to keep this new document “Untitled”?
+  You can choose to save your changes, or delete this document immediately. You can’t undo this action.
+  Save As:
+  [input] Untitled.rtf
+  Tags:
+  [input] tag editor
+  File Format:
+  [menu button] Rich Text Document
+  [button] Delete
+  [button] Cancel
+  [button] Save

@@ -1,0 +1,40 @@
+{
+  "after" : {
+    "action" : "pressed the Size select: its menu is open",
+    "state" : "form"
+  },
+  "app" : "chrome",
+  "appshot" : true,
+  "backingScale" : 2,
+  "macos" : "27.2.0",
+  "recordedAt" : "2026-11-09T00:48:59Z",
+  "recorder" : "record-computer-fixture 1",
+  "setup" : [
+    "a second Chrome on a throwaway profile (/tmp/tc-fixture-chrome, --force-renderer-accessibility) showing fixtures/page/form.html"
+  ],
+  "shot" : {
+    "bytes" : 75058,
+    "file" : "window.jpg",
+    "height" : 1280,
+    "maxEdge" : 1280,
+    "popups" : 1,
+    "scale" : 0.775,
+    "width" : 930
+  },
+  "state" : "menu-open",
+  "walk" : {
+    "capped" : false,
+    "depth" : 14,
+    "ms" : 76,
+    "nodes" : 204
+  },
+  "window" : {
+    "frame" : {
+      "h" : 1652,
+      "w" : 1200,
+      "x" : 22,
+      "y" : 52
+    },
+    "title" : "Computer fixture form - Google Chrome"
+  }
+}

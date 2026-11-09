@@ -1,0 +1,40 @@
+{
+  "after" : {
+    "action" : "typed \"!\" at the end as a key event posted to the pid, then selected \"probe\" through AXSelectedTextRange",
+    "state" : "doc"
+  },
+  "app" : "textedit",
+  "appshot" : true,
+  "backingScale" : 2,
+  "macos" : "27.2.0",
+  "recordedAt" : "2026-11-09T00:45:45Z",
+  "recorder" : "record-computer-fixture 1",
+  "setup" : [
+    "a separate TextEdit instance (open -n -g, persistence ignored, new documents not saved to iCloud) with a new document",
+    "the probe text set through AXValue: \"Hello from the probe\\nSecond line\", caret at 0"
+  ],
+  "shot" : {
+    "bytes" : 68859,
+    "file" : "window.jpg",
+    "height" : 1010,
+    "maxEdge" : 1280,
+    "scale" : 2,
+    "width" : 1206
+  },
+  "state" : "typed",
+  "walk" : {
+    "capped" : false,
+    "depth" : 3,
+    "ms" : 21,
+    "nodes" : 48
+  },
+  "window" : {
+    "frame" : {
+      "h" : 505,
+      "w" : 603,
+      "x" : 405,
+      "y" : 129
+    },
+    "title" : "Untitled"
+  }
+}

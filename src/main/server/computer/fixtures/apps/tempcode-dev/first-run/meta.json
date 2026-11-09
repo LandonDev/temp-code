@@ -1,0 +1,35 @@
+{
+  "app" : "tempcode-dev",
+  "appshot" : true,
+  "backingScale" : 2,
+  "macos" : "27.2.0",
+  "recordedAt" : "2026-11-09T00:47:28Z",
+  "recorder" : "record-computer-fixture 1",
+  "setup" : [
+    "an isolated TempCode dev instance (TEMP_CODE_USER_DATA=/tmp/tc-fixture-dev, its own Aliax vault and CLI config dirs, built from master), fresh data"
+  ],
+  "shot" : {
+    "bytes" : 54441,
+    "file" : "window.jpg",
+    "height" : 800,
+    "maxEdge" : 1280,
+    "scale" : 1,
+    "width" : 1280
+  },
+  "state" : "first-run",
+  "walk" : {
+    "capped" : false,
+    "depth" : 25,
+    "ms" : 43,
+    "nodes" : 106
+  },
+  "window" : {
+    "frame" : {
+      "h" : 800,
+      "w" : 1280,
+      "x" : 960,
+      "y" : 436
+    },
+    "title" : "New thread"
+  }
+}

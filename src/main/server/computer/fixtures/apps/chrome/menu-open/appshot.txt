@@ -1,0 +1,94 @@
+Computer fixture form - Google Chrome
+    [button] Back
+    [button] Forward
+    [button] Reload
+    [menu button] File
+    [input] /tmp/tc-fixture-clone/src/main/server/computer/fixtures/page/form.html
+    [input] Address and search bar
+    [button] Bookmark this tab
+    [button] Sign In to Chrome?
+      [heading] Order form
+      Scratch page for the computer-use fixtures. Nothing on it is real.
+      Contact
+        Name
+        Email
+        Notes
+      Order
+        Size
+        [menu button] Medium
+        [menu item] Small
+        [menu item] Large
+        [checkbox] Gift wrap
+        Delivery
+        [option] Standard
+        [option] Express
+      [button] Submit
+      [button] Review order
+      [button] Load prices
+      [link] Order history
+      [heading] History
+      Past orders
+        Order 001
+        Order 002
+        Order 003
+        Order 004
+        Order 005
+        Order 006
+        Order 007
+        Order 008
+        Order 009
+        Order 010
+        Order 011
+        Order 012
+        Order 013
+        Order 014
+        Order 015
+        Order 016
+        Order 017
+        Order 018
+        Order 019
+        Order 020
+        Order 021
+        Order 022
+        Order 023
+        Order 024
+        Order 025
+        Order 026
+        Order 027
+        Order 028
+        Order 029
+        Order 030
+        Order 031
+        Order 032
+        Order 033
+        Order 034
+        Order 035
+        Order 036
+        Order 037
+        Order 038
+        Order 039
+        Order 040
+        Order 041
+        Order 042
+        Order 043
+        Order 044
+        Order 045
+        Order 046
+        Order 047
+        Order 048
+        Order 049
+        Order 050
+        Order 051
+        Order 052
+        Order 053
+        Order 054
+        Order 055
+        Order 056
+        Order 057
+        Order 058
+        Order 059
+        Order 060
+    [menu button] Tab search
+    [option] Computer fixture form - Memory usage - 36.4 MB
+      [button] Close
+    [button] New Tab

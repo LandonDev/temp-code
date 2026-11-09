@@ -892,7 +892,9 @@ export const FixtureMetaSchema = z.object({
     bytes: int().positive(),
     maxEdge: int().positive(),
     /** pixels per point */
-    scale: z.number().positive()
+    scale: z.number().positive(),
+    /** open popup menus of the app drawn into the shot with the window (a select's menu) */
+    popups: int().positive().optional()
   }),
   walk: WalkStatsSchema,
   /** the scratch steps, in words */

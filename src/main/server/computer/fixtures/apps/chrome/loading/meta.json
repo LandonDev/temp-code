@@ -1,0 +1,39 @@
+{
+  "after" : {
+    "action" : "pressed Load prices: the spinner shows for 3 s",
+    "state" : "form"
+  },
+  "app" : "chrome",
+  "appshot" : true,
+  "backingScale" : 2,
+  "macos" : "27.2.0",
+  "recordedAt" : "2026-11-09T00:49:00Z",
+  "recorder" : "record-computer-fixture 1",
+  "setup" : [
+    "a second Chrome on a throwaway profile (/tmp/tc-fixture-chrome, --force-renderer-accessibility) showing fixtures/page/form.html"
+  ],
+  "shot" : {
+    "bytes" : 73961,
+    "file" : "window.jpg",
+    "height" : 1280,
+    "maxEdge" : 1280,
+    "scale" : 0.775,
+    "width" : 930
+  },
+  "state" : "loading",
+  "walk" : {
+    "capped" : false,
+    "depth" : 13,
+    "ms" : 68,
+    "nodes" : 198
+  },
+  "window" : {
+    "frame" : {
+      "h" : 1652,
+      "w" : 1200,
+      "x" : 22,
+      "y" : 52
+    },
+    "title" : "Computer fixture form - Google Chrome"
+  }
+}

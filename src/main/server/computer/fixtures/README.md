@@ -73,9 +73,14 @@ TC_FIXTURE_CLONE=<built clone> scripts/mac/record-computer-fixtures.sh [textedit
 
 `scripts/mac/record-computer-fixtures.sh` sets up each scratch state and
 cleans it up after: a separate TextEdit instance with its persistence off, a
-second Chrome on a throwaway profile showing `page/form.html`, a TempCode dev
-instance on fresh data in `/tmp`, and a scratch IntelliJ project opened as a
-new window of the IDE. `scripts/mac/record-computer-fixture.swift` records
+second Chrome on a throwaway profile showing `page/form.html` (with
+`--force-renderer-accessibility`, or the page never reaches the AX tree), a
+TempCode dev instance on fresh data in `/tmp`, and a scratch IntelliJ project
+opened as a new window of the IDE. `textedit/save-sheet` is the sheet the
+close button asks with (keep the new document?), not Save As: Command-S needs
+the instance in front, and in front it took the person's keystrokes. A
+Chrome select's menu is a popup window of its own, drawn into the shot
+(`shot.popups`). `scripts/mac/record-computer-fixture.swift` records
 one window: it takes the exact window title and refuses any other, and
 rewrites the home directory to `/Users/me`, the host name to `mac` and the
 account's full name to `Me` in everything it writes.

@@ -1,0 +1,35 @@
+{
+  "app" : "intellij",
+  "appshot" : false,
+  "backingScale" : 2,
+  "macos" : "27.2.0",
+  "recordedAt" : "2026-11-09T00:45:24Z",
+  "recorder" : "record-computer-fixture 1",
+  "setup" : [
+    "a scratch project at /tmp/tc-fixture-idea/Hello (one Hello.java) opened in the IDE, its Project tool window open, screen-reader support as the IDE has it"
+  ],
+  "shot" : {
+    "bytes" : 57961,
+    "file" : "window.jpg",
+    "height" : 914,
+    "maxEdge" : 1280,
+    "scale" : 0.9142857142857143,
+    "width" : 1280
+  },
+  "state" : "project",
+  "walk" : {
+    "capped" : false,
+    "depth" : 7,
+    "ms" : 169,
+    "nodes" : 94
+  },
+  "window" : {
+    "frame" : {
+      "h" : 1000,
+      "w" : 1400,
+      "x" : 900,
+      "y" : 378
+    },
+    "title" : ""
+  }
+}

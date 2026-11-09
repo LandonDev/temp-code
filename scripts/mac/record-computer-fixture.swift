@@ -5,11 +5,14 @@
 //   record       --pid P --title T --out DIR --app NAME --state STATE
 //                [--after-state S --after-action WORDS] [--setup WORDS]... [--appshot AXDUMP.json] [--max-edge 1280]
 //   wait-window  --pid P --title T [--timeout 15]
+//   (every command: --title "" needs --contains AXRole=Name, an element inside that window)
 //   set-value    --pid P --title T --role AXRole [--name N] --value V
 //   select-range --pid P --title T --role AXRole [--name N] --range LOC,LEN
 //   insert-text  --pid P --title T --role AXRole [--name N] --text V
 //   press        --pid P --title T --role AXRole [--subrole AXSubrole] [--name N] [--action AXPress]
-//   key          --pid P --key s|w|escape|return [--mods cmd,shift,alt,ctrl]
+//   wait-element --pid P --title T --role AXRole [--subrole S] [--name N] [--timeout 10]
+//   pick         --pid P --title T --popup NAME --item ITEM   (prints the popup's first item before the pick)
+//   key          --pid P --key 1|s|w|n|escape|return|tab|space [--mods cmd,shift,alt,ctrl]
 //
 // Only the window titled exactly --title is ever read or acted on; any other
 // title is refused. Every string written is rewritten: the home directory to
@@ -33,6 +36,12 @@ func fail(_ message: String, code: Int32 = 1) -> Never {
     exit(code)
 }
 
+/// `v`, or exit with the message (`?? fail(...)` does not type-check: an autoclosure returning Never is not a T).
+func orFail<T>(_ v: T?, _ message: @autoclosure () -> String, code: Int32 = 1) -> T {
+    if let v { return v }
+    fail(message(), code: code)
+}
+
 func now() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1e6 }
 
 // MARK: - arguments
@@ -51,7 +60,7 @@ do {
     }
 }
 func one(_ k: String) -> String? { options[k]?.last }
-func need(_ k: String) -> String { one(k) ?? fail("--\(k) is required", code: 2) }
+func need(_ k: String) -> String { orFail(one(k), "--\(k) is required", code: 2) }
 
 // MARK: - privacy
 
@@ -258,18 +267,26 @@ final class Walker {
 
 // MARK: - the window
 
-let pid: pid_t = pid_t(need("pid")) ?? fail("--pid is not a number", code: 2)
+let pid: pid_t = orFail(pid_t(need("pid")), "--pid is not a number", code: 2)
 let app = AXUIElementCreateApplication(pid)
 AXUIElementSetMessagingTimeout(app, 2.0)
 
-/// The one window titled exactly `title`; any other is never read.
+/// The one window titled exactly `title`; any other is never read. An empty title (an
+/// IntelliJ project frame names itself nowhere) also needs `--contains AXRole=Name`, an
+/// element that must be inside that window, and more than one such window is refused.
 func window(titled title: String) -> AXUIElement? {
-    asElements(copyAttr(app, "AXWindows")).first { asString(copyAttr($0, "AXTitle")) == title }
+    let titled = asElements(copyAttr(app, "AXWindows")).filter { (asString(copyAttr($0, "AXTitle")) ?? "") == title }
+    guard title.isEmpty else { return titled.first }
+    guard let mark = one("contains"), let eq = mark.firstIndex(of: "=") else { fail("an empty --title needs --contains AXRole=Name", code: 2) }
+    let role = String(mark[..<eq]), name = String(mark[mark.index(after: eq)...])
+    let matching = titled.filter { find(in: $0, role: role, subrole: nil, name: name) != nil }
+    if matching.count > 1 { fail("\(matching.count) untitled windows hold \(mark)", code: 3) }
+    return matching.first
 }
 
 func requireWindow() -> AXUIElement {
     let title = need("title")
-    return window(titled: title) ?? fail("no window titled \(title) in pid \(pid)", code: 3)
+    return orFail(window(titled: title), "no window titled \(title) in pid \(pid)", code: 3)
 }
 
 /// The first element under `root` (sheets and dialogs included) with the role and, when given, the subrole and name.
@@ -295,8 +312,8 @@ func find(in root: AXUIElement, role: String, subrole: String?, name: String?) -
 func requireElement() -> AXUIElement {
     let role = need("role")
     let name = one("name")
-    return find(in: requireWindow(), role: role, subrole: one("subrole"), name: name)
-        ?? fail("no \(role)\(name.map { " named \($0)" } ?? "") in the window", code: 4)
+    return orFail(find(in: requireWindow(), role: role, subrole: one("subrole"), name: name),
+                  "no \(role)\(name.map { " named \($0)" } ?? "") in the window", code: 4)
 }
 
 func check(_ rc: AXError, _ what: String) {
@@ -313,20 +330,50 @@ func jpeg(_ img: CGImage, quality: Double) -> Data {
     return data as Data
 }
 
+func area(_ r: CGRect) -> Double { r.isNull ? 0 : Double(r.width * r.height) }
+
 /// The SCWindow of this pid with this title whose frame is nearest the AX frame.
-func shoot(title: String, axFrame: Rect, maxEdge: Int, to path: String) async throws -> (width: Int, height: Int, bytes: Int, scale: Double) {
+func shoot(title: String, axFrame: Rect, maxEdge: Int, to path: String) async throws -> (width: Int, height: Int, bytes: Int, scale: Double, overlays: Int) {
     let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-    let candidates = content.windows.filter { $0.owningApplication?.processID == pid && $0.windowLayer == 0 && $0.title == title }
+    // Chrome's AX title ends " - Google Chrome", its window server title does not: accept
+    // that one form, nothing looser, and only a window on the AX window's frame.
+    let appName = NSRunningApplication(processIdentifier: pid)?.localizedName ?? ""
+    func sameTitle(_ t: String?) -> Bool {
+        if title.isEmpty { return t?.isEmpty ?? true }
+        guard let t, !t.isEmpty else { return false }
+        return t == title || (!appName.isEmpty && "\(t) - \(appName)" == title)
+    }
+    let candidates = content.windows.filter { $0.owningApplication?.processID == pid && $0.windowLayer == 0 && sameTitle($0.title) }
     func distance(_ w: SCWindow) -> Double {
         abs(w.frame.minX - axFrame.x) + abs(w.frame.minY - axFrame.y) + abs(w.frame.width - axFrame.w) + abs(w.frame.height - axFrame.h)
     }
-    guard let win = candidates.min(by: { distance($0) < distance($1) }) else { fail("no shareable window titled \(title)", code: 6) }
-    let filter = SCContentFilter(desktopIndependentWindow: win)
+    guard let win = candidates.min(by: { distance($0) < distance($1) }), distance(win) <= 8 else {
+        fail("no shareable window titled \(title) on its frame", code: 6)
+    }
+    // An open popup menu is a window of its own above the window (a select's menu in
+    // Chrome): when this pid has one over the window, shoot the display with only the
+    // window and those popups in it, cropped to the window, so no other app shows.
+    let overlays = content.windows.filter {
+        $0.owningApplication?.processID == pid && $0.windowLayer > 0 && $0.isOnScreen && $0.frame.intersects(win.frame)
+    }
+    let display = content.displays.max { a, b in
+        area(a.frame.intersection(win.frame)) < area(b.frame.intersection(win.frame))
+    }
+    let filter: SCContentFilter
+    var source: CGRect?
+    if !overlays.isEmpty, let display, area(display.frame.intersection(win.frame)) > 0 {
+        filter = SCContentFilter(display: display, including: [win] + overlays)
+        let visible = display.frame.intersection(win.frame)
+        source = visible.offsetBy(dx: -display.frame.minX, dy: -display.frame.minY)
+    } else {
+        filter = SCContentFilter(desktopIndependentWindow: win)
+    }
     let pointScale = Double(filter.pointPixelScale)
-    let pw = filter.contentRect.width * pointScale
-    let ph = filter.contentRect.height * pointScale
+    let pw = (source?.width ?? filter.contentRect.width) * pointScale
+    let ph = (source?.height ?? filter.contentRect.height) * pointScale
     let k = min(1, Double(maxEdge) / max(pw, ph, 1), (3_750_000 / max(pw * ph, 1)).squareRoot())
     let cfg = SCStreamConfiguration()
+    if let source { cfg.sourceRect = source }
     cfg.width = Int((pw * k).rounded())
     cfg.height = Int((ph * k).rounded())
     cfg.showsCursor = false
@@ -334,7 +381,7 @@ func shoot(title: String, axFrame: Rect, maxEdge: Int, to path: String) async th
     let img = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg)
     let data = jpeg(img, quality: 0.85)
     try data.write(to: URL(fileURLWithPath: path))
-    return (img.width, img.height, data.count, pointScale)
+    return (img.width, img.height, data.count, pointScale, overlays.count)
 }
 
 // MARK: - record
@@ -354,7 +401,7 @@ struct Tree: Codable {
     var root: RawNode
     var attached: [RawNode]?
 }
-struct ShotMeta: Codable { var file: String; var width: Int; var height: Int; var bytes: Int; var maxEdge: Int; var scale: Double }
+struct ShotMeta: Codable { var file: String; var width: Int; var height: Int; var bytes: Int; var maxEdge: Int; var scale: Double; var popups: Int? }
 struct After: Codable { var state: String; var action: String }
 struct Meta: Codable {
     var app: String
@@ -379,7 +426,7 @@ func write<T: Encodable>(_ value: T, to path: String) throws {
     try data.write(to: URL(fileURLWithPath: path))
 }
 
-func record() async throws {
+@MainActor func record() async throws {
     let title = need("title")
     let out = need("out")
     let maxEdge = Int(one("max-edge") ?? "1280") ?? 1280
@@ -389,7 +436,7 @@ func record() async throws {
     // Chromium builds its tree after the set: walk until it stops growing.
     var best: (node: RawNode, walker: Walker, ms: Int)?
     for pause in manual == "set" ? [0.0, 1.0, 1.5, 3.0] : [0.0] {
-        Thread.sleep(forTimeInterval: pause)
+        usleep(useconds_t(pause * 1_000_000))
         let walker = Walker()
         let t0 = now()
         let root = walker.walk(win, at: 0)
@@ -431,7 +478,7 @@ func record() async throws {
     let meta = Meta(
         app: need("app"), state: need("state"), recordedAt: recordedAt, recorder: recorderVersion, macos: macos,
         backingScale: shot.scale, window: windowMeta,
-        shot: ShotMeta(file: "window.jpg", width: shot.width, height: shot.height, bytes: shot.bytes, maxEdge: maxEdge, scale: Double(shot.width) / frame.w),
+        shot: ShotMeta(file: "window.jpg", width: shot.width, height: shot.height, bytes: shot.bytes, maxEdge: maxEdge, scale: Double(shot.width) / frame.w, popups: shot.overlays > 0 ? shot.overlays : nil),
         walk: walk, setup: options["setup"] ?? [], after: after, appshot: appshot)
     try write(meta, to: "\(out)/meta.json")
     print("recorded \(need("app"))/\(need("state")): \(walk.nodes) nodes, depth \(walk.depth), \(ms) ms, \(shot.width)×\(shot.height) \(shot.bytes) B")
@@ -439,7 +486,7 @@ func record() async throws {
 
 // MARK: - keys
 
-let keyCodes: [String: CGKeyCode] = ["s": 1, "w": 13, "n": 45, "escape": 53, "return": 36, "tab": 48, "space": 49]
+let keyCodes: [String: CGKeyCode] = ["1": 18, "s": 1, "w": 13, "n": 45, "escape": 53, "return": 36, "tab": 48, "space": 49]
 
 func postKey() {
     let name = need("key").lowercased()
@@ -476,7 +523,7 @@ case "wait-window":
     let until = now() + (Double(one("timeout") ?? "15") ?? 15) * 1000
     while window(titled: title) == nil {
         if now() > until { fail("no window titled \(title) after waiting", code: 3) }
-        Thread.sleep(forTimeInterval: 0.25)
+        usleep(250_000)
     }
 case "set-value":
     check(AXUIElementSetAttributeValue(requireElement(), "AXValue" as CFString, need("value") as CFString), "set AXValue")
@@ -489,6 +536,30 @@ case "insert-text":
     check(AXUIElementSetAttributeValue(requireElement(), "AXSelectedText" as CFString, need("text") as CFString), "set AXSelectedText")
 case "press":
     check(AXUIElementPerformAction(requireElement(), (one("action") ?? "AXPress") as CFString), "perform")
+case "wait-element":
+    let until = now() + (Double(one("timeout") ?? "10") ?? 10) * 1000
+    while (window(titled: need("title")).flatMap { find(in: $0, role: need("role"), subrole: one("subrole"), name: one("name")) }) == nil {
+        if now() > until { fail("no \(need("role"))\(one("name").map { " named \($0)" } ?? "") after waiting", code: 4) }
+        usleep(250_000)
+    }
+case "pick":
+    // A popup's menu item by title, in the background. Prints the menu's first item as it
+    // was before the pick (a save panel's current folder), so a caller can pick it back.
+    let win = requireWindow()
+    let popupName = need("popup")
+    let popup = orFail(find(in: win, role: "AXPopUpButton", subrole: nil, name: popupName), "no popup named \(popupName)", code: 4)
+    check(AXUIElementPerformAction(popup, "AXPress" as CFString), "open \(popupName)")
+    let until = now() + 3000
+    var menu: AXUIElement?
+    while menu == nil, now() < until {
+        menu = find(in: popup, role: "AXMenu", subrole: nil, name: nil)
+        if menu == nil { usleep(100_000) }
+    }
+    guard let menu else { fail("\(popupName) opened no menu", code: 4) }
+    let first = asElements(copyAttr(menu, "AXChildren")).first.flatMap { asString(copyAttr($0, "AXTitle")) } ?? ""
+    let item = orFail(find(in: menu, role: "AXMenuItem", subrole: nil, name: need("item")), "no item \(need("item")) in \(popupName)", code: 4)
+    check(AXUIElementPerformAction(item, "AXPress" as CFString), "pick \(need("item"))")
+    print(first)
 case "key":
     postKey()
 default:

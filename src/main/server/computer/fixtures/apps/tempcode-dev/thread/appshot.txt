@@ -1,0 +1,43 @@
+Scratch thread
+      Workspaces
+        [button] Back
+        [button] Forward
+        [button] Search
+        [button] Inbox
+        [button] Mark all read
+        [button] Notes
+        [button] Chats
+        [button] Accounts
+        [button] Stats
+        [button] Add workspace
+        [button] tc-fixture-workspace
+        [button] Pin workspace
+        [menu button] Workspace options
+        [button] Sign in to Claude
+        [button] Check for updates, v1.0.329
+        [checkbox] Away from computer
+        [button] Settings
+        200
+        Resize workspace rail
+      [button] New thread
+      [button] New chat
+      [menu button] More
+      260
+      Resize sidebar
+      Threads
+      [menu button] Thread menu
+      [checkbox] Panel
+      Settled threads
+      No messages yet
+      [menu button] Add
+      [input] Ask, build, / for skills, @ for references…
+      [input] Message
+      [button] Send
+      [menu button] Claude Code Fable 5.1 Medium
+      [input] Auto-accept edits
+      [input] Permission mode: Auto-accept edits
+      [menu button] No git repository
+        No repo
+      [input] Chat
+      [input] Thread type
+      Notifications alt+T

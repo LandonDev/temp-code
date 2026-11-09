@@ -1,0 +1,3056 @@
+{
+  "app" : {
+    "bundleId" : "com.jetbrains.intellij",
+    "name" : "IntelliJ IDEA",
+    "version" : "2026.1"
+  },
+  "manualAccessibility" : "refused",
+  "os" : "macOS 27.2.0",
+  "recordedAt" : "2026-11-09T00:45:24Z",
+  "recorder" : "record-computer-fixture 1",
+  "root" : {
+    "actions" : [
+      "AXRaise"
+    ],
+    "children" : [
+      {
+        "children" : [
+          {
+            "children" : [
+
+            ],
+            "enabled" : true,
+            "expanded" : false,
+            "focused" : false,
+            "frame" : {
+              "h" : 4,
+              "w" : 222,
+              "x" : 1987,
+              "y" : 1298
+            },
+            "minimized" : false,
+            "modal" : false,
+            "required" : false,
+            "role" : "AXProgressIndicator",
+            "roleDescription" : "progress indicator",
+            "selected" : false,
+            "selectedTextRange" : [
+              0,
+              0
+            ],
+            "settable" : [
+              "AXFocused",
+              "AXSelected"
+            ],
+            "value" : {
+              "text" : "0",
+              "type" : "number"
+            },
+            "visible" : false
+          },
+          {
+            "children" : [
+
+            ],
+            "description" : "",
+            "enabled" : true,
+            "expanded" : false,
+            "focused" : false,
+            "frame" : {
+              "h" : 0,
+              "w" : 0,
+              "x" : 0,
+              "y" : 0
+            },
+            "minimized" : false,
+            "modal" : false,
+            "required" : false,
+            "role" : "AXButton",
+            "roleDescription" : "button",
+            "selected" : false,
+            "selectedTextRange" : [
+              0,
+              0
+            ],
+            "settable" : [
+              "AXFocused",
+              "AXSelected"
+            ],
+            "visible" : false
+          },
+          {
+            "children" : [
+
+            ],
+            "description" : "",
+            "enabled" : true,
+            "expanded" : false,
+            "focused" : false,
+            "frame" : {
+              "h" : 16,
+              "w" : 16,
+              "x" : 2219,
+              "y" : 1292
+            },
+            "minimized" : false,
+            "modal" : false,
+            "required" : false,
+            "role" : "AXButton",
+            "roleDescription" : "button",
+            "selected" : false,
+            "selectedTextRange" : [
+              0,
+              0
+            ],
+            "settable" : [
+              "AXFocused",
+              "AXSelected"
+            ],
+            "visible" : false
+          },
+          {
+            "children" : [
+
+            ],
+            "description" : " ",
+            "enabled" : true,
+            "expanded" : false,
+            "focused" : false,
+            "frame" : {
+              "h" : 14,
+              "w" : 209,
+              "x" : 1987,
+              "y" : 1273
+            },
+            "minimized" : false,
+            "modal" : false,
+            "required" : false,
+            "role" : "AXStaticText",
+            "roleDescription" : "text",
+            "selected" : false,
+            "selectedTextRange" : [
+              0,
+              0
+            ],
+            "settable" : [
+              "AXFocused",
+              "AXSelected"
+            ],
+            "value" : {
+              "text" : " ",
+              "type" : "string"
+            },
+            "visible" : false
+          },
+          {
+            "children" : [
+
+            ],
+            "description" : " ",
+            "enabled" : true,
+            "expanded" : false,
+            "focused" : false,
+            "frame" : {
+              "h" : 14,
+              "w" : 209,
+              "x" : 1987,
+              "y" : 1313
+            },
+            "minimized" : false,
+            "modal" : false,
+            "required" : false,
+            "role" : "AXStaticText",
+            "roleDescription" : "text",
+            "selected" : false,
+            "selectedTextRange" : [
+              0,
+              0
+            ],
+            "settable" : [
+              "AXFocused",
+              "AXSelected"
+            ],
+            "value" : {
+              "text" : " ",
+              "type" : "string"
+            },
+            "visible" : false
+          },
+          {
+            "children" : [
+              {
+                "children" : [
+                  {
+                    "children" : [
+                      {
+                        "actions" : [
+                          "AXPress"
+                        ],
+                        "children" : [
+
+                        ],
+                        "description" : "Project: Hello, menu",
+                        "enabled" : true,
+                        "expanded" : false,
+                        "focused" : false,
+                        "frame" : {
+                          "h" : 40,
+                          "w" : 101,
+                          "x" : 978,
+                          "y" : 378
+                        },
+                        "help" : "/private/tmp/tc-fixture-idea/Hello",
+                        "minimized" : false,
+                        "modal" : false,
+                        "required" : false,
+                        "role" : "AXButton",
+                        "roleDescription" : "button",
+                        "selected" : false,
+                        "selectedTextRange" : [
+                          0,
+                          0
+                        ],
+                        "settable" : [
+                          "AXFocused",
+                          "AXSelected"
+                        ],
+                        "visible" : true
+                      },
+                      {
+                        "actions" : [
+                          "AXPress"
+                        ],
+                        "children" : [
+
+                        ],
+                        "description" : "Version Control, menu",
+                        "enabled" : true,
+                        "expanded" : false,
+                        "focused" : false,
+                        "frame" : {
+                          "h" : 40,
+                          "w" : 139,
+                          "x" : 1079,
+                          "y" : 378
+                        },
+                        "help" : "Configure a version control for the project",
+                        "minimized" : false,
+                        "modal" : false,
+                        "required" : false,
+                        "role" : "AXButton",
+                        "roleDescription" : "button",
+                        "selected" : false,
+                        "selectedTextRange" : [
+                          0,
+                          0
+                        ],
+                        "settable" : [
+                          "AXFocused",
+                          "AXSelected"
+                        ],
+                        "visible" : true
+                      },
+                      {
+                        "children" : [
+
+                        ],
+                        "description" : "",
+                        "enabled" : true,
+                        "expanded" : false,
+                        "focused" : false,
+                        "frame" : {
+                          "h" : 30,
+                          "w" : 0,
+                          "x" : 1218,
+                          "y" : 383
+                        },
+                        "minimized" : false,
+                        "modal" : false,
+                        "required" : false,
+                        "role" : "AXGroup",
+                        "roleDescription" : "group",
+                        "selected" : false,
+                        "selectedTextRange" : [
+                          0,
+                          0
+                        ],
+                        "settable" : [
+                          "AXFocused",
+                          "AXSelected"
+                        ],
+                        "value" : {
+                          "text" : "0",
+                          "type" : "number"
+                        },
+                        "visible" : true
+                      }
+                    ],
+                    "description" : "",
+                    "enabled" : true,
+                    "expanded" : false,
+                    "focused" : false,
+                    "frame" : {
+                      "h" : 40,
+                      "w" : 240,
+                      "x" : 978,
+                      "y" : 378
+                    },
+                    "minimized" : false,
+                    "modal" : false,
+                    "required" : false,
+                    "role" : "AXGroup",
+                    "roleDescription" : "group",
+                    "selected" : false,
+                    "selectedTextRange" : [
+                      0,
+                      0
+                    ],
+                    "settable" : [
+                      "AXFocused",
+                      "AXSelected"
+                    ],
+                    "value" : {
+                      "text" : "0",
+                      "type" : "number"
+                    },
+                    "visible" : true
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "description" : "",
+                    "enabled" : true,
+                    "expanded" : false,
+                    "focused" : false,
+                    "frame" : {
+                      "h" : 40,
+                      "w" : 0,
+                      "x" : 1639,
+                      "y" : 378
+                    },
+                    "minimized" : false,
+                    "modal" : false,
+                    "required" : false,
+                    "role" : "AXGroup",
+                    "roleDescription" : "group",
+                    "selected" : false,
+                    "selectedTextRange" : [
+                      0,
+                      0
+                    ],
+                    "settable" : [
+                      "AXFocused",
+                      "AXSelected"
+                    ],
+                    "value" : {
+                      "text" : "0",
+                      "type" : "number"
+                    },
+                    "visible" : true
+                  },
+                  {
+                    "children" : [
+                      {
+                        "children" : [
+                          {
+                            "actions" : [
+                              "AXPress"
+                            ],
+                            "children" : [
+
+                            ],
+                            "description" : "Current File",
+                            "enabled" : true,
+                            "expanded" : false,
+                            "focused" : false,
+                            "frame" : {
+                              "h" : 40,
+                              "w" : 118,
+                              "x" : 1870,
+                              "y" : 378
+                            },
+                            "minimized" : false,
+                            "modal" : false,
+                            "required" : false,
+                            "role" : "AXButton",
+                            "roleDescription" : "button",
+                            "selected" : false,
+                            "selectedTextRange" : [
+                              0,
+                              0
+                            ],
+                            "settable" : [
+                              "AXFocused",
+                              "AXSelected"
+                            ],
+                            "visible" : true
+                          },
+                          {
+                            "actions" : [
+                              "AXPress"
+                            ],
+                            "children" : [
+
+                            ],
+                            "description" : "Cannot run the current file: the editor is not in focus",
+                            "enabled" : false,
+                            "expanded" : false,
+                            "focused" : false,
+                            "frame" : {
+                              "h" : 40,
+                              "w" : 34,
+                              "x" : 1988,
+                              "y" : 378
+                            },
+                            "minimized" : false,
+                            "modal" : false,
+                            "required" : false,
+                            "role" : "AXButton",
+                            "roleDescription" : "button",
+                            "selected" : false,
+                            "selectedTextRange" : [
+                              0,
+                              0
+                            ],
+                            "settable" : [
+                              "AXFocused",
+                              "AXSelected"
+                            ],
+                            "visible" : true
+                          },
+                          {
+                            "actions" : [
+                              "AXPress"
+                            ],
+                            "children" : [
+
+                            ],
+                            "description" : "Cannot run the current file: the editor is not in focus",
+                            "enabled" : false,
+                            "expanded" : false,
+                            "focused" : false,
+                            "frame" : {
+                              "h" : 40,
+                              "w" : 34,
+                              "x" : 2022,
+                              "y" : 378
+                            },
+                            "minimized" : false,
+                            "modal" : false,
+                            "required" : false,
+                            "role" : "AXButton",
+                            "roleDescription" : "button",
+                            "selected" : false,
+                            "selectedTextRange" : [
+                              0,
+                              0
+                            ],
+                            "settable" : [
+                              "AXFocused",
+                              "AXSelected"
+                            ],
+                            "visible" : true
+                          },
+                          {
+                            "actions" : [
+                              "AXPress"
+                            ],
+                            "children" : [
+
+                            ],
+                            "description" : "More Actions",
+                            "enabled" : true,
+                            "expanded" : false,
+                            "focused" : false,
+                            "frame" : {
+                              "h" : 40,
+                              "w" : 34,
+                              "x" : 2056,
+                              "y" : 378
+                            },
+                            "minimized" : false,
+                            "modal" : false,
+                            "required" : false,
+                            "role" : "AXButton",
+                            "roleDescription" : "button",
+                            "selected" : false,
+                            "selectedTextRange" : [
+                              0,
+                              0
+                            ],
+                            "settable" : [
+                              "AXFocused",
+                              "AXSelected"
+                            ],
+                            "visible" : true
+                          },
+                          {
+                            "actions" : [
+                              "AXPress"
+                            ],
+                            "children" : [
+
+                            ],
+                            "enabled" : false,
+                            "expanded" : false,
+                            "focused" : false,
+                            "frame" : {
+                              "h" : 40,
+                              "w" : 34,
+                              "x" : 2090,
+                              "y" : 378
+                            },
+                            "minimized" : false,
+                            "modal" : false,
+                            "required" : false,
+                            "role" : "AXButton",
+                            "roleDescription" : "button",
+                            "selected" : false,
+                            "selectedTextRange" : [
+                              0,
+                              0
+                            ],
+                            "settable" : [
+                              "AXFocused",
+                              "AXSelected"
+                            ],
+                            "visible" : true
+                          }
+                        ],
+                        "description" : "",
+                        "enabled" : true,
+                        "expanded" : false,
+                        "focused" : false,
+                        "frame" : {
+                          "h" : 40,
+                          "w" : 282,
+                          "x" : 1858,
+                          "y" : 378
+                        },
+                        "minimized" : false,
+                        "modal" : false,
+                        "required" : false,
+                        "role" : "AXGroup",
+                        "roleDescription" : "group",
+                        "selected" : false,
+                        "selectedTextRange" : [
+                          0,
+                          0
+                        ],
+                        "settable" : [
+                          "AXFocused",
+                          "AXSelected"
+                        ],
+                        "value" : {
+                          "text" : "0",
+                          "type" : "number"
+                        },
+                        "visible" : true
+                      },
+                      {
+                        "actions" : [
+                          "AXPress"
+                        ],
+                        "children" : [
+
+                        ],
+                        "description" : "JetBrains AI",
+                        "enabled" : true,
+                        "expanded" : false,
+                        "focused" : false,
+                        "frame" : {
+                          "h" : 40,
+                          "w" : 40,
+                          "x" : 2140,
+                          "y" : 378
+                        },
+                        "minimized" : false,
+                        "modal" : false,
+                        "required" : false,
+                        "role" : "AXButton",
+                        "roleDescription" : "button",
+                        "selected" : false,
+                        "selectedTextRange" : [
+                          0,
+                          0
+                        ],
+                        "settable" : [
+                          "AXFocused",
+                          "AXSelected"
+                        ],
+                        "visible" : true
+                      },
+                      {
+                        "actions" : [
+                          "AXPress"
+                        ],
+                        "children" : [
+
+                        ],
+                        "description" : "Claude Code",
+                        "enabled" : true,
+                        "expanded" : false,
+                        "focused" : false,
+                        "frame" : {
+                          "h" : 40,
+                          "w" : 40,
+                          "x" : 2180,
+                          "y" : 378
+                        },
+                        "minimized" : false,
+                        "modal" : false,
+                        "required" : false,
+                        "role" : "AXButton",
+                        "roleDescription" : "button",
+                        "selected" : false,
+                        "selectedTextRange" : [
+                          0,
+                          0
+                        ],
+                        "settable" : [
+                          "AXFocused",
+                          "AXSelected"
+                        ],
+                        "visible" : true
+                      },
+                      {
+                        "actions" : [
+                          "AXPress"
+                        ],
+                        "children" : [
+
+                        ],
+                        "description" : "Search Everywhere",
+                        "enabled" : true,
+                        "expanded" : false,
+                        "focused" : false,
+                        "frame" : {
+                          "h" : 40,
+                          "w" : 40,
+                          "x" : 2220,
+                          "y" : 378
+                        },
+                        "minimized" : false,
+                        "modal" : false,
+                        "required" : false,
+                        "role" : "AXButton",
+                        "roleDescription" : "button",
+                        "selected" : false,
+                        "selectedTextRange" : [
+                          0,
+                          0
+                        ],
+                        "settable" : [
+                          "AXFocused",
+                          "AXSelected"
+                        ],
+                        "visible" : true
+                      },
+                      {
+                        "actions" : [
+                          "AXPress"
+                        ],
+                        "children" : [
+
+                        ],
+                        "description" : "IDE and Project Settings",
+                        "enabled" : true,
+                        "expanded" : false,
+                        "focused" : false,
+                        "frame" : {
+                          "h" : 40,
+                          "w" : 40,
+                          "x" : 2260,
+                          "y" : 378
+                        },
+                        "minimized" : false,
+                        "modal" : false,
+                        "required" : false,
+                        "role" : "AXButton",
+                        "roleDescription" : "button",
+                        "selected" : false,
+                        "selectedTextRange" : [
+                          0,
+                          0
+                        ],
+                        "settable" : [
+                          "AXFocused",
+                          "AXSelected"
+                        ],
+                        "visible" : true
+                      }
+                    ],
+                    "description" : "",
+                    "enabled" : true,
+                    "expanded" : false,
+                    "focused" : false,
+                    "frame" : {
+                      "h" : 40,
+                      "w" : 442,
+                      "x" : 1858,
+                      "y" : 378
+                    },
+                    "minimized" : false,
+                    "modal" : false,
+                    "required" : false,
+                    "role" : "AXGroup",
+                    "roleDescription" : "group",
+                    "selected" : false,
+                    "selectedTextRange" : [
+                      0,
+                      0
+                    ],
+                    "settable" : [
+                      "AXFocused",
+                      "AXSelected"
+                    ],
+                    "value" : {
+                      "text" : "0",
+                      "type" : "number"
+                    },
+                    "visible" : true
+                  }
+                ],
+                "description" : "",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 40,
+                  "w" : 1322,
+                  "x" : 978,
+                  "y" : 378
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXGroup",
+                "roleDescription" : "group",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "value" : {
+                  "text" : "0",
+                  "type" : "number"
+                },
+                "visible" : true
+              }
+            ],
+            "description" : "Frame Header",
+            "enabled" : true,
+            "expanded" : false,
+            "focused" : false,
+            "frame" : {
+              "h" : 40,
+              "w" : 1400,
+              "x" : 900,
+              "y" : 378
+            },
+            "minimized" : false,
+            "modal" : false,
+            "required" : false,
+            "role" : "AXGroup",
+            "roleDescription" : "group",
+            "selected" : false,
+            "selectedTextRange" : [
+              0,
+              0
+            ],
+            "settable" : [
+              "AXFocused",
+              "AXSelected"
+            ],
+            "value" : {
+              "text" : "0",
+              "type" : "number"
+            },
+            "visible" : true
+          },
+          {
+            "children" : [
+              {
+                "children" : [
+
+                ],
+                "description" : "Project",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 41,
+                  "w" : 0,
+                  "x" : 0,
+                  "y" : 0
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXStaticText",
+                "roleDescription" : "text",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "value" : {
+                  "text" : "Project",
+                  "type" : "string"
+                },
+                "visible" : false
+              },
+              {
+                "children" : [
+
+                ],
+                "description" : "Project",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 41,
+                  "w" : 76,
+                  "x" : 941,
+                  "y" : 421
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXButton",
+                "roleDescription" : "button",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : true
+              },
+              {
+                "children" : [
+
+                ],
+                "description" : "",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 0,
+                  "w" : 0,
+                  "x" : 1017,
+                  "y" : 441
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXGroup",
+                "roleDescription" : "group",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "value" : {
+                  "text" : "0",
+                  "type" : "number"
+                },
+                "visible" : true
+              },
+              {
+                "children" : [
+                  {
+                    "actions" : [
+                      "AXPress"
+                    ],
+                    "children" : [
+
+                    ],
+                    "description" : "New File or Directory…",
+                    "enabled" : false,
+                    "expanded" : false,
+                    "focused" : false,
+                    "frame" : {
+                      "h" : 24,
+                      "w" : 26,
+                      "x" : 1200,
+                      "y" : 429
+                    },
+                    "minimized" : false,
+                    "modal" : false,
+                    "required" : false,
+                    "role" : "AXButton",
+                    "roleDescription" : "button",
+                    "selected" : false,
+                    "selectedTextRange" : [
+                      0,
+                      0
+                    ],
+                    "settable" : [
+                      "AXFocused",
+                      "AXSelected"
+                    ],
+                    "visible" : true
+                  },
+                  {
+                    "actions" : [
+                      "AXPress"
+                    ],
+                    "children" : [
+
+                    ],
+                    "description" : "Select Opened File (⌥F1, 1)",
+                    "enabled" : false,
+                    "expanded" : false,
+                    "focused" : false,
+                    "frame" : {
+                      "h" : 24,
+                      "w" : 26,
+                      "x" : 1233,
+                      "y" : 429
+                    },
+                    "minimized" : false,
+                    "modal" : false,
+                    "required" : false,
+                    "role" : "AXButton",
+                    "roleDescription" : "button",
+                    "selected" : false,
+                    "selectedTextRange" : [
+                      0,
+                      0
+                    ],
+                    "settable" : [
+                      "AXFocused",
+                      "AXSelected"
+                    ],
+                    "visible" : true
+                  },
+                  {
+                    "actions" : [
+                      "AXPress"
+                    ],
+                    "children" : [
+
+                    ],
+                    "description" : "Expand Selected",
+                    "enabled" : false,
+                    "expanded" : false,
+                    "focused" : false,
+                    "frame" : {
+                      "h" : 24,
+                      "w" : 26,
+                      "x" : 1259,
+                      "y" : 429
+                    },
+                    "minimized" : false,
+                    "modal" : false,
+                    "required" : false,
+                    "role" : "AXButton",
+                    "roleDescription" : "button",
+                    "selected" : false,
+                    "selectedTextRange" : [
+                      0,
+                      0
+                    ],
+                    "settable" : [
+                      "AXFocused",
+                      "AXSelected"
+                    ],
+                    "visible" : true
+                  },
+                  {
+                    "actions" : [
+                      "AXPress"
+                    ],
+                    "children" : [
+
+                    ],
+                    "description" : "Expand All",
+                    "enabled" : false,
+                    "expanded" : false,
+                    "focused" : false,
+                    "frame" : {
+                      "h" : 24,
+                      "w" : 26,
+                      "x" : 1285,
+                      "y" : 429
+                    },
+                    "minimized" : false,
+                    "modal" : false,
+                    "required" : false,
+                    "role" : "AXButton",
+                    "roleDescription" : "button",
+                    "selected" : false,
+                    "selectedTextRange" : [
+                      0,
+                      0
+                    ],
+                    "settable" : [
+                      "AXFocused",
+                      "AXSelected"
+                    ],
+                    "visible" : true
+                  },
+                  {
+                    "actions" : [
+                      "AXPress"
+                    ],
+                    "children" : [
+
+                    ],
+                    "description" : "Collapse All",
+                    "enabled" : false,
+                    "expanded" : false,
+                    "focused" : false,
+                    "frame" : {
+                      "h" : 24,
+                      "w" : 26,
+                      "x" : 1311,
+                      "y" : 429
+                    },
+                    "minimized" : false,
+                    "modal" : false,
+                    "required" : false,
+                    "role" : "AXButton",
+                    "roleDescription" : "button",
+                    "selected" : false,
+                    "selectedTextRange" : [
+                      0,
+                      0
+                    ],
+                    "settable" : [
+                      "AXFocused",
+                      "AXSelected"
+                    ],
+                    "visible" : true
+                  },
+                  {
+                    "actions" : [
+                      "AXPress"
+                    ],
+                    "children" : [
+
+                    ],
+                    "description" : "Options",
+                    "enabled" : true,
+                    "expanded" : false,
+                    "focused" : false,
+                    "frame" : {
+                      "h" : 24,
+                      "w" : 26,
+                      "x" : 1337,
+                      "y" : 429
+                    },
+                    "minimized" : false,
+                    "modal" : false,
+                    "required" : false,
+                    "role" : "AXButton",
+                    "roleDescription" : "button",
+                    "selected" : false,
+                    "selectedTextRange" : [
+                      0,
+                      0
+                    ],
+                    "settable" : [
+                      "AXFocused",
+                      "AXSelected"
+                    ],
+                    "visible" : true
+                  },
+                  {
+                    "actions" : [
+                      "AXPress"
+                    ],
+                    "children" : [
+
+                    ],
+                    "description" : "Hide",
+                    "enabled" : true,
+                    "expanded" : false,
+                    "focused" : false,
+                    "frame" : {
+                      "h" : 24,
+                      "w" : 26,
+                      "x" : 1363,
+                      "y" : 429
+                    },
+                    "minimized" : false,
+                    "modal" : false,
+                    "required" : false,
+                    "role" : "AXButton",
+                    "roleDescription" : "button",
+                    "selected" : false,
+                    "selectedTextRange" : [
+                      0,
+                      0
+                    ],
+                    "settable" : [
+                      "AXFocused",
+                      "AXSelected"
+                    ],
+                    "visible" : true
+                  }
+                ],
+                "description" : "Action Toolbar",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 24,
+                  "w" : 209,
+                  "x" : 1188,
+                  "y" : 429
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXGroup",
+                "roleDescription" : "group",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "value" : {
+                  "text" : "0",
+                  "type" : "number"
+                },
+                "visible" : true
+              },
+              {
+                "children" : [
+                  {
+                    "children" : [
+                      {
+                        "actions" : [
+                          "AXShowMenu",
+                          "AXPress"
+                        ],
+                        "children" : [
+                          {
+                            "actions" : [
+                              "AXShowMenu",
+                              "AXPress"
+                            ],
+                            "children" : [
+                              {
+                                "actions" : [
+                                  "AXShowMenu",
+                                  "AXPress"
+                                ],
+                                "children" : [
+
+                                ],
+                                "description" : ".idea",
+                                "enabled" : true,
+                                "expanded" : false,
+                                "focused" : false,
+                                "frame" : {
+                                  "h" : 24,
+                                  "w" : 54,
+                                  "x" : 991,
+                                  "y" : 490
+                                },
+                                "minimized" : false,
+                                "modal" : false,
+                                "required" : false,
+                                "role" : "AXStaticText",
+                                "roleDescription" : "text",
+                                "selected" : false,
+                                "selectedTextRange" : [
+                                  0,
+                                  0
+                                ],
+                                "settable" : [
+                                  "AXFocused",
+                                  "AXSelected"
+                                ],
+                                "value" : {
+                                  "text" : ".idea",
+                                  "type" : "string"
+                                },
+                                "visible" : false
+                              },
+                              {
+                                "actions" : [
+                                  "AXShowMenu",
+                                  "AXPress"
+                                ],
+                                "children" : [
+
+                                ],
+                                "description" : "src",
+                                "enabled" : true,
+                                "expanded" : false,
+                                "focused" : false,
+                                "frame" : {
+                                  "h" : 24,
+                                  "w" : 43,
+                                  "x" : 991,
+                                  "y" : 514
+                                },
+                                "minimized" : false,
+                                "modal" : false,
+                                "required" : false,
+                                "role" : "AXStaticText",
+                                "roleDescription" : "text",
+                                "selected" : false,
+                                "selectedTextRange" : [
+                                  0,
+                                  0
+                                ],
+                                "settable" : [
+                                  "AXFocused",
+                                  "AXSelected"
+                                ],
+                                "value" : {
+                                  "text" : "src",
+                                  "type" : "string"
+                                },
+                                "visible" : false
+                              }
+                            ],
+                            "description" : "Hello  /private/tmp/tc-fixture-idea/Hello, module",
+                            "enabled" : true,
+                            "expanded" : false,
+                            "focused" : false,
+                            "frame" : {
+                              "h" : 24,
+                              "w" : 268,
+                              "x" : 972,
+                              "y" : 466
+                            },
+                            "minimized" : false,
+                            "modal" : false,
+                            "required" : false,
+                            "role" : "AXStaticText",
+                            "roleDescription" : "text",
+                            "selected" : false,
+                            "selectedTextRange" : [
+                              0,
+                              0
+                            ],
+                            "settable" : [
+                              "AXFocused",
+                              "AXSelected"
+                            ],
+                            "value" : {
+                              "text" : "0",
+                              "type" : "number"
+                            },
+                            "visible" : false
+                          }
+                        ],
+                        "description" : "Hello  /private/tmp/tc-fixture-idea/Hello, module",
+                        "enabled" : true,
+                        "expanded" : false,
+                        "focused" : false,
+                        "frame" : {
+                          "h" : 24,
+                          "w" : 268,
+                          "x" : 972,
+                          "y" : 466
+                        },
+                        "minimized" : false,
+                        "modal" : false,
+                        "required" : false,
+                        "role" : "AXRow",
+                        "roleDescription" : "row",
+                        "selected" : true,
+                        "selectedTextRange" : [
+                          0,
+                          0
+                        ],
+                        "settable" : [
+                          "AXFocused",
+                          "AXSelected"
+                        ],
+                        "subrole" : "AXOutlineRow",
+                        "value" : {
+                          "text" : "0",
+                          "type" : "number"
+                        },
+                        "visible" : false
+                      },
+                      {
+                        "actions" : [
+                          "AXShowMenu",
+                          "AXPress"
+                        ],
+                        "children" : [
+                          {
+                            "actions" : [
+                              "AXShowMenu",
+                              "AXPress"
+                            ],
+                            "children" : [
+
+                            ],
+                            "description" : ".idea",
+                            "enabled" : true,
+                            "expanded" : false,
+                            "focused" : false,
+                            "frame" : {
+                              "h" : 24,
+                              "w" : 54,
+                              "x" : 991,
+                              "y" : 490
+                            },
+                            "minimized" : false,
+                            "modal" : false,
+                            "required" : false,
+                            "role" : "AXStaticText",
+                            "roleDescription" : "text",
+                            "selected" : false,
+                            "selectedTextRange" : [
+                              0,
+                              0
+                            ],
+                            "settable" : [
+                              "AXFocused",
+                              "AXSelected"
+                            ],
+                            "value" : {
+                              "text" : "0",
+                              "type" : "number"
+                            }
+                          }
+                        ],
+                        "description" : ".idea",
+                        "enabled" : true,
+                        "expanded" : false,
+                        "focused" : false,
+                        "frame" : {
+                          "h" : 24,
+                          "w" : 54,
+                          "x" : 991,
+                          "y" : 490
+                        },
+                        "minimized" : false,
+                        "modal" : false,
+                        "required" : false,
+                        "role" : "AXRow",
+                        "roleDescription" : "row",
+                        "selected" : true,
+                        "selectedTextRange" : [
+                          0,
+                          0
+                        ],
+                        "settable" : [
+                          "AXFocused",
+                          "AXSelected"
+                        ],
+                        "subrole" : "AXOutlineRow",
+                        "value" : {
+                          "text" : "0",
+                          "type" : "number"
+                        },
+                        "visible" : false
+                      },
+                      {
+                        "actions" : [
+                          "AXShowMenu",
+                          "AXPress"
+                        ],
+                        "children" : [
+                          {
+                            "actions" : [
+                              "AXShowMenu",
+                              "AXPress"
+                            ],
+                            "children" : [
+
+                            ],
+                            "description" : "src",
+                            "enabled" : true,
+                            "expanded" : false,
+                            "focused" : false,
+                            "frame" : {
+                              "h" : 24,
+                              "w" : 43,
+                              "x" : 991,
+                              "y" : 514
+                            },
+                            "minimized" : false,
+                            "modal" : false,
+                            "required" : false,
+                            "role" : "AXStaticText",
+                            "roleDescription" : "text",
+                            "selected" : false,
+                            "selectedTextRange" : [
+                              0,
+                              0
+                            ],
+                            "settable" : [
+                              "AXFocused",
+                              "AXSelected"
+                            ],
+                            "value" : {
+                              "text" : "0",
+                              "type" : "number"
+                            }
+                          }
+                        ],
+                        "description" : "src",
+                        "enabled" : true,
+                        "expanded" : false,
+                        "focused" : false,
+                        "frame" : {
+                          "h" : 24,
+                          "w" : 43,
+                          "x" : 991,
+                          "y" : 514
+                        },
+                        "minimized" : false,
+                        "modal" : false,
+                        "required" : false,
+                        "role" : "AXRow",
+                        "roleDescription" : "row",
+                        "selected" : true,
+                        "selectedTextRange" : [
+                          0,
+                          0
+                        ],
+                        "settable" : [
+                          "AXFocused",
+                          "AXSelected"
+                        ],
+                        "subrole" : "AXOutlineRow",
+                        "value" : {
+                          "text" : "0",
+                          "type" : "number"
+                        },
+                        "visible" : false
+                      },
+                      {
+                        "actions" : [
+                          "AXShowMenu",
+                          "AXPress"
+                        ],
+                        "children" : [
+                          {
+                            "actions" : [
+                              "AXShowMenu",
+                              "AXPress"
+                            ],
+                            "children" : [
+
+                            ],
+                            "description" : "External Libraries, external library",
+                            "enabled" : true,
+                            "expanded" : false,
+                            "focused" : false,
+                            "frame" : {
+                              "h" : 24,
+                              "w" : 131,
+                              "x" : 972,
+                              "y" : 538
+                            },
+                            "minimized" : false,
+                            "modal" : false,
+                            "required" : false,
+                            "role" : "AXStaticText",
+                            "roleDescription" : "text",
+                            "selected" : false,
+                            "selectedTextRange" : [
+                              0,
+                              0
+                            ],
+                            "settable" : [
+                              "AXFocused",
+                              "AXSelected"
+                            ],
+                            "value" : {
+                              "text" : "0",
+                              "type" : "number"
+                            }
+                          }
+                        ],
+                        "description" : "External Libraries, external library",
+                        "enabled" : true,
+                        "expanded" : false,
+                        "focused" : false,
+                        "frame" : {
+                          "h" : 24,
+                          "w" : 131,
+                          "x" : 972,
+                          "y" : 538
+                        },
+                        "minimized" : false,
+                        "modal" : false,
+                        "required" : false,
+                        "role" : "AXRow",
+                        "roleDescription" : "row",
+                        "selected" : true,
+                        "selectedTextRange" : [
+                          0,
+                          0
+                        ],
+                        "settable" : [
+                          "AXFocused",
+                          "AXSelected"
+                        ],
+                        "subrole" : "AXOutlineRow",
+                        "value" : {
+                          "text" : "0",
+                          "type" : "number"
+                        },
+                        "visible" : false
+                      },
+                      {
+                        "actions" : [
+                          "AXShowMenu",
+                          "AXPress"
+                        ],
+                        "children" : [
+                          {
+                            "actions" : [
+                              "AXShowMenu",
+                              "AXPress"
+                            ],
+                            "children" : [
+
+                            ],
+                            "description" : "Scratches and Consoles",
+                            "enabled" : true,
+                            "expanded" : false,
+                            "focused" : false,
+                            "frame" : {
+                              "h" : 24,
+                              "w" : 173,
+                              "x" : 972,
+                              "y" : 562
+                            },
+                            "minimized" : false,
+                            "modal" : false,
+                            "required" : false,
+                            "role" : "AXStaticText",
+                            "roleDescription" : "text",
+                            "selected" : false,
+                            "selectedTextRange" : [
+                              0,
+                              0
+                            ],
+                            "settable" : [
+                              "AXFocused",
+                              "AXSelected"
+                            ],
+                            "value" : {
+                              "text" : "0",
+                              "type" : "number"
+                            }
+                          }
+                        ],
+                        "description" : "Scratches and Consoles",
+                        "enabled" : true,
+                        "expanded" : false,
+                        "focused" : false,
+                        "frame" : {
+                          "h" : 24,
+                          "w" : 173,
+                          "x" : 972,
+                          "y" : 562
+                        },
+                        "minimized" : false,
+                        "modal" : false,
+                        "required" : false,
+                        "role" : "AXRow",
+                        "roleDescription" : "row",
+                        "selected" : true,
+                        "selectedTextRange" : [
+                          0,
+                          0
+                        ],
+                        "settable" : [
+                          "AXFocused",
+                          "AXSelected"
+                        ],
+                        "subrole" : "AXOutlineRow",
+                        "value" : {
+                          "text" : "0",
+                          "type" : "number"
+                        },
+                        "visible" : false
+                      }
+                    ],
+                    "description" : "Project structure tree",
+                    "enabled" : true,
+                    "expanded" : false,
+                    "focused" : false,
+                    "frame" : {
+                      "h" : 883,
+                      "w" : 456,
+                      "x" : 941,
+                      "y" : 462
+                    },
+                    "minimized" : false,
+                    "modal" : false,
+                    "required" : false,
+                    "role" : "AXOutline",
+                    "roleDescription" : "outline",
+                    "selected" : false,
+                    "selectedTextRange" : [
+                      0,
+                      0
+                    ],
+                    "settable" : [
+                      "AXFocused",
+                      "AXSelected"
+                    ],
+                    "value" : {
+                      "text" : "0",
+                      "type" : "number"
+                    },
+                    "visible" : true
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "enabled" : true,
+                    "expanded" : false,
+                    "focused" : false,
+                    "frame" : {
+                      "h" : 0,
+                      "w" : 0,
+                      "x" : 0,
+                      "y" : 0
+                    },
+                    "minimized" : false,
+                    "modal" : false,
+                    "required" : false,
+                    "role" : "AXScrollBar",
+                    "roleDescription" : "scroll bar",
+                    "selected" : false,
+                    "selectedTextRange" : [
+                      0,
+                      0
+                    ],
+                    "settable" : [
+                      "AXFocused",
+                      "AXSelected"
+                    ],
+                    "value" : {
+                      "text" : "0",
+                      "type" : "number"
+                    },
+                    "visible" : false
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "enabled" : true,
+                    "expanded" : false,
+                    "focused" : false,
+                    "frame" : {
+                      "h" : 0,
+                      "w" : 0,
+                      "x" : 0,
+                      "y" : 0
+                    },
+                    "minimized" : false,
+                    "modal" : false,
+                    "required" : false,
+                    "role" : "AXScrollBar",
+                    "roleDescription" : "scroll bar",
+                    "selected" : false,
+                    "selectedTextRange" : [
+                      0,
+                      0
+                    ],
+                    "settable" : [
+                      "AXFocused",
+                      "AXSelected"
+                    ],
+                    "value" : {
+                      "text" : "0",
+                      "type" : "number"
+                    },
+                    "visible" : false
+                  }
+                ],
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 883,
+                  "w" : 456,
+                  "x" : 941,
+                  "y" : 462
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXScrollArea",
+                "roleDescription" : "scroll area",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "value" : {
+                  "text" : "0",
+                  "type" : "number"
+                },
+                "visible" : true
+              }
+            ],
+            "description" : "Project Tool Window",
+            "enabled" : true,
+            "expanded" : false,
+            "focused" : false,
+            "frame" : {
+              "h" : 930,
+              "w" : 462,
+              "x" : 938,
+              "y" : 418
+            },
+            "minimized" : false,
+            "modal" : false,
+            "required" : false,
+            "role" : "AXGroup",
+            "roleDescription" : "group",
+            "selected" : false,
+            "selectedTextRange" : [
+              0,
+              0
+            ],
+            "settable" : [
+              "AXFocused",
+              "AXSelected"
+            ],
+            "value" : {
+              "text" : "0",
+              "type" : "number"
+            },
+            "visible" : true
+          },
+          {
+            "children" : [
+              {
+                "actions" : [
+                  "AXPress"
+                ],
+                "children" : [
+
+                ],
+                "description" : "Project",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 40,
+                  "w" : 37,
+                  "x" : 900,
+                  "y" : 419
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXButton",
+                "roleDescription" : "button",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : true
+              },
+              {
+                "actions" : [
+                  "AXPress"
+                ],
+                "children" : [
+
+                ],
+                "description" : "Structure",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 40,
+                  "w" : 37,
+                  "x" : 900,
+                  "y" : 470
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXButton",
+                "roleDescription" : "button",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : true
+              },
+              {
+                "actions" : [
+                  "AXPress"
+                ],
+                "children" : [
+
+                ],
+                "description" : "More",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 40,
+                  "w" : 37,
+                  "x" : 900,
+                  "y" : 510
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXButton",
+                "roleDescription" : "button",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : true
+              },
+              {
+                "actions" : [
+                  "AXPress"
+                ],
+                "children" : [
+
+                ],
+                "description" : "Problems",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 40,
+                  "w" : 37,
+                  "x" : 900,
+                  "y" : 1308
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXButton",
+                "roleDescription" : "button",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : true
+              },
+              {
+                "actions" : [
+                  "AXPress"
+                ],
+                "children" : [
+
+                ],
+                "description" : "Terminal",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 40,
+                  "w" : 37,
+                  "x" : 900,
+                  "y" : 1268
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXButton",
+                "roleDescription" : "button",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : true
+              }
+            ],
+            "description" : "Left Toolbar",
+            "enabled" : true,
+            "expanded" : false,
+            "focused" : false,
+            "frame" : {
+              "h" : 930,
+              "w" : 38,
+              "x" : 900,
+              "y" : 418
+            },
+            "minimized" : false,
+            "modal" : false,
+            "required" : false,
+            "role" : "AXGroup",
+            "roleDescription" : "group",
+            "selected" : false,
+            "selectedTextRange" : [
+              0,
+              0
+            ],
+            "settable" : [
+              "AXFocused",
+              "AXSelected"
+            ],
+            "value" : {
+              "text" : "0",
+              "type" : "number"
+            },
+            "visible" : true
+          },
+          {
+            "children" : [
+              {
+                "actions" : [
+                  "AXPress"
+                ],
+                "children" : [
+
+                ],
+                "description" : "Notifications",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 40,
+                  "w" : 37,
+                  "x" : 2263,
+                  "y" : 419
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXButton",
+                "roleDescription" : "button",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : true
+              },
+              {
+                "actions" : [
+                  "AXPress"
+                ],
+                "children" : [
+
+                ],
+                "description" : "Junie",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 40,
+                  "w" : 37,
+                  "x" : 2263,
+                  "y" : 539
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXButton",
+                "roleDescription" : "button",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : true
+              },
+              {
+                "actions" : [
+                  "AXPress"
+                ],
+                "children" : [
+
+                ],
+                "description" : "Database",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 40,
+                  "w" : 37,
+                  "x" : 2263,
+                  "y" : 499
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXButton",
+                "roleDescription" : "button",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : true
+              },
+              {
+                "actions" : [
+                  "AXPress"
+                ],
+                "children" : [
+
+                ],
+                "description" : "AI Chat",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 40,
+                  "w" : 37,
+                  "x" : 2263,
+                  "y" : 459
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXButton",
+                "roleDescription" : "button",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : true
+              },
+              {
+                "actions" : [
+                  "AXPress"
+                ],
+                "children" : [
+
+                ],
+                "description" : "More",
+                "enabled" : false,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 0,
+                  "w" : 0,
+                  "x" : 0,
+                  "y" : 0
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXButton",
+                "roleDescription" : "button",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : false
+              }
+            ],
+            "description" : "Right Toolbar",
+            "enabled" : true,
+            "expanded" : false,
+            "focused" : false,
+            "frame" : {
+              "h" : 930,
+              "w" : 38,
+              "x" : 2262,
+              "y" : 418
+            },
+            "minimized" : false,
+            "modal" : false,
+            "required" : false,
+            "role" : "AXGroup",
+            "roleDescription" : "group",
+            "selected" : false,
+            "selectedTextRange" : [
+              0,
+              0
+            ],
+            "settable" : [
+              "AXFocused",
+              "AXSelected"
+            ],
+            "value" : {
+              "text" : "0",
+              "type" : "number"
+            },
+            "visible" : true
+          },
+          {
+            "children" : [
+              {
+                "children" : [
+                  {
+                    "children" : [
+
+                    ],
+                    "enabled" : true,
+                    "expanded" : false,
+                    "focused" : false,
+                    "frame" : {
+                      "h" : 0,
+                      "w" : 0,
+                      "x" : 0,
+                      "y" : 0
+                    },
+                    "minimized" : false,
+                    "modal" : false,
+                    "required" : false,
+                    "role" : "AXScrollBar",
+                    "roleDescription" : "scroll bar",
+                    "selected" : false,
+                    "selectedTextRange" : [
+                      0,
+                      0
+                    ],
+                    "settable" : [
+                      "AXFocused",
+                      "AXSelected"
+                    ],
+                    "value" : {
+                      "text" : "0",
+                      "type" : "number"
+                    }
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "enabled" : true,
+                    "expanded" : false,
+                    "focused" : false,
+                    "frame" : {
+                      "h" : 0,
+                      "w" : 0,
+                      "x" : 0,
+                      "y" : 0
+                    },
+                    "minimized" : false,
+                    "modal" : false,
+                    "required" : false,
+                    "role" : "AXScrollBar",
+                    "roleDescription" : "scroll bar",
+                    "selected" : false,
+                    "selectedTextRange" : [
+                      0,
+                      0
+                    ],
+                    "settable" : [
+                      "AXFocused",
+                      "AXSelected"
+                    ],
+                    "value" : {
+                      "text" : "0",
+                      "type" : "number"
+                    }
+                  }
+                ],
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 29,
+                  "w" : 953,
+                  "x" : 910,
+                  "y" : 1349
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXScrollArea",
+                "roleDescription" : "scroll area",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "value" : {
+                  "text" : "0",
+                  "type" : "number"
+                },
+                "visible" : true
+              },
+              {
+                "children" : [
+
+                ],
+                "description" : "Hide processes (1)",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 0,
+                  "w" : 0,
+                  "x" : 0,
+                  "y" : 0
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXStaticText",
+                "roleDescription" : "text",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "value" : {
+                  "text" : "Hide processes (1)",
+                  "type" : "string"
+                },
+                "visible" : false
+              },
+              {
+                "children" : [
+
+                ],
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 17,
+                  "w" : 21,
+                  "x" : 2224,
+                  "y" : 1355
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXStaticText",
+                "roleDescription" : "text",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : true
+              },
+              {
+                "children" : [
+
+                ],
+                "description" : "Detecting project structure…",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 17,
+                  "w" : 177,
+                  "x" : 1911,
+                  "y" : 1355
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXStaticText",
+                "roleDescription" : "text",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "value" : {
+                  "text" : "Detecting project structure…",
+                  "type" : "string"
+                },
+                "visible" : true
+              },
+              {
+                "children" : [
+
+                ],
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 17,
+                  "w" : 104,
+                  "x" : 2096,
+                  "y" : 1355
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXProgressIndicator",
+                "roleDescription" : "progress indicator",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "value" : {
+                  "text" : "0",
+                  "type" : "number"
+                },
+                "visible" : true
+              },
+              {
+                "children" : [
+
+                ],
+                "description" : "",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 0,
+                  "w" : 0,
+                  "x" : 0,
+                  "y" : 0
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXButton",
+                "roleDescription" : "button",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : false
+              },
+              {
+                "children" : [
+
+                ],
+                "description" : "",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 16,
+                  "w" : 16,
+                  "x" : 2206,
+                  "y" : 1355
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXButton",
+                "roleDescription" : "button",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : true
+              },
+              {
+                "children" : [
+
+                ],
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 0,
+                  "w" : 0,
+                  "x" : 0,
+                  "y" : 0
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXStaticText",
+                "roleDescription" : "text",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : false
+              },
+              {
+                "children" : [
+
+                ],
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 0,
+                  "w" : 0,
+                  "x" : 0,
+                  "y" : 0
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXStaticText",
+                "roleDescription" : "text",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : false
+              },
+              {
+                "children" : [
+
+                ],
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 0,
+                  "w" : 0,
+                  "x" : 0,
+                  "y" : 0
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXStaticText",
+                "roleDescription" : "text",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : false
+              },
+              {
+                "children" : [
+
+                ],
+                "description" : "Go to Line",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 29,
+                  "w" : 16,
+                  "x" : 2258,
+                  "y" : 1349
+                },
+                "help" : "Go to Line",
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXStaticText",
+                "roleDescription" : "text",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "value" : {
+                  "text" : "Go to Line",
+                  "type" : "string"
+                },
+                "visible" : true
+              },
+              {
+                "children" : [
+
+                ],
+                "description" : "Language Services Button",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 0,
+                  "w" : 0,
+                  "x" : 0,
+                  "y" : 0
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXStaticText",
+                "roleDescription" : "text",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "value" : {
+                  "text" : "Language Services Button",
+                  "type" : "string"
+                },
+                "visible" : false
+              },
+              {
+                "children" : [
+
+                ],
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 0,
+                  "w" : 0,
+                  "x" : 0,
+                  "y" : 0
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXStaticText",
+                "roleDescription" : "text",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : false
+              },
+              {
+                "children" : [
+
+                ],
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 0,
+                  "w" : 0,
+                  "x" : 0,
+                  "y" : 0
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXStaticText",
+                "roleDescription" : "text",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : false
+              },
+              {
+                "children" : [
+
+                ],
+                "description" : "Column selection mode",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 0,
+                  "w" : 0,
+                  "x" : 0,
+                  "y" : 0
+                },
+                "help" : "Column selection mode",
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXStaticText",
+                "roleDescription" : "text",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "value" : {
+                  "text" : "Column selection mode",
+                  "type" : "string"
+                },
+                "visible" : false
+              },
+              {
+                "children" : [
+
+                ],
+                "description" : "",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : -12,
+                  "w" : 0,
+                  "x" : 0,
+                  "y" : 0
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXStaticText",
+                "roleDescription" : "text",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "value" : {
+                  "text" : "",
+                  "type" : "string"
+                },
+                "visible" : false
+              },
+              {
+                "children" : [
+
+                ],
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : -12,
+                  "w" : 10,
+                  "x" : 0,
+                  "y" : 0
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXStaticText",
+                "roleDescription" : "text",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : false
+              },
+              {
+                "children" : [
+
+                ],
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 0,
+                  "w" : 0,
+                  "x" : 0,
+                  "y" : 0
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXStaticText",
+                "roleDescription" : "text",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : false
+              },
+              {
+                "children" : [
+
+                ],
+                "description" : "Make file read-only",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 29,
+                  "w" : 16,
+                  "x" : 2274,
+                  "y" : 1349
+                },
+                "help" : "Make file read-only",
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXStaticText",
+                "roleDescription" : "text",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "value" : {
+                  "text" : "Make file read-only",
+                  "type" : "string"
+                },
+                "visible" : true
+              },
+              {
+                "children" : [
+
+                ],
+                "description" : "",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : 0,
+                  "w" : 0,
+                  "x" : 0,
+                  "y" : 0
+                },
+                "help" : "",
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXStaticText",
+                "roleDescription" : "text",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "value" : {
+                  "text" : "",
+                  "type" : "string"
+                },
+                "visible" : false
+              },
+              {
+                "children" : [
+
+                ],
+                "description" : "",
+                "enabled" : true,
+                "expanded" : false,
+                "focused" : false,
+                "frame" : {
+                  "h" : -12,
+                  "w" : -16,
+                  "x" : 0,
+                  "y" : 0
+                },
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXImage",
+                "roleDescription" : "image",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXFocused",
+                  "AXSelected"
+                ],
+                "visible" : false
+              }
+            ],
+            "description" : "Status Bar",
+            "enabled" : true,
+            "expanded" : false,
+            "focused" : false,
+            "frame" : {
+              "h" : 30,
+              "w" : 1400,
+              "x" : 900,
+              "y" : 1348
+            },
+            "minimized" : false,
+            "modal" : false,
+            "required" : false,
+            "role" : "AXGroup",
+            "roleDescription" : "group",
+            "selected" : false,
+            "selectedTextRange" : [
+              0,
+              0
+            ],
+            "settable" : [
+              "AXFocused",
+              "AXSelected"
+            ],
+            "value" : {
+              "text" : "0",
+              "type" : "number"
+            },
+            "visible" : true
+          }
+        ],
+        "description" : "Root Pane",
+        "enabled" : true,
+        "expanded" : false,
+        "focused" : false,
+        "frame" : {
+          "h" : 1000,
+          "w" : 1400,
+          "x" : 900,
+          "y" : 378
+        },
+        "minimized" : false,
+        "modal" : false,
+        "required" : false,
+        "role" : "AXGroup",
+        "roleDescription" : "group",
+        "selected" : false,
+        "selectedTextRange" : [
+          0,
+          0
+        ],
+        "settable" : [
+          "AXFocused",
+          "AXSelected"
+        ],
+        "value" : {
+          "text" : "0",
+          "type" : "number"
+        }
+      },
+      {
+        "actions" : [
+          "AXPress"
+        ],
+        "children" : [
+
+        ],
+        "enabled" : false,
+        "focused" : false,
+        "frame" : {
+          "h" : 16,
+          "w" : 16,
+          "x" : 912,
+          "y" : 390
+        },
+        "role" : "AXButton",
+        "roleDescription" : "close button",
+        "subrole" : "AXCloseButton"
+      },
+      {
+        "actions" : [
+          "AXPress",
+          "AXZoomWindow",
+          "AXShowMenu"
+        ],
+        "children" : [
+          {
+            "children" : [
+              {
+                "children" : [
+
+                ],
+                "focused" : false,
+                "frame" : {
+                  "h" : 14,
+                  "w" : 14,
+                  "x" : 953,
+                  "y" : 391
+                },
+                "role" : "AXGroup",
+                "roleDescription" : "group"
+              }
+            ],
+            "focused" : false,
+            "frame" : {
+              "h" : 14,
+              "w" : 14,
+              "x" : 953,
+              "y" : 391
+            },
+            "role" : "AXGroup",
+            "roleDescription" : "group"
+          }
+        ],
+        "enabled" : false,
+        "focused" : false,
+        "frame" : {
+          "h" : 16,
+          "w" : 16,
+          "x" : 952,
+          "y" : 390
+        },
+        "help" : "this button also has an action to zoom the window",
+        "role" : "AXButton",
+        "roleDescription" : "full screen button",
+        "subrole" : "AXFullScreenButton"
+      },
+      {
+        "actions" : [
+          "AXPress"
+        ],
+        "children" : [
+
+        ],
+        "enabled" : false,
+        "focused" : false,
+        "frame" : {
+          "h" : 16,
+          "w" : 16,
+          "x" : 932,
+          "y" : 390
+        },
+        "role" : "AXButton",
+        "roleDescription" : "minimize button",
+        "subrole" : "AXMinimizeButton"
+      }
+    ],
+    "focused" : false,
+    "frame" : {
+      "h" : 1000,
+      "w" : 1400,
+      "x" : 900,
+      "y" : 378
+    },
+    "minimized" : false,
+    "modal" : false,
+    "role" : "AXWindow",
+    "roleDescription" : "dialog",
+    "subrole" : "AXDialog",
+    "title" : ""
+  },
+  "scale" : 2,
+  "walk" : {
+    "capped" : false,
+    "depth" : 7,
+    "ms" : 169,
+    "nodes" : 94
+  },
+  "window" : {
+    "frame" : {
+      "h" : 1000,
+      "w" : 1400,
+      "x" : 900,
+      "y" : 378
+    },
+    "title" : ""
+  }
+}
