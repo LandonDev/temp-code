@@ -3,18 +3,19 @@
  * tools on the app MCP server, the same on every harness. The verbs and
  * their parameter names inside `computer_act` and `computer_batch` are
  * Anthropic's native computer-use set, with `element` beside `coordinate`.
- * TypeScript only; never generated. Every description here is a one-line
- * placeholder: the Computer model instructions thread owns the wording.
+ * TypeScript only; never generated. The words are descriptions.ts's, in
+ * two shapes; the schemas here carry them.
  */
 import { z } from 'zod'
 import { PermissionPolicySchema } from '../events'
+import { fieldWords, perVerbDescription, toolDescription, type FieldKey, type ToolShape, type WordsShape } from './descriptions'
 import { parseElementLine } from './observation'
+import { ConfirmSchema } from './policy'
 import {
   ACTION_PARAMS,
   ActionClassSchema,
   COMPUTER_ACTION_NAMES,
   COMPUTER_ACTION_SHAPE,
-  ComputerActionSchema,
   ElementIndexSchema,
   NO_INPUT_ACTIONS,
   TierSchema,
@@ -82,64 +83,77 @@ export const COMPUTER_ACTIONS: Readonly<Record<ComputerActionName, ComputerActio
 
 // ── the four tools ──────────────────────────────────────────────────────
 
-/** A name or bundle id; an installed app that is not running is launched in the background. */
-const AppField = z.string().min(1).describe('The app: its name or bundle id.')
-const WindowField = z.string().min(1).optional().describe("A window's title or part of it; the main window when left out.")
-const ScreenshotField = z.boolean().optional().describe('Attach a screenshot to the observation.')
-
 export const COMPUTER_TOOL_NAMES = ['computer_apps', 'computer_observe', 'computer_act', 'computer_batch'] as const
 export type ComputerToolName = (typeof COMPUTER_TOOL_NAMES)[number]
 
 /** Actions in one `computer_batch` call. */
 export const TOOL_BATCH_MAX_ACTIONS = 20
 
-export const ComputerAppsInputSchema = z.object({
-  launch: z.string().min(1).optional().describe('Start this app in the background first.')
-})
+type FieldText = Readonly<Record<FieldKey, string>>
 
-export const ComputerObserveInputSchema = z.object({
-  app: AppField,
-  window: WindowField,
-  full: z.boolean().optional().describe('The whole tree, never a diff.'),
-  element: ElementIndexSchema.optional().describe("One element's subtree, whole."),
-  screenshot: ScreenshotField,
-  menus: z.boolean().optional().describe('Include the menu bar.')
-})
+/** The wire's action fields, each described in one word shape; optional as the wire has them. */
+function describedActionShape(w: FieldText): typeof COMPUTER_ACTION_SHAPE {
+  return Object.fromEntries(
+    Object.entries(COMPUTER_ACTION_SHAPE).map(([k, s]) => [k, (s as z.ZodType).describe(w[k as FieldKey])])
+  ) as typeof COMPUTER_ACTION_SHAPE
+}
 
-/** The action's own fields beside the target's: one flat object, no `oneOf`. */
-export const ComputerActInputSchema = z
-  .object({ app: AppField, window: WindowField, screenshot: ScreenshotField, ...COMPUTER_ACTION_SHAPE })
-  .superRefine(refineAction)
+/** The four tools' inputs with one word shape's field descriptions; the rules are the same in every shape. */
+function toolInputs(w: FieldText) {
+  const target = {
+    app: z.string().min(1).describe(w.app),
+    window: z.string().min(1).optional().describe(w.window),
+    screenshot: z.boolean().optional().describe(w.screenshot)
+  }
+  const actionShape = describedActionShape(w)
+  const confirm = (text: string) =>
+    z
+      .object({ kind: ConfirmSchema.shape.kind.describe(w['confirm.kind']), what: ConfirmSchema.shape.what.describe(w['confirm.what']) })
+      .optional()
+      .describe(text)
+  return {
+    apps: z.object({ launch: z.string().min(1).optional().describe(w.launch) }),
+    observe: z.object({
+      app: target.app,
+      window: target.window,
+      full: z.boolean().optional().describe(w.full),
+      element: ElementIndexSchema.optional().describe(w['observe.element']),
+      screenshot: target.screenshot,
+      menus: z.boolean().optional().describe(w.menus)
+    }),
+    /** The action's own fields beside the target's: one flat object, no `oneOf`. */
+    act: z.object({ ...target, ...actionShape, confirm: confirm(w.confirm) }).superRefine(refineAction),
+    batch: z.object({
+      ...target,
+      actions: z.array(z.object(actionShape).superRefine(refineAction)).min(1).max(TOOL_BATCH_MAX_ACTIONS).describe(w.actions),
+      confirm: confirm(w['batch.confirm'])
+    }),
+    target,
+    confirm: confirm(w.confirm)
+  }
+}
 
-export const ComputerBatchInputSchema = z.object({
-  app: AppField,
-  window: WindowField,
-  screenshot: ScreenshotField,
-  actions: z.array(ComputerActionSchema).min(1).max(TOOL_BATCH_MAX_ACTIONS).describe('The actions, run in order.')
-})
+const INPUTS = { anthropic: toolInputs(fieldWords('anthropic')), cua: toolInputs(fieldWords('cua')) } as const
+
+export const ComputerAppsInputSchema = INPUTS.anthropic.apps
+export const ComputerObserveInputSchema = INPUTS.anthropic.observe
+export const ComputerActInputSchema = INPUTS.anthropic.act
+export const ComputerBatchInputSchema = INPUTS.anthropic.batch
 
 export type ComputerAppsInput = z.infer<typeof ComputerAppsInputSchema>
 export type ComputerObserveInput = z.infer<typeof ComputerObserveInputSchema>
 export type ComputerActInput = z.infer<typeof ComputerActInputSchema>
 export type ComputerBatchInput = z.infer<typeof ComputerBatchInputSchema>
 
-/**
- * What tool search matches the four deferred tools by on Claude (the SDK's
- * `searchHint`); a placeholder Computer model instructions replaces.
- */
-/** After each tool's description on a thread whose calls cross the Mac bridge (computer/bridge.ts); the Computer model instructions thread owns its wording. */
+/** After each tool's description on a thread whose calls cross the Mac bridge (computer/bridge.ts). */
 export const COMPUTER_BRIDGE_NOTE = " These act on the user's Mac, where the apps run; this thread runs on another host."
 
-export const COMPUTER_SEARCH_HINT =
-  'computer use: read, click, type into and scroll the windows of Mac apps (TextEdit, Mail, Finder, a browser) through their accessibility tree; screenshots'
+export { COMPUTER_SEARCH_HINT, type ToolShape, type WordsShape } from './descriptions'
 
-/** One-line placeholders; Computer model instructions replaces them. */
-export const COMPUTER_TOOL_DESCRIPTIONS: Readonly<Record<ComputerToolName, string>> = {
-  computer_apps: 'List the running apps and their windows.',
-  computer_observe: "Read a window's accessibility tree as indexed text.",
-  computer_act: 'Do one action in an app window, then read the window again.',
-  computer_batch: 'Do several actions in order in one app window, then read it once.'
-}
+/** The anthropic shape's four descriptions. */
+export const COMPUTER_TOOL_DESCRIPTIONS: Readonly<Record<ComputerToolName, string>> = Object.fromEntries(
+  COMPUTER_TOOL_NAMES.map((n) => [n, toolDescription('anthropic', 'act', n)])
+) as Record<ComputerToolName, string>
 
 export interface ComputerToolSpec {
   name: string
@@ -147,35 +161,70 @@ export interface ComputerToolSpec {
   input: z.ZodType
 }
 
-export const COMPUTER_TOOLS: readonly ComputerToolSpec[] = [
-  { name: 'computer_apps', description: COMPUTER_TOOL_DESCRIPTIONS.computer_apps, input: ComputerAppsInputSchema },
-  { name: 'computer_observe', description: COMPUTER_TOOL_DESCRIPTIONS.computer_observe, input: ComputerObserveInputSchema },
-  { name: 'computer_act', description: COMPUTER_TOOL_DESCRIPTIONS.computer_act, input: ComputerActInputSchema },
-  { name: 'computer_batch', description: COMPUTER_TOOL_DESCRIPTIONS.computer_batch, input: ComputerBatchInputSchema }
-]
+const specs = new Map<string, readonly ComputerToolSpec[]>()
+
+/**
+ * The tools a thread gets, in its word shape: the four, or with `per-verb`
+ * computer_apps, computer_observe, computer_batch and one tool per action in
+ * computer_act's place.
+ */
+export function computerToolSpecs(shape: WordsShape = 'anthropic', tools: ToolShape = 'act'): readonly ComputerToolSpec[] {
+  const key = `${shape}/${tools}`
+  const kept = specs.get(key)
+  if (kept) return kept
+  const i = INPUTS[shape]
+  const d = (n: ComputerToolName): string => toolDescription(shape, tools, n)
+  const apps = { name: 'computer_apps', description: d('computer_apps'), input: i.apps }
+  const observe = { name: 'computer_observe', description: d('computer_observe'), input: i.observe }
+  const batch = { name: 'computer_batch', description: d('computer_batch'), input: i.batch }
+  const made = Object.freeze(
+    tools === 'act'
+      ? [apps, observe, { name: 'computer_act', description: d('computer_act'), input: i.act }, batch]
+      : [apps, observe, batch, ...perVerbTools(shape)]
+  )
+  specs.set(key, made)
+  return made
+}
+
+export const COMPUTER_TOOLS: readonly ComputerToolSpec[] = computerToolSpecs('anthropic', 'act')
+
+/** zod writes these bounds on every integer; they say nothing to a model and cost every Mac thread its tokens. */
+function dropSafeBounds(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(dropSafeBounds)
+  if (!node || typeof node !== 'object') return node
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(node)) {
+    if ((k === 'minimum' && v === Number.MIN_SAFE_INTEGER) || (k === 'maximum' && v === Number.MAX_SAFE_INTEGER)) continue
+    out[k] = dropSafeBounds(v)
+  }
+  return out
+}
 
 /** A tool's input as the JSON Schema an MCP `tools/list` carries (the bridge's `inputSchema`). */
 export function computerToolJsonSchema(input: z.ZodType): Record<string, unknown> {
   const { $schema: _schema, ...schema } = z.toJSONSchema(input, { io: 'input' }) as Record<string, unknown>
-  return schema
+  return dropSafeBounds(schema) as Record<string, unknown>
 }
 
 /**
  * The one-tool-per-verb variant (§9): `computer_left_click`, `computer_type`, …,
  * each with `app`, `window`, `screenshot` and that verb's own parameters,
- * required ones required. Computer model instructions may measure it for
- * Claude against `computer_act` and `computer_batch` and keep the faster.
+ * required ones required, and `confirm` on every action that sends input.
+ * The host runs each as computer_act with its action.
  */
-export function perVerbTools(): ComputerToolSpec[] {
+export function perVerbTools(shape: WordsShape = 'anthropic'): ComputerToolSpec[] {
+  const w = fieldWords(shape)
+  const { target, confirm } = INPUTS[shape]
   return COMPUTER_ACTION_NAMES.map((action) => {
     const { required, optional } = ACTION_PARAMS[action]
-    const shape: Record<string, z.ZodType> = { app: AppField, window: WindowField, screenshot: ScreenshotField }
-    for (const p of optional) shape[p] = COMPUTER_ACTION_SHAPE[p]
-    for (const p of required) shape[p] = (COMPUTER_ACTION_SHAPE[p] as z.ZodOptional<z.ZodType>).unwrap()
+    const fields: Record<string, z.ZodType> = { ...target }
+    for (const p of optional) fields[p] = COMPUTER_ACTION_SHAPE[p].describe(w[p])
+    for (const p of required) fields[p] = (COMPUTER_ACTION_SHAPE[p] as z.ZodOptional<z.ZodType>).unwrap().describe(w[p])
+    if (!NO_INPUT_ACTIONS.includes(action)) fields.confirm = confirm
     const input = z
-      .object(shape)
+      .object(fields)
       .superRefine((v, ctx) => refineAction({ ...(v as Partial<Record<ActionParam, unknown>>), action }, ctx))
-    return { name: `computer_${action}`, description: `The ${action} action.`, input }
+    return { name: `computer_${action}`, description: perVerbDescription(shape, action), input }
   })
 }
 
