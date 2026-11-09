@@ -3,7 +3,8 @@
  * A proof waits only for an older one, judged by each proof's wrapper (the
  * `bun run` that started it, not its node runner), so two proofs started in
  * any order never wait on each other. Used by the task benchmark, the words
- * comparison and the tier scheduling proof.
+ * comparison, the tier scheduling proof and the bridge proof, and by every
+ * computer row of the gate before it starts.
  */
 import { execFileSync } from 'node:child_process'
 
@@ -20,7 +21,8 @@ export const COMPUTER_PROOFS: readonly string[] = [
   'e2e-computer-preview',
   'e2e-computer-ui',
   'compare-computer-words',
-  'e2e-computer-bench'
+  'e2e-computer-bench',
+  'e2e-computer-bridge'
 ]
 
 /** `ps`'s elapsed time, `[[dd-]hh:]mm:ss`, in seconds. */
