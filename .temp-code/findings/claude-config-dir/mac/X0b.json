@@ -3,21 +3,29 @@
   "harness": "codex",
   "host": "mac",
   "title": "the fake Responses front accepted",
-  "at": "2026-11-09T00:24:21.189Z",
+  "at": "2026-11-09T01:01:22.309Z",
   "cli": {
     "path": "/opt/homebrew/bin/codex",
     "version": null
   },
   "env": {
-    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/X0b/home",
-    "CODEX_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/X0b/codex-home",
-    "CODEX_CA_CERTIFICATE": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/tls/ca.pem"
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/X0b/home",
+    "CODEX_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/X0b/codex-home",
+    "CODEX_CA_CERTIFICATE": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/tls/ca.pem",
+    "HTTPS_PROXY": "http://127.0.0.1:9",
+    "HTTP_PROXY": "http://127.0.0.1:9",
+    "ALL_PROXY": "http://127.0.0.1:9",
+    "https_proxy": "http://127.0.0.1:9",
+    "http_proxy": "http://127.0.0.1:9",
+    "all_proxy": "http://127.0.0.1:9",
+    "NO_PROXY": "127.0.0.1,localhost,::1",
+    "no_proxy": "127.0.0.1,localhost,::1"
   },
   "unset": [],
   "argv": [
     "app-server",
     "-c",
-    "chatgpt_base_url=\"https://127.0.0.1:51419/backend-api/\""
+    "chatgpt_base_url=\"https://127.0.0.1:56494/backend-api/\""
   ],
   "commands": [],
   "observed": {
@@ -25,7 +33,7 @@
     "textTurn": {
       "completed": true,
       "status": "completed",
-      "error": "{\"error\":{\"message\":\"Reconnecting... 2/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":null}},\"additionalDetails\":\"stream disconnected before completion: WebSocket protocol error: Handshake not finished\",\"misalignment\":null},\"willRetry\":true,\"threadId\":\"01a1bdb1-1471-7ff0-ad74-a3",
+      "error": "{\"error\":{\"message\":\"Reconnecting... 2/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":null}},\"additionalDetails\":\"stream disconnected before completion: WebSocket protocol error: Handshake not finished\",\"misalignment\":null},\"willRetry\":true,\"threadId\":\"01a1bdd2-f8a6-7502-84bf-be",
       "text": "ok",
       "requests": 8,
       "paths": [
@@ -49,7 +57,7 @@
       "bodies": [
         {
           "encoding": "zstd",
-          "bytes": 16182,
+          "bytes": 16171,
           "parsed": true,
           "fields": [
             "client_metadata",
@@ -99,7 +107,7 @@
       "bodies": [
         {
           "encoding": "zstd",
-          "bytes": 16313,
+          "bytes": 16322,
           "parsed": true,
           "fields": [
             "client_metadata",
@@ -120,7 +128,7 @@
         },
         {
           "encoding": "zstd",
-          "bytes": 16519,
+          "bytes": 16528,
           "parsed": true,
           "fields": [
             "client_metadata",
@@ -150,11 +158,11 @@
     "serverRequests": [],
     "routingLog": [],
     "stderr": [
-      "\u001b[2m2026-11-09T00:24:24.030022Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: WebSocket protocol error: Handshake not finished, url: wss://127.0.0.1:51419/backend-api/codex/responses",
-      "\u001b[2m2026-11-09T00:24:24.878706Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: WebSocket protocol error: Handshake not finished, url: wss://127.0.0.1:51419/backend-api/codex/responses",
-      "\u001b[2m2026-11-09T00:24:26.571946Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: WebSocket protocol error: Handshake not finished, url: wss://127.0.0.1:51419/backend-api/codex/responses",
-      "\u001b[2m2026-11-09T00:24:29.638874Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: WebSocket protocol error: Handshake not finished, url: wss://127.0.0.1:51419/backend-api/codex/responses",
-      "\u001b[2m2026-11-09T00:24:29.839786Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mrmcp::transport::worker\u001b[0m\u001b[2m:\u001b[0m worker quit with fatal: Transport channel closed, when UnexpectedServerResponse(\"HTTP 404: {\\\"error\\\":{\\\"message\\\":\\\"fake: not here\\\"}}\")"
+      "\u001b[2m2026-11-09T01:01:27.043943Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: WebSocket protocol error: Handshake not finished, url: wss://127.0.0.1:56494/backend-api/codex/responses",
+      "\u001b[2m2026-11-09T01:01:27.878024Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: WebSocket protocol error: Handshake not finished, url: wss://127.0.0.1:56494/backend-api/codex/responses",
+      "\u001b[2m2026-11-09T01:01:29.500183Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: WebSocket protocol error: Handshake not finished, url: wss://127.0.0.1:56494/backend-api/codex/responses",
+      "\u001b[2m2026-11-09T01:01:32.845671Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: WebSocket protocol error: Handshake not finished, url: wss://127.0.0.1:56494/backend-api/codex/responses",
+      "\u001b[2m2026-11-09T01:01:32.999010Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mrmcp::transport::worker\u001b[0m\u001b[2m:\u001b[0m worker quit with fatal: Transport channel closed, when UnexpectedServerResponse(\"HTTP 404: {\\\"error\\\":{\\\"message\\\":\\\"fake: not here\\\"}}\")"
     ],
     "firstModel": {
       "model": "gpt-6.1-sol",
@@ -162,7 +170,7 @@
       "bodies": [
         {
           "encoding": "zstd",
-          "bytes": 24417,
+          "bytes": 24436,
           "parsed": true,
           "fields": [
             "client_metadata",
@@ -186,7 +194,7 @@
       "textTurn": true,
       "functionCallRan": true
     },
-    "ms": 16808
+    "ms": 21603
   },
   "status": "ok",
   "verdict": "textTurn yes, functionCallRan yes; the fake is accepted"

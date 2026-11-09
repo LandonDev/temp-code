@@ -3,27 +3,35 @@
   "harness": "codex",
   "host": "box",
   "title": "resume across homes",
-  "at": "2026-11-09T00:15:48.635Z",
+  "at": "2026-11-09T01:08:15.180Z",
   "cli": {
     "path": "/srv/agents/home/.npm-global/bin/codex",
     "version": null
   },
   "env": {
-    "HOME": "/tmp/tc-config-spike/2026-11-09T00-14-57-253Z-box/X2d/home",
-    "CODEX_HOME": "/tmp/tc-config-spike/2026-11-09T00-14-57-253Z-box/X2d/homeB2",
-    "CODEX_CA_CERTIFICATE": "/tmp/tc-config-spike/2026-11-09T00-14-57-253Z-box/tls/ca.pem"
+    "HOME": "/tmp/tc-config-spike/2026-11-09T01-08-01-714Z-box/X2d/home",
+    "CODEX_HOME": "/tmp/tc-config-spike/2026-11-09T01-08-01-714Z-box/X2d/homeB2",
+    "CODEX_CA_CERTIFICATE": "/tmp/tc-config-spike/2026-11-09T01-08-01-714Z-box/tls/ca.pem",
+    "HTTPS_PROXY": "http://127.0.0.1:9",
+    "HTTP_PROXY": "http://127.0.0.1:9",
+    "ALL_PROXY": "http://127.0.0.1:9",
+    "https_proxy": "http://127.0.0.1:9",
+    "http_proxy": "http://127.0.0.1:9",
+    "all_proxy": "http://127.0.0.1:9",
+    "NO_PROXY": "127.0.0.1,localhost,::1",
+    "no_proxy": "127.0.0.1,localhost,::1"
   },
   "unset": [],
   "argv": [
     "app-server",
     "-c",
-    "chatgpt_base_url=\"https://127.0.0.1:37823/backend-api/\""
+    "chatgpt_base_url=\"https://127.0.0.1:45357/backend-api/\""
   ],
   "commands": [],
   "observed": {
-    "thread": "01a1bda9-4212-72f3-9256-7134bbad4f3a",
+    "thread": "01a1bdd9-4579-7ad2-b4b0-96b0972d8a1c",
     "underEmptyHome": {
-      "resume": "no rollout found for thread id 01a1bda9-4212-72f3-9256-7134bbad4f3a"
+      "resume": "no rollout found for thread id 01a1bdd9-4579-7ad2-b4b0-96b0972d8a1c"
     },
     "linked": [
       "state_5.sqlite",
@@ -95,7 +103,7 @@
       "resumesUnderEmptyHome": false,
       "resumesWithLinks": true
     },
-    "ms": 1365
+    "ms": 7619
   },
   "status": "partial",
   "verdict": "resumesUnderEmptyHome no, resumesWithLinks yes"

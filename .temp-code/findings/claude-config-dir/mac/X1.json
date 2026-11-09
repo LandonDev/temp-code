@@ -3,21 +3,29 @@
   "harness": "codex",
   "host": "mac",
   "title": "skill roots outside CODEX_HOME",
-  "at": "2026-11-09T00:47:43.178Z",
+  "at": "2026-11-09T01:01:44.015Z",
   "cli": {
     "path": "/opt/homebrew/bin/codex",
     "version": null
   },
   "env": {
-    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/X1/home",
-    "CODEX_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/X1/codex-home",
-    "CODEX_CA_CERTIFICATE": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/tls/ca.pem"
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/X1/home",
+    "CODEX_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/X1/codex-home",
+    "CODEX_CA_CERTIFICATE": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/tls/ca.pem",
+    "HTTPS_PROXY": "http://127.0.0.1:9",
+    "HTTP_PROXY": "http://127.0.0.1:9",
+    "ALL_PROXY": "http://127.0.0.1:9",
+    "https_proxy": "http://127.0.0.1:9",
+    "http_proxy": "http://127.0.0.1:9",
+    "all_proxy": "http://127.0.0.1:9",
+    "NO_PROXY": "127.0.0.1,localhost,::1",
+    "no_proxy": "127.0.0.1,localhost,::1"
   },
   "unset": [],
   "argv": [
     "app-server",
     "-c",
-    "chatgpt_base_url=\"https://127.0.0.1:54264/backend-api/\""
+    "chatgpt_base_url=\"https://127.0.0.1:56494/backend-api/\""
   ],
   "commands": [],
   "observed": {
@@ -33,8 +41,8 @@
       "requests": 8,
       "paths": [
         "GET /backend-api/ps/plugins/suggested/codex",
-        "POST /backend-api/codex/analytics-events/events",
         "POST /backend-api/ps/mcp",
+        "POST /backend-api/codex/analytics-events/events",
         "GET /backend-api/wham/settings/user",
         "POST /backend-api/codex/responses"
       ],
@@ -52,7 +60,7 @@
       "bodies": [
         {
           "encoding": "zstd",
-          "bytes": 16287,
+          "bytes": 16289,
           "parsed": true,
           "fields": [
             "client_metadata",
@@ -79,7 +87,7 @@
       "last": []
     },
     "skillPartTurn": {
-      "requests": 4,
+      "requests": 5,
       "paths": [
         "POST /backend-api/ps/mcp",
         "POST /backend-api/codex/analytics-events/events",
@@ -100,7 +108,7 @@
       "bodies": [
         {
           "encoding": "zstd",
-          "bytes": 16427,
+          "bytes": 16425,
           "parsed": true,
           "fields": [
             "client_metadata",
@@ -131,7 +139,7 @@
       true
     ],
     "errors": [
-      "{\"error\":{\"message\":\"Reconnecting... 2/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":null}},\"additionalDetails\":\"stream disconnected before completion: WebSocket protocol error: Handshake not finished\",\"misalignment\":null},\"willRetry\":true,\"threadId\":\"01a1bdc6-7f90-76b3-9f98-ab",
+      "{\"error\":{\"message\":\"Reconnecting... 2/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":null}},\"additionalDetails\":\"stream disconnected before completion: WebSocket protocol error: Handshake not finished\",\"misalignment\":null},\"willRetry\":true,\"threadId\":\"01a1bdd3-4dab-7630-a5b2-49",
       null
     ],
     "checks": {
@@ -142,7 +150,7 @@
       "bodyBySkillPart": false,
       "pathBySkillPart": false
     },
-    "ms": 13027
+    "ms": 11033
   },
   "status": "partial",
   "verdict": "extraRootsAccepted yes, flatListed yes, nestedListed yes, flatInPrompt yes, bodyBySkillPart no, pathBySkillPart no"

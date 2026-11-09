@@ -3,22 +3,31 @@
   "harness": "muse",
   "host": "mac",
   "title": "record Meta's model list (Mac)",
-  "at": "2026-11-09T00:43:40.535Z",
+  "at": "2026-11-09T01:04:30.908Z",
   "cli": {
     "path": "/Users/landon/.local/bin/muse",
     "version": null
   },
   "env": {
-    "XDG_DATA_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/M0b/data",
-    "XDG_STATE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/M0b/state",
-    "XDG_CACHE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/M0b/cache",
-    "MUSE_CONTRIBUTOR_MODE": "0"
+    "XDG_DATA_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/M0b/data",
+    "XDG_STATE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/M0b/state",
+    "XDG_CACHE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/M0b/cache",
+    "MUSE_CONTRIBUTOR_MODE": "0",
+    "MUSE_NO_AUTO_UPDATE": "1",
+    "HTTPS_PROXY": "http://127.0.0.1:9",
+    "HTTP_PROXY": "http://127.0.0.1:9",
+    "ALL_PROXY": "http://127.0.0.1:9",
+    "https_proxy": "http://127.0.0.1:9",
+    "http_proxy": "http://127.0.0.1:9",
+    "all_proxy": "http://127.0.0.1:9",
+    "NO_PROXY": "127.0.0.1,localhost,::1",
+    "no_proxy": "127.0.0.1,localhost,::1"
   },
   "unset": [],
   "argv": [
     "serve",
     "-c",
-    "endpoint_transport.base_url=\"http://127.0.0.1:53878\""
+    "endpoint_transport.base_url=\"http://127.0.0.1:57297\""
   ],
   "commands": [],
   "observed": {
@@ -52,9 +61,7 @@
       ".codex": {
         "added": [],
         "removed": [],
-        "changed": [
-          "logs_2.sqlite-wal"
-        ]
+        "changed": []
       },
       ".config/muse": {
         "added": [],
@@ -67,7 +74,7 @@
       "recorded": true,
       "modelListServed": true
     },
-    "ms": 2349
+    "ms": 2566
   },
   "status": "ok",
   "verdict": "recorded yes, modelListServed yes"

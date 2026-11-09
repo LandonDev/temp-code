@@ -3,21 +3,29 @@
   "harness": "codex",
   "host": "box",
   "title": "the fake Responses front accepted",
-  "at": "2026-11-09T00:15:33.376Z",
+  "at": "2026-11-09T01:08:01.751Z",
   "cli": {
     "path": "/srv/agents/home/.npm-global/bin/codex",
     "version": null
   },
   "env": {
-    "HOME": "/tmp/tc-config-spike/2026-11-09T00-14-57-253Z-box/X0b/home",
-    "CODEX_HOME": "/tmp/tc-config-spike/2026-11-09T00-14-57-253Z-box/X0b/codex-home",
-    "CODEX_CA_CERTIFICATE": "/tmp/tc-config-spike/2026-11-09T00-14-57-253Z-box/tls/ca.pem"
+    "HOME": "/tmp/tc-config-spike/2026-11-09T01-08-01-714Z-box/X0b/home",
+    "CODEX_HOME": "/tmp/tc-config-spike/2026-11-09T01-08-01-714Z-box/X0b/codex-home",
+    "CODEX_CA_CERTIFICATE": "/tmp/tc-config-spike/2026-11-09T01-08-01-714Z-box/tls/ca.pem",
+    "HTTPS_PROXY": "http://127.0.0.1:9",
+    "HTTP_PROXY": "http://127.0.0.1:9",
+    "ALL_PROXY": "http://127.0.0.1:9",
+    "https_proxy": "http://127.0.0.1:9",
+    "http_proxy": "http://127.0.0.1:9",
+    "all_proxy": "http://127.0.0.1:9",
+    "NO_PROXY": "127.0.0.1,localhost,::1",
+    "no_proxy": "127.0.0.1,localhost,::1"
   },
   "unset": [],
   "argv": [
     "app-server",
     "-c",
-    "chatgpt_base_url=\"https://127.0.0.1:37823/backend-api/\""
+    "chatgpt_base_url=\"https://127.0.0.1:45357/backend-api/\""
   ],
   "commands": [],
   "observed": {
@@ -26,6 +34,7 @@
       "completed": true,
       "status": "completed",
       "error": null,
+      "retries": 0,
       "text": "ok",
       "requests": 9,
       "paths": [
@@ -49,7 +58,7 @@
       "bodies": [
         {
           "encoding": "zstd",
-          "bytes": 16135,
+          "bytes": 16138,
           "parsed": true,
           "fields": [
             "client_metadata",
@@ -76,6 +85,7 @@
       "completed": true,
       "status": "completed",
       "error": null,
+      "retries": 0,
       "text": "ok",
       "requests": 6,
       "paths": [
@@ -96,7 +106,7 @@
       "bodies": [
         {
           "encoding": "zstd",
-          "bytes": 16269,
+          "bytes": 16275,
           "parsed": true,
           "fields": [
             "client_metadata",
@@ -117,7 +127,7 @@
         },
         {
           "encoding": "zstd",
-          "bytes": 16464,
+          "bytes": 16479,
           "parsed": true,
           "fields": [
             "client_metadata",
@@ -147,11 +157,11 @@
     "serverRequests": [],
     "routingLog": [],
     "stderr": [
-      "\u001b[2m2026-11-09T00:15:33.558124Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_models_manager::manager\u001b[0m\u001b[2m:\u001b[0m failed to refresh available models: unexpected status 401 Unauthorized: Could not parse your authentication token. Please try signing in again., url: https://chatgpt.com/backend-api/codex/models?client_",
-      "\u001b[2m2026-11-09T00:15:33.598998Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_models_manager::manager\u001b[0m\u001b[2m:\u001b[0m failed to refresh available models: unexpected status 401 Unauthorized: Could not parse your authentication token. Please try signing in again., url: https://chatgpt.com/backend-api/codex/models?client_",
-      "\u001b[2m2026-11-09T00:15:33.613421Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mrmcp::transport::worker\u001b[0m\u001b[2m:\u001b[0m worker quit with fatal: Transport channel closed, when UnexpectedServerResponse(\"HTTP 404: {\\\"error\\\":{\\\"message\\\":\\\"fake: not here\\\"}}\")",
-      "\u001b[2m2026-11-09T00:15:33.632290Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mrmcp::transport::worker\u001b[0m\u001b[2m:\u001b[0m worker quit with fatal: Transport channel closed, when UnexpectedServerResponse(\"HTTP 404: {\\\"error\\\":{\\\"message\\\":\\\"fake: not here\\\"}}\")",
-      "\u001b[2m2026-11-09T00:15:33.676380Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: HTTP error: 426 Upgrade Required, url: wss://127.0.0.1:37823/backend-api/codex/responses"
+      "\u001b[2m2026-11-09T01:08:04.953360Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_models_manager::manager\u001b[0m\u001b[2m:\u001b[0m failed to refresh available models: Connection failed: error sending request",
+      "\u001b[2m2026-11-09T01:08:08.143161Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_models_manager::manager\u001b[0m\u001b[2m:\u001b[0m failed to refresh available models: Connection failed: error sending request",
+      "\u001b[2m2026-11-09T01:08:08.157449Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mrmcp::transport::worker\u001b[0m\u001b[2m:\u001b[0m worker quit with fatal: Transport channel closed, when UnexpectedServerResponse(\"HTTP 404: {\\\"error\\\":{\\\"message\\\":\\\"fake: not here\\\"}}\")",
+      "\u001b[2m2026-11-09T01:08:08.178322Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mrmcp::transport::worker\u001b[0m\u001b[2m:\u001b[0m worker quit with fatal: Transport channel closed, when UnexpectedServerResponse(\"HTTP 404: {\\\"error\\\":{\\\"message\\\":\\\"fake: not here\\\"}}\")",
+      "\u001b[2m2026-11-09T01:08:08.221713Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: HTTP error: 426 Upgrade Required, url: wss://127.0.0.1:45357/backend-api/codex/responses"
     ],
     "firstModel": {
       "model": "gpt-6.1-sol",
@@ -159,7 +169,7 @@
       "bodies": [
         {
           "encoding": "zstd",
-          "bytes": 24390,
+          "bytes": 24370,
           "parsed": true,
           "fields": [
             "client_metadata",
@@ -183,7 +193,7 @@
       "textTurn": true,
       "functionCallRan": true
     },
-    "ms": 663
+    "ms": 9691
   },
   "status": "ok",
   "verdict": "textTurn yes, functionCallRan yes; the fake is accepted"

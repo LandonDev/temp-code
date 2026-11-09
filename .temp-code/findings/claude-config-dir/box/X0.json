@@ -3,7 +3,7 @@
   "harness": "codex",
   "host": "box",
   "title": "codex version, app-server schema",
-  "at": "2026-11-09T00:15:32.806Z",
+  "at": "2026-11-09T01:00:48.713Z",
   "cli": {
     "path": "/srv/agents/home/.npm-global/bin/codex",
     "version": "codex-cli 0.163.0"
@@ -14,7 +14,7 @@
   "commands": [
     "codex --version",
     "codex app-server --help",
-    "codex app-server generate-json-schema --out /tmp/tc-config-spike/2026-11-09T00-14-57-253Z-box/X0/schema"
+    "codex app-server generate-json-schema --out /tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/X0/schema"
   ],
   "observed": {
     "helpFlags": [
@@ -204,7 +204,7 @@
       "extraRoots": true,
       "hooksList": true
     },
-    "ms": 469
+    "ms": 3141
   },
   "status": "ok",
   "verdict": "schema yes, skillsList yes, extraRoots yes, hooksList yes; codex codex-cli 0.163.0"

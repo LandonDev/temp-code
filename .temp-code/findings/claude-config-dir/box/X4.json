@@ -3,49 +3,57 @@
   "harness": "codex",
   "host": "box",
   "title": "hooks.json under an owned home",
-  "at": "2026-11-09T00:41:01.977Z",
+  "at": "2026-11-09T01:01:36.622Z",
   "cli": {
     "path": "/srv/agents/home/.npm-global/bin/codex",
     "version": null
   },
   "env": {
-    "HOME": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X4/home",
-    "CODEX_HOME": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X4/codex-home",
-    "CODEX_CA_CERTIFICATE": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/tls/ca.pem"
+    "HOME": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/X4/home",
+    "CODEX_HOME": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/X4/codex-home",
+    "CODEX_CA_CERTIFICATE": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/tls/ca.pem",
+    "HTTPS_PROXY": "http://127.0.0.1:9",
+    "HTTP_PROXY": "http://127.0.0.1:9",
+    "ALL_PROXY": "http://127.0.0.1:9",
+    "https_proxy": "http://127.0.0.1:9",
+    "http_proxy": "http://127.0.0.1:9",
+    "all_proxy": "http://127.0.0.1:9",
+    "NO_PROXY": "127.0.0.1,localhost,::1",
+    "no_proxy": "127.0.0.1,localhost,::1"
   },
   "unset": [],
   "argv": [
     "app-server",
     "-c",
-    "chatgpt_base_url=\"https://127.0.0.1:44133/backend-api/\""
+    "chatgpt_base_url=\"https://127.0.0.1:40107/backend-api/\""
   ],
   "commands": [],
   "observed": {
     "untrusted": {
       "hooks": [
         {
-          "hookId": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X4/codex-home/hooks.json:user_prompt_submit:0:0",
+          "hookId": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/X4/codex-home/hooks.json:user_prompt_submit:0:0",
           "eventName": "userPromptSubmit",
-          "sourcePath": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X4/codex-home/hooks.json",
+          "sourcePath": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/X4/codex-home/hooks.json",
           "source": "user",
           "enabled": true,
-          "currentHash": "sha256:fbf35ffeb0abc032e2eb288c6aafd56daf5113262f25ffbbf0072ec989b7e74f",
+          "currentHash": "sha256:338c55617a6cbb35074b307e59a7ef4181e7b502bcf3f8623c2b923cef9bd0bd",
           "trustStatus": "untrusted"
         }
       ],
       "fired": false,
       "completed": true
     },
-    "trustRow": "[hooks.state.\"/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X4/codex-home/hooks.json:user_prompt_submit:0:0\"]\ntrusted_hash = \"sha256:fbf35ffeb0abc032e2eb288c6aafd56daf5113262f25ffbbf0072ec989b7e74f\"\n",
+    "trustRow": "[hooks.state.\"/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/X4/codex-home/hooks.json:user_prompt_submit:0:0\"]\ntrusted_hash = \"sha256:338c55617a6cbb35074b307e59a7ef4181e7b502bcf3f8623c2b923cef9bd0bd\"\n",
     "trusted": {
       "hooks": [
         {
-          "hookId": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X4/codex-home/hooks.json:user_prompt_submit:0:0",
+          "hookId": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/X4/codex-home/hooks.json:user_prompt_submit:0:0",
           "eventName": "userPromptSubmit",
-          "sourcePath": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X4/codex-home/hooks.json",
+          "sourcePath": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/X4/codex-home/hooks.json",
           "source": "user",
           "enabled": true,
-          "currentHash": "sha256:fbf35ffeb0abc032e2eb288c6aafd56daf5113262f25ffbbf0072ec989b7e74f",
+          "currentHash": "sha256:338c55617a6cbb35074b307e59a7ef4181e7b502bcf3f8623c2b923cef9bd0bd",
           "trustStatus": "trusted"
         }
       ],
@@ -57,7 +65,7 @@
       "firesUntrusted": false,
       "firesTrusted": true
     },
-    "ms": 1595
+    "ms": 7678
   },
   "status": "partial",
   "verdict": "listed yes, firesUntrusted no, firesTrusted yes"

@@ -3,25 +3,34 @@
   "harness": "muse",
   "host": "mac",
   "title": "tool processes and the moved root",
-  "at": "2026-11-09T00:48:47.160Z",
+  "at": "2026-11-09T01:05:04.269Z",
   "cli": {
     "path": "/Users/landon/.local/bin/muse",
     "version": null
   },
   "env": {
-    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M6/home",
-    "XDG_CONFIG_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M6/config",
-    "XDG_DATA_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M6/data",
-    "XDG_STATE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M6/state",
-    "XDG_CACHE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M6/cache",
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/M6/home",
+    "XDG_CONFIG_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/M6/config",
+    "XDG_DATA_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/M6/data",
+    "XDG_STATE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/M6/state",
+    "XDG_CACHE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/M6/cache",
     "MUSE_CONTRIBUTOR_MODE": "0",
+    "MUSE_NO_AUTO_UPDATE": "1",
+    "HTTPS_PROXY": "http://127.0.0.1:9",
+    "HTTP_PROXY": "http://127.0.0.1:9",
+    "ALL_PROXY": "http://127.0.0.1:9",
+    "https_proxy": "http://127.0.0.1:9",
+    "http_proxy": "http://127.0.0.1:9",
+    "all_proxy": "http://127.0.0.1:9",
+    "NO_PROXY": "127.0.0.1,localhost,::1",
+    "no_proxy": "127.0.0.1,localhost,::1",
     "TBH_CREDENTIAL_BACKEND": "file"
   },
   "unset": [],
   "argv": [
     "serve",
     "-c",
-    "endpoint_transport.base_url=\"http://127.0.0.1:54265\""
+    "endpoint_transport.base_url=\"http://127.0.0.1:56495\""
   ],
   "commands": [
     "git config --global user.name",
@@ -54,7 +63,7 @@
       "gitKeepsConfig": true,
       "ghKeepsLogin": false
     },
-    "ms": 3210
+    "ms": 3264
   },
   "status": "partial",
   "verdict": "toolSeesOwnedRoot yes, gitKeepsConfig yes, ghKeepsLogin no"

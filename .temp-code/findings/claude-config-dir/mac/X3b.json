@@ -3,21 +3,29 @@
   "harness": "codex",
   "host": "mac",
   "title": "freshness of skills in an extra root",
-  "at": "2026-11-09T00:42:58.423Z",
+  "at": "2026-11-09T01:03:22.727Z",
   "cli": {
     "path": "/opt/homebrew/bin/codex",
     "version": null
   },
   "env": {
-    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/X3b/home",
-    "CODEX_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/X3b/codex-home",
-    "CODEX_CA_CERTIFICATE": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/tls/ca.pem"
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/X3b/home",
+    "CODEX_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/X3b/codex-home",
+    "CODEX_CA_CERTIFICATE": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/tls/ca.pem",
+    "HTTPS_PROXY": "http://127.0.0.1:9",
+    "HTTP_PROXY": "http://127.0.0.1:9",
+    "ALL_PROXY": "http://127.0.0.1:9",
+    "https_proxy": "http://127.0.0.1:9",
+    "http_proxy": "http://127.0.0.1:9",
+    "all_proxy": "http://127.0.0.1:9",
+    "NO_PROXY": "127.0.0.1,localhost,::1",
+    "no_proxy": "127.0.0.1,localhost,::1"
   },
   "unset": [],
   "argv": [
     "app-server",
     "-c",
-    "chatgpt_base_url=\"https://127.0.0.1:53439/backend-api/\""
+    "chatgpt_base_url=\"https://127.0.0.1:56494/backend-api/\""
   ],
   "commands": [],
   "observed": {
@@ -45,7 +53,7 @@
       "bodies": [
         {
           "encoding": "zstd",
-          "bytes": 16265,
+          "bytes": 16268,
           "parsed": true,
           "fields": [
             "client_metadata",
@@ -136,13 +144,15 @@
     ],
     "checks": {
       "skillsChangedNotified": true,
-      "runningServesEdit": true,
-      "runningListsAdd": true,
-      "warmServesAll": true,
-      "freshServesAll": true
+      "runningListsChanges": true,
+      "runningServesEditedBody": null,
+      "warmListsChanges": true,
+      "warmServesEditedBody": null,
+      "freshListsChanges": true,
+      "freshServesEditedBody": null
     },
-    "ms": 25107
+    "ms": 33847
   },
   "status": "ok",
-  "verdict": "skillsChangedNotified yes, runningServesEdit yes, runningListsAdd yes, warmServesAll yes, freshServesAll yes"
+  "verdict": "skillsChangedNotified yes, runningListsChanges yes, runningServesEditedBody -, warmListsChanges yes, warmServesEditedBody -, freshListsChanges yes, freshServesEditedBody -"
 }

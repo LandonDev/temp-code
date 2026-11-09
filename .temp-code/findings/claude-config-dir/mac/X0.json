@@ -3,7 +3,7 @@
   "harness": "codex",
   "host": "mac",
   "title": "codex version, app-server schema",
-  "at": "2026-11-09T00:24:19.951Z",
+  "at": "2026-11-09T01:01:18.508Z",
   "cli": {
     "path": "/opt/homebrew/bin/codex",
     "version": "codex-cli 0.164.0"
@@ -14,7 +14,7 @@
   "commands": [
     "codex --version",
     "codex app-server --help",
-    "codex app-server generate-json-schema --out /var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/X0/schema"
+    "codex app-server generate-json-schema --out /var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/X0/schema"
   ],
   "observed": {
     "helpFlags": [
@@ -208,7 +208,7 @@
       "extraRoots": true,
       "hooksList": true
     },
-    "ms": 1136
+    "ms": 3699
   },
   "status": "ok",
   "verdict": "schema yes, skillsList yes, extraRoots yes, hooksList yes; codex codex-cli 0.164.0"

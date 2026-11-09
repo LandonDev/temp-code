@@ -1108,9 +1108,9 @@ serves. The answers and the evidence of 2026-11-09 are in
 ignored): Claude Code takes the store as an SDK plugin dir (`plugins`,
 `pluginDelivery: 'initialize'`, `reloadSkills()` for a live change, nothing
 in the warm key); Codex as an app-server extra root
-(`skills/extraRoots/set`, watched); Muse has no add-a-dir route and keeps the
-per-account root, which needs `TBH_CREDENTIAL_BACKEND=file` and a
-`muse/skills/` the store owns.
+(`skills/extraRoots/set`, watched); Muse has no add-a-dir route, and its
+closest shape, the per-account root with `TBH_CREDENTIAL_BACKEND=file` and a
+`muse/skills/` the store owns, still lacks a real turn to prove it.
 
 ## Remote access: the fixed port behind the tunnel
 - A second listener (src/main/server/remote/listener.ts) binds

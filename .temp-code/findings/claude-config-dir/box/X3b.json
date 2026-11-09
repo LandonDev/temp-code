@@ -3,21 +3,29 @@
   "harness": "codex",
   "host": "box",
   "title": "freshness of skills in an extra root",
-  "at": "2026-11-09T00:40:58.916Z",
+  "at": "2026-11-09T01:01:24.623Z",
   "cli": {
     "path": "/srv/agents/home/.npm-global/bin/codex",
     "version": null
   },
   "env": {
-    "HOME": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X3b/home",
-    "CODEX_HOME": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X3b/codex-home",
-    "CODEX_CA_CERTIFICATE": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/tls/ca.pem"
+    "HOME": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/X3b/home",
+    "CODEX_HOME": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/X3b/codex-home",
+    "CODEX_CA_CERTIFICATE": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/tls/ca.pem",
+    "HTTPS_PROXY": "http://127.0.0.1:9",
+    "HTTP_PROXY": "http://127.0.0.1:9",
+    "ALL_PROXY": "http://127.0.0.1:9",
+    "https_proxy": "http://127.0.0.1:9",
+    "http_proxy": "http://127.0.0.1:9",
+    "all_proxy": "http://127.0.0.1:9",
+    "NO_PROXY": "127.0.0.1,localhost,::1",
+    "no_proxy": "127.0.0.1,localhost,::1"
   },
   "unset": [],
   "argv": [
     "app-server",
     "-c",
-    "chatgpt_base_url=\"https://127.0.0.1:44133/backend-api/\""
+    "chatgpt_base_url=\"https://127.0.0.1:40107/backend-api/\""
   ],
   "commands": [],
   "observed": {
@@ -25,19 +33,19 @@
     "turn1": {
       "requests": 9,
       "paths": [
+        "POST /backend-api/ps/mcp",
         "POST /backend-api/codex/analytics-events/events",
         "GET /backend-api/ps/plugins/suggested/codex",
-        "POST /backend-api/ps/mcp",
         "GET /backend-api/wham/settings/user",
         "POST /backend-api/codex/responses"
       ],
       "bearer": [
-        "placeholder",
-        "none"
+        "none",
+        "placeholder"
       ],
       "accountId": [
-        "placeholder",
-        "none"
+        "none",
+        "placeholder"
       ],
       "answered": [
         "text"
@@ -45,7 +53,7 @@
       "bodies": [
         {
           "encoding": "zstd",
-          "bytes": 16218,
+          "bytes": 16226,
           "parsed": true,
           "fields": [
             "client_metadata",
@@ -136,13 +144,15 @@
     ],
     "checks": {
       "skillsChangedNotified": true,
-      "runningServesEdit": true,
-      "runningListsAdd": true,
-      "warmServesAll": true,
-      "freshServesAll": true
+      "runningListsChanges": true,
+      "runningServesEditedBody": true,
+      "warmListsChanges": true,
+      "warmServesEditedBody": true,
+      "freshListsChanges": true,
+      "freshServesEditedBody": true
     },
-    "ms": 2960
+    "ms": 11898
   },
   "status": "ok",
-  "verdict": "skillsChangedNotified yes, runningServesEdit yes, runningListsAdd yes, warmServesAll yes, freshServesAll yes"
+  "verdict": "skillsChangedNotified yes, runningListsChanges yes, runningServesEditedBody yes, warmListsChanges yes, warmServesEditedBody yes, freshListsChanges yes, freshServesEditedBody yes"
 }

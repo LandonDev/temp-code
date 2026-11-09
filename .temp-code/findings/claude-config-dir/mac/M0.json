@@ -3,18 +3,27 @@
   "harness": "muse",
   "host": "mac",
   "title": "muse version, serve flags, fingerprint, routes",
-  "at": "2026-11-09T00:27:07.995Z",
+  "at": "2026-11-09T01:04:30.210Z",
   "cli": {
     "path": "/Users/landon/.local/bin/muse",
     "version": "Muse Code 1.4.14 (1.4.14-R7309.1)"
   },
   "env": {
-    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/M0/home",
-    "XDG_CONFIG_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/M0/config",
-    "XDG_DATA_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/M0/data",
-    "XDG_STATE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/M0/state",
-    "XDG_CACHE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/M0/cache",
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/M0/home",
+    "XDG_CONFIG_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/M0/config",
+    "XDG_DATA_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/M0/data",
+    "XDG_STATE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/M0/state",
+    "XDG_CACHE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/M0/cache",
     "MUSE_CONTRIBUTOR_MODE": "0",
+    "MUSE_NO_AUTO_UPDATE": "1",
+    "HTTPS_PROXY": "http://127.0.0.1:9",
+    "HTTP_PROXY": "http://127.0.0.1:9",
+    "ALL_PROXY": "http://127.0.0.1:9",
+    "https_proxy": "http://127.0.0.1:9",
+    "http_proxy": "http://127.0.0.1:9",
+    "all_proxy": "http://127.0.0.1:9",
+    "NO_PROXY": "127.0.0.1,localhost,::1",
+    "no_proxy": "127.0.0.1,localhost,::1",
     "TBH_CREDENTIAL_BACKEND": "file"
   },
   "unset": [],
@@ -75,7 +84,7 @@
       "sandboxAvailability"
     ],
     "initializeError": null,
-    "museHome": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/M0/data/muse",
+    "museHome": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/M0/data/muse",
     "sandboxAvailability": "available",
     "binaryEnvNames": [
       "MUSE_PROJECTS_HOME"
@@ -103,7 +112,7 @@
       "echoHostStarts": true,
       "fingerprintMatches": true
     },
-    "ms": 595
+    "ms": 698
   },
   "status": "ok",
   "verdict": "versioned yes, echoHostStarts yes, fingerprintMatches yes; muse Muse Code 1.4.14 (1.4.14-R7309.1)"

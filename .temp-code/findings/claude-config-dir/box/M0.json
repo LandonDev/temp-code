@@ -3,18 +3,27 @@
   "harness": "muse",
   "host": "box",
   "title": "muse version, serve flags, fingerprint, routes",
-  "at": "2026-11-09T00:46:23.130Z",
+  "at": "2026-11-09T01:01:47.688Z",
   "cli": {
     "path": "/srv/agents/home/.local/bin/muse",
     "version": "Muse Code 1.4.14 (1.4.14-R7309.1)"
   },
   "env": {
-    "HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M0/home",
-    "XDG_CONFIG_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M0/config",
-    "XDG_DATA_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M0/data",
-    "XDG_STATE_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M0/state",
-    "XDG_CACHE_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M0/cache",
+    "HOME": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/M0/home",
+    "XDG_CONFIG_HOME": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/M0/config",
+    "XDG_DATA_HOME": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/M0/data",
+    "XDG_STATE_HOME": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/M0/state",
+    "XDG_CACHE_HOME": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/M0/cache",
     "MUSE_CONTRIBUTOR_MODE": "0",
+    "MUSE_NO_AUTO_UPDATE": "1",
+    "HTTPS_PROXY": "http://127.0.0.1:9",
+    "HTTP_PROXY": "http://127.0.0.1:9",
+    "ALL_PROXY": "http://127.0.0.1:9",
+    "https_proxy": "http://127.0.0.1:9",
+    "http_proxy": "http://127.0.0.1:9",
+    "all_proxy": "http://127.0.0.1:9",
+    "NO_PROXY": "127.0.0.1,localhost,::1",
+    "no_proxy": "127.0.0.1,localhost,::1",
     "TBH_CREDENTIAL_BACKEND": "file"
   },
   "unset": [],
@@ -76,7 +85,7 @@
       "userAgent"
     ],
     "initializeError": null,
-    "museHome": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M0/data/muse",
+    "museHome": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/M0/data/muse",
     "sandboxAvailability": "available",
     "binaryEnvNames": [
       "MUSE_PROJECTS_HOME",
@@ -107,7 +116,7 @@
       "echoHostStarts": true,
       "fingerprintMatches": true
     },
-    "ms": 477
+    "ms": 480
   },
   "status": "ok",
   "verdict": "versioned yes, echoHostStarts yes, fingerprintMatches yes; muse Muse Code 1.4.14 (1.4.14-R7309.1)"

@@ -3,21 +3,29 @@
   "harness": "codex",
   "host": "box",
   "title": "custom prompts",
-  "at": "2026-11-09T00:15:54.984Z",
+  "at": "2026-11-09T01:01:44.400Z",
   "cli": {
     "path": "/srv/agents/home/.npm-global/bin/codex",
     "version": null
   },
   "env": {
-    "HOME": "/tmp/tc-config-spike/2026-11-09T00-14-57-253Z-box/X5/home",
-    "CODEX_HOME": "/tmp/tc-config-spike/2026-11-09T00-14-57-253Z-box/X5/codex-home",
-    "CODEX_CA_CERTIFICATE": "/tmp/tc-config-spike/2026-11-09T00-14-57-253Z-box/tls/ca.pem"
+    "HOME": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/X5/home",
+    "CODEX_HOME": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/X5/codex-home",
+    "CODEX_CA_CERTIFICATE": "/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/tls/ca.pem",
+    "HTTPS_PROXY": "http://127.0.0.1:9",
+    "HTTP_PROXY": "http://127.0.0.1:9",
+    "ALL_PROXY": "http://127.0.0.1:9",
+    "https_proxy": "http://127.0.0.1:9",
+    "http_proxy": "http://127.0.0.1:9",
+    "all_proxy": "http://127.0.0.1:9",
+    "NO_PROXY": "127.0.0.1,localhost,::1",
+    "no_proxy": "127.0.0.1,localhost,::1"
   },
   "unset": [],
   "argv": [
     "app-server",
     "-c",
-    "chatgpt_base_url=\"https://127.0.0.1:37823/backend-api/\""
+    "chatgpt_base_url=\"https://127.0.0.1:40107/backend-api/\""
   ],
   "commands": [],
   "observed": {
@@ -26,8 +34,8 @@
       "requests": 9,
       "paths": [
         "POST /backend-api/codex/analytics-events/events",
-        "GET /backend-api/ps/plugins/suggested/codex",
         "POST /backend-api/ps/mcp",
+        "GET /backend-api/ps/plugins/suggested/codex",
         "GET /backend-api/wham/settings/user",
         "POST /backend-api/codex/responses"
       ],
@@ -45,7 +53,7 @@
       "bodies": [
         {
           "encoding": "zstd",
-          "bytes": 16128,
+          "bytes": 16135,
           "parsed": true,
           "fields": [
             "client_metadata",
@@ -73,7 +81,7 @@
       "listedAsSkill": false,
       "expandedInTurn": false
     },
-    "ms": 419
+    "ms": 3188
   },
   "status": "fail",
   "verdict": "listedAsSkill no, expandedInTurn no; the method list names no prompts method (X0)"

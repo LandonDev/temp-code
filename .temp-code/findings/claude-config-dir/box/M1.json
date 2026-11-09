@@ -3,7 +3,7 @@
   "harness": "muse",
   "host": "box",
   "title": "skill roots outside XDG_CONFIG_HOME",
-  "at": "2026-11-09T00:46:25.093Z",
+  "at": "2026-11-09T01:01:49.673Z",
   "cli": {
     "path": "/srv/agents/home/.local/bin/muse",
     "version": null
@@ -19,7 +19,7 @@
     "echo",
     "--disable-sandbox",
     "-c",
-    "skills.extra_roots=[\"/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M1/extra\"]"
+    "skills.extra_roots=[\"/tmp/tc-config-spike/2026-11-09T01-00-48-678Z-box/M1/extra\"]"
   ],
   "commands": [],
   "observed": {
@@ -75,7 +75,7 @@
       "trustWorkspaceLoadsAgents": true,
       "trustWorkspaceLoadsClaude": true
     },
-    "ms": 709
+    "ms": 693
   },
   "status": "partial",
   "verdict": "appOwnedDirRoute no, trustWorkspaceLoadsMuse no, trustWorkspaceLoadsAgents yes, trustWorkspaceLoadsClaude yes; 7 routes tried"

@@ -125,121 +125,121 @@
       "id": "X0",
       "status": "ok",
       "verdict": "schema yes, skillsList yes, extraRoots yes, hooksList yes; codex codex-cli 0.163.0",
-      "at": "2026-11-09T00:15:32.806Z"
+      "at": "2026-11-09T01:00:48.713Z"
     },
     {
       "id": "X0b",
       "status": "ok",
       "verdict": "textTurn yes, functionCallRan yes; the fake is accepted",
-      "at": "2026-11-09T00:15:33.376Z"
+      "at": "2026-11-09T01:08:01.751Z"
     },
     {
       "id": "X1",
       "status": "ok",
       "verdict": "extraRootsAccepted yes, flatListed yes, nestedListed yes, flatInPrompt yes, bodyBySkillPart yes, pathBySkillPart yes",
-      "at": "2026-11-09T00:40:55.107Z"
+      "at": "2026-11-09T01:00:58.597Z"
     },
     {
       "id": "X2a",
-      "status": "partial",
-      "verdict": "initializes yes, threadStarts yes, turnCompletes no",
-      "at": "2026-11-09T00:15:34.776Z"
+      "status": "ok",
+      "verdict": "initializes yes, threadStarts yes, turnCompletes yes",
+      "at": "2026-11-09T01:08:11.543Z"
     },
     {
       "id": "X2c",
       "status": "ok",
       "verdict": "placeholderBearer yes, placeholderAccount yes, fakeTurn yes, realTurn -",
-      "at": "2026-11-09T00:15:48.152Z"
+      "at": "2026-11-09T01:08:11.852Z"
     },
     {
       "id": "X2d",
       "status": "partial",
       "verdict": "resumesUnderEmptyHome no, resumesWithLinks yes",
-      "at": "2026-11-09T00:15:48.635Z"
+      "at": "2026-11-09T01:08:15.180Z"
     },
     {
       "id": "X2e",
       "status": "ok",
       "verdict": "inventoried yes, noLeaks yes",
-      "at": "2026-11-09T00:15:50.101Z"
+      "at": "2026-11-09T01:08:22.899Z"
     },
     {
       "id": "X3",
       "status": "ok",
-      "verdict": "skillsChangedNotified yes, runningServesEdit yes, runningListsAdd yes, warmServesAll yes, freshServesAll yes",
-      "at": "2026-11-09T00:40:55.828Z"
+      "verdict": "skillsChangedNotified yes, runningListsChanges yes, runningServesEditedBody yes, warmListsChanges yes, warmServesEditedBody yes, freshListsChanges yes, freshServesEditedBody yes",
+      "at": "2026-11-09T01:01:12.746Z"
     },
     {
       "id": "X3b",
       "status": "ok",
-      "verdict": "skillsChangedNotified yes, runningServesEdit yes, runningListsAdd yes, warmServesAll yes, freshServesAll yes",
-      "at": "2026-11-09T00:40:58.916Z"
+      "verdict": "skillsChangedNotified yes, runningListsChanges yes, runningServesEditedBody yes, warmListsChanges yes, warmServesEditedBody yes, freshListsChanges yes, freshServesEditedBody yes",
+      "at": "2026-11-09T01:01:24.623Z"
     },
     {
       "id": "X4",
       "status": "partial",
       "verdict": "listed yes, firesUntrusted no, firesTrusted yes",
-      "at": "2026-11-09T00:41:01.977Z"
+      "at": "2026-11-09T01:01:36.622Z"
     },
     {
       "id": "X5",
       "status": "fail",
       "verdict": "listedAsSkill no, expandedInTurn no; the method list names no prompts method (X0)",
-      "at": "2026-11-09T00:15:54.984Z"
+      "at": "2026-11-09T01:01:44.400Z"
     },
     {
       "id": "M0",
       "status": "ok",
       "verdict": "versioned yes, echoHostStarts yes, fingerprintMatches yes; muse Muse Code 1.4.14 (1.4.14-R7309.1)",
-      "at": "2026-11-09T00:46:23.130Z"
+      "at": "2026-11-09T01:01:47.688Z"
     },
     {
       "id": "M0b",
       "status": "skip",
       "verdict": "skipped: needs --upstream (the Mac leg)",
-      "at": "2026-11-09T00:46:23.608Z"
+      "at": "2026-11-09T01:01:48.168Z"
     },
     {
       "id": "M0c",
       "status": "ok",
       "verdict": "modelsListed yes, textTurn yes, functionCallRan yes; the fake is accepted",
-      "at": "2026-11-09T00:46:23.608Z"
+      "at": "2026-11-09T01:01:48.169Z"
     },
     {
       "id": "M1",
       "status": "partial",
       "verdict": "appOwnedDirRoute no, trustWorkspaceLoadsMuse no, trustWorkspaceLoadsAgents yes, trustWorkspaceLoadsClaude yes; 7 routes tried",
-      "at": "2026-11-09T00:46:25.093Z"
+      "at": "2026-11-09T01:01:49.673Z"
     },
     {
       "id": "M2",
       "status": "ok",
       "verdict": "fileBackendReadsRootLogin yes, defaultReadsRootLogin yes; default backend sent placeholder",
-      "at": "2026-11-09T00:46:25.802Z"
+      "at": "2026-11-09T01:01:50.367Z"
     },
     {
       "id": "M3",
       "status": "ok",
       "verdict": "listed yes, resolved yes, bodyReached yes; provider fake",
-      "at": "2026-11-09T00:46:28.354Z"
+      "at": "2026-11-09T01:01:52.823Z"
     },
     {
       "id": "M4",
       "status": "partial",
       "verdict": "skillChangedNotified no, runningListsChange yes, runningServesEdit yes, newSessionServesAll yes, freshServeServesAll yes; provider fake",
-      "at": "2026-11-09T00:46:29.189Z"
+      "at": "2026-11-09T01:01:53.765Z"
     },
     {
       "id": "M5",
       "status": "ok",
       "verdict": "sessionsOutsideConfigRoot yes, noHomeLeaks yes, resumesUnderRootB yes",
-      "at": "2026-11-09T00:46:35.033Z"
+      "at": "2026-11-09T01:01:59.761Z"
     },
     {
       "id": "M6",
       "status": "partial",
       "verdict": "toolSeesOwnedRoot yes, gitKeepsConfig yes, ghKeepsLogin no",
-      "at": "2026-11-09T00:46:36.121Z"
+      "at": "2026-11-09T01:02:01.129Z"
     }
   ]
 }

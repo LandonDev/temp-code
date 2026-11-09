@@ -3,18 +3,32 @@
   "harness": "codex",
   "host": "mac",
   "title": "empty CODEX_HOME, no login",
-  "at": "2026-11-09T00:24:46.283Z",
+  "at": "2026-11-09T01:20:17.353Z",
   "cli": {
     "path": "/opt/homebrew/bin/codex",
     "version": null
   },
   "env": {
-    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/X2a/home",
-    "CODEX_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/X2a/codex-home",
-    "CODEX_CA_CERTIFICATE": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/tls/ca.pem"
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-20-16-916Z-mac/X2a/home",
+    "CODEX_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-20-16-916Z-mac/X2a/codex-home",
+    "CODEX_CA_CERTIFICATE": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-20-16-916Z-mac/tls/ca.pem",
+    "HTTPS_PROXY": "http://127.0.0.1:9",
+    "HTTP_PROXY": "http://127.0.0.1:9",
+    "ALL_PROXY": "http://127.0.0.1:9",
+    "https_proxy": "http://127.0.0.1:9",
+    "http_proxy": "http://127.0.0.1:9",
+    "all_proxy": "http://127.0.0.1:9",
+    "NO_PROXY": "127.0.0.1,localhost,::1",
+    "no_proxy": "127.0.0.1,localhost,::1"
   },
   "unset": [],
-  "argv": null,
+  "argv": [
+    "app-server",
+    "-c",
+    "chatgpt_base_url=\"https://127.0.0.1:59823/backend-api/\"",
+    "-c",
+    "openai_base_url=\"https://127.0.0.1:59823/v1\""
+  ],
   "commands": [],
   "observed": {
     "initialize": "ok",
@@ -22,12 +36,13 @@
     "threadStart": "ok",
     "turn": {
       "completed": true,
-      "status": "failed",
-      "error": "{\"error\":{\"message\":\"Reconnecting... 2/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: wss://api.openai.com/v1/responses, cf-ray: a578ad2f3a8d5efc-BNA\",\"misalignm",
-      "text": "",
+      "status": "completed",
+      "error": null,
+      "retries": 4,
+      "text": "ok",
       "requests": 1,
       "paths": [
-        "GET /backend-api/plugins/featured"
+        "POST /v1/responses"
       ],
       "bearer": [
         "none"
@@ -35,25 +50,49 @@
       "accountId": [
         "none"
       ],
-      "answered": [],
-      "bodies": [],
+      "answered": [
+        "text"
+      ],
+      "bodies": [
+        {
+          "encoding": "",
+          "bytes": 38249,
+          "parsed": true,
+          "fields": [
+            "client_metadata",
+            "include",
+            "input",
+            "model",
+            "parallel_tool_calls",
+            "prompt_cache_key",
+            "reasoning",
+            "store",
+            "stream",
+            "text",
+            "tool_choice",
+            "tools"
+          ],
+          "tools": 9,
+          "main": true
+        }
+      ],
       "all": [],
       "last": []
     },
     "stderr": [
-      "\u001b[2m2026-11-09T00:24:47.252718Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses",
-      "\u001b[2m2026-11-09T00:24:47.807194Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses",
-      "\u001b[2m2026-11-09T00:24:48.827862Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses",
-      "\u001b[2m2026-11-09T00:24:50.562523Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses",
-      "\u001b[2m2026-11-09T00:24:54.078733Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses"
+      "\u001b[2m2026-11-09T01:20:21.352523Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: WebSocket protocol error: Handshake not finished, url: wss://127.0.0.1:59823/v1/responses",
+      "\u001b[2m2026-11-09T01:20:21.846473Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: WebSocket protocol error: Handshake not finished, url: wss://127.0.0.1:59823/v1/responses",
+      "\u001b[2m2026-11-09T01:20:22.668159Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: WebSocket protocol error: Handshake not finished, url: wss://127.0.0.1:59823/v1/responses",
+      "\u001b[2m2026-11-09T01:20:24.282748Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: WebSocket protocol error: Handshake not finished, url: wss://127.0.0.1:59823/v1/responses",
+      "\u001b[2m2026-11-09T01:20:27.674386Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: WebSocket protocol error: Handshake not finished, url: wss://127.0.0.1:59823/v1/responses"
     ],
     "checks": {
       "initializes": true,
       "threadStarts": true,
-      "turnCompletes": false
+      "turnCompletes": true
     },
-    "ms": 15812
+    "ms": 10496
   },
-  "status": "partial",
-  "verdict": "initializes yes, threadStarts yes, turnCompletes no"
+  "status": "ok",
+  "verdict": "initializes yes, threadStarts yes, turnCompletes yes"
 }

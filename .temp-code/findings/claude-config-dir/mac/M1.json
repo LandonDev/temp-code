@@ -3,7 +3,7 @@
   "harness": "muse",
   "host": "mac",
   "title": "skill roots outside XDG_CONFIG_HOME",
-  "at": "2026-11-09T00:27:09.515Z",
+  "at": "2026-11-09T01:04:37.322Z",
   "cli": {
     "path": "/Users/landon/.local/bin/muse",
     "version": null
@@ -18,7 +18,7 @@
     "--provider",
     "echo",
     "-c",
-    "skills.extra_roots=[\"/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/M1/extra\"]"
+    "skills.extra_roots=[\"/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T01-01-18-147Z-mac/M1/extra\"]"
   ],
   "commands": [],
   "observed": {
@@ -74,7 +74,7 @@
       "trustWorkspaceLoadsAgents": true,
       "trustWorkspaceLoadsClaude": true
     },
-    "ms": 1188
+    "ms": 1173
   },
   "status": "partial",
   "verdict": "appOwnedDirRoute no, trustWorkspaceLoadsMuse no, trustWorkspaceLoadsAgents yes, trustWorkspaceLoadsClaude yes; 7 routes tried"

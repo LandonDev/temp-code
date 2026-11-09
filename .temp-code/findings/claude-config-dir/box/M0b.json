@@ -3,14 +3,14 @@
   "harness": "muse",
   "host": "box",
   "title": "record Meta's model list (Mac)",
-  "at": "2026-11-09T00:46:23.608Z",
+  "at": "2026-11-09T01:01:48.168Z",
   "cli": null,
   "env": {},
   "unset": [],
   "argv": null,
   "commands": [],
   "observed": {
-    "ms": 0
+    "ms": 1
   },
   "status": "skip",
   "verdict": "skipped: needs --upstream (the Mac leg)"
