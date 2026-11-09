@@ -925,7 +925,11 @@ The host in that row (chrome/DraftHostPicker.tsx) shows for a draft of a
 project linked across hosts: the host's glyph and name, and a menu of every
 connected host; picking one moves the draft there. A host with no copy
 reads "New copy" and gets one on pick (`project.ensureLinked`); a host with
-no checkout is disabled and says why. The default host is the one of the
+no checkout is disabled and says why. A new project has its copies on
+every host whose workspace is linked within seconds (docs/box.md "One
+project across hosts: a new project gets its copies"); one whose copy could
+not be made shows the picker too, its other hosts disabled under the reason
+(`linkNote`). The default host is the one of the
 thread on screen when it is in the project, else the one "New threads start
 on" names (the project sheet's New threads section, else Settings → Thread
 defaults, else the box) when it has a copy and is connected, else the other

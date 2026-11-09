@@ -1665,7 +1665,20 @@ names the far child).
   different → the settings home's wins) and stamps through
   `registry.linkCatalog` here and `catalog.link` (admin) there. It never
   unlinks and never gives one id to a second row on a host; a wrong link is
-  undone by deleting one copy, not by renaming it. `project.ensureLinked`
+  undone by deleting one copy, not by renaming it. The same run makes the
+  copies still missing, both ways (`makeCopies`): a project with no link id,
+  not archived, in a paired workspace whose other copy has no project of
+  its name, gets a fresh id and `project.ensureLinked` there with
+  `workspaceMustExist` (never a new workspace), and the source takes the id
+  once the copy exists; so a project added on either host shows on the
+  other within seconds, a host that was offline gets it at link-up, and an
+  old one-host project on the next pass. A linked project's missing partner
+  is one a person deleted and is never made again (no tombstone needed); an
+  archived one gets none. A failed copy logs one line per new reason and
+  leaves it on the source row (`ProjectMeta.linkNote`, `projects.link_note`,
+  `catalog.link`'s `notes`), which the draft host picker shows on the other
+  hosts, disabled; the next run retries. docs/box.md "One project across
+  hosts: a new project gets its copies". `project.ensureLinked`
   (operate; src/main/server/projectLinks.ts) is the one function that finds
   or makes this host's copy: by link id, else the workspace by link id,
   mapped folder (`hostPathFor`) or repo, adopting a same-named unlinked

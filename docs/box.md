@@ -4072,6 +4072,46 @@ assumes no platform, so whichever host holds a link runs it for that link.
   `{ lastRunAt, pairs: { workspaces, projects }, error? }`; no RPC yet.
 - **Proof.** `src/main/server/remote/projectLinks.test.ts`.
 
+### One project across hosts: a new project gets its copies
+
+A project added on either host appears on the other within a few seconds,
+so its threads can start on the box. After stamping, the same run makes
+every copy still missing (`makeCopies` in remote/projectLinks.ts), both
+ways:
+
+- **Which projects.** One with no link id, not archived, in a workspace
+  paired this run, whose other copy holds no project of its name. Each gets
+  a fresh `pl_…` id and `project.ensureLinked` on the side that lacks it
+  (over the link for the box, in process for the Mac) with
+  `workspaceMustExist`: the workspace is found by its link id or the copy is
+  not made, so the linker never makes a workspace. A worktree project asks
+  for its branch there; a failed worktree is a local copy, as for a far
+  start. The source row takes the id only once the copy exists.
+- **When.** The runs above: the catalog change of a create on the Mac, the
+  box's `projects` push for a create there, link-up for a host that was
+  offline, and the 5-minute pass for a project that lived on one host only
+  before this.
+- **What a person removed stays removed.** A project that carries a link id
+  has had its copy, so a missing partner is one a person deleted (or a
+  wrong link they undid by deleting one copy): it is never made again. That
+  rule needs no tombstone, and it holds for rows linked before it existed.
+  An archived project gets no copy until it is unarchived. To have a deleted
+  copy back, pick its host in the draft's host picker ("New copy").
+- **A copy that fails.** One log line per new reason
+  (`[project-links] <host>: no copy of <name> there: <why>`) and the reason
+  on the source row as `linkNote` ("Couldn't make a copy: …"; `catalog.link`
+  carries `notes` for a box row, an older host ignores them). The create on
+  the first host stands, the next run tries again, and a stamp clears the
+  note. The draft host picker shows for such a project with the other hosts
+  disabled under that line.
+- **With more than one peer.** A project linked by its first copy is not
+  copied to a later host: the rule above cannot tell a host that never had
+  it from one where it was deleted. The draft's host picker still makes one
+  there on pick.
+- **Proof.** `src/main/server/remote/projectLinks.test.ts` ("making the
+  copies that are missing") and steps 2b and 7 of
+  `bun run script:e2e-linked-projects`.
+
 ### One project across hosts: settings live on the box
 
 A linked project (one `linkId` on its copy on each host) keeps its settings
