@@ -1,7 +1,10 @@
-import { useId, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import { createContext, useContext, useId, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@renderer/lib/cn";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "./ui/item";
+import { Item, ItemActions, ItemButton, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "./ui/item";
+import { ROW_CONTROLS, ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "./ui/press";
 import { Skeleton } from "./ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /** The scroller a page sits in (Settings, Accounts, Stats, and their
  *  skeletons): the stable gutter keeps the column still when the page
@@ -12,11 +15,21 @@ const PAGE_SCROLLER = "min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto 
  *  is a table (Accounts), which reads across the pane's width. */
 const PAGE_WIDTH = { column: "max-w-2xl", table: "max-w-6xl" } as const;
 
+/** The title line's slot, for `PageActions` to fill from inside the page. */
+const PageActionsContext = createContext<HTMLElement | null>(null);
+
 /**
  * The frame of a settings or app page: a 672px column (`width="table"`:
  * 1,152px) with a 24px inset, one title, an optional one-line description and the page's actions on the
  * title line. Sections stack 24px apart under it. A page never draws its own
  * header or section heading; it composes these.
+ *
+ * The title line's slot is always there (empty, it takes no space): `actions`
+ * fills it from the frame's caller, `PageActions` from anywhere inside the
+ * page. It holds one ghost small button, the page's verb alone ("Add…", "New
+ * skill…"), no icon and nothing else beside the title; the 28px button
+ * overhangs the title's 24px line by 2px each side, as a section's action
+ * does on its heading.
  */
 function Page({
   title,
@@ -33,19 +46,31 @@ function Page({
   className?: string;
   children: ReactNode;
 }) {
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
   return (
-    <div data-slot="page" data-width={width} className={cn("mx-auto w-full p-6", PAGE_WIDTH[width], className)}>
-      <header className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-base font-semibold leading-6 tracking-[-0.01em] text-foreground">{title}</h1>
-          {description ? <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{description}</p> : null}
-        </div>
-        {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
-      </header>
-      {/* The page's content width is a container, so a row can lay a wide control under its words (`PageRow` `wide`). */}
-      <div className="@container/page mt-6 flex flex-col gap-6">{children}</div>
-    </div>
+    <PageActionsContext.Provider value={slot}>
+      <div data-slot="page" data-width={width} className={cn("mx-auto w-full p-6", PAGE_WIDTH[width], className)}>
+        <header className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-base font-semibold leading-6 tracking-[-0.01em] text-foreground">{title}</h1>
+            {description ? <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{description}</p> : null}
+          </div>
+          <div ref={setSlot} data-slot="page-actions" className="flex shrink-0 items-center gap-2 empty:hidden [&>[data-slot=button]]:-my-0.5">
+            {actions}
+          </div>
+        </header>
+        {/* The page's content width is a container, so a row can lay a wide control under its words (`PageRow` `wide`). */}
+        <div className="@container/page mt-6 flex flex-col gap-6">{children}</div>
+      </div>
+    </PageActionsContext.Provider>
   );
+}
+
+/** Puts its children on the title line of the `Page` around it (its one
+ *  ghost verb, `Page`'s comment); renders nothing outside a `Page`. */
+function PageActions({ children }: { children: ReactNode }) {
+  const slot = useContext(PageActionsContext);
+  return slot ? createPortal(children, slot) : null;
 }
 
 /**
@@ -97,6 +122,14 @@ function PageSection({
  * first row of a section, or the first after a heading, has none.
  * Neither the description nor `error` (a red line under it) is clamped: a
  * row's later lines (a path, a doctor's error) must stay readable.
+ *
+ * With `onOpen` the row opens something (its edit dialog) and is a row with
+ * controls of its own (README `ItemButton`): its box hovers 8px past the
+ * words each side, an open control named `openLabel` lies over it, the
+ * words above it take no pointer and the controls at the end sit above it,
+ * so a press on a switch or a ⋯ never opens the row. `openTip` is the open
+ * control's tooltip (what a cut line says whole); `openDisabled` turns the
+ * open control and its hover off.
  */
 function PageRow({
   title,
@@ -104,6 +137,10 @@ function PageRow({
   error,
   media,
   wide = false,
+  onOpen,
+  openLabel,
+  openTip,
+  openDisabled = false,
   className,
   children,
   ...rest
@@ -115,10 +152,46 @@ function PageRow({
   /** A wide control (a text field): under 480px of page content it takes a
    *  full-width line under the title and description, its error under it. */
   wide?: boolean;
+  onOpen?: () => void;
+  openLabel?: string;
+  openTip?: ReactNode;
+  openDisabled?: boolean;
   className?: string;
   children?: ReactNode;
 }) {
   if (wide) return <WidePageRow {...rest} title={title} description={description} error={error} className={className}>{children}</WidePageRow>;
+  if (onOpen) {
+    const open = <ItemButton data-row-open aria-label={openLabel} disabled={openDisabled} onClick={onOpen} className={ROW_OPEN} />;
+    return (
+      // The hairline stays at the column's width; the 4px here and the box's 8px make the row's 12px.
+      <div
+        {...rest}
+        data-slot="page-row"
+        data-opens=""
+        className={cn("border-t border-transparent py-1 [[data-slot=page-row]+&]:border-border", className)}
+      >
+        <Item className={cn("-mx-2 w-[calc(100%+1rem)] flex-nowrap rounded-md px-2 py-2", openDisabled ? "relative" : ROW_HOLDS)}>
+          {openTip ? (
+            <Tooltip>
+              <TooltipTrigger render={open} />
+              <TooltipContent side="bottom" align="start" className="max-w-sm">
+                {openTip}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            open
+          )}
+          {media ? <ItemMedia className={ROW_SHOWS}>{media}</ItemMedia> : null}
+          <ItemContent className={cn("min-w-0", ROW_SHOWS)}>
+            <ItemTitle>{title}</ItemTitle>
+            {description ? <ItemDescription className="line-clamp-none">{description}</ItemDescription> : null}
+            {error ? <ItemDescription className="line-clamp-none text-destructive">{error}</ItemDescription> : null}
+          </ItemContent>
+          {children ? <ItemActions className={cn("shrink-0", ROW_CONTROLS)}>{children}</ItemActions> : null}
+        </Item>
+      </div>
+    );
+  }
   return (
     <Item
       {...rest}
@@ -197,10 +270,14 @@ const SKELETON_CONTROL: Record<Exclude<SkeletonControl, "none">, string> = {
   number: "h-8 w-20 rounded-lg",
   button: "h-7 w-20 rounded-md",
 };
-/** One loading row's shape: whether it has a muted description line and a
- *  16px glyph before its title, and its control; `wide` lays the control as
- *  a `wide` row does, on its own line under 480px of page content. */
-type SkeletonRow = { description?: boolean; media?: boolean; control?: SkeletonControl; wide?: boolean };
+/** One loading row's shape: whether it has a muted description line (or
+ *  how many: a second one sits 4px under the first, as a row's facts line
+ *  does) and a 16px glyph before its title, and its control; `wide` lays
+ *  the control as a `wide` row does, on its own line under 480px of page
+ *  content. */
+type SkeletonRow = { description?: boolean | number; media?: boolean; control?: SkeletonControl; wide?: boolean };
+
+const lineCount = (description: boolean | number | undefined): number => (typeof description === "number" ? description : description ? 1 : 0);
 
 /** Rows in their shape while a section's values load: each is a `PageRow`'s
  *  box (the 20px title line, 2px, the 16px description line, the control at
@@ -233,11 +310,11 @@ function PageRowsSkeleton({
               <div className="flex h-5 items-center">
                 <Skeleton className="h-3.5 w-32" />
               </div>
-              {(shape.description ?? description) ? (
-                <div className="flex h-4 items-center">
-                  <Skeleton className="h-3 w-48" />
+              {Array.from({ length: lineCount(shape.description ?? description) }, (_, line) => (
+                <div key={line} className={cn("flex h-4 items-center", line > 0 ? "mt-0.5" : null)}>
+                  <Skeleton className={line > 0 ? "h-3 w-64" : "h-3 w-48"} />
                 </div>
-              ) : null}
+              ))}
             </div>
             {end === "none" ? null : (
               <Skeleton
@@ -296,4 +373,4 @@ function PageError({ className, children, action, ...rest }: ComponentPropsWitho
 }
 
 export type { SkeletonControl, SkeletonRow };
-export { Page, PageSection, PageRow, PageRowsSkeleton, PageEmpty, PageError, PAGE_SCROLLER, PAGE_WIDTH };
+export { Page, PageActions, PageSection, PageRow, PageRowsSkeleton, PageEmpty, PageError, PAGE_SCROLLER, PAGE_WIDTH };

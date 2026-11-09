@@ -3,3 +3,4 @@
  *  editor (editorFind.ts delegates here once the chunk is loaded). */
 export { FileEditor } from "./FileEditor";
 export { handleEditorFindKey, openFindInActiveEditor } from "./editorSearch";
+export { SkillTextEditor } from "./SkillTextEditor";

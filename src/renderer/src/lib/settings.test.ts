@@ -51,6 +51,15 @@ describe("settings sections", () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
+  it("lists Add-ons then Skills in the threads group, after Providers, on every surface", () => {
+    const threads = SETTINGS_SECTIONS.filter((section) => section.group === "threads").map((section) => section.id);
+    const at = threads.indexOf("providers");
+    expect(threads.slice(at, at + 3)).toEqual(["providers", "addons", "skills"]);
+    expect(settingsSectionLabel("addons")).toBe("Add-ons");
+    expect(settingsSectionLabel("skills")).toBe("Skills");
+    for (const id of ["addons", "skills"]) expect(SETTINGS_SECTIONS.find((section) => section.id === id)?.desktopOnly).toBeUndefined();
+  });
+
   it("names the remote page Hosts", () => {
     expect(settingsSectionLabel("remote")).toBe("Hosts");
   });

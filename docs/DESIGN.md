@@ -531,7 +531,14 @@ is a table, Accounts, takes `width="table"`, 1,152px, and lays its rows as
 columns from 48rem of its own container, stacked under it), one 16px
 semibold title with a 12px muted line under it, sections 24px apart, each
 under a 12px medium muted heading with 8px to its first row, rows 12px top
-and bottom with a hairline between neighbours and never a box. A row's
+and bottom with a hairline between neighbours and never a box. The title
+line holds one ghost small button, the page's verb alone ("Add…", "New
+skill…"), with no icon and nothing else beside the title; any page fills it
+from inside through `PageActions`, and the 28px button overhangs the title's
+24px line by 2px each side. A row that opens something (its edit dialog)
+takes `onOpen`: an open control named `openLabel` lies over the row, its box
+hovering 8px past the words, and the switch and ⋯ at its end sit above it,
+so pressing them never opens the row. A row's
 control is one `Switch`, one `ChoiceSelect`, one `Input` or one `Button`;
 a row whose control is a wide field (`PageRow wide`, Hosts' Public origin)
 lays it on a full-width line 8px under its words once the page's content is

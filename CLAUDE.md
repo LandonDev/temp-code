@@ -2092,6 +2092,28 @@ skill folders and gives threads the skill tools.
   addonGrants, oauthFlow (Mobbin's recorded answers under addons/fixtures/),
   oauthCallback, grantProbe, accountSync.addon, contract-m3a,
   contract-addonGrants, addonGrantWords, and core's test/addon.test.ts.
+- **The settings pages.** Settings → Add-ons and Settings → Skills (plan
+  .temp-code/plan-vJP8mPAPorvc.md; src/renderer/src/surfaces/settings/addons/
+  and skills/, docs/LAYOUT.md "Settings → Add-ons and Skills") read through
+  this machine: `addons.list` and, apart from it, `addons.grant.list` (unread
+  grants are never shown as nothing saved; the grant rows wait with "Loading"),
+  or `skills.list`, with the `addons`, `addon-status` (the whole map, so it
+  replaces), `addon-grants` and `skills` pushes folded in through a ref
+  (useAddons.ts, useSkills.ts). Every word the pages say that no shared
+  module has is in addonWords.ts (`addonMark`, `grantFact`, `addonMenuRows`,
+  the form ↔ spec) or skillForm.ts. A new add-on sends a fresh `ad_` id
+  (`newAddonId`), so a taken name is refused instead of replacing that row; a
+  skill's switch reads the skill whole (`skills.get`) and writes it back, and
+  every skill write and removal carries `expectUpdatedAt`. Sign in… is
+  desktop only; Sign out is `addons.grant.clear`; the key dialog's Clear sends
+  every value as null. The skill editor is `SkillTextEditor` (a CodeMirror
+  buffer over a string, one `EditorState` per path) reached only through
+  `editorChunk.surface`, so CodeMirror never joins the settings chunk.
+  `PageActions` (components/page.tsx) puts a page's one ghost verb on its
+  title line; `PageRow`'s `onOpen` makes a row open its dialog. Tests beside
+  each module (SkillTextEditor.test.tsx runs on jsdom in the node project, the
+  dom project stubbing CodeMirror); `SETTINGS_PREVIEW=addons,skills` draws
+  them.
 
 ## Skills: written out on every host
 The plan is .temp-code/plan--OsNna4IcfKO.md; the code is

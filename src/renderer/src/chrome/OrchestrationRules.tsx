@@ -37,7 +37,7 @@ import {
   type RoutingRule,
   type RulesCatalog,
 } from "../lib/tcserver/rules";
-import { homeNote } from "../lib/settingsHome";
+import { homeNote, refusalWords } from "../lib/settingsHome";
 import type { HarnessId } from "../lib/session";
 import type { ModelInfo, ProviderId, Reasoning } from "../lib/tcserver/types";
 
@@ -134,12 +134,6 @@ export function OrchestrationRulesEditor({ workspaceId }: { workspaceId: string 
   const environmentId = workspaceId === null ? registry.primary().environmentId : workspace?.environmentId;
   if (!environmentId) return <RulesSkeleton workspaceId={workspaceId} />;
   return <RulesEditor key={environmentId} environmentId={environmentId} workspaceId={workspaceId} />;
-}
-
-/** The host's refusal as a toast says it: "Orchestration rules … live on box; it is offline". */
-function refusalWords(err: unknown): string {
-  const raw = (err instanceof Error ? err.message : String(err ?? "")).trim().replace(/^refused:\s*/i, "");
-  return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "";
 }
 
 /** A refused save, from any of the editor's sections: one toast with the host's reason. */

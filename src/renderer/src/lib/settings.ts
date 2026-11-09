@@ -11,6 +11,8 @@ export type StaticSettingsSectionId =
   | "remote"
   | "defaults"
   | "providers"
+  | "addons"
+  | "skills"
   | "orchestration"
   | "reviews"
   | "appshots"
@@ -47,6 +49,8 @@ export const SETTINGS_SECTIONS: {
     description: "What new threads and plan builds start with, and what the picker lists.",
   },
   { id: "providers", group: "threads", label: "Providers", description: "The agent CLIs this machine can run." },
+  { id: "addons", group: "threads", label: "Add-ons", description: "MCP servers every thread can use." },
+  { id: "skills", group: "threads", label: "Skills", description: "What every CLI reads before it works." },
   {
     id: "orchestration",
     group: "threads",

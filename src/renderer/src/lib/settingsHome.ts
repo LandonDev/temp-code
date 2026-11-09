@@ -18,3 +18,9 @@ export function homeNote(home: SettingsHome | null | undefined): { note: string 
   if (!home) return { note: undefined, blocked: false };
   return home.online ? { note: `Saved on ${home.name}`, blocked: false } : { note: `${home.name} is offline`, blocked: true };
 }
+
+/** A host's refusal as a page says it: "refused: " dropped and the first letter raised ("Orchestration rules … live on box; it is offline"). */
+export function refusalWords(err: unknown): string {
+  const raw = (err instanceof Error ? err.message : String(err ?? "")).trim().replace(/^refused:\s*/i, "");
+  return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "";
+}

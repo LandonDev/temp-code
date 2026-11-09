@@ -23,6 +23,11 @@ import { ProvidersPage } from "./Providers";
 import { ThreadDefaultsPage } from "./ThreadDefaults";
 import { WorkspacePage } from "./Workspace";
 import { AppearancePage } from "./Appearance";
+import { AddonsPage } from "./addons/AddonsPage";
+import { SkillsPage } from "./skills/SkillsPage";
+import type { AddonGrantView } from "@shared/contract-addonGrants";
+import type { AddonRow, AddonStatus } from "@shared/contract-addons";
+import type { SkillMeta } from "@shared/contract-skills";
 
 /**
  * Every Settings page over one fixed host, for `bun run ui:preview
@@ -88,7 +93,76 @@ const ANSWERS: Record<string, unknown> = {
   "attachment.settings": { maxBytes: 64 * 1024 * 1024 },
 };
 
+// Settings → Add-ons and Skills: four add-ons (Connected, Failed, Needs a key, Off; one a thread wrote) and three skills.
+const addon = (over: Partial<AddonRow> & { name: string }): AddonRow => ({
+  id: `ad_${over.name}`,
+  workspaceId: null,
+  description: "",
+  spec: { transport: "stdio", command: "npx", args: [], env: [], auth: "none" },
+  enabled: true,
+  addedBy: { kind: "person" },
+  writtenBy: { kind: "person" },
+  createdAt: 1,
+  updatedAt: 1,
+  ...over,
+});
+const ADDONS: AddonRow[] = [
+  addon({
+    name: "github",
+    spec: { transport: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-github"], env: ["GITHUB_TOKEN"], auth: "fields" },
+    writtenBy: { kind: "thread", sessionId: "s1", environmentId: "local", title: "Fix the build" },
+  }),
+  addon({ name: "linear", spec: { transport: "http", url: "https://mcp.linear.app/mcp", headers: [], auth: "oauth" } }),
+  addon({ name: "slack", workspaceId: "w1", spec: { transport: "http", url: "https://slack.example.com/mcp", headers: ["X-Api-Key"], auth: "fields", platforms: ["darwin"] } }),
+  addon({ name: "playwright", enabled: false, spec: { transport: "stdio", command: "npx", args: ["@playwright/mcp"], env: [], auth: "none" } }),
+];
+const at = (state: AddonStatus["state"], over: Partial<AddonStatus> = {}): AddonStatus => ({ state, tools: 0, at: 1, ...over });
+const ADDON_STATUS: Record<string, AddonStatus> = {
+  ad_github: at("ready", { tools: 24 }),
+  ad_linear: at("failed", { detail: "Disconnected: the server closed the stream" }),
+  ad_slack: at("needs-grant", { detail: "Needs values for X-Api-Key" }),
+  ad_playwright: at("off"),
+};
+const GRANTS: AddonGrantView[] = [
+  { addonId: "ad_github", fields: [{ name: "GITHUB_TOKEN", set: true }], oauth: null, signIn: null, gaps: [] },
+  { addonId: "ad_linear", fields: [], oauth: { signedIn: true, expiresAt: null, refreshedBy: "box", refused: false }, signIn: null, gaps: [] },
+];
+const skill = (over: Partial<SkillMeta> & { name: string; description: string }): SkillMeta => ({
+  id: `sk_${over.name}`,
+  workspaceId: null,
+  harnesses: "all",
+  enabled: true,
+  version: 1,
+  digest: "d",
+  bytes: 4096,
+  fileCount: 1,
+  addedBy: { kind: "import", from: "~/.claude/skills" },
+  writtenBy: { kind: "import", from: "~/.claude/skills" },
+  createdAt: 1,
+  updatedAt: 1,
+  ...over,
+});
+const SKILLS: SkillMeta[] = [
+  skill({
+    name: "impeccable",
+    description: "Use when the user wants to design, redesign, shape, critique, audit, polish, simplify, harden, animate, or otherwise improve a frontend interface",
+    version: 3,
+    writtenBy: { kind: "thread", sessionId: "s2", environmentId: "local", title: "Polish the rail" },
+  }),
+  skill({ name: "release-notes", description: "Write the release notes from the commit subjects since the last tag", harnesses: ["claude", "codex"], workspaceId: "w1" }),
+  skill({ name: "swift-review", description: "Review Swift for data races and retain cycles", harnesses: ["codex"], enabled: false, version: 2 }),
+];
+const STORE_ANSWERS = {
+  "addons.list": { addons: ADDONS, status: ADDON_STATUS, home: { name: "box", online: true } },
+  "addons.grant.list": { grants: GRANTS },
+  "skills.list": { skills: SKILLS, home: { name: "box", online: true } },
+};
+Object.assign(ANSWERS, STORE_ANSWERS);
+const OFFLINE = { name: "box", online: false };
+
 let mode: HostMode = "answers";
+/** The page's own answers over the shared ones (an empty list, an offline home). */
+let overrides: Record<string, unknown> = {};
 const CATALOG_LISTS = new Set(["workspace.list", "project.list", "catalog.get"]);
 
 /** The one link every page reads through: answers at once, never, or with a refusal. */
@@ -105,6 +179,7 @@ const link = {
       if (mode === "silent") return new Promise<T>(() => {});
       if (mode === "refuses") return Promise.reject(new Error(NO_ANSWER));
     }
+    if (method in overrides) return Promise.resolve(overrides[method] as T);
     return method in ANSWERS ? Promise.resolve(ANSWERS[method] as T) : Promise.reject(new Error(`no ${method}`));
   },
 } as unknown as Link;
@@ -116,8 +191,9 @@ registerBuiltinHarnesses();
 bindServer({ linkOf: () => link });
 
 /** A fresh host for each fixture: the stores forget what an earlier fixture loaded. */
-function prepare(next: HostMode): void {
+function prepare(next: HostMode, answers: Record<string, unknown> = {}): void {
   mode = next;
+  overrides = answers;
   resetPlanSettingsForTests();
   resetCatalogProbes();
   dropHarnessAvailability("local");
@@ -127,7 +203,7 @@ function prepare(next: HostMode): void {
   workspaceStore.attach(link);
 }
 
-const PAGES: Record<string, { title: string; description?: string; body: () => ReactNode }> = {
+const PAGES: Record<string, { title: string; description?: string; body: () => ReactNode; answers?: Record<string, unknown> }> = {
   general: { title: "General", body: () => <GeneralPage onOpenWhatsNew={() => {}} /> },
   defaults: { title: "Thread defaults", body: () => <ThreadDefaultsPage /> },
   appearance: { title: "Appearance", body: () => <AppearancePage /> },
@@ -138,6 +214,27 @@ const PAGES: Record<string, { title: string; description?: string; body: () => R
   reviews: { title: "Reviews", body: () => <ReviewsPage /> },
   hosts: { title: "Hosts", body: () => <HostsPage /> },
   workspace: { title: "temp-code", description: "/srv/agents/work/temp-code", body: () => <WorkspacePage workspaceId="w1" /> },
+  addons: { title: "Add-ons", description: "MCP servers every thread can use.", body: () => <AddonsPage /> },
+  skills: { title: "Skills", description: "What every CLI reads before it works.", body: () => <SkillsPage /> },
+  "addons-empty": {
+    title: "Add-ons",
+    description: "MCP servers every thread can use.",
+    body: () => <AddonsPage />,
+    answers: { "addons.list": { addons: [], status: {}, home: null }, "addons.grant.list": { grants: [] } },
+  },
+  "skills-empty": { title: "Skills", description: "What every CLI reads before it works.", body: () => <SkillsPage />, answers: { "skills.list": { skills: [], home: null } } },
+  "addons-offline": {
+    title: "Add-ons",
+    description: "MCP servers every thread can use.",
+    body: () => <AddonsPage />,
+    answers: { "addons.list": { ...STORE_ANSWERS["addons.list"], home: OFFLINE } },
+  },
+  "skills-offline": {
+    title: "Skills",
+    description: "What every CLI reads before it works.",
+    body: () => <SkillsPage />,
+    answers: { "skills.list": { ...STORE_ANSWERS["skills.list"], home: OFFLINE } },
+  },
 };
 
 /** Thread defaults' "New threads start on" asks only once a second host is saved. */
@@ -150,7 +247,7 @@ const ownEnvironments = registry.environmentsSnapshot.bind(registry);
 export function SettingsPagePreview({ page, host }: { page: keyof typeof PAGES; host: HostMode }) {
   useState(() => {
     Object.assign(registry, { environmentsSnapshot: page === "defaults" ? () => TWO_HOSTS : ownEnvironments });
-    prepare(host);
+    prepare(host, PAGES[page].answers);
   });
   const { title, description, body } = PAGES[page];
   return (

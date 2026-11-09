@@ -256,7 +256,10 @@ is no project page in the pane.
 draws every Settings page over one fake host in three states: answered,
 not yet answered (each section's rows in their shape) and refused (each
 section's red line with Retry at its heading); `SETTINGS_PREVIEW=editor,hosts`
-keeps those pages alone.
+keeps those pages alone. `addons` and `skills` are drawn the same three ways,
+and `addons-empty`, `skills-empty`, `addons-offline` and `skills-offline` show
+the empty list and the home out of reach. The dialogs are portals the static
+render leaves out; their DOM tests hold them.
 
 ### Settings → Hosts
 
@@ -320,6 +323,50 @@ the box") the first section's description says "Saved on box", 4px under a
 workspace's "Follows the global rules."; while that host is offline it says
 "box is offline" and every control is disabled. Thread defaults says the
 same under its section.
+
+### Settings → Add-ons and Skills
+
+Two pages in the Threads group after Providers (section ids `addons` and
+`skills`, surfaces/settings/addons/ and surfaces/settings/skills/), each one
+list of every row this host knows, sorted by name, the scope said on each row
+rather than a section per scope. The one section has no title; its
+description is the home note ("Saved on box", or "box is offline" with every
+switch, ⋯, row and the title line's verb off), read from the every-workspace
+scope's home as the Orchestration page does. Add… and New skill… sit on the
+page's title line (`PageActions`). A row is a `PageRow` that opens (`onOpen`):
+a click on it opens Edit…, and the switch and ⋯ at its end never do.
+
+An add-on's row: its name; its state on this host as a `StatusMark`
+(`addonMark`: Signing in with the step while a sign-in runs, Off for a row
+switched off, Starting, Connected with "24 tools", Failed with the host's
+reason, which wraps rather than being cut, amber Needs a key or Sign in
+needed with what is missing, muted Mac only or Linux only); then one comma
+run 4px under it: the scope, "Macs only" or "Linux hosts only" when line two
+does not say so, what the grant holds ("GITHUB_TOKEN saved", "signed in",
+"refreshed on box") and "written by <thread>" when a thread wrote it last; a
+red line for a sign-in that failed or a change the host refused. The ⋯ holds
+Edit…, Add key… (Change key… once a value is saved), Sign in… (desktop only;
+Sign in again…, Cancel sign-in), Sign out for an OAuth grant, then Remove…,
+which confirms. Until `addons.grant.list` answers the grant facts are left
+out and the grant rows are off with the reason "Loading"; if it fails, one
+red line under the rows says so with its own Retry.
+
+Add… and Edit… are one form dialog of the spec's fields (Name, Description,
+Where, Runs: Command or Address, the command's arguments a line each and its
+variables, or the address and its headers, Sign-in: None, Key or Sign in,
+which a command cannot take, Hosts), its footer note the approval card's
+words for the transport. Add key… is a password field per value, a saved one
+marked "Saved" and never shown, with a quiet Clear at the footer's start.
+
+A skill's row: its name, its description on one line (cut, and whole on the
+row's tooltip only while cut), then its CLIs, scope, version and the thread
+that wrote it. New skill… and Edit… are one large dialog of fixed height:
+the name (a new skill's only), Where and the CLIs (three checkboxes, the last
+one ticked staying ticked) over the skill's files beside a CodeMirror editor
+that loads with the editor chunk; from 40rem of the dialog the list is a
+12rem column, under it the list sits over the editor. SKILL.md comes first; a
+binary file is listed with its size and opens one muted line in the editor's
+place. Closing with unsaved edits asks "Discard changes to <name>?".
 
 ### The Accounts page
 

@@ -15,6 +15,8 @@ vi.mock("./settings/Archive", () => ({ ArchivePage: stub("archive") }));
 vi.mock("./ReviewSettings", () => ({ ReviewsPage: stub("reviews") }));
 vi.mock("./AppshotsSettings", () => ({ AppshotsPage: stub("appshots") }));
 vi.mock("./settings/hosts/HostsPage", () => ({ HostsPage: stub("remote") }));
+vi.mock("./settings/addons/AddonsPage", () => ({ AddonsPage: stub("addons") }));
+vi.mock("./settings/skills/SkillsPage", () => ({ SkillsPage: stub("skills") }));
 vi.mock("../lib/tcserver/workspaces", () => ({ useWorkspaces: () => [] }));
 vi.mock("../chrome/WindowControls", () => ({ WindowControls: () => null }));
 
@@ -67,6 +69,18 @@ describe("SettingsView", () => {
     render(view());
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Hosts");
     expect(document.querySelector("[data-page=remote]")).toBeTruthy();
+  });
+
+  it("routes Add-ons and Skills to their pages", () => {
+    act(() => shell.openSettings("addons"));
+    render(view());
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Add-ons");
+    expect(document.querySelector("[data-page=addons]")).toBeTruthy();
+    cleanup();
+    act(() => shell.openSettings("skills"));
+    render(view());
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Skills");
+    expect(document.querySelector("[data-page=skills]")).toBeTruthy();
   });
 
   it("opens each section at its top, with the scroller's gutter held", () => {

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Page, PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "./page";
+import { Page, PageActions, PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "./page";
+import { SettingSwitch } from "./setting-switch";
 import { Button } from "./ui/button";
 
 afterEach(cleanup);
@@ -223,5 +224,80 @@ describe("a wide row", () => {
     const row = document.querySelector<HTMLElement>("[data-slot=page-row-skeleton]")!;
     expect(row.className).toContain("@max-[30rem]/page:flex-wrap");
     expect(row.querySelector("[data-skeleton-control]")!.className).toContain("@max-[30rem]/page:w-full");
+  });
+});
+
+describe("the title line's slot", () => {
+  it("takes PageActions from anywhere inside the page onto the title line", () => {
+    render(
+      <Page title="Add-ons">
+        <PageSection>
+          <PageActions>
+            <Button variant="ghost" size="sm">
+              Add…
+            </Button>
+          </PageActions>
+          <PageRow title="github" />
+        </PageSection>
+      </Page>,
+    );
+    const slot = document.querySelector<HTMLElement>("[data-slot=page-actions]")!;
+    expect(slot.closest("header")).toBe(screen.getByRole("heading", { level: 1 }).closest("header"));
+    expect(slot.contains(screen.getByRole("button", { name: "Add…" }))).toBe(true);
+    // The 28px button overhangs the 24px title line by 2px each side.
+    expect(slot.className).toContain("[&>[data-slot=button]]:-my-0.5");
+  });
+
+  it("renders nothing outside a Page", () => {
+    const { container } = render(
+      <PageActions>
+        <Button>Add…</Button>
+      </PageActions>,
+    );
+    expect(container.innerHTML).toBe("");
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("is empty and hidden when nothing fills it", () => {
+    render(<Page title="General">{null}</Page>);
+    const slot = document.querySelector<HTMLElement>("[data-slot=page-actions]")!;
+    expect(slot.childNodes.length).toBe(0);
+    expect(slot.className).toContain("empty:hidden");
+  });
+});
+
+describe("a row that opens", () => {
+  it("lays an open control named openLabel over the row, and its switch never opens it", () => {
+    const onOpen = vi.fn();
+    const onChange = vi.fn();
+    render(
+      <PageSection>
+        <PageRow title="first" />
+        <PageRow title="github" description="Connected" onOpen={onOpen} openLabel="Edit github">
+          <SettingSwitch label="github" on onChange={onChange} />
+        </PageRow>
+      </PageSection>,
+    );
+    const open = screen.getByRole("button", { name: "Edit github" });
+    expect(open.hasAttribute("data-row-open")).toBe(true);
+    fireEvent.click(open);
+    expect(onOpen).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("switch", { name: "github" }));
+    expect(onChange).toHaveBeenCalledWith(false);
+    expect(onOpen).toHaveBeenCalledOnce();
+    // The hairline stays on the outer row, at the column's width; the box hovers 8px past the words.
+    const row = open.closest<HTMLElement>("[data-slot=page-row]")!;
+    expect(row.dataset.opens).toBe("");
+    expect(row.className).toContain("[[data-slot=page-row]+&]:border-border");
+    expect(open.parentElement!.className).toContain("-mx-2");
+    expect(open.parentElement!.className).toContain("hover:bg-foreground/5");
+  });
+
+  it("turns the open control and its hover off with openDisabled", () => {
+    const onOpen = vi.fn();
+    render(<PageRow title="github" onOpen={onOpen} openLabel="Edit github" openDisabled />);
+    const open = screen.getByRole("button", { name: "Edit github" }) as HTMLButtonElement;
+    expect(open.disabled).toBe(true);
+    expect(open.parentElement!.className).not.toContain("hover:bg-foreground/5");
   });
 });

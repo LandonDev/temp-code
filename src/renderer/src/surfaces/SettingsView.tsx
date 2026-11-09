@@ -23,6 +23,8 @@ import { ProvidersPage } from "./settings/Providers";
 import { WorkspacePage } from "./settings/Workspace";
 import { OrchestrationPage } from "./settings/Orchestration";
 import { ArchivePage } from "./settings/Archive";
+import { AddonsPage } from "./settings/addons/AddonsPage";
+import { SkillsPage } from "./settings/skills/SkillsPage";
 
 type Props = {
   cwd: string;
@@ -94,6 +96,8 @@ export function SettingsView({
           {section === "editor" ? <EditorPage /> : null}
           {section === "keybindings" ? <KeybindingsPage /> : null}
           {section === "providers" ? <ProvidersPage /> : null}
+          {section === "addons" ? <AddonsPage /> : null}
+          {section === "skills" ? <SkillsPage /> : null}
           {section === "orchestration" ? <OrchestrationPage /> : null}
           {section === "reviews" ? <ReviewsPage /> : null}
           {section === "appshots" ? (
