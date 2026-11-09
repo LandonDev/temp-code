@@ -598,9 +598,8 @@ private func held(_ pid: Int32, kind: HeldRecord.Kind = .button) -> HeldRecord {
     @Test func aPublicSymbolResolvesAndAForcedMissMisses() {
         typealias Trusted = @convention(c) () -> DarwinBoolean
         #expect(PrivateSymbol.lookup("AXIsProcessTrusted", as: Trusted.self) != nil)
-        PrivateSymbol.forcedMisses = ["AXIsProcessTrusted"]
-        defer { PrivateSymbol.forcedMisses = [] }
-        #expect(PrivateSymbol.lookup("AXIsProcessTrusted", as: Trusted.self) == nil)
+        #expect(PrivateSymbol.lookup("AXIsProcessTrusted", as: Trusted.self, missing: ["AXIsProcessTrusted"]) == nil)
+        #expect(PrivateSymbol.lookup("AXIsProcessTrusted", as: Trusted.self, missing: ["all"]) == nil)
         #expect(PrivateSymbol.lookup("tc_no_such_symbol", as: Trusted.self) == nil)
         #expect(PrivateSymbol.misses("all") == ["all"])
         #expect(PrivateSymbol.misses(" a, b ,") == ["a", "b"])

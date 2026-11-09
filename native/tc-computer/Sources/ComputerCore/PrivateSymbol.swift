@@ -12,13 +12,14 @@ import Glibc
 /// exercises by forcing the miss, and has a row in native/tc-computer/README.md "Private symbols".
 /// `dlsym` appears in this file and nowhere else; scripts/tc-computer-guard.test.ts holds it so.
 public enum PrivateSymbol {
-    /// Names that must miss: "all", or a comma list. Read once from `TC_COMPUTER_PRIVATE_MISS`; tests set it directly.
-    nonisolated(unsafe) public static var forcedMisses: Set<String> = misses(ProcessInfo.processInfo.environment["TC_COMPUTER_PRIVATE_MISS"])
+    /// Names that must miss in this process: "all", or a comma list, from `TC_COMPUTER_PRIVATE_MISS`.
+    public static let forcedMisses: Set<String> = misses(ProcessInfo.processInfo.environment["TC_COMPUTER_PRIVATE_MISS"])
 
     /// `dlsym(RTLD_DEFAULT, name)` cast to `T` (a `@convention(c)` function type); nil when the
-    /// symbol is missing, forced to miss, or `T` is not pointer-sized.
-    public static func lookup<T>(_ name: String, as type: T.Type) -> T? {
-        if forcedMisses.contains("all") || forcedMisses.contains(name) { return nil }
+    /// symbol is missing, named in `missing` (a test passes its own, so nothing global changes), or
+    /// `T` is not pointer-sized.
+    public static func lookup<T>(_ name: String, as type: T.Type, missing: Set<String> = forcedMisses) -> T? {
+        if missing.contains("all") || missing.contains(name) { return nil }
         guard MemoryLayout<T>.size == MemoryLayout<UnsafeRawPointer>.size, let raw = dlsym(defaultHandle, name) else { return nil }
         return unsafeBitCast(raw, to: type)
     }

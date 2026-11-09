@@ -8,8 +8,8 @@ import Foundation
 
 /// An AX window's CGWindowID. `_AXUIElementGetWindow` is the one private
 /// symbol tc-computer uses (the person's ruling, 2026-11-08; native/tc-computer/README.md):
-/// read-only, resolved by name at run time, so a missing symbol only means the
-/// public match by pid, title and frame (`WindowMatch.pick`) answers instead.
+/// read-only, resolved by name at run time through `PrivateSymbol`, so a missing symbol only
+/// means the public match by pid, title and frame (`WindowMatch.pick`) answers instead.
 struct WindowIDLookup: Sendable {
     typealias Fn = @Sendable (AXUIElement) -> CGWindowID?
     let lookup: Fn
@@ -18,24 +18,23 @@ struct WindowIDLookup: Sendable {
     private final class Symbol: @unchecked Sendable {
         typealias Raw = @convention(c) (AXUIElement, UnsafeMutablePointer<CGWindowID>) -> AXError
         let fn: Raw
-
-        init?(name: String) {
-            guard let handle = dlopen(nil, RTLD_NOW), let sym = dlsym(handle, name) else { return nil }
-            fn = unsafeBitCast(sym, to: Raw.self)
-        }
+        init(_ fn: Raw) { self.fn = fn }
     }
 
-    /// The private symbol when this macOS has it; a lookup that always misses when it does not.
-    static let live: WindowIDLookup = {
-        guard let symbol = Symbol(name: "_AXUIElementGetWindow") else { return WindowIDLookup { _ in nil } }
+    /// The private symbol when this macOS has it and `missing` does not name it; a lookup that
+    /// always misses otherwise, leaving the window list to answer.
+    static func resolve(missing: Set<String> = PrivateSymbol.forcedMisses) -> WindowIDLookup {
+        guard let fn = PrivateSymbol.lookup("_AXUIElementGetWindow", as: Symbol.Raw.self, missing: missing) else {
+            return WindowIDLookup { _ in nil }
+        }
+        let symbol = Symbol(fn)
         return WindowIDLookup { el in
             var id: CGWindowID = 0
             return symbol.fn(el, &id) == .success && id != 0 ? id : nil
         }
-    }()
+    }
 
-    /// A lookup that never finds the symbol: the public fallback alone (the unit test's forced miss).
-    static let missing = WindowIDLookup { _ in nil }
+    static let live = resolve()
 
     /// The id by the private symbol, else by the window list; nil when neither gives exactly one.
     func id(of window: AXUIElement, pid: pid_t, title: String, frame: ComputerProtocol.Rect, list: () -> [WindowListEntry]) -> Int? {

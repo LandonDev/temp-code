@@ -70,8 +70,13 @@ import Testing
             WindowListEntry(id: 32, pid: me, title: "Other", bounds: frame, onScreen: true)
         ]
         let window = AXUIElementCreateApplication(me)
-        #expect(WindowIDLookup.missing.id(of: window, pid: me, title: "Scratch", frame: frame, list: { list }) == 31)
-        #expect(WindowIDLookup.missing.id(of: window, pid: me, title: "Gone", frame: frame, list: { list }) == nil)
+        // the lookup forced to miss as `TC_COMPUTER_PRIVATE_MISS` would: the window list answers alone
+        for missing: Set<String> in [["_AXUIElementGetWindow"], ["all"]] {
+            let forced = WindowIDLookup.resolve(missing: missing)
+            #expect(forced.lookup(window) == nil)
+            #expect(forced.id(of: window, pid: me, title: "Scratch", frame: frame, list: { list }) == 31)
+            #expect(forced.id(of: window, pid: me, title: "Gone", frame: frame, list: { list }) == nil)
+        }
         // a lookup that answers wins over the list
         #expect(WindowIDLookup { _ in 99 }.id(of: window, pid: me, title: "Scratch", frame: frame, list: { list }) == 99)
     }
