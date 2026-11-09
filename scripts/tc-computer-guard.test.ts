@@ -166,9 +166,20 @@ describe('tc-computer product guards', () => {
     expect(missing, `undocumented private symbols:\n${missing.join('\n')}`).toEqual([])
   })
 
-  it('names an existing Swift fallback test for every private-symbol row', () => {
+  it('names an existing Swift fallback test for every private-symbol row the binary looks up', () => {
     const tests = swiftFiles(join(root, pkg, 'Tests'))
+    // a row whose symbol no product target looks up yet (its module has not landed) documents only
+    const lookedUp = new Set(
+      sources.flatMap((source) =>
+        [
+          ...withoutLineComments(source.text).matchAll(
+            /\bPrivateSymbol\s*\.\s*lookup\s*\(\s*"([^"\n]+)"/g
+          )
+        ].map((match) => match[1])
+      )
+    )
     const missing = rows
+      .filter((row) => lookedUp.has(row.symbol))
       .filter(
         (row) =>
           !row.test ||
