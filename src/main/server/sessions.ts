@@ -4316,6 +4316,16 @@ export class SessionRegistry {
     )
   }
 
+  /** Put a live handle down at its next turn start, never mid-turn: what it
+   *  was spawned with no longer holds (the bridge's TEMP_CODE_ADDONS, fixed
+   *  at spawn, after its scope gained its first add-on or lost its last). The
+   *  thread resumes on its transcript. Answers whether a handle was marked. */
+  rebootAtNextTurn(sessionId: string): boolean {
+    if (!this.handles.has(sessionId)) return false
+    this.pendingReboot.add(sessionId)
+    return true
+  }
+
   /** At a turn start with no turn open: put a stale handle down so the next
    *  handleFor() resumes on the thread's settings. Its background tasks go
    *  with it; the status is left to the turn starting. */

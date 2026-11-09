@@ -54,6 +54,7 @@ import { storePushes, storeRpc } from './storeRpc'
 import { AddonHost } from './addons/addonHost'
 import { AddonExposure } from './addons/exposure'
 import { hasAddons, workspaceIdOf } from './addons/scope'
+import { watchScopeFlips } from './addons/scopeFlip'
 import { appAddonAdd, appAddonCall, appAddonFind, appAddonList, appAddonRemove, type AddonToolDeps } from './addons/tools'
 import { addonGrantHook, grantSourceFor } from './addons/grants'
 import type { SpawnAddonHost } from './addons/addonWire'
@@ -1465,6 +1466,8 @@ export async function startServer(
     },
     call: (addonId, tool, args, opts) => addonHost.call(addonId, tool, args, opts)
   })
+  // A scope gaining its first add-on or losing its last reboots its codex and Muse harnesses at their next turn (addons/scopeFlip.ts).
+  const stopScopeFlips = watchScopeFlips({ store: addonStore, sessions: registry, rebootAtNextTurn: (id) => registry.rebootAtNextTurn(id) })
   setAppAddons({
     exposure: addonExposure,
     list: (caller) => appAddonList(addonToolDeps, caller, 'claude'),
@@ -3331,6 +3334,7 @@ export async function startServer(
       await gateway.stop()
       addonGrantHook.current = null
       setAppAddons(null)
+      stopScopeFlips()
       addonExposure.dispose()
       await addonHost.stop()
       execBroker.stop()
