@@ -514,7 +514,15 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
   round a scroller, the Changes list, an open log, Notes' markdown or
   editor, Build's log or Debug's stack and console. An Activity
   shell row's log stays in its fold while the fold closes and stops asking
-  for output as the close starts. It never tweens its width: a
+  for output as the close starts. A computer session is one Activity row
+  per session of the thread's tree (`lib/computerSessions.ts` over every
+  host's `computer` push; the window in its app, the tier in
+  `COMPUTER_TIER_WORDS`, the age, Stop); on this Mac's desktop it opens in
+  place onto the window's live preview (`ComputerPreview`, its own lazy
+  chunk, warmed by the row's hover), which streams only while the fold is
+  open, the section shown and the window visible. A row that cannot
+  preview (a box thread on another Mac, the browser /ui) opens only for a
+  card waiting on the Mac or a held step. It never tweens its width: a
   toggle in place gives the thread its new width at once (one layout; the
   transcript's anchor row holds it) and moves the pane on transform and
   opacity alone (`usePaneMotion` in ThreadView, `PANE_MOTION`): opening, it

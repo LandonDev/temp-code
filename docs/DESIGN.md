@@ -411,6 +411,11 @@ s"): prose punctuation within one fact, not a joiner between two. The
 renderer never changes a detail's case; only a detail read from an old
 host's legacy `activity` takes a capital (`legacyDetail`).
 
+A computer action's tier is never named on screen: `COMPUTER_TIER_WORDS`
+(src/shared/statusWords.ts) words it for a person, "in the background",
+"to the app" or "on the screen", the Activity row's detail; a held computer
+step says the scheduler's words as a Queued detail.
+
 At rest a row draws no mark for idle and done (`marksAtRest`): a mark that
 would only say "nothing is happening" is noise. Two places draw done's
 check: the right panel's Agents rows, where it leads a finished agent (the
@@ -478,7 +483,16 @@ of plain words (glyph, label, age, Stop); one that opens (a shell's log, a
 dev server's pane) has its open control laid over it with Stop beside it,
 as every row with controls of its own; a shell's command shows only in
 its fold, as the first line of its output, one `CONSOLE` capped at 240px
-whose first read draws skeleton lines in the same box. The panel's other
+whose first read draws skeleton lines in the same box. A computer
+session's row says the window in the app it used last ("Untitled in
+TextEdit"), then the tier of its last action 4px after it in 12px muted
+(`COMPUTER_TIER_WORDS`), and opens in place, with no height animation, onto
+the window's live preview: a box at the pane's width less the fold's 8px
+insets, in the stream's shape and at most 240px tall, on the `card` fill
+with `rounded-lg`, the picture centred in it on the `image-outline` edge, a
+`Skeleton` in its shape until the first frame, and one 12px line 4px under
+it (a card waiting on the Mac, a held step, or why the preview ended, which
+is then the line alone). The panel's other
 logs (Build, the Debug console) keep the console's 20px lines. It yields to the thread, which never
 goes under 360px beside it. It is a docked column, not a drawer or
 a sheet, and it never animates its width: the thread takes its width at
@@ -712,6 +726,9 @@ being produced shimmers (`WorkingText`); nothing else does.
 | The slot above the composer emptying | — | the outgoing row stays, inert, and fades `--dur-fast` `--ease-out`; the 28px stays | at once |
 | Switch (a setting's `Switch`, the rail's Away row) | the thumb slides on its clip-path, `--dur-slow` `--ease-out`, and grows 5px toward the other side on the track's hover; the track's fill changes over `--dur-fast`; the row around the Away track never moves | the same | snaps |
 | Progress bar | the indicator slides by `translateX` inside its clipped, rounded track, `--dur-slow` (a scale would squash its round ends) | — | none |
+| A computer preview opening under its Activity row | in place, no height animation; the box fades in over `--dur-fast` (`FADE_IN`, `@starting-style`); a frame replaces the last with no transition | at once | the same fade |
+| The agent's click on a preview (`CLICK_MARK`, a Web Animation on the ring alone, placed at the click's share of the picture) | scale 0.6→1 at full opacity over `--dur-base` `--ease-out`, holds `FOLD_HOLD_MS`, fades over `--dur-slow`; a new click restarts it | — | appears and fades, no scale |
+| The Mac's computer-use banner ("The Mac's computer-use banner" below) | opacity, `--dur-base` `--ease-out` | opacity, `--dur-fast` `--ease-exit`, then the window hides | `--dur-fast` |
 
 Rules: animate `transform` and `opacity` (and height only through the
 collapsible, the question card's frame between its questions, the slash menu's frame, or `useHeightGlide` for a box whose content grows while it is read); every animation is interruptible and starts from the current
@@ -907,6 +924,16 @@ raised buttons at `sm`: Back and Skip `secondary`, Next or Continue (with ⌘⏎
 `default`; Back arrives at the group's start, so Skip and Next never move. Every action
 row ends in a caret: it turns on a row that opens a body and stays still on
 one that opens its file.
+
+A computer call that returned a picture the model asked for stands as its
+own row where it settled, as a published page does: its line as a lone
+step, then 8px under it the picture at the column's width in its own shape,
+at most 320px tall (two to four in one line 8px apart, each at most 240px
+tall and keeping its shape), `rounded-lg` on the `image-outline` edge, a
+`Skeleton` in that shape while it loads, a click opening the lightbox from
+it; a file its host no longer has is one muted line in its place. A running
+computer call is told by the working line in the host's words ("Clicking
+Save in TextEdit"), and a held one says the scheduler's line whole.
 
 ## Restraint
 
