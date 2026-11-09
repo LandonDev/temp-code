@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "method": "capture/click",
+  "params": {
+    "stream": "preview-1",
+    "at": [
+      412,
+      233
+    ],
+    "width": 960,
+    "height": 804
+  }
+}

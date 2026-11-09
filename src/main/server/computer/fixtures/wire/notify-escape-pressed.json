@@ -1,0 +1,7 @@
+{
+  "jsonrpc": "2.0",
+  "method": "escape/pressed",
+  "params": {
+    "at": 1762650000123
+  }
+}

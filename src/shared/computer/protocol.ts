@@ -104,7 +104,19 @@ export const PREVIEW_STREAM = {
   /** the stream's long edge may go below a screenshot's: the preview is a thumbnail */
   minMaxEdge: 256,
   frameMaxBytes: 512 * 1024,
-  maxUnacked: 2
+  maxUnacked: 2,
+  /** a click on a window whose stream starts this long after the click's call answered is sent on it once (P2) */
+  clickCarryMs: 2_000
+} as const
+
+/** The person's Escape while the session is held (§8, P1): the host renews the watch, and it ends on its own when the host stops. */
+export const ESCAPE_WATCH = {
+  leaseMs: 30_000,
+  renewMs: 10_000,
+  minLeaseMs: 1_000,
+  maxLeaseMs: 120_000,
+  /** kVK_Escape */
+  keycode: 53
 } as const
 
 /** `type` (§5.3). */
@@ -817,7 +829,12 @@ export const COMPUTER_METHODS = {
   'capture.stream.stop': { params: z.object({ stream: z.string().min(1) }), result: EmptySchema },
   'input.probe': { params: InputProbeParamsSchema, result: ProbeReportSchema },
   'input.restoreSession': { params: EmptySchema, result: SessionRestoreSchema },
-  'clipboard.state': { params: EmptySchema, result: ClipboardActivitySchema }
+  'clipboard.state': { params: EmptySchema, result: ClipboardActivitySchema },
+  /** P1: while on, the person's unmarked Escape is taken and sent as `escape/pressed`; every other event passes */
+  'escape.watch': {
+    params: z.object({ on: z.boolean(), leaseMs: int().min(ESCAPE_WATCH.minLeaseMs).max(ESCAPE_WATCH.maxLeaseMs).optional() }),
+    result: EmptySchema
+  }
 } as const satisfies Record<string, { params: z.ZodType; result: z.ZodType }>
 export type ComputerMethod = keyof typeof COMPUTER_METHODS
 export type ComputerParams<M extends ComputerMethod> = z.infer<(typeof COMPUTER_METHODS)[M]['params']>
@@ -858,6 +875,10 @@ export const ComputerNotificationSchema = z.discriminatedUnion('method', [
     })
   ),
   notify('capture/streamEnded', z.object({ stream: z.string(), reason: StreamEndReasonSchema })),
+  /** P2: the agent clicked in a streamed window; `at` in the pixels of a `width` × `height` frame, sent whether or not a pixel changed */
+  notify('capture/click', z.object({ stream: z.string(), at: PointSchema, width: int().positive(), height: int().positive() })),
+  /** P1: the person pressed Escape while the watch was on; epoch ms */
+  notify('escape/pressed', z.object({ at: z.number() })),
   notify('log', z.object({ level: LogLevelSchema, message: z.string() }))
 ])
 export type ComputerNotification = z.infer<typeof ComputerNotificationSchema>

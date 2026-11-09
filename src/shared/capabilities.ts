@@ -450,6 +450,11 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   // Computer use (contract-computer.ts): the live sessions are anyone's to see; Stop is an act.
   'computer.sessions': 'read',
   'computer.stop': 'operate',
+  // The live preview shows the person's windows: the Mac desktop's own socket only, never a key.
+  'computer.preview.start': 'local',
+  'computer.preview.ack': 'local',
+  'computer.preview.stop': 'local',
+  'computer.proofHold': 'local',
   // The Mac's remembered approvals (contract-macbridge-rules.ts): only its own renderer.
   'macBridge.rules.list': 'local',
   'macBridge.rules.forget': 'local',

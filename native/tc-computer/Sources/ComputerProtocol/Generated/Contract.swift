@@ -58,6 +58,14 @@ public enum ComputerDefaults {
         public static let minMaxEdge = 256
         public static let frameMaxBytes = 524288
         public static let maxUnacked = 2
+        public static let clickCarryMs = 2000
+    }
+    public enum EscapeWatch {
+        public static let leaseMs = 30000
+        public static let renewMs = 10000
+        public static let minLeaseMs = 1000
+        public static let maxLeaseMs = 120000
+        public static let keycode = 53
     }
     public enum Typing {
         public static let keyChunkUnits = 20

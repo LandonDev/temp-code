@@ -59,7 +59,12 @@ describe('METHOD_CAPABILITY', () => {
         'ports.setForwarding',
         // An add-on sign-in opens a browser on this machine (contract-addonGrants.ts).
         'addons.grant.signIn',
-        'addons.grant.cancel'
+        'addons.grant.cancel',
+        // The computer preview shows the person's windows: the Mac desktop's own socket only.
+        'computer.preview.start',
+        'computer.preview.ack',
+        'computer.preview.stop',
+        'computer.proofHold'
       ].sort()
     )
   })
@@ -196,5 +201,6 @@ describe('computer use (contract-computer.ts)', () => {
     expect(METHOD_CAPABILITY['computer.sessions']).toBe('read')
     expect(METHOD_CAPABILITY['computer.stop']).toBe('operate')
     for (const m of ['app.computer', 'app.computerCancel', 'app.computerTools'] as const) expect(METHOD_CAPABILITY[m]).toBe('local')
+    for (const m of ['computer.preview.start', 'computer.preview.ack', 'computer.preview.stop', 'computer.proofHold'] as const) expect(METHOD_CAPABILITY[m]).toBe('local')
   })
 })

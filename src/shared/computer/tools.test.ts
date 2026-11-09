@@ -178,7 +178,7 @@ describe('the line parsers', () => {
   })
 
   it('read a step line back to its action, element, tier and effect', () => {
-    const cases: [StepResult, ComputerAction, Partial<ReturnType<typeof parseStepLine>>][] = [
+    const cases: [StepResult, ComputerAction, Partial<NonNullable<ReturnType<typeof parseStepLine>>>][] = [
       [ok('left_click', { element: save }), { action: 'left_click', element: 14 }, { action: 'left_click', element: { index: 14, role: 'button', name: 'Save' }, tier: 'ax', effect: 'changed' }],
       [ok('left_click', { tier: 'process', effect: 'none' }), { action: 'left_click', coordinate: [5, 6], text: 'shift' }, { target: '5,6 with shift', tier: 'process', effect: 'none' }],
       [ok('right_click', { element: { index: 2, line: 'scroll area' } }), { action: 'right_click', element: 2, text: 'shift' }, { element: { index: 2, role: 'scroll area', name: null } }],

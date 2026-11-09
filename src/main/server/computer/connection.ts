@@ -101,7 +101,8 @@ export const COMPUTER_DEADLINES = {
   'capture.stream.stop': 5_000,
   'input.probe': 10_000,
   'input.restoreSession': 10_000,
-  'clipboard.state': 5_000
+  'clipboard.state': 5_000,
+  'escape.watch': 5_000
 } as const satisfies Record<ComputerMethod, number>
 
 /** After a deadline's `$/cancel`, how long the answer may still come. */

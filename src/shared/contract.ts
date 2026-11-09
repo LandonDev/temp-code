@@ -1468,6 +1468,10 @@ export type ServerPush =
   | import('./contract-skills').SkillsPush
   // Computer use (contract-computer.ts): the service's state and the live sessions, to every client socket.
   | import('./contract-computer').ComputerPush
+  // The live preview (contract-computer.ts): frames, clicks and its state, to the asking socket only.
+  | import('./contract-computer').ComputerFramePush
+  | import('./contract-computer').ComputerClickPush
+  | import('./contract-computer').ComputerPreviewPush
   // Thread resources (contract-resources.ts): a thread's ledger rows after any change.
   | import('./contract-resources').ResourcesPush
   // Dev servers forwarded to the Mac (contract-ports.ts): the host's list and stream frames down a Mac's link, the Mac's forwards to its renderer.

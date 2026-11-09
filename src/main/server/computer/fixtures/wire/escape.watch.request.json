@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "id": 30,
+  "method": "escape.watch",
+  "params": {
+    "on": true,
+    "leaseMs": 30000
+  }
+}

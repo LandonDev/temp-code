@@ -34,7 +34,15 @@ export const ComputerSessionRowSchema = z.object({
   lastCallAt: z.number().int(),
   /** the apps in the order last used, each with the window this thread last used there */
   apps: z.array(z.object({ name: z.string(), bundleId: z.string().nullable(), window: z.string().nullable() })),
-  running: z.object({ tool: z.string(), words: z.string(), startedAt: z.number().int() }).nullable(),
+  running: z
+    .object({
+      tool: z.string(),
+      words: z.string(),
+      startedAt: z.number().int(),
+      /** `words` is a hold's line (the scheduler's, the bridge's guard standing), not an action */
+      held: z.literal(true).optional()
+    })
+    .nullable(),
   /** the tier the last step that sent input ran at */
   tier: TierSchema.nullable(),
   // A box thread's row mirrored from its Mac (contract-maccomputer.ts); the bridge alone sets these.
@@ -59,6 +67,10 @@ export type AppComputerAnswer = z.infer<typeof AppComputerAnswerSchema>
 export interface AppComputerToolsAnswer {
   tools: { name: string; description: string; inputSchema: Record<string, unknown> }[]
 }
+
+/** The edge a preview asks for, in frame pixels: the box's width × devicePixelRatio, rounded up to 64. */
+export const PREVIEW_MIN_EDGE = 256
+export const PREVIEW_MAX_EDGE = 960
 
 /** The bridge's own MCP request id: what `app.computerCancel` names. */
 const BridgeCallSchema = z.union([z.string(), z.number()])
@@ -85,12 +97,69 @@ export const ComputerRequestSchemas = [
   /** → null: the harness gave the call up; a waiting card is denied, an action cancelled */
   request('app.computerCancel', z.object({ sessionId: z.string(), token: z.string(), call: BridgeCallSchema })),
   /** → AppComputerToolsAnswer: the four tools as the bridge lists them */
-  request('app.computerTools', z.object({ sessionId: z.string(), token: z.string() }))
+  request('app.computerTools', z.object({ sessionId: z.string(), token: z.string() })),
+  // The live preview (computer/preview.ts): the desktop's own socket only, since frames are the
+  // person's windows. `threadId` is the key the host's sessions know: a Mac thread's id, or a box
+  // thread's `macComputerKey(envId, threadId)`.
+  /** → ComputerPreviewStart */
+  request('computer.preview.start', z.object({ threadId: z.string(), maxEdge: z.number().int().min(PREVIEW_MIN_EDGE).max(PREVIEW_MAX_EDGE) })),
+  /** → null: the frame `seq` was drawn; the next one may come */
+  request('computer.preview.ack', z.object({ preview: z.string(), seq: z.number().int().nonnegative() })),
+  /** → null */
+  request('computer.preview.stop', z.object({ preview: z.string() })),
+  /** → null: a session hold for no thread, so a proof can show the banner without the session tier; refused unless TEMP_CODE_E2E_STATUS=1 */
+  request('computer.proofHold', z.object({ on: z.boolean() }))
 ] as const
+
+
+export interface ComputerPreviewStart {
+  /** the relay's own id for this watcher: it outlives the service stream across retargets */
+  preview: string
+  app: string
+  window: string | null
+  width: number
+  height: number
+}
 
 /** To every client, once per burst (at most four a second). */
 export interface ComputerPush {
   push: 'computer'
   service: ComputerServiceState
   sessions: ComputerSessionRow[]
+}
+
+/** One frame of a preview, to the socket that asked only. At most one in flight per watcher until its ack. */
+export interface ComputerFramePush {
+  push: 'computer-frame'
+  preview: string
+  seq: number
+  width: number
+  height: number
+  /** base64 JPEG */
+  data: string
+}
+
+/** The agent clicked in the previewed window: `at` is in the pixels of a `width` × `height` frame, which need not be the last one drawn. */
+export interface ComputerClickPush {
+  push: 'computer-click'
+  preview: string
+  /** [x, y] */
+  at: number[]
+  width: number
+  height: number
+}
+
+export const PREVIEW_END_REASONS = ['closed', 'window-closed', 'minimized', 'permission', 'restarted', 'error'] as const
+export type ComputerPreviewEndReason = (typeof PREVIEW_END_REASONS)[number]
+
+/** The preview moved to another window (`live`), or ended and why. */
+export interface ComputerPreviewPush {
+  push: 'computer-preview'
+  preview: string
+  state: 'live' | 'ended'
+  reason?: ComputerPreviewEndReason
+  app?: string
+  window?: string | null
+  width?: number
+  height?: number
 }

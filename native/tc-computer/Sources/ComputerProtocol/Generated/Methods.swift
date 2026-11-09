@@ -375,4 +375,20 @@ public enum Methods {
 
         public typealias Output = ClipboardActivity
     }
+
+    public enum EscapeWatch: ContractMethod {
+        public static let name = "escape.watch"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let on: Bool
+            public let leaseMs: Int?
+
+            public init(on: Bool, leaseMs: Int? = nil) {
+                self.on = on
+                self.leaseMs = leaseMs
+            }
+        }
+
+        public typealias Output = Empty
+    }
 }

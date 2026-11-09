@@ -255,6 +255,44 @@ public struct CaptureStreamEndedNotification: Codable, Hashable, Sendable {
     }
 }
 
+public struct CaptureClickNotification: Codable, Hashable, Sendable {
+    public struct Params: Codable, Hashable, Sendable {
+        public let stream: String
+        public let at: Point
+        public let width: Int
+        public let height: Int
+
+        public init(stream: String, at: Point, width: Int, height: Int) {
+            self.stream = stream
+            self.at = at
+            self.width = width
+            self.height = height
+        }
+    }
+
+    public let params: Params
+
+    public init(params: Params) {
+        self.params = params
+    }
+}
+
+public struct EscapePressedNotification: Codable, Hashable, Sendable {
+    public struct Params: Codable, Hashable, Sendable {
+        public let at: Double
+
+        public init(at: Double) {
+            self.at = at
+        }
+    }
+
+    public let params: Params
+
+    public init(params: Params) {
+        self.params = params
+    }
+}
+
 public struct LogNotification: Codable, Hashable, Sendable {
     public struct Params: Codable, Hashable, Sendable {
         public enum Level: RawRepresentable, Codable, Hashable, Sendable {
@@ -309,6 +347,8 @@ public enum ComputerNotification: Codable, Hashable, Sendable {
     case sessionInterrupted(SessionInterruptedNotification)
     case captureFrame(CaptureFrameNotification)
     case captureStreamEnded(CaptureStreamEndedNotification)
+    case captureClick(CaptureClickNotification)
+    case escapePressed(EscapePressedNotification)
     case log(LogNotification)
     /// A `method` this build does not know: the whole object, untouched.
     case unknown(JSONValue)
@@ -326,6 +366,8 @@ public enum ComputerNotification: Codable, Hashable, Sendable {
         case "session/interrupted": self = .sessionInterrupted(try SessionInterruptedNotification(from: decoder))
         case "capture/frame": self = .captureFrame(try CaptureFrameNotification(from: decoder))
         case "capture/streamEnded": self = .captureStreamEnded(try CaptureStreamEndedNotification(from: decoder))
+        case "capture/click": self = .captureClick(try CaptureClickNotification(from: decoder))
+        case "escape/pressed": self = .escapePressed(try EscapePressedNotification(from: decoder))
         case "log": self = .log(try LogNotification(from: decoder))
         default: self = .unknown(try JSONValue(from: decoder))
         }
@@ -339,6 +381,8 @@ public enum ComputerNotification: Codable, Hashable, Sendable {
         case .sessionInterrupted(let value): try Self.encode(tag: "session/interrupted", value, to: encoder)
         case .captureFrame(let value): try Self.encode(tag: "capture/frame", value, to: encoder)
         case .captureStreamEnded(let value): try Self.encode(tag: "capture/streamEnded", value, to: encoder)
+        case .captureClick(let value): try Self.encode(tag: "capture/click", value, to: encoder)
+        case .escapePressed(let value): try Self.encode(tag: "escape/pressed", value, to: encoder)
         case .log(let value): try Self.encode(tag: "log", value, to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }

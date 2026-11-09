@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { StartOnSchema } from './defaults'
 import type { AccountPins, AccountProvider, AccountsSnapshot } from './accounts'
 import { BatchStateSchema } from './contract-batch'
-import { ComputerServiceStateSchema, ComputerSessionRowSchema } from './contract-computer'
+import { ComputerServiceStateSchema, ComputerSessionRowSchema, PREVIEW_END_REASONS } from './contract-computer'
 import type { DeployStatus, HostJobPhase, HostJobStatus } from './contract-host'
 import { HostJobSchema } from './contract-host'
 import { HostDevicesReportSchema, type HostDevicesHost } from './contract-hostdevices'
@@ -1109,6 +1109,29 @@ export const ComputerPushSchema = push('computer', {
   service: ComputerServiceStateSchema,
   sessions: z.array(ComputerSessionRowSchema)
 })
+/** The live preview (contract-computer.ts): to the Mac desktop's own socket, never a remote one. */
+export const ComputerFramePushSchema = push('computer-frame', {
+  preview: z.string(),
+  seq: z.number().int(),
+  width: z.number().int(),
+  height: z.number().int(),
+  data: z.string()
+})
+export const ComputerClickPushSchema = push('computer-click', {
+  preview: z.string(),
+  at: z.array(z.number()),
+  width: z.number().int(),
+  height: z.number().int()
+})
+export const ComputerPreviewPushSchema = push('computer-preview', {
+  preview: z.string(),
+  state: z.enum(['live', 'ended']),
+  reason: z.enum(PREVIEW_END_REASONS).optional(),
+  app: z.string().optional(),
+  window: z.string().nullable().optional(),
+  width: z.number().int().optional(),
+  height: z.number().int().optional()
+})
 
 /**
  * Every push a remote connection can receive. Out by rule: the singular
@@ -1248,6 +1271,9 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof HostLogPushSchema, PushOf<'host-log'>>>,
   Expect<Mirror<typeof MacBridgeHeldPushSchema, PushOf<'macBridge.held'>>>,
   Expect<Mirror<typeof ComputerPushSchema, PushOf<'computer'>>>,
+  Expect<Mirror<typeof ComputerFramePushSchema, PushOf<'computer-frame'>>>,
+  Expect<Mirror<typeof ComputerClickPushSchema, PushOf<'computer-click'>>>,
+  Expect<Mirror<typeof ComputerPreviewPushSchema, PushOf<'computer-preview'>>>,
   Expect<Mirror<typeof HarnessEnvironmentStatusSchema, HarnessEnvironmentStatus>>,
   Expect<Mirror<typeof HarnessSyncStatusSchema, HarnessSyncStatus>>,
   Expect<Mirror<typeof MemoryEnvironmentStatusSchema, MemoryEnvironmentStatus>>,

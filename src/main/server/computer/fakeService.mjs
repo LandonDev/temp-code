@@ -234,6 +234,7 @@ function handle({ id, method, params = {} }) {
     case 'capture.stream.stop': return reply(id, {})
     case 'input.restoreSession': return reply(id, { frontmost: 'nothing', pointer: 'nothing', held: null })
     case 'clipboard.state': return reply(id, { changeCount: 1, foreignChangeAt: null, watchingSince: startedAt })
+    case 'escape.watch': return reply(id, {})
     case 'state.get': case 'action.run': case 'action.batch': case 'capture.screenshot': case 'capture.stream.start': case 'input.probe': {
       const ctx = target(params)
       if (ctx.app.name === 'Slow' && ['state.get', 'action.run', 'action.batch'].includes(method)) {

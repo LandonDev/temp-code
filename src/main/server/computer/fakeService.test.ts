@@ -198,6 +198,8 @@ describe('fake tc-computer wire', () => {
     expect(await c.call('input.probe', c.target())).toEqual({ pid: 16800, bundleId: 'com.apple.TextEdit', keyWindow: 'target', results: ['scroll', 'key', 'click'].map((kind) => ({ class: kind, outcome: 'honoured', restored: true, ms: 5 })) })
     expect(await c.call('input.restoreSession', {})).toEqual({ frontmost: 'nothing', pointer: 'nothing', held: null })
     expect(await c.call('clipboard.state', {})).toMatchObject({ changeCount: 1, foreignChangeAt: null, watchingSince: expect.any(Number) })
+    expect(await c.call('escape.watch', { on: true, leaseMs: 30_000 })).toEqual({})
+    expect(await c.call('escape.watch', { on: false })).toEqual({})
     await c.call('session.close', { session: 's1' })
     await c.call('shutdown', {})
     expect(await c.exit).toBe(0)
