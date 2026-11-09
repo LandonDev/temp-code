@@ -181,14 +181,15 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
         try waitFor({ steps.try() }, deadline: deadline, cancelled: cancelled, watchPerson: false)
         defer { steps.unlock() }
         guard mine() else { throw sessionUnavailable(.inUse, "Another computer session holds the Mac's keyboard and mouse.") }
-        // the person took over while this step waited (their trip let the other hold go): never re-arm over it
-        if state.withLock({ trips }) != tripsAtStart { throw interruptedByPerson() }
         armWatch()
         state.withLock { running = true }
         defer {
             state.withLock { running = false }
             settle(holding: holding(), owner: pid)
         }
+        // the person took over since this step began (a trip that let a held button go, and the
+        // re-arm cleared it): checked once the watch is armed, so a later trip latches instead
+        if state.withLock({ trips }) != tripsAtStart { throw interruptedByPerson() }
         if state.withLock({ lockHold == nil }) {
             let h = try takeLock(cancelled: cancelled)
             state.withLock { lockHold = h }

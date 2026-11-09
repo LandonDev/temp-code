@@ -407,6 +407,10 @@ final class Proof: @unchecked Sendable {
 
     /// Puts back what the session leg took, whatever stopped it.
     func giveBack() {
+        if gate.personTookOver {
+            report.notes.append("session leg: nothing put back: the person is active")
+            return
+        }
         if let r = try? engine.restoreSession() { report.notes.append("session leg: restore at the end: frontmost \(r.frontmost.rawValue), pointer \(r.pointer.rawValue)") }
     }
 }

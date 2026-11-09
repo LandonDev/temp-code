@@ -481,5 +481,26 @@ private let textEdit = AppBrief(pid: 7, bundleId: "com.apple.TextEdit", name: "T
         #expect(rig.sink.events.last == .up(.left, pt(400, 300), clickState: 1, flags: []))
         #expect(!rig.host.log.contains("bringForward 9"))
     }
+
+    @Test func aTripJustBeforeTheOwnersNextStepArmsStopsThatStep() throws {
+        let rig = Rig()
+        _ = try rig.step(.session) { ctx in try rig.core.mouseDown(&ctx, at: pt(400, 300)) }
+        let watch = rig.watch, core = rig.core
+        let posted = rig.sink.posted.count
+        // the person moves after the step began and before it arms: their trip lets the button go and disarms the watch
+        watch.onArmedRead = {
+            watch.trip()
+            let until = Date().addingTimeInterval(2)
+            while core.held.hold(pid: 7) != nil, Date() < until { Thread.sleep(forTimeInterval: 0.005) }
+        }
+        do {
+            _ = try rig.step(.session) { ctx in try core.move(&ctx, to: pt(410, 310)) }
+            Issue.record("the step moved the pointer after the person took over")
+        } catch {
+            #expect(kind(error) == .interrupted)
+        }
+        #expect(rig.sink.posted.count == posted + 1)
+        #expect(rig.sink.events.last == .up(.left, pt(400, 300), clickState: 1, flags: []))
+    }
 }
 

@@ -83,7 +83,12 @@ final class FakeWatch: PersonWatching, @unchecked Sendable {
     private var _armed = false, _tripped = false
     private var onTrip: (@Sendable () -> Void)?
     private(set) var arms = 0
-    var armed: Bool { lock.withLock { _armed } }
+    /// runs once, the next time `armed` is read, before it answers (a trip timed into a step's arming)
+    var onArmedRead: (() -> Void)?
+    var armed: Bool {
+        if let hook = lock.withLock({ () -> (() -> Void)? in defer { onArmedRead = nil }; return onArmedRead }) { hook() }
+        return lock.withLock { _armed }
+    }
     var tripped: Bool { lock.withLock { _tripped } }
 
     func arm(onTrip: @escaping @Sendable () -> Void) {
