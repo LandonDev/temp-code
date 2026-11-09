@@ -90,9 +90,11 @@ struct WindowResolver {
     func titles(_ app: AXUIElement) -> [String] { windows(of: app).compactMap { AX.string(AX.copy($0, "AXTitle").value) } }
 
     func resolve(app: AXUIElement, pid: pid_t, ref: ComputerProtocol.WindowRef?) throws -> ResolvedWindow {
+        // the first call decides: a hung app answers `timeout` after one 2 s wait, not one per call
+        let first = AX.copy(app, "AXWindows")
+        if let failure = AXErrorMap.failure(first, what: "The app") { throw failure }
         let list = WindowList.entries()
-        let all = windows(of: app)
-        if case .disabled = AX.copy(app, "AXWindows") { throw AXErrorMap.permissionMissing() }
+        let all = AX.elements(first.value)
         var pick: AXUIElement?
         if let id = ref?.id {
             pick = all.first { w in
@@ -121,6 +123,26 @@ public enum AppWindows {
         let resolver = WindowResolver(lookup: .live)
         let entries = WindowList.entries()
         return resolver.windows(of: app).compactMap { try? resolver.describe($0, app: app, pid: pid, list: entries) }
+    }
+
+    /// Whether the window with this id holds an element of `role` whose title, description or value is `name`,
+    /// within the first `limit` elements breadth first: how a proof tells one of several same-titled windows from another.
+    public static func contains(pid: pid_t, windowID: Int, role: String, name: String, limit: Int = 600) -> Bool {
+        let app = AXUIElementCreateApplication(pid)
+        let resolver = WindowResolver(lookup: .live)
+        let entries = WindowList.entries()
+        guard let window = resolver.windows(of: app).first(where: { (try? resolver.describe($0, app: app, pid: pid, list: entries))?.id == windowID }) else { return false }
+        var queue = [window]
+        var seen = 0
+        while !queue.isEmpty, seen < limit {
+            let el = queue.removeFirst()
+            seen += 1
+            let a = AX.batch(el, ["AXRole", "AXTitle", "AXDescription", "AXValue", "AXChildren"])
+            if AX.string(a["AXRole"]?.value) == role,
+               [a["AXTitle"], a["AXDescription"], a["AXValue"]].contains(where: { AX.string($0?.value) == name }) { return true }
+            queue += AX.elements(a["AXChildren"]?.value)
+        }
+        return false
     }
 }
 #endif

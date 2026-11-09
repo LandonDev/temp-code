@@ -22,8 +22,17 @@ enum Live {
             return
         }
         guard let title = args.options["expect-title"] else { fail("\(args.command) needs --expect-title") }
-        guard let window = AppWindows.list(pid: pid).first(where: { $0.title == title }) else {
-            fail("refused: pid \(pid) has no window titled exactly \(Quote.json(title))", code: 4)
+        var windows = AppWindows.list(pid: pid).filter { $0.title == title }
+        // --window-id: that one window, so a proof never scans the app's other windows to find its own
+        if let id = args.options["window-id"].flatMap(Int.init) { windows = windows.filter { $0.id == id } }
+        // --contains Role=Name: of several windows with that title (IntelliJ's project frames are all untitled), the one holding that element
+        if let mark = args.options["contains"] {
+            let parts = mark.split(separator: "=", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { fail("--contains takes AXRole=Name") }
+            windows = windows.filter { AppWindows.contains(pid: pid, windowID: $0.id, role: parts[0], name: parts[1]) }
+        }
+        guard windows.count == 1, let window = windows.first else {
+            fail("refused: pid \(pid) has \(windows.count) windows titled exactly \(Quote.json(title))\(args.options["contains"].map { " holding \($0)" } ?? "")", code: 4)
         }
         let reader: AppReader
         do {
@@ -102,7 +111,13 @@ enum Live {
                     var options: [String: String] = [:]
                     var flags: Set<String> = []
                     for (k, v) in json {
-                        if let b = v as? Bool { if b { flags.insert(k) }; options[k] = b ? "true" : "false" } else { options[k] = "\(v)" }
+                        // a JSON boolean, not any number that bridges to one
+                        if let n = v as? NSNumber, CFGetTypeID(n) == CFBooleanGetTypeID() {
+                            if n.boolValue { flags.insert(k) }
+                            options[k] = n.boolValue ? "true" : "false"
+                        } else {
+                            options[k] = "\(v)"
+                        }
                     }
                     return try observe(reader, ref, space, options: options, flags: flags)
                 }

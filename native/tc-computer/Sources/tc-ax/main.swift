@@ -9,8 +9,9 @@
 //   tc-ax replay  --synthetic <nodes> [--reads 20]          a synthetic tree of that many nodes
 //
 // Live commands read only a pid named in TC_AX_ALLOW_PIDS (comma-separated) and
-// only the window whose title is exactly --expect-title; they never raise or
-// activate a window.
+// only the one window whose title is exactly --expect-title (narrowed by
+// --window-id <id>, and with --contains AXRole=Name to the one holding such an
+// element); they never raise or activate a window.
 import AXText
 import ComputerProtocol
 import Foundation
