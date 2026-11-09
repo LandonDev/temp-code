@@ -10,8 +10,6 @@ struct Hold {
     var at: ScreenPoint
     /// monotonic seconds of the down
     var since: Double
-    /// a session-tier hold keeps the session lock until the release
-    var sessionLock: MacLockHold?
 }
 
 /// Held input across calls: the per-pid button, its release by every releaser, the
@@ -22,7 +20,7 @@ final class HeldInput: @unchecked Sendable {
     private let sink: EventSink
     private let clock: InputClock
     private let onHeld: @Sendable (HeldEvent) -> Void
-    /// called after a session-tier hold is let go, so the engine can stop the person watch
+    /// called after a session-tier hold is let go: the session driver lets its lock and the watch go
     var onSessionReleased: (@Sendable () -> Void)?
 
     init(sink: EventSink, clock: InputClock, onHeld: @escaping @Sendable (HeldEvent) -> Void) {
@@ -33,6 +31,10 @@ final class HeldInput: @unchecked Sendable {
 
     func hold(pid: Int32) -> Hold? {
         lock.withLock { holds[pid] }
+    }
+
+    func allHolds() -> [Int32: Hold] {
+        lock.withLock { holds }
     }
 
     func heldTier(pid: Int32) -> Tier? {
@@ -82,13 +84,11 @@ final class HeldInput: @unchecked Sendable {
         lock.withLock { holds.removeValue(forKey: pid) }
     }
 
-    /// Posts the up for the pid's button at its tier, tells the ledger, lets the session lock go.
+    /// Posts the up for the pid's button at its tier and tells the ledger; a session hold's lock goes with it.
     func releaseAll(pid: Int32) {
         guard let h = take(pid: pid) else { return }
-        let up = SyntheticEvent.up(.left, h.at, clickState: 1, flags: [])
-        sink.post(up, route: h.route)
+        sink.post(.up(.left, h.at, clickState: 1, flags: []), route: h.route)
         released(pid: pid, kind: .button)
-        h.sessionLock?.release()
         if h.tier == .session { onSessionReleased?() }
     }
 

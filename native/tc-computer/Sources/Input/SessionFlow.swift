@@ -75,7 +75,7 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
     let clock: InputClock
     private let state = NSLock()
     private var ledger = SessionLedger()
-    /// the session lock a step or a held session input keeps
+    /// the session lock a step keeps, and keeps past it while session-tier input stays held
     private var lockHold: MacLockHold?
     /// a session step is running
     private var running = false
@@ -110,7 +110,8 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
         }
     }
 
-    /// Lets the watch and the lock go when no step runs and nothing session-tier is held.
+    /// Lets the watch and the lock go when no step runs and nothing session-tier is held;
+    /// while something is, both stay until its release calls this again.
     func settle(holding: Bool) {
         let release: MacLockHold? = state.withLock {
             guard !running, !holding else { return nil }
@@ -135,8 +136,9 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
     }
 
     /// Runs one session step. `keys`: the step types or presses keys (secure input refuses it).
-    /// `holds`: the body left a session-tier button down, so the lock and the watch stay.
-    func run<T>(pid: Int32, window: Host.Window, keys: Bool, cancelled: @escaping () -> Bool, body: (_ check: @escaping () throws -> Void) throws -> (T, holds: Bool)) throws -> (T, SessionChange) {
+    /// `activate: false` skips bringing the app forward (`perform raise`, whose AX call is all it does).
+    /// The body answers whether session-tier input stays held, so the lock and the watch stay.
+    func run<T>(pid: Int32, window: Host.Window, keys: Bool, activate: Bool = true, cancelled: @escaping () -> Bool, body: (_ check: @escaping () throws -> Void) throws -> (T, holds: Bool)) throws -> (T, SessionChange) {
         if host.screenLocked() { throw sessionUnavailable(.locked, "The screen is locked; the session tier can't use the keyboard or mouse.") }
         if keys, host.secureInputOn() {
             throw sessionUnavailable(.secureInput, "Secure input is on (a password field has focus somewhere); keys can't be sent.")
@@ -160,7 +162,7 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
             if cancelled() { throw cancelledFailure() }
         }
         do {
-            try activate(pid: pid, window: window, check: check)
+            if activate { try self.activate(pid: pid, window: window, check: check) }
             let (value, held) = try body(check)
             holds = held
             let after = (host.frontmost(), host.pointer())
@@ -193,13 +195,8 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
         }
     }
 
-    /// Hands the step's lock to a session-tier hold that outlives the call; the hold releases it.
-    func lockForHold() -> MacLockHold? {
-        state.withLock {
-            defer { lockHold = nil }
-            return lockHold
-        }
-    }
+    /// Whether the driver holds the session lock now (a step runs, or session input stays held).
+    var holdsLock: Bool { state.withLock { lockHold != nil } }
 
     /// `input.restoreSession`, after the engine released every held input: takes the lock and
     /// puts back each half the ledger allows, then forgets the record.
