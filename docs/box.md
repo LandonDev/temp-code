@@ -1750,7 +1750,10 @@ thread (or removing the row) ends it on the Mac. The Mac's running list shows
 each live session as "Using TextEdit, window "Untitled"" with Stop.
 
 Proof: `bun run script:e2e-computer-bridge`, run on the Mac in a clone of the
-branch, with the box half started over SSH in a clone on the box (both built):
+branch, with the box half started over SSH in a clone on the box (both built).
+It drives TC Probe, the sessions proof's scratch app, never one of the
+person's; it waits for any other computer proof on the Mac to finish, has no
+idle gate, and runs each check only on an unlocked, awake screen. It covers
 the switch, the offer, an observe whose picture lands on the box byte for
 byte, an act, the card denied then allowed, the cap, pause, Stop, Away, the
 codex bridge, the switch off mid-turn, archive and the Mac offline. Its report

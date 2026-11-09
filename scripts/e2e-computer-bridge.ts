@@ -7,12 +7,15 @@
  *
  * One script, two roles:
  *  - the orchestrator, on the Mac (anywhere else it prints `skipped: macOS
- *    only`): builds tc-computer and the probe, launches a scratch TextEdit in
- *    the background (`open -n -g`, its own pid; the app that was frontmost
- *    is put back if it bounces, else the run stops before any call), starts
- *    the box half over SSH and a headless Mac instance whose TextEdit queries
- *    are pinned to the scratch pid (TEMP_CODE_COMPUTER_PIN), and runs the
- *    checks;
+ *    only`): waits while another computer proof runs on the Mac (one at a
+ *    time), builds tc-computer, the probe and TC Probe (the sessions proof's
+ *    scratch app, scripts/mac/computer-probe-app.swift: its window is never
+ *    key and takes no keystrokes), launches it in the background with its own
+ *    pid, starts the box half over SSH and a headless Mac instance whose
+ *    TC Probe queries are pinned to that pid (TEMP_CODE_COMPUTER_PIN), and
+ *    runs the checks, each only on an unlocked, awake screen (AX sees no
+ *    window on a locked one); there is no idle gate, and a window that comes
+ *    forward is noted, not a stop;
  *  - `--box-half --port <p> --seed <hex>`, on the box: its own instance on
  *    that port, an admin key, two threads; one line `{ ready, envId, key,
  *    threads, root }` on stdout (the SSH channel: the key never reaches a file
@@ -42,6 +45,8 @@ import { createInterface } from 'node:readline'
 
 const REPO = resolve(import.meta.dir, '..')
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+/** The Mac's other computer proofs: one at a time, so their scratch windows and the service's locks never cross. */
+const OTHER_PROOFS = /e2e-computer\.(ts|mjs)|e2e-tc-computer|input-proof|ax-reader-proof/
 const arg = (name: string): string | undefined => {
   const i = process.argv.indexOf(name)
   return i >= 0 ? process.argv[i + 1] : undefined
@@ -267,13 +272,33 @@ async function orchestrator(): Promise<void> {
   const WORK = '/tmp/tc-computer-bridge'
   const REPORT = join(WORK, 'report.json')
   const NONCE = randomBytes(4).toString('hex')
-  const DOC = join(WORK, `${NONCE}.txt`)
   const SEED = randomBytes(32).toString('hex')
   const BIN = join(REPO, 'resources/native/tc-computer')
   const PROBE = join(WORK, 'computer-proof-probe')
+  const APP = 'TC Probe'
+  const PROBE_APP = join(WORK, `${APP}.app`)
+  const PROBE_BUNDLE_ID = 'dev.landon.tempcode.computer-bridge-probe'
+  const LSREGISTER = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
+  // One computer proof on the Mac at a time: wait for another to finish (at most two hours).
+  const othersRunning = (): string[] => {
+    try {
+      return execFileSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' })
+        .split('\n')
+        .filter((l) => OTHER_PROOFS.test(l) && !l.includes('e2e-computer-bridge'))
+    } catch {
+      return []
+    }
+  }
+  if (othersRunning().length) {
+    console.log(`      another computer proof runs on this Mac; waiting for it: ${othersRunning()[0]?.trim().slice(0, 120)}`)
+    if (!(await until(2 * 60 * 60_000, () => othersRunning().length === 0))) {
+      console.log('STOP  another computer proof was still running after two hours')
+      process.exit(1)
+    }
+  }
   rmSync(WORK, { recursive: true, force: true })
   mkdirSync(WORK, { recursive: true })
-  console.log('tiers ax and process only, every window in the background; no model turn')
+  console.log('tiers ax and process only, TC Probe in the background; no idle gate, no model turn')
 
   const report = {
     startedAt: new Date().toISOString(),
@@ -281,7 +306,8 @@ async function orchestrator(): Promise<void> {
     checks: [] as { name: string; outcome: Outcome; at: string; detail?: string }[],
     steps: [] as string[],
     bounce: null as string | null,
-    stopped: null as string | null
+    stopped: null as string | null,
+    screenWaits: [] as { at: string; ms: number }[]
   }
   let failures = 0
   const check = (name: string, ok: boolean | 'skipped', detail = ''): boolean => {
@@ -324,6 +350,11 @@ async function orchestrator(): Promise<void> {
       } catch {
         /* gone */
       }
+    try {
+      execFileSync(LSREGISTER, ['-u', PROBE_APP], { stdio: 'ignore' })
+    } catch {
+      /* never registered */
+    }
     saveReport()
     copyFiles(mac)
     rmSync(macRoot, { recursive: true, force: true })
@@ -349,38 +380,74 @@ async function orchestrator(): Promise<void> {
     process.exit(1)
   }
 
-  // ── setup: tc-computer, the probe, the grants, the scratch TextEdit ──
+  // ── setup: tc-computer, the probe, the grants, TC Probe ──
   const { buildTcComputer } = await import('./lib/tcComputerBuild')
   buildTcComputer({ root: REPO, require: true })
   execFileSync('xcrun', ['swiftc', '-O', '-o', PROBE, join(REPO, 'scripts/mac/computer-proof-probe.swift')], { stdio: 'pipe' })
   const frontmost = (): { pid: number; bundleId: string | null } => JSON.parse(execFileSync(PROBE, ['frontmost'], { encoding: 'utf8', timeout: 10_000 }))
+  const screenReady = (): boolean => {
+    const screen = JSON.parse(execFileSync(PROBE, ['screen'], { encoding: 'utf8', timeout: 10_000 })) as { locked: boolean; asleep: boolean }
+    return !screen.locked && !screen.asleep
+  }
+  /** AX sees no window on a locked or dark screen: wait for it to be unlocked and awake (at most 90 minutes), else stop. */
+  const awaitScreen = async (): Promise<void> => {
+    if (screenReady()) return
+    const t0 = Date.now()
+    console.log('      the Mac is locked or dark; waiting for it')
+    if (!(await until(90 * 60_000, screenReady))) await stop('not run: the Mac stayed locked or dark for 90 minutes')
+    report.screenWaits.push({ at: new Date().toISOString(), ms: Date.now() - t0 })
+  }
   const grants = JSON.parse(execFileSync(BIN, ['permissions'], { encoding: 'utf8' })) as { accessibility: boolean; screenRecording: boolean }
   if (!grants.accessibility) await stop('Accessibility is off for TempCode: turn it on under System Settings → Privacy & Security → Accessibility, then run this again')
   const pictures = grants.screenRecording
   if (!pictures) console.log('      Screen Recording is off: every step runs but the picture checks')
 
-  const textEditPids = (): number[] => {
+  mkdirSync(join(PROBE_APP, 'Contents/MacOS'), { recursive: true })
+  execFileSync('xcrun', ['swiftc', '-O', '-o', join(PROBE_APP, 'Contents/MacOS', APP), join(REPO, 'scripts/mac/computer-probe-app.swift')], { stdio: 'pipe' })
+  writeFileSync(
+    join(PROBE_APP, 'Contents/Info.plist'),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>${PROBE_BUNDLE_ID}</string>
+  <key>CFBundleName</key><string>${APP}</string>
+  <key>CFBundleExecutable</key><string>${APP}</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>
+`
+  )
+  execFileSync('codesign', ['-s', '-', '--force', PROBE_APP], { stdio: 'pipe' })
+  await awaitScreen()
+  const probePids = (): number[] => {
     try {
-      return execFileSync('pgrep', ['-x', 'TextEdit'], { encoding: 'utf8' }).split('\n').filter(Boolean).map(Number)
+      return execFileSync('pgrep', ['-f', `${PROBE_APP}/Contents/MacOS/`], { encoding: 'utf8' }).split('\n').filter(Boolean).map(Number)
     } catch {
       return []
     }
   }
   const personBefore = frontmost()
-  writeFileSync(DOC, `Scratch ${NONCE}\n`)
-  const pidsBefore = new Set(textEditPids())
-  execFileSync('open', ['-n', '-g', '-a', 'TextEdit', DOC, '--args', '-ApplePersistenceIgnoreState', 'YES'])
+  execFileSync('open', ['-n', '-g', PROBE_APP])
   for (let i = 0; i < 40 && !scratchPid; i++) {
     await sleep(250)
-    scratchPid = textEditPids().find((p) => !pidsBefore.has(p)) ?? 0
+    scratchPid = probePids()[0] ?? 0
   }
-  if (!scratchPid) await stop('open -n gave no new TextEdit pid within 10 s')
+  if (!scratchPid) await stop('open -n gave no TC Probe pid within 10 s')
   await sleep(1_000)
+  // The person accepts a scratch window coming forward; it is noted, and their app put back.
   if (frontmost().pid === scratchPid) {
-    report.bounce = 'the scratch TextEdit came to the front at launch'
-    if (personBefore.bundleId) execFileSync('osascript', ['-e', `tell application id "${personBefore.bundleId}" to activate`])
-    await sleep(500)
-    if (frontmost().pid === scratchPid) await stop("the scratch TextEdit took the front at launch and the person's app could not be put back")
+    report.bounce = 'TC Probe came to the front at launch'
+    if (personBefore.bundleId)
+      try {
+        execFileSync('osascript', ['-e', `tell application id "${personBefore.bundleId}" to activate`])
+      } catch {
+        /* noted only */
+      }
   }
 
   // ── the box half ──
@@ -414,11 +481,11 @@ async function orchestrator(): Promise<void> {
   const sessionsOnBox = async (): Promise<{ threadId: string; macPeer?: string; macName?: string; apps: { name: string }[]; running: { words: string } | null; asking?: { line: string } }[]> =>
     (await boxCall<{ sessions: never[] }>('computer.sessions', {})).sessions
 
-  // ── the Mac instance, headless, computer use on, TextEdit pinned to the scratch pid ──
+  // ── the Mac instance, headless, computer use on, TC Probe pinned to its pid ──
   launch(mac, {
     TEMP_CODE_REMOTE_PORT: '0',
     TEMP_CODE_COMPUTER: '1',
-    TEMP_CODE_COMPUTER_PIN: `TextEdit=${scratchPid}`,
+    TEMP_CODE_COMPUTER_PIN: `${APP}=${scratchPid},${PROBE_BUNDLE_ID}=${scratchPid}`,
     TEMP_CODE_COMPUTER_TRACE: '1',
     TEMP_CODE_COMPUTER_BIN: BIN
   })
@@ -438,11 +505,13 @@ async function orchestrator(): Promise<void> {
 
   try {
     // 1. off
+    await awaitScreen()
     check('off: the box lists no computer tools', (await tools(t1)).tools.length === 0)
-    const off = await computer(t1, 'computer_observe', { app: 'TextEdit' })
+    const off = await computer(t1, 'computer_observe', { app: APP })
     check('off: a call answers the switch line', off.isError && off.text.includes('computer use is off for this host'), off.text)
 
     // 2. on
+    await awaitScreen()
     await rpc(mac, 'macBridge.computer.set', { environmentId: boxId, on: true })
     const offered = await until(5_000, async () => (await tools(t1)).tools.length === 4)
     check('on: within 5 s the box lists the four tools', offered)
@@ -451,8 +520,9 @@ async function orchestrator(): Promise<void> {
     check("on: the box kept the Mac's offer", (await boxCall<string>('log')).includes(`${macId}: computer use offered`))
 
     // 3. observe
-    const seen = await computer(t1, 'computer_observe', { app: 'TextEdit', screenshot: true })
-    check('observe: the header names the scratch window', !seen.isError && seen.text.includes(NONCE), seen.text.slice(0, 300))
+    await awaitScreen()
+    const seen = await computer(t1, 'computer_observe', { app: APP, screenshot: true })
+    check('observe: the header names the scratch window', !seen.isError && seen.text.includes(`window "${APP}"`), seen.text.slice(0, 300))
     const shotLine = seen.text.split('\n').find((l) => l.startsWith('screenshot 1 (observation): '))
     if (pictures) {
       const path = shotLine?.match(/^screenshot 1 \(observation\): (\S+) \((\d+)×(\d+)\)/)
@@ -472,21 +542,24 @@ async function orchestrator(): Promise<void> {
       JSON.stringify(activity.calls)
     )
     const row = (await sessionsOnBox()).find((r) => r.threadId === t1)
-    check("observe: the box's row names the Mac and TextEdit", row?.macPeer === macId && row?.macName === 'Studio' && row.apps[0]?.name === 'TextEdit', JSON.stringify(row))
+    check("observe: the box's row names the Mac and TC Probe", row?.macPeer === macId && row?.macName === 'Studio' && row.apps[0]?.name === APP, JSON.stringify(row))
 
     // 4. act
-    const area = seen.text.match(/\[(\d+)\] text area\b/)?.[1]
-    if (!area) await stop('the scratch window shows no text area')
-    const set = await computer(t1, 'computer_act', { app: 'TextEdit', action: 'set_value', element: Number(area), value: `Lunch ${NONCE}?` })
+    await awaitScreen()
+    const field = seen.text.match(/\[(\d+)\] text field\b/)?.[1]
+    const ping = seen.text.match(/\[(\d+)\] button "Ping"/)?.[1]
+    if (!field || !ping) await stop('the scratch window shows no text field or Ping button')
+    const set = await computer(t1, 'computer_act', { app: APP, action: 'set_value', element: Number(field), value: `Lunch ${NONCE}?` })
     check('act: set_value runs at ax and changes the window', !set.isError && /set_value .* · ax · changed/.test(set.text), set.text.slice(0, 300))
-    const after = await computer(t1, 'computer_observe', { app: 'TextEdit' })
+    const after = await computer(t1, 'computer_observe', { app: APP })
     check('act: the observation shows the value', after.text.includes(`Lunch ${NONCE}?`))
 
     // 5. the card
+    await awaitScreen()
     await boxCall('session.permission', { sessionId: t1, permission: 'safe' })
-    await computer(t1, 'computer_observe', { app: 'TextEdit' })
+    await computer(t1, 'computer_observe', { app: APP })
     check('card: an observe raises no request on the Mac', (await macPending()).filter((r) => r.status === 'pending').length === 0)
-    const clickArgs = { app: 'TextEdit', action: 'left_click', element: Number(area) }
+    const clickArgs = { app: APP, action: 'left_click', element: Number(ping) }
     const denied = computer(t1, 'computer_act', clickArgs)
     let card: BridgeRequest | undefined
     await until(30_000, async () => !!(card = (await macPending()).find((r) => r.kind === 'computer' && r.status === 'pending')))
@@ -503,8 +576,9 @@ async function orchestrator(): Promise<void> {
     check('card: an Allow runs the click', !allowedOut.isError && / · (ax|process) · changed/.test(allowedOut.text), allowedOut.text.slice(0, 300))
 
     // 6. the cap
+    await awaitScreen()
     await rpc(mac, 'macBridge.limits.set', { environmentId: boxId, maxComputer: 1 })
-    const second = computer(t2, 'computer_observe', { app: 'TextEdit' })
+    const second = computer(t2, 'computer_observe', { app: APP })
     const held = await until(30_000, async () => (await macActivity()).calls.some((c) => c.sessionId === t2 && c.status === 'held' && c.held?.reason === 'computer' && c.held.position === 1))
     check("cap: the Mac holds the second thread's session, reason computer, 1st in line", held)
     const heldRow = (await sessionsOnBox()).find((r) => r.threadId === t2)
@@ -517,6 +591,7 @@ async function orchestrator(): Promise<void> {
     await rpc(mac, 'macBridge.limits.set', { environmentId: boxId, maxComputer: null })
 
     // 7. pause
+    await awaitScreen()
     await boxCall('session.markStatus', { sessionId: t1, status: 'running' })
     const inFlight = computer(t1, 'computer_act', clickArgs)
     await until(30_000, async () => (await macPending()).some((r) => r.kind === 'computer' && r.status === 'pending'))
@@ -526,12 +601,13 @@ async function orchestrator(): Promise<void> {
     check('pause: the call in flight answers cancelled within a second', pausedOut.text.includes('cancelled: the thread was paused') && Date.now() - pausedAt < 1_500, pausedOut.text)
     check("pause: the card leaves the Mac's pending list", await until(5_000, async () => !(await macPending()).some((r) => r.kind === 'computer' && r.status === 'pending')))
     const callsBefore = macCalls(t1)
-    const whilePaused = await computer(t1, 'computer_observe', { app: 'TextEdit' })
+    const whilePaused = await computer(t1, 'computer_observe', { app: APP })
     check('pause: a call while paused is refused on the box', whilePaused.text.includes('refused: the thread is paused'), whilePaused.text)
     check('pause: the Mac never heard it', macCalls(t1) === callsBefore)
     await boxCall('session.markStatus', { sessionId: t1, status: 'running' })
 
     // 8. Stop
+    await awaitScreen()
     const toStop = computer(t1, 'computer_act', clickArgs)
     await until(30_000, async () => (await macPending()).some((r) => r.kind === 'computer' && r.status === 'pending'))
     await boxCall('computer.stop', { sessionId: t1 })
@@ -539,30 +615,32 @@ async function orchestrator(): Promise<void> {
     check("stop: the call answers stopped through the Mac's reply", stoppedOut.text.trimEnd().endsWith('stopped by the person'), stoppedOut.text)
     check("stop: the card is gone", await until(5_000, async () => !(await macPending()).some((r) => r.kind === 'computer' && r.status === 'pending')))
     const stopCalls = macCalls(t1)
-    const later = await computer(t1, 'computer_observe', { app: 'TextEdit' })
+    const later = await computer(t1, 'computer_observe', { app: APP })
     check('stop: the next call in the turn answers stopped with no Mac call', later.text.includes('stopped by the person') && macCalls(t1) === stopCalls)
     await boxCall('session.markStatus', { sessionId: t1, status: 'idle' })
     await boxCall('session.markStatus', { sessionId: t1, status: 'running' })
-    check('stop: the next turn reads again', !(await computer(t1, 'computer_observe', { app: 'TextEdit' })).isError)
+    check('stop: the next turn reads again', !(await computer(t1, 'computer_observe', { app: APP })).isError)
 
     // 9. Away
+    await awaitScreen()
     await rpc(mac, 'away.set', { enabled: true })
     await until(10_000, async () => (await boxCall<{ enabled: boolean }>('away.get', {})).enabled === true)
     const awayOut = await computer(t1, 'computer_act', clickArgs)
     check('away: an acting call that would ask answers away', awayOut.text.includes('denied: the person is away'), awayOut.text)
     const events = await boxCall<{ rows: { event: { type: string; kind?: string; away?: unknown } }[] }>('session.events', { sessionId: t1, afterSeq: 0 })
     check('away: the box thread has an away notice', events.rows.some((r) => r.event.type === 'notice' && (r.event.kind === 'away' || !!r.event.away)))
-    check('away: an observe still works', !(await computer(t1, 'computer_observe', { app: 'TextEdit' })).isError)
+    check('away: an observe still works', !(await computer(t1, 'computer_observe', { app: APP })).isError)
     await rpc(mac, 'away.set', { enabled: false })
 
     // 10. codex
+    await awaitScreen()
     const codexTools = (await boxCall<{ tools: { name: string }[] }>('bridge', { sessionId: t2, images: 'none', request: { method: 'tools/list' } })).tools.map((t) => t.name)
     check('codex: the stdio bridge lists the four tools', ['computer_apps', 'computer_observe', 'computer_act', 'computer_batch'].every((n) => codexTools.includes(n)), codexTools.join(','))
     await boxCall('session.markStatus', { sessionId: t2, status: 'running' })
     const codexOut = await boxCall<{ content: { type: string; text?: string }[] }>('bridge', {
       sessionId: t2,
       images: 'none',
-      request: { method: 'tools/call', params: { name: 'computer_observe', arguments: { app: 'TextEdit', screenshot: true } } }
+      request: { method: 'tools/call', params: { name: 'computer_observe', arguments: { app: APP, screenshot: true } } }
     })
     check(
       'codex: an observe answers text with its shot line and no image part',
@@ -571,16 +649,18 @@ async function orchestrator(): Promise<void> {
     )
 
     // 11. the switch off mid-turn
-    await computer(t1, 'computer_observe', { app: 'TextEdit' })
+    await awaitScreen()
+    await computer(t1, 'computer_observe', { app: APP })
     await rpc(mac, 'macBridge.computer.set', { environmentId: boxId, on: false })
     check("switch off: the Mac's activity has no computer call", !(await macActivity()).calls.some((c) => c.kind === 'computer'))
-    const offAgain = await computer(t1, 'computer_observe', { app: 'TextEdit' })
+    const offAgain = await computer(t1, 'computer_observe', { app: APP })
     check('switch off: the next call answers the switch line', offAgain.text.includes('computer use is off for this host'), offAgain.text)
 
     // 12. archive
+    await awaitScreen()
     await rpc(mac, 'macBridge.computer.set', { environmentId: boxId, on: true })
     await until(5_000, async () => (await tools(t1)).tools.length === 4)
-    await computer(t1, 'computer_observe', { app: 'TextEdit' })
+    await computer(t1, 'computer_observe', { app: APP })
     const ledger = await boxCall<{ resources: { kind: string; environmentId: string; id: string }[] }>('resources.list', { sessionId: t1 })
     check('archive: the box ledger has a computer row on the Mac', ledger.resources.some((r) => r.kind === 'computer' && r.environmentId === macId), JSON.stringify(ledger.resources))
     const closesBefore = (logOf(mac).match(/session\.close/g) ?? []).length
@@ -590,9 +670,10 @@ async function orchestrator(): Promise<void> {
     check('archive: the ledger row is removed', gone)
 
     // 13. offline
+    await awaitScreen()
     await rpc(mac, 'remote.environments.remove', { id: boxId })
     await sleep(2_000)
-    const offline = await computer(t2, 'computer_observe', { app: 'TextEdit' })
+    const offline = await computer(t2, 'computer_observe', { app: APP })
     check('offline: a call answers Mac offline', offline.text.includes('Mac offline'), offline.text)
     check('every step line named ax or process', report.steps.length > 0 && report.steps.every((l) => / · (ax|process)\b/.test(l)), report.steps.join(' | '))
   } catch (err) {
