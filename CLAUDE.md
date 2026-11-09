@@ -3792,9 +3792,7 @@ proof and the sizing rules; the pieces, by name:
   script:e2e-computer-schedule` on the Mac (two scratch TextEdits, a typist for
   the person; no idle gate, one computer proof at a time, a sentinel tap that
   turns a leg the real person touched inconclusive).
-- The task benchmark (docs/computer-protocol.md §17): `bun run
-- The task benchmark (docs/computer-protocol.md §19): `bun run
-- The task benchmark (docs/computer-protocol.md §20): `bun run
+- The task benchmark (docs/computer-protocol.md §21): `bun run
   script:e2e-computer-bench` runs seven real desktop tasks (TextEdit, Chrome
   on bench.html, a dev instance's Settings, System Settings' one switch, a
   save dialog, which needs the session tier and runs only by hand with
