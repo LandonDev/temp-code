@@ -71,10 +71,18 @@ export class TierVerdicts {
     }
   }
 
-  /** The tiers for one step: 'ax' first, 'process' unless the class's verdict is 'session', 'session' only when admitted. */
+  /**
+   * The tiers for one step: 'ax' first, 'process' unless the class's verdict
+   * is 'session', 'session' only when admitted. With 'session' admitted, a
+   * class that missed at 'process' twice skips it, so the session step that
+   * raises the verdict gets its chance.
+   */
   tiersFor(bundleId: string | null, action: Pick<ComputerAction, 'action'>, sessionAdmitted: boolean): Tier[] {
+    const cls = classOf(action)
+    const v = this.get(bundleId)
     const tiers: Tier[] = ['ax']
-    if (!this.needsSession(bundleId, action)) tiers.push('process')
+    const skipProcess = cls !== null && (v?.classes[cls] === 'session' || (sessionAdmitted && (v?.misses[cls] ?? 0) >= VERDICT_MISSES_TO_RAISE))
+    if (!skipProcess) tiers.push('process')
     if (sessionAdmitted) tiers.push('session')
     return tiers
   }

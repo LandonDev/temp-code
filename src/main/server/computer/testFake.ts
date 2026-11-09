@@ -31,3 +31,37 @@ export const FAKE_APPS = {
   Preview: { name: 'Preview', pid: 17000, bundleId: 'com.apple.Preview', windowId: 170000 },
   Finder: { name: 'Finder', pid: 400, bundleId: 'com.apple.finder', windowId: null }
 } as const
+
+/** A hand-turned clock for the host's own timers; the fake's and the connection's stay real. */
+export class ManualClock {
+  t = 1_000_000
+  private timers: { at: number; fn: () => void; id: number }[] = []
+  private next = 0
+  now = (): number => this.t
+  setTimeout = (fn: () => void, ms: number): number => {
+    const id = ++this.next
+    this.timers.push({ at: this.t + ms, fn, id })
+    return id
+  }
+  clearTimeout = (id: unknown): void => {
+    this.timers = this.timers.filter((t) => t.id !== id)
+  }
+  async advance(ms: number): Promise<void> {
+    const until = this.t + ms
+    for (;;) {
+      this.timers.sort((a, b) => a.at - b.at)
+      const due = this.timers[0]
+      if (!due || due.at > until) break
+      this.timers.shift()
+      this.t = due.at
+      due.fn()
+      await settle()
+    }
+    this.t = until
+    await settle()
+  }
+}
+
+export async function settle(): Promise<void> {
+  for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r))
+}

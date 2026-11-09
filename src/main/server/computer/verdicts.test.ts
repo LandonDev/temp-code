@@ -23,6 +23,13 @@ describe('tiersFor', () => {
     expect(v.tiersFor(B, click, false)).toEqual(['ax', 'process'])
     expect(v.tiersFor(B, click, true)).toEqual(['ax', 'process', 'session'])
   })
+  it('two misses at process skip it while session is admitted', () => {
+    const store = memoryStore()
+    store.setSetting(tierVerdictSetting(B), JSON.stringify({ bundleId: B, classes: {}, misses: { click: 2 }, updatedAt: Date.now() }))
+    const v = new TierVerdicts(store)
+    expect(v.tiersFor(B, click, true)).toEqual(['ax', 'session'])
+    expect(v.tiersFor(B, click, false)).toEqual(['ax', 'process'])
+  })
   it('a session verdict drops process', () => {
     const store = memoryStore()
     const verdict: TierVerdict = { bundleId: B, classes: { click: 'session' }, misses: {}, updatedAt: Date.now() }

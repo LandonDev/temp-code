@@ -76,16 +76,23 @@ export class ComputerService {
     this.clock = opts.clock ?? REAL_CLOCK
   }
 
-  /** The live connection, spawning one on first use; throws host error service_unavailable with its one line. */
-  async connection(): Promise<ComputerConnection> {
-    if (this.closed) throw new ComputerHostError('service_unavailable', 'the app is closing')
-    if (this.permanent) throw new ComputerHostError('service_unavailable', this.permanent)
+  /** Why a call cannot run now (closing, unavailable here, down after crashes), or null. */
+  unavailableReason(): string | null {
+    if (this.closed) return 'the app is closing'
+    if (this.permanent) return this.permanent
     const why = this.opts.unavailable?.() ?? null
     if (why) {
-      this.setState({ state: 'unavailable', reason: why })
-      throw new ComputerHostError('service_unavailable', why)
+      if (this.status.state !== 'unavailable' || this.status.reason !== why) this.setState({ state: 'unavailable', reason: why })
+      return why
     }
-    if (this.clock.now() < this.downUntil) throw new ComputerHostError('service_unavailable', this.downReason)
+    if (this.clock.now() < this.downUntil) return this.downReason
+    return null
+  }
+
+  /** The live connection, spawning one on first use; throws host error service_unavailable with its one line. */
+  async connection(): Promise<ComputerConnection> {
+    const why = this.unavailableReason()
+    if (why) throw new ComputerHostError('service_unavailable', why)
     this.clearIdle()
     if (this.conn?.alive) return this.conn
     this.starting ??= this.spawnAfterBackoff().finally(() => (this.starting = null))
