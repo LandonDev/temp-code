@@ -12,6 +12,7 @@
 //
 // `--tick` (opt-in, for the preview proof): a label under the button counts about ten times a second, so
 // the window's pixels change and a capture stream, which sends a frame only when they do, keeps sending.
+// SIGUSR1 pauses the count and the next one resumes it, for a check that needs the window still.
 import AppKit
 
 /// A window the person can neither click nor bring forward.
@@ -25,6 +26,8 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
     private let result = NSTextField(labelWithString: "waiting")
     private let tick = NSTextField(labelWithString: "")
     private var ticks = 0
+    private var tickPaused = false
+    private var pauseSignal: DispatchSourceSignal?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let ticking = CommandLine.arguments.contains("--tick")
@@ -67,10 +70,15 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
             tick.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
             tick.stringValue = "tick 0"
             Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-                guard let self else { return }
+                guard let self, !self.tickPaused else { return }
                 self.ticks += 1
                 self.tick.stringValue = "tick \(self.ticks)"
             }
+            signal(SIGUSR1, SIG_IGN)
+            let pause = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
+            pause.setEventHandler { [weak self] in self?.tickPaused.toggle() }
+            pause.resume()
+            pauseSignal = pause
         }
     }
 

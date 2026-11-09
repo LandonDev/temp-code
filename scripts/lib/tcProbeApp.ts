@@ -1,5 +1,5 @@
-import { execFileSync } from 'node:child_process'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { execFile, execFileSync } from 'node:child_process'
+import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -45,14 +45,36 @@ export function buildProbeApp(root: string, dir: string, bundleId: string): Prob
   return { app, binary, bundleId }
 }
 
-/** The pid of the process running exactly this binary, or 0. */
-function pidOf(binary: string): number {
+/**
+ * Every way a process's command line may spell this binary: as given, its real path, and with or
+ * without /private before /tmp, /var or /etc (Launch Services starts an app under /tmp as
+ * /private/tmp/...).
+ */
+export function binarySpellings(binary: string): string[] {
+  const all = [binary]
   try {
-    const out = execFileSync('pgrep', ['-nf', `^${binary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`], { encoding: 'utf8' }).trim()
-    return Number(out) || 0
+    all.push(realpathSync(binary))
   } catch {
-    return 0
+    // not on disk
   }
+  for (const p of [...all]) {
+    if (/^\/(tmp|var|etc)\//.test(p)) all.push(`/private${p}`)
+    else if (/^\/private\/(tmp|var|etc)\//.test(p)) all.push(p.slice('/private'.length))
+  }
+  return [...new Set(all)]
+}
+
+/** The pid of the newest process running this binary, under any of its spellings, or 0. */
+function pidOf(binary: string): number {
+  for (const spelling of binarySpellings(binary)) {
+    try {
+      const out = execFileSync('pgrep', ['-nf', `^${spelling.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`], { encoding: 'utf8' }).trim()
+      if (Number(out)) return Number(out)
+    } catch {
+      // no match
+    }
+  }
+  return 0
 }
 
 /**
@@ -83,9 +105,13 @@ export async function launchTickingProbe(
   return { pid, bounced }
 }
 
-/** Ends the pid (SIGTERM, then SIGKILL), unregisters the bundle and drops any saved state. */
+/**
+ * Ends the pid (SIGTERM, then SIGKILL), unregisters the bundle and drops any saved state. With no pid
+ * (a launch the run did not see through) it ends whatever runs the build's binary.
+ */
 export function cleanupProbeApp(build: ProbeAppBuild | null, pid: number): string[] {
   const done: string[] = []
+  if (!pid && build) pid = pidOf(build.binary)
   if (pid) {
     try {
       process.kill(pid, 'SIGTERM')
@@ -110,6 +136,69 @@ export function cleanupProbeApp(build: ProbeAppBuild | null, pid: number): strin
     rmSync(join(homedir(), 'Library/Saved Application State', `${build.bundleId}.savedState`), { recursive: true, force: true })
   }
   return done
+}
+
+/** The Mac locked or its display went dark during a proof: the run stops, inconclusive. */
+export class ScreenLost extends Error {}
+
+/**
+ * The proofs' one gate while the person is away: the screen must stay unlocked and awake. `start` reads
+ * it once (scripts/mac/computer-proof-probe.swift `screen`) and then every second; `lost` rejects at the
+ * first locked or dark read, `check()` reads it again and throws, and `nap(ms)` is a sleep that throws,
+ * so a run unwinds at its next pause and the proof's cleanup follows.
+ */
+export class ScreenWatch {
+  private why: string | null = null
+  private timer: ReturnType<typeof setInterval> | null = null
+  private reject: (e: ScreenLost) => void = () => undefined
+  readonly lost = new Promise<never>((_, reject) => (this.reject = reject))
+  private probe = ''
+
+  constructor() {
+    this.lost.catch(() => undefined)
+  }
+
+  start(probe: string, everyMs = 1_000): void {
+    this.probe = probe
+    this.check()
+    let reading = false
+    this.timer = setInterval(() => {
+      if (reading) return
+      reading = true
+      execFile(probe, ['screen'], { encoding: 'utf8', timeout: 10_000 }, (error, out) => {
+        reading = false
+        try {
+          if (!error) this.judge(out)
+        } catch {
+          // a garbled read; the next one decides
+        }
+      })
+    }, everyMs)
+  }
+
+  check(): void {
+    if (!this.why && this.probe) this.judge(execFileSync(this.probe, ['screen'], { encoding: 'utf8', timeout: 10_000 }))
+    if (this.why) throw new ScreenLost(this.why)
+  }
+
+  async nap(ms: number): Promise<void> {
+    if (this.why) throw new ScreenLost(this.why)
+    await new Promise((r) => setTimeout(r, ms))
+    if (this.why) throw new ScreenLost(this.why)
+  }
+
+  stop(): void {
+    if (this.timer) clearInterval(this.timer)
+    this.timer = null
+  }
+
+  private judge(out: string): void {
+    const s = JSON.parse(out) as { locked: boolean; asleep: boolean }
+    if (this.why || (!s.locked && !s.asleep)) return
+    this.why = `stopped: ${s.locked ? 'the Mac locked' : "the Mac's display went dark"} at ${new Date().toISOString()}`
+    this.stop()
+    this.reject(new ScreenLost(this.why))
+  }
 }
 
 /**

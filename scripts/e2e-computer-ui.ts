@@ -14,17 +14,18 @@
  *  - `computer.proofHold { on: true }`: the banner window appears (a CDP target reading "TempCode is
  *    using your Mac"), is never focused, and the frontmost app never changes; `{ on: false }` hides it
  *
- * The person's leave for this proof drops the idle gate; a locked or dark screen stops it. Cleanup
- * always: the instance, TC Probe by pid, the scratch dirs.
+ * The person's leave for this proof drops the idle gate; a locked or dark screen, read before each
+ * launch and every second, stops it (inconclusive). Cleanup always: the instance's process group (only
+ * an instance this run started), TC Probe, the scratch dirs.
  *
  * Run on the Mac: bun run script:e2e-computer-ui   (`--skip-build` reuses out/ from an earlier build)
  */
 import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { Cdp, REPO, attach, prepareEnv, sleep } from './lib/packagedApp'
+import { Cdp, REPO, attach, prepareEnv } from './lib/packagedApp'
 import { buildTcComputer } from './lib/tcComputerBuild'
-import { buildProbeApp, cleanupProbeApp, launchTickingProbe, MAC_EXTRA_SOURCE, PROBE_APP_NAME, type ProbeAppBuild } from './lib/tcProbeApp'
+import { buildProbeApp, cleanupProbeApp, launchTickingProbe, MAC_EXTRA_SOURCE, PROBE_APP_NAME, ScreenLost, ScreenWatch, type ProbeAppBuild } from './lib/tcProbeApp'
 
 if (process.platform !== 'darwin') {
   console.log('skipped: macOS only')
@@ -42,6 +43,9 @@ const MODEL = process.env.TC_E2E_MODEL || 'claude-sonnet-5-5'
 const APP = PROBE_APP_NAME
 const PROBE = join(WORK, 'computer-proof-probe')
 const EXTRA = join(WORK, 'mac-extra')
+const watch = new ScreenWatch()
+const sleep = (ms: number): Promise<void> => watch.nap(ms)
+const pause = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 type Outcome = 'passed' | 'failed' | 'inconclusive'
 const report = {
@@ -68,10 +72,6 @@ const log = (m: string): void => console.log(`      ${m}`)
 
 const probe = <T>(command: string): T => JSON.parse(execFileSync(PROBE, command.split(' '), { encoding: 'utf8', timeout: 10_000 })) as T
 const frontmost = (): { pid: number; bundleId: string | null } => probe('frontmost')
-const screenAwake = (): boolean => {
-  const s = probe<{ locked: boolean; asleep: boolean }>('screen')
-  return !s.locked && !s.asleep
-}
 const extra = <T>(...args: string[]): T => JSON.parse(execFileSync(EXTRA, args, { encoding: 'utf8', timeout: 10_000 })) as T
 const pidsOn = (port: number): number[] => {
   try {
@@ -89,39 +89,39 @@ let probePid = 0
 let instance: ReturnType<typeof spawn> | null = null
 let page: Cdp | null = null
 
+/** A listener on the port that is this run's instance by its environment (its own user data dir), should Electron have left the group. */
+const strays = (): number[] =>
+  pidsOn(DEBUG_PORT).filter((pid) => {
+    try {
+      return execFileSync('ps', ['eww', '-o', 'command=', '-p', String(pid)], { encoding: 'utf8' }).includes(`TEMP_CODE_USER_DATA=${USER_DATA}`)
+    } catch {
+      return false
+    }
+  })
+
+/** Only what this run started: the detached instance's process group (Electron is in it), never the port's owner. */
 async function cleanup(): Promise<void> {
   page?.close()
-  const pids = pidsOn(DEBUG_PORT)
-  for (const pid of pids) {
-    try {
-      process.kill(pid, 'SIGTERM')
-    } catch {
-      /* gone */
+  const group = instance?.pid ?? 0
+  if (group) {
+    for (const signal of ['SIGTERM', 'SIGKILL'] as const) {
+      try {
+        process.kill(-group, signal)
+      } catch {
+        /* gone */
+      }
+      if (signal === 'SIGTERM') await pause(1_500)
+    }
+    for (const pid of strays()) {
+      try {
+        process.kill(pid, 'SIGKILL')
+        report.cleanup.push(`ended ${pid}, which had left the group`)
+      } catch {
+        /* gone */
+      }
     }
   }
-  if (instance?.pid) {
-    try {
-      process.kill(-instance.pid, 'SIGTERM')
-    } catch {
-      /* gone */
-    }
-  }
-  await sleep(1_500)
-  for (const pid of pidsOn(DEBUG_PORT)) {
-    try {
-      process.kill(pid, 'SIGKILL')
-    } catch {
-      /* gone */
-    }
-  }
-  if (instance?.pid) {
-    try {
-      process.kill(-instance.pid, 'SIGKILL')
-    } catch {
-      /* gone */
-    }
-  }
-  report.cleanup.push(pids.length ? `ended the instance (${pids.join(', ')})` : 'the instance was gone')
+  report.cleanup.push(group ? `ended the instance's process group ${group}` : 'no instance was started')
   report.cleanup.push(...cleanupProbeApp(probeBuild, probePid))
   probePid = 0
   rmSync(WORK, { recursive: true, force: true })
@@ -158,7 +158,7 @@ async function run(): Promise<void> {
   execFileSync('xcrun', ['swiftc', '-O', '-o', PROBE, join(REPO, 'scripts/mac/computer-proof-probe.swift')], { stdio: 'pipe' })
   writeFileSync(`${EXTRA}.swift`, MAC_EXTRA_SOURCE)
   execFileSync('xcrun', ['swiftc', '-O', '-o', EXTRA, `${EXTRA}.swift`], { stdio: 'pipe' })
-  if (!screenAwake()) throw new Error('not run: the Mac is locked or its display is dark')
+  watch.start(PROBE)
   if (pidsOn(DEBUG_PORT).length) throw new Error(`port ${DEBUG_PORT} is in use; pick another with TC_UI_DEBUG_PORT`)
 
   if (!process.argv.includes('--skip-build')) {
@@ -170,6 +170,7 @@ async function run(): Promise<void> {
   if (!existsSync(join(REPO, 'out/renderer/index.html'))) throw new Error('out/renderer is missing: run without --skip-build')
 
   probeBuild = buildProbeApp(REPO, WORK, 'dev.landon.tempcode.computer-ui-probe')
+  watch.check()
   const launched = await launchTickingProbe(probeBuild, frontmost)
   probePid = launched.pid
   report.bounce = launched.bounced
@@ -186,6 +187,7 @@ async function run(): Promise<void> {
     TEMP_CODE_COMPUTER_TRACE: '1'
   }
   delete env.ELECTRON_RUN_AS_NODE
+  watch.check()
   instance = spawn(join(REPO, 'node_modules/.bin/electron-vite'), ['preview', '--skipBuild'], { cwd: REPO, env, stdio: ['ignore', 'ignore', 'ignore'], detached: true })
   page = await attach(DEBUG_PORT, 120_000)
   const cdp = page
@@ -288,10 +290,7 @@ async function run(): Promise<void> {
   }
 
   // ── the banner ────────────────────────────────────────────────────────
-  if (!screenAwake()) {
-    check('the banner', 'inconclusive', 'the Mac locked or went dark before the hold')
-    return
-  }
+  watch.check()
   const before = frontmost()
   const fronts = new Set<number>([before.pid])
   let sampling = true
@@ -302,7 +301,7 @@ async function run(): Promise<void> {
       } catch {
         /* a slow read */
       }
-      await sleep(100)
+      await pause(100)
     }
   })()
   await request('computer.proofHold', { on: true })
@@ -341,11 +340,16 @@ async function run(): Promise<void> {
   check('off, the banner hides', !!gone)
 }
 
+const running = run()
 try {
-  await run()
+  await Promise.race([running, watch.lost])
 } catch (e) {
-  check('the run finished', false, ((e as Error).stack ?? String(e)).split('\n').slice(0, 4).join(' '))
+  if (e instanceof ScreenLost) check('the run', 'inconclusive', e.message)
+  else check('the run finished', false, ((e as Error).stack ?? String(e)).split('\n').slice(0, 4).join(' '))
 }
+// A lost screen ends the race at once; the run unwinds at its next nap before the cleanup, 20 s at most.
+await Promise.race([running.catch(() => undefined), pause(20_000)])
+watch.stop()
 await cleanup()
 const failed = report.checks.filter((c) => c.outcome === 'failed').length
 const voided = report.checks.filter((c) => c.outcome === 'inconclusive').length

@@ -10,8 +10,9 @@
  *  2. a preview at maxEdge 512, each frame acked as drawn: 4 ± 1 fps over 5 s; stopped, the service
  *     hears `capture.stream.stop` and the frames end
  *  3. an `ax` click on Ping brings `computer-click`, whose point mapped back to the session space lies
- *     in the button's frame from a geometry read; a second click, with the viewer holding a frame
- *     unacked (no frame can reach it) and the label already "pong", brings one too
+ *     in the button's frame from a geometry read; a second click that changes nothing (the label
+ *     already "pong", TC Probe's tick paused by SIGUSR1, the stream still) brings one too, and no
+ *     frame comes from the service after it
  *  4. `escape.watch { on: true, leaseMs: 1000 }` answers `{}`, the service holds an enabled event tap
  *     (CGGetEventTapList) and the trace has the frames; unrenewed it ends within ~2 s; `on: false` ends
  *     a fresh one at once; `SessionHolds` over a fake banner shows Esc once the watch answered and
@@ -20,7 +21,8 @@
  *     used the Mac meanwhile)
  *
  * Escape itself is never pressed. The person's leave for this proof drops the idle gate; a locked or
- * dark screen stops it. Nothing stays but report.json and trace.log under /tmp/tc-preview-proof.
+ * dark screen, read before each launch and every second, stops it (inconclusive) and cleans up.
+ * Nothing stays but report.json and trace.log under /tmp/tc-preview-proof.
  *
  * Run on the Mac: bun run script:e2e-computer-preview (esbuild → node, as script:e2e-computer).
  */
@@ -37,7 +39,7 @@ import { SessionHolds, HOLD_LINGER_MS } from '../src/main/server/computer/hold'
 import { setSessionTierGate, REFUSE_SESSION_TIER } from '../src/main/server/computer/tierGate'
 import { buildTcComputer } from './lib/tcComputerBuild'
 import { repoRoot } from './lib/repoRoot'
-import { buildProbeApp, cleanupProbeApp, launchTickingProbe, PROBE_APP_NAME, MAC_EXTRA_SOURCE, type ProbeAppBuild } from './lib/tcProbeApp'
+import { buildProbeApp, cleanupProbeApp, launchTickingProbe, PROBE_APP_NAME, MAC_EXTRA_SOURCE, ScreenLost, ScreenWatch, type ProbeAppBuild } from './lib/tcProbeApp'
 
 if (process.platform !== 'darwin') {
   console.log('skipped: macOS only')
@@ -54,7 +56,8 @@ const PROBE = join(WORK, 'computer-proof-probe')
 const TAPS = join(WORK, 'tap-counter')
 const APP = PROBE_APP_NAME
 const THREAD = 'proof-preview'
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+const watch = new ScreenWatch()
+const sleep = (ms: number): Promise<void> => watch.nap(ms)
 
 rmSync(WORK, { recursive: true, force: true })
 mkdirSync(WORK, { recursive: true })
@@ -85,10 +88,6 @@ const probe = <T>(command: string): T => JSON.parse(execFileSync(PROBE, command.
 const frontmost = (): { pid: number; bundleId: string | null } => probe('frontmost')
 const pointer = (): { x: number; y: number } => probe('pointer')
 const idleSeconds = (): number => probe<{ seconds: number }>('idle').seconds
-const screenAwake = (): boolean => {
-  const s = probe<{ locked: boolean; asleep: boolean }>('screen')
-  return !s.locked && !s.asleep
-}
 
 let probeBuild: ProbeAppBuild | null = null
 let probePid = 0
@@ -117,13 +116,14 @@ async function run(): Promise<void> {
   const grants = JSON.parse(execFileSync(BIN, ['permissions'], { encoding: 'utf8' })) as { accessibility: boolean; screenRecording: boolean }
   if (!grants.accessibility || !grants.screenRecording)
     throw new Error(`permissions: accessibility ${grants.accessibility}, screen recording ${grants.screenRecording}; the proof needs both and asks for neither`)
-  if (!screenAwake()) throw new Error('not run: the Mac is locked or its display is dark')
+  watch.start(PROBE)
 
   const start = Date.now()
   const app0 = frontmost()
   const p0 = pointer()
 
   probeBuild = buildProbeApp(ROOT, WORK, 'dev.landon.tempcode.computer-preview-probe')
+  watch.check()
   const launched = await launchTickingProbe(probeBuild, frontmost)
   probePid = launched.pid
   report.bounce = launched.bounced
@@ -137,6 +137,8 @@ async function run(): Promise<void> {
     log: (line) => appendFileSync(TRACE, `${new Date().toISOString()} ${line}\n`)
   })
   const svc = service
+  const sourceFrames: number[] = []
+  svc.onNotification((n) => void (n.method === 'capture/frame' && sourceFrames.push(Date.now())))
   const request = svc.request.bind(svc)
   svc.request = (async (method: ComputerMethod, params: never, opts?: { signal?: AbortSignal; timeoutMs?: number }) => {
     report.requests.push(method)
@@ -186,15 +188,12 @@ async function run(): Promise<void> {
   console.log('\n[2] a preview at maxEdge 512, every frame acked')
   const connection = {}
   const got: { frames: { at: number; push: ComputerFramePush }[]; clicks: { at: number; push: ComputerClickPush }[]; states: ComputerPreviewPush[] } = { frames: [], clicks: [], states: [] }
-  let acking = true
-  let held: ComputerFramePush | null = null
   const viewer: Viewer = {
     connection,
     send: (frame) => {
       if (frame.push === 'computer-frame') {
         got.frames.push({ at: Date.now(), push: frame })
-        if (acking) setImmediate(() => previews!.ack(connection, frame.preview, frame.seq))
-        else held = frame
+        setImmediate(() => previews!.ack(connection, frame.preview, frame.seq))
       } else if (frame.push === 'computer-click') got.clicks.push({ at: Date.now(), push: frame })
       else got.states.push(frame)
     }
@@ -248,16 +247,17 @@ async function run(): Promise<void> {
   await clickOnce('first click')
   const label = (await svc.request('state.get', { session: geoSession, app: { pid: probePid }, window: { title: APP }, mode: 'full', screenshot: 'never' })).text
   check('the label reads pong', label.includes('"pong"'))
-  // The viewer stops acking: its frame in flight stays undrawn, so no frame can reach it; a click that
-  // changes nothing (pong stays pong) must still come.
-  acking = false
-  await sleep(1_000)
-  const framesHeld = got.frames.length
-  await clickOnce('second click, the frame gate full')
-  check('no frame reached the viewer while it held one unacked', got.frames.length <= framesHeld + 1, `${got.frames.length - framesHeld} after the hold began`)
-  acking = true
-  const h = held as ComputerFramePush | null
-  if (h) previews.ack(connection, h.preview, h.seq)
+  // A click that changes nothing (pong stays pong) on a still window, TC Probe's tick paused, so the
+  // stream has nothing to send: the click must still come, with no frame after it.
+  process.kill(probePid, 'SIGUSR1')
+  let still = false
+  for (const until = Date.now() + 6_000; !still && Date.now() < until; await sleep(100)) still = Date.now() - (sourceFrames.at(-1) ?? 0) >= 1_200
+  const clickedAt = Date.now()
+  await clickOnce('second click, nothing changes')
+  await sleep(1_500)
+  const after = sourceFrames.filter((t) => t >= clickedAt).length
+  check('no frame came from the service after it', still && after === 0 ? true : 'inconclusive', still ? `${after} frames in the 1.5 s after the click` : 'the window never went still')
+  process.kill(probePid, 'SIGUSR1')
 
   // ── stop ──────────────────────────────────────────────────────────────
   const stopsBefore = report.requests.filter((m) => m === 'capture.stream.stop').length
@@ -323,11 +323,16 @@ async function run(): Promise<void> {
   )
 }
 
+const running = run()
 try {
-  await run()
+  await Promise.race([running, watch.lost])
 } catch (e) {
-  check('the run finished', false, ((e as Error).stack ?? String(e)).split('\n').slice(0, 4).join(' '))
+  if (e instanceof ScreenLost) check('the run', 'inconclusive', e.message)
+  else check('the run finished', false, ((e as Error).stack ?? String(e)).split('\n').slice(0, 4).join(' '))
 }
+// A lost screen ends the race at once; the run unwinds at its next nap before the cleanup, 20 s at most.
+await Promise.race([running.catch(() => undefined), new Promise((r) => setTimeout(r, 20_000))])
+watch.stop()
 await cleanup()
 const failed = report.checks.filter((c) => c.outcome === 'failed').length
 const voided = report.checks.filter((c) => c.outcome === 'inconclusive').length
