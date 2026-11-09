@@ -1,0 +1,45 @@
+app "Electron" · window "New thread" · 1280×800 · focused [3]
+[1] window "New thread"
+  [2] group "New thread"
+    [3] web area "New thread" focused
+      [4] group actions: press
+        [5] group "Workspaces"
+          [6] button "Back" disabled
+          [7] button "Forward" disabled
+          [8] checkbox "Workspaces" checked
+          [9] button "Search"
+          [10] button "Inbox"
+          [11] button "Mark all read"
+          [12] button "Notes"
+          [13] button "Chats"
+          [14] button "Accounts"
+          [15] button "Stats"
+          [16] button "Add workspace…"
+          [17] button "Sign in to Claude"
+          [18] button "Check for updates, v1.0.329"
+          [19] switch "Away from computer" unchecked
+          [20] button "Settings"
+          [21] splitter "Resize workspace rail" = "200"
+        [22] heading "Chats"
+        [23] button "New thread"
+        [24] pop up "Workspace options"
+        [25] splitter "Resize sidebar" = "260"
+        [26] pop up "Thread menu"
+        [27] checkbox "Panel" unchecked
+        [28] pop up "Add"
+        [29] text area "Message" = "How can I help you today?" actions: press
+        [30] button "Send" disabled
+        [31] pop up "Claude Code Fable 5.1 Medium"
+          [32] text = "Fable 5.1"
+          [33] text = "Medium"
+        [34] combo box "Permission mode: Supervised" = "Supervised" actions: press
+        [35] pop up "Project ~"
+          [36] text = "~"
+        [37] pop up "No git repository" disabled
+          [38] text = "No repo"
+        [39] combo box "Thread type" = "Chat" actions: press
+        [40] checkbox "Master thread" unchecked
+        [41] input "Thread name" actions: press
+  [42] button "close"
+  [43] button "full screen" actions: zoom window, show menu
+  [44] button "minimize"

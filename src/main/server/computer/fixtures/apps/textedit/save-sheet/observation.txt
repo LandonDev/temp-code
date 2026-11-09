@@ -1,0 +1,55 @@
+app "TextEdit" · window "Untitled" · 1206×1010
+[1] window "Untitled"
+  [2] scroll area
+    [3] text area = "Hello from the probe\nSecond line!" actions: show menu
+    [4] ruler actions: press
+      [5] ruler marker = "0" actions: delete
+      [6] ruler marker = "8" actions: delete
+      [7] ruler marker = "0" actions: delete
+      [8] ruler marker = "0.5" actions: delete
+      [9] ruler marker = "1" actions: delete
+      [10] ruler marker = "1.5" actions: delete
+      [11] ruler marker = "2" actions: delete
+      [12] ruler marker = "2.5" actions: delete
+      [13] ruler marker = "3" actions: delete
+      [14] ruler marker = "3.5" actions: delete
+      [15] ruler marker = "4" actions: delete
+      [16] ruler marker = "4.5" actions: delete
+      [17] ruler marker = "5" actions: delete
+      [18] ruler marker = "5.5" actions: delete
+      [19] ruler marker = "6" actions: delete
+  [20] group "Formatting"
+    [21] checkbox "bold" unchecked
+    [22] checkbox "italic" unchecked
+    [23] checkbox "underline" unchecked
+    [24] checkbox "strikethrough" unchecked
+    [25] button "text color" = "Clear" actions: show color panel
+    [26] button "text background color" = "Clear" actions: show color panel
+    [27] pop up "typeface" = "Helvetica"
+    [28] pop up "style" = "Regular"
+    [29] combo box "font size" = "12" actions: confirm
+      [30] button "font size"
+    [31] checkbox "align left" checked
+    [32] checkbox "align center" unchecked
+    [33] checkbox "align right" unchecked
+    [34] checkbox "fully justify" unchecked
+    [35] menu button "list style"
+    [36] pop up "line spacing" = "1.0"
+  [37] button "close" disabled
+  [38] button "zoom" actions: show menu
+  [39] button "minimize"
+  [40] menu button "Edited" disabled
+  [41] text = "—" disabled
+  [42] sheet "save"
+    [43] splitter = "-1" disabled
+    [44] pop up "Where:" = "Documents"
+    [45] disclosure "show more options" collapsed
+    [46] text = "Do you want to keep this new document “Untitled”?" actions: show menu
+    [47] text = "You can choose to save your changes, or delete this document immediately. You can’t undo this action." actions: show menu
+    [48] input "Save As:" = "Untitled.rtf" actions: show menu, confirm
+    [49] text = "Tags:"
+    [50] input "tag editor" actions: show menu, confirm
+    [51] pop up "File Format:" = "Rich Text Document"
+    [52] button "Delete"
+    [53] button "Cancel"
+    [54] button "Save"

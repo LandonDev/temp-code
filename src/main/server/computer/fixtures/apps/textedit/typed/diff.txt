@@ -1,0 +1,6 @@
+app "TextEdit" · window "Untitled" · 1206×1010 · focused [3] · changes since your last read
+- [40] menu button "document actions" disabled
+~ [3] text area = "Hello from the probe\nSecond line!" focused selection 15..20 actions: show menu
++ in [1]:
+  [41] menu button "Edited" disabled
+  [42] text = "—" disabled

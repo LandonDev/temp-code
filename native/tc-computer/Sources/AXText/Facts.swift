@@ -80,6 +80,12 @@ public enum Facts {
     /// `read-only` applies to these when AXValue is not settable.
     static let readOnlyRoles: Set<String> = ["input", "search", "text area", "combo box", "date"]
     public static let listRoles: Set<String> = ["list", "outline", "table"]
+    /// `collapsed` prints only where it says something can open (spec §4.1: rows, disclosures);
+    /// Chrome reports AXExpanded false on every web node
+    static let collapsibleRoles: Set<String> = ["row", "cell", "disclosure"]
+    /// roles whose AXValue, when a number, is never a value a person reads
+    static let containerRoles: Set<String> = ["window", "sheet", "dialog", "group", "radio group", "split", "toolbar", "tabs", "scroll area", "row", "cell", "tab",
+                                              "list", "outline", "table", "web area", "menu", "menu bar"]
     static let textRoles: Set<String> = ["text", "heading"]
 
     /// The word for a role: a `role:subrole` entry wins; an unknown AX name splits into words.
@@ -165,6 +171,13 @@ public enum Facts {
     public static func of(_ node: AXNode, _ ctx: FactContext) -> ElementFacts {
         let role = roleWord(node.role, node.subrole)
         let toggle = T.toggleRoles.contains(role)
+        // an AppKit disclosure triangle says open or closed as AXValue 0 or 1, with no AXExpanded
+        var expanded = node.flags.expanded
+        var disclosed = false
+        if role == "disclosure", expanded == nil, case .number(let n)? = node.value, n == "0" || n == "1" {
+            expanded = n == "1"
+            disclosed = true
+        }
 
         var rawValue: String?
         switch node.value {
@@ -177,7 +190,12 @@ public enum Facts {
         var shownValue: String?
         var fullValue: String?
         var valueTotal = 0
-        if let v = rawValue, !v.isEmpty, !toggle, role != "password" {
+        // a heading's number is its level; a container's number (Swing's 0 on every panel) says nothing
+        let number = { if case .number = node.value { true } else { false } }()
+        let quiet = number && (role == "heading" || containerRoles.contains(role))
+        // a value repeating the name prints once
+        let repeatsName = rawValue.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } == named?.0
+        if let v = rawValue, !v.isEmpty, !toggle, !disclosed, !quiet, !repeatsName, role != "password" {
             // a prefix-read value: AX gives the whole length in UTF-16 units only, so the
             // unread part counts in scalars at the prefix's own ratio (exact for uniform text)
             let units = v.utf16.count, scalars = v.unicodeScalars.count
@@ -193,7 +211,7 @@ public enum Facts {
         if node.flags.selected == true { states.append("selected") }
         if node.flags.enabled == false { states.append("disabled") }
         if toggle { states.append(toggleState(node.value)) }
-        if let e = node.flags.expanded { states.append(e ? "expanded" : "collapsed") }
+        if let e = expanded, e || collapsibleRoles.contains(role) { states.append(e ? "expanded" : "collapsed") }
         if node.flags.required == true { states.append("required") }
         if node.flags.invalid == true { states.append("invalid") }
         if node.flags.modal == true { states.append("modal") }

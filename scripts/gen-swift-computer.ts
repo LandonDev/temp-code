@@ -319,7 +319,7 @@ export function emitObservationTables(): string {
     ...swiftSet('toggleRoles', 'Checkbox, switch and radio always print one of checked, unchecked, mixed.', TOGGLE_ROLES),
     ...swiftMap('actionWords', 'Raw AX action → its word.', ACTION_WORDS),
     ...swiftSet('droppedActions', 'Never listed.', DROPPED_ACTIONS),
-    ...swiftMap('ambientActions', 'Actions a process puts on every web-content node; defaults of every role inside a web area (A5).', AMBIENT_ACTIONS),
+    ...swiftSet('ambientActions', 'Actions every web-content node carries: defaults of every role inside a web area (A5).', AMBIENT_ACTIONS),
     ...swiftMap('roleDefaults', 'What every element of a role takes without listing it.', ROLE_DEFAULTS),
     ...swiftSet('typingRoles', 'Roles that take typing and `set_value` by default (unless `read-only`).', TYPING_ROLES),
     `    public static let headerSeparator = ${swiftString(HEADER_SEPARATOR)}`,

@@ -141,7 +141,7 @@ public struct AXSnapshot: Sendable {
     /// only when the request asked for menus; printed after the roots
     public var menuBar: AXNode?
     public var focusedID: NodeID?
-    /// actions this process puts on every web-content node (A5); applied inside web areas only
+    /// actions every web-content node carries (A5, `ObservationTables.ambientActions`); applied inside web areas only
     public var ambientActions: Set<String>
     public var visited: Int
     public var partial: Bool

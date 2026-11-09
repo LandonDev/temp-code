@@ -86,10 +86,8 @@ public enum ObservationTables {
     ]
     /// Never listed.
     public static let droppedActions: Set<String> = ["AXShowAlternateUI", "AXShowDefaultUI"]
-    /// Actions a process puts on every web-content node; defaults of every role inside a web area (A5).
-    public static let ambientActions: [String: [String]] = [
-        "chromium": ["AXShowMenu", "AXScrollToVisible"]
-    ]
+    /// Actions every web-content node carries: defaults of every role inside a web area (A5).
+    public static let ambientActions: Set<String> = ["AXShowMenu", "AXScrollToVisible"]
     /// What every element of a role takes without listing it.
     public static let roleDefaults: [String: [String]] = [
         "button": ["press"],
@@ -108,7 +106,9 @@ public enum ObservationTables {
         "slider": ["increment", "decrement"],
         "stepper": ["increment", "decrement"],
         "scroll area": ["scroll up", "scroll down", "scroll left", "scroll right"],
-        "window": ["raise"]
+        "window": ["raise"],
+        "dialog": ["raise"],
+        "sheet": ["raise"]
     ]
     /// Roles that take typing and `set_value` by default (unless `read-only`).
     public static let typingRoles: Set<String> = ["input", "search", "password", "text area", "date", "combo box"]

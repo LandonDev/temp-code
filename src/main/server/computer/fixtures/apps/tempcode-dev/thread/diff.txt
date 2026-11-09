@@ -1,0 +1,53 @@
+app "Electron" · window "Scratch thread" · 1280×800 · focused [84]
+[1] window "Scratch thread"
+  [45] group "Scratch thread"
+    [46] web area "Scratch thread"
+      [47] group actions: press
+        [48] group "Workspaces"
+          [49] button "Back" disabled
+          [50] button "Forward" disabled
+          [51] checkbox "Workspaces" checked
+          [52] button "Search"
+          [53] button "Inbox"
+          [54] button "Mark all read"
+          [55] button "Notes"
+          [56] button "Chats"
+          [57] button "Accounts"
+          [58] button "Stats"
+          [59] button "Add workspace"
+          [60] button "tc-fixture-workspace"
+          [61] button "Pin workspace"
+          [62] pop up "Workspace options"
+          [63] button "Sign in to Claude"
+          [64] button "Check for updates, v1.0.329"
+          [65] switch "Away from computer" unchecked
+          [66] button "Settings"
+          [67] splitter "Resize workspace rail" = "200"
+        [68] heading "Scratch"
+        [69] button "New thread"
+        [70] pop up "Workspace options"
+        [71] button "Chats" expanded
+        [72] button "New chat"
+        [73] button "Scratch thread"
+        [74] pop up "More"
+        [75] splitter "Resize sidebar" = "260"
+        [76] tabs "Threads"
+        [77] pop up "New thread"
+        [78] pop up "Thread menu"
+        [79] checkbox "Panel" unchecked
+        [80] tabs "Settled threads"
+          [81] tab "Scratch thread" selected
+        [82] text = "No messages yet"
+        [83] pop up "Add"
+        [84] text area "Message" = "Ask, build, / for skills, @ for references…" focused caret 43 actions: press
+        [85] button "Send" disabled
+        [86] pop up "Claude Code Fable 5.1 Medium"
+          [87] text = "Fable 5.1"
+          [88] text = "Medium"
+        [89] combo box "Permission mode: Auto-accept edits" = "Auto-accept edits" actions: press
+        [90] pop up "No git repository" disabled
+          [91] text = "No repo"
+        [92] combo box "Thread type" = "Chat" actions: press
+  [42] button "close"
+  [43] button "full screen" actions: zoom window, show menu
+  [44] button "minimize"

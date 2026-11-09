@@ -1,0 +1,108 @@
+app "Google Chrome" · window "Computer fixture form - Google Chrome" · 930×1280 · focused [25]
+[1] window "Computer fixture form - Google Chrome"
+  [2] group "Computer fixture form - Google Chrome"
+    [3] group actions: show menu
+      [4] button "Back" disabled actions: show menu
+      [5] button "Forward" disabled actions: show menu
+      [6] button "Reload" actions: show menu
+      [7] group actions: show menu
+        [8] pop up "File"
+        [9] input "Address and search bar" = "/tmp/tc-fixture-clone/src/main/server/computer/fixtures/page/form.html" actions: press, show menu
+        [10] button "Bookmark this tab"
+      [11] button "Sign In to Chrome?" actions: show menu
+      [12] pop up "Chrome"
+      [13] scroll area
+        [14] web area "Computer fixture form"
+          [15] heading "Order form"
+          [16] text = "Scratch page for the computer-use fixtures. Nothing on it is real."
+          [17] group "Contact"
+            [18] input "Name" required actions: press
+            [19] input "Email" actions: press
+            [20] text area "Notes" actions: press
+          [21] group "Order"
+            [22] pop up "Size" = "Medium" expanded
+              [23] menu actions: cancel
+                [24] menu item = "Small" actions: cancel
+                [25] menu item = "Medium" focused selected actions: cancel
+                [26] menu item = "Large" actions: cancel
+            [27] checkbox "Gift wrap" unchecked
+            [28] radio group "Delivery"
+              [29] radio "Standard" checked
+              [30] radio "Express" unchecked
+          [31] button "Submit"
+          [32] button "Review order"
+          [33] button "Load prices"
+          [34] link "Order history"
+          [35] heading "History"
+          [36] list "Past orders"
+            [37] text = "Order 001"
+            [38] text = "Order 002"
+            [39] text = "Order 003"
+            [40] text = "Order 004"
+            [41] text = "Order 005"
+            [42] text = "Order 006"
+            [43] text = "Order 007"
+            [44] text = "Order 008"
+            [45] text = "Order 009"
+            [46] text = "Order 010"
+            [47] text = "Order 011"
+            [48] text = "Order 012"
+            [49] text = "Order 013"
+            [50] text = "Order 014"
+            [51] text = "Order 015"
+            [52] text = "Order 016"
+            [53] text = "Order 017"
+            [54] text = "Order 018"
+            [55] text = "Order 019"
+            [56] text = "Order 020"
+            [57] text = "Order 021"
+            [58] text = "Order 022"
+            [59] text = "Order 023"
+            [60] text = "Order 024"
+            [61] text = "Order 025"
+            [62] text = "Order 026"
+            [63] text = "Order 027"
+            [64] text = "Order 028"
+            [65] text = "Order 029"
+            [66] text = "Order 030"
+            [67] text = "Order 031"
+            [68] text = "Order 032"
+            [69] text = "Order 033"
+            [70] text = "Order 034"
+            [71] text = "Order 035"
+            [72] text = "Order 036"
+            [73] text = "Order 037"
+            [74] text = "Order 038"
+            [75] text = "Order 039"
+            [76] text = "Order 040"
+            [77] text = "Order 041"
+            [78] text = "Order 042"
+            [79] text = "Order 043"
+            [80] text = "Order 044"
+            [81] text = "Order 045"
+            [82] text = "Order 046"
+            [83] text = "Order 047"
+            [84] text = "Order 048"
+            [85] text = "Order 049"
+            [86] text = "Order 050"
+            [87] text = "Order 051"
+            [88] text = "Order 052"
+            [89] text = "Order 053"
+            [90] text = "Order 054"
+            [91] text = "Order 055"
+            [92] text = "Order 056"
+            [93] text = "Order 057"
+            [94] text = "Order 058"
+            [95] text = "Order 059"
+            [96] text = "Order 060"
+        [97] menu actions: cancel
+          [98] menu item "Small" actions: cancel, pick
+          [99] menu item "Medium" selected actions: cancel, pick
+          [100] menu item "Large" actions: cancel, pick
+      [101] pop up "Tab search"
+      [102] tab "Computer fixture form - Memory usage - 36.4 MB" selected actions: show menu
+        [103] button "Close"
+      [104] button "New Tab" actions: show menu
+  [105] button "close"
+  [106] button "full screen" actions: zoom window, show menu
+  [107] button "minimize"

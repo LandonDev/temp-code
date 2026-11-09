@@ -99,7 +99,8 @@ public final class IndexBook: @unchecked Sendable {
     /// Spec §4.2 with plan §4.1's rule, in three steps: the same element over the
     /// whole read first; then, parent first in reading order, a rebuilt element
     /// matched one to one under its matched parent; then moves and order.
-    public func assign(_ tree: KeptTree, base: Base?) -> Indexed {
+    /// `sameWindow`: the read's target window has the base's window id, so its root is the base's root whatever its title now says.
+    public func assign(_ tree: KeptTree, base: Base?, sameWindow: Bool = false) -> Indexed {
         reads += 1
         var flat: [Flat] = []
         func walk(_ nodes: [KeptNode], parent: Int) {
@@ -131,6 +132,12 @@ public final class IndexBook: @unchecked Sendable {
         for (index, b) in structure where !taken.contains(index) {
             baseCounts[b.parent, default: [:]][b.key, default: 0] += 1
             baseByKey[b.parent, default: [:]][b.key] = index
+        }
+        // the same window id is the same window: its root keeps the base root's number
+        if sameWindow, !flat.isEmpty, assigned[0] == nil, let root = structure.first(where: { $0.value.parent == 0 && $0.value.position == 0 })?.key, !taken.contains(root) {
+            assigned[0] = root
+            taken.insert(root)
+            newCounts[-1]?[flat[0].node.key]? -= 1
         }
         // 2. parent first: a rebuilt element under its matched parent
         for (i, f) in flat.enumerated() where assigned[i] == nil {

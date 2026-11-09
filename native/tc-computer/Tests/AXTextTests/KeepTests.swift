@@ -57,10 +57,12 @@ func r(_ y: Double) -> Rect { Rect(x: 10, y: y, w: 100, h: 20) }
             t.node("AXGroup", title: "Form", frame: r(30), [
                 t.node("AXStaticText", value: .string("Email"), frame: r(30)),
                 t.node("AXTextField", label: "Email", frame: r(60), settable: ["AXValue"]),
-                t.node("AXStaticText", value: .string("Note"), frame: r(90))
+                t.node("AXStaticText", value: .string("Note"), frame: r(90)),
+                t.node("AXStaticText", value: .string("Name "), frame: r(120)),
+                t.node("AXTextField", title: "Name", frame: r(150), settable: ["AXValue"])
             ])
         ])])
-        #expect(body(s) == ["[1] window \"Untitled\"", "  [2] link \"Order history\"", "  [3] group \"Form\"", "    [4] input \"Email\"", "    [5] text = \"Note\""])
+        #expect(body(s) == ["[1] window \"Untitled\"", "  [2] link \"Order history\"", "  [3] group \"Form\"", "    [4] input \"Email\"", "    [5] text = \"Note\"", "    [6] input \"Name\""])
     }
 
     @Test func aPlaceholderNamesOnlyAnEmptyInput() {
@@ -90,6 +92,15 @@ func r(_ y: Double) -> Rect { Rect(x: 10, y: y, w: 100, h: 20) }
         #expect(body(s).dropFirst() == ["  [2] checkbox \"a\" unchecked", "  [3] checkbox \"b\" checked", "  [4] checkbox \"c\" mixed", "  [5] radio \"d\" checked", "  [6] switch \"e\" unchecked"])
     }
 
+    @Test func collapsedPrintsOnlyWhereSomethingCanOpenAndAHeadingHidesItsLevel() {
+        let s = snapshot([t.window([
+            t.node("AXGroup", title: "Section", flags: AXFlags(expanded: false), frame: r(0)),
+            t.node("AXPopUpButton", title: "Size", value: .string("M"), flags: AXFlags(expanded: true), frame: r(30), actions: ["AXPress"]),
+            t.node("AXHeading", title: "Order form", value: .number("1"), frame: r(60))
+        ])])
+        #expect(body(s).dropFirst() == ["  [2] group \"Section\"", "  [3] pop up \"Size\" = \"M\" expanded", "  [4] heading \"Order form\""])
+    }
+
     @Test func statesPrintInOrderAndReadOnlyNeedsAnUnsettableValue() {
         let row = t.node("AXRow", flags: AXFlags(enabled: false, selected: true, expanded: false), frame: r(0), actions: ["AXPress"])
         let s = snapshot([t.window([
@@ -98,6 +109,15 @@ func r(_ y: Double) -> Rect { Rect(x: 10, y: y, w: 100, h: 20) }
             t.node("AXTextField", title: "Unknown", value: .string("y"), frame: r(60))
         ])])
         #expect(body(s).dropFirst() == ["  [2] row selected disabled collapsed", "  [3] input \"Locked\" = \"x\" required invalid read-only", "  [4] input \"Unknown\" = \"y\""])
+    }
+
+    @Test func anAppKitDisclosureSaysOpenOrClosedAsAState() {
+        let s = snapshot([t.window([
+            t.node("AXDisclosureTriangle", description: "more", value: .number("0"), frame: r(0), actions: ["AXPress"]),
+            t.node("AXDisclosureTriangle", description: "less", value: .number("1"), frame: r(30), actions: ["AXPress"]),
+            t.node("AXDisclosureTriangle", description: "web", flags: AXFlags(expanded: true), frame: r(60), actions: ["AXPress"])
+        ])])
+        #expect(body(s).dropFirst() == ["  [2] disclosure \"more\" collapsed", "  [3] disclosure \"less\" expanded", "  [4] disclosure \"web\" expanded"])
     }
 
     @Test func theFocusedTextElementShowsItsCaretOrSelection() {

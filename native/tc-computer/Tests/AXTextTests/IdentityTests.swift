@@ -83,6 +83,16 @@ func numbers(_ text: String) -> [String: Int] {
         #expect(read(Tree(start: 1000)).kind == .unchanged)
     }
 
+    @Test func theTargetWindowKeepsItsNumberThroughATitleChange() {
+        let reader = Reader()
+        let t = Tree()
+        reader.read(snapshot([t.window(title: "New thread", [t.node("AXButton", title: "Send", frame: r(0), actions: ["AXPress"])] + filler())]))
+        let u = Tree(start: 1000)
+        let built = reader.read(snapshot([u.window(title: "Scratch thread", [u.node("AXButton", title: "Send", frame: r(0), actions: ["AXPress"])] + filler())]))
+        #expect(built.kind == .diff)
+        #expect(built.text.hasSuffix("\n~ [1] window \"Scratch thread\""))
+    }
+
     @Test func rebuiltRowsThatSwapPlacesForceAFullRead() {
         let reader = Reader()
         reader.read(page(Tree(), [("A", "a"), ("B", "b")]))

@@ -82,8 +82,10 @@ public enum Keep {
                 hidden = hidden + h
             }
             guard kept else { return (children, hidden) }
-            // A8: the label of an input already names the input
-            let labels = Set(children.compactMap { $0.facts.nameSource == .titleElement ? $0.facts.rawName : nil })
+            // A8: a label already names the control beside it (by AXTitleUIElement in AppKit, AXTitle in Chrome)
+            let labels = Set(children.compactMap { c in
+                c.kind == .element && (c.facts.nameSource == .titleElement || c.facts.hasRoleDefault || !c.facts.line.actions.isEmpty) ? c.facts.rawName : nil
+            })
             if !labels.isEmpty {
                 children.removeAll { c in
                     c.kind == .element && c.facts.line.role == "text" && c.children.isEmpty && (c.facts.rawValue ?? c.facts.rawName).map(labels.contains) == true

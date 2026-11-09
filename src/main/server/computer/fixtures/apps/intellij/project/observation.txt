@@ -1,0 +1,58 @@
+app "IntelliJ IDEA" · window "" · 1280×914
+[1] dialog
+  [2] group "Root Pane"
+    [3] group "Frame Header"
+      [4] button "Project: Hello, menu"
+      [5] button "Version Control, menu"
+      [6] button "Current File"
+      [7] button "Cannot run the current file: the editor is not in focus" disabled
+      [8] button "Cannot run the current file: the editor is not in focus" disabled
+      [9] button "More Actions"
+      [10] button disabled
+      [11] button "JetBrains AI"
+      [12] button "Claude Code"
+      [13] button "Search Everywhere"
+      [14] button "IDE and Project Settings"
+    [15] group "Project Tool Window"
+      [16] button "Project"
+      [17] group "Action Toolbar"
+        [18] button "New File or Directory…" disabled
+        [19] button "Select Opened File (⌥F1, 1)" disabled
+        [20] button "Expand Selected" disabled
+        [21] button "Expand All" disabled
+        [22] button "Collapse All" disabled
+        [23] button "Options"
+        [24] button "Hide"
+      [25] scroll area
+        [26] outline "Project structure tree"
+          [27] row "Hello  /private/tmp/tc-fixture-idea/Hello, module" selected collapsed actions: show menu
+          [28] row ".idea" selected collapsed actions: show menu
+          [29] row "src" selected collapsed actions: show menu
+          [30] row "External Libraries, external library" selected collapsed actions: show menu
+          [31] row "Scratches and Consoles" selected collapsed actions: show menu
+        … 2 more below
+      … 1 more above
+    [32] group "Left Toolbar"
+      [33] button "Project"
+      [34] button "Structure"
+      [35] button "More"
+      [36] button "Problems"
+      [37] button "Terminal"
+    [38] group "Right Toolbar"
+      [39] button "Notifications"
+      [40] button "Junie"
+      [41] button "Database"
+      [42] button "AI Chat"
+      … 1 more below
+    [43] group "Status Bar"
+      [44] scroll area
+      [45] text "Detecting project structure…"
+      [46] progress = "0"
+      [47] button
+      [48] text "Go to Line"
+      [49] text "Make file read-only"
+      … 14 more below
+    … 5 more above
+  [50] button "close" disabled
+  [51] button "full screen" disabled actions: zoom window, show menu
+  [52] button "minimize" disabled

@@ -43,7 +43,7 @@ public enum Builder {
         let subtree = request.subtreeOf != nil
         let budget = min(max(request.budgetBytes, ComputerDefaults.ObservationBudget.minBytes), ComputerDefaults.ObservationBudget.maxBytes)
         let kept = Keep.tree(s, KeepOptions(wholeValues: subtree))
-        let indexed = book.assign(kept, base: subtree ? nil : base)
+        let indexed = book.assign(kept, base: subtree ? nil : base, sameWindow: base?.windowID == s.window.id)
         var layout = Layout.build(kept, indexed, snapshot: s, space: request.space, geometry: request.geometry, wholeValues: subtree)
         let focused = layout.rows.first { $0.kind == .element && $0.facts.states.first == "focused" }?.index
         var header = HeaderFacts(focused: focused, loading: request.loading, change: nil, thin: kept.thin && request.noteThin)

@@ -33,13 +33,12 @@ public enum RawTree {
         let window = node(tree.root, clip: tree.root.frame ?? tree.window.frame, ids: ids, focused: &focused, nodes: &nodes)
         let extra = (tree.attached ?? []).map { node($0, clip: $0.frame, ids: ids, focused: &focused, nodes: &nodes) }
         let info = WindowInfo(id: windowID, title: tree.window.title, frame: tree.window.frame, main: true, focused: true, minimized: false, onScreen: true, space: .current)
-        let ambient: Set<String> = tree.manualAccessibility == .set ? Set(ObservationTables.ambientActions["chromium"] ?? []) : []
         return AXSnapshot(
             app: AppFacts(pid: 0, bundleId: tree.app.bundleId, name: tree.app.name),
             window: info,
             roots: [window] + extra,
             focusedID: focused,
-            ambientActions: ambient,
+            ambientActions: ObservationTables.ambientActions,
             visited: nodes,
             partial: tree.walk.capped,
             walkMs: tree.walk.ms
@@ -84,8 +83,10 @@ public enum RawTree {
         let inner = Viewport.childClip(role: raw.role, frame: raw.frame, clip: clip)
         // tables and outlines list visible rows: their other children (columns, a header) are judged by frame
         let rowsOnly = raw.role == "AXTable" || raw.role == "AXOutline"
-        let marked = Set(raw.children.indices.filter { raw.children[$0].visible != nil && (!rowsOnly || raw.children[$0].role == "AXRow") })
+        var marked = Set(raw.children.indices.filter { raw.children[$0].visible != nil && (!rowsOnly || raw.children[$0].role == "AXRow") })
         let firstVisible = raw.children.indices.first { marked.contains($0) && raw.children[$0].visible == true }
+        // a list naming no visible row is not believed (IntelliJ's is empty with its rows on screen): judge by frame
+        if firstVisible == nil { marked = [] }
         var hidden = Hidden()
         for (i, child) in raw.children.enumerated() {
             if marked.contains(i) {

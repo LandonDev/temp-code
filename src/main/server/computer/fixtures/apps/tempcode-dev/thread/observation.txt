@@ -1,0 +1,53 @@
+app "Electron" · window "Scratch thread" · 1280×800 · focused [41]
+[1] window "Scratch thread"
+  [2] group "Scratch thread"
+    [3] web area "Scratch thread"
+      [4] group actions: press
+        [5] group "Workspaces"
+          [6] button "Back" disabled
+          [7] button "Forward" disabled
+          [8] checkbox "Workspaces" checked
+          [9] button "Search"
+          [10] button "Inbox"
+          [11] button "Mark all read"
+          [12] button "Notes"
+          [13] button "Chats"
+          [14] button "Accounts"
+          [15] button "Stats"
+          [16] button "Add workspace"
+          [17] button "tc-fixture-workspace"
+          [18] button "Pin workspace"
+          [19] pop up "Workspace options"
+          [20] button "Sign in to Claude"
+          [21] button "Check for updates, v1.0.329"
+          [22] switch "Away from computer" unchecked
+          [23] button "Settings"
+          [24] splitter "Resize workspace rail" = "200"
+        [25] heading "Scratch"
+        [26] button "New thread"
+        [27] pop up "Workspace options"
+        [28] button "Chats" expanded
+        [29] button "New chat"
+        [30] button "Scratch thread"
+        [31] pop up "More"
+        [32] splitter "Resize sidebar" = "260"
+        [33] tabs "Threads"
+        [34] pop up "New thread"
+        [35] pop up "Thread menu"
+        [36] checkbox "Panel" unchecked
+        [37] tabs "Settled threads"
+          [38] tab "Scratch thread" selected
+        [39] text = "No messages yet"
+        [40] pop up "Add"
+        [41] text area "Message" = "Ask, build, / for skills, @ for references…" focused caret 43 actions: press
+        [42] button "Send" disabled
+        [43] pop up "Claude Code Fable 5.1 Medium"
+          [44] text = "Fable 5.1"
+          [45] text = "Medium"
+        [46] combo box "Permission mode: Auto-accept edits" = "Auto-accept edits" actions: press
+        [47] pop up "No git repository" disabled
+          [48] text = "No repo"
+        [49] combo box "Thread type" = "Chat" actions: press
+  [50] button "close"
+  [51] button "full screen" actions: zoom window, show menu
+  [52] button "minimize"

@@ -173,14 +173,14 @@ export function actionWord(raw: string): string | null {
 }
 
 /**
- * Actions a process puts on every web-content node (§4.1, amendment A5): in a
- * process where `AXManualAccessibility` succeeded, inside a web area, they
- * count as defaults of every role, so they never print and never keep an
- * element. The browser's own toolbar and tab strip keep theirs.
+ * Actions every web-content node carries (§4.1, amendment A5): inside a web
+ * area they count as defaults of every role, so they never print and never
+ * keep an element. Counted in the recorded fixtures on 2026-11-08: every node
+ * under a web area carried both in Chrome (159 of 159, 160 of 160, 162 of 162,
+ * with AXManualAccessibility refused) and in the Electron dev instance (93 of
+ * 93, 111 of 111, set). The browser's own toolbar and tab strip keep theirs.
  */
-export const AMBIENT_ACTIONS: Readonly<Record<string, readonly string[]>> = {
-  chromium: ['AXShowMenu', 'AXScrollToVisible']
-}
+export const AMBIENT_ACTIONS: readonly string[] = ['AXShowMenu', 'AXScrollToVisible']
 
 /** What every element of a role takes without listing it (§4.1 "Role defaults"). */
 export const ROLE_DEFAULTS: Readonly<Record<string, readonly string[]>> = {
@@ -201,7 +201,10 @@ export const ROLE_DEFAULTS: Readonly<Record<string, readonly string[]>> = {
   slider: ['increment', 'decrement'],
   stepper: ['increment', 'decrement'],
   'scroll area': ['scroll up', 'scroll down', 'scroll left', 'scroll right'],
-  window: ['raise']
+  window: ['raise'],
+  // a dialog or sheet is a window too (amendment A13: IntelliJ's frame is an AXDialog, TextEdit's sheet raises)
+  dialog: ['raise'],
+  sheet: ['raise']
 }
 
 /** Roles that take typing and `set_value` by default (unless `read-only`). */

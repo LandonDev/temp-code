@@ -66,7 +66,7 @@ describe('the computer Swift', () => {
     expect(readdirSync(OBSERVATION_TABLES_DIR)).toEqual(['ObservationTables.swift'])
     for (const [key, word] of Object.entries(ROLE_TAGS)) expect(tables).toContain(`        ${JSON.stringify(key)}: ${JSON.stringify(word)}`)
     expect(tables).toContain('"pop up": ["press", "show menu"]')
-    expect(tables).toContain('"chromium": ["AXShowMenu", "AXScrollToVisible"]')
+    expect(tables).toContain('public static let ambientActions: Set<String> = ["AXShowMenu", "AXScrollToVisible"]')
     expect(tables).toContain(`public static let stateWords: [String] = [${STATE_WORDS.map((w) => JSON.stringify(w)).join(', ')}]`)
     expect(tables).toContain('public static let headerSeparator = " · "')
     expect(tables).not.toMatch(/\$\{|\\u/)

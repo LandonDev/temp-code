@@ -1,0 +1,65 @@
+app "Google Chrome" · window "Computer fixture form - Google Chrome" · 930×1280 · focused [14]
+[1] window "Computer fixture form - Google Chrome"
+  [2] group "Computer fixture form - Google Chrome"
+    [3] group actions: show menu
+      [4] button "Back" disabled actions: show menu
+      [5] button "Forward" disabled actions: show menu
+      [6] button "Reload" actions: show menu
+      [7] group actions: show menu
+        [8] pop up "File"
+        [9] input "Address and search bar" = "/tmp/tc-fixture-clone/src/main/server/computer/fixtures/page/form.html" actions: press, show menu
+        [10] button "Bookmark this tab"
+      [11] button "Sign In to Chrome?" actions: show menu
+      [12] pop up "Chrome"
+      [13] scroll area
+        [14] web area "Computer fixture form" focused
+          [15] heading "Order form"
+          [16] text = "Scratch page for the computer-use fixtures. Nothing on it is real."
+          [17] group "Contact"
+            [18] input "Name" required actions: press
+            [19] input "Email" actions: press
+            [20] text area "Notes" actions: press
+          [21] group "Order"
+            [22] pop up "Size" = "Medium"
+              [23] menu item = "Medium" selected actions: cancel
+            [24] checkbox "Gift wrap" unchecked
+            [25] radio group "Delivery"
+              [26] radio "Standard" checked
+              [27] radio "Express" unchecked
+          [28] button "Submit"
+          [29] button "Review order"
+          [30] button "Load prices"
+          [31] link "Order history"
+          [32] heading "History"
+          [33] list "Past orders"
+            [34] text = "Order 001"
+            [35] text = "Order 002"
+            [36] text = "Order 003"
+            [37] text = "Order 004"
+            [38] text = "Order 005"
+            [39] text = "Order 006"
+            [40] text = "Order 007"
+            [41] text = "Order 008"
+            [42] text = "Order 009"
+            [43] text = "Order 010"
+            [44] text = "Order 011"
+            [45] text = "Order 012"
+            [46] text = "Order 013"
+            [47] text = "Order 014"
+            [48] text = "Order 015"
+            [49] text = "Order 016"
+            [50] text = "Order 017"
+            [51] text = "Order 018"
+            [52] text = "Order 019"
+            [53] text = "Order 020"
+            [54] text = "Order 021"
+            [55] text = "Order 022"
+            … 38 more below
+      [94] pop up "Tab search"
+      [95] tab "Computer fixture form" selected actions: show menu
+        [96] button "Close"
+      [97] button "New Tab" actions: show menu
+  [98] button "close"
+  [99] button "full screen" actions: zoom window, show menu
+  [100] button "minimize"
+(truncated: 38 elements left out; observe with element: 33 to see one part whole)
