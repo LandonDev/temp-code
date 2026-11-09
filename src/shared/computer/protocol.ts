@@ -100,7 +100,9 @@ export const TYPING = {
   /** text this long goes through the pasteboard */
   pasteMinUnits: 2_000,
   /** how long a paste waits for the element's value to change */
-  pasteSettleMs: 500
+  pasteSettleMs: 500,
+  /** the `paste` verb's text, in UTF-16 units */
+  pasteMaxUnits: 200_000
 } as const
 
 /** The two Mac-wide locks every service shares (§1, §5.3): `flock` on `$TMPDIR/<dir>/<file>`. */
@@ -122,7 +124,9 @@ export const ACTION_LIMITS = {
   scrollAmountMax: 50,
   repeatMax: 100,
   /** `hold_key` and `wait`, in seconds, as the native members */
-  durationMaxSeconds: 300
+  durationMaxSeconds: 300,
+  /** a click's `duration`: how long the button stays down */
+  clickDurationMaxSeconds: 10
 } as const
 
 /** The fixture recorder cuts a raw value past this many characters (§10). */
@@ -149,6 +153,10 @@ export type Region = z.infer<typeof RegionSchema>
 
 export const TierSchema = z.enum(['ax', 'process', 'session'])
 export type Tier = z.infer<typeof TierSchema>
+
+/** What the tier verdict learns per app (§5.2), and what `input.probe` tries. */
+export const ActionClassSchema = z.enum(['click', 'drag', 'hover', 'scroll', 'key', 'type'])
+export type ActionClass = z.infer<typeof ActionClassSchema>
 
 export const PermissionNameSchema = z.enum(['accessibility', 'screenRecording'])
 export type PermissionName = z.infer<typeof PermissionNameSchema>
@@ -276,7 +284,7 @@ export type ElementBrief = z.infer<typeof ElementBriefSchema>
 
 // ── actions (§5.1) ──────────────────────────────────────────────────────
 
-/** The first 17 are Anthropic's `computer_toolset_20260801` member names; the last three are ours. */
+/** The first 17 are Anthropic's `computer_toolset_20260801` member names; the last four are ours. */
 export const COMPUTER_ACTION_NAMES = [
   'screenshot',
   'zoom',
@@ -297,12 +305,21 @@ export const COMPUTER_ACTION_NAMES = [
   'wait',
   'set_value',
   'perform',
-  'select_text'
+  'select_text',
+  'paste'
 ] as const
 export const ComputerActionNameSchema = z.enum(COMPUTER_ACTION_NAMES)
 export type ComputerActionName = z.infer<typeof ComputerActionNameSchema>
 
 export const ScrollDirectionSchema = z.enum(['up', 'down', 'left', 'right'])
+
+/** `select_text`: select the match, or put the caret before or after it with nothing selected. */
+export const PlacementSchema = z.enum(['select', 'before', 'after'])
+export type Placement = z.infer<typeof PlacementSchema>
+
+/** What a `paste` puts on the pasteboard: plain text, markdown rendered to HTML and RTF, or HTML as given. */
+export const PasteFormatSchema = z.enum(['text', 'markdown', 'html'])
+export type PasteFormat = z.infer<typeof PasteFormatSchema>
 
 /** Every parameter any action takes, each optional: one flat object, one Swift struct. */
 export const COMPUTER_ACTION_SHAPE = {
@@ -311,14 +328,22 @@ export const COMPUTER_ACTION_SHAPE = {
   element: ElementIndexSchema.optional(),
   start_coordinate: PointSchema.optional(),
   start_element: ElementIndexSchema.optional(),
-  /** modifiers on a click, drag or scroll; the string for `type`; the key or combo for `key` and `hold_key`; the text to select */
+  /** modifiers on a click, drag or scroll; the string for `type` and `paste`; the key or combo for `key` and `hold_key`; the text to select */
   text: z.string().optional(),
+  /** `select_text`: the match must sit right after this */
+  prefix: z.string().min(1).optional(),
+  /** `select_text`: the match must sit right before this */
+  suffix: z.string().min(1).optional(),
+  /** `select_text`: select the match (the default), or put the caret before or after it */
+  place: PlacementSchema.optional(),
+  /** `paste`: what the text is (default `text`) */
+  format: PasteFormatSchema.optional(),
   region: RegionSchema.optional(),
   scroll_direction: ScrollDirectionSchema.optional(),
   /** wheel clicks */
   scroll_amount: int().min(1).max(ACTION_LIMITS.scrollAmountMax).optional(),
   repeat: int().min(1).max(ACTION_LIMITS.repeatMax).optional(),
-  /** seconds */
+  /** seconds; on a click, how long the button stays down (at most ACTION_LIMITS.clickDurationMaxSeconds) */
   duration: z.number().positive().max(ACTION_LIMITS.durationMaxSeconds).optional(),
   value: z.string().optional(),
   /** an action word the element lists, or a role default */
@@ -329,6 +354,11 @@ export const COMPUTER_ACTION_SHAPE = {
 export type ActionParam = Exclude<keyof typeof COMPUTER_ACTION_SHAPE, 'action'>
 
 const POINTER = ['element', 'coordinate', 'text'] as const satisfies ActionParam[]
+/** A click may hold its button down for `duration` seconds. */
+const CLICK = [...POINTER, 'duration'] as const satisfies ActionParam[]
+
+/** The five click verbs, which take a `duration` of at most ACTION_LIMITS.clickDurationMaxSeconds. */
+export const CLICK_ACTIONS: readonly ComputerActionName[] = ['left_click', 'right_click', 'middle_click', 'double_click', 'triple_click']
 
 /** What each action takes (§5.1). `oneOf` lists groups of which exactly one must be given. */
 export const ACTION_PARAMS: Record<
@@ -337,11 +367,11 @@ export const ACTION_PARAMS: Record<
 > = {
   screenshot: { required: [], optional: [] },
   zoom: { required: ['region'], optional: [] },
-  left_click: { required: [], optional: [...POINTER] },
-  right_click: { required: [], optional: [...POINTER] },
-  middle_click: { required: [], optional: [...POINTER] },
-  double_click: { required: [], optional: [...POINTER] },
-  triple_click: { required: [], optional: [...POINTER] },
+  left_click: { required: [], optional: [...CLICK] },
+  right_click: { required: [], optional: [...CLICK] },
+  middle_click: { required: [], optional: [...CLICK] },
+  double_click: { required: [], optional: [...CLICK] },
+  triple_click: { required: [], optional: [...CLICK] },
   left_click_drag: {
     required: [],
     optional: ['start_element', 'start_coordinate', 'element', 'coordinate', 'text'],
@@ -361,14 +391,17 @@ export const ACTION_PARAMS: Record<
   wait: { required: ['duration'], optional: [] },
   set_value: { required: ['element', 'value'], optional: [] },
   perform: { required: ['element', 'name'], optional: [] },
-  select_text: { required: ['element'], optional: ['text', 'range'], oneOf: [['text', 'range']] }
+  select_text: { required: ['element'], optional: ['text', 'range', 'prefix', 'suffix', 'place'], oneOf: [['text', 'range']] },
+  paste: { required: ['text'], optional: ['format', 'element'] }
 }
 
 /** Pairs that never go together on any action. */
 const EXCLUSIVE: [ActionParam, ActionParam][] = [
   ['element', 'coordinate'],
   ['start_element', 'start_coordinate'],
-  ['text', 'range']
+  ['text', 'range'],
+  ['range', 'prefix'],
+  ['range', 'suffix']
 ]
 
 /** The per-action rules of §5.1, for any object that carries the action shape. */
@@ -387,8 +420,12 @@ export function refineAction(value: { action: ComputerActionName } & Partial<Rec
   for (const group of spec.oneOf ?? [])
     if (!group.some(given))
       ctx.addIssue({ code: 'custom', path: [group[0]], message: `${value.action} needs one of ${group.join(', ')}` })
-  if ((value.action === 'type' || value.action === 'key' || value.action === 'hold_key') && value.text === '')
+  if ((value.action === 'type' || value.action === 'key' || value.action === 'hold_key' || value.action === 'paste') && value.text === '')
     ctx.addIssue({ code: 'custom', path: ['text'], message: `${value.action} needs a non-empty text` })
+  if (value.action === 'paste' && typeof value.text === 'string' && value.text.length > TYPING.pasteMaxUnits)
+    ctx.addIssue({ code: 'custom', path: ['text'], message: `paste takes at most ${TYPING.pasteMaxUnits} UTF-16 units` })
+  if (CLICK_ACTIONS.includes(value.action) && typeof value.duration === 'number' && value.duration > ACTION_LIMITS.clickDurationMaxSeconds)
+    ctx.addIssue({ code: 'custom', path: ['duration'], message: `a click holds its button at most ${ACTION_LIMITS.clickDurationMaxSeconds} s` })
   const range = value.range as number[] | undefined
   if (range && range[0] > range[1])
     ctx.addIssue({ code: 'custom', path: ['range'], message: 'a range is [a, b] with a ≤ b' })
@@ -488,7 +525,10 @@ export const COMPUTER_ERROR_KINDS = [
   'cancelled',
   'clipboard_busy',
   'capture_failed',
-  'timeout'
+  'timeout',
+  'text_not_found',
+  'key_window_unavailable',
+  'session_unavailable'
 ] as const
 export const ComputerErrorKindSchema = z.enum(COMPUTER_ERROR_KINDS)
 export type ComputerErrorKind = z.infer<typeof ComputerErrorKindSchema>
@@ -500,11 +540,31 @@ export const STEP_ONLY_ERROR_KINDS: readonly ComputerErrorKind[] = [
   'invalid_key',
   'interrupted',
   'app_busy',
-  'clipboard_busy'
+  'clipboard_busy',
+  'text_not_found',
+  'key_window_unavailable'
 ]
 
 export const InterruptedBySchema = z.enum(['person'])
-export const StaleReasonSchema = z.enum(['gone', 'service-restarted'])
+/** `stale_element`: gone, service-restarted. `session_unavailable`: locked, secure-input, activation-refused, in-use. */
+export const ErrorReasonSchema = z.enum(['gone', 'service-restarted', 'locked', 'secure-input', 'activation-refused', 'in-use'])
+export type ErrorReason = z.infer<typeof ErrorReasonSchema>
+
+/** An app as a session step or a restore names it. */
+export const AppBriefSchema = z.object({ pid: int(), bundleId: z.string().nullable(), name: z.string() })
+export type AppBrief = z.infer<typeof AppBriefSchema>
+
+/** `[x, y]` in global screen points, top-left origin; fractional. */
+const ScreenPointSchema = z.array(z.number()).length(2)
+
+/** What a session-tier step changed on the Mac: the app in front and the pointer, before the step and after it. */
+export const SessionChangeSchema = z.object({
+  frontmost: z.object({ before: AppBriefSchema.optional(), after: AppBriefSchema.optional() }),
+  pointer: z.object({ before: ScreenPointSchema, after: ScreenPointSchema }),
+  /** the service holds a state `input.restoreSession` can put back */
+  restorable: z.boolean()
+})
+export type SessionChange = z.infer<typeof SessionChangeSchema>
 
 export const ComputerErrorSchema = z.object({
   kind: ComputerErrorKindSchema,
@@ -513,12 +573,16 @@ export const ComputerErrorSchema = z.object({
   which: PermissionNameSchema.optional(),
   candidates: z.array(z.string()).optional(),
   element: ElementIndexSchema.optional(),
-  reason: StaleReasonSchema.optional(),
+  reason: ErrorReasonSchema.optional(),
   available: z.array(z.string()).optional(),
   needed: TierSchema.optional(),
   coordinate: PointSchema.optional(),
   space: CoordinateSpaceSchema.optional(),
-  by: InterruptedBySchema.optional()
+  by: InterruptedBySchema.optional(),
+  /** `key_window_unavailable`: the window that is key in the app, when there is one */
+  keyWindow: z.object({ id: int(), title: z.string() }).optional(),
+  /** a session-tier step that failed after it began to change the Mac says what it changed */
+  session: SessionChangeSchema.optional()
 })
 export type ComputerError = z.infer<typeof ComputerErrorSchema>
 
@@ -545,7 +609,9 @@ export const StepOkSchema = z.object({
   text: z.string().optional(),
   /** the image of `screenshot` and `zoom` */
   shot: ShotSchema.optional(),
-  waited: WaitReportSchema.optional()
+  waited: WaitReportSchema.optional(),
+  /** present on every step that ran at the `session` tier */
+  session: SessionChangeSchema.optional()
 })
 export const StepFailedSchema = z.object({
   index: int().nonnegative(),
@@ -633,6 +699,45 @@ export const CaptureStreamStartParamsSchema = TargetSchema.extend({
   maxEdge: int().min(PREVIEW_STREAM.minMaxEdge).max(SHOT.maxMaxEdge).optional()
 })
 
+/** `input.probe`: the classes to try at the process tier; `scroll`, `key` and `click` when left out. */
+export const InputProbeParamsSchema = TargetSchema.extend({
+  classes: z.array(ActionClassSchema).min(1).optional()
+})
+
+export const ProbeOutcomeSchema = z.enum(['honoured', 'ignored', 'untested'])
+export type ProbeOutcome = z.infer<typeof ProbeOutcomeSchema>
+/** What the app's AXFocusedWindow was when the probe began. */
+export const KeyWindowStateSchema = z.enum(['target', 'other', 'none'])
+
+export const ProbeReportSchema = z.object({
+  pid: int(),
+  bundleId: z.string().nullable(),
+  keyWindow: KeyWindowStateSchema,
+  results: z.array(
+    z.object({
+      class: ActionClassSchema,
+      outcome: ProbeOutcomeSchema,
+      reason: z.string().optional(),
+      /** everything the class changed was put back */
+      restored: z.boolean(),
+      ms: int().nonnegative()
+    })
+  )
+})
+export type ProbeReport = z.infer<typeof ProbeReportSchema>
+
+export const RestoreOutcomeSchema = z.enum(['restored', 'person-moved', 'app-gone', 'nothing'])
+export type RestoreOutcome = z.infer<typeof RestoreOutcomeSchema>
+
+/** What `input.restoreSession` put back of what the session tier changed since the last restore. */
+export const SessionRestoreSchema = z.object({
+  frontmost: RestoreOutcomeSchema,
+  pointer: RestoreOutcomeSchema,
+  /** the app it put back in front */
+  held: AppBriefSchema.nullable()
+})
+export type SessionRestore = z.infer<typeof SessionRestoreSchema>
+
 export const InitializeParamsSchema = z.object({
   protocol: int(),
   client: z.object({ name: z.string(), version: z.string() }),
@@ -674,7 +779,9 @@ export const COMPUTER_METHODS = {
     params: CaptureStreamStartParamsSchema,
     result: z.object({ stream: z.string(), width: int().positive(), height: int().positive() })
   },
-  'capture.stream.stop': { params: z.object({ stream: z.string().min(1) }), result: EmptySchema }
+  'capture.stream.stop': { params: z.object({ stream: z.string().min(1) }), result: EmptySchema },
+  'input.probe': { params: InputProbeParamsSchema, result: ProbeReportSchema },
+  'input.restoreSession': { params: EmptySchema, result: SessionRestoreSchema }
 } as const satisfies Record<string, { params: z.ZodType; result: z.ZodType }>
 export type ComputerMethod = keyof typeof COMPUTER_METHODS
 export type ComputerParams<M extends ComputerMethod> = z.infer<(typeof COMPUTER_METHODS)[M]['params']>

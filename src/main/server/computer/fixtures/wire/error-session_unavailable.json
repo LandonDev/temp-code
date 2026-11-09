@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": 44,
+  "error": {
+    "code": -32000,
+    "message": "Another computer session holds the Mac's input.",
+    "data": {
+      "kind": "session_unavailable",
+      "message": "Another computer session holds the Mac's input.",
+      "reason": "in-use"
+    }
+  }
+}

@@ -9,8 +9,13 @@ import {
   COMPUTER_METHODS,
   COMPUTER_WAIT,
   ComputerActionSchema,
+  ComputerErrorSchema,
+  InputProbeParamsSchema,
+  ProbeReportSchema,
   RegionSchema,
+  SessionRestoreSchema,
   StateGetParamsSchema,
+  StepResultSchema,
   TargetSchema,
   WaitOptionsSchema,
   lockPath,
@@ -89,10 +94,86 @@ describe('the action shape', () => {
   })
 
   it('names every action once, the first 17 as Anthropic does, and describes every parameter it lists', () => {
-    expect(new Set(COMPUTER_ACTION_NAMES).size).toBe(20)
-    expect(COMPUTER_ACTION_NAMES.slice(17)).toEqual(['set_value', 'perform', 'select_text'])
+    expect(new Set(COMPUTER_ACTION_NAMES).size).toBe(21)
+    expect(COMPUTER_ACTION_NAMES.slice(17)).toEqual(['set_value', 'perform', 'select_text', 'paste'])
     for (const name of COMPUTER_ACTION_NAMES)
       for (const p of [...ACTION_PARAMS[name].required, ...ACTION_PARAMS[name].optional]) expect(COMPUTER_ACTION_SHAPE).toHaveProperty(p)
+  })
+})
+
+describe('the input amendments', () => {
+  it('takes paste in each format and with an element', () => {
+    expect(ok({ action: 'paste', text: 'Hello' })).toBe(true)
+    for (const format of ['text', 'markdown', 'html']) expect(ok({ action: 'paste', text: '**Hi**', format }), format).toBe(true)
+    expect(ok({ action: 'paste', text: '<b>Hi</b>', format: 'html', element: 33 })).toBe(true)
+    expect(ok({ action: 'paste', text: 'x'.repeat(200_000) })).toBe(true)
+  })
+
+  it('refuses paste without text, with a coordinate, with an unknown format or past 200,000 units', () => {
+    expect(messages({ action: 'paste' })).toContain('paste needs text')
+    expect(messages({ action: 'paste', text: '' })).toContain('paste needs a non-empty text')
+    expect(messages({ action: 'paste', text: 'a', coordinate: [1, 2] })).toContain('paste takes no coordinate')
+    expect(ok({ action: 'paste', text: 'a', format: 'rtf' })).toBe(false)
+    expect(messages({ action: 'paste', text: 'x'.repeat(200_001) })).toContain('paste takes at most 200000 UTF-16 units')
+  })
+
+  it('takes select_text with prefix, suffix and place, and refuses them elsewhere or with range', () => {
+    expect(ok({ action: 'select_text', element: 3, text: 'Total', prefix: 'Sub', suffix: ':' })).toBe(true)
+    for (const place of ['select', 'before', 'after']) expect(ok({ action: 'select_text', element: 3, text: 'a', place }), place).toBe(true)
+    expect(ok({ action: 'select_text', element: 3, range: [2, 2], place: 'after' })).toBe(true)
+    expect(messages({ action: 'select_text', element: 3, range: [0, 1], prefix: 'a' })).toContain('give range or prefix, not both')
+    expect(messages({ action: 'select_text', element: 3, range: [0, 1], suffix: 'a' })).toContain('give range or suffix, not both')
+    expect(messages({ action: 'type', text: 'a', prefix: 'b' })).toContain('type takes no prefix')
+    expect(messages({ action: 'left_click', element: 3, place: 'after' })).toContain('left_click takes no place')
+    expect(ok({ action: 'select_text', element: 3, text: 'a', place: 'middle' })).toBe(false)
+  })
+
+  it('takes a click duration up to 10 s and refuses 0 or 11', () => {
+    for (const action of ['left_click', 'right_click', 'middle_click', 'double_click', 'triple_click'])
+      expect(ok({ action, element: 3, duration: 10 }), action).toBe(true)
+    expect(ok({ action: 'left_click', coordinate: [1, 1], duration: 0.2 })).toBe(true)
+    expect(ok({ action: 'left_click', element: 3, duration: 0 })).toBe(false)
+    expect(messages({ action: 'left_click', element: 3, duration: 11 })).toContain('a click holds its button at most 10 s')
+    expect(messages({ action: 'mouse_move', element: 3, duration: 1 })).toContain('mouse_move takes no duration')
+  })
+
+  it('carries what a session step changed on an ok step and in a failed step\'s error', () => {
+    const session = {
+      frontmost: { before: { pid: 511, bundleId: 'com.apple.Terminal', name: 'Terminal' }, after: { pid: 16800, bundleId: null, name: 'TextEdit' } },
+      pointer: { before: [812.5, 400], after: [3900, -100] },
+      restorable: true
+    }
+    const okStep = { index: 0, action: 'left_click', status: 'ok', tier: 'session', effect: 'changed', session }
+    expect(StepResultSchema.safeParse(okStep).success).toBe(true)
+    const failed = {
+      index: 1,
+      action: 'key',
+      status: 'failed',
+      error: { kind: 'interrupted', message: 'The person took over.', by: 'person', session: { ...session, restorable: true } }
+    }
+    expect(StepResultSchema.safeParse(failed).success).toBe(true)
+    expect(StepResultSchema.safeParse({ ...okStep, session: { ...session, pointer: { before: [1], after: [2, 3] } } }).success).toBe(false)
+  })
+
+  it('names the new error data: the key window and the session reasons', () => {
+    expect(ComputerErrorSchema.safeParse({ kind: 'key_window_unavailable', message: 'm', keyWindow: { id: 4, title: 'Inspector' } }).success).toBe(true)
+    for (const reason of ['locked', 'secure-input', 'activation-refused', 'in-use'])
+      expect(ComputerErrorSchema.safeParse({ kind: 'session_unavailable', message: 'm', reason }).success, reason).toBe(true)
+    expect(ComputerErrorSchema.safeParse({ kind: 'text_not_found', message: 'm', element: 7 }).success).toBe(true)
+    expect(ComputerErrorSchema.safeParse({ kind: 'session_unavailable', message: 'm', reason: 'busy' }).success).toBe(false)
+  })
+
+  it('probes by class and reports each with its outcome; a restore says what it put back', () => {
+    const target = { session: 's', app: { app: 'TextEdit' } }
+    expect(InputProbeParamsSchema.safeParse(target).success).toBe(true)
+    expect(InputProbeParamsSchema.safeParse({ ...target, classes: ['drag'] }).success).toBe(true)
+    expect(InputProbeParamsSchema.safeParse({ ...target, classes: [] }).success).toBe(false)
+    const report = { pid: 1, bundleId: null, keyWindow: 'none', results: [{ class: 'key', outcome: 'untested', reason: 'the window is not key', restored: true, ms: 1 }] }
+    expect(ProbeReportSchema.safeParse(report).success).toBe(true)
+    expect(ProbeReportSchema.safeParse({ ...report, keyWindow: 'main' }).success).toBe(false)
+    expect(SessionRestoreSchema.safeParse({ frontmost: 'nothing', pointer: 'nothing', held: null }).success).toBe(true)
+    expect(SessionRestoreSchema.safeParse({ frontmost: 'app-gone', pointer: 'restored', held: { pid: 2, bundleId: 'x', name: 'X' } }).success).toBe(true)
+    expect(SessionRestoreSchema.safeParse({ frontmost: 'gone', pointer: 'restored', held: null }).success).toBe(false)
   })
 })
 
@@ -126,8 +207,8 @@ describe('targets and params', () => {
     expect(ActionBatchParamsSchema.safeParse({ ...base, actions: [] }).success).toBe(false)
   })
 
-  it('declares 14 methods, each with params and a result', () => {
-    expect(Object.keys(COMPUTER_METHODS)).toHaveLength(14)
+  it('declares 16 methods, each with params and a result', () => {
+    expect(Object.keys(COMPUTER_METHODS)).toHaveLength(16)
     for (const [name, m] of Object.entries(COMPUTER_METHODS)) {
       expect(m.params, name).toBeDefined()
       expect(m.result, name).toBeDefined()

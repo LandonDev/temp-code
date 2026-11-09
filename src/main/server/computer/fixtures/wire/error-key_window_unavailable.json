@@ -1,0 +1,19 @@
+{
+  "jsonrpc": "2.0",
+  "id": 43,
+  "result": {
+    "step": {
+      "index": 0,
+      "action": "key",
+      "status": "failed",
+      "error": {
+        "kind": "key_window_unavailable",
+        "message": "The window isn't key in its app; \"Inspector\" is. Use set_value, or the session tier.",
+        "keyWindow": {
+          "id": 1590,
+          "title": "Inspector"
+        }
+      }
+    }
+  }
+}

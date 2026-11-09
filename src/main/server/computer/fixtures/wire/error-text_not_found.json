@@ -1,0 +1,16 @@
+{
+  "jsonrpc": "2.0",
+  "id": 42,
+  "result": {
+    "step": {
+      "index": 0,
+      "action": "select_text",
+      "status": "failed",
+      "error": {
+        "kind": "text_not_found",
+        "message": "[7] has no \"Total\" after \"Sub\".",
+        "element": 7
+      }
+    }
+  }
+}

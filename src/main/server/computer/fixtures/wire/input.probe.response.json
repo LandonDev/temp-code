@@ -1,0 +1,30 @@
+{
+  "jsonrpc": "2.0",
+  "id": 40,
+  "result": {
+    "pid": 16800,
+    "bundleId": "com.apple.TextEdit",
+    "keyWindow": "target",
+    "results": [
+      {
+        "class": "scroll",
+        "outcome": "honoured",
+        "restored": true,
+        "ms": 212
+      },
+      {
+        "class": "key",
+        "outcome": "honoured",
+        "restored": true,
+        "ms": 64
+      },
+      {
+        "class": "click",
+        "outcome": "untested",
+        "reason": "no text element with two characters",
+        "restored": true,
+        "ms": 9
+      }
+    ]
+  }
+}

@@ -24,8 +24,9 @@ public struct OkStep: Codable, Hashable, Sendable {
     public let text: String?
     public let shot: Shot?
     public let waited: WaitReport?
+    public let session: SessionChange?
 
-    public init(index: Int, action: ComputerActionName, tier: Tier?, effect: StepEffect, element: ElementBrief? = nil, input: Input? = nil, cursor: Point? = nil, text: String? = nil, shot: Shot? = nil, waited: WaitReport? = nil) {
+    public init(index: Int, action: ComputerActionName, tier: Tier?, effect: StepEffect, element: ElementBrief? = nil, input: Input? = nil, cursor: Point? = nil, text: String? = nil, shot: Shot? = nil, waited: WaitReport? = nil, session: SessionChange? = nil) {
         self.index = index
         self.action = action
         self.tier = tier
@@ -36,10 +37,11 @@ public struct OkStep: Codable, Hashable, Sendable {
         self.text = text
         self.shot = shot
         self.waited = waited
+        self.session = session
     }
 
     private enum CodingKeys: String, CodingKey {
-        case index, action, tier, effect, element, input, cursor, text, shot, waited
+        case index, action, tier, effect, element, input, cursor, text, shot, waited, session
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -54,6 +56,7 @@ public struct OkStep: Codable, Hashable, Sendable {
         try container.encodeIfPresent(text, forKey: .text)
         try container.encodeIfPresent(shot, forKey: .shot)
         try container.encodeIfPresent(waited, forKey: .waited)
+        try container.encodeIfPresent(session, forKey: .session)
     }
 }
 

@@ -80,6 +80,7 @@ describe('the action table', () => {
     expect(COMPUTER_ACTIONS.hold_key.class).toBe('key')
     expect(COMPUTER_ACTIONS.select_text).toMatchObject({ axOnly: true, native: false })
     expect(COMPUTER_ACTIONS.wait).toMatchObject({ noInput: true, native: true })
+    expect(COMPUTER_ACTIONS.paste).toMatchObject({ class: 'type', axOnly: false, native: false, noInput: false })
   })
 })
 
@@ -97,6 +98,7 @@ describe('the peer payloads and the verdict', () => {
     expect(TierVerdictSchema.safeParse({ bundleId: 'com.apple.TextEdit', classes: { click: 'ax', type: 'session' }, misses: { key: 1 }, updatedAt: 1 }).success).toBe(true)
     expect(TierVerdictSchema.safeParse({ bundleId: 'x', classes: { click: 'remote' }, misses: {}, updatedAt: 1 }).success).toBe(false)
     expect(tierVerdictSetting('com.apple.TextEdit')).toBe('computer.tiers.com.apple.TextEdit')
+    expect(TierVerdictSchema.safeParse({ bundleId: 'com.google.Chrome', classes: { key: 'process' }, misses: {}, needsKeyWindow: true, updatedAt: 1 }).success).toBe(true)
   })
 })
 
@@ -136,6 +138,12 @@ describe('the result text', () => {
     expect(stepTarget({ action: 'key', text: 'Tab', repeat: 4 })).toBe('Tab ×4')
     expect(stepTarget({ action: 'zoom', region: [100, 200, 400, 350] })).toBe('100,200 to 400,350')
     expect(stepTarget({ action: 'type', text: 'x'.repeat(70) })).toBe(`"${'x'.repeat(60)}…"`)
+  })
+
+  it('names a paste by its format and its tier, never its text', () => {
+    const step = ok('paste', { tier: 'process', element: { index: 33, line: 'input "Body"' }, input: { via: 'paste', clipboard: 'restored' } })
+    expect(formatStepLine(step, { action: 'paste', text: '# Notes', format: 'markdown', element: 33 })).toBe('paste markdown into [33] input "Body" · process · changed')
+    expect(stepTarget({ action: 'paste', text: 'shift' })).toBe('text')
   })
 
   it('writes a screenshot line and marks one past the image limit', () => {

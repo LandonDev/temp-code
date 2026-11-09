@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": 41,
+  "result": {
+    "frontmost": "restored",
+    "pointer": "person-moved",
+    "held": {
+      "pid": 511,
+      "bundleId": "com.apple.Terminal",
+      "name": "Terminal"
+    }
+  }
+}

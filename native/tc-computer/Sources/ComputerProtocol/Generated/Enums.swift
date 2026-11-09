@@ -27,6 +27,41 @@ public enum Tier: RawRepresentable, Codable, Hashable, Sendable {
     }
 }
 
+public enum ActionClass: RawRepresentable, Codable, Hashable, Sendable {
+    case click
+    case drag
+    case hover
+    case scroll
+    case key
+    case type
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "click": self = .click
+        case "drag": self = .drag
+        case "hover": self = .hover
+        case "scroll": self = .scroll
+        case "key": self = .key
+        case "type": self = .type
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .click: "click"
+        case .drag: "drag"
+        case .hover: "hover"
+        case .scroll: "scroll"
+        case .key: "key"
+        case .type: "type"
+        case .unknown(let value): value
+        }
+    }
+}
+
 public enum PermissionName: RawRepresentable, Codable, Hashable, Sendable {
     case accessibility
     case screenRecording
@@ -152,6 +187,7 @@ public enum ComputerActionName: RawRepresentable, Codable, Hashable, Sendable {
     case setValue
     case perform
     case selectText
+    case paste
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -177,6 +213,7 @@ public enum ComputerActionName: RawRepresentable, Codable, Hashable, Sendable {
         case "set_value": self = .setValue
         case "perform": self = .perform
         case "select_text": self = .selectText
+        case "paste": self = .paste
         default: self = .unknown(rawValue)
         }
     }
@@ -203,6 +240,7 @@ public enum ComputerActionName: RawRepresentable, Codable, Hashable, Sendable {
         case .setValue: "set_value"
         case .perform: "perform"
         case .selectText: "select_text"
+        case .paste: "paste"
         case .unknown(let value): value
         }
     }
@@ -232,6 +270,58 @@ public enum ScrollDirection: RawRepresentable, Codable, Hashable, Sendable {
         case .down: "down"
         case .left: "left"
         case .right: "right"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum Placement: RawRepresentable, Codable, Hashable, Sendable {
+    case select
+    case before
+    case after
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "select": self = .select
+        case "before": self = .before
+        case "after": self = .after
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .select: "select"
+        case .before: "before"
+        case .after: "after"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum PasteFormat: RawRepresentable, Codable, Hashable, Sendable {
+    case text
+    case markdown
+    case html
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "text": self = .text
+        case "markdown": self = .markdown
+        case "html": self = .html
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .text: "text"
+        case .markdown: "markdown"
+        case .html: "html"
         case .unknown(let value): value
         }
     }
@@ -439,6 +529,9 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
     case clipboardBusy
     case captureFailed
     case timeout
+    case textNotFound
+    case keyWindowUnavailable
+    case sessionUnavailable
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -463,6 +556,9 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
         case "clipboard_busy": self = .clipboardBusy
         case "capture_failed": self = .captureFailed
         case "timeout": self = .timeout
+        case "text_not_found": self = .textNotFound
+        case "key_window_unavailable": self = .keyWindowUnavailable
+        case "session_unavailable": self = .sessionUnavailable
         default: self = .unknown(rawValue)
         }
     }
@@ -488,6 +584,9 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
         case .clipboardBusy: "clipboard_busy"
         case .captureFailed: "capture_failed"
         case .timeout: "timeout"
+        case .textNotFound: "text_not_found"
+        case .keyWindowUnavailable: "key_window_unavailable"
+        case .sessionUnavailable: "session_unavailable"
         case .unknown(let value): value
         }
     }
@@ -513,9 +612,13 @@ public enum InterruptedBy: RawRepresentable, Codable, Hashable, Sendable {
     }
 }
 
-public enum StaleReason: RawRepresentable, Codable, Hashable, Sendable {
+public enum ErrorReason: RawRepresentable, Codable, Hashable, Sendable {
     case gone
     case serviceRestarted
+    case locked
+    case secureInput
+    case activationRefused
+    case inUse
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -523,6 +626,10 @@ public enum StaleReason: RawRepresentable, Codable, Hashable, Sendable {
         switch rawValue {
         case "gone": self = .gone
         case "service-restarted": self = .serviceRestarted
+        case "locked": self = .locked
+        case "secure-input": self = .secureInput
+        case "activation-refused": self = .activationRefused
+        case "in-use": self = .inUse
         default: self = .unknown(rawValue)
         }
     }
@@ -531,6 +638,91 @@ public enum StaleReason: RawRepresentable, Codable, Hashable, Sendable {
         switch self {
         case .gone: "gone"
         case .serviceRestarted: "service-restarted"
+        case .locked: "locked"
+        case .secureInput: "secure-input"
+        case .activationRefused: "activation-refused"
+        case .inUse: "in-use"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum ProbeOutcome: RawRepresentable, Codable, Hashable, Sendable {
+    case honoured
+    case ignored
+    case untested
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "honoured": self = .honoured
+        case "ignored": self = .ignored
+        case "untested": self = .untested
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .honoured: "honoured"
+        case .ignored: "ignored"
+        case .untested: "untested"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum KeyWindowState: RawRepresentable, Codable, Hashable, Sendable {
+    case target
+    case other
+    case none
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "target": self = .target
+        case "other": self = .other
+        case "none": self = .none
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .target: "target"
+        case .other: "other"
+        case .none: "none"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum RestoreOutcome: RawRepresentable, Codable, Hashable, Sendable {
+    case restored
+    case personMoved
+    case appGone
+    case nothing
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "restored": self = .restored
+        case "person-moved": self = .personMoved
+        case "app-gone": self = .appGone
+        case "nothing": self = .nothing
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .restored: "restored"
+        case .personMoved: "person-moved"
+        case .appGone: "app-gone"
+        case .nothing: "nothing"
         case .unknown(let value): value
         }
     }

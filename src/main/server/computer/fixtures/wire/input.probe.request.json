@@ -1,0 +1,16 @@
+{
+  "jsonrpc": "2.0",
+  "id": 40,
+  "method": "input.probe",
+  "params": {
+    "session": "thread-9fK2",
+    "app": {
+      "app": "TextEdit"
+    },
+    "classes": [
+      "scroll",
+      "key",
+      "click"
+    ]
+  }
+}

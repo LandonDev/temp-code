@@ -11,6 +11,7 @@ import { PermissionPolicySchema } from '../events'
 import { parseElementLine } from './observation'
 import {
   ACTION_PARAMS,
+  ActionClassSchema,
   COMPUTER_ACTION_NAMES,
   COMPUTER_ACTION_SHAPE,
   ComputerActionSchema,
@@ -18,6 +19,7 @@ import {
   NO_INPUT_ACTIONS,
   TierSchema,
   refineAction,
+  type ActionClass,
   type ActionParam,
   type ComputerAction,
   type ComputerActionName,
@@ -30,10 +32,9 @@ import {
 
 // ── the action table ────────────────────────────────────────────────────
 
-/** What the tier verdict learns per app (§5.2). */
-export const ACTION_CLASSES = ['click', 'drag', 'hover', 'scroll', 'key', 'type'] as const
-export const ActionClassSchema = z.enum(ACTION_CLASSES)
-export type ActionClass = z.infer<typeof ActionClassSchema>
+/** What the tier verdict learns per app (§5.2); the wire's ActionClassSchema. */
+export const ACTION_CLASSES = ActionClassSchema.options
+export { ActionClassSchema, type ActionClass }
 
 export interface ComputerActionSpec {
   params: (typeof ACTION_PARAMS)[ComputerActionName]
@@ -60,7 +61,8 @@ const CLASS_OF: Partial<Record<ComputerActionName, ActionClass>> = {
   scroll: 'scroll',
   key: 'key',
   hold_key: 'key',
-  type: 'type'
+  type: 'type',
+  paste: 'type'
 }
 const AX_ONLY: readonly ComputerActionName[] = ['set_value', 'perform', 'select_text']
 
@@ -220,6 +222,13 @@ export const TierVerdictSchema = z.object({
     key: z.number().int().nonnegative().optional(),
     type: z.number().int().nonnegative().optional()
   }),
+  /**
+   * This app's background windows have been seen not key: a process-tier keys
+   * step answered `key_window_unavailable`, or a probe found the key window
+   * elsewhere. A record, not a ban: the host keeps `process` and retries such
+   * a step at the next tier.
+   */
+  needsKeyWindow: z.boolean().optional(),
   /** epoch ms */
   updatedAt: z.number().int()
 })
@@ -269,7 +278,8 @@ export function stepTarget(action: ComputerAction, brief?: ElementBrief): string
     i === undefined ? null : brief && brief.index === i ? briefTarget(brief) : `[${i}]`
   const point = (p: number[] | undefined): string | null => (p ? `${p[0]},${p[1]}` : null)
   const at = el(action.element) ?? point(action.coordinate)
-  const mods = action.text && action.action !== 'type' && action.action !== 'key' && action.action !== 'hold_key' && action.action !== 'select_text'
+  const textIsNotMods: readonly ComputerActionName[] = ['type', 'key', 'hold_key', 'select_text', 'paste']
+  const mods = action.text && !textIsNotMods.includes(action.action)
   const withMods = (s: string): string => (mods ? `${s} with ${action.text}` : s)
   switch (action.action) {
     case 'screenshot':
@@ -306,6 +316,8 @@ export function stepTarget(action: ComputerAction, brief?: ElementBrief): string
       return `${action.name} on ${at}`
     case 'select_text':
       return `${action.text !== undefined ? quoteShort(action.text) : `${action.range![0]}..${action.range![1]}`} in ${at}`
+    case 'paste':
+      return `${action.format ?? 'text'}${at ? ` into ${at}` : ''}`
   }
 }
 
@@ -329,7 +341,8 @@ export function formatStepLine(step: StepResult, action: ComputerAction): string
     const w = waitWords(step.waited)
     if (w) parts.push(w)
   } else if (!NO_INPUT_ACTIONS.includes(action.action)) {
-    parts.push(step.input?.via ?? step.tier ?? 'no tier')
+    // a paste always goes in by paste: its line names the tier instead
+    parts.push((action.action === 'paste' ? null : step.input?.via) ?? step.tier ?? 'no tier')
     parts.push(EFFECT_WORDS[step.effect])
   }
   return parts.join(STEP_SEPARATOR)

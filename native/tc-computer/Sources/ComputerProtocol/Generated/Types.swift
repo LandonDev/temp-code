@@ -223,6 +223,60 @@ public struct ElementBrief: Codable, Hashable, Sendable {
     }
 }
 
+public struct AppBrief: Codable, Hashable, Sendable {
+    public let pid: Int
+    public let bundleId: String?
+    public let name: String
+
+    public init(pid: Int, bundleId: String?, name: String) {
+        self.pid = pid
+        self.bundleId = bundleId
+        self.name = name
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pid, bundleId, name
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(pid, forKey: .pid)
+        try container.encode(bundleId, forKey: .bundleId)
+        try container.encode(name, forKey: .name)
+    }
+}
+
+public struct SessionChange: Codable, Hashable, Sendable {
+    public struct Frontmost: Codable, Hashable, Sendable {
+        public let before: AppBrief?
+        public let after: AppBrief?
+
+        public init(before: AppBrief? = nil, after: AppBrief? = nil) {
+            self.before = before
+            self.after = after
+        }
+    }
+    public struct Pointer: Codable, Hashable, Sendable {
+        public let before: [Double]
+        public let after: [Double]
+
+        public init(before: [Double], after: [Double]) {
+            self.before = before
+            self.after = after
+        }
+    }
+
+    public let frontmost: Frontmost
+    public let pointer: Pointer
+    public let restorable: Bool
+
+    public init(frontmost: Frontmost, pointer: Pointer, restorable: Bool) {
+        self.frontmost = frontmost
+        self.pointer = pointer
+        self.restorable = restorable
+    }
+}
+
 public struct ComputerAction: Codable, Hashable, Sendable {
     public let action: ComputerActionName
     public let coordinate: Point?
@@ -230,6 +284,10 @@ public struct ComputerAction: Codable, Hashable, Sendable {
     public let start_coordinate: Point?
     public let start_element: Int?
     public let text: String?
+    public let prefix: String?
+    public let suffix: String?
+    public let place: Placement?
+    public let format: PasteFormat?
     public let region: Region?
     public let scroll_direction: ScrollDirection?
     public let scroll_amount: Int?
@@ -239,13 +297,17 @@ public struct ComputerAction: Codable, Hashable, Sendable {
     public let name: String?
     public let range: [Int]?
 
-    public init(action: ComputerActionName, coordinate: Point? = nil, element: Int? = nil, start_coordinate: Point? = nil, start_element: Int? = nil, text: String? = nil, region: Region? = nil, scroll_direction: ScrollDirection? = nil, scroll_amount: Int? = nil, `repeat`: Int? = nil, duration: Double? = nil, value: String? = nil, name: String? = nil, range: [Int]? = nil) {
+    public init(action: ComputerActionName, coordinate: Point? = nil, element: Int? = nil, start_coordinate: Point? = nil, start_element: Int? = nil, text: String? = nil, prefix: String? = nil, suffix: String? = nil, place: Placement? = nil, format: PasteFormat? = nil, region: Region? = nil, scroll_direction: ScrollDirection? = nil, scroll_amount: Int? = nil, `repeat`: Int? = nil, duration: Double? = nil, value: String? = nil, name: String? = nil, range: [Int]? = nil) {
         self.action = action
         self.coordinate = coordinate
         self.element = element
         self.start_coordinate = start_coordinate
         self.start_element = start_element
         self.text = text
+        self.prefix = prefix
+        self.suffix = suffix
+        self.place = place
+        self.format = format
         self.region = region
         self.scroll_direction = scroll_direction
         self.scroll_amount = scroll_amount
@@ -368,19 +430,31 @@ public struct Observation: Codable, Hashable, Sendable {
 }
 
 public struct ComputerError: Codable, Hashable, Sendable {
+    public struct KeyWindow: Codable, Hashable, Sendable {
+        public let id: Int
+        public let title: String
+
+        public init(id: Int, title: String) {
+            self.id = id
+            self.title = title
+        }
+    }
+
     public let kind: ComputerErrorKind
     public let message: String
     public let which: PermissionName?
     public let candidates: [String]?
     public let element: Int?
-    public let reason: StaleReason?
+    public let reason: ErrorReason?
     public let available: [String]?
     public let needed: Tier?
     public let coordinate: Point?
     public let space: CoordinateSpace?
     public let by: InterruptedBy?
+    public let keyWindow: KeyWindow?
+    public let session: SessionChange?
 
-    public init(kind: ComputerErrorKind, message: String, which: PermissionName? = nil, candidates: [String]? = nil, element: Int? = nil, reason: StaleReason? = nil, available: [String]? = nil, needed: Tier? = nil, coordinate: Point? = nil, space: CoordinateSpace? = nil, by: InterruptedBy? = nil) {
+    public init(kind: ComputerErrorKind, message: String, which: PermissionName? = nil, candidates: [String]? = nil, element: Int? = nil, reason: ErrorReason? = nil, available: [String]? = nil, needed: Tier? = nil, coordinate: Point? = nil, space: CoordinateSpace? = nil, by: InterruptedBy? = nil, keyWindow: KeyWindow? = nil, session: SessionChange? = nil) {
         self.kind = kind
         self.message = message
         self.which = which
@@ -392,6 +466,8 @@ public struct ComputerError: Codable, Hashable, Sendable {
         self.coordinate = coordinate
         self.space = space
         self.by = by
+        self.keyWindow = keyWindow
+        self.session = session
     }
 }
 
@@ -426,6 +502,71 @@ public struct SessionRef: Codable, Hashable, Sendable {
 
     public init(session: String) {
         self.session = session
+    }
+}
+
+public struct ProbeReport: Codable, Hashable, Sendable {
+    public struct Result: Codable, Hashable, Sendable {
+        public let `class`: ActionClass
+        public let outcome: ProbeOutcome
+        public let reason: String?
+        public let restored: Bool
+        public let ms: Int
+
+        public init(`class`: ActionClass, outcome: ProbeOutcome, reason: String? = nil, restored: Bool, ms: Int) {
+            self.`class` = `class`
+            self.outcome = outcome
+            self.reason = reason
+            self.restored = restored
+            self.ms = ms
+        }
+    }
+
+    public let pid: Int
+    public let bundleId: String?
+    public let keyWindow: KeyWindowState
+    public let results: [Result]
+
+    public init(pid: Int, bundleId: String?, keyWindow: KeyWindowState, results: [Result]) {
+        self.pid = pid
+        self.bundleId = bundleId
+        self.keyWindow = keyWindow
+        self.results = results
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pid, bundleId, keyWindow, results
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(pid, forKey: .pid)
+        try container.encode(bundleId, forKey: .bundleId)
+        try container.encode(keyWindow, forKey: .keyWindow)
+        try container.encode(results, forKey: .results)
+    }
+}
+
+public struct SessionRestore: Codable, Hashable, Sendable {
+    public let frontmost: RestoreOutcome
+    public let pointer: RestoreOutcome
+    public let held: AppBrief?
+
+    public init(frontmost: RestoreOutcome, pointer: RestoreOutcome, held: AppBrief?) {
+        self.frontmost = frontmost
+        self.pointer = pointer
+        self.held = held
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case frontmost, pointer, held
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(frontmost, forKey: .frontmost)
+        try container.encode(pointer, forKey: .pointer)
+        try container.encode(held, forKey: .held)
     }
 }
 

@@ -56,6 +56,7 @@ public enum ComputerDefaults {
         public static let keyChunkUnits = 20
         public static let pasteMinUnits = 2000
         public static let pasteSettleMs = 500
+        public static let pasteMaxUnits = 200000
     }
     public enum Locks {
         public static let dir = "tc-computer"
@@ -68,6 +69,7 @@ public enum ComputerDefaults {
         public static let scrollAmountMax = 50
         public static let repeatMax = 100
         public static let durationMaxSeconds = 300
+        public static let clickDurationMaxSeconds = 10
     }
     public enum RPCErrorCode {
         public static let parseError = -32700

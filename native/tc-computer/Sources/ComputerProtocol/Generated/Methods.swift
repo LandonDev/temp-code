@@ -335,4 +335,36 @@ public enum Methods {
 
         public typealias Output = Empty
     }
+
+    public enum InputProbe: ContractMethod {
+        public static let name = "input.probe"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let session: String
+            public let app: AppRef
+            public let window: WindowRef?
+            public let launch: Bool?
+            public let epoch: String?
+            public let classes: [ActionClass]?
+
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, classes: [ActionClass]? = nil) {
+                self.session = session
+                self.app = app
+                self.window = window
+                self.launch = launch
+                self.epoch = epoch
+                self.classes = classes
+            }
+        }
+
+        public typealias Output = ProbeReport
+    }
+
+    public enum InputRestoreSession: ContractMethod {
+        public static let name = "input.restoreSession"
+
+        public typealias Params = Empty
+
+        public typealias Output = SessionRestore
+    }
 }
