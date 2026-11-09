@@ -1,0 +1,952 @@
+{
+ "about": "parseKeyCombo vectors: observation.ts (vitest) and KeyCombo.swift (InputTests) are both held to them. modifiers in print order; key a canonical name or one character as written.",
+ "vectors": [
+  {
+   "input": "ctrl+s",
+   "ok": true,
+   "modifiers": [
+    "ctrl"
+   ],
+   "key": "s",
+   "text": "ctrl+s"
+  },
+  {
+   "input": "Return",
+   "ok": true,
+   "modifiers": [],
+   "key": "Return",
+   "text": "Return"
+  },
+  {
+   "input": "alt+Tab",
+   "ok": true,
+   "modifiers": [
+    "alt"
+   ],
+   "key": "Tab",
+   "text": "alt+Tab"
+  },
+  {
+   "input": "super+shift+t",
+   "ok": true,
+   "modifiers": [
+    "shift",
+    "super"
+   ],
+   "key": "t",
+   "text": "shift+super+t"
+  },
+  {
+   "input": "ctrl+shift+Escape",
+   "ok": true,
+   "modifiers": [
+    "shift",
+    "ctrl"
+   ],
+   "key": "Escape",
+   "text": "shift+ctrl+Escape"
+  },
+  {
+   "input": "a",
+   "ok": true,
+   "modifiers": [],
+   "key": "a",
+   "text": "a"
+  },
+  {
+   "input": "A",
+   "ok": true,
+   "modifiers": [],
+   "key": "A",
+   "text": "A"
+  },
+  {
+   "input": "space",
+   "ok": true,
+   "modifiers": [],
+   "key": "space",
+   "text": "space"
+  },
+  {
+   "input": "Page_Down",
+   "ok": true,
+   "modifiers": [],
+   "key": "Page_Down",
+   "text": "Page_Down"
+  },
+  {
+   "input": "F5",
+   "ok": true,
+   "modifiers": [],
+   "key": "F5",
+   "text": "F5"
+  },
+  {
+   "input": "shift+a",
+   "ok": true,
+   "modifiers": [
+    "shift"
+   ],
+   "key": "a",
+   "text": "shift+a"
+  },
+  {
+   "input": "ctrl+a",
+   "ok": true,
+   "modifiers": [
+    "ctrl"
+   ],
+   "key": "a",
+   "text": "ctrl+a"
+  },
+  {
+   "input": "control+a",
+   "ok": true,
+   "modifiers": [
+    "ctrl"
+   ],
+   "key": "a",
+   "text": "ctrl+a"
+  },
+  {
+   "input": "alt+a",
+   "ok": true,
+   "modifiers": [
+    "alt"
+   ],
+   "key": "a",
+   "text": "alt+a"
+  },
+  {
+   "input": "opt+a",
+   "ok": true,
+   "modifiers": [
+    "alt"
+   ],
+   "key": "a",
+   "text": "alt+a"
+  },
+  {
+   "input": "option+a",
+   "ok": true,
+   "modifiers": [
+    "alt"
+   ],
+   "key": "a",
+   "text": "alt+a"
+  },
+  {
+   "input": "super+a",
+   "ok": true,
+   "modifiers": [
+    "super"
+   ],
+   "key": "a",
+   "text": "super+a"
+  },
+  {
+   "input": "cmd+a",
+   "ok": true,
+   "modifiers": [
+    "super"
+   ],
+   "key": "a",
+   "text": "super+a"
+  },
+  {
+   "input": "command+a",
+   "ok": true,
+   "modifiers": [
+    "super"
+   ],
+   "key": "a",
+   "text": "super+a"
+  },
+  {
+   "input": "shift",
+   "ok": true,
+   "modifiers": [],
+   "key": "shift",
+   "text": "shift"
+  },
+  {
+   "input": "ctrl",
+   "ok": true,
+   "modifiers": [],
+   "key": "ctrl",
+   "text": "ctrl"
+  },
+  {
+   "input": "control",
+   "ok": true,
+   "modifiers": [],
+   "key": "ctrl",
+   "text": "ctrl"
+  },
+  {
+   "input": "alt",
+   "ok": true,
+   "modifiers": [],
+   "key": "alt",
+   "text": "alt"
+  },
+  {
+   "input": "opt",
+   "ok": true,
+   "modifiers": [],
+   "key": "alt",
+   "text": "alt"
+  },
+  {
+   "input": "option",
+   "ok": true,
+   "modifiers": [],
+   "key": "alt",
+   "text": "alt"
+  },
+  {
+   "input": "super",
+   "ok": true,
+   "modifiers": [],
+   "key": "super",
+   "text": "super"
+  },
+  {
+   "input": "cmd",
+   "ok": true,
+   "modifiers": [],
+   "key": "super",
+   "text": "super"
+  },
+  {
+   "input": "command",
+   "ok": true,
+   "modifiers": [],
+   "key": "super",
+   "text": "super"
+  },
+  {
+   "input": "return",
+   "ok": true,
+   "modifiers": [],
+   "key": "Return",
+   "text": "Return"
+  },
+  {
+   "input": "tab",
+   "ok": true,
+   "modifiers": [],
+   "key": "Tab",
+   "text": "Tab"
+  },
+  {
+   "input": "escape",
+   "ok": true,
+   "modifiers": [],
+   "key": "Escape",
+   "text": "Escape"
+  },
+  {
+   "input": "backspace",
+   "ok": true,
+   "modifiers": [],
+   "key": "BackSpace",
+   "text": "BackSpace"
+  },
+  {
+   "input": "delete",
+   "ok": true,
+   "modifiers": [],
+   "key": "Delete",
+   "text": "Delete"
+  },
+  {
+   "input": "up",
+   "ok": true,
+   "modifiers": [],
+   "key": "Up",
+   "text": "Up"
+  },
+  {
+   "input": "down",
+   "ok": true,
+   "modifiers": [],
+   "key": "Down",
+   "text": "Down"
+  },
+  {
+   "input": "left",
+   "ok": true,
+   "modifiers": [],
+   "key": "Left",
+   "text": "Left"
+  },
+  {
+   "input": "right",
+   "ok": true,
+   "modifiers": [],
+   "key": "Right",
+   "text": "Right"
+  },
+  {
+   "input": "home",
+   "ok": true,
+   "modifiers": [],
+   "key": "Home",
+   "text": "Home"
+  },
+  {
+   "input": "end",
+   "ok": true,
+   "modifiers": [],
+   "key": "End",
+   "text": "End"
+  },
+  {
+   "input": "page_up",
+   "ok": true,
+   "modifiers": [],
+   "key": "Page_Up",
+   "text": "Page_Up"
+  },
+  {
+   "input": "page_down",
+   "ok": true,
+   "modifiers": [],
+   "key": "Page_Down",
+   "text": "Page_Down"
+  },
+  {
+   "input": "minus",
+   "ok": true,
+   "modifiers": [],
+   "key": "minus",
+   "text": "minus"
+  },
+  {
+   "input": "plus",
+   "ok": true,
+   "modifiers": [],
+   "key": "plus",
+   "text": "plus"
+  },
+  {
+   "input": "equal",
+   "ok": true,
+   "modifiers": [],
+   "key": "equal",
+   "text": "equal"
+  },
+  {
+   "input": "comma",
+   "ok": true,
+   "modifiers": [],
+   "key": "comma",
+   "text": "comma"
+  },
+  {
+   "input": "period",
+   "ok": true,
+   "modifiers": [],
+   "key": "period",
+   "text": "period"
+  },
+  {
+   "input": "slash",
+   "ok": true,
+   "modifiers": [],
+   "key": "slash",
+   "text": "slash"
+  },
+  {
+   "input": "backslash",
+   "ok": true,
+   "modifiers": [],
+   "key": "backslash",
+   "text": "backslash"
+  },
+  {
+   "input": "semicolon",
+   "ok": true,
+   "modifiers": [],
+   "key": "semicolon",
+   "text": "semicolon"
+  },
+  {
+   "input": "apostrophe",
+   "ok": true,
+   "modifiers": [],
+   "key": "apostrophe",
+   "text": "apostrophe"
+  },
+  {
+   "input": "grave",
+   "ok": true,
+   "modifiers": [],
+   "key": "grave",
+   "text": "grave"
+  },
+  {
+   "input": "bracketleft",
+   "ok": true,
+   "modifiers": [],
+   "key": "bracketleft",
+   "text": "bracketleft"
+  },
+  {
+   "input": "bracketright",
+   "ok": true,
+   "modifiers": [],
+   "key": "bracketright",
+   "text": "bracketright"
+  },
+  {
+   "input": "f1",
+   "ok": true,
+   "modifiers": [],
+   "key": "F1",
+   "text": "F1"
+  },
+  {
+   "input": "f2",
+   "ok": true,
+   "modifiers": [],
+   "key": "F2",
+   "text": "F2"
+  },
+  {
+   "input": "f3",
+   "ok": true,
+   "modifiers": [],
+   "key": "F3",
+   "text": "F3"
+  },
+  {
+   "input": "f4",
+   "ok": true,
+   "modifiers": [],
+   "key": "F4",
+   "text": "F4"
+  },
+  {
+   "input": "f5",
+   "ok": true,
+   "modifiers": [],
+   "key": "F5",
+   "text": "F5"
+  },
+  {
+   "input": "f6",
+   "ok": true,
+   "modifiers": [],
+   "key": "F6",
+   "text": "F6"
+  },
+  {
+   "input": "f7",
+   "ok": true,
+   "modifiers": [],
+   "key": "F7",
+   "text": "F7"
+  },
+  {
+   "input": "f8",
+   "ok": true,
+   "modifiers": [],
+   "key": "F8",
+   "text": "F8"
+  },
+  {
+   "input": "f9",
+   "ok": true,
+   "modifiers": [],
+   "key": "F9",
+   "text": "F9"
+  },
+  {
+   "input": "f10",
+   "ok": true,
+   "modifiers": [],
+   "key": "F10",
+   "text": "F10"
+  },
+  {
+   "input": "f11",
+   "ok": true,
+   "modifiers": [],
+   "key": "F11",
+   "text": "F11"
+  },
+  {
+   "input": "f12",
+   "ok": true,
+   "modifiers": [],
+   "key": "F12",
+   "text": "F12"
+  },
+  {
+   "input": "f13",
+   "ok": true,
+   "modifiers": [],
+   "key": "F13",
+   "text": "F13"
+  },
+  {
+   "input": "f14",
+   "ok": true,
+   "modifiers": [],
+   "key": "F14",
+   "text": "F14"
+  },
+  {
+   "input": "f15",
+   "ok": true,
+   "modifiers": [],
+   "key": "F15",
+   "text": "F15"
+  },
+  {
+   "input": "f16",
+   "ok": true,
+   "modifiers": [],
+   "key": "F16",
+   "text": "F16"
+  },
+  {
+   "input": "f17",
+   "ok": true,
+   "modifiers": [],
+   "key": "F17",
+   "text": "F17"
+  },
+  {
+   "input": "f18",
+   "ok": true,
+   "modifiers": [],
+   "key": "F18",
+   "text": "F18"
+  },
+  {
+   "input": "f19",
+   "ok": true,
+   "modifiers": [],
+   "key": "F19",
+   "text": "F19"
+  },
+  {
+   "input": "f20",
+   "ok": true,
+   "modifiers": [],
+   "key": "F20",
+   "text": "F20"
+  },
+  {
+   "input": "enter",
+   "ok": true,
+   "modifiers": [],
+   "key": "Return",
+   "text": "Return"
+  },
+  {
+   "input": "kp_enter",
+   "ok": true,
+   "modifiers": [],
+   "key": "Return",
+   "text": "Return"
+  },
+  {
+   "input": "esc",
+   "ok": true,
+   "modifiers": [],
+   "key": "Escape",
+   "text": "Escape"
+  },
+  {
+   "input": "del",
+   "ok": true,
+   "modifiers": [],
+   "key": "Delete",
+   "text": "Delete"
+  },
+  {
+   "input": "pageup",
+   "ok": true,
+   "modifiers": [],
+   "key": "Page_Up",
+   "text": "Page_Up"
+  },
+  {
+   "input": "prior",
+   "ok": true,
+   "modifiers": [],
+   "key": "Page_Up",
+   "text": "Page_Up"
+  },
+  {
+   "input": "pagedown",
+   "ok": true,
+   "modifiers": [],
+   "key": "Page_Down",
+   "text": "Page_Down"
+  },
+  {
+   "input": "next",
+   "ok": true,
+   "modifiers": [],
+   "key": "Page_Down",
+   "text": "Page_Down"
+  },
+  {
+   "input": "arrowup",
+   "ok": true,
+   "modifiers": [],
+   "key": "Up",
+   "text": "Up"
+  },
+  {
+   "input": "arrowdown",
+   "ok": true,
+   "modifiers": [],
+   "key": "Down",
+   "text": "Down"
+  },
+  {
+   "input": "arrowleft",
+   "ok": true,
+   "modifiers": [],
+   "key": "Left",
+   "text": "Left"
+  },
+  {
+   "input": "arrowright",
+   "ok": true,
+   "modifiers": [],
+   "key": "Right",
+   "text": "Right"
+  },
+  {
+   "input": "spacebar",
+   "ok": true,
+   "modifiers": [],
+   "key": "space",
+   "text": "space"
+  },
+  {
+   "input": "shift_l",
+   "ok": true,
+   "modifiers": [],
+   "key": "shift",
+   "text": "shift"
+  },
+  {
+   "input": "shift_r",
+   "ok": true,
+   "modifiers": [],
+   "key": "shift",
+   "text": "shift"
+  },
+  {
+   "input": "control_l",
+   "ok": true,
+   "modifiers": [],
+   "key": "ctrl",
+   "text": "ctrl"
+  },
+  {
+   "input": "control_r",
+   "ok": true,
+   "modifiers": [],
+   "key": "ctrl",
+   "text": "ctrl"
+  },
+  {
+   "input": "alt_l",
+   "ok": true,
+   "modifiers": [],
+   "key": "alt",
+   "text": "alt"
+  },
+  {
+   "input": "alt_r",
+   "ok": true,
+   "modifiers": [],
+   "key": "alt",
+   "text": "alt"
+  },
+  {
+   "input": "super_l",
+   "ok": true,
+   "modifiers": [],
+   "key": "super",
+   "text": "super"
+  },
+  {
+   "input": "super_r",
+   "ok": true,
+   "modifiers": [],
+   "key": "super",
+   "text": "super"
+  },
+  {
+   "input": "meta_l",
+   "ok": true,
+   "modifiers": [],
+   "key": "super",
+   "text": "super"
+  },
+  {
+   "input": "meta_r",
+   "ok": true,
+   "modifiers": [],
+   "key": "super",
+   "text": "super"
+  },
+  {
+   "input": "RETURN",
+   "ok": true,
+   "modifiers": [],
+   "key": "Return",
+   "text": "Return"
+  },
+  {
+   "input": "Esc",
+   "ok": true,
+   "modifiers": [],
+   "key": "Escape",
+   "text": "Escape"
+  },
+  {
+   "input": "PageUp",
+   "ok": true,
+   "modifiers": [],
+   "key": "Page_Up",
+   "text": "Page_Up"
+  },
+  {
+   "input": "KP_Enter",
+   "ok": true,
+   "modifiers": [],
+   "key": "Return",
+   "text": "Return"
+  },
+  {
+   "input": "ArrowLeft",
+   "ok": true,
+   "modifiers": [],
+   "key": "Left",
+   "text": "Left"
+  },
+  {
+   "input": "Shift_R",
+   "ok": true,
+   "modifiers": [],
+   "key": "shift",
+   "text": "shift"
+  },
+  {
+   "input": "Meta_L",
+   "ok": true,
+   "modifiers": [],
+   "key": "super",
+   "text": "super"
+  },
+  {
+   "input": "BACKSPACE",
+   "ok": true,
+   "modifiers": [],
+   "key": "BackSpace",
+   "text": "BackSpace"
+  },
+  {
+   "input": "+",
+   "ok": true,
+   "modifiers": [],
+   "key": "+",
+   "text": "+"
+  },
+  {
+   "input": "super++",
+   "ok": true,
+   "modifiers": [
+    "super"
+   ],
+   "key": "+",
+   "text": "super++"
+  },
+  {
+   "input": "ctrl+shift++",
+   "ok": true,
+   "modifiers": [
+    "shift",
+    "ctrl"
+   ],
+   "key": "+",
+   "text": "shift+ctrl++"
+  },
+  {
+   "input": "ctrl+plus",
+   "ok": true,
+   "modifiers": [
+    "ctrl"
+   ],
+   "key": "plus",
+   "text": "ctrl+plus"
+  },
+  {
+   "input": "?",
+   "ok": true,
+   "modifiers": [],
+   "key": "?",
+   "text": "?"
+  },
+  {
+   "input": "shift+?",
+   "ok": true,
+   "modifiers": [
+    "shift"
+   ],
+   "key": "?",
+   "text": "shift+?"
+  },
+  {
+   "input": "é",
+   "ok": true,
+   "modifiers": [],
+   "key": "é",
+   "text": "é"
+  },
+  {
+   "input": " ",
+   "ok": true,
+   "modifiers": [],
+   "key": "space",
+   "text": "space"
+  },
+  {
+   "input": "ctrl+ ",
+   "ok": true,
+   "modifiers": [
+    "ctrl"
+   ],
+   "key": "space",
+   "text": "ctrl+space"
+  },
+  {
+   "input": "1",
+   "ok": true,
+   "modifiers": [],
+   "key": "1",
+   "text": "1"
+  },
+  {
+   "input": "super+1",
+   "ok": true,
+   "modifiers": [
+    "super"
+   ],
+   "key": "1",
+   "text": "super+1"
+  },
+  {
+   "input": "🙂",
+   "ok": true,
+   "modifiers": [],
+   "key": "🙂",
+   "text": "🙂"
+  },
+  {
+   "input": "cmd+🙂",
+   "ok": true,
+   "modifiers": [
+    "super"
+   ],
+   "key": "🙂",
+   "text": "super+🙂"
+  },
+  {
+   "input": "ctrl+alt+super+shift+Delete",
+   "ok": true,
+   "modifiers": [
+    "shift",
+    "ctrl",
+    "alt",
+    "super"
+   ],
+   "key": "Delete",
+   "text": "shift+ctrl+alt+super+Delete"
+  },
+  {
+   "input": "ctrl+shift",
+   "ok": true,
+   "modifiers": [
+    "ctrl"
+   ],
+   "key": "shift",
+   "text": "ctrl+shift"
+  },
+  {
+   "input": "",
+   "ok": false
+  },
+  {
+   "input": "ctrl+",
+   "ok": false
+  },
+  {
+   "input": "+a",
+   "ok": false
+  },
+  {
+   "input": "a+",
+   "ok": false
+  },
+  {
+   "input": "ctrl++a",
+   "ok": false
+  },
+  {
+   "input": "ctrl+ctrl+a",
+   "ok": false
+  },
+  {
+   "input": "shift+shift",
+   "ok": false
+  },
+  {
+   "input": "foo",
+   "ok": false
+  },
+  {
+   "input": "ctrl+foo",
+   "ok": false
+  },
+  {
+   "input": "hyper+a",
+   "ok": false
+  },
+  {
+   "input": "ctrl + s",
+   "ok": false
+  },
+  {
+   "input": " ctrl+s",
+   "ok": false
+  },
+  {
+   "input": "ctrl+s ",
+   "ok": false
+  },
+  {
+   "input": "é",
+   "ok": false
+  },
+  {
+   "input": "F21",
+   "ok": false
+  },
+  {
+   "input": "kp_0",
+   "ok": false
+  }
+ ]
+}
