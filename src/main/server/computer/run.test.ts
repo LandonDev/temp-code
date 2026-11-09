@@ -216,7 +216,7 @@ describe('tiers', () => {
   })
 
   it('a key-window retry of a key that the gate admits leaves process out', async () => {
-    const gate: SessionTierGate = { admitted: () => false, request: async () => ({ admit: true }) }
+    const gate: SessionTierGate = { admitted: () => false, request: async () => ({ admit: true }), run: (c, send) => send(c.tiers) }
     const h = make({ gate })
     const o = await h.run('computer_act', { app: 'KeyWin', action: 'key', text: 'a' })
     expect(h.requests().filter((r) => r.method === 'action.run').map((r) => r.params.tiers)).toEqual([

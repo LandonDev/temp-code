@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import type { ActionResult, BatchResult, ClipboardState, ComputerAction, ComputerNotification, SessionChange, SessionRestore, StepResult, Tier } from '@shared/computer/protocol'
+import type { ActionResult, BatchResult, ClipboardActivity, ComputerAction, ComputerNotification, SessionChange, SessionRestore, StepResult, Tier } from '@shared/computer/protocol'
 import type { MacPresence } from '@shared/contract-relay'
 import type { OwnSpan } from '../../personIdle'
 import type { ApprovalRequest } from '../drivers/types'
@@ -71,7 +71,7 @@ function world() {
   const restores: (Record<string, unknown> | undefined)[] = []
   let restoreHold: Deferred<void> | null = null
   let restoreThrows = false
-  let clipboard: ClipboardState = { changeCount: 1, foreignChangeAt: null, watchingSince: T0 - 60_000 }
+  let clipboard: ClipboardActivity = { changeCount: 1, foreignChangeAt: null, watchingSince: T0 - 60_000 }
   const notes = new Set<(n: ComputerNotification) => void>()
   const service = {
     request: async (method: string, params?: unknown): Promise<never> => {
@@ -131,7 +131,7 @@ function world() {
       restoreHold = null
     },
     failRestores: () => (restoreThrows = true),
-    setClipboard: (c: Partial<ClipboardState>) => (clipboard = { ...clipboard, ...c }),
+    setClipboard: (c: Partial<ClipboardActivity>) => (clipboard = { ...clipboard, ...c }),
     interrupt: (session: string) => {
       for (const fn of notes) fn({ method: 'session/interrupted', params: { session, by: 'person', at: clock.now() } })
     }
