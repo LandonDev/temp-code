@@ -62,7 +62,8 @@ import {
   type BenchReport,
   type BenchRun
 } from './lib/computerBench'
-import { RigStop, asProbe, otherProof, repoRoot, startRig, type Rig } from './lib/computerRig'
+import { RigStop, asProbe, repoRoot, startRig, type Rig } from './lib/computerRig'
+import { otherProof } from './lib/proofOrder'
 import { killGroup, startDevInstance } from './lib/devInstance'
 import { COMPUTER_ONLY_LINE, COMPUTER_TASKS, gateTasks, taskById, type CallRecord, type CheckResult, type ComputerTask, type DevInstance, type TaskContext, type TaskId, type TaskStart } from './lib/computerTasks'
 import { buildIsCurrent, type BuildStamp } from './lib/soakJudge'

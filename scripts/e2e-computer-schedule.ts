@@ -56,6 +56,7 @@ import type { ComputerMethod, StepResult, Tier } from '../src/shared/computer/pr
 import type { PermissionPolicy, SessionMeta } from '../src/shared/events'
 import { buildTcComputer } from './lib/tcComputerBuild'
 import { repoRoot } from './lib/repoRoot'
+import { otherProof } from './lib/proofOrder'
 
 if (process.platform !== 'darwin') {
   console.log('skipped: macOS only')
@@ -112,19 +113,10 @@ const frontmost = (): { pid: number; bundleId: string | null } => probe('frontmo
 const pointer = (): { x: number; y: number } => probe('pointer')
 const rawIdleOnce = (): number => probe<{ seconds: number }>('idle').seconds
 
-// One computer proof on the Mac at a time: wait for any other to end.
-const OTHER_PROOFS = /e2e-computer\.(ts|mjs)|e2e-computer-bench|compare-computer-words|e2e-tc-computer|tc-input-proof|capture-proof|ax-reader-proof|tc-ax-proof/
-const otherProofs = (): string[] => {
-  try {
-    return execFileSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' })
-      .split('\n')
-      .filter((l) => OTHER_PROOFS.test(l) && !l.includes('e2e-computer-schedule') && !l.trimStart().startsWith(`${process.pid} `))
-  } catch {
-    return []
-  }
-}
-for (let said = false; otherProofs().length; await sleep(15_000)) {
-  if (!said) console.log(`waiting for another computer proof to end: ${otherProofs()[0]?.trim().slice(0, 120)}`)
+// One computer proof on the Mac at a time: wait for an older one to end (scripts/lib/proofOrder.ts: only a proof
+// that started first holds this one, so two proofs never wait on each other).
+for (let said = false, other = otherProof(); other; await sleep(15_000), other = otherProof()) {
+  if (!said) console.log(`waiting for another computer proof to end: ${other}`)
   said = true
 }
 const screen = probe<{ locked: boolean; asleep: boolean }>('screen')

@@ -27,7 +27,8 @@ import { renderComputerMechanics, setComputerWordsOverride } from '../src/main/s
 import { computerToolSpecs, tierVerdictSetting } from '../src/shared/computer/tools'
 import type { AgentEvent, EventRow } from '../src/shared/events'
 import { exec } from './lib/benchChecks'
-import { DEFAULT_LANE, RIG_BUNDLES, RigStop, otherProof, repoRoot, startRig, type Rig } from './lib/computerRig'
+import { DEFAULT_LANE, RIG_BUNDLES, RigStop, repoRoot, startRig, type Rig } from './lib/computerRig'
+import { otherProof } from './lib/proofOrder'
 import { COMPARISON_TASKS, POLICY_TASK, taskById, type CallRecord, type TaskApp, type TaskId, type TaskStart } from './lib/computerTasks'
 import { ARMS, decide, runPlan, type Arm, type ModelUnderTest, type RunRecord, type RunStatus } from './lib/computerWordsJudge'
 

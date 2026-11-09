@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { computerHarness, type ComputerHarness } from '../src/main/server/computer/runHarness'
 import { stepsOf } from './lib/computerBench'
-import { DEFAULT_LANE, LanePins, RIG_QUERIES, otherProofIn, recordCalls, scratchArgs, taskReader } from './lib/computerRig'
+import { DEFAULT_LANE, LanePins, RIG_QUERIES, recordCalls, scratchArgs, taskReader } from './lib/computerRig'
 import { StateGetParamsSchema } from '../src/shared/computer/protocol'
 
 const harnesses: ComputerHarness[] = []
@@ -105,35 +105,5 @@ describe('taskReader', () => {
       [undefined, 3, 'ep-7']
     ])
     expect(asked[1]).toMatchObject({ session: 'bench-proof', app: { pid: 42 }, window: { title: 'n0' } })
-  })
-})
-
-describe('otherProofIn', () => {
-  it('finds an older computer proof, never this run, its parents, a younger proof or a pgrep naming the pattern', () => {
-    const ps = [
-      '   80     1    05:10 bun run script:e2e-computer-bench -- --gate',
-      '   90    80    05:10 /bin/sh -c esbuild scripts/e2e-computer-bench.ts --bundle && node scripts/.out/e2e-computer-bench.mjs --gate',
-      '  100    90    05:09 node scripts/.out/e2e-computer-bench.mjs --gate',
-      '  150     1    00:01 pgrep -f scripts/.out/e2e-computer.mjs',
-      '  160     1 02:00:00 /usr/bin/vim notes.md'
-    ]
-    expect(otherProofIn(ps.join('\n'), 100)).toBeNull()
-    expect(otherProofIn([...ps, '  200     1    12:00 node scripts/.out/e2e-computer.mjs'].join('\n'), 100)).toBe('scripts/.out/e2e-computer.mjs')
-    expect(otherProofIn([...ps, '  300     1 1-02:00:00 bash scripts/mac/ax-reader-proof.sh tempcode-dev'].join('\n'), 100)).toBe('ax-reader-proof')
-    // the landed schedule, preview and UI proofs hold it too
-    for (const p of ['e2e-computer-schedule', 'e2e-computer-preview', 'e2e-computer-ui'])
-      expect(otherProofIn([...ps, `  400     1    09:00 node scripts/.out/${p}.mjs`].join('\n'), 100)).toBe(p)
-    // a comparison that started after the bench waits for the bench, never the other way: no proof waits on another forever
-    expect(otherProofIn([...ps, '  500     1    01:00 node scripts/.out/compare-computer-words.mjs'].join('\n'), 100)).toBeNull()
-    expect(otherProofIn([...ps, '  500     1    01:00 node scripts/.out/compare-computer-words.mjs'].join('\n'), 500)).toBe('e2e-computer-bench')
-    // started in the same second: the lower pid goes first
-    expect(otherProofIn([...ps, '   99     1    05:09 node scripts/.out/compare-computer-words.mjs'].join('\n'), 100)).toBe('compare-computer-words')
-  })
-
-  it('reads ps elapsed times', async () => {
-    const { etimeSeconds } = await import('./lib/computerRig')
-    expect(etimeSeconds('05:09')).toBe(309)
-    expect(etimeSeconds('02:00:00')).toBe(7200)
-    expect(etimeSeconds('1-02:00:00')).toBe(93_600)
   })
 })
