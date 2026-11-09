@@ -5,6 +5,7 @@ import { configure, isLive, readMarker, type Role } from 'aliax-core'
 import { notifyAccountsChanged } from './aliaxPages'
 import { statsHost } from './aliax/stats/statsService'
 import { gateway } from './server/gateway'
+import { onAddonSecretSaved } from './server/addons/grants'
 import { accountSyncHooks } from './server/remote/accountSync'
 import { fakeProviderRewrite, Upstream } from './server/upstream'
 
@@ -88,6 +89,8 @@ export function configureAliax(environmentId?: string): void {
       onSecretSaved: (service, name, origin) => {
         // The gateway's own process asks again for that service's credentials.
         gateway()?.credentialsChanged(service)
+        // An add-on's grant reaches its downstream client at once (addons/grants.ts).
+        onAddonSecretSaved(service, name)
         accountSyncHooks.current?.onSecretSaved(service, name, origin)
       },
       askOwner: (service, name, owner) => accountSyncHooks.current?.askOwner(service, name, owner) ?? Promise.resolve(null)
