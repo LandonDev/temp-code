@@ -21,6 +21,7 @@ import { parseObservation, type ParsedObservation } from '../../src/shared/compu
 import type { AppRef, ComputerMethod, ComputerParams, ComputerResult, StepResult } from '../../src/shared/computer/protocol'
 import type { HostCall, MacProbe } from './benchRun'
 import { keepFront } from './benchRun'
+import { exec } from './benchChecks'
 import type { TaskApp, TaskReader } from './computerTasks'
 
 // ── the apps ────────────────────────────────────────────────────────────
@@ -274,7 +275,8 @@ export async function startRig(opts: { root: string; work: string; gate: Session
     read: async (app, window): Promise<ParsedObservation> =>
       parseObservation((await proof('state.get', { session: opts.proofSession, app: { pid: pidFor(lane, app) }, window: { title: window }, mode: 'full' })).text),
     element: async (app, window, index): Promise<ParsedObservation> =>
-      parseObservation((await proof('state.get', { session: opts.proofSession, app: { pid: pidFor(lane, app) }, window: { title: window }, element: index })).text)
+      parseObservation((await proof('state.get', { session: opts.proofSession, app: { pid: pidFor(lane, app) }, window: { title: window }, element: index })).text),
+    exec
   })
 
   const profileOf = (lane: string): string => join(opts.work, `chrome-${lane}`)

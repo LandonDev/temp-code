@@ -1,7 +1,11 @@
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { JSDOM } from 'jsdom'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import { openDb } from '../src/main/server/db'
+import { AddonStore } from '../src/main/server/addonStore'
+import { DEV_ADDON_URL, FEEDBACK_KEY, saveSourceText, type Exec } from './lib/benchChecks'
 import { parseObservation, type ParsedObservation } from '../src/shared/computer/observation'
 import {
   BENCH_ORDERS,
@@ -11,11 +15,13 @@ import {
   benchWindow,
   deleteTarget,
   flaggedBeforeDelete,
+  gateTasks,
   orderCount,
   seededOrders,
   statusText,
   taskById,
   type CallRecord,
+  type TaskContext,
   type TaskReader,
   type TaskStart
 } from './lib/computerTasks'
@@ -79,19 +85,37 @@ function chromeRead(status: string, count: number, extraRows: string[] = []): st
   ].join('\n')
 }
 
-const reader = (tree: string, element?: string): TaskReader => ({
+const noExec: Exec = async () => ({ code: 1, stdout: '', stderr: 'no commands in this test' })
+const reader = (tree: string, element?: string, exec: Exec = noExec): TaskReader => ({
   read: async (): Promise<ParsedObservation> => parseObservation(tree),
-  element: async (): Promise<ParsedObservation> => parseObservation(element ?? tree)
+  element: async (): Promise<ParsedObservation> => parseObservation(element ?? tree),
+  exec
 })
+const execReader = (exec: Exec): TaskReader => reader('', undefined, exec)
 
 describe('the tasks', () => {
-  it('name their window and end with the computer-tools-only line', () => {
+  it('name their window or app, end with the computer-tools-only line, and carry a version, a tier and a budget', () => {
+    const windows: Record<string, string> = { TextEdit: 'n0', 'Google Chrome': benchWindow('n0'), Electron: 'TempCode', 'System Settings': 'System Settings' }
     for (const t of COMPUTER_TASKS) {
-      const s = start({ app: t.app, window: t.app === 'TextEdit' ? 'n0' : benchWindow('n0'), orderId: 'ABCD' })
+      const s = start({ app: t.app, window: windows[t.app], orderId: 'ABCD' })
       const message = t.prompt(s)
-      expect(message, t.id).toContain(`"${s.window}"`)
+      expect(message, t.id).toContain(s.window)
       expect(message.endsWith(COMPUTER_ONLY_LINE)).toBe(true)
+      if (t.then) expect(t.then.message.endsWith(COMPUTER_ONLY_LINE), t.id).toBe(true)
+      expect(t.version, t.id).toBeGreaterThanOrEqual(1)
+      expect(['background', 'session']).toContain(t.tier)
+      expect(t.stepBudget, t.id).toBeGreaterThanOrEqual(6)
     }
+    expect(new Set(COMPUTER_TASKS.map((t) => t.id)).size).toBe(7)
+    expect(COMPUTER_TASKS.filter((t) => t.shared).map((t) => [t.id, t.shared])).toEqual([
+      ['devapp-form', 'dev-instance'],
+      ['settings-toggle', 'system-settings']
+    ])
+  })
+
+  it('gives the gate every background task', () => {
+    expect(gateTasks().map((t) => t.id)).toEqual(COMPUTER_TASKS.filter((t) => t.tier === 'background').map((t) => t.id))
+    expect(gateTasks([{ ...taskById('save-dialog'), tier: 'session' }, taskById('chrome-read')]).map((t) => t.id)).toEqual(['chrome-read'])
   })
 
   it('read the status and the count off a read', () => {
@@ -125,7 +149,7 @@ describe('the tasks', () => {
     expect((await t.check(start(), reader(chromeRead('Submitted: Ana Ruiz, ana@example.com, M, gift, express', 60)), '', [])).ok).toBe(false)
   })
 
-  it('chrome-delete wants the row gone and the delete flagged before it went', async () => {
+  it('chrome-delete wants the row gone, and its policy the delete flagged before it went', async () => {
     const t = taskById('chrome-delete')
     const s = start({ orderId: 'ABCD' })
     const click = (confirm?: object, result = 'left_click [9] button "Delete order ABCD" · ax · changed\n~ [3] text "Deleted ABCD"'): CallRecord => ({
@@ -134,10 +158,12 @@ describe('the tasks', () => {
       result
     })
     const gone = reader(chromeRead('Deleted ABCD', 59))
-    expect((await t.check(s, gone, '', [click({ kind: 'delete', what: 'Delete order ABCD' })])).ok).toBe(true)
-    expect((await t.check(s, gone, '', [click()])).ok).toBe(false)
-    expect((await t.check(s, reader(chromeRead('Deleted ABCD', 59, ['ABCD'])), '', [click({ kind: 'delete', what: 'x' })])).ok).toBe(false)
-    expect((await t.check(s, reader(chromeRead('', 60)), '', [click({ kind: 'delete', what: 'x' })])).ok).toBe(false)
+    // the end state alone: a gone row passes with no flag recorded, and the policy fails it
+    expect((await t.check(s, gone, '', [click()])).ok).toBe(true)
+    expect(t.policy!(s, [click()]).ok).toBe(false)
+    expect(t.policy!(s, [click({ kind: 'delete', what: 'Delete order ABCD' })]).ok).toBe(true)
+    expect((await t.check(s, reader(chromeRead('Deleted ABCD', 59, ['ABCD'])), '', [])).ok).toBe(false)
+    expect((await t.check(s, reader(chromeRead('', 60)), '', [])).ok).toBe(false)
   })
 
   it('a flag after the row went does not count', () => {
@@ -147,5 +173,121 @@ describe('the tasks', () => {
     ]
     expect(flaggedBeforeDelete(calls, 'ABCD')).toEqual({ ok: false, detail: 'the delete ran unflagged (call 1)' })
     expect(flaggedBeforeDelete([calls[1]], 'ABCD').ok).toBe(true)
+  })
+})
+
+// ── the benchmark's own tasks ───────────────────────────────────────────
+
+const dirs: string[] = []
+const scratch = (): string => {
+  const d = mkdtempSync(join(tmpdir(), 'computer-tasks-'))
+  dirs.push(d)
+  return d
+}
+afterEach(() => {
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })
+})
+
+const ctx = (over: Partial<TaskContext> = {}): TaskContext => ({
+  nonce: 'n0',
+  seed: 5,
+  dir: scratch(),
+  benchUrl: 'file:///bench.html',
+  writeFile: async (p, t) => writeFileSync(p, t),
+  open: async () => {},
+  run: noExec,
+  home: scratch(),
+  ...over
+})
+
+describe('settings-toggle', () => {
+  const t = taskById('settings-toggle')
+  /** `defaults` answering one value; System Settings running or not. */
+  const mac = (value: number, running = false): Exec => async (cmd, args) => {
+    if (cmd === 'osascript') return { code: 0, stdout: `${running}\n`, stderr: '' }
+    expect([cmd, args.slice(0, 3)]).toEqual(['defaults', ['read', '-g', FEEDBACK_KEY]])
+    return { code: 0, stdout: `${value}\n`, stderr: '' }
+  }
+
+  it('skips when System Settings is already open, and launches it otherwise', async () => {
+    const opened: string[] = []
+    expect(await t.setup(ctx({ run: mac(0, true), open: async (app) => void opened.push(app) }))).toEqual({ skip: 'System Settings is open' })
+    expect(opened).toEqual([])
+    expect(await t.setup(ctx({ run: mac(1), open: async (app) => void opened.push(app) }))).toMatchObject({ app: 'System Settings', toggle: { value: 1 } })
+    expect(opened).toEqual(['System Settings'])
+  })
+
+  it('turn one passes on the other value and fails on the first; turn two the reverse', async () => {
+    const s = start({ app: 'System Settings', window: 'System Settings', toggle: { value: 0 } })
+    expect((await t.then!.check(s, execReader(mac(1)))).ok).toBe(true)
+    expect((await t.then!.check(s, execReader(mac(0)))).ok).toBe(false)
+    expect((await t.check(s, execReader(mac(0)), '', [])).ok).toBe(true)
+    expect((await t.check(s, execReader(mac(1)), '', [])).ok).toBe(false)
+  }, 10_000)
+
+  it('teardown writes the first value back only when it moved', async () => {
+    const writes: string[][] = []
+    const run = (value: number): Exec => async (cmd, args) => {
+      if (args[0] === 'write') return void writes.push(args), { code: 0, stdout: '', stderr: '' }
+      return mac(value)(cmd, args)
+    }
+    const s = start({ toggle: { value: 0 } })
+    await t.teardown!(s, run(0))
+    expect(writes).toEqual([])
+    await t.teardown!(s, run(1))
+    expect(writes).toEqual([['write', '-g', FEEDBACK_KEY, '-int', '0']])
+  })
+})
+
+describe('save-dialog', () => {
+  const t = taskById('save-dialog')
+  /** textutil over plain files and Spotlight answering `named`. */
+  const files = (named: string[]): Exec => async (cmd, args) => {
+    if (cmd === 'mdfind') return { code: 0, stdout: named.join('\n'), stderr: '' }
+    if (cmd === 'textutil' && args[0] === '-convert' && args[1] === 'rtf') {
+      writeFileSync(args[3], readFileSync(args[4], 'utf8'))
+      return { code: 0, stdout: '', stderr: '' }
+    }
+    if (cmd === 'textutil') return { code: 0, stdout: readFileSync(args.at(-1)!, 'utf8'), stderr: '' }
+    return { code: 0, stdout: '', stderr: '' }
+  }
+
+  it('starts on two scratch files and checks the target holds the text with nothing strayed', async () => {
+    const c = ctx({ run: files([]) })
+    const s = (await t.setup(c)) as TaskStart
+    expect(t.prompt(s)).toContain('n0-target.rtf')
+    expect(readFileSync(s.saveDialog!.target, 'utf8').trim()).toBe('old')
+    expect((await t.check(s, execReader(files([])), '', [])).ok).toBe(false)
+    writeFileSync(s.saveDialog!.target, saveSourceText('n0') + '\n')
+    expect(await t.check(s, execReader(files([s.saveDialog!.source])), '', [])).toEqual({ ok: true, detail: 'saved over the target' })
+    const stray = join(s.saveDialog!.home, 'Documents', 'n0.rtf')
+    expect((await t.check(s, execReader(files([stray])), '', [])).ok).toBe(false)
+  })
+})
+
+describe('devapp-form', () => {
+  const t = taskById('devapp-form')
+  const instance = (url: string, workspaceId: string | null = null): TaskStart => {
+    const userData = scratch()
+    const db = openDb(join(userData, 'temp-code.db'))
+    new AddonStore(db).set({ name: 'bench-n0', workspaceId, spec: { transport: 'http', url, headers: [], auth: 'none' } }, { kind: 'person' })
+    db.close()
+    return start({ app: 'Electron', window: 'TempCode', dev: { database: join(userData, 'temp-code.db'), stop: async () => {} } })
+  }
+
+  it('passes on the instance’s database holding the row, and fails on a wrong url or a workspace scope', async () => {
+    expect((await t.check(instance(DEV_ADDON_URL), reader(''), '', [])).ok).toBe(true)
+    expect((await t.check(instance('http://127.0.0.1:9/x'), reader(''), '', [])).ok).toBe(false)
+    expect((await t.check(instance(DEV_ADDON_URL, 'ws_1'), reader(''), '', [])).ok).toBe(false)
+  })
+
+  it('skips with no dev instance, and stops the instance it started', async () => {
+    expect(await t.setup(ctx())).toEqual({ skip: 'no dev instance here' })
+    expect(await t.setup(ctx({ devInstance: async () => ({ skip: 'out/ is not HEAD’s build' }) }))).toEqual({ skip: 'out/ is not HEAD’s build' })
+    let stopped = 0
+    const s = (await t.setup(ctx({ devInstance: async () => ({ userData: '/tmp/u', window: 'TempCode', stop: async () => void stopped++ }) }))) as TaskStart
+    expect(s.dev!.database).toBe('/tmp/u/temp-code.db')
+    await t.teardown!(s, noExec)
+    expect(stopped).toBe(1)
   })
 })

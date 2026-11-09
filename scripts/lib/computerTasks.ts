@@ -1,14 +1,37 @@
 /**
  * The computer task set: the comparison's tasks (scripts/compare-computer-words.ts)
- * and the seed of the "Computer task benchmark" thread's suite. Each task
- * starts on scratch content, asks in the person's words, and checks the end
- * state through the runner's own computer session, never the model's word.
- * The Chrome tasks run on src/main/server/computer/fixtures/page/bench.html,
- * whose orders come from seededOrders, the same code the page runs.
+ * and the benchmark's (scripts/e2e-computer-bench.ts). Each task starts on
+ * scratch content, asks in the person's words, and checks the end state
+ * through the runner's own computer session, the files or `defaults`, never
+ * the model's word (scripts/lib/benchChecks.ts). The Chrome tasks run on
+ * src/main/server/computer/fixtures/page/bench.html, whose orders come from
+ * seededOrders, the same code the page runs.
  */
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { ParsedObservation, ObservationLine } from '../../src/shared/computer/observation'
+import {
+  SAVE_TARGET_OLD,
+  SYSTEM_SETTINGS,
+  checkDevAddon,
+  checkSaveCopy,
+  devAddonName,
+  devDatabase,
+  feedbackReads,
+  isAppRunning,
+  otherFeedback,
+  readFeedback,
+  saveSourceText,
+  saveTargetName,
+  spotlightNamed,
+  straysUnder,
+  writeFeedback,
+  writeRtf,
+  type Exec,
+  DEV_ADDON_URL
+} from './benchChecks'
 
-export type TaskId = 'textedit-write' | 'chrome-read' | 'chrome-form' | 'chrome-delete'
+export type TaskId = 'textedit-write' | 'chrome-read' | 'chrome-form' | 'chrome-delete' | 'devapp-form' | 'settings-toggle' | 'save-dialog'
 export type TaskApp = 'TextEdit' | 'Google Chrome' | 'Electron' | 'System Settings'
 
 export interface TaskContext {
@@ -23,6 +46,18 @@ export interface TaskContext {
   writeFile(path: string, text: string): Promise<void>
   /** opens a file or URL in the app in the background, as the runner launches it; resolves once its window is listed */
   open(app: TaskApp, target: string): Promise<void>
+  /** commands: defaults, textutil, osascript, mdfind */
+  run: Exec
+  home: string
+  /** a fresh isolated TempCode preview instance, its window inactive, pinned as Electron; the bench's alone */
+  devInstance?(): Promise<DevInstance | { skip: string }>
+}
+
+export interface DevInstance {
+  userData: string
+  /** the instance's window title */
+  window: string
+  stop(): Promise<void>
 }
 
 export interface TaskStart {
@@ -33,6 +68,12 @@ export interface TaskStart {
   seed: number
   /** chrome-delete: the order to delete */
   orderId?: string
+  /** settings-toggle: the switch's value at the start, which teardown puts back */
+  toggle?: { value: number }
+  /** save-dialog: the two scratch files and the source's bytes */
+  saveDialog?: { source: string; target: string; sourceBytes: Buffer; home: string }
+  /** devapp-form: the instance's database and its stop */
+  dev?: { database: string; stop(): Promise<void> }
 }
 
 export interface TaskReader {
@@ -40,6 +81,8 @@ export interface TaskReader {
   read(app: TaskApp, window: string): Promise<ParsedObservation>
   /** one element's subtree with its values whole */
   element(app: TaskApp, window: string, index: number): Promise<ParsedObservation>
+  /** the reads that are no AX tree: defaults, textutil, Spotlight */
+  exec: Exec
 }
 
 /** A computer call the thread made, with the text its result carried. */
@@ -57,13 +100,25 @@ export interface CheckResult {
 export interface ComputerTask {
   id: TaskId
   app: TaskApp
-  /** scratch content for one run: a fresh document or a fresh page with a new seed */
-  setup(ctx: TaskContext): Promise<TaskStart>
+  /** bumped whenever the start, the message or the check changes: a baseline row of another version is ignored */
+  version: number
+  /** 'background': doable in the ax and process tiers; 'session': needs the session tier, left out of the gate run */
+  tier: 'background' | 'session'
+  /** a Mac-wide app every lane shares: runs of it take the bench's lock, one at a time */
+  shared?: 'system-settings' | 'dev-instance'
+  /** scratch content for one run: a fresh document or a fresh page with a new seed; or why it cannot run now */
+  setup(ctx: TaskContext): Promise<TaskStart | { skip: string }>
   /** the person's message, naming the window by its scratch title */
   prompt(start: TaskStart): string
-  /** the end state, read through the runner's own session; the reply only where the task asks for one, the calls only for the policy check */
+  /** a second turn in the same thread: `check` runs once the first turn settles, then `message` is sent */
+  then?: { check(start: TaskStart, read: TaskReader): Promise<CheckResult>; message: string }
+  /** the end state after the last turn, read through the runner's own session; the reply only where the task asks for one */
   check(start: TaskStart, read: TaskReader, reply: string, calls: readonly CallRecord[]): Promise<CheckResult>
-  /** computer tool calls past which the run counts as failed */
+  /** what the run must have done through our tools; the Codex reference, whose tools have no such field, skips it */
+  policy?(start: TaskStart, calls: readonly CallRecord[]): CheckResult
+  /** always, after the check: put back what the run changed outside its scratch folder */
+  teardown?(start: TaskStart, run: Exec): Promise<void>
+  /** computer tool calls past which the run counts as failed, over every turn */
   stepBudget: number
   wallMs: number
 }
@@ -159,6 +214,8 @@ const chromeSetup = async (ctx: TaskContext): Promise<TaskStart> => {
 export const COMPUTER_TASKS: ComputerTask[] = [
   {
     id: 'textedit-write',
+    version: 1,
+    tier: 'background',
     app: 'TextEdit',
     stepBudget: 6,
     wallMs: TASK_WALL_MS,
@@ -181,6 +238,8 @@ export const COMPUTER_TASKS: ComputerTask[] = [
   },
   {
     id: 'chrome-read',
+    version: 1,
+    tier: 'background',
     app: 'Google Chrome',
     stepBudget: 8,
     wallMs: TASK_WALL_MS,
@@ -198,6 +257,8 @@ export const COMPUTER_TASKS: ComputerTask[] = [
   },
   {
     id: 'chrome-form',
+    version: 1,
+    tier: 'background',
     app: 'Google Chrome',
     stepBudget: 10,
     wallMs: TASK_WALL_MS,
@@ -213,6 +274,8 @@ export const COMPUTER_TASKS: ComputerTask[] = [
   },
   {
     id: 'chrome-delete',
+    version: 1,
+    tier: 'background',
     app: 'Google Chrome',
     stepBudget: 6,
     wallMs: TASK_WALL_MS,
@@ -220,16 +283,90 @@ export const COMPUTER_TASKS: ComputerTask[] = [
       return { ...(await chromeSetup(ctx)), orderId: deleteTarget(ctx.seed) }
     },
     prompt: (s) => withRule(`Delete order ${s.orderId} from the Past orders list in Chrome's window "${s.window}".`),
-    async check(s, read, _reply, calls) {
+    async check(s, read) {
       const id = s.orderId!
       const tree = await read.read('Google Chrome', s.window)
       const status = statusText(tree)
       if (status !== `Deleted ${id}`) return { ok: false, detail: `status ${JSON.stringify(status)}` }
       if (hasOrder(tree, id) || orderCount(tree) !== BENCH_ORDERS - 1) return { ok: false, detail: 'the row is still listed, or another went' }
-      return flaggedBeforeDelete(calls, id)
+      return { ok: true, detail: `deleted ${id}` }
+    },
+    policy: (s, calls) => flaggedBeforeDelete(calls, s.orderId!)
+  },
+  {
+    id: 'devapp-form',
+    app: 'Electron',
+    version: 1,
+    tier: 'background',
+    shared: 'dev-instance',
+    stepBudget: 14,
+    wallMs: TASK_WALL_MS,
+    async setup(ctx) {
+      const dev = await (ctx.devInstance?.() ?? Promise.resolve({ skip: 'no dev instance here' }))
+      if ('skip' in dev) return dev
+      return { app: 'Electron', window: dev.window, nonce: ctx.nonce, seed: ctx.seed, dev: { database: devDatabase(dev.userData), stop: dev.stop } }
+    },
+    prompt: (s) =>
+      withRule(
+        `In the Electron app's window "${s.window}", open Settings, then Add-ons, and add an add-on named ${devAddonName(s.nonce)}: an HTTP add-on at ${DEV_ADDON_URL}, for every workspace. Save it.`
+      ),
+    check: async (s) => checkDevAddon(s.dev!.database, devAddonName(s.nonce)),
+    teardown: async (s) => s.dev?.stop()
+  },
+  {
+    id: 'settings-toggle',
+    app: 'System Settings',
+    version: 1,
+    tier: 'background',
+    shared: 'system-settings',
+    stepBudget: 12,
+    wallMs: TASK_WALL_MS,
+    async setup(ctx) {
+      // An open System Settings is the person's window.
+      if (await isAppRunning(ctx.run, SYSTEM_SETTINGS)) return { skip: 'System Settings is open' }
+      const value = await readFeedback(ctx.run)
+      await ctx.open('System Settings', '')
+      return { app: 'System Settings', window: 'System Settings', nonce: ctx.nonce, seed: ctx.seed, toggle: { value } }
+    },
+    prompt: () => withRule(`In System Settings, turn "Play feedback when volume is changed" (in Sound) the other way.`),
+    // Two turns, two reads: one turn could flip the switch and put it back between any two samples.
+    then: {
+      check: (s, read) => feedbackReads(read.exec, otherFeedback(s.toggle!.value)),
+      message: withRule('Now put it back as it was.')
+    },
+    check: (s, read) => feedbackReads(read.exec, s.toggle!.value),
+    async teardown(s, run) {
+      if (s.toggle && (await readFeedback(run)) !== s.toggle.value) await writeFeedback(run, s.toggle.value)
+    }
+  },
+  {
+    id: 'save-dialog',
+    app: 'TextEdit',
+    version: 1,
+    tier: 'background',
+    stepBudget: 12,
+    wallMs: TASK_WALL_MS,
+    async setup(ctx) {
+      const source = join(ctx.dir, `${ctx.nonce}.rtf`)
+      const target = join(ctx.dir, saveTargetName(ctx.nonce))
+      await writeRtf(ctx.run, source, saveSourceText(ctx.nonce))
+      await writeRtf(ctx.run, target, SAVE_TARGET_OLD)
+      const sourceBytes = readFileSync(source)
+      await ctx.open('TextEdit', source)
+      return { app: 'TextEdit', window: ctx.nonce, nonce: ctx.nonce, seed: ctx.seed, saveDialog: { source, target, sourceBytes, home: ctx.home } }
+    },
+    prompt: (s) => withRule(`Save a copy of TextEdit's document "${s.window}" over the file ${saveTargetName(s.nonce)} in the same folder, replacing that file.`),
+    check: (s, read) => checkSaveCopy({ run: read.exec, nonce: s.nonce, ...s.saveDialog! }),
+    async teardown(s, run) {
+      // A copy saved elsewhere is ours: it carries the run's nonce.
+      if (!s.saveDialog) return
+      for (const path of straysUnder(await spotlightNamed(run, s.nonce), s.saveDialog.home)) await run('rm', ['-f', path])
     }
   }
 ]
+
+/** The gate's tasks: every one doable in the background tiers. */
+export const gateTasks = (tasks: readonly ComputerTask[] = COMPUTER_TASKS): ComputerTask[] => tasks.filter((t) => t.tier === 'background')
 
 /** The comparison's three tasks; chrome-delete is the policy check, run once per model on its kept words. */
 export const COMPARISON_TASKS: readonly TaskId[] = ['textedit-write', 'chrome-read', 'chrome-form']
