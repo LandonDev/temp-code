@@ -2,8 +2,8 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { listCommands, SYNCED_SKILL_PREFIX } from './commands'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { configureCommandSkills, listCommands, SYNCED_SKILL_PREFIX } from './commands'
 import { expandSlashRefs } from './slash'
 
 const BUCKET = 'dadb678d-4a24-405c-909e-41d7a52007f8_f3651252-cb02-40e8-84fe-64342b30d4e2'
@@ -128,5 +128,58 @@ describe('listCommands: codex', () => {
   it("lets the user's own skill shadow a system skill of the same name", async () => {
     const commands = await listCommands('codex', freshCwd())
     expect(commands.find((c) => c.name === 'skill-creator')?.description).toBe('User copy')
+  })
+})
+
+describe('listCommands: the skills store', () => {
+  afterEach(() => configureCommandSkills(null))
+
+  /** A written-out generation's skills folder, as the materializer lays it out. */
+  const generation = (name: string, skills: Record<string, string>): string => {
+    const dir = join(root, 'harness', name, 'skills')
+    for (const [skillName, words] of Object.entries(skills)) write(join(dir, skillName, 'SKILL.md'), skill(skillName, words))
+    return dir
+  }
+
+  it('lists the store\'s skills from the folder written for the thread\'s workspace, a workspace generation shadowing the global one', async () => {
+    const global = generation('claude/global@aaaaaaaaaaaa', { tidy: 'Global tidy' })
+    const ws = generation('claude/ws-w1@bbbbbbbbbbbb', { tidy: 'Workspace tidy', deploy: 'Deploy it' })
+    const inWs = freshCwd()
+    configureCommandSkills({ storeDir: (_p, cwd) => (cwd === inWs ? ws : global), readHome: true })
+    const outside = await listCommands('claude', freshCwd())
+    expect(outside.find((c) => c.name === 'tidy')).toMatchObject({ description: 'Global tidy', scope: 'user', path: join(global, 'tidy', 'SKILL.md') })
+    const inside = await listCommands('claude', inWs)
+    expect(inside.find((c) => c.name === 'tidy')?.description).toBe('Workspace tidy')
+    expect(inside.find((c) => c.name === 'deploy')).toBeDefined()
+  })
+
+  it('with readHome a home-only skill still lists and the store wins a shared name; without it the home\'s plain skills go, the CLI\'s own buckets stay', async () => {
+    const dir = generation('claude/global@cccccccccccc', { mine: 'Store copy', fresh: 'Only in the store' })
+    const codexDir = generation('codex/global@cccccccccccc', { fresh: 'Codex store' })
+    configureCommandSkills({ storeDir: (p) => (p === 'claude' ? dir : codexDir), readHome: true })
+    const claude = await listCommands('claude', freshCwd())
+    expect(claude.find((c) => c.name === 'mine')?.description).toBe('Store copy')
+    expect(claude.map((c) => c.name)).toEqual(expect.arrayContaining(['fresh', `${SYNCED_SKILL_PREFIX}pdf`]))
+    const codex = await listCommands('codex', freshCwd())
+    expect(codex.map((c) => c.name)).toEqual(['fresh', 'imagegen', 'mine', 'openai-docs', 'skill-creator'])
+    configureCommandSkills({ storeDir: (p) => (p === 'claude' ? dir : codexDir), readHome: false })
+    const claudeOnly = await listCommands('claude', freshCwd())
+    expect(claudeOnly.find((c) => c.name === 'mine')?.description).toBe('Store copy')
+    expect(claudeOnly.map((c) => c.name)).toContain(`${SYNCED_SKILL_PREFIX}pdf`)
+    const codexOnly = await listCommands('codex', freshCwd())
+    // The home's own mine is gone; the .system skills stay.
+    expect(codexOnly.map((c) => c.name)).toEqual(['fresh', 'imagegen', 'openai-docs', 'skill-creator'])
+    expect(codexOnly.find((c) => c.name === 'skill-creator')?.description).toBe('System copy')
+  })
+
+  it('gives store skills the prefix the drivers name, and follows a new generation at once', async () => {
+    const one = generation('claude/global@dddddddddddd', { first: 'One' })
+    const two = generation('claude/global@eeeeeeeeeeee', { first: 'One', second: 'Two' })
+    let current = one
+    configureCommandSkills({ storeDir: () => current, readHome: false, prefix: 'tc:' })
+    const cwd = freshCwd()
+    expect((await listCommands('claude', cwd)).map((c) => c.name).filter((n) => n.startsWith('tc:'))).toEqual(['tc:first'])
+    current = two
+    expect((await listCommands('claude', cwd)).map((c) => c.name).filter((n) => n.startsWith('tc:'))).toEqual(['tc:first', 'tc:second'])
   })
 })

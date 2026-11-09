@@ -24,6 +24,14 @@ import type { SlashCommand } from '@shared/domain'
  * Claude plugins (~/.claude/plugins) are not read: there is no
  * installed-plugins layout to key off on either host, only the CLI's
  * directory cache and an empty synced bucket.
+ *
+ * The skills store (CLAUDE.md "Skills: written out on every host"): once
+ * configured, claude's and codex's user skills come first from the store's
+ * written-out folder for the thread's workspace, then, while `readHome`,
+ * from ~/.claude/skills or ~/.codex/skills for names the store lacks (a
+ * skill the person adds by hand still loads in the CLI until the drivers
+ * point it at the store). The synced bucket and `.system` are the CLI's own
+ * and read as before.
  */
 
 export type { SlashCommand }
@@ -56,6 +64,8 @@ function frontmatterName(md: string): string | undefined {
 export const SYNCED_SKILL_PREFIX = 'anthropic-skills:'
 
 type SkillLayout = {
+  /** Read `<dir>/<name>/SKILL.md` (default true). */
+  flat?: boolean
   /** Claude: also read `<dir>/synced/<bucket>/<name>/SKILL.md`. */
   synced?: boolean
   /** Codex: also read `<dir>/.system/<name>/SKILL.md`. */
@@ -127,7 +137,7 @@ async function skillsIn(
   layout: SkillLayout = {}
 ): Promise<SlashCommand[]> {
   const groups = await Promise.all([
-    flatSkillsIn(dir, scope),
+    layout.flat === false ? [] : flatSkillsIn(dir, scope),
     layout.synced ? syncedSkillsIn(join(dir, 'synced'), scope) : [],
     layout.system ? flatSkillsIn(join(dir, '.system'), scope) : []
   ])
@@ -194,11 +204,40 @@ async function claudeAddons(): Promise<SlashCommand[]> {
   }
 }
 
+export interface CommandSkillSources {
+  /** The store's skills folder for a thread at cwd (`<generation>/skills`); null when the host has no store. */
+  storeDir(provider: 'claude' | 'codex', cwd: string): string | null
+  /** Also read ~/.claude/skills and ~/.codex/skills for names the store lacks. */
+  readHome: boolean
+  /** The prefix the CLI gives store skills ('' unless the drivers' route is a plugin). */
+  prefix?: string
+}
+
+let skillSources: CommandSkillSources | null = null
+
+export function configureCommandSkills(sources: CommandSkillSources | null): void {
+  skillSources = sources
+  cache.clear()
+}
+
+/** A provider's user skills: the store's first, then the home folder's while it is read, then the CLI's own buckets. */
+async function userSkills(provider: 'claude' | 'codex', storeDir: string | null): Promise<SlashCommand[]> {
+  const dir = join(homedir(), provider === 'claude' ? '.claude' : '.codex', 'skills')
+  const fromStore = storeDir
+    ? (await flatSkillsIn(storeDir, 'user')).map((c) => ({ ...c, name: `${skillSources?.prefix ?? ''}${c.name}` }))
+    : []
+  const readHome = !storeDir || (skillSources?.readHome ?? true)
+  const own = await skillsIn(dir, 'user', provider === 'claude' ? { synced: true, flat: readHome } : { system: true, flat: readHome })
+  return [...fromStore, ...own]
+}
+
 const cache = new Map<string, { at: number; commands: SlashCommand[] }>()
 const CACHE_MS = 30_000
 
 export async function listCommands(provider: ProviderId, cwd: string): Promise<SlashCommand[]> {
-  const key = `${provider}:${cwd}`
+  const storeDir = (provider === 'claude' || provider === 'codex') && skillSources ? skillSources.storeDir(provider, cwd) : null
+  // A new generation is a new key: a write shows at the next menu open.
+  const key = `${provider}:${cwd}:${storeDir ?? ''}`
   const hit = cache.get(key)
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.commands
 
@@ -206,7 +245,7 @@ export async function listCommands(provider: ProviderId, cwd: string): Promise<S
   const groups = await Promise.all(
     provider === 'claude'
       ? [
-          skillsIn(join(home, '.claude', 'skills'), 'user', { synced: true }),
+          userSkills('claude', storeDir),
           skillsIn(join(cwd, '.claude', 'skills'), 'project'),
           mdFilesIn(join(home, '.claude', 'commands'), 'command', 'user'),
           mdFilesIn(join(cwd, '.claude', 'commands'), 'command', 'project'),
@@ -214,7 +253,7 @@ export async function listCommands(provider: ProviderId, cwd: string): Promise<S
         ]
       : provider === 'codex'
         ? [
-            skillsIn(join(home, '.codex', 'skills'), 'user', { system: true }),
+            userSkills('codex', storeDir),
             mdFilesIn(join(home, '.codex', 'prompts'), 'prompt', 'user'),
             codexAddons()
           ]
