@@ -1489,6 +1489,8 @@ It also waits for older computer proofs through `scripts/lib/proofOrder.ts`,
 with a bounded wait, and sets `TC_PROOF_UNGATED=1` itself. TC Probe is the only
 scratch app it drives; every action stays at the ax or process tier. The
 proofs kill their own children on success, failure, throws and handled signals.
+Bridge instances disable warm harnesses. Cleanup reads the instance's process
+tree before ending its group, so detached utility children also end.
 Reports and traces remain in their `/tmp/tc-…` proof dirs for the caller to
 copy and then remove. None of these modes uses a real model or the clipboard.
 

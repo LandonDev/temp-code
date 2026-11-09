@@ -43,6 +43,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import { createInterface } from 'node:readline'
 
+import { proofDescendants } from './lib/proofProcesses'
 import { waitForGateBuild } from './lib/gateBuild'
 import { computerProofMode, computerProofPolicy, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
 
@@ -96,6 +97,7 @@ function launch(inst: Inst, extra: Record<string, string>): void {
     TMPDIR: inst.tmp,
     TEMP_CODE_USER_DATA: inst.data,
     TEMP_CODE_HEADLESS: '1',
+    TEMP_CODE_WARM_HARNESS: '0',
     TEMP_CODE_ALIAX_DATA_DIR: join(inst.data, 'aliax'),
     TEMP_CODE_CLAIM_SHIM: '0',
     AGENT_CLI_CREDENTIAL_STORE: 'file',
@@ -141,13 +143,20 @@ async function rpc<T = unknown>(inst: Inst, method: string, params: unknown = {}
   })
 }
 function kill(inst: Inst): void {
-  for (const sig of ['SIGTERM', 'SIGKILL'] as const)
-    try {
-      if (inst.proc?.pid) process.kill(-inst.proc.pid, sig)
-    } catch {
-      /* gone */
+  const pid = inst.proc?.pid
+  if (!pid) return
+  // Some utility and CLI children use their own groups. Read their ancestry
+  // while the Electron parent still exists, before killing its group.
+  let descendants: number[] = []
+  try { descendants = proofDescendants(execFileSync('ps', ['-Ao', 'pid=,ppid='], { encoding: 'utf8' }), pid) } catch { /* group cleanup still follows */ }
+  for (const sig of ['SIGTERM', 'SIGKILL'] as const) {
+    for (const child of descendants) {
+      try { process.kill(child, sig) } catch { /* gone */ }
     }
+    try { process.kill(-pid, sig) } catch { /* gone */ }
+  }
 }
+
 
 // ── the box half ────────────────────────────────────────────────────────
 
