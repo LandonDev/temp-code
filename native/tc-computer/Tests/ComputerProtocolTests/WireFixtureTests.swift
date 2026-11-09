@@ -87,7 +87,7 @@ func check<M: ContractMethod>(_ method: M.Type) throws {
 
     @Test func everyNotificationDecodesToAKnownCase() throws {
         let names = try WireFixtures.names().filter { $0.hasPrefix("notify-") }
-        #expect(names.count == 9)
+        #expect(names.count == 11)
         for name in names {
             let data = try Data(contentsOf: WireFixtures.dir.appendingPathComponent(name))
             guard case .notification(let method, _) = try WireFixtures.frame(name) else {
