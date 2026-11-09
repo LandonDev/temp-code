@@ -64,7 +64,7 @@ func check<M: ContractMethod>(_ method: M.Type) throws {
 
     @Test func everyErrorKindHasAFixtureThatDecodes() throws {
         let kinds = try WireFixtures.names().filter { $0.hasPrefix("error-") }
-        #expect(kinds.count == 19)
+        #expect(kinds.count == 22) // every ComputerErrorKind but `unknown`
         for name in kinds {
             let kind = String(name.dropFirst("error-".count).dropLast(".json".count))
             switch try WireFixtures.frame(name) {

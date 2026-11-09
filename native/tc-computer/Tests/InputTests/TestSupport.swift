@@ -6,6 +6,8 @@ import Foundation
 // Carbon's own Rect and Point come with AppKit; the wire's are meant here.
 typealias Rect = ComputerProtocol.Rect
 typealias Point = ComputerProtocol.Point
+// CoreServices (AERegistry.h) has a `TextRange` too; Input's is meant.
+typealias TextRange = Input.TextRange
 
 /// The repository's root, from this file's real path (the box's scratch package links the files in).
 func repoRoot(_ file: String = #filePath) -> URL {

@@ -89,6 +89,7 @@ final class Proof: @unchecked Sendable {
     func textEdit(_ s: inout Scratch, tiers: [Tier]) {
         guard let text = s.find("AXTextArea") else { return missing("textedit", "setup", "text area") }
         let value = { P.string(text, "AXValue") ?? "" }
+        let bar = P.element(text, "AXParent").flatMap { P.element($0, "AXVerticalScrollBar") }
         if tiers.contains(.ax) {
             step("textedit", "set_value the probe document", tiers: [.ax], ComputerAction(action: .setValue, element: 1, value: Self.document), target: { s.target(text) }) { _ in
                 (value() == Self.document, "\(value().utf16.count) units")
@@ -109,7 +110,6 @@ final class Proof: @unchecked Sendable {
                     (out.tier == .ax && P.number(bold, "AXValue") != before, "value \(before ?? -1) → \(P.number(bold, "AXValue") ?? -1)")
                 }
             } else { missing("textedit", "left_click bold", "bold control") }
-            let bar = P.element(text, "AXParent").flatMap { P.element($0, "AXVerticalScrollBar") }
             if let bar { _ = P.set(bar, "AXValue", NSNumber(value: 0)) }
             let barBefore = bar.flatMap { P.number($0, "AXValue") }
             step("textedit", "scroll down by AX pages", tiers: [.ax], ComputerAction(action: .scroll, element: 1, scroll_direction: .down, scroll_amount: 5), target: { s.target(text) }) { out in
@@ -188,7 +188,8 @@ final class Proof: @unchecked Sendable {
     // MARK: Chrome
 
     func chrome(_ s: inout Scratch, tiers: [Tier]) {
-        let byId = { (id: String) in P.walk(s.window).first { P.string($0, "AXDOMIdentifier") == id } }
+        let window = s.window
+        let byId = { (id: String) in P.walk(window).first { P.string($0, "AXDOMIdentifier") == id } }
         guard let name = byId("name"), let gift = byId("gift") else { return missing("chrome", "setup", "form fields") }
         if tiers.contains(.ax) {
             step("chrome", "set_value the name", tiers: [.ax], ComputerAction(action: .setValue, element: 1, value: "Ada Example"), target: { s.target(name) }) { _ in
