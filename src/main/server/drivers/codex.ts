@@ -1030,6 +1030,8 @@ export const codexDriver: HarnessDriver = {
           }
         })
       : () => {}
+    // A move during the boot reached no tracked handle: the scope's root of now, set before the next turn.
+    if (skillScope) wantedRoot = codexSkillRoot(skillScope.workspaceId)
     // The first usage numbers for the footer; updates arrive as notifications.
     conn.request('account/rateLimits/read', {}).then((snapshot) => observeCodexSnapshot(snapshot, account), () => {})
 

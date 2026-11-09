@@ -234,10 +234,11 @@ export function recaptureMuseDir(account: string | null): boolean {
     }
     candidates.push({ museDir, text, mtime })
   }
-  // The old layout (no store): compared with the vault, as before seeds.
+  // The old layout (no store): against its seed, or the vault for a copy written before seeds.
   const old = join(museAccountDir(deps.root, account), 'muse')
   const oldText = readText(join(old, AUTH))
-  if (oldText !== null && oldText.trim() !== stored.trim() && !existsSync(join(old, SEED))) {
+  const oldSeed = readText(join(old, SEED))
+  if (oldText !== null && (oldSeed !== null ? sha256(oldText) !== oldSeed : oldText.trim() !== stored.trim())) {
     try {
       candidates.push({ museDir: old, text: oldText, mtime: statSync(join(old, AUTH)).mtimeMs })
     } catch {

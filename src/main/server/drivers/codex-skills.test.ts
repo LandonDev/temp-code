@@ -47,6 +47,8 @@ class FakeProc extends EventEmitter {
             }
           }
           if (frame.method === 'thread/start') {
+            beforeThreadStart?.()
+            beforeThreadStart = null
             this.out({ id: frame.id, result: { thread: { id: 't1' } } })
             // No MCP servers: the first-turn gate opens after its grace.
             this.out({ method: 'mcpServer/startupStatus/updated', params: { name: 'x', status: 'ready' } })
@@ -67,6 +69,8 @@ class FakeProc extends EventEmitter {
 const spawned: FakeProc[] = []
 /** How many extraRoots sets the next spawn refuses. */
 let refuseNext = 0
+/** Runs once as the fake answers thread/start: the boot is not over yet. */
+let beforeThreadStart: (() => void) | null = null
 
 vi.mock('node:child_process', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:child_process')>()),
@@ -141,6 +145,7 @@ async function start(over: Partial<SessionMeta> = {}): Promise<DriverHandle> {
 }
 
 const tick = (ms = 0): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
 /** What the child got after the binary (the nice and ionice prefix comes before it). */
 const codexArgs = (proc: FakeProc): string[] => proc.argv.slice(proc.argv.indexOf('/fake/codex') + 1)
 const skillsArg = (proc: FakeProc): string | undefined => codexArgs(proc)[codexArgs(proc).indexOf('-c') + 1]
@@ -200,6 +205,25 @@ it('a move re-sets the root on every live handle of that scope only; codexLiveRo
   await tick(10)
   expect(g.sets).toHaveLength(2)
   expect([...codexLiveRoots()].sort()).toEqual(['/data/harness/codex/global@dddddddddddd', '/data/harness/codex/ws-w1@cccccccccccc'])
+})
+
+it('a scope move during the boot, before the handle is tracked, is set before the next turn/start', async () => {
+  vi.stubEnv('TEMP_CODE_WARM_HARNESS', '0')
+  const fresh = '/data/harness/codex/global@ffffffffffff'
+  // The scope moves while the fake answers thread/start: no tracked handle hears it.
+  beforeThreadStart = () => {
+    gens.global = fresh
+    moved!('codex', 'global', fresh)
+  }
+  const h = await start({ id: 'cx-boot-move' })
+  expect(spawned[0].sets).toEqual([['/data/harness/codex/global@aaaaaaaaaaaa/skills']])
+  await tick(600)
+  await h.send('hello')
+  await tick(10)
+  const proc = spawned[0]
+  const turn = proc.methods.lastIndexOf('turn/start')
+  expect(proc.methods[turn - 1]).toBe('skills/extraRoots/set')
+  expect(proc.sets.at(-1)).toEqual([`${fresh}/skills`])
 })
 
 it('a refused set logs and the thread still starts; a failed re-set is sent again before the next turn/start', async () => {

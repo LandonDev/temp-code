@@ -136,6 +136,12 @@ describe('with no store', () => {
     const before = statSync(auth).mtimeMs
     expect(museConfigDirFor(ME)).toBe(dir)
     expect(statSync(auth).mtimeMs).toBe(before)
+    // A rotation there is recaptured against the copy's seed, once.
+    expect(recaptureMuseDir(ME)).toBe(false)
+    writeFileSync(auth, blobOf(ME, 'dca:rotated'))
+    expect(recaptureMuseDir(ME)).toBe(true)
+    expect(recaptureMuseDir(ME)).toBe(false)
+    expect(blobs[ME]).toBe(blobOf(ME, 'dca:rotated'))
   })
 })
 
