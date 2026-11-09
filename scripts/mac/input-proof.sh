@@ -126,7 +126,7 @@ still_idle
 profile=/tmp/tc-input-chrome
 rm -rf "$profile"
 CLEANUP+=("rm -rf $profile")
-open -g -na 'Google Chrome' --args --user-data-dir="$profile" --no-first-run --no-default-browser-check "file://$ROOT/src/main/server/computer/fixtures/page/form.html"
+open -g -na 'Google Chrome' --args --user-data-dir="$profile" --no-first-run --no-default-browser-check --force-renderer-accessibility "file://$ROOT/src/main/server/computer/fixtures/page/form.html"
 CH=''
 for _ in $(seq 60); do
   CH=$(pgrep -f "user-data-dir=$profile" | while read -r p; do ps -o command= -p "$p" | grep -q -- '--type=' || echo "$p"; done | head -1)

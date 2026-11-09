@@ -44,7 +44,7 @@ DispatchQueue.global(qos: .userInitiated).async { [pids, tiers, wantSession, rep
     let proof = Proof()
     var scratch: [String: Scratch] = [:]
     for (app, pid) in pids {
-        if var s = Scratch.open(pid: pid, title: titles[app]) {
+        if var s = Scratch.ready(app: app, pid: pid, title: titles[app]) {
             AXUIElementSetMessagingTimeout(s.window, 2)
             switch app {
             case "textedit": proof.textEdit(&s, tiers: tiers)

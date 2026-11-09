@@ -162,6 +162,27 @@ struct Scratch {
         return Scratch(pid: pid, app: app, window: w, windowID: windowNumber(w, pid: pid) ?? 0)
     }
 
+    /// The scratch window once its tree holds what the legs act on. Chromium and Electron build
+    /// a page's tree only when asked: Chrome through --force-renderer-accessibility (the script),
+    /// Electron through AXManualAccessibility on the app; either fills it in over a second or
+    /// two, so this waits up to 15 s for the element, then gives the window as it is.
+    static func ready(app: String, pid: pid_t, title: String?) -> Scratch? {
+        let wanted: (Scratch) -> Bool = switch app {
+        case "chrome": { s in P.walk(s.window).contains { P.string($0, "AXDOMIdentifier") == "gift" } }
+        case "tempcode": { s in s.find("AXTextArea") != nil }
+        default: { _ in true }
+        }
+        if app == "tempcode" { _ = P.set(AXUIElementCreateApplication(pid), "AXManualAccessibility", kCFBooleanTrue) }
+        let deadline = Date().addingTimeInterval(15)
+        var last: Scratch?
+        repeat {
+            last = open(pid: pid, title: title) ?? last
+            if let s = last, wanted(s) { return s }
+            Thread.sleep(forTimeInterval: 0.5)
+        } while Date() < deadline
+        return last
+    }
+
     static func windowNumber(_ w: AXUIElement, pid: pid_t) -> UInt32? {
         guard let f = P.frame(w), let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else { return nil }
         for info in list where (info[kCGWindowOwnerPID as String] as? Int) == Int(pid) {

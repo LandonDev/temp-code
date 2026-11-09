@@ -91,7 +91,9 @@ final class Proof: @unchecked Sendable {
     func textEdit(_ s: inout Scratch, tiers: [Tier]) {
         guard let text = s.find("AXTextArea") else { return missing("textedit", "setup", "text area") }
         let value = { P.string(text, "AXValue") ?? "" }
-        let bar = P.element(text, "AXParent").flatMap { P.element($0, "AXVerticalScrollBar") }
+        // the text view is as tall as the document; its scroll area is what shows on screen
+        let area = P.element(text, "AXParent")
+        let bar = area.flatMap { P.element($0, "AXVerticalScrollBar") }
         if tiers.contains(.ax) {
             step("textedit", "set_value the probe document", tiers: [.ax], ComputerAction(action: .setValue, element: 1, value: Self.document), target: { s.target(text) }) { _ in
                 (value() == Self.document, "\(value().utf16.count) units")
@@ -147,7 +149,7 @@ final class Proof: @unchecked Sendable {
         step("textedit", "type 50 characters by keys", tiers: [.process], ComputerAction(action: .type, element: 1, text: fifty), allow: [.keyWindowUnavailable], target: { s.target(text) }) { out in
             (out.via == .keys && value().contains(fifty), "via \(out.via?.rawValue ?? "-")")
         }
-        if let bar, let f = P.frame(text) {
+        if let bar, let f = area.flatMap({ P.frame($0) }) {
             _ = P.set(bar, "AXValue", NSNumber(value: 0))
             let v0 = P.number(bar, "AXValue") ?? 0
             step("textedit", "scroll 3 wheel clicks down", tiers: [.process], ComputerAction(action: .scroll, coordinate: s.coordinate(CGPoint(x: f.x + f.w / 2, y: f.y + f.h / 2)), scroll_direction: .down, scroll_amount: 3), target: { s.target() }) { _ in
@@ -393,9 +395,16 @@ final class Proof: @unchecked Sendable {
         } catch let f as ComputerFailure where f.error.kind == .interrupted {
             let after = posted.value.map { Date().timeIntervalSince($0) * 1000 } ?? -1
             gate.stepEnded()
-            let released = !CGEventSource.keyState(.combinedSessionState, key: 56)
+            // the up is posted before the throw; the window server's key state follows it a little later
+            let t = Date()
+            var released = false
+            repeat {
+                released = !CGEventSource.keyState(.combinedSessionState, key: 56)
+                if !released { Thread.sleep(forTimeInterval: 0.005) }
+            } while !released && Date().timeIntervalSince(t) < 0.1
+            let lag = Int(Date().timeIntervalSince(t) * 1000)
             r.ok = after >= 0 && after < 100 && released
-            r.detail = "interrupted \(Int(after)) ms after the move; shift \(released ? "released" : "still down")"
+            r.detail = "interrupted \(Int(after)) ms after the move; shift \(released ? "released (state \(lag) ms after the throw)" : "still down 100 ms after the throw")"
         } catch {
             r.error = "\(error)"
         }
