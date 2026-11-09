@@ -1,0 +1,138 @@
+import { afterEach, describe, expect, it } from 'vitest'
+import { COMPUTER_TOOLS, computerToolJsonSchema } from '@shared/computer/tools'
+import type { ComputerPush } from '@shared/contract-computer'
+import { ComputerPushSchema } from '@shared/wireSchemas'
+import { MacThreadTokens } from '../macTools'
+import type { ComputerHost } from './mcp'
+import { ComputerRpc } from './rpc'
+import { computerHarness, type ComputerHarness } from './runHarness'
+
+const harnesses: ComputerHarness[] = []
+const rpcs: ComputerRpc[] = []
+afterEach(async () => {
+  for (const r of rpcs.splice(0)) r.close()
+  for (const h of harnesses.splice(0)) await h.close()
+})
+const until = async (pred: () => boolean, label: string): Promise<void> => {
+  const end = Date.now() + 5_000
+  while (!pred()) {
+    if (Date.now() > end) throw new Error(`timed out waiting for ${label}`)
+    await new Promise((r) => setTimeout(r, 5))
+  }
+}
+
+function make(permission: 'safe' | 'auto' = 'auto') {
+  const h = computerHarness()
+  harnesses.push(h)
+  h.set('t1', { permission })
+  const tokens = new MacThreadTokens(null, 'computer')
+  const host: ComputerHost = { available: () => true, sessions: h.sessions, service: h.service, tokens }
+  const rpc = new ComputerRpc(host)
+  rpcs.push(rpc)
+  const token = tokens.tokenFor('t1')
+  const count = (method: string) => h.requests().filter((r) => r.method === method).length
+  return { h, rpc, token, count }
+}
+
+describe('computer.sessions and the push', () => {
+  it('a host without computer use answers its state and no rows', () => {
+    const rpc = new ComputerRpc(null, () => 'computer use runs on a Mac')
+    expect(rpc.sessions()).toEqual({ service: { state: 'unavailable', reason: 'computer use runs on a Mac', restarts: 0, permissions: null }, sessions: [] })
+  })
+
+  it('names the live thread, its app and window while a call runs, pushes at most four a second', async () => {
+    const { h, rpc } = make()
+    const pushes: { at: number; push: ComputerPush }[] = []
+    rpc.onPush((push) => pushes.push({ at: Date.now(), push: ComputerPushSchema.parse(push) as ComputerPush }))
+    await h.run('computer_observe', { app: 'TextEdit' })
+    const slow = h.run('computer_observe', { app: 'Slow' })
+    await until(() => rpc.sessions().sessions[0]?.running !== null && rpc.sessions().sessions.length === 1, 'the running row')
+    const row = rpc.sessions().sessions[0]
+    expect(row).toMatchObject({ threadId: 't1', running: { tool: 'computer_observe', words: 'Reading Slow' } })
+    expect(row.apps).toEqual([{ name: 'TextEdit', bundleId: 'com.apple.TextEdit', window: 'Untitled' }])
+    expect(rpc.sessions().service.state).toBe('up')
+    h.sessions.cancel('t1', 'interrupt')
+    await slow
+    await until(() => pushes.some((p) => p.push.sessions[0]?.running === null), 'the settled push')
+    for (let i = 1; i < pushes.length; i++) expect(pushes[i].at - pushes[i - 1].at).toBeGreaterThanOrEqual(240)
+    h.set('t1', { status: 'idle' })
+    await until(() => rpc.sessions().sessions.length === 0, 'the row to end with the turn')
+  })
+
+  it('computer.stop stops the thread and says whether it was live', async () => {
+    const { h, rpc } = make()
+    expect(await rpc.stop('t1')).toEqual({ stopped: false })
+    const slow = h.run('computer_observe', { app: 'Slow' })
+    await until(() => rpc.sessions().sessions.length === 1, 'the live row')
+    expect(await rpc.stop('t1')).toEqual({ stopped: true })
+    expect((await slow).body).toBe('stopped by the person')
+  })
+})
+
+describe('the bridge', () => {
+  it('refuses a token not the thread\'s own, mac bridge tokens included', async () => {
+    const { rpc } = make()
+    const socket = rpc.socket()
+    const mac = new MacThreadTokens(null).tokenFor('t1')
+    await expect(socket.call({ sessionId: 't1', token: mac, call: 1, tool: 'computer_apps', args: {}, images: 'none' })).rejects.toThrow(/forbidden/)
+    expect(() => socket.tools({ sessionId: 't1', token: 'x' })).toThrow(/forbidden/)
+    expect(() => socket.cancel({ sessionId: 't1', token: 'x', call: 1 })).toThrow(/forbidden/)
+  })
+
+  it('answers with images as parts or none', async () => {
+    const { rpc, token } = make()
+    const socket = rpc.socket()
+    const args = { app: 'TextEdit', screenshot: true }
+    const parts = await socket.call({ sessionId: 't1', token, call: 1, tool: 'computer_observe', args, images: 'parts' })
+    expect(parts.isError).toBe(false)
+    expect(parts.text).toMatch(/^screenshot 1 \(observation\): .*\.jpg \(1280×1072\)\n\napp "TextEdit"/)
+    expect(parts.images).toHaveLength(1)
+    expect(parts.images[0]).toMatchObject({ label: 'observation', mimeType: 'image/jpeg', width: 1280, height: 1072 })
+    const none = await socket.call({ sessionId: 't1', token, call: 2, tool: 'computer_observe', args, images: 'none' })
+    expect(none.images).toEqual([])
+    expect(none.text).toMatch(/^screenshot 1 \(observation\): /)
+  })
+
+  it('app.computerTools equals the JSON schemas of tools.ts', () => {
+    const { rpc, token } = make()
+    expect(rpc.socket().tools({ sessionId: 't1', token })).toEqual({
+      tools: COMPUTER_TOOLS.map((t) => ({ name: t.name, description: t.description, inputSchema: computerToolJsonSchema(t.input) }))
+    })
+  })
+
+  it('app.computerCancel denies a waiting card, and an Allow after it acts on nothing', async () => {
+    const { h, rpc, token, count } = make('safe')
+    const socket = rpc.socket()
+    const call = socket.call({ sessionId: 't1', token, call: 'c1', tool: 'computer_act', args: { app: 'TextEdit', action: 'key', text: 'a' }, images: 'none' })
+    await until(() => h.cards.length === 1, 'the card')
+    socket.cancel({ sessionId: 't1', token, call: 'c1' })
+    h.cards[0].decide(true)
+    expect(await call).toMatchObject({ isError: true, text: 'cancelled: the call was given up' })
+    expect(count('action.run')).toBe(0)
+  })
+
+  it('a closed socket denies its waiting card', async () => {
+    const { h, rpc, token, count } = make('safe')
+    const socket = rpc.socket()
+    const call = socket.call({ sessionId: 't1', token, call: 7, tool: 'computer_act', args: { app: 'TextEdit', action: 'key', text: 'a' }, images: 'none' })
+    await until(() => h.cards.length === 1, 'the card')
+    socket.close()
+    expect((await call).isError).toBe(true)
+    expect(h.cards[0].req.signal?.aborted).toBe(true)
+    expect(count('action.run')).toBe(0)
+  })
+
+  it('a call cancelled while queued behind another raises no card and sends nothing', async () => {
+    const { h, rpc, token, count } = make('safe')
+    const socket = rpc.socket()
+    const slow = h.run('computer_observe', { app: 'Slow' })
+    const queued = socket.call({ sessionId: 't1', token, call: 9, tool: 'computer_act', args: { app: 'TextEdit', action: 'key', text: 'a' }, images: 'none' })
+    await until(() => count('state.get') === 1, 'the slow read')
+    socket.cancel({ sessionId: 't1', token, call: 9 })
+    h.sessions.cancel('t1', 'interrupt')
+    await slow
+    expect((await queued).text).toBe('cancelled: the call was given up')
+    expect(h.cards).toHaveLength(0)
+    expect(count('action.run')).toBe(0)
+  })
+})

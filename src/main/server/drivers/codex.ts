@@ -935,7 +935,7 @@ export const codexDriver: HarnessDriver = {
         // App tools (docs/PLAN-2.md M10): the stdio bridge forwards
         // app_list_threads / app_read_thread / app_start_thread back to the
         // app's WS server, so codex threads can operate the app like claude.
-        const bridgeEntry = bridgeMcpConfig(session.id)
+        const bridgeEntry = bridgeMcpConfig(session.id, { computerImages: 'none' })
         // Provider traffic goes through Aliax's shim or our own gateway, which
         // swap in this thread's account's token.
         const routed = await routedEndpointFor('codex', { thread: session.id, route: ctx.route ?? null, model: session.model })

@@ -123,6 +123,15 @@ describe('MacThreadTokens', () => {
     expect(a.check('s1', 'x')).toBe(false)
     expect(a.check('s1', undefined)).toBe(false)
   })
+  it('a purpose makes tokens of its own and leaves the mac bridge tokens as they were', () => {
+    const seed = 'ab'.repeat(16)
+    const mac = new MacThreadTokens(seed)
+    const computer = new MacThreadTokens(seed, 'computer')
+    expect(new MacThreadTokens(seed, 'mac-bridge').tokenFor('s1')).toBe(mac.tokenFor('s1'))
+    expect(computer.tokenFor('s1')).not.toBe(mac.tokenFor('s1'))
+    expect(computer.check('s1', mac.tokenFor('s1'))).toBe(false)
+    expect(computer.check('s1', computer.tokenFor('s1'))).toBe(true)
+  })
   it('the seed is honoured only for an isolated instance', () => {
     const seed = 'cd'.repeat(16)
     const fixed = new MacThreadTokens(seed).tokenFor('s')

@@ -77,7 +77,7 @@ async function start(ctx: DriverCtx): Promise<DriverHandle> {
   // One config dir per (account, skills scope), its skills the store's (museConfigDirs.ts).
   const skills = museSkillsFor(session)
   const configDir = museConfigDirFor(ctx.route?.account ?? null, skills?.scope, skills?.pointer ?? null)
-  const facts: SessionFacts = { cwd: session.cwd, model: session.model, permission: session.permission, bridge: bridgeMcpConfig(session.id) }
+  const facts: SessionFacts = { cwd: session.cwd, model: session.model, permission: session.permission, bridge: bridgeMcpConfig(session.id, { computerImages: 'parts' }) }
 
   let disposed = false
   let host: MuseHost | null = null

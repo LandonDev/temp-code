@@ -43,6 +43,7 @@ import type { CrossHostAgents } from './crossHostAgents'
 import type { HostCatalog, PeerCatalogs } from './peerCatalogs'
 import { encodeAgentId } from '@shared/contract-crosshost'
 import { foldTodo, newTodoFold, tallyOf } from './todos'
+import { computerActivity } from '@shared/computer/words'
 
 
 /**
@@ -164,6 +165,8 @@ export const TOOL_VALUE_KEYS = ['command', 'pattern', 'query', 'url', 'descripti
 
 /** One-line human summary of a tool call: "Edit src/foo.ts", "Bash: npm test". */
 export function toolLine(name: string, input: unknown): string {
+  const computer = computerActivity(name, input)
+  if (computer) return computer.text
   const obj = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
   const pathKey = TOOL_PATH_KEYS.find((k) => typeof obj[k] === 'string')
   if (pathKey) return `${name} ${obj[pathKey]}`

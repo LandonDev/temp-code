@@ -91,6 +91,7 @@ import { preview as previewHtml, publish as publishHtml, type HtmlPreview } from
 import { INLINE_DIGEST_MAX_CHARS, mirrorRelPath, threadDigest } from './mirror'
 import type { SessionRegistry } from './sessions'
 import { macToolsHooks, toolUseIdOf } from './macTools'
+import { COMPUTER_APP_TOOLS, computerHooks, computerTools } from './computer/mcp'
 import { skillList, skillRemove, skillWrite, type SkillToolDeps } from './skills/tools'
 import type { CrossHostAgents } from './crossHostAgents'
 import type { ProjectPlans } from './projectPlan'
@@ -168,9 +169,12 @@ export function hasAppBridge(): boolean {
 }
 
 /** MCP server entry for a codex thread's config override (config.toml
- *  shape: command/args/env). */
-export function bridgeMcpConfig(sessionId: string): Record<string, unknown> | null {
+ *  shape: command/args/env). `computerImages`: whether a computer call's
+ *  pictures come back as image parts (Muse) or only as the file's line
+ *  (codex, until the Preview and image results thread proves it takes them). */
+export function bridgeMcpConfig(sessionId: string, opts: { computerImages?: 'parts' | 'none' } = {}): Record<string, unknown> | null {
   if (!bridge) return null
+  const computer = computerHooks.current?.available() ? computerHooks.current : null
   return {
     command: bridge.command,
     args: [bridge.scriptPath],
@@ -181,7 +185,11 @@ export function bridgeMcpConfig(sessionId: string): Record<string, unknown> | nu
       // The Mac bridge's per-thread token, only while the thread's bridge is on (macTools.ts).
       ...(macToolsHooks.current?.bridgeEnv(sessionId) ?? {}),
       // Fixed at spawn: a scope that gains its first add-on or loses its last reboots the harness at its next turn (addons/scopeFlip.ts).
-      ...(addons?.hasAddons(sessionId) ? { TEMP_CODE_ADDONS: '1' } : {})
+      ...(addons?.hasAddons(sessionId) ? { TEMP_CODE_ADDONS: '1' } : {}),
+      // The computer tools, on a Mac only: the thread's own token, so its bridge never acts as another thread (computer/rpc.ts).
+      ...(computer
+        ? { TEMP_CODE_COMPUTER_TOKEN: computer.tokens.tokenFor(sessionId), TEMP_CODE_COMPUTER_IMAGES: opts.computerImages ?? 'none' }
+        : {})
     },
     // wait_for_agent sleeps until a subagent settles — codex must not
     // kill the call with its default per-tool timeout.
@@ -855,6 +863,8 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
       tool(HTML_RENDER_TOOL_NAME, HTML_RENDER_TOOL_DESCRIPTION, HTML_RENDER_SHAPE, (args) =>
         htmlRenderTool(session.id, args)
       ),
+      // Computer use on a Mac thread: deferred, found by tool search (computer/mcp.ts).
+      ...computerTools(session),
       // The add-on registry's management tools: deferred, found by tool search like the add-on tools themselves.
       deferredTool(
         tool(ADDON_LIST_TOOL, ADDON_LIST_DESCRIPTION, {}, async () => {
@@ -924,5 +934,8 @@ export const APP_TOOLS = [
   // The management tools raise the card that matters themselves (addon_add's is admin-only).
   `mcp__app__${ADDON_LIST_TOOL}`,
   `mcp__app__${ADDON_ADD_TOOL}`,
-  `mcp__app__${ADDON_REMOVE_TOOL}`
+  `mcp__app__${ADDON_REMOVE_TOOL}`,
+  // Computer use asks its own card in safe and edits (computer/run.ts), so the CLI never asks a second time.
+  // On every host, so the warm pool's argv does not split by host.
+  ...COMPUTER_APP_TOOLS
 ]

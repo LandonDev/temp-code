@@ -19,6 +19,7 @@ import { homedir } from 'node:os'
 import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
 import { COMPACTING_WORDS, providerWaitWords, retryWords, thenYourMessage } from '@shared/statusWords'
+import { computerActivity } from '@shared/computer/words'
 import type { SessionBatchResult } from '@shared/contract'
 import { batchChildIds, runSessionBatch, type SessionBatchAction } from './sessionBatch'
 import { ThreadScheduler, type QueuedLine } from './scheduler'
@@ -416,6 +417,9 @@ function describeTool(name: string, input: unknown): Activity {
     case 'Skill':
       return { text: typeof i.skill === 'string' && i.skill.trim() ? `Using skill ${i.skill.trim()}` : 'Using a skill', kind: 'think' }
     default: {
+      // A computer call says what it does in which app (src/shared/computer/words.ts).
+      const computer = computerActivity(name, input)
+      if (computer) return computer
       // An MCP tool is named by its tool alone (`mcp__app__update_notes`,
       // `mcp__orchestrator__spawn_agent`): the app's and the orchestrator's
       // have words of their own, any other reads as its server.
@@ -5432,7 +5436,7 @@ export class SessionRegistry {
     }
   }
 
-  private awayOn(): boolean {
+  awayOn(): boolean {
     return this.away?.enabled ?? false
   }
 

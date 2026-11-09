@@ -348,6 +348,10 @@ it('describeTool words every tool the strip can meet; an unknown name is humaniz
   for (const [name, words] of table) expect(say(name), name).toBe(words)
   expect(say('Skill', { skill: 'impeccable' })).toBe('Using skill impeccable')
   expect(say('Skill', {})).toBe('Using a skill')
+  expect(say('mcp__app__computer_observe', { app: 'TextEdit' })).toBe('Reading TextEdit')
+  expect(say('mcp__app__computer_act', { app: 'TextEdit', action: 'type', text: 'hi' })).toBe('Typing in TextEdit')
+  expect(say('computer_batch', { app: 'Mail', actions: [{ action: 'key', text: 'a' }] })).toBe('Working in Mail')
+  expect(say('mcp__app__computer_apps')).toBe('Listing apps')
 })
 
 it('a Bash call is named by its first command past a cd, an export or a variable', async () => {

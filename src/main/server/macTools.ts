@@ -75,14 +75,18 @@ const DEADLINE_SLACK_MS = 30_000
  */
 export class MacThreadTokens {
   private readonly key: Buffer
-  constructor(seed?: string | null) {
+  /** What the token opens (`mac-bridge`, `computer`): it is in the HMAC, so one purpose's token never opens another's. */
+  constructor(
+    seed?: string | null,
+    private readonly purpose = 'mac-bridge'
+  ) {
     this.key = seed && /^[0-9a-f]{32,}$/i.test(seed) ? Buffer.from(seed, 'hex') : randomBytes(32)
   }
-  static fromEnv(env: NodeJS.ProcessEnv = process.env): MacThreadTokens {
-    return new MacThreadTokens(env.TEMP_CODE_USER_DATA ? env.TEMP_CODE_MAC_TOKEN_SEED : null)
+  static fromEnv(env: NodeJS.ProcessEnv = process.env, purpose?: string): MacThreadTokens {
+    return new MacThreadTokens(env.TEMP_CODE_USER_DATA ? env.TEMP_CODE_MAC_TOKEN_SEED : null, purpose)
   }
   tokenFor(sessionId: string): string {
-    return createHmac('sha256', this.key).update(`mac-bridge:${sessionId}`).digest('base64url')
+    return createHmac('sha256', this.key).update(`${this.purpose}:${sessionId}`).digest('base64url')
   }
   check(sessionId: string, token: unknown): boolean {
     if (typeof token !== 'string') return false

@@ -77,10 +77,16 @@ import { HostDevicesHub, MacDevices, handleHostDevices, hostDevicesOffers, isMac
 import { readSimulatorHolders } from './devices/ledger'
 import { MergeReviews, mergeReviews, setMergeReviews } from './mergeReview'
 import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './macTools'
+import { computerUnavailable } from './computer/binary'
+import { computerHooks, type ComputerHost } from './computer/mcp'
+import { ComputerRpc } from './computer/rpc'
+import { ComputerService } from './computer/service'
+import { ComputerSessions } from './computer/sessions'
+import { pruneStaleShots } from './computer/shots'
 import { OfflineError, ThreadResources } from './threadResources'
 import { SharedScanner, ThreadPorts } from './threadPorts'
 import { PortTail } from './portTail'
-import { DEFAULT_CALL_CAP_BYTES, MEMORY_CAP_SETTING, ProcessGuard, guardInstanceOf, hostGuardDeps, setGuardInstance } from './processGuard'
+import { DEFAULT_CALL_CAP_BYTES, MEMORY_CAP_SETTING, ProcessGuard, guardInstanceEnv, guardInstanceOf, hostGuardDeps, setGuardInstance } from './processGuard'
 import { notDevServer } from '@shared/devServerRules'
 import { PortSweep } from './portSweep'
 import { readTaskLog, type TaskLogDeps } from './taskLog'
@@ -1277,6 +1283,34 @@ export async function startServer(
   })
   macToolsHooks.current = macTools
   macToolsHooks.tokens = macTokens
+  // Computer use (computer/, docs/computer-protocol.md "The host"): on a Mac with a screen, one
+  // tc-computer for this instance, spawned on the first call, one session per thread, the four
+  // tools on every thread's app server. The binary is asked for again at every spawn and every
+  // harness start, so a dev tree whose build finishes after boot still gets it.
+  const computerWhy = computerUnavailable({ exists: () => true })
+  let computer: ComputerHost | null = null
+  if (!computerWhy) {
+    const computerData = join(options.dataDir ?? dirname(dbPath), 'computer')
+    const service = new ComputerService({
+      dataDir: computerData,
+      env: { ...process.env, ...guardInstanceEnv() },
+      trace: process.env.TEMP_CODE_COMPUTER_TRACE === '1',
+      unavailable: () => computerUnavailable()
+    })
+    const sessions = new ComputerSessions({
+      service,
+      registry: { get: (id) => registry.get(id), requestApproval: (id, req) => registry.requestApproval(id, req), awayOn: () => registry.awayOn() },
+      store,
+      dataDir: computerData,
+      rootOf: (id) => registry.rootSessionOf(id)
+    })
+    computer = { available: () => computerUnavailable() === null, sessions, service, tokens: MacThreadTokens.fromEnv(process.env, 'computer') }
+    registry.onMeta((m) => sessions.onMeta(m))
+    registry.onRemoved((ids) => void sessions.end(ids))
+    setTimeout(() => void pruneStaleShots(computerData), 30_000).unref()
+  }
+  computerHooks.current = computer
+  const computerRpc = new ComputerRpc(computer, () => computerWhy)
   // The box side: a thread here starting or spawning on a registered Mac,
   // reached by the app tools (apptools.ts, orchestration.ts).
   // Notices name this host as the environment switcher does.
@@ -1850,6 +1884,9 @@ export async function startServer(
     const offAway = away.onChange((snapshot) => sendFrame({ push: 'away', ...snapshot }))
     // Add-ons and skills: every list after a change, and this host's add-on status, to every client.
     const offStores = storePush.onPush(sendFrame)
+    // Computer use: the service and the live sessions to every client; the bridge's calls die with this socket.
+    const offComputer = computerRpc.onPush(sendFrame)
+    const computerSocket = computerRpc.socket()
     // Add-on grants: every view of this host after a change, never a value.
     const offGrants = addonGrants.onChange((grants) => sendFrame({ push: 'addon-grants', grants }))
 
@@ -2752,6 +2789,8 @@ export async function startServer(
           case 'session.interrupt':
             // Its Mac work first: the calls out on the Mac and its jobs end, what a pause held is refused.
             macTools.pause.stop(req.params.sessionId)
+            // A computer call in flight is cancelled; the next call of the turn runs as usual.
+            computer?.sessions.cancel(req.params.sessionId, 'interrupt')
             if (req.params.subtree) await registry.stopSubtree(req.params.sessionId)
             else await registry.stopRun(req.params.sessionId)
             sendFrame({ id: req.id, ok: true, result: null })
@@ -3197,6 +3236,22 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: await appAddonCall(addonToolDeps, callerOf(registry, sessionId), args) })
             break
           }
+          // Computer use (computer/rpc.ts): the live sessions and Stop, then the bridge's tools.
+          case 'computer.sessions':
+            sendFrame({ id: req.id, ok: true, result: computerRpc.sessions() })
+            break
+          case 'computer.stop':
+            sendFrame({ id: req.id, ok: true, result: await computerRpc.stop(req.params.sessionId) })
+            break
+          case 'app.computer':
+            sendFrame({ id: req.id, ok: true, result: await computerSocket.call(req.params) })
+            break
+          case 'app.computerCancel':
+            sendFrame({ id: req.id, ok: true, result: computerSocket.cancel(req.params) })
+            break
+          case 'app.computerTools':
+            sendFrame({ id: req.id, ok: true, result: computerSocket.tools(req.params) })
+            break
           case 'review.override': {
             const reviews = mergeReviews()
             if (!reviews) throw new Error('merge reviews are not available here')
@@ -3239,6 +3294,8 @@ export async function startServer(
       offBootResume()
       offAway()
       offStores()
+      offComputer()
+      computerSocket.close()
       offGrants()
       offMeta()
       offNotes()
@@ -3474,6 +3531,8 @@ export async function startServer(
       configureCommandSkills(null)
       setAppSkillTools(null)
       storePush.close()
+      computerRpc.close()
+      void computer?.service.close()
       awaySync.close()
       uploads.close()
       sessionMover.close()

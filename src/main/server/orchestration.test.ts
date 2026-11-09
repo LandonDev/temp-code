@@ -26,6 +26,7 @@ import {
   SPAWN_BATCH_MAX,
   spawnableModels,
   supervisedBy,
+  toolLine,
   waitForSettled
 } from './orchestration'
 
@@ -817,4 +818,10 @@ it("an undecided Mac row reads its default on the box too, as it does on the Mac
   } finally {
     mac.done()
   }
+})
+
+it("toolLine says a computer call in the activity's words, and other tools as before", () => {
+  expect(toolLine('mcp__app__computer_act', { app: 'TextEdit', action: 'left_click', element: 3 })).toBe('Clicking in TextEdit')
+  expect(toolLine('mcp__app__computer_observe', { app: 'TextEdit' })).toBe('Reading TextEdit')
+  expect(toolLine('Read', { file_path: '/a/b.ts' })).toBe('Read /a/b.ts')
 })
