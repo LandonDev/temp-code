@@ -1,0 +1,207 @@
+#if canImport(ApplicationServices)
+import ApplicationServices
+import AXText
+import ComputerCore
+import ComputerProtocol
+import Foundation
+
+struct WalkCaps: Sendable {
+    var maxNodes = ComputerDefaults.AXWalk.maxNodes
+    var maxMs = ComputerDefaults.AXWalk.maxMs
+    var maxDepth = 64
+
+    static let `default` = WalkCaps()
+}
+
+/// What a walk saw that the change monitor watches next (plan §5.5).
+struct WalkNotes {
+    /// the scroll areas walked, in reading order, at most `Signature.maxScrollAreas`
+    var scrollAreas: [AXUIElement] = []
+    /// busy indicators, progress bars and web areas, with the containers above each (at most 8)
+    var busy: [(element: AXUIElement, kind: BusyRule.Kind, containers: [AXUIElement])] = []
+}
+
+/// What one walk counted, for `tc-ax bench`.
+struct WalkCounts {
+    var nodes = 0
+    var calls = 0
+    var attributes = 0
+    var stageC = 0
+}
+
+/// One read of one window's tree (plan §5.2): every node reached is placed
+/// with one batch, a node inside its clip is read with one batch by class,
+/// then its actions and what its line needs; a container's rows outside the
+/// visible rect are counted, never read.
+final class Walker {
+    let handles: HandleTable
+    let caps: WalkCaps
+    /// a text value longer than this many UTF-16 units is read as a prefix
+    var valueUnits = 2_000
+    /// false for a subtree read: every child, whole
+    var cut = true
+    /// false for a resolve: the element alone
+    var descend = true
+    private(set) var partial = false
+    private(set) var notes = WalkNotes()
+    private(set) var counts = WalkCounts()
+    private var deadline: UInt64 = 0
+    private var seen = Set<NodeID>()
+    private var stopped = false
+
+    init(handles: HandleTable, caps: WalkCaps = .default) {
+        self.handles = handles
+        self.caps = caps
+    }
+
+    private static func now() -> UInt64 { DispatchTime.now().uptimeNanoseconds }
+
+    /// Start a walk's clock; one deadline covers every root of one read.
+    func begin() {
+        deadline = Self.now() + UInt64(caps.maxMs) * 1_000_000
+        partial = false
+        stopped = false
+        seen = []
+        notes = WalkNotes()
+        counts = WalkCounts()
+    }
+
+    /// A root (the window, an open menu, a popover, the menu bar). The window's
+    /// own failures end the read; another root that fails is left out.
+    func walk(root el: AXUIElement, clip: ComputerProtocol.Rect?, menuBar: Bool, isWindow: Bool) throws -> AXNode? {
+        switch try node(el, clip: clip, depth: 0, menuBar: menuBar, containers: [], root: true, isWindow: isWindow) {
+        case .node(let n): return n
+        default: return nil
+        }
+    }
+
+    enum Outcome {
+        case node(AXNode)
+        case hidden(Viewport.Side)
+        case skip
+    }
+
+    private func stop() {
+        partial = true
+        stopped = true
+    }
+
+    private func node(_ el: AXUIElement, clip: ComputerProtocol.Rect?, depth: Int, menuBar: Bool, containers: [AXUIElement], root: Bool, isWindow: Bool) throws -> Outcome {
+        if stopped { return .skip }
+        if counts.nodes >= caps.maxNodes || Self.now() > deadline {
+            if root && isWindow && counts.nodes == 0 { throw AXErrorMap.timeout("The window") }
+            stop()
+            return .skip
+        }
+        counts.nodes += 1
+        // stage A
+        let a = AX.batch(el, Attributes.stageA)
+        counts.calls += 1
+        counts.attributes += Attributes.stageA.count
+        let roleSlot = a["AXRole"] ?? .absent
+        if let failure = AXErrorMap.failure(roleSlot, what: "The window") {
+            if isWindow { throw failure }
+            if case .disabled = roleSlot { throw failure }
+            if case .timeout = roleSlot { stop() }
+            return .skip
+        }
+        guard let role = AX.string(roleSlot.value) else { return .skip }
+        let frame = AX.frame(a["AXPosition"]?.value, a["AXSize"]?.value)
+        // a popover or a menu may hang outside its window: it is judged by its own frame
+        let floats = role == "AXPopover" || role == "AXMenu"
+        if !root, cut, !menuBar, !floats, let side = Viewport.missed(frame, clip) { return .hidden(side) }
+        let id = handles.intern(el)
+        if seen.contains(id) || depth > caps.maxDepth { return .skip }
+        seen.insert(id)
+
+        // stage B
+        let attrs = Attributes.stageB(role)
+        let b = AX.batch(el, attrs)
+        counts.calls += 1
+        counts.attributes += attrs.count
+        if case .timeout? = b["AXTitle"] {
+            if isWindow { throw AXErrorMap.timeout("The window") }
+            stop()
+        }
+        let s = { (k: String) in b[k]?.value }
+        var n = AXNode(
+            id: id, role: role, subrole: AX.string(a["AXSubrole"]?.value), title: AX.string(s("AXTitle")), description: AX.string(s("AXDescription")),
+            placeholder: AX.string(s("AXPlaceholderValue")), value: AX.scalar(s("AXValue")),
+            identifier: AX.string(s("AXIdentifier")), domIdentifier: AX.string(s("AXDOMIdentifier")),
+            flags: AXFlags(enabled: AX.bool(s("AXEnabled")), focused: AX.bool(s("AXFocused")), selected: AX.bool(s("AXSelected")),
+                           expanded: AX.bool(s("AXExpanded")), required: AX.bool(s("AXRequired")), invalid: AX.bool(s("AXInvalid")),
+                           modal: AX.bool(s("AXModal")), busy: AX.bool(s("AXElementBusy")), loaded: AX.bool(s("AXLoaded"))),
+            frame: frame, selectedTextRange: AX.range(s("AXSelectedTextRange"))
+        )
+
+        // stage C: actions, a text value whole or as a prefix, its settable check, the label's text
+        n.actions = AX.actions(el)
+        counts.calls += 1
+        counts.stageC += 1
+        if Attributes.textEntry.contains(role) {
+            let length = AX.int(s("AXNumberOfCharacters"))
+            if let length, length > valueUnits, let prefix = AX.prefix(el, units: valueUnits) {
+                n.value = .string(prefix)
+                n.valueLength = length
+            } else {
+                n.value = AX.scalar(AX.copy(el, "AXValue").value)
+            }
+            n.settable = AX.settable(el, "AXValue") ? ["AXValue"] : []
+            counts.calls += 2
+            counts.stageC += 2
+        }
+        let ownName = [n.title, n.description].contains { !($0 ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        if !ownName, let label = AX.element(s("AXTitleUIElement")) {
+            let t = AX.batch(label, ["AXValue", "AXTitle"])
+            n.titleElementValue = AX.string(t["AXValue"]?.value) ?? AX.string(t["AXTitle"]?.value)
+            counts.calls += 1
+            counts.stageC += 1
+        }
+
+        // notes for the change monitor
+        let isContainer = Viewport.clipRoles.contains(role)
+        if role == "AXScrollArea", notes.scrollAreas.count < Signature.maxScrollAreas { notes.scrollAreas.append(el) }
+        let busyKind: BusyRule.Kind? = role == "AXBusyIndicator" ? .busy : role == "AXProgressIndicator" ? .progress : role == "AXWebArea" ? .webArea : nil
+        if let busyKind { notes.busy.append((el, busyKind, Array(containers.suffix(8)))) }
+
+        // children: the visible ones only, the rest counted by position
+        let children = descend ? AX.elements(a["AXChildren"]?.value) : []
+        let inner = cut ? Viewport.childClip(role: role, frame: frame, clip: floats ? frame : clip) : nil
+        let below = isContainer ? containers + [el] : containers
+        var visible: Set<ElementKey>?
+        var rowsOnly: Set<ElementKey>?
+        var hidden = Hidden()
+        if cut, Attributes.lists.contains(role) {
+            let shownChildren = AX.elements(s("AXVisibleChildren"))
+            let shownRows = AX.elements(s("AXVisibleRows")) + AX.elements(s("AXVisibleColumns"))
+            if !shownChildren.isEmpty {
+                visible = Set(shownChildren.map(ElementKey.init))
+            } else if !shownRows.isEmpty {
+                // rows and columns: their order comes from AXRows and AXColumns; other children are judged by frame
+                let lines = AX.elements(AX.copy(el, "AXRows").value) + AX.elements(AX.copy(el, "AXColumns").value)
+                counts.calls += 2
+                visible = Set(shownRows.map(ElementKey.init))
+                rowsOnly = Set(lines.map(ElementKey.init))
+            }
+            // an empty list is not believed (IntelliJ's): judge every child by frame
+        }
+        let firstVisible = visible.flatMap { v in children.firstIndex { v.contains(ElementKey(element: $0)) } }
+        for (i, child) in children.enumerated() {
+            if stopped { break }
+            let key = ElementKey(element: child)
+            if let visible, rowsOnly.map({ $0.contains(key) }) ?? true, !visible.contains(key) {
+                if let first = firstVisible, i < first { hidden.above += 1 } else { hidden.below += 1 }
+                continue
+            }
+            switch try node(child, clip: inner, depth: depth + 1, menuBar: menuBar, containers: below, root: false, isWindow: false) {
+            case .node(let c): n.children.append(c)
+            case .hidden(.above): hidden.above += 1
+            case .hidden(.below): hidden.below += 1
+            case .skip: break
+            }
+        }
+        if !hidden.isEmpty { n.hidden = hidden }
+        return .node(n)
+    }
+}
+#endif
