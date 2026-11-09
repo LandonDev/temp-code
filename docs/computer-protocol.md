@@ -453,6 +453,33 @@ carry to a matching window's new stream for two seconds. `FAKE_SHOT_FILE`
 copies that file's bytes into every observation, screenshot, zoom and
 capture shot, for picture proofs.
 
+#### The code, by name
+
+- Capture (native/tc-computer/Sources/Capture/, `ScreenCaptureKitCapture`) does one window, never the desktop,
+  and makes no ScreenCaptureKit call while `CGPreflightScreenCaptureAccess`
+  is false (`permission_missing`; prompting is the host's). Screenshots:
+  live bounds by `CGWindowListCreateDescriptionFromArray` (a minimized
+  window too), shareable windows on every Space, no shadow margin, a zoom
+  captured whole and cropped, written beside the shell's stem
+  (`ShotNaming`, `ShotCounter`) and renamed on with `RENAME_EXCL`, so no
+  shot is ever replaced; with no named format JPEG 0.85, and PNG too when
+  the image is flat (`flatPNG` 0.85), kept when no larger. The preview
+  stream sends a sample only when its pixel fingerprint changed (a covered
+  window's samples are all `complete` and wholly dirty), two frames out at
+  most, the newest held, capture stopped after 5 s unacked; frames stay
+  inline (busiest p95 225 KiB, 6.7 ms). The pixel watch (`PixelWatching`,
+  one 256 px 10 fps stream per window, 30 s linger) feeds `ChangeJudge`:
+  dirty cells confirmed by luma, small changes ignored, ambient cells
+  (spinners, carets) quiet after two frames; a counting frame restarts the
+  smart wait's quiet clock. `CoordinateMapping` (ComputerCore) maps a
+  session pixel to the screen at its centre. Every number is
+  `CaptureTuning`, the wire's read from `ComputerDefaults`
+  (src/shared/computer/captureParity.test.ts). Proof on the Mac: `bash
+  scripts/mac/proof-computer-capture.sh` (capture-proof, never shipped:
+  scenes 0–19 on its own inert windows below `.normal` and a second process
+  of itself, SkyLight only in its PrivateSpaces.swift, which a unit test
+  keeps out of every other target).
+
 ## 7. The smart wait
 
 `WaitOptions { minMs, quietMs, maxMs, busyMaxMs }`, all measured from the moment the action's last input was posted. The service waits `minMs`, then starts the **quiet clock**, which every change restarts, and returns when it reaches `quietMs`. Quiet means no AX notification from the app (an AXObserver on value changed, title changed, created, destroyed, layout changed, focused element changed, selected text changed, selected children changed, menu opened or closed, window created, moved or resized, element busy changed) and the same **shallow signature** (the focused element and a hash of its value and selection, the window's title, its sheets, and the child counts of the window and of the scroll areas the last observation showed; a focused value over 100,000 UTF-16 units hashes as its length and selection, and at most 32 scroll areas count). The signature is never a full walk: walks cost milliseconds per node (§4.3). It returns at `maxMs` if it never goes quiet and no busy indicator shows, and at `busyMaxMs` while one does. A **busy indicator** is a visible `busy` element, an indeterminate `progress` (no AXValue), or a `web area` whose AXElementBusy is true or whose AXLoaded is false, among those the last walk found, the app announced since (AXCreated, AXElementBusyChanged, AXLoadComplete), or a scan of the last walk's web areas found when the app changed since the last scan (breadth first, never into a child outside its clip, at most 400 nodes and 25 ms: Chrome announces no spinner it shows, measured 2026-11-09); visible is judged against its containers' frames as they are now. Neither app the probe walked exposed any of these, and Codex's service waits on the same signals (AXElementBusyChanged, AXProgressIndicator), so the quiet rule carries the wait and the busy rule only extends it.
@@ -615,6 +642,77 @@ real thread in an isolated instance, writing its report under
 c68b770a, the result was "not run: the Mac was locked, the person away".
 Landing B merged on the box's typecheck and tests, `computer:test` on the
 Mac (482) and three review rounds.
+
+#### The code, by name
+
+- What the person sees (plan .temp-code/plan-uYrrhDzuBc9f.md): one Computer row per live session
+  in the right panel's Activity section (`lib/computerSessions.ts` keeps every
+  host's rows from `computer.sessions` and the `computer` push; the window in
+  its app, the tier in `COMPUTER_TIER_WORDS` from src/shared/statusWords.ts,
+  never ax/process/session, the age, Stop as `computer.stop` on the thread's
+  host). On the Mac's desktop it opens onto the live preview: `local` RPCs
+  `computer.preview.start/ack/stop` and the `computer-frame`,
+  `computer-click`, `computer-preview` pushes to the asking socket alone,
+  served by `src/main/server/computer/preview.ts` (one service stream per
+  thread at 4 fps, `previewGate.ts`: one frame in flight per watcher, none
+  until its start answer is out; an end during the start rides in the answer
+  as `ended`) and drawn by `surfaces/threads/ComputerPreview.tsx` (lazy
+  chunk, frames through `createImageBitmap`, acked after the draw, the click
+  ring `CLICK_MARK`). A box thread driving this Mac is previewed by the
+  bridge's `macComputerKey`. Calls read in plain words (`computerPhrase` in
+  src/shared/computer/words.ts: live from the host's `running.words`, which
+  name the element from the thread's book, settled from the result's step
+  lines; `parseStepLine`/`parseShotLine` in tools.ts); a completed call with
+  a picture the model asked for stands as its own row
+  (`surfaces/computerShots.ts`, `transcript/ComputerShotRow.tsx`, the
+  picture through `fs.media`, whose roots now include the userData
+  attachments: `serverMediaRoots`). The Mac's banner while the session tier
+  holds the session (`computer/hold.ts` `SessionHolds`, the main process's
+  `src/main/computerBanner.ts` through `computerBannerHooks`, never Electron
+  in server code): "TempCode is using your Mac", with "Esc to stop" only
+  once `escape.watch` (P1) answered; `escape/pressed` stops computer use for
+  the turn. The scheduler's slot is not wired yet: `slot.onHolder(holds.holder)`
+  goes where index.ts says once it lands; until then only
+  `computer.proofHold` (local, `TEMP_CODE_E2E_STATUS=1` only) shows the
+  banner. The fake service (`fakeService.mjs`) streams frames, sends
+  `capture/click` (P2) and takes `FAKE_SHOT_FILE` (or `FAKE_SHOT_FILES=a,b`
+  in order, the last repeating), `FAKE_STREAM_END_MS`,
+  `FAKE_ESCAPE_PRESS_MS`, `FAKE_ESCAPE_UNSUPPORTED` for the tests.
+- The preview's Mac proofs drive TC Probe launched with `--tick` (a label
+  counting ten times a second, so a capture stream, which sends only on a
+  change, keeps sending; SIGUSR1 pauses and resumes it;
+  scripts/lib/tcProbeApp.ts builds and launches it).
+  `bun run script:e2e-computer-preview` (esbuild → node): the real
+  tc-computer under `ComputerService`, `ComputerSessions`, `ComputerPreviews`
+  and `SessionHolds` with a fake viewer: the target after one observe, 4 ± 1
+  fps over 5 s, the stop, an `ax` click's `computer-click` inside Ping's frame
+  (again for a click that changes nothing on a still window, with no frame
+  from the service after it), `escape.watch` on, its lease and
+  off read from the trace and `CGGetEventTapList`, a hold's banner hooks;
+  report under /tmp/tc-preview-proof. `bun run script:e2e-computer-ui`
+  (`--skip-build` reuses out/): an isolated preview instance on port 9241
+  with `TEMP_CODE_COMPUTER_PIN`, a sonnet thread in full access, the Computer
+  row, ≥ 3 frames and a mark, the screenshot row, captures dark and light,
+  then `computer.proofHold` and the banner's window (never focused, the
+  front app unchanged); its cleanup ends only the instance's own process
+  group. Both need an unlocked, awake screen: `ScreenWatch` reads it before
+  each launch and every second, and a lock or a dark display stops the run
+  as inconclusive and cleans up. Neither has run yet: on 2026-11-09 they
+  read "not run: the Mac was locked, the person away"
+  (docs/computer-protocol.md "The live proofs on the Mac").
+- Pictures to each model: claude and Muse get a computer call's pictures as
+  image parts; codex too (`codexComputerImages()` in drivers/codex.ts, its
+  measured default `parts`; `TEMP_CODE_CODEX_COMPUTER_IMAGES=parts|steer|view`
+  only under NODE_ENV=test or TEMP_CODE_E2E_STATUS=1, `steer` sending the
+  shots as `localImage` into the running turn with its echo hidden). Codex's
+  `view_image` calls are transcript rows now (`imageView` items). The proof is
+  `bun run script:e2e-computer-images` (scripts/e2e-computer-images.ts,
+  in-process with the electron stub over the fake service: a real thread in
+  full access reads six random letters off a picture, `scripts/lib/codeImage.ts`,
+  and fails if it opened the file by its path; `--harness muse`); reports
+  under `.temp-code/computer-images/<host>.json`, the table in
+  docs/computer-protocol.md §9 (the box, 2026-11-08: claude 2.1.303 parts and
+  codex 0.163.0 parts, steer and view all passed both cases).
 
 ## 9. The tools the models see
 
@@ -979,6 +1077,34 @@ Measured on the Mac on 2026-11-09 with `tc-ax bench` (release build, 2 warm read
 
 A walk costs about 0.12 to 0.4 ms a node read (2.3 to 3.1 AX calls a node). The builder over a recorded fixture tree takes 0.2 to 0.4 ms.
 
+#### The code, by name
+
+- The AX reader (plan .temp-code/plan-8sO1AAx_glmS.md): `AXText` holds every rule that needs no
+  live element (keep, facts, the viewport cut, the index book with its
+  rebuilt-element match: a DOM id, else a name unique among the parent's
+  children in both reads, else name and place; folds, `TextBudget`, rendering, the diff,
+  `Builder.build`) and the tables generated from observation.ts
+  (`Sources/AXText/Generated/ObservationTables.swift`, by `gen:swift-computer`),
+  so the box tests it (`scripts/computer-text-test.sh`); `AXReader` is the Mac's walk
+  (three stages per node), handles, windows (`_AXUIElementGetWindow`, the one
+  private symbol, looked up through `PrivateSymbol` with the window-list match
+  as its fallback; the package README lists it), `AXManualAccessibility`, the change monitor, `AppReader`
+  and `AXReaders`; `tc-ax` is the proof's dev tool (`replay <tree.json>`
+  times the builder anywhere). Goldens: every recorded state's
+  `observation.txt`, the `diff.txt` from the state before it and
+  `chrome/form/truncated.txt`, rewritten with `TC_AX_GOLDEN=update sh
+  scripts/computer-text-test.sh --filter GoldenTests` (or `swift test` on the
+  Mac) and read before each commit; the grammar test parses
+  all three. The live proof is `bash scripts/mac/ax-reader-proof.sh` on the
+  Mac from a scratch clone: scratch apps only, every window read in the
+  background and never activated; a launch raises Chrome, the dev window and
+  IntelliJ whatever the flag, so each starts only past five minutes with no
+  input, is aborted when input resumes, and waits up to 90 minutes ("not run:
+  the person was at the Mac" otherwise); IntelliJ only with
+  `TC_AX_INTELLIJ=1`. Targets, p95 warm: TextEdit 60 ms, Chrome form 250 ms,
+  a heavy page 600 ms, IntelliJ 500 ms, a dev instance 400 ms, the signature
+  10 ms.
+
 ## 16. The service shell
 
 `native/tc-computer/Sources/ComputerServiceKit/` (pure, Foundation only), `Sources/ComputerService/` and `Sources/tc-computer/`. The shell resolves, routes, waits and owns the locks; the modules read, act and capture.
@@ -1127,6 +1253,27 @@ A box thread whose `macBridge.thread.<sessionId>` names a Mac drives that Mac's 
 - **Words** (`contract-maccomputer.ts`): `COMPUTER_SWITCH_OFF`, `computerUnavailableOnMac`, `COMPUTER_HOLD_EXPIRED`, `COMPUTER_HOLD_STOPPED`, `COMPUTER_MAC_WENT_OFFLINE`, `COMPUTER_NO_MAC`, `COMPUTER_BAD_ANSWER`, `askingWords`.
 - **Proof**: `bun run script:e2e-computer-bridge` (`scripts/e2e-computer-bridge.ts`): on the Mac, an isolated headless Mac instance with its queries for TC Probe (the sessions proof's scratch app, never key) pinned to that app's pid (`TEMP_CODE_COMPUTER_PIN`, honoured only with `TEMP_CODE_USER_DATA`), and the box half started over SSH; the box thread's `app.computer` calls with no model turn, tiers `ax` and `process` only. One computer proof runs on the Mac at a time (it waits for another to finish); there is no idle gate, each check waits only for an unlocked, awake screen, and a window that comes forward is noted. Unit tests: `contract-maccomputer.test.ts`, `remote/macComputer.test.ts` and `macComputer.sessions.test.ts`, `computer/bridge.test.ts`, the guard's, pause's and peer calls' additions.
 
+#### The code, by name
+
+- Computer use through the Mac bridge (docs/box.md "Computer use from a box thread"): a box thread whose bridge
+  names a Mac gets the four tools while that Mac offers `computer` in its
+  `peer.register` (the host's switch `macBridge.computer.<envId>`, off by
+  default; the box keeps the offer as `macBridge.computerOffer.<envId>`).
+  Each call is `mac.computer` (`contract-maccomputer.ts`), run on the Mac by
+  `remote/macComputer.ts` in a session keyed `macComputerKey(box, thread)`: the
+  policy and switch checked, Away refused, a live session a running request of
+  kind `computer` on the load guard under `macBridge.maxComputer.<envId>`
+  (default 2), a card of kind `computer` in safe and edits, the row back as
+  `peer.progress`, the pictures read back. `mac.computerEnd` settles, stops or
+  ends it. The box's `computer/bridge.ts` queues the calls per thread, lands
+  the pictures under the thread, mirrors the row on its own `computer` push
+  (`macPeer`, `macName`, `asking`) and records a `computer` ledger row; the
+  renderer's `lib/computerSessions.ts` keeps each host's rows and
+  `chrome/ComputerAskToasts.tsx` names the Mac while a card waits there. Seam:
+  `TEMP_CODE_COMPUTER_PIN="TextEdit=<pid>"` (isolated instances only) pins an
+  app query to a pid; a headless Mac instance serves computer use with
+  `TEMP_CODE_COMPUTER=1`. Proof: `bun run script:e2e-computer-bridge`.
+
 ## 19. The model's words
 
 Everything a model reads about computer use, and the confirmations policy the host holds it to. The plan is `.temp-code/plan-0yqEr_cKljNd.md`.
@@ -1217,6 +1364,33 @@ The rule (`pickWinner`, `scripts/lib/computerWordsJudge.ts`): more tasks passed 
 | Muse Wonder 1.0 | C | 3/3 | 6.5 | 4 | 37.9 |
 
 So `WORDS_BY_FAMILY` gives Anthropic and OpenAI models the cua words and Meta models the anthropic words, and `TOOLS_BY_FAMILY` the four tools to all (Opus took more steps with one tool per verb). In the delete check all three models set `confirm.kind: "delete"` on the call that deleted the row. Sol's misses were Codex's own `cua_repl.js` used beside the tools twice and one read over its call budget. Two runs a cell is a small sample: the step counts that decided Opus and Muse are for the benchmark's suite to watch. Started from a thread, the run needs every `TEMP_CODE_*` and `CLAUDE*` variable cleared and its own session (`setsid`), or the host's process guard ends it with the call.
+
+#### The code, by name
+
+- The model's words: the four tools'
+  descriptions and every field's in two word shapes, Anthropic's and cua's
+  (src/shared/computer/descriptions.ts; tools.ts builds the described schemas
+  and `computerToolSpecs(shape, tools)`), COMPUTER_MECHANICS
+  (src/main/server/computer/prompts.ts: about 700 tokens, the tier paragraph
+  `COMPUTER_TIERS` in it) and `wordsFor(session)` by the model's maker
+  (`WORDS_BY_FAMILY`, `TOOLS_BY_FAMILY`). `offersComputerTools(session)` and
+  `computerMechanicsFor(session)` (apptools.ts) decide whether a thread gets
+  the tools and the section, which it reads once: claude through
+  `mechanicsFor` or the driver's fallback for a subagent, codex and Muse in
+  their first message; a cursor thread gets neither. The model flags an act
+  the person approves first with `confirm: { kind, what }`
+  (src/shared/computer/policy.ts); the host then asks in every mode, full
+  access included, and Away denies it. Whatever the model flagged, the host
+  asks before text goes into a password field (the card never shows the
+  text), refuses text into an app the thread has not read and a batch's text
+  step after another input without an element, pins every call's app to a
+  pid before any request (`TargetResolver` in computer/policy.ts) and refuses
+  TempCode itself and the system's password and Touch ID prompts
+  (`refused_app`). Every service error reads through `errorLine`
+  (src/shared/computer/errorWords.ts). The comparison that picked the shipped
+  words is `bun run script:compare-computer-words` (the Mac only; tasks in
+  scripts/lib/computerTasks.ts on fixtures/page/bench.html, the rule in
+  scripts/lib/computerWordsJudge.ts).
 
 ## 20. Tier scheduling
 
