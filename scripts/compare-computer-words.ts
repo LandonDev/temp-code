@@ -23,6 +23,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { randomBytes } from 'node:crypto'
+import { configure } from 'aliax-core'
 import { startServer, type RunningServer } from '../src/main/server/index'
 import { computerHooks } from '../src/main/server/computer/mcp'
 import { ComputerRpcError } from '../src/main/server/computer/connection'
@@ -214,6 +215,12 @@ const resolveApp = (q: string): AppRef | null => {
   for (const app of Object.keys(QUERIES) as TaskApp[]) if (QUERIES[app].includes(q.toLowerCase()) && pinned[app]) return { pid: pinned[app]! }
   return null
 }
+// an empty vault routes nothing: every thread passes its CLI's own login through to the provider, never the person's live shim
+const ALIAX = join(WORK, 'data', 'aliax')
+mkdirSync(join(ALIAX, 'secrets'), { recursive: true, mode: 0o700 })
+writeFileSync(join(ALIAX, 'vault.key'), `${randomBytes(32).toString('hex')}\n`, { mode: 0o600 })
+writeFileSync(join(ALIAX, 'profiles.json'), '{}\n')
+configure({ dataDir: ALIAX, fetch: (url, init) => fetch(url, init), secrets: { mode: 'fileKey', path: join(ALIAX, 'vault.key') }, appName: 'temp-code-words-cmp' })
 const server: RunningServer = await startServer(join(WORK, 'data', 'app.db'), { dataDir: join(WORK, 'data'), claimShim: false, remotePort: 0, computerResolveApp: resolveApp })
 const registry = server.registry
 const host = computerHooks.current
