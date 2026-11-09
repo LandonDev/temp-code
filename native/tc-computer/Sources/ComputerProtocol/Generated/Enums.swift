@@ -535,3 +535,32 @@ public enum StaleReason: RawRepresentable, Codable, Hashable, Sendable {
         }
     }
 }
+
+public enum RawAXValueType: RawRepresentable, Codable, Hashable, Sendable {
+    case string
+    case number
+    case bool
+    case other
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "string": self = .string
+        case "number": self = .number
+        case "bool": self = .bool
+        case "other": self = .other
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .string: "string"
+        case .number: "number"
+        case .bool: "bool"
+        case .other: "other"
+        case .unknown(let value): value
+        }
+    }
+}

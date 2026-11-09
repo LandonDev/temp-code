@@ -69,11 +69,11 @@ public enum ComputerDefaults {
         public static let durationMaxSeconds = 300
     }
     public enum RPCErrorCode {
-        public static let parse = -32700
+        public static let parseError = -32700
         public static let invalidRequest = -32600
         public static let methodNotFound = -32601
         public static let invalidParams = -32602
-        public static let internal = -32603
+        public static let internalError = -32603
         public static let computer = -32000
     }
     /// The waits of src/shared/computer/protocol.ts COMPUTER_WAIT; the host sends them with every call.
@@ -84,7 +84,7 @@ public enum ComputerDefaults {
         /// The `wait` action: the smart wait capped at `duration` seconds.
         public static func waitAction(seconds: Double) -> WaitOptions {
             let cap = Int((seconds * 1000).rounded())
-            return WaitOptions(minMs: 0, quietMs: ${waitActionWait(1).quietMs}, maxMs: cap, busyMaxMs: cap)
+            return WaitOptions(minMs: 0, quietMs: 450, maxMs: cap, busyMaxMs: cap)
         }
     }
 }

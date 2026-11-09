@@ -429,51 +429,22 @@ public struct SessionRef: Codable, Hashable, Sendable {
     }
 }
 
-public struct RawAXNode: Codable, Hashable, Sendable {
-    public struct Value: Codable, Hashable, Sendable {
-        public enum Type: RawRepresentable, Codable, Hashable, Sendable {
-            case string
-            case number
-            case bool
-            case other
-            /// A value this build does not know; `rawValue` keeps it.
-            case unknown(String)
+public struct RawAXValue: Codable, Hashable, Sendable {
+    public let type: RawAXValueType
+    public let text: String
 
-            public init(rawValue: String) {
-                switch rawValue {
-                case "string": self = .string
-                case "number": self = .number
-                case "bool": self = .bool
-                case "other": self = .other
-                default: self = .unknown(rawValue)
-                }
-            }
-
-            public var rawValue: String {
-                switch self {
-                case .string: "string"
-                case .number: "number"
-                case .bool: "bool"
-                case .other: "other"
-                case .unknown(let value): value
-                }
-            }
-        }
-
-        public let type: Type
-        public let text: String
-
-        public init(type: Type, text: String) {
-            self.type = type
-            self.text = text
-        }
+    public init(type: RawAXValueType, text: String) {
+        self.type = type
+        self.text = text
     }
+}
 
+public struct RawAXNode: Codable, Hashable, Sendable {
     public let role: String
     public let subrole: String?
     public let roleDescription: String?
     public let title: String?
-    public let value: Value?
+    public let value: RawAXValue?
     public let description: String?
     public let help: String?
     public let placeholder: String?
@@ -497,7 +468,7 @@ public struct RawAXNode: Codable, Hashable, Sendable {
     public let selectedTextRange: [Int]?
     public let children: [RawAXNode]
 
-    public init(role: String, subrole: String? = nil, roleDescription: String? = nil, title: String? = nil, value: Value? = nil, description: String? = nil, help: String? = nil, placeholder: String? = nil, identifier: String? = nil, domIdentifier: String? = nil, titleElementValue: String? = nil, enabled: Bool? = nil, focused: Bool? = nil, selected: Bool? = nil, expanded: Bool? = nil, required: Bool? = nil, invalid: Bool? = nil, modal: Bool? = nil, minimized: Bool? = nil, busy: Bool? = nil, loaded: Bool? = nil, visible: Bool? = nil, frame: Rect? = nil, actions: [String]? = nil, settable: [String]? = nil, selectedTextRange: [Int]? = nil, children: [RawAXNode]) {
+    public init(role: String, subrole: String? = nil, roleDescription: String? = nil, title: String? = nil, value: RawAXValue? = nil, description: String? = nil, help: String? = nil, placeholder: String? = nil, identifier: String? = nil, domIdentifier: String? = nil, titleElementValue: String? = nil, enabled: Bool? = nil, focused: Bool? = nil, selected: Bool? = nil, expanded: Bool? = nil, required: Bool? = nil, invalid: Bool? = nil, modal: Bool? = nil, minimized: Bool? = nil, busy: Bool? = nil, loaded: Bool? = nil, visible: Bool? = nil, frame: Rect? = nil, actions: [String]? = nil, settable: [String]? = nil, selectedTextRange: [Int]? = nil, children: [RawAXNode]) {
         self.role = role
         self.subrole = subrole
         self.roleDescription = roleDescription

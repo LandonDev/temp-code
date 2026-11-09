@@ -728,11 +728,11 @@ export type HostNotification = z.infer<typeof HostNotificationSchema>
 
 /** The error codes: the standard five carry no data; `computer` carries a ComputerError. */
 export const RPC_ERROR = {
-  parse: -32700,
+  parseError: -32700,
   invalidRequest: -32600,
   methodNotFound: -32601,
   invalidParams: -32602,
-  internal: -32603,
+  internalError: -32603,
   computer: -32000
 } as const
 
@@ -778,10 +778,8 @@ export const NotificationFrameSchema = z.object({ jsonrpc: JsonRpcVersionSchema 
 
 // ── fixtures, never the wire (§10) ──────────────────────────────────────
 
-export const RawAXValueSchema = z.object({
-  type: z.enum(['string', 'number', 'bool', 'other']),
-  text: z.string()
-})
+export const RawAXValueTypeSchema = z.enum(['string', 'number', 'bool', 'other'])
+export const RawAXValueSchema = z.object({ type: RawAXValueTypeSchema, text: z.string() })
 
 /** One AX element as the recorder read it; every child is kept, visible or not. */
 export interface RawAXNode {
