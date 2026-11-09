@@ -4,8 +4,8 @@ import Foundation
 import Testing
 
 /// The recorded fixtures (src/main/server/computer/fixtures/apps), read in place
-/// from the checkout. `TC_AX_GOLDEN=update swift test --filter GoldenTests`
-/// rewrites the goldens; read every rewritten file before committing it.
+/// from the checkout. `TC_AX_GOLDEN=update swift test --filter GoldenTests` (on the box,
+/// `sh scripts/computer-text-test.sh` in its place) rewrites the goldens; read every rewritten file before committing it.
 enum Goldens {
     static let apps = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

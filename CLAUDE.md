@@ -3599,8 +3599,10 @@ proof and the sizing rules; the pieces, by name:
 - native/tc-computer declares every target (ComputerProtocol, ComputerCore's
   Seams.swift, AXReader, Input, Capture, ComputerService, the executable);
   each sibling fills its own. `bun run computer:test` is the gate's
-  `computer-swift` step (Mac); the box's Linux toolchain under ~/toolchains
-  builds and tests it too.
+  `computer-swift` step (Mac). The whole package builds only on the Mac
+  (Input and Capture import Apple frameworks); on the box, with the Linux
+  toolchain under ~/toolchains, `sh scripts/computer-text-test.sh` tests
+  ComputerProtocol and AXText from a scratch package linked to the checkout.
 - Fixtures: src/main/server/computer/fixtures/ (its README): hand-written
   wire frames for every method, error kind and notification, observation
   texts for every grammar case, `page/form.html`, and `apps/` trees and
@@ -3665,15 +3667,16 @@ proof and the sizing rules; the pieces, by name:
   children in both reads, else name and place; folds, `TextBudget`, rendering, the diff,
   `Builder.build`) and the tables generated from observation.ts
   (`Sources/AXText/Generated/ObservationTables.swift`, by `gen:swift-computer`),
-  so the box tests it on its Linux toolchain; `AXReader` is the Mac's walk
+  so the box tests it (`scripts/computer-text-test.sh`); `AXReader` is the Mac's walk
   (three stages per node), handles, windows (`_AXUIElementGetWindow`, the one
   private symbol, with the window-list match as its fallback; the package
   README lists it), `AXManualAccessibility`, the change monitor, `AppReader`
   and `AXReaders`; `tc-ax` is the proof's dev tool (`replay <tree.json>`
   times the builder anywhere). Goldens: every recorded state's
   `observation.txt`, the `diff.txt` from the state before it and
-  `chrome/form/truncated.txt`, rewritten with `TC_AX_GOLDEN=update swift test
-  --filter GoldenTests` and read before each commit; the grammar test parses
+  `chrome/form/truncated.txt`, rewritten with `TC_AX_GOLDEN=update sh
+  scripts/computer-text-test.sh --filter GoldenTests` (or `swift test` on the
+  Mac) and read before each commit; the grammar test parses
   all three. The live proof is `bash scripts/mac/ax-reader-proof.sh` on the
   Mac from a scratch clone: scratch apps only, every window read in the
   background and never activated; a launch raises Chrome, the dev window and

@@ -13,10 +13,12 @@ Each Swift thread fills its own target (§11 there).
 | `Input`, `Capture`, `ComputerService`, `tc-computer` | the other threads' targets | Mac |
 | `tc-ax` | the AX reader's dev tool for the live proof and the timings; never shipped | Mac |
 
-Tests: `bun run computer:test` on the Mac (every target); on the box the Linux
-toolchain under `~/toolchains` runs `swift test` for `ComputerProtocolTests`
-and `AXTextTests`, the goldens of `src/main/server/computer/fixtures/apps`
-included (`TC_AX_GOLDEN=update` rewrites them; read each before committing).
+Tests: `bun run computer:test` on the Mac (every target). The whole package
+builds only on the Mac, so on the box the Linux toolchain under `~/toolchains`
+runs `sh scripts/computer-text-test.sh`: `ComputerProtocolTests` and
+`AXTextTests` from a scratch package linked back into the checkout, the goldens
+of `src/main/server/computer/fixtures/apps` included (`TC_AX_GOLDEN=update`
+rewrites them in place; read each before committing).
 
 ## Private symbols
 
