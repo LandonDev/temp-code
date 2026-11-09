@@ -114,6 +114,9 @@ const WATCH_EVERY_MS = 1_000
 /** How long the proof waits in all for a gap. */
 const GATE_WAIT_MS = 90 * 60_000
 const NOT_RUN = 'not run: the person was at the Mac'
+const ABORTED = 'aborted: the person came back'
+/** In the scratch TextEdit's arguments, so an abort finds it before `open` has told us its pid. */
+const RUN_MARK = `tc-computer-proof-${process.pid}-${Date.now()}`
 
 // ── the report ──────────────────────────────────────────────────────────
 
@@ -140,7 +143,13 @@ const report = {
   steps: [] as StepRecord[],
   skipped: [] as { name: string; why: string }[],
   /** Each try at the two apps: run whole, or aborted when the person touched the Mac. */
-  gate: [] as { attempt: number; at: string; outcome: 'ran' | 'aborted'; afterMs?: number }[],
+  gate: [] as {
+    attempt: number
+    at: string
+    outcome: 'ran' | 'aborted'
+    why?: 'input' | 'deadline'
+    afterMs?: number
+  }[],
   stopped: null as string | null,
   cleanup: [] as string[]
 }
@@ -167,6 +176,10 @@ class Chain {
   private broken: string | null = null
 
   async step(name: string, fn: (data: Record<string, unknown>) => Promise<void>): Promise<void> {
+    if (tryAborted) {
+      record({ name, outcome: 'skipped', ms: 0, why: ABORTED })
+      return
+    }
     if (this.broken) {
       record({ name, outcome: 'skipped', ms: 0, why: `${this.broken} failed` })
       return
@@ -284,6 +297,7 @@ const personIdleSecondsAsync = async (): Promise<number> =>
 /** Until the Mac has had LAUNCH_IDLE_S with no input; false when that cannot come before `deadline`. */
 async function awaitGap(deadline: number): Promise<boolean> {
   for (;;) {
+    if (Date.now() >= deadline) return false
     const shortMs = (LAUNCH_IDLE_S - (await personIdleSecondsAsync())) * 1_000
     if (shortMs <= 0) return true
     if (Date.now() + shortMs > deadline) return false
@@ -291,27 +305,36 @@ async function awaitGap(deadline: number): Promise<boolean> {
   }
 }
 
-/** Reads the idle time every second from now on; `onInput` runs once, the first time the person touched the Mac since. */
-function watchPerson(onInput: () => void): { stop: () => void; firedAt: () => number | null } {
+/**
+ * Reads the idle time every second from now on; `onStop` runs once, the first time the person touched
+ * the Mac since, or once the run's `deadline` passes.
+ */
+function watchPerson(
+  deadline: number,
+  onStop: () => void
+): { stop: () => void; fired: () => { at: number; why: 'input' | 'deadline' } | null } {
   const since = Date.now()
-  let firedAt: number | null = null
+  let fired: { at: number; why: 'input' | 'deadline' } | null = null
   let reading = false
+  const fire = (why: 'input' | 'deadline'): void => {
+    if (fired) return
+    fired = { at: Date.now(), why }
+    onStop()
+  }
   const timer = setInterval(() => {
-    if (reading || firedAt !== null) return
+    if (reading || fired) return
+    if (Date.now() > deadline) return fire('deadline')
     reading = true
     personIdleSecondsAsync()
       .then((idle) => {
-        if (firedAt === null && Date.now() - idle * 1_000 > since) {
-          firedAt = Date.now()
-          onInput()
-        }
+        if (Date.now() - idle * 1_000 > since) fire('input')
       })
       .catch(() => {})
       .finally(() => {
         reading = false
       })
   }, WATCH_EVERY_MS)
-  return { stop: () => clearInterval(timer), firedAt: () => firedAt }
+  return { stop: () => clearInterval(timer), fired: () => fired }
 }
 
 /** The Xcode every Swift build here uses; the Command Line Tools' toolchain is unreliable on this Mac. */
@@ -690,6 +713,8 @@ const shotNumber = (path: string): number => Number(/^(\d+)-/.exec(basename(path
 
 let probePid = 0
 let textEditPid = 0
+/** Set when the person came back during a try: every step and launch of that try stops. */
+let tryAborted = false
 /** Set when the proof stops before its steps: the one line it prints. */
 let stopLine: string | null = null
 
@@ -756,22 +781,31 @@ async function run(): Promise<void> {
     const waits = report.waits.length
     const servicesFrom = services.length
     const t0 = Date.now()
-    const watch = watchPerson(() => abortApps(servicesFrom))
+    const abort = (): void => abortApps(servicesFrom)
+    tryAborted = false
+    const watch = watchPerson(deadline, abort)
     try {
-      await appSections(attempt, noPictures)
+      await appSections(attempt, noPictures, abort)
     } finally {
       watch.stop()
     }
-    const firedAt = watch.firedAt()
-    if (firedAt === null) {
+    const fired = watch.fired()
+    if (!fired && !tryAborted) {
       report.gate.push({ attempt, at, outcome: 'ran' })
       break
     }
-    // the person came back: this try's results go, and the next gap tries again from the start
+    // the person came back (or the time ran out): this try's results go, and the next gap tries again
     report.steps.splice(steps)
     report.waits.splice(waits)
-    report.gate.push({ attempt, at, outcome: 'aborted', afterMs: firedAt - t0 })
+    report.gate.push({
+      attempt,
+      at,
+      outcome: 'aborted',
+      why: fired?.why ?? 'input',
+      afterMs: (fired?.at ?? Date.now()) - t0
+    })
     abortApps(servicesFrom)
+    tryAborted = false
   }
 
   await new Chain().step('every frame matched the schemas', async (data) => {
@@ -780,24 +814,55 @@ async function run(): Promise<void> {
   })
 }
 
-/** Hides then kills the scratch apps, and kills the services this try opened. */
-function abortApps(servicesFrom: number): void {
-  for (const pid of [probePid, textEditPid])
-    if (pid && alive(pid)) {
-      try {
-        probe('hide', [String(pid)])
-      } catch {
-        // killed next either way
-      }
-      process.kill(pid, 'SIGKILL')
+/** The scratch apps this run started, by what they run, whether or not their launch has answered yet. */
+function ownedPids(): number[] {
+  const find = (pattern: string): number[] => {
+    try {
+      return execFileSync('pgrep', ['-f', pattern], { encoding: 'utf8' })
+        .split('\n')
+        .filter(Boolean)
+        .map(Number)
+    } catch {
+      return []
     }
+  }
+  // `ps` names /tmp as /private/tmp, so the probe app is matched below the directory's own name
+  return [...new Set([...find('tc-computer-proof/TC Probe.app/Contents/MacOS/'), ...find(RUN_MARK)])]
+}
+
+/** Hides then kills every scratch app the run started; the first half of an abort, and the last of the cleanup. */
+function hideThenKillApps(): number[] {
+  const pids = [...new Set([probePid, textEditPid, ...ownedPids()])].filter((p) => p && alive(p))
+  for (const pid of pids)
+    try {
+      probe('hide', [String(pid)])
+    } catch {
+      // killed next either way
+    }
+  for (const pid of pids) if (alive(pid)) process.kill(pid, 'SIGKILL')
+  return pids
+}
+
+/** Stops the try: no step or launch of it runs from here, its apps are hidden and killed, its services killed. */
+function abortApps(servicesFrom: number): void {
+  tryAborted = true
+  hideThenKillApps()
   for (const svc of services.slice(servicesFrom)) if (!svc.done) svc.proc.kill('SIGKILL')
 }
 
 /** One try at the probe app and the scratch TextEdit, on a service of its own. */
-async function appSections(attempt: number, noPictures: string | null): Promise<void> {
+async function appSections(
+  attempt: number,
+  noPictures: string | null,
+  abort: () => void
+): Promise<void> {
   probePid = 0
   textEditPid = 0
+  /** Right before a launch: the try still stands and the Mac has still had its five minutes, else the try stops. */
+  const mayLaunch = (): void => {
+    if (!tryAborted && personIdleSeconds() < LAUNCH_IDLE_S) abort()
+    if (tryAborted) throw skip(ABORTED)
+  }
   const opened: { svc?: Service } = {}
   await new Chain().step('a service for the apps', async () => {
     const svc = (opened.svc = new Service(`apps, try ${attempt}`))
@@ -813,6 +878,7 @@ async function appSections(attempt: number, noPictures: string | null): Promise<
   let probeObservation: Observation | null = null
 
   await probeApp.step('apps.launch the probe app in the background', async (data) => {
+    mayLaunch()
     const before = personState()
     const r = await a.call('apps.launch', { app: PROBE_APP }, 20_000)
     check(r.launched === true && r.pid > 0, 'apps.launch launches it and gives its pid', r)
@@ -940,9 +1006,10 @@ async function appSections(attempt: number, noPictures: string | null): Promise<
   await te.step('open a scratch TextEdit in the background', async (data) => {
     // written for each try: an aborted try's TextEdit may have saved over it
     writeFileSync(RTF, `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Helvetica;}}\\f0\\fs24 ${PROBE_TEXT}\\par}\n`)
+    mayLaunch()
     const running = pidsOf('TextEdit')
     const person = personState()
-    // no restored windows, and nothing added to Open Recent
+    // no restored windows, nothing added to Open Recent, and the run's mark for an abort to find it by
     execFileSync('open', [
       '-n',
       '-g',
@@ -953,7 +1020,9 @@ async function appSections(attempt: number, noPictures: string | null): Promise<
       '-ApplePersistenceIgnoreState',
       'YES',
       '-NSRecentDocumentsLimit',
-      '0'
+      '0',
+      '-TCProofRun',
+      RUN_MARK
     ])
     textEditPid = await until(
       () => pidsOf('TextEdit').find((p) => !running.includes(p)) ?? null,
@@ -1336,6 +1405,7 @@ async function cleanup(): Promise<void> {
     while (alive(probePid) && Date.now() < deadline) await sleep(100)
     if (alive(probePid)) process.kill(probePid, 'SIGKILL')
   }
+  for (const pid of hideThenKillApps()) done(`hid and killed scratch app ${pid}`)
   for (const svc of services)
     if (!svc.done) {
       svc.proc.kill('SIGKILL')
