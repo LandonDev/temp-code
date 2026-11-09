@@ -15,8 +15,13 @@ describe("harnessParts", () => {
     expect(harnessParts({ ...base, running: true }, now)).toEqual(["Syncing…"]);
   });
   it("names each set with files for the tooltip, in the set's order", () => {
-    expect(setsText({ "Claude skills": 80, "Codex skills": 12, "Codex hooks": 1, "Shared skills": 30 })).toBe("Claude skills 80, Codex skills 12, Codex hooks 1, Shared skills 30");
-    expect(setsText({ "Claude skills": 0 })).toBe("");
+    expect(setsText({ "Claude commands": 4, "Codex hooks": 1, "Claude agents": 2 })).toBe("Claude commands 4, Codex hooks 1, Claude agents 2");
+    expect(setsText({ "Claude commands": 0 })).toBe("");
+  });
+  it("drops the sets harness sync no longer carries: an older build's skill sets show none", () => {
+    expect(setsText({ "Claude skills": 80, "Codex skills": 12, "Codex hooks": 1, "Shared skills": 30, "Muse skills": 2 })).toBe("Codex hooks 1");
+    expect(setsText({ "Claude skills": 80 })).toBe("");
+    expect(setsText({ "Claude skills": 80, Custom: 3 }, ["Custom"])).toBe("Custom 3");
     expect(setsText(null)).toBe("");
   });
 });

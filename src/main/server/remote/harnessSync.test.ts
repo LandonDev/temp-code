@@ -8,7 +8,8 @@ import { HARNESS_CHUNK_BYTES } from '@shared/contract-harness'
 import { requiredCapability } from '@shared/capabilities'
 import { HarnessSync, handleHarness, PATH_MAP_KEY, stripHostBoundEnv } from './harnessSync'
 import { setLagForTests } from '../stalls'
-import { HARNESS_SET, SKILL_BINARY_CACHE, buildManifest, commandExecutable, inSet, isMachO, isSecretPath, missingHookExecutables, ruleFor, setCounts, validRelPath, type SetRule } from './harnessSet'
+import { HARNESS_SET_LABELS } from '@shared/harnessSets'
+import { HARNESS_SET, RETIRED_ROOTS, SKILL_BINARY_CACHE, buildManifest, commandExecutable, inSet, isMachO, isRetired, isSecretPath, missingHookExecutables, ruleFor, ruleRoot, setCounts, validRelPath, type SetRule } from './harnessSet'
 
 /** A Mach-O header: the 64-bit little-endian magic the Mac's arm64 binaries carry, then anything. */
 const machO = (body = 'engine'): Buffer => Buffer.concat([Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0, 0, 1]), Buffer.from(body)])
@@ -97,29 +98,28 @@ function pair(opts: { rules?: readonly SetRule[]; macEnabled?: boolean } = {}) {
 }
 
 describe('the sync set', () => {
-  it('covers skills, commands, agents, hooks, settings, plugins, codex skills/prompts/config/hooks and .agents skills; nothing else', () => {
+  it('covers commands, agents, hooks, settings, plugins, codex prompts/config/hooks and Muse settings/hooks; no skill folder and nothing else', () => {
     for (const rel of [
-      '.claude/skills/a/SKILL.md',
       '.claude/commands/x.md',
       '.claude/agents/y.md',
       '.claude/hooks/lint.sh',
       '.claude/settings.json',
       '.claude/plugins/installed_plugins.json',
       '.claude/plugins/cache/mkt/p/1.0/plugin.json',
-      '.codex/skills/s/SKILL.md',
       '.codex/prompts/p.md',
       '.codex/config.toml',
       '.codex/hooks.json',
-      '.agents/skills/z/SKILL.md',
-      // Impeccable's launcher, engine version and agents cross; its binary cache (below) does not
-      '.agents/skills/impeccable/SKILL.md',
-      '.agents/skills/impeccable/scripts/impeccable',
-      '.agents/skills/impeccable/scripts/VERSION',
-      '.agents/skills/impeccable/scripts/command-metadata.json',
-      '.agents/skills/impeccable/agents/impeccable_documenter.toml'
+      '.config/muse/settings.json',
+      '.config/muse/hooks/pre.sh'
     ])
       expect(inSet(rel), rel).toBe(true)
     for (const rel of [
+      // Skills are the store's now: every skill root is retired.
+      '.claude/skills/a/SKILL.md',
+      '.codex/skills/s/SKILL.md',
+      '.agents/skills/z/SKILL.md',
+      '.agents/skills/impeccable/scripts/impeccable',
+      '.config/muse/skills/review/SKILL.md',
       '.claude/skills/synced/b/SKILL.md',
       '.agents/skills/impeccable/scripts/bin/darwin-arm64/impeccable',
       '.claude/skills/impeccable/scripts/bin/darwin-arm64/impeccable',
@@ -137,23 +137,30 @@ describe('the sync set', () => {
       '.codex/sessions/a.jsonl',
       '.codex/state_5.sqlite',
       '.claude/plugins/marketplaces/m/.git/HEAD',
-      '.claude/skills/a/.DS_Store',
-      '.claude/skills/a/server.pem',
-      '.claude/skills/a/id.key'
+      '.claude/commands/a/.DS_Store',
+      '.claude/commands/a/server.pem',
+      '.claude/commands/a/id.key'
     ])
       expect(inSet(rel), rel).toBe(false)
+    for (const root of RETIRED_ROOTS) {
+      expect(HARNESS_SET.some((r) => ruleRoot(r) === root || ruleRoot(r).startsWith(root + '/')), root).toBe(false)
+      expect(isRetired(`${root}/x/SKILL.md`)).toBe(true)
+    }
+    expect(isRetired('.claude/commands/x.md')).toBe(false)
+    // The renderer's list of labels is the set's, in its order.
+    expect(HARNESS_SET.map((r) => r.label)).toEqual([...HARNESS_SET_LABELS])
   })
 
   it('refuses a path that is not a clean relative posix path', () => {
     for (const rel of ['../x', '.claude/../.ssh/id', '/etc/passwd', './.claude/settings.json', '.claude//x', '.claude\\x', 'a/./b', '']) expect(validRelPath(rel), rel).toBe(false)
-    expect(ruleFor('.claude/skills/../../.ssh/id')).toBeNull()
+    expect(ruleFor('.claude/commands/../../.ssh/id')).toBeNull()
   })
 
   it('every rule has a label, and setCounts files each manifest entry under its label', () => {
     for (const rule of HARNESS_SET) expect(rule.label.length, JSON.stringify(rule)).toBeGreaterThan(0)
     expect(new Set(HARNESS_SET.map((r) => r.label)).size).toBe(HARNESS_SET.length)
-    const counts = setCounts([{ relPath: '.claude/skills/a/SKILL.md' }, { relPath: '.claude/skills/b/SKILL.md' }, { relPath: '.codex/hooks.json' }, { relPath: '.agents/skills/z/SKILL.md' }, { relPath: 'not/in/set' }])
-    expect(counts).toMatchObject({ 'Claude skills': 2, 'Codex hooks': 1, 'Shared skills': 1, 'Claude commands': 0, 'Codex skills': 0 })
+    const counts = setCounts([{ relPath: '.claude/commands/a.md' }, { relPath: '.claude/commands/b.md' }, { relPath: '.codex/hooks.json' }, { relPath: '.agents/skills/z/SKILL.md' }, { relPath: 'not/in/set' }])
+    expect(counts).toMatchObject({ 'Claude commands': 2, 'Codex hooks': 1, 'Claude agents': 0 })
     expect(Object.keys(counts)).toEqual(HARNESS_SET.map((r) => r.label))
   })
 
@@ -193,81 +200,74 @@ describe('the sync set', () => {
 
 describe('the manifest', () => {
   it('lists the set with size, hash, mode and mtime; follows a symlink inside HOME, skips one out of reach, a .git dir and an oversize file', async () => {
-    put(mac, '.claude/skills/a/SKILL.md', '# a')
-    put(mac, '.claude/skills/a/run.sh', '#!/bin/sh\n', 0o755)
-    put(mac, '.claude/skills/synced/b/SKILL.md', 'theirs')
-    put(mac, 'IdeaProjects/repo/skills/linked/SKILL.md', '# linked')
-    symlinkSync(join(mac, 'IdeaProjects/repo/skills/linked'), join(mac, '.claude/skills/linked'))
+    put(mac, '.claude/commands/a/x.md', '# a')
+    put(mac, '.claude/commands/a/run.sh', '#!/bin/sh\n', 0o755)
+    put(mac, 'IdeaProjects/repo/commands/linked/y.md', '# linked')
+    symlinkSync(join(mac, 'IdeaProjects/repo/commands/linked'), join(mac, '.claude/commands/linked'))
     put(mac, '.ssh/id_ed25519', 'private')
-    symlinkSync(join(mac, '.ssh'), join(mac, '.claude/skills/ssh'))
-    put(root, 'outside/SKILL.md', 'outside')
-    symlinkSync(join(root, 'outside'), join(mac, '.claude/skills/outside'))
+    symlinkSync(join(mac, '.ssh'), join(mac, '.claude/commands/ssh'))
+    put(root, 'outside/z.md', 'outside')
+    symlinkSync(join(root, 'outside'), join(mac, '.claude/commands/outside'))
     put(mac, '.claude/plugins/marketplaces/m/.git/objects/pack/p.pack', 'x')
     put(mac, '.claude/plugins/marketplaces/m/README.md', 'r')
     put(mac, '.claude/plugins/plugin-directory-cache-v2.json', '{}')
     put(mac, '.claude/plugins/cache/m/p/1.0/big.bin', randomBytes(2048))
-    put(mac, '.claude/skills/a/engine', machO(), 0o755)
-    put(mac, '.claude/skills/a/scripts/bin/darwin-arm64/tool', machO(), 0o755)
-    put(mac, '.claude/skills/a/scripts/bin/darwin-arm64/notes.txt', 'cache notes')
+    put(mac, '.claude/commands/a/engine', machO(), 0o755)
+    // A skill folder is walked no more: the store carries skills.
+    put(mac, '.claude/skills/s/SKILL.md', '# s')
+    put(mac, '.agents/skills/t/SKILL.md', '# t')
     const cache = new Map()
     const m = await buildManifest(mac, { maxBytes: 1024, cache })
     const rels = m.entries.map((e) => e.relPath)
-    expect(rels).toEqual(['.claude/plugins/marketplaces/m/README.md', '.claude/skills/a/SKILL.md', '.claude/skills/a/run.sh', '.claude/skills/linked/SKILL.md'])
+    expect(rels).toEqual(['.claude/commands/a/run.sh', '.claude/commands/a/x.md', '.claude/commands/linked/y.md', '.claude/plugins/marketplaces/m/README.md'])
     expect(m.entries.find((e) => e.relPath.endsWith('run.sh'))?.mode).toBe(0o755)
     expect(m.skipped.map((s) => `${s.relPath}:${s.reason}`).sort()).toEqual([
-      '.claude/plugins/cache/m/p/1.0/big.bin:too-large',
-      '.claude/skills/a/engine:native-binary',
-      '.claude/skills/outside:symlink-out-of-reach',
-      '.claude/skills/ssh:symlink-out-of-reach'
+      '.claude/commands/a/engine:native-binary',
+      '.claude/commands/outside:symlink-out-of-reach',
+      '.claude/commands/ssh:symlink-out-of-reach',
+      '.claude/plugins/cache/m/p/1.0/big.bin:too-large'
     ])
     // the Mach-O verdict is cached with the hash: the next manifest does not read it again, and still leaves it out
-    expect(cache.get(realpathSync(join(mac, '.claude/skills/a/engine')))?.native).toBe(true)
-    unlinkSync(join(mac, '.claude/skills/a/engine'))
-    put(mac, '.claude/skills/a/engine', 'now a script')
+    expect(cache.get(realpathSync(join(mac, '.claude/commands/a/engine')))?.native).toBe(true)
+    unlinkSync(join(mac, '.claude/commands/a/engine'))
+    put(mac, '.claude/commands/a/engine', 'now a script')
     const again = await buildManifest(mac, { maxBytes: 1024, cache })
-    expect(again.entries.map((e) => e.relPath)).toContain('.claude/skills/a/engine')
+    expect(again.entries.map((e) => e.relPath)).toContain('.claude/commands/a/engine')
   })
 
-  it('walks a skill dir that is a symlink as a dir: into another skills root, or a package cache under HOME', async () => {
-    put(mac, '.agents/skills/impeccable/SKILL.md', '# impeccable')
-    put(mac, '.agents/skills/impeccable/scripts/impeccable', '#!/bin/sh\nexec engine "$@"\n', 0o755)
-    put(mac, '.agents/skills/impeccable/scripts/VERSION', '0.1.16\n')
-    put(mac, '.agents/skills/impeccable/scripts/bin/darwin-arm64/impeccable', machO(), 0o755)
-    mkdirSync(join(mac, '.claude/skills'), { recursive: true })
-    symlinkSync(join('..', '..', '.agents', 'skills', 'impeccable'), join(mac, '.claude/skills/impeccable'))
-    put(mac, 'Library/Caches/pkg/skills/cached/SKILL.md', '# cached')
-    mkdirSync(join(mac, '.codex/skills'), { recursive: true })
-    symlinkSync(join(mac, 'Library/Caches/pkg/skills/cached'), join(mac, '.codex/skills/cached'))
-    put(mac, '.npm/_npx/abc/node_modules/pkg/skills/npx/SKILL.md', '# npx')
-    symlinkSync(join(mac, '.npm/_npx/abc/node_modules/pkg/skills/npx'), join(mac, '.agents/skills/npx'))
+  it('walks a dir that is a symlink as a dir: into another rule root, or a package cache under HOME', async () => {
+    put(mac, '.claude/commands/team/review.md', '# review')
+    put(mac, '.claude/commands/team/run.sh', '#!/bin/sh\nexec review "$@"\n', 0o755)
+    mkdirSync(join(mac, '.claude/agents'), { recursive: true })
+    symlinkSync(join('..', 'commands', 'team'), join(mac, '.claude/agents/team'))
+    put(mac, 'Library/Caches/pkg/prompts/cached/p.md', '# cached')
+    mkdirSync(join(mac, '.codex/prompts'), { recursive: true })
+    symlinkSync(join(mac, 'Library/Caches/pkg/prompts/cached'), join(mac, '.codex/prompts/cached'))
     const m = await buildManifest(mac)
     expect(m.entries.map((e) => e.relPath)).toEqual([
-      '.agents/skills/impeccable/SKILL.md',
-      '.agents/skills/impeccable/scripts/VERSION',
-      '.agents/skills/impeccable/scripts/impeccable',
-      '.agents/skills/npx/SKILL.md',
-      '.claude/skills/impeccable/SKILL.md',
-      '.claude/skills/impeccable/scripts/VERSION',
-      '.claude/skills/impeccable/scripts/impeccable',
-      '.codex/skills/cached/SKILL.md'
+      '.claude/agents/team/review.md',
+      '.claude/agents/team/run.sh',
+      '.claude/commands/team/review.md',
+      '.claude/commands/team/run.sh',
+      '.codex/prompts/cached/p.md'
     ])
     expect(m.skipped).toEqual([])
-    // the launcher is listed executable, under both roots, with the same hash; the binary cache is not even a skipped row
-    const launchers = m.entries.filter((e) => e.relPath.endsWith('scripts/impeccable'))
-    expect(launchers.map((e) => e.mode)).toEqual([0o755, 0o755])
-    expect(launchers[0].sha256).toBe(launchers[1].sha256)
+    // the script is listed executable, under both roots, with the same hash
+    const scripts = m.entries.filter((e) => e.relPath.endsWith('team/run.sh'))
+    expect(scripts.map((e) => e.mode)).toEqual([0o755, 0o755])
+    expect(scripts[0].sha256).toBe(scripts[1].sha256)
   })
 
   it('waits for a quiet loop before each directory it walks, and a busy loop only delays it', async () => {
-    put(mac, '.claude/skills/a/SKILL.md', 'a')
-    put(mac, '.claude/skills/a/scripts/run.sh', 'r')
-    put(mac, '.claude/skills/b/SKILL.md', 'b')
-    put(mac, '.claude/commands/c.md', 'c')
+    put(mac, '.claude/commands/a/x.md', 'a')
+    put(mac, '.claude/commands/a/scripts/run.sh', 'r')
+    put(mac, '.claude/commands/b/y.md', 'b')
+    put(mac, '.claude/agents/c.md', 'c')
     const dirs: number[] = []
     const between = async (): Promise<void> => void dirs.push(dirs.length)
     const m = await buildManifest(mac, { between })
-    expect(m.entries.map((e) => e.relPath)).toEqual(['.claude/commands/c.md', '.claude/skills/a/SKILL.md', '.claude/skills/a/scripts/run.sh', '.claude/skills/b/SKILL.md'])
-    // skills, a, a/scripts, b, commands
+    expect(m.entries.map((e) => e.relPath)).toEqual(['.claude/agents/c.md', '.claude/commands/a/scripts/run.sh', '.claude/commands/a/x.md', '.claude/commands/b/y.md'])
+    // commands, a, a/scripts, b, agents
     expect(dirs).toHaveLength(5)
     // The default wait is the loop's own: a busy loop holds the walk until it is quiet or the bound passes.
     setLagForTests({ meanMs: 120, maxMs: 300, ewmaMs: 120 })
@@ -290,9 +290,11 @@ describe('the manifest', () => {
 describe('mac → box', () => {
   const seed = (): void => {
     put(mac, '.claude/settings.json', JSON.stringify({ statusLine: { command: `${mac}/.claude/statusline.sh` }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'tc-no-such-tool -e beep' }, { type: 'command', command: '/bin/sh -c true' }] }] } }))
-    put(mac, '.claude/skills/deploy/SKILL.md', `Run ${mac}/IdeaProjects/shop/bin/deploy and ${mac}/Desktop/Websites/site/x, see /Users/landon/IdeaProjects/temp-code/CLAUDE.md`)
-    put(mac, '.claude/skills/deploy/go.sh', `#!/bin/sh\ncd ${mac}/IdeaProjects/shop\n`, 0o755)
-    put(mac, '.claude/skills/deploy/logo.png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0xff, 0x2f, 0x55]))
+    put(mac, '.claude/commands/deploy/run.md', `Run ${mac}/IdeaProjects/shop/bin/deploy and ${mac}/Desktop/Websites/site/x, see /Users/landon/IdeaProjects/temp-code/CLAUDE.md`)
+    put(mac, '.claude/commands/deploy/go.sh', `#!/bin/sh\ncd ${mac}/IdeaProjects/shop\n`, 0o755)
+    put(mac, '.claude/commands/deploy/logo.png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0xff, 0x2f, 0x55]))
+    // Skill folders stay where they are: the store carries skills now.
+    put(mac, '.claude/skills/tidy/SKILL.md', 'tidy')
     put(mac, '.claude/commands/ship.md', 'ship it')
     put(mac, '.claude/agents/rev.md', 'review')
     put(mac, '.claude/plugins/installed_plugins.json', JSON.stringify({ plugins: { 'p@m': [{ installPath: `${mac}/.claude/plugins/cache/m/p/1.0` }] } }))
@@ -330,14 +332,17 @@ describe('mac → box', () => {
     await sender.syncWith('env_box')
     expect(methods()[0]).toBe('harness.manifest')
     expect(methods().at(-1)).toBe('harness.commit')
-    expect(read(box, '.claude/skills/deploy/SKILL.md')).toBe(`Run ${work}/shop/bin/deploy and ${work}/site/x, see /srv/agents/work/temp-code/CLAUDE.md`)
-    expect(read(box, '.claude/skills/deploy/go.sh')).toBe(`#!/bin/sh\ncd ${work}/shop\n`)
-    expect(statSync(join(box, '.claude/skills/deploy/go.sh')).mode & 0o777).toBe(0o755)
-    expect(readFileSync(join(box, '.claude/skills/deploy/logo.png')).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0xff, 0x2f, 0x55]))).toBe(true)
+    expect(read(box, '.claude/commands/deploy/run.md')).toBe(`Run ${work}/shop/bin/deploy and ${work}/site/x, see /srv/agents/work/temp-code/CLAUDE.md`)
+    expect(read(box, '.claude/commands/deploy/go.sh')).toBe(`#!/bin/sh\ncd ${work}/shop\n`)
+    expect(statSync(join(box, '.claude/commands/deploy/go.sh')).mode & 0o777).toBe(0o755)
+    expect(readFileSync(join(box, '.claude/commands/deploy/logo.png')).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0xff, 0x2f, 0x55]))).toBe(true)
+    // No skill folder crosses.
+    expect(has(box, '.claude/skills/tidy')).toBe(false)
+    expect(has(box, '.agents/skills/z')).toBe(false)
     expect(JSON.parse(read(box, '.claude/settings.json')).statusLine.command).toBe(`${box}/.claude/statusline.sh`)
     expect(JSON.parse(read(box, '.claude/plugins/installed_plugins.json')).plugins['p@m'][0].installPath).toBe(`${box}/.claude/plugins/cache/m/p/1.0`)
     expect(read(box, '.codex/config.toml')).toContain(`[projects."${work}/shop"]`)
-    for (const rel of ['.claude/commands/ship.md', '.claude/agents/rev.md', '.codex/prompts/p.md', '.agents/skills/z/SKILL.md', '.claude/plugins/cache/m/p/1.0/plugin.json']) expect(has(box, rel), rel).toBe(true)
+    for (const rel of ['.claude/commands/ship.md', '.claude/agents/rev.md', '.codex/prompts/p.md', '.claude/plugins/cache/m/p/1.0/plugin.json']) expect(has(box, rel), rel).toBe(true)
     // Codex's hooks: hooks.json lands byte for byte (it names $HOME), and its trust row in config.toml names the box's copy
     expect(read(box, '.codex/hooks.json')).toBe(read(mac, '.codex/hooks.json'))
     expect(read(box, '.codex/config.toml')).toContain(`[hooks.state."${box}/.codex/hooks.json:post_tool_use:0:0"]\ntrusted_hash = "sha256:84ec1c77"`)
@@ -354,69 +359,61 @@ describe('mac → box', () => {
     // the hook line names what cannot run here
     expect(boxLog).toContain('settings.json landed; hook commands not on this host\'s PATH: tc-no-such-tool')
     const status = sender.status()
-    expect(status.environments[0]).toMatchObject({ id: 'env_box', connected: true, files: 13, error: null })
+    expect(status.environments[0]).toMatchObject({ id: 'env_box', connected: true, files: 12, error: null })
     expect(status.environments[0].sets).toEqual({
-      'Claude skills': 3,
-      'Claude commands': 1,
+      'Claude commands': 4,
       'Claude agents': 1,
       'Claude hooks': 1,
       'Claude settings': 1,
       'Claude plugins': 2,
-      'Codex skills': 0,
       'Codex prompts': 1,
       'Codex config': 1,
       'Codex hooks': 1,
-      'Shared skills': 1,
       'Muse settings': 0,
-      'Muse skills': 0,
       'Muse hooks': 0
     })
     expect(status.environments[0].syncedAt).toBeGreaterThan(0)
-    expect(JSON.parse(macStore.rows['harness.sync.status']).env_box.files).toBe(13)
+    expect(JSON.parse(macStore.rows['harness.sync.status']).env_box.files).toBe(12)
   })
 
-  it('a skill dir that is a symlink lands as a real dir with the target\'s files; the launcher crosses, the binary cache does not', async () => {
-    put(mac, '.agents/skills/impeccable/SKILL.md', '# impeccable')
-    put(mac, '.agents/skills/impeccable/scripts/impeccable', '#!/bin/sh\nexec "$(dirname "$0")/bin/$(uname -s)/impeccable" "$@"\n', 0o755)
-    put(mac, '.agents/skills/impeccable/scripts/VERSION', '0.1.16\n')
-    put(mac, '.agents/skills/impeccable/scripts/bin/darwin-arm64/impeccable', machO(), 0o755)
-    mkdirSync(join(mac, '.claude/skills'), { recursive: true })
-    symlinkSync(join('..', '..', '.agents', 'skills', 'impeccable'), join(mac, '.claude/skills/impeccable'))
+  it('a dir that is a symlink lands as a real dir with the target\'s files', async () => {
+    put(mac, '.claude/commands/team/review.md', '# review')
+    put(mac, '.claude/commands/team/run.sh', '#!/bin/sh\nexec review "$@"\n', 0o755)
+    mkdirSync(join(mac, '.claude/agents'), { recursive: true })
+    symlinkSync(join('..', 'commands', 'team'), join(mac, '.claude/agents/team'))
     const { sender, boxLog } = pair()
     await sender.syncWith('env_box')
-    for (const root of ['.claude/skills', '.agents/skills']) {
-      expect(lstatSync(join(box, root, 'impeccable')).isSymbolicLink(), root).toBe(false)
-      expect(read(box, `${root}/impeccable/SKILL.md`)).toBe('# impeccable')
-      expect(read(box, `${root}/impeccable/scripts/VERSION`)).toBe('0.1.16\n')
-      expect(statSync(join(box, root, 'impeccable/scripts/impeccable')).mode & 0o777).toBe(0o755)
-      expect(has(box, `${root}/impeccable/scripts/bin`), root).toBe(false)
+    for (const root of ['.claude/commands', '.claude/agents']) {
+      expect(lstatSync(join(box, root, 'team')).isSymbolicLink(), root).toBe(false)
+      expect(read(box, `${root}/team/review.md`)).toBe('# review')
+      expect(statSync(join(box, root, 'team/run.sh')).mode & 0o777).toBe(0o755)
     }
     expect(boxLog.some((l) => l.includes('refused'))).toBe(false)
-    expect(sender.status().environments[0].sets).toMatchObject({ 'Claude skills': 3, 'Shared skills': 3 })
+    expect(sender.status().environments[0].sets).toMatchObject({ 'Claude commands': 2, 'Claude agents': 2 })
   })
 
   it('a Mach-O file never crosses: left out of the manifest, and refused on landing when a manifest names one anyway', async () => {
-    put(mac, '.claude/skills/tool/SKILL.md', '# tool')
-    put(mac, '.claude/skills/tool/engine', machO(), 0o755)
-    put(mac, '.claude/skills/tool/fat', Buffer.concat([Buffer.from([0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 2]), randomBytes(64)]), 0o755)
-    put(mac, '.claude/skills/tool/Main.class', Buffer.concat([Buffer.from([0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 65]), randomBytes(64)]))
+    put(mac, '.claude/commands/tool/readme.md', '# tool')
+    put(mac, '.claude/commands/tool/engine', machO(), 0o755)
+    put(mac, '.claude/commands/tool/fat', Buffer.concat([Buffer.from([0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 2]), randomBytes(64)]), 0o755)
+    put(mac, '.claude/commands/tool/Main.class', Buffer.concat([Buffer.from([0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 65]), randomBytes(64)]))
     const { sender, receiver, link, boxLog } = pair()
     await sender.syncWith('env_box')
-    expect(has(box, '.claude/skills/tool/SKILL.md')).toBe(true)
-    expect(has(box, '.claude/skills/tool/Main.class'), 'a class file is not a Mach-O').toBe(true)
-    expect(has(box, '.claude/skills/tool/engine')).toBe(false)
-    expect(has(box, '.claude/skills/tool/fat')).toBe(false)
+    expect(has(box, '.claude/commands/tool/readme.md')).toBe(true)
+    expect(has(box, '.claude/commands/tool/Main.class'), 'a class file is not a Mach-O').toBe(true)
+    expect(has(box, '.claude/commands/tool/engine')).toBe(false)
+    expect(has(box, '.claude/commands/tool/fat')).toBe(false)
     expect(sender.status().skipped).toBe(2)
     // a sender that lists one anyway: the receiver stages it and refuses it at commit, nothing lands
     const bytes = machO('smuggled')
-    const entry = { relPath: '.claude/skills/tool/smuggled', size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), mode: 0o755, mtime: Date.now() }
+    const entry = { relPath: '.claude/commands/tool/smuggled', size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), mode: 0o755, mtime: Date.now() }
     const answer = await link.request<{ need: string[] }>('harness.manifest', { from: 'env_mac', home: mac, generation: 'g-macho', entries: [entry] })
     expect(answer.need).toContain(entry.relPath)
     await link.request('harness.file', { generation: 'g-macho', relPath: entry.relPath, chunkIndex: 0, chunks: 1, dataBase64: bytes.toString('base64') })
     const done = await link.request<{ written: number }>('harness.commit', { generation: 'g-macho' })
     expect(done.written).toBe(0)
-    expect(has(box, '.claude/skills/tool/smuggled')).toBe(false)
-    expect(boxLog).toContain('refused ".claude/skills/tool/smuggled" from env_mac: a macOS binary')
+    expect(has(box, '.claude/commands/tool/smuggled')).toBe(false)
+    expect(boxLog).toContain('refused ".claude/commands/tool/smuggled" from env_mac: a macOS binary')
     expect(receiver.status().enabled).toBe(false)
   })
 
@@ -432,23 +429,23 @@ describe('mac → box', () => {
 
     put(mac, '.claude/commands/ship.md', 'ship it now')
     put(box, '.claude/agents/rev.md', 'box edit')
-    put(box, '.claude/skills/own/SKILL.md', 'made on the box')
+    put(box, '.claude/commands/own.md', 'made on the box')
     mark = sent.length
     await sender.syncWith('env_box')
     expect(files(mark).sort()).toEqual(['.claude/agents/rev.md', '.claude/commands/ship.md'])
     expect(read(box, '.claude/commands/ship.md')).toBe('ship it now')
     expect(read(box, '.claude/agents/rev.md')).toBe('review')
 
-    rmSync(join(mac, '.claude/skills/deploy'), { recursive: true })
+    rmSync(join(mac, '.claude/commands/deploy'), { recursive: true })
     unlinkSync(join(mac, '.codex/prompts/p.md'))
     mark = sent.length
     await sender.syncWith('env_box')
     const answer = sent[mark]
     expect(answer.method).toBe('harness.manifest')
-    expect(has(box, '.claude/skills/deploy')).toBe(false)
+    expect(has(box, '.claude/commands/deploy')).toBe(false)
     expect(has(box, '.codex/prompts/p.md')).toBe(false)
     expect(has(box, '.codex/prompts')).toBe(true) // the rule root itself stays
-    expect(read(box, '.claude/skills/own/SKILL.md')).toBe('made on the box')
+    expect(read(box, '.claude/commands/own.md')).toBe('made on the box')
     expect(read(box, '.claude/skills/synced/b/SKILL.md')).toBe('box bucket')
   })
 
@@ -522,26 +519,25 @@ describe('the receiver', () => {
   it('refuses paths outside the set, secrets, traversal and a landing through a symlink that points out; none of it is written', async () => {
     const { receiver, boxLog } = pair()
     mkdirSync(join(root, 'outside'))
-    mkdirSync(join(box, '.claude/skills'), { recursive: true })
-    symlinkSync(join(root, 'outside'), join(box, '.claude/skills/evil'))
+    mkdirSync(join(box, '.claude/commands'), { recursive: true })
+    symlinkSync(join(root, 'outside'), join(box, '.claude/commands/evil'))
     const entries = [
       entry('../escape.md', 'x'),
       entry('.claude/.credentials.json', 'x'),
       entry('.codex/auth.json', 'x'),
       entry('.claude/settings.local.json', 'x'),
-      entry('.claude/skills/synced/b/SKILL.md', 'x'),
       entry('.ssh/authorized_keys', 'x'),
-      entry('.claude/skills/evil/SKILL.md', 'x'),
+      entry('.claude/commands/evil/x.md', 'x'),
       entry('.claude/commands/ok.md', 'ok')
     ]
     const answer = await receiver.handleManifest({ from: 'env_mac', home: '/Users/landon', generation: 'g1', entries })
-    expect(answer).toEqual({ need: ['.claude/commands/ok.md'], remove: [], refused: 7 })
-    expect(boxLog.filter((l) => l.startsWith('refused')).length).toBe(7)
+    expect(answer).toEqual({ need: ['.claude/commands/ok.md'], remove: [], refused: 6 })
+    expect(boxLog.filter((l) => l.startsWith('refused')).length).toBe(6)
     expect(() => receiver.handleFile({ generation: 'g1', relPath: '.claude/.credentials.json', chunkIndex: 0, chunks: 1, dataBase64: b64('x') })).toThrow(/not a file this generation needs/)
     receiver.handleFile({ generation: 'g1', relPath: '.claude/commands/ok.md', chunkIndex: 0, chunks: 1, dataBase64: b64('ok') })
     await receiver.handleCommit({ generation: 'g1' })
     expect(read(box, '.claude/commands/ok.md')).toBe('ok')
-    expect(existsSync(join(root, 'outside/SKILL.md'))).toBe(false)
+    expect(existsSync(join(root, 'outside/x.md'))).toBe(false)
     expect(has(box, '.claude/.credentials.json')).toBe(false)
   })
 
@@ -559,6 +555,51 @@ describe('the receiver', () => {
     await expect(receiver.handleCommit({ generation: 'g3' })).rejects.toThrow(/does not match its hash/)
     expect(has(box, e.relPath)).toBe(false)
     expect(existsSync(join(root, 'box-data/harness-sync/staging'))).toBe(false)
+  })
+
+  it('an older sender\'s skill files are neither needed nor refused, said in one line per manifest', async () => {
+    const { receiver, boxLog } = pair()
+    const entries = [entry('.claude/skills/a/SKILL.md', 'a'), entry('.agents/skills/b/SKILL.md', 'b'), entry('.config/muse/skills/c/SKILL.md', 'c'), entry('.claude/commands/ok.md', 'ok')]
+    const answer = await receiver.handleManifest({ from: 'env_mac', home: '/Users/landon', generation: 'g1', entries })
+    expect(answer).toEqual({ need: ['.claude/commands/ok.md'], remove: [], refused: 0 })
+    expect(boxLog.filter((l) => l.includes('retired skill roots ignored'))).toEqual(['3 files under retired skill roots ignored (skills come from the store)'])
+    expect(boxLog.some((l) => l.startsWith('refused'))).toBe(false)
+  })
+
+  it('forgets the skill files an earlier build landed, at start and at a manifest, and leaves them on disk', async () => {
+    const { receiver, boxLog } = pair()
+    // What an earlier build's sync landed and recorded.
+    put(box, '.claude/skills/old/SKILL.md', 'landed by an old sync')
+    put(box, '.agents/skills/shared/SKILL.md', 'landed too')
+    put(box, '.claude/commands/kept.md', 'kept')
+    const land = (relPath: string, body: string) => ({ src: createHash('sha256').update(body).digest('hex'), landed: createHash('sha256').update(body).digest('hex'), size: body.length, mtimeMs: statSync(join(box, relPath)).mtimeMs, mode: 0o644, tx: '' })
+    mkdirSync(join(root, 'box-data/harness-sync'), { recursive: true })
+    const ledgerPath = join(root, 'box-data/harness-sync/ledger.json')
+    writeFileSync(
+      ledgerPath,
+      JSON.stringify({
+        version: 1,
+        from: 'env_mac',
+        claudeKeys: [],
+        files: { '.claude/skills/old/SKILL.md': land('.claude/skills/old/SKILL.md', 'landed by an old sync'), '.agents/skills/shared/SKILL.md': land('.agents/skills/shared/SKILL.md', 'landed too'), '.claude/commands/kept.md': land('.claude/commands/kept.md', 'kept') }
+      })
+    )
+    receiver.start()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(Object.keys(JSON.parse(readFileSync(ledgerPath, 'utf8')).files)).toEqual(['.claude/commands/kept.md'])
+    expect(boxLog).toContain('forgot 2 landed files under the retired skill roots; they stay on disk (skills come from the store)')
+    // A new manifest lists no skill: nothing is removed under the retired roots, the files stay.
+    const answer = await receiver.handleManifest({ from: 'env_mac', home: '/Users/landon', generation: 'g1', entries: [entry('.claude/commands/kept.md', 'kept')] })
+    expect(answer.remove).toEqual([])
+    expect(read(box, '.claude/skills/old/SKILL.md')).toBe('landed by an old sync')
+    expect(read(box, '.agents/skills/shared/SKILL.md')).toBe('landed too')
+    // A ledger an old build writes again (between restarts) is cleaned at the next manifest too.
+    const ledger = JSON.parse(readFileSync(ledgerPath, 'utf8'))
+    ledger.files['.claude/skills/old/SKILL.md'] = land('.claude/skills/old/SKILL.md', 'landed by an old sync')
+    writeFileSync(ledgerPath, JSON.stringify(ledger))
+    const again = await receiver.handleManifest({ from: 'env_mac', home: '/Users/landon', generation: 'g2', entries: [] })
+    expect(again.remove).toEqual(['.claude/commands/kept.md'])
+    expect(has(box, '.claude/skills/old/SKILL.md')).toBe(true)
   })
 
   it('uses the shipped history map until the setting replaces it', () => {

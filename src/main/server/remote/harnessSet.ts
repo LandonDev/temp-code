@@ -19,7 +19,17 @@ export type SetRule =
   | { kind: 'file'; path: string; label: string }
 
 /**
- * A skill's per-platform binary cache: the launcher a skill ships
+ * The skill folders harness sync carried until the skills store took them
+ * (CLAUDE.md "Skills: written out on every host"): no rule walks them, a
+ * receiver forgets what it landed under them (the files stay where they
+ * are), and an older sender's entries under them are counted, never landed.
+ */
+export const RETIRED_ROOTS = ['.claude/skills', '.codex/skills', '.agents/skills', '.config/muse/skills'] as const
+
+export const isRetired = (relPath: string): boolean => RETIRED_ROOTS.some((root) => relPath === root || relPath.startsWith(root + '/'))
+
+/**
+ * A skill's per-platform binary cache (the skills store refuses it): the launcher a skill ships
  * (Impeccable's `scripts/impeccable`) looks for `scripts/bin/<os>-<arch>/`
  * beside itself and otherwise fills `~/.impeccable/bin/<version>/` on first
  * use, both outside what another platform can run. The launcher, its
@@ -27,9 +37,8 @@ export type SetRule =
  */
 export const SKILL_BINARY_CACHE = /^[^/]+\/scripts\/bin\//
 
+/** Skills are the store's (RETIRED_ROOTS); commands, agents, prompts, hooks, settings, plugins and Codex config still cross. */
 export const HARNESS_SET: readonly SetRule[] = [
-  // skills/synced is the CLI's own account-synced bucket: neither side touches it.
-  { kind: 'tree', root: '.claude/skills', label: 'Claude skills', exclude: ['synced'], skip: SKILL_BINARY_CACHE },
   { kind: 'tree', root: '.claude/commands', label: 'Claude commands' },
   { kind: 'tree', root: '.claude/agents', label: 'Claude agents' },
   // The scripts settings.json's hook commands point at, when they live in the conventional dir.
@@ -37,16 +46,12 @@ export const HARNESS_SET: readonly SetRule[] = [
   { kind: 'file', path: '.claude/settings.json', label: 'Claude settings' },
   // The installed plugin trees and their records; the directory cache (2.7 MB, rebuilt by the CLI) stays per host.
   { kind: 'tree', root: '.claude/plugins', label: 'Claude plugins', exclude: ['synced'], skip: /^plugin-directory-cache[^/]*\.json$/ },
-  { kind: 'tree', root: '.codex/skills', label: 'Codex skills', exclude: ['.system'], skip: SKILL_BINARY_CACHE },
   { kind: 'tree', root: '.codex/prompts', label: 'Codex prompts' },
   { kind: 'file', path: '.codex/config.toml', label: 'Codex config' },
   // Codex's user-level hooks; config.toml's [hooks.state."<home>/.codex/hooks.json:…"] trust rows translate with the home.
   { kind: 'file', path: '.codex/hooks.json', label: 'Codex hooks' },
-  // Read by Claude Code and Codex alike.
-  { kind: 'tree', root: '.agents/skills', label: 'Shared skills', skip: SKILL_BINARY_CACHE },
   // Muse Code's config root; its login (auth.json) is a secret and never crosses (SECRET_NAMES).
   { kind: 'file', path: '.config/muse/settings.json', label: 'Muse settings' },
-  { kind: 'tree', root: '.config/muse/skills', label: 'Muse skills', skip: SKILL_BINARY_CACHE },
   { kind: 'tree', root: '.config/muse/hooks', label: 'Muse hooks' }
 ]
 

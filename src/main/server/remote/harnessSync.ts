@@ -42,6 +42,7 @@ import {
   isSecretPath,
   missingHookExecutables,
   pruneEmptyDirs,
+  isRetired,
   ruleFor,
   ruleRoot,
   setCounts,
@@ -311,6 +312,8 @@ export class HarnessSync {
 
   /** Watch the set and sync every 15 minutes while sending is on. */
   start(): void {
+    // A receiver forgets the skill files it landed before the store took skills over (the files stay).
+    this.serial(() => this.dropRetired()).catch(() => {})
     if (this.closed || !this.enabled()) return
     if (!this.periodTimer) {
       this.periodTimer = setInterval(() => {
@@ -500,14 +503,35 @@ export class HarnessSync {
     return this.serial(() => this.manifest(params))
   }
 
+  /**
+   * Drop every ledger entry under a retired skill root. The file itself
+   * stays where it is: nothing deletes a skill folder, and with no entry a
+   * later manifest can never list it for removal.
+   */
+  private dropRetired(): Ledger {
+    const ledger = this.loadLedger()
+    const gone = Object.keys(ledger.files).filter(isRetired)
+    if (gone.length === 0) return ledger
+    for (const relPath of gone) delete ledger.files[relPath]
+    this.saveLedger(ledger)
+    this.log(`forgot ${gone.length} landed files under the retired skill roots; they stay on disk (skills come from the store)`)
+    return ledger
+  }
+
   private manifest(params: HarnessManifestParams): HarnessManifestAnswer {
     if (!params.home.startsWith('/')) throw new Error('harness.manifest: home must be absolute')
     this.discardGeneration()
-    const ledger = this.loadLedger()
+    const ledger = this.dropRetired()
     const tx = sha256(JSON.stringify(this.translationFor(params.home)))
     const entries = new Map<string, HarnessEntry>()
     let refused = 0
+    let retired = 0
     for (const entry of params.entries) {
+      // An older sender still lists its skill folders: neither needed nor refused, said once below.
+      if (isRetired(entry.relPath)) {
+        retired++
+        continue
+      }
       const dest = this.destination(entry.relPath)
       if ('refused' in dest) {
         refused++
@@ -522,6 +546,7 @@ export class HarnessSync {
       const wantTx = translatable(relPath, entry.size) ? tx : ''
       if (!had || had.src !== entry.sha256 || had.mode !== (entry.mode & 0o777) || (wantTx && had.tx !== wantTx) || !this.intact(relPath, had)) need.push(relPath)
     }
+    if (retired) this.log(`${retired} files under retired skill roots ignored (skills come from the store)`)
     const remove = Object.keys(ledger.files).filter((relPath) => !entries.has(relPath))
     const dir = join(this.syncDir, 'staging', params.generation.replace(/[^A-Za-z0-9-]/g, '_'))
     this.generation = { id: params.generation, from: params.from, home: params.home, entries, need: new Set(need), remove, claudeJson: params.claudeJson, dir, chunks: new Map() }

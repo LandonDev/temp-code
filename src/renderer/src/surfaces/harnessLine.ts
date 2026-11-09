@@ -1,4 +1,5 @@
 import type { HarnessEnvironmentStatus } from "@server/shared/contract-harness";
+import { HARNESS_SET_LABELS } from "@shared/harnessSets";
 import { timeAgo } from "../lib/format";
 
 /**
@@ -14,11 +15,11 @@ export function harnessParts(env: HarnessEnvironmentStatus, now = Date.now()): s
   return [`${env.files ?? 0} ${env.files === 1 ? "file" : "files"}`, `synced ${ago(env.syncedAt, now)}`];
 }
 
-/** "Claude skills 80, Codex hooks 1, …": the sets with files, in the set's order; "" for an older sender or none. */
-export function setsText(sets: Record<string, number> | null): string {
+/** "Claude commands 4, Codex hooks 1, …": the sets with files, in the set's order, only those still synced (an older build's skill sets drop out); "" for none. */
+export function setsText(sets: Record<string, number> | null, labels: readonly string[] = HARNESS_SET_LABELS): string {
   if (!sets) return "";
   return Object.entries(sets)
-    .filter(([, n]) => n > 0)
+    .filter(([label, n]) => n > 0 && labels.includes(label))
     .map(([label, n]) => `${label} ${n}`)
     .join(", ");
 }
