@@ -3634,9 +3634,13 @@ proof and the sizing rules; the pieces, by name:
   `mac.binaries`. Proof: `bun run script:e2e-tc-computer` (macOS only;
   TextEdit and an inert scratch app in the background, never activated, `ax`
   and `process` tiers only, the paste under the clipboard lock and skipped
-  after a recent copy; the apps start only past 5 minutes with no input, are
-  hidden and killed the moment input resumes and tried again at the next gap,
-  up to 90 minutes, else "not run: the person was at the Mac").
+  after a recent copy; the apps start only past 5 minutes with no input and
+  an unlocked screen with no screen saver, are hidden and killed the moment
+  input resumes and tried again at the next gap, up to 90 minutes, else "not
+  run: the person was at the Mac"; the proof's own posted events count as
+  its own only inside its posting calls plus half a second,
+  scripts/lib/proofGate.ts; `TC_PROOF_UNGATED=1` drops the idle wait for a
+  run the person sits beside).
 - Fixtures: src/main/server/computer/fixtures/ (its README): hand-written
   wire frames for every method, error kind and notification, observation
   texts for every grammar case, `page/form.html`, and `apps/` trees and
