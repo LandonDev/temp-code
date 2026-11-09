@@ -8,7 +8,8 @@ public enum Viewport {
     /// AX roles whose non-zero frame narrows their descendants' clip.
     public static let clipRoles: Set<String> = ["AXList", "AXOutline", "AXTable", "AXScrollArea", "AXWebArea"]
 
-    public enum Side: Sendable { case above, below }
+    /// `sliver`: no side from geometry; above when it comes before the container's first shown child, else below.
+    public enum Side: Sendable { case above, below, sliver }
 
     public static func isZero(_ r: Rect) -> Bool { r.w <= 0 || r.h <= 0 }
 
@@ -40,13 +41,23 @@ public enum Viewport {
     }
 
     /// A child the walk does not descend into: known, non-zero, and missing its clip. Under a
-    /// clip container (`sliver`), a frame one point thin or less misses too: Chrome pins the
-    /// rows an overflow box scrolled away to its edge as 1-point slivers.
+    /// clip container (`sliver`), a frame one point thin or less misses too: Chrome parks every
+    /// row an overflow box scrolled away at its bottom edge as a 1-point sliver, whichever way
+    /// it left, so its side comes from its place among the children (`Side.sliver`).
     public static func missed(_ frame: Rect?, _ clip: Rect?, sliver: Bool = false) -> Side? {
         guard let f = frame, !isZero(f), let c = clip else { return nil }
         if !meets(f, c) { return side(of: f, against: c) }
-        if sliver, f.w <= 1 || f.h <= 1 { return f.y + f.h / 2 >= c.y + c.h / 2 ? .below : .above }
+        if sliver, f.w <= 1 || f.h <= 1 { return .sliver }
         return nil
+    }
+
+    /// Slivers by their place: before the first shown child above, the rest below.
+    public static func slivers(_ positions: [Int], firstShown: Int?) -> Hidden {
+        var h = Hidden()
+        for i in positions {
+            if let f = firstShown, i < f { h.above += 1 } else { h.below += 1 }
+        }
+        return h
     }
 
     /// A container that lists its visible children: the ones before the first

@@ -223,6 +223,17 @@ func r(_ y: Double) -> Rect { Rect(x: 10, y: y, w: 100, h: 20) }
         #expect(body(s) == ["[1] window \"Downloads\"", "  [2] list \"Orders\"", "    [3] text \"Order 0\"", "    [4] text \"Order 1\"", "    [5] text \"Order 2\"", "    … 3 more below"])
     }
 
+    @Test func sliversScrolledAwayAboveCountAboveByTheirPlace() {
+        // what Chrome showed on the Mac: rows 0–2 scrolled off the top, parked at the bottom edge with rows 6–7
+        let edge = Rect(x: 0, y: 199, w: 300, h: 1)
+        let rows = (0..<8).map { i -> RawAXNode in
+            let f = (3..<6).contains(i) ? Rect(x: 0, y: 100 + Double(i - 3) * 30, w: 300, h: 28) : edge
+            return raw("AXGroup", frame: f, visible: true, [raw("AXStaticText", title: "Order \(i)", frame: f)])
+        }
+        let s = RawTree.snapshot(tree(raw("AXWindow", title: "Downloads", frame: windowFrame, [raw("AXList", title: "Orders", frame: Rect(x: 0, y: 100, w: 640, h: 100), rows)])), ids: NodeIDSource())
+        #expect(body(s).suffix(4) == ["    [3] text \"Order 3\"", "    [4] text \"Order 4\"", "    [5] text \"Order 5\"", "    … 2 more below, 3 above"])
+    }
+
     @Test func aZeroSizeScrollAreaHidesNothingAndAPopoverOutsideTheWindowKeepsItsOwnClip() {
         let wrapper = raw("AXScrollArea", frame: Rect(x: 0, y: 0, w: 0, h: 0), [raw("AXButton", title: "Inside", frame: Rect(x: 10, y: 10, w: 50, h: 20), actions: ["AXPress"])])
         let popover = raw("AXPopover", title: "Info", frame: Rect(x: 900, y: 50, w: 200, h: 100), [raw("AXButton", title: "Done", frame: Rect(x: 910, y: 60, w: 50, h: 20), actions: ["AXPress"])])

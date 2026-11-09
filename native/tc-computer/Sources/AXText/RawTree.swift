@@ -89,17 +89,25 @@ public enum RawTree {
         if firstVisible == nil { marked = [] }
         var hidden = Hidden()
         let sliver = Viewport.clipRoles.contains(raw.role)
+        var slivers: [Int] = []
+        var firstShown: Int?
         for (i, child) in raw.children.enumerated() {
             // a child the list names as hidden is counted; any other is judged by its frame too
             // (Chrome lists every child of an overflow box as visible)
             if marked.contains(i), child.visible != true {
                 if let first = firstVisible, i < first { hidden.above += 1 } else { hidden.below += 1 }
             } else if let side = Viewport.missed(child.frame, inner, sliver: sliver) {
-                if side == .above { hidden.above += 1 } else { hidden.below += 1 }
+                switch side {
+                case .above: hidden.above += 1
+                case .below: hidden.below += 1
+                case .sliver: slivers.append(i)
+                }
             } else {
+                firstShown = firstShown ?? i
                 n.children.append(node(child, clip: inner, ids: ids, focused: &focused, nodes: &nodes))
             }
         }
+        hidden = hidden + Viewport.slivers(slivers, firstShown: firstShown)
         if !hidden.isEmpty { n.hidden = hidden }
         return n
     }

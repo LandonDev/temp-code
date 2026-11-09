@@ -186,6 +186,8 @@ final class Walker {
             // an empty list is not believed (IntelliJ's): judge every child by frame
         }
         let firstVisible = visible.flatMap { v in children.firstIndex { v.contains(ElementKey(element: $0)) } }
+        var slivers: [Int] = []
+        var firstShown: Int?
         for (i, child) in children.enumerated() {
             if stopped { break }
             let key = ElementKey(element: child)
@@ -194,12 +196,16 @@ final class Walker {
                 continue
             }
             switch try node(child, clip: inner, depth: depth + 1, menuBar: menuBar, containers: below, root: false, isWindow: false, sliver: isContainer) {
-            case .node(let c): n.children.append(c)
+            case .node(let c):
+                firstShown = firstShown ?? i
+                n.children.append(c)
             case .hidden(.above): hidden.above += 1
             case .hidden(.below): hidden.below += 1
+            case .hidden(.sliver): slivers.append(i)
             case .skip: break
             }
         }
+        hidden = hidden + Viewport.slivers(slivers, firstShown: firstShown)
         if !hidden.isEmpty { n.hidden = hidden }
         return .node(n)
     }
