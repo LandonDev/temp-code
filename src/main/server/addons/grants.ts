@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { readFileSync, unwatchFile, watchFile } from 'node:fs'
-import { vault, type ServiceId } from 'aliax-core'
+import { vault } from 'aliax-core'
 import { ADDON_SERVICE, AddonGrantBlobSchema, grantGaps, type AddonGrantBlob } from '@shared/addonGrant'
 import type { AddonRow, AddonSpec } from '@shared/contract-addons'
 import { canonical } from '../addonStore'
@@ -45,13 +45,12 @@ export function resolveGrant(spec: AddonSpec, blob: AddonGrantBlob | null): Reso
   return { ok: true, env, headers, digest: createHash('sha256').update(canonical({ env, headers })).digest('hex') }
 }
 
-/** The vault: aliax-core's readSecret(ADDON_SERVICE, addonId) parsed by AddonGrantBlobSchema; null when absent or unreadable. */
-export const vaultGrantSource: AddonGrantSource = {
-  async read(addonId) {
+/** The vault: aliax-core's readSecret(ADDON_SERVICE, addonId) parsed by AddonGrantBlobSchema; null when absent or unreadable. AddonGrants reads through it. */
+export const vaultGrantSource: AddonGrantSource & { readSync(addonId: string): AddonGrantBlob | null } = {
+  readSync(addonId) {
     let raw: string | null
     try {
-      // The OAuth thread adds 'addon' to aliax-core's ServiceId; until then the vault, keyed by any string, reads it as is.
-      raw = vault.readSecret(ADDON_SERVICE as ServiceId, addonId)
+      raw = vault.readSecret(ADDON_SERVICE, addonId)
     } catch {
       console.warn(`[addons] the grant of ${addonId} could not be decrypted`)
       return null
@@ -65,6 +64,9 @@ export const vaultGrantSource: AddonGrantSource = {
     }
     console.warn(`[addons] the grant of ${addonId} is not a grant`)
     return null
+  },
+  async read(addonId) {
+    return vaultGrantSource.readSync(addonId)
   }
 }
 
