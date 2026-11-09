@@ -2199,7 +2199,7 @@ why and the measured headline.
   (Screen Recording), `script:e2e-computer-schedule` (the session tier),
   `script:e2e-computer-preview` whole (it takes Escape for two seconds),
   `script:e2e-computer-images` and `script:e2e-computer-ui` (real model
-  turns) and `script:compare-computer-words` (one to two hours of models).
+  turns) and `script:compare-computer-words` (48 model runs, about 25 minutes).
   docs/release-gate.md "Hand runs" has each one's host, needs and last
   time.
 - **The bench** (§21). `bun run script:e2e-computer-bench` runs seven real
