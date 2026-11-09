@@ -236,6 +236,8 @@ const replyOf = (rows: Row[]): string =>
 const errorsOf = (rows: Row[]): string[] => lastTurn(rows).filter((r) => r.event.type === 'error').map((r) => `${r.event.failure?.kind ?? ''} ${r.event.message ?? r.event.text ?? ''}`)
 
 const PROMPT = `Use the ${SKILL} skill and reply with its probe word only.`
+/** A later turn: said to have changed, so the model reads the skill again instead of answering from the conversation. */
+const REREAD = `The ${SKILL} skill has changed since you last used it. Use it again now, reading it afresh, and reply with its probe word only.`
 const skillText = (n: number): string =>
   `---\nname: ${SKILL}\ndescription: The probe of the skills drivers proof. Use it when asked for the probe word.\n---\nWhen this skill is used, reply with exactly this word and nothing else: ${word(n)}\n`
 
@@ -268,7 +270,7 @@ async function startThread(params: Record<string, unknown>, ms = 300_000): Promi
   return { id: meta.id, rows: await events(meta.id) }
 }
 async function nextTurn(id: string, ms = 300_000): Promise<Row[]> {
-  await rpc('session.send', { sessionId: id, text: PROMPT })
+  await rpc('session.send', { sessionId: id, text: REREAD })
   await sleep(500)
   await settled(id, ms)
   return events(id)
@@ -321,7 +323,8 @@ try {
   mkdirSync(claudeCwd, { recursive: true })
   const claude = await startThread({ provider: 'claude', model: 'claude-haiku-5-5', cwd: claudeCwd, workspaceId: null, title: 'skills probe (claude)' })
   check('claude: the reply holds the probe word', replyOf(claude.rows).includes(word(1)), `${replyOf(claude.rows).slice(0, 200)} ${errorsOf(claude.rows).join(' | ')}`)
-  const skillCalls = claude.rows.filter((r) => r.event.type === 'tool-call' && r.event.name === 'Skill').map((r) => JSON.stringify(r.event.input))
+  // The streamed head of a call carries no input yet; the settled row does.
+  const skillCalls = claude.rows.filter((r) => r.event.type === 'tool-call' && r.event.name === 'Skill' && r.event.input !== undefined).map((r) => JSON.stringify(r.event.input))
   check('claude: the Skill call names the skill by its bare name', skillCalls.some((c) => c.includes(`"${SKILL}"`)) && !skillCalls.some((c) => c.includes(`:${SKILL}`)), skillCalls.join(' | '))
   const cli = ofInstance().find((p) => p.env.has('CLAUDE_CONFIG_DIR') && /claude/.test(p.command))
   const configDir = cli?.env.get('CLAUDE_CONFIG_DIR')
