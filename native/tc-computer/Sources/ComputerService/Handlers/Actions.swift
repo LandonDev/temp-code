@@ -29,14 +29,15 @@ private struct Performed: Sendable {
 
 extension ComputerService {
     func registerActions() {
-        router.on("action.run") { [self] (p: Methods.ActionRun.Params, ctx) -> ActionResult in
+        // a cancelled action answers its normal result, the stopped step failed (spec §1)
+        router.on("action.run", keepsResult: true) { [self] (p: Methods.ActionRun.Params, ctx) -> ActionResult in
             let result = try await runActions(
                 session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch,
                 actions: [p.action], tiers: p.tiers, stepWait: nil, wait: p.wait, observe: p.observe, ctx: ctx
             )
             return ActionResult(step: result.steps[0], observation: result.observation, observationError: result.observationError)
         }
-        router.on("action.batch") { [self] (p: Methods.ActionBatch.Params, ctx) in
+        router.on("action.batch", keepsResult: true) { [self] (p: Methods.ActionBatch.Params, ctx) in
             try await runActions(
                 session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch,
                 actions: p.actions, tiers: p.tiers, stepWait: p.stepWait, wait: p.wait, observe: p.observe, ctx: ctx
@@ -59,6 +60,7 @@ extension ComputerService {
         let target = try await resolveTarget(session: session, app: app, window: window, launch: launch)
 
         guard let lease = await slots.slot(target.pid).acquire(.exclusive(session: session), timeout: env.timing.appSlotWait) else {
+            if ctx.cancel.isSet { await releaseHeld(session: session) }
             let error = ctx.cancel.isSet
                 ? Router.cancelledError
                 : ComputerError(kind: .appBusy, message: "\(target.app.name) is busy with another session's action; try again.")
@@ -240,9 +242,9 @@ extension ComputerService {
 
     /// Lets go of every button and key the session holds (a cancel, `session.close`).
     func releaseHeld(session: String) async {
-        let input = InputBox(input: self.input)
+        let box = InputBox(input: input)
         for (pid, holder) in held.all where holder == session {
-            await Task.detached { input.input.releaseHeld(pid: pid) }.value
+            _ = try? await blocking { box.input.releaseHeld(pid: pid) }
         }
     }
 

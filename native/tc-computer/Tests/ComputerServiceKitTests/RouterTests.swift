@@ -45,13 +45,19 @@ private final class Rig: @unchecked Sendable {
             try await Task.sleep(for: .milliseconds(p.x))
             return p
         }
-        router.on("block") { [self] (p: Echo, ctx) -> Echo in
+        router.on("block", keepsResult: true) { [self] (p: Echo, ctx) -> Echo in
             started.bump()
             lock.locked { flags[ctx.id] = ctx.cancel }
             await gate.wait(ctx.cancel)
             return Echo(x: ctx.cancel.isSet ? -1 : p.x)
         }
         router.on("boom") { (_: Empty, _) -> Empty in throw Boom() }
+        router.on("finish") { [self] (p: Echo, ctx) -> Echo in
+            lock.locked { flags[ctx.id] = ctx.cancel }
+            await gate.wait(ctx.cancel)
+            ctx.afterAnswer { [self] in started.bump() }
+            return p
+        }
     }
 
     func flag(_ id: Int) -> CancelFlag? { lock.locked { flags[id] } }
@@ -201,6 +207,24 @@ private final class Rig: @unchecked Sendable {
         #expect(await eventually { rig.flag(60)?.isSet == true })
         // the handler returned normally once it saw the flag, as action.run does
         #expect(await eventually { rig.sink.response(60) == .result(id: 60, result: .object(["x": .number(-1)])) })
+    }
+
+    @Test func aCancelledRequestThatDoesNotKeepItsResultAnswersCancelled() async {
+        let rig = Rig()
+        await rig.initialize()
+        rig.router.receive(request(61, "finish", #"{"x":5}"#))
+        #expect(await eventually { rig.flag(61) != nil })
+        rig.router.receive(cancelLine(61))
+        #expect(await eventually { rig.sink.error(61)?.data?.kind == .cancelled })
+    }
+
+    @Test func workAfterTheAnswerRunsOnceTheAnswerIsQueued() async {
+        let rig = Rig()
+        await rig.initialize()
+        rig.gate.open()
+        rig.router.receive(request(62, "finish", #"{"x":5}"#))
+        #expect(await eventually { rig.sink.response(62) != nil })
+        #expect(await eventually { rig.started.count == 1 })
     }
 
     @Test func unknownNotificationsAndHostResponsesAreIgnored() async {

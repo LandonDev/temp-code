@@ -280,6 +280,15 @@ final class LiveWindowEvents: WindowEventSource, @unchecked Sendable {
             }
             CFRunLoopAddSource(CFRunLoopGetCurrent(), AXObserverGetRunLoopSource(observer), .defaultMode)
             lock.withLock { observers[pid] = (observer, context) }
+            // the windows already open, so the first thing one does can be to close
+            var list: CFTypeRef?
+            if AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &list) == .success, let windows = list as? [AXUIElement] {
+                for window in windows {
+                    guard let id = self.windows.windowID(of: window, pid: pid) else { continue }
+                    context.takeUnretainedValue().known.append((window, id))
+                    AXObserverAddNotification(observer, window, kAXUIElementDestroyedNotification as CFString, context.toOpaque())
+                }
+            }
         }
     }
 

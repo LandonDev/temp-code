@@ -5,7 +5,7 @@ import Foundation
 
 extension ComputerService {
     func registerSetup() {
-        router.on("initialize", beforeInit: true) { [self] (p: Methods.Initialize.Params, _) in try await initialize(p) }
+        router.on("initialize", beforeInit: true) { [self] (p: Methods.Initialize.Params, ctx) in try await initialize(p, ctx) }
         router.on("shutdown", beforeInit: true, slot: false) { [self] (_: Empty, _) -> Empty in
             router.markShutDown()
             Task {
@@ -23,7 +23,7 @@ extension ComputerService {
 
     /// Checks the protocol, takes `<dataDir>/service.lock`, lets go of input a crashed service left held,
     /// reads the grants and the displays, then starts the watchers.
-    func initialize(_ p: Methods.Initialize.Params) async throws -> Methods.Initialize.Output {
+    func initialize(_ p: Methods.Initialize.Params, _ ctx: RequestContext) async throws -> Methods.Initialize.Output {
         guard p.protocol == computerProtocol else {
             throw ComputerError(kind: .protocolMismatch, message: "This service speaks protocol \(computerProtocol), not \(p.protocol).")
         }
@@ -46,10 +46,13 @@ extension ComputerService {
                 initializing = false
             }
             router.markInitialized()
-            if released > 0 {
-                log(.info, "released \(released) held \(released == 1 ? "input" : "inputs") a stopped service left down")
+            // nothing reaches the host before initialize's answer
+            ctx.afterAnswer { [self] in
+                if released > 0 {
+                    log(.info, "released \(released) held \(released == 1 ? "input" : "inputs") a stopped service left down")
+                }
+                startWatchers()
             }
-            startWatchers()
             return result
         } catch {
             lock.withLock { initializing = false }
@@ -57,13 +60,13 @@ extension ComputerService {
         }
     }
 
-    /// Answers the result and how many held inputs it let go of; that log waits for `markInitialized`, since `log` drops a line before it.
+    /// Answers the result and how many held inputs it let go of; that log follows the answer.
     private func initializeOnce(_ p: Methods.Initialize.Params) async throws -> (Methods.Initialize.Output, Int) {
         let dataDir = URL(fileURLWithPath: p.dataDir, isDirectory: true)
         try? FileManager.default.createDirectory(at: dataDir, withIntermediateDirectories: true)
         let lockPath = dataDir.appendingPathComponent("service.lock").path
         let wait = env.timing.serviceLockWait
-        let lease = await Task.detached { FileLock.acquire(lockPath, timeout: wait) }.value
+        let lease = try await blocking { FileLock.acquire(lockPath, timeout: wait) }
         guard let lease else {
             throw ComputerError(kind: .alreadyRunning, message: "Another computer service is using \(p.dataDir).")
         }
@@ -71,8 +74,8 @@ extension ComputerService {
 
         let stale = held.open(dataDir: dataDir)
         if !stale.isEmpty {
-            let input = self.input
-            await Task.detached { for record in stale { input.releaseStale(record) } }.value
+            let box = InputBox(input: input)
+            try await blocking { for record in stale { box.input.releaseStale(record) } }
         }
 
         let read = readPermissions()
@@ -114,9 +117,9 @@ extension ComputerService {
         case .unknown:
             break
         }
-        let now = readPermissions()
-        lock.withLock { permissions = now }
-        return now
+        // the watch reads again and owns every transition (permissions/changed, the exit-75 restart)
+        pokePermissions()
+        return readPermissions()
     }
 
     /// A module said a grant is missing: read again now.

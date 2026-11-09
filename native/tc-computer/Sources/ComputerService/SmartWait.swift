@@ -44,6 +44,10 @@ enum SmartWait {
                 lastBusy = at
                 sample.busy = try? await watch.worker.run { _ in change.signal.busyIndicatorShowing() }
             }
+            // a worker read can take a while (a slow app answers within its 2 s timeout): judge the sample
+            // at the time it ended, and let a cancel that came meanwhile win
+            sample.at = MachTime.ms(from: t0, to: MachTime.now())
+            if cancel.isSet || Task.isCancelled { return finish(rule.cancelled(at: sample.at), trace) }
             if case .done(let outcome) = rule.take(sample) { return finish(outcome, trace) }
             try? await Task.sleep(for: tick)
         }

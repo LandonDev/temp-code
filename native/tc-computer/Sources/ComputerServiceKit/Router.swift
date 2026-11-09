@@ -6,11 +6,33 @@ public struct RequestContext: Sendable {
     public let id: Int
     public let method: String
     public let cancel: CancelFlag
+    let deferred: Deferred
 
     public init(id: Int, method: String, cancel: CancelFlag) {
         self.id = id
         self.method = method
         self.cancel = cancel
+        self.deferred = Deferred()
+    }
+
+    /// Runs `work` once the request's answer is queued, so what it sends follows the answer
+    /// (`initialize`'s notifications).
+    public func afterAnswer(_ work: @escaping @Sendable () -> Void) { deferred.add(work) }
+}
+
+/// What a handler asked to run after its answer.
+final class Deferred: @unchecked Sendable {
+    private let lock = NSLock()
+    private var work: [@Sendable () -> Void] = []
+
+    func add(_ next: @escaping @Sendable () -> Void) { lock.locked { work.append(next) } }
+
+    func run() {
+        let all = lock.locked {
+            defer { work.removeAll() }
+            return work
+        }
+        for next in all { next() }
     }
 }
 
@@ -47,6 +69,8 @@ public final class Router: @unchecked Sendable {
     private struct Route {
         let beforeInit: Bool
         let slot: Bool
+        /// a cancelled request still answers what its handler returned (`action.*`'s normal result)
+        let keepsResult: Bool
         /// decodes the params (throwing `RPCFailure.invalidParams`) and gives the work to run
         let prepare: @Sendable (JSONValue) throws -> Runnable
     }
@@ -59,6 +83,7 @@ public final class Router: @unchecked Sendable {
     private struct Waiting {
         let id: Int
         let method: String
+        let keepsResult: Bool
         let run: Runnable
     }
 
@@ -90,8 +115,9 @@ public final class Router: @unchecked Sendable {
 
     /// A typed handler. Params decode as `P`; a failure answers -32602 naming the field. `beforeInit`
     /// handlers (initialize, shutdown) run before `markInitialized`; `slot: false` handlers take no slot.
+    /// A cancelled request answers `cancelled` whatever its handler returned, unless `keepsResult`.
     public func on<P: Decodable & Sendable, R: Encodable & Sendable>(
-        _ method: String, beforeInit: Bool = false, slot: Bool = true,
+        _ method: String, beforeInit: Bool = false, slot: Bool = true, keepsResult: Bool = false,
         _ handler: @escaping @Sendable (P, RequestContext) async throws -> R
     ) {
         let prepare: @Sendable (JSONValue) throws -> Runnable = { params in
@@ -103,7 +129,7 @@ public final class Router: @unchecked Sendable {
             }
             return { ctx in try Router.encode(try await handler(decoded, ctx)) }
         }
-        lock.locked { routes[method] = Route(beforeInit: beforeInit, slot: slot, prepare: prepare) }
+        lock.locked { routes[method] = Route(beforeInit: beforeInit, slot: slot, keepsResult: keepsResult, prepare: prepare) }
     }
 
     /// A notification from the host. `$/cancel` is the router's own.
@@ -173,7 +199,7 @@ public final class Router: @unchecked Sendable {
     // MARK: Requests
 
     private func request(id: Int, method: String, params: JSONValue) {
-        enum Next { case answer(RPCErrorObject), run(Bool, Runnable), wait }
+        enum Next { case answer(RPCErrorObject), run(Bool, Bool, Runnable), wait }
         let next: Next = lock.locked {
             if shutDown { return .answer(RPCErrorObject(Router.cancelledError)) }
             guard let route = routes[method] else {
@@ -190,25 +216,25 @@ public final class Router: @unchecked Sendable {
             } catch {
                 return .answer(RPCErrorObject(code: ComputerDefaults.RPCErrorCode.invalidParams, message: "Invalid params"))
             }
-            if !route.slot { return .run(false, run) }
+            if !route.slot { return .run(false, route.keepsResult, run) }
             if slotsInUse < maxInFlight {
                 slotsInUse += 1
-                return .run(true, run)
+                return .run(true, route.keepsResult, run)
             }
             if waiting.count >= maxQueued {
                 return .answer(RPCErrorObject(code: ComputerDefaults.RPCErrorCode.internalError, message: "overloaded: \(maxQueued) requests waiting"))
             }
-            waiting.append(Waiting(id: id, method: method, run: run))
+            waiting.append(Waiting(id: id, method: method, keepsResult: route.keepsResult, run: run))
             return .wait
         }
         switch next {
         case .answer(let error): send(id: id, error: error, onWritten: nil)
-        case .run(let slot, let run): start(id: id, method: method, slot: slot, run: run)
+        case .run(let slot, let keepsResult, let run): start(id: id, method: method, slot: slot, keepsResult: keepsResult, run: run)
         case .wait: break
         }
     }
 
-    private func start(id: Int, method: String, slot: Bool, run: @escaping Runnable) {
+    private func start(id: Int, method: String, slot: Bool, keepsResult: Bool, run: @escaping Runnable) {
         let flag = CancelFlag()
         let ctx = RequestContext(id: id, method: method, cancel: flag)
         lock.locked { running[id] = Running(flag: flag, task: nil) }
@@ -216,7 +242,9 @@ public final class Router: @unchecked Sendable {
             let line: Data
             do {
                 let result = try await run(ctx)
-                line = Router.resultLine(id: id, result: result)
+                line = flag.isSet && !keepsResult
+                    ? errorLine(id: id, error: Router.cancelledError, cancelled: true)
+                    : Router.resultLine(id: id, result: result)
             } catch {
                 line = errorLine(id: id, error: error, cancelled: flag.isSet || Task<Never, Never>.isCancelled)
             }
@@ -224,6 +252,7 @@ public final class Router: @unchecked Sendable {
             var onWritten: (@Sendable () -> Void)?
             if slot { onWritten = { [self] in slotFreed() } }
             outbox.respond(line, onWritten: onWritten)
+            ctx.deferred.run()
         }
         lock.locked {
             if running[id] != nil { running[id]?.task = task }
@@ -238,7 +267,7 @@ public final class Router: @unchecked Sendable {
             }
             return waiting.removeFirst()
         }
-        if let next { start(id: next.id, method: next.method, slot: true, run: next.run) }
+        if let next { start(id: next.id, method: next.method, slot: true, keepsResult: next.keepsResult, run: next.run) }
     }
 
     // MARK: Notifications

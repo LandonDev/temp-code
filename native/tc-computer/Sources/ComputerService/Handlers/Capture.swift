@@ -112,7 +112,7 @@ extension ComputerService {
         // it touches the frontmost app and the pointer, not one app's input: no slot, a queue of its own
         router.on("input.restoreSession") { [self] (_: Empty, _) -> SessionRestore in
             let box = InputBox(input: input)
-            return try await Task.detached { try box.input.restoreSession() }.value
+            return try await blocking { try box.input.restoreSession() }
         }
     }
 }

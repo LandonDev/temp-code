@@ -52,6 +52,11 @@ private func held(_ pid: Int32, kind: HeldRecord.Kind = .button) -> HeldRecord {
         #expect(await eventually { rig.lines.notifications("log").contains { $0["message"]?.stringValue?.contains("released 1 held input") == true } })
         let left = try JSONDecoder().decode([HeldRecord].self, from: Data(contentsOf: rig.dataDir.appendingPathComponent("held.json")))
         #expect(left.isEmpty)
+        // nothing reaches the host before initialize's answer
+        let frames = rig.lines.frames
+        let answer = try #require(frames.firstIndex { if case .result = $0 { true } else { false } })
+        let firstNote = try #require(frames.firstIndex { if case .notification = $0 { true } else { false } })
+        #expect(answer < firstNote)
     }
 
     @Test func methodsBeforeInitializeAnswerNotInitialized() async {
@@ -81,6 +86,15 @@ private func held(_ pid: Int32, kind: HeldRecord.Kind = .button) -> HeldRecord {
         #expect(request.noteThin)
         #expect(!request.loading)
         #expect(rig.windowEvents.watching.contains(500))
+    }
+
+    @Test func anAutoReadThatTakesNoShotKeepsTheSpaceCoordinatesMean() async throws {
+        let rig = ServiceRig()
+        await rig.ready()
+        let result = try #require(await rig.call("state.get", "{\(docTarget),\"maxEdge\":640,\"wait\":\(quick)}").result)
+        #expect(result["shot"] == nil)
+        #expect(result["space"]?["width"]?.intValue == 1280)
+        #expect(rig.reader().observed.last?.space.width == 1280)
     }
 
     @Test func noteThinIsOffWithoutAShotAndWithoutScreenRecording() async throws {
@@ -449,6 +463,15 @@ private func held(_ pid: Int32, kind: HeldRecord.Kind = .button) -> HeldRecord {
         _ = await rig.call("permissions.request", #"{"which":"accessibility"}"#)
         _ = await rig.call("permissions.request", #"{"which":"accessibility"}"#)
         #expect(rig.permissions.asked == ["accessibility"])
+    }
+
+    @Test func aGrantARequestReadsFirstStillSaysChangedAndRestarts() async throws {
+        let rig = ServiceRig(screenRecording: false, timing: { $0.permissionPollOff = .seconds(60) })
+        await rig.ready()
+        rig.permissions.set(screenRecording: true)
+        _ = await rig.call("permissions.request", #"{"which":"screenRecording"}"#)
+        #expect(await eventually { rig.lines.notifications("permissions/changed").first?["screenRecording"]?.boolValue == true })
+        #expect(await eventually { rig.exits.first == 75 })
     }
 
     @Test func probeAndRestoreReachInput() async throws {

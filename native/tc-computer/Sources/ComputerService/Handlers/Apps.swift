@@ -44,10 +44,9 @@ extension ComputerService {
         let source = modules.windows
         let lists = await withTaskGroup(of: (Int32, [WindowInfo]?).self) { group in
             for app in apps {
-                group.addTask {
+                group.addTask { [self] in
                     let pid = app.pid
-                    let list = await Task.detached { try? source.list(pid: pid) }.value
-                    return (pid, list)
+                    return (pid, try? await blocking { try source.list(pid: pid) })
                 }
             }
             var out: [Int32: [WindowInfo]?] = [:]

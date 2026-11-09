@@ -101,6 +101,16 @@ public final class ComputerService: @unchecked Sendable {
         lifecycle.exit(0, why: "stdin closed")
     }
 
+    /// A blocking module call on a dispatch queue, never on Swift's cooperative pool, so a hung app
+    /// cannot starve the tasks that answer the liveness ping and `shutdown`.
+    func blocking<T: Sendable>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do { continuation.resume(returning: try body()) } catch { continuation.resume(throwing: error) }
+            }
+        }
+    }
+
     // MARK: Notifications and log
 
     func notify<P: Encodable>(_ method: String, _ params: P, kind: Outbox.Kind = .plain) {
@@ -175,7 +185,8 @@ public final class ComputerService: @unchecked Sendable {
     func windDown() async {
         lock.withLock { reading = false }
         router.cancelAll()
-        for (pid, _) in held.all { input.releaseHeld(pid: pid) }
+        let box = InputBox(input: input)
+        for (pid, _) in held.all { _ = try? await blocking { box.input.releaseHeld(pid: pid) } }
         let ending: [StreamEntry] = lock.withLock {
             defer { streams.removeAll() }
             return Array(streams.values)
