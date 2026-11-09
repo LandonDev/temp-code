@@ -375,12 +375,16 @@ export interface ResponsesRequestRecord {
   answered: string
   /** The body as received: its content-encoding, size, and whether it parsed. */
   body: { encoding: string; bytes: number; parsed: boolean; fields: string[] }
+  /** Each tool as `name(type: param, …)`: names and types only, never a description. */
+  toolShapes: string[]
 }
 
 interface ResponsesTool {
   type?: string
   name?: string
   parameters?: unknown
+  /** A namespace's own tools (Muse sends all of its tools in one namespace). */
+  tools?: ResponsesTool[]
 }
 
 /**
@@ -452,7 +456,8 @@ export class FakeResponses {
       hits: { instructions: [], input: [], tools: [], last: [] },
       tools: [],
       answered: '',
-      body: { encoding: String(req.headers['content-encoding'] ?? ''), bytes: raw.length, parsed: false, fields: [] }
+      body: { encoding: String(req.headers['content-encoding'] ?? ''), bytes: raw.length, parsed: false, fields: [] },
+      toolShapes: []
     }
     this.requests.push(rec)
     // Codex's workspace routing discovery: the placeholder account, routed to this front. Answered here in a real
@@ -491,6 +496,12 @@ export class FakeResponses {
       const input = Array.isArray(body.input) ? body.input : []
       rec.model = body.model ?? null
       rec.tools = tools.map((t) => t.name ?? t.type ?? '?')
+      const shape = (t: ResponsesTool, prefix = ''): string[] => {
+        if (t.type === 'namespace') return [`${t.name ?? '?'}[namespace]`, ...(t.tools ?? []).flatMap((x) => shape(x, `${t.name}.`))]
+        const props = ((t.parameters ?? {}) as { properties?: Record<string, { type?: unknown }> }).properties ?? {}
+        return [`${prefix}${t.name ?? '?'}[${t.type ?? 'function'}](${Object.entries(props).map(([k, v]) => `${k}: ${JSON.stringify(v?.type ?? '?')}`).join(', ')})`]
+      }
+      rec.toolShapes = tools.flatMap((t) => shape(t))
       rec.main = rec.role ? rec.role === 'main' : tools.length > 0
       rec.hits = {
         instructions: nonceHits(JSON.stringify(body.instructions ?? ''), this.needles),
@@ -511,12 +522,16 @@ export class FakeResponses {
   /** The output item that runs `command` through the request's own shell tool. */
   private shellItem(tools: ResponsesTool[], command: string): Record<string, unknown> | null {
     const id = `call_tc_${++this.n}`
-    const fn = tools.find((t) => (t.type ?? 'function') === 'function' && /^(shell|exec_command|shell_command|bash|run_shell|execute)$/.test(t.name ?? '')) ?? tools.find((t) => (t.type ?? 'function') === 'function' && /shell|exec|bash/.test(t.name ?? ''))
+    // A namespace's tools (Muse sends all of its own in one, `muse`) are called by name with the namespace beside it.
+    const flat = tools.flatMap((t) => (t.type === 'namespace' ? (t.tools ?? []).map((x) => ({ ...x, ns: t.name })) : [{ ...t, ns: undefined as string | undefined }]))
+    const isFn = (t: ResponsesTool): boolean => (t.type ?? 'function') === 'function'
+    const fn = flat.find((t) => isFn(t) && /^(shell|exec_command|shell_command|bash|run_shell|execute)$/.test(t.name ?? '')) ?? flat.find((t) => isFn(t) && /shell|exec|bash/.test(t.name ?? ''))
     if (fn) {
       const props = ((fn.parameters ?? {}) as { properties?: Record<string, { type?: string }> }).properties ?? {}
       const key = 'cmd' in props ? 'cmd' : 'command' in props ? 'command' : firstParam(fn.parameters, 'command')
       const value = props[key]?.type === 'array' ? ['bash', '-lc', command] : command
-      return { type: 'function_call', id: `fc_tc_${this.n}`, call_id: id, name: fn.name, arguments: JSON.stringify({ [key]: value }), status: 'completed' }
+      // Muse 1.4.14 runs a namespaced call named either way (`bash` with `namespace: muse`, or `muse.bash`).
+      return { type: 'function_call', id: `fc_tc_${this.n}`, call_id: id, name: fn.name, ...(fn.ns ? { namespace: fn.ns } : {}), arguments: JSON.stringify({ [key]: value }), status: 'completed' }
     }
     if (tools.some((t) => t.type === 'local_shell')) return { type: 'local_shell_call', id: `lsh_tc_${this.n}`, call_id: id, status: 'completed', action: { type: 'exec', command: ['bash', '-lc', command] } }
     return null

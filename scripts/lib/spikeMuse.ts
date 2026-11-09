@@ -313,7 +313,7 @@ async function m0c(ev: Evidence): Promise<void> {
     c.museFront.script = [{ shell: `echo ${nonce}` }]
     const t2 = await turn(h, sid, text('Run the probe command.'), { shellOutput: nonce })
     const ran = reqHits(t2.requests).includes('shellOutput')
-    ev.observed = { models: models.map((m) => m.modelId), model, textTurn: { completed: t1.completed, terminal: t1.terminal, paths: uniq(t1.requests.map((q) => `${q.method} ${q.path}`)) }, shellTurn: { completed: t2.completed, answered: t2.requests.map((q) => q.answered), ran }, serverRequests: uniq(h.serverRequests), stderr: h.stderr.slice(-5) }
+    ev.observed = { models: models.map((m) => m.modelId), model, textTurn: { completed: t1.completed, terminal: t1.terminal, paths: uniq(t1.requests.map((q) => `${q.method} ${q.path}`)) }, shellTurn: { completed: t2.completed, answered: t2.requests.map((q) => q.answered), roles: uniq(t2.requests.map((q) => q.role ?? '-')), tools: uniq(t2.requests.filter((q) => q.main).flatMap((q) => q.toolShapes)), ran }, serverRequests: uniq(h.serverRequests), stderr: h.stderr.slice(-5) }
     c.museAccepted = models.length > 0 && t1.completed && t2.completed && ran
     judge(ev, { modelsListed: models.length > 0, textTurn: t1.completed, functionCallRan: ran }, c.museAccepted ? 'the fake is accepted' : 'fake not accepted: the listings run on --provider echo')
   } finally {
