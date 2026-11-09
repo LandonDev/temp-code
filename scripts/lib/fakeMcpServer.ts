@@ -14,8 +14,9 @@
  *
  * Tools: echo, read (readOnly), image, whoami (sha256 prefix of FAKE_TOKEN,
  * or of the required header's value), env (the variable names it sees),
- * crash (a line on stderr, exit 3; `signal: true` kills itself), slow (waits
- * `ms`, logs a cancel), big (`bytes` of text), structured, fail (isError),
+ * crash (a line on stderr, exit 3; `signal: true` kills itself, `token: true`
+ * prints FAKE_TOKEN), slow (waits `ms`, logs a cancel; `fail: true` then
+ * throws FAKE_TOKEN as it was at the call), big (`bytes` of text), structured, fail (isError),
  * printtoken (writes FAKE_TOKEN to stderr and throws it), add_tool (adds a
  * tool and sends tools/list_changed). tools/list pages eight at a time.
  */
@@ -53,8 +54,8 @@ const tools: ToolDef[] = [
   { name: 'image', description: 'Answer a one-pixel image', inputSchema: obj() },
   { name: 'whoami', description: 'Answer the sha256 prefix of the token this server got', inputSchema: obj() },
   { name: 'env', description: 'Answer the environment variable names this server sees', inputSchema: obj() },
-  { name: 'crash', description: 'Exit with code 3 after a line on stderr', inputSchema: obj({ signal: { type: 'boolean' } }) },
-  { name: 'slow', description: 'Wait the given milliseconds', inputSchema: obj({ ms: { type: 'number' } }, ['ms']) },
+  { name: 'crash', description: 'Exit with code 3 after a line on stderr', inputSchema: obj({ signal: { type: 'boolean' }, token: { type: 'boolean' } }) },
+  { name: 'slow', description: 'Wait the given milliseconds', inputSchema: obj({ ms: { type: 'number' }, fail: { type: 'boolean' } }, ['ms']) },
   { name: 'big', description: 'Answer a text of the given size', inputSchema: obj({ bytes: { type: 'number' } }, ['bytes']) },
   { name: 'structured', description: 'Answer content with structuredContent', inputSchema: obj() },
   { name: 'fail', description: 'Answer an error result', inputSchema: obj() },
@@ -87,13 +88,14 @@ function makeServer(headerValue: () => string | undefined): Server {
       case 'env':
         return text(JSON.stringify(Object.keys(process.env).sort()))
       case 'crash':
-        process.stderr.write('fake crashing on purpose\n')
+        process.stderr.write(args.token ? `crashing with token ${process.env.FAKE_TOKEN}\n` : 'fake crashing on purpose\n')
         if (args.signal) process.kill(process.pid, 'SIGKILL')
         else setTimeout(() => process.exit(3), 10)
         return new Promise(() => {})
       case 'slow':
-        return new Promise((resolve) => {
-          const timer = setTimeout(() => resolve(text(`waited ${Number(args.ms)}`)), Number(args.ms))
+        return new Promise((resolve, reject) => {
+          const token = process.env.FAKE_TOKEN
+          const timer = setTimeout(() => (args.fail ? reject(new Error(`slow failed with token ${token}`)) : resolve(text(`waited ${Number(args.ms)}`))), Number(args.ms))
           extra.signal.addEventListener('abort', () => {
             clearTimeout(timer)
             log({ tool: 'slow', cancelled: true })
