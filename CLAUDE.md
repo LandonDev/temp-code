@@ -3721,8 +3721,8 @@ proof and the sizing rules; the pieces, by name:
   the bound window, the element book, the epoch, `needsFull`, a live row from
   the first call of a turn to its settle, the idle close at ten minutes; the
   tier verdicts in `computer.tiers.<bundleId>` with the probe once per app; the
-  session tier refused (`no-scheduler`) until the tier scheduling build sets
-  its gate (`setSessionTierGate`). Every Mac thread, subagents included, gets
+  session tier through the tier scheduler below (`no-scheduler` without it,
+  headless). Every Mac thread, subagents included, gets
   the four tools on its `app` server: deferred behind tool search on Claude
   (computer/mcp.ts), listed by the bridge for codex (`images: none`) and Muse
   (`parts`) behind a per-thread token of purpose `computer`. In `safe` and
@@ -3763,6 +3763,29 @@ proof and the sizing rules; the pieces, by name:
   words is `bun run script:compare-computer-words` (the Mac only; tasks in
   scripts/lib/computerTasks.ts on fixtures/page/bench.html, the rule in
   scripts/lib/computerWordsJudge.ts).
+- Tier scheduling (computer/schedule.ts, the rules in
+  src/shared/computer/scheduleRules.ts; docs/computer-protocol.md §20): the
+  `session` tier (the person's own pointer and keyboard) runs only while the
+  person is away: no input for `computer.sessionIdleMs` (default 120 s, read at
+  every check, no Settings row yet) or the Away switch with 10 s of quiet;
+  locked or asleep refuses. A held step says "Waiting for the Mac to be free"
+  (`SessionRegistry.setToolHold`, the computer row) and in full access asks
+  after 3 minutes, in safe and edits at once, with one `computer_session` card
+  whose `approval-request` carries `choices: 'run-skip'` (Run now leases the
+  tier until the person's next input; a Skip holds for that app this turn). One
+  session call at a time per host (`SessionSlot`); after every call that
+  touched the session the person's app and pointer go back
+  (`input.restoreSession`, `{ afterInterrupt: true }` on the service's
+  `session/interrupted`, before the reply). main builds `PersonIdle`
+  (src/main/personIdle.ts) over powerMonitor for the scheduler and
+  `AttentionWatcher`: a session step's own input, by the span its
+  `SessionChange` reports, is not the person's. A paste waits out the person's
+  copy: every acting call carries `pasteQuietMs` (`RECENT_COPY_MS`, 5 s), the
+  service fails a paste inside it `recent-copy` untouched, and the host waits
+  for a quiet `clipboard.state`, at most 10 s (`clipboard_recent`). Proofs:
+  schedule.test.ts and run.test.ts's tier scheduling suite on the box, `bun run
+  script:e2e-computer-schedule` on the Mac (two scratch TextEdits, a typist for
+  the person, a sentinel tap that stops it when the real person comes back).
 - Fixtures: src/main/server/computer/fixtures/ (its README): hand-written
   wire frames for every method, error kind and notification, observation
   texts for every grammar case, `page/form.html`, and `apps/` trees and
