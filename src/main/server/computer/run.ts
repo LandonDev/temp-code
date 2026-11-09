@@ -308,10 +308,12 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     if (refused) return refusal(refused)
     const a = app()
     const bound = !args.window && a?.window ? { id: a.window.id } : undefined
+    // text with no element is pinned to the window the thread read, by id: a title names it, not which window the service picks
+    const readOne = blindText && a?.window ? { id: a.window.id } : undefined
     const target = (useBound = true): TargetBase => ({
       session: t.serviceSession,
       app: { pid: pin.app.pid },
-      ...(args.window ? { window: { title: args.window } } : bound && useBound ? { window: bound } : {}),
+      ...(readOne ? { window: readOne } : args.window ? { window: { title: args.window } } : bound && useBound ? { window: bound } : {}),
       launch: false,
       ...(named.length && a ? { epoch: a.epoch } : {})
     })

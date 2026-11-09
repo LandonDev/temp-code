@@ -179,6 +179,7 @@ describe("the confirm flag and the host's own rules", () => {
     )
     expect(count(h, 'action.run')).toBe(0)
     expect((await h.run('computer_act', { app: 'TextEdit', window: 'Untitled', action: 'type', text: 'x' })).isError).toBe(false)
+    expect(h.requests().filter((r) => r.method === 'action.run').at(-1)!.params.window).toEqual({ id: 1581 })
   })
 
   it('text into an app this thread has not read answers no_observation, nothing sent', async () => {
