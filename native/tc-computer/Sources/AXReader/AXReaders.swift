@@ -3,6 +3,7 @@ import AppKit
 import ApplicationServices
 import AXText
 import ComputerCore
+import ComputerProtocol
 import Foundation
 
 /// Every AX reader of one service, one per session × pid; the Service shell holds it.
