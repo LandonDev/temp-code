@@ -10,7 +10,10 @@
  * (900) and else "skipped: the person is active"; a launch that brings its app
  * in front ends the run; IntelliJ's licence prompt is avoided (no run when it
  * already shows) or answered only with a button that dismisses it; the
- * scratch project leaves IntelliJ's recent list.
+ * scratch project leaves IntelliJ's recent list. Opening a project brings
+ * IntelliJ in front whatever `-g` says (seen 2026-11-09), so its step runs only
+ * with TC_AX_INTELLIJ=1, for a person at the Mac who accepts the window, and is
+ * otherwise skipped with that reason.
  *
  * Report: /tmp/tc-ax-proof/report.json { checks, timings, findings, skipped };
  * observation text stays in memory and is never written.
@@ -514,6 +517,11 @@ function forgetScratch(): number {
 
 async function intellij(): Promise<void> {
   const app = 'intellij'
+  if (process.env.TC_AX_INTELLIJ !== '1') {
+    skipped[app] = 'skipped: opening a project brings IntelliJ in front (TC_AX_INTELLIJ=1 runs it)'
+    console.log(`skip  ${app.padEnd(12)} ${skipped[app]}`)
+    return
+  }
   if (!(await waitIdle(IDLE_IDEA, app))) return
   const exe = 'IntelliJ IDEA.app/Contents/MacOS/idea'
   const running = pidsOf(exe)[0]

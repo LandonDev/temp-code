@@ -134,8 +134,12 @@ public enum Keep {
                 if let f = n.frame, windowArea > 0, f.w * f.h >= windowArea / 2 { stubArea = true }
                 return
             }
-            if n.facts.hasRoleDefault { actionable += 1 }
-            bytes += (n.facts.line.name?.utf8.count ?? 0) + (n.facts.line.value?.utf8.count ?? 0)
+            // the window and its title-bar buttons are in every tree: only what the content offers counts
+            let chrome = ["window", "sheet", "dialog"].contains(n.facts.line.role) || n.subrole.map { ObservationTables.subroleNames[$0] != nil } == true
+            if !chrome {
+                if n.facts.hasRoleDefault { actionable += 1 }
+                bytes += (n.facts.line.name?.utf8.count ?? 0) + (n.facts.line.value?.utf8.count ?? 0)
+            }
             n.children.forEach(walk)
         }
         roots.forEach(walk)

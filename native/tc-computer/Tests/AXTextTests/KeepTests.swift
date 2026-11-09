@@ -176,6 +176,9 @@ func r(_ y: Double) -> Rect { Rect(x: 10, y: y, w: 100, h: 20) }
         let wordy = snapshot([t.window((0..<3).map { _ in t.node("AXStaticText", value: .string(String(repeating: "word ", count: 20)), frame: r(0)) })])
         #expect(!Keep.tree(wordy).thin)
         #expect(!Reader().read(thin, noteThin: false).text.contains("thin tree"))
+        // an Electron window before its content is exposed: the window and its title-bar buttons alone
+        let bare = snapshot([t.window(["AXCloseButton", "AXFullScreenButton", "AXMinimizeButton"].map { t.node("AXButton", $0, frame: r(0), actions: ["AXPress"]) })])
+        #expect(Keep.tree(bare).thin)
     }
 
     @Test func aContainerOfTextlessRowsIsAStubAndThinWhenItCoversTheWindow() {
