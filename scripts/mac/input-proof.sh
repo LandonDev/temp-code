@@ -64,7 +64,8 @@ SCRATCH_PIDS=''
 give_front_back() {
   local now
   now=$(front_pid)
-  if [[ -n $PERSON_FRONT_PID && $now != "$PERSON_FRONT_PID" && " $SCRATCH_PIDS " == *" $now "* ]]; then
+  # a scratch app in front with no input since: a launch put it there, not the person
+  if [[ -n $PERSON_FRONT_PID && $now != "$PERSON_FRONT_PID" && " $SCRATCH_PIDS " == *" $now "* ]] && (( $(idle) >= 120 )); then
     echo "a launch took the front (pid $now); giving it back to $PERSON_FRONT_BUNDLE"
     [[ -n $PERSON_FRONT_BUNDLE ]] && open -g -b "$PERSON_FRONT_BUNDLE" && open -b "$PERSON_FRONT_BUNDLE"
   fi
@@ -93,8 +94,9 @@ LOCKDIR="${TMPDIR:-/tmp}/tc-computer"
 [[ -d $LOCKDIR ]] || CLEANUP+=("rm -rf '$LOCKDIR'")
 AUTOSAVE="$HOME/Library/Containers/com.apple.TextEdit/Data/Library/Autosave Information"
 ls -1 "$AUTOSAVE" 2>/dev/null | sort >"$WORK/autosave.before"
-# only autosaves made during the run that hold the probe document; the person's own stay
-CLEANUP+=("comm -13 '$WORK/autosave.before' <(ls -1 \"$AUTOSAVE\" 2>/dev/null | sort) | while read -r f; do grep -rqs 'line 199' \"$AUTOSAVE/\$f\" && rm -rf \"$AUTOSAVE/\$f\"; done")
+# only autosaves made during the run that hold this run's marker; the person's own stay
+export TC_INPUT_PROOF_MARKER="tc-input-proof-$(uuidgen)"
+CLEANUP+=("comm -13 '$WORK/autosave.before' <(ls -1 \"$AUTOSAVE\" 2>/dev/null | sort) | while read -r f; do grep -rqs '$TC_INPUT_PROOF_MARKER' \"$AUTOSAVE/\$f\" && rm -rf \"$AUTOSAVE/\$f\"; done")
 
 say TextEdit
 before=$(pgrep -x TextEdit | sort)

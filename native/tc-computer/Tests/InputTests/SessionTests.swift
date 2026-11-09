@@ -427,5 +427,29 @@ private let textEdit = AppBrief(pid: 7, bundleId: "com.apple.TextEdit", name: "T
         rig.core.releaseStale(r) { _ in }
         #expect(rig.sink.events == [.up(.right, pt(3, 4), clickState: 1, flags: []), .modifier(56, down: false, flags: [])])
     }
+
+    @Test func thePersonDuringAnotherAppsWaitLetsTheHeldButtonGo() throws {
+        let rig = Rig()
+        _ = try rig.step(.session) { ctx in try rig.core.mouseDown(&ctx, at: pt(400, 300)) }
+        rig.host.apps[9] = AppBrief(pid: 9, bundleId: "com.google.Chrome", name: "Chrome")
+        let watch = rig.watch
+        let tries = Box(0)
+        do {
+            _ = try rig.core.step(tier: .session, pid: 9, windowID: 90, window: 90, keys: false, cancelled: {
+                tries.value += 1
+                if tries.value == 2 { watch.trip() }
+                return false
+            }) { _ in }
+            Issue.record("the other app's step ran")
+        } catch {
+            #expect(kind(error) == .interrupted)
+        }
+        // the trip between the owner's calls lets its button go, on another queue
+        let deadline = Date().addingTimeInterval(2)
+        while rig.personInput.isEmpty, Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
+        #expect(rig.core.held.hold(pid: 7) == nil)
+        #expect(rig.personInput == [7])
+        #expect(rig.core.takeInterruption(pid: 7))
+    }
 }
 

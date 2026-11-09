@@ -167,16 +167,20 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
             throw sessionUnavailable(.secureInput, "Secure input is on (a password field has focus somewhere); keys can't be sent.")
         }
         let deadline = clock.seconds() + InputTiming.sessionLockWaitS
+        let mine = { self.state.withLock { self.lockHold == nil || self.holdOwner == nil || self.holdOwner == pid } }
+        // a lock kept for another app's held session input: wait for its release as for another
+        // holder's, outside the step mutex and the running state, so the person's trip meanwhile
+        // still lets that button go (the watch stays armed while it is held)
+        try waitFor(mine, deadline: deadline, cancelled: cancelled, watchPerson: true)
         try waitFor({ steps.try() }, deadline: deadline, cancelled: cancelled, watchPerson: false)
         defer { steps.unlock() }
+        guard mine() else { throw sessionUnavailable(.inUse, "Another computer session holds the Mac's keyboard and mouse.") }
         armWatch()
         state.withLock { running = true }
         defer {
             state.withLock { running = false }
             settle(holding: holding(), owner: pid)
         }
-        // a lock kept for another app's held session input: wait for its release, as for another holder's
-        try waitFor({ state.withLock { lockHold == nil || holdOwner == nil || holdOwner == pid } }, deadline: deadline, cancelled: cancelled, watchPerson: true)
         if state.withLock({ lockHold == nil }) {
             let h = try takeLock(cancelled: cancelled)
             state.withLock { lockHold = h }

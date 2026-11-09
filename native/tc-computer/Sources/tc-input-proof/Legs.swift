@@ -81,19 +81,10 @@ final class Proof: @unchecked Sendable {
         })
     }
 
-    func putBack(_ b: Board) {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.writeObjects(b.items.map { saved in
-            let item = NSPasteboardItem()
-            for (t, d) in saved { item.setData(d, forType: NSPasteboard.PasteboardType(t)) }
-            return item
-        })
-    }
-
     // MARK: TextEdit
 
-    static let document = (1 ... 200).map { String(format: "line %03d", $0) }.joined(separator: "\n")
+    /// The probe document: the run's marker (cleanup finds the scratch autosaves by it), then 200 numbered lines.
+    static let document = ([ProcessInfo.processInfo.environment["TC_INPUT_PROOF_MARKER"] ?? "tc-input-proof"] + (1 ... 200).map { String(format: "line %03d", $0) }).joined(separator: "\n")
 
     func textEdit(_ s: inout Scratch, tiers: [Tier]) {
         guard let text = s.find("AXTextArea") else { return missing("textedit", "setup", "text area") }
@@ -182,24 +173,16 @@ final class Proof: @unchecked Sendable {
             }
         }
         let saved = board()
-        var outcomes: [ClipboardOutcome?] = []
-        var countAfterLast = NSPasteboard.general.changeCount
+
         for (format, textIn, shows) in [(PasteFormat.markdown, "# Heading\n\n**Bold** and *it*", "Bold and it"), (.html, "<p>Pasted <b>HTML</b></p>", "Pasted HTML"), (.text, "plain pasted", "plain pasted")] {
             _ = P.set(text, "AXSelectedTextRange", rangeValue(0, 0))
             step("textedit", "paste \(format.rawValue)", tiers: [.process], ComputerAction(action: .paste, element: 1, text: textIn, format: format), allow: [.keyWindowUnavailable], target: { s.target(text) }) { out in
-                outcomes.append(out.clipboard)
-                countAfterLast = NSPasteboard.general.changeCount
                 let restored = self.board() == saved
                 return (value().contains(shows) && restored && out.clipboard == .restored, "shows \(value().contains(shows)), clipboard \(out.clipboard?.rawValue ?? "-"), byte for byte \(restored)")
             }
         }
-        // a net for an engine bug only: every paste said it restored, nothing copied since, yet the board differs;
-        // a copy the person made (kept-person-copy, or a change count that moved) is theirs and stays
-        if board() != saved, outcomes.allSatisfy({ $0 == .restored }), let hold = FlockLock("clipboard.lock").acquire(within: 2) {
-            if NSPasteboard.general.changeCount == countAfterLast { putBack(saved) }
-            hold.release()
-            report.notes.append("textedit: a paste said it restored the clipboard but left it changed; the proof put it back")
-        }
+        // no net of the proof's own: it cannot tell a person's copy from a paste's leftover, and the clipboard is the person's
+        if board() != saved { report.notes.append("textedit: the clipboard differs from the run's start (a paste's leftover, or the person's copy): left as it is") }
     }
 
     // MARK: Chrome
@@ -326,11 +309,15 @@ final class Proof: @unchecked Sendable {
             return false
         }
         gate.stepStarted()
-        defer { gate.stepEnded() }
         let t0 = Date()
         var r = LegResult(app: "session", leg: leg, tiers: ["session"], ok: false, detail: "", ms: 0)
+        // the step's own input ends when the engine returns; anything after it, the check's wait included, is the person's
+        let perform = { () throws -> InputOutcome in
+            defer { self.gate.stepEnded() }
+            return try self.engine.perform(action, on: target(), tiers: [.session])
+        }
         do {
-            let out = try engine.perform(action, on: target(), tiers: [.session])
+            let out = try perform()
             r.ms = Date().timeIntervalSince(t0) * 1000
             r.tier = out.tier?.rawValue
             r.via = out.via?.rawValue
@@ -400,6 +387,7 @@ final class Proof: @unchecked Sendable {
             r.detail = "the hold ran its 5 s"
         } catch let f as ComputerFailure where f.error.kind == .interrupted {
             let after = posted.value.map { Date().timeIntervalSince($0) * 1000 } ?? -1
+            gate.stepEnded()
             let released = !CGEventSource.keyState(.combinedSessionState, key: 56)
             r.ok = after >= 0 && after < 100 && released
             r.detail = "interrupted \(Int(after)) ms after the move; shift \(released ? "released" : "still down")"
