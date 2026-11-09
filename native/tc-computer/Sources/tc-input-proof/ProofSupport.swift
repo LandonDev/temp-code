@@ -240,7 +240,13 @@ final class IdleGate: @unchecked Sendable {
     func sample() {
         let last = Date().addingTimeInterval(-hidIdle())
         if last > ownUntil.addingTimeInterval(0.05), last > quietSince { quietSince = last }
+        // input that never passes the HID system (Universal Control, a remote session, another
+        // tool's posted events) leaves HIDIdleTime alone but still moves the pointer
+        let at = CGEvent(source: nil)?.location ?? .zero
+        if let seen = pointerSeen, hypot(seen.x - at.x, seen.y - at.y) > 0.5, ownUntil < Date() { quietSince = Date() }
+        pointerSeen = at
     }
+    private var pointerSeen: CGPoint?
 
     /// The person moved during a step (the engine's watch said so): their quiet starts again now.
     func personActive() {
@@ -249,7 +255,10 @@ final class IdleGate: @unchecked Sendable {
 
     /// The proof's own session step ran from now until `stepEnded()`.
     func stepStarted() { ownUntil = .distantFuture }
-    func stepEnded() { ownUntil = Date() }
+    func stepEnded() {
+        ownUntil = Date()
+        pointerSeen = CGEvent(source: nil)?.location
+    }
 
     var quietFor: Double { Date().timeIntervalSince(quietSince) }
 

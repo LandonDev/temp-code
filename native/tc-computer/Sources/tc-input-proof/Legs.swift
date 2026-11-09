@@ -378,6 +378,9 @@ final class Proof: @unchecked Sendable {
         }
         guard gate.stillQuiet() else { return giveBack() }
         do {
+            // the restore's pointer move is the proof's own
+            gate.stepStarted()
+            defer { gate.stepEnded() }
             let r = try engine.restoreSession()
             let ok = r.frontmost == .restored && r.pointer == .restored
             report.legs.append(LegResult(app: "session", leg: "restoreSession gives back the app and the pointer", tiers: ["session"], ok: ok, detail: "frontmost \(r.frontmost.rawValue), pointer \(r.pointer.rawValue), held \(r.held?.name ?? "-")", ms: 0))
