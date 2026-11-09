@@ -215,6 +215,12 @@ final class Proof: @unchecked Sendable {
                 if let cancel = P.walk(s.window).first(where: { P.string($0, "AXRole") == "AXButton" && P.names($0).contains("cancel") }) {
                     _ = AXUIElementPerformAction(cancel, "AXPress" as CFString)
                 }
+                // a modal dialog makes the page inert, and Chrome hides the fields' values from AX until
+                // its tree has caught up with the close: the next leg waits for that, at most 3 s
+                let until = Date().addingTimeInterval(3)
+                while P.walk(s.window).contains(where: { P.string($0, "AXDOMIdentifier") == "dialog" && P.frame($0).map { $0.w > 0 } == true }) || !(P.string(name, "AXValue") ?? "").contains("Example"), Date() < until {
+                    Thread.sleep(forTimeInterval: 0.1)
+                }
             }
             step("chrome", "select_text in the name", tiers: [.ax], ComputerAction(action: .selectText, element: 1, text: "Example"), target: { s.target(name) }) { _ in
                 (P.range(name) == [4, 7], "range \(P.range(name) ?? [])")
