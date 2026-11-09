@@ -226,7 +226,7 @@ final class Proof: @unchecked Sendable {
             step("chrome", "left_click into the notes", tiers: [.process], ComputerAction(action: .leftClick, coordinate: s.coordinate(CGPoint(x: f.x + f.w / 2, y: f.y + f.h / 2))), target: { s.target() }) { _ in
                 (P.element(s.app, "AXFocusedUIElement").map { CFEqual($0, notes) } == true, "focused")
             }
-            step("chrome", "type into the notes", tiers: [.process], ComputerAction(action: .type, text: "hello"), allow: [.keyWindowUnavailable], target: { s.target() }) { out in
+            step("chrome", "type into the notes", tiers: [.process], ComputerAction(action: .type, element: 1, text: "hello"), allow: [.keyWindowUnavailable], target: { s.target(notes) }) { out in
                 ((P.string(notes, "AXValue") ?? "").contains("hello"), "via \(out.via?.rawValue ?? "-")")
             }
         }
@@ -244,6 +244,8 @@ final class Proof: @unchecked Sendable {
             }
         }
         if let a = P.bounds(name, 0, 1), let b = P.bounds(name, 3, 1) {
+            // the ax leg left a selection in the name; the drag must make its own
+            _ = P.set(name, "AXSelectedTextRange", rangeValue(0, 0))
             step("chrome", "drag selects in the name (the page has no slider)", tiers: [.process], ComputerAction(action: .leftClickDrag, coordinate: s.coordinate(CGPoint(x: b.x + b.w, y: b.y + b.h / 2)), start_coordinate: s.coordinate(CGPoint(x: a.x + 1, y: a.y + a.h / 2))), target: { s.target() }) { _ in
                 ((P.range(name)?[1] ?? 0) > 0, "range \(P.range(name) ?? [])")
             }
@@ -255,7 +257,7 @@ final class Proof: @unchecked Sendable {
     func tempcode(_ s: inout Scratch, tiers: [Tier]) {
         guard let composer = s.find("AXTextArea") else { return missing("tempcode", "setup", "composer") }
         if tiers.contains(.ax) {
-            step("tempcode", "type into the composer", tiers: [.ax], ComputerAction(action: .type, element: 1, text: "from the input proof"), target: { s.target(composer) }) { out in
+            step("tempcode", "type into the composer", tiers: [.ax], ComputerAction(action: .type, element: 1, text: "from the input proof"), allow: [.needsTier], target: { s.target(composer) }) { out in
                 ((P.string(composer, "AXValue") ?? "").contains("from the input proof"), "via \(out.via?.rawValue ?? "-")")
             }
             if let button = P.walk(s.window).first(where: { P.string($0, "AXRole") == "AXButton" && P.actions($0).contains("AXPress") && !(P.names($0).first ?? "").isEmpty }) {
