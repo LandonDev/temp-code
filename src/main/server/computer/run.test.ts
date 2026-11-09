@@ -221,6 +221,19 @@ describe('tiers', () => {
     expect(o.steps).toEqual(['key a · session · changed'])
   })
 
+  it("the gate hears the call's own root and card when the caller names them, else the host's root", async () => {
+    const seen: TierGateContext[] = []
+    const gate: SessionTierGate = { admitted: () => false, request: async (c) => (seen.push(c), { admit: false, reason: 'denied', message: 'no' }) }
+    const h = make({ gate })
+    const approve = async (): Promise<boolean> => true
+    const batch = { app: 'Sessiony', actions: [{ action: 'hold_key', text: 'shift', duration: 1 }] }
+    await h.sessions.run({ threadId: 'env_abcdefghijklmnopqrstuv:t9', rootId: 'env_abcdefghijklmnopqrstuv:root', approve }, 'computer_batch', batch)
+    await h.run('computer_batch', batch, 't2')
+    expect(seen.map((c) => c.rootId)).toEqual(['env_abcdefghijklmnopqrstuv:root', 't2'])
+    expect(seen[0].approve).toBe(approve)
+    expect(seen[1].approve).toBeUndefined()
+  })
+
   it('Stubborn raises its click verdict to session through a gate that admits', async () => {
     const gate: SessionTierGate = { admitted: () => true, request: async () => ({ admit: true }) }
     const h = make({ gate })
@@ -351,6 +364,24 @@ describe('a call given up late', () => {
     expect((await slow).body).toBe('cancelled: the thread ended')
     expect((await queued).body).toBe('cancelled: the thread ended')
     expect(count(h, 'action.run')).toBe(0)
+  })
+})
+
+describe('turns another host drives', () => {
+  it('rowOf reads one live session; beginTurn clears a Stop; settleTurn ends the row', async () => {
+    const h = make()
+    const key = 'env_abcdefghijklmnopqrstuv:t9'
+    expect(h.sessions.rowOf(key)).toBeNull()
+    await h.run('computer_observe', { app: 'TextEdit' }, key)
+    expect(h.sessions.rowOf(key)).toMatchObject({ threadId: key, apps: [{ name: 'TextEdit' }], running: null })
+    await h.sessions.stop(key)
+    expect((await h.run('computer_observe', { app: 'TextEdit' }, key)).body).toBe('stopped by the person')
+    h.sessions.beginTurn(key)
+    expect((await h.run('computer_observe', { app: 'TextEdit' }, key)).isError).toBe(false)
+    expect(h.sessions.rows().map((r) => r.threadId)).toEqual([key])
+    h.sessions.settleTurn(key)
+    expect(h.sessions.rowOf(key)).toBeNull()
+    expect(h.sessions.rows()).toEqual([])
   })
 })
 

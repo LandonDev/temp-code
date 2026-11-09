@@ -2,6 +2,7 @@ import type { ActionClass } from '@shared/computer/tools'
 import type { ComputerAction, SessionChange } from '@shared/computer/protocol'
 import type { PermissionPolicy } from '@shared/events'
 import { SESSION_REFUSAL_WORDS, type SessionTierRefusal } from '@shared/computer/hostErrors'
+import type { ApprovalRequest } from '../drivers/types'
 
 /**
  * Whether a step may use the `session` tier, the one that takes the Mac: it
@@ -21,6 +22,12 @@ export interface TierGateContext {
   app: { pid: number; bundleId: string | null; name: string }
   window: { id: number; title: string } | null
   classes: ActionClass[]
+  /**
+   * The call's own card, when its caller asks it some other way than this
+   * host's registry (a box thread on the Mac: the Mac bridge's card). A gate
+   * that asks the person past its bound uses this when present.
+   */
+  approve?: (req: ApprovalRequest) => Promise<boolean>
 }
 
 export type TierDecision = { admit: true } | { admit: false; reason: SessionTierRefusal; message: string }

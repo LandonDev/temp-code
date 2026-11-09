@@ -47,8 +47,10 @@ export interface ComputerToolContext {
   callId?: string
   /** claude's extra.signal, the bridge's cancel, a closed bridge socket */
   signal?: AbortSignal
-  /** how a card is asked; default registry.requestApproval for this host's threads */
+  /** how a card is asked; default registry.requestApproval for this host's threads. The tier gate's own ask past its bound uses it too. */
   approve?: (req: ApprovalRequest) => Promise<boolean>
+  /** the thread's root for the tier gate; default the host's rootOf (a box thread on the Mac: macComputerKey(box, root)) */
+  rootId?: string
 }
 
 export interface ComputerRegistry {
@@ -164,16 +166,27 @@ interface TargetBase {
 }
 type Targeted = <M extends ComputerMethod>(method: M, params: (target: TargetBase) => ComputerParams<M>) => Promise<ComputerResult<M>>
 
-export async function runComputerTool(host: RunHost, t: ThreadComputer, ctx: ComputerToolContext, toolName: string, rawArgs: unknown, signal: AbortSignal): Promise<ComputerToolOutcome> {
-  // 1. normalize and check
+/**
+ * Step 1 of a call, on its own (the Mac bridge's box side checks a call with
+ * it before it crosses): a per-verb name becomes `computer_act` with its
+ * action, and the tool's full schema parses the arguments.
+ */
+export function checkComputerCall(toolName: string, rawArgs: unknown): { ok: true; tool: ComputerToolName; args: Record<string, unknown> } | { ok: false; line: string } {
   const of = computerToolOf(toolName)
-  if (!of) return refusal(hostErrorLine('invalid_args', `no computer tool is called ${toolName}`))
+  if (!of) return { ok: false, line: hostErrorLine('invalid_args', `no computer tool is called ${toolName}`) }
   const spec = COMPUTER_TOOLS.find((s) => s.name === of.tool)!
   const raw = rawArgs && typeof rawArgs === 'object' ? (rawArgs as Record<string, unknown>) : {}
   const parsed = spec.input.safeParse(of.action ? { ...raw, action: of.action } : raw)
-  if (!parsed.success) return refusal(hostErrorLine('invalid_args', issueWords(parsed.error)))
-  const tool: ComputerToolName = of.tool
-  const args = parsed.data as Args
+  if (!parsed.success) return { ok: false, line: hostErrorLine('invalid_args', issueWords(parsed.error)) }
+  return { ok: true, tool: of.tool, args: parsed.data as Record<string, unknown> }
+}
+
+export async function runComputerTool(host: RunHost, t: ThreadComputer, ctx: ComputerToolContext, toolName: string, rawArgs: unknown, signal: AbortSignal): Promise<ComputerToolOutcome> {
+  // 1. normalize and check
+  const checked = checkComputerCall(toolName, rawArgs)
+  if (!checked.ok) return refusal(checked.line)
+  const tool = checked.tool
+  const args = checked.args as Args
 
   // 2. refusals before anything
   const meta = host.registry.get(ctx.threadId)
@@ -348,7 +361,7 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
       remember(t, args.app!, obs)
       lookupApp(t, args.app!)!.needsFull = true
     }
-    const result = await runActions(host, { threadId, session: t.serviceSession, permission, args, actions, single, signal, targeted, call, appOf: app, drop })
+    const result = await runActions(host, { threadId, rootId: ctx.rootId ?? host.rootOf(threadId), approve: ctx.approve, session: t.serviceSession, permission, args, actions, single, signal, targeted, call, appOf: app, drop })
     for (const s of result.steps) if (s.status === 'failed') noteMissing(s.error)
     for (const [i, s] of result.steps.entries()) if (s.status === 'ok' && s.shot) await land(s.shot, `step ${i + 1}`, i + 1)
     await take(result.observation)
@@ -414,6 +427,9 @@ export function remember(t: ThreadComputer, query: string, obs: Observation): vo
 
 interface ActionsRun {
   threadId: string
+  rootId: string
+  /** the call's own card, for the gate's ask past its bound */
+  approve?: (req: ApprovalRequest) => Promise<boolean>
   session: string
   permission: PermissionPolicy
   args: Args
@@ -442,11 +458,12 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
     const a = run.appOf()
     return {
       threadId: run.threadId,
-      rootId: host.rootOf(run.threadId),
+      rootId: run.rootId,
       permission: run.permission,
       app: a ? { pid: a.pid, bundleId: a.bundleId, name: a.name } : { pid: 0, bundleId: null, name: run.args.app ?? '' },
       window: a?.window ?? null,
-      classes
+      classes,
+      ...(run.approve ? { approve: run.approve } : {})
     }
   }
   const classes = [...new Set(actions.filter(sendsInput).map(classOf).filter((c): c is ActionClass => c !== null))]

@@ -50,6 +50,21 @@ export function serviceSessionId(threadId: string): string {
   return /^[A-Za-z0-9_-]{1,64}$/.test(threadId) ? threadId : `t_${createHash('sha256').update(threadId).digest('hex').slice(0, 40)}`
 }
 
+function rowFor(t: ThreadComputer): ComputerSessionRow | null {
+  if (!t.live) return null
+  return {
+    threadId: t.threadId,
+    since: t.live.since,
+    lastCallAt: t.live.lastCallAt,
+    apps: t.used.flatMap((key) => {
+      const a = t.apps.get(key)
+      return a ? [{ name: a.name, bundleId: a.bundleId, window: a.window?.title ?? null }] : []
+    }),
+    running: t.live.running,
+    tier: t.live.tier
+  }
+}
+
 export class ComputerSessions {
   readonly verdicts: TierVerdicts
   private readonly threads = new Map<string, ThreadComputer>()
@@ -104,20 +119,35 @@ export class ComputerSessions {
   rows(): ComputerSessionRow[] {
     const rows: ComputerSessionRow[] = []
     for (const t of this.threads.values()) {
-      if (!t.live) continue
-      rows.push({
-        threadId: t.threadId,
-        since: t.live.since,
-        lastCallAt: t.live.lastCallAt,
-        apps: t.used.flatMap((key) => {
-          const a = t.apps.get(key)
-          return a ? [{ name: a.name, bundleId: a.bundleId, window: a.window?.title ?? null }] : []
-        }),
-        running: t.live.running,
-        tier: t.live.tier
-      })
+      const row = rowFor(t)
+      if (row) rows.push(row)
     }
     return rows
+  }
+
+  /** One thread's live row, or null when its session is not live. */
+  rowOf(threadId: string): ComputerSessionRow | null {
+    const t = this.threads.get(threadId)
+    return t ? rowFor(t) : null
+  }
+
+  /**
+   * A turn starts: Stop of the last turn no longer holds. onMeta calls it for
+   * this host's threads; the Mac bridge (remote/macComputer.ts) for a box
+   * thread's session, whose turns this host's registry never sees.
+   */
+  beginTurn(threadId: string): void {
+    const t = this.threads.get(threadId)
+    if (t) t.stopped = false
+  }
+
+  /** A turn settled: the thread's session is no longer live (its row goes; the service may idle). */
+  settleTurn(threadId: string): void {
+    const t = this.threads.get(threadId)
+    if (!t?.live) return
+    t.live = null
+    this.touched()
+    this.updateBusy()
   }
 
   onRows(fn: (rows: ComputerSessionRow[]) => void): () => void {
@@ -160,13 +190,9 @@ export class ComputerSessions {
     }
     const t = this.threads.get(meta.id)
     if (!t || prev === meta.status) return
-    if ((meta.status === 'starting' || meta.status === 'running') && (prev === undefined || SETTLED.includes(prev))) t.stopped = false
+    if ((meta.status === 'starting' || meta.status === 'running') && (prev === undefined || SETTLED.includes(prev))) this.beginTurn(meta.id)
     if (meta.status === 'paused') t.inflight?.abort('paused')
-    if (SETTLED.includes(meta.status) && t.live) {
-      t.live = null
-      this.touched()
-      this.updateBusy()
-    }
+    if (SETTLED.includes(meta.status)) this.settleTurn(meta.id)
   }
 
   /** registry.onRemoved, an archive, a move: close and forget. */
