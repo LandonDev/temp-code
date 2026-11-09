@@ -121,5 +121,12 @@ export const COMPUTER_SWITCH_OFF =
 export const computerUnavailableOnMac = (reason: string): string => `computer use is unavailable on the Mac: ${reason}`
 export const COMPUTER_HOLD_EXPIRED = 'the Mac stayed too busy: the call ran out of time while waiting its turn'
 export const COMPUTER_HOLD_STOPPED = 'stopped at the Mac while waiting its turn'
+/** The peer link dropped while a call was out: as the service's own restart line says, the action may or may not have happened. */
+export const COMPUTER_MAC_WENT_OFFLINE =
+  'the Mac went offline during this call, so the action may or may not have happened; read the window again'
+/** A box thread whose bridge names no Mac. */
+export const COMPUTER_NO_MAC = 'the Mac bridge is off for this thread (turn it on from the thread menu)'
+/** The Mac sent something that does not parse as an answer. */
+export const COMPUTER_BAD_ANSWER = 'the Mac sent an answer this host cannot read'
 /** The box row's words while a card waits on the Mac. */
 export const askingWords = (macName: string): string => `Waiting for approval on ${macName}`

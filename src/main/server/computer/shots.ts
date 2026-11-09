@@ -1,7 +1,8 @@
-import { copyFile, link, mkdir, readdir, rm, stat } from 'node:fs/promises'
+import { copyFile, link, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { join } from 'node:path'
 import type { Shot } from '@shared/computer/protocol'
+import type { ComputerToolResult } from '@shared/computer/tools'
 import type { LandedShot } from './result'
 
 /**
@@ -33,6 +34,39 @@ export async function landShot(shot: Shot, landingDir: string, n: number, label:
         await copyFile(shot.path, path, constants.COPYFILE_EXCL)
       })
       return { n: k, label, where, path, mimeType: shot.format === 'png' ? 'image/png' : 'image/jpeg', width: shot.width, height: shot.height }
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e
+    }
+  }
+  throw new Error(`no free shot name under ${landingDir}`)
+}
+
+/** Where a picture's label says it came from: `step 2` is step 2, anything else the observation. */
+export function whereOf(label: string): LandedShot['where'] {
+  const step = /^step (\d+)$/.exec(label)
+  return step ? Number(step[1]) : 'observation'
+}
+
+/**
+ * A picture another host sent (a box thread's shot from its Mac, computer/
+ * bridge.ts) written as `<landing>/<n>.<jpg|png>`, created exclusively, the
+ * number the thread's own counter. The type comes from its mimeType, never
+ * sniffed; anything but JPEG or PNG is refused.
+ */
+export async function landShotBytes(
+  image: ComputerToolResult['images'][number],
+  landingDir: string,
+  n: number
+): Promise<LandedShot & { n: number }> {
+  const ext = image.mimeType === 'image/png' ? 'png' : image.mimeType === 'image/jpeg' ? 'jpg' : null
+  if (!ext) throw new Error(`refused: a picture of type ${image.mimeType}`)
+  const bytes = Buffer.from(image.data, 'base64')
+  await mkdir(landingDir, { recursive: true })
+  for (let k = n; k < n + 1_000; k++) {
+    const path = join(landingDir, `${pad(k)}.${ext}`)
+    try {
+      await writeFile(path, bytes, { flag: 'wx' })
+      return { n: k, label: image.label, where: whereOf(image.label), path, mimeType: ext === 'png' ? 'image/png' : 'image/jpeg', width: image.width, height: image.height }
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e
     }
