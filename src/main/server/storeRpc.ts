@@ -93,9 +93,16 @@ export function storeRpc(deps: StoreRpcDeps) {
     return { input: { ...input, addedBy: (keep && input.addedBy) || writer, writtenBy: (keep && input.writtenBy) || writer }, writer }
   }
 
+  /** A write routes by the scope it lands in, so a row may not move between the box's copy and this host's own: the follow would undo it. */
+  const sameHome = (from: { workspaceId: string | null } | null, to: string | null, name: string): void => {
+    if (!from || from.workspaceId === to || (home(from.workspaceId)?.name ?? null) === (home(to)?.name ?? null)) return
+    throw new Error(`refused: ${name} cannot move between the box's copy and this host's own; remove it and add it again`)
+  }
+
   async function setAddon(raw: AddonInput, principal: Principal): Promise<{ addon: AddonRow }> {
     const problem = addonProblem(raw.spec, raw.name)
     if (problem) throw new Error(`refused: ${problem}`)
+    sameHome(raw.id ? addons.get(raw.id) : null, raw.workspaceId, raw.name)
     const { input, writer } = stamp(raw, principal)
     if (await forward('addons.set', { addon: input }, input.workspaceId)) {
       const row = (input.id && addons.get(input.id)) || addons.byName(input.workspaceId, input.name)
@@ -108,6 +115,7 @@ export function storeRpc(deps: StoreRpcDeps) {
   async function setSkill(raw: SkillInput, principal: Principal): Promise<{ skill: SkillMeta }> {
     const problem = skillProblem(raw.name, raw.files.map((f) => ({ path: f.path, bytes: fileBytes(f) })))
     if (problem) throw new Error(`refused: ${problem}`)
+    sameHome(raw.id ? skills.meta(raw.id) : null, raw.workspaceId, raw.name)
     const { input, writer } = stamp(raw, principal)
     if (await forward('skills.set', { skill: input }, input.workspaceId)) {
       const meta = (input.id && skills.meta(input.id)) || skills.byName(input.workspaceId, input.name)

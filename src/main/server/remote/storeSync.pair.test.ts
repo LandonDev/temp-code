@@ -206,6 +206,22 @@ describe('one copy on the box, two hosts', () => {
     expect(mac.skills.files(meta.id).find((f) => f.path === 'bin/data.bin')?.bytes).toEqual(next)
   })
 
+  it('a row may not move between the box\'s copy and the Mac\'s own, either way; within the box\'s it may', async () => {
+    await mac.sync.syncWith(BOX)
+    const shared = await macSet(addon())
+    await expect(macSet(addon({ id: shared.id, workspaceId: 'w-mac-only' }))).rejects.toThrow(/cannot move between the box's copy and this host's own/)
+    const own = await macSet(addon({ name: 'local', workspaceId: 'w-mac-only' }))
+    await expect(macSet(addon({ id: own.id, name: 'local', workspaceId: null }))).rejects.toThrow(/cannot move/)
+    const s = await macSkill([md('tidy')])
+    await expect(mac.rpc.handle({ method: 'skills.set', params: { skill: { id: s.id, name: 'tidy', workspaceId: 'w-mac-only', files: [md('tidy')] } } }, LOCAL)).rejects.toThrow(/cannot move/)
+    expect(box.skills.meta(s.id)?.workspaceId).toBeNull()
+    // Global to a workspace the box holds: one home, so the box moves it.
+    await macSet(addon({ id: shared.id, workspaceId: 'w-mac' }))
+    expect(box.addons.get(shared.id)?.workspaceId).toBe('w-box')
+    expect(mac.addons.get(shared.id)?.workspaceId).toBe('w-mac')
+    expect(mac.addons.get(own.id)?.workspaceId).toBe('w-mac-only')
+  })
+
   it('a seed name clash keeps the box\'s row', async () => {
     const theirs = (await box.rpc.handle({ method: 'addons.set', params: { addon: addon({ description: 'the box\'s' }) } }, LOCAL)) as { addon: AddonRow }
     const mine = await macSet(addon({ description: 'the Mac\'s' }))
