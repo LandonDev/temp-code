@@ -45,6 +45,7 @@ import { configure } from 'aliax-core/config'
 import * as vault from 'aliax-core/vault'
 import { startFakeOAuthServer } from './lib/fakeOAuthServer'
 
+import { proofElectron } from './lib/proofElectron'
 import { waitForGateBuild } from './lib/gateBuild'
 import { proofCleanup } from './lib/proofCleanup'
 
@@ -137,7 +138,7 @@ function launch(inst: Inst): void {
     ...(inst.platform === 'darwin' ? { TEMP_CODE_OAUTH_BROWSER: 'follow' } : {})
   }
   delete env.ELECTRON_RUN_AS_NODE
-  const electron = join(REPO, 'node_modules', '.bin', 'electron')
+  const electron = proofElectron(REPO)
   const argv =
     process.platform === 'linux'
       ? ['xvfb-run', '-a', '-s', '-screen 0 1280x800x24 -nolisten tcp', 'dbus-run-session', '--', electron, '.']

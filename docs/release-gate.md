@@ -155,6 +155,9 @@ one contract:
   by the caller's PATH alone: the gate's children inherit a sparse one, and
   the drivers row's first gate run passed judging nothing. A row whose
   required leg cannot judge fails (the drivers row's Claude leg).
+  The grants, skills-store and computer-bridge proofs launch the clone's
+  Electron binary through `scripts/lib/proofElectron.ts`, so their sparse
+  PATH does not need `node` to run Electron's npm launcher.
 - **It skips, with one line each**, a leg that spends a real model, needs
   the person away, or opens an app other than TC Probe. Those legs are the
   hand runs below.

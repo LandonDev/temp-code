@@ -44,6 +44,7 @@ import { join, resolve, sep } from 'node:path'
 import { createInterface } from 'node:readline'
 
 import { proofDescendants } from './lib/proofProcesses'
+import { proofElectron } from './lib/proofElectron'
 import { waitForGateBuild } from './lib/gateBuild'
 import { computerProofMode, computerProofPolicy, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
 
@@ -107,7 +108,7 @@ function launch(inst: Inst, extra: Record<string, string>): void {
   }
   delete env.ELECTRON_RUN_AS_NODE
   delete env.TEMP_CODE_DEBUG_PORT
-  const electron = join(REPO, 'node_modules', '.bin', 'electron')
+  const electron = proofElectron(REPO)
   const argv =
     process.platform === 'linux'
       ? ['xvfb-run', '-a', '-s', '-screen 0 1280x800x24 -nolisten tcp', 'dbus-run-session', '--', electron, '.']
