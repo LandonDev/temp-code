@@ -273,7 +273,7 @@ export class Downstream {
       const content = Array.isArray(result.content) ? result.content : []
       if (!result.isError) return { content, ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {}) }
       // An error result is the server's error text (an SDK server turns a thrown error into one): redacted like a thrown one.
-      const structured = result.structuredContent === undefined ? undefined : this.redactJson(result.structuredContent)
+      const structured = this.redactJson(result.structuredContent)
       return {
         content: content.map((part) => (part.type === 'text' && typeof part.text === 'string' ? { ...part, text: this.redact(part.text) } : part)),
         isError: true,
@@ -318,12 +318,12 @@ export class Downstream {
     return redact(text, this.secrets)
   }
 
+  /** Every string in a JSON value redacted, keys included (serialized JSON escapes quotes and backslashes, so its text would hide a value holding them). */
   private redactJson(value: unknown): unknown {
-    try {
-      return JSON.parse(this.redact(JSON.stringify(value)))
-    } catch {
-      return undefined
-    }
+    if (typeof value === 'string') return this.redact(value)
+    if (Array.isArray(value)) return value.map((v) => this.redactJson(v))
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [this.redact(k), this.redactJson(v)]))
+    return value
   }
 
   private async connect(): Promise<void> {

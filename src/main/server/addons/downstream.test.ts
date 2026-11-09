@@ -132,8 +132,13 @@ describe('a stdio add-on', () => {
     const thrown = await call(t.down, 'printtoken')
     expect(thrown.isError).toBe(true)
     expect(text(thrown)).toContain('bad token …')
-    // An error RESULT is error text too (an SDK server turns a thrown error into one).
+    // An error RESULT is error text too (an SDK server turns a thrown error into one), whatever the value holds.
     expect(await call(t.down, 'fail', { token: true })).toEqual({ content: [{ type: 'text', text: 'failed with token …' }], structuredContent: { token: '…' }, isError: true })
+    grant = fields({ FAKE_TOKEN: 'quote"and\\slash-77' })
+    await t.down.grantsDropped()
+    expect(await call(t.down, 'fail', { token: true })).toEqual({ content: [{ type: 'text', text: 'failed with token …' }], structuredContent: { token: '…' }, isError: true })
+    grant = fields({ FAKE_TOKEN: TOKEN })
+    await t.down.grantsDropped()
     // A grant rotated during a slow call: the late error names the old token, redacted.
     const slow = call(t.down, 'slow', { ms: 300, fail: true })
     await new Promise((r) => setTimeout(r, 50))
