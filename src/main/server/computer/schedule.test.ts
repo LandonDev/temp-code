@@ -544,6 +544,26 @@ describe("the person's touch", () => {
   })
 })
 
+describe('a pause during a call', () => {
+  it('lets go of a button pressed while the reply was out, restores and frees the slot', async () => {
+    const { w, s } = setup()
+    w.idleFor(200_000)
+    const abort = new AbortController()
+    const reply = deferred<ActionResult>()
+    const call = s.run(runOf(w, 't1', ['session'], [{ action: 'left_mouse_down' }], abort.signal), () => reply.promise)
+    await settle()
+    abort.abort('paused')
+    await s.settle('t1', 'paused')
+    reply.resolve(single(ok('left_mouse_down', 'session')))
+    await call
+    expect(s.admitted(ctxOf(w))).toBe(false)
+    expect(w.restores).toEqual([{}])
+    const sent: string[] = []
+    await s.run(runOf(w, 't2', ['session'], [{ action: 'key', text: 'b' }]), async () => (sent.push('t2'), single(ok('key', 'session'))))
+    expect(sent).toEqual(['t2'])
+  })
+})
+
 describe('a held button the service let go', () => {
   it('32 s after a down with no up, restores and lets the slot go to the thread queued behind', async () => {
     const { w, s } = setup()
@@ -639,6 +659,16 @@ describe('the clipboard', () => {
       w.setClipboard({ foreignChangeAt: w.clock.now() })
     }
     expect(ended).toMatchObject({ d: { ok: false }, at: 10_000 })
+  })
+
+  it('a quiet clipboard past the deadline still ends the paste', async () => {
+    const { w, s } = setup()
+    w.setClipboard({ foreignChangeAt: T0 - 1_000 })
+    const first = s.clipboard(pasteReq(w))
+    await w.clock.advance(4_000)
+    expect(await first).toEqual({ ok: true, waitedMs: 4_000 })
+    await w.clock.advance(7_000)
+    expect(await s.clipboard(pasteReq(w))).toMatchObject({ ok: false })
   })
 
   it('an abort answers cancelled', async () => {

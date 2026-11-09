@@ -148,6 +148,9 @@ interface ThreadState {
 /** The app as a Skip remembers it. */
 const appKeyOf = (app: TierGateContext['app']): string => (app.bundleId ?? app.name).toLowerCase()
 
+/** how long a paste's first refusal is remembered: far past its deadline, so a later refusal of the same step never starts it again */
+const PASTE_WAIT_KEEP_MS = 600_000
+
 const stepsOf = (r: ActionResult | BatchResult | undefined): StepResult[] => (!r ? [] : 'steps' in r ? r.steps : [r.step])
 
 export class SessionScheduler implements SessionTierGate {
@@ -224,7 +227,7 @@ export class SessionScheduler implements SessionTierGate {
   async clipboard(ctx: TierGateRequest): Promise<ClipboardDecision> {
     const key = `${ctx.call}:${ctx.step}`
     const now = this.clock.now()
-    for (const [k, p] of this.pastes) if (now - p.since > 2 * this.pasteWaitMaxMs()) this.pastes.delete(k)
+    for (const [k, p] of this.pastes) if (now - p.since > PASTE_WAIT_KEEP_MS) this.pastes.delete(k)
     const wait = this.pastes.get(key) ?? { threadId: ctx.threadId, since: now }
     this.pastes.set(key, wait)
     const deadline = wait.since + this.pasteWaitMaxMs()
@@ -241,8 +244,8 @@ export class SessionScheduler implements SessionTierGate {
           return { ok: false, message: hostErrorLine('clipboard_recent') }
         }
         const at = this.clock.now()
-        if (clipboardQuiet(state, at, this.pasteQuietMs)) return { ok: true, waitedMs: at - wait.since }
         if (at >= deadline) return { ok: false, message: hostErrorLine('clipboard_recent') }
+        if (clipboardQuiet(state, at, this.pasteQuietMs)) return { ok: true, waitedMs: at - wait.since }
         this.setHeld(ctx.threadId, CLIPBOARD_WAIT_WORDS)
         await this.clock.sleep(Math.min(this.opts.clipboardPollMs ?? SCHEDULE.clipboardPollMs, deadline - at), ctx.signal)
       }
@@ -343,7 +346,8 @@ export class SessionScheduler implements SessionTierGate {
       if (action === 'left_mouse_down') this.holdDown(ctx.threadId, st)
       if (action === 'left_mouse_up') this.letGo(st)
     }
-    if (interrupted || !result) this.letGo(st)
+    // a touch, a cut-short call or a cancel (pause, Stop) lets go of held input: the service did, or will on the cancel
+    if (interrupted || !result || ctx.signal.aborted) this.letGo(st)
     const spans: OwnSpan[] = []
     for (const s of steps) {
       const c = s.status === 'ok' ? s.session : undefined
