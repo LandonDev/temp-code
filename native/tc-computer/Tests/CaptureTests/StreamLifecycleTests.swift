@@ -90,6 +90,22 @@ import Testing
         #expect(finishes == 1)
     }
 
+    @Test func isEndingFromTheStopOnSoALateAckSendsNothing() {
+        var life = StreamLifecycle()
+        #expect(!life.isEnding)
+        _ = life.pause()
+        #expect(!life.isEnding)
+        _ = life.completed(); _ = life.resume()
+        #expect(!life.isEnding)
+        _ = life.stop()
+        #expect(life.isEnding)
+        _ = life.completed(); _ = life.completed()
+        #expect(life.isEnding)
+        var ended = StreamLifecycle()
+        _ = ended.endedBySystem()
+        #expect(ended.isEnding)
+    }
+
     @Test func theSystemEndingTheStreamFinishesItFromAnyState() {
         var life = StreamLifecycle()
         _ = life.pause()

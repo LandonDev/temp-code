@@ -98,6 +98,7 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
     func ack(_ seq: Int) {
         queue.async {
             let (send, command) = self.state.withLockUnchecked { state -> (Sample?, StreamLifecycle.Command?) in
+                guard !state.life.isEnding else { return (nil, nil) }
                 let ack = state.gate.ack(seq, atMs: monotonicMs())
                 return (ack.send, ack.resume ? state.life.resume() : nil)
             }
@@ -150,7 +151,7 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
             var reason = CaptureErrors.endReason(error)
             if case .error = reason, LiveWindows.bounds(self.windowID) == nil { reason = .windowClosed }
             let error = error as NSError
-            self.end(reason, cause: .delegate(domain: error.domain, code: error.code))
+            self.end(reason, cause: .delegate(domain: error.domain, code: error.code), capturing: false)
         }
     }
 
@@ -216,7 +217,7 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
 
     private func tick() {
         if LiveWindows.bounds(windowID) == nil {
-            end(.windowClosed, cause: .windowGone)
+            end(.windowClosed, cause: .windowGone, capturing: true)
             return
         }
         let command = state.withLockUnchecked { state in state.gate.tick(atMs: monotonicMs()) ? state.life.pause() : nil }
@@ -235,7 +236,7 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
                 self.queue.async {
                     if let error {
                         let code = error as NSError
-                        self.end(CaptureErrors.endReason(error), cause: .startFailed(domain: code.domain, code: code.code))
+                        self.end(CaptureErrors.endReason(error), cause: .startFailed(domain: code.domain, code: code.code), capturing: false)
                     } else {
                         self.completed()
                     }
@@ -250,15 +251,16 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
         if let next = state.withLockUnchecked({ $0.life.completed() }) { run(next) }
     }
 
-    /// The stream ended without a `stop()`: say why, and stop what is still capturing.
-    private func end(_ reason: StreamEndReason, cause: CaptureTrace.StopCause) {
-        let capturing = state.withLockUnchecked { state -> Bool in
+    /// The stream ended without a `stop()`: say why. When ScreenCaptureKit may still be capturing
+    /// (the window went before it said so), stop through the lifecycle, which waits for a start in
+    /// flight; when it stopped the stream itself, finish at once.
+    private func end(_ reason: StreamEndReason, cause: CaptureTrace.StopCause, capturing: Bool) {
+        let command = state.withLockUnchecked { state -> StreamLifecycle.Command? in
             if state.reason == nil { state.reason = reason }
             if state.cause == nil { state.cause = cause }
-            return state.life.state == .running || state.life.state == .resuming
+            return capturing ? state.life.stop() : state.life.endedBySystem()
         }
-        if capturing { stream?.stopCapture { _ in } }
-        if let command = state.withLockUnchecked({ $0.life.endedBySystem() }) { run(command) }
+        if let command { run(command) }
     }
 
     private func finish() {
@@ -267,6 +269,7 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
         let (reason, cause, waiters) = state.withLockUnchecked { state -> (StreamEndReason, CaptureTrace.StopCause, [CheckedContinuation<StreamEndReason, Never>]) in
             let reason = state.reason ?? .stopped
             state.finished = reason
+            state.gate = FrameGate()   // drops a held sample's buffer
             defer { state.waiters = [] }
             return (reason, state.cause ?? .handle, state.waiters)
         }

@@ -21,6 +21,9 @@ public struct StreamLifecycle: Equatable, Sendable {
     }
 
     public private(set) var state: State = .running
+
+    /// Stopping or stopped: no frame goes out any more, and an ack changes nothing.
+    public var isEnding: Bool { state == .stopping || state == .stopped }
     private var resumeWanted = false
     private var pauseWanted = false
     /// The capture call in flight while stopping, if any.

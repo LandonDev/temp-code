@@ -22,9 +22,20 @@ if let title = argument("--target") {
     MainActor.assumeIsolated { TargetWindow.show(title: title) }
 } else {
     let out = URL(fileURLWithPath: argument("--out") ?? "/tmp/tc-capture-proof", isDirectory: true)
-    // Shots are never replaced, so each run starts from an empty output directory.
-    try? FileManager.default.removeItem(at: out)
-    try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+    // Shots are never replaced, so each run starts from an empty output directory. Only a
+    // directory an earlier run made (its marker inside) is ever removed.
+    let marker = out.appendingPathComponent(".capture-proof")
+    let fm = FileManager.default
+    if fm.fileExists(atPath: out.path) {
+        let empty = (try? fm.contentsOfDirectory(atPath: out.path))?.isEmpty ?? false
+        guard empty || fm.fileExists(atPath: marker.path) else {
+            FileHandle.standardError.write(Data("capture-proof: \(out.path) exists and is not a proof's output; pass another --out\n".utf8))
+            exit(2)
+        }
+        try fm.removeItem(at: out)
+    }
+    try fm.createDirectory(at: out, withIntermediateDirectories: true)
+    _ = fm.createFile(atPath: marker.path, contents: Data())
     Task { @MainActor in
         let only = argument("--scenes").map { Set($0.split(separator: ",").map(String.init)) }
         let code = await Proof(out: out, only: only, screen: argument("--screen").flatMap(Int.init)).run()
