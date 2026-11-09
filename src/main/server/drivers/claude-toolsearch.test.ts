@@ -94,7 +94,8 @@ it('the thread\'s add-on tools attach to its app server and are released when th
     },
     list: () => '[]',
     add: async () => 'ok',
-    remove: async () => 'ok'
+    remove: async () => 'ok',
+    hasAddons: () => false
   })
   const { handle } = await start({ id: 'ts-attach' })
   expect(attached).toEqual(['ts-attach'])

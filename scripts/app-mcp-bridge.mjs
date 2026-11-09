@@ -14,6 +14,9 @@
  *                      (src/main/server/macTools.ts, docs/box.md)
  *   TEMP_CODE_MAC_HOME   the Mac's home directory when the box has heard it,
  *                      named in the mac_* tools' descriptions
+ *   TEMP_CODE_ADDONS   '1' when the thread's scope held an enabled add-on at
+ *                      spawn: addon_find and addon_call are listed
+ *                      (src/main/server/addons/tools.ts)
  *
  * Runs under plain node (node ≥22 has a global WebSocket client). When
  * spawned with the Electron binary, ELECTRON_RUN_AS_NODE=1 makes that
@@ -27,6 +30,7 @@ const PORT = process.env.TEMP_CODE_PORT
 const SESSION = process.env.TEMP_CODE_SESSION
 const MAC_TOKEN = process.env.TEMP_CODE_MAC_TOKEN
 const MAC_HOME = process.env.TEMP_CODE_MAC_HOME
+const ADDONS = process.env.TEMP_CODE_ADDONS === '1'
 
 // ── WS client to the app server ──────────────────────────────────────
 
@@ -783,9 +787,99 @@ export async function runJobTool(name, args, call) {
   throw new Error(`unknown tool: ${name}`)
 }
 
-/** The tools this thread lists: the Mac's only while its bridge is on. */
-export function listedTools(macToken = MAC_TOKEN) {
-  return macToken ? [...TOOLS, ...MAC_TOOLS, ...MAC_JOB_TOOLS] : TOOLS
+// ── the add-on registry (src/main/server/addons/tools.ts) ────────────
+// Copies of src/shared/addons.ts's tool words; app-bridge.test.ts keeps them equal.
+const ADDON_LIST_DESCRIPTION =
+  "List the add-ons this thread can use: each one's name, where it applies, what it runs or reaches, its state on this host and how many tools it has. An add-on's tools are named `<add-on>__<tool>`."
+const ADDON_ADD_DESCRIPTION =
+  'Add an MCP server as an add-on that every thread in its scope can use, or replace the one of the same name. A person with an admin key approves it on a card first, since a stdio command runs as them on every host that starts it. Never put a secret in `command`, `args` or `url`: name the variable in `env` (stdio) or the header in `headers` (http), and the person enters its value in the add-on\'s grant on Settings → Add-ons; `auth: "oauth"` asks them to sign in instead. Scope defaults to this thread\'s workspace. Threads that start after it is ready list its tools.'
+const ADDON_ADD_PARAMS = {
+  name: 'Lowercase letters, digits and dashes, at most 20 characters; every tool name starts with it (`github__create_issue`).',
+  description: 'One line on what it is for; tool search and the Add-ons page show it.',
+  transport: 'stdio: the app runs `command` with `args` on each host. http: the app connects to `url`.',
+  command: 'stdio: the program to run, e.g. `npx`.',
+  args: 'stdio: its arguments, e.g. ["-y", "@modelcontextprotocol/server-github"]. No secrets.',
+  env: "stdio: names of the variables it needs, e.g. [\"GITHUB_TOKEN\"]. Their values live in the add-on's grant, never here.",
+  tokenEnv: "stdio with auth oauth: the variable that gets the sign-in's access token.",
+  url: "http: the server's address; https, or plain http only to this machine.",
+  headers: "http: names of the headers it needs, e.g. [\"X-Api-Key\"]. Their values live in the add-on's grant.",
+  auth: 'none (default); fields: the person enters the values env or headers name; oauth: the person signs in on the Mac.',
+  scope: "workspace (default): threads in this thread's workspace. global: every thread.",
+  platforms: 'Hosts it runs on when it needs one kind: ["darwin"] for Macs, ["linux"]. Default: every host.'
+}
+const ADDON_REMOVE_DESCRIPTION =
+  'Remove an add-on by name. Removing one that a person added or last changed asks them first. Its grant goes with it.'
+const ADDON_REMOVE_PARAMS = {
+  name: "The add-on's name.",
+  scope: "workspace (default): the one in this thread's workspace. global: the one every thread sees."
+}
+const ADDON_FIND_DESCRIPTION =
+  "Find add-on tools by words in their names and descriptions. Answers up to ten, each with its name and input schema, ready for addon_call. With no query, every add-on's tools by name."
+const ADDON_FIND_PARAMS = {
+  query: 'Words to look for in tool names and descriptions.',
+  addon: "Only this add-on's tools."
+}
+const ADDON_CALL_DESCRIPTION =
+  "Run one add-on tool by the name addon_find gave (`<add-on>__<tool>`) with its arguments. It follows this thread's permission: a tool that changes things may ask the person first."
+const ADDON_CALL_PARAMS = {
+  tool: "The tool's name as addon_find gave it: `<add-on>__<tool>`.",
+  arguments: "The tool's arguments, matching its input schema."
+}
+const str = (description) => ({ type: 'string', description })
+const strs = (description) => ({ type: 'array', items: { type: 'string' }, description })
+const scopeParam = (description) => ({ type: 'string', enum: ['workspace', 'global'], description })
+/** addon_list, addon_add and addon_remove: listed on every thread. */
+export const ADDON_TOOLS = [
+  { name: 'addon_list', description: ADDON_LIST_DESCRIPTION, inputSchema: { type: 'object', properties: {} } },
+  {
+    name: 'addon_add',
+    description: ADDON_ADD_DESCRIPTION,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: str(ADDON_ADD_PARAMS.name),
+        description: str(ADDON_ADD_PARAMS.description),
+        transport: { type: 'string', enum: ['stdio', 'http'], description: ADDON_ADD_PARAMS.transport },
+        command: str(ADDON_ADD_PARAMS.command),
+        args: strs(ADDON_ADD_PARAMS.args),
+        env: strs(ADDON_ADD_PARAMS.env),
+        tokenEnv: str(ADDON_ADD_PARAMS.tokenEnv),
+        url: str(ADDON_ADD_PARAMS.url),
+        headers: strs(ADDON_ADD_PARAMS.headers),
+        auth: { type: 'string', enum: ['none', 'fields', 'oauth'], description: ADDON_ADD_PARAMS.auth },
+        scope: scopeParam(ADDON_ADD_PARAMS.scope),
+        platforms: { type: 'array', items: { type: 'string', enum: ['darwin', 'linux'] }, description: ADDON_ADD_PARAMS.platforms }
+      },
+      required: ['name', 'transport']
+    }
+  },
+  {
+    name: 'addon_remove',
+    description: ADDON_REMOVE_DESCRIPTION,
+    inputSchema: { type: 'object', properties: { name: str(ADDON_REMOVE_PARAMS.name), scope: scopeParam(ADDON_REMOVE_PARAMS.scope) }, required: ['name'] }
+  }
+]
+/** addon_find and addon_call: only while the thread's scope holds an enabled add-on (TEMP_CODE_ADDONS). */
+export const ADDON_CALL_TOOLS = [
+  {
+    name: 'addon_find',
+    description: ADDON_FIND_DESCRIPTION,
+    inputSchema: { type: 'object', properties: { query: str(ADDON_FIND_PARAMS.query), addon: str(ADDON_FIND_PARAMS.addon) } }
+  },
+  {
+    name: 'addon_call',
+    description: ADDON_CALL_DESCRIPTION,
+    inputSchema: {
+      type: 'object',
+      properties: { tool: str(ADDON_CALL_PARAMS.tool), arguments: { type: 'object', description: ADDON_CALL_PARAMS.arguments } },
+      required: ['tool']
+    }
+  }
+]
+
+/** The tools this thread lists: the add-on finder only with add-ons in scope, the Mac's only while its bridge is on. */
+export function listedTools(macToken = MAC_TOKEN, addons = ADDONS) {
+  return [...TOOLS, ...ADDON_TOOLS, ...(addons ? ADDON_CALL_TOOLS : []), ...(macToken ? [...MAC_TOOLS, ...MAC_JOB_TOOLS] : [])]
 }
 
 export const METHOD_FOR = {
@@ -813,11 +907,28 @@ export const METHOD_FOR = {
   archive_threads: 'app.archiveThreads',
   skill_list: 'app.skillList',
   skill_write: 'app.skillWrite',
-  skill_remove: 'app.skillRemove'
+  skill_remove: 'app.skillRemove',
+  addon_list: 'app.addonList',
+  addon_add: 'app.addonAdd',
+  addon_remove: 'app.addonRemove',
+  addon_find: 'app.addonFind',
+  addon_call: 'app.addonCall'
 }
 
-/** Tools whose answer may wait on the person's card (requestApproval's own five minutes): no client deadline, or a late Allow would still write after the bridge answered a failure. */
-const WAITS_ON_A_CARD = new Set(['skill_write', 'skill_remove'])
+/** A tool call's MCP result: addon_call passes the downstream's whole (content, isError, structuredContent); everything else is toolContent. */
+export function toolResult(name, result) {
+  if (name === 'addon_call' && result && typeof result === 'object' && Array.isArray(result.content)) {
+    return {
+      content: result.content,
+      ...(result.isError ? { isError: true } : {}),
+      ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {})
+    }
+  }
+  return { content: toolContent(name, result) }
+}
+
+/** Tools whose answer may wait on the person's card (requestApproval's own five minutes) or a long downstream call (addon_call, the host's own deadline): no client deadline, or a late Allow would still write after the bridge answered a failure. */
+const WAITS_ON_A_CARD = new Set(['skill_write', 'skill_remove', 'addon_add', 'addon_remove', 'addon_call'])
 
 /** The MCP content parts a tool result turns into (the preview's PNG rides as an image). */
 export function toolContent(name, result) {
@@ -838,7 +949,7 @@ export function clientTimeoutMs(name, args) {
 }
 
 async function callTool(name, args) {
-  if (name === 'update_plan') return [{ type: 'text', text: 'task list updated' }]
+  if (name === 'update_plan') return { content: [{ type: 'text', text: 'task list updated' }] }
   // The Mac decides how long a call may wait (its approval, the command's
   // timeout); the server holds the deadline, so no client timeout here.
   if (MAC_JOB_TOOLS.some((t) => t.name === name)) {
@@ -846,11 +957,11 @@ async function callTool(name, args) {
     const result = await runJobTool(name, args, (method, params) =>
       appRequest(method, { ...params, token: MAC_TOKEN }, 0)
     )
-    return toolContent(name, result)
+    return { content: toolContent(name, result) }
   }
   if (MAC_METHOD_FOR[name]) {
     if (!MAC_TOKEN) throw new Error('the Mac bridge is off for this thread')
-    return toolContent(name, await appRequest(MAC_METHOD_FOR[name], { ...(args ?? {}), token: MAC_TOKEN }, 0))
+    return { content: toolContent(name, await appRequest(MAC_METHOD_FOR[name], { ...(args ?? {}), token: MAC_TOKEN }, 0)) }
   }
   const method = METHOD_FOR[name]
   if (!method) throw new Error(`unknown tool: ${name}`)
@@ -859,9 +970,9 @@ async function callTool(name, args) {
   const timeoutMs = clientTimeoutMs(name, args)
   const result = await appRequest(method, args ?? {}, timeoutMs)
   if (name === 'app_read_thread' && result === null) {
-    return [{ type: 'text', text: 'refused: unknown thread id. app_list_threads shows valid ids.' }]
+    return { content: [{ type: 'text', text: 'refused: unknown thread id. app_list_threads shows valid ids.' }] }
   }
-  return toolContent(name, result)
+  return toolResult(name, result)
 }
 
 // ── stdio MCP plumbing (ndjson JSON-RPC) ─────────────────────────────
@@ -904,8 +1015,7 @@ async function handle(msg) {
     } else if (method === 'tools/list') {
       out({ id, result: { tools: listedTools() } })
     } else if (method === 'tools/call') {
-      const content = await callTool(params?.name, params?.arguments)
-      out({ id, result: { content } })
+      out({ id, result: await callTool(params?.name, params?.arguments) })
     } else {
       out({ id, error: { code: -32601, message: `method not found: ${method}` } })
     }

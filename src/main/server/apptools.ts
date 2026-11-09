@@ -131,6 +131,8 @@ export interface AppAddons {
   list(caller: SessionMeta): string
   add(caller: SessionMeta, args: z.infer<typeof AddonAddArgsSchema>): Promise<string>
   remove(caller: SessionMeta, args: z.infer<typeof AddonRemoveArgsSchema>): Promise<string>
+  /** Whether the thread's scope holds an enabled add-on: the bridge lists addon_find and addon_call only then. */
+  hasAddons(sessionId: string): boolean
 }
 let addons: AppAddons | null = null
 export function setAppAddons(next: AppAddons | null): void {
@@ -177,7 +179,9 @@ export function bridgeMcpConfig(sessionId: string): Record<string, unknown> | nu
       TEMP_CODE_PORT: String(bridge.port),
       TEMP_CODE_SESSION: sessionId,
       // The Mac bridge's per-thread token, only while the thread's bridge is on (macTools.ts).
-      ...(macToolsHooks.current?.bridgeEnv(sessionId) ?? {})
+      ...(macToolsHooks.current?.bridgeEnv(sessionId) ?? {}),
+      // Fixed at spawn: a scope that gains its first add-on or loses its last reboots the harness at its next turn (addons/scopeFlip.ts).
+      ...(addons?.hasAddons(sessionId) ? { TEMP_CODE_ADDONS: '1' } : {})
     },
     // wait_for_agent sleeps until a subagent settles — codex must not
     // kill the call with its default per-tool timeout.

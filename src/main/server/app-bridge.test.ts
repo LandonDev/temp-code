@@ -24,6 +24,8 @@ import {
   BATCH_RULES_TOOL_NAME
 } from '@shared/gate'
 import { NOTE_DECISION_SHAPE, SKILL_REMOVE_SHAPE, SKILL_WRITE_SHAPE, ADOPT_THREAD_SHAPE, ARCHIVE_THREADS_SHAPE, BATCH_GATE_SHAPE, BATCH_RULES_SHAPE, CITE_SHAPE, HTML_PREVIEW_SHAPE, HTML_RENDER_SHAPE, MERGE_BRANCH_SHAPE, REPORT_FINDINGS_SHAPE } from './apptools'
+import * as addons from '@shared/addons'
+import { bridgeMcpConfig, setAppAddons, setAppBridge } from './apptools'
 import {
   MERGE_BRANCH_PARAMS,
   MERGE_BRANCH_TOOL_DESCRIPTION,
@@ -231,5 +233,72 @@ describe('app-mcp-bridge skill tools', () => {
     for (const [name, schema] of Object.entries(remove.inputSchema.properties)) expect(schema.description).toBe(SKILL_REMOVE_PARAMS[name as keyof typeof SKILL_REMOVE_PARAMS])
     expect([bridge.METHOD_FOR.skill_list, bridge.METHOD_FOR.skill_write, bridge.METHOD_FOR.skill_remove]).toEqual(['app.skillList', 'app.skillWrite', 'app.skillRemove'])
     expect([bridge.clientTimeoutMs('skill_write'), bridge.clientTimeoutMs('skill_remove'), bridge.clientTimeoutMs('skill_list')]).toEqual([0, 0, 120_000])
+  })
+})
+
+describe('app-mcp-bridge add-on tools', () => {
+  type Listed = BridgeTool[]
+  const addonBridge = bridge as unknown as {
+    ADDON_TOOLS: Listed
+    ADDON_CALL_TOOLS: Listed
+    listedTools: (macToken?: string, addons?: boolean) => Listed
+    METHOD_FOR: Record<string, string>
+    clientTimeoutMs: (name: string, args?: unknown) => number
+    toolResult: (name: string, result: unknown) => Record<string, unknown>
+  }
+  const byName = (name: string) => [...addonBridge.ADDON_TOOLS, ...addonBridge.ADDON_CALL_TOOLS].find((t) => t.name === name)!
+  const same = (name: string, description: string, params: Record<string, string>) => {
+    const t = byName(name)
+    expect(t.description).toBe(description)
+    expect(Object.keys(t.inputSchema.properties)).toEqual(Object.keys(params))
+    for (const [key, schema] of Object.entries(t.inputSchema.properties)) expect(schema.description).toBe(params[key])
+  }
+
+  it("carries the shared words of every add-on tool", () => {
+    expect(byName(addons.ADDON_LIST_TOOL).description).toBe(addons.ADDON_LIST_DESCRIPTION)
+    same(addons.ADDON_ADD_TOOL, addons.ADDON_ADD_DESCRIPTION, addons.ADDON_ADD_PARAMS)
+    same(addons.ADDON_REMOVE_TOOL, addons.ADDON_REMOVE_DESCRIPTION, addons.ADDON_REMOVE_PARAMS)
+    same(addons.ADDON_FIND_TOOL, addons.ADDON_FIND_DESCRIPTION, addons.ADDON_FIND_PARAMS)
+    same(addons.ADDON_CALL_TOOL, addons.ADDON_CALL_DESCRIPTION, addons.ADDON_CALL_PARAMS)
+  })
+
+  it('lists addon_find and addon_call only with add-ons in scope, the management tools always', () => {
+    const names = (addonsOn: boolean) => addonBridge.listedTools(undefined, addonsOn).map((t) => t.name)
+    expect(names(false)).toEqual(expect.arrayContaining(['addon_list', 'addon_add', 'addon_remove']))
+    expect(names(false)).not.toContain('addon_find')
+    expect(names(false)).not.toContain('addon_call')
+    expect(names(true)).toEqual(expect.arrayContaining(['addon_find', 'addon_call']))
+  })
+
+  it('maps each tool to its app method, waits on the server for add, remove and call, and passes a call through whole', () => {
+    expect(addonBridge.METHOD_FOR).toMatchObject({
+      addon_list: 'app.addonList',
+      addon_add: 'app.addonAdd',
+      addon_remove: 'app.addonRemove',
+      addon_find: 'app.addonFind',
+      addon_call: 'app.addonCall'
+    })
+    expect(['addon_add', 'addon_remove', 'addon_call', 'addon_list', 'addon_find'].map((n) => addonBridge.clientTimeoutMs(n))).toEqual([0, 0, 0, 120_000, 120_000])
+    const image = { type: 'image', data: 'AAAA', mimeType: 'image/png' }
+    expect(addonBridge.toolResult('addon_call', { content: [image], isError: true, structuredContent: { ok: false } })).toEqual({
+      content: [image],
+      isError: true,
+      structuredContent: { ok: false }
+    })
+    expect(addonBridge.toolResult('addon_call', { content: [{ type: 'text', text: 'x' }] })).toEqual({ content: [{ type: 'text', text: 'x' }] })
+    expect(addonBridge.toolResult('addon_list', '[]\nnote')).toEqual({ content: [{ type: 'text', text: '[]\nnote' }] })
+  })
+
+  it('bridgeMcpConfig sets TEMP_CODE_ADDONS while the thread\'s scope holds an add-on', () => {
+    setAppBridge({ port: 1, scriptPath: '/x.mjs', command: 'node', env: {} })
+    const hooks = { exposure: { attach: () => () => {} }, list: () => '', add: async () => '', remove: async () => '' }
+    try {
+      setAppAddons({ ...hooks, hasAddons: (id) => id === 'with' })
+      expect((bridgeMcpConfig('with')!.env as Record<string, string>).TEMP_CODE_ADDONS).toBe('1')
+      expect((bridgeMcpConfig('without')!.env as Record<string, string>).TEMP_CODE_ADDONS).toBeUndefined()
+    } finally {
+      setAppAddons(null)
+      setAppBridge(null)
+    }
   })
 })

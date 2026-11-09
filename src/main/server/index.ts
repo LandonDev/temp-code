@@ -53,7 +53,7 @@ import { SkillStore } from './skillStore'
 import { storePushes, storeRpc } from './storeRpc'
 import { AddonHost } from './addons/addonHost'
 import { AddonExposure } from './addons/exposure'
-import { workspaceIdOf } from './addons/scope'
+import { hasAddons, workspaceIdOf } from './addons/scope'
 import { appAddonAdd, appAddonCall, appAddonFind, appAddonList, appAddonRemove, type AddonToolDeps } from './addons/tools'
 import { addonGrantHook, grantSourceFor } from './addons/grants'
 import type { SpawnAddonHost } from './addons/addonWire'
@@ -1469,7 +1469,11 @@ export async function startServer(
     exposure: addonExposure,
     list: (caller) => appAddonList(addonToolDeps, caller, 'claude'),
     add: (caller, args) => appAddonAdd(addonToolDeps, caller, args, 'claude'),
-    remove: (caller, args) => appAddonRemove(addonToolDeps, caller, args)
+    remove: (caller, args) => appAddonRemove(addonToolDeps, caller, args),
+    hasAddons: (sessionId) => {
+      const s = registry.get(sessionId)
+      return !!s && hasAddons(addonStore, workspaceIdOf(registry, s))
+    }
   })
   void runDoctor() // warm the cache so the new-session modal opens ready
   // the probed harnesses ask their CLIs for models; the linked hosts hear the rows
