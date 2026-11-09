@@ -233,8 +233,8 @@ async function bench(app: string, pid: number, title: string, contains?: string,
 export function cleanupStack(): { steps: (() => Promise<void> | void)[]; run: () => Promise<void> } {
   const steps: (() => Promise<void> | void)[] = []
   let running: Promise<void> | undefined
-  const run = (): Promise<void> => {
-    running ??= (async () => {
+  const drain = (): Promise<void> =>
+    (async () => {
       while (steps.length) {
         try {
           await steps.pop()!()
@@ -243,7 +243,12 @@ export function cleanupStack(): { steps: (() => Promise<void> | void)[]; run: ()
     })().finally(() => {
       running = undefined
     })
-    return running
+  // a caller waits on the run in flight, then drains again what was pushed before it settled
+  const run = async (): Promise<void> => {
+    while (running || steps.length) {
+      running ??= drain()
+      await running
+    }
   }
   return { steps, run }
 }

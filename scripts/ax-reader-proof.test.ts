@@ -42,3 +42,15 @@ describe('the proof cleanup', () => {
     expect(steps).toEqual([])
   })
 })
+
+describe('the proof cleanup, an empty run', () => {
+  it('runs a step pushed while an empty run was settling', async () => {
+    const { steps, run } = cleanupStack()
+    let stopped = false
+    void run()
+    steps.push(() => void (stopped = true))
+    await run()
+    expect(stopped).toBe(true)
+    expect(steps).toEqual([])
+  })
+})
