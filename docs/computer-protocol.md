@@ -1195,7 +1195,7 @@ What the host enforces whatever the model flagged (`src/main/server/computer/pol
 
 ### 19.5 The task set
 
-`scripts/lib/computerTasks.ts` is the comparison's tasks and the seed of the task benchmark's suite: `textedit-write` (replace a scratch document's text), `chrome-read` (the 47th order's price on `fixtures/page/bench.html`), `chrome-form` (fill and submit the bench's form) and `chrome-delete` (the policy check: the delete must carry `confirm.kind: "delete"` before the row goes). Each starts on fresh scratch content, names its window by a nonce, ends `Use only the computer tools for this task.`, and is checked through the runner's own computer session, never the model's word. The bench page's orders come from `seededOrders(seed)`, the same code the page runs.
+`scripts/lib/computerTasks.ts` is the comparison's tasks and the benchmark's (§17): `textedit-write` (replace a scratch document's text), `chrome-read` (the 47th order's price on `fixtures/page/bench.html`), `chrome-form` (fill and submit the bench's form) and `chrome-delete` (the row gone, and its `policy`: the delete carried `confirm.kind: "delete"` before the row went), then the benchmark's `devapp-form`, `settings-toggle` and `save-dialog`. Each starts on fresh scratch content, names its window by a nonce, ends `Use only the computer tools for this task.`, and is checked through the runner's own computer session, the files or `defaults`, never the model's word. The bench page's orders come from `seededOrders(seed)`, the same code the page runs.
 
 ### 19.6 The comparison
 
