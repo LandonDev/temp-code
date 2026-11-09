@@ -3568,7 +3568,11 @@ proof and the sizing rules; the pieces, by name:
   until the Mac has had 2 minutes with no input, tier 1 and 2 legs must leave
   the frontmost app and the pointer where they were, the session leg acts only
   while the person has been quiet 2 minutes, checked before every step, and
-  cleanup leaves no file, prompt or autosave.
+  cleanup leaves no file, prompt or autosave. Measured (§14.8): background
+  TextEdit and Chrome take keys and right clicks at `process` but ignore left
+  clicks, drags and the wheel, and TextEdit Command combos and paste, which
+  the probe reports as `ignored` for the host's tier verdict to learn; such a
+  proof leg is a finding, never a failure.
 
 ## The menu bar: one table
 src/shared/menuTree.ts is the menu as data, read by main (src/main/menu.ts),
