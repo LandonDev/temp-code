@@ -1474,6 +1474,13 @@ Per computer call: its host time (the rig's wrapper, entering `ComputerSessions.
 
 ## The unattended proof modes
 
+The preview builds its own copy of TC Probe through
+`scripts/lib/previewProbeApp.ts`. Its Ping button keeps AXPress and the
+pong callback, with highlight and state drawing masks cleared. AppKit's
+brief pressed/released drawing can otherwise make the second click a
+visual change even when the label stays pong. The no-frame check stays in
+place; the shared Swift source stays unchanged.
+
 Run each from a built clone on the Mac:
 
 ```sh

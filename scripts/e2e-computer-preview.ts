@@ -40,8 +40,9 @@ import { setSessionTierGate, REFUSE_SESSION_TIER } from '../src/main/server/comp
 import { buildTcComputer } from './lib/tcComputerBuild'
 import { waitForGateBuild } from './lib/gateBuild'
 import { computerProofMode, computerProofPolicy, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
+import { buildPreviewProbeApp } from './lib/previewProbeApp'
 import { repoRoot } from './lib/repoRoot'
-import { buildProbeApp, cleanupProbeApp, launchTickingProbe, PROBE_APP_NAME, MAC_EXTRA_SOURCE, ScreenLost, ScreenWatch, type ProbeAppBuild } from './lib/tcProbeApp'
+import { cleanupProbeApp, launchTickingProbe, PROBE_APP_NAME, MAC_EXTRA_SOURCE, ScreenLost, ScreenWatch, type ProbeAppBuild } from './lib/tcProbeApp'
 
 if (process.platform !== 'darwin') {
   console.log('skipped: macOS only')
@@ -137,7 +138,7 @@ async function run(): Promise<void> {
   const app0 = frontmost()
   const p0 = pointer()
 
-  probeBuild = buildProbeApp(ROOT, WORK, 'dev.landon.tempcode.computer-preview-probe')
+  probeBuild = buildPreviewProbeApp(ROOT, WORK, 'dev.landon.tempcode.computer-preview-probe')
   watch.check()
   const launched = await launchTickingProbe(probeBuild, GATE ? () => ({ ...frontmost(), bundleId: null }) : frontmost)
   probePid = launched.pid

@@ -2098,6 +2098,9 @@ and .temp-code/plan-JBpcLz-eGMhp.md (the drivers).
   runtime. It waits for the gate build before starting that child.
 
 ## Computer use: the Mac's apps from any thread
+- The preview proof uses `scripts/lib/previewProbeApp.ts` to clear Ping's
+  highlight and state drawing in its scratch copy of TC Probe. Its second
+  AX click can then change no pixels; the no-frame check stays in place.
 docs/computer-protocol.md is the contract and the long account, by
 section; docs/box.md "Computer use: the Mac's apps from any thread" has
 why and the measured headline.
