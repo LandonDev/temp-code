@@ -104,7 +104,7 @@ export type SubsetEntry = NamedEntry | UnionEntry | MethodEntry
 
 export const type = (id: string, schema: z.ZodType): NamedEntry => ({ kind: 'type', id, schema })
 /** A discriminated union: each branch becomes `<PascalCase(value)><suffix>`. */
-const union = (
+export const union = (
   id: string,
   schema: z.ZodType,
   discriminator: string,
@@ -458,8 +458,30 @@ interface MethodShape {
   outputId: string
 }
 
+/** Where a method's params come from: the zod of its params object, or null for none. */
+export interface MethodSource {
+  params(method: string): z.ZodType | null
+}
+
+/** The phone's methods: params read from ClientRequestSchema, never a local-only one. */
+export const CLIENT_METHODS: MethodSource = {
+  params(method) {
+    const request = ClientRequestSchema.options.find((o) => o.shape.method.value === method)
+    if (!request) throw new Error(`${method} is not in ClientRequestSchema`)
+    // A method only the renderer's loopback socket may call never reaches a
+    // phone: the capability gate refuses every remote caller before the handler.
+    if (METHOD_CAPABILITY[method as keyof typeof METHOD_CAPABILITY] === 'local')
+      throw new Error(`${method} is local-only (capabilities.ts); a phone can never call it`)
+    const raw = (request.shape as { params?: z.ZodType }).params ?? null
+    return raw instanceof z.ZodOptional ? (raw.unwrap() as z.ZodType) : raw
+  }
+}
+
 /** The schemas the subset names (and the params of its methods), one JSON Schema each. */
-export function jsonSchemas(subset: readonly SubsetEntry[] = SUBSET): { defs: Record<string, JS>; methods: MethodShape[] } {
+export function jsonSchemas(
+  subset: readonly SubsetEntry[] = SUBSET,
+  source: MethodSource = CLIENT_METHODS
+): { defs: Record<string, JS>; methods: MethodShape[] } {
   const registry = z.registry<{ id: string }>()
   // The same schema instance keeps its first id (a named type an output
   // reuses, the `Id` params several remote.* methods share).
@@ -478,14 +500,7 @@ export function jsonSchemas(subset: readonly SubsetEntry[] = SUBSET): { defs: Re
         add(branch, pascal(literal) + entry.suffix)
       }
     } else {
-      const request = ClientRequestSchema.options.find((o) => o.shape.method.value === entry.method)
-      if (!request) throw new Error(`${entry.method} is not in ClientRequestSchema`)
-      // A method only the renderer's loopback socket may call never reaches a
-      // phone: the capability gate refuses every remote caller before the handler.
-      if (METHOD_CAPABILITY[entry.method as keyof typeof METHOD_CAPABILITY] === 'local')
-        throw new Error(`${entry.method} is local-only (capabilities.ts); a phone can never call it`)
-      const raw = (request.shape as { params?: z.ZodType }).params ?? null
-      const params = raw instanceof z.ZodOptional ? (raw.unwrap() as z.ZodType) : raw
+      const params = source.params(entry.method)
       methods.push({
         method: entry.method,
         paramsId: params ? add(params, PARAMS + entry.method) : null,
@@ -945,8 +960,17 @@ const HEADER = [
   ''
 ]
 
-export function generate(subset: readonly SubsetEntry[] = SUBSET): Record<string, string> {
-  const { defs, methods } = jsonSchemas(subset)
+export interface GenerateOptions {
+  /** where each method's params come from (default: the phone's ClientRequestSchema) */
+  methods?: MethodSource
+  /** the comment lines that open every file */
+  header?: string[]
+  /** the body of Contract.swift */
+  contract?: string[]
+}
+
+export function generate(subset: readonly SubsetEntry[] = SUBSET, options: GenerateOptions = {}): Record<string, string> {
+  const { defs, methods } = jsonSchemas(subset, options.methods)
   const em: Emitter = { defs, enumNames: new Map(), branchKeys: new Map(), shadowed: new Set() }
   for (const entry of subset) {
     if (entry.kind === 'type' && defs[entry.id]?.enum)
@@ -987,7 +1011,7 @@ export function generate(subset: readonly SubsetEntry[] = SUBSET): Record<string
   methodLines.pop()
   methodLines.push('}')
   files['Methods.swift'] = methodLines
-  files['Contract.swift'] = [
+  files['Contract.swift'] = options.contract ?? [
     '/// `hello.contract` of the server this package was generated against (src/shared/capabilities.ts CONTRACT_VERSION).',
     `public let contractVersion: Int = ${CONTRACT_VERSION}`
   ]
@@ -997,7 +1021,7 @@ export function generate(subset: readonly SubsetEntry[] = SUBSET): Record<string
       (l) => l.includes('JSONValue') || l.includes('Decoder') || l.includes('Encoder')
     )
     out[file] = [
-      ...HEADER,
+      ...(options.header ?? HEADER),
       ...(needsFoundation ? ['import Foundation', ''] : []),
       ...lines,
       ''
@@ -1026,33 +1050,34 @@ function writeAll(dir: string, files: Record<string, string>): void {
   for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text)
 }
 
-function main(): void {
-  const files = generate()
+/**
+ * Writes `files` into `dir`, or with `--check` regenerates them into a temp
+ * dir and diffs: exit 1 on any difference. `check` and `gen` are the package
+ * scripts' names, for the messages.
+ */
+export function writeOrCheck(dir: string, files: Record<string, string>, names: { check: string; gen: string }): void {
   if (process.argv.includes('--check')) {
     const tmp = mkdtempSync(join(tmpdir(), 'tc-swift-contract-'))
     try {
       writeAll(tmp, files)
-      if (!existsSync(GENERATED_DIR)) {
-        console.error(`check:swift-contract: ${GENERATED_DIR} is missing; run bun run gen:swift`)
+      if (!existsSync(dir)) {
+        console.error(`${names.check}: ${dir} is missing; run bun run ${names.gen}`)
         process.exit(1)
       }
-      const diff = spawnSync('diff', ['-ru', GENERATED_DIR, tmp], { encoding: 'utf8' })
+      const diff = spawnSync('diff', ['-ru', dir, tmp], { encoding: 'utf8' })
       if (diff.status !== 0) {
         console.error(diff.stdout || diff.stderr)
-        console.error(
-          'check:swift-contract: the Swift contract is stale — run bun run gen:swift and commit Generated/'
-        )
+        console.error(`${names.check}: the generated Swift is stale — run bun run ${names.gen} and commit Generated/`)
         process.exit(1)
       }
-      console.log(`check:swift-contract: ${Object.keys(files).length} files match`)
+      console.log(`${names.check}: ${Object.keys(files).length} files match`)
     } finally {
       rmSync(tmp, { recursive: true, force: true })
     }
   } else {
-    writeAll(GENERATED_DIR, files)
-    for (const [name, text] of Object.entries(files))
-      console.log(`${name}: ${text.split('\n').length} lines`)
+    writeAll(dir, files)
+    for (const [name, text] of Object.entries(files)) console.log(`${name}: ${text.split('\n').length} lines`)
   }
 }
 
-if (import.meta.main) main()
+if (import.meta.main) writeOrCheck(GENERATED_DIR, generate(), { check: 'check:swift-contract', gen: 'gen:swift' })
