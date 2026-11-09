@@ -352,9 +352,9 @@ final class Proof: @unchecked Sendable {
         var r = LegResult(app: "session", leg: leg, tiers: ["session"], ok: false, detail: "", ms: 0)
         // the step's own input ends when the engine returns; anything after it, the check's wait included, is the person's
         let resolved = target()
-        timeline.note("step \(leg) begins")
+        timeline.stepBegan(leg)
         let perform = { () throws -> InputOutcome in
-            defer { self.gate.stepEnded(); self.timeline.note("step \(leg) ends") }
+            defer { self.gate.stepEnded(); self.timeline.stepEnded(leg) }
             return try self.engine.perform(action, on: resolved, tiers: [.session])
         }
         do {
@@ -420,10 +420,14 @@ final class Proof: @unchecked Sendable {
             timeline.note("restore begins")
             let r = try engine.restoreSession()
             timeline.note("restore: frontmost \(r.frontmost.rawValue), pointer \(r.pointer.rawValue)")
-            // a leg that ends in the app it began with has no app to give back: `nothing` is right then
+            // a leg that ends in the app it began with has no app to give back: `nothing` is right then;
+            // an app Input did not bring forward that came forward between steps: the app half gives way
             let sameApp = legBegan?.pid == legEnded?.pid
-            let ok = r.frontmost == (sameApp ? .nothing : .restored) && r.pointer == .restored
-            report.legs.append(LegResult(app: "session", leg: "restoreSession gives back the app and the pointer", tiers: ["session"], ok: ok, detail: "frontmost \(r.frontmost.rawValue), pointer \(r.pointer.rawValue), held \(r.held?.name ?? "-")", ms: 0))
+            let foreign = timeline.foreign
+            let want: RestoreOutcome = sameApp ? .nothing : foreign.isEmpty ? .restored : .personMoved
+            let ok = r.frontmost == want && r.pointer == .restored
+            let because = foreign.isEmpty ? "" : ", since \(foreign.joined(separator: ", ")) came forward between steps"
+            report.legs.append(LegResult(app: "session", leg: "restoreSession gives back the app and the pointer", tiers: ["session"], ok: ok, detail: "frontmost \(r.frontmost.rawValue) (want \(want.rawValue)\(because)), pointer \(r.pointer.rawValue), held \(r.held?.name ?? "-")", ms: 0))
             print("\(ok ? "ok  " : "FAIL") session restore · \(r.frontmost.rawValue) \(r.pointer.rawValue)")
         } catch {
             report.legs.append(LegResult(app: "session", leg: "restoreSession", tiers: ["session"], ok: false, detail: "", ms: 0, error: "\(error)"))
@@ -484,6 +488,26 @@ final class Timeline: @unchecked Sendable {
     private let start = Date()
     private var lines: [String] = []
     private var observer: NSObjectProtocol?
+    private var stepping = false
+    private var lastFront: pid_t?
+    private var _foreign: [String] = []
+    /// apps that came forward while no step ran, other than the one the last step left in front:
+    /// what the restore must give way to (the scratch TempCode instance brings itself forward)
+    var foreign: [String] { lock.withLock { _foreign } }
+
+    func stepBegan(_ leg: String) {
+        note("step \(leg) begins")
+        lock.withLock { stepping = true }
+    }
+
+    func stepEnded(_ leg: String) {
+        let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        lock.withLock {
+            stepping = false
+            lastFront = front
+        }
+        note("step \(leg) ends")
+    }
 
     func note(_ what: String) {
         let ms = Int(Date().timeIntervalSince(start) * 1000)
@@ -493,7 +517,12 @@ final class Timeline: @unchecked Sendable {
     func observe() {
         observer = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: nil) { [weak self] n in
             let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            self?.note("activated \(app?.localizedName ?? "?") (\(app?.bundleIdentifier ?? "-"), pid \(app?.processIdentifier ?? 0))")
+            let name = "\(app?.localizedName ?? "?") (\(app?.bundleIdentifier ?? "-"), pid \(app?.processIdentifier ?? 0))"
+            self?.note("activated \(name)")
+            guard let self else { return }
+            self.lock.withLock {
+                if !self.stepping, app?.processIdentifier != self.lastFront { self._foreign.append(name) }
+            }
         }
     }
 
