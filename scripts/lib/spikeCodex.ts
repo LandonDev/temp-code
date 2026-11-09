@@ -34,11 +34,17 @@ const CODEX_STRIP = /^(CODEX_|OPENAI_)/
  * The driver sets `chatgpt_base_url` per thread (thread/start's config); the
  * probe also sets it for the whole app-server, so the account calls codex
  * makes before any thread (workspace routing discovery) reach the fake too
- * and nothing leaves the machine. `openai_base_url` does the same for the
- * OpenAI API route codex falls back to with no ChatGPT login (X2a); codex
- * 0.163 ignores the OPENAI_BASE_URL variable.
+ * and nothing leaves the machine. A run with no ChatGPT login (X2a) also
+ * gets `openai_base_url`, for the OpenAI API route codex then falls back to
+ * (it ignores the OPENAI_BASE_URL variable); never the others, since on
+ * 0.164 it moves the ChatGPT-mode sampling call too.
  */
-const APP_SERVER_ARGS = (): string[] => ['app-server', '-c', `chatgpt_base_url="${ctx().codexFront.url}/backend-api/"`, '-c', `openai_base_url="${ctx().codexFront.url}/v1"`]
+const APP_SERVER_ARGS = (noLogin = false): string[] => [
+  'app-server',
+  '-c',
+  `chatgpt_base_url="${ctx().codexFront.url}/backend-api/"`,
+  ...(noLogin ? ['-c', `openai_base_url="${ctx().codexFront.url}/v1"`] : [])
+]
 const CLIENT = { name: 'temp_code_spike', title: 'temp-code spike', version: '0.0.1' }
 
 interface Note {
@@ -58,8 +64,8 @@ class CodexConn {
   private pending = new Map<number, { ok: (v: unknown) => void; bad: (e: Error) => void }>()
   private next = 1
 
-  constructor(env: Record<string, string | undefined>, cwd: string) {
-    this.proc = spawnTracked(ctx().codexBin!, APP_SERVER_ARGS(), { env, cwd })
+  constructor(env: Record<string, string | undefined>, cwd: string, noLogin = false) {
+    this.proc = spawnTracked(ctx().codexBin!, APP_SERVER_ARGS(noLogin), { env, cwd })
     createInterface({ input: this.proc.stdout! }).on('line', (line) => {
       let m: { id?: number | string; method?: string; params?: Record<string, unknown>; result?: unknown; error?: { message?: string } }
       try {
@@ -365,8 +371,9 @@ async function x2a(ev: Evidence): Promise<void> {
   const home = join(r.dir, 'codex-home')
   mkdirSync(home, { recursive: true })
   c.codexFront.reset(ev.id, {})
-  const conn = new CodexConn(codexEnv(ev, r, home), r.cwd)
+  const conn = new CodexConn(codexEnv(ev, r, home), r.cwd, true)
   ev.cli = { path: c.codexBin, version: null }
+  ev.argv = APP_SERVER_ARGS(true)
   try {
     const init = await conn.request('initialize', { clientInfo: CLIENT }).then(() => 'ok', (e) => errText(e))
     const account = await conn.request('account/read', {}).then((x) => JSON.stringify(x).slice(0, 200), (e) => `error: ${errText(e)}`)
