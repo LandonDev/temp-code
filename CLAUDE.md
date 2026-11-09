@@ -715,7 +715,11 @@ routed to (aliax-core's `forward`). Two listeners:
   has an owner environment (absent = this machine) and only the owner ever
   presents a refresh token; other hosts hold access-only copies kept fresh
   over the main process's own peer links (`src/main/server/remote/peers.ts`,
-  `accountSync.ts`; RPCs `accounts.push`/`accounts.pull`, admin only). A
+  `accountSync.ts`; RPCs `accounts.push`/`accounts.pull`, admin only). The
+  wire's `ServiceIdSchema` (src/shared/contract-m3a.ts) names every
+  aliax-core service: claude-code, codex, cursor, meta, muse-code and addon
+  (until 2026-11-08 it named the first three, so a Meta key or a Muse login
+  sent to another host was refused at parse; contract-m3a.test.ts). A
   Claude "one-year token" is a static profile every host holds, with no
   owner: what `claude setup-token` makes, minted in-app (T1; aliax-core
   `src/mint.ts`, `src/main/aliax/{staticMint,staticTokens}.ts`) by adding
@@ -1982,8 +1986,8 @@ skill folders and gives threads the skill tools.
 - **The grant** (src/shared/addonGrant.ts): `AddonGrantBlobSchema`
   (`mintedBy: 'app'`, the typed fields, an OAuth client with its fixed
   loopback `redirectPort`), `grantNeeds`, `grantGaps` (a client registered and
-  never signed in reads `sign-in`). The aliax-core `addon` service, the Mac's
-  sign-in and the handoff to the box are the OAuth build's.
+  never signed in reads `sign-in`). What holds, signs in and moves it is
+  "Add-on grants" below.
 - **The layout the drivers will read**: `<userData>/harness/<provider>/
   <view>@<digest12>/skills/<name>/`, one generation per view, built beside
   and renamed into place, with a symlink `<view>` to the current one; `view`
@@ -2038,6 +2042,56 @@ skill folders and gives threads the skill tools.
   `bun run script:e2e-addons`; unit tests under src/main/server/addons/,
   app-bridge, approvalLine, claude-toolsearch, processGuard, sessions-addons,
   gatewayWire, gatewayHost.
+- **Add-on grants** (plan .temp-code/plan-8YMm3ynnFZYs.md; docs/box.md
+  "Add-on grants: signed in on the Mac, refreshed on the box"). A grant is an
+  aliax-core profile of the `addon` service (core's src/adapters/addon.ts,
+  pinned 135ff56): one per add-on, named by its id, `internal`, so no account
+  page lists it and `PROVIDER_OF` (now partial) maps it to no provider; the
+  Aliax pages refuse to capture, sign in, key or delete one. It is static
+  exactly when its blob has no `oauth` section: typed values (an API key) go
+  to every host and leave by tombstone, like a Meta key. An OAuth grant always
+  has an owner: signed in on the Mac, handed to the box through accountSync's
+  two-phase handoff, refreshed there (core's `refreshAddon`, under the
+  profile lock), the Mac keeping an access copy with the client and port. Core
+  lets a sign-in land over a static row and never lets a static copy land over
+  a row with one. accountSync sends a grant only to the host that holds its
+  add-on's row as the scope's home (`addonHome`), never to a link of a scope
+  only this host has, and lands a peer's grant as from an admin when the row
+  is known here (`addonKnown`, `policyFor`). `AddonGrants`
+  (src/main/server/addons/addonGrants.ts) is the add-on host's grant source:
+  `read` from the vault fresh; `refresh` on a downstream 401 (the owner forces
+  one at most every 30 s, keeping a later ask for the window's end; a copy
+  asks its owner's `addons.grant.refresh`, then pulls); the keeper (on the
+  owner min(5 min, a quarter of the token's life) ahead of the end, on a copy
+  half that, one second more than its lead asked for since a timer may wake a
+  moment early, retries on 1, 2, 5, 10 min past the end, stopped by a
+  refusal, which marks the view, or a removal; `onClaimed` reschedules when a
+  handed grant becomes this host's); writes on one host (`writerOf`: the host
+  that refreshes it, else the scope's home, else here; others forward over the
+  admin link, `GRANT_OFFLINE` when it is down, `GRANT_ON_MAC` on a box with no
+  link to the Mac), under the profile lock, with typed values presented once
+  to the add-on's `initialize` (grantProbe.ts; 401 or 403 refuses them); the
+  sweep (a grant whose row is gone leaves, with a tombstone only on the
+  scope's home or a scope this host keeps alone); the view (`AddonGrantView`,
+  never a value) and its push. The sign-in (oauthFlow.ts on the SDK's
+  client/auth.js helpers, oauthCallback.ts the one-shot 127.0.0.1 listener)
+  runs only on a host with a window: discovery from the 401's challenge,
+  RFC 9728 and RFC 8414 metadata, the issuer and resource checked, S256
+  required, `offline_access` added when offered, dynamic registration on a
+  fixed port saved before the browser opens and reused at every later sign-in
+  (a taken port is named, `SIGNIN_PORT_TAKEN`; nothing re-registers on its
+  own), PKCE and the resource on authorize and exchange; a failure is worded
+  by its step and HTTP status alone (src/shared/addonGrantWords.ts holds every
+  line). RPCs (src/shared/contract-addonGrants.ts): `addons.grant.list`
+  (read), `setFields`, `clear`, `refresh` (admin), `signIn`, `cancel` (local,
+  since a sign-in opens a browser here); the `addon-grants` push, each sign-in
+  step at once. Seam: `TEMP_CODE_OAUTH_BROWSER=follow` with
+  TEMP_CODE_USER_DATA signs in with no browser by following the authorize
+  redirect. Proof: `bun run script:e2e-addon-grants` (two headless instances
+  and scripts/lib/fakeOAuthServer.ts; 51 checks, 133 s); unit tests
+  addonGrants, oauthFlow (Mobbin's recorded answers under addons/fixtures/),
+  oauthCallback, grantProbe, accountSync.addon, contract-m3a,
+  contract-addonGrants, addonGrantWords, and core's test/addon.test.ts.
 
 ## Skills: written out on every host
 The plan is .temp-code/plan--OsNna4IcfKO.md; the code is
