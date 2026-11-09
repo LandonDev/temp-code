@@ -451,5 +451,35 @@ private let textEdit = AppBrief(pid: 7, bundleId: "com.apple.TextEdit", name: "T
         #expect(rig.personInput == [7])
         #expect(rig.core.takeInterruption(pid: 7))
     }
+
+    @Test func aTripWhoseReleaseFinishesBeforeTheWaiterWakesStillStopsTheWaiter() throws {
+        let rig = Rig()
+        _ = try rig.step(.session) { ctx in try rig.core.mouseDown(&ctx, at: pt(400, 300)) }
+        rig.host.apps[9] = AppBrief(pid: 9, bundleId: "com.google.Chrome", name: "Chrome")
+        let watch = rig.watch, core = rig.core
+        let tries = Box(0)
+        let posted = rig.sink.posted.count
+        do {
+            _ = try core.step(tier: .session, pid: 9, windowID: 90, window: 90, keys: false, cancelled: {
+                tries.value += 1
+                if tries.value == 2 {
+                    watch.trip()
+                    // the release lands on its queue before the waiter looks again
+                    let until = Date().addingTimeInterval(2)
+                    while core.held.hold(pid: 7) != nil, Date() < until { Thread.sleep(forTimeInterval: 0.005) }
+                }
+                return false
+            }) { ctx in
+                try core.click(&ctx, .left, count: 1, at: pt(1, 1), modifiers: [], duration: nil)
+            }
+            Issue.record("the waiting app's step ran after the person took over")
+        } catch {
+            #expect(kind(error) == .interrupted)
+        }
+        // only the owner's up was posted; nothing of the waiting app's
+        #expect(rig.sink.posted.count == posted + 1)
+        #expect(rig.sink.events.last == .up(.left, pt(400, 300), clickState: 1, flags: []))
+        #expect(!rig.host.log.contains("bringForward 9"))
+    }
 }
 

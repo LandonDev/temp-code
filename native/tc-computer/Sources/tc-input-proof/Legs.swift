@@ -84,7 +84,9 @@ final class Proof: @unchecked Sendable {
     // MARK: TextEdit
 
     /// The probe document: the run's marker (cleanup finds the scratch autosaves by it), then 200 numbered lines.
-    static let document = ([ProcessInfo.processInfo.environment["TC_INPUT_PROOF_MARKER"] ?? "tc-input-proof"] + (1 ... 200).map { String(format: "line %03d", $0) }).joined(separator: "\n")
+    /// The marker is the first line and the last, so text a leg types into one leaves the other whole.
+    static let marker = ProcessInfo.processInfo.environment["TC_INPUT_PROOF_MARKER"] ?? "tc-input-proof"
+    static let document = ([marker] + (1 ... 200).map { String(format: "line %03d", $0) } + [marker]).joined(separator: "\n")
 
     func textEdit(_ s: inout Scratch, tiers: [Tier]) {
         guard let text = s.find("AXTextArea") else { return missing("textedit", "setup", "text area") }
@@ -352,6 +354,8 @@ final class Proof: @unchecked Sendable {
             print("skip session leg · the Mac was in use for 10 minutes")
             return
         }
+        gate.watchPerson()
+        defer { gate.stopWatching() }
         guard let text = te.find("AXTextArea"), let b = P.bounds(text, 5, 1) else { return missing("session", "setup", "TextEdit text") }
         let at = te.coordinate(CGPoint(x: b.x + 1, y: b.y + b.h / 2))
         guard sessionStep("left_click into TextEdit", ComputerAction(action: .leftClick, coordinate: at), target: { te.target() }, verify: { _ in (P.range(text) != nil, "caret \(P.range(text) ?? [])") }),

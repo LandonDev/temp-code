@@ -85,6 +85,8 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
     private var holdOwner: Int32?
     /// what the engine does when the person trips the watch between calls
     var onTripBetweenCalls: (@Sendable () -> Void)?
+    /// the person's trips so far: a step that waited compares it, since re-arming clears `watch.tripped`
+    private var trips = 0
 
     init(host: Host, watch: PersonWatching, sessionLock: MacLock, clock: InputClock) {
         self.host = host
@@ -109,7 +111,10 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
         guard !watch.armed else { return }
         watch.arm { [weak self] in
             guard let self else { return }
-            let between = self.state.withLock { !self.running }
+            let between = self.state.withLock {
+                self.trips += 1
+                return !self.running
+            }
             if between { self.onTripBetweenCalls?() }
         }
     }
@@ -167,6 +172,7 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
             throw sessionUnavailable(.secureInput, "Secure input is on (a password field has focus somewhere); keys can't be sent.")
         }
         let deadline = clock.seconds() + InputTiming.sessionLockWaitS
+        let tripsAtStart = state.withLock { trips }
         let mine = { self.state.withLock { self.lockHold == nil || self.holdOwner == nil || self.holdOwner == pid } }
         // a lock kept for another app's held session input: wait for its release as for another
         // holder's, outside the step mutex and the running state, so the person's trip meanwhile
@@ -175,6 +181,8 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
         try waitFor({ steps.try() }, deadline: deadline, cancelled: cancelled, watchPerson: false)
         defer { steps.unlock() }
         guard mine() else { throw sessionUnavailable(.inUse, "Another computer session holds the Mac's keyboard and mouse.") }
+        // the person took over while this step waited (their trip let the other hold go): never re-arm over it
+        if state.withLock({ trips }) != tripsAtStart { throw interruptedByPerson() }
         armWatch()
         state.withLock { running = true }
         defer {

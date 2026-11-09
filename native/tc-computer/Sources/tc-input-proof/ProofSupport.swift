@@ -196,10 +196,22 @@ final class IdleGate: @unchecked Sendable {
     let needed: Double
     private var quietSince: Date
     private var ownUntil = Date.distantPast
+    /// Input's own watch, armed for the whole session leg: any input event without the mark
+    /// (the person's) latches it, between steps and through every check's wait alike.
+    private let watch = PersonWatch()
 
     init(needed: Double) {
         self.needed = needed
         quietSince = Date().addingTimeInterval(-hidIdle())
+    }
+
+    /// From here on any unmarked input is the person's and ends the session leg.
+    func watchPerson() {
+        watch.arm {}
+    }
+
+    func stopWatching() {
+        watch.disarm()
     }
 
     /// Reads the HID idle time; an input later than the proof's own last step is the person's.
@@ -234,7 +246,7 @@ final class IdleGate: @unchecked Sendable {
     /// Whether the person stayed quiet: true only when no input since the last check was theirs and the 2 minutes still hold.
     func stillQuiet() -> Bool {
         sample()
-        return quietFor >= needed
+        return !watch.tripped && quietFor >= needed
     }
 }
 
