@@ -17,6 +17,9 @@
  *   TEMP_CODE_ADDONS   '1' when the thread's scope held an enabled add-on at
  *                      spawn: addon_find and addon_call are listed
  *                      (src/main/server/addons/tools.ts)
+ *   TEMP_CODE_COMPUTER_TOKEN  enables computer_* tools discovered from the app;
+ *                      each call and cancellation carries this thread's token
+ *   TEMP_CODE_COMPUTER_IMAGES  'parts' for MCP images, otherwise 'none'
  *
  * Runs under plain node (node ≥22 has a global WebSocket client). When
  * spawned with the Electron binary, ELECTRON_RUN_AS_NODE=1 makes that
@@ -31,6 +34,10 @@ const SESSION = process.env.TEMP_CODE_SESSION
 const MAC_TOKEN = process.env.TEMP_CODE_MAC_TOKEN
 const MAC_HOME = process.env.TEMP_CODE_MAC_HOME
 const ADDONS = process.env.TEMP_CODE_ADDONS === '1'
+const COMPUTER_TOKEN = process.env.TEMP_CODE_COMPUTER_TOKEN
+const COMPUTER_IMAGES = process.env.TEMP_CODE_COMPUTER_IMAGES === 'parts' ? 'parts' : 'none'
+const computerCalls = new Set()
+let computerToolsReady = null
 
 // ── WS client to the app server ──────────────────────────────────────
 
@@ -882,6 +889,20 @@ export function listedTools(macToken = MAC_TOKEN, addons = ADDONS) {
   return [...TOOLS, ...ADDON_TOOLS, ...(addons ? ADDON_CALL_TOOLS : []), ...(macToken ? [...MAC_TOOLS, ...MAC_JOB_TOOLS] : [])]
 }
 
+/** Fetch the app's schemas once, including a failed attempt; never ask without a token. */
+function computerTools() {
+  if (!COMPUTER_TOKEN) return []
+  if (!computerToolsReady) {
+    computerToolsReady = appRequest('app.computerTools', { token: COMPUTER_TOKEN })
+      .then((result) => result.tools)
+      .catch((err) => {
+        console.error(`[app-bridge] computer tools: ${String(err?.message ?? err).replace(/[\r\n]+/g, ' ')}`)
+        return []
+      })
+  }
+  return computerToolsReady
+}
+
 export const METHOD_FOR = {
   app_list_threads: 'app.listThreads',
   app_read_thread: 'app.readThread',
@@ -915,7 +936,7 @@ export const METHOD_FOR = {
   addon_call: 'app.addonCall'
 }
 
-/** A tool call's MCP result: addon_call passes the downstream's whole (content, isError, structuredContent); everything else is toolContent. */
+/** A tool call's MCP result: addon_call passes the downstream result whole; computer calls keep isError beside their content. */
 export function toolResult(name, result) {
   if (name === 'addon_call' && result && typeof result === 'object' && Array.isArray(result.content)) {
     return {
@@ -924,14 +945,23 @@ export function toolResult(name, result) {
       ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {})
     }
   }
+  if (name.startsWith('computer_')) {
+    return { content: toolContent(name, result), isError: result.isError }
+  }
   return { content: toolContent(name, result) }
 }
 
 /** Tools whose answer may wait on the person's card (requestApproval's own five minutes) or a long downstream call (addon_call, the host's own deadline): no client deadline, or a late Allow would still write after the bridge answered a failure. */
 const WAITS_ON_A_CARD = new Set(['skill_write', 'skill_remove', 'addon_add', 'addon_remove', 'addon_call'])
 
-/** The MCP content parts a tool result turns into (the preview's PNG rides as an image). */
+/** The MCP content parts a tool result turns into (computer pictures and the preview's PNG ride as images). */
 export function toolContent(name, result) {
+  if (name.startsWith('computer_')) {
+    return [
+      { type: 'text', text: result.text },
+      ...result.images.map(({ data, mimeType }) => ({ type: 'image', data, mimeType }))
+    ]
+  }
   if (name === 'html_preview' && result && typeof result === 'object' && typeof result.png === 'string') {
     const { png, ...metrics } = result
     return [
@@ -948,8 +978,18 @@ export function clientTimeoutMs(name, args) {
   return WAITS_ON_A_CARD.has(name) ? 0 : 120_000
 }
 
-async function callTool(name, args) {
+async function callTool(name, args, id) {
   if (name === 'update_plan') return { content: [{ type: 'text', text: 'task list updated' }] }
+  if (COMPUTER_TOKEN && name?.startsWith('computer_')) {
+    computerCalls.add(id)
+    try {
+      return toolResult(name, await appRequest('app.computer', {
+        call: id, tool: name, args: args ?? {}, token: COMPUTER_TOKEN, images: COMPUTER_IMAGES
+      }, 0))
+    } finally {
+      computerCalls.delete(id)
+    }
+  }
   // The Mac decides how long a call may wait (its approval, the command's
   // timeout); the server holds the deadline, so no client timeout here.
   if (MAC_JOB_TOOLS.some((t) => t.name === name)) {
@@ -998,7 +1038,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
 async function handle(msg) {
   const { id, method, params } = msg
-  if (method === 'notifications/initialized' || method === 'notifications/cancelled') return
+  if (method === 'notifications/cancelled') {
+    if (COMPUTER_TOKEN && computerCalls.has(params?.requestId)) {
+      void appRequest('app.computerCancel', { call: params.requestId, token: COMPUTER_TOKEN }).catch(() => {})
+    }
+    return
+  }
+  if (method === 'notifications/initialized') return
   if (id === undefined) return
   try {
     if (method === 'initialize') {
@@ -1013,9 +1059,9 @@ async function handle(msg) {
     } else if (method === 'ping') {
       out({ id, result: {} })
     } else if (method === 'tools/list') {
-      out({ id, result: { tools: listedTools() } })
+      out({ id, result: { tools: [...listedTools(), ...(await computerTools())] } })
     } else if (method === 'tools/call') {
-      out({ id, result: await callTool(params?.name, params?.arguments) })
+      out({ id, result: await callTool(params?.name, params?.arguments, id) })
     } else {
       out({ id, error: { code: -32601, message: `method not found: ${method}` } })
     }

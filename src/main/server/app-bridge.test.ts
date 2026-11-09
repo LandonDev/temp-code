@@ -1,5 +1,9 @@
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
+import { createInterface } from 'node:readline'
+import { WebSocket, WebSocketServer } from 'ws'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import {
   HTML_PREVIEW_TOOL_DESCRIPTION,
   HTML_RENDER_TOOL_DESCRIPTION,
@@ -84,6 +88,193 @@ describe('app-mcp-bridge cite_source and thread types', () => {
     const start = bridge.TOOLS.find((t) => t.name === 'app_start_thread')!
     const threadType = start.inputSchema.properties.threadType as { enum?: string[] }
     expect(threadType.enum).toEqual(ThreadTypeSchema.options)
+  })
+})
+
+describe('app-mcp-bridge computer tools over stdio', () => {
+  type RpcRequest = { id: string; method: string; params: Record<string, unknown> }
+  type McpReply = {
+    id: string | number
+    result: { tools: BridgeTool[]; content: Array<Record<string, unknown>>; isError?: boolean }
+  }
+
+  async function startBridge(
+    answer: (request: RpcRequest, ws: WebSocket) => void,
+    env: Record<string, string | undefined> = {},
+    shortenDeadline = false
+  ) {
+    const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
+    await once(server, 'listening')
+    const requests: RpcRequest[] = []
+    server.on('connection', (ws) => {
+      ws.on('message', (data) => {
+        const request = JSON.parse(String(data)) as RpcRequest
+        requests.push(request)
+        answer(request, ws)
+      })
+    })
+    // Make an accidental default deadline expire before the fake app answers,
+    // without spending two minutes on the no-deadline regression test.
+    const preload = `const original = globalThis.setTimeout;
+      globalThis.setTimeout = (fn, ms, ...args) => original(fn, ms === 120000 ? 20 : ms, ...args);`
+    const child = spawn(process.execPath, [
+      ...(shortenDeadline ? ['--import', `data:text/javascript,${encodeURIComponent(preload)}`] : []),
+      bridgePath
+    ], {
+      env: {
+        ...process.env,
+        TEMP_CODE_PORT: String((server.address() as { port: number }).port),
+        TEMP_CODE_SESSION: 'computer-thread',
+        TEMP_CODE_COMPUTER_TOKEN: undefined,
+        TEMP_CODE_COMPUTER_IMAGES: undefined,
+        TEMP_CODE_MAC_TOKEN: '',
+        TEMP_CODE_ADDONS: '',
+        ...env
+      },
+      stdio: ['pipe', 'pipe', 'pipe']
+    })
+    let stderr = ''
+    child.stderr.on('data', (data) => { stderr += String(data) })
+    const replies = new Map<string | number, (reply: McpReply) => void>()
+    const lines = createInterface({ input: child.stdout })
+    lines.on('line', (line) => {
+      const reply = JSON.parse(line) as McpReply
+      replies.get(reply.id)?.(reply)
+      replies.delete(reply.id)
+    })
+    onTestFinished(async () => {
+      const exited = once(child, 'exit')
+      child.kill()
+      await exited
+      lines.close()
+      for (const ws of server.clients) ws.terminate()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    })
+    const notify = (method: string, params: Record<string, unknown>) => {
+      child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n')
+    }
+    const request = (id: string | number, method: string, params: Record<string, unknown> = {}) =>
+      new Promise<McpReply>((resolve) => {
+        replies.set(id, resolve)
+        child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
+      })
+    return { request, notify, requests, stderr: () => stderr }
+  }
+
+  const reply = (ws: WebSocket, request: RpcRequest, result: unknown) =>
+    ws.send(JSON.stringify({ id: request.id, ok: true, result }))
+  const computerNames = (response: McpReply) => response.result.tools.filter((t) => t.name.startsWith('computer_'))
+  const tokenEnv = { TEMP_CODE_COMPUTER_TOKEN: 'thread-token' }
+
+  it('neither lists nor calls computer tools without the token', async () => {
+    const app = await startBridge((request, ws) => reply(ws, request, 'threads'))
+    expect(computerNames(await app.request(1, 'tools/list'))).toEqual([])
+    const denied = await app.request(2, 'tools/call', { name: 'computer_act', arguments: {} })
+    expect(denied.result.isError).toBe(true)
+    app.notify('notifications/cancelled', { requestId: 2 })
+    await app.request(3, 'tools/call', { name: 'app_list_threads' })
+    expect(app.requests.map((r) => r.method)).toEqual(['app.listThreads'])
+  })
+
+  it('copies the app tool list exactly and fetches it once across concurrent lists', async () => {
+    const tools = ['computer_apps', 'computer_observe', 'computer_act', 'computer_batch'].map((name) => ({
+      name,
+      description: `Server description for ${name}`,
+      inputSchema: { type: 'object', properties: { custom: { type: 'string', enum: ['server-value'] } }, required: ['custom'] }
+    }))
+    const app = await startBridge((request, ws) => {
+      setTimeout(() => reply(ws, request, { tools }), 30)
+    }, tokenEnv)
+    const lists = await Promise.all([app.request(1, 'tools/list'), app.request(2, 'tools/list')])
+    for (const list of lists) expect(computerNames(list)).toEqual(tools)
+    expect(app.requests).toHaveLength(1)
+    expect(app.requests[0]).toMatchObject({
+      method: 'app.computerTools', params: { sessionId: 'computer-thread', token: 'thread-token' }
+    })
+  })
+
+  it('forwards the MCP id, token and parts setting, then returns text, ordered images and isError', async () => {
+    const app = await startBridge((request, ws) => reply(ws, request, {
+      text: 'The action failed',
+      isError: true,
+      images: [
+        { label: 'step 1', data: 'Zmlyc3Q=', mimeType: 'image/png', width: 10, height: 20 },
+        { label: 'step 2', data: 'c2Vjb25k', mimeType: 'image/jpeg', width: 30, height: 40 }
+      ]
+    }), { ...tokenEnv, TEMP_CODE_COMPUTER_IMAGES: 'parts' })
+    const args = { app: 'Notes', action: 'left_click', coordinate: [10, 20] }
+    const response = await app.request('act-1', 'tools/call', { name: 'computer_act', arguments: args })
+    expect(app.requests[0]).toMatchObject({
+      method: 'app.computer',
+      params: { sessionId: 'computer-thread', call: 'act-1', tool: 'computer_act', args, token: 'thread-token', images: 'parts' }
+    })
+    expect(response.result).toEqual({
+      content: [
+        { type: 'text', text: 'The action failed' },
+        { type: 'image', data: 'Zmlyc3Q=', mimeType: 'image/png' },
+        { type: 'image', data: 'c2Vjb25k', mimeType: 'image/jpeg' }
+      ],
+      isError: true
+    })
+  })
+
+  it.each([undefined, 'none', 'invalid'])('uses images none for the setting %j and defaults missing arguments', async (images) => {
+    const app = await startBridge((request, ws) => reply(ws, request, {
+      text: 'done', images: [], isError: false
+    }), { ...tokenEnv, TEMP_CODE_COMPUTER_IMAGES: images })
+    const response = await app.request(7, 'tools/call', { name: 'computer_act' })
+    expect(app.requests[0].params).toEqual({
+      sessionId: 'computer-thread', call: 7, tool: 'computer_act', args: {}, token: 'thread-token', images: 'none'
+    })
+    expect(response.result).toEqual({ content: [{ type: 'text', text: 'done' }], isError: false })
+  })
+
+  it('waits for a computer answer past the default client deadline', async () => {
+    const app = await startBridge((request, ws) => {
+      setTimeout(() => reply(ws, request, { text: 'late answer', images: [], isError: false }), 80)
+    }, tokenEnv, true)
+    const timedOut = await app.request(0, 'tools/call', { name: 'app_list_threads' })
+    expect(timedOut.result).toEqual({
+      content: [{ type: 'text', text: 'error: app server timeout' }], isError: true
+    })
+    const response = await app.request(1, 'tools/call', { name: 'computer_act', arguments: { app: 'Notes', action: 'key', key: 'a' } })
+    expect(response.result).toEqual({ content: [{ type: 'text', text: 'late answer' }], isError: false })
+  })
+
+  it.each([42, 'call-42'])('cancels only the pending computer call %j and ignores cancel errors', async (id) => {
+    let pending: { request: RpcRequest; ws: WebSocket } | undefined
+    const app = await startBridge((request, ws) => {
+      if (request.method === 'app.computer') pending = { request, ws }
+      else if (request.method === 'app.computerCancel') {
+        ws.send(JSON.stringify({ id: request.id, ok: false, error: 'already stopping' }))
+        reply(pending!.ws, pending!.request, { text: 'cancelled', images: [], isError: true })
+      } else reply(ws, request, 'threads')
+    }, tokenEnv)
+    const result = app.request(id, 'tools/call', { name: 'computer_act', arguments: {} })
+    await vi.waitFor(() => expect(pending).toBeDefined())
+    app.notify('notifications/cancelled', { requestId: 'unrelated' })
+    app.notify('notifications/cancelled', { requestId: id })
+    expect((await result).result.isError).toBe(true)
+    app.notify('notifications/cancelled', { requestId: id })
+    await app.request('still-serving', 'tools/call', { name: 'app_list_threads' })
+    expect(app.requests.filter((r) => r.method === 'app.computerCancel')).toEqual([
+      expect.objectContaining({ params: { sessionId: 'computer-thread', call: id, token: 'thread-token' } })
+    ])
+  })
+
+  it('logs a discovery failure once, caches the empty list and keeps serving other tools', async () => {
+    const app = await startBridge((request, ws) => {
+      if (request.method === 'app.computerTools') {
+        ws.send(JSON.stringify({ id: request.id, ok: false, error: 'computer unavailable\ntry later' }))
+      } else reply(ws, request, 'threads still work')
+    }, tokenEnv)
+    expect(computerNames(await app.request(1, 'tools/list'))).toEqual([])
+    expect(computerNames(await app.request(2, 'tools/list'))).toEqual([])
+    expect((await app.request(3, 'tools/call', { name: 'app_list_threads' })).result).toEqual({
+      content: [{ type: 'text', text: 'threads still work' }]
+    })
+    expect(app.requests.filter((r) => r.method === 'app.computerTools')).toHaveLength(1)
+    await vi.waitFor(() => expect(app.stderr()).toBe('[app-bridge] computer tools: computer unavailable try later\n'))
   })
 })
 
