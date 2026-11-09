@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DEPLOY_STAGES,
   PUBLISH_PHASES,
+  SCRIPT_PHASES,
   PhaseTracker,
   deployProgress,
   deployStageOf,
@@ -34,6 +35,8 @@ describe('parseDuration / formatDuration', () => {
 
 describe('parsePhaseLine', () => {
   it('reads start, end, failure, skip and total lines and nothing else', () => {
+    expect(parsePhaseLine('phase ✓ install 12s')).toEqual({ kind: 'end', phase: 'install', ok: true, ms: 12_000 })
+    expect(parsePhaseLine('phase – install skipped (lockfile unchanged)')).toEqual({ kind: 'skipped', phase: 'install' })
     expect(parsePhaseLine('phase › gate')).toEqual({ kind: 'start', phase: 'gate' })
     expect(parsePhaseLine('phase ✓ gate 71s')).toEqual({ kind: 'end', phase: 'gate', ok: true, ms: 71_000 })
     expect(parsePhaseLine('phase ✗ build 12s')).toEqual({ kind: 'end', phase: 'build', ok: false, ms: 12_000 })
@@ -52,16 +55,20 @@ describe('PhaseTracker', () => {
   it('counts the phases that ended of the expected list, labels the running one, and sums the run', () => {
     const t = new PhaseTracker()
     expect(t.progress()).toEqual({ done: 0, total: PUBLISH_PHASES.length })
+    expect(SCRIPT_PHASES[0]).toBe('install')
+    t.feed('phase › install')
+    expect(t.progress()).toEqual({ done: 0, total: 8, label: 'install' })
+    t.feed('phase ✓ install 12s')
     t.feed('phase › gate')
     t.feed('phase › build')
-    expect(t.progress()).toEqual({ done: 0, total: 7, label: 'build' })
+    expect(t.progress()).toEqual({ done: 1, total: 8, label: 'build' })
     t.feed('  • electron-builder  version=26.0.12')
     t.feed('phase ✓ build 84s')
-    expect(t.progress()).toEqual({ done: 1, total: 7 })
+    expect(t.progress()).toEqual({ done: 2, total: 8 })
     t.feed('phase ✓ gate 71s')
     t.feed('phase › pack')
     t.feed('phase › sign')
-    expect(t.progress()).toEqual({ done: 2, total: 7, label: 'sign' })
+    expect(t.progress()).toEqual({ done: 3, total: 8, label: 'sign' })
     t.feed('phase ✓ pack 15s')
     t.feed('phase ✓ sign 2m40s')
     t.feed('phase › upload')
@@ -69,15 +76,23 @@ describe('PhaseTracker', () => {
     t.feed('phase › feed')
     t.feed('phase ✓ feed 6s')
     t.feed('phase ✓ total 4m12s 1.0.283')
-    expect(t.progress()).toEqual({ done: 6, total: 7 })
+    expect(t.progress()).toEqual({ done: 7, total: 8 })
     expect(t.version).toBe('1.0.283')
     expect(t.totalMs).toBe(252_000)
-    expect(t.summary()).toBe('gate 1m11s · build 1m24s · sign 2m40s · pack 15s · upload 48s · feed 6s')
+    expect(t.summary()).toBe('install 12s · gate 1m11s · build 1m24s · sign 2m40s · pack 15s · upload 48s · feed 6s')
     t.feed('phase › update')
-    expect(t.progress()).toEqual({ done: 6, total: 7, label: 'update' })
+    expect(t.progress()).toEqual({ done: 7, total: 8, label: 'update' })
     t.feed('phase ✓ update 31s')
-    expect(t.progress()).toEqual({ done: 7, total: 7 })
+    expect(t.progress()).toEqual({ done: 8, total: 8 })
     expect(t.times.get('update')).toBe(31_000)
+  })
+
+  it('counts a skipped install as done without a duration', () => {
+    const t = new PhaseTracker(SCRIPT_PHASES)
+    t.feed('phase – install skipped (lockfile unchanged)')
+    expect(t.progress()).toEqual({ done: 1, total: 7 })
+    expect(t.skipped.has('install')).toBe(true)
+    expect(t.summary()).toBe('')
   })
 
   it('a skipped gate counts as done, a failed phase is named in the summary, an unknown phase is kept but not counted', () => {

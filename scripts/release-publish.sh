@@ -27,7 +27,7 @@
 #               a fresh install (the README's download link)
 #   --pack-only [dist-dir]               the box packing step alone, from
 #               the out/ already built: nothing signed or uploaded
-#   --dry-run                            every local phase (gate, build, sign,
+#   --dry-run                            every local phase (install, gate, build, sign,
 #               pack, the zip's validation) with its timing, on any
 #               commit; nothing pushed, no release, no upload, no feed
 #   GATE_SKIP=1                          skip the gate, to retry an upload
@@ -48,6 +48,7 @@
 set -e
 cd "$(dirname "$0")/.."
 . scripts/lib/release-notes.sh
+. scripts/lib/release-install.sh
 export PATH="$HOME/.bun/bin:/opt/homebrew/bin:$PATH"
 
 NOTARIZE=${TEMP_CODE_NOTARIZE:-0}
@@ -172,6 +173,9 @@ else
   gh release create "v$VERSION" --repo "$REPO" --draft --title "TempCode $VERSION" --notes "$NOTES" >/dev/null
   DRAFTED=1
 fi
+
+# ── install, before the gate and build ──────────────────────────────────
+install_publish_dependencies "$STAGE/install.log" || exit 1
 
 # ── gate, beside the build ──────────────────────────────────────────────
 # The publish tier of the gate (scripts/gate.ts): the renderer soak, the

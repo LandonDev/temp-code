@@ -481,6 +481,9 @@ poll. Now the gate runs beside the build, the box tarball is packed and
 uploaded while the app is signed, there is no dmg and no notarization
 unless asked, the bundle leaves `ios/`, `infra/` and `docs/` out, and the
 app that ran the script fetches the release the second it lands.
+Before the gate and build, the `install` phase runs `bun install --frozen-lockfile`
+unless the SHA-256 of `bun.lock` matches `node_modules/.tc-installed-lock`, which the
+publish script writes only after a successful install.
 
 | stretch | before (button to a running app) | now | measured how |
 | --- | --- | --- | --- |

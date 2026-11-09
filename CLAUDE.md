@@ -213,7 +213,9 @@ Two separate steps, on purpose, over one gate.
    since GitHub refuses a body over 125,000); then `gate --tier publish` runs BESIDE the
    electron-vite build (they share nothing; a red gate still stops the
    upload and deletes the draft; `GATE_SKIP=1` only to retry a failed
-   upload); ONE electron-builder call (`--mac zip`, the `sign` phase)
+   upload). Before either starts, the `install` phase runs `bun install --frozen-lockfile`
+   unless the SHA-256 of `bun.lock` matches `node_modules/.tc-installed-lock`, written only
+   after a successful install. ONE electron-builder call (`--mac zip`, the `sign` phase)
    packs, signs with the Developer ID Application identity in the login
    Keychain and zips, writing `Contents/Resources/app-update.yml` (the
    feed config electron-updater reads; electron-builder writes it only in
