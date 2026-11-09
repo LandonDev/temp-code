@@ -14,6 +14,7 @@ import {
   InputProbeParamsSchema,
   ProbeReportSchema,
   RegionSchema,
+  SERVICE,
   STEP_ONLY_ERROR_KINDS,
   SessionRestoreSchema,
   StateGetParamsSchema,
@@ -260,5 +261,36 @@ describe('the service shell\'s additions', () => {
   it('names already_running as an error a request answers', () => {
     expect(COMPUTER_ERROR_KINDS).toContain('already_running')
     expect(STEP_ONLY_ERROR_KINDS).not.toContain('already_running')
+  })
+})
+
+describe("the tier scheduling's additions", () => {
+  const target = { session: 's', app: { app: 'TextEdit' } }
+  const session = { frontmost: {}, pointer: { before: [1, 2], after: [3, 4] }, restorable: true }
+
+  it('takes input.restoreSession with {} and with afterInterrupt', () => {
+    const { params } = COMPUTER_METHODS['input.restoreSession']
+    expect(params.safeParse({}).success).toBe(true)
+    expect(params.safeParse({ afterInterrupt: true }).success).toBe(true)
+    expect(params.safeParse({ afterInterrupt: 'yes' }).success).toBe(false)
+    expect(SERVICE.restoreAfterInterruptMs).toBe(2_000)
+  })
+
+  it('carries pasteQuietMs on action.run and action.batch', () => {
+    expect(ActionRunParamsSchema.safeParse({ ...target, action: { action: 'paste', text: 'x' }, tiers: ['process'], pasteQuietMs: 5_000 }).success).toBe(true)
+    expect(ActionBatchParamsSchema.safeParse({ ...target, actions: [{ action: 'key', text: 'a' }], tiers: ['process'], pasteQuietMs: 0 }).success).toBe(true)
+    expect(ActionRunParamsSchema.safeParse({ ...target, action: { action: 'key', text: 'a' }, tiers: ['process'], pasteQuietMs: -1 }).success).toBe(false)
+  })
+
+  it("parses a session step's span, and a change without one", () => {
+    const span = { armedAt: 1_800_000_000_100, idleAtArmMs: 130_000, lastInputAt: 1_800_000_000_900 }
+    const okStep = { index: 0, action: 'left_click', status: 'ok', tier: 'session', effect: 'changed', session: { ...session, ...span } }
+    expect(StepResultSchema.parse(okStep)).toEqual(okStep)
+    expect(StepResultSchema.safeParse({ ...okStep, session }).success).toBe(true)
+    expect(StepResultSchema.safeParse({ ...okStep, session: { ...session, ...span, idleAtArmMs: -1 } }).success).toBe(false)
+  })
+
+  it('names recent-copy as the reason a paste was held off', () => {
+    expect(ComputerErrorSchema.safeParse({ kind: 'clipboard_busy', message: 'The person copied just now.', reason: 'recent-copy' }).success).toBe(true)
   })
 })

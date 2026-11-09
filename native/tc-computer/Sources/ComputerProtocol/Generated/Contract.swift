@@ -13,6 +13,7 @@ public enum ComputerDefaults {
         public static let permissionPollMs = 2000
         public static let appSlotWaitMs = 5000
         public static let heldInputReleaseMs = 30000
+        public static let restoreAfterInterruptMs = 2000
         public static let batchMaxActions = 32
         public static let maxInFlight = 32
         public static let maxQueued = 256

@@ -622,6 +622,7 @@ public enum ErrorReason: RawRepresentable, Codable, Hashable, Sendable {
     case secureInput
     case activationRefused
     case inUse
+    case recentCopy
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -633,6 +634,7 @@ public enum ErrorReason: RawRepresentable, Codable, Hashable, Sendable {
         case "secure-input": self = .secureInput
         case "activation-refused": self = .activationRefused
         case "in-use": self = .inUse
+        case "recent-copy": self = .recentCopy
         default: self = .unknown(rawValue)
         }
     }
@@ -645,6 +647,7 @@ public enum ErrorReason: RawRepresentable, Codable, Hashable, Sendable {
         case .secureInput: "secure-input"
         case .activationRefused: "activation-refused"
         case .inUse: "in-use"
+        case .recentCopy: "recent-copy"
         case .unknown(let value): value
         }
     }

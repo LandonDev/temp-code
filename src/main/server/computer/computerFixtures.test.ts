@@ -34,6 +34,8 @@ function walk(dir: string): string[] {
   })
 }
 
+/** A second request of one method: `input.restoreSession` right after the person's touch stopped a step. */
+const VARIANTS: Readonly<Record<string, ComputerMethod>> = { 'input.restoreSession.after-interrupt.request.json': 'input.restoreSession' }
 const notificationFile = (method: string): string => `notify-${method.replace(/^\$\//, '').replace(/\//g, '-')}.json`
 const serviceNotes = ComputerNotificationSchema.options.map((o) => o.shape.method.value)
 const hostNotes = HostNotificationSchema.options.map((o) => o.shape.method.value)
@@ -75,9 +77,17 @@ describe('wire fixtures', () => {
     }
   })
 
+  it('take the requests a method has in more than one shape', () => {
+    for (const [file, method] of Object.entries(VARIANTS)) {
+      const request = requestFrameSchema(method).safeParse(json(join(wire, file)))
+      expect(request.error?.issues, file).toBeUndefined()
+    }
+  })
+
   it('hold nothing else', () => {
     const expected = new Set([
       ...Object.keys(COMPUTER_METHODS).flatMap((m) => [`${m}.request.json`, `${m}.response.json`]),
+      ...Object.keys(VARIANTS),
       ...COMPUTER_ERROR_KINDS.map((k) => `error-${k}.json`),
       ...[...serviceNotes, ...hostNotes].map(notificationFile)
     ])

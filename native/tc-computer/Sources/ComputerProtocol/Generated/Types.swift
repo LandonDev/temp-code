@@ -269,11 +269,17 @@ public struct SessionChange: Codable, Hashable, Sendable {
     public let frontmost: Frontmost
     public let pointer: Pointer
     public let restorable: Bool
+    public let armedAt: Double?
+    public let idleAtArmMs: Double?
+    public let lastInputAt: Double?
 
-    public init(frontmost: Frontmost, pointer: Pointer, restorable: Bool) {
+    public init(frontmost: Frontmost, pointer: Pointer, restorable: Bool, armedAt: Double? = nil, idleAtArmMs: Double? = nil, lastInputAt: Double? = nil) {
         self.frontmost = frontmost
         self.pointer = pointer
         self.restorable = restorable
+        self.armedAt = armedAt
+        self.idleAtArmMs = idleAtArmMs
+        self.lastInputAt = lastInputAt
     }
 }
 

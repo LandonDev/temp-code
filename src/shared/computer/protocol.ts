@@ -33,6 +33,8 @@ export const SERVICE = {
   appSlotWaitMs: 5_000,
   /** a held button or key is let go this long after its down with no up */
   heldInputReleaseMs: 30_000,
+  /** `input.restoreSession { afterInterrupt }` acts despite the person's touch only this long after it stopped a step */
+  restoreAfterInterruptMs: 2_000,
   /** actions in one `action.batch` */
   batchMaxActions: 32,
   /** requests running at once; a slot frees only once its response is written */
@@ -558,8 +560,8 @@ export const STEP_ONLY_ERROR_KINDS: readonly ComputerErrorKind[] = [
 ]
 
 export const InterruptedBySchema = z.enum(['person'])
-/** `stale_element`: gone, service-restarted. `session_unavailable`: locked, secure-input, activation-refused, in-use. */
-export const ErrorReasonSchema = z.enum(['gone', 'service-restarted', 'locked', 'secure-input', 'activation-refused', 'in-use'])
+/** `stale_element`: gone, service-restarted. `session_unavailable`: locked, secure-input, activation-refused, in-use. `clipboard_busy`: recent-copy. */
+export const ErrorReasonSchema = z.enum(['gone', 'service-restarted', 'locked', 'secure-input', 'activation-refused', 'in-use', 'recent-copy'])
 export type ErrorReason = z.infer<typeof ErrorReasonSchema>
 
 /** An app as a session step or a restore names it. */
@@ -569,12 +571,22 @@ export type AppBrief = z.infer<typeof AppBriefSchema>
 /** `[x, y]` in global screen points, top-left origin; fractional. */
 const ScreenPointSchema = z.array(z.number()).length(2)
 
-/** What a session-tier step changed on the Mac: the app in front and the pointer, before the step and after it. */
+/**
+ * What a session-tier step changed on the Mac: the app in front and the pointer, before the step and after it.
+ * A step that posted input also says its span, so the host can tell the step's own input from the person's
+ * (src/main/personIdle.ts); all three are epoch ms and absent when the step posted nothing.
+ */
 export const SessionChangeSchema = z.object({
   frontmost: z.object({ before: AppBriefSchema.optional(), after: AppBriefSchema.optional() }),
   pointer: z.object({ before: ScreenPointSchema, after: ScreenPointSchema }),
   /** the service holds a state `input.restoreSession` can put back */
-  restorable: z.boolean()
+  restorable: z.boolean(),
+  /** when the step armed its person watch */
+  armedAt: z.number().optional(),
+  /** the system's idle time when the watch armed: the person's last input before the step is armedAt − idleAtArmMs */
+  idleAtArmMs: z.number().nonnegative().optional(),
+  /** the step's last posted event */
+  lastInputAt: z.number().optional()
 })
 export type SessionChange = z.infer<typeof SessionChangeSchema>
 
@@ -705,12 +717,16 @@ export const StateGetParamsSchema = TargetSchema.extend({
   wait: WaitOptionsSchema.optional()
 }).superRefine((p, ctx) => needsEpoch(p.element === undefined ? [] : [p.element], p.epoch, ctx))
 
+/** A paste waits out the person's copy: one within this many ms fails the step `clipboard_busy { reason: 'recent-copy' }` with the pasteboard untouched. */
+const PasteQuietSchema = int().nonnegative()
+
 export const ActionRunParamsSchema = TargetSchema.extend({
   action: ComputerActionSchema,
   /** the tiers the host allows, in order */
   tiers: z.array(TierSchema).min(1),
   wait: WaitOptionsSchema.optional(),
-  observe: ObserveOptionsSchema.optional()
+  observe: ObserveOptionsSchema.optional(),
+  pasteQuietMs: PasteQuietSchema.optional()
 }).superRefine((p, ctx) => needsEpoch(actionElements(p.action), p.epoch, ctx))
 
 export const ActionBatchParamsSchema = TargetSchema.extend({
@@ -718,7 +734,8 @@ export const ActionBatchParamsSchema = TargetSchema.extend({
   tiers: z.array(TierSchema).min(1),
   stepWait: WaitOptionsSchema.optional(),
   wait: WaitOptionsSchema.optional(),
-  observe: ObserveOptionsSchema.optional()
+  observe: ObserveOptionsSchema.optional(),
+  pasteQuietMs: PasteQuietSchema.optional()
 }).superRefine((p, ctx) => needsEpoch(p.actions.flatMap(actionElements), p.epoch, ctx))
 
 export const CaptureScreenshotParamsSchema = TargetSchema.extend({
@@ -759,6 +776,13 @@ export const ProbeReportSchema = z.object({
   )
 })
 export type ProbeReport = z.infer<typeof ProbeReportSchema>
+
+/**
+ * `input.restoreSession`: `{}` refuses to act once the person touched the Mac since the last session step;
+ * `afterInterrupt` acts within SERVICE.restoreAfterInterruptMs of the touch that stopped a step, each half
+ * still checking its own part (the front app is still the one the step left there, the pointer within 2 pt).
+ */
+export const InputRestoreParamsSchema = z.object({ afterInterrupt: z.boolean().optional() })
 
 export const RestoreOutcomeSchema = z.enum(['restored', 'person-moved', 'app-gone', 'nothing'])
 export type RestoreOutcome = z.infer<typeof RestoreOutcomeSchema>
@@ -828,7 +852,7 @@ export const COMPUTER_METHODS = {
   },
   'capture.stream.stop': { params: z.object({ stream: z.string().min(1) }), result: EmptySchema },
   'input.probe': { params: InputProbeParamsSchema, result: ProbeReportSchema },
-  'input.restoreSession': { params: EmptySchema, result: SessionRestoreSchema },
+  'input.restoreSession': { params: InputRestoreParamsSchema, result: SessionRestoreSchema },
   'clipboard.state': { params: EmptySchema, result: ClipboardActivitySchema },
   /** P1: while on, the person's unmarked Escape is taken and sent as `escape/pressed`; every other event passes */
   'escape.watch': {
