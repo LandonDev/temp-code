@@ -40,8 +40,8 @@ export interface BenchStep {
 export interface BenchCall {
   /** computer_act, computer_left_click, … */
   tool: string
-  /** the rig's wrapper: entering ComputerSessions.run to its outcome, the thread's queue wait inside */
-  hostMs: number
+  /** the rig's wrapper: entering ComputerSessions.run to its outcome, the thread's queue wait inside; null for a call refused before it reached the host */
+  hostMs: number | null
   /** tool-call row to tool-result row: the harness's path included */
   rowMs: number | null
   steps: BenchStep[]
@@ -193,6 +193,8 @@ export const isSessionRefusal = (s: BenchStep): boolean => !s.ok && (s.error ?? 
 
 // ── summaries ───────────────────────────────────────────────────────────
 
+const nums = (xs: (number | null | undefined)[]): number[] => xs.filter((x): x is number => typeof x === 'number')
+
 export function median(xs: readonly number[]): number | null {
   if (!xs.length) return null
   const s = [...xs].sort((a, b) => a - b)
@@ -201,7 +203,7 @@ export function median(xs: readonly number[]): number | null {
 }
 
 /** A run's median host ms per computer call; null with no calls. */
-export const runHostMs = (run: BenchRun): number | null => median(run.calls.map((c) => c.hostMs))
+export const runHostMs = (run: BenchRun): number | null => median(nums(run.calls.map((c) => c.hostMs)))
 
 /** Runs that must pass their end state: 1 of 1, 2 of 3. */
 export const passNeed = (runs: number, rule: BenchRule = BENCH_RULE): number =>
@@ -235,8 +237,6 @@ export interface TaskSummary {
   /** step lines in no shape parseStepLine knows */
   unparsed: number
 }
-
-const nums = (xs: (number | null | undefined)[]): number[] => xs.filter((x): x is number => typeof x === 'number')
 
 /** One summary per model, task and task version, in the order the runs came. */
 export function summarize(runs: readonly BenchRun[]): TaskSummary[] {
