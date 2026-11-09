@@ -87,6 +87,8 @@ private func paired(_ id: String, name: String) -> PairedEnvironment {
         #expect(ResourceWords.kindLabel(.simulator) == "simulator")
         #expect(ResourceWords.kindLabel(.devInstance) == "dev instance")
         #expect(ResourceWords.kindLabel(.port) == "dev server")
+        #expect(ResourceWords.kindLabel(.computer) == "computer use")
+        #expect(ResourceWords.symbol(.computer) == "cursorarrow.rays")
         #expect(ResourceWords.kindLabel(.unknown("vm")) == "vm")
         #expect(ResourceWords.symbol(.worktree) == "arrow.triangle.pull")
         #expect(ResourceWords.symbol(.simulator) == "iphone")

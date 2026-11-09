@@ -338,16 +338,21 @@ public enum MacBridgeWords {
     }
 
     /// "3rd in line for the Mac (load 12.3 of 8)", "2nd in line for the Mac
-    /// (4 of 4 running)" (`heldLine`).
+    /// (4 of 4 running)", "1st in line for the Mac (2 of 2 computer sessions)"
+    /// (`heldLine`).
     public static func heldLine(_ held: MacBridgeHeld) -> String {
-        let why = held.reason == .load
-            ? "load \(String(format: "%.1f", held.load)) of \(trim(held.limit))"
-            : "\(held.running) of \(held.maxRunning) running"
+        let why: String
+        switch held.reason {
+        case .load: why = "load \(String(format: "%.1f", held.load)) of \(trim(held.limit))"
+        case .computer: why = "\(held.computer ?? 0) of \(held.maxComputer ?? 0) computer sessions"
+        case .cap, .unknown: why = "\(held.running) of \(held.maxRunning) running"
+        }
         return "\(ordinal(held.position)) in line for the Mac (\(why))"
     }
 
     /// A call's title: the command (or its argv joined) for a run; the path's
-    /// last two components for a read; the path with "(write)" for a write.
+    /// last two components for a read; the path with "(write)" for a write;
+    /// "Using TextEdit, window "Untitled"" for a box thread's computer session.
     public static func commandLine(_ call: MacBridgeCall) -> String {
         switch call.kind {
         case .run, .unknown:
@@ -358,6 +363,10 @@ public enum MacBridgeWords {
             return shortPath(call.path) ?? call.method.rawValue
         case .write:
             return "\(call.path ?? call.method.rawValue) (write)"
+        case .computer:
+            let app = call.computer?.app.isEmpty == false ? call.computer!.app : "an app"
+            guard let window = call.computer?.window else { return "Using \(app)" }
+            return "Using \(app), window \"\(window)\""
         }
     }
 

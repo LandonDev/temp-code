@@ -240,6 +240,21 @@ struct MacBridgeWordsTests {
         #expect(MacBridgeWords.commandLine(call(kind: .write, status: .paused, path: "/tmp/out.txt")) == "/tmp/out.txt (write)")
     }
 
+    @Test func `commandLine and heldLine for a box thread's computer session`() {
+        let live = MacBridgeCall(
+            id: "c1", environmentId: "env_box", hostName: "box", sessionId: "s1", threadTitle: "t",
+            kind: .computer, method: .macComputer, computer: .init(app: "TextEdit", window: "Untitled"), status: .running, createdAt: 0
+        )
+        #expect(MacBridgeWords.commandLine(live) == "Using TextEdit, window \"Untitled\"")
+        let bare = MacBridgeCall(
+            id: "c2", environmentId: "env_box", hostName: "box", sessionId: "s1", threadTitle: "t",
+            kind: .computer, method: .macComputer, computer: .init(app: "Notes", window: nil), status: .held, createdAt: 0
+        )
+        #expect(MacBridgeWords.commandLine(bare) == "Using Notes")
+        let held = MacBridgeHeld(reason: .computer, position: 1, load: 1, limit: 16, cores: 8, maxRunning: 4, running: 2, computer: 2, maxComputer: 2)
+        #expect(MacBridgeWords.heldLine(held) == "1st in line for the Mac (2 of 2 computer sessions)")
+    }
+
     @Test func `usage, loadLine, loadValue and the pending footer`() {
         let busy = MacBridgeActivityHost(environmentId: "e", name: "box", policy: .full, registered: true, maxRunning: 4, maxThreads: 2, running: 1, held: 2, threads: 1, pending: 0)
         #expect(MacBridgeWords.usage(busy) == "1 running, 2 waiting and 1 thread")

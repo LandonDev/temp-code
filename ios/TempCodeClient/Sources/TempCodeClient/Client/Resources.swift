@@ -98,6 +98,7 @@ public enum ResourceWords {
         case .simulator: "simulator"
         case .devInstance: "dev instance"
         case .port: "dev server"
+        case .computer: "computer use"
         case .unknown(let value): value
         }
     }
@@ -108,6 +109,7 @@ public enum ResourceWords {
         case .simulator: "iphone"
         case .devInstance: "macwindow"
         case .port: "network"
+        case .computer: "cursorarrow.rays"
         case .unknown: "shippingbox"
         }
     }
