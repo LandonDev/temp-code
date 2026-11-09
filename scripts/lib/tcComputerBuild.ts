@@ -76,8 +76,8 @@ export function buildTcComputer(opts: TcComputerBuildOptions): TcComputerBuildRe
     if (developerDir.trim()) env.DEVELOPER_DIR = developerDir.trim()
     return env
   }
-  // a background build (dev) only warns: nothing waits on it to throw to
-  const fail = (error: unknown, rethrow = opts.require && !opts.background): TcComputerBuildResult => {
+  // the background build's own failure only warns: nothing waits on it to throw to
+  const fail = (error: unknown, rethrow = opts.require): TcComputerBuildResult => {
     console.warn('[tc-computer] swift build failed: computer use is off in this build')
     if (rethrow) throw error
     return { built: false, error: error instanceof Error ? error.message : String(error) }
