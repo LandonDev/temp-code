@@ -14,7 +14,8 @@ import {
   computerProofPolicy,
   requireGateNative,
   waitForComputerProof,
-  SCREEN_RECORDING_PROMPTED
+  SCREEN_RECORDING_PROMPTED,
+  lostTry
 } from './computerProofGate'
 
 const grants = (screenRecording: boolean) => ({ accessibility: true, screenRecording })
@@ -200,4 +201,11 @@ it('fails within its proof wait budget', async () => {
     vi.useRealTimers()
     other.mockRestore()
   }
+})
+
+describe('a try that lost the screen', () => {
+  it('fails the gate, never a pass with its checks skipped, and lets a hand run wait for the next gap', () => {
+    expect(lostTry(true)).toBe('fail')
+    expect(lostTry(false)).toBe('retry')
+  })
 })

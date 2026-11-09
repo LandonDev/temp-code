@@ -94,7 +94,7 @@ import {
   type WaitReport
 } from '../src/shared/computer/protocol'
 import { waitForGateBuild } from './lib/gateBuild'
-import { computerProofMode, computerProofPolicy, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
+import { computerProofMode, computerProofPolicy, LOST_TRY_LINE, lostTry, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
 import { OwnInput, personSince } from './lib/proofGate'
 import { buildTcComputer, type TcComputerBuildResult } from './lib/tcComputerBuild'
 
@@ -869,6 +869,7 @@ async function run(): Promise<void> {
   const deadline = runStart + (GATE ? 10 * 60_000 : GATE_WAIT_MS)
   for (let attempt = 1; ; attempt++) {
     if (!(await awaitGap(deadline))) {
+      if (lostTry(GATE) === 'fail') throw new Error(LOST_TRY_LINE)
       record({
         name: 'the probe app and TextEdit',
         outcome: 'skipped',
@@ -910,6 +911,7 @@ async function run(): Promise<void> {
     })
     abortApps(servicesFrom)
     tryAborted = false
+    if (lostTry(GATE) === 'fail') throw new Error(LOST_TRY_LINE)
   }
 
   await new Chain().step('every frame matched the schemas', async (data) => {

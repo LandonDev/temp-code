@@ -10,6 +10,14 @@ export function computerProofMode(argv: readonly string[]) {
   return { gate, localPair: gate || (argv.includes('--pair') && pair === 'local') }
 }
 
+/**
+ * A try that did not run whole (the screen locked, slept or went dark, or
+ * no gap came): a hand run waits for the next gap, but the gate fails, since
+ * its pass must mean every check ran.
+ */
+export const lostTry = (gate: boolean): 'retry' | 'fail' => (gate ? 'fail' : 'retry')
+export const LOST_TRY_LINE = 'the gate proof lost the screen before its checks ran whole (locked, asleep or dark): inconclusive, so the row fails'
+
 export const SCREEN_RECORDING_PROMPTED = 'computer.prompted.screenRecording'
 export interface ProofGrants {
   accessibility: boolean
