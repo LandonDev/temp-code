@@ -354,6 +354,9 @@ try {
     return !!mw?.linkId && mw.linkId === b.find((w) => w.id === boxWs.id)?.linkId
   }))
 
+  // The route to the box's copy follows RulesSync's record of the box's workspaces, a push behind the stamp.
+  check("mac routes the linked workspace's add-ons to the box", await until('the home is the box', 60_000, async () => (await rpc<{ home: { name: string } | null }>(mac, 'addons.list', { workspaceId: macWs.id })).home?.name === 'box'))
+
   // ── 1. a mac thread adds fake: the admin card, the row on the box ────
   const macThread = await rpc<Meta>(mac, 'session.create', { provider: 'claude', projectId: macProject.id, title: 'Adds the fake add-on', threadType: 'chat', permission: 'auto' })
   const adding = rpc<string>(mac, 'app.addonAdd', { sessionId: macThread.id, name: 'fake', description: 'A fake add-on for the proof', ...stdioSpec() }, 120_000)
@@ -363,7 +366,8 @@ try {
   const added = JSON.parse(await adding) as { id: string; state: string; detail?: string }
   check('addon_add answers needs-grant with the gap', added.state === 'needs-grant' && added.detail === 'Needs values for FAKE_TOKEN', JSON.stringify(added))
   const onBox = (await list(box)).addons.find((a) => a.name === 'fake')
-  check('the box holds the row in its workspace, written by the mac thread', onBox?.workspaceId === boxWs.id && onBox.writtenBy.kind === 'thread' && onBox.writtenBy.sessionId === macThread.id, JSON.stringify(onBox))
+  if (!check('the box holds the row in its workspace, written by the mac thread', onBox?.workspaceId === boxWs.id && onBox.writtenBy.kind === 'thread' && onBox.writtenBy.sessionId === macThread.id, JSON.stringify(onBox ?? (await list(box)).addons)))
+    throw new Error('no row on the box')
   check("mac's list has it after the follow", await until('mac follows', 30_000, async () => (await list(mac)).addons.some((a) => a.id === onBox?.id)))
   const fakeId = onBox!.id
 
@@ -416,9 +420,11 @@ try {
   const read = await edits.call('addon_call', { tool: 'fake__read', arguments: { key: 'k' } })
   const editsCards = (await events(box, boxEdits.id)).filter((r) => r.event.type === 'approval-request')
   check('an edits thread runs a read-only tool with no card', text(read) === 'read k' && editsCards.length === 0, JSON.stringify({ read, editsCards }))
-  const image = await edits.call('addon_call', { tool: 'fake__image' })
-  check('addon_call passes the image part whole', image.content[0]?.type === 'image' && !!image.content[0].data, JSON.stringify(image).slice(0, 200))
   edits.close()
+  const auto = bridge(box, boxAuto.id, true)
+  const image = await auto.call('addon_call', { tool: 'fake__image' })
+  check('addon_call passes the image part whole', image.content[0]?.type === 'image' && !!image.content[0].data, JSON.stringify(image).slice(0, 200))
+  auto.close()
 
   // ── 6. a crash: failed with its line, then starting, then ready ──────
   const pushes = statusPushes(box)
@@ -510,7 +516,7 @@ try {
   }))
   const swept = await until('no TEMP_CODE_ADDON process of fake', 120_000, () => addonProcesses(fakeId).length === 0)
   check('no process carrying its TEMP_CODE_ADDON is left (the guard swept what the dead host left)', swept, JSON.stringify(addonProcesses(fakeId)))
-  if (lost.length) check("the box's guard logged the sweep", logOf(box).includes('[guard] orphan thread=addon:'))
+  if (lost.length) log(logOf(box).includes('[guard] orphan thread=addon:') ? 'the box\'s guard swept the server the dead host left' : 'the server the dead host left exited when its stdin closed; the guard had nothing to sweep')
 
   await down(mac)
   await down(box)
