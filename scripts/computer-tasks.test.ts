@@ -213,29 +213,35 @@ describe('settings-toggle', () => {
     const opened: string[] = []
     expect(await t.setup(ctx({ run: mac(0, true), open: async (app) => void opened.push(app) }))).toEqual({ skip: 'System Settings is open' })
     expect(opened).toEqual([])
-    expect(await t.setup(ctx({ run: mac(1), open: async (app) => void opened.push(app) }))).toMatchObject({ app: 'System Settings', toggle: { value: 1 } })
+    expect(await t.setup(ctx({ run: mac(1), open: async (app) => void opened.push(app) }))).toMatchObject({ app: 'System Settings', toggle: { value: 1, setting: 1 } })
     expect(opened).toEqual(['System Settings'])
   })
 
   it('turn one passes on the other value and fails on the first; turn two the reverse', async () => {
-    const s = start({ app: 'System Settings', window: 'System Settings', toggle: { value: 0 } })
+    const s = start({ app: 'System Settings', window: 'System Settings', toggle: { value: 0, setting: 0 } })
     expect((await t.then!.check(s, execReader(mac(1)))).ok).toBe(true)
     expect((await t.then!.check(s, execReader(mac(0)))).ok).toBe(false)
     expect((await t.check(s, execReader(mac(0)), '', [])).ok).toBe(true)
     expect((await t.check(s, execReader(mac(1)), '', [])).ok).toBe(false)
   }, 10_000)
 
-  it('teardown writes the first value back only when it moved', async () => {
+  it('teardown puts the key back only when it moved, deleting one that was never set', async () => {
     const writes: string[][] = []
-    const run = (value: number): Exec => async (cmd, args) => {
-      if (args[0] === 'write') return void writes.push(args), { code: 0, stdout: '', stderr: '' }
-      return mac(value)(cmd, args)
+    const run = (value: number | null): Exec => async (cmd, args) => {
+      if (args[0] === 'write' || args[0] === 'delete') return void writes.push(args), { code: 0, stdout: '', stderr: '' }
+      return value === null ? { code: 1, stdout: '', stderr: `Error: Could not find key '${FEEDBACK_KEY}'` } : mac(value)(cmd, args)
     }
-    const s = start({ toggle: { value: 0 } })
-    await t.teardown!(s, run(0))
+    await t.teardown!(start({ toggle: { value: 0, setting: 0 } }), run(0))
     expect(writes).toEqual([])
-    await t.teardown!(s, run(1))
+    await t.teardown!(start({ toggle: { value: 0, setting: 0 } }), run(1))
     expect(writes).toEqual([['write', '-g', FEEDBACK_KEY, '-int', '0']])
+    writes.length = 0
+    // never set before the run: System Settings wrote it, the run deletes it again
+    await t.teardown!(start({ toggle: { value: 0, setting: null } }), run(1))
+    expect(writes).toEqual([['delete', '-g', FEEDBACK_KEY]])
+    writes.length = 0
+    await t.teardown!(start({ toggle: { value: 0, setting: null } }), run(null))
+    expect(writes).toEqual([])
   })
 })
 

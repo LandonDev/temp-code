@@ -20,7 +20,7 @@ import {
   feedbackReads,
   isAppRunning,
   otherFeedback,
-  readFeedback,
+  readFeedbackSetting,
   saveSourceText,
   saveTargetName,
   spotlightNamed,
@@ -68,8 +68,8 @@ export interface TaskStart {
   seed: number
   /** chrome-delete: the order to delete */
   orderId?: string
-  /** settings-toggle: the switch's value at the start, which teardown puts back */
-  toggle?: { value: number }
+  /** settings-toggle: the switch's value at the start, and the key as it was (null: never set), which teardown puts back */
+  toggle?: { value: number; setting: number | null }
   /** save-dialog: the two scratch files and the source's bytes */
   saveDialog?: { source: string; target: string; sourceBytes: Buffer; home: string }
   /** devapp-form: the instance's database and its stop */
@@ -304,11 +304,12 @@ export const COMPUTER_TASKS: ComputerTask[] = [
     async setup(ctx) {
       const dev = await (ctx.devInstance?.() ?? Promise.resolve({ skip: 'no dev instance here' }))
       if ('skip' in dev) return dev
-      return { app: 'Electron', window: dev.window, nonce: ctx.nonce, seed: ctx.seed, dev: { database: devDatabase(dev.userData), stop: dev.stop } }
+      // Its title is the page on screen ("New thread", then "Settings"), so the message names the app's window, not a title.
+      return { app: 'Electron', window: 'TempCode', nonce: ctx.nonce, seed: ctx.seed, dev: { database: devDatabase(dev.userData), stop: dev.stop } }
     },
     prompt: (s) =>
       withRule(
-        `In the Electron app's window "${s.window}", open Settings, then Add-ons, and add an add-on named ${devAddonName(s.nonce)}: an HTTP add-on at ${DEV_ADDON_URL}, for every workspace. Save it.`
+        `In the Electron app's ${s.window} window, open Settings, then Add-ons, and add an add-on named ${devAddonName(s.nonce)}: an HTTP add-on at ${DEV_ADDON_URL}, for every workspace. Save it.`
       ),
     check: async (s) => checkDevAddon(s.dev!.database, devAddonName(s.nonce)),
     teardown: async (s) => s.dev?.stop()
@@ -324,9 +325,9 @@ export const COMPUTER_TASKS: ComputerTask[] = [
     async setup(ctx) {
       // An open System Settings is the person's window.
       if (await isAppRunning(ctx.run, SYSTEM_SETTINGS)) return { skip: 'System Settings is open' }
-      const value = await readFeedback(ctx.run)
+      const setting = await readFeedbackSetting(ctx.run)
       await ctx.open('System Settings', '')
-      return { app: 'System Settings', window: 'System Settings', nonce: ctx.nonce, seed: ctx.seed, toggle: { value } }
+      return { app: 'System Settings', window: 'System Settings', nonce: ctx.nonce, seed: ctx.seed, toggle: { value: setting ?? 0, setting } }
     },
     prompt: () => withRule(`In System Settings, turn "Play feedback when volume is changed" (in Sound) the other way.`),
     // Two turns, two reads: one turn could flip the switch and put it back between any two samples.
@@ -336,7 +337,7 @@ export const COMPUTER_TASKS: ComputerTask[] = [
     },
     check: (s, read) => feedbackReads(read.exec, s.toggle!.value),
     async teardown(s, run) {
-      if (s.toggle && (await readFeedback(run)) !== s.toggle.value) await writeFeedback(run, s.toggle.value)
+      if (s.toggle && (await readFeedbackSetting(run)) !== s.toggle.setting) await writeFeedback(run, s.toggle.setting)
     }
   },
   {

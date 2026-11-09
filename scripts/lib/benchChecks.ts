@@ -41,21 +41,26 @@ export const SYSTEM_SETTINGS = 'com.apple.systempreferences'
 /** Sound → "Play feedback when volume is changed": harmless, invisible, put back after. */
 export const FEEDBACK_KEY = 'com.apple.sound.beep.feedback'
 
-/** The switch's value in NSGlobalDomain; a missing key reads 0, as System Settings reads it. */
-export async function readFeedback(run: Exec): Promise<number> {
+/** The switch's value in NSGlobalDomain, or null when it was never set. */
+export async function readFeedbackSetting(run: Exec): Promise<number | null> {
   const r = await run('defaults', ['read', '-g', FEEDBACK_KEY])
   if (r.code === 0) {
     const v = Number(r.stdout.trim())
     if (Number.isFinite(v)) return v
     throw new Error(`defaults read -g ${FEEDBACK_KEY} answered ${JSON.stringify(r.stdout.trim())}`)
   }
-  if (/does not exist/.test(r.stderr)) return 0
+  // Never set: older macOS says the pair "does not exist", macOS 26 "Could not find key".
+  if (/does not exist|Could not find key/.test(r.stderr)) return null
   throw new Error(`defaults read -g ${FEEDBACK_KEY} failed: ${r.stderr.trim()}`)
 }
 
-export async function writeFeedback(run: Exec, value: number): Promise<void> {
-  const r = await run('defaults', ['write', '-g', FEEDBACK_KEY, '-int', String(value)])
-  if (r.code !== 0) throw new Error(`defaults write -g ${FEEDBACK_KEY} failed: ${r.stderr.trim()}`)
+/** The switch as System Settings reads it: a key never set is 0. */
+export const readFeedback = async (run: Exec): Promise<number> => (await readFeedbackSetting(run)) ?? 0
+
+/** Puts the switch back as it was: a value written, or a key never set deleted again. */
+export async function writeFeedback(run: Exec, value: number | null): Promise<void> {
+  const r = await run('defaults', value === null ? ['delete', '-g', FEEDBACK_KEY] : ['write', '-g', FEEDBACK_KEY, '-int', String(value)])
+  if (r.code !== 0) throw new Error(`defaults ${value === null ? 'delete' : 'write'} -g ${FEEDBACK_KEY} failed: ${r.stderr.trim()}`)
 }
 
 export const otherFeedback = (value: number): number => (value ? 0 : 1)

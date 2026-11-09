@@ -47,6 +47,9 @@ describe('settings-toggle', () => {
   it('reads the switch, a missing key as 0, and refuses anything else', async () => {
     expect(await readFeedback(defaultsReading([1]))).toBe(1)
     expect(await readFeedback(defaultsReading([undefined]))).toBe(0)
+    // the Mac's own words for a key never set (the probe of 2026-11-09)
+    const neverSet: Exec = async () => ({ code: 1, stdout: '', stderr: `Error: Could not find key '${FEEDBACK_KEY}' in domain 'kCFPreferencesAnyApplication'` })
+    expect(await readFeedback(neverSet)).toBe(0)
     await expect(readFeedback(async () => ({ code: 1, stdout: '', stderr: 'cfprefsd is gone' }))).rejects.toThrow(/cfprefsd is gone/)
     expect(otherFeedback(0)).toBe(1)
     expect(otherFeedback(1)).toBe(0)
