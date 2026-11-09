@@ -858,7 +858,7 @@ async function appSections(
 ): Promise<void> {
   probePid = 0
   textEditPid = 0
-  /** Right before a launch: the try still stands and the Mac has still had its five minutes, else the try stops. */
+  /** Right before a launch, after anything that blocks: the try still stands and the Mac has still had its five minutes, else the try stops. */
   const mayLaunch = (): void => {
     if (!tryAborted && personIdleSeconds() < LAUNCH_IDLE_S) abort()
     if (tryAborted) throw skip(ABORTED)
@@ -878,8 +878,8 @@ async function appSections(
   let probeObservation: Observation | null = null
 
   await probeApp.step('apps.launch the probe app in the background', async (data) => {
-    mayLaunch()
     const before = personState()
+    mayLaunch()
     const r = await a.call('apps.launch', { app: PROBE_APP }, 20_000)
     check(r.launched === true && r.pid > 0, 'apps.launch launches it and gives its pid', r)
     probePid = r.pid
@@ -1006,9 +1006,9 @@ async function appSections(
   await te.step('open a scratch TextEdit in the background', async (data) => {
     // written for each try: an aborted try's TextEdit may have saved over it
     writeFileSync(RTF, `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Helvetica;}}\\f0\\fs24 ${PROBE_TEXT}\\par}\n`)
-    mayLaunch()
     const running = pidsOf('TextEdit')
     const person = personState()
+    mayLaunch()
     // no restored windows, nothing added to Open Recent, and the run's mark for an abort to find it by
     execFileSync('open', [
       '-n',
