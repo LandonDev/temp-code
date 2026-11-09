@@ -9,6 +9,7 @@ import {
   readdirSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync
 } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
@@ -46,6 +47,19 @@ export function sourceStamp(root: string): string {
     hash.update(relative(root, path)).update('\0').update(readFileSync(path)).update('\0')
   }
   return hash.digest('hex')
+}
+
+// Where `swift build -c release` leaves the product: SwiftPM's own layout, or the Xcode build
+// system's that newer Xcodes use. The newer of the two that exist, so a stale one never wins.
+const BUILT_PATHS = [
+  'native/tc-computer/.build/arm64-apple-macosx/release/tc-computer',
+  'native/tc-computer/.build/out/Products/Release/tc-computer'
+]
+
+export function builtBinary(root: string): string {
+  const found = BUILT_PATHS.map((path) => join(root, path)).filter((path) => existsSync(path))
+  found.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
+  return found[0] ?? join(root, BUILT_PATHS[0])
 }
 
 export function buildTcComputer(opts: TcComputerBuildOptions): TcComputerBuildResult {
@@ -88,10 +102,7 @@ export function buildTcComputer(opts: TcComputerBuildOptions): TcComputerBuildRe
     const temp = join(dirname(target), `.tc-computer.${process.pid}.${Date.now()}.tmp`)
     mkdirSync(dirname(target), { recursive: true })
     try {
-      copyFileSync(
-        join(root, 'native/tc-computer/.build/arm64-apple-macosx/release/tc-computer'),
-        temp
-      )
+      copyFileSync(builtBinary(root), temp)
       chmodSync(temp, 0o755)
       renameSync(temp, target)
       const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))

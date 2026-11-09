@@ -250,6 +250,28 @@ describe('buildTcComputer', () => {
     expect(existsSync(join(root, `${targetPath}.stamp`))).toBe(false)
   })
 
+  it('lands the product from the Xcode build system\'s layout when that is where Swift left it', () => {
+    const xcodePath = 'native/tc-computer/.build/out/Products/Release/tc-computer'
+    fakeExec.mockImplementationOnce(() => '').mockImplementationOnce(() => {
+      write(xcodePath, 'xcode Mach-O bytes')
+      return Buffer.alloc(0)
+    })
+    expect(build()).toEqual({ built: true, ms: expect.any(Number) })
+    expect(readFileSync(join(root, targetPath), 'utf8')).toBe('xcode Mach-O bytes')
+  })
+
+  it('lands the newer product when both layouts hold one', () => {
+    const xcodePath = 'native/tc-computer/.build/out/Products/Release/tc-computer'
+    write(builtPath, 'stale Mach-O bytes')
+    utimesSync(join(root, builtPath), new Date(1_000_000), new Date(1_000_000))
+    fakeExec.mockImplementationOnce(() => '').mockImplementationOnce(() => {
+      write(xcodePath, 'fresh Mach-O bytes')
+      return Buffer.alloc(0)
+    })
+    expect(build()).toEqual({ built: true, ms: expect.any(Number) })
+    expect(readFileSync(join(root, targetPath), 'utf8')).toBe('fresh Mach-O bytes')
+  })
+
   it('cleans the temporary copy if rename fails', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.mocked(renameSync).mockImplementationOnce(() => {
