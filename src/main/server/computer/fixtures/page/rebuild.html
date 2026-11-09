@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Computer rebuild page</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font: 14px/1.4 -apple-system, system-ui, sans-serif; margin: 24px; max-width: 720px; }
+  #items { margin: 12px 0; padding: 0; }
+  #items li { list-style: none; margin: 2px 0; }
+</style>
+</head>
+<body>
+<!-- Scratch page for the AX reader's rebuilt-element rule (plan §4.1, §7.4): the list is replaced
+     with identical markup, or with one value changed, so every element under it is a new AX element. Nothing on it is real. -->
+<h1>Rebuild scratch page</h1>
+<button id="same" type="button">Rebuild the same</button>
+<button id="changed" type="button">Rebuild with one change</button>
+<ul id="items" aria-label="Items"></ul>
+<script>
+  const values = Array.from({ length: 20 }, (_, i) => 'value ' + (i + 1))
+  // half the items carry a DOM id (matched by it), half do not (matched by role, name and place)
+  const markup = (vals) => vals.map((v, i) => {
+    const id = i % 2 === 0 ? ` id="item-${i + 1}"` : ''
+    return `<li><label>Item ${i + 1} <input${id} value="${v}"></label></li>`
+  }).join('')
+  const list = document.getElementById('items')
+  list.innerHTML = markup(values)
+  // a press hands the focus back to the page, so the press itself changes nothing the reader sees
+  const rebuild = (vals) => () => {
+    list.innerHTML = markup(vals)
+    document.activeElement && document.activeElement.blur()
+  }
+  document.getElementById('same').addEventListener('click', rebuild(values))
+  document.getElementById('changed').addEventListener('click', rebuild(values.map((v, i) => (i === 6 ? 'value 7 edited' : v))))
+</script>
+</body>
+</html>

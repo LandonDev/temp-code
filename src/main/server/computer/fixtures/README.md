@@ -51,6 +51,16 @@ The test page the Chrome fixtures show: inputs, a select, a checkbox, a radio
 group, a button that opens a dialog, a link, 60 list rows (most of them
 below the fold) and a button that shows a spinner for 3 s.
 
+## `page/heavy.html` and `page/rebuild.html`
+
+The AX reader's live proof (`scripts/mac/ax-reader-proof.sh`) shows these in
+the throwaway Chrome. `heavy.html` builds about 3,000 accessibility nodes at
+load (40 headings with 400 paragraphs, a 300-row table, 200 nav links, a
+30-field form) for the read timings. `rebuild.html` has 20 labelled inputs,
+half with a DOM id, and two buttons that replace the list with identical
+markup or with one value changed: every element under it is a new AX element,
+so the reader's rebuilt-element rule keeps their numbers or it does not.
+
 ## `apps/<app>/<state>/`
 
 Real accessibility trees and screenshots, recorded on the Mac:

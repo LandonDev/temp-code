@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Computer heavy page</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font: 14px/1.4 -apple-system, system-ui, sans-serif; margin: 24px; }
+  nav a { display: inline-block; margin: 2px 6px; }
+  table { border-collapse: collapse; }
+  td, th { border: 1px solid #ccc; padding: 2px 6px; }
+  label { display: block; margin: 4px 0; }
+</style>
+</head>
+<body>
+<!-- Scratch page for the AX reader's timings (plan §6.1): about 3,000 accessibility nodes, of which a screen's worth is read. Nothing on it is real. -->
+<h1>Heavy scratch page</h1>
+<nav id="nav" aria-label="Sections"></nav>
+<form id="fields" onsubmit="event.preventDefault()"></form>
+<main id="sections"></main>
+<table id="table" aria-label="Scratch rows"><thead><tr><th>Row</th><th>Name</th><th>Count</th><th>State</th></tr></thead><tbody></tbody></table>
+<script>
+  const words = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel']
+  const nav = document.getElementById('nav')
+  for (let i = 1; i <= 200; i++) {
+    const a = document.createElement('a')
+    a.href = '#section-' + (((i - 1) % 40) + 1)
+    a.textContent = 'Link ' + i
+    nav.append(a)
+  }
+  const form = document.getElementById('fields')
+  for (let i = 1; i <= 30; i++) {
+    const label = document.createElement('label')
+    label.textContent = 'Field ' + i + ' '
+    const input = document.createElement('input')
+    input.name = 'field-' + i
+    input.value = words[i % words.length] + ' ' + i
+    label.append(input)
+    form.append(label)
+  }
+  const sections = document.getElementById('sections')
+  for (let s = 1; s <= 40; s++) {
+    const h = document.createElement('h2')
+    h.id = 'section-' + s
+    h.textContent = 'Section ' + s
+    sections.append(h)
+    for (let p = 1; p <= 10; p++) {
+      const para = document.createElement('p')
+      para.textContent = 'Paragraph ' + ((s - 1) * 10 + p) + ' of the scratch page, ' + words[(s + p) % words.length] + ' and ' + words[(s * p) % words.length] + '.'
+      sections.append(para)
+    }
+  }
+  const body = document.querySelector('#table tbody')
+  for (let r = 1; r <= 300; r++) {
+    const tr = document.createElement('tr')
+    for (const cell of [String(r), words[r % words.length] + ' ' + r, String((r * 7) % 100), r % 3 ? 'open' : 'closed']) {
+      const td = document.createElement('td')
+      td.textContent = cell
+      tr.append(td)
+    }
+    body.append(tr)
+  }
+</script>
+</body>
+</html>
