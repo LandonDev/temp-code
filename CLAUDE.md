@@ -3785,7 +3785,8 @@ proof and the sizing rules; the pieces, by name:
   for a quiet `clipboard.state`, at most 10 s (`clipboard_recent`). Proofs:
   schedule.test.ts and run.test.ts's tier scheduling suite on the box, `bun run
   script:e2e-computer-schedule` on the Mac (two scratch TextEdits, a typist for
-  the person, a sentinel tap that stops it when the real person comes back).
+  the person; no idle gate, one computer proof at a time, a sentinel tap that
+  turns a leg the real person touched inconclusive).
 - Fixtures: src/main/server/computer/fixtures/ (its README): hand-written
   wire frames for every method, error kind and notification, observation
   texts for every grammar case, `page/form.html`, and `apps/` trees and
