@@ -49,6 +49,8 @@ import type { ProbeAnswer } from './grantProbe'
 export const ADDON_REFRESH_MARGIN_MS = 5 * 60_000
 export const ADDON_REFRESH_RETRY_MS = [60_000, 2 * 60_000, 5 * 60_000, 10 * 60_000] // then 10 min each time
 export const ADDON_FORCE_REFRESH_MIN_MS = 30_000
+/** The keeper asks for a token with this much more than its lead left: a timer may fire a moment early by the wall clock, and refreshAddon's time-left check would then skip the refresh it was set for. */
+export const ADDON_KEEPER_SLACK_MS = 1_000
 export const ADDON_SWEEP_MS = 60 * 60_000
 export const ADDON_SWEEP_DEBOUNCE_MS = 500
 export const ADDON_GRANTS_PUSH_MS = 100
@@ -77,6 +79,7 @@ export interface AddonGrantsDeps {
 
 interface Keeper {
   timer: NodeJS.Timeout | null
+  role: 'owner' | 'copy'
   expiresAt: number
   seenAt: number
   retry: number
@@ -174,7 +177,10 @@ export class AddonGrants implements AddonGrantSource {
     // A copy: the owner refreshes first (it has not seen the 401), then this host pulls.
     const owner = p.owner
     const link = owner ? this.deps.peers.get(owner) : undefined
-    if (link?.connected) await link.request('addons.grant.refresh', { id: addonId }).catch((err: Error) => this.log(`${this.nameOf(addonId)}: its owner did not refresh it (${err.message})`))
+    if (link?.connected) {
+      this.log(`${this.nameOf(addonId)}: the server refused its copy; asking ${this.deps.hostName(owner!)} to refresh it`)
+      await link.request('addons.grant.refresh', { id: addonId }).catch((err: Error) => this.log(`${this.nameOf(addonId)}: its owner did not refresh it (${err.message})`))
+    }
     this.outcome(addonId, await refreshAddon(addonId, { force: true }))
   }
 
@@ -195,6 +201,7 @@ export class AddonGrants implements AddonGrantSource {
     this.lastForced.set(addonId, this.now())
     const out = await refreshAddon(addonId, { force: true })
     this.outcome(addonId, out)
+    if (out.ok) this.log(`${this.nameOf(addonId)}: refreshed now, after the server refused it`)
     return out.ok
   }
 
@@ -236,7 +243,7 @@ export class AddonGrants implements AddonGrantSource {
     const prior = this.keepers.get(addonId)
     if (prior?.timer) clearTimeout(prior.timer)
     const seenAt = prior && prior.expiresAt === expiresAt ? prior.seenAt : this.now()
-    const keeper: Keeper = { timer: null, expiresAt, seenAt, retry: prior && prior.expiresAt === expiresAt ? prior.retry : 0 }
+    const keeper: Keeper = { timer: null, role, expiresAt, seenAt, retry: prior && prior.expiresAt === expiresAt && prior.role === role ? prior.retry : 0 }
     const lead = Math.min(ADDON_REFRESH_MARGIN_MS, Math.max(0, (expiresAt - seenAt) / 4))
     const ahead = role === 'owner' ? lead : lead / 2
     const wait = delayMs ?? Math.max(0, expiresAt - ahead - this.now())
@@ -249,7 +256,7 @@ export class AddonGrants implements AddonGrantSource {
     const keeper = this.keepers.get(addonId)
     if (!keeper || this.closed) return
     keeper.timer = null
-    const out = await refreshAddon(addonId, { minValidMs })
+    const out = await refreshAddon(addonId, { minValidMs: minValidMs + ADDON_KEEPER_SLACK_MS })
     if (this.closed || this.keepers.get(addonId) !== keeper) return
     const after = this.readBlob(addonId)?.oauth?.expiresAt
     if (out.ok && typeof after === 'number' && after !== keeper.expiresAt) return this.schedule(addonId)
@@ -273,9 +280,14 @@ export class AddonGrants implements AddonGrantSource {
       this.refused.delete(addonId)
       const known = this.keepers.get(addonId)
       const expiresAt = this.readBlob(addonId)?.oauth?.expiresAt
-      if (!known || known.expiresAt !== expiresAt || known.timer === null) this.schedule(addonId)
+      if (!known || known.expiresAt !== expiresAt || known.timer === null || known.role !== this.roleOf(addonId, this.readBlob(addonId))) this.schedule(addonId)
       this.changed()
     })
+  }
+
+  /** accountSync's onClaimed for ADDON_SERVICE: a grant handed here is this host's to refresh now, with no save to say so. */
+  onClaimed(addonId: string): void {
+    this.onSaved(addonId)
   }
 
   /** accountSync's onRemoved for ADDON_SERVICE: forget the keeper, push, tell the add-on host. */
@@ -424,7 +436,7 @@ export class AddonGrants implements AddonGrantSource {
     const run: SignInRun = { ctl: new AbortController(), state: 'discovering', since: this.now() }
     this.runs.set(addonId, run)
     this.failed.delete(addonId)
-    this.changed()
+    this.changed(true)
     const profile = profileOf(ADDON_SERVICE, addonId)
     const refreshedElsewhere = !!profile && !profile.static && !ownsProfile(profile)
     let ready!: { resolve: (port: number) => void; reject: (err: Error) => void; done: boolean }
@@ -443,7 +455,7 @@ export class AddonGrants implements AddonGrantSource {
             run.port = s.port
             isReady(s.port)
           }
-          this.changed()
+          this.changed(true)
         },
         registered: async (oauth) => {
           await this.saveSignIn(addonId, run, oauth, false)
@@ -471,7 +483,7 @@ export class AddonGrants implements AddonGrantSource {
           ready.done = true
           ready.reject(new Error(SIGNIN_STEP_WORDS.failed))
         }
-        this.changed()
+        this.changed(true)
       })
     return { started: true, port: await bound }
   }
@@ -543,15 +555,21 @@ export class AddonGrants implements AddonGrantSource {
     return () => this.listeners.delete(fn)
   }
 
-  /** Coalesced: one push per burst. */
-  private changed(): void {
-    if (this.pushTimer || this.closed) return
-    this.pushTimer = setTimeout(() => {
+  /** Coalesced: one push per burst; a sign-in's step goes out at once, so each one reaches the page. */
+  private changed(now = false): void {
+    if (this.closed) return
+    const emit = (): void => {
       this.pushTimer = null
       if (this.listeners.size === 0) return
       const grants = this.list()
       for (const fn of this.listeners) fn(grants)
-    }, this.deps.pushMs ?? ADDON_GRANTS_PUSH_MS)
+    }
+    if (now) {
+      if (this.pushTimer) clearTimeout(this.pushTimer)
+      return emit()
+    }
+    if (this.pushTimer) return
+    this.pushTimer = setTimeout(emit, this.deps.pushMs ?? ADDON_GRANTS_PUSH_MS)
     this.pushTimer.unref?.()
   }
 }

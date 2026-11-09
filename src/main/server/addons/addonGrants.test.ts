@@ -302,6 +302,33 @@ describe('AddonGrants: the keeper', () => {
     expect(token.fetch).toHaveBeenCalledTimes(2)
   })
 
+  it('refreshes even when its timer fires a moment early by the wall clock', async () => {
+    vi.useFakeTimers()
+    const { grants, token } = host({ rows: [rowOf('ad_o', oauthSpec)] })
+    ownHere('ad_o', oauth({ expiresAt: Date.now() + 20_000 }))
+    grants.start()
+    // The wall clock runs 5 ms behind the timers: the keeper wakes with a hair more than its lead left.
+    vi.setSystemTime(Date.now() - 5)
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(token.fetch).toHaveBeenCalledTimes(1)
+    expect(stored('ad_o')?.oauth?.accessToken).toBe('AT1')
+  })
+
+  it("a grant handed here and claimed is refreshed on the owner's timing, not the copy's", async () => {
+    vi.useFakeTimers()
+    const askOwner = vi.fn(async () => null)
+    const { grants, token } = host({ rows: [rowOf('ad_o', oauthSpec)], askOwner })
+    // Landed provisionally: the row still names the sender.
+    copyOf('ad_o', 'env_mac', oauth({ expiresAt: Date.now() + 20_000 }))
+    grants.start()
+    // The sender's release: this host refreshes it now, with no save.
+    vault.upsertProfile(ADDON_SERVICE, { ...vault.profiles(ADDON_SERVICE)[0], owner: 'env_box' })
+    grants.onClaimed('ad_o')
+    await vi.advanceTimersByTimeAsync(15_100)
+    expect(token.fetch).toHaveBeenCalledTimes(1)
+    expect(askOwner).not.toHaveBeenCalled()
+  })
+
   it('a save reschedules to the new expiry', async () => {
     vi.useFakeTimers()
     const { grants, token } = host({ rows: [rowOf('ad_o', oauthSpec)] })
@@ -488,6 +515,29 @@ describe('AddonGrants: the view and its push', () => {
     expect(grants.list().map((v) => v.addonId)).toEqual(['ad_k', 'ad_o'])
     expect(grants.view('ad_k')).toEqual({ addonId: 'ad_k', fields: [{ name: 'X-Api-Key', set: true }], oauth: null, signIn: null, gaps: [] })
     expect(grants.view('ad_o')).toMatchObject({ fields: [{ name: 'X-Team', set: true }], oauth: { signedIn: true, refreshedBy: null, refused: false }, gaps: [] })
+  })
+
+  it("pushes each sign-in step at once, so a fast sign-in still shows every step", async () => {
+    let hooks!: SignInHooks
+    let finish!: (o: AddonOAuth) => void
+    const signIn: AddonSignIn = {
+      run: (_i, _s, h) => {
+        hooks = h
+        return new Promise((r) => (finish = r))
+      }
+    }
+    const { grants } = host({ env: 'env_mac', rows: [rowOf('ad_o', oauthSpec)], signIn })
+    const states: (string | null)[] = []
+    grants.onChange((g) => states.push(g.find((v) => v.addonId === 'ad_o')?.signIn?.state ?? null))
+    const started = grants.startSignIn('ad_o')
+    hooks.step({ step: 'discovering' })
+    hooks.step({ step: 'registering' })
+    hooks.step({ step: 'waiting', port: 50_003 })
+    await started
+    hooks.step({ step: 'exchanging' })
+    finish(oauth({ redirectPort: 50_003 }))
+    await vi.waitFor(() => expect(states.at(-1)).toBeNull())
+    expect(states.filter((s, i) => s !== states[i - 1])).toEqual(['discovering', 'registering', 'waiting', 'exchanging', null])
   })
 
   it('names the host that refreshes a copy', () => {

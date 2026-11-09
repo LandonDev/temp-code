@@ -48,6 +48,8 @@ export interface FakeOAuthOptions {
   apiKey?: string
   /** the authorization_code grant answers 400 with an error_description that echoes the code and the verifier */
   exchangeError?: boolean
+  /** a strict server: a new code exchange ends every earlier refresh token of that client (default false) */
+  oneGrantPerClient?: boolean
   logFile?: string
 }
 
@@ -128,6 +130,7 @@ export async function startFakeOAuthServer(initial: FakeOAuthOptions = {}): Prom
   const opts: Required<Omit<FakeOAuthOptions, 'apiKey' | 'logFile' | 'port'>> & Pick<FakeOAuthOptions, 'apiKey' | 'logFile'> = {
     lifetimeSec: 3600,
     exchangeError: false,
+    oneGrantPerClient: false,
     s256: true,
     registration: true,
     offlineAccess: true,
@@ -282,6 +285,7 @@ export async function startFakeOAuthServer(initial: FakeOAuthOptions = {}): Prom
           const verifier = form.get('code_verifier') ?? ''
           if (sha256url(verifier) !== code.challenge) return refuse(400, 'invalid_grant', `PKCE failed for ${verifier}`)
           code.used = true
+          if (opts.oneGrantPerClient) for (const [rt, held] of refresh) if (held.clientId === client.id) refresh.delete(rt)
           const answer = issueTokens(client.id, code.scope, code.resource)
           note({ at: Date.now(), kind: 'token', grantType, clientId, ok: true, status: 200, resource })
           return json(res, 200, answer)

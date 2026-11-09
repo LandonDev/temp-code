@@ -666,6 +666,9 @@ export async function startServer(
     addonKnown: (id) => addonStore.get(id) !== null,
     onRemoved: (service, name) => {
       if (service === ADDON_SERVICE) addonGrantsRef?.onRemoved(name)
+    },
+    onClaimed: (service, name) => {
+      if (service === ADDON_SERVICE) addonGrantsRef?.onClaimed(name)
     }
   })
   accountSyncHooks.current = accountSync

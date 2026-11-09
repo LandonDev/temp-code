@@ -140,10 +140,13 @@ describe('add-on grants across hosts', () => {
     expect(vault.profiles('addon')[0]).toMatchObject({ owner: 'env_box', static: false })
 
     // The box's side of the same exchange, in its own vault.
-    const boxHost = host('env_box', [])
+    const onClaimed = vi.fn()
+    const boxHost = host('env_box', [], { onClaimed })
     expect(await boxHost.sync.handlePush('env_mac', sent)).toMatchObject({ ok: true, saved: true, owner: 'env_mac', refreshFingerprint: refreshFingerprint('addon', sent.blob) })
     expect(vault.profiles('addon')[0]).toMatchObject({ owner: 'env_mac', static: false })
+    expect(onClaimed).not.toHaveBeenCalled()
     expect(boxHost.sync.handleReleased('env_mac', { service: 'addon', accountId: 'ad_a' })).toEqual({ ok: true })
+    expect(onClaimed).toHaveBeenCalledWith('addon', 'ad_a')
     expect(vault.profiles('addon')[0]).toMatchObject({ owner: 'env_box' })
     expect(hasRefresh('addon', vault.readSecret('addon', 'ad_a')!)).toBe(true)
     // No CLI signs in with a grant: nothing was installed or pinned.

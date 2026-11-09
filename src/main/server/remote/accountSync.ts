@@ -126,6 +126,8 @@ export interface AccountSyncDeps {
   addonKnown?: (addonId: string) => boolean
   /** A profile left the vault here (deleteProfile, prune): the add-on host drops its grant. */
   onRemoved?: (service: ServiceId, name: string) => void
+  /** A grant handed here became this host's to refresh (claimHandoff): no save says so, so the add-on keeper hears it here. */
+  onClaimed?: (service: ServiceId, name: string) => void
 }
 
 export interface PullAnswer {
@@ -495,6 +497,7 @@ export class AccountSync {
     const was = ownsProfile(p)
     if (!claimHandoff(params.service, p.name, from)) return { ok: false, reason: 'not-held' }
     if (!was) {
+      this.deps.onClaimed?.(params.service, p.name)
       this.log(`${params.service} ${p.name}: ${from} released it; refreshed here now`)
       void this.activateIfNothingLive(params.service, p.name, false)
       this.deps.nudge()
@@ -590,6 +593,7 @@ export class AccountSync {
     const word = await link.request<ConfirmAnswer>('accounts.confirm', { from: this.me, service, accountId, refreshFingerprint: fingerprint })
     if (word.ok) {
       claimHandoff(service, name, link.id)
+      this.deps.onClaimed?.(service, name)
       this.log(`${service} ${name}: refreshed here now`)
       void this.activateIfNothingLive(service, name, false)
       this.deps.nudge()

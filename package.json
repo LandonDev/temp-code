@@ -66,6 +66,7 @@
     "script:e2e-cross-host-threads": "bun scripts/e2e-cross-host-threads.ts",
     "script:e2e-linked-projects": "bun scripts/e2e-linked-projects.ts",
     "script:e2e-addons": "bun scripts/e2e-addons.ts",
+    "script:e2e-addon-grants": "bun scripts/e2e-addon-grants.ts",
     "script:e2e-rules-sync": "bun scripts/e2e-rules-sync.ts",
     "script:e2e-skills-store": "bun scripts/e2e-skills-store.ts",
     "script:e2e-mac-relay": "bun scripts/e2e-mac-relay.ts",
