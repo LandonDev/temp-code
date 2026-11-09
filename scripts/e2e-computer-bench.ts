@@ -383,13 +383,19 @@ async function oneRun(lane: Lane, task: ComputerTask, attempt: number): Promise<
     cards: [],
     front: { before: '', after: '', bounced: false, personActive: false, benchInFront: false }
   }
-  // One proof on the Mac at a time: another computer proof running holds this run, at most 30 minutes.
-  for (const until = Date.now() + 30 * 60_000; ; ) {
+  // One proof on the Mac at a time: an older computer proof holds this run, at most 30 minutes and never past what
+  // the gate's budget leaves for the task. The wait counts as held, like the scheduler's.
+  const heldFrom = Date.now()
+  for (const until = Math.min(heldFrom + 30 * 60_000, DEADLINE - task.wallMs); ; ) {
     const other = otherProof()
     if (!other) break
-    if (Date.now() > until) return { ...run, reason: `another computer proof is running (${other})` }
+    if (Date.now() > until) {
+      lane.queuedMs += Date.now() - heldFrom
+      return { ...run, reason: `another computer proof is running (${other})` }
+    }
     await sleep(30_000)
   }
+  lane.queuedMs += Date.now() - heldFrom
   // Codex's own computer use may take the pointer or the front: the reference waits for the Mac to be idle 2 minutes.
   if (args.mode === 'reference') {
     const held = await macReady(probe, UNGATED, { quietMs: 120_000, everyMs: 30_000, maxMs: 30 * 60_000, skip: 'the person is active' })
@@ -456,12 +462,14 @@ async function drive(lane: Lane, task: ComputerTask, start: TaskStart, run: Benc
   made(id)
   liveThreads.add(id)
   R.pins.bind(id, lane.name)
-  // Every card is answered Allow; its kind and title are in the rows. The card's row is
-  // emitted before requestApproval sets its resolver, so the Allow goes after this job.
+  // Every card is answered Allow, but the tier scheduler's own (Run now or Skip): Skip, since Run now would take the
+  // person's pointer and keyboard while they are there. Its kind and title are in the rows. The card's row is
+  // emitted before requestApproval sets its resolver, so the answer goes after this job.
   const offCards = registry.subscribe(id, (row: EventRow) => {
     if (row.event.type !== 'approval-request') return
     const requestId = row.event.requestId
-    queueMicrotask(() => void registry.approve(id, requestId, true))
+    const allow = row.event.choices !== 'run-skip'
+    queueMicrotask(() => void registry.approve(id, requestId, allow))
   })
   try {
     let after = lastSeq(id)

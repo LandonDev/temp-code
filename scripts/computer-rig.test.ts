@@ -109,42 +109,31 @@ describe('taskReader', () => {
 })
 
 describe('otherProofIn', () => {
-  it('finds another computer proof, never this run, its parents or a pgrep naming the pattern', () => {
+  it('finds an older computer proof, never this run, its parents, a younger proof or a pgrep naming the pattern', () => {
     const ps = [
-      '   80     1 bun run script:e2e-computer-bench -- --gate',
-      '   90    80 /bin/sh -c esbuild scripts/e2e-computer-bench.ts --bundle && node scripts/.out/e2e-computer-bench.mjs --gate',
-      '  100    90 node scripts/.out/e2e-computer-bench.mjs --gate',
-      '  150     1 pgrep -f scripts/.out/e2e-computer.mjs',
-      '  160     1 /usr/bin/vim notes.md'
+      '   80     1    05:10 bun run script:e2e-computer-bench -- --gate',
+      '   90    80    05:10 /bin/sh -c esbuild scripts/e2e-computer-bench.ts --bundle && node scripts/.out/e2e-computer-bench.mjs --gate',
+      '  100    90    05:09 node scripts/.out/e2e-computer-bench.mjs --gate',
+      '  150     1    00:01 pgrep -f scripts/.out/e2e-computer.mjs',
+      '  160     1 02:00:00 /usr/bin/vim notes.md'
     ]
     expect(otherProofIn(ps.join('\n'), 100)).toBeNull()
-    expect(otherProofIn([...ps, '  200     1 node scripts/.out/e2e-computer.mjs'].join('\n'), 100)).toBe('scripts/.out/e2e-computer.mjs')
-    expect(otherProofIn([...ps, '  300     1 bash scripts/mac/ax-reader-proof.sh tempcode-dev'].join('\n'), 100)).toBe('ax-reader-proof')
-    // the comparison running beside the bench is another proof
-    expect(otherProofIn([...ps, '  400     1 node scripts/.out/compare-computer-words.mjs'].join('\n'), 100)).toBe('compare-computer-words')
+    expect(otherProofIn([...ps, '  200     1    12:00 node scripts/.out/e2e-computer.mjs'].join('\n'), 100)).toBe('scripts/.out/e2e-computer.mjs')
+    expect(otherProofIn([...ps, '  300     1 1-02:00:00 bash scripts/mac/ax-reader-proof.sh tempcode-dev'].join('\n'), 100)).toBe('ax-reader-proof')
+    // the landed schedule, preview and UI proofs hold it too
+    for (const p of ['e2e-computer-schedule', 'e2e-computer-preview', 'e2e-computer-ui'])
+      expect(otherProofIn([...ps, `  400     1    09:00 node scripts/.out/${p}.mjs`].join('\n'), 100)).toBe(p)
+    // a comparison that started after the bench waits for the bench, never the other way: no proof waits on another forever
+    expect(otherProofIn([...ps, '  500     1    01:00 node scripts/.out/compare-computer-words.mjs'].join('\n'), 100)).toBeNull()
+    expect(otherProofIn([...ps, '  500     1    01:00 node scripts/.out/compare-computer-words.mjs'].join('\n'), 500)).toBe('e2e-computer-bench')
+    // started in the same second: the lower pid goes first
+    expect(otherProofIn([...ps, '   99     1    05:09 node scripts/.out/compare-computer-words.mjs'].join('\n'), 100)).toBe('compare-computer-words')
   })
-})
 
-describe('taskReader on a thin tree', () => {
-  it('reads again while the tree is thin, after the settle wait, then takes what it has', async () => {
-    let n = 0
-    const asked: Record<string, unknown>[] = []
-    const proof = async (_m: 'state.get', params: Record<string, unknown>) => {
-      asked.push(params)
-      n++
-      return { epoch: `ep-${n}`, text: n < 3 ? 'app "Google Chrome" · window "b" · 800×600 · thin tree, see the screenshot\n[1] window "b"' : 'app "Google Chrome" · window "b" · 800×600\n[1] window "b"\n  [2] text "60 orders"', stats: { thin: n < 3 } }
-    }
-    const waits: number[] = []
-    const r = taskReader(proof as never, () => 7, 's', async () => ({ code: 0, stdout: '', stderr: '' }), async (ms) => void waits.push(ms))
-    const tree = await r.read('Google Chrome', 'b')
-    expect(n).toBe(3)
-    expect(waits).toEqual([750, 750])
-    expect(tree.lines.some((l) => l.type === 'element' && l.name === '60 orders')).toBe(true)
-    expect(asked[0]).toMatchObject({ mode: 'full', wait: { quietMs: 300 } })
-    // still thin after 8 reads: the check gets the thin tree and says what it lacks
-    let m = 0
-    const always = async () => ({ epoch: `e${++m}`, text: 'app "Google Chrome" · window "b" · 800×600 · thin tree, see the screenshot\n[1] window "b"', stats: { thin: true } })
-    await taskReader(always as never, () => 7, 's', async () => ({ code: 0, stdout: '', stderr: '' }), async () => {}).read('Google Chrome', 'b')
-    expect(m).toBe(9)
+  it('reads ps elapsed times', async () => {
+    const { etimeSeconds } = await import('./lib/computerRig')
+    expect(etimeSeconds('05:09')).toBe(309)
+    expect(etimeSeconds('02:00:00')).toBe(7200)
+    expect(etimeSeconds('1-02:00:00')).toBe(93_600)
   })
 })

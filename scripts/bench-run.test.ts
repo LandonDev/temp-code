@@ -161,6 +161,8 @@ describe('the person keeps the Mac', () => {
     expect(await macReady(screens([{ locked: true, asleep: false }]), true, { wait: noWait })).toBe(DARK_SCREEN)
     expect(await macReady(screens([lit]), false, { wait: noWait })).toBe(NEVER_QUIET)
     expect(await macReady({ idleSeconds: async () => 9, screen: async () => lit }, false, { wait: noWait })).toBeNull()
+    // gated too: a locked Mac idle for hours is no gap to launch in
+    expect(await macReady({ idleSeconds: async () => 9_000, screen: async () => ({ locked: true, asleep: false }) }, false, { wait: noWait })).toBe(DARK_SCREEN)
   })
 
   it('sends a scratch app that came forward back, and says when it could not', async () => {

@@ -232,16 +232,26 @@ export async function waitForQuiet(probe: Pick<MacProbe, 'idleSeconds'>, opts: {
 }
 
 /**
- * May a run launch now? Gated: the Mac quiet for `quietMs` (waitForQuiet).
- * Ungated: only an unlocked, lit screen, looked at every 2 s for at most
- * `maxMs`. Null to go ahead, else the run's skip line.
+ * May a run launch now? Always an unlocked, lit screen (AX sees no windows
+ * otherwise); gated, the Mac quiet for `quietMs` as well. Looked at every
+ * `everyMs` (2 s ungated) for at most `maxMs`. Null to go ahead, else the
+ * run's skip line.
  */
 export async function macReady(
   probe: Pick<MacProbe, 'idleSeconds' | 'screen'>,
   ungated: boolean,
   opts: { quietMs?: number; everyMs?: number; maxMs?: number; wait?: (ms: number) => Promise<void>; skip?: string } = {}
 ): Promise<string | null> {
-  if (!ungated) return (await waitForQuiet(probe, opts)) ? null : (opts.skip ?? NEVER_QUIET)
+  if (!ungated) {
+    const { quietMs = LAUNCH_GUARD.quietMs, everyMs = LAUNCH_GUARD.everyMs, maxMs = LAUNCH_GUARD.maxMs, wait = (ms) => new Promise((r) => setTimeout(r, ms)) } = opts
+    for (let waited = 0; ; waited += everyMs) {
+      const s = await probe.screen()
+      const dark = s.locked || s.asleep
+      if (!dark && (await probe.idleSeconds()) * 1000 >= quietMs) return null
+      if (waited >= maxMs) return dark ? DARK_SCREEN : (opts.skip ?? NEVER_QUIET)
+      await wait(everyMs)
+    }
+  }
   const { maxMs = LAUNCH_GUARD.maxMs, wait = (ms) => new Promise((r) => setTimeout(r, ms)) } = opts
   for (let waited = 0; ; waited += 2_000) {
     const s = await probe.screen()

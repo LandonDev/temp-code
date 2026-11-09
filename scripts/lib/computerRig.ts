@@ -209,28 +209,43 @@ export const COMPUTER_PROOFS: readonly string[] = [
   'ax-reader-proof',
   'input-proof',
   'capture-proof',
+  'e2e-computer-schedule',
+  'e2e-computer-preview',
+  'e2e-computer-ui',
   'compare-computer-words',
   'e2e-computer-bench'
 ]
 
+/** `ps`'s elapsed time, `[[dd-]hh:]mm:ss`, in seconds. */
+export function etimeSeconds(etime: string): number {
+  const [days, rest] = etime.includes('-') ? etime.split('-') : ['0', etime]
+  const parts = rest.split(':').map(Number)
+  while (parts.length < 3) parts.unshift(0)
+  return Number(days) * 86_400 + parts[0] * 3600 + parts[1] * 60 + parts[2]
+}
+
 /**
- * The first proof running in `ps -Ao pid=,ppid=,command=` output whose
- * command line holds a pattern, leaving out this process and its ancestors
- * (the package script's own shell names the script too).
+ * The first proof running in `ps -Ao pid=,ppid=,etime=,command=` output
+ * whose command line holds a pattern and that started before this process
+ * (by its age, then its pid), leaving out this process and its ancestors (the
+ * package script's own shell names the script too). Only an older proof
+ * holds this one, so two proofs never wait on each other.
  */
 export function otherProofIn(ps: string, self: number, patterns: readonly string[] = COMPUTER_PROOFS): string | null {
   const parent = new Map<number, number>()
-  const rows: { pid: number; command: string }[] = []
+  const rows: { pid: number; age: number; command: string }[] = []
   for (const line of ps.split('\n')) {
-    const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line)
+    const m = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/.exec(line)
     if (!m) continue
     parent.set(Number(m[1]), Number(m[2]))
-    rows.push({ pid: Number(m[1]), command: m[3] })
+    rows.push({ pid: Number(m[1]), age: etimeSeconds(m[3]), command: m[4] })
   }
   const mine = new Set<number>()
   for (let pid: number | undefined = self; pid && !mine.has(pid); pid = parent.get(pid)) mine.add(pid)
+  const myAge = rows.find((r) => r.pid === self)?.age ?? 0
+  const older = (r: { pid: number; age: number }): boolean => r.age > myAge || (r.age === myAge && r.pid < self)
   for (const r of rows) {
-    if (mine.has(r.pid) || /\bpgrep\b|\bps -Ao\b/.test(r.command)) continue
+    if (mine.has(r.pid) || !older(r) || /\bpgrep\b|\bps -Ao\b/.test(r.command)) continue
     const hit = patterns.find((p) => r.command.includes(p))
     if (hit) return hit
   }
@@ -239,7 +254,7 @@ export function otherProofIn(ps: string, self: number, patterns: readonly string
 
 export function otherProof(patterns: readonly string[] = COMPUTER_PROOFS): string | null {
   try {
-    return otherProofIn(execFileSync('ps', ['-Ao', 'pid=,ppid=,command='], { encoding: 'utf8' }), process.pid, patterns)
+    return otherProofIn(execFileSync('ps', ['-Ao', 'pid=,ppid=,etime=,command='], { encoding: 'utf8' }), process.pid, patterns)
   } catch {
     return null
   }

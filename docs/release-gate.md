@@ -155,8 +155,11 @@ system, never the model's word.
 - **Ungated** (`TC_BENCH_UNGATED=1`, the person's leave for a hand run):
   no idle wait before a launch, the front not judged; a locked or dark
   screen still holds a launch.
-- **One proof at a time**: a run waits while another computer proof runs on
-  the Mac, at most 30 minutes, else it is skipped.
+- **One proof at a time**: a run waits while an older computer proof runs on
+  the Mac (one started first; two never wait on each other), at most 30
+  minutes and never past the step's budget, else it is skipped.
+- **A locked or dark screen** holds every launch, gated or not: AX sees no
+  windows then.
 - **The baseline** is `<git-dir>/temp-code-gate/computer-bench/baseline.json`
   in the checkout that publishes, one row per model, task and task version.
   A gate run that finds no baseline at all passes with "no baseline, first
