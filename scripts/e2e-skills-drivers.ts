@@ -329,7 +329,20 @@ try {
   const cli = ofInstance().find((p) => p.env.has('CLAUDE_CONFIG_DIR') && /claude/.test(p.command))
   const configDir = cli?.env.get('CLAUDE_CONFIG_DIR')
   const ownedRoot = join(data, 'harness', 'claude-config', 'global')
-  check('claude: the CLI runs under the owned root of its scope', configDir === ownedRoot, `${configDir} (pid ${cli?.pid})`)
+  // Where the environment cannot be read (macOS hides a hardened binary's from ps -E), the CLI's own
+  // state in the owned root says it ran there: only links are made there for it, never a sessions dir.
+  const ownState = (() => {
+    try {
+      return readdirSync(ownedRoot, { withFileTypes: true }).filter((d) => !d.isSymbolicLink()).map((d) => d.name)
+    } catch {
+      return []
+    }
+  })()
+  check(
+    'claude: the CLI runs under the owned root of its scope',
+    configDir !== undefined ? configDir === ownedRoot : ownState.some((n) => n === 'sessions' || n === 'session-env'),
+    configDir !== undefined ? `${configDir} (pid ${cli?.pid})` : `no CLI environment readable; its own entries there: ${ownState.join(',')}`
+  )
   let resolved = ''
   try {
     resolved = realpathSync(join(ownedRoot, 'skills', SKILL))
@@ -346,7 +359,11 @@ try {
 
   // ── 4. warm: a write churns no warm process ─────────────────────────
   const waiting = await until('a warm claude process waits', 60_000, async () => ((await claudeWarm())?.warm.length ?? 0) > 0)
-  if (!waiting) {
+  const pool = await claudeWarm()
+  if (!waiting && HOST === 'mac' && pool?.spawned === 0 && Object.keys(pool.misses).every((k) => k === 'empty')) {
+    // An isolated instance on the Mac routes Claude through the shim the installed app owns, and only a thread its own gateway routes warms.
+    skip('claude (warm)', 'this instance warms nothing: its Claude traffic rides the installed app\'s shim (the box leg proves the adoption)')
+  } else if (!waiting) {
     check('claude: a warm process of the thread\'s shape waits (warming needs this instance\'s own gateway route)', false, JSON.stringify(await claudeWarm()))
   } else {
     const before = await claudeWarm()
@@ -418,7 +435,6 @@ try {
     check(`muse (${label}): a rewrite reaches the next turn of the same thread`, replyOf(next).includes(word(current)), `${replyOf(next).slice(0, 200)} ${errorsOf(next).join(' | ')}`)
   }
   if (!museModel) skip('muse', HOST === 'box' ? 'Meta serves this host an empty catalog (docs/box.md "Muse Code on the box")' : 'the catalog lists no Muse model')
-  else if (!loginShell('muse --version')) skip('muse', 'no muse CLI on the login PATH')
   else {
     if (museAccounts.length) await museLeg('account', true)
     else skip('muse (account)', 'this host holds no Muse account')
