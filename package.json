@@ -86,6 +86,7 @@
     "script:e2e-away": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-away.ts",
     "script:e2e-steer-ack": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-steer-ack.ts",
     "script:e2e-muse": "esbuild scripts/e2e-muse.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:aliax-core=./node_modules/aliax-core/src --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-muse.mjs && node scripts/.out/e2e-muse.mjs",
+    "script:e2e-computer": "esbuild scripts/e2e-computer.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:aliax-core=./node_modules/aliax-core/src --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-computer.mjs && node scripts/.out/e2e-computer.mjs",
     "script:e2e-queue": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-queue.ts",
     "script:e2e-titled-threads": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-titled-threads.ts",
     "script:e2e-checkpoint-turn": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-checkpoint-turn.ts",
