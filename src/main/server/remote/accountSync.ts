@@ -72,9 +72,16 @@ import type { HeadroomSnapshot, HeadroomStore } from '../headroom'
  *    auth.json), or a provisional copy (a handoff in flight). Each deletion
  *    rebuilds the accounts snapshot at once (`refreshNow`), so the gateway
  *    and the routing stop naming the account before the next turn.
+ *  - an add-on grant (service `addon`, one profile per add-on) goes only to
+ *    the host that holds the add-on's row as its scope's home (`addonHome`:
+ *    the box for a shared scope), never to a link of no such row, so a grant
+ *    of a workspace only this host has never leaves it; to the home an OAuth
+ *    grant this host refreshes goes as a handoff, anything else as a copy. A
+ *    peer's add-on transfer lands as from an admin when this host has the
+ *    add-on's row (`addonKnown`): the synced registry is what vouches for it.
  */
 
-const SERVICES: ServiceId[] = ['claude-code', 'codex', 'cursor', 'meta', 'muse-code']
+const SERVICES: ServiceId[] = ['claude-code', 'codex', 'cursor', 'meta', 'muse-code', 'addon']
 /** Settings row per provider: the environment new sign-ins are handed to. */
 export const HOME_PREFIX = 'accounts.home.'
 const PUSH_DEBOUNCE_MS = 1_000
@@ -108,6 +115,17 @@ export interface AccountSyncDeps {
   activate?: (service: ServiceId, name: string, blob: string) => Promise<void>
   /** Test seam: the release timeout. */
   releaseTimeoutMs?: number
+  /**
+   * The host that holds the add-on's row as its scope's home (AddonGrants.homeOf:
+   * storeSync.homeFor of the row's workspace non-null → rulesSync.homeOf()); null
+   * when this host holds it, the scope is not shared, or the row is unknown here.
+   * An add-on grant goes only to that host.
+   */
+  addonHome?: (addonId: string) => string | null
+  /** Whether this host has the add-on's row: its grant may then arrive from a peer as from an admin. */
+  addonKnown?: (addonId: string) => boolean
+  /** A profile left the vault here (deleteProfile, prune): the add-on host drops its grant. */
+  onRemoved?: (service: ServiceId, name: string) => void
 }
 
 export interface PullAnswer {
@@ -335,6 +353,7 @@ export class AccountSync {
     const removal: AccountRemoval = { service, accountId: p.accountId, name, static: p.static === true, at: this.now() }
     vault.deleteProfile(service, name)
     coreAccounts.clearUsageCache(service)
+    this.deps.onRemoved?.(service, name)
     if (p.static || ownsProfile(p)) this.recordTombstone(removal)
     this.log(`${service} ${name}: deleted here${p.static ? ' (static token)' : ownsProfile(p) ? '' : ` (a copy refreshed by ${p.owner})`}`)
     await this.refreshNow()
@@ -407,6 +426,7 @@ export class AccountSync {
         }
         vault.deleteProfile(service, p.name)
         coreAccounts.clearUsageCache(service)
+        this.deps.onRemoved?.(service, p.name)
         dropped++
         this.log(`${service} ${p.name}: ${why}; deleted here`)
       }
@@ -519,7 +539,7 @@ export class AccountSync {
       const { transfers, listed, tombstones } = await link.request<PullAnswer>('accounts.pull', { from: this.me })
       let landed = 0
       for (const t of transfers) {
-        const out = applyTransfer(t, link.id, 'peer')
+        const out = applyTransfer(t, link.id, this.policyFor(t))
         if (out.ok && out.saved) landed++
         else if (!out.ok) this.log(`${t.service} ${t.profile.name} from ${link.env.name}: refused (${out.reason})`)
       }
@@ -611,7 +631,9 @@ export class AccountSync {
     }
     if (!stored) return false
     const provider = PROVIDER_OF[service]
-    const home = provider ? this.homes()[provider] : undefined
+    // An add-on grant goes to its row's scope home alone, never to another link.
+    const home = service === 'addon' ? (this.deps.addonHome?.(name) ?? undefined) : provider ? this.homes()[provider] : undefined
+    if (service === 'addon' && home !== link.id) return false
     const wantsHandoff = !p.static && home === link.id && hasRefresh(service, stored)
     if (wantsHandoff && (await this.liveLineage(service, stored))) this.log(`${service} ${name}: the sign-in here, or one that cannot be told apart; access copy only`)
     const handoff = wantsHandoff && !(await this.liveLineage(service, stored))
@@ -705,7 +727,7 @@ export class AccountSync {
       return
     }
     if (push.push !== 'account') return
-    const out = applyTransfer(push.transfer, from, 'peer')
+    const out = applyTransfer(push.transfer, from, this.policyFor(push.transfer))
     if (out.ok && out.saved) {
       this.log(`${push.transfer.service} ${out.name}: rotation from ${from} landed`)
       this.deps.nudge()
@@ -718,6 +740,15 @@ export class AccountSync {
     }
   }
 
+  /**
+   * How a peer's transfer lands: as from an admin for an add-on grant whose
+   * add-on row this host has (the synced registry vouches for it, so a values
+   * grant saved on the box reaches the Mac), else under the peer policy.
+   */
+  policyFor(t: Pick<Transfer, 'service' | 'profile'>): 'admin' | 'peer' {
+    return t.service === 'addon' && this.deps.addonKnown?.(t.profile.accountId) ? 'admin' : 'peer'
+  }
+
   /** aliax-core's askOwner: a consumer copy near its end asks its owner over our link. */
   askOwner: NonNullable<Hooks['askOwner']> = async (serviceId: ServiceId, name: string, owner: string): Promise<string | null> => {
     const link = this.deps.peers.get(owner)
@@ -726,7 +757,7 @@ export class AccountSync {
       const { transfers } = await link.request<PullAnswer>('accounts.pull', { from: this.me, service: serviceId, name })
       let landed: string | null = null
       for (const t of transfers) {
-        const out = applyTransfer(t, owner, 'peer')
+        const out = applyTransfer(t, owner, this.policyFor(t))
         if (out.ok && t.service === serviceId) landed = out.name
       }
       if (!landed) return null
@@ -797,6 +828,8 @@ export class AccountSync {
    * never replaced.
    */
   private async activateIfNothingLive(service: ServiceId, name: string, isStatic: boolean): Promise<void> {
+    // No CLI signs in with an add-on grant, and the pin it would write is noise.
+    if (service === 'addon') return
     const a = adapter(service)
     if (!a.detect()) return
     const liveId = await (this.deps.liveAccountId ?? ((s: ServiceId) => adapter(s).liveAccountId()))(service).catch(() => null)
