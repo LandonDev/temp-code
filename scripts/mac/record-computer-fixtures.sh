@@ -290,23 +290,28 @@ JAVA
   sleep 5
   "$REC" press --pid "$pid" --title "${TC_FIXTURE_IDEA_TRUST_TITLE:-Trust and Open Project 'Hello'?}" --role AXButton --name 'Trust Project' 2>/dev/null || true
   # 2026.1's project frame has an empty title, in AX and in the window server alike: name it
-  # by the empty title plus an element inside it; more than one such window is refused, so
-  # with the person's projects open this records nothing. Never touched: the license prompt
-  # an expired subscription opens beside it (the person's decision).
-  local title=${TC_FIXTURE_IDEA_TITLE:-} mark=${TC_FIXTURE_IDEA_CONTAINS:-AXButton=Project}
-  "$REC" wait-window --pid "$pid" --title "$title" --contains "$mark" --timeout 120
+  # by the empty title plus an element inside it; more than one such window is refused.
+  # The project's name button finds the scratch window to open its Project tool window;
+  # everything after needs the tree's root row, which names the scratch path, so a
+  # person's project window is never recorded or closed, whatever its name. Never
+  # touched: the license prompt an expired subscription opens beside it (the person's decision).
+  local title=${TC_FIXTURE_IDEA_TITLE:-}
+  local name_mark=${TC_FIXTURE_IDEA_CONTAINS:-'AXButton=Project: Hello, menu'}
+  local path_mark="AXStaticText=Hello "$'\xe2\x80\x89'"/private/tmp/tc-fixture-idea/Hello, module"
+  "$REC" wait-window --pid "$pid" --title "$title" --contains "$name_mark" --timeout 120
   sleep 5
   # The Project tool window, so the scratch tree shows.
-  "$REC" press --pid "$pid" --title "$title" --contains "$mark" --role AXButton --name Project
+  "$REC" press --pid "$pid" --title "$title" --contains "$name_mark" --role AXButton --name Project
+  "$REC" wait-window --pid "$pid" --title "$title" --contains "$path_mark" --timeout 30
   sleep 4
   # No appshot: axdump picks the IDE's focused or main window before it looks at a title.
-  record "$pid" "$title" intellij project --contains "$mark" 'a scratch project at /tmp/tc-fixture-idea/Hello (one Hello.java) opened in the IDE, its Project tool window open, screen-reader support as the IDE has it'
+  record "$pid" "$title" intellij project --contains "$path_mark" 'a scratch project at /tmp/tc-fixture-idea/Hello (one Hello.java) opened in the IDE, its Project tool window open, screen-reader support as the IDE has it'
   if ((started)); then
     kill "$pid" 2>/dev/null || true
     tries=0
     while kill -0 "$pid" 2>/dev/null && ((tries < 30)); do sleep 1; tries=$((tries + 1)); done
   else
-    "$REC" press --pid "$pid" --title "$title" --contains "$mark" --role AXButton --subrole AXCloseButton || true
+    "$REC" press --pid "$pid" --title "$title" --contains "$path_mark" --role AXButton --subrole AXCloseButton || true
   fi
 }
 
