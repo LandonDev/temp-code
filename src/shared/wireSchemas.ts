@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { StartOnSchema } from './defaults'
 import type { AccountPins, AccountProvider, AccountsSnapshot } from './accounts'
 import { BatchStateSchema } from './contract-batch'
+import { ComputerServiceStateSchema, ComputerSessionRowSchema } from './contract-computer'
 import type { DeployStatus, HostJobPhase, HostJobStatus } from './contract-host'
 import { HostJobSchema } from './contract-host'
 import { HostDevicesReportSchema, type HostDevicesHost } from './contract-hostdevices'
@@ -1100,6 +1101,11 @@ export const HostLogPushSchema = push('host-log', {
   status: HostJobStatusSchema
 })
 export const MacBridgeHeldPushSchema = push('macBridge.held', { sessionId: z.string(), held: z.number().int() })
+/** Computer use (contract-computer.ts): the desktop's; not in RemotePushSchema, since the phone does not speak it. */
+export const ComputerPushSchema = push('computer', {
+  service: ComputerServiceStateSchema,
+  sessions: z.array(ComputerSessionRowSchema)
+})
 
 /**
  * Every push a remote connection can receive. Out by rule: the singular
@@ -1238,6 +1244,7 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof HostDevicesPushSchema, PushOf<'host.devices'>>>,
   Expect<Mirror<typeof HostLogPushSchema, PushOf<'host-log'>>>,
   Expect<Mirror<typeof MacBridgeHeldPushSchema, PushOf<'macBridge.held'>>>,
+  Expect<Mirror<typeof ComputerPushSchema, PushOf<'computer'>>>,
   Expect<Mirror<typeof HarnessEnvironmentStatusSchema, HarnessEnvironmentStatus>>,
   Expect<Mirror<typeof HarnessSyncStatusSchema, HarnessSyncStatus>>,
   Expect<Mirror<typeof MemoryEnvironmentStatusSchema, MemoryEnvironmentStatus>>,

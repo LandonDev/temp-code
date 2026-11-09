@@ -26,6 +26,7 @@ import { AwayRequestSchemas } from './contract-away'
 import { AddonAddArgsSchema, AddonCallArgsSchema, AddonFindArgsSchema, AddonRemoveArgsSchema, AddonRequestSchemas } from './contract-addons'
 import { SkillRemoveArgsSchema, SkillRequestSchemas, SkillWriteArgsSchema } from './contract-skills'
 import { AddonGrantRequestSchemas } from './contract-addonGrants'
+import { ComputerRequestSchemas } from './contract-computer'
 import { AGENT_TYPES, REASONING_LEVELS } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -173,6 +174,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...AddonRequestSchemas,
   ...AddonGrantRequestSchemas,
   ...SkillRequestSchemas,
+  // Computer use (contract-computer.ts): the service's state, the live sessions, Stop, and the bridge's four tools.
+  ...ComputerRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
   z.object({
     id: z.string(),
@@ -1463,6 +1466,8 @@ export type ServerPush =
   // Add-on grants (contract-addonGrants.ts): every grant view of this host, never a value, to every client socket.
   | import('./contract-addonGrants').AddonGrantsPush
   | import('./contract-skills').SkillsPush
+  // Computer use (contract-computer.ts): the service's state and the live sessions, to every client socket.
+  | import('./contract-computer').ComputerPush
   // Thread resources (contract-resources.ts): a thread's ledger rows after any change.
   | import('./contract-resources').ResourcesPush
   // Dev servers forwarded to the Mac (contract-ports.ts): the host's list and stream frames down a Mac's link, the Mac's forwards to its renderer.

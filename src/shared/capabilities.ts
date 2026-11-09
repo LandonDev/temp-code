@@ -45,6 +45,9 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'app.addonRemove': 'local',
   'app.addonFind': 'local',
   'app.addonCall': 'local',
+  'app.computer': 'local',
+  'app.computerCancel': 'local',
+  'app.computerTools': 'local',
   'app.skillList': 'local',
   'app.skillWrite': 'local',
   'app.skillRemove': 'local',
@@ -443,6 +446,9 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   // `macBridge.decide`) and every setting stay the Mac's own.
   'macBridge.activity': 'read',
   'macBridge.stop': 'operate',
+  // Computer use (contract-computer.ts): the live sessions are anyone's to see; Stop is an act.
+  'computer.sessions': 'read',
+  'computer.stop': 'operate',
   // The Mac's remembered approvals (contract-macbridge-rules.ts): only its own renderer.
   'macBridge.rules.list': 'local',
   'macBridge.rules.forget': 'local',

@@ -190,3 +190,11 @@ describe('the Mac bridge (contract-macbridge.ts)', () => {
     expect(METHOD_CAPABILITY['macBridge.stop']).toBe('operate')
   })
 })
+
+describe('computer use (contract-computer.ts)', () => {
+  it('a key sees the live sessions and may stop one; the bridge tools stay on the loopback', () => {
+    expect(METHOD_CAPABILITY['computer.sessions']).toBe('read')
+    expect(METHOD_CAPABILITY['computer.stop']).toBe('operate')
+    for (const m of ['app.computer', 'app.computerCancel', 'app.computerTools'] as const) expect(METHOD_CAPABILITY[m]).toBe('local')
+  })
+})
