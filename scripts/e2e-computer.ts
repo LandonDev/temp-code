@@ -2,13 +2,15 @@
  * The Mac proof of computer sessions and tools (plan
  * .temp-code/plan-x0TRsa6H47tg.md §15): an in-process registry with the
  * computer host wired as index.ts wires it, on the real tc-computer, and real
- * claude threads driving a scratch TextEdit.
+ * claude threads driving a scratch app of the proof's own, "TC Probe"
+ * (scripts/mac/computer-probe-app.swift: one inert window with a text field, a
+ * Ping button and a label).
  *
- *  1. a thread in full access replaces the scratch document's text through
- *     the computer tools, found by tool search; every step ax or process;
- *     the live row names TextEdit while the turn runs and goes when it settles
+ *  1. a thread in full access replaces the field's text through the computer
+ *     tools, found by tool search; every step ax or process; the live row
+ *     names TC Probe while the turn runs and goes when it settles
  *  2. a thread in Ask me: its read raises no card, its first act raises one
- *     naming TextEdit, the window and the action; denied, then allowed
+ *     naming the app, the window and the action; denied, then allowed
  *  3. Stop during a 20 s wait: that call and the next answer "stopped by the
  *     person", the turn settles on its own, the next turn reads again
  *  4. through the handler with no model: perform raise is refused the session
@@ -18,15 +20,17 @@
  *
  * The person keeps the Mac. During the spec build's fixture recording a
  * scratch TextEdit came to the front while the person typed and two of their
- * keystrokes landed in it, so this proof holds to the ax and process tiers
- * with the scratch window in the background, and every check also checks the
- * frontmost app and the pointer did not move. That check is void when the
- * person used the Mac during it: it runs again on fresh scratch content, at
- * most three times 30 s apart, and one still void is `inconclusive`, which is
- * not green. The scratch TextEdit is its own process, `open -n -g`, and every
- * TextEdit query is pinned to that pid, so the person's TextEdit is never a
- * target. It asks for no permission and removes everything but its report and
- * the service's trace under /tmp/tc-computer-e2e.
+ * keystrokes landed in it. So the proof drives no app of the person's: TC
+ * Probe never activates, its window can never be key or main and takes no
+ * click, it keeps no saved state and leaves no recent-document entry. Its
+ * launch waits for 5 minutes with no input (90 at most, else "not run: the
+ * person was at the Mac") and is undone if input comes during it. Every
+ * action runs at the ax and process tiers, and every check also checks the
+ * person's frontmost app and pointer did not move; that check is void when
+ * the person used the Mac during it, runs again at most three times 30 s
+ * apart, and one still void is `inconclusive`, which is not green. It asks
+ * for no permission and removes everything but its report and the service's
+ * trace under /tmp/tc-computer-e2e.
  *
  * Run on the Mac, under the installed TempCode.app so TCC answers for it:
  *   bun run script:e2e-computer        (esbuild → node: the Mac's bun has no node:sqlite)
@@ -36,6 +40,7 @@ import { execFileSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
+import { homedir } from 'node:os'
 import { randomBytes } from 'node:crypto'
 import { WebSocketServer } from 'ws'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -73,7 +78,13 @@ const BIN = join(ROOT, 'resources/native/tc-computer')
 const PROBE = join(WORK, 'computer-proof-probe')
 const MODEL = process.env.TC_E2E_MODEL || 'claude-sonnet-5-5'
 const NONCE = randomBytes(4).toString('hex')
-const DOC = join(WORK, `${NONCE}.txt`)
+const APP = 'TC Probe'
+const PROBE_APP = join(WORK, `${APP}.app`)
+const PROBE_BUNDLE_ID = 'dev.landon.tempcode.computer-e2e-probe'
+/** A launch starts only after this long with no input (the person's rule for proofs that launch an app). */
+const LAUNCH_IDLE_S = 300
+const LAUNCH_WAIT_MS = 90 * 60_000
+const LSREGISTER = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
 const HELLO = `Hello from TempCode ${NONCE}`
 const VOID_RETRIES = 3
 const VOID_WAIT_MS = 30_000
@@ -81,7 +92,7 @@ const VOID_WAIT_MS = 30_000
 rmSync(WORK, { recursive: true, force: true })
 mkdirSync(WORK, { recursive: true })
 process.env.TEMP_CODE_COMPUTER_BIN = BIN
-console.log('tiers ax and process only, TextEdit stays in the background; the session tier is refused until the scheduler exists')
+console.log('tiers ax and process only, TC Probe stays in the background; the session tier is refused until the scheduler exists')
 
 // ── the report ──────────────────────────────────────────────────────────
 
@@ -111,13 +122,6 @@ const frontmost = (): { pid: number; bundleId: string | null } => probe('frontmo
 const pointer = (): { x: number; y: number } => probe('pointer')
 const idleSeconds = (): number => probe<{ seconds: number }>('idle').seconds
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
-const textEditPids = (): number[] => {
-  try {
-    return execFileSync('pgrep', ['-x', 'TextEdit'], { encoding: 'utf8' }).split('\n').filter(Boolean).map(Number)
-  } catch {
-    return []
-  }
-}
 
 /**
  * Runs `run`, then holds the person's frontmost app and pointer to what they
@@ -148,17 +152,27 @@ async function personKeepsMac(name: string, run: (attempt: number) => Promise<vo
 }
 
 let scratchPid = 0
+const killProbeApp = (): void => {
+  if (!scratchPid) return
+  try {
+    process.kill(scratchPid, 'SIGTERM')
+    report.cleanup.push(`ended TC Probe ${scratchPid}`)
+  } catch {
+    report.cleanup.push('TC Probe was gone')
+  }
+  scratchPid = 0
+}
 let service: ComputerService | null = null
 let registry: SessionRegistry | null = null
 const cleanup = async (): Promise<void> => {
-  if (scratchPid) {
-    try {
-      process.kill(scratchPid, 'SIGKILL')
-      report.cleanup.push(`killed the scratch TextEdit ${scratchPid}`)
-    } catch {
-      report.cleanup.push('the scratch TextEdit was gone')
-    }
+  killProbeApp()
+  try {
+    execFileSync(LSREGISTER, ['-u', PROBE_APP], { stdio: 'ignore' })
+    report.cleanup.push('unregistered TC Probe from Launch Services')
+  } catch {
+    // nothing registered
   }
+  rmSync(join(homedir(), 'Library/Saved Application State', `${PROBE_BUNDLE_ID}.savedState`), { recursive: true, force: true })
   await registry?.disposeAll().catch(() => undefined)
   await service?.close().catch(() => undefined)
   saveReport()
@@ -179,23 +193,27 @@ execFileSync('xcrun', ['swiftc', '-O', '-o', PROBE, join(ROOT, 'scripts/mac/comp
 const grants = JSON.parse(execFileSync(BIN, ['permissions'], { encoding: 'utf8' })) as { accessibility: boolean; screenRecording: boolean }
 if (!grants.accessibility) await stop('Accessibility is off for TempCode: turn it on under System Settings → Privacy & Security → Accessibility, then run this again')
 
-const personBefore = frontmost()
-writeFileSync(DOC, `Scratch ${NONCE}\n`)
-const pidsBefore = new Set(textEditPids())
-execFileSync('open', ['-n', '-g', '-a', 'TextEdit', DOC, '--args', '-ApplePersistenceIgnoreState', 'YES'])
-for (let i = 0; i < 40 && !scratchPid; i++) {
-  await sleep(250)
-  scratchPid = textEditPids().find((p) => !pidsBefore.has(p)) ?? 0
-}
-if (!scratchPid) await stop('open -n gave no new TextEdit pid within 10 s')
-await sleep(1_000)
-if (frontmost().pid === scratchPid) {
-  report.bounce = 'the scratch TextEdit came to the front at launch'
-  if (personBefore.bundleId) execFileSync('osascript', ['-e', `tell application id "${personBefore.bundleId}" to activate`])
-  await sleep(500)
-  if (frontmost().pid === scratchPid) await stop('the scratch TextEdit took the front at launch and the person\'s app could not be put back')
-  report.bounce += `; ${personBefore.bundleId} put back in front`
-}
+mkdirSync(join(PROBE_APP, 'Contents/MacOS'), { recursive: true })
+execFileSync('xcrun', ['swiftc', '-O', '-o', join(PROBE_APP, 'Contents/MacOS', APP), join(ROOT, 'scripts/mac/computer-probe-app.swift')], { stdio: 'pipe' })
+writeFileSync(
+  join(PROBE_APP, 'Contents/Info.plist'),
+  `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>${PROBE_BUNDLE_ID}</string>
+  <key>CFBundleName</key><string>${APP}</string>
+  <key>CFBundleExecutable</key><string>${APP}</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>
+`
+)
+execFileSync('codesign', ['-s', '-', '--force', PROBE_APP], { stdio: 'pipe' })
 
 const dataDir = join(WORK, 'data')
 const store = new Store(openDb(join(dataDir, 'app.db')))
@@ -226,7 +244,7 @@ svc.request = (async (method: ComputerMethod, params: never, opts?: { signal?: A
     throw e
   }
 }) as typeof svc.request
-const pinned = new Set(['textedit', 'com.apple.textedit'])
+const pinned = new Set([APP.toLowerCase(), PROBE_BUNDLE_ID])
 setSessionTierGate(REFUSE_SESSION_TIER)
 const sessions = new ComputerSessions({
   service: svc,
@@ -243,22 +261,51 @@ computerHooks.current = host
 reg.onMeta((m) => sessions.onMeta(m))
 const rpc = new ComputerRpc(host)
 
-// The proof's own session: reads and the fresh content, at the ax tier only.
+// The proof's own session: the launch, reads and the fresh content, at the ax tier only.
 await svc.request('session.open', { session: 'proof' })
-const proofRead = async (): Promise<string> => (await svc.request('state.get', { session: 'proof', app: { pid: scratchPid }, window: { title: NONCE }, mode: 'full' })).text
-const textAreaOf = (text: string): number => {
-  const line = parseObservation(text).lines.find((l) => l.type === 'element' && l.role === 'text area')
-  if (!line || line.type !== 'element') throw new Error('the scratch window shows no text area')
+
+/** Launch TC Probe in the background once the Mac has had 5 minutes with no input; undone if input comes during it. */
+const launchStart = Date.now()
+while (!scratchPid) {
+  if (Date.now() - launchStart > LAUNCH_WAIT_MS) {
+    check('TC Probe launched in a quiet gap', 'inconclusive', 'not run: the person was at the Mac')
+    await stop('not run: the person was at the Mac for 90 minutes')
+  }
+  if (idleSeconds() < LAUNCH_IDLE_S) {
+    await sleep(5_000)
+    continue
+  }
+  const before = frontmost()
+  const t0 = Date.now()
+  scratchPid = (await svc.request('apps.launch', { app: PROBE_APP })).pid
+  await sleep(1_000)
+  if (idleSeconds() < (Date.now() - t0) / 1000) {
+    console.log('      input came during the launch: TC Probe ended, waiting for another quiet gap')
+    killProbeApp()
+    continue
+  }
+  if (frontmost().pid === scratchPid) {
+    report.bounce = 'TC Probe came to the front at launch'
+    if (before.bundleId) execFileSync('osascript', ['-e', `tell application id "${before.bundleId}" to activate`])
+    await sleep(500)
+    if (frontmost().pid === scratchPid) await stop("TC Probe took the front at launch and the person's app could not be put back")
+    report.bounce += `; ${before.bundleId} put back in front`
+  }
+}
+const proofRead = async (): Promise<string> => (await svc.request('state.get', { session: 'proof', app: { pid: scratchPid }, window: { title: APP }, mode: 'full' })).text
+const fieldOf = (text: string): number => {
+  const line = parseObservation(text).lines.find((l) => l.type === 'element' && l.role === 'input')
+  if (!line || line.type !== 'element') throw new Error('the scratch window shows no text field')
   return line.index
 }
 const freshContent = async (): Promise<void> => {
-  const obs = await svc.request('state.get', { session: 'proof', app: { pid: scratchPid }, window: { title: NONCE }, mode: 'full' })
+  const obs = await svc.request('state.get', { session: 'proof', app: { pid: scratchPid }, window: { title: APP }, mode: 'full' })
   await svc.request('action.run', {
     session: 'proof',
     app: { pid: scratchPid },
-    window: { title: NONCE },
+    window: { title: APP },
     epoch: obs.epoch,
-    action: { action: 'set_value', element: textAreaOf(obs.text), value: `Scratch ${NONCE}` },
+    action: { action: 'set_value', element: fieldOf(obs.text), value: `Scratch ${NONCE}` },
     tiers: ['ax'],
     observe: { mode: 'none' }
   })
@@ -300,19 +347,20 @@ const resultOf = (id: string, callId: string): { text: string; isError: boolean 
 const newThread = async (permission: 'auto' | 'safe') =>
   (await reg.create({ provider: 'claude', model: MODEL, reasoning: 'low', agentType: 'implementer', permission, cwd, threadType: 'chat', parentId: null })).id
 
-const where = `the TextEdit window whose title contains "${NONCE}"`
+const where = `the window "${APP}" of the app "${APP}"`
 
-// 1. Claude drives TextEdit in full access
-console.log('\n[1] a thread in full access replaces the document\'s text')
+// 1. Claude drives TC Probe in full access
+console.log("\n[1] a thread in full access replaces the field's text")
 const a = await newThread('auto')
+await freshContent()
 await personKeepsMac('the full-access turn', async (attempt) => {
   if (attempt) await freshContent()
   const after = lastSeq(a)
   let liveRow = false
   const poll = setInterval(() => {
-    liveRow ||= sessions.rows().some((r) => r.threadId === a && r.apps.some((x) => x.name === 'TextEdit' && (x.window ?? '').includes(NONCE)))
+    liveRow ||= sessions.rows().some((r) => r.threadId === a && r.apps.some((x) => x.name === APP && x.window === APP))
   }, 200)
-  await reg.send(a, `Use the computer tools. In ${where}, replace all of the document's text with exactly: ${HELLO}\nRead the window first, then act on its text area. Then stop.`)
+  await reg.send(a, `Use the computer tools. In ${where}, replace the text field's text with exactly: ${HELLO}\nRead the window first, then act on the field. Then stop.`)
   await waitFor(a, settled, after, 600_000)
   clearInterval(poll)
   const calls = toolCalls(a, after)
@@ -323,8 +371,8 @@ await personKeepsMac('the full-access turn', async (attempt) => {
   check('at least one observe and one act or batch', calls.some((c) => c.name === 'mcp__app__computer_observe') && calls.some((c) => /computer_(act|batch)$/.test(c.name)))
   check('every step ran at ax or process', report.tiers.length > 0 && report.tiers.every((t) => t.tier !== 'session'), [...new Set(report.tiers.map((t) => t.tier))].join(', '))
   const text = await proofRead()
-  check('the text area holds the line', text.includes(HELLO), text.split('\n').find((l) => l.includes('text area')) ?? '')
-  check('a live row named TextEdit and the window while the turn ran', liveRow)
+  check('the field holds the line', text.includes(HELLO), text.split('\n').find((l) => l.includes('input')) ?? '')
+  check('a live row named TC Probe and its window while the turn ran', liveRow)
   await sleep(500)
   check('no row once the turn settled', !sessions.rows().some((r) => r.threadId === a))
 })
@@ -334,13 +382,13 @@ console.log('\n[2] a thread in Ask me: a read raises no card, an act raises one'
 await personKeepsMac('the Ask me turn', async (attempt) => {
   await freshContent()
   const b = await newThread('safe')
-  await reg.send(b, `Use the computer tools. First read ${where}. Then add the word "again" at the end of its text. If an action is denied, try the same action once more. Then stop.`)
+  await reg.send(b, `Use the computer tools. First read ${where}. Then press its Ping button. If an action is denied, try the same action once more. Then stop.`)
   const observe = await waitFor(b, (e) => e.type === 'tool-call' && !e.partial && e.name === 'mcp__app__computer_observe')
   const observed = await waitFor(b, (e) => e.type === 'tool-result' && observe.event.type === 'tool-call' && e.callId === observe.event.callId)
   check('the read raised no card', !rows(b, 0).some((r) => r.event.type === 'approval-request' && r.seq < observed.seq))
   const ask = await waitFor(b, (e) => e.type === 'approval-request', observed.seq)
   const title = ask.event.type === 'approval-request' ? (ask.event.title ?? '') : ''
-  check('the first act raised one card naming TextEdit, the window and the action', /TextEdit/.test(title) && title.includes(NONCE) && /^[A-Z][a-z-]+ /.test(title), title)
+  check('the first act raised one card naming the app, the window and the action', title.includes(`in ${APP}, window "${APP}"`) && /^[A-Z][a-z-]+ /.test(title), title)
   if (ask.event.type !== 'approval-request') return
   await reg.approve(b, ask.event.requestId, false)
   const callId = ask.event.callId
@@ -352,6 +400,7 @@ await personKeepsMac('the Ask me turn', async (attempt) => {
     const id2 = again.event.callId
     const acted = id2 ? await waitFor(b, (e) => e.type === 'tool-result' && e.callId === id2, again.seq) : null
     check('the allowed call acted', !!acted && !resultOf(b, id2!)?.isError, resultOf(b, id2 ?? '')?.text.slice(0, 120) ?? '')
+    check('the label reads pong', (await proofRead()).includes('"pong"'))
   } else check('the allowed call acted', false, 'the model did not try again')
   await waitFor(b, settled, ask.seq)
   report.toolCalls[`Ask me, attempt ${attempt + 1}`] = toolCalls(b).map((c) => c.name)
@@ -362,7 +411,7 @@ console.log('\n[3] Stop on the live row during a 20 s wait')
 await personKeepsMac('the Stop turn', async (attempt) => {
   if (attempt) await freshContent()
   const after = lastSeq(a)
-  await reg.send(a, `Use the computer tools. Call computer_act on ${where} with action "wait" and duration 20. Then type the word later into its text area with computer_act. Then stop.`)
+  await reg.send(a, `Use the computer tools. Call computer_act on ${where} with action "wait" and duration 20. Then type the word later into its text field with computer_act. Then stop.`)
   const wait = await waitFor(a, (e) => e.type === 'tool-call' && !e.partial && isComputer(e.name) && (e.input as { action?: string } | undefined)?.action === 'wait', after)
   const end = Date.now() + 10_000
   while (!sessions.rows().find((r) => r.threadId === a)?.running && Date.now() < end) await sleep(100)
@@ -385,20 +434,20 @@ await personKeepsMac('the Stop turn', async (attempt) => {
 console.log('\n[4] the handler with no model')
 const direct = { threadId: 'proof-direct', permission: () => 'auto' as const }
 await personKeepsMac('the direct calls', async () => {
-  const obs = await sessions.run(direct, 'computer_observe', { app: 'TextEdit', window: NONCE, full: true })
+  const obs = await sessions.run(direct, 'computer_observe', { app: APP, window: APP, full: true })
   const parsed = parseObservation(obs.body ?? '')
   const win = parsed.lines.find((l) => l.type === 'element' && l.role === 'window')
-  const raise = win && win.type === 'element' ? await sessions.run(direct, 'computer_act', { app: 'TextEdit', window: NONCE, action: 'perform', element: win.index, name: 'raise' }) : null
+  const raise = win && win.type === 'element' ? await sessions.run(direct, 'computer_act', { app: APP, window: APP, action: 'perform', element: win.index, name: 'raise' }) : null
   check('perform raise is refused the session tier (no-scheduler)', !!raise && /needs the session tier.*nothing schedules it yet/.test(raise.steps[0] ?? ''), raise?.steps[0] ?? 'no window line')
   const epoch0 = svc.state().epoch
   const pid = svc.state().pid
   if (pid) process.kill(pid, 'SIGKILL')
   const until = Date.now() + 5_000
   while (svc.state().state === 'up' && Date.now() < until) await sleep(50)
-  const area = textAreaOf(obs.body ?? '')
-  const stale = await sessions.run(direct, 'computer_act', { app: 'TextEdit', window: NONCE, action: 'set_value', element: area, value: 'x' })
+  const field = fieldOf(obs.body ?? '')
+  const stale = await sessions.run(direct, 'computer_act', { app: APP, window: APP, action: 'set_value', element: field, value: 'x' })
   check('an old element answers stale_element after the kill', stale.isError && report.errors.some((e) => e.kind === 'stale_element'), stale.body ?? '')
-  const again = await sessions.run(direct, 'computer_observe', { app: 'TextEdit', window: NONCE })
+  const again = await sessions.run(direct, 'computer_observe', { app: APP, window: APP })
   check('a read works on the new epoch', !again.isError && !!svc.state().epoch && svc.state().epoch !== epoch0, `${epoch0} → ${svc.state().epoch}`)
 })
 
@@ -440,11 +489,11 @@ check(
 )
 if (!grants.screenRecording) check('screenshots over the bridge', 'inconclusive', 'Screen Recording is off for TempCode; the proof asks for nothing')
 else {
-  const lineOnly = (await none.callTool({ name: 'computer_observe', arguments: { app: 'TextEdit', window: NONCE, screenshot: true } })) as { content: { type: string; text?: string }[] }
+  const lineOnly = (await none.callTool({ name: 'computer_observe', arguments: { app: APP, window: APP, screenshot: true } })) as { content: { type: string; text?: string }[] }
   const shotLine = /screenshot 1 \(observation\): (\S+) /.exec(lineOnly.content[0]?.text ?? '')
   check('images none: a text part naming the file, no image part', !!shotLine && lineOnly.content.every((c) => c.type === 'text'), lineOnly.content.map((c) => c.type).join(', '))
   const parts = await bridge('parts')
-  const withImage = (await parts.callTool({ name: 'computer_observe', arguments: { app: 'TextEdit', window: NONCE, screenshot: true } })) as { content: { type: string; text?: string; data?: string }[] }
+  const withImage = (await parts.callTool({ name: 'computer_observe', arguments: { app: APP, window: APP, screenshot: true } })) as { content: { type: string; text?: string; data?: string }[] }
   const path = /screenshot 1 \(observation\): (\S+) /.exec(withImage.content[0]?.text ?? '')?.[1]
   const image = withImage.content.find((c) => c.type === 'image')
   check('images parts: an image part whose bytes equal the file', !!path && !!image && existsSync(path) && Buffer.from(image.data!, 'base64').equals(readFileSync(path)))
