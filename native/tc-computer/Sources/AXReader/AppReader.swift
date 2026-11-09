@@ -19,9 +19,25 @@ public final class AppReader: AppReading, @unchecked Sendable {
     private let lock = NSLock()
     private var base: Base?
     private var closed = false
-    /// what the last walk counted, for `tc-ax bench`
+    /// what the last walk counted and how long it and the build took, for `tc-ax bench`
     private(set) var lastCounts = WalkCounts()
     private(set) var lastProcess: ManualAccessibility.Process?
+    public private(set) var lastWalkMs = 0.0
+    public private(set) var lastBuildMs = 0.0
+
+    /// The last walk's nodes read, AX calls, attributes asked and stage-C calls.
+    public var lastWalk: (nodes: Int, calls: Int, attributes: Int, stageC: Int) {
+        (lastCounts.nodes, lastCounts.calls, lastCounts.attributes, lastCounts.stageC)
+    }
+
+    /// Whether AXManualAccessibility took for this pid (a Chromium or Electron process); nil before the first read.
+    public var chromium: Bool? {
+        switch lastProcess {
+        case .chromium?: true
+        case .native?: false
+        case nil: nil
+        }
+    }
 
     init(pid: pid_t, allocator: IndexAllocator, manual: ManualAccessibility, lookup: WindowIDLookup = .live) {
         self.pid = pid
@@ -47,14 +63,21 @@ public final class AppReader: AppReading, @unchecked Sendable {
         lastProcess = manual.prepare(pid)
         let build = BuildRequest(mode: request.mode, subtreeOf: request.element, budgetBytes: request.budgetBytes, geometry: request.geometry,
                                  space: request.space, loading: request.loading, noteThin: request.noteThin)
-        var (snapshot, notes, window) = try read(request)
-        var (built, next) = Builder.build(snapshot, build, book: book, base: base)
+        func once() throws -> (Built, Base?, WalkNotes, AXUIElement) {
+            let t0 = Self.ms()
+            let (snapshot, notes, window) = try read(request)
+            let t1 = Self.ms()
+            let (built, next) = Builder.build(snapshot, build, book: book, base: base)
+            lastWalkMs = t1 - t0
+            lastBuildMs = Self.ms() - t1
+            return (built, next, notes, window)
+        }
+        var (built, next, notes, window) = try once()
         // a Chromium tree that comes back thin right after the set is read again
         for at in manual.retries(pid, thin: built.stats.thin) {
             let wait = at - Self.ms()
             if wait > 0 { Thread.sleep(forTimeInterval: wait / 1_000) }
-            (snapshot, notes, window) = try read(request)
-            (built, next) = Builder.build(snapshot, build, book: book, base: base)
+            (built, next, notes, window) = try once()
             if !built.stats.thin { break }
         }
         if request.element == nil, let next { base = next }

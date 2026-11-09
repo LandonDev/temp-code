@@ -94,6 +94,7 @@ public final class IndexBook: @unchecked Sendable {
         var id: NodeID
         var parent: Int
         var node: BaseNode
+        var key: String
     }
 
     /// Spec §4.2 with plan §4.1's rule, in three steps: the same element over the
@@ -107,7 +108,8 @@ public final class IndexBook: @unchecked Sendable {
             var position = 0
             for n in nodes where n.kind == .element {
                 let i = flat.count
-                flat.append(Flat(id: n.id, parent: parent, node: BaseNode(parent: 0, position: position, dom: n.domIdentifier, role: n.facts.line.role, subrole: n.subrole, name: n.facts.rawName ?? "")))
+                let node = BaseNode(parent: 0, position: position, dom: n.domIdentifier, role: n.facts.line.role, subrole: n.subrole, name: n.facts.rawName ?? "")
+                flat.append(Flat(id: n.id, parent: parent, node: node, key: node.key))
                 position += 1
                 walk(n.children, parent: i)
             }
@@ -126,7 +128,7 @@ public final class IndexBook: @unchecked Sendable {
         }
         // the counts, frozen before step 2 gives any number: a key seen twice on either side matches nothing
         var newCounts: [Int: [String: Int]] = [:]
-        for (i, f) in flat.enumerated() where assigned[i] == nil { newCounts[f.parent, default: [:]][f.node.key, default: 0] += 1 }
+        for (i, f) in flat.enumerated() where assigned[i] == nil { newCounts[f.parent, default: [:]][f.key, default: 0] += 1 }
         var baseCounts: [Int: [String: Int]] = [:]
         var baseByKey: [Int: [String: Int]] = [:]
         for (index, b) in structure where !taken.contains(index) {
@@ -137,12 +139,12 @@ public final class IndexBook: @unchecked Sendable {
         if sameWindow, !flat.isEmpty, assigned[0] == nil, let root = structure.first(where: { $0.value.parent == 0 && $0.value.position == 0 })?.key, !taken.contains(root) {
             assigned[0] = root
             taken.insert(root)
-            newCounts[-1]?[flat[0].node.key]? -= 1
+            newCounts[-1]?[flat[0].key]? -= 1
         }
         // 2. parent first: a rebuilt element under its matched parent
         for (i, f) in flat.enumerated() where assigned[i] == nil {
             let p = f.parent >= 0 ? assigned[f.parent]! : 0
-            let key = f.node.key
+            let key = f.key
             if newCounts[f.parent]?[key] == 1, baseCounts[p]?[key] == 1, let candidate = baseByKey[p]?[key], !taken.contains(candidate) {
                 assigned[i] = candidate
                 taken.insert(candidate)

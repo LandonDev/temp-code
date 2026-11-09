@@ -109,7 +109,7 @@ public enum Facts {
             if i > 0, i + 1 < first.count, upper(first[i - 1]), upper(c), first[i + 1].isASCII, first[i + 1].isLowercase { out.append(" ") }
             out.append(c)
         }
-        return out.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        return out.lowercased().trimmed
     }
 
     /// The word for a raw CopyActionNames entry, or nil when it is never listed (observation.ts `actionWord`).
@@ -118,10 +118,10 @@ public enum Facts {
         if let word = T.actionWords[raw] { return word }
         if raw.hasPrefix("Name:") {
             let name = String(raw.dropFirst(5)).split(separator: "\n", omittingEmptySubsequences: false).first.map(String.init) ?? ""
-            return nonEmpty(commasToSpaces(name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()))
+            return nonEmpty(commasToSpaces(name.trimmed.lowercased()))
         }
         if raw.hasPrefix("AX") { return nonEmpty(axWords(raw)) }
-        return nonEmpty(commasToSpaces(raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()))
+        return nonEmpty(commasToSpaces(raw.trimmed.lowercased()))
     }
 
     /// `, ` and `,` → one space: the action list is comma-separated.
@@ -148,13 +148,11 @@ public enum Facts {
     /// The first non-empty of title, description, the title element's value,
     /// the placeholder (only with no value) and the subrole's word.
     static func name(of node: AXNode, valueEmpty: Bool) -> (String, NameSource)? {
-        let candidates: [(String?, NameSource)] = [
-            (node.title, .title), (node.description, .description), (node.titleElementValue, .titleElement),
-            (valueEmpty ? node.placeholder : nil, .placeholder), (node.subrole.flatMap { T.subroleNames[$0] }, .subrole)
-        ]
-        for (s, source) in candidates {
-            if let t = s?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { return (t, source) }
-        }
+        if let t = node.title?.trimmed, !t.isEmpty { return (t, .title) }
+        if let t = node.description?.trimmed, !t.isEmpty { return (t, .description) }
+        if let t = node.titleElementValue?.trimmed, !t.isEmpty { return (t, .titleElement) }
+        if valueEmpty, let t = node.placeholder?.trimmed, !t.isEmpty { return (t, .placeholder) }
+        if let s = node.subrole, let t = T.subroleNames[s] { return (t, .subrole) }
         return nil
     }
 
@@ -194,7 +192,7 @@ public enum Facts {
         let number = { if case .number = node.value { true } else { false } }()
         let quiet = number && (role == "heading" || containerRoles.contains(role))
         // a value repeating the name prints once
-        let repeatsName = rawValue.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } == named?.0
+        let repeatsName = rawValue.map { $0.trimmed } == named?.0
         if let v = rawValue, !v.isEmpty, !toggle, !disclosed, !quiet, !repeatsName, role != "password" {
             // a prefix-read value: AX gives the whole length in UTF-16 units only, so the
             // unread part counts in scalars at the prefix's own ratio (exact for uniform text)
@@ -242,7 +240,7 @@ public enum Facts {
             line: LineFacts(role: role, name: named.map { Cut.name($0.0) }, value: shownValue, states: states, caret: caret, selection: selection, actions: actions),
             rawName: named?.0,
             nameSource: named?.1,
-            rawValue: rawValue.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 },
+            rawValue: rawValue.map { $0.trimmed }.flatMap { $0.isEmpty ? nil : $0 },
             fullValue: fullValue,
             valueTotal: valueTotal,
             valueHash: hash.value,

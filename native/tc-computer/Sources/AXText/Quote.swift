@@ -92,3 +92,13 @@ public struct StableHash: Sendable {
         return h.value
     }
 }
+
+extension String {
+    /// Whitespace and newlines off both ends, without Foundation (its trim is slow on Linux and runs per node).
+    var trimmed: String {
+        guard let first = firstIndex(where: { !$0.isWhitespace }) else { return "" }
+        let last = lastIndex(where: { !$0.isWhitespace })!
+        if first == startIndex, index(after: last) == endIndex { return self }
+        return String(self[first...last])
+    }
+}

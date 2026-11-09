@@ -47,7 +47,7 @@ public enum Builder {
         var layout = Layout.build(kept, indexed, snapshot: s, space: request.space, geometry: request.geometry, wholeValues: subtree)
         let focused = layout.rows.first { $0.kind == .element && $0.facts.states.first == "focused" }?.index
         var header = HeaderFacts(focused: focused, loading: request.loading, change: nil, thin: kept.thin && request.noteThin)
-        let fitted = Budget.fit(&layout, header: header, budget: budget)
+        let fitted = TextBudget.fit(&layout, header: header, budget: budget)
         let full = layout.text(header, footer: fitted.footer)
 
         var briefs: [Int: String] = [:]

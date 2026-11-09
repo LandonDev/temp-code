@@ -67,6 +67,9 @@ public struct Row: Sendable {
 
     /// The facts as this row prints them now: limits and dropped actions applied.
     var shown: LineFacts {
+        // nothing shortened: the facts already print at the default cuts
+        if !noActions, nameLimit == ComputerDefaults.ObservationText.nameMaxChars,
+           valueLimit == ComputerDefaults.ObservationText.valueMaxChars || valueLimit == .max { return facts }
         var f = facts
         if kind == .element {
             if let n = fullName { f.name = Cut.name(n, max: nameLimit) }

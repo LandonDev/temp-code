@@ -115,7 +115,7 @@ public enum Keep {
             default: break
             }
             for s in strings {
-                if let s, s.trimmingCharacters(in: .whitespacesAndNewlines).count > 1 { return true }
+                if let s, s.trimmed.count > 1 { return true }
             }
             stack.append(contentsOf: el.children)
         }
