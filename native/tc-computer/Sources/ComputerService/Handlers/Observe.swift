@@ -158,7 +158,7 @@ extension ComputerService {
             loading: loading, noteThin: knobs.screenshot != .never && screenRecording
         )
         var text = try await read(target, request)
-        if cancel.isSet { return try dropped(target) }
+        if cancel.isSet { return try await dropped(target) }
 
         var shot: Shot?
         var shotError: ComputerError?
@@ -178,7 +178,7 @@ extension ComputerService {
             request.mode = .full
             text = try await read(target, request)
         }
-        if cancel.isSet { return try dropped(target) }
+        if cancel.isSet { return try await dropped(target) }
         // what coordinates mean from now on is the space this observation states, shot or no shot
         book.setSpace(target.session, window: windowID, space)
         if text.kind != .subtree { book.noteThin(target.session, pid: target.pid, thin: text.stats.thin) }
@@ -203,9 +203,10 @@ extension ComputerService {
         try await target.worker.run { state in state.reader?.resetBase() }
     }
 
-    /// A read the model will never see (a cancel after it): the next auto read is full.
-    private func dropped(_ target: Resolved) throws -> Observation {
-        Task { try? await resetBase(target) }
+    /// A read the model will never see (a cancel after it): the next auto read is full. The reset runs
+    /// inside the observation's transaction, so no later read diffs against the dropped one.
+    private func dropped(_ target: Resolved) async throws -> Observation {
+        try? await resetBase(target)
         throw Router.cancelledError
     }
 

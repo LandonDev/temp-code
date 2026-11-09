@@ -309,7 +309,7 @@ private final class LinesBox: @unchecked Sendable {
             for n in 0..<5 {
                 group.addTask {
                     try? await Task.sleep(for: .milliseconds(n * 3))
-                    await gate.run {
+                    try? await gate.run {
                         inside.bump()
                         most.add("\(inside.count)")
                         order.add("start \(n)")
@@ -325,5 +325,24 @@ private final class LinesBox: @unchecked Sendable {
         for at in stride(from: 0, to: all.count, by: 2) {
             #expect(all[at].hasPrefix("start") && all[at + 1] == "end " + all[at].dropFirst("start ".count))
         }
+    }
+    @Test func aCancelledWaiterLeavesTheLineWithoutRunningItsBody() async {
+        let gate = AsyncGate()
+        let hold = CancelFlag()
+        let ran = Counter()
+        let first = Task { try await gate.run { while !hold.isSet { try? await Task.sleep(for: .milliseconds(2)) } } }
+        try? await Task.sleep(for: .milliseconds(20))
+        let second = Task { try await gate.run { ran.bump() } }
+        try? await Task.sleep(for: .milliseconds(20))
+        second.cancel()
+        if case .failure(let error) = await second.result {
+            #expect(error is CancellationError, "it left the line while the first still held the gate")
+        } else {
+            Issue.record("a cancelled waiter ran its body")
+        }
+        hold.set()
+        _ = await first.result
+        _ = try? await gate.run { ran.bump() }
+        #expect(ran.count == 1, "the gate is free again and the cancelled body never ran")
     }
 }
