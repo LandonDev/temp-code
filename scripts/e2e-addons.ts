@@ -515,7 +515,7 @@ try {
     return !m.addons.some((a) => a.id === fakeId) && !b.addons.some((a) => a.id === fakeId) && !(fakeId in m.status) && !(fakeId in b.status)
   }))
   const swept = await until('no TEMP_CODE_ADDON process of fake', 120_000, () => addonProcesses(fakeId).length === 0)
-  check('no process carrying its TEMP_CODE_ADDON is left (the guard swept what the dead host left)', swept, JSON.stringify(addonProcesses(fakeId)))
+  check('no process carrying its TEMP_CODE_ADDON is left', swept, JSON.stringify(addonProcesses(fakeId)))
   if (lost.length) log(logOf(box).includes('[guard] orphan thread=addon:') ? 'the box\'s guard swept the server the dead host left' : 'the server the dead host left exited when its stdin closed; the guard had nothing to sweep')
 
   await down(mac)

@@ -73,15 +73,16 @@ describe('the test seam', () => {
     try {
       expect(await source.read('ad_1')).toMatchObject({ addonId: 'ad_1', fields: { FAKE_TOKEN: 'one' } })
       expect(await source.read('ad_other')).toBeNull()
-      writeFileSync(file, JSON.stringify({ fake: { fields: { FAKE_TOKEN: 'two' } } }))
-      const end = Date.now() + 5_000
+      // Another length as well as another value: two writes inside one clock tick share an mtime.
+      writeFileSync(file, JSON.stringify({ fake: { fields: { FAKE_TOKEN: 'the second value' } } }))
+      const end = Date.now() + 8_000
       while (changes === 0 && Date.now() < end) await new Promise((r) => setTimeout(r, 50))
       expect(changes).toBeGreaterThan(0)
-      expect(await source.read('ad_1')).toMatchObject({ fields: { FAKE_TOKEN: 'two' } })
+      expect(await source.read('ad_1')).toMatchObject({ fields: { FAKE_TOKEN: 'the second value' } })
     } finally {
       source.close?.()
     }
-  })
+  }, 15_000)
 })
 
 describe('the vault source', () => {
