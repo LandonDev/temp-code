@@ -88,7 +88,9 @@ sessions and answer questions and plan prompts. It cannot approve a
 **permission request** (a tool the agent wants to run under a `safe` or `edits`
 policy): `respond` says so, names the thread and the tool, and the right move is
 to tell the user to answer it in temp-code. It also cannot start a session with
-`permission: auto`, read files or run git itself, or manage keys.
+`permission: auto`, read files or run git itself, or manage keys. Nor can it
+allow an add-on card or a computer card, so a thread it starts on the Mac
+asks the person for every act.
 
 ## Webhook
 
