@@ -294,17 +294,26 @@ export async function startRig(opts: { root: string; work: string; gate: Session
   })
 
   const profileOf = (lane: string): string => join(opts.work, `chrome-${lane}`)
+  // One launch of an app at a time until its new pid is found: two lanes opening at once could each take the other's.
+  const finding = new Map<TaskApp, Promise<unknown>>()
+  const newPid = (lane: string, app: TaskApp, target: string): Promise<number> => {
+    const run = (finding.get(app) ?? Promise.resolve()).then(async () => {
+      const name = PROCESS[app]
+      const before = pidsOf(name)
+      execFileSync('open', scratchArgs(app, target, profileOf(lane)))
+      for (let i = 0; i < 60; i++) {
+        await sleep(250)
+        const pid = [...pidsOf(name)].find((p) => !before.has(p))
+        if (pid) return pid
+      }
+      throw new Error(`open gave no new ${name} pid`)
+    })
+    finding.set(app, run.catch(() => undefined))
+    return run
+  }
   const launch = async (lane: string, app: TaskApp, target: string): Promise<{ pid: number; front: 'kept' | 'bounced' | 'took' }> => {
-    const name = PROCESS[app]
-    const before = pidsOf(name)
     const personFront = mac.frontmost()
-    execFileSync('open', scratchArgs(app, target, profileOf(lane)))
-    let pid: number | undefined
-    for (let i = 0; i < 60 && !pid; i++) {
-      await sleep(250)
-      pid = [...pidsOf(name)].find((p) => !before.has(p))
-    }
-    if (!pid) throw new Error(`open gave no new ${name} pid`)
+    const pid = await newPid(lane, app, target)
     pins.pin(lane, app, pid)
     await sleep(app === 'TextEdit' ? 1_000 : 3_000)
     return { pid, front: await keepFront(asProbe(mac), pid, personFront) }

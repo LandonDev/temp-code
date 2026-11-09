@@ -58,9 +58,8 @@ export function parseBenchArgs(argv: readonly string[]): BenchArgs {
     else throw new Error(`unknown argument ${a}\n${BENCH_USAGE}`)
   }
   if (modes.size > 1) throw new Error(`--gate, --report-only and --reference go alone (got ${[...modes].join(', ')})`)
-  const judged = out.mode === 'gate' || out.mode === 'report-only'
-  if (judged && out.runs !== null) throw new Error(`--runs is for a hand run; ${out.mode === 'gate' ? '--gate' : '--report-only'} runs each task once and reruns a breach`)
-  if (judged && out.session) throw new Error('--session never runs in the gate: the session tier takes the person’s Mac')
+  if (out.mode === 'gate' && out.runs !== null) throw new Error('--runs is for a hand run; --gate runs each task once and reruns a breach')
+  if ((out.mode === 'gate' || out.mode === 'report-only') && out.session) throw new Error('--session never runs in the gate: the session tier takes the person’s Mac')
   if (out.mode === 'reference' && out.rebaseline) throw new Error('--reference never writes the baseline')
   if (out.mode === 'report-only' && out.rebaseline) throw new Error('--report-only never writes the baseline')
   return out

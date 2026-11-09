@@ -110,8 +110,8 @@ if (process.platform !== 'darwin') {
 
 const STARTED = Date.now()
 const judged = args.mode === 'gate' || args.mode === 'report-only'
-/** The script's own deadline holds only for the gate's runs; a hand run takes as long as it takes. */
-const DEADLINE = judged ? STARTED + BENCH_TIMING.budgetMs : Infinity
+/** The script's own deadline holds for the gate's plan alone (one run a task, reruns on a breach); `--runs n` takes as long as it takes. */
+const DEADLINE = judged && args.runs === null ? STARTED + BENCH_TIMING.budgetMs : Infinity
 const STAMP = runStamp(STARTED)
 const WORK = join('/tmp/tc-computer-bench', STAMP)
 const KEEP = new Set(['report.json', 'report.md'])
@@ -158,13 +158,18 @@ function writeReports(): string {
 /** What a run must put back before the bench goes: a switch, a dev instance. */
 const pending = new Set<() => Promise<void>>()
 const devGroups = new Set<number>()
+/** Threads whose computer work must stop before anything is put back. */
+const liveThreads = new Set<string>()
 let rig: Rig | null = null
 let cleaned = false
+/** Inside the 5 s the gate's kill gives between SIGTERM and SIGKILL: the dev groups first, then the threads' computer work, then what runs changed. */
 async function cleanup(): Promise<void> {
   if (cleaned) return
   cleaned = true
-  await Promise.all([...pending].map((undo) => Promise.race([undo().catch(() => undefined), sleep(5_000)])))
   for (const pgid of devGroups) killGroup(pgid, 'SIGKILL')
+  const within = (ms: number, work: Promise<unknown>): Promise<unknown> => Promise.race([work.catch(() => undefined), sleep(ms)])
+  await within(1_500, Promise.all([...liveThreads].map((id) => rig?.sessions.stop(id))))
+  await within(2_000, Promise.all([...pending].map((undo) => undo())))
   await rig?.close().catch(() => undefined)
   for (const name of existsSync(WORK) ? readdirSync(WORK) : []) if (!KEEP.has(name)) rmSync(join(WORK, name), { recursive: true, force: true })
 }
@@ -412,7 +417,8 @@ function nextSettle(id: string, afterSeq: number, timeoutMs: number): Promise<Se
       if (isSettle(row.event)) done('settled')
       else if (row.event.type === 'question-request') done('question')
     })
-    if (registry.eventsAfter(id, afterSeq).some((r) => isSettle(r.event))) done('settled')
+    const earlier = registry.eventsAfter(id, afterSeq).find((r) => isSettle(r.event) || r.event.type === 'question-request')
+    if (earlier) done(earlier.event.type === 'question-request' ? 'question' : 'settled')
   })
 }
 
@@ -506,9 +512,12 @@ async function oneRun(lane: Lane, task: ComputerTask, attempt: number): Promise<
       if (e instanceof FailRun) return { ...run, outcome: 'failed', reason: e.message, front: { ...run.front, benchInFront: e.message === 'took the front' } }
       return { ...run, outcome: 'failed', reason: `${start ? 'run' : 'setup'}: ${(e as Error).message}` }
     } finally {
+      // No computer call may still be running when the run puts things back: a stopped turn's last act could land after.
+      if (thread) await R.sessions.stop(thread).catch(() => undefined)
       await undo().catch((e: Error) => log(`teardown ${task.id}: ${e.message}`))
       pending.delete(undo)
       if (thread) {
+        liveThreads.delete(thread)
         R.pins.unbind(thread)
         await registry.setArchived(thread, true).catch(() => undefined)
       }
@@ -524,6 +533,7 @@ async function drive(lane: Lane, task: ComputerTask, start: TaskStart, run: Benc
   const t0 = Date.now()
   const id = (await registry.create({ provider: lane.model.provider as never, model: lane.model.model, reasoning: lane.model.effort, permission: 'auto', cwd: join(WORK, 'cwd'), threadType: 'chat' })).id
   made(id)
+  liveThreads.add(id)
   R.pins.bind(id, lane.name)
   // Every card is answered Allow at once; its kind and title are in the rows.
   const offCards = registry.subscribe(id, (row: EventRow) => {
@@ -531,9 +541,14 @@ async function drive(lane: Lane, task: ComputerTask, start: TaskStart, run: Benc
   })
   try {
     let after = lastSeq(id)
+    const sent = Date.now()
     await registry.send(id, promptOf(task.prompt(start)))
     const began = await firstRunning(id, after)
-    if (began === null) return { ...run, reason: `queued past 5 minutes: ${registry.get(id)?.statusDetail ?? 'the scheduler held it'}` }
+    if (began === null) {
+      const waited = Date.now() - sent
+      lane.queuedMs += waited
+      return { ...run, queuedMs: waited, reason: `queued past 5 minutes: ${registry.get(id)?.statusDetail ?? 'the scheduler held it'}` }
+    }
     const from = began.from
     run.queuedMs = began.queuedMs
     lane.queuedMs += began.queuedMs

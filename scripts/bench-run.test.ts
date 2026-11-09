@@ -23,6 +23,8 @@ describe('parseBenchArgs', () => {
 
   it('refuses what the gate never does, and nonsense', () => {
     expect(() => parseBenchArgs(['--gate', '--runs', '3'])).toThrow(/--runs is for a hand run/)
+    // the plan's full hand table: every run, judged, nothing failed or written
+    expect(parseBenchArgs(['--runs', '3', '--report-only'])).toMatchObject({ mode: 'report-only', runs: 3 })
     expect(() => parseBenchArgs(['--gate', '--session'])).toThrow(/never runs in the gate/)
     expect(() => parseBenchArgs(['--report-only', '--session'])).toThrow(/never runs in the gate/)
     expect(() => parseBenchArgs(['--gate', '--report-only'])).toThrow(/go alone/)
