@@ -1,5 +1,7 @@
+import { EventEmitter } from 'node:events'
 import { describe, expect, it } from 'vitest'
 import {
+  stopOnSignals,
   argvFromPs,
   carriesNonce,
   disabledSkillPaths,
@@ -205,4 +207,27 @@ it('exempts only the exact Chromium dictionary host from its network service', a
   ])
     expect(isHousekeepingConnect(`${host}:443`, chromium)).toBe(false)
   expect(isHousekeepingConnect('redirector.gvt1.com:80', chromium)).toBe(false)
+})
+
+describe('the rig under two stop signals', () => {
+  it("keeps handling the wrapper's forwarded SIGTERM after the group's, and exits once its one cleanup settles", async () => {
+    const events = new EventEmitter()
+    let release!: () => void
+    const cleaning = new Promise<void>((r) => (release = r))
+    let cleanups = 0
+    let cleaned: Promise<void> | undefined
+    const cleanup = (): Promise<void> => (cleaned ??= (cleanups++, cleaning))
+    const exits: number[] = []
+    stopOnSignals(events, cleanup, (code) => exits.push(code))
+    events.emit('SIGTERM')
+    // The forwarded one arrives mid-cleanup: still handled, so no default termination.
+    expect(events.listenerCount('SIGTERM')).toBe(1)
+    events.emit('SIGTERM')
+    expect(cleanups).toBe(1)
+    expect(exits).toEqual([])
+    release()
+    await cleaning
+    await Promise.resolve()
+    expect(exits[0]).toBe(130)
+  })
 })

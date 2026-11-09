@@ -52,7 +52,8 @@ import {
   museHomeGap,
   PROBE_SKILL,
   HOME_SKILL,
-  skillListing
+  skillListing,
+  stopOnSignals
 } from './skillsDriversProof'
 
 interface ProcessRow {
@@ -380,11 +381,7 @@ export async function runSkillsDriversGate(repo: string): Promise<number> {
       close(router)
       close(proxy)
     })())
-  const onSignal = (): void => {
-    void cleanup().then(() => process.exit(130))
-  }
-  process.once('SIGINT', onSignal)
-  process.once('SIGTERM', onSignal)
+  stopOnSignals(process, cleanup, (code) => process.exit(code))
   // A synchronous last resort covers an unexpected process exit as well.
   const onExit = (): void => {
     for (const p of instanceProcesses(data)) {

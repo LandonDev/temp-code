@@ -151,3 +151,20 @@ export function isHousekeepingConnect(authority: string, argv: readonly string[]
     argv.includes('--utility-sub-type=network.mojom.NetworkService')
   )
 }
+
+/**
+ * The rig's stop signals stay handled until its cleanup is done: in a gate
+ * step the runtime child shares the step's process group, so a group SIGTERM
+ * and the Bun wrapper's forwarded one both arrive, and a one-shot handler
+ * would leave the second to kill the rig mid-cleanup with its instances
+ * still running. `cleanup` must be idempotent; `exit` runs once it settles.
+ */
+export function stopOnSignals(
+  events: Pick<NodeJS.EventEmitter, 'on'>,
+  cleanup: () => Promise<void>,
+  exit: (code: number) => void
+): void {
+  const onSignal = (): void => void cleanup().then(() => exit(130))
+  events.on('SIGINT', onSignal)
+  events.on('SIGTERM', onSignal)
+}
