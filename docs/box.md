@@ -4479,6 +4479,70 @@ unreachable, a token naming this host), crossHostAgents.test.ts and
 crossHostThreads.test.ts (`thread.read`), threadMentions.test.ts,
 mentionAttachments.test.ts and agents.test.ts.
 
+### Add-on grants: signed in on the Mac, refreshed on the box
+
+An add-on that needs a secret gets it once, and every host holds the copy.
+The grant is an aliax-core profile of the `addon` service, one per add-on,
+named by the add-on's id, beside the Claude and Codex accounts in the vault
+but listed on no account page (`src/main/server/addons/addonGrants.ts`; the
+core side is aliax-core's `src/adapters/addon.ts`, `refreshAddon` and
+`saveAddonGrant`).
+
+Typed values (an API key, any value the add-on's `env` or `headers` name) are
+a static grant with no owner. They are saved on one host, the box for a shared
+scope, after one `initialize` to the add-on's address with those headers: a
+401 or 403 there refuses them and nothing is saved. The box's save reaches the
+Mac by the account push, since the Mac has the add-on's row; a write on the
+Mac is sent to the box and refused while the box is offline ("refused: grants
+of fakekey live on box; it is offline").
+
+An OAuth grant is signed in on the Mac, where the browser is, and refreshed on
+the box. The Mac runs the MCP sign-in: the server's 401 names its metadata,
+the sign-in server must offer PKCE S256, the app registers itself on a fixed
+loopback port (`http://127.0.0.1:<port>/callback`) and keeps that client and
+port for every later sign-in, and asks for `offline_access` when the server
+offers it, since the box needs a refresh token. The grant then moves to the
+box through the same two-phase handoff a Claude sign-in uses: the box holds it
+provisionally, the Mac strips its refresh token on the echoed fingerprint, and
+`accounts.released` makes the box the owner. The box refreshes ahead of the
+token's end (five minutes, or a quarter of its life for a short token) and
+pushes each new token to the Mac, which asks the box itself only when a push
+is late. A 401 from the add-on's server refreshes at once: on the box
+directly, on the Mac by asking the box's `addons.grant.refresh` and pulling
+the result. A box out of reach at a sign-in leaves the grant with the Mac,
+which refreshes it until the box is back and takes it.
+
+A grant leaves with its add-on. The host that holds the scope removes it with
+a tombstone and every other host removes its own copy; a cleared grant leaves
+both vaults within seconds.
+
+The box has no browser: its own sign-in answers "Sign in on the Mac: this
+host has no browser", and a remote key may not ask for one (`addons.grant.
+signIn` is local). The settings page reads `addons.grant.list` and the
+`addon-grants` push, which never carry a value.
+
+Proof: `bun run script:e2e-addon-grants`, after one `electron-vite build`. Two
+headless instances paired on the box, "mac" (darwin by the seam, its browser
+the redirect follower `TEMP_CODE_OAUTH_BROWSER=follow`) and "box", each with
+its own vault, and scripts/lib/fakeOAuthServer.ts on loopback with 20 s tokens.
+On 2026-11-08: 51 checks passed in 133 s. Sign-in 1.7 s, the grant on the box
+1.0 s after it; the box's first refresh 15 s in; each later rotation reached
+the Mac in 0.75 to 1.0 s, and the Mac's calls never failed meanwhile; a 401 on
+either host recovered within a second of the refresh; the box offline and back
+24 s. The first run found two faults the unit tests had not: a keeper timer
+that woke a moment early skipped its refresh and waited a minute, and a grant
+claimed after a handoff kept the copy's timing. Both are fixed and tested.
+
+The real thing, on the Mac on 2026-11-08: an isolated windowed instance (its
+own userData and vault, no remote port, no pairing) added Mobbin
+(`https://api.mobbin.com/mcp`, auth oauth) and signed in through the browser.
+Mobbin's 401 named its resource metadata, Supabase's metadata offered S256,
+registration and `offline_access`, the app registered a client for port 58702,
+the consent page needed one click, and the tab read "Signed in to mobbin. You
+can close this tab." Mobbin read `ready` with 8 tools and the grant held a
+refresh token. A second sign-in registered nothing and reused the client on
+port 58702. The instance log's trace lines name hosts and statuses only.
+
 ### One project across hosts: the card and the strip list the same threads
 
 A linked project's card in the workspace column and its strip in the title
