@@ -1,5 +1,6 @@
 import ApplicationServices
 import Capture
+import Input
 import CoreGraphics
 import ComputerCore
 import ComputerProtocol
@@ -8,12 +9,14 @@ import struct ComputerProtocol.WindowRef
 import Foundation
 
 extension Modules {
-    /// The binary's modules. Capture is live; until the AX reader and Input builds land, every call
-    /// into them answers that it is not built.
+    /// The binary's modules. Capture and Input are live; until the AX reader's build lands, every call
+    /// into it answers that it is not built.
     public static func live() -> Modules {
         Modules(
             readers: { NotBuilt() },
-            input: { _ in NotBuilt() },
+            input: { wiring in
+                InputEngine(clipboardLock: wiring.clipboardLock, sessionLock: wiring.sessionLock, onPersonInput: wiring.onPersonInput, onHeld: wiring.onHeld)
+            },
             capture: { log in LiveCapture(log: log) },
             windows: NotBuilt(),
             prepare: { CaptureRuntime.prepare() }
@@ -80,9 +83,9 @@ final class LiveCapture: CaptureSource, @unchecked Sendable {
 }
 
 /// Stands in for a module that has not landed.
-final class NotBuilt: ReaderPool, WindowSource, InputPerforming, @unchecked Sendable {
+final class NotBuilt: ReaderPool, WindowSource, @unchecked Sendable {
     private var failure: ComputerError {
-        ComputerError(kind: .captureFailed, message: "This build of tc-computer has no AX reader or Input module yet.")
+        ComputerError(kind: .captureFailed, message: "This build of tc-computer has no AX reader module yet.")
     }
 
     func reader(session: String, pid: pid_t) throws -> any AppReading { throw failure }
@@ -90,9 +93,4 @@ final class NotBuilt: ReaderPool, WindowSource, InputPerforming, @unchecked Send
     func resolve(pid: pid_t, ref: WindowRef?) throws -> (element: AXUIElement, info: WindowInfo) { throw failure }
     func list(pid: pid_t) throws -> [WindowInfo] { throw failure }
     func windowID(of element: AXUIElement, pid: pid_t) -> UInt32? { nil }
-    func perform(_ action: ComputerAction, on target: InputTarget, tiers: [Tier]) throws -> InputOutcome { throw failure }
-    func probe(_ target: InputTarget, classes: [ActionClass]) throws -> ProbeReport { throw failure }
-    func restoreSession() throws -> SessionRestore { throw failure }
-    func releaseHeld(pid: pid_t) {}
-    func releaseStale(_ record: HeldRecord) {}
 }

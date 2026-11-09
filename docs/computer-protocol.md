@@ -10,7 +10,7 @@ TempCode's own computer use: a Swift service on the Mac, `tc-computer`, reads ac
 6. the tools the models see, with Anthropic's native computer-use verbs and parameter names, element refs beside coordinates, and how a screenshot reaches each harness;
 7. recorded fixtures from real apps, scratch content only.
 
-**In code today**: the contract (the zod in `src/shared/computer/`: `protocol.ts` the wire, `observation.ts` the grammar, `tools.ts` the model-facing shapes; the Swift Codable types generated from it; the fixtures and the tests in both languages that parse them) and the service shell (§15: the stdio server, the smart wait, the locks, TCC, the lifecycle, the `tc-computer` binary and its build). Capture is in (§6); the AX reader and Input modules land from their own builds; there are no host tools and no UI yet. Where this document and the zod differ, the zod is right and this document is stale.
+**In code today**: the contract (the zod in `src/shared/computer/`: `protocol.ts` the wire, `observation.ts` the grammar, `tools.ts` the model-facing shapes; the Swift Codable types generated from it; the fixtures and the tests in both languages that parse them) and the service shell (§15: the stdio server, the smart wait, the locks, TCC, the lifecycle, the `tc-computer` binary and its build). Capture (§6) and Input (§14) are in; the AX reader module lands from its own build; there are no host tools and no UI yet. Where this document and the zod differ, the zod is right and this document is stale.
 
 ## 0. Layers, files and who builds what
 
