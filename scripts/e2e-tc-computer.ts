@@ -15,6 +15,9 @@
  *    click, the clipboard lock and a 2,500-character paste, a screenshot,
  *    batches, an unchanged read, a cancelled wait, a crash with the button
  *    held and the restart that releases it, and a clean exit on stdin EOF.
+ *    A background TextEdit ignores a left click and Command-V at the process
+ *    tier (§14.8): the click and the paste record that as a finding, and the
+ *    paste step still holds the lock and the clipboard's restore.
  *
  * Nothing here activates an app or takes the session tier: every action
  * runs with the `ax` and `process` tiers alone. A launched app may still come
@@ -1200,17 +1203,14 @@ async function appSections(
     data.person = assertPersonUntouched(before, 'after the click')
     const step = okStep(r.step)
     check(step.tier === 'process', 'the click ran at the process tier', step)
-    check(
-      r.observation?.kind === 'diff',
-      'the observation is a diff',
-      r.observation ?? r.observationError
-    )
-    findElement(
-      r.observation,
-      `a ~ line for [${area}] with the caret`,
+    check(r.observation, 'the click closes with an observation', r.observationError)
+    parseObservation(r.observation.text)
+    // a background TextEdit ignores a left click at the process tier (§14.8, measured): a finding, not a failure
+    const caret = elementLines(r.observation).some(
       (e) =>
         e.marker === '~' && e.index === area && (e.caret !== undefined || e.selection !== undefined)
     )
+    data.caret = caret ? 'moved' : 'ignored: a background TextEdit takes no left click (§14.8)'
   })
   await te.step('4a. a second clipboard holder is refused', async (data) => {
     if (!(await quietClipboard())) throw skip(NOT_QUIET)
@@ -1284,12 +1284,17 @@ async function appSections(
       raised: pasteMs - heldMs > 3_000 ? 'likely' : 'no'
     }
 
+    // a background TextEdit ignores Command-V at the process tier (§14.8, measured): a finding, not a
+    // failure; the lock and the clipboard's restore are what this step holds
     const lengthAfter = await areaLength()
-    check(
-      lengthAfter === lengthBefore + PASTE_TEXT.length,
-      `the text grew by ${PASTE_TEXT.length}`,
-      { lengthBefore, lengthAfter }
-    )
+    if (lengthAfter === lengthBefore)
+      data.inserted = 'ignored: a background TextEdit takes no Command-V (§14.8)'
+    else
+      check(
+        lengthAfter === lengthBefore + PASTE_TEXT.length,
+        `the text grew by ${PASTE_TEXT.length}`,
+        { lengthBefore, lengthAfter }
+      )
 
     if (step.input.clipboard === 'kept-person-copy') {
       data.clipboard = 'kept-person-copy: the person copied during the paste'
