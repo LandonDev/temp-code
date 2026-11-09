@@ -5,6 +5,7 @@ import { MAC_RUN_BACKGROUND, type MacPeerMethod } from './contract-macjobs'
 import type { CrossHostCallParams } from './contract-crosshost'
 import type { HostDevicesCallParams } from './contract-hostdevices'
 import { MacPresenceSchema, type RelayCallParams } from './contract-relay'
+import { ordinal } from './statusWords'
 
 // The Mac bridge (docs/box.md "The Mac bridge: what a box thread may touch
 // on the Mac"). Threads run on the box; the user's files and macOS-only
@@ -376,13 +377,7 @@ export interface MacBridgeHeld {
   maxComputer?: number
 }
 
-/** 1 → 1st, 2 → 2nd, 3 → 3rd, 11 → 11th, 22 → 22nd. */
-export function ordinal(n: number): string {
-  const tens = n % 100
-  if (tens >= 11 && tens <= 13) return `${n}th`
-  const one = n % 10
-  return `${n}${one === 1 ? 'st' : one === 2 ? 'nd' : one === 3 ? 'rd' : 'th'}`
-}
+export { ordinal }
 
 /** What a held row says, on the Mac and in the log: "Waiting for the Mac,
  *  load 12.3 of 8, 3rd in line" (statusWords.ts: a comma before each

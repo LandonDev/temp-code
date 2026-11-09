@@ -31,6 +31,7 @@ import { migrateLocalStorage } from './originMigration'
 import { isHeadless, noDisplay, publishLocalPort, quitsOnAllClosed, unpublishLocalPort } from './headless'
 import { MacPresenceWatcher, presenceFromEnv } from './presence'
 import { AttentionWatcher } from './attention'
+import { PersonIdle } from './personIdle'
 import { htmlPreviewer } from './htmlPreview'
 import { setHtmlPreviewer, setHtmlRenderRoot } from './server/htmlRender'
 import { killAllPtys, listPtys, ptyFlowCounters, registerPty } from './pty'
@@ -172,8 +173,11 @@ app.whenReady().then(async () => {
     presence.attach(powerMonitor)
     if (!fromEnv.screen) void presence.readInitialLock()
   }
+  // The person's idle time with computer use's own session-tier input taken out (personIdle.ts): the
+  // scheduler and attention both read it, so a step the app posts never reads as the person coming back.
+  const personIdle = headless ? null : new PersonIdle(powerMonitor)
   // Whether the person is at this machine (attention.ts): the renderer names its focused thread only then.
-  const attention = new AttentionWatcher(presence, headless ? { getSystemIdleTime: () => 0 } : powerMonitor)
+  const attention = new AttentionWatcher(presence, personIdle ?? { getSystemIdleTime: () => 0 })
   ipcMain.handle('app:attention', () => attention.isPresent())
   if (!headless) {
     attention.onChange((present) => {
@@ -202,7 +206,8 @@ app.whenReady().then(async () => {
     preconnect: (provider, account) => void preconnectAccount(provider, account, { upstream: upstream() }),
     // A release this app published, or the box's word that one landed, is fetched at once (update.ts).
     selfUpdate: headless ? undefined : (version) => selfUpdate(version),
-    presence
+    presence,
+    personIdle: personIdle ?? undefined
   })
   if (!headless) {
     registerUpdates()

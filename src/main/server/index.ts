@@ -117,6 +117,7 @@ import { fenceRequest } from './remote/fence'
 import { createMcpHandler } from './remote/mcp'
 import { Notifier } from './remote/notifier'
 import { MacPresenceWatcher, type PresenceSource } from '../presence'
+import type { PersonIdleSource } from '../personIdle'
 import { HostRelay, PeerRelayTransport } from './remote/relay'
 import { RelayServer, relayOffers } from './remote/relayServe'
 import type { PowerState, ScreenState } from '@shared/contract-relay'
@@ -432,6 +433,8 @@ export async function startServer(
     presence?: PresenceSource & { set?: (patch: Partial<Pick<MacPresence, 'screen' | 'power'>>) => MacPresence }
     /** Proof seam (scripts/compare-computer-words.ts): pin a computer call's app query to a scratch pid; the app never sets it. */
     computerResolveApp?: (query: string) => AppRef | null
+    /** The person's idle time without computer use's own session input (src/main/personIdle.ts); absent (headless) leaves the session tier refused. */
+    personIdle?: PersonIdleSource
   } = {}
 ): Promise<RunningServer> {
   bootMark('server-start')

@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import { heldLine, ordinal as bridgeOrdinal } from './contract-macbridge'
 import {
   COMPUTER_TIER_WORDS,
+  CLIPBOARD_WAIT_WORDS,
   detailText,
   leadDetail,
   legacyActivity,
   legacyDetail,
+  macFreeWords,
+  ordinal,
   plainStatus,
   providerWaitWords,
   retryWords,
@@ -97,5 +101,33 @@ describe('statusWords', () => {
   it('says a computer tier in a person\'s words, never its name', () => {
     expect(COMPUTER_TIER_WORDS).toEqual({ ax: 'in the background', process: 'to the app', session: 'on the screen' })
     for (const words of Object.values(COMPUTER_TIER_WORDS)) expect(words).not.toMatch(/\b(ax|process|session)\b/i)
+  })
+
+  it('writes a place in line as an ordinal, still re-exported for the Mac bridge', () => {
+    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101, 111].map(ordinal)).toEqual([
+      '1st',
+      '2nd',
+      '3rd',
+      '4th',
+      '11th',
+      '12th',
+      '13th',
+      '21st',
+      '22nd',
+      '23rd',
+      '101st',
+      '111th'
+    ])
+    expect(bridgeOrdinal).toBe(ordinal)
+    const held = { reason: 'cap' as const, position: 3, running: 4, maxRunning: 4, load: 1, limit: 8, cores: 4 }
+    expect(heldLine(held)).toBe('Waiting for the Mac, 4 of 4 running, 3rd in line')
+  })
+
+  it('says a computer step waits for the Mac or the clipboard', () => {
+    expect(macFreeWords()).toBe('Waiting for the Mac to be free')
+    expect(macFreeWords(1)).toBe('Waiting for the Mac to be free')
+    expect(macFreeWords(2)).toBe('Waiting for the Mac to be free, 2nd in line')
+    expect(macFreeWords(3)).toBe('Waiting for the Mac to be free, 3rd in line')
+    expect(CLIPBOARD_WAIT_WORDS).toBe('Waiting for the clipboard')
   })
 })

@@ -122,3 +122,21 @@ export const COMPUTER_TIER_WORDS: Readonly<Record<'ax' | 'process' | 'session', 
   process: 'to the app',
   session: 'on the screen'
 }
+
+/** 1 → 1st, 2 → 2nd, 3 → 3rd, 11 → 11th, 22 → 22nd. */
+export function ordinal(n: number): string {
+  const tens = n % 100
+  if (tens >= 11 && tens <= 13) return `${n}th`
+  const one = n % 10
+  return `${n}${one === 1 ? 'st' : one === 2 ? 'nd' : one === 3 ? 'rd' : 'th'}`
+}
+
+/** A computer step held for the session tier (computer/schedule.ts): "Waiting
+ *  for the Mac to be free", or "…, 2nd in line" behind another thread's
+ *  session call. */
+export function macFreeWords(place?: number): string {
+  return place && place > 1 ? `Waiting for the Mac to be free, ${ordinal(place)} in line` : 'Waiting for the Mac to be free'
+}
+
+/** A paste held until the person's last copy is a few seconds old. */
+export const CLIPBOARD_WAIT_WORDS = 'Waiting for the clipboard'
