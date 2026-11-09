@@ -148,7 +148,7 @@ import { probeCatalogs } from './drivers/catalogProbe'
 import { codexTiersReady, probeCodexTiers, startCodexTiers } from './drivers/codexTiers'
 import { forgetClaudeTiers, startClaudeTiers } from './drivers/claudeTiers'
 import { forgetCodexVersion, installedCodexVersion } from './drivers/codexVersion'
-import { backfillMirrors, cappedThreadDigest } from './mirror'
+import { backfillMirrors, cappedThreadDigest, stopMirrors } from './mirror'
 import { bootMark } from './boot'
 import { setLimitMissLog } from './limitText'
 import { setCodexBootFailureLog } from './drivers/codex'
@@ -3567,6 +3567,7 @@ export async function startServer(
     projectPlans,
     macBridge,
     close: async () => {
+      await stopMirrors(registry)
       masterRelease.stop()
       notifier.stop()
       activityFeed.stop()

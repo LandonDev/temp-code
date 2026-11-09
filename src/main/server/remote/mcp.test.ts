@@ -14,6 +14,12 @@ import { MCP_MAX_BODY, MCP_RATE_PER_MINUTE, describeTools } from './mcp'
  * batches, the SSE answer, GET/DELETE, the body cap and the rate limit.
  * The harness never spawns: registry.send is a fake that lands the row.
  */
+// Session creation eagerly boots a driver even when send is replaced below.
+vi.mock('../drivers', () => {
+  const start = async () => ({ send: async () => {}, interrupt: () => {}, dispose: async () => {} })
+  return { BUILT_IN_DRIVERS: { claude: { id: 'claude', start } } }
+})
+
 let root: string
 let server: RunningServer
 let base: string

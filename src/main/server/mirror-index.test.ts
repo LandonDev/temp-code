@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDb, Store } from './db'
-import { cancelMirrors, DIGEST_TAIL_PAGE, mirrorName, mirrorSession, scheduleMirror, renderMirror, renderMirrorOffLoop, threadDigestTail, writeThreadsIndex } from './mirror'
+import { backfillMirrors, cancelMirrors, DIGEST_TAIL_PAGE, mirrorName, mirrorSession, removeMirror, scheduleMirror, stopMirrors, renderMirror, renderMirrorOffLoop, threadDigestTail, writeThreadsIndex } from './mirror'
 import type { AgentEvent, SessionMeta } from '@shared/events'
 
 vi.mock('node:fs', async (original) => {
@@ -223,6 +223,127 @@ it('the index waits for a queued render when a previous window is still renderin
   await vi.advanceTimersByTimeAsync(0)
   expect(indexes()).toHaveLength(2)
   expect(readFileSync(join(dir, '.temp-code', 'threads', 'INDEX.md'), 'utf8')).toContain('Latest title')
+})
+
+describe('stopMirrors', () => {
+  function registry() {
+    return {
+      get: vi.fn(() => ({ ...thread, cwd: dir })),
+      getProject: vi.fn(() => ({ cwd: dir })),
+      readLogRows: vi.fn(async () => [])
+    }
+  }
+
+  it('cancels scheduled session and index writes before they touch a closed registry', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const reg = registry()
+    scheduleMirror(reg as never, 'm')
+    expect(vi.getTimerCount()).toBe(2)
+    await stopMirrors(reg as never)
+    expect(vi.getTimerCount()).toBe(0)
+    reg.get.mockImplementation(() => { throw new Error('registry closed') })
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(reg.readLogRows).not.toHaveBeenCalled()
+    expect(renameSync).not.toHaveBeenCalled()
+  })
+
+  it('ignores later schedules, direct writes, and backfills for a stopped registry', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const reg = registry()
+    await stopMirrors(reg as never)
+    reg.get.mockImplementation(() => { throw new Error('registry closed') })
+    scheduleMirror(reg as never, 'm')
+    await mirrorSession(reg as never, 'm')
+    removeMirror(reg as never, thread)
+    await backfillMirrors(reg as never)
+    await stopMirrors(reg as never)
+    expect(vi.getTimerCount()).toBe(0)
+    expect(reg.get).not.toHaveBeenCalled()
+    expect(reg.getProject).not.toHaveBeenCalled()
+    expect(reg.readLogRows).not.toHaveBeenCalled()
+    expect(renameSync).not.toHaveBeenCalled()
+  })
+
+  it('leaves other registries running and lets a new registry schedule the same session', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const stopped = registry()
+    const running = registry()
+    scheduleMirror(stopped as never, 'm')
+    scheduleMirror(running as never, 'm')
+    await stopMirrors(stopped as never)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(stopped.readLogRows).not.toHaveBeenCalled()
+    expect(running.readLogRows).toHaveBeenCalledOnce()
+    const fresh = registry()
+    scheduleMirror(fresh as never, 'm')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(fresh.readLogRows).toHaveBeenCalledOnce()
+    await stopMirrors(running as never)
+    await stopMirrors(fresh as never)
+  })
+
+  it('awaits an in-flight render and index write and drops its queued rerender', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    let release!: () => void
+    const held = new Promise<void>((resolve) => { release = resolve })
+    const reg = registry()
+    reg.readLogRows.mockImplementation(async () => { await held; return [] })
+    scheduleMirror(reg as never, 'm')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(reg.readLogRows).toHaveBeenCalledOnce()
+    void mirrorSession(reg as never, 'm') // queued behind the held render
+    let stopped = false
+    const stop = stopMirrors(reg as never).then(() => { stopped = true })
+    try {
+      await Promise.resolve()
+      expect(stopped).toBe(false)
+      expect(renameSync).not.toHaveBeenCalled()
+    } finally {
+      release()
+      await stop
+    }
+    expect(reg.readLogRows).toHaveBeenCalledOnce()
+    const writes = vi.mocked(renameSync).mock.calls.map((args) => String(args[1]))
+    expect(writes).toEqual([
+      join(dir, '.temp-code', 'threads', mirrorName(thread)),
+      join(dir, '.temp-code', 'threads', 'INDEX.md')
+    ])
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(renameSync).toHaveBeenCalledTimes(2)
+  })
+
+  it('a paused backfill does no more reads or index writes after stop', async () => {
+    let resume!: () => void
+    let paused!: () => void
+    const held = new Promise<void>((resolve) => { resume = resolve })
+    const waiting = new Promise<void>((resolve) => { paused = resolve })
+    const reg = {
+      ...registry(),
+      list: () => [thread, { ...thread, id: 'next' }]
+    }
+    const backfill = backfillMirrors(reg as never, async () => { paused(); await held })
+    await waiting
+    await stopMirrors(reg as never)
+    reg.getProject.mockClear()
+    reg.getProject.mockImplementation(() => { throw new Error('registry closed') })
+    resume()
+    await backfill
+    expect(reg.getProject).not.toHaveBeenCalled()
+    expect(reg.readLogRows).toHaveBeenCalledOnce()
+    expect(renameSync).toHaveBeenCalledOnce() // no final index after resuming
+  })
+
+  it.each(['session', 'project'])('returns quietly if the store closed before its %s lookup', async (lookup) => {
+    const db = openDb(':memory:')
+    const store = new Store(db)
+    db.close()
+    const reg = registry()
+    if (lookup === 'session') reg.get.mockImplementation(() => store.getSession('m')!)
+    else reg.getProject.mockImplementation(() => store.getProject('p')!)
+    await expect(mirrorSession(reg as never, 'm')).resolves.toBeUndefined()
+    expect(reg.readLogRows).not.toHaveBeenCalled()
+    expect(renameSync).not.toHaveBeenCalled()
+  })
 })
 
 describe('threadDigestTail', () => {

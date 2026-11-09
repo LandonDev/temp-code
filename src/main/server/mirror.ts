@@ -41,9 +41,33 @@ const INDEX_NAME = 'INDEX.md'
 /** A burst of turn-completes (orchestrator fleets) writes once. */
 const MIRROR_DEBOUNCE_MS = 2_000
 
-const indexTimers = new Map<string, ReturnType<typeof setTimeout>>()
-const indexSessions = new Map<string, Set<string>>()
-const timers = new Map<string, ReturnType<typeof setTimeout>>()
+function newMirrorState() {
+  return {
+    stopped: false,
+    timers: new Map<string, ReturnType<typeof setTimeout>>(),
+    indexTimers: new Map<string, ReturnType<typeof setTimeout>>(),
+    indexSessions: new Map<string, Set<string>>(),
+    rendering: new Map<string, Promise<void>>(),
+    again: new Set<string>(),
+    indexWrites: new Set<Promise<void>>()
+  }
+}
+type MirrorState = ReturnType<typeof newMirrorState>
+const states = new WeakMap<SessionRegistry, MirrorState>()
+/** Only retain states while work remains, for the test cancellation seam. */
+const activeStates = new Set<MirrorState>()
+
+function mirrorState(reg: SessionRegistry): MirrorState {
+  let state = states.get(reg)
+  if (!state) states.set(reg, (state = newMirrorState()))
+  return state
+}
+
+function releaseIdleState(state: MirrorState): void {
+  if (!state.timers.size && !state.indexTimers.size && !state.rendering.size && !state.indexWrites.size) {
+    activeStates.delete(state)
+  }
+}
 
 const kebab = (s: string): string =>
   s
@@ -351,10 +375,6 @@ function contextCwd(reg: SessionRegistry, meta: SessionMeta): string | null {
   return cwd && existsSync(cwd) ? cwd : null
 }
 
-/** The mirror renders in flight, and the ones asked for again meanwhile. */
-const rendering = new Map<string, Promise<void>>()
-const again = new Set<string>()
-
 /** Write a thread's mirror: the log read and rendered off the loop
  *  (renderMirrorOffLoop), one render per thread at a time; a write asked
  *  for while one runs runs once more after it. */
@@ -363,6 +383,9 @@ export function mirrorSession(
   sessionId: string,
   opts: { index?: boolean } = {}
 ): Promise<void> {
+  const state = mirrorState(reg)
+  if (state.stopped) return Promise.resolve()
+  const { rendering, again } = state
   const running = rendering.get(sessionId)
   if (running) {
     again.add(sessionId)
@@ -370,9 +393,11 @@ export function mirrorSession(
   }
   const run = mirrorSessionNow(reg, sessionId, opts).finally(() => {
     rendering.delete(sessionId)
-    if (again.delete(sessionId)) void mirrorSession(reg, sessionId, opts)
+    if (again.delete(sessionId) && !state.stopped) void mirrorSession(reg, sessionId, opts)
+    releaseIdleState(state)
   })
   rendering.set(sessionId, run)
+  activeStates.add(state)
   return run
 }
 
@@ -381,10 +406,11 @@ async function mirrorSessionNow(
   sessionId: string,
   opts: { index?: boolean }
 ): Promise<void> {
-  const meta = reg.get(sessionId)
-  const cwd = meta && contextCwd(reg, meta)
-  if (!meta || !cwd) return
   try {
+    // Metadata reads can race a closed store too, before rendering starts.
+    const meta = reg.get(sessionId)
+    const cwd = meta && contextCwd(reg, meta)
+    if (!meta || !cwd) return
     const content = await renderMirrorOffLoop(reg, meta)
     timed('mirrorSession', () => {
       const dir = join(cwd, '.temp-code', 'threads')
@@ -403,17 +429,34 @@ async function mirrorSessionNow(
   }
 }
 
-/** Test seam: drop every pending mirror write (a closed test database must not be touched by a late timer). */
-export function cancelMirrors(): void {
+function clearMirrorTimers(state: MirrorState): void {
+  const { timers, indexTimers, indexSessions } = state
   for (const t of timers.values()) clearTimeout(t)
   timers.clear()
   for (const t of indexTimers.values()) clearTimeout(t)
   indexTimers.clear()
   indexSessions.clear()
+  releaseIdleState(state)
+}
+
+/** Stop this registry's mirrors before its reader and database close. */
+export async function stopMirrors(reg: SessionRegistry): Promise<void> {
+  const state = mirrorState(reg)
+  state.stopped = true
+  state.again.clear()
+  clearMirrorTimers(state)
+  await Promise.all([...state.rendering.values(), ...state.indexWrites])
+}
+
+/** Test seam: cancel debounce timers across registries. */
+export function cancelMirrors(): void {
+  for (const state of activeStates) clearMirrorTimers(state)
 }
 
 /** Mirrors in one project's settle window share one index write. */
-function scheduleThreadsIndex(dir: string, sessionId: string): void {
+function scheduleThreadsIndex(state: MirrorState, dir: string, sessionId: string): void {
+  if (state.stopped) return
+  const { indexTimers, indexSessions, rendering } = state
   const prior = indexTimers.get(dir)
   if (prior) clearTimeout(prior)
   const sessions = indexSessions.get(dir) ?? new Set<string>()
@@ -424,7 +467,7 @@ function scheduleThreadsIndex(dir: string, sessionId: string): void {
     indexSessions.delete(dir)
     // The session timers are armed first. Wait for their renders before
     // writing one index for the project's whole settle window.
-    void Promise.all([...sessions].map(async (id) => {
+    const write = Promise.all([...sessions].map(async (id) => {
       for (;;) {
         const pending = rendering.get(id)
         if (!pending) return
@@ -432,7 +475,11 @@ function scheduleThreadsIndex(dir: string, sessionId: string): void {
       }
     })).then(() => {
       try { writeThreadsIndex(dir) } catch { /* best-effort context */ }
+    }).finally(() => {
+      state.indexWrites.delete(write)
+      releaseIdleState(state)
     })
+    state.indexWrites.add(write)
   }, MIRROR_DEBOUNCE_MS)
   timer.unref?.()
   indexTimers.set(dir, timer)
@@ -440,6 +487,10 @@ function scheduleThreadsIndex(dir: string, sessionId: string): void {
 
 /** Debounced per session — an orchestrator burst writes once. */
 export function scheduleMirror(reg: SessionRegistry, sessionId: string): void {
+  const state = mirrorState(reg)
+  if (state.stopped) return
+  const { timers } = state
+  activeStates.add(state)
   const prior = timers.get(sessionId)
   if (prior) clearTimeout(prior)
   timers.set(
@@ -451,7 +502,7 @@ export function scheduleMirror(reg: SessionRegistry, sessionId: string): void {
   )
   const meta = reg.get(sessionId)
   const cwd = meta && contextCwd(reg, meta)
-  if (cwd) scheduleThreadsIndex(join(cwd, '.temp-code', 'threads'), sessionId)
+  if (cwd) scheduleThreadsIndex(state, join(cwd, '.temp-code', 'threads'), sessionId)
 }
 
 /** A mirror written after the thread's last change needs no rewrite.
@@ -473,13 +524,17 @@ function mirrorFresh(dir: string, meta: SessionMeta): boolean {
  *  so the window never freezes, and each project's INDEX.md written once
  *  at the end. */
 export async function backfillMirrors(reg: SessionRegistry, between: () => Promise<void> = () => yieldUntilIdle()): Promise<void> {
+  const state = mirrorState(reg)
+  if (state.stopped) return
   bootMark('mirror-backfill start')
   const dirs = new Set<string>()
   let written = 0
   let checked = 0
   for (const meta of reg.list()) {
+    if (state.stopped) return
     if (!meta.projectId || meta.archived) continue
     if (++checked % 50 === 0) await between()
+    if (state.stopped) return
     const cwd = contextCwd(reg, meta)
     if (!cwd) continue
     const dir = join(cwd, '.temp-code', 'threads')
@@ -490,6 +545,7 @@ export async function backfillMirrors(reg: SessionRegistry, between: () => Promi
     await between()
   }
   for (const dir of dirs) {
+    if (state.stopped) return
     try {
       writeThreadsIndex(dir)
     } catch {
@@ -501,11 +557,15 @@ export async function backfillMirrors(reg: SessionRegistry, between: () => Promi
 
 /** Deleting a thread removes its mirror (archived threads keep theirs). */
 export function removeMirror(reg: SessionRegistry, meta: SessionMeta): void {
+  const state = mirrorState(reg)
+  if (state.stopped) return
+  const { timers } = state
   const cwd = contextCwd(reg, meta)
   if (!cwd) return
   const timer = timers.get(meta.id)
   if (timer) clearTimeout(timer)
   timers.delete(meta.id)
+  releaseIdleState(state)
   try {
     const dir = join(cwd, '.temp-code', 'threads')
     for (const f of readdirSync(dir)) {

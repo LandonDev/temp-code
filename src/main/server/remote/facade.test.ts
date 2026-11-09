@@ -7,6 +7,7 @@ import { configure } from 'aliax-core'
 import type { Principal } from '@shared/capabilities'
 import type { SessionMeta } from '@shared/events'
 import type { RunningServer } from '../index'
+import type { DriverCtx } from '../drivers/types'
 import {
   FACADE_TOOLS,
   FacadeError,
@@ -36,6 +37,16 @@ import {
  * driver (start_session, send_message, an answer to a stale question)
  * stays in-process.
  */
+// Session creation eagerly boots a driver even when send is replaced below.
+vi.mock('../drivers', () => {
+  const start = async (ctx: DriverCtx) => ({
+    send: async () => {},
+    interrupt: () => ctx.emit({ type: 'status', status: 'idle' }),
+    dispose: async () => {}
+  })
+  return { BUILT_IN_DRIVERS: { claude: { id: 'claude', start }, codex: { id: 'codex', start } } }
+})
+
 let root: string
 let repo: string
 let server: RunningServer
@@ -118,8 +129,6 @@ beforeAll(async () => {
 }, 60_000)
 afterAll(async () => {
   await server.close()
-  // A thread created here boots a real claude CLI under the scope's owned config dir in this root
-  // (skills/claudeRoots.ts); it writes its own state there for a moment after its input closes.
   rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
 })
 
@@ -310,7 +319,7 @@ describe('send_message', () => {
     expect(
       await sendMessage(ctx(), { session: t.id, text: 'four', when: 'interrupt' })
     ).toMatchObject({ delivered: 'interrupted', queued: 1 })
-    // No live harness: the stop settles the row idle and the queue drains in order.
+    // The fake harness settles the stop idle and the queue drains in order.
     expect(server.registry.get(t.id)!.status).toBe('idle')
     expect(sent.map((s) => s.text)).toEqual(['one', 'three', 'four'])
     expect(server.registry.queueList(t.id).map((m) => m.text)).toEqual(['two'])

@@ -2877,6 +2877,7 @@ never the sessions table, and decorates a family's tree once per list
 decorates the page alone). A socket whose send queue passes the
 backpressure mark sheds the unfocused session and event pushes and asks
 for a `resync` once drained to half; one past 64 MiB closes (`SocketBudget`).
+Server close cancels that registry's thread mirror timers and awaits its mirror and index writes before closing the database; later schedules for that registry do nothing.
 The thread mirror and the session index share one 2 s debounced write and
 the launch mirror lands in batches of 200 rows; port scans share helper
 slots and run only around live calls; an overdue bulk request (20 s) runs
