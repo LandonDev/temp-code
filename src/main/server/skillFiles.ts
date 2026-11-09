@@ -23,9 +23,11 @@ const inside = (root: string, path: string): boolean => path === root || path.st
  * when it decodes as UTF-8, else base64, the executable bit kept. Follows
  * symlinks that stay inside the folder; skips `.git`, `.DS_Store` and the
  * binary cache (`scripts/bin/`). Throws `refused: …` at a link leaving the
- * folder, a native binary, or past the limits.
+ * folder, a native binary, or past the limits. With `dropNative` a native
+ * binary is left out and its path pushed there instead (the one-time
+ * import keeps the rest of such a skill).
  */
-export async function readSkillDir(dir: string): Promise<SkillFile[]> {
+export async function readSkillDir(dir: string, opts: { dropNative?: string[] } = {}): Promise<SkillFile[]> {
   const root = await realpath(dir)
   if (!(await stat(root)).isDirectory()) throw new Error(`refused: ${dir} is not a folder`)
   const out: StoredFile[] = []
@@ -61,7 +63,12 @@ export async function readSkillDir(dir: string): Promise<SkillFile[]> {
       total += info.size
       if (total > SKILL_MAX_BYTES) throw new Error(`refused: the skill is over the ${sizeWords(SKILL_MAX_BYTES)} a skill may be`)
       const bytes = new Uint8Array(await readFile(path))
-      if (isNativeBinary(bytes)) throw new Error(`refused: ${relPath} is a native binary; each host fetches its own`)
+      if (isNativeBinary(bytes)) {
+        if (!opts.dropNative) throw new Error(`refused: ${relPath} is a native binary; each host fetches its own`)
+        opts.dropNative.push(relPath)
+        total -= info.size
+        continue
+      }
       out.push({ path: relPath, bytes, executable: (info.mode & 0o111) !== 0 })
     }
   }

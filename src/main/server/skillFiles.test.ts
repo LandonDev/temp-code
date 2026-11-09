@@ -54,6 +54,10 @@ describe('readSkillDir', () => {
     put('SKILL.md', skillMd)
     put('tool', Uint8Array.from([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1, 0]), 0o755)
     await expect(readSkillDir(join(tmp, 'skill'))).rejects.toThrow('refused: tool is a native binary; each host fetches its own')
+    // With dropNative the binary is left out and named; the rest reads.
+    const dropped: string[] = []
+    expect((await readSkillDir(join(tmp, 'skill'), { dropNative: dropped })).map((f) => f.path)).toEqual(['SKILL.md'])
+    expect(dropped).toEqual(['tool'])
     rmSync(join(tmp, 'skill', 'tool'))
     put('big.dat', new Uint8Array(4 * 1024 * 1024 + 1))
     await expect(readSkillDir(join(tmp, 'skill'))).rejects.toThrow(/^refused: big.dat is 4 MB, over the 4 MB a file may be/)
