@@ -3583,7 +3583,8 @@ proof and the sizing rules; the pieces, by name:
   `session` with the clipboard lock, the smart wait, capture, and the four
   `computer_*` tools whose verbs and parameter names are Anthropic's native
   computer-use set with `element` refs beside `coordinate`. In code so far:
-  the contract, the Capture module and Input; no service, tools or UI.
+  the contract, the Capture module, Input and the AX reader; no service,
+  tools or UI.
 - The zod in src/shared/computer/ is the one source: `protocol.ts` (every
   method's params and result, the errors, the notifications, every number:
   waits, budgets, caps, lock paths), `observation.ts` (the grammar's tables,
@@ -3657,6 +3658,28 @@ proof and the sizing rules; the pieces, by name:
   clicks, drags and the wheel, and TextEdit Command combos and paste, which
   the probe reports as `ignored` for the host's tier verdict to learn; such a
   proof leg is a finding, never a failure.
+- The AX reader (docs/computer-protocol.md §15, plan
+  .temp-code/plan-8sO1AAx_glmS.md): `AXText` holds every rule that needs no
+  live element (keep, facts, the viewport cut, the index book with its
+  rebuilt-element match, folds, `TextBudget`, rendering, the diff,
+  `Builder.build`) and the tables generated from observation.ts
+  (`Sources/AXText/Generated/ObservationTables.swift`, by `gen:swift-computer`),
+  so the box tests it on its Linux toolchain; `AXReader` is the Mac's walk
+  (three stages per node), handles, windows (`_AXUIElementGetWindow`, the one
+  private symbol, with the window-list match as its fallback; the package
+  README lists it), `AXManualAccessibility`, the change monitor, `AppReader`
+  and `AXReaders`; `tc-ax` is the proof's dev tool (`replay <tree.json>`
+  times the builder anywhere). Goldens: every recorded state's
+  `observation.txt`, the `diff.txt` from the state before it and
+  `chrome/form/truncated.txt`, rewritten with `TC_AX_GOLDEN=update swift test
+  --filter GoldenTests` and read before each commit; the grammar test parses
+  all three. The live proof is `bash scripts/mac/ax-reader-proof.sh` on the
+  Mac from a scratch clone: scratch apps only, every window read in the
+  background and never activated, an idle wait before each app and two
+  minutes before IntelliJ's scratch project ("skipped: the person is
+  active" otherwise). Targets, p95 warm: TextEdit 60 ms, Chrome form 250 ms,
+  a heavy page 600 ms, IntelliJ 500 ms, a dev instance 400 ms, the signature
+  10 ms.
 
 ## The menu bar: one table
 src/shared/menuTree.ts is the menu as data, read by main (src/main/menu.ts),
