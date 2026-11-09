@@ -84,11 +84,12 @@ import { summarizeTrace, TRACE_CATEGORIES, traceMarkdown, type TraceEvent, type 
 import { REVEAL_OBSERVER, revealLine, summarizeReveal, type RevealRecord } from './lib/revealReport'
 import { HEIGHT_OBSERVER, heightLine, summarizeHeights, type HeightRecord } from './lib/heightReport'
 import { REVEAL } from '../src/renderer/src/lib/ease'
-import { buildIsCurrent, FAMILY, GATE_TIMING, gateRule, handRule, judgeScroll, judgeSend, judgeSoak, judgeSwitch, judgeTyping, parseSoakArgs, REACT_MEASURE_PREFIX, SCROLL_RULE, SEND_RULE, SWITCH_RULE, TYPING_RULE, type BuildStamp, type GateScene, type SoakSample } from './lib/soakJudge'
+import { FAMILY, GATE_TIMING, gateRule, handRule, judgeScroll, judgeSend, judgeSoak, judgeSwitch, judgeTyping, parseSoakArgs, REACT_MEASURE_PREFIX, SCROLL_RULE, SEND_RULE, SWITCH_RULE, TYPING_RULE, type GateScene, type SoakSample } from './lib/soakJudge'
 import { scenarioLength, questionClicks } from './lib/soakScenarios'
 import { spread, summarizePhase, typingGaps, typingMarkdown, typingPhases, typingProse, type PhaseSummary, type TypingRecords } from './lib/soakTyping'
 import { summarizeSwitch, switchMarkdown, type SwitchClick, type SwitchView } from './lib/soakSwitch'
 import { displayInterval, scrollMarkdown, summarizeFrames, wheelPlan, type FrameRun, type ScrollResult, type ScrollSurface } from './lib/soakScroll'
+import { waitForGateBuild } from './lib/gateBuild'
 
 const args = parseSoakArgs(process.argv.slice(2).filter((a) => a !== '--why'))
 /** Hand runs on a dev build: also tally the props React names as changed, per component. */
@@ -585,33 +586,16 @@ function memoryMb(pid: number): { mb: number; detail: Record<string, number> } {
 
 type Row = SoakSample & { gpuPct: number; cpuPct: number; memory: Record<string, number>; dom: Record<string, number>; measures: number; marks: number; animations: number; entries: number | null }
 
-/** The gate's out/ must be HEAD's: release-publish says so with build.done
- *  (TEMP_CODE_SOAK_BUILD_DONE, waited for up to 10 minutes while its build
- *  runs beside the gate); anywhere else the bundle map's stamp decides, and a
- *  stale or dirty build is rebuilt first. */
+/** The gate's out/ must be HEAD's: gate.ts and release-publish say so with
+ *  build.done (TEMP_CODE_SOAK_BUILD_DONE, waited for up to 10 minutes while
+ *  the build runs beside the gate); anywhere else the bundle map's stamp
+ *  decides, and a stale or dirty build is rebuilt first (scripts/lib/gateBuild.ts). */
 async function freshBuild(): Promise<void> {
-  const done = process.env.TEMP_CODE_SOAK_BUILD_DONE
-  if (done) {
-    const until = Date.now() + 10 * 60_000
-    while (!existsSync(done)) {
-      if (Date.now() > until) throw new Error('the build never finished: no build.done within 10 minutes')
-      await sleep(1_000)
-    }
-    log("the publish build finished: soaking its out/")
-    return
-  }
-  const git = (...a: string[]): string => execFileSync('git', ['-C', tree, ...a], { encoding: 'utf8' }).trim()
-  const head = git('rev-parse', 'HEAD')
-  const clean = git('status', '--porcelain', '--untracked-files=no') === ''
-  let stamp: BuildStamp = null
-  try {
-    stamp = (JSON.parse(readFileSync(join(tree, 'out', 'bundle-map.json'), 'utf8')) as { head?: BuildStamp }).head ?? null
-  } catch {
-    /* no build yet */
-  }
-  if (buildIsCurrent(stamp, head, clean)) return
-  log(`out/ is not HEAD's build (${stamp?.sha ? `${stamp.sha.slice(0, 8)}${stamp.clean ? '' : ', dirty'}` : 'none'}, HEAD ${head.slice(0, 8)}${clean ? '' : ' dirty'}): building first`)
-  execFileSync(join(tree, 'node_modules', '.bin', 'electron-vite'), ['build'], { cwd: tree, stdio: ['ignore', 'ignore', 'inherit'] })
+  await waitForGateBuild({
+    tree,
+    log,
+    orBuild: () => execFileSync(join(tree, 'node_modules', '.bin', 'electron-vite'), ['build'], { cwd: tree, stdio: ['ignore', 'ignore', 'inherit'] })
+  })
 }
 
 /** A trace of the window after the soak's own: every running animation is
