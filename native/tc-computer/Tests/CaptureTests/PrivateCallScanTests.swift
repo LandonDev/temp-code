@@ -10,7 +10,9 @@ import Testing
         .appendingPathComponent("Sources")
 
     @Test func noShippedTargetNamesAPrivateCall() throws {
-        let pattern = try NSRegularExpression(pattern: #"\b(SLS|CGS)[A-Z]|\bdl(open|sym)\b|SkyLight"#)
+        // `CGSSessionScreenIsLocked` is a key of the public CGSessionCopyCurrentDictionary() (Input's
+        // locked-screen check), not a call; every other CGS or SLS name still fails the scan
+        let pattern = try NSRegularExpression(pattern: #"\b(SLS|CGS)(?!SessionScreenIsLocked\b)[A-Z]|\bdl(open|sym)\b|SkyLight"#)
         let targets = try FileManager.default.contentsOfDirectory(atPath: Self.sources.path).filter { $0 != "capture-proof" }
         #expect(targets.contains("Capture"))
         #expect(targets.contains("ComputerCore"))
