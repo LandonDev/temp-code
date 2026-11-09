@@ -3659,7 +3659,7 @@ proof and the sizing rules; the pieces, by name:
   (`parts`) behind a per-thread token of purpose `computer`. In `safe` and
   `edits` every act or batch that sends input asks one card naming the app,
   the window and each action (src/shared/computer/words.ts); reads never ask,
-  full access never asks. Stop on the Activity row (`computer.stop`) ends
+  full access asks only for a flagged act or a password field (below). Stop on the Activity row (`computer.stop`) ends
   computer use for the turn; `computer.sessions` and the `computer` push carry
   the service state and the live rows. Proofs: the unit tests over
   computer/fakeService.mjs on the box, and `bun run script:e2e-computer` on the
@@ -3670,6 +3670,30 @@ proof and the sizing rules; the pieces, by name:
   drops the idle wait and the abort on input, as the shell's proof does;
   the person's app and pointer held still; one computer proof on the Mac at
   a time).
+- The model's words (docs/computer-protocol.md §19): the four tools'
+  descriptions and every field's in two word shapes, Anthropic's and cua's
+  (src/shared/computer/descriptions.ts; tools.ts builds the described schemas
+  and `computerToolSpecs(shape, tools)`), COMPUTER_MECHANICS
+  (src/main/server/computer/prompts.ts: about 700 tokens, the tier paragraph
+  `COMPUTER_TIERS` in it) and `wordsFor(session)` by the model's maker
+  (`WORDS_BY_FAMILY`, `TOOLS_BY_FAMILY`). `offersComputerTools(session)` and
+  `computerMechanicsFor(session)` (apptools.ts) decide whether a thread gets
+  the tools and the section, which it reads once: claude through
+  `mechanicsFor` or the driver's fallback for a subagent, codex and Muse in
+  their first message; a cursor thread gets neither. The model flags an act
+  the person approves first with `confirm: { kind, what }`
+  (src/shared/computer/policy.ts); the host then asks in every mode, full
+  access included, and Away denies it. Whatever the model flagged, the host
+  asks before text goes into a password field (the card never shows the
+  text), refuses text into an app the thread has not read and a batch's text
+  step after another input without an element, pins every call's app to a
+  pid before any request (`TargetResolver` in computer/policy.ts) and refuses
+  TempCode itself and the system's password and Touch ID prompts
+  (`refused_app`). Every service error reads through `errorLine`
+  (src/shared/computer/errorWords.ts). The comparison that picked the shipped
+  words is `bun run script:compare-computer-words` (the Mac only; tasks in
+  scripts/lib/computerTasks.ts on fixtures/page/bench.html, the rule in
+  scripts/lib/computerWordsJudge.ts).
 - Fixtures: src/main/server/computer/fixtures/ (its README): hand-written
   wire frames for every method, error kind and notification, observation
   texts for every grammar case, `page/form.html`, and `apps/` trees and
