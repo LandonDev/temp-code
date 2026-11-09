@@ -182,16 +182,23 @@ final class Proof: @unchecked Sendable {
             }
         }
         let saved = board()
+        var outcomes: [ClipboardOutcome?] = []
+        var countAfterLast = NSPasteboard.general.changeCount
         for (format, textIn, shows) in [(PasteFormat.markdown, "# Heading\n\n**Bold** and *it*", "Bold and it"), (.html, "<p>Pasted <b>HTML</b></p>", "Pasted HTML"), (.text, "plain pasted", "plain pasted")] {
             _ = P.set(text, "AXSelectedTextRange", rangeValue(0, 0))
             step("textedit", "paste \(format.rawValue)", tiers: [.process], ComputerAction(action: .paste, element: 1, text: textIn, format: format), allow: [.keyWindowUnavailable], target: { s.target(text) }) { out in
+                outcomes.append(out.clipboard)
+                countAfterLast = NSPasteboard.general.changeCount
                 let restored = self.board() == saved
                 return (value().contains(shows) && restored && out.clipboard == .restored, "shows \(value().contains(shows)), clipboard \(out.clipboard?.rawValue ?? "-"), byte for byte \(restored)")
             }
         }
-        if board() != saved {
-            putBack(saved)
-            report.notes.append("textedit: the proof put the clipboard back itself after a paste left it changed")
+        // a net for an engine bug only: every paste said it restored, nothing copied since, yet the board differs;
+        // a copy the person made (kept-person-copy, or a change count that moved) is theirs and stays
+        if board() != saved, outcomes.allSatisfy({ $0 == .restored }), let hold = FlockLock("clipboard.lock").acquire(within: 2) {
+            if NSPasteboard.general.changeCount == countAfterLast { putBack(saved) }
+            hold.release()
+            report.notes.append("textedit: a paste said it restored the clipboard but left it changed; the proof put it back")
         }
     }
 
@@ -333,6 +340,15 @@ final class Proof: @unchecked Sendable {
             r.ok = r.ok && out.tier == .session && out.session != nil
         } catch let f as ComputerFailure {
             r.error = "\(f.error.kind.rawValue): \(f.error.message)"
+            if f.error.kind == .interrupted {
+                // the person is back: the leg stops here and takes nothing more
+                gate.personActive()
+                r.ok = true
+                r.skipped = "skipped: the person is active"
+                report.legs.append(r)
+                print("skip session \(leg) · the person took over")
+                return false
+            }
         } catch {
             r.error = "\(error)"
         }

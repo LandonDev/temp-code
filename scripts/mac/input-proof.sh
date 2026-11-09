@@ -93,7 +93,8 @@ LOCKDIR="${TMPDIR:-/tmp}/tc-computer"
 [[ -d $LOCKDIR ]] || CLEANUP+=("rm -rf '$LOCKDIR'")
 AUTOSAVE="$HOME/Library/Containers/com.apple.TextEdit/Data/Library/Autosave Information"
 ls -1 "$AUTOSAVE" 2>/dev/null | sort >"$WORK/autosave.before"
-CLEANUP+=("comm -13 '$WORK/autosave.before' <(ls -1 \"$AUTOSAVE\" 2>/dev/null | sort) | while read -r f; do rm -rf \"$AUTOSAVE/\$f\"; done")
+# only autosaves made during the run that hold the probe document; the person's own stay
+CLEANUP+=("comm -13 '$WORK/autosave.before' <(ls -1 \"$AUTOSAVE\" 2>/dev/null | sort) | while read -r f; do grep -rqs 'line 199' \"$AUTOSAVE/\$f\" && rm -rf \"$AUTOSAVE/\$f\"; done")
 
 say TextEdit
 before=$(pgrep -x TextEdit | sort)
@@ -110,7 +111,16 @@ SCRATCH_PIDS="$SCRATCH_PIDS $TE"
 sleep 2
 give_front_back
 
+# a launch may bring a window in front: each one waits for the person's quiet again
+still_idle() {
+  if (( $(idle) < 120 )); then
+    echo 'skipped: the person is active' | tee -a "$OUT/run.log"
+    exit 0
+  fi
+}
+
 say Chrome
+still_idle
 profile=/tmp/tc-input-chrome
 rm -rf "$profile"
 CLEANUP+=("rm -rf $profile")
@@ -130,6 +140,7 @@ PIDS="textedit=$TE,chrome=$CH"
 
 if (( TEMPCODE )); then
   say TempCode dev instance
+  still_idle
   data=/tmp/tc-input-dev port=9243
   rm -rf "$data"
   CLEANUP+=("rm -rf $data")

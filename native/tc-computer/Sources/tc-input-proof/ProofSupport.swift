@@ -203,9 +203,15 @@ final class IdleGate: @unchecked Sendable {
     }
 
     /// Reads the HID idle time; an input later than the proof's own last step is the person's.
+    /// The proof's events are all posted before `stepEnded()`, so the grace is short.
     func sample() {
         let last = Date().addingTimeInterval(-hidIdle())
-        if last > ownUntil.addingTimeInterval(0.3), last > quietSince { quietSince = last }
+        if last > ownUntil.addingTimeInterval(0.05), last > quietSince { quietSince = last }
+    }
+
+    /// The person moved during a step (the engine's watch said so): their quiet starts again now.
+    func personActive() {
+        quietSince = Date()
     }
 
     /// The proof's own session step ran from now until `stepEnded()`.

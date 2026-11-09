@@ -344,4 +344,88 @@ private let textEdit = AppBrief(pid: 7, bundleId: "com.apple.TextEdit", name: "T
         #expect(rig.host.log == ["bringForward 7", "raise 70"] || rig.host.log == ["bringForward 7"])
         #expect(rig.core.driver.record?.personTookOver == true)
     }
+
+    @Test func aStepThatThrowsKeepsTheLockAndTheWatchWhileTheButtonIsHeld() {
+        let rig = Rig()
+        _ = try? rig.step(.session) { ctx in try rig.core.mouseDown(&ctx, at: pt(400, 300)) }
+        #expect(throws: ComputerFailure.self) { try rig.step(.session) { _ in throw ComputerFailure(.outOfBounds, "off the window") } }
+        #expect(rig.core.held.hold(pid: 7) != nil)
+        #expect(rig.lock.isTaken)
+        #expect(rig.watch.armed)
+    }
+
+    @Test func thePersonMidStepLetsGoOfAnEarlierHeldButton() throws {
+        let rig = Rig()
+        _ = try rig.step(.session) { ctx in try rig.core.mouseDown(&ctx, at: pt(400, 300)) }
+        do {
+            _ = try rig.step(.session) { ctx in
+                rig.watch.trip()
+                try rig.core.move(&ctx, to: pt(410, 310))
+            }
+            Issue.record("the move ran")
+        } catch { #expect(kind(error) == .interrupted) }
+        #expect(rig.core.held.hold(pid: 7) == nil)
+        #expect(rig.sink.events.last == .up(.left, pt(400, 300), clickState: 1, flags: []))
+        #expect(!rig.lock.isTaken)
+    }
+
+    @Test func anotherAppsStepWaitsForAHeldSessionButtonAndNeverPosts() throws {
+        let rig = Rig()
+        _ = try rig.step(.session) { ctx in try rig.core.mouseDown(&ctx, at: pt(400, 300)) }
+        let posted = rig.sink.posted.count
+        rig.host.apps[9] = AppBrief(pid: 9, bundleId: "com.google.Chrome", name: "Chrome")
+        do {
+            _ = try rig.core.step(tier: .session, pid: 9, windowID: 90, window: 90, keys: false, cancelled: { false }) { ctx in
+                try rig.core.click(&ctx, .left, count: 1, at: pt(1, 1), modifiers: [], duration: nil)
+            }
+            Issue.record("the other app's step ran")
+        } catch {
+            #expect((error as? ComputerFailure)?.error.reason == .inUse)
+        }
+        #expect(rig.sink.posted.count == posted)
+        #expect(rig.lock.isTaken)
+        #expect(rig.core.held.hold(pid: 7) != nil)
+        // the holder's own up still runs under its lock, and then both go
+        _ = try rig.step(.session) { ctx in try rig.core.mouseUp(&ctx, at: nil) }
+        #expect(rig.lock.acquisitions == 1)
+        #expect(!rig.lock.isTaken)
+    }
+
+    @Test func restoreAfterTheWatchTrippedSaysThePersonMoved() throws {
+        let rig = Rig()
+        do {
+            _ = try rig.step(.session) { ctx in
+                rig.watch.trip()
+                try rig.core.key(&ctx, parseKeyCombo("a"), repeat: 1)
+            }
+        } catch { #expect(kind(error) == .interrupted) }
+        let r = try rig.core.restoreSession()
+        #expect(r.frontmost == .personMoved)
+        #expect(rig.core.driver.record == nil)
+    }
 }
+
+@Suite struct HeldReleaseTests {
+    @Test func aCancelledUpStillPostsTheUp() throws {
+        let rig = Rig()
+        _ = try rig.step(.process) { ctx in try rig.core.mouseDown(&ctx, at: pt(5, 5)) }
+        #expect(throws: ComputerFailure.self) {
+            try rig.core.step(tier: .process, pid: 7, windowID: 70, window: 70, keys: false, cancelled: { true }) { ctx in try rig.core.mouseUp(&ctx, at: nil) }
+        }
+        #expect(rig.sink.events.last == .up(.left, pt(5, 5), clickState: 1, flags: []))
+        #expect(rig.core.held.hold(pid: 7) == nil)
+        #expect(rig.heldEvents.last == .released(pid: 7, kind: .button))
+    }
+
+    @Test func aHeldRightClickWithModifiersIsRecordedWholeAndReleasedWhole() throws {
+        let rig = Rig()
+        _ = try rig.step(.process) { ctx in try rig.core.click(&ctx, .right, count: 1, at: pt(3, 4), modifiers: .shift, duration: 0.2) }
+        guard case .pressing(let r) = rig.heldEvents.first else { Issue.record("no record"); return }
+        #expect(r.button == 1)
+        #expect(r.keyCodes == [56])
+        rig.sink.clear()
+        rig.core.releaseStale(r) { _ in }
+        #expect(rig.sink.events == [.up(.right, pt(3, 4), clickState: 1, flags: []), .modifier(56, down: false, flags: [])])
+    }
+}
+

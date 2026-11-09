@@ -66,22 +66,27 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
     /// tier, after activation moved things). Returns the body's value, the session change and
     /// the last input time.
     func step<T>(tier: Tier, pid: Int32, windowID: UInt32, window: Host.Window, keys: Bool, activate: Bool = true, cancelled: @escaping @Sendable () -> Bool, body: (inout StepContext) throws -> T) throws -> (T, SessionChange?, UInt64?) {
-        switch tier {
-        case .session:
-            var last: UInt64?
-            let (value, change) = try driver.run(pid: pid, window: window, keys: keys, activate: activate, cancelled: cancelled) { check in
-                var ctx = StepContext(tier: .session, pid: pid, route: .hid, poster: Poster(sink: sink, clock: clock, route: .hid, check: check))
-                defer { last = ctx.poster.lastInputAt }
+        do {
+            switch tier {
+            case .session:
+                var last: UInt64?
+                let (value, change) = try driver.run(pid: pid, window: window, keys: keys, activate: activate, cancelled: cancelled, holding: { held.holdsSession }) { check in
+                    var ctx = StepContext(tier: .session, pid: pid, route: .hid, poster: Poster(sink: sink, clock: clock, route: .hid, check: check))
+                    defer { last = ctx.poster.lastInputAt }
+                    return try body(&ctx)
+                }
+                return (value, change, last)
+            default:
+                let check: () throws -> Void = { if cancelled() { throw cancelledFailure() } }
+                let route = EventRoute.pid(pid, windowID: windowID)
+                var ctx = StepContext(tier: tier, pid: pid, route: route, poster: Poster(sink: sink, clock: clock, route: route, check: check))
                 let v = try body(&ctx)
-                return (v, holds: held.holdsSession)
+                return (v, nil, ctx.poster.lastInputAt)
             }
-            return (value, change, last)
-        default:
-            let check: () throws -> Void = { if cancelled() { throw cancelledFailure() } }
-            let route = EventRoute.pid(pid, windowID: windowID)
-            var ctx = StepContext(tier: tier, pid: pid, route: route, poster: Poster(sink: sink, clock: clock, route: route, check: check))
-            let v = try body(&ctx)
-            return (v, nil, ctx.poster.lastInputAt)
+        } catch {
+            // a cancel or the person lets go of everything the pid holds, from earlier calls too
+            if let kind = (error as? ComputerFailure)?.error.kind, kind == .cancelled || kind == .interrupted { held.releaseAll(pid: pid) }
+            throw error
         }
     }
 
@@ -95,13 +100,13 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
     func click(_ ctx: inout StepContext, _ b: MouseButton, count: Int, at p: ScreenPoint, modifiers: Modifiers, duration: Double?) throws {
         let holdMs = duration.map { Int(($0 * 1000).rounded()) }
         let plan = EventPlans.click(b, at: p, count: count, modifiers: modifiers, holdMs: holdMs, moveFirst: ctx.tier == .session)
-        try heldAround(ctx, kind: .button, at: p, recorded: holdMs != nil) { try ctx.poster.run(plan) }
+        try heldAround(ctx, button: b, modifiers: modifiers, at: p, recorded: holdMs != nil) { try ctx.poster.run(plan) }
         ctx.at = p
     }
 
     func drag(_ ctx: inout StepContext, from a: ScreenPoint, to b: ScreenPoint, modifiers: Modifiers) throws {
         let plan = lead(ctx, a) + EventPlans.drag(from: a, to: b, modifiers: modifiers)
-        try heldAround(ctx, kind: .button, at: a, recorded: true) { try ctx.poster.run(plan) }
+        try heldAround(ctx, button: .left, modifiers: modifiers, at: a, recorded: true) { try ctx.poster.run(plan) }
         ctx.at = b
     }
 
@@ -136,7 +141,12 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
             throw ComputerFailure(ComputerError(kind: .outOfBounds, message: "No pointer position yet; give an element or a coordinate."))
         }
         defer { if h != nil { held.released(pid: ctx.pid, kind: .button) } }
-        try ctx.poster.run([.up(.left, at, clickState: 1, flags: [])])
+        let up = SyntheticEvent.up(.left, at, clickState: 1, flags: [])
+        do { try ctx.poster.run([up]) } catch {
+            // the up is the release: a cancel or the person never leaves the button down
+            if h != nil { sink.post(up, route: ctx.route) }
+            throw error
+        }
         ctx.at = at
     }
 
@@ -183,11 +193,13 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
         try ctx.poster.run(try EventPlans.chord(KeyCombo(modifiers: .command, key: .character("v")), layout: layout, repeat: 1))
     }
 
-    /// The ledger's word around a down that outlives one event pair (a held click, a drag).
-    private func heldAround(_ ctx: StepContext, kind: HeldRecord.Kind, at p: ScreenPoint, recorded: Bool, _ post: () throws -> Void) throws {
+    /// The ledger's word around a down that outlives one event pair (a held click, a drag),
+    /// naming the button and the modifiers held with it, so a recovery lets go of all of them.
+    private func heldAround(_ ctx: StepContext, button: MouseButton, modifiers: Modifiers, at p: ScreenPoint, recorded: Bool, _ post: () throws -> Void) throws {
         guard recorded else { return try post() }
-        held.pressing(held.record(pid: ctx.pid, tier: ctx.tier, kind: kind, at: p))
-        defer { held.released(pid: ctx.pid, kind: kind) }
+        let codes = modifiers.each.compactMap { m in Modifiers.canonical.first { $0.0 == m }.flatMap { KeyCodes.modifierCodes[$0.1] } }
+        held.pressing(held.record(pid: ctx.pid, tier: ctx.tier, kind: .button, button: button, at: p, keyCodes: codes.isEmpty ? nil : codes))
+        defer { held.released(pid: ctx.pid, kind: .button) }
         try post()
     }
 
@@ -202,14 +214,15 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
     func releaseStale(_ r: HeldRecord, log: (String) -> Void) {
         var ups: [SyntheticEvent] = []
         if r.kind == .button, let p = r.point, p.count == 2 {
-            ups.append(.up(.left, ScreenPoint(x: Double(p[0]), y: Double(p[1])), clickState: 1, flags: []))
+            let b: MouseButton = r.button == 1 ? .right : r.button == 2 ? .middle : .left
+            ups.append(.up(b, ScreenPoint(x: Double(p[0]), y: Double(p[1])), clickState: 1, flags: []))
         }
         for code in (r.keyCodes ?? []).reversed() {
             ups.append(KeyCodes.modifierCodes.values.contains(code) ? .modifier(code, down: false, flags: []) : .key(code, down: false, flags: []))
         }
         switch r.tier {
         case .session:
-            guard let hold = try? driver.takeLock(cancelled: { false }) else {
+            guard let hold = try? driver.takeLock(cancelled: { false }, watchPerson: false) else {
                 log("[input] a held \(r.kind.rawValue) of pid \(r.pid) was left: the session lock stayed taken")
                 return
             }

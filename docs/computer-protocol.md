@@ -605,7 +605,7 @@ public protocol MacLock: Sendable { func acquire(within seconds: Double) -> MacL
 public protocol MacLockHold: AnyObject, Sendable { func release() }                       // idempotent
 public struct HeldRecord: Codable, Sendable, Equatable {   // the shell's crash ledger, <dataDir>/held.json
   public enum Kind: String, Codable, Sendable { case button, key }
-  public var writer: Int32; public var pid: Int32; public var tier: Tier; public var kind: Kind
+  public var writer: Int32; public var pid: Int32; public var tier: Tier; public var kind: Kind; public var button: Int?   // 0 left, 1 right, 2 middle
   public var point: [Int]?; public var keyCodes: [UInt16]?; public var since: Double
 }
 public enum HeldEvent: Sendable, Equatable { case pressing(HeldRecord), released(pid: Int32, kind: HeldRecord.Kind) }

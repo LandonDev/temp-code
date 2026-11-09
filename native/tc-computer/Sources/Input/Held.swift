@@ -47,12 +47,19 @@ final class HeldInput: @unchecked Sendable {
     }
 
     /// The record the shell's ledger keeps for a down that outlives one event pair.
-    func record(pid: Int32, tier: Tier, kind: HeldRecord.Kind, at: ScreenPoint? = nil, keyCodes: [UInt16]? = nil) -> HeldRecord {
+    func record(pid: Int32, tier: Tier, kind: HeldRecord.Kind, button: MouseButton? = nil, at: ScreenPoint? = nil, keyCodes: [UInt16]? = nil) -> HeldRecord {
         HeldRecord(
             writer: Int32(ProcessInfo.processInfo.processIdentifier),
             pid: pid,
             tier: tier,
             kind: kind,
+            button: button.map { b -> Int in
+                switch b {
+                case .left: 0
+                case .right: 1
+                case .middle: 2
+                }
+            },
             point: at.map { [Int($0.x.rounded()), Int($0.y.rounded())] },
             keyCodes: keyCodes,
             since: clock.epochSeconds()

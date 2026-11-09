@@ -110,18 +110,21 @@ public struct HeldRecord: Codable, Sendable, Equatable {
     public var pid: Int32
     public var tier: Tier
     public var kind: Kind
+    /// a button's number: 0 left, 1 right, 2 middle (absent: left)
+    public var button: Int?
     /// a button's screen point, rounded
     public var point: [Int]?
-    /// a key's virtual key codes, modifiers first
+    /// a key's virtual key codes, modifiers first; for a button, the modifiers held with it
     public var keyCodes: [UInt16]?
     /// epoch seconds
     public var since: Double
 
-    public init(writer: Int32, pid: Int32, tier: Tier, kind: Kind, point: [Int]? = nil, keyCodes: [UInt16]? = nil, since: Double) {
+    public init(writer: Int32, pid: Int32, tier: Tier, kind: Kind, button: Int? = nil, point: [Int]? = nil, keyCodes: [UInt16]? = nil, since: Double) {
         self.writer = writer
         self.pid = pid
         self.tier = tier
         self.kind = kind
+        self.button = button
         self.point = point
         self.keyCodes = keyCodes
         self.since = since

@@ -79,6 +79,10 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
     private var lockHold: MacLockHold?
     /// a session step is running
     private var running = false
+    /// one session step at a time in this process: the per-app queues never share the Mac
+    private let steps = NSLock()
+    /// the pid whose held session input keeps `lockHold` between calls
+    private var holdOwner: Int32?
     /// what the engine does when the person trips the watch between calls
     var onTripBetweenCalls: (@Sendable () -> Void)?
 
@@ -111,22 +115,31 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
     }
 
     /// Lets the watch and the lock go when no step runs and nothing session-tier is held;
-    /// while something is, both stay until its release calls this again.
-    func settle(holding: Bool) {
+    /// while something is, both stay (for `owner`) until its release calls this again.
+    func settle(holding: Bool, owner: Int32? = nil) {
         let release: MacLockHold? = state.withLock {
-            guard !running, !holding else { return nil }
-            defer { lockHold = nil }
+            guard !running else { return nil }
+            if holding {
+                // the step that started the hold owns it; another app's refused step never takes it over
+                if holdOwner == nil { holdOwner = owner }
+                return nil
+            }
+            defer {
+                lockHold = nil
+                holdOwner = nil
+            }
             return lockHold
         }
         release?.release()
         if !holding, !state.withLock({ running }) { watch.disarm() }
     }
 
-    /// Takes the session lock in short tries for at most 5 s, stopping for the person or a cancel.
-    func takeLock(cancelled: () -> Bool) throws -> MacLockHold {
+    /// Takes the session lock in short tries for at most 5 s, stopping for a cancel and, for a
+    /// step (`watchPerson`), for the person; restore and the stale release do not watch.
+    func takeLock(cancelled: () -> Bool, watchPerson: Bool = true) throws -> MacLockHold {
         let deadline = clock.seconds() + InputTiming.sessionLockWaitS
         while true {
-            if watch.tripped { throw interruptedByPerson() }
+            if watchPerson, watch.tripped { throw interruptedByPerson() }
             if cancelled() { throw cancelledFailure() }
             if let h = sessionLock.acquire(within: InputTiming.sessionLockTryS) { return h }
             if clock.seconds() >= deadline {
@@ -135,21 +148,35 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
         }
     }
 
+    /// Waits, for at most 5 s from `deadline`'s start, until `free` says yes; the session lock's own wait.
+    private func waitFor(_ free: () -> Bool, deadline: Double, cancelled: () -> Bool, watchPerson: Bool) throws {
+        while !free() {
+            if watchPerson, watch.tripped { throw interruptedByPerson() }
+            if cancelled() { throw cancelledFailure() }
+            if clock.seconds() >= deadline { throw sessionUnavailable(.inUse, "Another computer session holds the Mac's keyboard and mouse.") }
+            clock.sleep(ms: InputTiming.watchSliceMs)
+        }
+    }
+
     /// Runs one session step. `keys`: the step types or presses keys (secure input refuses it).
     /// `activate: false` skips bringing the app forward (`perform raise`, whose AX call is all it does).
-    /// The body answers whether session-tier input stays held, so the lock and the watch stay.
-    func run<T>(pid: Int32, window: Host.Window, keys: Bool, activate: Bool = true, cancelled: @escaping () -> Bool, body: (_ check: @escaping () throws -> Void) throws -> (T, holds: Bool)) throws -> (T, SessionChange) {
+    /// `holding` says, on every exit, whether session-tier input stays held, so the lock and the watch stay.
+    func run<T>(pid: Int32, window: Host.Window, keys: Bool, activate: Bool = true, cancelled: @escaping () -> Bool, holding: () -> Bool, body: (_ check: @escaping () throws -> Void) throws -> T) throws -> (T, SessionChange) {
         if host.screenLocked() { throw sessionUnavailable(.locked, "The screen is locked; the session tier can't use the keyboard or mouse.") }
         if keys, host.secureInputOn() {
             throw sessionUnavailable(.secureInput, "Secure input is on (a password field has focus somewhere); keys can't be sent.")
         }
+        let deadline = clock.seconds() + InputTiming.sessionLockWaitS
+        try waitFor({ steps.try() }, deadline: deadline, cancelled: cancelled, watchPerson: false)
+        defer { steps.unlock() }
         armWatch()
         state.withLock { running = true }
-        var holds = false
         defer {
             state.withLock { running = false }
-            settle(holding: holds)
+            settle(holding: holding(), owner: pid)
         }
+        // a lock kept for another app's held session input: wait for its release, as for another holder's
+        try waitFor({ state.withLock { lockHold == nil || holdOwner == nil || holdOwner == pid } }, deadline: deadline, cancelled: cancelled, watchPerson: true)
         if state.withLock({ lockHold == nil }) {
             let h = try takeLock(cancelled: cancelled)
             state.withLock { lockHold = h }
@@ -163,8 +190,7 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
         }
         do {
             if activate { try self.activate(pid: pid, window: window, check: check) }
-            let (value, held) = try body(check)
-            holds = held
+            let value = try body(check)
             let after = (host.frontmost(), host.pointer())
             state.withLock { ledger.stepEnded(frontmost: after.0, pointer: after.1, now: clock.seconds(), interrupted: false) }
             return (value, SessionLedger.change(before: before, after: after, restorable: true))
@@ -204,8 +230,12 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
     /// `input.restoreSession`, after the engine released every held input: takes the lock and
     /// puts back each half the ledger allows, then forgets the record.
     func restore(cancelled: () -> Bool = { false }) throws -> SessionRestore {
+        let deadline = clock.seconds() + InputTiming.sessionLockWaitS
+        try waitFor({ steps.try() }, deadline: deadline, cancelled: cancelled, watchPerson: false)
+        defer { steps.unlock() }
+        // an earlier trip is the ledger's to judge, never a reason to refuse
         let already = state.withLock { lockHold }
-        let hold = try already ?? takeLock(cancelled: cancelled)
+        let hold = try already ?? takeLock(cancelled: cancelled, watchPerson: false)
         defer {
             if already == nil { hold.release() }
         }
