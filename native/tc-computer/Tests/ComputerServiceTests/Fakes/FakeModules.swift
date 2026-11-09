@@ -336,3 +336,35 @@ final class FakeInput: InputPerforming, @unchecked Sendable {
     var staleRecords: [HeldRecord] { lock.withLock { stale } }
     var seenCursors: [[Int]?] { lock.withLock { cursors } }
 }
+
+// MARK: Escape
+
+/// The escape tap without a tap: `press()` stands in for the person's Escape.
+final class FakeEscapeTap: EscapeTapping, @unchecked Sendable {
+    private let lock = NSLock()
+    private var onPress: (@Sendable () -> Void)?
+    private(set) var starts = 0
+    private(set) var stops = 0
+    var refuse = false
+
+    var running: Bool { lock.withLock { onPress != nil } }
+
+    func start(onPress: @escaping @Sendable () -> Void) throws {
+        if lock.withLock({ refuse }) {
+            throw ComputerError(kind: .permissionMissing, message: "no tap", which: .accessibility)
+        }
+        lock.withLock {
+            starts += 1
+            self.onPress = onPress
+        }
+    }
+
+    func stop() {
+        lock.withLock {
+            if onPress != nil { stops += 1 }
+            onPress = nil
+        }
+    }
+
+    func press() { lock.withLock { onPress }?() }
+}

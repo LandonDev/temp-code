@@ -76,6 +76,7 @@ extension ComputerService {
         }
         await releaseHeld(session: session)
         let ending: [StreamEntry] = lock.withLock {
+            clicks.forget(session: session)
             let mine = streams.values.filter { $0.session == session }
             for entry in mine { streams[entry.id] = nil }
             return Array(mine)

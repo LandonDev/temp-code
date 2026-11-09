@@ -45,6 +45,7 @@ final class ServiceRig: @unchecked Sendable {
     let readers: FakeReaders
     let capture: FakeCapture
     let exits = ExitRecorder()
+    let escapeTap = FakeEscapeTap()
     let dataDir: URL
     let stdin = Pipe()
     let service: ComputerService
@@ -69,7 +70,7 @@ final class ServiceRig: @unchecked Sendable {
             workspace: workspace, permissions: permissions, system: system, appEvents: appEvents, windowEvents: windowEvents,
             lockDirectory: self.dataDir.appendingPathComponent("locks"), exit: { exits.record($0) }, parentGone: { false }, timing: t
         )
-        let log = self.log, readers = self.readers, capture = self.capture, windows = self.windows, inputBox = self.inputBox
+        let log = self.log, readers = self.readers, capture = self.capture, windows = self.windows, inputBox = self.inputBox, escapeTap = self.escapeTap
         let modules = Modules(
             readers: { readers },
             input: { wiring in
@@ -78,7 +79,8 @@ final class ServiceRig: @unchecked Sendable {
                 return input
             },
             capture: { _ in capture },
-            windows: windows
+            windows: windows,
+            escapeTap: { escapeTap }
         )
         service = ComputerService(modules: modules, environment: env, build: BuildInfo(version: "1.0.9", build: "abc123"), trace: Trace(enabled: false, write: { _ in }), sink: lines)
         service.start(input: stdin.fileHandleForReading.fileDescriptor)

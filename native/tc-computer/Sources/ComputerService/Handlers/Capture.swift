@@ -45,19 +45,27 @@ extension ComputerService {
 
         let maxEdge = p.maxEdge ?? ComputerDefaults.PreviewStream.defaultMaxEdge
         let id = p.stream
+        let size = FrameSize()
         let handle = try await capture.startStream(windowID: target.windowID, fps: p.fps ?? ComputerDefaults.PreviewStream.defaultFps, maxEdge: maxEdge) { [weak self] frame in
+            size.set(width: frame.width, height: frame.height)
             self?.sendFrame(frame, stream: id, target: target)
         }
-        let entry = StreamEntry(id: id, session: target.session, pid: target.pid, handle: handle)
-        // a close that came while the stream started fences it out
-        let kept = lock.withLock { () -> Bool in
-            guard book.isOpen(target.session) && !ctx.cancel.isSet else { return false }
+        size.seed(handle.startSize)
+        let entry = StreamEntry(id: id, session: target.session, pid: target.pid, windowID: target.windowID, handle: handle, size: size)
+        // a close that came while the stream started fences it out; a click still carried on the window
+        // is taken in the same turn of the lock, so it is sent here or by the click, never both
+        let now = env.system.now()
+        let kept = lock.withLock { () -> (carried: ClickCarry.Click?, ok: Bool) in
+            guard book.isOpen(target.session) && !ctx.cancel.isSet else { return (nil, false) }
             streams[id] = entry
-            return true
+            return (clicks.pending(session: target.session, windowID: target.windowID, now: now), true)
         }
-        guard kept else {
+        guard kept.ok else {
             await handle.stop()
             throw Router.cancelledError
+        }
+        if let carried = kept.carried {
+            ctx.afterAnswer { [self] in sendClick(carried, on: entry) }
         }
         Task { [weak self] in
             let reason = await entry.handle.ended()

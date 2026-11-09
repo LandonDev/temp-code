@@ -58,6 +58,8 @@ extension ComputerService {
             }
         }
         let target = try await resolveTarget(session: session, app: app, window: window, launch: launch, ctx: ctx)
+        // a click this call makes is carried for a stream that starts until clickCarryMs after its answer
+        ctx.afterAnswer { [self] in clickCallAnswered(ctx.id) }
 
         guard let lease = await slots.slot(target.pid).acquire(.exclusive(session: session), timeout: env.timing.appSlotWait) else {
             if ctx.cancel.isSet { await releaseHeld(session: session) }
@@ -191,6 +193,7 @@ extension ComputerService {
             }
             let outcome = done.outcome
             if let cursor = outcome.cursor { book.setCursor(target.session, pid: target.pid, cursor) }
+            if let at = outcome.clickAt { clicked(at, space: space, session: target.session, windowID: target.windowID, call: ctx.id) }
             if outcome.clipboard == .keptPersonCopy {
                 let now = env.system.now()
                 lock.withLock { clipboard?.personCopiedDuringPaste(at: now) }

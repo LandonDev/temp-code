@@ -25,6 +25,7 @@ public final class ComputerService: @unchecked Sendable {
     let readers: any ReaderPool
     let capture: any CaptureSource
     let input: any InputPerforming
+    let escape: EscapeWatch
     /// a new one per process: every element index from another epoch is stale
     public let epoch = UUID().uuidString
 
@@ -35,6 +36,8 @@ public final class ComputerService: @unchecked Sendable {
     var permissions = Permissions(accessibility: false, screenRecording: false)
     var clipboard: ClipboardWatchRule?
     var streams: [String: StreamEntry] = [:]
+    /// the agent's last click per session × window, for a stream that starts after it (P2)
+    var clicks = ClickCarry()
     /// per session, the requests that passed its check and have not answered: `session.close` cancels and waits for them
     var sessionRequests: [String: [Int: CancelFlag]] = [:]
     var watchers: [any Stoppable] = []
@@ -64,6 +67,12 @@ public final class ComputerService: @unchecked Sendable {
             onPersonInput: { pid in relay.service?.personInput(pid: pid) },
             onHeld: { event in relay.service?.held.handle(event) }
         ))
+        self.escape = EscapeWatch(
+            makeTap: modules.escapeTap,
+            now: { [system = environment.system] in system.now() },
+            onPress: { at in relay.service?.notify("escape/pressed", EscapePressedNotification.Params(at: at)) },
+            warn: { relay.service?.log(.warn, $0) }
+        )
         relay.service = self
         lifecycle.windDown = { [weak self] in await self?.windDown() }
         let outbox = self.outbox
@@ -186,6 +195,7 @@ public final class ComputerService: @unchecked Sendable {
     /// streams, close the readers, drain.
     func windDown() async {
         lock.withLock { reading = false }
+        escape.stop()
         router.cancelAll()
         let box = InputBox(input: input)
         for (pid, _) in held.all { _ = try? await blocking { box.input.releaseHeld(pid: pid) } }
@@ -213,6 +223,7 @@ public final class ComputerService: @unchecked Sendable {
         registerActions()
         registerCapture()
         registerInput()
+        registerEscape()
     }
 }
 
@@ -231,5 +242,26 @@ struct StreamEntry: @unchecked Sendable {
     let id: String
     let session: String
     let pid: pid_t
+    let windowID: UInt32
     let handle: any StreamHandle
+    /// the size of its newest frame, the start size until one comes; a click maps into it
+    let size: FrameSize
+}
+
+/// A stream's frame size: its start size, then each frame's.
+final class FrameSize: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: (width: Int, height: Int)?
+
+    var current: (width: Int, height: Int) { lock.withLock { value } ?? (0, 0) }
+
+    /// The start size, unless a frame came first.
+    func seed(_ size: (width: Int, height: Int)) {
+        lock.withLock { if value == nil { value = size } }
+    }
+
+    func set(width: Int, height: Int) {
+        guard width > 0, height > 0 else { return }
+        lock.withLock { value = (width, height) }
+    }
 }

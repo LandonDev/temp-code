@@ -142,33 +142,41 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
     // MARK: dispatch
 
     private func run(_ action: ComputerAction, tier: Tier, target: InputTarget, tiers: [Tier], facts: ElementFacts?, held: Tier?) throws -> InputOutcome {
-        let axDone = { InputOutcome(tier: .ax, via: nil, clipboard: nil, cursor: target.cursor, lastInputAt: self.clock.ticks()) }
+        let axDone = { (clickAt: [Int]?) in
+            InputOutcome(tier: .ax, via: nil, clipboard: nil, cursor: target.cursor, lastInputAt: self.clock.ticks(), clickAt: clickAt)
+        }
         switch action.action {
         case .setValue:
             try AXTier.setValue(element(target, action), action.value ?? "")
-            return axDone()
+            return axDone(nil)
         case .selectText:
             try AXTier.selectText(element(target, action), text: action.text, range: action.range, prefix: action.prefix, suffix: action.suffix, place: action.place)
-            return axDone()
+            return axDone(nil)
         case .perform where isRaise(action):
             return try raise(action, target: target)
         case .perform:
             let e = try element(target, action)
+            let at = axClickAt(e, target)
             try AXTier.perform(e, word: action.name ?? "", facts: facts ?? ElementFacts(role: e.role))
-            return axDone()
+            return axDone(at)
         case .leftClick where tier == .ax:
             let e = try element(target, action)
+            let at = axClickAt(e, target)
             try AXTier.press(e, facts: facts ?? ElementFacts(role: e.role))
-            return axDone()
+            return axDone(at)
         case .rightClick where tier == .ax:
-            try AXTier.action(element(target, action), raw: "AXShowMenu", what: "show a menu")
-            return axDone()
+            let e = try element(target, action)
+            let at = axClickAt(e, target)
+            try AXTier.action(e, raw: "AXShowMenu", what: "show a menu")
+            return axDone(at)
         case .doubleClick where tier == .ax:
-            try AXTier.action(element(target, action), raw: "AXOpen", what: "open")
-            return axDone()
+            let e = try element(target, action)
+            let at = axClickAt(e, target)
+            try AXTier.action(e, raw: "AXOpen", what: "open")
+            return axDone(at)
         case .scroll where tier == .ax:
             try AXTier.scrollPages(element(target, action), direction: action.scroll_direction ?? .down, pages: pagesFor(amount: action.scroll_amount ?? 1))
-            return axDone()
+            return axDone(nil)
         case .type:
             return try type(action, target: target, tiers: tiers, chosen: tier, held: held)
         case .paste:
@@ -182,11 +190,12 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
     /// `perform raise`: the AX call, as a session step with no activation of its own (A12).
     private func raise(_ action: ComputerAction, target: InputTarget) throws -> InputOutcome {
         let e = try element(target, action)
+        let at = axClickAt(e, target)
         let (_, change, _) = try core.step(tier: .session, pid: target.pid, windowID: target.windowID, window: target.window, keys: false, activate: false, cancelled: target.cancelled) { _ in
             let err = AX.perform(e.element, "AXRaise")
             if err != .success { throw AX.failure(err, element: e.index, what: "be raised") }
         }
-        return InputOutcome(tier: .session, via: nil, clipboard: nil, cursor: target.cursor, session: change, lastInputAt: clock.ticks())
+        return InputOutcome(tier: .session, via: nil, clipboard: nil, cursor: target.cursor, session: change, lastInputAt: clock.ticks(), clickAt: at)
     }
 
     private static func isKeyVerb(_ a: ComputerActionName) -> Bool {
@@ -239,7 +248,15 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         }
         let frame = fresh ? (AX.frame(target.window) ?? target.windowFrame) : target.windowFrame
         let cursor = at.map { toSpace($0, frame: frame, space: target.space) } ?? target.cursor
-        return InputOutcome(tier: tier, via: nil, clipboard: nil, cursor: cursor, session: change, lastInputAt: last)
+        let clickAt = ClickMark.eventPoint(name, at: at, frame: frame, space: target.space)
+        return InputOutcome(tier: tier, via: nil, clipboard: nil, cursor: cursor, session: change, lastInputAt: last, clickAt: clickAt)
+    }
+
+    /// An `ax` click's mark: the element's frame from the tree, clipped to its scroll area's visible frame
+    /// (read before the action, which may take the element away). It moves no pointer.
+    private func axClickAt(_ e: ResolvedElement, _ target: InputTarget) -> [Int]? {
+        let visible = AX.ancestor(e.element, role: "AXScrollArea").flatMap(AX.frame)
+        return ClickMark.axPoint(frame: e.frame, visible: visible, window: target.windowFrame, space: target.space)
     }
 
     // MARK: points

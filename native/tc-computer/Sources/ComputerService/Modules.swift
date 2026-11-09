@@ -58,13 +58,17 @@ public struct Modules: Sendable {
     public var windows: any WindowSource
     /// Runs on the main thread before anything captures (`CaptureRuntime.prepare()`).
     public var prepare: @MainActor @Sendable () -> Void
+    /// The person's Escape while `escape.watch` is on (P1): the binary's is the live event tap.
+    public var escapeTap: @Sendable () -> any EscapeTapping
 
     public init(readers: @escaping @Sendable () -> any ReaderPool, input: @escaping @Sendable (InputWiring) -> any InputPerforming,
-                capture: @escaping @Sendable (_ log: @escaping @Sendable (String) -> Void) -> any CaptureSource, windows: any WindowSource, prepare: @escaping @MainActor @Sendable () -> Void = {}) {
+                capture: @escaping @Sendable (_ log: @escaping @Sendable (String) -> Void) -> any CaptureSource, windows: any WindowSource, prepare: @escaping @MainActor @Sendable () -> Void = {},
+                escapeTap: @escaping @Sendable () -> any EscapeTapping = { LiveEscapeTap() }) {
         self.readers = readers
         self.input = input
         self.capture = capture
         self.windows = windows
         self.prepare = prepare
+        self.escapeTap = escapeTap
     }
 }

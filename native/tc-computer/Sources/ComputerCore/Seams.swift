@@ -84,14 +84,18 @@ public struct InputOutcome: Sendable {
     /// mach_absolute_time of the last event posted or AX change made; the typing and
     /// paste checks after it do not move it, and the smart wait counts from it
     public var lastInputAt: UInt64?
+    /// a click-class action (the five clicks, `left_mouse_down`, `perform`): the point it acted at,
+    /// session space; at `ax` the centre of the element's visible frame, never a pointer it moved (P2)
+    public var clickAt: [Int]?
 
-    public init(tier: Tier?, via: InputVia?, clipboard: ClipboardOutcome?, cursor: [Int]?, session: SessionChange? = nil, lastInputAt: UInt64? = nil) {
+    public init(tier: Tier?, via: InputVia?, clipboard: ClipboardOutcome?, cursor: [Int]?, session: SessionChange? = nil, lastInputAt: UInt64? = nil, clickAt: [Int]? = nil) {
         self.tier = tier
         self.via = via
         self.clipboard = clipboard
         self.cursor = cursor
         self.session = session
         self.lastInputAt = lastInputAt
+        self.clickAt = clickAt
     }
 }
 
