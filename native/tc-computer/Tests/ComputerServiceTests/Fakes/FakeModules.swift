@@ -192,8 +192,12 @@ final class FakeStream: StreamHandle, @unchecked Sendable {
     private var ending: CheckedContinuation<StreamEndReason, Never>?
     private var endedWith: StreamEndReason?
     let onFrame: @Sendable (Frame) -> Void
+    let startSize: (width: Int, height: Int)
 
-    init(onFrame: @escaping @Sendable (Frame) -> Void) { self.onFrame = onFrame }
+    init(startSize: (width: Int, height: Int), onFrame: @escaping @Sendable (Frame) -> Void) {
+        self.startSize = startSize
+        self.onFrame = onFrame
+    }
 
     var acked: [Int] { lock.withLock { acks } }
 
@@ -271,7 +275,8 @@ final class FakeCapture: CaptureSource, @unchecked Sendable {
 
     func startStream(windowID: UInt32, fps: Int, maxEdge: Int, onFrame: @escaping @Sendable (Frame) -> Void) async throws -> any StreamHandle {
         log.add("startStream")
-        let stream = FakeStream(onFrame: onFrame)
+        let fit = min(1, Double(maxEdge) / Double(max(space.width, space.height)))
+        let stream = FakeStream(startSize: (Int(Double(space.width) * fit), Int(Double(space.height) * fit)), onFrame: onFrame)
         lock.withLock { made["\(windowID)"] = stream }
         return stream
     }
