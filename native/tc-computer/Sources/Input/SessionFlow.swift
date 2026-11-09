@@ -14,7 +14,15 @@ public protocol PersonWatching: AnyObject, Sendable {
 
 /// What the session tier reads and writes of the Mac; LiveSessionHost does it over AX,
 /// NSWorkspace and CGEvent, the tests with a fake, so the order of the steps is tested offline.
-public protocol SessionHost: AnyObject {
+// The host's type is captured by the core's @Sendable closures; Swift 6.2 checks that its
+// metatype is Sendable (SendableMetatype), which 6.0 (the box's parse check) does not know.
+#if compiler(>=6.2)
+public protocol SessionHostBase: AnyObject, SendableMetatype {}
+#else
+public protocol SessionHostBase: AnyObject {}
+#endif
+
+public protocol SessionHost: SessionHostBase {
     associatedtype Window
     func screenLocked() -> Bool
     func secureInputOn() -> Bool

@@ -317,9 +317,10 @@ final class Proof: @unchecked Sendable {
         let t0 = Date()
         var r = LegResult(app: "session", leg: leg, tiers: ["session"], ok: false, detail: "", ms: 0)
         // the step's own input ends when the engine returns; anything after it, the check's wait included, is the person's
+        let resolved = target()
         let perform = { () throws -> InputOutcome in
             defer { self.gate.stepEnded() }
-            return try self.engine.perform(action, on: target(), tiers: [.session])
+            return try self.engine.perform(action, on: resolved, tiers: [.session])
         }
         do {
             let out = try perform()
