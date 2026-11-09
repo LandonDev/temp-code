@@ -19,10 +19,11 @@ export const TEMPCODE_BUNDLE_ID = 'dev.landon.tempcode'
  * macOS's password and Touch ID prompts: the person answers them. Not regular
  * apps, so apps.list never names them and the pinned target cannot reach them
  * by name; this list is the second line.
+ * Read from their bundles on macOS 27.2 (26B5112a):
  * `com.apple.SecurityAgent`: /System/Library/Frameworks/Security.framework/Versions/A/MachServices/SecurityAgent.bundle.
- * `com.apple.LocalAuthenticationUIAgent`: /System/Library/CoreServices/LocalAuthenticationUIAgent.app.
+ * `com.apple.LocalAuthentication.UIAgent`: /System/Library/Frameworks/LocalAuthentication.framework/Support/coreautha.bundle.
  */
-export const REFUSED_ACT_BUNDLES: readonly string[] = ['com.apple.SecurityAgent', 'com.apple.LocalAuthenticationUIAgent']
+export const REFUSED_ACT_BUNDLES: readonly string[] = ['com.apple.SecurityAgent', 'com.apple.LocalAuthentication.UIAgent']
 
 export interface PinnedApp {
   pid: number

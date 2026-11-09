@@ -105,7 +105,7 @@ describe('refusedTarget', () => {
   })
 
   it("refuses acts, not reads, on the system's password and Touch ID prompts", () => {
-    for (const bundleId of ['com.apple.SecurityAgent', 'com.apple.LocalAuthenticationUIAgent']) {
+    for (const bundleId of ['com.apple.SecurityAgent', 'com.apple.LocalAuthentication.UIAgent']) {
       expect(refusedTarget({ pid: 9, bundleId }, 'act', 7)).toBe("macOS's password and Touch ID prompts are the person's to answer")
       expect(refusedTarget({ pid: 9, bundleId }, 'read', 7)).toBeNull()
     }
