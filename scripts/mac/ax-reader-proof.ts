@@ -301,18 +301,28 @@ async function chromeOn(page: string, title: string): Promise<number> {
       '--disable-features=Translate', '--force-renderer-accessibility', `file://${PAGES}/${page}`])
   const pid = await newPid(exe, before, (p) => sh(['ps', '-o', 'command=', '-p', String(p)]).out.includes(`--user-data-dir=${profile}`))
   allow.add(pid)
-  cleanups.push(async () => {
+  stopChrome = async () => {
     sh(['kill', String(pid)])
     for (let i = 0; i < 20 && sh(['kill', '-0', String(pid)]).code === 0; i++) await sleep(500)
     rmSync(profile, { recursive: true, force: true })
-  })
+  }
+  cleanups.push(stopChrome)
   if (!stillBehind(front, 'chrome')) throw new Error(stopAll)
   await waitWindow(pid, title, 30_000)
   return pid
 }
 
+/** The running Chrome's stop, also in `cleanups` until endChrome runs it. */
+let stopChrome: (() => Promise<void>) | undefined
+
+/** Stop the Chrome chromeOn started (not the last cleanup, which may be a session's close). */
 async function endChrome(): Promise<void> {
-  await cleanups.pop()?.()
+  const stop = stopChrome
+  if (!stop) return
+  stopChrome = undefined
+  const i = cleanups.indexOf(stop)
+  if (i >= 0) cleanups.splice(i, 1)
+  await stop()
 }
 
 /** Read until the page's tree has landed (a few seconds after the window). */
