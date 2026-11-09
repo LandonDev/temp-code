@@ -3584,7 +3584,54 @@ proof and the sizing rules; the pieces, by name:
   `computer_*` tools whose verbs and parameter names are Anthropic's native
   computer-use set with `element` refs beside `coordinate`. In code: the
   contract, Capture, Input, the AX reader and the service shell over them,
-  and the TypeScript host (below); no UI yet.
+  the TypeScript host and what the person sees (below).
+- What the person sees (docs/computer-protocol.md "What the person sees",
+  plan .temp-code/plan-uYrrhDzuBc9f.md): one Computer row per live session
+  in the right panel's Activity section (`lib/computerSessions.ts` keeps every
+  host's rows from `computer.sessions` and the `computer` push; the window in
+  its app, the tier in `COMPUTER_TIER_WORDS` from src/shared/statusWords.ts,
+  never ax/process/session, the age, Stop as `computer.stop` on the thread's
+  host). On the Mac's desktop it opens onto the live preview: `local` RPCs
+  `computer.preview.start/ack/stop` and the `computer-frame`,
+  `computer-click`, `computer-preview` pushes to the asking socket alone,
+  served by `src/main/server/computer/preview.ts` (one service stream per
+  thread at 4 fps, `previewGate.ts`: one frame in flight per watcher, none
+  until its start answer is out; an end during the start rides in the answer
+  as `ended`) and drawn by `surfaces/threads/ComputerPreview.tsx` (lazy
+  chunk, frames through `createImageBitmap`, acked after the draw, the click
+  ring `CLICK_MARK`). A box thread driving this Mac is previewed by the
+  bridge's `macComputerKey`. Calls read in plain words (`computerPhrase` in
+  src/shared/computer/words.ts: live from the host's `running.words`, which
+  name the element from the thread's book, settled from the result's step
+  lines; `parseStepLine`/`parseShotLine` in tools.ts); a completed call with
+  a picture the model asked for stands as its own row
+  (`surfaces/computerShots.ts`, `transcript/ComputerShotRow.tsx`, the
+  picture through `fs.media`, whose roots now include the userData
+  attachments: `serverMediaRoots`). The Mac's banner while the session tier
+  holds the session (`computer/hold.ts` `SessionHolds`, the main process's
+  `src/main/computerBanner.ts` through `computerBannerHooks`, never Electron
+  in server code): "TempCode is using your Mac", with "Esc to stop" only
+  once `escape.watch` (P1) answered; `escape/pressed` stops computer use for
+  the turn. The scheduler's slot is not wired yet: `slot.onHolder(holds.holder)`
+  goes where index.ts says once it lands; until then only
+  `computer.proofHold` (local, `TEMP_CODE_E2E_STATUS=1` only) shows the
+  banner. The fake service (`fakeService.mjs`) streams frames, sends
+  `capture/click` (P2) and takes `FAKE_SHOT_FILE` (or `FAKE_SHOT_FILES=a,b`
+  in order, the last repeating), `FAKE_STREAM_END_MS`,
+  `FAKE_ESCAPE_PRESS_MS`, `FAKE_ESCAPE_UNSUPPORTED` for the tests.
+- Pictures to each model: claude and Muse get a computer call's pictures as
+  image parts; codex too (`codexComputerImages()` in drivers/codex.ts, its
+  measured default `parts`; `TEMP_CODE_CODEX_COMPUTER_IMAGES=parts|steer|view`
+  only under NODE_ENV=test or TEMP_CODE_E2E_STATUS=1, `steer` sending the
+  shots as `localImage` into the running turn with its echo hidden). Codex's
+  `view_image` calls are transcript rows now (`imageView` items). The proof is
+  `bun run script:e2e-computer-images` (scripts/e2e-computer-images.ts,
+  in-process with the electron stub over the fake service: a real thread in
+  full access reads six random letters off a picture, `scripts/lib/codeImage.ts`,
+  and fails if it opened the file by its path; `--harness muse`); reports
+  under `.temp-code/computer-images/<host>.json`, the table in
+  docs/computer-protocol.md §9 (the box, 2026-11-08: claude 2.1.303 parts and
+  codex 0.163.0 parts, steer and view all passed both cases).
 - The zod in src/shared/computer/ is the one source: `protocol.ts` (every
   method's params and result, the errors, the notifications, every number:
   waits, budgets, caps, lock paths), `observation.ts` (the grammar's tables,

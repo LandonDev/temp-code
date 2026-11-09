@@ -10,7 +10,7 @@ TempCode's own computer use: a Swift service on the Mac, `tc-computer`, reads ac
 6. the tools the models see, with Anthropic's native computer-use verbs and parameter names, element refs beside coordinates, and how a screenshot reaches each harness;
 7. recorded fixtures from real apps, scratch content only.
 
-**In code today**: the contract (the zod in `src/shared/computer/`: `protocol.ts` the wire, `observation.ts` the grammar, `tools.ts` the model-facing shapes; the Swift Codable types generated from it; the fixtures and the tests in both languages that parse them) and the service shell (§16: the stdio server, the smart wait, the locks, TCC, the lifecycle, the `tc-computer` binary and its build) over Capture (§6), Input (§14) and the AX reader (§15); the TypeScript host is in code too (§17: the process, one session per thread, the tier verdicts, the four tools on every harness, the cards and Stop); there is no UI yet. Where this document and the zod differ, the zod is right and this document is stale.
+**In code today**: the contract (the zod in `src/shared/computer/`: `protocol.ts` the wire, `observation.ts` the grammar, `tools.ts` the model-facing shapes; the Swift Codable types generated from it; the fixtures and the tests in both languages that parse them) and the service shell (§16: the stdio server, the smart wait, the locks, TCC, the lifecycle, the `tc-computer` binary and its build) over Capture (§6), Input (§14) and the AX reader (§15); the TypeScript host is in code too (§17: the process, one session per thread, the tier verdicts, the four tools on every harness, the cards and Stop), and so is what the person sees (§8, "What the person sees"). Where this document and the zod differ, the zod is right and this document is stale.
 
 ## 0. Layers, files and who builds what
 
@@ -118,6 +118,7 @@ Every method's params and result are a zod schema in `COMPUTER_METHODS` (`protoc
 | `capture.screenshot` | `Target & { maxEdge?: number, region?: Region, format?: 'jpeg' \| 'png' }` | `Shot` |
 | `capture.stream.start` | `Target & { stream: string, fps?: number (1..15, default 4), maxEdge?: number (default 960) }` | `{ stream, width, height }` |
 | `capture.stream.stop` | `{ stream: string }` | `{}` |
+| `escape.watch` | `{ on: boolean, leaseMs?: number (1000..120000, default 30000) }` | `{}`: renews or ends the person's Escape watch (§8) |
 | `input.probe` | `Target & { classes?: ActionClass[] }` (default `['scroll', 'key', 'click']`) | `ProbeReport`: which classes the app honours at the `process` tier, each tried only where its state can be put back through AX (§14.6) |
 | `input.restoreSession` | `{}` | `SessionRestore`: what the `session` tier changed since the last restore, put back unless the person moved since (§14.5); `session_unavailable` when another holder keeps the session lock for 5 s |
 | `clipboard.state` | `{}` | `{ changeCount: number, foreignChangeAt: number \| null, watchingSince: number }` (epoch ms): when the pasteboard last changed by anyone but this service, from the change count alone (§16.4) |
@@ -381,7 +382,7 @@ The Capture module (`native/tc-computer/Sources/Capture/`, `ScreenCaptureKitCapt
 - **Only new pixels.** ScreenCaptureKit marks every sample of a covered window `complete` with a dirty rect over the whole frame, whether anything changed or not (macOS 27.2: 24 complete samples in 2.4 s of a still window, 2 distinct buffers). So a sample is sent only when its pixel fingerprint or size differs from the last one's (`PixelStats.fingerprint`, about 0.3 ms at 960 px; `PixelNovelty`).
 - **Flow control** (`FrameGate`): at most 2 frames out without an ack; a newer sample replaces the held one, so nothing is encoded that will not be sent and the newest picture goes next. An ack covers every earlier frame (the pipe is ordered); one for a frame never sent is ignored. A frame left unacked for 5 s stops the stream's capture (a 1 s clock checks, so a still window that sent one frame pauses too) until the next ack, which resumes it; `StreamLifecycle` orders the pause, resume and stop calls, each waiting for the last to complete, `stop()` winning over all.
 - **Frames.** Each frame is the sample cropped to its content rect (`contentRect × scaleFactor` is buffer pixels; `contentScale` must not be applied), so a window mid-resize is never letterboxed, then JPEG 0.85, re-encoded at 0.7 and 0.55 to stay under 380 KiB (the base64 line with its JSON fits the 512 KiB cap), dropped with a `log` line past that. `capture.stream.start` answers the window's size inside the buffer (`StreamHandle.startSize`, `ShotGeometry.fitted`), which every frame's crop matches. A content rect more than 1% off the configured window's aspect reconfigures the stream, at most every 250 ms.
-- Frames carry the agent cursor, converted by the shell into the frame's own pixels; nothing is painted into the image. While any stream or watch runs on a window, macOS draws its window-sharing badge in the title bar, and frames show it; a screenshot with nothing streaming shows the traffic lights.
+- Frames carry the agent cursor, converted by the shell into the frame's own pixels; nothing is painted into the image, and the host preview draws only a brief click mark from `capture/click`, never a persistent cursor. While any stream or watch runs on a window, macOS draws its window-sharing badge in the title bar, and frames show it; a screenshot with nothing streaming shows the traffic lights.
 - **The end** (`StreamHandle.ended()`, `StreamEndReason`, A3): `stopped` (`capture.stream.stop`, or the person stopping capture from the menu bar), `windowClosed`, `permission`, or `error`; the shell sends `capture/streamEnded`. A closed window ends its stream through ScreenCaptureKit's `noCaptureSource` (−3815) 25–55 ms after it goes, the 1 s bounds check behind it; a window ordered out but kept alive keeps its bounds and its stream, and AX's `window/changed` is what says it is gone.
 - **Frames stay inline** (measured, the busiest scene: colour noise shifting every 100 ms at 960 px and 4 fps): p95 225 KiB of JPEG and p95 6.7 ms to encode, under the 300 KiB and 25 ms bounds for staying inline; a flat window's frames were p95 32 KB in 3.0 ms.
 
@@ -405,6 +406,49 @@ The Capture module (`native/tc-computer/Sources/Capture/`, `ScreenCaptureKitCapt
 **Amendments, landed with Capture:** A1 (format by content, above), A2 (`format: ShotFormat?` and the stem), A3 (`StreamHandle.startSize`, `ack`, `ended()`, `StreamEndReason`), A4 (`PixelWatching`, `PixelChangeSignal`, §7), A5 (the pixel restart of the quiet clock, §7), A6 (the centre-of-pixel mapping, above), A7 (shareable windows on every Space, live bounds on every call, the shadow and clip settings, the zoom's crop, no ScreenCaptureKit call without the grant, frames only for new pixels, the 5 s starvation, shots never replaced).
 
 **The live proof** (`capture-proof`, an executable target never shipped; `bash scripts/mac/proof-computer-capture.sh`) runs scenes 0–19 on its own windows and on a second process of itself as the foreign window, writes `report.json` and its images to `/tmp/tc-capture-proof` (removed once the summary is printed, unless `--keep`; the proof clears only a directory it made), and exits non-zero on a failed check. Its windows are inert: never key or main, ignoring the mouse, a level below `.normal`, never activated; nothing moves the pointer or sends a key, and it leaves no file or recent-document entry behind. The other-Space scene moves its own window with SkyLight's private calls, looked up at run time in `PrivateSpaces.swift` and skipped with one line on a Mac with one Space per display; a unit test fails if any other target names `SLS`, `CGS`, `dlopen` or SkyLight.
+
+### The host preview relay
+
+`ComputerPreviews` (`src/main/server/computer/preview.ts`) serves the local
+`computer.preview.start`, `.ack` and `.stop` requests. It shares one service
+stream per thread, using that thread's last app pid and bound window and
+the largest edge its watchers requested (256..960), at 4 fps. Each socket
+gets its own preview id, which survives an app or window change. A socket
+can acknowledge and stop only its own previews; closing it drops them.
+Hosts without computer use refuse these requests.
+
+`PreviewGate` keeps one frame being drawn and the newest pending frame per
+watcher. A draw ack releases the pending frame. Service acks go out on
+receipt, including for discarded frames, while any watcher has answered
+within five seconds (a new watcher gets an initial grace period). When all
+watchers go quiet, service acks stop. A valid draw ack releases the withheld
+service acks. A watcher takes no frame until its start answer is on the
+socket (`ready`, run on the next turn of the event loop): a frame naming a
+preview id the client has not been told would never be drawn or acked, and
+that watcher would get nothing more. It then gets the newest frame, which
+also wakes a stalled stream. Frame pushes pass straight to the asking
+socket, without replay or the push coalescer.
+
+A target change stops the old stream and starts the new one, pushing
+`computer-preview` with `state: live`. A stream that ended while a start
+waited says so in that start's answer (`ended`), since the push came before
+the client knew its id. A row leaving ends it as `closed`;
+`capture/streamEnded` maps a closed window or missing grant to
+`window-closed` or `permission`. A refused start reports `minimized` or
+`permission`. A new service epoch reopens the session and restarts capture;
+only a failed recovery reports `restarted`. The last watcher leaving stops
+the stream. `capture/click { stream, at, width, height }` reaches every
+watcher of that stream as `computer-click`, outside the frame gate, even
+when no pixels changed. Late clicks from an old stream are dropped. The
+point uses the click notification's frame size.
+
+The Node fake streams valid JPEGs with the same two-frame ack limit. Test
+controls: `FAKE_NO_FRAMES=1`, `FAKE_STREAM_END_MS` with
+`FAKE_STREAM_END_REASON`, `FAKE_ESCAPE_PRESS_MS`, and
+`FAKE_ESCAPE_UNSUPPORTED=1`. Its clicks use each stream's pixel size and
+carry to a matching window's new stream for two seconds. `FAKE_SHOT_FILE`
+copies that file's bytes into every observation, screenshot, zoom and
+capture shot, for picture proofs.
 
 ## 7. The smart wait
 
@@ -482,8 +526,79 @@ type ComputerError = { kind: ComputerErrorKind; message: string } & Partial<{
 | `window/changed` | `{ pid, windowId, change: 'created' \| 'closed' \| 'minimized' \| 'restored' \| 'moved' \| 'resized' \| 'titled' \| 'focused' }` | apps that some session has observed |
 | `session/interrupted` | `{ session, by: 'person', at }` | §5.2 |
 | `capture/frame` | `{ stream, seq, ts, width, height, format: 'jpeg', data (base64), cursor?: Point (in this frame's pixels) }` | §6 |
+| `capture/click` | `{ stream, at: Point, width, height }` | an action clicks in a streamed window, whether pixels change or not |
+| `escape/pressed` | `{ at }` | the person's Escape during an active watch |
 | `capture/streamEnded` | `{ stream, reason: 'stopped' \| 'window-closed' \| 'permission' \| 'error' }` | §6 |
 | `log` | `{ level: 'debug' \| 'info' \| 'warn' \| 'error', message }` | the host writes it to its log as `[computer]` |
+
+### The session hold and Escape
+
+`SessionHolds` (`computer/hold.ts`) follows a holder through calls, including
+a held mouse button. Releasing it lingers three seconds; another holder in
+that interval keeps the same hold. The host requests
+`escape.watch { on: true, leaseMs: 30000 }` and renews every ten seconds.
+The banner offers Esc only after the service answers. An older service's
+method-not-found logs once and leaves the banner without Esc. Ending the
+hold sends `escape.watch { on: false }` and hides the banner. An
+`escape/pressed` notification stops the holder's thread through the same
+`sessions.stop` path as Activity, with no linger.
+
+The tier scheduler has not landed here. `index.ts` builds the holds and
+leaves the `slot.onHolder(holds.holder)` wiring for that build; it does not
+invent a slot or set `running.held`. The local `computer.proofHold { on }`
+request can hold for no thread only when `TEMP_CODE_E2E_STATUS=1`. Other
+instances refuse it. No thread is stopped for a proof hold.
+
+### What the person sees
+
+Computer use shows in four places; none of them names a tier, an index or a
+path on a line a person reads at a glance.
+
+- **The Computer row** in the right panel's Activity section, one per live
+  session of the thread's tree (`lib/computerSessions.ts` keeps every host's
+  rows from `computer.sessions` and the `computer` push; `lib/activity.ts`
+  joins them): the cursor-in-window glyph, "Untitled in TextEdit" (the window
+  in the app it used last; the app alone when the window has no title;
+  "Computer use" before any app), the tier of the last action in
+  `COMPUTER_TIER_WORDS` muted after it ("in the background", "to the app",
+  "on the screen"), the age, and Stop (`computer.stop` on the thread's own
+  host, so a box thread's Stop reaches its Mac through the box). A bridged
+  computer call is never a Mac command row.
+- **The preview**, under that row when it opens, on the Mac's desktop only:
+  `computer.preview.*` are `local` methods, so a remote key, the phone and
+  the browser /ui never see a frame. A box thread driving this Mac is
+  previewed through this Mac's own link by the bridge's key. The box is the
+  pane's width in the stream's shape and at most 240px tall; frames are
+  decoded off the main thread and acked only after they are drawn; it runs
+  only while the fold is open, the section is shown and the window is
+  visible. The agent's click is a ring that grows, holds and fades
+  (`CLICK_MARK`), placed by the click's own frame size. One line under it
+  says a card waiting on the Mac (Needs you), a held step (Queued with the
+  scheduler's words) or why the preview ended (the window closed or is
+  minimized, Screen Recording is off, or it stopped, with Retry). A row
+  that cannot preview opens only for those lines.
+- **The transcript**: a computer call reads in plain words
+  (`computerPhrase` in src/shared/computer/words.ts: "Clicking Save in
+  TextEdit" while it runs, from the host's `running.words`, which name the
+  element from the thread's book; "Clicked Save in TextEdit" once settled,
+  from the result's step lines). A completed call with a picture the model
+  asked for (a `screenshot` or `zoom` step, or `computer_observe` with
+  `screenshot: true`; never a thin tree's own picture) stands as its own row
+  where it settled: its line, then the picture through `fs.media` from the
+  thread's own host, shaped from the shot line before a byte arrives.
+- **The banner** on the Mac while a session-tier action holds the session,
+  below.
+
+#### The banner
+
+On a Mac with a display, the main process owns one passive banner, created
+hidden on first use: “TempCode is using your Mac”, followed by “Esc to stop”
+only while the watch works. It sits eight pixels under the menu bar at the
+top centre of the pointer's display. It spans Spaces and full-screen apps,
+ignores mouse events, and shows inactive so it never takes focus. Its
+32px pill uses the app's popover fill, hairline and fonts, with no shadow or
+glow. It follows the system theme. Only opacity changes: the base entrance
+fade and fast exit fade, with the fast fade for reduced motion.
 
 ## 9. The tools the models see
 
@@ -514,8 +629,50 @@ app "Mail" · window "New Message" · 1280×800 · focused [33] · changes since
 - One **step line** per action (`formatStepLine` in `tools.ts`): the verb and its target (`stepTarget`: an element as `[<i>] <role> "<name>"` from its `ElementBrief`, a point as `x,y`, neither as `at the cursor`, modifiers as ` with shift`, a drag as `<start> to <end>`, a scroll as `down 3 on <target>`, a key with its repeat as `Tab ×4`, typed text quoted and cut at 60 scalars), then the tier (or for `type` the `via`), then `changed`, `no change seen` or `can't tell` from `effect`. A step that sends no input has no tier: `cursor_position · X=512, Y=384`, `wait up to 2 s · settled after 0.8 s`, and `screenshot` or `zoom` alone (their picture has its own line). A failed step: `<verb> <target> · failed: <error message>`. Steps after it: `Not executed: an earlier action in this batch failed.`, Anthropic's own sentence with "batch" for "turn". Tier scheduling owns one more line, for a step held for the `session` tier.
 - **Pictures**, in order: each `screenshot` or `zoom` step's shot, then the observation's. Each gets a line `screenshot <n> (step <i>|observation): <path> (<w>×<h>)` (`formatShotLine`) after the step lines, and an image part in the same order. At most 4 image parts ride in one result; past that the lines still name the files, marked ` (not attached)`.
 - Then a blank line, then the observation's text; when the result carries `observationError` instead, the line `observation failed: <its message>` in that place (it rides in `text` across the bridge too). With `mode: 'none'` nothing follows the step lines.
-- **An image** rides as `{ "type": "image", "data": <base64>, "mimeType": "image/jpeg" }`, the way `html_preview` returns its PNG today (`apptools.ts` `htmlPreviewContent`, the bridge's `toolContent`). The file is written on the **thread's own host** (`attachmentDir(session)/computer/<n>.jpg`), so the path in the text opens with the harness's own image tool if a harness drops the image part: Claude's Read, codex's `view_image`. The transcript keeps `[image]` in place of the bytes (`withoutImageBytes` in drivers/codex.ts) and the preview shows the file. Preview and image results proves, per harness and version, that the model receives the picture (claude in-process, codex ≥ 0.162.1 over the bridge, Muse over the bridge), and records the answer in docs.
+- **An image** rides as `{ "type": "image", "data": <base64>, "mimeType": "image/jpeg" }`, the way `html_preview` returns its PNG today (`apptools.ts` `htmlPreviewContent`, the bridge's `toolContent`). The file is written on the **thread's own host** (`attachmentDir(session)/computer/<n>.jpg`), so the path in the text opens with the harness's own image tool if a harness drops the image part: Claude's Read, codex's `view_image`. The transcript keeps `[image]` in place of the bytes (`withoutImageBytes` in drivers/codex.ts) and the preview shows the file. The live image proof below measures receipt per harness and CLI version; a path alone does not prove that the image part reached the model.
 - **The one-tool-per-verb variant**: `COMPUTER_ACTIONS` in `tools.ts` is a table of every action with its parameter shape, from which both `computer_act` and a per-verb set (`computer_left_click`, `computer_type`, … each with `app`, `window`, `screenshot` and that verb's parameters, its required ones required; `perVerbTools()`) are built. `computerToolJsonSchema` gives each input's JSON Schema for an MCP `tools/list`: one flat object, no `oneOf` or `anyOf` at the top. Computer model instructions may benchmark the per-verb set for Claude against `computer_act` and `computer_batch` and keep the faster; nothing below the tools changes. The Codex REPL shape stays out of scope until the typed tools prove slower.
+
+**Measured picture delivery (Linux box, 2026-11-08).** Run
+`bun run script:e2e-computer-images` for Claude and Codex, or add
+`--harness claude|codex|muse` to select one. Muse skips with one line when
+its catalog lists no models. The proof runs a real `SessionRegistry` and
+its drivers in process, with the Electron stub preload. It sets
+`computerHooks.current` to a real `ComputerService` and `ComputerSessions`
+over the fake binary, whose `FAKE_SHOT_FILES=a,b` serves shots in order and
+repeats the last. `FAKE_SHOT_FILE` still supplies every shot when the list
+is absent. PNG inputs keep their format and dimensions.
+
+Each full-access thread uses low reasoning and reads six random letters
+from a 1280×800 bitmap PNG. The second case first returns the recorded
+TextEdit save-sheet JPEG (118 KiB), then the code through a screenshot
+action. Neither prompt nor observation text carries the code. The report
+at `/srv/agents/work/temp-code/.temp-code/computer-images/box.json` records
+versions, replies, verdicts, reasons and tool rows. `parts` and `steer` fail
+if Read, `view_image` or a shell call names a shot file. `view` requires
+`view_image` on a shot path and still rejects other file reads. Codex's
+native `imageView` events now produce `view_image` tool rows for this check.
+
+| Harness / model | CLI | Mode | Code only | Fixture then code |
+|---|---|---|---|---|
+| Claude / claude-sonnet-5-5 | 2.1.303 | parts | Pass | Pass |
+| Codex / gpt-6.1-sol | 0.163.0 | parts | Pass | Pass |
+| Codex / gpt-6.1-sol | 0.163.0 | steer | Pass | Pass |
+| Codex / gpt-6.1-sol | 0.163.0 | view | Pass | Pass |
+
+Measured on the box on 2026-11-08. Claude's first run hit the account's
+weekly limit before any computer call; the rerun after the reset passed both
+cases with no file read. An initial run also found a populated Muse catalog on the box:
+Muse Spark 1.3 passed both cases with parts (CLI 1.4.14); those extra results
+remain in `box-initial.json`. They do not replace the planned Mac proof.
+
+Codex defaults to `parts` because it passed both cases. `codexComputerImages()`
+accepts `TEMP_CODE_CODEX_COMPUTER_IMAGES=parts|steer|view` only under
+`NODE_ENV=test` or `TEMP_CODE_E2E_STATUS=1`. The small, tested alternatives
+remain for later CLI checks. `steer` keeps image parts off the bridge and
+sends at most `MAX_IMAGE_PARTS` shot paths as `localImage` items into the
+current turn, led by `COMPUTER_PICTURES_TEXT`. Its `tcimg_<n>` user-message
+echo adds no transcript row; a refused steer drops without starting a turn.
+The `view` prompt asks for file reads only within the proof.
 
 **The peer payloads** (Bridge path): a box thread's tool call crosses the Mac bridge as `ComputerToolCallSchema`, a union discriminated on `tool` whose `args` is that tool's own input schema (`{ tool: 'computer_act', args: ComputerActInput, threadId, permission }` and so on), with `permission` the thread's `PermissionPolicy` (`'safe' | 'edits' | 'auto'`, src/shared/events.ts, as the bridge's other calls send it). It comes back as `ComputerPeerAnswerSchema` (`src/shared/contract-maccomputer.ts`): `{ steps: string[], body: string | null, isError, away?: true, images: { label: string /* "step 2" | "observation" */, data: string, mimeType: string, width: number, height: number }[], row }`, the step lines and the body apart, since a `text` with its `screenshot` lines left out cannot be split back where `mode: 'none'` left no body. The box writes each image under the thread's attachment dir and builds the same outcome a Mac thread gets, so `renderText` lays the lines out for both hosts. `ComputerToolResultSchema { text, images }` stays the bridge script's answer (`AppComputerAnswerSchema`). Policy, approvals and the load guard are the Mac's (§18).
 
