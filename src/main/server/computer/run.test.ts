@@ -226,9 +226,13 @@ describe('tiers', () => {
     expect(o.steps).toEqual(['key a · session · changed'])
   })
 
-  it("the gate hears the call's own root and card when the caller names them, else the host's root", async () => {
+  it("the gate hears the call's own root and card when the caller names them, else the host's root and card", async () => {
     const seen: TierGateContext[] = []
-    const gate: SessionTierGate = { admitted: () => false, request: async (c) => (seen.push(c), { admit: false, reason: 'denied', message: 'no' }) }
+    const gate: SessionTierGate = {
+      admitted: () => false,
+      request: async (c) => (seen.push(c), { admit: false, reason: 'skipped', message: 'no' }),
+      run: (c, send) => send(c.tiers)
+    }
     const h = make({ gate })
     const approve = async (): Promise<boolean> => true
     const batch = { app: 'Sessiony', actions: [{ action: 'hold_key', text: 'shift', duration: 1 }] }
@@ -236,7 +240,9 @@ describe('tiers', () => {
     await h.run('computer_batch', batch, 't2')
     expect(seen.map((c) => c.rootId)).toEqual(['env_abcdefghijklmnopqrstuv:root', 't2'])
     expect(seen[0].approve).toBe(approve)
-    expect(seen[1].approve).toBeUndefined()
+    // the host's own threads ask through the registry: the gate always gets a card path (tier scheduling plan §9)
+    expect(typeof seen[1].approve).toBe('function')
+    expect(seen[1].approve).not.toBe(approve)
   })
 
   it('Stubborn raises its click verdict to session through a gate that admits', async () => {

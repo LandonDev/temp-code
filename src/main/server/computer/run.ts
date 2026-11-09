@@ -513,9 +513,6 @@ export function remember(t: ThreadComputer, query: string, obs: Observation): vo
 
 interface ActionsRun {
   threadId: string
-  rootId: string
-  /** the call's own card, for the gate's ask past its bound */
-  approve?: (req: ApprovalRequest) => Promise<boolean>
   session: string
   args: Args
   actions: ComputerAction[]
