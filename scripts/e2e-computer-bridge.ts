@@ -451,11 +451,14 @@ async function orchestrator(): Promise<void> {
   }
 
   // ── the box half ──
-  ssh = spawn(sshWords[0], [...sshWords.slice(1, -1), '-o', 'ExitOnForwardFailure=yes', '-L', `127.0.0.1:${tunnel}:127.0.0.1:${boxPort}`, sshWords[sshWords.length - 1], `cd ${clone} && ${boxBun} scripts/e2e-computer-bridge.ts --box-half --port ${boxPort} --seed ${SEED}`], {
+  // The Mac's key may log in as root, and Electron refuses to run as root: the half runs as the agents user then.
+  const half = `${boxBun} scripts/e2e-computer-bridge.ts --box-half --port ${boxPort} --seed ${SEED}`
+  const boxCommand = `cd ${clone} && if [ "$(id -u)" = 0 ]; then exec runuser -u agents -- env HOME=/srv/agents/home ${half}; else exec ${half}; fi`
+  ssh = spawn(sshWords[0], [...sshWords.slice(1, -1), '-o', 'ExitOnForwardFailure=yes', '-L', `127.0.0.1:${tunnel}:127.0.0.1:${boxPort}`, sshWords[sshWords.length - 1], boxCommand], {
     stdio: ['pipe', 'pipe', 'inherit']
   })
   type ReadyLine = { ready: boolean; envId: string; key: string; threads: [string, string]; root: string; error?: string }
-  const half: { ready: ReadyLine | null } = { ready: null }
+  const halfLine: { ready: ReadyLine | null } = { ready: null }
   createInterface({ input: ssh.stdout! }).on('line', (line) => {
     let msg: { id?: number; ready?: boolean; result?: unknown; error?: string }
     try {
@@ -463,12 +466,12 @@ async function orchestrator(): Promise<void> {
     } catch {
       return
     }
-    if (msg.ready !== undefined) half.ready = msg as ReadyLine
+    if (msg.ready !== undefined) halfLine.ready = msg as ReadyLine
     else if (msg.id !== undefined) pending.get(msg.id)?.(msg)
   })
-  await until(180_000, () => half.ready !== null)
-  if (!half.ready?.ready) await stop(`the box half did not come up: ${half.ready?.error ?? 'no ready line'}`)
-  const { envId: boxId, key, threads, root: boxRoot } = half.ready as ReadyLine
+  await until(180_000, () => halfLine.ready !== null)
+  if (!halfLine.ready?.ready) await stop(`the box half did not come up: ${halfLine.ready?.error ?? 'no ready line'}`)
+  const { envId: boxId, key, threads, root: boxRoot } = halfLine.ready as ReadyLine
   const [t1, t2] = threads
   const token = (sid: string): string => tokenFor(SEED, 'computer', sid)
   let callSeq = 0
