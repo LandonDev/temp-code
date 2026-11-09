@@ -117,7 +117,7 @@ const saveReport = (): void => writeFileSync(REPORT, JSON.stringify({ ...report,
 
 // ── the Mac, read from outside ──────────────────────────────────────────
 
-const probe = <T>(command: string): T => JSON.parse(execFileSync(PROBE, [command], { encoding: 'utf8', timeout: 10_000 })) as T
+const probe = <T>(command: string): T => JSON.parse(execFileSync(PROBE, command.split(' '), { encoding: 'utf8', timeout: 10_000 })) as T
 const frontmost = (): { pid: number; bundleId: string | null } => probe('frontmost')
 const pointer = (): { x: number; y: number } => probe('pointer')
 const idleSeconds = (): number => probe<{ seconds: number }>('idle').seconds
@@ -280,7 +280,8 @@ while (!scratchPid) {
   scratchPid = (await svc.request('apps.launch', { app: PROBE_APP })).pid
   await sleep(1_000)
   if (idleSeconds() < (Date.now() - t0) / 1000) {
-    console.log('      input came during the launch: TC Probe ended, waiting for another quiet gap')
+    console.log('      input came during the launch: TC Probe hidden and ended, waiting for another quiet gap')
+    probe(`hide ${scratchPid}`)
     killProbeApp()
     continue
   }
