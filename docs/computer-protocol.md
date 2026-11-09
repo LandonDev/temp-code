@@ -385,7 +385,7 @@ The Capture module (`native/tc-computer/Sources/Capture/`, `ScreenCaptureKitCapt
 | Starved stream | paused 5.00 s after the unacked frame; new pixels 52 ms after the ack |
 | Watch cold start to live | 37 ms |
 | Repaint to a counting watch frame, end to end (measured, not judged) | p50 57 ms, p95 91 ms (covered: p95 102 ms); under a load of 6–10 on 16 cores, p95 102–492 ms over six runs, every repaint still counted, the delay in ScreenCaptureKit's own frame times |
-| The counting frame's display time to the signal, Capture's own (scene 15 judges it, p95 under 150 ms) | about 1 ms |
+| The counting frame's display time to the signal, Capture's own (scene 15 judges it, p95 under 150 ms) | p50 0.8–0.9 ms, p95 1.2–2.4 ms over three runs (end to end p95 80–96 ms in those runs) |
 | Still window / caret / spinner, counting frames | 0 of 100 / 0 over 10 s / 1 of 50 |
 | CPU of the capturing process | watch 0.5%, preview 1.3% (flat) to 2.2% (busy) of a core |
 
