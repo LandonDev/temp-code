@@ -1,7 +1,7 @@
 import { homedir, hostname } from 'node:os'
 import { dropAnswers, failAnswers, FAILED_ANSWER } from './answerSeams'
 import { vault } from 'aliax-core'
-import { configureMuseDirs } from './museConfigDirs'
+import { configureMuseDirs, configureMuseSkills, migrateMuseDirs } from './museConfigDirs'
 import { version as appVersion } from '../../../package.json'
 import { hubFromEnv, type HubClient } from './hub'
 import { existsSync, readFileSync } from 'node:fs'
@@ -188,6 +188,8 @@ import {
 } from './apptools'
 import { SkillMaterializer, configureMaterializedSkills } from './skills/materialize'
 import { SkillPointers, configureSkillPointers } from './skills/pointers'
+import { configureClaudeSkillRoots } from './skills/claudeRoots'
+import { codexLiveRoots, configureCodexSkills } from './skills/codexSkills'
 import { skillTextMap } from './skills/skillText'
 import { workspaceForCwd, workspaceOfThread } from './skills/views'
 import { SKILL_IMPORT_KEY, importSkills } from './skills/import'
@@ -563,14 +565,21 @@ export async function startServer(
     headroom: () => headroom
   })
   registry.limits = accounts
-  // A Muse thread's `muse serve` reads its account's login from a config dir
-  // of its own under the app's data (museConfigDirs.ts), filled from the vault.
+  // A Muse thread's `muse serve` reads its config from a dir of its own under
+  // the app's data, one per account and skills scope (museConfigDirs.ts), the
+  // login filled from the vault; the old per-account dirs go at boot.
   configureMuseDirs({
     root: join(options.dataDir ?? dirname(dbPath), 'muse-accounts'),
     readBlob: (account) => vault.readSecret('muse-code', account),
     saveBlob: (account, blob) => vault.saveSecret('muse-code', account, blob),
+    accounts: () => vault.profiles('muse-code').map((p) => p.name),
     log: (line) => console.log(line)
   })
+  try {
+    migrateMuseDirs()
+  } catch (err) {
+    console.warn(`[muse] the old config dirs were not migrated: ${err instanceof Error ? err.message : String(err)}`)
+  }
   // An account gone from the vault explains a thread's 401 outright; with
   // no snapshot yet the host cannot say either way.
   registry.accountKnown = (provider, name) => {
@@ -748,7 +757,9 @@ export async function startServer(
     home: homedir(),
     textMap: () =>
       skillTextMap({ platform: hostPlatform(), base: harnessSync.pathMap(), peers: memorySync.peerHomes(), translate: (h, w) => memorySync.translationFor(h, w) }),
-    onTextMap: (fn) => memorySync.onPeerHome(fn)
+    onTextMap: (fn) => memorySync.onPeerHome(fn),
+    // Claude and Muse reach a generation through the scope pointers, which gc spares; a live codex app-server holds one by path.
+    inUse: () => codexLiveRoots()
   })
   skillMaterializer.start()
   configureMaterializedSkills(skillMaterializer)
@@ -762,10 +773,18 @@ export async function startServer(
   })
   skillScopePointers.start()
   configureSkillPointers(skillScopePointers)
-  // The slash menu lists the store's skills (and the home folder's, until the drivers own each CLI's skill folder).
+  // Every CLI reads the store's skills for its thread's scope, and only those
+  // (skills/claudeRoots.ts, codexSkills.ts, museConfigDirs.ts): the scope is
+  // the thread's own workspace, the rule the skill tools use for their caller.
+  const skillScopeOf = (s: { workspaceId: string | null; projectId: string | null; cwd: string }): string | null =>
+    workspaceOfThread(s, registry.listWorkspaces(), registry.listProjects())
+  configureClaudeSkillRoots({ scopeOf: skillScopeOf, pointers: skillScopePointers, root: join(options.dataDir ?? dirname(dbPath), 'harness') })
+  configureCodexSkills({ scopeOf: skillScopeOf, pointers: skillScopePointers })
+  configureMuseSkills({ scopeOf: skillScopeOf, pointers: skillScopePointers })
+  // The slash menu lists what the CLIs run: the store's skills, never the home folders'.
   configureCommandSkills({
     storeDir: (provider, cwd) => join(skillMaterializer.dirFor(provider, workspaceForCwd(registry.listWorkspaces(), registry.listProjects(), cwd)), 'skills'),
-    readHome: true
+    readHome: false
   })
   /** A store write as a thread or the import makes it: storeRpc as this host's own caller, a refusal answered as its words. */
   const storeWrite = (input: SkillInput, expectUpdatedAt: number): Promise<{ skill: SkillMeta } | string> =>
@@ -3445,6 +3464,9 @@ export async function startServer(
       projectSettings.close()
       rulesSync.close()
       storeSync.close()
+      configureClaudeSkillRoots(null)
+      configureCodexSkills(null)
+      configureMuseSkills(null)
       skillScopePointers.close()
       configureSkillPointers(null)
       skillMaterializer.close()

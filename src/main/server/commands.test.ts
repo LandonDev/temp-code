@@ -172,6 +172,16 @@ describe('listCommands: the skills store', () => {
     expect(codexOnly.find((c) => c.name === 'skill-creator')?.description).toBe('System copy')
   })
 
+  it('with readHome off (the drivers read only the store) a home-only skill never lists; store skills keep their bare names', async () => {
+    const dir = generation('claude/global@ffffffffffff', { tidy: 'Store tidy' })
+    configureCommandSkills({ storeDir: () => dir, readHome: false })
+    const names = (await listCommands('claude', freshCwd())).map((c) => c.name)
+    // The home's mine is not in the store: the CLI never runs it, so the menu never lists it.
+    expect(names).not.toContain('mine')
+    expect(names).toContain('tidy')
+    expect(names).toContain(`${SYNCED_SKILL_PREFIX}pdf`)
+  })
+
   it('gives store skills the prefix the drivers name, and follows a new generation at once', async () => {
     const one = generation('claude/global@dddddddddddd', { first: 'One' })
     const two = generation('claude/global@eeeeeeeeeeee', { first: 'One', second: 'Two' })
