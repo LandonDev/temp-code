@@ -133,6 +133,8 @@ describe('ComputerBridge: the offer', () => {
     expect(b.bridge.offered('t1')).toBe(true)
     b.settings.delete(`${COMPUTER_OFFER_PREFIX}${MAC}`)
     expect(b.bridge.offered('t1')).toBe(false)
+    expect(b.bridge.bridged('t1')).toBe(true)
+    expect(b.bridge.bridged('plain')).toBe(false)
   })
 
   it('an offer that flips is kept and reboots the bridged threads; an equal one does nothing', () => {

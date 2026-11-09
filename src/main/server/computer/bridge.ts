@@ -141,6 +141,11 @@ export class ComputerBridge {
     return this.deps.store.getSetting(`${COMPUTER_OFFER_PREFIX}${mac}`) === 'on'
   }
 
+  /** The thread's bridge names a Mac: its calls go there, and the Mac answers even a refusal (its switch off) in its own words. */
+  bridged(sessionId: string): boolean {
+    return this.deps.macPeerOf(sessionId) !== null
+  }
+
   /** A Mac registered with another set of offers: kept for while it is offline; a flip reboots its bridged threads at their next turn. */
   offersChanged(envId: string, offers: ReadonlySet<string>): void {
     const on = offers.has(MAC_COMPUTER_OFFER)

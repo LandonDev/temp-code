@@ -147,6 +147,7 @@ describe('a box thread bridged to its Mac', () => {
     const row = { threadId: 'b1', since: 1, lastCallAt: 1, apps: [{ name: 'TextEdit', bundleId: null, window: 'Untitled' }], running: null, tier: null, macPeer: 'env_mac', macName: 'Studio' }
     const bridge = {
       offered: (id: string) => id === 'b1',
+      bridged: (id: string) => id === 'b1' || id === 'b3',
       run: async (ctx: { threadId: string }, tool: string) => (runs.push(`${ctx.threadId} ${tool}`), { steps: [], shots: [], body: 'ok', isError: false }),
       rows: () => [row],
       onRows: (fn: () => void) => (listeners.add(fn), () => listeners.delete(fn)),
@@ -176,6 +177,10 @@ describe('a box thread bridged to its Mac', () => {
     expect(s.tools({ sessionId: 'b2', token: b.tokens.tokenFor('b2') }).tools).toEqual([])
     expect((await s.call({ sessionId: 'b2', token: b.tokens.tokenFor('b2'), call: 2, tool: 'computer_observe', args: { app: 'x' }, images: 'none' })).isError).toBe(true)
     await expect(s.call({ sessionId: 'b1', token: b.tokens.tokenFor('b2'), call: 3, tool: 'computer_observe', args: {}, images: 'none' })).rejects.toThrow(/computer token/)
+    // A thread bridged to a Mac that no longer offers computer use: no tools, but a call still reaches the Mac for its own refusal.
+    expect(s.tools({ sessionId: 'b3', token: b.tokens.tokenFor('b3') }).tools).toEqual([])
+    await s.call({ sessionId: 'b3', token: b.tokens.tokenFor('b3'), call: 4, tool: 'computer_observe', args: { app: 'TextEdit' }, images: 'none' })
+    expect(b.runs).toEqual(['b1 computer_observe', 'b3 computer_observe'])
   })
 
   it("a Mac's own push leaves out the sessions it holds for box threads", async () => {

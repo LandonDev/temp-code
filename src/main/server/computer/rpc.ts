@@ -100,16 +100,23 @@ export class ComputerSocket {
     private readonly bridged: ComputerRpcBridge | null = null
   ) {}
 
-  /** Who serves a thread's calls: this host's sessions where computer use is available, else its Mac through the bridge, else nobody. */
-  private serverOf(sessionId: string): { local: ComputerHost } | { bridge: ComputerBridge } | null {
+  /**
+   * Who serves a thread's calls: this host's sessions where computer use is
+   * available, else its Mac through the bridge, else nobody. A call goes to
+   * the Mac whenever the thread's bridge names one (the Mac refuses it in its
+   * own words while its switch is off); the tools are listed only while that
+   * Mac offers computer use.
+   */
+  private serverOf(sessionId: string, use: 'call' | 'list'): { local: ComputerHost } | { bridge: ComputerBridge } | null {
     if (this.host?.available()) return { local: this.host }
-    if (this.bridged?.bridge.offered(sessionId)) return { bridge: this.bridged.bridge }
+    const bridge = this.bridged?.bridge
+    if (bridge && (use === 'call' ? bridge.bridged(sessionId) : bridge.offered(sessionId))) return { bridge }
     return null
   }
 
   async call(p: { sessionId: string; token: string; call: CallId; tool: string; args: Record<string, unknown>; images: 'parts' | 'none' }): Promise<AppComputerAnswer> {
     this.checkToken(p.sessionId, p.token)
-    const server = this.serverOf(p.sessionId)
+    const server = this.serverOf(p.sessionId, 'call')
     if (!server) return computerAnswer(refusal(hostErrorLine('service_unavailable', 'computer use runs on a Mac')), 'none')
     const key = keyOf(p.sessionId, p.call)
     const abort = new AbortController()
@@ -132,7 +139,7 @@ export class ComputerSocket {
 
   tools(p: { sessionId: string; token: string }): AppComputerToolsAnswer {
     this.checkToken(p.sessionId, p.token)
-    const server = this.serverOf(p.sessionId)
+    const server = this.serverOf(p.sessionId, 'list')
     return { tools: server ? computerToolList({ bridged: 'bridge' in server }) : [] }
   }
 
