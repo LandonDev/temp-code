@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  MAC_BRIDGE_MAX_COMPUTER_CAP,
   MAC_BRIDGE_MAX_RUNNING_CAP,
   MAC_BRIDGE_MAX_THREADS_CAP,
   type MacBridgeHostPolicy,
@@ -20,8 +21,8 @@ import { usageParts } from "./parts";
 
 /**
  * A host's Mac bridge settings: whether its dev servers are forwarded here, how many
- * commands and threads it may run at once, and the folders it reads without
- * asking. Each change saves at once; Done closes.
+ * commands, threads and computer sessions it may run at once, and the folders it
+ * reads without asking. Each change saves at once; Done closes.
  */
 export function MacBridgeHostDialog({ host: initial, onClose }: { host: MacBridgeHostPolicy; onClose: () => void }) {
   // The store's row, live: a change lands there and the dialog follows it.
@@ -81,6 +82,19 @@ export function MacBridgeHostDialog({ host: initial, onClose }: { host: MacBridg
               onCommit={(n) => n !== null && void run(() => setMacBridgeLimits(id, { maxThreads: n }))}
             />
           </Row>
+          {host.computer ? (
+            <Row title="Computer sessions at once" description={<Facts parts={[`${host.computerLive} live`]} />} data-mac-bridge-max-computer={host.maxComputer}>
+              <CommitField
+                kind="int"
+                aria-label={`Computer sessions ${host.name} may hold on this Mac at once`}
+                value={host.maxComputer}
+                min={1}
+                max={MAC_BRIDGE_MAX_COMPUTER_CAP}
+                className="w-16"
+                onCommit={(n) => n !== null && void run(() => setMacBridgeLimits(id, { maxComputer: n }))}
+              />
+            </Row>
+          ) : null}
         </Group>
         {host.policy !== "off" ? (
           <Group title="Shared folders" data-mac-bridge-shared={host.shared.length}>

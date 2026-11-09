@@ -42,7 +42,7 @@ describe('rowState', () => {
     expect(rowState(row({ removedAt: 6, note: 'branch ios/home deleted' }))).toBe('branch ios/home deleted')
   })
   it('names every kind in plain words', () => {
-    expect(KIND_LABEL).toEqual({ worktree: 'worktree', simulator: 'simulator', devInstance: 'dev instance', port: 'dev server' })
+    expect(KIND_LABEL).toEqual({ worktree: 'worktree', simulator: 'simulator', devInstance: 'dev instance', port: 'dev server', computer: 'computer use' })
   })
 })
 

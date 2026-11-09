@@ -43,6 +43,10 @@ const host = (over: Partial<MacBridgeHostPolicy> = {}): MacBridgeHostPolicy => (
   running: 1,
   held: 2,
   threads: 0,
+  computer: false,
+  computerUnavailable: null,
+  maxComputer: 2,
+  computerLive: 0,
   ...over,
 });
 
@@ -108,5 +112,18 @@ describe("MacBridgeHostDialog", () => {
     expect(calls).toEqual([{ method: "forwarding", args: ["env_box", false] }]);
     fireEvent.click(screen.getByText("Done"));
     expect(onClose).toHaveBeenCalled();
+  });
+  it("shows the computer sessions cap only with computer use on, with the live count, and commits it", async () => {
+    const off = render(<MacBridgeHostDialog host={host()} onClose={() => {}} />);
+    expect(screen.queryByLabelText("Computer sessions box may hold on this Mac at once")).toBeNull();
+    off.unmount();
+    render(<MacBridgeHostDialog host={host({ computer: true, computerLive: 1 })} onClose={() => {}} />);
+    expect(screen.getByText("1 live")).toBeTruthy();
+    const cap = screen.getByLabelText("Computer sessions box may hold on this Mac at once") as HTMLInputElement;
+    expect(cap.value).toBe("2");
+    fireEvent.change(cap, { target: { value: "3" } });
+    fireEvent.blur(cap);
+    await flush();
+    expect(calls).toContainEqual({ method: "limits", args: ["env_box", { maxComputer: 3 }] });
   });
 });

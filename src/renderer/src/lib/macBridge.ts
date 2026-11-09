@@ -285,15 +285,21 @@ export function useMacBridgeHosts(): MacBridgeHostPolicy[] {
 
 // ── the load guard (docs/box.md "The load guard") ──────────────────────
 
-/** A host's caps on concurrent commands and jobs, and on Mac-local threads; null puts one back to its default. */
+/** A host's caps on concurrent commands and jobs, Mac-local threads and computer sessions; null puts one back to its default. */
 export async function setMacBridgeLimits(
   environmentId: string,
-  limits: { maxRunning?: number | null; maxThreads?: number | null }
+  limits: { maxRunning?: number | null; maxThreads?: number | null; maxComputer?: number | null }
 ): Promise<void> {
   const hosts = await local()!.request<MacBridgeHostPolicy[]>('macBridge.limits.set', {
     environmentId,
     ...limits
   })
+  store.setState({ hosts })
+}
+
+/** Computer use for a host (contract-maccomputer.ts); off ends its live sessions on this Mac. */
+export async function setMacBridgeComputer(environmentId: string, on: boolean): Promise<void> {
+  const hosts = await local()!.request<MacBridgeHostPolicy[]>('macBridge.computer.set', { environmentId, on })
   store.setState({ hosts })
 }
 

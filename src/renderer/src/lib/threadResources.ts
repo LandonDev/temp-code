@@ -115,7 +115,8 @@ export const KIND_LABEL: Record<ThreadResourceKind, string> = {
   worktree: 'worktree',
   simulator: 'simulator',
   devInstance: 'dev instance',
-  port: 'dev server'
+  port: 'dev server',
+  computer: 'computer use'
 }
 
 /** The host a resource lives on, by name: "this Mac" for this machine, the saved host's name otherwise. */

@@ -35,19 +35,37 @@ const METHOD_TEXT: Record<MacBridgeRequest['method'], string> = {
   'mac.listDir': 'list',
   'mac.fetchFile': 'copy to the host',
   'mac.run': 'run',
-  'mac.writeFile': 'write a file'
+  'mac.writeFile': 'write a file',
+  'mac.computer': 'use'
 }
 
-/** A command as the person agreed to it: argv quoted, or the command string. */
+/** A command as the person agreed to it: argv quoted, or the command string; a computer card's acting steps, one a line. */
 export const requestCode = (request: MacBridgeRequest): string =>
-  request.argv ? quoteArgv(request.argv) : (request.command ?? request.path ?? '')
+  request.kind === 'computer'
+    ? (request.computer?.actions ?? []).join('\n')
+    : request.argv
+      ? quoteArgv(request.argv)
+      : (request.command ?? request.path ?? '')
 
-/** "box wants to run on this Mac": the line a card and a toast lead with. */
+/** A computer request's steps are words, not code: they read in the text face. */
+export const requestIsCode = (request: MacBridgeRequest): boolean => request.kind !== 'computer'
+
+/** "box wants to run on this Mac", "box wants to use TextEdit on this Mac": the line a card and a toast lead with. */
 export const requestTitle = (request: MacBridgeRequest): string =>
-  `${request.hostName} wants to ${METHOD_TEXT[request.method]}${request.interactive ? ' interactively' : ''} on this Mac`
+  request.kind === 'computer'
+    ? `${request.hostName} wants to use ${request.computer?.app || 'an app'} on this Mac`
+    : `${request.hostName} wants to ${METHOD_TEXT[request.method]}${request.interactive ? ' interactively' : ''} on this Mac`
 
-/** A run's cwd, its timeout and whether stdin stays open; a write's mode and size. */
+/** A live computer session as its row names it: "Using TextEdit, window "Untitled"". */
+export const computerSessionLine = (request: MacBridgeRequest): string => {
+  const app = request.computer?.app || 'an app'
+  const window = request.computer?.window
+  return window ? `Using ${app}, window ${JSON.stringify(window)}` : `Using ${app}`
+}
+
+/** A run's cwd, its timeout and whether stdin stays open; a write's mode and size; a computer card's window. */
 export function requestFacts(request: MacBridgeRequest): string[] {
+  if (request.kind === 'computer') return request.computer?.window ? [`window ${JSON.stringify(request.computer.window)}`] : []
   if (request.kind === 'run')
     return [
       `in ${request.cwd ?? ''}`,
@@ -87,7 +105,9 @@ function syncToasts(toast: Awaited<ReturnType<typeof loadToast>>, queue: MacBrid
       duration: Infinity,
       description: (
         <span className="flex min-w-0 flex-col gap-1" data-mac-bridge-toast={request.id}>
-          <span className="block max-h-32 overflow-auto whitespace-pre-wrap break-all font-mono text-xs">{requestCode(request)}</span>
+          <span className={`block max-h-32 overflow-auto whitespace-pre-wrap text-xs ${requestIsCode(request) ? 'break-all font-mono' : 'break-words'}`}>
+            {requestCode(request)}
+          </span>
           {requestFacts(request).length ? <Facts parts={requestFacts(request)} className="text-xs" /> : null}
           {request.threadTitle || more ? (
             <span className="truncate">{[request.threadTitle, more ? `and ${more} more` : ''].filter(Boolean).join(', ')}</span>

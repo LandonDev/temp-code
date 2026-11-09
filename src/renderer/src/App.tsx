@@ -38,6 +38,7 @@ import { ThreadBatchToasts } from "./chrome/ThreadBatchToasts";
 import { GoalDialogHost } from "./chrome/GoalDialog";
 import { toggleAway } from "./lib/away";
 import { MacBridgeToasts } from "./chrome/MacBridgeCards";
+import { ComputerAskToasts } from "./chrome/ComputerAskToasts";
 import { environment, environmentAt, environmentStore, stepEnvironment } from "./stores/environment";
 import { subscribeEnvironmentSwitch, workspaceToLandOn } from "./lib/environmentSwitch";
 import { markAllSeen } from "./lib/sessionSeen";
@@ -3598,6 +3599,7 @@ export default function App() {
         onApproval={onApproval}
       />
       <MacBridgeToasts />
+      <ComputerAskToasts />
       <HtmlRenderOverlay />
       {whatsNew ? (
         <WhatsNewDialog

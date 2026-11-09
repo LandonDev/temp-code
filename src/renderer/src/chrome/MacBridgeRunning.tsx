@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { MacBridgeRequest } from '@server/shared/contract-macbridge'
 import { heldParts, startMacBridge, stopMacBridgeAll, useMacBridgeRunning } from '../lib/macBridge'
-import { requestCode } from './MacBridgeCards'
+import { computerSessionLine, requestCode } from './MacBridgeCards'
 import { PageError } from '../components/page'
 import { Button } from '../components/ui/button'
 import { Row } from '../surfaces/settings/hosts/Group'
@@ -17,7 +17,11 @@ import { Pause } from './icons'
  * after the running ones, its place in line at the end instead of a thread
  * name; its Stop takes it out of the line. A call a paused thread holds on
  * its host (status `paused`) is a row after those, "Paused" where Stop would
- * be: nothing runs for it here. Nothing here opens by itself.
+ * be: nothing runs for it here. A box thread's live computer session
+ * (kind `computer`) is a row in words ("Using TextEdit, window "Untitled"")
+ * with Stop, which ends computer use for the thread's turn; one the computer
+ * cap holds says its place in line as a held command does. Nothing here
+ * opens by itself.
  */
 export function MacBridgeRunningList({
   environmentId,
@@ -41,9 +45,14 @@ export function MacBridgeRunningList({
     }
   }
   if (inFlight.length === 0) return null
-  const running = inFlight.filter((r) => r.status === 'running').length
-  const paused = inFlight.filter((r) => r.status === 'paused').length
-  const waiting = inFlight.length - running - paused
+  const commands = inFlight.filter((r) => r.kind !== 'computer')
+  const running = commands.filter((r) => r.status === 'running').length
+  const paused = commands.filter((r) => r.status === 'paused').length
+  const waiting = commands.length - running - paused
+  const sessions = {
+    live: inFlight.filter((r) => r.kind === 'computer' && r.status === 'running').length,
+    waiting: inFlight.filter((r) => r.kind === 'computer' && r.status === 'held').length
+  }
   // Stop all reaches what runs or waits its turn here; a paused thread's calls are its host's to release or refuse.
   const stoppable = inFlight.filter((r) => r.status !== 'paused')
   return (
@@ -53,7 +62,7 @@ export function MacBridgeRunningList({
       data-mac-bridge-paused-count={paused}
     >
       <div className="flex min-h-7 items-center gap-3 text-xs text-muted-foreground" data-mac-bridge-count>
-        <Facts parts={countParts(running, waiting, hostName, paused)} className="min-w-0 flex-1" />
+        <Facts parts={countParts(running, waiting, hostName, paused, sessions)} className="min-w-0 flex-1" />
         {stoppable.length > 1 ? (
           <Button variant="ghost" size="xs" className="text-muted-foreground hover:text-destructive" onClick={() => void stop(stoppable)}>
             Stop all
@@ -66,10 +75,15 @@ export function MacBridgeRunningList({
           data-mac-bridge-running-row={r.id}
           data-mac-bridge-held={r.status === 'held' ? r.held?.position : undefined}
           data-mac-bridge-row-status={r.status}
+          data-mac-bridge-row-kind={r.kind}
           title={
-            <span className={`block max-w-full truncate font-mono text-xs font-normal ${r.status === 'paused' ? 'text-muted-foreground' : ''}`}>
-              {requestCode(r)}
-            </span>
+            r.kind === 'computer' ? (
+              <span className="block max-w-full truncate text-xs font-normal">{computerSessionLine(r)}</span>
+            ) : (
+              <span className={`block max-w-full truncate font-mono text-xs font-normal ${r.status === 'paused' ? 'text-muted-foreground' : ''}`}>
+                {requestCode(r)}
+              </span>
+            )
           }
           description={sessionId === undefined && r.threadTitle ? r.threadTitle : undefined}
         >
@@ -103,17 +117,27 @@ export function MacBridgeRunningList({
  * The list's first line as facts: "2 commands running on this Mac from
  * box", "1 waiting", "1 paused"; with nothing running, "1 command waiting
  * for this Mac", or with only paused ones, "2 calls paused with their
- * thread".
+ * thread". Computer sessions are named apart, after the commands: "1
+ * computer session", "1 computer session waiting"; alone they lead, "2
+ * computer sessions on this Mac from box".
  */
-export function countParts(running: number, waiting: number, hostName?: string, paused = 0): string[] {
+export function countParts(
+  running: number,
+  waiting: number,
+  hostName?: string,
+  paused = 0,
+  sessions: { live: number; waiting: number } = { live: 0, waiting: 0 }
+): string[] {
   const from = hostName ? ` from ${hostName}` : ''
   const noun = (n: number) => (n === 1 ? 'command' : 'commands')
-  if (running === 0 && waiting === 0)
+  const sessionNoun = (n: number) => (n === 1 ? 'computer session' : 'computer sessions')
+  const parts: string[] = []
+  if (running > 0) parts.push(`${running} ${noun(running)} running on this Mac${from}`, ...(waiting ? [`${waiting} waiting`] : []))
+  else if (waiting > 0) parts.push(`${waiting} ${noun(waiting)} waiting for this Mac${from}`)
+  if (sessions.live > 0) parts.push(`${sessions.live} ${sessionNoun(sessions.live)}${parts.length ? '' : ` on this Mac${from}`}`)
+  if (sessions.waiting > 0) parts.push(`${sessions.waiting} ${sessionNoun(sessions.waiting)} waiting${parts.length ? '' : ` for this Mac${from}`}`)
+  if (parts.length === 0)
     return [`${paused} ${paused === 1 ? 'call' : 'calls'} paused with ${paused === 1 ? 'its' : 'their'} thread${from}`]
-  const parts =
-    running === 0
-      ? [`${waiting} ${noun(waiting)} waiting for this Mac${from}`]
-      : [`${running} ${noun(running)} running on this Mac${from}`, ...(waiting ? [`${waiting} waiting`] : [])]
   return paused ? [...parts, `${paused} paused`] : parts
 }
 

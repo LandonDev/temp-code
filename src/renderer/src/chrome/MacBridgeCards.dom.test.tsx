@@ -96,6 +96,39 @@ describe('MacBridgeThreadCards', () => {
   })
 })
 
+describe('a computer card', () => {
+  const computer = (id: string) =>
+    req(id, {
+      kind: 'computer',
+      method: 'mac.computer',
+      argv: undefined,
+      cwd: undefined,
+      computer: { app: 'TextEdit', window: 'Untitled', actions: ['click button "Save"', 'type "Lunch?"'] }
+    })
+
+  it('names the app, the steps in words one a line, the window, and offers nothing to remember', async () => {
+    requests = [computer('c1')]
+    const { container } = render(<MacBridgeThreadCards environmentId="env_box" sessionId="s1" />)
+    expect(screen.getByText('box wants to use TextEdit on this Mac')).toBeTruthy()
+    const steps = container.querySelector('[data-mac-bridge-steps]')!
+    expect(steps.textContent).toBe('click button "Save"\ntype "Lunch?"')
+    expect(steps.className).not.toContain('font-mono')
+    expect(screen.getByText('window "Untitled"')).toBeTruthy()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.queryByRole('combobox')).toBeNull()
+    fireEvent.click(screen.getByText('Allow'))
+    await flush()
+    expect(decided).toEqual([['c1', true, false]])
+  })
+
+  it('a toast for a thread not on screen leads with the same title and the steps in the text face', async () => {
+    requests = [computer('c2')]
+    render(<MacBridgeToasts />)
+    await flush()
+    expect(toasts.toast).toHaveBeenCalledWith('box wants to use TextEdit on this Mac', expect.objectContaining({ id: 'mac-bridge:c2' }))
+  })
+})
+
 describe('MacBridgeToasts', () => {
   it('raises one toast for the oldest request of a host, a fresh one for the next once it is answered, and dismisses the answered one', async () => {
     requests = [req('r1'), req('r2', { createdAt: 2, argv: ['git', 'status'] })]

@@ -8,7 +8,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/
 import { errorText } from "../../../chrome/ConfirmDialog";
 import { MacBridgeRunningList } from "../../../chrome/MacBridgeRunning";
 import { openUrl } from "../../../lib/devPorts";
-import { refreshMacBridgeHosts, refreshMacBridgeLoad, setMacBridgeLoadLimit, setMacBridgePolicy, useMacBridgeLoad } from "../../../lib/macBridge";
+import { refreshMacBridgeHosts, refreshMacBridgeLoad, setMacBridgeComputer, setMacBridgeLoadLimit, setMacBridgePolicy, useMacBridgeLoad } from "../../../lib/macBridge";
+import { SettingSwitch } from "../../../components/setting-switch";
 import { useHostForwards } from "../../../lib/portForwards";
 import { CommitField } from "./CommitField";
 import { Facts } from "./Facts";
@@ -17,10 +18,14 @@ import { MacBridgeHostDialog } from "./MacBridgeHostDialog";
 
 /**
  * A host's Mac bridge on this Mac (docs/box.md "The Mac bridge"): what its
- * threads may do here, what runs or waits for it now (with Stop), and its
- * dev servers forwarded to this Mac's loopback. The caps,
- * forwarding and the shared folders are its Settings… dialog.
+ * threads may do here, whether they may use this Mac's apps (computer use,
+ * docs/box.md "Computer use from a box thread"), what runs or waits for it
+ * now (with Stop), and its dev servers forwarded to this Mac's loopback. The
+ * caps, forwarding and the shared folders are its Settings… dialog.
  */
+
+/** What the switch means, under it; where computer use cannot run here, why instead. */
+export const COMPUTER_TEXT = "Each action asks unless the thread has full access.";
 
 export const POLICIES: { value: MacBridgePolicy; label: string }[] = [
   { value: "off", label: "Off" },
@@ -55,6 +60,7 @@ export function useMacBridgePolling(enabled: boolean): void {
 export function MacBridgeGroup({ host }: { host: MacBridgeHostPolicy }) {
   const [settings, setSettings] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [computerError, setComputerError] = useState<string | null>(null);
   const run = useCallback(async (work: () => Promise<void>) => {
     setError(null);
     try {
@@ -63,6 +69,17 @@ export function MacBridgeGroup({ host }: { host: MacBridgeHostPolicy }) {
       setError(errorText(err));
     }
   }, []);
+  /** The switch's save: false slides the thumb back. */
+  const saveComputer = useCallback(async (on: boolean): Promise<boolean> => {
+    setComputerError(null);
+    try {
+      await setMacBridgeComputer(host.environmentId, on);
+      return true;
+    } catch (err) {
+      setComputerError(errorText(err));
+      return false;
+    }
+  }, [host.environmentId]);
   return (
     <Group
       title={`Mac bridge for ${host.name}`}
@@ -91,6 +108,21 @@ export function MacBridgeGroup({ host }: { host: MacBridgeHostPolicy }) {
           onChange={(policy) => void run(() => setMacBridgePolicy(host.environmentId, policy))}
         />
       </Row>
+      {host.policy === "off" ? null : (
+        <Row
+          title="Computer use"
+          description={host.computerUnavailable ? `Unavailable here: ${host.computerUnavailable}` : COMPUTER_TEXT}
+          error={computerError}
+          data-mac-bridge-computer={host.computer ? "on" : "off"}
+        >
+          <SettingSwitch
+            label={`Computer use for ${host.name}`}
+            on={host.computer}
+            disabled={host.computerUnavailable !== null}
+            onChange={saveComputer}
+          />
+        </Row>
+      )}
       <MacBridgeRunningList environmentId={host.environmentId} />
       <Forwards environmentId={host.environmentId} />
       {settings ? <MacBridgeHostDialog host={host} onClose={() => setSettings(false)} /> : null}

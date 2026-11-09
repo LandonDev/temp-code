@@ -136,6 +136,38 @@ describe('MacBridgeRunningList', () => {
   it('countParts', () => {
     expect(countParts(2, 1, 'box', 1)).toEqual(['2 commands running on this Mac from box', '1 waiting', '1 paused'])
     expect(countParts(0, 0, 'box', 2)).toEqual(['2 calls paused with their thread from box'])
+    expect(countParts(2, 0, 'box', 0, { live: 1, waiting: 0 })).toEqual(['2 commands running on this Mac from box', '1 computer session'])
+    expect(countParts(0, 0, 'box', 0, { live: 2, waiting: 1 })).toEqual(['2 computer sessions on this Mac from box', '1 computer session waiting'])
+    expect(countParts(0, 0, 'box', 0, { live: 0, waiting: 1 })).toEqual(['1 computer session waiting for this Mac from box'])
+  })
+
+  it("a live computer session is a row in words with its thread and Stop; one held by the cap says its place", () => {
+    seed([
+      req('s1', { kind: 'computer', method: 'mac.computer', argv: undefined, cwd: undefined, computer: { app: 'TextEdit', window: 'Untitled', actions: [] } }),
+      req('s2', {
+        createdAt: 2,
+        sessionId: 's2',
+        threadTitle: 'Notes pass',
+        kind: 'computer',
+        method: 'mac.computer',
+        argv: undefined,
+        cwd: undefined,
+        computer: { app: 'Notes', window: null, actions: [] },
+        status: 'held',
+        held: { reason: 'computer', position: 1, load: 1, limit: 16, cores: 8, maxRunning: 4, running: 1, computer: 1, maxComputer: 1 }
+      })
+    ])
+    probe = mountProbe(<MacBridgeRunningList environmentId="env_box" hostName="box" />)
+    const live = probe.container.querySelector('[data-mac-bridge-running-row="s1"]')!
+    expect(live.getAttribute('data-mac-bridge-row-kind')).toBe('computer')
+    expect(live.textContent).toContain('Using TextEdit, window "Untitled"')
+    expect(live.textContent).toContain('iOS build')
+    expect(live.textContent).toContain('Stop')
+    expect(live.querySelector('.font-mono')).toBeNull()
+    const held = probe.container.querySelector('[data-mac-bridge-running-row="s2"]')!
+    expect(held.textContent).toContain('Using Notes')
+    expect(facts(held)).toEqual(['Waiting for the Mac', '1 of 1 computer sessions', '1st in line'])
+    expect(count(probe.container)).toEqual(['1 computer session on this Mac from box', '1 computer session waiting'])
   })
 
   it("a paused thread's held calls are Paused rows after the others, without Stop; Stop all skips them", () => {

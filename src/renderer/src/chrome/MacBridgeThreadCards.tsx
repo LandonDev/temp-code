@@ -6,7 +6,7 @@ import { Facts } from '../surfaces/settings/hosts/Facts'
 import { decideMacBridge, queueOf, startMacBridge, useMacBridgeRequests } from '../lib/macBridge'
 import { loadMacBridgeRules, useRunRemember } from '../lib/macBridgeRules'
 import { CircleAlert } from './icons'
-import { requestCode, requestFacts, requestTitle } from './MacBridgeCards'
+import { requestCode, requestFacts, requestIsCode, requestTitle } from './MacBridgeCards'
 import { RunRememberSelect } from './MacBridgeRemember'
 
 /**
@@ -62,9 +62,16 @@ function MacBridgeCard({
           </span>
         ) : null}
       </div>
-      <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg [--scrollbar-inset:var(--radius-lg)] bg-muted/40 px-2.5 py-1.5 font-mono text-xs text-foreground">
-        {requestCode(request)}
-      </pre>
+      {requestIsCode(request) ? (
+        <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg [--scrollbar-inset:var(--radius-lg)] bg-muted/40 px-2.5 py-1.5 font-mono text-xs text-foreground">
+          {requestCode(request)}
+        </pre>
+      ) : (
+        // A computer card's acting steps, in words: what the click or the typing will be, one a line.
+        <div className="max-h-32 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words text-xs text-foreground" data-mac-bridge-steps>
+          {requestCode(request)}
+        </div>
+      )}
       {facts.length ? <Facts parts={facts} className="text-xs text-muted-foreground" /> : null}
       {rememberLabel ? (
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
