@@ -162,13 +162,15 @@ const devGroups = new Set<number>()
 const liveThreads = new Set<string>()
 let rig: Rig | null = null
 let cleaned = false
-/** Inside the 5 s the gate's kill gives between SIGTERM and SIGKILL: the dev groups first, then the threads' computer work, then what runs changed. */
+/** Inside the 5 s the gate's kill gives between SIGTERM and SIGKILL: the dev groups first, then the threads' computer work and the scratch apps, then what runs changed. */
 async function cleanup(): Promise<void> {
   if (cleaned) return
   cleaned = true
   for (const pgid of devGroups) killGroup(pgid, 'SIGKILL')
   const within = (ms: number, work: Promise<unknown>): Promise<unknown> => Promise.race([work.catch(() => undefined), sleep(ms)])
   await within(1_500, Promise.all([...liveThreads].map((id) => rig?.sessions.stop(id))))
+  // A call still stopping cannot act on an app that is gone: no late act lands after the switch is put back.
+  rig?.closeLanes()
   await within(2_000, Promise.all([...pending].map((undo) => undo())))
   await rig?.close().catch(() => undefined)
   for (const name of existsSync(WORK) ? readdirSync(WORK) : []) if (!KEEP.has(name)) rmSync(join(WORK, name), { recursive: true, force: true })

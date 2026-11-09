@@ -198,6 +198,8 @@ export interface Rig {
   launch(lane: string, app: TaskApp, target: string): Promise<{ pid: number; front: 'kept' | 'bounced' | 'took' }>
   /** SIGKILL every scratch pid of the lane, drop its pins and its Chrome profile */
   closeLane(lane: string): void
+  /** closeLane for every lane that launched */
+  closeLanes(): void
   close(): Promise<void>
 }
 
@@ -330,6 +332,9 @@ export async function startRig(opts: { root: string; work: string; gate: Session
     rmSync(profileOf(lane), { recursive: true, force: true })
   }
   const lanes = new Set<string>()
+  const closeLanes = (): void => {
+    for (const lane of new Set([...lanes, DEFAULT_LANE])) closeLane(lane)
+  }
   return {
     server,
     host,
@@ -346,8 +351,9 @@ export async function startRig(opts: { root: string; work: string; gate: Session
       return launch(lane, app, target)
     },
     closeLane,
+    closeLanes,
     close: async () => {
-      for (const lane of new Set([...lanes, DEFAULT_LANE])) closeLane(lane)
+      closeLanes()
       await server.registry.disposeAll().catch(() => undefined)
     }
   }
