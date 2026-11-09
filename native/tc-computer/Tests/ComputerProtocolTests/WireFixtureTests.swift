@@ -28,13 +28,14 @@ func roundTrip<T: Codable>(_ type: T.Type, _ value: JSONValue, sourceLocation: S
     return decoded
 }
 
-/// Every method of the protocol; a fixture pair must exist for each.
-let allMethods: [any ContractMethod.Type] = [
+/// Every method of the protocol; a fixture pair must exist for each. A function, not a
+/// global: an array of metatypes is not Sendable.
+func allMethods() -> [any ContractMethod.Type] { [
     Methods.Initialize.self, Methods.Shutdown.self, Methods.PermissionsGet.self, Methods.PermissionsRequest.self,
     Methods.AppsList.self, Methods.AppsLaunch.self, Methods.SessionOpen.self, Methods.SessionClose.self,
     Methods.StateGet.self, Methods.ActionRun.self, Methods.ActionBatch.self, Methods.CaptureScreenshot.self,
     Methods.CaptureStreamStart.self, Methods.CaptureStreamStop.self
-]
+] }
 
 func check<M: ContractMethod>(_ method: M.Type) throws {
     guard case .request(_, let name, let params) = try WireFixtures.frame("\(M.name).request.json") else {
@@ -52,12 +53,12 @@ func check<M: ContractMethod>(_ method: M.Type) throws {
 
 @Suite struct WireFixtureTests {
     @Test func everyMethodHasARequestAndAResponseThatDecode() throws {
-        for method in allMethods { try check(method) }
+        for method in allMethods() { try check(method) }
     }
 
     @Test func everyFixtureIsAFrame() throws {
         let names = try WireFixtures.names()
-        #expect(names.count >= allMethods.count * 2)
+        #expect(names.count >= allMethods().count * 2)
         for name in names { _ = try WireFixtures.frame(name) }
     }
 
