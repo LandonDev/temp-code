@@ -91,6 +91,17 @@ describe("HiddenApprovalToasts", () => {
     expect(toast.warning).toHaveBeenCalledTimes(1);
   });
 
+  it("labels a computer step waiting for the Mac Run now and Skip", async () => {
+    const onApproval = vi.fn();
+    probe = mountProbe(<Probe id="approvals"><HiddenApprovalToasts onFocusSession={vi.fn()} onApproval={onApproval} /></Probe>);
+    await send(row("approval", 1, { type: "approval-request", requestId: "r1", toolName: "computer_session", input: { app: "TextEdit" }, title: "Use your pointer and keyboard to click in TextEdit", choices: "run-skip" }));
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    const options = toast.warning.mock.calls[0][1];
+    expect(options).toMatchObject({ action: { label: "Run now" }, cancel: { label: "Skip" } });
+    options.action.onClick();
+    expect(onApproval).toHaveBeenCalledExactlyOnceWith("approval", "r1", "allow");
+  });
+
   it("dismisses its approvals when the owner unmounts", async () => {
     mount();
     await send(request("approval"));

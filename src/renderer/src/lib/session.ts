@@ -202,6 +202,8 @@ export type Block = {
     decided?: "allow" | "deny";
     /** Resolved by policy (timeout, interrupt), not the user. */
     auto?: boolean;
+    /** Run now and Skip in Allow and Deny's place: a computer step that waited for the Mac. */
+    choices?: "run-skip";
   };
   /** The model stopped to ask; answered through the question card. */
   question?: QuestionMeta;

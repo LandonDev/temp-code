@@ -34,14 +34,16 @@ export function HiddenApprovalToasts(rest: Omit<Props, "notices">) {
 }
 
 /** One sonner toast per pending approval, held until it is answered: the
- *  thread's title opens it, Allow and Deny answer it. */
+ *  thread's title opens it, Allow and Deny (Run now and Skip for a computer
+ *  step waiting for the Mac) answer it. */
 export function ApprovalToasts({ notices, onFocusSession, onApproval }: Props) {
   const actions = useRef({ onFocusSession, onApproval });
   actions.current = { onFocusSession, onApproval };
   useToastSync(
     notices,
     (notice) => `approval:${notice.sessionId}:${notice.requestId}`,
-    (toast, { sessionId, title, label, requestId }, id) => {
+    (toast, { sessionId, title, label, requestId, choices }, id) => {
+      const runSkip = choices === "run-skip";
       toast.warning(
         <Button variant="link" className="h-auto p-0 font-medium" onClick={() => actions.current.onFocusSession(sessionId)}>
           {title}
@@ -50,12 +52,12 @@ export function ApprovalToasts({ notices, onFocusSession, onApproval }: Props) {
           id,
           description: label,
           duration: Infinity,
-          action: { label: "Allow", onClick: () => actions.current.onApproval(sessionId, requestId, "allow") },
-          cancel: { label: "Deny", onClick: () => actions.current.onApproval(sessionId, requestId, "deny") },
+          action: { label: runSkip ? "Run now" : "Allow", onClick: () => actions.current.onApproval(sessionId, requestId, "allow") },
+          cancel: { label: runSkip ? "Skip" : "Deny", onClick: () => actions.current.onApproval(sessionId, requestId, "deny") },
         },
       );
     },
-    (notice) => JSON.stringify([notice.title, notice.label]),
+    (notice) => JSON.stringify([notice.title, notice.label, notice.choices ?? null]),
   );
   return null;
 }

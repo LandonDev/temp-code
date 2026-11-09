@@ -291,3 +291,12 @@ describe('a steer and its stamp', () => {
     expect(W.QueuedMessageSchema.parse(item)).toEqual(item)
   })
 })
+
+describe("an approval's choices", () => {
+  it('parse: Run now and Skip, Allow and Deny, or none; nothing else', () => {
+    const base = { type: 'approval-request', requestId: 'a-1', toolName: 'computer_session', input: { app: 'TextEdit' } } as const
+    const asked: AgentEvent[] = [base, { ...base, choices: 'run-skip' }, { ...base, choices: 'allow-deny' }]
+    for (const row of asked) expect(W.WireAgentEventSchema.parse(row)).toEqual(row)
+    expect(() => W.WireAgentEventSchema.parse({ ...base, choices: 'yes-no' })).toThrow()
+  })
+})

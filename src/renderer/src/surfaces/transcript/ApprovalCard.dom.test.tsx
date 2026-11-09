@@ -130,6 +130,42 @@ describe("ApprovalCard", () => {
     expect(decided.className).not.toContain("animate-in");
   });
 
+  it("a computer step waiting for the Mac reads Run now and Skip, which answer allow and deny", () => {
+    const runSkip = (decided?: "allow" | "deny", auto?: boolean): Block => ({
+      ...approval("computer_session", { app: "TextEdit" }, decided, auto),
+      approval: { requestId: 7, decided, auto, choices: "run-skip" },
+    });
+    const onApproval = vi.fn();
+    const { container } = render(<ApprovalCard block={runSkip()} onApproval={onApproval} />);
+    expect(container.textContent).toBe("Run nowSkip");
+    expect(container.querySelector('[data-state="waiting"]')).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Run now" }));
+    expect(container.textContent).toBe("Ran now");
+    cleanup();
+    render(<ApprovalCard block={runSkip()} onApproval={onApproval} />);
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    expect(onApproval.mock.calls).toEqual([
+      [7, "allow"],
+      [7, "deny"],
+    ]);
+    cleanup();
+    for (const [decided, auto, line] of [
+      ["allow", false, "Ran now"],
+      ["deny", false, "Skipped"],
+      ["deny", true, "Skipped automatically"],
+    ] as const) {
+      const { container: decidedRow, unmount } = render(<ApprovalCard block={runSkip(decided, auto)} />);
+      expect(decidedRow.textContent).toBe(line);
+      expect(decidedRow.querySelector("button")).toBeNull();
+      unmount();
+    }
+  });
+
+  it("an approval with no choices still reads Allow and Deny", () => {
+    const { container } = render(<ApprovalCard block={{ ...approval("Bash", { command: "ls" }), approval: { requestId: 7 } }} />);
+    expect(container.textContent).toBe("AllowDeny");
+  });
+
   it("ApprovalControls is the same component, for A8's rows until they switch", () => {
     expect(ApprovalControls).toBe(ApprovalCard);
   });

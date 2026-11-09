@@ -78,6 +78,12 @@ export type SessionStatus = z.infer<typeof SessionStatusSchema>
 export const PermissionPolicySchema = z.enum(['safe', 'edits', 'auto'])
 export type PermissionPolicy = z.infer<typeof PermissionPolicySchema>
 
+/** An approval card's two buttons: Allow and Deny, or Run now and Skip (a
+ *  computer step that waited for the Mac to be free, computer/schedule.ts).
+ *  Either way the answer is one boolean. */
+export const ApprovalChoicesSchema = z.enum(['allow-deny', 'run-skip'])
+export type ApprovalChoices = z.infer<typeof ApprovalChoicesSchema>
+
 /**
  * Block identity: a turn can span several provider messages (text → tool →
  * text). Deltas and their authoritative finals carry (msgId, blockIndex) so
@@ -362,7 +368,9 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     toolName: z.string(),
     input: z.unknown(),
     title: z.string().optional(),
-    callId: z.string().optional()
+    callId: z.string().optional(),
+    /** The words of its two buttons; absent is Allow and Deny. */
+    choices: ApprovalChoicesSchema.optional()
   }),
   // auto=true → resolved by policy (timeout/interrupt), not the user.
   z.object({

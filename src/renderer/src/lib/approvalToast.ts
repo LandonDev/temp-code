@@ -17,6 +17,8 @@ export type PendingApprovalNotice = {
 /** Toast data never retains a block or a Session. */
 export type ApprovalToastNotice = Pick<PendingApprovalNotice, "sessionId" | "requestId" | "label" | "tool"> & {
   title: string;
+  /** Run now and Skip in Allow and Deny's place (Block.approval.choices). */
+  choices?: "run-skip";
 };
 
 const approvalLabels = new WeakMap<Block, { cwd: string; label: string; tool: string }>();
@@ -39,9 +41,10 @@ export function approvalToastNotice(session: Session, previous?: ApprovalToastNo
   if (!block?.approval) return null;
   const { label, tool } = labelsForApproval(block, session.cwd);
   const requestId = block.approval.requestId;
+  const choices = block.approval.choices;
   const title = sessionDisplayTitle(session.title, session.harness);
-  if (previous && previous.sessionId === session.id && previous.requestId === requestId && previous.label === label && previous.tool === tool && previous.title === title) return previous;
-  return { sessionId: session.id, requestId, label, tool, title };
+  if (previous && previous.sessionId === session.id && previous.requestId === requestId && previous.label === label && previous.tool === tool && previous.title === title && previous.choices === choices) return previous;
+  return { sessionId: session.id, requestId, label, tool, title, ...(choices ? { choices } : {}) };
 }
 
 /** Latest undecided approval in a session, if any. */

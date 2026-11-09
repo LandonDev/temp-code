@@ -546,6 +546,7 @@ export function foldEvent(
           preview: previewFromTool(e.toolName, e.input),
           name: e.toolName,
           input: e.input,
+          choices: e.choices,
         },
         `ap:${e.requestId}`,
       );
@@ -572,7 +573,7 @@ export function foldEvent(
       blocks = blocks.slice();
       blocks[idx] = {
         ...blocks[idx],
-        approval: { requestId: e.requestId, decided, ...(auto ? { auto } : {}) },
+        approval: { requestId: e.requestId, decided, ...(auto ? { auto } : {}), ...(cur?.choices ? { choices: cur.choices } : {}) },
       };
       break;
     }

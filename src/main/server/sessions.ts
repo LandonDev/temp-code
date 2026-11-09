@@ -3635,7 +3635,8 @@ export class SessionRegistry {
       toolName: req.toolName,
       input: req.input,
       title: req.title,
-      callId: req.callId
+      callId: req.callId,
+      ...(req.choices ? { choices: req.choices } : {})
     })
     this.append(sessionId, { type: 'status', status: 'waiting', detail: 'awaiting approval' })
     return new Promise((resolve) => {

@@ -7,17 +7,28 @@ import type { ApprovalDecision } from "../../lib/harness";
 import { cn } from "../../lib/cn";
 import { type Block } from "../../lib/session";
 
+type Approval = NonNullable<Block["approval"]>;
+
+/** The two buttons' words: Allow and Deny, or Run now and Skip for a
+ *  computer step that waited for the Mac to be free. */
+export function choiceWords(approval: Approval): { allow: string; deny: string } {
+  return approval.choices === "run-skip" ? { allow: "Run now", deny: "Skip" } : { allow: "Allow", deny: "Deny" };
+}
+
 /** The decided approval's one line. An automatic denial is a timeout or a
  *  person's Stop, and the event does not say which, so the line says neither. */
-export function decidedLine(approval: NonNullable<Block["approval"]>): string {
-  if (approval.decided === "allow") return "Allowed";
+export function decidedLine(approval: Approval): string {
+  const runSkip = approval.choices === "run-skip";
+  if (approval.decided === "allow") return runSkip ? "Ran now" : "Allowed";
+  if (runSkip) return approval.auto ? "Skipped automatically" : "Skipped";
   return approval.auto ? "Denied automatically" : "Denied";
 }
 
 /**
  * An approval, under the action row that already says what it asks (the
  * command, the path). Undecided: one 28px line, the amber mark in the row's
- * glyph column and Allow and Deny where the row's words start. Decided: the
+ * glyph column and Allow and Deny (Run now and Skip for a computer step
+ * waiting for the Mac) where the row's words start. Decided: the
  * verdict, one muted line at the words, fading in when the decision lands on
  * screen (a verdict that mounts decided just shows). Not a bordered card.
  * In a table: the waiting row is 40px, 6px round the buttons, so their drop
@@ -62,16 +73,17 @@ export function ApprovalCard({
       </div>
     );
   }
+  const words = choiceWords(approval);
   return (
     <div data-slot="approval" className="flex min-h-7 in-data-[table]:min-h-8 min-w-0 items-center gap-2 in-data-[table]:px-3 in-data-[table]:py-1.5 font-sans">
       <span data-approval-mark className="flex w-3.5 shrink-0 justify-center">
         <StatusMark state="waiting" word={false} />
       </span>
       <Button size="sm" onClick={() => decide("allow")}>
-        Allow
+        {words.allow}
       </Button>
       <Button size="sm" variant="secondary" onClick={() => decide("deny")}>
-        Deny
+        {words.deny}
       </Button>
     </div>
   );

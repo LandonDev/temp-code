@@ -289,18 +289,43 @@ public struct TurnCompleteEvent: Codable, Hashable, Sendable {
 }
 
 public struct ApprovalRequestEvent: Codable, Hashable, Sendable {
+    public enum Choices: RawRepresentable, Codable, Hashable, Sendable {
+        case allowDeny
+        case runSkip
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "allow-deny": self = .allowDeny
+            case "run-skip": self = .runSkip
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .allowDeny: "allow-deny"
+            case .runSkip: "run-skip"
+            case .unknown(let value): value
+            }
+        }
+    }
+
     public let requestId: String
     public let toolName: String
     public let input: JSONValue?
     public let title: String?
     public let callId: String?
+    public let choices: Choices?
 
-    public init(requestId: String, toolName: String, input: JSONValue? = nil, title: String? = nil, callId: String? = nil) {
+    public init(requestId: String, toolName: String, input: JSONValue? = nil, title: String? = nil, callId: String? = nil, choices: Choices? = nil) {
         self.requestId = requestId
         self.toolName = toolName
         self.input = input
         self.title = title
         self.callId = callId
+        self.choices = choices
     }
 }
 

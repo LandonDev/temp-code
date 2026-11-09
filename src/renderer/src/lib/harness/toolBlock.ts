@@ -37,7 +37,14 @@ export type ApprovalAttach = {
    *  the call is in plain words even when no call id ties it to a call. */
   name?: string;
   input?: unknown;
+  /** The card's buttons: absent or allow-deny is Allow and Deny. */
+  choices?: "allow-deny" | "run-skip";
 };
+
+/** The approval a block carries for an approval event. */
+function approvalOf(event: ApprovalAttach): NonNullable<Block["approval"]> {
+  return event.choices === "run-skip" ? { requestId: event.requestId, choices: "run-skip" } : { requestId: event.requestId };
+}
 
 export const MAX_TOOL_DETAIL_CHARS = 8_000;
 
@@ -158,7 +165,7 @@ export function attachApprovalBlock(
               ...(event.name ? { name: event.name, input: event.input } : {}),
             }
           : prev.tool,
-      approval: { requestId: event.requestId },
+      approval: approvalOf(event),
     };
     return next;
   }
@@ -179,7 +186,7 @@ export function attachApprovalBlock(
         ...(preview ? { preview } : {}),
         ...(event.name ? { name: event.name, input: event.input } : {}),
       },
-      approval: { requestId: event.requestId },
+      approval: approvalOf(event),
     },
   ];
 }

@@ -1,6 +1,6 @@
 import type { AccountRoute } from '@shared/accounts'
 import type { ProviderId } from '@shared/catalog'
-import type { AgentEvent, Attachment, LimitWindow, SessionMeta } from '@shared/events'
+import type { AgentEvent, ApprovalChoices, Attachment, LimitWindow, SessionMeta } from '@shared/events'
 import type { UsageWindow } from 'aliax-core'
 import type { SendPhase } from '../sendSpans'
 
@@ -25,6 +25,8 @@ export interface ApprovalRequest {
   input: unknown
   title?: string
   callId?: string
+  /** the card's two buttons; absent is Allow and Deny */
+  choices?: ApprovalChoices
   /** the harness gave up waiting (turn interrupted) */
   signal?: AbortSignal
 }

@@ -324,6 +324,20 @@ describe("foldEvent", () => {
       expect(toolCallLabel(s.blocks[2], CWD)).toBe("Listing files");
     });
 
+    it("keeps Run now and Skip on the block, through its verdict", () => {
+      const asked = rows([
+        { type: "tool-call", callId: "c1", name: "mcp__app__computer_act", input: { app: "TextEdit", action: "left_click" } },
+        { type: "approval-request", requestId: "r", toolName: "computer_session", input: { app: "TextEdit" }, callId: "c1", choices: "run-skip" },
+      ]);
+      const s = foldAll(asked, CWD);
+      expect(s.blocks).toHaveLength(1);
+      expect(s.blocks[0].approval).toEqual({ requestId: "r", choices: "run-skip" });
+      const skipped = foldAll([...asked, ...rows([{ type: "approval-resolved", requestId: "r", allow: false, auto: true }]).map((r) => ({ ...r, seq: 3 }))], CWD);
+      expect(skipped.blocks[0].approval).toEqual({ requestId: "r", decided: "deny", auto: true, choices: "run-skip" });
+      const plain = foldAll(rows([{ type: "approval-request", requestId: "p", toolName: "Bash", input: {}, choices: "allow-deny" }]), CWD);
+      expect(plain.blocks[0].approval).toEqual({ requestId: "p" });
+    });
+
     it("resolves deny; a policy verdict is a denial that says so", () => {
       const base = rows([{ type: "approval-request", requestId: "r", toolName: "Bash", input: {} }]);
       const deny = foldAll([...base, ...rows([{ type: "approval-resolved", requestId: "r", allow: false }]).map((r) => ({ ...r, seq: 2 }))], CWD);

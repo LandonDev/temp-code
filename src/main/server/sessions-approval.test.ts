@@ -205,3 +205,23 @@ it('keeps a disk tool call open while its approval waits, so a late write still 
   await vi.advanceTimersByTimeAsync(10_000)
   expect(registry.diskActiveAt(s.id, Date.now())).toBe(false)
 })
+
+it("writes a card's choices when it names them, and none otherwise", async () => {
+  const s = await registry.create({ cwd: root, provider: 'grok' })
+  await settle()
+  const asked = registry.requestApproval(s.id, {
+    toolName: 'computer_session',
+    input: { app: 'TextEdit' },
+    title: 'Use your pointer and keyboard to click in TextEdit',
+    choices: 'run-skip'
+  })
+  const req = requestOf(s.id) as { requestId: string; choices?: string; toolName: string }
+  expect(req).toMatchObject({ toolName: 'computer_session', choices: 'run-skip' })
+  await registry.approve(s.id, req.requestId, true)
+  expect(await asked).toBe(true)
+  const plain = registry.requestApproval(s.id, { toolName: 'shell', input: { cmd: 'ls' } })
+  const second = registry.eventsAfter(s.id, 0).map((r) => r.event).filter((e) => e.type === 'approval-request').at(-1)!
+  expect('choices' in second).toBe(false)
+  await registry.approve(s.id, (second as { requestId: string }).requestId, false)
+  expect(await plain).toBe(false)
+})
