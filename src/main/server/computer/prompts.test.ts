@@ -82,7 +82,7 @@ describe('wordsFor', () => {
   })
 
   it('gives each family its shipped words, and anthropic with the four tools to one the tables lack', () => {
-    expect(wordsFor({ provider: 'claude', model: 'claude-opus-5-5' }).shape).toBe('anthropic')
+    expect(wordsFor({ provider: 'claude', model: 'claude-opus-5-5' }).shape).toBe('cua')
     expect(wordsFor({ provider: 'codex', model: 'gpt-6.1-sol' }).shape).toBe('cua')
     expect(wordsFor({ provider: 'claude', model: 'muse-wonder-1.0' }).shape).toBe('anthropic')
     expect(wordsFor({ provider: 'cursor', model: 'composer-2.5' })).toEqual({ shape: 'anthropic', tools: 'act' })
@@ -97,6 +97,6 @@ describe('wordsFor', () => {
     setComputerWordsOverride({ shape: 'cua', tools: 'per-verb' })
     expect(wordsFor({ provider: 'claude', model: 'claude-opus-5-5' })).toEqual({ shape: 'cua', tools: 'per-verb' })
     setComputerWordsOverride(null)
-    expect(wordsFor({ provider: 'claude', model: 'claude-opus-5-5' })).toEqual({ shape: 'anthropic', tools: 'act' })
+    expect(wordsFor({ provider: 'claude', model: 'claude-opus-5-5' })).toEqual({ shape: 'cua', tools: 'act' })
   })
 })

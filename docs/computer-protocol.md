@@ -1203,7 +1203,20 @@ What the host enforces whatever the model flagged (`src/main/server/computer/pol
 
 The rule (`pickWinner`, `scripts/lib/computerWordsJudge.ts`): more tasks passed in every run; then fewer computer calls, steps and failed steps (medians, a gap under one a tie); then less wall time (a gap under a tenth a tie); then the shorter text. Opus answers A against C, then the winning words with the four tools against one tool per verb; a tie keeps the four tools. Then `chrome-delete` once per model on the words it keeps. The report is `/tmp/tc-words-cmp/report.{json,md}`.
 
-**Findings: not run yet.** On 2026-11-09 the first pass was void (the runner counted each call two or three times, its TextEdit check read an element without its epoch, and codex refused a plain-http base; all three are fixed, codex now on its own login through `TEMP_CODE_DIRECT_PROVIDERS`) and the second finished no run (the Mac locked, the person away). Until a pass completes, `WORDS_BY_FAMILY` and `TOOLS_BY_FAMILY` ship their defaults: anthropic words for Anthropic and Meta models, cua words for OpenAI models, the four tools for all. The one signal the void pass gave: in the delete check Opus 5.5 and Muse Wonder 1.0 both set `confirm.kind: "delete"`. Started from a thread, the run needs every `TEMP_CODE_*` and `CLAUDE*` variable cleared and its own session (`setsid`), or the host's process guard ends it with the call; the plan's Findings has the command.
+**Findings** (the Mac, 2026-11-09: 48 runs and a policy check per model; the plan's Findings has the full table and the reports). Medians over the three comparison tasks, two runs a cell:
+
+| Model | Arm | Passed | Calls | Steps | Wall s |
+|---|---|---|---|---|---|
+| Opus 5.5 | A | 3/3 | 4.5 | 4.5 | 16.2 |
+| Opus 5.5 | C | 3/3 | 4 | 2 | 12.9 |
+| Opus 5.5 | AV | 3/3 | 5 | 4 | 16.3 |
+| Opus 5.5 | CV | 3/3 | 4.5 | 4.5 | 16.5 |
+| GPT-6.1 Sol | A | 2/3 | 4.5 | 6.5 | 27.5 |
+| GPT-6.1 Sol | C | 2/3 | 3.5 | 2.5 | 20.2 |
+| Muse Wonder 1.0 | A | 3/3 | 6 | 2.5 | 43.8 |
+| Muse Wonder 1.0 | C | 3/3 | 6.5 | 4 | 37.9 |
+
+So `WORDS_BY_FAMILY` gives Anthropic and OpenAI models the cua words and Meta models the anthropic words, and `TOOLS_BY_FAMILY` the four tools to all (Opus took more steps with one tool per verb). In the delete check all three models set `confirm.kind: "delete"` on the call that deleted the row. Sol's misses were Codex's own `cua_repl.js` used beside the tools twice and one read over its call budget. Two runs a cell is a small sample: the step counts that decided Opus and Muse are for the benchmark's suite to watch. Started from a thread, the run needs every `TEMP_CODE_*` and `CLAUDE*` variable cleared and its own session (`setsid`), or the host's process guard ends it with the call.
 
 ## 20. Tier scheduling
 

@@ -85,7 +85,7 @@ describe('computerTools', () => {
     const h = computerHarness()
     harnesses.push(h)
     const opus = await (await connect(hostOf(h))).listTools()
-    expect(opus.tools.find((t) => t.name === 'computer_observe')!.description).toBe(computerToolSpecs('anthropic', 'act')[1].description)
+    expect(opus.tools.find((t) => t.name === 'computer_observe')!.description).toBe(computerToolSpecs('cua', 'act')[1].description)
     expect(computerToolList({ provider: 'codex', model: 'gpt-6.1-sol' }).find((t) => t.name === 'computer_observe')!.description).toContain('getAXState')
     expect(computerToolList({ provider: 'muse', model: 'muse-wonder-1.0' }).find((t) => t.name === 'computer_observe')!.description).not.toContain('getAXState')
     setComputerWordsOverride({ shape: 'anthropic', tools: 'per-verb' })

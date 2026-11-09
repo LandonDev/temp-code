@@ -111,9 +111,12 @@ export function modelFamily(provider: ProviderId, model: string | undefined): Mo
   return null
 }
 
-/** The shipped word shape per family; the comparison's findings set it (the plan's "Findings"). */
-export const WORDS_BY_FAMILY: Readonly<Record<ModelFamily, WordsShape>> = { anthropic: 'anthropic', openai: 'cua', meta: 'anthropic' }
-/** `per-verb` is only ever measured, and so only ever shipped, for Anthropic models. */
+/**
+ * The shipped word shape per family, set by the comparison on the Mac (2026-11-09, docs/computer-protocol.md §19.6):
+ * Opus 5.5 and GPT-6.1 Sol took fewer steps on the cua words, Muse Wonder 1.0 on the anthropic ones.
+ */
+export const WORDS_BY_FAMILY: Readonly<Record<ModelFamily, WordsShape>> = { anthropic: 'cua', openai: 'cua', meta: 'anthropic' }
+/** `per-verb` is only ever measured, and so only ever shipped, for Anthropic models; Opus 5.5 took more steps with it, so none ships. */
 export const TOOLS_BY_FAMILY: Readonly<Record<ModelFamily, ToolShape>> = { anthropic: 'act', openai: 'act', meta: 'act' }
 
 export interface WordsChoice {
