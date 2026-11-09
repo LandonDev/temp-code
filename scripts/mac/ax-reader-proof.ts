@@ -54,7 +54,7 @@ export function interrupts(step: string, state: { cameBack: string; gateOpen: st
   return !state.cameBack && state.gateOpen === step && state.idle < 2
 }
 
-/** Every launch asks first: after the person came back, a step launches nothing more. */
+/** Every launch asks first, and again once its stop is registered: after the person came back, a step launches and reads nothing more. */
 function mayLaunch(app: string): void {
   if (cameBack === app) throw new Error('the person came back')
 }
@@ -229,14 +229,27 @@ async function bench(app: string, pid: number, title: string, contains?: string,
   }
 }
 
-const cleanups: (() => Promise<void> | void)[] = []
-async function cleanUp(): Promise<void> {
-  while (cleanups.length) {
-    try {
-      await cleanups.pop()!()
-    } catch {}
+/** Undo steps run last first; every caller of `run` waits for the run in flight, and a step pushed during it runs too. */
+export function cleanupStack(): { steps: (() => Promise<void> | void)[]; run: () => Promise<void> } {
+  const steps: (() => Promise<void> | void)[] = []
+  let running: Promise<void> | undefined
+  const run = (): Promise<void> => {
+    running ??= (async () => {
+      while (steps.length) {
+        try {
+          await steps.pop()!()
+        } catch {}
+      }
+    })().finally(() => {
+      running = undefined
+    })
+    return running
   }
+  return { steps, run }
 }
+const stack = cleanupStack()
+const cleanups = stack.steps
+const cleanUp = stack.run
 
 // ── TextEdit ─────────────────────────────────────────────────────────────
 
@@ -252,6 +265,8 @@ async function textedit(): Promise<void> {
   const pid = await newPid(exe, before)
   allow.add(pid)
   cleanups.push(() => discardTextEdit(pid))
+  // the person may have come back while the launch was found: its stop is registered now, so stop here
+  mayLaunch(app)
   noteFront(front, app)
   const title = 'Untitled'
   await waitWindow(pid, title, 20_000)
@@ -352,6 +367,7 @@ async function chromeOn(page: string, title: string): Promise<number> {
     rmSync(profile, { recursive: true, force: true })
   }
   cleanups.push(stopChrome)
+  mayLaunch('chrome')
   noteFront(front, 'chrome')
   await waitWindow(pid, title, 30_000)
   return pid
@@ -498,6 +514,7 @@ async function tempcodeDev(): Promise<void> {
   delete env.ELECTRON_RUN_AS_NODE
   mayLaunch(app)
   const preview = Bun.spawn(['bunx', 'electron-vite', 'preview', '--skipBuild'], { cwd: ROOT, env, stdout: 'ignore', stderr: 'ignore' })
+  cleanups.push(() => preview.kill())
   const exe = join(ROOT, 'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron')
   const pid = await newPid(exe, [], (p) => sh(['ps', 'eww', '-o', 'command=', '-p', String(p)]).out.includes(`TEMP_CODE_USER_DATA=${data}`))
   allow.add(pid)
@@ -507,6 +524,7 @@ async function tempcodeDev(): Promise<void> {
     for (let i = 0; i < 20 && sh(['kill', '-0', String(pid)]).code === 0; i++) await sleep(500)
     rmSync(data, { recursive: true, force: true })
   })
+  mayLaunch(app)
   noteFront(front, app)
   const title = 'New thread'
   await waitWindow(pid, title, 60_000)
@@ -599,6 +617,7 @@ async function intellij(): Promise<void> {
   const pid = running ?? (await newPid(exe, []))
   allow.add(pid)
   if (!running) cleanups.push(() => void sh(['kill', String(pid)]))
+  mayLaunch(app)
   noteFront(front, app)
   const mark = 'AXButton=Project: Hello, menu'
   let s: Session | undefined
