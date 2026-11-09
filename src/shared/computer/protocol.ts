@@ -760,17 +760,14 @@ export const RpcErrorResponseSchema = z.object({
 
 /** A request frame for `method`, its params checked. */
 export function requestFrameSchema<M extends ComputerMethod>(method: M) {
-  return z.object({
-    jsonrpc: JsonRpcVersionSchema,
-    id: int().nonnegative(),
-    method: z.literal(method),
-    params: COMPUTER_METHODS[method].params
-  })
+  const params = COMPUTER_METHODS[method].params as (typeof COMPUTER_METHODS)[M]['params']
+  return z.object({ jsonrpc: JsonRpcVersionSchema, id: int().nonnegative(), method: z.literal(method), params })
 }
 
 /** A success frame answering `method`, its result checked. */
 export function resultFrameSchema<M extends ComputerMethod>(method: M) {
-  return z.object({ jsonrpc: JsonRpcVersionSchema, id: int().nonnegative(), result: COMPUTER_METHODS[method].result })
+  const result = COMPUTER_METHODS[method].result as (typeof COMPUTER_METHODS)[M]['result']
+  return z.object({ jsonrpc: JsonRpcVersionSchema, id: int().nonnegative(), result })
 }
 
 /** A notification frame of either direction. */
