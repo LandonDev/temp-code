@@ -100,7 +100,7 @@ export function TurnLine({
   const reduce = useReducedMotion() === true;
   const sessionId = useTranscriptSession() ?? "";
   // The host words a running computer call with its element book; a hold with the scheduler's line.
-  const running = useComputerRow(useTranscriptHost(), sessionId)?.running;
+  const running = useComputerRow(useTranscriptHost() ?? "", sessionId)?.running;
   const computerWords = running?.words;
   const computerHeld = running?.held === true;
   const next = useMemo(
