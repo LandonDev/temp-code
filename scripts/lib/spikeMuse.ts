@@ -510,7 +510,7 @@ async function m6(ev: Evidence): Promise<void> {
     if (xdg) e.XDG_CONFIG_HOME = xdg
     const git = await run('git', ['config', '--global', 'user.name'], { env: e, timeoutMs: 15_000 })
     const gh = await run('gh', ['auth', 'status'], { env: e, timeoutMs: 30_000 })
-    return { git: { exit: git.code, found: git.stdout.trim().length > 0 }, gh: { exit: gh.code, loggedIn: /Logged in/i.test(gh.stdout + gh.stderr) } }
+    return { git: { exit: git.code, found: git.stdout.trim().length > 0 }, gh: { exit: gh.code, loggedIn: gh.code === 0 && /Logged in to /.test(gh.stdout + gh.stderr) } }
   }
   out.asIs = await probe(process.env.XDG_CONFIG_HOME)
   out.ownedRoot = await probe(r.config)
