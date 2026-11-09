@@ -171,6 +171,8 @@ interface TurnOutcome {
   completed: boolean
   status: string | null
   error: string | null
+  /** Error notices codex retried past. */
+  retries?: number
   text: string
   requests: ResponsesRequestRecord[]
 }
@@ -190,9 +192,19 @@ async function turn(c: CodexConn, threadId: string, input: unknown[], ms = 90_00
     .filter((n) => n.method === 'item/completed' && (n.params.item as { type?: string } | undefined)?.type === 'agentMessage')
     .map((n) => String((n.params.item as { text?: string }).text ?? ''))
     .join(' ')
-  const errors = notes.filter((n) => n.method === 'error').map((n) => firstLine(JSON.stringify(n.params)))
+  // An error notice with willRetry is a retry (codex 0.164 retries its WebSocket on every turn), not the turn's failure.
+  const notices = notes.filter((n) => n.method === 'error')
+  const failures = notices.filter((n) => n.params.willRetry !== true).map((n) => firstLine(JSON.stringify(n.params)))
   const turnInfo = (end?.params.turn ?? {}) as { status?: string; error?: unknown }
-  return { completed: !!end, status: turnInfo.status ?? null, error: errors[0] ?? (turnInfo.error ? firstLine(JSON.stringify(turnInfo.error)) : null), text: text.slice(0, 200), requests: front.since(mark) }
+  const failed = turnInfo.status !== undefined && turnInfo.status !== 'completed'
+  return {
+    completed: !!end,
+    status: turnInfo.status ?? null,
+    error: failures[0] ?? (turnInfo.error ? firstLine(JSON.stringify(turnInfo.error)) : failed ? firstLine(JSON.stringify(notices.at(-1)?.params ?? `turn ${turnInfo.status}`)) : null),
+    retries: notices.length - failures.length,
+    text: text.slice(0, 200),
+    requests: front.since(mark)
+  }
 }
 
 const text = (s: string): unknown[] => [{ type: 'text', text: s, text_elements: [] }]
