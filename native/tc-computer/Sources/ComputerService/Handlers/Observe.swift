@@ -46,7 +46,7 @@ extension ComputerService {
 
     func stateGet(_ p: Methods.StateGet.Params, _ ctx: RequestContext) async throws -> Observation {
         if let failure = EpochCheck.check(names: p.element, epoch: p.epoch, current: epoch) { throw failure }
-        let target = try await resolveTarget(session: p.session, app: p.app, window: p.window, launch: p.launch ?? false)
+        let target = try await resolveTarget(session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, ctx: ctx)
         guard let lease = await slots.slot(target.pid).acquire(.shared, timeout: nil) else { throw Router.cancelledError }
         defer { lease.release() }
         let pixel = await pixelWatch(target)
@@ -73,8 +73,15 @@ extension ComputerService {
 
     /// The session open, Accessibility on, the app found (launched in the background when asked, then its
     /// first window waited for), the window resolved on the session × pid worker, which keeps its element.
-    func resolveTarget(session: String, app: AppRef, window: WindowRef?, launch: Bool) async throws -> Resolved {
+    func resolveTarget(session: String, app: AppRef, window: WindowRef?, launch: Bool, ctx: RequestContext) async throws -> Resolved {
         try requireSession(session)
+        lock.withLock { sessionRequests[session, default: [:]][ctx.id] = ctx.cancel }
+        ctx.afterAnswer { [self] in
+            lock.withLock {
+                sessionRequests[session]?[ctx.id] = nil
+                if sessionRequests[session]?.isEmpty == true { sessionRequests[session] = nil }
+            }
+        }
         try requireAccessibility()
         let (pid, launched) = try await inventory.resolve(app, launch: launch)
         let worker = workers.worker(session, pid)

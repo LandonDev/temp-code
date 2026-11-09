@@ -121,6 +121,8 @@ public struct ServiceTiming: Sendable {
     public var waitTick: Duration = .milliseconds(25)
     /// the installed-app scan is kept this long
     public var installedCache: Duration = .seconds(60)
+    /// how long `session.close` waits for the session's cancelled requests to answer
+    public var closeWait: Duration = .seconds(2)
 
     public init() {}
 }

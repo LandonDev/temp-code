@@ -35,6 +35,8 @@ public final class ComputerService: @unchecked Sendable {
     var permissions = Permissions(accessibility: false, screenRecording: false)
     var clipboard: ClipboardWatchRule?
     var streams: [String: StreamEntry] = [:]
+    /// per session, the requests that passed its check and have not answered: `session.close` cancels and waits for them
+    var sessionRequests: [String: [Int: CancelFlag]] = [:]
     var watchers: [any Stoppable] = []
     var promptedAccessibility = false
     var promptedScreenRecording = false

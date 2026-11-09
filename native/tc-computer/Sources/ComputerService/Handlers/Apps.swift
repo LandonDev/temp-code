@@ -62,8 +62,17 @@ extension ComputerService {
         return Methods.AppsList.Output(apps: infos)
     }
 
-    /// Lets go of the session's held input, stops its streams, closes its readers, drops its workers and books.
+    /// Closes the session to new calls, cancels its requests in flight and waits for them (so none posts
+    /// input or opens a stream after the close), then lets go of its held input, stops its streams, closes
+    /// its readers and drops its workers.
     func closeSession(_ session: String) async {
+        book.close(session)
+        let flags = lock.withLock { sessionRequests[session].map { Array($0.values) } ?? [] }
+        for flag in flags { flag.set() }
+        let deadline = ContinuousClock.now + env.timing.closeWait
+        while lock.withLock({ sessionRequests[session] != nil }) && ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
         await releaseHeld(session: session)
         let ending: [StreamEntry] = lock.withLock {
             let mine = streams.values.filter { $0.session == session }
@@ -77,6 +86,5 @@ extension ComputerService {
         readers.close(session: session)
         workers.drop(session: session)
         capture.forget(session: session)
-        book.close(session)
     }
 }

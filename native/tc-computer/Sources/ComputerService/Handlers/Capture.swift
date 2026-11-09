@@ -7,8 +7,8 @@ import Foundation
 
 extension ComputerService {
     func registerCapture() {
-        router.on("capture.screenshot") { [self] (p: Methods.CaptureScreenshot.Params, _) -> Shot in
-            let target = try await resolveTarget(session: p.session, app: p.app, window: p.window, launch: p.launch ?? false)
+        router.on("capture.screenshot") { [self] (p: Methods.CaptureScreenshot.Params, ctx) -> Shot in
+            let target = try await resolveTarget(session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, ctx: ctx)
             guard let lease = await slots.slot(target.pid).acquire(.shared, timeout: nil) else { throw Router.cancelledError }
             defer { lease.release() }
             let shot = try await takeShot(
@@ -19,7 +19,7 @@ extension ComputerService {
             }
             return shot
         }
-        router.on("capture.stream.start") { [self] (p: Methods.CaptureStreamStart.Params, _) in try await startStream(p) }
+        router.on("capture.stream.start") { [self] (p: Methods.CaptureStreamStart.Params, ctx) in try await startStream(p, ctx) }
         router.on("capture.stream.stop") { [self] (p: Methods.CaptureStreamStop.Params, _) -> Empty in
             if let entry = claimStream(p.stream) {
                 await entry.handle.stop()
@@ -36,8 +36,8 @@ extension ComputerService {
 
     /// A preview stream on the window: each frame goes to the frame lane as `capture/frame` with the agent
     /// cursor in its pixels, and the stream's end becomes `capture/streamEnded`.
-    private func startStream(_ p: Methods.CaptureStreamStart.Params) async throws -> Methods.CaptureStreamStart.Output {
-        let target = try await resolveTarget(session: p.session, app: p.app, window: p.window, launch: p.launch ?? false)
+    private func startStream(_ p: Methods.CaptureStreamStart.Params, _ ctx: RequestContext) async throws -> Methods.CaptureStreamStart.Output {
+        let target = try await resolveTarget(session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, ctx: ctx)
         try await captureGuard(target)
         guard let lease = await slots.slot(target.pid).acquire(.shared, timeout: nil) else { throw Router.cancelledError }
         defer { lease.release() }
@@ -88,7 +88,7 @@ extension ComputerService {
 extension ComputerService {
     func registerInput() {
         router.on("input.probe") { [self] (p: Methods.InputProbe.Params, ctx) -> ProbeReport in
-            let target = try await resolveTarget(session: p.session, app: p.app, window: p.window, launch: p.launch ?? false)
+            let target = try await resolveTarget(session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, ctx: ctx)
             guard let lease = await slots.slot(target.pid).acquire(.exclusive(session: p.session), timeout: nil) else { throw Router.cancelledError }
             defer { lease.release() }
             let box = InputBox(input: input)

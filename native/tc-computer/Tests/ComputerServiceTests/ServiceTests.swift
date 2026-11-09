@@ -312,6 +312,26 @@ private func held(_ pid: Int32, kind: HeldRecord.Kind = .button) -> HeldRecord {
         #expect(await eventually { !rig.lines.notifications("session/interrupted").isEmpty })
     }
 
+    @Test func closingASessionCancelsItsActionInFlightFirst() async throws {
+        let rig = ServiceRig()
+        await rig.ready()
+        rig.input.onPerform = { _, target in
+            while !target.cancelled() { usleep(2_000) }
+            throw ComputerError(kind: .cancelled, message: "cancelled")
+        }
+        let action = rig.send("action.run", "{\(docTarget),\"action\":{\"action\":\"key\",\"text\":\"a\"},\"tiers\":[\"process\"],\"wait\":\(quick)}")
+        #expect(await eventually { rig.log.count("perform") == 1 })
+        let close = await rig.call("session.close", #"{"session":"s1"}"#)
+        #expect(close.result == .object([:]))
+        let answer = try #require(await rig.answer(action).result)
+        #expect(answer["step"]?["error"]?["kind"]?.stringValue == "cancelled")
+        let frames = rig.lines.frames
+        let actionAt = try #require(frames.firstIndex { if case .result(action, _) = $0 { true } else { false } })
+        let closeAt = try #require(frames.firstIndex { if case .result(close.id, _) = $0 { true } else { false } })
+        #expect(actionAt < closeAt, "close answers after the action it cancelled")
+        #expect(rig.reader().closed)
+    }
+
     @Test func closingASessionLetsGoOfItsHeldInputAndReaders() async throws {
         let rig = ServiceRig()
         await rig.ready()

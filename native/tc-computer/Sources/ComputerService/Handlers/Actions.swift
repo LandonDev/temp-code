@@ -57,7 +57,7 @@ extension ComputerService {
                 if let failure = EpochCheck.check(names: element, epoch: callEpoch, current: epoch) { throw failure }
             }
         }
-        let target = try await resolveTarget(session: session, app: app, window: window, launch: launch)
+        let target = try await resolveTarget(session: session, app: app, window: window, launch: launch, ctx: ctx)
 
         guard let lease = await slots.slot(target.pid).acquire(.exclusive(session: session), timeout: env.timing.appSlotWait) else {
             if ctx.cancel.isSet { await releaseHeld(session: session) }
