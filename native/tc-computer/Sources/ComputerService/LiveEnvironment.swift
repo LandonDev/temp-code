@@ -91,9 +91,10 @@ final class LiveWorkspace: Workspace, @unchecked Sendable {
         return (pid, !running)
     }
 
+    /// Whether the app's process is alive, read from the process table: `NSRunningApplication`, read off the main
+    /// thread, once called a TextEdit gone right after a wait had seen it running every tick (the Mac proof, 2026-11-09).
     func isRunning(_ pid: Int32) -> Bool {
-        guard let app = NSRunningApplication(processIdentifier: pid) else { return false }
-        return !app.isTerminated
+        pid > 0 && (kill(pid, 0) == 0 || errno == EPERM)
     }
 }
 

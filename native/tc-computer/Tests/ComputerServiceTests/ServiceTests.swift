@@ -624,6 +624,15 @@ private func held(_ pid: Int32, kind: HeldRecord.Kind = .button) -> HeldRecord {
         readers.close(session: "s")
     }
 
+    @Test func theLiveWorkspaceReadsAnAppAsRunningByItsProcess() {
+        let workspace = LiveWorkspace()
+        #expect(workspace.isRunning(getpid()))
+        // launchd's process is another user's: still running
+        #expect(workspace.isRunning(1))
+        #expect(!workspace.isRunning(gone))
+        #expect(!workspace.isRunning(0))
+    }
+
     @Test func theWindowSourceListsNothingForAGoneAppAndNoIdForAnElementThatIsNoWindow() throws {
         let windows = Modules.live().windows
         #expect(windows is LiveWindows)
