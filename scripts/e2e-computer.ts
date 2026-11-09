@@ -522,7 +522,8 @@ async function run(): Promise<void> {
     await personKeepsMac('the direct calls', async () => {
       const obs = await sessions.run(direct, 'computer_observe', { app: APP, window: APP, full: true })
       const parsed = parseObservation(obs.body ?? '')
-      const win = parsed.lines.find((l) => l.type === 'element' && l.role === 'window')
+      // the window's own line, at depth 0: TC Probe's reads as a dialog
+      const win = parsed.lines.find((l) => l.type === 'element' && l.depth === 0)
       const raise = win && win.type === 'element' ? await sessions.run(direct, 'computer_act', { app: APP, window: APP, action: 'perform', element: win.index, name: 'raise' }) : null
       check('perform raise is refused the session tier (no-scheduler)', !!raise && /needs the session tier.*nothing schedules it yet/.test(raise.steps[0] ?? ''), raise?.steps[0] ?? 'no window line')
       const epoch0 = svc.state().epoch
