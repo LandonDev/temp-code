@@ -9,7 +9,7 @@
 import type { ParsedObservation, ObservationLine } from '../../src/shared/computer/observation'
 
 export type TaskId = 'textedit-write' | 'chrome-read' | 'chrome-form' | 'chrome-delete'
-export type TaskApp = 'TextEdit' | 'Google Chrome'
+export type TaskApp = 'TextEdit' | 'Google Chrome' | 'Electron' | 'System Settings'
 
 export interface TaskContext {
   /** a fresh word that names the run's window */
