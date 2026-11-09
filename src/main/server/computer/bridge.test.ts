@@ -334,6 +334,26 @@ describe('ComputerBridge: pause, Stop, Away, offline', () => {
     expect(b.ledger).toEqual([])
   })
 
+  it('a Stop or the thread\'s end while the reply\'s pictures are being written still brings back neither the row nor the ledger entry', async () => {
+    const b = box()
+    const image = { label: 'observation', data: Buffer.from([0xff, 0xd8, 1]).toString('base64'), mimeType: 'image/jpeg', width: 1, height: 1 }
+    const p = b.run('computer_observe', { ...observe, screenshot: true })
+    await b.until(() => b.out.length === 1, 'out')
+    b.reply(b.out[0].callId, answer({ images: [image], row: row() }))
+    await new Promise((r) => setImmediate(r))
+    void b.bridge.stop('t1')
+    expect((await p).shots).toHaveLength(1)
+    expect(b.bridge.rows()).toEqual([])
+    expect(b.ledger).toEqual([])
+    const q = b.run('computer_observe', { ...observe, screenshot: true }, 't2')
+    await b.until(() => b.ofMethod('mac.computer').length === 2, 'out')
+    b.reply(b.ofMethod('mac.computer')[1].callId, answer({ images: [image], row: row() }))
+    await new Promise((r) => setImmediate(r))
+    b.bridge.threadsEnded(['t2'])
+    expect((await q).shots).toHaveLength(1)
+    expect(b.ledger).toEqual([])
+  })
+
   it('a call that never answers a Stop is given up after 10 s', async () => {
     const b = box()
     const p = b.run('computer_observe', observe)

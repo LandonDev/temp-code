@@ -251,7 +251,7 @@ export class ComputerBridge {
           { callId, onProgress: (frame) => !inflight.closed && this.progress(t, frame.chunk) }
         )
       })
-      return await this.answer(t, meta, call, raw, inflight.closed)
+      return await this.answer(t, meta, call, raw, inflight)
     } catch (err) {
       return this.failure(t, call, err)
     } finally {
@@ -267,7 +267,7 @@ export class ComputerBridge {
   }
 
   /** The Mac's answer as the outcome; one for a call Stop or the thread's end closed still answers, but moves neither the row nor the ledger. */
-  private async answer(t: ThreadBridge, meta: SessionMeta | null | undefined, call: ComputerToolCall, raw: unknown, closed: boolean): Promise<ComputerToolOutcome> {
+  private async answer(t: ThreadBridge, meta: SessionMeta | null | undefined, call: ComputerToolCall, raw: unknown, inflight: Inflight): Promise<ComputerToolOutcome> {
     const parsed = ComputerPeerAnswerSchema.safeParse(raw)
     if (!parsed.success) return refusal(hostErrorLine('service_unavailable', COMPUTER_BAD_ANSWER))
     const a: ComputerPeerAnswer = parsed.data
@@ -281,6 +281,8 @@ export class ComputerBridge {
         shots.push(landed)
       }
     }
+    // read after the pictures landed: a Stop or the thread's end may have come while they were written
+    const closed = inflight.closed
     if (a.row && !closed) this.mirror(t, a.row)
     if (a.away) this.awayNotice(t.id, call)
     const mac = t.macPeer
