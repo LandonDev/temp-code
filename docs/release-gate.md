@@ -190,6 +190,21 @@ one contract:
   granted, or the rows fail by name. Without Screen Recording a row asks for
   no picture and seeds its own instance with `computer.prompted.screenRecording`,
   so no prompt can go out; its picture checks read skipped.
+- **A proof leaves no scratch process behind.** After its turn arrives,
+  `scripts/lib/computerProofProcesses.ts` ends leftover TC Probe copies and
+  proof-owned `tc-computer` services (including lock holders). New services
+  carry `TEMP_CODE_COMPUTER_PROOF=1`; older gate services carry
+  `TC_PROOF_UNGATED=1` or the bridge's scratch HOME. The sweep excludes the
+  installed TempCode service and descendants of another live proof. An
+  orphaned scratch app never blocks the turn order. Every proof cleans up
+  in `finally`, even when launch fails before returning a pid; probe cleanup
+  matches all copies of its binary, including `/private/tmp` spellings.
+- **A bridge call may wait for the Mac.** The proof waits at most two minutes
+  per call, logging the load/cap standing while held; at the bound it fails
+  with that standing and cleans up its isolated hosts. `session.markStatus`
+  creates a synthetic turn with no harness, so the missing-harness sweep
+  leaves it running until the proof settles it. The normal liveness check
+  still stops a real turn whose harness is gone.
 - **A locked or sleeping screen at entry** skips the four screen rows;
   a read failure skips them too. A proof that loses the screen after it
   starts still fails as inconclusive: its checks did not run whole.

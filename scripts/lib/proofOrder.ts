@@ -48,6 +48,9 @@ export function otherProofIn(ps: string, self: number, patterns: readonly string
   const proofOf = (pid: number): string | null => {
     const command = rows.get(pid)?.command
     if (!command || /\bpgrep\b|\bps -Ao\b/.test(command)) return null
+    // Scratch children can outlive a failed runner. Its wrapper owns the turn;
+    // an orphaned app/helper must reach the next proof's startup sweep.
+    if (/^\/.*\/tc-computer-proof\/(?:TC Probe\.app\/Contents\/MacOS\/TC Probe|computer-proof-probe)(?:\s|$)/.test(command)) return null
     return patterns.find((p) => command.includes(p)) ?? null
   }
   /** The wrapper: the topmost process up the chain that names a proof. */

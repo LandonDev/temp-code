@@ -43,6 +43,7 @@ import { waitForGateBuild } from './lib/gateBuild'
 import { computerProofMode, computerProofPolicy, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
 import { buildPreviewProbeApp } from './lib/previewProbeApp'
 import { repoRoot } from './lib/repoRoot'
+import { COMPUTER_PROOF_ENV, sweepComputerProofProcesses } from './lib/computerProofProcesses'
 import { cleanupProbeApp, launchTickingProbe, PROBE_APP_NAME, MAC_EXTRA_SOURCE, ScreenLost, ScreenWatch, type ProbeAppBuild } from './lib/tcProbeApp'
 
 if (process.platform !== 'darwin') {
@@ -61,6 +62,7 @@ if (screenSkip) {
 
 if (GATE) await waitForGateBuild({ tree: ROOT, log: console.log })
 await waitForComputerProof(console.log)
+sweepComputerProofProcesses(console.log)
 const WORK = '/tmp/tc-preview-proof'
 const REPORT = join(WORK, 'report.json')
 const TRACE = join(WORK, 'trace.log')
@@ -114,13 +116,13 @@ let previews: ComputerPreviews | null = null
 let holds: SessionHolds | null = null
 
 async function cleanup(): Promise<void> {
-  report.cleanup.push(...cleanupProbeApp(probeBuild, probePid))
-  probePid = 0
-  probeBuild = null
   holds?.close()
   await previews?.close().catch(() => undefined)
   await service?.request('escape.watch', { on: false }).catch(() => undefined)
   await service?.close().catch(() => undefined)
+  report.cleanup.push(...cleanupProbeApp(probeBuild, probePid))
+  probePid = 0
+  probeBuild = null
   saveReport()
   for (const name of readdirSync(WORK)) if (!KEEP.has(name)) rmSync(join(WORK, name), { recursive: true, force: true })
 }
@@ -154,7 +156,7 @@ async function run(): Promise<void> {
   const settings = new Map<string, string>(policy.settings)
   service = new ComputerService({
     dataDir: join(WORK, 'data'),
-    env: { ...process.env, TEMP_CODE_COMPUTER_TRACE: '1' },
+    env: { ...process.env, ...COMPUTER_PROOF_ENV, TEMP_CODE_COMPUTER_TRACE: '1' },
     trace: true,
     bin: () => BIN,
     log: (line) => appendFileSync(TRACE, `${new Date().toISOString()} ${line}\n`)
@@ -379,11 +381,12 @@ try {
 } catch (e) {
   if (e instanceof ScreenLost) check('the run', 'inconclusive', e.message)
   else check('the run finished', false, ((e as Error).stack ?? String(e)).split('\n').slice(0, 4).join(' '))
+} finally {
+  // A lost screen ends the race at once; the run unwinds at its next nap before the cleanup, 20 s at most.
+  await Promise.race([running.catch(() => undefined), new Promise((r) => setTimeout(r, 20_000))])
+  watch.stop()
+  await cleanup()
 }
-// A lost screen ends the race at once; the run unwinds at its next nap before the cleanup, 20 s at most.
-await Promise.race([running.catch(() => undefined), new Promise((r) => setTimeout(r, 20_000))])
-watch.stop()
-await cleanup()
 const failed = report.checks.filter((c) => c.outcome === 'failed').length
 const voided = report.checks.filter((c) => c.outcome === 'inconclusive').length
 console.log(`\n${report.checks.length - failed - voided} passed, ${failed} failed, ${voided} inconclusive; report ${REPORT}`)

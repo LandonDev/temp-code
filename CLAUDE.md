@@ -2203,7 +2203,17 @@ why and the measured headline.
   Screen Recording, a named failure without Accessibility) is
   scripts/lib/computerProofGate.ts; scripts/lib/macScreen.ts skips their
   `--gate` runs at entry if the screen is locked, asleep or unreadable
-  (docs/computer-protocol.md "The unattended proof modes"). The preview's
+  (docs/computer-protocol.md "The unattended proof modes"). Each proof's
+  startup sweep (scripts/lib/computerProofProcesses.ts) ends leftover TC Probe
+  copies and proof-owned services after taking its turn. Services carry
+  `TEMP_CODE_COMPUTER_PROOF=1`; the sweep also recognises older gate services
+  and the bridge's scratch HOME, and excludes installed TempCode and other
+  live proofs. Orphaned scratch apps never count as proof runners. Cleanup
+  in `finally` ends the probe by binary path even if launch never returned a
+  pid, and closes each proof service. The bridge proof waits up to two minutes
+  per call and logs the Mac's held standing. Its `session.markStatus` turns
+  have no harness; the liveness sweep leaves them running until the proof
+  settles them. Real turns keep their missing-harness check. The preview's
   scratch copy of TC Probe draws no highlight on Ping (scripts/lib/previewProbeApp.ts), so its second click
   changes no pixel and the no-frame check holds. The hand runs, each with what it needs:
   `script:e2e-tc-computer` whole (TextEdit and the paste: 5 idle minutes),

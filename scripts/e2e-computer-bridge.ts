@@ -45,6 +45,9 @@ import { join, resolve, sep } from 'node:path'
 import { createInterface } from 'node:readline'
 
 import { proofDescendants } from './lib/proofProcesses'
+import { cleanupProbeApp } from './lib/tcProbeApp'
+import { COMPUTER_PROOF_ENV, sweepComputerProofProcesses } from './lib/computerProofProcesses'
+import { waitForBridgeProofCall } from './lib/computerBridgeProof'
 import { proofElectron } from './lib/proofElectron'
 import { waitForGateBuild } from './lib/gateBuild'
 import { computerProofMode, computerProofPolicy, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
@@ -105,6 +108,7 @@ function launch(inst: Inst, extra: Record<string, string>): void {
     AGENT_CLI_CREDENTIAL_STORE: 'file',
     NODE_ENV: 'production',
     SHELL: '/bin/bash',
+    ...COMPUTER_PROOF_ENV,
     ...extra
   }
   delete env.ELECTRON_RUN_AS_NODE
@@ -306,9 +310,9 @@ async function orchestrator(): Promise<void> {
   const APP = 'TC Probe'
   const PROBE_APP = join(WORK, `${APP}.app`)
   const PROBE_BUNDLE_ID = 'dev.landon.tempcode.computer-bridge-probe'
-  const LSREGISTER = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
   if (GATE) await waitForGateBuild({ tree: REPO, log: console.log })
   await waitForComputerProof(console.log)
+  sweepComputerProofProcesses(console.log)
   rmSync(WORK, { recursive: true, force: true })
   mkdirSync(WORK, { recursive: true })
   console.log('tiers ax and process only, TC Probe in the background; no idle gate, no model turn')
@@ -358,20 +362,8 @@ async function orchestrator(): Promise<void> {
     if (ssh) await Promise.race([boxCall('quit').catch(() => null), sleep(5_000)])
     ssh?.kill()
     kill(mac)
-    if (!scratchPid) {
-      try { scratchPid = Number(execFileSync('pgrep', ['-f', `${PROBE_APP}/Contents/MacOS/`], { encoding: 'utf8' }).trim().split('\n')[0]) } catch { /* never launched */ }
-    }
-    if (scratchPid)
-      try {
-        process.kill(scratchPid, 'SIGKILL')
-      } catch {
-        /* gone */
-      }
-    try {
-      execFileSync(LSREGISTER, ['-u', PROBE_APP], { stdio: 'ignore' })
-    } catch {
-      /* never registered */
-    }
+    cleanupProbeApp({ app: PROBE_APP, binary: join(PROBE_APP, 'Contents/MacOS', APP), bundleId: PROBE_BUNDLE_ID }, scratchPid)
+    scratchPid = 0
     saveReport()
     copyFiles(mac)
     rmSync(macRoot, { recursive: true, force: true })
@@ -519,7 +511,16 @@ async function orchestrator(): Promise<void> {
   const computer = (sid: string, tool: string, args: Record<string, unknown>, images: 'parts' | 'none' = 'parts'): Promise<AppComputerAnswer> => {
     const safeArgs = policy.observeArgs(args)
     policy.assertRequest(tool, safeArgs)
-    return boxCall<AppComputerAnswer>('app.computer', { sessionId: sid, token: token(sid), call: ++callSeq, tool, args: safeArgs, images }).then((a) => {
+    return waitForBridgeProofCall(
+      boxCall<AppComputerAnswer>('app.computer', { sessionId: sid, token: token(sid), call: ++callSeq, tool, args: safeArgs, images }),
+      {
+        standing: async () => {
+          const call = (await macActivity()).calls.find((c) => c.environmentId === boxId && c.sessionId === sid && c.status === 'held')
+          return call ? JSON.stringify(call.held) : null
+        },
+        log: console.log
+      }
+    ).then((a) => {
       report.steps.push(...a.text.split('\n').filter((l) => / · (ax|process|session)\b/.test(l)))
       return a
     })

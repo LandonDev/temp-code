@@ -59,7 +59,6 @@ import {
   statSync,
   writeFileSync
 } from 'node:fs'
-import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { promisify } from 'node:util'
@@ -96,6 +95,8 @@ import {
 } from '../src/shared/computer/protocol'
 import { waitForGateBuild } from './lib/gateBuild'
 import { intPoint } from './lib/computerPoint'
+import { cleanupProbeApp } from './lib/tcProbeApp'
+import { COMPUTER_PROOF_ENV, sweepComputerProofProcesses } from './lib/computerProofProcesses'
 import { computerInitializeMs, computerProofMode, computerProofPolicy, LOST_TRY_LINE, lostTry, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
 import { OwnInput, personSince } from './lib/proofGate'
 import { buildTcComputer, type TcComputerBuildResult } from './lib/tcComputerBuild'
@@ -517,7 +518,7 @@ class Service {
     const trace = openSync(TRACE, 'a')
     this.proc = spawn(BIN, ['serve'], {
       stdio: ['pipe', 'pipe', trace],
-      env: { ...process.env, TEMP_CODE_COMPUTER_TRACE: '1', ...env }
+      env: { ...process.env, ...COMPUTER_PROOF_ENV, TEMP_CODE_COMPUTER_TRACE: '1', ...env }
     })
     closeSync(trace)
     services.push(this)
@@ -706,7 +707,8 @@ function holdLock(
   ms: number
 ): { held: Promise<void>; exit: Promise<number | null> } {
   const child = spawn(BIN, ['hold-lock', which, String(ms)], {
-    stdio: ['ignore', 'pipe', 'ignore']
+    stdio: ['ignore', 'pipe', 'ignore'],
+    env: { ...process.env, ...COMPUTER_PROOF_ENV }
   })
   children.push(child)
   const exit = new Promise<number | null>((resolve) => child.once('exit', (code) => resolve(code)))
@@ -818,6 +820,7 @@ let stopLine: string | null = null
 async function run(): Promise<void> {
   if (GATE) await waitForGateBuild({ tree: ROOT, log: console.log })
   await waitForComputerProof(console.log)
+  sweepComputerProofProcesses(console.log)
   const runStart = Date.now()
   ownsWork = true
   rmSync(WORK, { recursive: true, force: true })
@@ -1591,49 +1594,29 @@ function probeInfoPlist(): string {
 async function cleanup(): Promise<void> {
   if (!ownsWork) return
   const done = (what: string): void => void report.cleanup.push(what)
-  if (textEditPid && alive(textEditPid)) {
-    process.kill(textEditPid, 'SIGKILL')
-    done(`SIGKILL TextEdit ${textEditPid}`)
-  }
-  if (probePid && alive(probePid)) {
-    process.kill(probePid, 'SIGTERM')
-    done(`SIGTERM the probe app ${probePid}`)
-    const deadline = Date.now() + 3_000
-    while (alive(probePid) && Date.now() < deadline) await sleep(100)
-    if (alive(probePid)) process.kill(probePid, 'SIGKILL')
-  }
-  for (const pid of hideThenKillApps()) done(`hid and killed scratch app ${pid}`)
-  for (const svc of services)
-    if (!svc.done) {
+  await Promise.allSettled(services.filter((svc) => !svc.done).map(async (svc) => {
+    try {
+      svc.closeStdin()
+      await within(svc.exit, 2_000, `the ${svc.label} service exiting in cleanup`)
+      done(`closed the ${svc.label} service`)
+    } catch {
       svc.proc.kill('SIGKILL')
+      await within(svc.exit, 2_000, `the killed ${svc.label} service exiting`)
       done(`SIGKILL the ${svc.label} service`)
     }
+  }))
   for (const child of children)
     if (child.exitCode === null && child.signalCode === null) {
       child.kill('SIGKILL')
       done('SIGKILL a lock holder')
     }
-  if (existsSync(PROBE_APP)) {
-    try {
-      execFileSync(
-        '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister',
-        ['-u', PROBE_APP],
-        { stdio: 'ignore' }
-      )
-      done('unregistered the probe app from Launch Services')
-    } catch {
-      // nothing registered
-    }
+  if (textEditPid && alive(textEditPid)) {
+    process.kill(textEditPid, 'SIGKILL')
+    done(`SIGKILL TextEdit ${textEditPid}`)
   }
-  const savedState = join(
-    homedir(),
-    'Library/Saved Application State',
-    `${PROBE_BUNDLE_ID}.savedState`
-  )
-  if (existsSync(savedState)) {
-    rmSync(savedState, { recursive: true, force: true })
-    done('removed the probe app saved state')
-  }
+  report.cleanup.push(...cleanupProbeApp({ app: PROBE_APP, binary: join(PROBE_APP, 'Contents/MacOS/TC Probe'), bundleId: PROBE_BUNDLE_ID }, probePid))
+  probePid = 0
+  for (const pid of hideThenKillApps()) done(`hid and killed scratch app ${pid}`)
   if (existsSync(WORK))
     for (const entry of readdirSync(WORK))
       if (!KEEP.has(entry)) rmSync(join(WORK, entry), { recursive: true, force: true })

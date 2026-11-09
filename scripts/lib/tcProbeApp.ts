@@ -2,6 +2,7 @@ import { execFile, execFileSync } from 'node:child_process'
 import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { probeAppPids, stopProofPids } from './computerProofProcesses'
 
 /**
  * The computer preview proofs' scratch app: "TC Probe" (scripts/mac/computer-probe-app.swift) built
@@ -111,21 +112,17 @@ export async function launchTickingProbe(
  */
 export function cleanupProbeApp(build: ProbeAppBuild | null, pid: number): string[] {
   const done: string[] = []
-  if (!pid && build) pid = pidOf(build.binary)
-  if (pid) {
+  // A failed launch can leave several copies before its caller learns any pid.
+  const pids = new Set(pid ? [pid] : [])
+  if (build) {
     try {
-      process.kill(pid, 'SIGTERM')
-      done.push(`ended TC Probe ${pid}`)
+      const ps = execFileSync('ps', ['-Ao', 'pid=,command='], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 })
+      for (const match of probeAppPids(ps, binarySpellings(build.binary))) pids.add(match)
     } catch {
-      done.push('TC Probe was gone')
-    }
-    try {
-      execFileSync('sleep', ['0.5'])
-      process.kill(pid, 'SIGKILL')
-    } catch {
-      // gone
+      done.push('could not list probe processes; ending the recorded pid')
     }
   }
+  for (const ended of stopProofPids([...pids])) done.push(`ended TC Probe ${ended}`)
   if (build) {
     try {
       execFileSync(LSREGISTER, ['-u', build.app], { stdio: 'ignore' })

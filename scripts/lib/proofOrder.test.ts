@@ -55,4 +55,14 @@ describe('proofOrder', () => {
     const ps = [row(50, 1, '09:00', 'pgrep -f e2e-computer-bridge'), ...tcComputer(100, 101, '00:10')].join('\n')
     expect(otherProofIn(ps, 101)).toBeNull()
   })
+
+  it('lets the next proof sweep orphaned scratch processes instead of waiting forever behind them', () => {
+    const leftovers = [
+      row(50, 1, '01:30:00', '/private/tmp/tc-computer-proof/TC Probe.app/Contents/MacOS/TC Probe'),
+      row(51, 1, '01:30:00', '/tmp/tc-computer-proof/computer-proof-probe screen')
+    ]
+    expect(otherProofIn([...leftovers, ...bridge(200, 201, '00:10')].join('\n'), 201)).toBeNull()
+    // An older live runner still keeps its turn, even while it owns a scratch child.
+    expect(otherProofIn([...leftovers, ...tcComputer(100, 101, '01:00'), ...bridge(200, 201, '00:10')].join('\n'), 201)).toBe('e2e-tc-computer')
+  })
 })

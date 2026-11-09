@@ -289,6 +289,27 @@ it('resumeStopped leaves a paused thread paused', async () => {
 
 import { HARNESS_GONE_GRACE_MS } from './sessions'
 
+it('a synthetic proof turn survives the liveness grace while a Mac call waits, until the proof settles it', async () => {
+  const proof = await live()
+  const real = await live()
+  await registry.close()
+  registry = new SessionRegistry(store)
+  store.updateSession(real, { status: 'running' })
+  registry.markStatusForProof(proof, 'running')
+  const changes: string[] = []
+  registry.onMeta((meta) => { if (meta.id === proof) changes.push(meta.status) })
+  expect(registry.sweepLiveness(HARNESS_GONE_GRACE_MS, 1_000_000)).toEqual([])
+  expect(registry.sweepLiveness(HARNESS_GONE_GRACE_MS, 1_000_000 + 10 * HARNESS_GONE_GRACE_MS)).toEqual([real])
+  expect(store.getSession(proof)?.status).toBe('running')
+  expect(changes).toEqual([])
+  registry.markStatusForProof(proof, 'idle')
+  expect(changes).toEqual(['idle'])
+  // The exemption ends with that synthetic turn; a later ordinary orphan still stops.
+  registry.append(proof, { type: 'status', status: 'running' })
+  registry.sweepLiveness(0, 2_000_000)
+  expect(registry.sweepLiveness(0, 2_000_001)).toEqual([proof])
+})
+
 it('a running thread with no harness flips to stopped once the grace is up, and keeps its working time', async () => {
   const id = await live()
   await registry.close()

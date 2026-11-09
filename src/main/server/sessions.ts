@@ -1376,6 +1376,7 @@ export class SessionRegistry {
         (s.status === 'running' || s.status === 'starting' || s.status === 'watching') &&
         !this.starting.has(s.id) &&
         !this.resumePending.has(s.id) &&
+        !this.proofRunning.has(s.id) &&
         !this.store.movingTo(s.id)
       const handle = candidate ? this.handles.get(s.id) : undefined
       if (!candidate || (handle && handle.alive?.() !== false)) {
@@ -1451,6 +1452,8 @@ export class SessionRegistry {
   /** When a running thread was first seen with no harness behind it (the
    *  liveness sweep, startLivenessSweep): past the grace it reads stopped. */
   private readonly harnessGoneSince = new Map<string, number>()
+  /** Synthetic turns from session.markStatus have no harness to lose. Isolated proofs only. */
+  private readonly proofRunning = new Set<string>()
 
   /** At boot no harness handles exist, so a session persisted as waiting or
    *  watching is stale from a previous process — reset it, or the sidebar
@@ -3553,6 +3556,9 @@ export class SessionRegistry {
    */
   markStatusForProof(sessionId: string, status: 'running' | 'idle' | 'done'): void {
     if (!this.store.getSession(sessionId)) throw new Error(`unknown session: ${sessionId}`)
+    if (status === 'running') this.proofRunning.add(sessionId)
+    else this.proofRunning.delete(sessionId)
+    this.harnessGoneSince.delete(sessionId)
     this.appendStatus(sessionId, status)
     const next = this.store.updateSession(sessionId, {
       status,
@@ -6162,6 +6168,7 @@ export class SessionRegistry {
 
   /** Put down every harness, keeping the registry usable for later sends. */
   async disposeAll(): Promise<void> {
+    this.proofRunning.clear()
     if (this.sweepTimer) clearInterval(this.sweepTimer)
     if (this.livenessTimer) clearInterval(this.livenessTimer)
     this.scheduler.dispose()
