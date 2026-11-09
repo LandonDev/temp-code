@@ -59,3 +59,28 @@ export function workspaceForPath(workspaces: readonly { id: string; path: string
   }
   return best?.id ?? null
 }
+
+/**
+ * The workspace a folder belongs to: the deepest workspace or project
+ * checkout holding it. A worktree project's checkout lives under
+ * ~/.temp-code/worktrees, outside its workspace's folder, so the project's
+ * cwd counts as its workspace's.
+ */
+export function workspaceForCwd(
+  workspaces: readonly { id: string; path: string }[],
+  projects: readonly { workspaceId: string; cwd: string }[],
+  cwd: string
+): string | null {
+  return workspaceForPath([...workspaces, ...projects.map((p) => ({ id: p.workspaceId, path: p.cwd }))], cwd)
+}
+
+/** A thread's workspace: its own (a chat outside projects), else its project's, else the one holding its folder. */
+export function workspaceOfThread(
+  thread: { workspaceId: string | null; projectId: string | null; cwd: string },
+  workspaces: readonly { id: string; path: string }[],
+  projects: readonly { id: string; workspaceId: string; cwd: string }[]
+): string | null {
+  if (thread.workspaceId) return thread.workspaceId
+  const project = thread.projectId ? projects.find((p) => p.id === thread.projectId) : undefined
+  return project?.workspaceId ?? workspaceForCwd(workspaces, projects, thread.cwd)
+}

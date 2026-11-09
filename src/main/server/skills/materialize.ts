@@ -216,8 +216,14 @@ export class SkillMaterializer {
       if (result.stale || !result.swapped) continue
       this.log(`${plan.provider}/${plan.view} → ${result.name} (${result.written} written, ${result.linked} linked)`)
     }
-    // A view no longer planned (a workspace that lost its last own skill, or was deleted) loses its symlink.
-    const planned = new Set(plans.map((p) => `${p.provider}/${p.view}`))
+    // A view no longer planned (a workspace that lost its last own skill, or was deleted) loses its symlink:
+    // planned afresh, since a write during the yields above may have given a workspace its own view (dirFor links it at once).
+    const planned = new Set(
+      planViews(
+        this.deps.skills.list(),
+        this.deps.workspaces().map((w) => w.id)
+      ).map((p) => `${p.provider}/${p.view}`)
+    )
     for (const provider of SKILL_HARNESSES) {
       for (const view of this.viewsOnDisk(provider)) {
         if (planned.has(`${provider}/${view}`)) continue

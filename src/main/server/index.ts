@@ -176,7 +176,7 @@ import {
 } from './apptools'
 import { SkillMaterializer, configureMaterializedSkills } from './skills/materialize'
 import { skillTextMap } from './skills/skillText'
-import { workspaceForPath } from './skills/views'
+import { workspaceForCwd, workspaceOfThread } from './skills/views'
 import { SKILL_IMPORT_KEY, importSkills } from './skills/import'
 import { skillList, skillRemove, skillWrite, type SkillToolDeps } from './skills/tools'
 import type { SkillInput, SkillMeta } from '@shared/contract-skills'
@@ -702,7 +702,7 @@ export async function startServer(
   configureMaterializedSkills(skillMaterializer)
   // The slash menu lists the store's skills (and the home folder's, until the drivers own each CLI's skill folder).
   configureCommandSkills({
-    storeDir: (provider, cwd) => join(skillMaterializer.dirFor(provider, workspaceForPath(registry.listWorkspaces(), cwd)), 'skills'),
+    storeDir: (provider, cwd) => join(skillMaterializer.dirFor(provider, workspaceForCwd(registry.listWorkspaces(), registry.listProjects(), cwd)), 'skills'),
     readHome: true
   })
   /** A store write as a thread or the import makes it: storeRpc as this host's own caller, a refusal answered as its words. */
@@ -716,7 +716,7 @@ export async function startServer(
     rootOf: (s) => registry.get(registry.rootSessionOf(s.id)) ?? s,
     workspaceOf: (s) => {
       const all = registry.listWorkspaces()
-      const id = s.workspaceId ?? workspaceForPath(all, s.cwd)
+      const id = workspaceOfThread(s, all, registry.listProjects())
       const ws = id ? all.find((w) => w.id === id) : undefined
       return ws ? { id: ws.id, name: ws.name } : null
     },

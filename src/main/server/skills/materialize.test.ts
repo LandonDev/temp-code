@@ -255,6 +255,28 @@ describe('two builds of one view', () => {
     expect(logs.some((l) => l.includes('failed'))).toBe(false)
   })
 
+  it('a workspace view dirFor links during a run is not removed by that run\'s end', async () => {
+    workspaces = [{ id: 'w1', path: join(tmp, 'w1') }]
+    put('alpha')
+    const m = await started()
+    let linked = false
+    const m2 = make({
+      between: async () => {
+        if (linked) return
+        linked = true
+        // A write gives w1 its own view while the run (planned without it) is between skills; a spawn there asks now.
+        put('local', { workspaceId: 'w1' })
+        m2.dirFor('claude', 'w1')
+      }
+    })
+    m.close()
+    m2.start()
+    put('alpha', { body: 'two' })
+    await m2.whenSettled()
+    expect(lstatSync(view('claude', 'ws-w1')).isSymbolicLink()).toBe(true)
+    expect(logs.some((l) => l === 'claude/ws-w1 removed')).toBe(false)
+  })
+
   it('dirFor answers the new generation for a write the run has not reached', async () => {
     put('alpha')
     const m = await started()

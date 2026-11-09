@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { SkillMeta } from '@shared/contract-skills'
 import { viewDigest } from '@shared/skills'
-import { planView, planViews, workspaceForPath } from './views'
+import { planView, planViews, workspaceForCwd, workspaceForPath, workspaceOfThread } from './views'
 
 const you = { kind: 'person' } as const
 let n = 0
@@ -80,5 +80,27 @@ describe('workspaceForPath', () => {
     // A folder that is not there yet still reads by its real parent.
     expect(workspaceForPath(ws, join(tmp, 'link/app/.claude/worktrees/x'))).toBe('inner')
     expect(workspaceForPath(ws, tmp)).toBeNull()
+  })
+})
+
+describe('a thread\'s workspace', () => {
+  let tmp: string
+  beforeEach(() => {
+    tmp = realpathSync(mkdtempSync(join(tmpdir(), 'tc-views-ws-')))
+  })
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }))
+
+  it('a worktree project\'s thread, outside its workspace\'s folder, is its project\'s workspace\'s; a loose chat keeps its own', () => {
+    mkdirSync(join(tmp, 'work/app'), { recursive: true })
+    mkdirSync(join(tmp, '.temp-code/worktrees/fix-x/sub'), { recursive: true })
+    const workspaces = [{ id: 'w1', path: join(tmp, 'work/app') }]
+    const projects = [{ id: 'p1', workspaceId: 'w1', cwd: join(tmp, '.temp-code/worktrees/fix-x') }]
+    // A project thread carries no workspaceId of its own: the project row has it.
+    expect(workspaceOfThread({ workspaceId: null, projectId: 'p1', cwd: join(tmp, '.temp-code/worktrees/fix-x') }, workspaces, projects)).toBe('w1')
+    expect(workspaceOfThread({ workspaceId: 'w2', projectId: null, cwd: tmp }, workspaces, projects)).toBe('w2')
+    expect(workspaceOfThread({ workspaceId: null, projectId: null, cwd: tmp }, workspaces, projects)).toBeNull()
+    // The slash menu knows only the folder: a project's checkout counts as its workspace's.
+    expect(workspaceForCwd(workspaces, projects, join(tmp, '.temp-code/worktrees/fix-x/sub'))).toBe('w1')
+    expect(workspaceForPath(workspaces, join(tmp, '.temp-code/worktrees/fix-x/sub'))).toBeNull()
   })
 })
