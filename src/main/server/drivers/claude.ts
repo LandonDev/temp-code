@@ -36,7 +36,7 @@ import {
   researchWriteRoots,
   rulesFor
 } from '../orchestration'
-import { APP_TOOLS, appToolsMcp } from '../apptools'
+import { APP_TOOLS, appToolsMcp, releaseAppTools } from '../apptools'
 import { withMacTools } from '../macTools'
 import { expandSlashRefs } from '../slash'
 import { resolveClaude } from './binaries'
@@ -1628,7 +1628,16 @@ export const claudeDriver: HarnessDriver = {
       // supervision all fold those tool calls, so a thread without them is
       // invisible — the CLI's own env override switches them back on.
       // The guard's instance mark rides the harness's environment too, so every descendant is this instance's (processGuard.ts).
-      env: { ...process.env, CLAUDE_CODE_ENABLE_TODO_TOOLS: '1', ...guardInstanceEnv(), ...(endpoint ? { ANTHROPIC_BASE_URL: endpoint } : {}), ...metaClaudeEnv(session) },
+      // Tool search on for every thread: the CLI turns it off for a base URL that is not Anthropic's,
+      // which ours never is, and add-on tools are deferred behind it (addons/exposure.ts).
+      env: {
+        ...process.env,
+        CLAUDE_CODE_ENABLE_TODO_TOOLS: '1',
+        ENABLE_TOOL_SEARCH: 'true',
+        ...guardInstanceEnv(),
+        ...(endpoint ? { ANTHROPIC_BASE_URL: endpoint } : {}),
+        ...metaClaudeEnv(session)
+      },
       // 1M rides the CLI's `[1m]` model suffix — the same lever as Claude
       // Code's own 1M picker: it sets the client-side window to 1M and the
       // CLI adds the API-side signaling itself. The `betas` Option is a
@@ -1759,7 +1768,15 @@ export const claudeDriver: HarnessDriver = {
       setPhase(ctx, state, spawned.warmId ? 'initializing' : 'cli-starting')
       return cli as unknown as SpawnedProcess
     }
-    const q = query({ prompt: input, options })
+    // The app server's add-on tools stop following the store when this handle ends (apptools.ts).
+    const releaseApp = (): void => releaseAppTools(options.mcpServers?.app)
+    let q: ReturnType<typeof query>
+    try {
+      q = query({ prompt: input, options })
+    } catch (err) {
+      releaseApp()
+      throw err
+    }
 
     // Overdue-result watchdog. The CLI has been seen going silent AFTER the
     // reply fully streamed — result never sent, process alive at 0% CPU
@@ -1898,6 +1915,7 @@ export const claudeDriver: HarnessDriver = {
         clearInterval(watchdog)
         stopForgotten()
         goalWatch.close()
+        releaseApp()
       }
     })()
 
@@ -1996,6 +2014,7 @@ export const claudeDriver: HarnessDriver = {
       },
       async dispose(): Promise<void> {
         disposed = true
+        releaseApp()
         clearSettle(state)
         clearNoticeResult(state)
         state.steers.clear()

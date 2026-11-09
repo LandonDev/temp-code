@@ -564,6 +564,8 @@ export function macToolsMcp(
   return createSdkMcpServer({
     name: 'mac',
     version: '0.1.0',
+    // Always loaded, though tool search is on for every claude thread (drivers/claude.ts).
+    alwaysLoad: true,
     tools: [
       ...macJobTools(session),
       tool(

@@ -1245,6 +1245,8 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
   return createSdkMcpServer({
     name: 'orchestrator',
     version: '0.1.0',
+    // Every claude thread runs with tool search on (drivers/claude.ts); the app's own tools stay in every prompt.
+    alwaysLoad: true,
     tools: [
       tool(
         'spawn_agent',

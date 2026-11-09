@@ -74,6 +74,18 @@ import {
   BATCH_RULES_TOOL_NAME
 } from '@shared/gate'
 import { batches } from './batch'
+import {
+  ADDON_ADD_DESCRIPTION,
+  ADDON_ADD_PARAMS,
+  ADDON_ADD_TOOL,
+  ADDON_LIST_DESCRIPTION,
+  ADDON_LIST_TOOL,
+  ADDON_REMOVE_DESCRIPTION,
+  ADDON_REMOVE_PARAMS,
+  ADDON_REMOVE_TOOL
+} from '@shared/addons'
+import type { AddonAddArgsSchema, AddonRemoveArgsSchema } from '@shared/contract-addons'
+import { deferredTool, type McpServerLike } from './addons/exposure'
 import { mergeReviews } from './mergeReview'
 import { preview as previewHtml, publish as publishHtml, type HtmlPreview } from './htmlRender'
 import { INLINE_DIGEST_MAX_CHARS, mirrorRelPath, threadDigest } from './mirror'
@@ -107,6 +119,29 @@ export function setAppCrossHost(c: CrossHostAgents | null): void {
 }
 export function setAppToolsRegistry(r: SessionRegistry): void {
   registry = r
+}
+
+// The add-on registry on the claude path (addons/): each thread's app server
+// carries the add-on tools it may see, live (exposure.ts), and the three
+// management tools ask the handlers in addons/tools.ts. index.ts sets this once
+// the add-on host runs; until then a thread gets no add-on tools.
+export interface AppAddons {
+  exposure: { attach(session: SessionMeta, instance: McpServerLike): () => void }
+  /** The three management tools' answers (addons/tools.ts), for the caller's live meta. */
+  list(caller: SessionMeta): string
+  add(caller: SessionMeta, args: z.infer<typeof AddonAddArgsSchema>): Promise<string>
+  remove(caller: SessionMeta, args: z.infer<typeof AddonRemoveArgsSchema>): Promise<string>
+}
+let addons: AppAddons | null = null
+export function setAppAddons(next: AppAddons | null): void {
+  addons = next
+}
+/** Each app server's release of its add-on tools, called where the claude handle ends (drivers/claude.ts). */
+const addonReleases = new WeakMap<object, () => void>()
+export function releaseAppTools(server: object | undefined): void {
+  if (!server) return
+  addonReleases.get(server)?.()
+  addonReleases.delete(server)
 }
 
 // ── the stdio bridge (codex; cursor lacks per-run MCP config) ────────
@@ -635,9 +670,12 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
   // cite_source exists only inside a research tree (the handle reboots on
   // a retype, so the check at boot is current); elsewhere it would only refuse.
   const research = registry?.researchRootOf(session.id) !== null
-  return createSdkMcpServer({
+  const server = createSdkMcpServer({
     name: 'app',
     version: '0.1.0',
+    // Tool search is on for every claude thread (drivers/claude.ts): the app's own tools stay in every
+    // prompt, while add-on tools and the add-on management tools are found by search (deferredTool).
+    alwaysLoad: true,
     tools: [
       ...(research
         ? [
@@ -808,9 +846,51 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
       ),
       tool(HTML_RENDER_TOOL_NAME, HTML_RENDER_TOOL_DESCRIPTION, HTML_RENDER_SHAPE, (args) =>
         htmlRenderTool(session.id, args)
+      ),
+      // The add-on registry's management tools: deferred, found by tool search like the add-on tools themselves.
+      deferredTool(
+        tool(ADDON_LIST_TOOL, ADDON_LIST_DESCRIPTION, {}, async () => {
+          const live = registry?.get(session.id) ?? session
+          return text(addons ? addons.list(live) : 'refused: add-ons are not available here')
+        })
+      ),
+      deferredTool(
+        tool(ADDON_ADD_TOOL, ADDON_ADD_DESCRIPTION, ADDON_ADD_SHAPE, async (args) => {
+          const live = registry?.get(session.id) ?? session
+          return text(addons ? await addons.add(live, args) : 'refused: add-ons are not available here')
+        })
+      ),
+      deferredTool(
+        tool(ADDON_REMOVE_TOOL, ADDON_REMOVE_DESCRIPTION, ADDON_REMOVE_SHAPE, async (args) => {
+          const live = registry?.get(session.id) ?? session
+          return text(addons ? await addons.remove(live, args) : 'refused: add-ons are not available here')
+        })
       )
     ]
   })
+  // The thread's add-on tools join the live server and follow the store (addons/exposure.ts).
+  const release = addons?.exposure.attach(session, server.instance as unknown as McpServerLike)
+  if (release) addonReleases.set(server, release)
+  return server
+}
+
+const ADDON_ADD_SHAPE = {
+  name: z.string().describe(ADDON_ADD_PARAMS.name),
+  description: z.string().max(500).optional().describe(ADDON_ADD_PARAMS.description),
+  transport: z.enum(['stdio', 'http']).describe(ADDON_ADD_PARAMS.transport),
+  command: z.string().optional().describe(ADDON_ADD_PARAMS.command),
+  args: z.array(z.string()).optional().describe(ADDON_ADD_PARAMS.args),
+  env: z.array(z.string()).optional().describe(ADDON_ADD_PARAMS.env),
+  tokenEnv: z.string().optional().describe(ADDON_ADD_PARAMS.tokenEnv),
+  url: z.string().optional().describe(ADDON_ADD_PARAMS.url),
+  headers: z.array(z.string()).optional().describe(ADDON_ADD_PARAMS.headers),
+  auth: z.enum(['none', 'fields', 'oauth']).optional().describe(ADDON_ADD_PARAMS.auth),
+  scope: z.enum(['workspace', 'global']).optional().describe(ADDON_ADD_PARAMS.scope),
+  platforms: z.array(z.enum(['darwin', 'linux'])).optional().describe(ADDON_ADD_PARAMS.platforms)
+}
+const ADDON_REMOVE_SHAPE = {
+  name: z.string().describe(ADDON_REMOVE_PARAMS.name),
+  scope: z.enum(['workspace', 'global']).optional().describe(ADDON_REMOVE_PARAMS.scope)
 }
 
 export const APP_TOOLS = [
@@ -832,5 +912,9 @@ export const APP_TOOLS = [
   `mcp__app__${ARCHIVE_THREADS_TOOL_NAME}`,
   `mcp__app__${SKILL_LIST_TOOL}`,
   `mcp__app__${SKILL_WRITE_TOOL}`,
-  `mcp__app__${SKILL_REMOVE_TOOL}`
+  `mcp__app__${SKILL_REMOVE_TOOL}`,
+  // The management tools raise the card that matters themselves (addon_add's is admin-only).
+  `mcp__app__${ADDON_LIST_TOOL}`,
+  `mcp__app__${ADDON_ADD_TOOL}`,
+  `mcp__app__${ADDON_REMOVE_TOOL}`
 ]
