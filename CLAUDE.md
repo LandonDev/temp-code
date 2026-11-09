@@ -128,8 +128,13 @@ Two separate steps, on purpose, over one gate.
     `publish`: renderer-soak, renderer-soak-chat, renderer-soak-typing and
     renderer-soak-scroll (the build lane, after the build, one after the
     other; Mac only), e2e-remote-fence, hub:test, ios:test, ios:test:client,
-    computer:test (native/tc-computer, the computer-use service's package). A
-    proof that boots an instance belongs in `publish`.
+    computer:test (native/tc-computer, the computer-use service's package)
+    and computer-bench (the computer task benchmark, Mac only, its own
+    `computer` lane, `onlyAtPublish`: never when changed paths alone pulled
+    the tier into a commit's hook). A step's `capMs` is its hard cap, past
+    which the gate kills it and fails it "passed its cap": the soaks 12
+    minutes, the bench 15. A proof that boots an instance belongs in
+    `publish`.
   - Steps in one lane run in array order, one at a time; lanes run at
     once (typecheck, vitest and build + bundle-size together), with a combined status
     line on a terminal and `✓ step 12s` lines plus a per-step time table
@@ -3787,6 +3792,25 @@ proof and the sizing rules; the pieces, by name:
   script:e2e-computer-schedule` on the Mac (two scratch TextEdits, a typist for
   the person; no idle gate, one computer proof at a time, a sentinel tap that
   turns a leg the real person touched inconclusive).
+- The task benchmark (docs/computer-protocol.md §17): `bun run
+  script:e2e-computer-bench` runs seven real desktop tasks (TextEdit, Chrome
+  on bench.html, a dev instance's Settings, System Settings' one switch, a
+  save dialog) on Opus 5.5, GPT-6.1 Sol and Muse Wonder 1.0 side by side,
+  one real thread per task, in the background tiers alone (the session tier
+  refused; `--session` admits it only after 2 idle minutes), each end state
+  read through the AX tree, the files or `defaults` (scripts/lib/benchChecks.ts).
+  The rig both it and the comparison run on is scripts/lib/computerRig.ts:
+  the server in process, scratch apps pinned per lane (resolveApp reads the
+  calling thread's lane through AsyncLocalStorage), every
+  `ComputerSessions.run` recorded with its host time. `BENCH_RULE`
+  (scripts/lib/computerBench.ts) judges the end state, the median computer
+  calls and the median host ms per call against
+  `<git-dir>/temp-code-gate/computer-bench/baseline.json` (written by the
+  first green `--gate` run, replaced by `--rebaseline`), a breach rerun twice
+  and judged two of three. Flags: `--gate`, `--report-only`, `--runs n`,
+  `--models`, `--tasks`, `--judge <report.json>` (any host), `--reference
+  codex` (Codex's own computer use, by hand). The gate row is
+  `computer-bench`; docs/release-gate.md "The computer bench".
 - Fixtures: src/main/server/computer/fixtures/ (its README): hand-written
   wire frames for every method, error kind and notification, observation
   texts for every grammar case, `page/form.html`, and `apps/` trees and
