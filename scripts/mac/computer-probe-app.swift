@@ -24,9 +24,7 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let window = InertWindow(
             contentRect: NSRect(x: 160, y: 160, width: 360, height: 150),
-            // a standard window's controls, so AX calls it AXStandardWindow: never main or focused, it is still
-            // the default window of §2.1 (the first standard one)
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )

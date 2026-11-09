@@ -10,6 +10,8 @@
 //               could raise macOS's paste privacy prompt, and the proof leaves no prompt behind
 //   hide <pid>  {"hidden":..}    hides that app's windows, the first half of an abort when the
 //               person comes back while a scratch app runs (the proof kills it next)
+//   screen      {"locked":..,"asleep":..}  the session's screen lock (or another user on the console)
+//               and the main display's sleep: an idle Mac that is locked or dark is no gap to run in
 import AppKit
 
 func emit(_ object: [String: Any]) -> Never {
@@ -39,10 +41,16 @@ case "idle":
 case "pasteboard":
     emit(["changeCount": NSPasteboard.general.changeCount])
 
+case "screen":
+    let session = CGSessionCopyCurrentDictionary() as? [String: Any] ?? [:]
+    let locked = session["CGSSessionScreenIsLocked"] as? Bool ?? false
+    let onConsole = session["kCGSSessionOnConsoleKey"] as? Bool ?? true
+    emit(["locked": locked || !onConsole, "asleep": CGDisplayIsAsleep(CGMainDisplayID()) != 0])
+
 case "hide":
     guard let arg = CommandLine.arguments.dropFirst(2).first, let pid = pid_t(arg) else { fail("usage: computer-proof-probe.swift hide <pid>") }
     emit(["hidden": NSRunningApplication(processIdentifier: pid)?.hide() ?? false])
 
 default:
-    fail("usage: computer-proof-probe.swift pointer | frontmost | idle | pasteboard | hide <pid>")
+    fail("usage: computer-proof-probe.swift pointer | frontmost | idle | pasteboard | screen | hide <pid>")
 }
