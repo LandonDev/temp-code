@@ -43,14 +43,15 @@ export interface ApprovalNeed {
 /**
  * Does this call need a card? An act or batch that sends input asks in safe
  * and edits; a flagged one (`confirm`) asks in every mode, full access
- * included; so does the host's own need (`password`), which leads the card,
- * keeping the model's words where it flagged too. apps and observe never ask.
+ * included; so does the host's own need (`password`), which takes the card
+ * whole: the model's words may hold the very text, so they never show.
+ * apps and observe never ask.
  */
 export function needsApproval(tool: ComputerToolName, args: ToolArgs, permission: PermissionPolicy = 'safe', hostNeed: ConfirmNeed | null = null): ApprovalNeed {
   const acts =
     tool === 'computer_act' ? args.action !== undefined && sendsInput({ action: args.action }) : tool === 'computer_batch' ? (args.actions ?? []).some(sendsInput) : false
   const flag = (tool === 'computer_act' || tool === 'computer_batch') && args.confirm ? { kind: args.confirm.kind as HostConfirmKind, what: args.confirm.what } : null
-  const confirm = hostNeed ? { kind: hostNeed.kind, what: flag?.what ?? hostNeed.what } : flag
+  const confirm = hostNeed ?? flag
   return { ask: confirm !== null || (acts && permission !== 'auto'), confirm }
 }
 

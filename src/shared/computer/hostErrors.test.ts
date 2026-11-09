@@ -23,6 +23,7 @@ describe('host error kinds', () => {
     expect(hostErrorLine('invalid_args', 'actions: too big')).toBe("invalid arguments: actions: too big; see the tool's description")
     expect(hostErrorLine('no_observation', noObservationLine(12, 'TextEdit'))).toBe('[12] comes from no read of TextEdit in this thread; read the window first')
     expect(noReadForTextLine('TextEdit')).toBe("read TextEdit's window before typing into it")
+    expect(noReadForTextLine('TextEdit', 'Notes')).toBe('read TextEdit\'s window "Notes" before typing into it')
   })
   it('refuse TempCode, the system prompts, and an app it could not check, each in its own words', () => {
     expect(hostErrorLine('refused_app', 'tempcode')).toBe("TempCode's own window is off limits to computer use")

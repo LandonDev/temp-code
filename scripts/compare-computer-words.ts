@@ -40,7 +40,9 @@ if (process.platform !== 'darwin') {
   process.exit(0)
 }
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+// the bundle runs from scripts/.out (package.json's script), the source from scripts/
+const HERE = dirname(fileURLToPath(import.meta.url))
+const ROOT = resolve(HERE, HERE.endsWith('/.out') ? '../..' : '..')
 const WORK = '/tmp/tc-words-cmp'
 const REPORT_JSON = join(WORK, 'report.json')
 const REPORT_MD = join(WORK, 'report.md')
@@ -337,7 +339,9 @@ async function oneRun(model: ModelUnderTest, taskId: TaskId, arm: Arm, run: numb
       if (row.event.type !== 'approval-request') return
       const kind = ((row.event.input as { confirm?: { kind?: string } } | undefined)?.confirm?.kind ?? 'none') as string
       cards.push(kind)
-      void registry.approve(id, row.event.requestId, true)
+      // the card's row is emitted before requestApproval sets its resolver: Allow after this job
+      const requestId = row.event.requestId
+      queueMicrotask(() => void registry.approve(id, requestId, true))
     })
     Object.assign(wire, { steps: 0, failed: 0, kinds: {} })
     const t0 = Date.now()

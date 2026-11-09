@@ -41,12 +41,12 @@ describe('needsApproval', () => {
     expect(needsApproval('computer_act', { action: 'left_click', confirm }, 'auto')).toEqual({ ask: true, confirm })
     expect(needsApproval('computer_batch', { actions: [{ action: 'left_click' }], confirm }, 'auto')).toEqual({ ask: true, confirm })
   })
-  it("the host's password need asks in every mode and leads the card, keeping the model's words", () => {
+  it("the host's password need asks in every mode and takes the card whole, never the model's words", () => {
     const password = { kind: 'password', what: '' } as const
     expect(needsApproval('computer_act', { action: 'type' }, 'auto', password)).toEqual({ ask: true, confirm: password })
-    expect(needsApproval('computer_act', { action: 'type', confirm: { kind: 'personal_data', what: 'the password for example.com' } }, 'auto', password)).toEqual({
+    expect(needsApproval('computer_act', { action: 'type', confirm: { kind: 'personal_data', what: 'Sign in with hunter2' } }, 'auto', password)).toEqual({
       ask: true,
-      confirm: { kind: 'password', what: 'the password for example.com' }
+      confirm: password
     })
   })
 })

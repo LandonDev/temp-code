@@ -164,6 +164,21 @@ describe("the confirm flag and the host's own rules", () => {
     expect(JSON.stringify(h.cards[0].req)).not.toContain('hunter2')
     h.cards[0].decide(true)
     expect((await act).isError).toBe(false)
+    const flagged = h.run('computer_act', { app: 'TextEdit', action: 'type', text: 'hunter2', element: 3, confirm: { kind: 'sign_in', what: 'Sign in with hunter2' } })
+    await until(() => h.cards.length === 2)
+    expect(JSON.stringify(h.cards[1].req)).not.toContain('hunter2')
+    h.cards[1].decide(false)
+    await flagged
+  })
+
+  it('text with no element goes only to a window this thread read', async () => {
+    const h = make('auto')
+    await h.run('computer_observe', { app: 'TextEdit' })
+    expect((await h.run('computer_act', { app: 'TextEdit', window: 'Notes', action: 'type', text: 'x' })).body).toBe(
+      'read TextEdit\'s window "Notes" before typing into it'
+    )
+    expect(count(h, 'action.run')).toBe(0)
+    expect((await h.run('computer_act', { app: 'TextEdit', window: 'Untitled', action: 'type', text: 'x' })).isError).toBe(false)
   })
 
   it('text into an app this thread has not read answers no_observation, nothing sent', async () => {

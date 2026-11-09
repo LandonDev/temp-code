@@ -232,6 +232,11 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     tool === 'computer_observe' ? (args.element !== undefined ? [args.element as number] : []) : steps.flatMap(actionElements)
   if (named.length && !app()) return refusal(noObservationLine(named[0], args.app!))
   if (steps.some((s) => s.action === 'type' || s.action === 'paste') && !app()) return refusal(hostErrorLine('no_observation', noReadForTextLine(args.app!)))
+  // text with no element goes to the focused element of the window the thread read, never one it has not
+  const blindText = steps.some((s) => (s.action === 'type' || s.action === 'paste') && s.element === undefined)
+  const readWindow = app()?.window?.title
+  if (blindText && args.window && !(readWindow ?? '').includes(args.window))
+    return refusal(hostErrorLine('no_observation', noReadForTextLine(args.app!, args.window)))
 
   // 3. the card, the permission read now: safe and edits ask for every act, every mode for a flag or a password field
   const permission = ctx.permission?.() ?? host.registry.get(threadId)?.permission ?? 'safe'
@@ -315,7 +320,7 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
       try {
         return await call(method, params(target()))
       } catch (e) {
-        if (!(bound && e instanceof ComputerRpcError && e.data?.kind === 'window_not_found')) throw e
+        if (!(bound && !blindText && e instanceof ComputerRpcError && e.data?.kind === 'window_not_found')) throw e
         if (a) a.window = null
         return await call(method, params(target(false)))
       }

@@ -77,9 +77,9 @@ export function noObservationLine(element: number, app: string): string {
   return `[${element}] comes from no read of ${app} in this thread; read the window first`
 }
 
-/** Text into an app this thread has not read: the host has no tree to check where it goes. */
-export function noReadForTextLine(app: string): string {
-  return `read ${app}'s window before typing into it`
+/** Text into an app, or a window, this thread has not read: the host has no tree to check where it goes. */
+export function noReadForTextLine(app: string, window?: string): string {
+  return `read ${app}'s window${window ? ` ${JSON.stringify(window)}` : ''} before typing into it`
 }
 
 export function hostErrorLine(kind: HostErrorKind, detail?: string): string {
