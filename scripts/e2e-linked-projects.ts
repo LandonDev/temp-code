@@ -9,6 +9,11 @@
  *  - a workspace of the same folder name on each host, and a project of
  *    the same name in each: the linker on mac (the host holding the link)
  *    stamps both copies with one `wl_…` and one `pl_…` id
+ *  - a project made on either host in the linked workspace gets its copy on
+ *    the other at once, both rows on one id (so the draft's host picker,
+ *    whose rule is `copiesOf`, lists both hosts); a copy deleted on one host
+ *    is not made again; a project in a workspace the other host lacks is
+ *    left alone and no workspace is made
  *  - a box thread in a project mac has no copy of calls app.startThread
  *    with environmentId mac: mac creates the copy in its linked workspace,
  *    stamps the box's link id on it, and the thread lands in it (projectId
@@ -16,7 +21,8 @@
  *    checkout of still starts in mac's work root with cwdNote
  *  - a settings edit on the box (the home) reaches mac's copy; a mac edit of
  *    the linked project lands on the box and mac's copy follows; with the
- *    box down the mac edit is refused naming the host
+ *    box down the mac edit is refused naming the host; a project made on mac
+ *    meanwhile gets its box copy once the box is back
  *  - a `@thread:` reference from a mac thread to a box thread yields the
  *    digest; app.listAgents on the box names a child spawned on mac with
  *    its host
@@ -180,6 +186,12 @@ interface Proj {
   preamble?: string | null
   archived: boolean
 }
+/** The draft host picker's rule (renderer lib/projectHostChoice.ts copiesOf): the unarchived rows that share the link id, on every host. */
+const copiesOn = async (linkId: string | null | undefined): Promise<string[]> => {
+  if (!linkId) return []
+  const [m, b] = await Promise.all([projectsOf(mac), projectsOf(box)])
+  return [...m.filter((p) => p.linkId === linkId && !p.archived).map(() => 'mac'), ...b.filter((p) => p.linkId === linkId && !p.archived).map(() => 'box')]
+}
 const sessionsOf = (inst: Inst): Promise<Meta[]> => rpc<Meta[]>(inst, 'session.list')
 const workspacesOf = (inst: Inst): Promise<Ws[]> => rpc<Ws[]>(inst, 'workspace.list')
 const projectsOf = (inst: Inst): Promise<Proj[]> => rpc<Proj[]>(inst, 'project.list')
@@ -248,6 +260,26 @@ try {
   const boxOnlyRow = (await workspacesOf(box)).find((w) => w.id === boxOnlyWs.id)
   check('a workspace with no partner stays unlinked', !boxOnlyRow?.linkId, JSON.stringify(boxOnlyRow))
 
+  // ── 2b. a new project gets its copy on the other host ─────────────────
+  const fromMac = await rpc<Proj>(mac, 'project.create', { workspaceId: macWs.id, name: 'made on mac', mode: 'local' })
+  const fromBox = await rpc<Proj>(box, 'project.create', { workspaceId: boxWs.id, name: 'made on box', mode: 'local' })
+  const linkOf = async (inst: Inst, id: string): Promise<string | null | undefined> => (await projectsOf(inst)).find((p) => p.id === id)?.linkId
+  const copiedMac = await until("the box gets the mac project's copy", 60_000, async () => (await copiesOn(await linkOf(mac, fromMac.id))).join() === 'mac,box')
+  const boxCopy = (await projectsOf(box)).find((p) => p.name === 'made on mac')
+  check('a project made on mac shows up linked on the box, in its linked workspace', copiedMac && boxCopy?.workspaceId === boxWs.id && boxCopy.cwd === boxProj, JSON.stringify(boxCopy))
+  const copiedBox = await until("mac gets the box project's copy", 60_000, async () => (await copiesOn(await linkOf(box, fromBox.id))).join() === 'mac,box')
+  check('a project made on the box shows up linked on mac', copiedBox && (await projectsOf(mac)).find((p) => p.name === 'made on box')?.workspaceId === macWs.id)
+  check("a draft of either project would list both hosts in its host picker (one copy each, one link id)", (await copiesOn(await linkOf(mac, fromMac.id))).length === 2 && (await copiesOn(await linkOf(box, fromBox.id))).length === 2)
+  const boxOnlyNew = await rpc<Proj>(box, 'project.create', { workspaceId: boxOnlyWs.id, name: 'only here', mode: 'local' })
+  await rpc(box, 'project.delete', { projectId: boxCopy!.id })
+  // The delete pushes the box's catalog: the linker runs on it; give it two bursts.
+  await sleep(8_000)
+  const afterDelete = await projectsOf(box)
+  check('a copy deleted on the box is not made again', !afterDelete.some((p) => p.name === 'made on mac'), JSON.stringify(afterDelete.map((p) => p.name)))
+  check('the mac copy keeps its link id', !!(await linkOf(mac, fromMac.id)))
+  const macWorkspaces = await workspacesOf(mac)
+  check('a project whose workspace the other host lacks is left alone, and no workspace is made', !(await projectsOf(mac)).some((p) => p.name === 'only here') && !macWorkspaces.some((w) => w.path.endsWith('/boxonly')) && !(await linkOf(box, boxOnlyNew.id)), JSON.stringify(macWorkspaces))
+
   // ── 3. a far start into a project with no copy creates and links it ───
   const boxAlpha = await rpc<Proj>(box, 'project.create', { workspaceId: boxWs.id, name: 'alpha', mode: 'local' })
   const alphaCaller = await rpc<Meta>(box, 'session.create', { provider: 'claude', projectId: boxAlpha.id, title: 'alpha on the box', threadType: 'chat', permission: 'auto' })
@@ -312,6 +344,14 @@ try {
   check('a mac edit with the box down is refused naming the host', refused.startsWith('refused: settings of') && refused.includes('live on box') && refused.includes('offline'), refused)
   const stillOnMac = (await projectsOf(mac)).find((p) => p.id === macProject.id)
   check('nothing was written on mac', stillOnMac?.preamble === 'rules from the mac', JSON.stringify(stillOnMac))
+
+  // ── 7. a project made while the box is down gets its copy when it is back ─
+  const offline = await rpc<Proj>(mac, 'project.create', { workspaceId: macWs.id, name: 'made while offline', mode: 'local' })
+  launch(box)
+  const back = await until('box back up', 90_000, async () => (await rpc<{ environmentId: string }>(box, 'remote.status')).environmentId === boxId)
+  log(`box relaunched: ${back}`)
+  const caught = await until("the box gets the offline project's copy at link-up", 90_000, async () => (await copiesOn(await linkOf(mac, offline.id))).join() === 'mac,box')
+  check('a project made on mac while the box was down shows up linked on the box once it is back', caught)
 } catch (err) {
   check('the run completed', false, err instanceof Error ? err.message : String(err))
 } finally {

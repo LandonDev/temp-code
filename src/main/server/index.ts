@@ -668,8 +668,16 @@ export async function startServer(
   memorySync.start()
   // One project across hosts (remote/projectLinks.ts): over the links this
   // host holds, pair its workspaces and projects with the peer's and stamp
-  // the link ids both copies share.
-  const projectLinker = new ProjectLinker({ environmentId, platform: hostPlatform(), registry, peers })
+  // the link ids both copies share, then make the copies still missing on
+  // either side (`linkedCopies` below is this host's project.ensureLinked).
+  const projectLinker = new ProjectLinker({
+    environmentId,
+    platform: hostPlatform(),
+    registry,
+    peers,
+    ensureLinked: (args) => ensureLinked(linkedCopies, args),
+    workRoot: () => workRoot(store).root
+  })
   projectLinker.start()
   // A linked project's settings live on its home, the box
   // (remote/projectSettingsSync.ts): this host follows the home's copy and

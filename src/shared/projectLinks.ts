@@ -209,14 +209,18 @@ export const EnsureLinkedArgsSchema = z.object({
   /** the caller's workspace repo (owner/name): the last way to find the workspace here */
   workspaceGithubRepo: z.string().max(300).optional(),
   /** answer what would happen without creating anything */
-  dryRun: z.boolean().optional()
+  dryRun: z.boolean().optional(),
+  /** find the workspace by its link id or not at all: never make one (the linker's copies) */
+  workspaceMustExist: z.boolean().optional()
 })
 export type EnsureLinkedArgs = z.infer<typeof EnsureLinkedArgsSchema>
 
 /** `catalog.link`: the linker stamping a peer's rows. */
 export const CatalogLinkArgsSchema = z.object({
   workspaces: z.array(z.object({ id: z.string().min(1), linkId: z.string().min(1).max(64) })).max(500),
-  projects: z.array(z.object({ id: z.string().min(1), linkId: z.string().min(1).max(64) })).max(2_000)
+  projects: z.array(z.object({ id: z.string().min(1), linkId: z.string().min(1).max(64) })).max(2_000),
+  /** why a project has no copy on the linker's other host yet; null clears it (an older host ignores the key) */
+  notes: z.array(z.object({ id: z.string().min(1), note: z.string().max(500).nullable() })).max(2_000).optional()
 })
 export type CatalogLinkArgs = z.infer<typeof CatalogLinkArgsSchema>
 

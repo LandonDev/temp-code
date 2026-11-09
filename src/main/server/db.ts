@@ -284,6 +284,8 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE projects ADD COLUMN settings_updated_at INTEGER`,
     // Where a linked project's new threads start ('box' | 'mac'); null follows Thread defaults.
     `ALTER TABLE projects ADD COLUMN start_on TEXT`,
+    // Why the linker could not make the project's copy on another host (remote/projectLinks.ts).
+    `ALTER TABLE projects ADD COLUMN link_note TEXT`,
     // A dev server's row (kind 'port'): the listening pid, the tool call that opened it, and what the process is.
     `ALTER TABLE thread_resources ADD COLUMN pid INTEGER`,
     `ALTER TABLE thread_resources ADD COLUMN call_id TEXT`,
@@ -1361,7 +1363,12 @@ export class Store {
 
   /** The id the project shares with its copies on other hosts (projectLinks.ts). */
   setProjectLink(id: string, linkId: string): void {
-    this.stmt(`UPDATE projects SET link_id = ? WHERE id = ?`).run(linkId, id)
+    this.stmt(`UPDATE projects SET link_id = ?, link_note = NULL WHERE id = ?`).run(linkId, id)
+  }
+
+  /** Why the project has no copy on another host yet; null clears it. */
+  setProjectLinkNote(id: string, note: string | null): void {
+    this.stmt(`UPDATE projects SET link_note = ? WHERE id = ?`).run(note, id)
   }
 
   /** Stamps when a setting of the project last changed here. */
@@ -1382,6 +1389,7 @@ export class Store {
       preamble: string | null
       preamble_enabled: number
       link_id: string | null
+      link_note: string | null
       settings_updated_at: number | null
       start_on: string | null
       created_at: number
@@ -1398,6 +1406,7 @@ export class Store {
       preamble: r.preamble,
       preambleEnabled: r.preamble_enabled !== 0,
       linkId: r.link_id,
+      ...(r.link_note ? { linkNote: r.link_note } : {}),
       settingsUpdatedAt: r.settings_updated_at,
       startOn: r.start_on === 'box' || r.start_on === 'mac' ? r.start_on : null,
       createdAt: r.created_at

@@ -146,6 +146,19 @@ describe("DraftHostPicker", () => {
     expect(option("mini").querySelector("[data-draft-host-note]")?.textContent).toBe("no checkout of temp-code");
   });
 
+  it("an unlinked project whose copy could not be made shows its reason on the other hosts, disabled", async () => {
+    h.projects = [proj({ linkId: null, linkNote: "Couldn't make a copy: git worktree add failed" })];
+    render(<DraftHostPicker sessionId="d" />);
+    fireEvent.click(screen.getByRole("button", { name: "Start on This Mac" }));
+    await flush();
+    expect(h.ensure).not.toHaveBeenCalled();
+    expect(disabled(option("local"))).toBe(false);
+    for (const id of ["box", "mini"]) {
+      expect(disabled(option(id))).toBe(true);
+      expect(option(id).querySelector("[data-draft-host-note]")?.textContent).toBe("Couldn't make a copy: git worktree add failed");
+    }
+  });
+
   it("a host with a checkout but no copy gets one made on pick, and the draft moves into it", async () => {
     const made = proj({ id: "p-mini", environmentId: "mini", workspaceId: "w-mini", cwd: "/work/temp-code" });
     h.ensure.mockImplementation((_env: string, _args: unknown, dryRun?: boolean) =>

@@ -26,6 +26,8 @@ import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
  * menu opens, so a host with no checkout is disabled with its note) and the
  * copy is made on pick. Picking retargets this one draft; the next new
  * thread starts where "New threads start on" says (lib/projectHostChoice.ts).
+ * A project the linker could not copy (`linkNote`, remote/projectLinks.ts)
+ * shows the picker too, the other hosts disabled with that reason.
  * A sent thread moves through the header's host chip instead.
  */
 export function DraftHostPicker({ sessionId, onClose }: { sessionId: string; onClose?: () => void }) {
@@ -39,7 +41,7 @@ export function DraftHostPicker({ sessionId, onClose }: { sessionId: string; onC
   const [making, setMaking] = useState<string | null>(null);
 
   const project = session?.projectId ? projects.find((p) => p.id === session.projectId && p.environmentId === session.environmentId) : undefined;
-  const copies = copiesOf(projects, project?.linkId);
+  const copies = project?.linkId ? copiesOf(projects, project.linkId) : project ? [project] : [];
   const args = project ? ensureLinkedArgs(project, workspaces.find((w) => w.id === project.workspaceId && w.environmentId === project.environmentId)) : null;
   const hosts = environments.filter((e) => e.id === session?.environmentId || statuses.get(e.id)?.transport === "open");
   const missing = hosts.filter((h) => !copies.some((c) => c.environmentId === h.id)).map((h) => h.id);
@@ -63,7 +65,7 @@ export function DraftHostPicker({ sessionId, onClose }: { sessionId: string; onC
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, missingKey, args?.projectLinkId]);
 
-  if (!session || meta || session.blocks.length > 0 || !project?.linkId || hosts.length < 2) return null;
+  if (!session || meta || session.blocks.length > 0 || !(project?.linkId || project?.linkNote) || hosts.length < 2) return null;
   const current = environments.find((e) => e.id === session.environmentId);
   if (!current) return null;
 
@@ -118,7 +120,7 @@ export function DraftHostPicker({ sessionId, onClose }: { sessionId: string; onC
         <DropdownMenuRadioGroup value={current.id}>
           {hosts.map((env) => {
             const has = copies.some((c) => c.environmentId === env.id);
-            const probe = has ? undefined : (probes.get(env.id) ?? (args ? { state: "checking" as const } : { state: "none" as const, note: "Not linked yet" }));
+            const probe = has ? undefined : (probes.get(env.id) ?? (args ? { state: "checking" as const } : { state: "none" as const, note: project.linkNote ?? "Not linked yet" }));
             const disabled = making !== null || (!has && probe?.state !== "ready");
             const note = making === env.id ? "Making a copy…" : probe?.state === "none" ? probe.note : !has && probe?.state === "ready" ? "New copy" : null;
             return (

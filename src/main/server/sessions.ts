@@ -2206,6 +2206,12 @@ export class SessionRegistry {
       this.store.setProjectLink(id, linkId)
       pr = true
     }
+    for (const { id, note } of args.notes ?? []) {
+      const row = projects.find((p) => p.id === id)
+      if (!row || (row.linkNote ?? null) === note) continue
+      this.store.setProjectLinkNote(id, note)
+      pr = true
+    }
     if (ws) this.notifyCatalog('workspaces')
     if (pr) this.notifyCatalog('projects')
   }

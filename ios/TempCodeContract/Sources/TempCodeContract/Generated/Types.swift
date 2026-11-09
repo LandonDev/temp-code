@@ -1108,11 +1108,12 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
     public let preamble: String?
     public let preambleEnabled: Bool?
     public let linkId: String?
+    public let linkNote: String?
     public let settingsUpdatedAt: Int?
     public let startOn: StartOn?
     public let createdAt: Int
 
-    public init(id: String, workspaceId: String, name: String, mode: ProjectMode, branch: String?, cwd: String, archived: Bool, accountPins: AccountPins? = nil, preamble: String? = nil, preambleEnabled: Bool? = nil, linkId: String? = nil, settingsUpdatedAt: Int? = nil, startOn: StartOn? = nil, createdAt: Int) {
+    public init(id: String, workspaceId: String, name: String, mode: ProjectMode, branch: String?, cwd: String, archived: Bool, accountPins: AccountPins? = nil, preamble: String? = nil, preambleEnabled: Bool? = nil, linkId: String? = nil, linkNote: String? = nil, settingsUpdatedAt: Int? = nil, startOn: StartOn? = nil, createdAt: Int) {
         self.id = id
         self.workspaceId = workspaceId
         self.name = name
@@ -1124,13 +1125,14 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
         self.preamble = preamble
         self.preambleEnabled = preambleEnabled
         self.linkId = linkId
+        self.linkNote = linkNote
         self.settingsUpdatedAt = settingsUpdatedAt
         self.startOn = startOn
         self.createdAt = createdAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, workspaceId, name, mode, branch, cwd, archived, accountPins, preamble, preambleEnabled, linkId, settingsUpdatedAt, startOn, createdAt
+        case id, workspaceId, name, mode, branch, cwd, archived, accountPins, preamble, preambleEnabled, linkId, linkNote, settingsUpdatedAt, startOn, createdAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -1146,6 +1148,7 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
         try container.encodeIfPresent(preamble, forKey: .preamble)
         try container.encodeIfPresent(preambleEnabled, forKey: .preambleEnabled)
         try container.encodeIfPresent(linkId, forKey: .linkId)
+        try container.encodeIfPresent(linkNote, forKey: .linkNote)
         try container.encodeIfPresent(settingsUpdatedAt, forKey: .settingsUpdatedAt)
         try container.encodeIfPresent(startOn, forKey: .startOn)
         try container.encode(createdAt, forKey: .createdAt)

@@ -2216,8 +2216,9 @@ public enum Methods {
             public let callerWorkRoot: String?
             public let workspaceGithubRepo: String?
             public let dryRun: Bool?
+            public let workspaceMustExist: Bool?
 
-            public init(projectLinkId: String, workspaceLinkId: String, name: String, branch: String?, mode: ProjectMode, callerWorkspacePath: String, callerProjectCwd: String, callerWorkRoot: String? = nil, workspaceGithubRepo: String? = nil, dryRun: Bool? = nil) {
+            public init(projectLinkId: String, workspaceLinkId: String, name: String, branch: String?, mode: ProjectMode, callerWorkspacePath: String, callerProjectCwd: String, callerWorkRoot: String? = nil, workspaceGithubRepo: String? = nil, dryRun: Bool? = nil, workspaceMustExist: Bool? = nil) {
                 self.projectLinkId = projectLinkId
                 self.workspaceLinkId = workspaceLinkId
                 self.name = name
@@ -2228,10 +2229,11 @@ public enum Methods {
                 self.callerWorkRoot = callerWorkRoot
                 self.workspaceGithubRepo = workspaceGithubRepo
                 self.dryRun = dryRun
+                self.workspaceMustExist = workspaceMustExist
             }
 
             private enum CodingKeys: String, CodingKey {
-                case projectLinkId, workspaceLinkId, name, branch, mode, callerWorkspacePath, callerProjectCwd, callerWorkRoot, workspaceGithubRepo, dryRun
+                case projectLinkId, workspaceLinkId, name, branch, mode, callerWorkspacePath, callerProjectCwd, callerWorkRoot, workspaceGithubRepo, dryRun, workspaceMustExist
             }
 
             public func encode(to encoder: any Encoder) throws {
@@ -2246,6 +2248,7 @@ public enum Methods {
                 try container.encodeIfPresent(callerWorkRoot, forKey: .callerWorkRoot)
                 try container.encodeIfPresent(workspaceGithubRepo, forKey: .workspaceGithubRepo)
                 try container.encodeIfPresent(dryRun, forKey: .dryRun)
+                try container.encodeIfPresent(workspaceMustExist, forKey: .workspaceMustExist)
             }
         }
 

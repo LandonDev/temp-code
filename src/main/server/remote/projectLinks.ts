@@ -1,14 +1,20 @@
 import type { ServerPush } from '@shared/contract'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
+import type { EnsureLinkedResult } from '@shared/wireSchemas'
 import {
   decideLink,
   matchProjects,
+  projectMatchKey,
   matchWorkspaces,
   newProjectLinkId,
   newWorkspaceLinkId,
   settingsHomeOf,
   type CatalogLinkArgs,
-  type LinkDecision
+  type EnsureLinkedArgs,
+  type LinkableProject,
+  type LinkableWorkspace,
+  type LinkDecision,
+  type Pair
 } from '@shared/projectLinks'
 
 /**
@@ -24,6 +30,17 @@ import {
  * change here and every 5 minutes, each host at most once per burst
  * (`LINK_DEBOUNCE_MS`). A link that is down skips the run. The linker never
  * removes a link: a row with no partner keeps what it carries.
+ *
+ * Then it makes the copies that are missing (docs/box.md "One project across
+ * hosts: a new project gets its copies"): a project with no link id, not
+ * archived, in a paired workspace whose other copy has no project of its
+ * name, gets its copy on the other side through `project.ensureLinked`
+ * (over the link for the peer, in process for this host) with a fresh id,
+ * and the source row takes that id only once the copy exists. A project
+ * that carries a link id has had its copy: a partner missing then is one a
+ * person deleted (or a wrong link they undid), never made again. A failed
+ * copy writes one log line and the reason on the source row (`linkNote`),
+ * which the next run tries again.
  */
 
 export const LINK_DEBOUNCE_MS = 2_000
@@ -48,6 +65,10 @@ export interface ProjectLinkerDeps {
     onCatalog(listener: (kind: 'workspaces' | 'projects') => void): () => void
   }
   peers: { get(id: string): LinkerLink | undefined; all(): LinkerLink[] }
+  /** This host's `project.ensureLinked` (server/projectLinks.ts). */
+  ensureLinked(args: EnsureLinkedArgs): Promise<EnsureLinkedResult>
+  /** Where this host's checkouts live, for the peer's path mapping. */
+  workRoot?: () => string
   mint?: { workspace: () => string; project: () => string }
   now?: () => number
   log?: (line: string) => void
@@ -61,6 +82,20 @@ export interface ProjectLinkStatus {
 
 type Row = { id: string; linkId?: string | null }
 type Stamps = { id: string; linkId: string }[]
+type Notes = { id: string; note: string | null }[]
+
+/** The id both copies of a workspace pair carry once this run's stamps land, or null while they differ. */
+function agreedLink(pair: Pair<Row>, stamps: { local: Stamps; peer: Stamps }): string | null {
+  const l = stamps.local.find((s) => s.id === pair.local.id)?.linkId ?? pair.local.linkId
+  const p = stamps.peer.find((s) => s.id === pair.peer.id)?.linkId ?? pair.peer.linkId
+  return l && l === p ? l : null
+}
+
+/** The projects of `from` that need a copy in `to`: unlinked, unarchived, unpaired, and no project of their name there. */
+function missingCopies(from: readonly ProjectMeta[], to: readonly ProjectMeta[], paired: ReadonlySet<string>): ProjectMeta[] {
+  const names = new Set(to.map((p) => projectMatchKey(p.name)))
+  return from.filter((p) => !p.linkId && !p.archived && !paired.has(p.id) && !names.has(projectMatchKey(p.name)))
+}
 
 /**
  * Turn decisions into stamps for each side. A stamp that would give an id
@@ -200,6 +235,7 @@ export class ProjectLinker {
       }
       const stamped = ws.local.length + ws.peer.length + pr.local.length + pr.peer.length
       if (stamped) this.log(`${id}: stamped ${ws.local.length + pr.local.length} here, ${ws.peer.length + pr.peer.length} there`)
+      await this.makeCopies(link, wsPairs, ws, prPairs, localPr, peerPr, mint.project)
       this.statuses.set(id, { lastRunAt: this.now(), pairs: { workspaces: wsPairs.length, projects: prPairs.length } })
     } catch (err) {
       // The link dropped under the run: quiet, the next link-up runs again.
@@ -208,6 +244,81 @@ export class ProjectLinker {
       const was = this.statuses.get(id)
       this.statuses.set(id, { lastRunAt: this.now(), pairs: was?.pairs ?? { workspaces: 0, projects: 0 }, error })
       this.log(`${id}: ${error}`)
+    }
+  }
+
+  /**
+   * Make each missing copy, one at a time: a fresh id, `project.ensureLinked`
+   * on the side that lacks the project (never making a workspace there), and
+   * the id stamped on the source once the copy exists. A failure leaves the
+   * source unlinked with its reason, logged once per new reason.
+   */
+  private async makeCopies(
+    link: LinkerLink,
+    wsPairs: readonly Pair<LinkableWorkspace>[],
+    wsStamps: { local: Stamps; peer: Stamps },
+    prPairs: readonly Pair<LinkableProject>[],
+    localPr: readonly ProjectMeta[],
+    peerPr: readonly ProjectMeta[],
+    mint: () => string
+  ): Promise<void> {
+    const pairedLocal = new Set(prPairs.map((p) => p.local.id))
+    const pairedPeer = new Set(prPairs.map((p) => p.peer.id))
+    const out = { local: { stamps: [] as Stamps, notes: [] as Notes }, peer: { stamps: [] as Stamps, notes: [] as Notes } }
+    const myRoot = this.deps.workRoot?.()
+    for (const pair of wsPairs) {
+      const workspaceLinkId = agreedLink(pair, wsStamps)
+      if (!workspaceLinkId) continue
+      const mine = localPr.filter((p) => p.workspaceId === pair.local.id)
+      const theirs = peerPr.filter((p) => p.workspaceId === pair.peer.id)
+      const jobs = [
+        ...missingCopies(mine, theirs, pairedLocal).map((p) => ({ p, ws: pair.local, to: 'peer' as const })),
+        ...missingCopies(theirs, mine, pairedPeer).map((p) => ({ p, ws: pair.peer, to: 'local' as const }))
+      ]
+      for (const { p, ws, to } of jobs) {
+        const projectLinkId = mint()
+        const args: EnsureLinkedArgs = {
+          projectLinkId,
+          workspaceLinkId,
+          name: p.name,
+          branch: p.branch ?? null,
+          mode: p.mode,
+          callerWorkspacePath: ws.path,
+          callerProjectCwd: p.cwd,
+          ...(to === 'peer' && myRoot ? { callerWorkRoot: myRoot } : {}),
+          ...(ws.githubRepo ? { workspaceGithubRepo: ws.githubRepo } : {}),
+          workspaceMustExist: true
+        }
+        let why: string
+        try {
+          const made = to === 'peer' ? await link.request<EnsureLinkedResult>('project.ensureLinked', args) : await this.deps.ensureLinked(args)
+          if (made.project) {
+            const source = to === 'peer' ? out.local : out.peer
+            source.stamps.push({ id: p.id, linkId: projectLinkId })
+            this.log(`${link.id}: made ${p.name}'s copy ${to === 'peer' ? 'there' : 'here'}${made.note ? ` (${made.note})` : ''}`)
+            continue
+          }
+          why = made.note ?? 'no copy was made'
+        } catch (err) {
+          if (!link.connected) return
+          why = err instanceof Error ? err.message.replace(/^\w+: /, '') : String(err)
+        }
+        const note = `Couldn't make a copy: ${why}`.slice(0, 500)
+        if ((p.linkNote ?? null) === note) continue
+        this.log(`${link.id}: no copy of ${p.name} ${to === 'peer' ? 'there' : 'here'}: ${why}`)
+        ;(to === 'peer' ? out.local : out.peer).notes.push({ id: p.id, note })
+      }
+    }
+    if (out.peer.stamps.length || out.peer.notes.length) {
+      await link.request('catalog.link', { workspaces: [], projects: out.peer.stamps, notes: out.peer.notes } satisfies CatalogLinkArgs)
+    }
+    if (out.local.stamps.length || out.local.notes.length) {
+      this.stamping = true
+      try {
+        this.deps.registry.linkCatalog({ workspaces: [], projects: out.local.stamps, notes: out.local.notes })
+      } finally {
+        this.stamping = false
+      }
     }
   }
 

@@ -63,6 +63,8 @@ export interface ProjectMeta {
   preambleEnabled?: boolean
   /** The id this project shares with its copies on other hosts (`pl_…`); null until the linker pairs it. */
   linkId?: string | null
+  /** Why the linker could not make this project's copy on another host (remote/projectLinks.ts); null once it has one. */
+  linkNote?: string | null
   /** When a setting of the project last changed here (ms); the follower compares it with the home's. */
   settingsUpdatedAt?: number | null
   /** Where the project's new threads start when it is linked across hosts; null follows Thread defaults. */

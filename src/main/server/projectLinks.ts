@@ -24,6 +24,8 @@ import { hostPathFor } from './remote/crossHostThreads'
  *     adopts the branch when this host has it, and a failed worktree falls
  *     back to a local copy at the workspace path, with a note;
  *  4. no workspace → no cwd, and a note naming the folder that is missing.
+ * `workspaceMustExist` (the linker's copies) stops at step 2's link id: a
+ * workspace is found by it or not at all, never made.
  * Every row it finds unlinked or creates carries the caller's ids. `dryRun`
  * answers what would happen and changes nothing.
  */
@@ -71,6 +73,7 @@ function findWorkspace(deps: EnsureLinkedDeps, args: EnsureLinkedArgs): Workspac
   const workspaces = deps.listWorkspaces()
   const byLink = oldest(workspaces.filter((w) => w.linkId === args.workspaceLinkId))
   if (byLink) return { row: byLink, createAt: null, lookedFor: null }
+  if (args.workspaceMustExist) return { row: null, createAt: null, lookedFor: null }
   const exists = deps.exists ?? isDir
   const mapped = hostPathFor(args.callerWorkspacePath, deps.pathMap(), stripSlash(deps.workRoot()), args.callerWorkRoot, exists)
   if (mapped?.exists) {
@@ -90,7 +93,7 @@ export async function ensureLinked(deps: EnsureLinkedDeps, args: EnsureLinkedArg
   const ws = findWorkspace(deps, args)
   if (!ws.row && !ws.createAt) {
     const looked = ws.lookedFor ? ` (looked for ${ws.lookedFor})` : ''
-    const where = args.dryRun ? '' : `; the thread starts in its work root ${stripSlash(deps.workRoot())}`
+    const where = args.dryRun || args.workspaceMustExist ? '' : `; the thread starts in its work root ${stripSlash(deps.workRoot())}`
     return { cwd: null, exists: false, project: null, note: `no checkout of ${folderName(args.callerWorkspacePath)} on this host${looked}${where}` }
   }
 

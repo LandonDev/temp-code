@@ -490,6 +490,7 @@ export const ProjectMetaSchema = z.object({
   preamble: z.string().nullable().optional(),
   preambleEnabled: z.boolean().optional(),
   linkId: z.string().nullable().optional(),
+  linkNote: z.string().nullable().optional(),
   settingsUpdatedAt: z.number().int().nullable().optional(),
   startOn: StartOnSchema.nullable().optional(),
   createdAt: z.number().int()

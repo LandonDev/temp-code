@@ -117,6 +117,14 @@ describe('ensureLinked: the resolution order', () => {
     expect(calls[0]).toBe('workspace /srv/agents/work/alpha wl_alpha')
   })
 
+  it('workspaceMustExist finds the workspace by its link id or not at all, and makes none', async () => {
+    const { deps, calls } = catalog({ dirs: ['/srv/agents/work/alpha'] })
+    const r = await ensureLinked(deps, args({ workspaceMustExist: true }))
+    expect(r).toMatchObject({ cwd: null, exists: false, project: null })
+    expect(r.note).not.toContain('work root')
+    expect(calls).toEqual([])
+  })
+
   it('else by the GitHub repo, case aside', async () => {
     const { deps } = catalog({ workspaces: [ws({ id: 'w1', path: '/srv/other/name', githubRepo: 'LandonDev/Alpha' })] })
     const r = await ensureLinked(deps, args({ workspaceGithubRepo: 'landondev/alpha' }))
@@ -251,5 +259,16 @@ describe('ensureLinked over the registry', () => {
     expect(facts.linkId).toMatch(/^pl_/)
     expect(registry.getProject(local.id)?.linkId).toBe(facts.linkId)
     expect(registry.projectLinkFacts(local.id)?.linkId).toBe(facts.linkId)
+
+    // The linker's note on a row with no copy elsewhere: kept, pushed, and cleared by the link that ends it.
+    const pushes: string[] = []
+    registry.onCatalog((kind) => pushes.push(kind))
+    const gamma = await registry.createProject(registry.listWorkspaces()[0].id, 'Gamma', 'local')
+    registry.linkCatalog({ workspaces: [], projects: [], notes: [{ id: gamma.id, note: "Couldn't make a copy: no git" }] })
+    expect(registry.getProject(gamma.id)?.linkNote).toBe("Couldn't make a copy: no git")
+    expect(pushes.at(-1)).toBe('projects')
+    registry.linkCatalog({ workspaces: [], projects: [{ id: gamma.id, linkId: 'pl_gamma' }] })
+    expect(registry.getProject(gamma.id)).toMatchObject({ linkId: 'pl_gamma' })
+    expect(registry.getProject(gamma.id)?.linkNote).toBeUndefined()
   })
 })
