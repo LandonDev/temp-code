@@ -314,6 +314,26 @@ describe('ComputerBridge: pause, Stop, Away, offline', () => {
     expect((await next).isError).toBe(false)
   })
 
+  it('a reply after a Stop or the thread\'s end answers its steps but brings back neither the row nor the ledger entry', async () => {
+    const b = box()
+    const p = b.run('computer_act', click)
+    await b.until(() => b.out.length === 1, 'out')
+    b.progress(b.out[0].callId, row({ running: { tool: 'computer_act', words: 'Clicking in TextEdit', startedAt: 1 } }))
+    await b.bridge.stop('t1')
+    b.progress(b.out[0].callId, row({ asking: { line: 'Click?' } }))
+    b.reply(b.out[0].callId, answer({ steps: [], body: 'stopped by the person', isError: true, row: row() }))
+    expect((await p).body).toBe('stopped by the person')
+    expect(b.bridge.rows()).toEqual([])
+    expect(b.ledger).toEqual([])
+    const q = b.run('computer_observe', observe, 't2')
+    await b.until(() => b.ofMethod('mac.computer').length === 2, 'out')
+    b.bridge.threadsEnded(['t2'])
+    b.reply(b.ofMethod('mac.computer')[1].callId, answer({ row: row({ threadId: 'env_mac:t2' }) }))
+    expect((await q).isError).toBe(false)
+    expect(b.bridge.rows()).toEqual([])
+    expect(b.ledger).toEqual([])
+  })
+
   it('a call that never answers a Stop is given up after 10 s', async () => {
     const b = box()
     const p = b.run('computer_observe', observe)

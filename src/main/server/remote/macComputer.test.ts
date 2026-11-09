@@ -323,7 +323,7 @@ describe('MacComputer: the live session and the guard', () => {
     const p = s.call({ thread: 's1', callId: 'held' })
     await until(() => s.lives().some((r) => r.sessionId === 's1' && r.status === 'held'), 'in line')
     await s.cancel(['held'], 's1')
-    expect(await s.settle(p)).toEqual({ ok: false, error: COMPUTER_HOLD_STOPPED })
+    expect(await s.settle(p)).toEqual({ ok: false, error: 'cancelled: the thread was paused' })
     await s.end('settled', 's0')
     await new Promise((ok) => setTimeout(ok, 20))
     expect(s.fake.runs.filter((r) => r.ctx.threadId === KEY('s1'))).toHaveLength(0)
@@ -339,6 +339,20 @@ describe('MacComputer: the live session and the guard', () => {
     await until(() => s.lives().some((r) => r.sessionId === 's2' && r.status === 'held'), 'in line')
     s.mb.decide(s.lives().find((r) => r.sessionId === 's2')!.id, false)
     expect(await s.settle(p)).toEqual({ ok: false, error: COMPUTER_HOLD_STOPPED })
+  })
+
+  it("a Stop from the box while the session waits in line answers stopped, takes it out of the line and never runs it", async () => {
+    const s = setup({ maxComputer: 1 })
+    await s.call({ thread: 's0' })
+    const p = s.call({ thread: 's1' })
+    await until(() => s.lives().some((r) => r.sessionId === 's1' && r.status === 'held'), 'in line')
+    expect(await s.end('stopped', 's1')).toEqual({ ended: true })
+    expect(await s.settle(p)).toEqual({ ok: false, error: 'stopped by the person' })
+    expect(s.mb.guard.heldCount(ENV)).toBe(0)
+    await s.end('settled', 's0')
+    await new Promise((ok) => setTimeout(ok, 20))
+    expect(s.fake.runs.filter((r) => r.ctx.threadId === KEY('s1'))).toHaveLength(0)
+    expect([s.mb.guard.runningCount(ENV), s.mb.guard.computerCount(ENV)]).toEqual([0, 0])
   })
 
   it('mac.cancel aborts only the named calls', async () => {

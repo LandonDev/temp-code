@@ -1244,7 +1244,11 @@ export class MacBridge {
           p.request = { ...p.request, computer: { ...computer, actions: [] } }
           this.emit({ push: 'macBridge.request', request: p.request })
         },
-        finishLive: (id, outcome) => this.finish(id, outcome)
+        // A session still in line leaves it, so a slot that opens later never admits a session that ended.
+        finishLive: (id, outcome) => {
+          this.guard.cancel(id)
+          this.finish(id, outcome)
+        }
       },
       log: this.log
     })

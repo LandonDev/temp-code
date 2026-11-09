@@ -94,6 +94,8 @@ interface Inflight {
   callId: string | null
   macPeer: string
   giveUp: unknown
+  /** Stop or the thread's end came while it was out: its late rows and reply restore no row and record no ledger entry. */
+  closed: boolean
 }
 
 interface ThreadBridge {
@@ -227,7 +229,7 @@ export class ComputerBridge {
     }
     this.touched()
 
-    const inflight: Inflight = { callId: null, macPeer: mac, giveUp: null }
+    const inflight: Inflight = { callId: null, macPeer: mac, giveUp: null, closed: false }
     t.inflight = inflight
     let given = false
     const onAbort = (): void => {
@@ -246,10 +248,10 @@ export class ComputerBridge {
           'mac.computer',
           { thread: { id, title: meta?.title ?? '', permission }, args: { call, turn: `${this.boot}:${t.turn}`, rootId: this.deps.pause.rootOf(id) } } as never,
           bridgedDeadlineMs(call),
-          { callId, onProgress: (frame) => this.progress(t, frame.chunk) }
+          { callId, onProgress: (frame) => !inflight.closed && this.progress(t, frame.chunk) }
         )
       })
-      return await this.answer(t, meta, call, raw)
+      return await this.answer(t, meta, call, raw, inflight.closed)
     } catch (err) {
       return this.failure(t, call, err)
     } finally {
@@ -264,7 +266,8 @@ export class ComputerBridge {
     }
   }
 
-  private async answer(t: ThreadBridge, meta: SessionMeta | null | undefined, call: ComputerToolCall, raw: unknown): Promise<ComputerToolOutcome> {
+  /** The Mac's answer as the outcome; one for a call Stop or the thread's end closed still answers, but moves neither the row nor the ledger. */
+  private async answer(t: ThreadBridge, meta: SessionMeta | null | undefined, call: ComputerToolCall, raw: unknown, closed: boolean): Promise<ComputerToolOutcome> {
     const parsed = ComputerPeerAnswerSchema.safeParse(raw)
     if (!parsed.success) return refusal(hostErrorLine('service_unavailable', COMPUTER_BAD_ANSWER))
     const a: ComputerPeerAnswer = parsed.data
@@ -278,10 +281,10 @@ export class ComputerBridge {
         shots.push(landed)
       }
     }
-    if (a.row) this.mirror(t, a.row)
+    if (a.row && !closed) this.mirror(t, a.row)
     if (a.away) this.awayNotice(t.id, call)
     const mac = t.macPeer
-    if (mac && !t.ledgered && this.deps.resources) {
+    if (mac && !closed && !t.ledgered && this.deps.resources) {
       this.deps.resources.recordComputer(t.id, mac, a.row?.apps[0]?.name ?? ('app' in call.args ? String(call.args.app ?? '') : ''))
       t.ledgered = true
     }
@@ -368,6 +371,7 @@ export class ComputerBridge {
     }
     // the call in flight answers through its own reply (its steps so far, then stopped); one that never does is given up
     const inflight = t.inflight
+    if (inflight) inflight.closed = true
     if (inflight)
       inflight.giveUp = this.clock.setTimeout(() => {
         if (inflight.callId) this.deps.calls.cancel(inflight.callId, hostErrorLine('stopped'))
@@ -407,6 +411,7 @@ export class ComputerBridge {
       const t = this.threads.get(id)
       if (!t) continue
       this.threads.delete(id)
+      if (t.inflight) t.inflight.closed = true
       for (const q of [...t.queued]) q.settle(refusal(hostErrorLine('cancelled', 'the thread ended')))
       this.disarmIdle(t)
       if (t.macPeer) this.finish(t, t.macPeer, 'ended with the thread')

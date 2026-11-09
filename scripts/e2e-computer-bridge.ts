@@ -169,23 +169,13 @@ async function boxHalf(): Promise<void> {
     threads.push((await rpc<{ id: string }>(box, 'session.create', { provider: 'claude', cwd, title, threadType: 'chat' })).id)
   console.log(JSON.stringify({ ready: true, envId: environmentId, key: key.token, threads, root }))
 
-  const lines = createInterface({ input: process.stdin })
-  for await (const line of lines) {
-    let req: { id: number; method: string; params: Record<string, unknown> }
-    try {
-      req = JSON.parse(line)
-    } catch {
-      continue
-    }
+  // Each request runs on its own, answered by id: a call held on the Mac never holds up the pause or Stop that ends it.
+  const handle = async (req: { id: number; method: string; params: Record<string, unknown> }): Promise<void> => {
     const answer = (out: { result: unknown } | { error: string }): void => console.log(JSON.stringify({ id: req.id, ...out }))
     try {
-      if (req.method === 'quit') {
-        answer({ result: null })
-        break
-      }
       if (req.method === 'digest') {
         const path = resolve(String(req.params.path))
-        if (!path.startsWith(root + sep)) throw new Error('refused: not under the box half\'s root')
+        if (!path.startsWith(root + sep)) throw new Error("refused: not under the box half's root")
         const bytes = readFileSync(path)
         answer({ result: { sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length } })
       } else if (req.method === 'bridge') {
@@ -198,6 +188,19 @@ async function boxHalf(): Promise<void> {
     } catch (err) {
       answer({ error: err instanceof Error ? err.message : String(err) })
     }
+  }
+  for await (const line of createInterface({ input: process.stdin })) {
+    let req: { id: number; method: string; params: Record<string, unknown> }
+    try {
+      req = JSON.parse(line)
+    } catch {
+      continue
+    }
+    if (req.method === 'quit') {
+      console.log(JSON.stringify({ id: req.id, result: null }))
+      break
+    }
+    void handle(req)
   }
   quit()
 }

@@ -33,7 +33,7 @@ import type { ComputerToolCall } from '@shared/computer/tools'
 import { needsApproval } from '@shared/computer/words'
 import { MAC_AWAY_REFUSAL } from '../awayPrompts'
 import type { ComputerToolOutcome } from '../computer/result'
-import type { ComputerToolContext } from '../computer/run'
+import { abortedLine, type ComputerToolContext } from '../computer/run'
 import { serviceSessionId } from '../computer/sessions'
 import type { ApprovalRequest } from '../drivers/types'
 
@@ -387,7 +387,9 @@ export class MacComputer {
       await ready
     } catch (err) {
       if (st.live?.id === id) st.live = null
-      throw err
+      // A Stop or a cancel while in line answers in its own words, not the guard's.
+      const given = own.controller.signal.aborted ? abortedLine(own.controller.signal) : null
+      throw given ? new Error(given) : err
     } finally {
       st.held = null
       st.provisional = null
@@ -464,6 +466,8 @@ export class MacComputer {
       host?.sessions.settleTurn(key)
       this.endLive(st, 'done')
     } else if (reason === 'stopped') {
+      // A call still in line is stopped too (the sessions host knows nothing of it yet), then the slot goes.
+      for (const c of st.calls.values()) c.controller.abort('stopped')
       this.endLive(st, 'stopped')
       await host?.sessions.stop(key)
     } else {
