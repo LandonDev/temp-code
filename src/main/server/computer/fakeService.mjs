@@ -1,0 +1,267 @@
+import { randomInt } from 'node:crypto'
+import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { createInterface } from 'node:readline'
+
+// The fake shares fixture text with the wire tests, but needs only Node to run.
+const fixture = (path) => readFileSync(new URL(`./fixtures/${path}`, import.meta.url), 'utf8')
+const texts = Object.fromEntries(['full', 'diff', 'unchanged', 'thin'].map((kind) => [kind, fixture(`observations/${kind}.txt`).trimEnd()]))
+const initial = JSON.parse(fixture('wire/initialize.response.json')).result
+const startedAt = Date.now()
+const epoch = 'e-' + Array.from({ length: 8 }, () => randomInt(36).toString(36)).join('')
+const frame = { x: 100, y: 100, w: 800, h: 670 }
+const space = { width: 1280, height: 1072, scale: 1.6 }
+const waited = { waitedMs: 12, settled: true, busy: false, reason: 'quiet' }
+const clicks = ['left_click', 'right_click', 'middle_click', 'double_click', 'triple_click']
+// A complete one-pixel grayscale JPEG; shot metadata models the target window.
+const jpeg = Buffer.from('/9j/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAALCAABAAEBAREA/8QAJgABAAAAAAAAAAAAAAAAAAAAABABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAAPwA//9k=', 'base64')
+const windowInfo = (id, title = 'Untitled', minimized = false) => ({
+  id, title, frame, main: !minimized, focused: !minimized, minimized, onScreen: !minimized, space: 'current'
+})
+const apps = [
+  { name: 'TextEdit', pid: 16800, bundleId: 'com.apple.TextEdit', windows: [windowInfo(1581), windowInfo(1582, 'Notes.rtf', true)] },
+  ...['Thin', 'KeyWin', 'Sessiony', 'Stubborn', 'Slow', 'Crashy', 'NoAX', 'NoShot'].map((name, i) => ({
+    name, pid: 16801 + i, bundleId: `dev.fake.${name.toLowerCase()}`, windows: [windowInfo((16801 + i) * 10)]
+  })),
+  { name: 'Preview', pid: 17000, bundleId: 'com.apple.Preview', windows: [windowInfo(170000, 'Preview')] },
+  { name: 'Finder', pid: 400, bundleId: 'com.apple.finder', windows: [] }
+]
+const brief = ({ pid, bundleId, name }) => ({ pid, bundleId, name })
+const sessions = new Set()
+const states = new Map()
+const shots = new Map()
+const pending = new Map()
+const permissions = { accessibility: true, screenRecording: process.env.FAKE_SCREEN_RECORDING !== '0' }
+let initialized = false
+let dataDir
+let previewRunning = false
+let answered = 0
+let exiting = false
+
+process.stderr.write('fake tc-computer up\n')
+const out = (value, done) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\n', done)
+function reply(id, value, error = false, exitCode) {
+  if (exiting) return
+  answered++
+  const code = Number(process.env.FAKE_EXIT_75_AFTER) === answered ? 75 : exitCode
+  if (code !== undefined) exiting = true
+  out({ id, [error ? 'error' : 'result']: value }, code === undefined ? undefined : () => process.exit(code))
+}
+const notify = (method, params) => out({ method, params })
+const failure = (kind, message, fields = {}) => ({ kind, message, ...fields })
+const refuse = (id, data) => reply(id, { code: -32000, message: data.message, data }, true)
+const missingApp = () => failure('app_not_found', 'Choose a known app.', { candidates: apps.slice(0, 5).map((app) => app.name) })
+const shotFailure = () => failure('permission_missing', 'Allow screen recording to take a screenshot.', { which: 'screenRecording' })
+const cancelled = () => failure('cancelled', 'The request was cancelled.')
+const elements = (action) => [action.element, action.start_element].filter((i) => i !== undefined)
+function resolveApp(ref) {
+  return apps.find((app) => ref.pid !== undefined ? app.pid === ref.pid :
+    [app.name, app.bundleId].some((name) => name.toLowerCase() === ref.app?.toLowerCase()))
+}
+function target(params) {
+  if (!sessions.has(params.session)) throw failure('unknown_session', 'Open the session before using it.')
+  const app = resolveApp(params.app)
+  if (!app || app.name === 'Finder' || (app.name === 'Preview' && !previewRunning && !params.launch)) throw missingApp()
+  if (app.name === 'Preview') previewRunning = true
+  if (app.name === 'NoAX') throw failure('permission_missing', 'Allow accessibility to read this app.', { which: 'accessibility' })
+  const ref = params.window ?? {}
+  const window = ref.id !== undefined ? app.windows.find((w) => w.id === ref.id) : ref.title !== undefined ?
+    app.windows.find((w) => w.title === ref.title) ?? app.windows.find((w) => w.title.includes(ref.title)) : app.windows[0]
+  if (!window) throw failure('window_not_found', 'Choose a window from this app.', { candidates: app.windows.map((w) => w.title) })
+  const named = params.element !== undefined ? [params.element] : params.action ? elements(params.action) : (params.actions ?? []).flatMap(elements)
+  if (named.length && params.epoch !== epoch) throw failure('stale_element', 'Read the app again after the service restart.', { element: named[0], reason: 'service-restarted' })
+  let perApp = states.get(params.session)
+  if (!perApp) states.set(params.session, perApp = new Map())
+  let state = perApp.get(app.pid)
+  if (!state) perApp.set(app.pid, state = { seq: 0, dirty: false, maxIndex: 0, gotFirst: false })
+  return { app, window, state, session: params.session }
+}
+function shot(ctx, action) {
+  if (ctx.app.name === 'NoShot' || !permissions.screenRecording) throw shotFailure()
+  const dir = join(dataDir, 'shots', ctx.session)
+  mkdirSync(dir, { recursive: true })
+  if (!shots.has(ctx.session)) {
+    const highest = readdirSync(dir).reduce((max, name) => Math.max(max, Number(/^(\d+)-.*\.jpg$/.exec(name)?.[1] ?? 0)), 0)
+    shots.set(ctx.session, highest)
+  }
+  const count = shots.get(ctx.session) + 1
+  shots.set(ctx.session, count)
+  const path = join(dir, `${String(count).padStart(4, '0')}-${action}.jpg`)
+  writeFileSync(path, jpeg)
+  return { path, format: 'jpeg', ...space, bytes: jpeg.length, window: { id: ctx.window.id, frame }, blank: false, capturedAt: Date.now() }
+}
+function rewrite(text, ctx) {
+  return text.replace(/^app "[^"]*" · window "[^"]*"/, `app ${JSON.stringify(ctx.app.name)} · window ${JSON.stringify(ctx.window.title)}`)
+    .replace(/^(\[1\] window )"[^"]*"/m, (_, prefix) => prefix + JSON.stringify(ctx.window.title))
+}
+function observation(ctx, options = {}, action = 'observe') {
+  const { state } = ctx
+  const base = state.seq
+  const kind = options.element !== undefined ? 'subtree' : options.mode === 'full' || !state.gotFirst ? 'full' : state.dirty ? 'diff' : 'unchanged'
+  let text
+  if (kind === 'subtree') {
+    const line = options.element === 3 ? texts.full.split('\n').find((line) => line.trimStart().startsWith('[3] ')).trim() : `[${options.element}] group "Part"`
+    text = texts.full.split('\n')[0] + '\n' + line
+  } else {
+    state.seq++
+    state.gotFirst = true
+    state.dirty = false
+    if (kind === 'full') state.maxIndex = 40
+    if (kind === 'diff') state.maxIndex = 47
+    text = texts[ctx.app.name === 'Thin' ? 'thin' : kind]
+  }
+  text = rewrite(text, ctx)
+  const lines = text.split('\n')
+  const result = {
+    epoch, session: ctx.session, app: brief(ctx.app), window: { id: ctx.window.id, title: ctx.window.title, frame },
+    kind, seq: state.seq, ...(kind === 'diff' ? { base } : {}), text, space,
+    stats: { elements: lines.filter((line) => line.includes('[')).length, lines: lines.length - 1, bytes: Buffer.byteLength(text), omitted: 0, thin: ctx.app.name === 'Thin', partial: false, readMs: 5 },
+    waited
+  }
+  if (options.screenshot === 'always' || (options.screenshot !== 'never' && result.stats.thin)) {
+    try { result.shot = shot(ctx, action) } catch (error) { result.shotError = error }
+  }
+  return result
+}
+function sessionChange(app) {
+  return { frontmost: { before: brief(apps[0]), after: brief(app) }, pointer: { before: [10, 10], after: [20, 20] }, restorable: true }
+}
+function elementLine(index, ctx) {
+  // Changed and new lines in the diff take precedence after a diff was returned.
+  const sources = ctx.state.maxIndex === 47 ? [texts.diff, texts.full] : [texts.full]
+  for (const source of sources) {
+    const match = rewrite(source, ctx).split('\n').map((line) => /^(?:~ )?\s*\[(\d+)\] (.+)$/.exec(line)).find((match) => Number(match?.[1]) === index)
+    if (match) return match[2]
+  }
+  return 'group "Part"'
+}
+function step(ctx, action, tiers, index) {
+  const fail = (error) => ({ index, action: action.action, status: 'failed', error })
+  for (const element of elements(action)) {
+    if (element > ctx.state.maxIndex) return fail(failure('no_such_element', 'Read the app before using this element.', { element }))
+  }
+  const verb = action.action
+  const result = { index, action: verb, status: 'ok', tier: null, effect: 'none' }
+  const element = action.element ?? action.start_element
+  if (element !== undefined) result.element = { index: element, line: elementLine(element, ctx) }
+  if (['screenshot', 'zoom', 'cursor_position', 'wait'].includes(verb)) {
+    if (verb === 'screenshot' || verb === 'zoom') {
+      try { result.shot = shot(ctx, verb) } catch (error) { return fail(error) }
+    }
+    if (verb === 'cursor_position') result.text = 'X=0, Y=0'
+    if (verb === 'wait') result.waited = waited
+    return result
+  }
+  let supported = ['process', 'session']
+  if (['set_value', 'perform', 'select_text'].includes(verb)) supported = ['ax']
+  if (verb === 'type' || (['left_click', 'right_click', 'double_click'].includes(verb) && action.element !== undefined)) supported = ['ax', 'process', 'session']
+  if (ctx.app.name === 'Sessiony' && (verb === 'hold_key' || (verb === 'perform' && action.name === 'raise'))) supported = ['session']
+  if (ctx.app.name === 'Stubborn' && clicks.includes(verb)) supported = ['process', 'session']
+  if (ctx.app.name === 'KeyWin' && ['key', 'hold_key', 'paste'].includes(verb) && !tiers.includes('process')) supported = ['session']
+  // KeyWin's text takes no AX insert while keys may go: its type goes by keys, and fails the key window check
+  if (ctx.app.name === 'KeyWin' && verb === 'type' && tiers.includes('process')) supported = ['process', 'session']
+  const tier = tiers.find((tier) => supported.includes(tier))
+  if (!tier) return fail(failure('needs_tier', 'Allow the tier this action needs.', { needed: supported[0] }))
+  if (ctx.app.name === 'KeyWin' && tier === 'process' && ['type', 'key', 'paste'].includes(verb)) {
+    return fail(failure('key_window_unavailable', 'Choose the target key window before sending input.', { keyWindow: { id: 99, title: 'Other' } }))
+  }
+  result.tier = tier
+  result.effect = ctx.app.name === 'Thin' ? 'unknown' : ctx.app.name === 'Stubborn' && clicks.includes(verb) && tier === 'process' ? 'none' : 'changed'
+  if (verb === 'type') result.input = { via: tier === 'ax' ? 'ax-insert' : 'keys' }
+  if (verb === 'paste') result.input = { via: 'paste', clipboard: 'restored' }
+  if (tier === 'session') result.session = sessionChange(ctx.app)
+  ctx.state.dirty = true
+  return result
+}
+function actionResult(ctx, params, method, wasCancelled = false) {
+  const actions = method === 'action.run' ? [params.action] : params.actions
+  let stopped = false
+  const steps = actions.map((action, index) => {
+    if (stopped) return { index, action: action.action, status: 'not-run' }
+    const result = wasCancelled ? { index, action: action.action, status: 'failed', error: cancelled() } : step(ctx, action, params.tiers, index)
+    stopped = result.status === 'failed'
+    return result
+  })
+  const result = method === 'action.run' ? { step: steps[0] } : { steps, waited: wasCancelled ? { waitedMs: 0, settled: false, busy: false, reason: 'cancelled' } : waited }
+  if (wasCancelled) result.observationError = cancelled()
+  else if (params.observe?.mode !== 'none') result.observation = observation(ctx, params.observe, 'action')
+  return result
+}
+function handle({ id, method, params = {} }) {
+  if (method === '$/cancel' && id === undefined) {
+    const request = pending.get(params.id)
+    if (request) {
+      pending.delete(params.id)
+      if (request.method === 'state.get') refuse(params.id, cancelled())
+      else reply(params.id, actionResult(request.ctx, request.params, request.method, true))
+    }
+    return
+  }
+  if (id === undefined) return
+  if (!initialized && method !== 'initialize') return refuse(id, failure('not_initialized', 'Initialize the service before using it.'))
+  switch (method) {
+    case 'initialize': {
+      initialized = true
+      dataDir = params.dataDir
+      reply(id, { ...initial, protocol: 1, epoch, permissions })
+      if (exiting) return
+      if (process.env.FAKE_GARBAGE === '1') process.stdout.write('this is not json\n')
+      if (process.env.FAKE_UNKNOWN_NOTIFY === '1') notify('future/thing', {})
+      if (process.env.FAKE_LOG_NOTIFY === '1') notify('log', { level: 'info', message: 'fake log line' })
+      if (process.env.FAKE_PERMISSIONS_CHANGE_MS !== undefined) setTimeout(() => {
+        permissions.screenRecording = !permissions.screenRecording
+        notify('permissions/changed', permissions)
+      }, Number(process.env.FAKE_PERMISSIONS_CHANGE_MS)).unref()
+      return
+    }
+    case 'shutdown': return reply(id, {}, false, 0)
+    case 'permissions.get': if (process.env.FAKE_NO_PONG === '1') return; return reply(id, permissions)
+    case 'permissions.request': return reply(id, permissions)
+    case 'apps.list': return reply(id, { apps: apps.filter((app) => app.name !== 'Preview' || previewRunning)
+      .sort((a, b) => a.name === 'TextEdit' ? -1 : b.name === 'TextEdit' ? 1 : a.name.localeCompare(b.name))
+      .map((app) => ({ ...brief(app), active: app.name === 'TextEdit', hidden: app.name === 'Finder', ...(params.windows ? { windows: app.windows } : {}) })) })
+    case 'apps.launch': {
+      const app = resolveApp({ app: params.app })
+      if (!app) return refuse(id, missingApp())
+      const launched = app.name === 'Preview' && !previewRunning
+      if (app.name === 'Preview') previewRunning = true
+      return reply(id, { pid: app.pid, launched })
+    }
+    case 'session.open': sessions.add(params.session); return reply(id, {})
+    case 'session.close': sessions.delete(params.session); states.delete(params.session); shots.delete(params.session); return reply(id, {})
+    case 'capture.stream.stop': return reply(id, {})
+    case 'input.restoreSession': return reply(id, { frontmost: 'nothing', pointer: 'nothing', held: null })
+    case 'clipboard.state': return reply(id, { changeCount: 1, foreignChangeAt: null, watchingSince: startedAt })
+    case 'state.get': case 'action.run': case 'action.batch': case 'capture.screenshot': case 'capture.stream.start': case 'input.probe': {
+      const ctx = target(params)
+      if (ctx.app.name === 'Slow' && ['state.get', 'action.run', 'action.batch'].includes(method)) {
+        pending.set(id, { ctx, params, method })
+        return
+      }
+      if (ctx.app.name === 'Crashy' && method.startsWith('action.')) {
+        process.stderr.write('fake crash\n', () => process.exit(1))
+        return
+      }
+      if (method === 'state.get') return reply(id, observation(ctx, params))
+      if (method.startsWith('action.')) return reply(id, actionResult(ctx, params, method))
+      if (method === 'capture.screenshot') return reply(id, shot(ctx, 'screenshot'))
+      if (method === 'capture.stream.start') return reply(id, { stream: params.stream, width: 960, height: 804 })
+      return reply(id, { pid: ctx.app.pid, bundleId: ctx.app.bundleId, keyWindow: ctx.app.name === 'KeyWin' ? 'other' : 'target',
+        results: (params.classes ?? ['scroll', 'key', 'click']).map((kind) => ({ class: kind, outcome: ctx.app.name === 'Thin' ? 'untested' : ctx.app.name === 'Stubborn' && kind === 'click' ? 'ignored' : 'honoured',
+          ...(ctx.app.name === 'Thin' ? { reason: 'thin tree' } : {}), restored: true, ms: 5 })) })
+    }
+    default: return reply(id, { code: -32601, message: 'The method is unknown.' }, true)
+  }
+}
+const rl = createInterface({ input: process.stdin })
+rl.on('close', () => { if (!exiting) process.stdout.write('', () => process.exit(0)) })
+rl.on('line', (line) => {
+  if (process.env.FAKE_LOG) appendFileSync(process.env.FAKE_LOG, line + '\n')
+  if (exiting) return
+  let request
+  try { request = JSON.parse(line) } catch { reply(null, { code: -32700, message: 'Send a JSON frame.' }, true); return }
+  try { handle(request) } catch (error) {
+    if (error?.kind) refuse(request.id, error)
+    else reply(request.id, { code: -32603, message: 'The fake service could not handle the request.' }, true)
+  }
+})
