@@ -128,13 +128,28 @@ Two separate steps, on purpose, over one gate.
     `publish`: renderer-soak, renderer-soak-chat, renderer-soak-typing and
     renderer-soak-scroll (the build lane, after the build, one after the
     other; Mac only), e2e-remote-fence, hub:test, ios:test, ios:test:client,
-    computer:test (native/tc-computer, the computer-use service's package)
-    and computer-bench (the computer task benchmark, Mac only, its own
-    `computer` lane, `onlyAtPublish`: never when changed paths alone pulled
-    the tier into a commit's hook). A step's `capMs` is its hard cap, past
-    which the gate kills it and fails it "passed its cap": the soaks 12
-    minutes, the bench 15. A proof that boots an instance belongs in
-    `publish`.
+    computer:test (native/tc-computer, the computer-use service's package),
+    the store proofs e2e-addons, e2e-addon-grants, e2e-skills-store and
+    e2e-skills-drivers (the `e2e` lane after the fence, one at a time, two
+    headless instances each, both hosts), and in the `computer` lane (Mac
+    only) e2e-tc-computer, e2e-computer-bridge and e2e-computer-preview on
+    TC Probe, then computer-bench (the computer task benchmark,
+    `onlyAtPublish`: never when changed paths alone pulled the tier into a
+    commit's hook). Each proof row runs its script entry with `--gate`
+    ("Add-ons", "Skills" and "Computer use" below). A step's `capMs` is its
+    hard cap, past which the gate kills it and fails it "passed its cap":
+    the soaks 12 minutes, the bench 15, a proof row the 10-minute build
+    wait plus three times its measured time (`proofCap`). A proof that
+    boots an instance belongs in `publish`.
+  - The build barrier: a run that selects `build` removes
+    `<git-dir>/temp-code-gate/build.done` at its start, touches it once
+    bundle-size passes and names it to every step as
+    TEMP_CODE_SOAK_BUILD_DONE, so no proof reads an `out/` the build is
+    rewriting (a retry at the same HEAD finds last run's valid stamp
+    there). A proof waits through scripts/lib/gateBuild.ts
+    `waitForGateBuild`: the done file when one is named, else HEAD's stamp
+    in out/bundle-map.json, 10 minutes at most. It never builds; the soaks
+    alone build a stale tree on a hand run.
   - Steps in one lane run in array order, one at a time; lanes run at
     once (typecheck, vitest and build + bundle-size together), with a combined status
     line on a terminal and `✓ step 12s` lines plus a per-step time table
@@ -156,9 +171,14 @@ Two separate steps, on purpose, over one gate.
   - The path map: a commit touching `ios/**`, scripts/gen-swift-contract.ts,
     src/shared/wireSchemas.ts, `src/shared/contract*.ts`,
     `src/main/server/remote/**`, `infra/hub/**`, the fence proof, the iOS
-    runners, `native/tc-computer/**`, `src/shared/computer/**` or the computer
-    generator pulls the `publish` tier into the hook as well, so a contract
-    change still cannot land stale Swift.
+    runners, `native/tc-computer/**`, `src/shared/computer/**`, the computer
+    generator, the add-on, skills and computer host code
+    (`src/main/server/{addons,skills,computer}/**`, the store files, the
+    add-on host's process and spawn, src/shared/addons.ts, skills.ts and
+    `addonGrant*.ts`, museConfigDirs.ts, the app-tools bridge) or their
+    proofs and helpers pulls the `publish` tier into the hook as well, so a
+    contract change still cannot land stale Swift. The drivers stay out:
+    nearly every commit touches them.
 
 1. **Every green commit tags locally.** A post-commit hook on master
    (.githooks/, wired via core.hooksPath) runs `bun scripts/release.ts`
@@ -1039,7 +1059,7 @@ mismatch logs one `[muse]` line.
   `MUSE_CONTRIBUTOR_MODE=0` (the person's code is not training data unless
   they turn it on) and `XDG_CONFIG_HOME` for the thread's config dir (one per
   account and skills scope, below). An account's dir also sets
-  `TBH_CREDENTIAL_BACKEND=file`: the config-dir spike (M2, below) found the
+  `TBH_CREDENTIAL_BACKEND=file`: the config-dir spike (M2; "Skills" below) found the
   dir's `auth.json` decides the login with it on both hosts, and without it
   only on Linux; the Mac's CLI may go to the Keychain first. The own dir
   (a thread on no account) does not. Both set `GH_CONFIG_DIR` to the
@@ -1083,7 +1103,7 @@ mismatch logs one `[muse]` line.
   on no account, its `auth.json` a link to the person's own when they have
   one (`accounts/` and `own/` are fixed names, so no account collides with
   the own dir). In both, `skills` links the store's scope pointer ("Skills:
-  written out on every host"), which Muse reads at every call, and every
+  one store, materialized per host"), which Muse reads at every call, and every
   other entry of the person's `~/.config/muse` (settings, hooks, trust) is a
   link; the driver hands the dir to `muse serve` as `XDG_CONFIG_HOME`.
   `migrateMuseDirs` at boot recaptures and removes the old
@@ -1115,34 +1135,6 @@ mismatch logs one `[muse]` line.
   `harness/museFakeServe.mjs`, museProtocol, museCatalog (the recorded
   `model-list.json`), museHost's exit words, museConfigDirs, museSettings,
   providerEnums, the rules, failureKind, binaries and sendSpans cases.
-
-## The config-dir spike: how the skills store reaches each CLI
-`bun run script:spike-config-dirs -- --host box|mac` (scripts/spike-config-dirs.ts,
-its sections scripts/lib/spike{Claude,Codex,Muse}.ts, the pure helper
-scripts/lib/configDirSpike.ts with scripts/spike-config-dirs.test.ts) runs one
-experiment per id (C* Claude, X* Codex, M* Muse) under a temp config root and
-a temp HOME against loopback fakes with placeholder logins, and writes one
-redacted evidence file each to `scripts/.out/config-dir-spike/<host>/`; rerun
-it after a CLI update. `--upstream --dev-user-data <dir>` adds the real halves
-through an isolated dev instance's gateway (the Mac leg); M0b records Meta's
-model list to scripts/lib/fixtures/muse-models.json, which the Muse fake
-serves. The answers and the evidence of 2026-11-09 are in
-`.temp-code/findings/claude-config-dir.md` (force-added; `.temp-code/` is
-ignored): Claude Code takes the store as an SDK plugin dir (`plugins`,
-`pluginDelivery: 'initialize'`, `reloadSkills()` for a live change, nothing
-in the warm key); Codex as an app-server extra root
-(`skills/extraRoots/set`, watched); Muse has no add-a-dir route, and its
-closest shape, the per-account root with `TBH_CREDENTIAL_BACKEND=file` and a
-`muse/skills/` the store owns, still lacks a real turn to prove it. What the
-drivers took ("Skills: written out on every host"): not the plugin dir for
-Claude, since a plugin's skills are always named `<plugin>:<skill>` (C1a,
-C1d) and a person's skill keeps its bare name; Claude gets an owned config
-dir per scope instead (C2's hybrid: the store's `skills`, every other entry
-the person's). Codex takes the extra root and disables the home skills per
-process (`-c skills.config`); Muse the per-account root with the file
-backend, now keyed on (account, scope), which the skills drivers proof ran
-real turns from on both hosts (2026-11-09; Codex 0.164.0 on the Mac read the
-stored skill's body, the question X1 left open).
 
 ## Remote access: the fixed port behind the tunnel
 - A second listener (src/main/server/remote/listener.ts) binds
@@ -1398,8 +1390,12 @@ stored skill's body, the question X1 left open).
   `quiet` while its `macBridge.showRunning.<envId>` is off
   (`runPresentation`); the desktop no longer reads or sets it. The load guard
   (`remote/macLoadGuard.ts`) sits between the decision and the spawn of
-  every command and job, never a read: `macBridge.maxRunning.<envId>`
-  (default 4) caps a host's concurrent commands plus jobs, and the load watch
+  every command, job and computer session the bridge admits, never a read,
+  listing, fetch or write: `macBridge.maxRunning.<envId>` (default 4) caps
+  a host's concurrent commands, jobs and live computer sessions together,
+  `macBridge.maxComputer.<envId>` (default 2) caps its computer sessions
+  alone (a command behind a session that cap holds still starts when it
+  fits), and the load watch
   (os.loadavg every 15 s) holds every new one while the one-minute load is
   over `macBridge.loadLimit` (default 2 × cores) until it is back under
   0.75 × the limit. A held call is `status: 'held'` with its `held` standing
@@ -1415,7 +1411,10 @@ stored skill's body, the question X1 left open).
   forwarding and the shared folders are in the
   host's Mac bridge settings dialog (surfaces/settings/hosts/
   MacBridgeHostDialog.tsx); This Mac's section has the load with its limit. docs/box.md "The Mac bridge: what a box thread may touch on the
-  Mac"; proof `bun run script:e2e-mac-bridge`.
+  Mac"; proof `bun run script:e2e-mac-bridge`. Computer use is one more
+  class of call, off by default per host (`macBridge.computer.<envId>`):
+  "Computer use: the Mac's apps from any thread" below and docs/box.md
+  "Computer use from a box thread".
 - Thread resources: what a thread created (git worktrees, simulators, dev
   instances), on its own host or on the Mac through the bridge, is on the
   host's `thread_resources` table (src/main/server/threadResources.ts; the
@@ -1944,342 +1943,264 @@ names the far child).
   unit tests away, awaySync, sessions-away, macBridge, macTools, the
   drivers' answers and denials, AwayRow.dom, AwayReturn.dom.
 
-## Add-ons and skills: one store, on the box
-The plan is .temp-code/plan-uv2o7r5RN64s.md. This build is the data layer;
-the registry core (below, "The add-on host"), the skills store core, the
-add-on OAuth leg, skills into the drivers and the settings pages build on it.
-The skills store core ("Skills: written out on every host" below) writes the
-skill folders and gives threads the skill tools.
-- **What they are.** An add-on is an MCP server every harness will reach
-  through the one `app` server: a stdio command each host runs, or an http
-  address (`AddonSpec` in src/shared/contract-addons.ts). A skill is a folder
-  every CLI will read from a folder the app writes: SKILL.md at its root and
-  the files beside it (src/shared/contract-skills.ts). Both are global
-  (`workspaceId: null`) or one workspace's, a workspace row shadowing the
-  global row of its name (`visibleRows`, `visibleSkills`); ids `ad_` / `sk_`
-  plus 12; names `ADDON_NAME_RE` (≤ 20, so `<addon>__<tool>` fits Claude's 64)
-  and `SKILL_NAME_RE`. Each row keeps `addedBy` and `writtenBy` (`Writer`: a
-  person with an optional key name, a thread, or an import).
-- **Tables** (created by each store's constructor on the app database):
-  `addons` and this host's `addon_tool_cache` (src/main/server/addonStore.ts:
-  `set` validates, mints, stamps and refuses a name taken in its scope; `put`
-  is the sync's write; the tool cache is voided when the spec's digest moves;
-  the status is in memory, set by the registry core); `skills` and
-  `skill_files` (skillStore.ts: a skill written whole in one transaction, the
-  description read from SKILL.md, `version` moving only when the files, the
-  harnesses or enabled change; `put` takes files only when the digest moved).
-  No column holds a secret: `env` and `headers` name the values, which live in
-  the add-on's grant. A deleted workspace drops its rows
-  (`registry.onWorkspaceDeleted`).
-- **The rules** (pure, shared, the renderer can read them): `addonProblem`
-  (no secret in `command`, `args` or `url` by `looksSecret`, plain http only
-  to this machine, `tokenEnv` only with oauth and required by a stdio oauth
-  add-on, unique names, fields needing a name) and `exposedNames` (a cut or
-  clashing name ends `_` plus four hex of its sha256) in src/shared/addons.ts;
-  `skillProblem` (SKILL.md with frontmatter naming the skill, clean paths, no
-  secret path, nothing under `scripts/bin/`, no native binary, 512 files, 4
-  MiB a file, 16 MiB a skill), `skillDigest`, `skillFrontmatter`,
-  `viewDigest`, `viewDirName` in src/shared/skills.ts. `isSecretPath` and
-  `validRelPath` moved to src/shared/secretPaths.ts (harnessSet.ts re-exports
-  them), and src/shared/sha256.ts is a hash with no runtime import.
-  `readSkillDir` and `writeSkillTree` (src/main/server/skillFiles.ts) read and
-  write a skill folder, never outside it; a link leaving the folder is refused.
-- **One copy, on the box** (remote/storeSync.ts, `StoreSync`, beside
-  RulesSync, whose home and `sharedScopes` it reads): the Mac follows both
-  tables, seeds each shared scope once, forwards every write of a shared scope
-  and refuses it while the box is out of reach; a workspace the box has no
-  copy of stays the Mac's own. docs/box.md "Add-ons and skills: one copy, on
-  the box" has the rules.
-- **Wire** (src/main/server/storeRpc.ts, one line per method in index.ts):
-  `addons.list` (every row, this host's status, the named scope's `home`),
-  `addons.tools`, `skills.list`, `skills.get` are read; `addons.set`,
-  `addons.remove`, `skills.set`, `skills.remove` are admin, and keep the
-  writers a request carries only for an admin caller (the Mac's sync). The
-  `addons`, `addon-status` and `skills` pushes go to every client once per
-  burst (`storePushes`). The bridge methods `app.addonList`, `app.addonAdd`,
-  `app.addonRemove`, `app.addonFind`, `app.addonCall`, `app.skillList`,
-  `app.skillWrite`, `app.skillRemove` are in the contract and `local`; the
-  skills core answers the three skill methods and the registry core the five
-  add-on ones (addons/tools.ts). `skills.set` and
-  `skills.remove` take `expectUpdatedAt` (0: the name must be free): the
-  home refuses `refused: <name> changed since it was read` when the row moved
-  since, and `updatedAt` rises on every write so the stamp names one write.
-  The phone speaks none of these.
-- **The cards.** The words are pure (`addonCard`, `addonRemoveCard`,
-  `skillChangeCard`, `skillRemoveCard`). `skill_write` and `skill_remove` ask
-  only over a skill a person or an import wrote last; `addon_remove` only over
-  an add-on a person wrote last; `addon_add` always, and only a person with an
-  admin key may allow it: SessionRegistry keeps the tool of each pending
-  approval (`pendingApprovalTool`), and `assertMayAnswer` refuses an allow
-  with `forbidden: approving an add-on needs a person with an admin key` on
-  `session.approve` from a key without admin, on a far parent's
-  `thread.answer` and on an MCP key's prompt answer. A deny always passes.
-- **The grant** (src/shared/addonGrant.ts): `AddonGrantBlobSchema`
-  (`mintedBy: 'app'`, the typed fields, an OAuth client with its fixed
-  loopback `redirectPort`), `grantNeeds`, `grantGaps` (a client registered and
-  never signed in reads `sign-in`). What holds, signs in and moves it is
-  "Add-on grants" below.
-- **The layout the drivers will read**: `<userData>/harness/<provider>/
-  <view>@<digest12>/skills/<name>/`, one generation per view, built beside
-  and renamed into place, with a symlink `<view>` to the current one; `view`
-  is `global` or `ws-<workspaceId>`; `digest12` is the generation's own hash
-  (below).
-- Tests: addons, skills, addonGrant, secretPaths, contract-addons,
-  capabilities, addonStore, skillStore, skillFiles, storeRpc,
-  remote/storeSync, remote/storeSync.pair (the two-host proof),
-  sessions-approval, sessions-workspaces, crossHostThreads, facade.
-- **The add-on host** (plan .temp-code/plan-L1Vrd-CMiZJ7.md; docs/box.md
-  "Add-ons: the add-on host and its tools"). Every downstream MCP client runs
-  in a utility process of its own, `out/main/addonHost.js`
-  (src/main/addonHostProcess.ts, forked by addonHostSpawn.ts; the fifth main
-  entry in electron.vite.config.ts), never in main or the gateway's child.
-  `src/main/server/addons/`: `addonWire.ts` (the messages over the
-  gateway's generic `Wire`/`Calls`/`answer`, the constants, `grantGapsLine`),
-  `addonChild.ts` (`runAddonChild`: one `Downstream` per launch, kept in step
-  by spec digest; an error escaping a client fails that client alone, any
-  other ends the process), `downstream.ts` (the SDK `Client` over its own
-  `ProcessTransport` (exit code, 16 MB results plus framing) or Streamable
-  HTTP with the SSE fallback; `redact` of every grant value held; restarts on
-  1, 2, 5, 15, 60 s; the grant transitions), `addonHost.ts` (main's side:
-  off and other-platform decided from the rows, the launch set, respawn and
-  down after three exits a minute, the statuses and exposed tool lists into
-  the store, `call`, `grantsChanged`; `doctor.get` gains `addonHost`),
-  `grants.ts` (`AddonGrantSource`, `resolveGrant` to env or headers with a
-  digest, the vault source, the `TEMP_CODE_ADDON_GRANTS` seam honoured only
-  with TEMP_CODE_USER_DATA, aliax.ts's `onSecretSaved` → `addonGrantHook`),
-  `scope.ts` (`workspaceIdOf` the thread's root, `visibleTools`, `hasAddons`),
-  `exposure.ts` (`AddonExposure.attach` registers each visible ready tool on
-  a claude thread's live `app` server as `mcp__app__<addon>__<tool>`,
-  deferred, schema verbatim through `inputSchemaOf`, removed and re-registered
-  as the store moves; the driver releases it when its handle ends;
-  `deferredTool` for the management tools; step 0 proved the CLI refreshes
-  an sdk server's tools mid-session and calls a double-`__` name),
-  `tools.ts` (`appAddonList/Add/Remove/Find/Call`: add always asks the admin
-  card and writes through `storeRpc` as the local principal with the root
-  thread as writer, waiting up to 30 s for this host's state; remove asks
-  unless a thread wrote it last; call follows the permission: auto runs, edits
-  runs a read-only tool, safe asks) and `scopeFlip.ts` (a scope gaining its
-  first add-on or losing its last marks its codex and Muse handles
-  `SessionRegistry.rebootAtNextTurn`, since the bridge's `TEMP_CODE_ADDONS`
-  is fixed at spawn). Every claude spawn sets `ENABLE_TOOL_SEARCH=true`; the
-  app, orchestrator and Mac servers are `alwaysLoad`; `addon_list`,
-  `addon_add`, `addon_remove` are deferred app tools; the bridge
-  (scripts/app-mcp-bridge.mjs) lists those three always and `addon_find`,
-  `addon_call` with `TEMP_CODE_ADDONS`, waits on the server's deadline for
-  add, remove and call, and passes a call's result back whole. An add-on
-  tool's card reads `Use <tool> from <addon>?` (approvalLine.ts). The process
-  guard sweeps an orphaned stdio server by its `TEMP_CODE_ADDON` mark.
-  `TEMP_CODE_ADDON_TRACE=1` logs one line per connect, list and exit. Proof:
-  `bun run script:e2e-addons`; unit tests under src/main/server/addons/,
-  app-bridge, approvalLine, claude-toolsearch, processGuard, sessions-addons,
-  gatewayWire, gatewayHost.
-- **Add-on grants** (plan .temp-code/plan-8YMm3ynnFZYs.md; docs/box.md
-  "Add-on grants: signed in on the Mac, refreshed on the box"). A grant is an
-  aliax-core profile of the `addon` service (core's src/adapters/addon.ts,
-  pinned 135ff56): one per add-on, named by its id, `internal`, so no account
-  page lists it and `PROVIDER_OF` (now partial) maps it to no provider; the
-  Aliax pages refuse to capture, sign in, key or delete one. It is static
-  exactly when its blob has no `oauth` section: typed values (an API key) go
-  to every host and leave by tombstone, like a Meta key. An OAuth grant always
-  has an owner: signed in on the Mac, handed to the box through accountSync's
-  two-phase handoff, refreshed there (core's `refreshAddon`, under the
-  profile lock), the Mac keeping an access copy with the client and port. Core
-  lets a sign-in land over a static row and never lets a static copy land over
-  a row with one. accountSync sends a grant only to the host that holds its
-  add-on's row as the scope's home (`addonHome`), never to a link of a scope
-  only this host has, and lands a peer's grant as from an admin when the row
-  is known here (`addonKnown`, `policyFor`). `AddonGrants`
-  (src/main/server/addons/addonGrants.ts) is the add-on host's grant source:
-  `read` from the vault fresh; `refresh` on a downstream 401 (the owner forces
-  one at most every 30 s, keeping a later ask for the window's end; a copy
-  asks its owner's `addons.grant.refresh`, then pulls); the keeper (on the
-  owner min(5 min, a quarter of the token's life) ahead of the end, on a copy
-  half that, one second more than its lead asked for since a timer may wake a
-  moment early, retries on 1, 2, 5, 10 min past the end, stopped by a
-  refusal, which marks the view, or a removal; `onClaimed` reschedules when a
-  handed grant becomes this host's); writes on one host (`writerOf`: the host
-  that refreshes it, else the scope's home, else here; others forward over the
-  admin link, `GRANT_OFFLINE` when it is down, `GRANT_ON_MAC` on a box with no
-  link to the Mac), under the profile lock, with typed values presented once
-  to the add-on's `initialize` (grantProbe.ts; 401 or 403 refuses them); the
-  sweep (a grant whose row is gone leaves, with a tombstone only on the
-  scope's home or a scope this host keeps alone); the view (`AddonGrantView`,
-  never a value) and its push. The sign-in (oauthFlow.ts on the SDK's
-  client/auth.js helpers, oauthCallback.ts the one-shot 127.0.0.1 listener)
-  runs only on a host with a window: discovery from the 401's challenge,
-  RFC 9728 and RFC 8414 metadata, the issuer and resource checked, S256
-  required, `offline_access` added when offered, dynamic registration on a
-  fixed port saved before the browser opens and reused at every later sign-in
-  (a taken port is named, `SIGNIN_PORT_TAKEN`; nothing re-registers on its
-  own), PKCE and the resource on authorize and exchange; a failure is worded
-  by its step and HTTP status alone (src/shared/addonGrantWords.ts holds every
-  line). RPCs (src/shared/contract-addonGrants.ts): `addons.grant.list`
-  (read), `setFields`, `clear`, `refresh` (admin), `signIn`, `cancel` (local,
-  since a sign-in opens a browser here); the `addon-grants` push, each sign-in
-  step at once. Seam: `TEMP_CODE_OAUTH_BROWSER=follow` with
-  TEMP_CODE_USER_DATA signs in with no browser by following the authorize
-  redirect. Proof: `bun run script:e2e-addon-grants` (two headless instances
-  and scripts/lib/fakeOAuthServer.ts; 51 checks, 133 s); unit tests
-  addonGrants, oauthFlow (Mobbin's recorded answers under addons/fixtures/),
-  oauthCallback, grantProbe, accountSync.addon, contract-m3a,
-  contract-addonGrants, addonGrantWords, and core's test/addon.test.ts.
-- **The settings pages.** Settings → Add-ons and Settings → Skills (plan
-  .temp-code/plan-vJP8mPAPorvc.md; src/renderer/src/surfaces/settings/addons/
-  and skills/, docs/LAYOUT.md "Settings → Add-ons and Skills") read through
-  this machine: `addons.list` and, apart from it, `addons.grant.list` (unread
-  grants are never shown as nothing saved; the grant rows wait with "Loading"),
-  or `skills.list`, with the `addons`, `addon-status` (the whole map, so it
-  replaces), `addon-grants` and `skills` pushes folded in through a ref
-  (useAddons.ts, useSkills.ts). Every word the pages say that no shared
-  module has is in addonWords.ts (`addonMark`, `grantFact`, `addonMenuRows`,
-  the form ↔ spec) or skillForm.ts. A new add-on sends a fresh `ad_` id
-  (`newAddonId`), so a taken name is refused instead of replacing that row; a
-  skill's switch reads the skill whole (`skills.get`) and writes it back, and
-  every skill write and removal carries `expectUpdatedAt`. Sign in… is
-  desktop only; Sign out is `addons.grant.clear`; the key dialog's Clear sends
-  every value as null. The skill editor is `SkillTextEditor` (a CodeMirror
-  buffer over a string, one `EditorState` per path) reached only through
-  `editorChunk.surface`, so CodeMirror never joins the settings chunk.
-  `PageActions` (components/page.tsx) puts a page's one ghost verb on its
-  title line; `PageRow`'s `onOpen` makes a row open its dialog. Tests beside
-  each module (SkillTextEditor.test.tsx runs on jsdom in the node project, the
-  dom project stubbing CodeMirror); `SETTINGS_PREVIEW=addons,skills` draws
-  them.
+## Add-ons: one registry, every harness
+docs/box.md "Add-ons and skills: one copy, on the box", "Add-ons: the
+add-on host and its tools" and "Add-on grants: signed in on the Mac,
+refreshed on the box" are the long account; the plans are
+.temp-code/plan-uv2o7r5RN64s.md (data), plan-L1Vrd-CMiZJ7.md (host),
+plan-8YMm3ynnFZYs.md (grants) and plan-vJP8mPAPorvc.md (pages).
+- **What one is.** An MCP server every harness reaches through the one
+  `app` server: a stdio command each host runs, or an http address
+  (`AddonSpec`, src/shared/contract-addons.ts). Global (`workspaceId:
+  null`) or one workspace's, a workspace row shadowing the global row of
+  its name (`visibleRows`); ids `ad_` plus 12, names `ADDON_NAME_RE` (20 at
+  most, so `<addon>__<tool>` fits Claude's 64). The rules are pure:
+  `addonProblem` (no secret in `command`, `args` or `url`, plain http only
+  to this machine, `tokenEnv` only with oauth) and `exposedNames` in
+  src/shared/addons.ts.
+- **Where it lives.** The `addons` table and this host's
+  `addon_tool_cache` (src/main/server/addonStore.ts). No column holds a
+  secret: `env` and `headers` name the values, which live in the grant.
+  One copy, on the box: `StoreSync` (src/main/server/remote/storeSync.ts,
+  beside RulesSync) has the Mac follow the box, seed each shared scope
+  once, forward every write and refuse one while the box is out of reach;
+  a workspace the box has no copy of stays the Mac's. The wire is
+  src/main/server/storeRpc.ts: `addons.list` and `addons.tools` (read),
+  `addons.set` and `addons.remove` (admin), the `addons` and
+  `addon-status` pushes.
+- **The add-on host.** Every downstream MCP client runs in a utility
+  process of its own, `out/main/addonHost.js` (src/main/addonHostProcess.ts,
+  forked by src/main/addonHostSpawn.ts), never in main or the gateway's
+  child. src/main/server/addons/: addonChild.ts (one `Downstream` per
+  launch), downstream.ts (the SDK client over stdio or Streamable HTTP
+  with the SSE fallback, restarts on 1, 2, 5, 15, 60 s, every grant value
+  redacted), addonHost.ts (main's side: respawned, down after three exits
+  a minute; `doctor.get` names it). The process guard sweeps an orphaned
+  stdio server by its `TEMP_CODE_ADDON` mark.
+- **What each harness sees.** Claude: each visible ready tool registered
+  live on its `app` server as `mcp__app__<addon>__<tool>`, deferred behind
+  tool search (every claude spawn sets `ENABLE_TOOL_SEARCH=true`), its
+  schema verbatim (addons/exposure.ts). Codex and Muse: `addon_find` and
+  `addon_call` over scripts/app-mcp-bridge.mjs, listed only with
+  `TEMP_CODE_ADDONS`, which is fixed at spawn, so a scope gaining its first
+  add-on or losing its last reboots their handles at the next turn
+  (addons/scopeFlip.ts).
+- **The app tools and their cards** (addons/tools.ts): `addon_list`,
+  `addon_add`, `addon_remove` (deferred on Claude, always on the bridge),
+  `addon_find`, `addon_call`. `addon_add` always asks, and only a person
+  with an admin key may allow it (`assertMayAnswer`: "forbidden: approving
+  an add-on needs a person with an admin key"; a deny always passes).
+  `addon_remove` asks only over an add-on a person wrote last; `addon_call`
+  follows the permission (auto runs, edits runs a read-only tool, safe
+  asks), its card `Use <tool> from <addon>?`.
+- **Grants.** One aliax-core profile of the `addon` service per add-on
+  (aliax-core/src/adapters/addon.ts at the commit package.json pins,
+  80345ae), `internal`, so no account page lists it. Static when its blob
+  has no `oauth` section: typed values reach every host and leave by
+  tombstone. An OAuth grant is signed in on the Mac (a host with a
+  window), handed to the box by accountSync's two-phase handoff and
+  refreshed there; the Mac keeps an access copy. `AddonGrants`
+  (addons/addonGrants.ts) reads the vault fresh, refreshes on a downstream
+  401, keeps a grant ahead of its end, writes on one host (`writerOf`),
+  presents typed values once to the add-on's `initialize`
+  (addons/grantProbe.ts) and sweeps a grant whose row is gone. The sign-in
+  (addons/oauthFlow.ts, addons/oauthCallback.ts) is PKCE S256 with
+  dynamic registration on a fixed loopback port saved before the browser
+  opens; every line it says is in src/shared/addonGrantWords.ts. RPCs
+  (src/shared/contract-addonGrants.ts): `addons.grant.list` (read),
+  `setFields`, `clear`, `refresh` (admin), `signIn`, `cancel` (local); the
+  `addon-grants` push.
+- **The page.** Settings → Add-ons (src/renderer/src/surfaces/settings/addons/,
+  docs/LAYOUT.md "Settings → Add-ons and Skills"); Sign in… is desktop only.
+- **Seams.** `TEMP_CODE_ADDON_TRACE=1` (a line per connect, list and exit),
+  `TEMP_CODE_ADDON_GRANTS=<file>` (grant values from a file, honoured only
+  with TEMP_CODE_USER_DATA), `TEMP_CODE_OAUTH_BROWSER=follow` (a sign-in
+  that follows the authorize redirect with no browser).
+- **Proofs.** `bun run script:e2e-addons` (two paired headless instances
+  and fake MCP servers, scripts/lib/fakeMcpServer.ts, then one real
+  claude-haiku-5-5 thread on this user's HOME) and `bun run
+  script:e2e-addon-grants` (the same pair and scripts/lib/fakeOAuthServer.ts).
+  Both are publish rows with `--gate`, which skips the real-Claude leg;
+  docs/release-gate.md "The store and computer proofs" has their times and
+  the codex first-turn medians with and without add-ons.
 
-## Skills: written out on every host
-The plans are .temp-code/plan--OsNna4IcfKO.md (the store core) and
-.temp-code/plan-JBpcLz-eGMhp.md (the drivers); the code is
-src/main/server/skills/. Every CLI reads the store's skills for its
-thread's scope, and only those: never ~/.claude/skills, ~/.codex/skills,
-~/.agents/skills or ~/.config/muse/skills, which the app never moves,
-renames or deletes either.
-- **Views** (views.ts): each provider (claude, codex, muse) has a `global`
-  view, empty or not, and a workspace has its own `ws-<id>` view only when
-  what its threads get differs from the global one (`visibleSkills`: a
-  disabled or harness-excluded workspace row still shadows the global row).
-  `workspaceForPath` is the deepest workspace holding a folder, by real path.
-- **Generations** (materialize.ts, `SkillMaterializer`): each view is written
-  to `<userData>/harness/<provider>/<view>@<12 hex>/skills/<name>/`. The name
-  hashes the view's skills, `GENERATION_LAYOUT`, the text key and the extras
-  (`generationName`), so a folder of a given name holds one content and never
-  changes. A build writes beside its place (`.tmp-<pid>-<seq>`) and renames
-  in; a skill whose digest, text key and in-view mentions match the view's
-  current generation (its `.tc-generation.json`) is hard-linked from there,
-  every other is written fresh; files are 0444 (0555 executable) so an edit in
-  place cannot reach a sibling generation. The `<view>` symlink is swapped by
-  rename only while a fresh plan still wants that generation; a build whose
-  rows moved under it publishes nothing, and one that finds a skill rewritten
-  before its files were read drops its folder. It runs at boot, on every
-  store change and on a new peer home, one run at a time, a yield per skill;
-  `dirFor(provider, workspaceId)` builds at once (no yield) while a change is
-  pending, so a spawn right after a write sees it. `onPublished` fires after
-  every run and after a `dirFor` that built. `gc()` at boot and hourly
-  removes a generation no view or scope pointer points at, not `inUse` (the
-  live codex app-servers' roots, `codexLiveRoots`), superseded over a day ago
-  (`generations.json`); leftovers of a dead process go at start.
-  `generationExtras` stays empty.
-- **Scope pointers** (pointers.ts, `SkillPointers`): one stable path per
-  (provider, scope), `<userData>/harness/<provider>/scope/<global|ws-<id>>`,
-  a link to `../<generation>` of `dirFor(provider, workspaceId)`, so a
-  workspace with no view of its own names the global generation and keeps
-  its path when it gains or loses one. Re-pointed by rename on every
-  `onPublished` and workspace change (`onMoved` once per pointer that
-  moved, `movedAt`); a deleted workspace's pointer goes; a real folder in
-  a pointer's place is left alone. A thread's scope is `workspaceOfThread`
-  of the thread itself (index.ts's one resolver for the three drivers).
-- **Claude Code** (claudeRoots.ts, drivers/claude.ts): every thread runs
-  with `CLAUDE_CONFIG_DIR` = `<userData>/harness/claude-config/<scope>/`, a
-  dir the app owns: `skills/` holds one link per store skill through the
-  scope pointer (bare names; an edit is reached at once, an add or remove
-  relinks on `onMoved`) and `synced` → the person's account-synced bucket;
-  `.claude.json` and every other entry of the person's dir (projects,
-  settings, CLAUDE.md, commands, agents, hooks, plugins, `.credentials.json`
-  on Linux) are links, `projects/` made in the person's dir first; what the
-  CLI makes there itself (sessions, backups) stays per scope, and a
-  `.claude.json` it replaced by a rename is set aside as `.diverged` and
-  linked again. A routed Anthropic row holds `CLAUDE_CODE_OAUTH_TOKEN=routed`
-  for the gateway to replace (a Meta row keeps its token mode); a thread
-  with no route keeps the owned root (Linux signs in through the linked
-  credentials, the Mac fails with the CLI's sign-in error). `skillProblem`
-  refuses the name `synced`, and a row of that name is never linked. A live
-  CLI reloads its skills (`reloadSkills`, 10 s) at the first send after its
-  scope's pointer moved past the generation it loaded, never mid-turn; a
-  failure tries again at the next send.
-- **Codex** (codexSkills.ts, drivers/codex.ts): every app-server is spawned
-  with each home skill's SKILL.md disabled by path, both spellings of a
-  linked dir, never `.system` (`-c skills.config=[{path=…,enabled=false}]`,
-  no config.toml written; the argv the warm key and the spawn share), and
-  takes `<generation>/skills` of its scope as its extra root
-  (`skills/extraRoots/set`) after `initialize`, cold or adopted, again on
-  every live handle when the scope moves (a symlinked root does not refresh)
-  and before the next `turn/start` after a failed set. A SKILL.md added to
-  a home folder since the spawn makes `needsReboot` answer, and the
-  registry's `staleHandle` puts the process down at the next turn start.
-- **Muse** (museConfigDirs.ts): one config dir per (account, scope), its
-  `skills` a link to `<pointer>/skills`, read at every call ("Muse Code"
-  above).
-- **Freshness and the warm pool**: Codex and Muse see a write on their next
-  call or turn, Claude from its next turn; the skill tools say "every thread
-  sees it from its next turn". `CLAUDE_CONFIG_DIR` splits the warm key by
-  scope only, so a store write churns no warm process; an adopted one whose
-  spawn-time generation is behind reloads at its first send, and a miss on
-  the dir alone logs `[warm] claude: miss (skills)`.
-- **Path text** (skillText.ts): text files (`translatable`, valid UTF-8, a
-  BOM kept) are localized as they are written: the other host's paths
-  through memory sync's two-way map for each heard peer (`skillTextMap` over
-  `MemorySync.peerHomes()`, kept in `memory-sync:peer-homes`; the base map
-  read this host's way until a peer is heard), then each
-  `<home|~|$HOME|${HOME}>/<root>/<name>` for a skill of the view, under any
-  CLI's skills root, becomes the view's stable folder. Nothing else changes.
-- **The import** (import.ts, `importSkills`): once, on the Mac
-  (`hostPlatform()` darwin), every skill under ~/.claude/skills,
-  ~/.codex/skills, ~/.agents/skills (Claude and Codex) and
-  ~/.config/muse/skills goes into the store as `{ kind: 'import', from }`,
-  its CLIs every root's that had it. Copies that differ only by the root they
-  spell are one row; truly different ones keep the newest file's copy and are
-  logged as merged. Dot entries, Claude's synced bucket and plain files pass
-  quietly; a bad name, no SKILL.md, a refused file or a link out of HOME
-  (`reachableUnderHome`) are named; a native binary is dropped from an
-  otherwise good skill (`readSkillDir`'s `dropNative`). It follows the home
-  first, writes with `expectUpdatedAt: 0`, never overwrites, defers while the
-  home is offline (the next link-up runs it) and sets `skills-imported:v1`
-  once whole. The folders are read only.
-- **The tools** (tools.ts; Claude in-process through `setAppSkillTools`, the
-  bridge through index.ts's `app.skill*` cases): `skill_list` (the
-  workspace's rows, disabled ones too, `here` when this thread's CLI gets
-  it), `skill_write` (files or a folder, never both; scope defaults to the
-  thread's workspace; the root thread is the writer) and `skill_remove`. A
-  change to a skill a person or an import wrote last asks on the schema's
-  card plus a `changes` line (`skillChanges`), on the call's own row for
-  Claude (its tool_use id) and on an id no row has for a bridge call; a
-  denial or Away writes nothing. The checked row's `updatedAt` rides as
-  `expectUpdatedAt`, so a skill that moved is refused with "call skill_write
-  again". The answer waits for the write-out (`whenSettled`). The bridge
-  calls write and remove with no client deadline.
-- **The slash menu** (commands.ts `configureCommandSkills`, `readHome:
-  false`): claude's and codex's user skills come from the store's folder for
-  the cwd's workspace, never the home folders; the synced bucket and
-  `.system` read as before; the cache keys on the generation. Settings →
-  Skills says under its title that threads read skills from there.
-- The skill tools are deferred on Claude (found by tool search, like the
-  add-on management tools); the bridge lists them on every codex and Muse
-  thread.
-- Proof: `bun run script:e2e-skills-store` (two headless instances of the
-  built tree: the import, the seed, the views and their path text on both
-  hosts, a new skill, an atomic rewrite under a 2 ms reader, the card denied
-  then allowed, the slash menu, a removal, a restart that imports nothing
-  again), and `bun run script:e2e-skills-drivers -- --host box|mac` (one
-  headless instance with real CLIs: a probe skill answered by Claude under
-  its owned root by its bare name, a rewrite at the next turn, a warm
-  process adopted with no miss, Codex and Muse on an account and on the
-  CLI's own login; a missing CLI is missing proof, never a pass). Unit:
-  skills/{views,skillText,materialize,pointers,claudeRoots,codexSkills,
-  import,tools}, drivers/{claude-skills,codex-skills,warm}, museConfigDirs,
-  harness/museHost, skillStore, skillFiles, storeRpc, remote/storeSync.pair,
-  memorySync, harnessSet, harnessSync, commands, app-bridge,
-  sessions-addons, the renderer's toolBlock and SkillsPage. docs/box.md
-  "Skills: written out on every host".
+## Skills: one store, materialized per host
+docs/box.md "Skills: one store, materialized per host" is the long
+account; the plans are .temp-code/plan--OsNna4IcfKO.md (the store core)
+and .temp-code/plan-JBpcLz-eGMhp.md (the drivers).
+- **What one is.** A folder with SKILL.md at its root and the files beside
+  it (src/shared/contract-skills.ts), global or a workspace's, a workspace
+  row shadowing the global one (`visibleSkills`). `skillProblem`
+  (src/shared/skills.ts) refuses a SKILL.md whose frontmatter does not
+  name the skill, unclean or secret paths, anything under `<skill>/scripts/bin/`,
+  a native binary, past 512 files or 16 MiB, and the name `synced`. The
+  `skills` and `skill_files` tables (src/main/server/skillStore.ts) hold a
+  skill whole, written in one transaction; `skills.set` and `skills.remove`
+  carry `expectUpdatedAt`. One copy, on the box, through `StoreSync` as
+  for add-ons.
+- **Where it is written** (src/main/server/skills/). views.ts: each
+  provider (claude, codex, muse) has a `global` view, and a workspace has
+  a `ws-<id>` view only when what its threads get differs. materialize.ts
+  (`SkillMaterializer`) writes each view as a generation,
+  `<userData>/harness/<provider>/<view>@<12 hex>/skills/<name>/`, built
+  beside its place and renamed in, files 0444, an unchanged skill
+  hard-linked from the last generation; `gc()` at boot and hourly removes
+  a generation no view or scope pointer names. pointers.ts keeps one
+  stable path per (provider, scope),
+  `<userData>/harness/<provider>/scope/<global|ws-<id>>`, re-pointed by
+  rename. skillText.ts localizes the other host's paths in text files
+  through memory sync's path map. import.ts runs once, on the Mac: every
+  skill under the home folders into the store (`skills-imported:v1`).
+- **The app tools** (skills/tools.ts): `skill_list`, `skill_write`,
+  `skill_remove`, deferred on Claude and listed by the bridge on every
+  codex and Muse thread. A change to a skill a person or an import wrote
+  last asks a card; a denial or Away writes nothing; a skill that moved
+  since it was read is refused; the answer waits for the write-out.
+- **What each CLI reads.** Claude: `CLAUDE_CONFIG_DIR` is an owned dir per
+  scope, `<userData>/harness/claude-config/<scope>/` (skills/claudeRoots.ts),
+  its `skills/` one link per store skill through the scope pointer by its
+  bare name, `synced` the person's account-synced bucket, every other
+  entry a link into the person's dir; a routed Anthropic row holds
+  `CLAUDE_CODE_OAUTH_TOKEN=routed` for the gateway; a live CLI calls
+  `reloadSkills()` at the first send after its pointer moved; the warm key
+  splits by scope alone. It is not a plugin dir, since a plugin's skills
+  are always named `<plugin>:<skill>`. Codex (skills/codexSkills.ts): each
+  home SKILL.md disabled per process (`-c skills.config`), the scope's
+  generation as its extra root (`skills/extraRoots/set`), and `needsReboot`
+  when a home SKILL.md appeared since the spawn. Muse
+  (src/main/server/museConfigDirs.ts): a config dir per (account, scope)
+  whose `skills` links the pointer.
+- **The home folders** (~/.claude/skills, ~/.codex/skills,
+  ~/.agents/skills, ~/.config/muse/skills) are no live source after the
+  import: never synced, never moved, renamed or deleted. What still reads
+  them: the import itself; Codex's scan of the home SKILL.md paths at each
+  spawn and turn, to disable them; Claude's `skills/synced` bucket, linked into the
+  owned root; Codex's `.system`, which the slash menu still reads
+  (commands.ts `configureCommandSkills`, `readHome: false`). Settings →
+  Skills (src/renderer/src/surfaces/settings/skills/) says under its title
+  that threads read skills from there.
+- **The spike.** `bun run script:spike-config-dirs -- --host box|mac`
+  (scripts/spike-config-dirs.ts) runs one experiment per id against
+  loopback fakes; its answers are in .temp-code/findings/claude-config-dir.md.
+  Rerun it after a CLI update.
+- **Proofs.** `bun run script:e2e-skills-store` (two headless instances:
+  the import, the seed, the views and their path text, a rewrite under a
+  reader, the card, the slash menu, a restart) and `bun run
+  script:e2e-skills-drivers`: its `--gate` runs the real CLIs of one
+  headless instance against the spike's fakes (scripts/lib/spikeFakes.ts),
+  and `--host box|mac` runs real turns by hand. Both `--gate` modes are
+  publish rows.
 
+## Computer use: the Mac's apps from any thread
+docs/computer-protocol.md is the contract and the long account, by
+section; docs/box.md "Computer use: the Mac's apps from any thread" has
+why and the measured headline.
+- **The service.** `tc-computer`, a Swift binary in native/tc-computer,
+  one process per app instance. scripts/lib/tcComputerBuild.ts builds it
+  on macOS into resources/native/tc-computer beside a content stamp
+  (`TEMP_CODE_SKIP_NATIVE=1` skips it; `TEMP_CODE_REQUIRE_NATIVE=1`, which
+  release-publish.sh sets, makes a failure stop the publish, and the
+  publish checks the signed copy with `codesign --verify --strict`).
+  native/tc-computer/README.md lists the targets, the one private symbol
+  and what the service refuses.
+- **The contract.** The zod in src/shared/computer/ (protocol.ts,
+  observation.ts, tools.ts) is the one source; `bun run gen:swift-computer`
+  writes the Swift under each target's Generated/, and
+  `check:swift-computer` runs inside `bun run typecheck`. The parts:
+  Capture (§6, §7: one window, never the desktop; screenshots, the preview
+  stream, the pixel signal), Input (§14: the `ax`, `process` and `session`
+  tiers, the paste under the clipboard lock), the AX reader (§15: pure
+  `AXText`, tested on the box with `sh scripts/computer-text-test.sh`, and
+  the Mac's walk), the service shell (§16: the router, the locks, the
+  held-input ledger, the exit codes). `bun run computer:test` builds and
+  tests the package on the Mac.
+- **The host** (src/main/server/computer/, §17). On a Mac with a screen,
+  one `ComputerService` (binary.ts; respawned with backoff, down five
+  minutes after five crashes in two, shut down after ten idle minutes).
+  `ComputerSessions` (sessions.ts) keeps one session per thread: its calls
+  one at a time, the bound window, the element book, a live row from a
+  turn's first call to its settle. The tier verdicts live in
+  `computer.tiers.<bundleId>`, probed once per app. Stop on the Activity
+  row (`computer.stop`) ends computer use for the turn.
+- **The app tools.** The four `computer_*` tools on every Mac thread,
+  subagents too: deferred on Claude (computer/mcp.ts), through the bridge
+  on codex and Muse behind a per-thread token. `offersComputerTools` and
+  `computerMechanicsFor` (apptools.ts) decide who gets them and
+  COMPUTER_MECHANICS (computer/prompts.ts); a cursor thread gets neither.
+  The words come in two shapes by the model's maker
+  (src/shared/computer/descriptions.ts, §19).
+- **Confirmations** (§19, src/shared/computer/policy.ts). In safe and
+  edits every act that sends input asks one card naming the app, the
+  window and each action; reads never ask. Full access asks only for an
+  act the model flagged (`confirm: { kind, what }`) and before text goes
+  into a password field. Away denies. Every call's app is pinned to a pid
+  first (`TargetResolver`), and TempCode itself and the system's password
+  and Touch ID prompts are refused (`refused_app`). Service errors read
+  through `errorLine` (src/shared/computer/errorWords.ts).
+- **The session tier** (§20, computer/schedule.ts,
+  src/shared/computer/scheduleRules.ts) takes the person's pointer and
+  keyboard only while they are away: no input for `computer.sessionIdleMs`
+  (120 s), or the Away switch and 10 s of quiet; locked or asleep refuses.
+  A held step says "Waiting for the Mac to be free" and asks one card with
+  Run now and Skip (at once in safe and edits, after 3 minutes in full
+  access). One session call at a time per host; the person's app and
+  pointer go back after it. A paste waits out the person's copy
+  (`RECENT_COPY_MS`). main feeds it `PersonIdle` (src/main/personIdle.ts).
+- **What the person sees** (§8 "What the person sees"). A Computer row per
+  live session in the right panel's Activity section
+  (src/renderer/src/lib/computerSessions.ts, the tier in
+  `COMPUTER_TIER_WORDS`), opening on the Mac's desktop onto the live
+  preview (computer/preview.ts at 4 fps, the `local` RPCs
+  `computer.preview.start/ack/stop`;
+  src/renderer/src/surfaces/threads/ComputerPreview.tsx); a picture the
+  model asked for as its own transcript row
+  (src/renderer/src/surfaces/transcript/ComputerShotRow.tsx); and, while
+  the session tier holds the Mac, the banner "TempCode is using your Mac"
+  (computer/hold.ts `SessionHolds`, src/main/computerBanner.ts), with "Esc
+  to stop" once `escape.watch` answered. Claude and Muse get a call's
+  pictures as image parts, codex too (`codexComputerImages()` in
+  drivers/codex.ts).
+- **Box threads** drive the Mac's apps through the Mac bridge: the
+  `mac.computer` call, run on the Mac by remote/macComputer.ts and queued
+  per thread by computer/bridge.ts on the box, while the host's switch
+  `macBridge.computer.<envId>` is on (off by default), under
+  `macBridge.maxComputer.<envId>` (2) live sessions. §18 and docs/box.md
+  "Computer use from a box thread".
+- **Seams.** `TEMP_CODE_COMPUTER=0` (off; `=1` serves a headless Mac
+  instance), `TEMP_CODE_COMPUTER_BIN` (the binary),
+  `TEMP_CODE_COMPUTER_TRACE=1` (every frame), `TEMP_CODE_COMPUTER_PIN`
+  ("TextEdit=<pid>", isolated instances only), `TEMP_CODE_SKIP_NATIVE`,
+  `TEMP_CODE_REQUIRE_NATIVE`, `TC_PROOF_UNGATED=1` (a Mac proof without its
+  idle wait, for a run the person sits beside or one on TC Probe alone).
+- **The proofs.** Every one needs an unlocked, awake screen, and only one
+  runs on the Mac at a time (scripts/lib/proofOrder.ts: a proof waits for
+  an older one, judged by its `bun run` wrapper). The publish gate's rows,
+  unattended on TC Probe (scripts/mac/computer-probe-app.swift: its window
+  is never key and takes no keystrokes): `computer-swift`, `bun run
+  script:e2e-tc-computer -- --gate`, `bun run script:e2e-computer-bridge
+  -- --gate` (both halves on the Mac, the box half seamed linux) and `bun
+  run script:e2e-computer-preview -- --gate` (the Escape leg skipped), then
+  `computer-bench`. The hand runs, each with what it needs:
+  `script:e2e-tc-computer` whole (TextEdit and the paste: 5 idle minutes),
+  `script:e2e-computer` (real Sonnet turns), `script:e2e-computer-bridge`
+  over SSH (the real pair), `script:e2e-computer-ax` and
+  `script:e2e-computer-input` (the person away), `script:e2e-computer-capture`
+  (Screen Recording), `script:e2e-computer-schedule` (the session tier),
+  `script:e2e-computer-preview` whole (it takes Escape for two seconds),
+  `script:e2e-computer-images` and `script:e2e-computer-ui` (real model
+  turns) and `script:compare-computer-words` (one to two hours of models).
+  docs/release-gate.md "Hand runs" has each one's host, needs and last
+  time.
+- **The bench** (§21). `bun run script:e2e-computer-bench` runs seven real
+  desktop tasks on Opus 5.5, GPT-6.1 Sol and Muse Wonder 1.0 side by side
+  in the background tiers, each end state read through the AX tree, the
+  files or `defaults`; `BENCH_RULE` (scripts/lib/computerBench.ts) judges
+  it against `<git-dir>/temp-code-gate/computer-bench/baseline.json`.
+  docs/release-gate.md "The computer bench".
+- **Fixtures.** src/main/server/computer/fixtures/ (its README): wire
+  frames, observation texts and app trees recorded from scratch content
+  only (scripts/mac/record-computer-fixtures.sh), held to their schemas
+  and the privacy guard by computerFixtures.test.ts.
 ## Background work and watching: a structured wait on the session row
 - The claude driver keeps every live background task as an item
   (`BackgroundTaskSchema` in src/shared/events.ts: id, the model's label,
@@ -3579,346 +3500,6 @@ proof and the sizing rules; the pieces, by name:
   approval decided on the card, then everything archived and revoked. Never
   put a pairing link or a key in a file or a log; the scripts scrub their
   output.
-
-## Computer use: the tc-computer contract
-- docs/computer-protocol.md is the contract every computer-use thread builds
-  to: the stdio JSON-RPC wire between the host and `tc-computer` (a Swift
-  service on the Mac, one per app instance), the observation (the AX tree as
-  indexed text, its diff and budget), the input tiers `ax`, `process`,
-  `session` with the clipboard lock, the smart wait, capture, and the four
-  `computer_*` tools whose verbs and parameter names are Anthropic's native
-  computer-use set with `element` refs beside `coordinate`. In code: the
-  contract, Capture, Input, the AX reader and the service shell over them,
-  the TypeScript host and what the person sees (below).
-- What the person sees (docs/computer-protocol.md "What the person sees",
-  plan .temp-code/plan-uYrrhDzuBc9f.md): one Computer row per live session
-  in the right panel's Activity section (`lib/computerSessions.ts` keeps every
-  host's rows from `computer.sessions` and the `computer` push; the window in
-  its app, the tier in `COMPUTER_TIER_WORDS` from src/shared/statusWords.ts,
-  never ax/process/session, the age, Stop as `computer.stop` on the thread's
-  host). On the Mac's desktop it opens onto the live preview: `local` RPCs
-  `computer.preview.start/ack/stop` and the `computer-frame`,
-  `computer-click`, `computer-preview` pushes to the asking socket alone,
-  served by `src/main/server/computer/preview.ts` (one service stream per
-  thread at 4 fps, `previewGate.ts`: one frame in flight per watcher, none
-  until its start answer is out; an end during the start rides in the answer
-  as `ended`) and drawn by `surfaces/threads/ComputerPreview.tsx` (lazy
-  chunk, frames through `createImageBitmap`, acked after the draw, the click
-  ring `CLICK_MARK`). A box thread driving this Mac is previewed by the
-  bridge's `macComputerKey`. Calls read in plain words (`computerPhrase` in
-  src/shared/computer/words.ts: live from the host's `running.words`, which
-  name the element from the thread's book, settled from the result's step
-  lines; `parseStepLine`/`parseShotLine` in tools.ts); a completed call with
-  a picture the model asked for stands as its own row
-  (`surfaces/computerShots.ts`, `transcript/ComputerShotRow.tsx`, the
-  picture through `fs.media`, whose roots now include the userData
-  attachments: `serverMediaRoots`). The Mac's banner while the session tier
-  holds the session (`computer/hold.ts` `SessionHolds`, the main process's
-  `src/main/computerBanner.ts` through `computerBannerHooks`, never Electron
-  in server code): "TempCode is using your Mac", with "Esc to stop" only
-  once `escape.watch` (P1) answered; `escape/pressed` stops computer use for
-  the turn. The scheduler's slot is not wired yet: `slot.onHolder(holds.holder)`
-  goes where index.ts says once it lands; until then only
-  `computer.proofHold` (local, `TEMP_CODE_E2E_STATUS=1` only) shows the
-  banner. The fake service (`fakeService.mjs`) streams frames, sends
-  `capture/click` (P2) and takes `FAKE_SHOT_FILE` (or `FAKE_SHOT_FILES=a,b`
-  in order, the last repeating), `FAKE_STREAM_END_MS`,
-  `FAKE_ESCAPE_PRESS_MS`, `FAKE_ESCAPE_UNSUPPORTED` for the tests.
-- The preview's Mac proofs drive TC Probe launched with `--tick` (a label
-  counting ten times a second, so a capture stream, which sends only on a
-  change, keeps sending; SIGUSR1 pauses and resumes it;
-  scripts/lib/tcProbeApp.ts builds and launches it).
-  `bun run script:e2e-computer-preview` (esbuild → node): the real
-  tc-computer under `ComputerService`, `ComputerSessions`, `ComputerPreviews`
-  and `SessionHolds` with a fake viewer: the target after one observe, 4 ± 1
-  fps over 5 s, the stop, an `ax` click's `computer-click` inside Ping's frame
-  (again for a click that changes nothing on a still window, with no frame
-  from the service after it), `escape.watch` on, its lease and
-  off read from the trace and `CGGetEventTapList`, a hold's banner hooks;
-  report under /tmp/tc-preview-proof. `bun run script:e2e-computer-ui`
-  (`--skip-build` reuses out/): an isolated preview instance on port 9241
-  with `TEMP_CODE_COMPUTER_PIN`, a sonnet thread in full access, the Computer
-  row, ≥ 3 frames and a mark, the screenshot row, captures dark and light,
-  then `computer.proofHold` and the banner's window (never focused, the
-  front app unchanged); its cleanup ends only the instance's own process
-  group. Both need an unlocked, awake screen: `ScreenWatch` reads it before
-  each launch and every second, and a lock or a dark display stops the run
-  as inconclusive and cleans up. Neither has run yet: on 2026-11-09 they
-  read "not run: the Mac was locked, the person away"
-  (docs/computer-protocol.md "The live proofs on the Mac").
-- Pictures to each model: claude and Muse get a computer call's pictures as
-  image parts; codex too (`codexComputerImages()` in drivers/codex.ts, its
-  measured default `parts`; `TEMP_CODE_CODEX_COMPUTER_IMAGES=parts|steer|view`
-  only under NODE_ENV=test or TEMP_CODE_E2E_STATUS=1, `steer` sending the
-  shots as `localImage` into the running turn with its echo hidden). Codex's
-  `view_image` calls are transcript rows now (`imageView` items). The proof is
-  `bun run script:e2e-computer-images` (scripts/e2e-computer-images.ts,
-  in-process with the electron stub over the fake service: a real thread in
-  full access reads six random letters off a picture, `scripts/lib/codeImage.ts`,
-  and fails if it opened the file by its path; `--harness muse`); reports
-  under `.temp-code/computer-images/<host>.json`, the table in
-  docs/computer-protocol.md §9 (the box, 2026-11-08: claude 2.1.303 parts and
-  codex 0.163.0 parts, steer and view all passed both cases).
-- The zod in src/shared/computer/ is the one source: `protocol.ts` (every
-  method's params and result, the errors, the notifications, every number:
-  waits, budgets, caps, lock paths), `observation.ts` (the grammar's tables,
-  `parseKeyCombo`, and a strict `parseObservation` with `formatObservation`
-  as its inverse) and `tools.ts` (the tool inputs as flat JSON Schemas, the
-  action table, the bridge payloads, the tier verdict, the step lines). `bun
-  run gen:swift-computer` (scripts/gen-swift-computer.ts, on the iOS
-  generator with `COMPUTER_METHODS` as its method source) writes
-  native/tc-computer/Sources/ComputerProtocol/Generated/, with every default
-  in `ComputerDefaults`; never edit it: `check:swift-computer` is inside
-  `typecheck`.
-- native/tc-computer declares every target (ComputerProtocol, ComputerCore's
-  Seams.swift, AXReader, Input, Capture, ComputerServiceKit, ComputerService,
-  the executable). `bun run computer:test` is the gate's `computer-swift`
-  step (Mac). The whole package builds only on the Mac (Input and Capture
-  import Apple frameworks); on the box, with the Linux toolchain under
-  ~/toolchains, `sh scripts/computer-text-test.sh` tests ComputerProtocol,
-  ComputerServiceKit and AXText from a scratch package linked to the checkout.
-- The service shell (native/tc-computer/README.md, docs/computer-protocol.md
-  §16): `tc-computer serve` is one process per app instance; the main thread
-  runs AppKit and never blocks, a stdin thread feeds the `Router` (32 requests
-  in flight, a slot freed only once its answer is written, 256 queued), one
-  writer thread drains the two-lane `Outbox`, every AX call runs on a worker
-  per session × pid, and actions take a fair per-app slot (5 s, `app_busy`).
-  The smart wait (`WaitRule`) counts from Input's `lastInputAt`; pixels count
-  only while the last read was thin or nothing AX moved, and a busy indicator
-  holds the wait. The Mac-wide clipboard and session locks are `flock`s under
-  the Darwin user temp dir, taken by Input through the shell's `MacLock`
-  adapters; `clipboard.state` reports foreign copies from the change count
-  alone. `<dataDir>/held.json` is the held-input crash ledger, released at the
-  next `initialize`. Exit codes: 0 clean, 75 restart for a new Screen
-  Recording grant, 70 fault or 64 MiB unread, 64 usage, 69 old macOS.
-  `TEMP_CODE_COMPUTER_TRACE=1` traces frames, locks and waits on stderr.
-  `Modules.live()` joins the reader (`AXReaders`, `AppWindows`), Input and
-  Capture. Private symbols go through `ComputerCore/PrivateSymbol.swift`
-  alone, with a public fallback and a forced-miss test (the lookup's
-  `missing:`, or `TC_COMPUTER_PRIVATE_MISS` for a process), listed in the
-  README; scripts/tc-computer-guard.test.ts holds that and keeps `print(` and
-  stdout writes out of every product target.
-- Build: scripts/lib/tcComputerBuild.ts (the `tcComputer()` plugin) builds
-  only the `tc-computer` product on macOS into resources/native/tc-computer
-  beside a content stamp (a match skips the build; `TEMP_CODE_SKIP_NATIVE=1`
-  skips it; dev builds in the background and only warns);
-  `TEMP_CODE_REQUIRE_NATIVE=1`, set by release-publish.sh, makes a failure
-  stop the publish, which also checks the signed app's tc-computer with
-  `codesign --verify --strict`. electron-builder signs it under
-  `mac.binaries`. Proof: `bun run script:e2e-tc-computer` (macOS only;
-  TextEdit and an inert scratch app in the background, never activated, `ax`
-  and `process` tiers only, the paste under the clipboard lock and skipped
-  after a recent copy; the apps start only past 5 minutes with no input and
-  an unlocked screen with no screen saver, are hidden and killed the moment
-  input resumes and tried again at the next gap, up to 90 minutes, else "not
-  run: the person was at the Mac"; the proof's own posted events count as
-  its own only inside its posting calls plus half a second,
-  scripts/lib/proofGate.ts; `TC_PROOF_UNGATED=1` drops the idle wait for a
-  run the person sits beside).
-- The host is src/main/server/computer/ (docs/computer-protocol.md §17): on
-  a Mac with a screen, index.ts builds one `ComputerService` (binary.ts asks
-  for the binary at every spawn: `TEMP_CODE_COMPUTER_BIN`, else
-  resources/native/tc-computer; `TEMP_CODE_COMPUTER=0` turns it off; the box
-  never builds one), spawned on the first call, respawned with backoff, down
-  five minutes after five crashes in two, pinged while a call runs long, shut
-  down after ten idle minutes; `TEMP_CODE_COMPUTER_TRACE=1` logs every frame.
-  `ComputerSessions` keeps one session per thread: its calls one at a time,
-  the bound window, the element book, the epoch, `needsFull`, a live row from
-  the first call of a turn to its settle, the idle close at ten minutes; the
-  tier verdicts in `computer.tiers.<bundleId>` with the probe once per app; the
-  session tier through the tier scheduler below (`no-scheduler` without it,
-  headless). Every Mac thread, subagents included, gets
-  the four tools on its `app` server: deferred behind tool search on Claude
-  (computer/mcp.ts), listed by the bridge for codex (`images: none`) and Muse
-  (`parts`) behind a per-thread token of purpose `computer`. In `safe` and
-  `edits` every act or batch that sends input asks one card naming the app,
-  the window and each action (src/shared/computer/words.ts); reads never ask,
-  full access asks only for a flagged act or a password field (below). Stop on the Activity row (`computer.stop`) ends
-  computer use for the turn; `computer.sessions` and the `computer` push carry
-  the service state and the live rows. Proofs: the unit tests over
-  computer/fakeService.mjs on the box, and `bun run script:e2e-computer` on the
-  Mac (real claude threads on TC Probe, the proof's own inert scratch app,
-  pinned by pid; ax and process tiers only; a try only after 5 minutes with
-  no input on an unlocked, awake screen, ended and voided the moment the
-  person touches the Mac or it locks or goes dark; `TC_PROOF_UNGATED=1`
-  drops the idle wait and the abort on input, as the shell's proof does;
-  the person's app and pointer held still; one computer proof on the Mac at
-  a time).
-- The model's words (docs/computer-protocol.md §19): the four tools'
-  descriptions and every field's in two word shapes, Anthropic's and cua's
-  (src/shared/computer/descriptions.ts; tools.ts builds the described schemas
-  and `computerToolSpecs(shape, tools)`), COMPUTER_MECHANICS
-  (src/main/server/computer/prompts.ts: about 700 tokens, the tier paragraph
-  `COMPUTER_TIERS` in it) and `wordsFor(session)` by the model's maker
-  (`WORDS_BY_FAMILY`, `TOOLS_BY_FAMILY`). `offersComputerTools(session)` and
-  `computerMechanicsFor(session)` (apptools.ts) decide whether a thread gets
-  the tools and the section, which it reads once: claude through
-  `mechanicsFor` or the driver's fallback for a subagent, codex and Muse in
-  their first message; a cursor thread gets neither. The model flags an act
-  the person approves first with `confirm: { kind, what }`
-  (src/shared/computer/policy.ts); the host then asks in every mode, full
-  access included, and Away denies it. Whatever the model flagged, the host
-  asks before text goes into a password field (the card never shows the
-  text), refuses text into an app the thread has not read and a batch's text
-  step after another input without an element, pins every call's app to a
-  pid before any request (`TargetResolver` in computer/policy.ts) and refuses
-  TempCode itself and the system's password and Touch ID prompts
-  (`refused_app`). Every service error reads through `errorLine`
-  (src/shared/computer/errorWords.ts). The comparison that picked the shipped
-  words is `bun run script:compare-computer-words` (the Mac only; tasks in
-  scripts/lib/computerTasks.ts on fixtures/page/bench.html, the rule in
-  scripts/lib/computerWordsJudge.ts).
-- Tier scheduling (computer/schedule.ts, the rules in
-  src/shared/computer/scheduleRules.ts; docs/computer-protocol.md §20): the
-  `session` tier (the person's own pointer and keyboard) runs only while the
-  person is away: no input for `computer.sessionIdleMs` (default 120 s, read at
-  every check, no Settings row yet) or the Away switch with 10 s of quiet;
-  locked or asleep refuses. A held step says "Waiting for the Mac to be free"
-  (`SessionRegistry.setToolHold`, the computer row) and in full access asks
-  after 3 minutes, in safe and edits at once, with one `computer_session` card
-  whose `approval-request` carries `choices: 'run-skip'` (Run now leases the
-  tier until the person's next input; a Skip holds for that app this turn). One
-  session call at a time per host (`SessionSlot`); after every call that
-  touched the session the person's app and pointer go back
-  (`input.restoreSession`, `{ afterInterrupt: true }` on the service's
-  `session/interrupted`, before the reply). main builds `PersonIdle`
-  (src/main/personIdle.ts) over powerMonitor for the scheduler and
-  `AttentionWatcher`: a session step's own input, by the span its
-  `SessionChange` reports, is not the person's. A paste waits out the person's
-  copy: every acting call carries `pasteQuietMs` (`RECENT_COPY_MS`, 5 s), the
-  service fails a paste inside it `recent-copy` untouched, and the host waits
-  for a quiet `clipboard.state`, at most 10 s (`clipboard_recent`). Proofs:
-  schedule.test.ts and run.test.ts's tier scheduling suite on the box, `bun run
-  script:e2e-computer-schedule` on the Mac (two scratch TextEdits, a typist for
-  the person; no idle gate, one computer proof at a time, a sentinel tap that
-  turns a leg the real person touched inconclusive).
-- The task benchmark (docs/computer-protocol.md §21): `bun run
-  script:e2e-computer-bench` runs seven real desktop tasks (TextEdit, Chrome
-  on bench.html, a dev instance's Settings, System Settings' one switch, a
-  save dialog, which needs the session tier and runs only by hand with
-  `--session`) on Opus 5.5, GPT-6.1 Sol and Muse Wonder 1.0 side by side,
-  one real thread per task, in the background tiers alone (the session tier
-  refused; `--session` hands it to the host's own tier scheduler), each end state
-  read through the AX tree, the files or `defaults` (scripts/lib/benchChecks.ts).
-  The rig both it and the comparison run on is scripts/lib/computerRig.ts:
-  the server in process, scratch apps pinned per lane (resolveApp reads the
-  calling thread's lane through AsyncLocalStorage), every
-  `ComputerSessions.run` recorded with its host time. `BENCH_RULE`
-  (scripts/lib/computerBench.ts) judges the end state, the median computer
-  calls and the median host ms per call against
-  `<git-dir>/temp-code-gate/computer-bench/baseline.json` (a `--gate` run
-  that finds none passes with "no baseline, first run writes it" and writes
-  the rows of the tasks that passed; then a green run adds rows,
-  `--rebaseline` replaces them), a breach rerun twice
-  and judged two of three. Flags: `--gate`, `--report-only`, `--runs n`,
-  `--models`, `--tasks`, `--judge <report.json>` (any host), `--reference
-  codex` (Codex's own computer use, by hand); `TC_BENCH_UNGATED=1` drops the
-  idle waits by the person's leave, a locked or dark screen still holding a
-  launch. The gate row is
-  `computer-bench`; docs/release-gate.md "The computer bench".
-- Fixtures: src/main/server/computer/fixtures/ (its README): hand-written
-  wire frames for every method, error kind and notification, observation
-  texts for every grammar case, `page/form.html`, and `apps/` trees and
-  screenshots recorded on the Mac from scratch content only
-  (scripts/mac/record-computer-fixtures.sh). computerFixtures.test.ts holds
-  them to their schemas and runs the privacy guard (no `/Users/` but
-  `/Users/me`, no email outside example.com, the `TC_FIXTURE_DENY` list).
-- Capture (native/tc-computer/Sources/Capture/, `ScreenCaptureKitCapture`;
-  docs/computer-protocol.md §6 and §7) does one window, never the desktop,
-  and makes no ScreenCaptureKit call while `CGPreflightScreenCaptureAccess`
-  is false (`permission_missing`; prompting is the host's). Screenshots:
-  live bounds by `CGWindowListCreateDescriptionFromArray` (a minimized
-  window too), shareable windows on every Space, no shadow margin, a zoom
-  captured whole and cropped, written beside the shell's stem
-  (`ShotNaming`, `ShotCounter`) and renamed on with `RENAME_EXCL`, so no
-  shot is ever replaced; with no named format JPEG 0.85, and PNG too when
-  the image is flat (`flatPNG` 0.85), kept when no larger. The preview
-  stream sends a sample only when its pixel fingerprint changed (a covered
-  window's samples are all `complete` and wholly dirty), two frames out at
-  most, the newest held, capture stopped after 5 s unacked; frames stay
-  inline (busiest p95 225 KiB, 6.7 ms). The pixel watch (`PixelWatching`,
-  one 256 px 10 fps stream per window, 30 s linger) feeds `ChangeJudge`:
-  dirty cells confirmed by luma, small changes ignored, ambient cells
-  (spinners, carets) quiet after two frames; a counting frame restarts the
-  smart wait's quiet clock. `CoordinateMapping` (ComputerCore) maps a
-  session pixel to the screen at its centre. Every number is
-  `CaptureTuning`, the wire's read from `ComputerDefaults`
-  (src/shared/computer/captureParity.test.ts). Proof on the Mac: `bash
-  scripts/mac/proof-computer-capture.sh` (capture-proof, never shipped:
-  scenes 0–19 on its own inert windows below `.normal` and a second process
-  of itself, SkyLight only in its PrivateSpaces.swift, which a unit test
-  keeps out of every other target).
-- Input (native/tc-computer/Sources/Input/, docs/computer-protocol.md §14)
-  performs the actions on one window at the tier it reports: `ax` (AX actions
-  and values), `process` (CGEvents to the pid with the window fields 91/92;
-  keys only to a window that is key in its app, else `key_window_unavailable`
-  with nothing posted) and `session` (AX activation, the real pointer and
-  keyboard under the Mac-wide session lock, stopped by the person's first
-  unmarked event; every posted event carries `eventSourceUserData`
-  0x74636370). A session step reports its `SessionChange`;
-  `input.restoreSession` puts the app and the pointer back unless the person
-  moved since. `paste { text, format: text | markdown | html }` runs under
-  the clipboard lock and restores the person's clipboard on every exit.
-  `input.probe` tries scroll, key and click at `process`, each put back
-  through AX. Most of Input is pure and generic over the system it touches;
-  its suites run on the box from a scratch package that links the sources
-  (the Linux toolchain ships Swift Testing) and on the Mac with `bun run
-  computer:test`. The live proof is `scripts/mac/input-proof.sh [--session]
-  [--tempcode]` on the Mac (tc-input-proof, never shipped): nothing launches
-  until the Mac has had 2 minutes with no input, tier 1 and 2 legs must leave
-  the frontmost app and the pointer where they were, the session leg acts only
-  while the person has been quiet 2 minutes, checked before every step, and
-  cleanup leaves no file, prompt or autosave. Measured (§14.8): background
-  TextEdit and Chrome take keys and right clicks at `process` but ignore left
-  clicks, drags and the wheel, and TextEdit Command combos and paste, which
-  the probe reports as `ignored` for the host's tier verdict to learn; such a
-  proof leg is a finding, never a failure.
-- The AX reader (docs/computer-protocol.md §15, plan
-  .temp-code/plan-8sO1AAx_glmS.md): `AXText` holds every rule that needs no
-  live element (keep, facts, the viewport cut, the index book with its
-  rebuilt-element match: a DOM id, else a name unique among the parent's
-  children in both reads, else name and place; folds, `TextBudget`, rendering, the diff,
-  `Builder.build`) and the tables generated from observation.ts
-  (`Sources/AXText/Generated/ObservationTables.swift`, by `gen:swift-computer`),
-  so the box tests it (`scripts/computer-text-test.sh`); `AXReader` is the Mac's walk
-  (three stages per node), handles, windows (`_AXUIElementGetWindow`, the one
-  private symbol, looked up through `PrivateSymbol` with the window-list match
-  as its fallback; the package README lists it), `AXManualAccessibility`, the change monitor, `AppReader`
-  and `AXReaders`; `tc-ax` is the proof's dev tool (`replay <tree.json>`
-  times the builder anywhere). Goldens: every recorded state's
-  `observation.txt`, the `diff.txt` from the state before it and
-  `chrome/form/truncated.txt`, rewritten with `TC_AX_GOLDEN=update sh
-  scripts/computer-text-test.sh --filter GoldenTests` (or `swift test` on the
-  Mac) and read before each commit; the grammar test parses
-  all three. The live proof is `bash scripts/mac/ax-reader-proof.sh` on the
-  Mac from a scratch clone: scratch apps only, every window read in the
-  background and never activated; a launch raises Chrome, the dev window and
-  IntelliJ whatever the flag, so each starts only past five minutes with no
-  input, is aborted when input resumes, and waits up to 90 minutes ("not run:
-  the person was at the Mac" otherwise); IntelliJ only with
-  `TC_AX_INTELLIJ=1`. Targets, p95 warm: TextEdit 60 ms, Chrome form 250 ms,
-  a heavy page 600 ms, IntelliJ 500 ms, a dev instance 400 ms, the signature
-  10 ms.
-
-- Computer use through the Mac bridge (docs/computer-protocol.md §18,
-  docs/box.md "Computer use from a box thread"): a box thread whose bridge
-  names a Mac gets the four tools while that Mac offers `computer` in its
-  `peer.register` (the host's switch `macBridge.computer.<envId>`, off by
-  default; the box keeps the offer as `macBridge.computerOffer.<envId>`).
-  Each call is `mac.computer` (`contract-maccomputer.ts`), run on the Mac by
-  `remote/macComputer.ts` in a session keyed `macComputerKey(box, thread)`: the
-  policy and switch checked, Away refused, a live session a running request of
-  kind `computer` on the load guard under `macBridge.maxComputer.<envId>`
-  (default 2), a card of kind `computer` in safe and edits, the row back as
-  `peer.progress`, the pictures read back. `mac.computerEnd` settles, stops or
-  ends it. The box's `computer/bridge.ts` queues the calls per thread, lands
-  the pictures under the thread, mirrors the row on its own `computer` push
-  (`macPeer`, `macName`, `asking`) and records a `computer` ledger row; the
-  renderer's `lib/computerSessions.ts` keeps each host's rows and
-  `chrome/ComputerAskToasts.tsx` names the Mac while a card waits there. Seam:
-  `TEMP_CODE_COMPUTER_PIN="TextEdit=<pid>"` (isolated instances only) pins an
-  app query to a pid; a headless Mac instance serves computer use with
-  `TEMP_CODE_COMPUTER=1`. Proof: `bun run script:e2e-computer-bridge`.
 
 ## The menu bar: one table
 src/shared/menuTree.ts is the menu as data, read by main (src/main/menu.ts),
