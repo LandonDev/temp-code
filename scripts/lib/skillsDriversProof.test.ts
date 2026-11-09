@@ -231,3 +231,12 @@ describe('the rig under two stop signals', () => {
     expect(exits[0]).toBe(130)
   })
 })
+
+it('removes its handlers when the run ends on its own', () => {
+  const events = new EventEmitter()
+  const unhandle = stopOnSignals(events, async () => {}, () => {})
+  expect(events.listenerCount('SIGINT')).toBe(1)
+  unhandle()
+  expect(events.listenerCount('SIGINT')).toBe(0)
+  expect(events.listenerCount('SIGTERM')).toBe(0)
+})

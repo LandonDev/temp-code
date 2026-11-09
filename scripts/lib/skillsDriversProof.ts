@@ -157,14 +157,19 @@ export function isHousekeepingConnect(authority: string, argv: readonly string[]
  * step the runtime child shares the step's process group, so a group SIGTERM
  * and the Bun wrapper's forwarded one both arrive, and a one-shot handler
  * would leave the second to kill the rig mid-cleanup with its instances
- * still running. `cleanup` must be idempotent; `exit` runs once it settles.
+ * still running. `cleanup` must be idempotent; `exit` runs once it settles; the returned call removes the handlers.
  */
 export function stopOnSignals(
-  events: Pick<NodeJS.EventEmitter, 'on'>,
+  events: Pick<NodeJS.EventEmitter, 'on' | 'removeListener'>,
   cleanup: () => Promise<void>,
   exit: (code: number) => void
-): void {
+): () => void {
   const onSignal = (): void => void cleanup().then(() => exit(130))
   events.on('SIGINT', onSignal)
   events.on('SIGTERM', onSignal)
+  // The run ended on its own: the handlers go with it.
+  return () => {
+    events.removeListener('SIGINT', onSignal)
+    events.removeListener('SIGTERM', onSignal)
+  }
 }

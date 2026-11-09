@@ -381,7 +381,7 @@ export async function runSkillsDriversGate(repo: string): Promise<number> {
       close(router)
       close(proxy)
     })())
-  stopOnSignals(process, cleanup, (code) => process.exit(code))
+  const unhandleSignals = stopOnSignals(process, cleanup, (code) => process.exit(code))
   // A synchronous last resort covers an unexpected process exit as well.
   const onExit = (): void => {
     for (const p of instanceProcesses(data)) {
@@ -844,8 +844,7 @@ export async function runSkillsDriversGate(repo: string): Promise<number> {
     check('gate completed', false, e instanceof Error ? e.message : String(e))
   } finally {
     await cleanup()
-    process.removeListener('SIGINT', onSignal)
-    process.removeListener('SIGTERM', onSignal)
+    unhandleSignals()
     process.removeListener('exit', onExit)
   }
   const missingClaude = claudeJudgeFailure(judges, claudeNotJudgedWhy)
