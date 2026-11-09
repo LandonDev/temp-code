@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { computerHarness, type ComputerHarness } from '../src/main/server/computer/runHarness'
 import { stepsOf } from './lib/computerBench'
-import { DEFAULT_LANE, LanePins, RIG_QUERIES, recordCalls, scratchArgs } from './lib/computerRig'
+import { DEFAULT_LANE, LanePins, RIG_QUERIES, recordCalls, scratchArgs, taskReader } from './lib/computerRig'
+import { StateGetParamsSchema } from '../src/shared/computer/protocol'
 
 const harnesses: ComputerHarness[] = []
 afterEach(async () => {
@@ -83,5 +84,26 @@ describe('recordCalls', () => {
     const o = await h.sessions.run({ threadId: 't1' }, 'computer_act', { app: 'TextEdit', action: 'left_click', element: 999 })
     expect(o.isError).toBe(true)
     expect(rec.calls('t1')).toEqual([expect.objectContaining({ tool: 'computer_act', isError: true })])
+  })
+})
+
+describe('taskReader', () => {
+  it('reads an element with the epoch of the full read that numbered it', async () => {
+    const asked: Record<string, unknown>[] = []
+    const proof = async (_m: 'state.get', params: Record<string, unknown>) => {
+      // the wire's own rule: an element read without its epoch is refused
+      StateGetParamsSchema.parse(params)
+      asked.push(params)
+      return { epoch: 'ep-7', text: 'app "TextEdit" · window "n0.rtf" · 800×600\n[1] window "n0.rtf"\n  [3] text area = "x"' }
+    }
+    const r = taskReader(proof as never, () => 42, 'bench-proof', async () => ({ code: 0, stdout: '', stderr: '' }))
+    await expect(r.element('TextEdit', 'n0', 3)).rejects.toThrow(/read TextEdit before/)
+    await r.read('TextEdit', 'n0')
+    await r.element('TextEdit', 'n0', 3)
+    expect(asked.map((p) => [p.mode, p.element, p.epoch])).toEqual([
+      ['full', undefined, undefined],
+      [undefined, 3, 'ep-7']
+    ])
+    expect(asked[1]).toMatchObject({ session: 'bench-proof', app: { pid: 42 }, window: { title: 'n0' } })
   })
 })

@@ -161,6 +161,33 @@ export function recordCalls(sessions: ComputerSessions, pins: LanePins, now: () 
   return { calls: (id) => [...(byThread.get(id) ?? [])], clear: (id) => void byThread.delete(id) }
 }
 
+/**
+ * The end state through the rig's own service session: a full read, and one
+ * element's subtree, which the wire takes only with the epoch of the read
+ * that numbered it (the last full read of that app).
+ */
+export function taskReader(
+  proof: (method: 'state.get', params: ComputerParams<'state.get'>) => Promise<{ epoch: string; text: string }>,
+  pidOf: (app: TaskApp) => number,
+  session: string,
+  run: TaskReader['exec']
+): TaskReader {
+  const epochs = new Map<TaskApp, string>()
+  return {
+    read: async (app, window): Promise<ParsedObservation> => {
+      const obs = await proof('state.get', { session, app: { pid: pidOf(app) }, window: { title: window }, mode: 'full' })
+      epochs.set(app, obs.epoch)
+      return parseObservation(obs.text)
+    },
+    element: async (app, window, index): Promise<ParsedObservation> => {
+      const epoch = epochs.get(app)
+      if (epoch === undefined) throw new Error(`read ${app} before one of its elements`)
+      return parseObservation((await proof('state.get', { session, app: { pid: pidOf(app) }, window: { title: window }, element: index, epoch })).text)
+    },
+    exec: run
+  }
+}
+
 // ── the Mac, read from outside ──────────────────────────────────────────
 
 export interface MacReads {
@@ -300,13 +327,7 @@ export async function startRig(opts: { root: string; work: string; gate: Session
     if (!pid) throw new Error(`no scratch ${app} in lane ${lane}`)
     return pid
   }
-  const reader = (lane: string): TaskReader => ({
-    read: async (app, window): Promise<ParsedObservation> =>
-      parseObservation((await proof('state.get', { session: opts.proofSession, app: { pid: pidFor(lane, app) }, window: { title: window }, mode: 'full' })).text),
-    element: async (app, window, index): Promise<ParsedObservation> =>
-      parseObservation((await proof('state.get', { session: opts.proofSession, app: { pid: pidFor(lane, app) }, window: { title: window }, element: index })).text),
-    exec
-  })
+  const reader = (lane: string): TaskReader => taskReader(proof, (app) => pidFor(lane, app), opts.proofSession, exec)
 
   const profileOf = (lane: string): string => join(opts.work, `chrome-${lane}`)
   // One launch of an app at a time until its new pid is found: two lanes opening at once could each take the other's.
