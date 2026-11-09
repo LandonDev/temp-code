@@ -637,6 +637,7 @@ export class SessionRegistry {
     this.notifyMeta(next)
   }
 
+  private closed = false
   private handles = new Map<string, DriverHandle>()
   /** Approvals raised through requestApproval, per session: requestId →
    *  settle. Drivers with their own prompt loop (codex) keep theirs. */
@@ -1087,6 +1088,7 @@ export class SessionRegistry {
   /** Land swept rows and push each session's meta so its sidebar row
    *  fills in live — one shared index for the whole batch. */
   commitFolds(rows: FoldRow[]): void {
+    if (this.closed) return
     // A session append() took meanwhile has a newer row than the sweep's.
     rows = rows.filter((fold) => !this.isFoldWarm(fold.sessionId))
     for (const fold of rows) this.putFold(fold)
@@ -1125,7 +1127,9 @@ export class SessionRegistry {
     let finish!: () => void
     const done = new Promise<void>((resolve) => (finish = resolve))
     this.warming.set(sessionId, { live: [], done })
-    void this.warmFold(sessionId, current, snap, last).finally(finish)
+    void this.warmFold(sessionId, current, snap, last).catch((error) => {
+      console.warn(`[folds] ${sessionId}: warm-up failed:`, error instanceof Error ? error.message : error)
+    }).finally(finish)
     return null
   }
 
@@ -1154,6 +1158,10 @@ export class SessionRegistry {
       return
     }
     const waiting = this.warming.get(sessionId)
+    if (this.closed) {
+      this.warming.delete(sessionId)
+      return
+    }
     // Deleted or moved away meanwhile: nothing to keep.
     if (!waiting) return
     this.warming.delete(sessionId)
@@ -1196,6 +1204,7 @@ export class SessionRegistry {
    *  so the snapshot still precedes the agent's first write. Never throws:
    *  a failure here only costs undo for that turn. */
   private armBaseline(sessionId: string): Promise<void> {
+    if (this.closed) return Promise.resolve()
     const cwd = checkpointCwd(this.store.getSession(sessionId))
     if (!this.checkpoints || !cwd) return Promise.resolve()
     const armed = this.checkpoints.ensure(sessionId, cwd).catch(() => {})
@@ -1286,12 +1295,14 @@ export class SessionRegistry {
    *  Throws when the harness cannot boot or refuses the nudge; the row then
    *  reads error, as a failed Continue does. */
   async resumeStopped(sessionId: string, opts: { restartedAt?: number } = {}): Promise<boolean> {
+    if (this.closed) return false
     this.resumePending.delete(sessionId)
     const meta = this.store.getSession(sessionId)
     if (!meta || meta.archived || meta.status === 'paused') return false
     this.assertNotMoving(sessionId)
     await this.dropHandle(sessionId)
     this.harnessGoneSince.delete(sessionId)
+    if (this.closed) return false
     // The working clock carries on from where the dead harness left it.
     const frozen = Math.max(
       0,
@@ -1324,6 +1335,7 @@ export class SessionRegistry {
         `<host-restarted>\n${cause} Check your task list and your last few actions, finish anything half-done, and keep going. Do not restart completed work. If the work was already complete, say so in one short line.\n</host-restarted>`
       )
     } catch (error) {
+      if (this.closed) return false
       if (error instanceof BootStopped) return false
       const current = this.store.getSession(sessionId)
       if (current && current.status !== 'paused') {
@@ -1352,6 +1364,7 @@ export class SessionRegistry {
 
   /** One pass of the liveness sweep; returns the threads it flipped to stopped. */
   sweepLiveness(graceMs = HARNESS_GONE_GRACE_MS, now = Date.now()): string[] {
+    if (this.closed) return []
     const flipped: string[] = []
     // The index, copied: markStopped writes rows while this walks. A
     // watching row is a candidate too: its harness is idle behind background
@@ -1924,8 +1937,10 @@ export class SessionRegistry {
   /** The pass in slices behind the loop: each slice is written and pushed
    *  (tagged `accounts`), then the loop gets a turn before the next. */
   private async expectAccountsSliced(match: (meta: SessionMeta) => boolean, slice = REFRESH_SLICE): Promise<void> {
+    if (this.closed) return
     const rows = [...this.indexOf().byId.values()].filter((s) => !s.archived && match(s))
     for (let i = 0; i < rows.length; i += slice) {
+      if (this.closed) return
       this.expectAccountsOver(rows.slice(i, i + slice))
       if (i + slice < rows.length) await yieldUntilIdle()
     }
@@ -1972,6 +1987,7 @@ export class SessionRegistry {
     const switching = this.limits
       .failover(sessionId, { provider: routed, model: meta.model ?? null, window, account: meta.account ?? null })
       .then((switched) => {
+        if (this.closed) return null
         if (switched) {
           this.setAccount(sessionId, switched.to)
           // A live CLI keeps the scope it spawned under: its next turn boots on the new account.
@@ -1994,6 +2010,7 @@ export class SessionRegistry {
     const entry = this.limited.get(sessionId)
     if (!entry) return
     void entry.switching.then((switched) => {
+      if (this.closed) return
       if (this.limited.get(sessionId) !== entry) return
       if (!switched) {
         // No account has room: the error stays and the Continue button waits.
@@ -2004,6 +2021,7 @@ export class SessionRegistry {
       const pending = this.limitContinues.get(rootId)
       if (pending) clearTimeout(pending.timer)
       const timer = setTimeout(() => {
+        if (this.closed) return
         this.limitContinues.delete(rootId)
         void this.continueRun(rootId, `a usage limit on ${switched.from}; the app switched to ${switched.to}`).catch((err) => {
           console.warn(`[limits] automatic continue of ${rootId} failed:`, err)
@@ -2514,18 +2532,19 @@ export class SessionRegistry {
   /** The registry as the plan flow reads it. */
   private planFlow(): PlanFlowRegistry {
     return {
-      get: (id) => this.get(id),
-      listSessions: () => this.store.listSessions(),
-      getSetting: (key) => this.store.getSetting(key),
-      setSetting: (key, value) => this.store.setSetting(key, value),
-      startWith: (input, text, opts) => this.startWith(input, text, opts),
+      get: (id) => this.closed ? null : this.get(id),
+      listSessions: () => this.closed ? [] : this.store.listSessions(),
+      getSetting: (key) => this.closed ? null : this.store.getSetting(key),
+      setSetting: (key, value) => { if (!this.closed) this.store.setSetting(key, value) },
+      startWith: (input, text, opts) => this.closed ? Promise.reject(new BootStopped()) : this.startWith(input, text, opts),
       patch: (id, patch) => {
+        if (this.closed) return null
         const next = this.store.updateSession(id, patch)
         if (next) this.notifyMeta(next)
         return next
       },
       append: (id, event) => this.append(id, event),
-      setArchived: (id, archived) => this.setArchived(id, archived),
+      setArchived: (id, archived) => this.closed ? Promise.resolve() : this.setArchived(id, archived),
       deliverAgentReport: (id, report) => this.deliverAgentReport(id, report),
       hostName: () => this.hostName(),
       log: (line) => console.log(line)
@@ -2592,6 +2611,7 @@ export class SessionRegistry {
   /** What a project builds with: override → workspace → detected → null.
    *  `cwd` is the checkout detection looks at (another branch's worktree). */
   async effectiveBuild(projectId: string, cwd?: string): Promise<EffectiveBuild | null> {
+    if (this.closed) return null
     const project = this.store.getProject(projectId)
     if (!project) return null
     const own = this.getProjectBuild(projectId)
@@ -2599,6 +2619,7 @@ export class SessionRegistry {
     const ws = this.getBuild(project.workspaceId)
     if (ws) return { ...ws, source: 'workspace' }
     const detected = await detectBuild(cwd ?? project.cwd)
+    if (this.closed) return null
     return detected ? { ...detected, source: 'detected' } : null
   }
 
@@ -2643,20 +2664,24 @@ export class SessionRegistry {
    *  error row and the message at the front of the queue. A build's plan
    *  handoff (link, handoff row, archive) waits for that row too. */
   async startWith(raw: CreateSessionInput, text: string, opts: StartWithOpts = {}): Promise<SessionMeta> {
+    if (this.closed) throw new BootStopped()
     const created = await this.create(raw, { handoff: false })
+    if (this.closed) throw new BootStopped()
     let stored = false
     try {
       await this.send(created.id, text, {
         ...opts,
         onStored: () => {
+          if (this.closed) return
           stored = true
           linkPlanHandoff(this.planFlow(), this.store.getSession(created.id) ?? created)
         }
       })
     } catch (err) {
-      if (!stored && this.store.getSession(created.id)) await this.delete(created.id).catch(() => {})
+      if (!this.closed && !stored && this.store.getSession(created.id)) await this.delete(created.id).catch(() => {})
       throw err
     }
+    if (this.closed) throw new BootStopped()
     return this.get(created.id) ?? created
   }
 
@@ -2823,6 +2848,7 @@ export class SessionRegistry {
       // harness starts a fresh native session seeded with the transcript.
       handoff = transcriptHandoff(this.store.eventsAfter(sessionId, 0))
       await this.dropHandle(sessionId)
+      if (this.closed) return { meta, handoff }
       // The old engine's accounting means nothing to the new one.
       this.liveContexts.delete(sessionId)
       this.store.setSessionContext(sessionId, null)
@@ -2848,6 +2874,7 @@ export class SessionRegistry {
       const modelChanged = model !== meta.model
       if (modelChanged || reasoning !== meta.reasoning) {
         await this.dropHandle(sessionId)
+        if (this.closed) return { meta, handoff }
         const next = this.store.updateSession(sessionId, { model, reasoning })
         if (next) {
           meta = next
@@ -2881,6 +2908,7 @@ export class SessionRegistry {
     }
   ): Promise<void> {
     // The hook is startWith's alone: never on a queued item or a retry.
+    if (this.closed) return
     const { onStored, ...rest } = opts ?? {}
     opts = rest
     let meta = this.store.getSession(sessionId)
@@ -2946,6 +2974,7 @@ export class SessionRegistry {
       }
     }
     const switched = await this.applyRunSettings(sessionId, meta, opts)
+    if (this.closed) return
     meta = switched.meta
     const handoff = switched.handoff || this.lostNativeHandoff(meta)
     // A thread whose model, effort, pin or account moved since its harness
@@ -2953,6 +2982,7 @@ export class SessionRegistry {
     // turn; a steer into a live turn keeps its stream.
     const at = this.store.getSession(sessionId)?.status
     if (at !== 'running' && at !== 'starting' && at !== 'waiting') await this.rebootIfStale(sessionId)
+    if (this.closed) return
     // The visible transcript carries only what the user typed; thread-type
     // preambles ride along on the first message, provider-agnostic.
     const first = opts?.echoed ? opts.echoed.first : !this.store.hasUserText(sessionId)
@@ -3006,6 +3036,7 @@ export class SessionRegistry {
       handle = await this.handleFor(sessionId)
     } catch (err) {
       this.spans.drop(sessionId)
+      if (this.closed) return
       // The person stopped the thread while it booted: the rows are written
       // and the message stays on the transcript, undelivered.
       if (err instanceof BootStopped) {
@@ -3021,6 +3052,7 @@ export class SessionRegistry {
       this.queueAdd(sessionId, text, retry, true)
       return
     }
+    if (this.closed) return
     // A handle booted for this send said `warm` or `cold` itself. One already
     // up is `live`, except on the first send after its boot: an eager create
     // or a focus boot spawned it ahead of the send, and how it came up
@@ -3043,6 +3075,7 @@ export class SessionRegistry {
         // Goal support is optional; the kickoff still proceeds.
       }
     }
+    if (this.closed) return
     let out = stamp ? composePreambled(stamp, text) : opts?.steer ? wrapSteer(text) : text
     // A retyped thread re-instructs on its next message: the new type's
     // preamble rides along once, prefaced so the model knows it replaces
@@ -3146,6 +3179,7 @@ export class SessionRegistry {
     for (const ref of threadRefs) {
       const tokens = [`@thread:${ref.sessionId}`, ...(ref.environmentId ? [`@thread:${ref.environmentId}:${ref.sessionId}`] : [])]
       const foreign = (await foreignReads.get(ref)) ?? null
+      if (this.closed) return
       if (foreign) {
         out = foreignReference(out, tokens, ref.name, foreign, here?.cwd ?? null)
         continue
@@ -3186,12 +3220,14 @@ export class SessionRegistry {
     const steer = steerId ? { steerId } : undefined
     try {
       await handle.send(out, sendAttachments, steer)
+      if (this.closed) return
       this.spans.mark(sessionId, 'delivered')
       if (steerId) this.stampSteer(sessionId, steerId, 'sent', { fallback: !handle.confirmsSteers })
       // A message into a live turn is a steer: a wait_for_agent in flight
       // there returns on it (orchestration.ts), whoever sent it.
       if (status === 'running' || status === 'starting' || status === 'waiting') this.resolveSteerWaiters(sessionId, text)
     } catch (err) {
+      if (this.closed) return
       // A steer at a provider that can't take mid-turn input (cursor's
       // process-per-turn) front-queues instead of erroring the composer.
       if (err instanceof Error && err.message.includes('still running')) {
@@ -3214,6 +3250,7 @@ export class SessionRegistry {
           return
         }
         await fresh.send(out, sendAttachments, steer)
+        if (this.closed) return
         this.spans.mark(sessionId, 'delivered')
         if (steerId) this.stampSteer(sessionId, steerId, 'sent', { fallback: !fresh.confirmsSteers })
         return
@@ -3282,6 +3319,7 @@ export class SessionRegistry {
   }
 
   async interrupt(sessionId: string): Promise<void> {
+    if (this.closed) return
     const meta = this.store.getSession(sessionId)
     // Queued: it holds no turn, so a Stop takes it out of the queue, the
     // fleet's Remove from queue. Writing idle here once released its stored
@@ -3615,6 +3653,7 @@ export class SessionRegistry {
    * auto-denies on timeout, abort, or when the session's handle drops.
    */
   requestApproval(sessionId: string, req: ApprovalRequest): Promise<boolean> {
+    if (this.closed) return Promise.resolve(false)
     // Nobody is there to answer: denied at once, one quiet row says what was skipped.
     if (this.awayOn()) {
       this.awayNotice(sessionId, 'approval', approvalLine(req.toolName, req.input, req.title))
@@ -3729,6 +3768,7 @@ export class SessionRegistry {
    *  stays until the new one lands, and stays for good when no title comes
    *  back; a rename meanwhile wins, as for a root thread. */
   titleFromTask(sessionId: string, text: string): void {
+    if (this.closed) return
     const placeholder = this.store.getSession(sessionId)?.title
     if (placeholder === undefined || !text.trim()) return
     this.pendingTitles.set(sessionId, { placeholder, text })
@@ -3738,16 +3778,20 @@ export class SessionRegistry {
   /** After the first turn: swap the sliced-first-message placeholder for a
    *  generated title. Skips silently if the user renamed meanwhile. */
   private maybeRetitle(sessionId: string): void {
+    if (this.closed) return
     const pending = this.pendingTitles.get(sessionId)
     if (!pending) return
     this.pendingTitles.delete(sessionId)
     if (this.store.getSession(sessionId)?.title !== pending.placeholder) return
     void generateTitle(pending.text).then((title) => {
+      if (this.closed) return
       if (!title) return
       const cur = this.store.getSession(sessionId)
       if (!cur || cur.title !== pending.placeholder) return
       const next = this.store.updateSession(sessionId, { title })
       if (next) this.notifyMeta(next)
+    }).catch((error) => {
+      console.warn(`[sessions] title for ${sessionId} failed: ${error instanceof Error ? error.message : String(error)}`)
     })
   }
 
@@ -4221,12 +4265,14 @@ export class SessionRegistry {
    *  the thread's transcript, so the last user message gets its answer. */
   private async recoverLostNativeSession(sessionId: string): Promise<void> {
     for (let i = 0; i < 40; i++) {
+      if (this.closed) return
       const meta = this.store.getSession(sessionId)
       if (!meta) return
       if (!LIVE_STATUSES.has(meta.status)) break
       await new Promise<void>((resolve): void => void setTimeout(resolve, 250))
     }
     try {
+      if (this.closed) return
       await this.continueErroredSession(
         sessionId,
         false,
@@ -4245,6 +4291,7 @@ export class SessionRegistry {
     reason = 'a harness error (a session limit or similar) that the user has since fixed',
     run?: RunSettings
   ): Promise<void> {
+    if (this.closed) return
     const meta = this.store.getSession(sessionId)
     if (
       !meta ||
@@ -4257,7 +4304,9 @@ export class SessionRegistry {
     }
     this.pendingReboot.delete(sessionId)
     await this.dropHandle(sessionId, { replacing: true })
+    if (this.closed) return
     const switched = run ? await this.applyRunSettings(sessionId, meta, run) : { handoff: '' }
+    if (this.closed) return
     const handoff = switched.handoff || this.lostNativeHandoff(this.store.getSession(sessionId) ?? meta)
     try {
       void this.armBaseline(sessionId)
@@ -4267,6 +4316,7 @@ export class SessionRegistry {
         `${handoff ? `${handoff}\n\n` : ''}<continue-run>\nThe previous turn was cut off by ${reason}. ${restartedDescendants ? 'Your failed subagents were restarted first and are picking their work back up. ' : ''}Continue exactly where you left off: check your task list and your last few actions, finish anything half-done, and keep going. If the work was already complete, say so in one short line.\n</continue-run>`
       )
       // The replacement accepted the work. Only now settle the old chips;
+      if (this.closed) return
       // a boot or send failure leaves the fold true for another retry.
       if (this.storedContinuableError(sessionId)) this.append(sessionId, { type: 'errors-cleared' })
       this.releaseCapHold(sessionId)
@@ -4274,6 +4324,7 @@ export class SessionRegistry {
       this.limited.delete(sessionId)
     } catch (error) {
       this.limited.delete(sessionId)
+      if (this.closed) return
       // Stopped while the replacement booted: its rows are written already.
       if (error instanceof BootStopped) return
       const current = this.store.getSession(sessionId)
@@ -4305,6 +4356,7 @@ export class SessionRegistry {
     // stop and left the closing idle to its stream, which the disposed
     // handle never relays — the row would stay running with no process.
     this.watching.delete(sessionId)
+    if (this.closed) return
     // `replacing`: a turn starts on a fresh handle right after, and an idle
     // here would wake the settle's drains under it.
     const status = this.store.getSession(sessionId)?.status
@@ -4352,6 +4404,7 @@ export class SessionRegistry {
    *  handleFor() resumes on the thread's settings. Its background tasks go
    *  with it; the status is left to the turn starting. */
   private async rebootIfStale(sessionId: string): Promise<void> {
+    if (this.closed) return
     if (!this.staleHandle(sessionId)) return
     this.pendingReboot.delete(sessionId)
     await this.dropHandle(sessionId, { replacing: true })
@@ -4381,6 +4434,7 @@ export class SessionRegistry {
   }
 
   private async handleFor(sessionId: string): Promise<DriverHandle> {
+    if (this.closed) throw new BootStopped()
     const existing = this.handles.get(sessionId)
     if (existing) return existing
     const inflight = this.starting.get(sessionId)
@@ -4414,6 +4468,7 @@ export class SessionRegistry {
 
     const startP = (noKey ? Promise.reject(new Error(NO_META_KEY_MESSAGE)) : this.ensureCwd(meta))
       .then(() => {
+        if (this.closed) throw new BootStopped()
         // claude reads the away state into its system prompt at this spawn
         // (mechanicsFor); every other harness reads it in its first message,
         // or not at all on a resume, so its next turn catches up.
@@ -4424,20 +4479,24 @@ export class SessionRegistry {
           session: { ...meta, goal: this.goalOf(sessionId) },
           route,
           emit: (event) => {
+            if (this.closed) return
             if (event.type === 'steer') this.stampSteer(sessionId, event.steerId, event.state, { how: event.how, reason: event.reason })
             else if (!this.interceptAway(sessionId, event)) this.append(sessionId, event)
           },
           requestApproval: (req) => this.requestApproval(sessionId, req),
           awaitBaseline: () => this.awaitBaseline(sessionId),
           observeUsage: (windows) => {
+            if (this.closed) return
             const account = this.store.getSession(sessionId)?.account ?? current
             if (account && isAccountProvider(meta.provider)) this.limits?.observeUsage?.(meta.provider, account, windows)
           },
           observeLimit: (window, resetsAt) => {
+            if (this.closed) return
             const account = this.store.getSession(sessionId)?.account ?? current
             if (account && isAccountProvider(meta.provider)) this.limits?.observeQuota?.(meta.provider, account, window, resetsAt)
           },
           mark: (phase, note) => {
+            if (this.closed) return
             // A boot ahead of any send (an eager create) has no span yet: its word waits for the first send.
             if (phase === 'handle' && note) this.bootedAs.set(sessionId, note)
             this.spans.mark(sessionId, phase, note)
@@ -4445,26 +4504,34 @@ export class SessionRegistry {
           },
           toolResultTail: (callId, output) => this.toolResultTail?.(sessionId, callId, output) ?? Promise.resolve(null),
           setNativeId: (nativeId) => {
+            if (this.closed) return
             const next = this.store.updateSession(sessionId, { nativeId })
             if (next) this.notifyMeta(next)
           },
           nativeSessionLost: () => {
+            if (this.closed) return
             const next = this.store.updateSession(sessionId, { nativeId: null })
             if (next) this.notifyMeta(next)
             void this.recoverLostNativeSession(sessionId)
           },
           harnessGone: () => {
+            if (this.closed) return
             this.settleGoneHarness(sessionId)
           }
         })
       })
       .then(async (handle) => {
         this.starting.delete(sessionId)
+        if (this.closed) {
+          await handle.dispose().catch(() => {})
+          throw new BootStopped()
+        }
         // The person hit Stop while this booted: put it down unsent, write
         // the stop the interrupt would have produced, and tell every
         // caller that waited on the boot to send nothing.
         if (this.stopBooting.delete(sessionId)) {
           await handle.dispose().catch(() => {})
+          if (this.closed) throw new BootStopped()
           this.scheduler.schedule()
           const status = this.store.getSession(sessionId)?.status
           if (status && LIVE_STATUSES.has(status)) {
@@ -4482,7 +4549,7 @@ export class SessionRegistry {
       .catch((err) => {
         this.starting.delete(sessionId)
         this.stopBooting.delete(sessionId)
-        if (err instanceof BootStopped) throw err
+        if (this.closed || err instanceof BootStopped) throw err
         this.append(sessionId, {
           type: 'error',
           message: err instanceof Error ? err.message : String(err)
@@ -4495,6 +4562,7 @@ export class SessionRegistry {
   }
 
   append(sessionId: string, event: AgentEvent): void {
+    if (this.closed) return
     // Streaming previews (partial tool input) are broadcast-only: each one
     // carries the whole input so far, so persisting them would write the
     // same growing payload into the log over and over. The final tool-call
@@ -4813,7 +4881,9 @@ export class SessionRegistry {
       // thread's master hears of it through that one report, not two.
       if (isPlanSettle(cur?.status, event.status, next)) {
         if (!next!.parentId) settleToReport = null
-        void settlePlan(this.planFlow(), next!)
+        void settlePlan(this.planFlow(), next!).catch((error) => {
+          console.warn(`[plans] settle for ${sessionId} failed: ${error instanceof Error ? error.message : String(error)}`)
+        })
       }
     }
     // Track disk-writing tools in flight — the live change stream's
@@ -5104,6 +5174,7 @@ export class SessionRegistry {
   /** The batch closed with nothing coming (batch.ts review): a master left
    *  watching, with no report on its way, idles. */
   masterIdle(sessionId: string): void {
+    if (this.closed) return
     if (this.store.getSession(sessionId)?.status !== 'watching') return
     if ((this.pendingReports.get(sessionId)?.length ?? 0) > 0 || this.draining.has(sessionId)) return
     this.append(sessionId, { type: 'status', status: 'idle' })
@@ -5132,10 +5203,12 @@ export class SessionRegistry {
       if (handle.alive?.() === false) throw new Error('harness gone')
       this.lastActivity.set(sessionId, Date.now())
       await handle.send(wrapSteer(text), undefined, { steerId })
+      if (this.closed) return
       this.stampSteer(sessionId, steerId, 'sent', { fallback: !handle.confirmsSteers })
     }
     void deliver()
       .catch(async (err: unknown) => {
+        if (this.closed) return
         const message = err instanceof Error ? err.message : String(err)
         if (message.includes('harness gone')) {
           // The process behind the turn is gone: a fresh harness takes the
@@ -5147,7 +5220,10 @@ export class SessionRegistry {
           this.stampSteer(sessionId, steerId, 'queued')
         }
       })
-      .catch((err: unknown) => this.stampSteer(sessionId, steerId, 'failed', { reason: err instanceof Error ? err.message : String(err) }))
+      .catch((err: unknown) => {
+        if (this.closed) return
+        this.stampSteer(sessionId, steerId, 'failed', { reason: err instanceof Error ? err.message : String(err) })
+      })
     this.resolveSteerWaiters(sessionId, text)
     return true
   }
@@ -5216,6 +5292,7 @@ export class SessionRegistry {
    *  while nothing finer is known (decorate); a ticker re-pushes such rows
    *  every 5 s so the seconds move. */
   providerRequest(sessionId: string, id: number, since: number | null): void {
+    if (this.closed) return
     let open = this.providerOpen.get(sessionId)
     if (since !== null) {
       if (!open) this.providerOpen.set(sessionId, (open = new Map()))
@@ -5424,8 +5501,10 @@ export class SessionRegistry {
       return true
     }
     queueMicrotask(() => {
+      if (this.closed) return
       if (tryOnce()) return
       setTimeout(() => {
+        if (this.closed) return
         if (tryOnce()) return
         unmark()
         this.append(sessionId, event)
@@ -5507,10 +5586,12 @@ export class SessionRegistry {
   /** The reminder turn after a commit without a notes update: the app's
    *  own short turn, marked on the transcript like a completed-turn pass. */
   private async runNotesReminder(sessionId: string): Promise<void> {
+    if (this.closed) return
     if (this.isTreePaused(sessionId)) return
     try {
       await this.rebootIfStale(sessionId)
       const handle = await this.handleFor(sessionId)
+      if (this.closed) return
       this.append(sessionId, { type: 'turn-pass', actions: ['Notes'] })
       this.lastActivity.set(sessionId, Date.now())
       await handle.send(NOTES_REMINDER_COMMIT)
@@ -5663,10 +5744,12 @@ export class SessionRegistry {
    *  transcript's highlight boundary), then the instruction straight to
    *  the harness — no user-text bubble, this is the app talking. */
   private async runTurnPass(sessionId: string, pass: TurnPass): Promise<void> {
+    if (this.closed) return
     if (this.isTreePaused(sessionId)) return
     try {
       await this.rebootIfStale(sessionId)
       const handle = await this.handleFor(sessionId)
+      if (this.closed) return
       this.append(sessionId, { type: 'turn-pass', actions: passActions(pass) })
       this.lastActivity.set(sessionId, Date.now())
       const meta = this.store.getSession(sessionId)
@@ -5677,6 +5760,7 @@ export class SessionRegistry {
       // opens with fold-back steps when it diverged — detected, not
       // trusted to the model's memory.
       if (project && (await isGitRepo(project.cwd))) {
+        if (this.closed) return
         const known = [
           ...this.store.listProjects().map((p) => p.cwd),
           ...this.store.listWorkspaces().map((w) => w.path)
@@ -5691,6 +5775,7 @@ export class SessionRegistry {
           )
         }
         const now = await currentBranch(project.cwd)
+        if (this.closed) return
         if (project.branch && now && now !== project.branch) {
           steps.push(
             `The project checkout ${project.cwd} is on branch ${now}, not the project branch ${project.branch}. Carry the work onto ${project.branch} and check it out before anything else.`
@@ -5711,6 +5796,7 @@ export class SessionRegistry {
         )
       }
       if (pass.commit !== 'off') {
+        if (this.closed) return
         const where = project?.branch
           ? ` in ${project.cwd} to the project branch ${project.branch}`
           : ' to the current branch'
@@ -5727,6 +5813,7 @@ export class SessionRegistry {
           }.`
         )
       }
+      if (this.closed) return
       // A settle with an unfinished list is housekeeping, not a finish
       // line — the pass must not read as "the work is done".
       const tally = this.tasksOf(sessionId)
@@ -5782,6 +5869,7 @@ export class SessionRegistry {
   }
 
   deliverAgentReport(sessionId: string, report: AgentReport): void {
+    if (this.closed) return
     const list = this.pendingReports.get(sessionId) ?? []
     list.push(report)
     this.pendingReports.set(sessionId, list)
@@ -5797,6 +5885,7 @@ export class SessionRegistry {
    *  app's own lines never spend a turn of their own while the person's
    *  text waits, and a report never wakes the thread without it. */
   private drainSettled(sessionId: string): void {
+    if (this.closed) return
     if ((this.queues.get(sessionId)?.length ?? 0) > 0) this.drainQueue(sessionId)
     else this.drainReports(sessionId)
   }
@@ -5821,6 +5910,7 @@ export class SessionRegistry {
 
   /** Reports the harness refused (gone, mid-restart) go back to the front of the list for the next settle. */
   private parkReports(sessionId: string, items: AgentReport[]): void {
+    if (this.closed) return
     if (!items.length) return
     const q = this.pendingReports.get(sessionId) ?? []
     q.unshift(...items)
@@ -5833,6 +5923,7 @@ export class SessionRegistry {
    *  parent used to cost a wake turn apiece. Returns whether reports took
    *  this settle. */
   private drainReports(sessionId: string): boolean {
+    if (this.closed) return false
     if (this.isTreePaused(sessionId)) return false
     if (this.capHolds.has(sessionId)) return false
     if (this.draining.has(sessionId)) return false
@@ -5843,6 +5934,7 @@ export class SessionRegistry {
     void (async () => {
       await this.rebootIfStale(sessionId)
       let handle = await this.handleFor(sessionId)
+      if (this.closed) return
       const { items, text } = this.takeReports(sessionId)
       taken = items
       this.lastActivity.set(sessionId, Date.now())
@@ -5852,6 +5944,7 @@ export class SessionRegistry {
       try {
         await handle.send(body)
       } catch (err) {
+        if (this.closed) return
         // The handle's harness is gone (a dead watching master): a fresh one
         // takes the reports, as send() does for a person's message.
         if (!(err instanceof Error && err.message.includes('harness gone'))) throw err
@@ -5871,6 +5964,7 @@ export class SessionRegistry {
    *  ahead of everything), so the person's text is never behind a wake
    *  turn of the app's own. */
   private drainQueue(sessionId: string): void {
+    if (this.closed) return
     if (this.isTreePaused(sessionId)) return
     if (this.draining.has(sessionId)) return
     const q = this.queues.get(sessionId)
@@ -5893,6 +5987,7 @@ export class SessionRegistry {
       tally.done === tally.total
     void this.send(sessionId, item.text, newPass ? { ...item, newPass: true } : item)
       .catch(() => {
+        if (this.closed) return
         q.unshift(item)
         this.notifyQueue(sessionId)
         this.parkReports(sessionId, reports.items)
@@ -6029,6 +6124,7 @@ export class SessionRegistry {
   /** `producer` names the code that pushed, for the stall log's `pushes=`
    *  breakdown: `status` by default, `accounts` for a pass over the picks. */
   private notifyMeta(session: SessionMeta, producer = 'status'): void {
+    if (this.closed) return
     if (this.deferredMeta) {
       this.deferredMeta.set(session.id, session)
       return
@@ -6052,9 +6148,17 @@ export class SessionRegistry {
   }
 
   async disposeAll(): Promise<void> {
+    if (this.closed) return
+    this.closed = true
+    this.pendingTitles.clear()
     if (this.sweepTimer) clearInterval(this.sweepTimer)
     if (this.livenessTimer) clearInterval(this.livenessTimer)
     this.scheduler.dispose()
+    for (const { timer } of this.limitContinues.values()) clearTimeout(timer)
+    this.limitContinues.clear()
+    this.limited.clear()
+    if (this.providerTicker) clearInterval(this.providerTicker)
+    this.providerTicker = null
     for (const timer of this.capHolds.values()) if (timer) clearTimeout(timer)
     this.capHolds.clear()
     this.flushFolds()
