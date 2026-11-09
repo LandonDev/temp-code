@@ -246,7 +246,7 @@ const accountView = (a: unknown): Record<string, unknown> | null => {
 }
 
 /** One turn's requests: paths, and the union of each body part's needles over its main requests. */
-function turnSummary(reqs: AnthropicRequestRecord[]): Record<string, unknown> & { last: string[]; tools: string[]; system: string[]; messages: string[] } {
+function turnSummary(reqs: AnthropicRequestRecord[]): Record<string, unknown> & { last: string[]; fresh: string[]; tools: string[]; system: string[]; messages: string[] } {
   const main = reqs.filter((r) => r.main)
   const u = (k: keyof AnthropicRequestRecord['hits']): string[] => uniq(main.flatMap((r) => r.hits[k])).sort()
   return {
@@ -260,7 +260,8 @@ function turnSummary(reqs: AnthropicRequestRecord[]): Record<string, unknown> & 
     system: u('system'),
     tools: u('tools'),
     messages: u('messages'),
-    last: u('last')
+    last: u('last'),
+    fresh: u('fresh')
   }
 }
 
@@ -391,7 +392,8 @@ async function pluginRun(ev: Evidence, o: PluginRunOptions): Promise<{ observed:
     const t1 = await s.turn(`/${skill ?? 'tc-probe-skill'}`)
     observed.initMessage = initView(s.init)
     observed.mcpStatus = (await within(s.q.mcpServerStatus(), 30_000, 'mcpServerStatus')).map((x) => ({ name: x.name, status: x.status }))
-    const toolSkill = ((s.init?.skills as string[] | undefined) ?? []).find((x) => /tc-probe-skill$/.test(x)) ?? skill ?? 'tc-probe-skill'
+    // Turn 1 loaded tc-probe-skill; a skill already loaded in a conversation is not sent again, so the tool calls the other one.
+    const toolSkill = ((s.init?.skills as string[] | undefined) ?? []).find((x) => /tc-gone-skill$/.test(x)) ?? named(names, 'tc-gone-skill') ?? 'tc-gone-skill'
     c.anth.script = [{ tool: skillCall(toolSkill) }]
     const t2 = await s.turn('Use the probe skill.')
     const t3 = await s.turn(`/${cmd ?? 'tc-probe-cmd'}`)
@@ -408,11 +410,11 @@ async function pluginRun(ev: Evidence, o: PluginRunOptions): Promise<{ observed:
       observed,
       checks: {
         skillListed: listed,
-        skillBySlash: turns.slashSkill.last.includes('skillBody'),
-        skillByTool: turns.skillTool.last.includes('skillBody') || turns.skillTool.messages.includes('skillBody'),
-        command: turns.slashCommand.last.includes('cmd'),
-        agent: turns.slashSkill.tools.includes('agent'),
-        ...(o.skipMcp ? { mcpAbsent: !mcpPresent } : { mcp: mcpPresent && turns.mcpTool.messages.includes('mcp') }),
+        skillBySlash: turns.slashSkill.fresh.includes('skillBody'),
+        skillByTool: turns.skillTool.fresh.includes('goneBody'),
+        command: turns.slashCommand.fresh.includes('cmd'),
+        agent: turns.slashSkill.fresh.includes('agent') || turns.slashSkill.tools.includes('agent'),
+        ...(o.skipMcp ? { mcpAbsent: !mcpPresent } : { mcp: mcpPresent && turns.mcpTool.fresh.includes('mcp') }),
         hook: existsSync(marker)
       }
     }
@@ -446,7 +448,7 @@ async function c1e(ev: Evidence): Promise<void> {
     const name = named(commandNames(init), 'tc-adddir-skill')
     const t = await s.turn(`/${name ?? 'tc-adddir-skill'}`)
     ev.observed = { commands: commandNames(init).filter(isProbeName), turn: turnSummary(t.requests), result: t.result, initMessage: initView(s.init), argvAddDir: s.spec?.args.filter((a) => a === '--add-dir' || a === added) }
-    judge(ev, { listed: !!name, expanded: turnSummary(t.requests).last.includes('skillBody') }, 'write access under --add-dir is not observable under bypassPermissions; the SDK documents it as a working-directory root')
+    judge(ev, { listed: !!name, expanded: turnSummary(t.requests).fresh.includes('skillBody') }, 'write access under --add-dir is not observable under bypassPermissions; the SDK documents it as a working-directory root')
   } finally {
     await s.close()
   }
@@ -471,7 +473,7 @@ async function c1f(ev: Evidence): Promise<void> {
     const sum = turnSummary(t.requests)
     const t2 = names.find((x) => x.includes(':')) ? turnSummary((await s.turn(`/${names.find((x) => x.includes(':'))}`)).requests) : null
     ev.observed = { listed: names, bare: sum, qualified: t2, listing: initView(s.init)?.skills }
-    judge(ev, { bothListed: names.length >= 2, bareExpandsUser: sum.last.includes('userBody'), bareExpandsPlugin: sum.last.includes('pluginBody'), qualifiedExpandsPlugin: t2 ? t2.last.includes('pluginBody') : null }, `listed ${names.join(', ')}`)
+    judge(ev, { bothListed: names.length >= 2, bareExpandsUser: sum.fresh.includes('userBody'), bareExpandsPlugin: sum.fresh.includes('pluginBody'), qualifiedExpandsPlugin: t2 ? t2.fresh.includes('pluginBody') : null }, `listed ${names.join(', ')}`)
   } finally {
     await s.close()
   }
@@ -672,7 +674,7 @@ async function c2e(ev: Evidence): Promise<void> {
     const t = await s.turn('Print the marker.')
     const t2 = await s.turn('Reply with ok.')
     const sum = turnSummary([...t.requests, ...t2.requests])
-    const transcripts = existsSync(join(r.config, 'projects')) ? listTree(join(r.config, 'projects'), 3).filter((e) => e.path.endsWith('.jsonl')) : []
+    const transcripts = existsSync(join(r.config, 'projects')) ? listTree(realpathSync(join(r.config, 'projects')), 3).filter((e) => e.path.endsWith('.jsonl')) : []
     const linkState = Object.fromEntries(Object.keys(links).map((name) => {
       const p = join(r.config, name)
       return [name, existsSync(p) || lstatSyncSafe(p) ? (lstatSync(p).isSymbolicLink() ? 'link' : lstatSync(p).isDirectory() ? 'replaced by a dir' : 'replaced by a file') : 'gone']
@@ -799,15 +801,15 @@ async function freshnessStep(s: ClaudeRun, label: string, skillCmd: string): Pro
   const commands = (await within(s.q.supportedCommands(), 30_000, 'supportedCommands')).map((x) => x.name).filter(isProbeName)
   const t = await s.turn(`/${skillCmd}`)
   const sum = turnSummary(t.requests)
-  const seen = (k: string): boolean => sum.system.includes(k) || sum.last.includes(k) || sum.tools.includes(k)
+  const seen = (k: string): boolean => sum.system.includes(k) || sum.fresh.includes(k) || sum.tools.includes(k)
   return {
     step: label,
     commands,
     late: commands.some((x) => x.endsWith('tc-late-skill')) || seen('lateDesc'),
     gone: !commands.some((x) => x.endsWith('tc-gone-skill')),
-    edited: sum.last.includes('editedBody'),
-    original: sum.last.includes('skillBody'),
-    listingHits: uniq([...sum.system, ...sum.last].filter((x) => /Desc$/.test(x)))
+    edited: sum.fresh.includes('editedBody'),
+    original: sum.fresh.includes('skillBody'),
+    listingHits: uniq([...sum.system, ...sum.fresh].filter((x) => /Desc$/.test(x)))
   }
 }
 
@@ -921,9 +923,9 @@ async function c3d(ev: Evidence): Promise<void> {
       plugins_applied: (w.init as { plugins_applied?: boolean }).plugins_applied ?? null,
       commands: names,
       plugins: initView(w.s.init)?.plugins,
-      hits: { system: sum.system, last: sum.last }
+      hits: { system: sum.system, fresh: sum.fresh }
     }
-    judge(ev, { adopted: w.s.adopted, p2Applied: (w.init as { plugins_applied?: boolean }).plugins_applied === true, servesP2: sum.last.includes('p2Body'), servesP1: sum.last.includes('p1Body') })
+    judge(ev, { adopted: w.s.adopted, p2Applied: (w.init as { plugins_applied?: boolean }).plugins_applied === true, servesP2: sum.fresh.includes('p2Body'), servesP1: sum.fresh.includes('p1Body') })
   } finally {
     await w.s.close()
     w.pool.close()

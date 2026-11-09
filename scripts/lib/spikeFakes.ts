@@ -200,8 +200,8 @@ export interface AnthropicRequestRecord {
   /** A request carrying tools: the conversation's own turn, not a side call. */
   main: boolean
   stream: boolean
-  /** Which needles each part of the body held: the system prompt, the tool definitions, every message, the last message alone. */
-  hits: { system: string[]; tools: string[]; messages: string[]; last: string[] }
+  /** Which needles each part of the body held: the system prompt, the tool definitions, every message, the last message alone, and the messages added since the previous main request. */
+  hits: { system: string[]; tools: string[]; messages: string[]; last: string[]; fresh: string[] }
   /** The probe's tools and the CLI's skill and agent tools, by name; nothing else. */
   tools: string[]
   answered: string
@@ -213,6 +213,8 @@ export class FakeAnthropic {
   needles: Record<string, string> = {}
   script: AnthropicAnswer[] = []
   tag = ''
+  /** Messages the last main request carried: the next one's fresh part starts there. */
+  private seen = 0
   private server: Server
   private n = 0
 
@@ -231,6 +233,7 @@ export class FakeAnthropic {
     this.tag = tag
     this.needles = needles
     this.script = []
+    this.seen = 0
   }
 
   since(mark: number): AnthropicRequestRecord[] {
@@ -262,7 +265,7 @@ export class FakeAnthropic {
       model: null,
       main: false,
       stream: false,
-      hits: { system: [], tools: [], messages: [], last: [] },
+      hits: { system: [], tools: [], messages: [], last: [], fresh: [] },
       tools: [],
       answered: ''
     }
@@ -280,11 +283,15 @@ export class FakeAnthropic {
       rec.main = tools.length > 0 && Array.isArray(body.messages)
       rec.tools = tools.map((t) => t.name).filter((n) => /^mcp__|^Skill$|^Agent$|^Task$|tc[-_]probe/.test(n))
       const messages = Array.isArray(body.messages) ? body.messages : []
+      // A conversation only grows; a shorter one is a new session under the same tag.
+      const from = rec.main && messages.length >= this.seen ? this.seen : 0
+      if (rec.main) this.seen = messages.length
       rec.hits = {
         system: nonceHits(JSON.stringify(body.system ?? ''), this.needles),
         tools: nonceHits(JSON.stringify(tools), this.needles),
         messages: nonceHits(JSON.stringify(messages), this.needles),
-        last: nonceHits(JSON.stringify(messages.at(-1) ?? ''), this.needles)
+        last: nonceHits(JSON.stringify(messages.at(-1) ?? ''), this.needles),
+        fresh: rec.main ? nonceHits(JSON.stringify(messages.slice(from)), this.needles) : []
       }
       const next = rec.main ? this.script.shift() : undefined
       const call = next && 'tool' in next ? next.tool(tools) : null
