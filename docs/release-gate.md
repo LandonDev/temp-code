@@ -12,7 +12,7 @@ file. A sibling change that needs a new check (the bundle-size check after
 | tier | steps | runs |
 | --- | --- | --- |
 | `commit` | typecheck, vitest, build, bundle-size | in the post-commit hook, on every commit on master |
-| `publish` | renderer-soak, renderer-soak-chat, renderer-soak-typing, renderer-soak-scroll, e2e-remote-fence, hub, ios, ios-client, computer-swift | before signing in `release:publish`; and in the hook when a commit touches a guarded path. The four soaks, hub, ios, ios-client and computer-swift are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships |
+| `publish` | renderer-soak, renderer-soak-chat, renderer-soak-typing, renderer-soak-scroll, e2e-remote-fence, hub, ios, ios-client, computer-swift, computer-bench | before signing in `release:publish`; and in the hook when a commit touches a guarded path, all but computer-bench. The four soaks, hub, ios, ios-client, computer-swift and computer-bench are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships |
 
 Guarded paths (`TIER_PATHS`): `ios/**`, `scripts/gen-swift-contract.ts`,
 `src/shared/wireSchemas.ts`, `src/shared/contract*.ts`,
@@ -23,6 +23,13 @@ Guarded paths (`TIER_PATHS`): `ios/**`, `scripts/gen-swift-contract.ts`,
 path since that ref that hits the map pulls its tier in, so a contract change
 still cannot land stale Swift between publishes. A proof that boots an
 instance belongs in `publish`.
+
+A step marked `onlyAtPublish` runs only when its tier was asked for
+(`--tier publish` or `all`), never when changed paths alone pulled the tier
+in: the report says `– computer-bench skipped: runs at publish`
+(`atPublishSkips`). computer-bench is the one such step, since it starts
+real model threads for minutes, and a commit on the Mac that touches
+`src/shared/computer/**` must not do that in its hook.
 
 ## The renderer soak
 
@@ -114,6 +121,49 @@ SIGINT to its steps' process groups, so the publish's exit trap after a
 failed build stops the soak, which kills every process carrying its
 instance's TEMP_CODE_USER_DATA.
 
+## The computer bench
+
+`computer-bench` runs `bun run script:e2e-computer-bench -- --gate`
+(scripts/e2e-computer-bench.ts, judged by scripts/lib/computerBench.ts;
+docs/computer-protocol.md "The benchmark"): real desktop tasks through the
+computer tools and `tc-computer`, one real thread per task on each of
+`claude-opus-5-5`, `gpt-6.1-sol` and `muse-wonder-1.0`, the three lanes side
+by side. Every end state is read through the accessibility tree or the file
+system, never the model's word.
+
+- **The person keeps the Mac.** The gate runs in the background tiers alone
+  (`ax`, `process`), which never take the screen, the pointer or the
+  keyboard. A scratch app launches only after 5 s with no input, and one
+  that comes forward is sent back at once; a run that leaves it in front
+  fails. A task whose end state needs the session tier is skipped and kept
+  for the hand run, and so is the System Settings task while System
+  Settings is open.
+- **What fails.** A task's end state; its median computer calls above
+  max(1.5 × baseline, baseline + 2); its median host time per call above
+  max(1.3 × baseline, baseline + 150 ms) (`BENCH_RULE`). A run that goes off
+  route (any tool but the computer tools, `ToolSearch`, `update_notes`,
+  `TodoWrite`, `update_plan`) or past its step budget fails its end state. A
+  gate task the bench's own budget never reached fails, unless the scheduler
+  held the runs. Wall time, think time, screenshots, tiers and tokens are
+  reported, never judged.
+- **Reruns.** One run per task; a run that breaks the rule earns two more,
+  and then the end state must pass in two of three, the medians over the
+  three.
+- **Never failed**: a lane whose model this Mac cannot run, a task skipped
+  (the session tier, System Settings open, the person never pausing 5 s
+  before a launch), a thread the scheduler held queued past 5 minutes.
+- **The baseline** is `<git-dir>/temp-code-gate/computer-bench/baseline.json`
+  in the checkout that publishes, one row per model, task and task version.
+  The first green gate run writes the rows it lacks; a row of another task
+  version is ignored, so a changed task starts over; `--rebaseline` replaces
+  the rows of every task that passed. A file that exists but cannot be read
+  fails the step, naming its path and `--rebaseline`. `--report-only` and
+  `--judge <report.json>` never write it.
+- **Time.** About 6 minutes, in its own `computer` lane beside the build,
+  the sign and the soaks; the script stops itself at 14 minutes
+  (`BENCH_TIMING.budgetMs`) and the gate kills it at 15. Its report is the
+  step's log, and `last.json` and `runs/` beside the baseline.
+
 ## The command
 
 ```
@@ -124,14 +174,19 @@ bun run gate [--tier commit|publish|all] [--since <ref>] [--full]
 - Steps in one lane run in array order, one at a time; lanes run at once.
   `commit` has three lanes (typecheck, vitest, build), so the three run
   together; the bundle-size check (scripts/check-bundle-size.ts, which
-  reads `out/`) follows the build in its lane. `publish` runs the fence, the hub and the three Swift packages in
-  parallel lanes; `ios`, `ios-client` and `computer-swift` share the `swift`
-  lane, one after another (the client package depends on the contract
-  package).
+  reads `out/`) follows the build in its lane. `publish` runs the fence, the hub, the three Swift packages and the
+  computer bench in parallel lanes; `ios`, `ios-client` and `computer-swift`
+  share the `swift` lane, one after another (the client package depends on
+  the contract package), and `computer-bench` has the `computer` lane alone.
 - On a terminal one status line shows what is running and for how long; in
   a log (the hook's /tmp/temp-code-auto-release.log) each step prints
   `HH:MM:SS › name` when it starts and `HH:MM:SS ✓ name 12s passed` when it
   ends, then a per-step table.
+- A step with an outer limit names it as `capMs`, its hard cap from its
+  start: past it the gate kills the step's process group (SIGTERM, then
+  SIGKILL 5 s later) and fails it, `✗ computer-bench  900s  failed  passed
+  its 15m cap`. The four soaks have 12 minutes (the 10 they may wait for the
+  build, their 90 s, and teardown) and computer-bench 15.
 - The first failure stops the gate: nothing more starts, the running steps
   are killed (their whole process group), and the report marks them
   `stopped`, the rest `not run`, and prints the failed step's last 60 lines.
@@ -184,20 +239,21 @@ than guess). The box is the Linux agent
 host (32 cores, 123 GB), shared with a dozen other threads' builds while
 these ran, so its numbers moved by up to 40 % between runs.
 
-| step | Mac cold | Mac warm | box | notes |
-| --- | --- | --- | --- | --- |
-| typecheck | 11.2 s | 10.8 s | 25 s | skipped by the hash when no input changed |
-| vitest | 18.9 s | 18.6 s | 33 s | box: gateway.test.ts is the one known Linux failure |
-| build | not measured (link dropped) | | 156 s | electron-vite build into out/ |
-| bundle-size | | | under 0.1 s | reads out/bundle-map.json after the build |
-| e2e-remote-fence | not measured (link dropped) | | 2.4 s | node, not Electron: boots the server in-process |
-| hub | not measured (link dropped) | | n/a | infra/hub's npm install writes nothing on the box; Mac only |
-| ios | 12 s (earlier note in release.ts) | 2 s (same note) | n/a | SwiftPM, Mac only |
-| ios-client | not measured (link dropped) | | n/a | SwiftPM plus a live test server, Mac only |
-| renderer-soak | 64.1 s, 64.6 s (2026-11-01, a fresh clone) | 62.6 s, 63.1 s | 62 s by hand | Mac only; a 50 s window inside its 90 s |
-| renderer-soak-chat | about 63 s (2026-11-02, by hand) | | 62 s by hand | Mac only; the same window, after the board scene |
-| renderer-soak-typing | 47.8 s, 55.4 s (2026-11-05, a fresh clone) | | 62 s (2026-11-05, load 34) | Mac only; its phases, after the chat scene |
-| renderer-soak-scroll | not measured (no Mac linked) | | about 40 s (2026-11-05, load 86) | Mac only; four surfaces, after the typing scene |
+| step | Mac cold | Mac warm | box | cap | notes |
+| --- | --- | --- | --- | --- | --- |
+| typecheck | 11.2 s | 10.8 s | 25 s | | skipped by the hash when no input changed |
+| vitest | 18.9 s | 18.6 s | 33 s | | box: gateway.test.ts is the one known Linux failure |
+| build | not measured (link dropped) | | 156 s | | electron-vite build into out/ |
+| bundle-size | | | under 0.1 s | | reads out/bundle-map.json after the build |
+| e2e-remote-fence | not measured (link dropped) | | 2.4 s | | node, not Electron: boots the server in-process |
+| hub | not measured (link dropped) | | n/a | | infra/hub's npm install writes nothing on the box; Mac only |
+| ios | 12 s (earlier note in release.ts) | 2 s (same note) | n/a | | SwiftPM, Mac only |
+| ios-client | not measured (link dropped) | | n/a | | SwiftPM plus a live test server, Mac only |
+| renderer-soak | 64.1 s, 64.6 s (2026-11-01, a fresh clone) | 62.6 s, 63.1 s | 62 s by hand | 12 min | Mac only; a 50 s window inside its 90 s |
+| renderer-soak-chat | about 63 s (2026-11-02, by hand) | | 62 s by hand | 12 min | Mac only; the same window, after the board scene |
+| renderer-soak-typing | 47.8 s, 55.4 s (2026-11-05, a fresh clone) | | 62 s (2026-11-05, load 34) | 12 min | Mac only; its phases, after the chat scene |
+| renderer-soak-scroll | not measured (no Mac linked) | | about 40 s (2026-11-05, load 86) | 12 min | Mac only; four surfaces, after the typing scene |
+| computer-bench | BENCH_GATE_TIME | | n/a | 15 min | Mac only; three model lanes in its own lane, beside the build |
 
 With the three commit lanes at once on the box, vitest finished at 42 s
 and typecheck at 43 s while the build was still running, so the commit
