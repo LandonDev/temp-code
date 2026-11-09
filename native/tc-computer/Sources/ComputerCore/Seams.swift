@@ -73,13 +73,65 @@ public struct InputOutcome: Sendable {
     public var clipboard: ClipboardOutcome?
     /// the agent cursor after the action, session space
     public var cursor: [Int]?
+    /// what a session-tier step changed on the Mac; the shell puts it on the step as `session`
+    public var session: SessionChange?
+    /// mach_absolute_time of the last event posted or AX change made; the typing and
+    /// paste checks after it do not move it, and the smart wait counts from it
+    public var lastInputAt: UInt64?
 
-    public init(tier: Tier?, via: InputVia?, clipboard: ClipboardOutcome?, cursor: [Int]?) {
+    public init(tier: Tier?, via: InputVia?, clipboard: ClipboardOutcome?, cursor: [Int]?, session: SessionChange? = nil, lastInputAt: UInt64? = nil) {
         self.tier = tier
         self.via = via
         self.clipboard = clipboard
         self.cursor = cursor
+        self.session = session
+        self.lastInputAt = lastInputAt
     }
+}
+
+/// One of the two Mac-wide locks every service shares (§1): the Service shell implements
+/// both over `flock`, and Input takes them, since only it knows the tier a step will use.
+public protocol MacLock: Sendable {
+    /// Takes the lock, waiting at most `within` seconds; nil when it stayed taken.
+    func acquire(within seconds: Double) -> MacLockHold?
+}
+
+/// A taken lock. `release` is idempotent.
+public protocol MacLockHold: AnyObject, Sendable {
+    func release()
+}
+
+/// A button or key Input holds down past one event pair: the shell writes these to
+/// `<dataDir>/held.json`, so a service that dies holding input is let go at the next start.
+public struct HeldRecord: Codable, Sendable, Equatable {
+    public enum Kind: String, Codable, Sendable { case button, key }
+    /// the pid of the service that pressed it
+    public var writer: Int32
+    public var pid: Int32
+    public var tier: Tier
+    public var kind: Kind
+    /// a button's screen point, rounded
+    public var point: [Int]?
+    /// a key's virtual key codes, modifiers first
+    public var keyCodes: [UInt16]?
+    /// epoch seconds
+    public var since: Double
+
+    public init(writer: Int32, pid: Int32, tier: Tier, kind: Kind, point: [Int]? = nil, keyCodes: [UInt16]? = nil, since: Double) {
+        self.writer = writer
+        self.pid = pid
+        self.tier = tier
+        self.kind = kind
+        self.point = point
+        self.keyCodes = keyCodes
+        self.since = since
+    }
+}
+
+/// Input's word to the shell's crash ledger: `pressing` before such a down is posted, `released` after its up.
+public enum HeldEvent: Sendable, Equatable {
+    case pressing(HeldRecord)
+    case released(pid: Int32, kind: HeldRecord.Kind)
 }
 
 /// One preview frame from Capture; the shell maps the agent cursor into its pixels.
@@ -196,21 +248,27 @@ public struct InputTarget {
     public let windowID: UInt32
     /// screen points
     public let windowFrame: ComputerProtocol.Rect
+    /// the resolved window: the key-window check, raise, minimized
+    public let window: AXUIElement
     /// to map a coordinate to a screen point
     public let space: CoordinateSpace
     public let element: ResolvedElement?
     public let startElement: ResolvedElement?
     /// the agent cursor `[x, y]`, session space
     public var cursor: [Int]?
+    /// the shell's `$/cancel` flag for the call; Input checks it before every event and in every pause
+    public let cancelled: @Sendable () -> Bool
 
-    public init(pid: pid_t, windowID: UInt32, windowFrame: ComputerProtocol.Rect, space: CoordinateSpace, element: ResolvedElement?, startElement: ResolvedElement?, cursor: [Int]?) {
+    public init(pid: pid_t, windowID: UInt32, windowFrame: ComputerProtocol.Rect, window: AXUIElement, space: CoordinateSpace, element: ResolvedElement?, startElement: ResolvedElement?, cursor: [Int]?, cancelled: @escaping @Sendable () -> Bool = { false }) {
         self.pid = pid
         self.windowID = windowID
         self.windowFrame = windowFrame
+        self.window = window
         self.space = space
         self.element = element
         self.startElement = startElement
         self.cursor = cursor
+        self.cancelled = cancelled
     }
 }
 
@@ -222,12 +280,19 @@ public protocol AppReading: AnyObject {
     var changes: any ChangeSignal { get }
 }
 
-/// Input.
+/// Input. Every call is synchronous and runs off the main thread; every failure is a `ComputerFailure`.
 public protocol InputPerforming {
-    /// throws `needs_tier`, `invalid_key`, `interrupted`, `clipboard_busy`
+    /// throws `needs_tier`, `invalid_key`, `interrupted`, `clipboard_busy`, `key_window_unavailable`, `session_unavailable`, …
     func perform(_ action: ComputerAction, on target: InputTarget, tiers: [Tier]) throws -> InputOutcome
+    /// `input.probe`: which classes the app honours at the process tier, each put back through AX
+    func probe(_ target: InputTarget, classes: [ActionClass]) throws -> ProbeReport
+    /// `input.restoreSession`: puts back what the session tier changed, unless the person moved since;
+    /// throws `session_unavailable` when another holder keeps the session lock
+    func restoreSession() throws -> SessionRestore
     /// held-input cleanup (§5.1)
     func releaseHeld(pid: pid_t)
+    /// the ups of a held record whose writer died, at its tier
+    func releaseStale(_ record: HeldRecord)
 }
 
 #endif
