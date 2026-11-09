@@ -6,6 +6,8 @@ import { PassThrough, Writable } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent, SessionMeta } from '@shared/events'
 import { failureKindOf } from '../failureKind'
+import { bridgeMcpConfig } from '../apptools'
+import { COMPUTER_PICTURES_TEXT, MAX_IMAGE_PARTS, formatShotLine } from '@shared/computer/tools'
 import type { DriverCtx } from './types'
 
 /**
@@ -63,10 +65,10 @@ vi.mock('node:child_process', async (importOriginal) => ({
 }))
 vi.mock('./binaries', () => ({ resolveBinary: async () => '/fake/codex', harnessEnv: async () => ({}) }))
 vi.mock('../endpoint', () => ({ routedEndpointFor: async () => ({ url: null, account: 'acct-1' }) }))
-vi.mock('../apptools', () => ({ bridgeMcpConfig: () => null }))
+vi.mock('../apptools', () => ({ bridgeMcpConfig: vi.fn(() => null) }))
 vi.mock('../gatewayObserve', () => ({ observeCodexSnapshot: () => undefined }))
 
-const { codexDriver, codexWarm, bootOptions, setCodexBootFailureLog, withoutImageBytes } = await import('./codex')
+const { codexDriver, codexWarm, bootOptions, setCodexBootFailureLog, withoutImageBytes, codexComputerImages } = await import('./codex')
 
 /** Answers the handshake and every later request; starts thread `t1`. */
 const healthy: Script = (proc, frame) => {
@@ -428,5 +430,76 @@ describe('codex approval and question replies', () => {
     } finally {
       await handle.dispose()
     }
+  })
+})
+
+describe('computer pictures', () => {
+  it('gates overrides to tests and proof runs', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('TEMP_CODE_E2E_STATUS', '')
+    vi.stubEnv('TEMP_CODE_CODEX_COMPUTER_IMAGES', 'steer')
+    expect(codexComputerImages()).toBe('parts')
+    vi.stubEnv('TEMP_CODE_E2E_STATUS', '1')
+    expect(codexComputerImages()).toBe('steer')
+    vi.stubEnv('TEMP_CODE_E2E_STATUS', '')
+    vi.stubEnv('NODE_ENV', 'test')
+    for (const mode of ['parts', 'steer', 'view'] as const) {
+      vi.stubEnv('TEMP_CODE_CODEX_COMPUTER_IMAGES', mode)
+      expect(codexComputerImages()).toBe(mode)
+    }
+    vi.stubEnv('TEMP_CODE_CODEX_COMPUTER_IMAGES', 'invalid')
+    expect(codexComputerImages()).toBe('parts')
+  })
+
+  it('passes parts to the bridge', async () => {
+    vi.stubEnv('TEMP_CODE_CODEX_COMPUTER_IMAGES', 'parts')
+    scripts.push(healthy)
+    const handle = await codexDriver.start(ctx())
+    expect(bridgeMcpConfig).toHaveBeenLastCalledWith('sess-1', { computerImages: 'parts' })
+    await handle.dispose()
+  })
+
+  it.each([false, true])('steers pictures once, hides its echo and drops refusal=%s', async (refused) => {
+    vi.stubEnv('TEMP_CODE_WARM_HARNESS', '0')
+    vi.stubEnv('TEMP_CODE_CODEX_COMPUTER_IMAGES', 'steer')
+    const requests: Frame[] = []
+    scripts.push((proc, frame) => {
+      requests.push(frame)
+      if (frame.method === 'turn/steer' && refused) proc.fail(frame.id!, 'no active turn to steer')
+      else healthy(proc, frame)
+    })
+    const handle = await codexDriver.start(ctx())
+    const notify = (method: string, params: Record<string, unknown>) => spawned[0].stdout.write(JSON.stringify({ method, params }) + '\n')
+    notify('turn/started', { turn: { id: 'turn-1' } })
+    const paths = Array.from({ length: MAX_IMAGE_PARTS + 1 }, (_, i) => `/tmp/shot ${i}.png`)
+    const result = { content: [{ type: 'text', text: paths.map((path, i) => formatShotLine(i + 1, i + 1, { path, width: 1280, height: 800 }, true)).join('\n') }] }
+    const item = { type: 'mcpToolCall', id: 'c1', server: 'app', tool: 'computer_batch', status: 'completed', result }
+    notify('item/started', { item })
+    notify('item/completed', { item: { ...item, id: 'other', tool: 'html_preview' } })
+    notify('item/completed', { item: { ...item, id: 'external', server: 'external' } })
+    expect(requests.filter((r) => r.method === 'turn/steer')).toHaveLength(0)
+    notify('item/completed', { item })
+    notify('item/completed', { item })
+    await vi.waitFor(() => expect(requests.filter((r) => r.method === 'turn/steer')).toHaveLength(1))
+    expect(requests.find((r) => r.method === 'turn/steer')?.params).toEqual({
+      threadId: 't1', expectedTurnId: 'turn-1', clientUserMessageId: 'tcimg_1',
+      input: [{ type: 'text', text: COMPUTER_PICTURES_TEXT }, ...paths.slice(0, MAX_IMAGE_PARTS).map((path) => ({ type: 'localImage', path }))]
+    })
+    const before = events.length
+    for (const method of ['item/started', 'item/completed']) notify(method, { item: { type: 'userMessage', clientId: 'tcimg_1', content: [] } })
+    await new Promise((r) => setTimeout(r, 10))
+    expect(events).toHaveLength(before)
+    expect(requests.filter((r) => r.method === 'turn/start')).toHaveLength(0)
+    expect(bridgeMcpConfig).toHaveBeenLastCalledWith('sess-1', { computerImages: 'none' })
+    await handle.dispose()
+  })
+
+  it('records native image reads for the proof to audit', async () => {
+    scripts.push(healthy)
+    const handle = await codexDriver.start(ctx())
+    for (const method of ['item/started', 'item/completed']) spawned[0].stdout.write(JSON.stringify({ method, params: { item: { type: 'imageView', id: 'v1', path: '/tmp/shot.png' } } }) + '\n')
+    await vi.waitFor(() => expect(events.some((e) => e.type === 'tool-result' && e.callId === 'v1')).toBe(true))
+    expect(events.filter((e) => e.type === 'tool-call')).toContainEqual({ type: 'tool-call', callId: 'v1', name: 'view_image', input: { path: '/tmp/shot.png' } })
+    await handle.dispose()
   })
 })

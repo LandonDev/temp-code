@@ -106,9 +106,12 @@ function shot(ctx, action) {
   const count = shots.get(ctx.session) + 1
   shots.set(ctx.session, count)
   const path = join(dir, `${String(count).padStart(4, '0')}-${action}.jpg`)
-  const bytes = process.env.FAKE_SHOT_FILE ? readFileSync(process.env.FAKE_SHOT_FILE) : jpeg
+  const files = process.env.FAKE_SHOT_FILES?.split(',').filter(Boolean)
+  const source = files?.length ? files[Math.min(count - 1, files.length - 1)] : process.env.FAKE_SHOT_FILE
+  const bytes = source ? readFileSync(source) : jpeg
+  const png = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
   writeFileSync(path, bytes)
-  return { path, format: 'jpeg', ...space, bytes: bytes.length, window: { id: ctx.window.id, frame }, blank: false, capturedAt: Date.now() }
+  return { path, format: png ? 'png' : 'jpeg', ...space, ...(png ? { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) } : {}), bytes: bytes.length, window: { id: ctx.window.id, frame }, blank: false, capturedAt: Date.now() }
 }
 function rewrite(text, ctx) {
   return text.replace(/^app "[^"]*" · window "[^"]*"/, `app ${JSON.stringify(ctx.app.name)} · window ${JSON.stringify(ctx.window.title)}`)

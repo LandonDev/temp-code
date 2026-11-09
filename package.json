@@ -82,6 +82,7 @@
     "script:e2e-providerswitch": "esbuild scripts/e2e-providerswitch.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-providerswitch.mjs && node scripts/.out/e2e-providerswitch.mjs",
     "script:e2e-supervision": "esbuild scripts/e2e-orchestrator-supervision.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-supervision.mjs && node scripts/.out/e2e-supervision.mjs",
     "script:e2e-shared-context": "esbuild scripts/e2e-shared-context.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-shared-context.mjs && node scripts/.out/e2e-shared-context.mjs",
+    "script:e2e-computer-images": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-computer-images.ts",
     "script:e2e-plan-auto-implement": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-plan-auto-implement.ts",
     "script:e2e-away": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-away.ts",
     "script:e2e-steer-ack": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-steer-ack.ts",

@@ -10,6 +10,7 @@ import {
   type ComputerAction, type ComputerMethod, type ComputerParams, type ComputerResult, type Observation, type Shot
 } from '../../../shared/computer/protocol'
 import { parseObservation } from '../../../shared/computer/observation'
+import { codeImage } from '../../../../scripts/lib/codeImage'
 import { FAKE_APPS, fakeServiceBin } from './testFake'
 
 type Frame = { jsonrpc: string; id?: number; method?: string; params?: unknown; result?: unknown; error?: unknown }
@@ -622,6 +623,21 @@ describe('fake preview, Escape and shot controls', () => {
     await delay(1100); expect(notes(expired, 'escape/pressed')).toHaveLength(0)
     const old = new Client({ FAKE_ESCAPE_UNSUPPORTED: '1' }); await old.open()
     await old.error('escape.watch', { on: true, leaseMs: 30000 }, undefined, -32601)
+  })
+  it('takes FAKE_SHOT_FILES in order, repeats the last and reports PNG dimensions', async () => {
+    const first = join(temp(), 'first.jpg')
+    const last = codeImage(join(temp(), 'last.png')).path
+    const jpeg = Buffer.from(JSON.parse(readFileSync(new URL('./fixtures/wire/notify-capture-frame.json', import.meta.url), 'utf8')).params.data, 'base64')
+    writeFileSync(first, jpeg)
+    const c = new Client({ FAKE_SHOT_FILES: `${first},${last}`, FAKE_SHOT_FILE: first }); await c.open()
+    const a = await c.call('capture.screenshot', c.target())
+    const b = await c.call('capture.screenshot', c.target())
+    const d = await c.call('capture.screenshot', c.target())
+    expect(readFileSync(a.path)).toEqual(jpeg)
+    for (const shot of [b, d]) {
+      expect(readFileSync(shot.path)).toEqual(readFileSync(last))
+      expect(shot).toMatchObject({ format: 'png', width: 1280, height: 800 })
+    }
   })
   it('copies FAKE_SHOT_FILE for observation, screenshot, zoom and capture shots', async () => {
     const file = join(temp(), 'proof.jpg')

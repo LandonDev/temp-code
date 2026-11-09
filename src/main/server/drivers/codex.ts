@@ -20,6 +20,7 @@ import { THREAD_MARK } from '../processGuard'
 import { NICE_LEVEL } from '@shared/bashMarks'
 import { existsSync } from 'node:fs'
 import { codexSkillRoot, codexSkillScope, disableHomeSkillsArgs, homeSkillFiles, trackCodexSkills } from '../skills/codexSkills'
+import { COMPUTER_PICTURES_TEXT, MAX_IMAGE_PARTS, parseShotLine } from '@shared/computer/tools'
 
 /**
  * Codex driver — `codex app-server`, protocol v2 (verified live against
@@ -65,6 +66,17 @@ const EFFORT: Record<Reasoning, string> = {
   xhigh: 'xhigh',
   max: 'max',
   ultra: 'ultra'
+}
+
+export type CodexComputerImages = 'parts' | 'steer' | 'view' | 'none'
+
+/** The live picture proof may override the measured default in isolated runs. */
+export function codexComputerImages(): CodexComputerImages {
+  const mode = process.env.TEMP_CODE_CODEX_COMPUTER_IMAGES
+  if ((process.env.NODE_ENV === 'test' || process.env.TEMP_CODE_E2E_STATUS === '1') &&
+      (mode === 'parts' || mode === 'steer' || mode === 'view')) return mode
+  // Box proof, codex-cli 0.163.0: both single and fixture-plus-code cases passed.
+  return 'parts'
 }
 
 /** Backoff before each boot retry; a test shortens it. */
@@ -410,6 +422,9 @@ export const codexDriver: HarnessDriver = {
     // shell the app-server runs inherits it, so its orphans are the thread's.
     const env = { ...(await harnessEnv()), [THREAD_MARK]: session.id, ...metaCodexEnv(session) }
 
+    const computerImages = codexComputerImages()
+    let pictureSeq = 0
+    const pictureCalls = new Set<string>()
     let currentTurnId: string | null = null
     /** Steers sent and not yet echoed, id → how the model gets it: into the
      *  running turn (turn/steer) or as a turn of its own (turn/start). The
@@ -463,6 +478,9 @@ export const codexDriver: HarnessDriver = {
         // the renderer drops once the item completes still empty.
         case 'reasoning':
           emit({ type: 'thinking', text: '', delta: true, msgId: String(item.id), blockIndex: 0 })
+          break
+        case 'imageView':
+          emit({ type: 'tool-call', callId: String(item.id), name: 'view_image', input: { path: item.path } })
           break
         case 'commandExecution':
           emit({
@@ -524,6 +542,9 @@ export const codexDriver: HarnessDriver = {
           emit({ type: 'thinking', text, delta: false, msgId: String(item.id), blockIndex: 0 })
           break
         }
+        case 'imageView':
+          emit({ type: 'tool-result', callId: String(item.id), output: '[image]', isError: false })
+          break
         case 'commandExecution':
           emit({
             type: 'tool-result',
@@ -557,6 +578,19 @@ export const codexDriver: HarnessDriver = {
             output: JSON.stringify(withoutImageBytes(item.result ?? null), null, 2),
             isError: item.status === 'failed'
           })
+          if (computerImages === 'steer' && currentTurnId && item.server === 'app' &&
+              String(item.tool).startsWith('computer_') && !pictureCalls.has(String(item.id))) {
+            pictureCalls.add(String(item.id))
+            const content = (item.result as { content?: { type?: string; text?: string }[] } | null)?.content
+            const paths = (content ?? []).filter((p) => p.type === 'text')
+              .flatMap((p) => (p.text ?? '').split('\n'))
+              .map(parseShotLine).filter((s) => s !== null).slice(0, MAX_IMAGE_PARTS).map((s) => s.path)
+            if (paths.length) void conn.request('turn/steer', {
+              threadId, expectedTurnId: currentTurnId,
+              input: [{ type: 'text', text: COMPUTER_PICTURES_TEXT }, ...paths.map((path) => ({ type: 'localImage', path }))],
+              clientUserMessageId: `tcimg_${++pictureSeq}`
+            }).catch(() => {})
+          }
           break
         case 'webSearch':
           emit({
@@ -624,6 +658,7 @@ export const codexDriver: HarnessDriver = {
           break
         }
         case 'turn/started':
+          pictureCalls.clear()
           currentTurnId = String((params.turn as Item)?.id ?? '')
           ctx.mark?.('init')
           break
@@ -727,6 +762,7 @@ export const codexDriver: HarnessDriver = {
           break
         }
         case 'turn/completed': {
+          pictureCalls.clear()
           currentTurnId = null
           retryLogged = false
           const turn = params.turn as { status?: string; error?: { message?: string } | null }
@@ -935,7 +971,7 @@ export const codexDriver: HarnessDriver = {
         // App tools (docs/PLAN-2.md M10): the stdio bridge forwards
         // app_list_threads / app_read_thread / app_start_thread back to the
         // app's WS server, so codex threads can operate the app like claude.
-        const bridgeEntry = bridgeMcpConfig(session.id, { computerImages: 'none' })
+        const bridgeEntry = bridgeMcpConfig(session.id, { computerImages: computerImages === 'parts' ? 'parts' : 'none' })
         // Provider traffic goes through Aliax's shim or our own gateway, which
         // swap in this thread's account's token.
         const routed = await routedEndpointFor('codex', { thread: session.id, route: ctx.route ?? null, model: session.model })

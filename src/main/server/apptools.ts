@@ -197,8 +197,8 @@ export function computerMechanicsFor(session: SessionMeta, host: ComputerHost | 
 
 /** MCP server entry for a codex thread's config override (config.toml
  *  shape: command/args/env). `computerImages`: whether a computer call's
- *  pictures come back as image parts (Muse) or only as the file's line
- *  (codex, until the Preview and image results thread proves it takes them). */
+ *  pictures come back as image parts (Muse and codex's measured default) or only as the file's line
+ *  (the isolated codex steer/view proof modes). */
 export function bridgeMcpConfig(sessionId: string, opts: { computerImages?: 'parts' | 'none' } = {}): Record<string, unknown> | null {
   if (!bridge) return null
   // Here where computer use runs, else a box thread whose Mac bridge offers it (computer/bridge.ts).
