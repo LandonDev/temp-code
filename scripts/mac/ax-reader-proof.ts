@@ -235,7 +235,7 @@ async function textedit(): Promise<void> {
   check(app, 'select shows selection 0..5', /selection 0\.\.5/.test((await s.observe()).text ?? ''))
 
   const menus = await s.observe({ mode: 'full', menus: true })
-  check(app, 'with menus the menu bar is read', /\n\[\d+\] menu bar\n/.test(menus.text ?? ''))
+  check(app, 'with menus the menu bar is read', /\n\[\d+\] menu bar( actions: [^\n]*)?\n/.test(menus.text ?? ''))
   await s.observe({ mode: 'full' })
 
   // a real key event to the pid marks the document edited, so its close button asks first
