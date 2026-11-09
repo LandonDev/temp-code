@@ -1026,9 +1026,12 @@ mismatch logs one `[muse]` line.
   keeps the raw `Connection` (the facade drops `usage/changed` and lacks
   steer, cancel, `model/list`); `clientInfo.name` is `temp_code` (the wire
   refuses a hyphen); the environment is `harnessEnv()` plus the guard's marks,
-  `TBH_CREDENTIAL_BACKEND=file` (on macOS the CLI otherwise keeps its login in
-  the Keychain), `MUSE_CONTRIBUTOR_MODE=0` (the person's code is not training
-  data unless they turn it on) and `XDG_CONFIG_HOME` for the thread's account.
+  `MUSE_CONTRIBUTOR_MODE=0` (the person's code is not training data unless
+  they turn it on) and `XDG_CONFIG_HOME` for the thread's account. It does
+  NOT set `TBH_CREDENTIAL_BACKEND=file`: the config-dir spike (M2, below)
+  found the account dir's `auth.json` decides the login with it on both
+  hosts, and without it on Linux, but not reliably on the Mac, where the CLI
+  may go to the Keychain first.
   `harness/museProtocol.ts` is the pure mapping: `safe` → `:ask-me` +
   `promptUnmatched`, `edits` → `:ask-me` + `onRequest`, `auto` →
   `:unrestricted` + `allowAll`; the app-tools bridge rides `session/start`'s
@@ -1089,6 +1092,25 @@ mismatch logs one `[muse]` line.
   `harness/museFakeServe.mjs`, museProtocol, museCatalog (the recorded
   `model-list.json`), museHost's exit words, museConfigDirs, museSettings,
   providerEnums, the rules, failureKind, binaries and sendSpans cases.
+
+## The config-dir spike: how the skills store reaches each CLI
+`bun run script:spike-config-dirs -- --host box|mac` (scripts/spike-config-dirs.ts,
+its sections scripts/lib/spike{Claude,Codex,Muse}.ts, the pure helper
+scripts/lib/configDirSpike.ts with scripts/spike-config-dirs.test.ts) runs one
+experiment per id (C* Claude, X* Codex, M* Muse) under a temp config root and
+a temp HOME against loopback fakes with placeholder logins, and writes one
+redacted evidence file each to `scripts/.out/config-dir-spike/<host>/`; rerun
+it after a CLI update. `--upstream --dev-user-data <dir>` adds the real halves
+through an isolated dev instance's gateway (the Mac leg); M0b records Meta's
+model list to scripts/lib/fixtures/muse-models.json, which the Muse fake
+serves. The answers and the evidence of 2026-11-09 are in
+`.temp-code/findings/claude-config-dir.md` (force-added; `.temp-code/` is
+ignored): Claude Code takes the store as an SDK plugin dir (`plugins`,
+`pluginDelivery: 'initialize'`, `reloadSkills()` for a live change, nothing
+in the warm key); Codex as an app-server extra root
+(`skills/extraRoots/set`, watched); Muse has no add-a-dir route and keeps the
+per-account root, which needs `TBH_CREDENTIAL_BACKEND=file` and a
+`muse/skills/` the store owns.
 
 ## Remote access: the fixed port behind the tunnel
 - A second listener (src/main/server/remote/listener.ts) binds
