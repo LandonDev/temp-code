@@ -18,7 +18,11 @@ let package = Package(
         // AX tree → indexed text, the diff, the element map, the change monitor.
         .target(name: "AXReader", dependencies: ["ComputerCore"]),
         // The ax, process and session tiers, the key table, the clipboard paste.
-        .target(name: "Input", dependencies: ["ComputerCore"]),
+        .target(
+            name: "Input",
+            dependencies: ["ComputerCore"],
+            linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("Carbon"), .linkedFramework("ApplicationServices")]
+        ),
         // Window screenshots, the preview stream and the pixel watch (ScreenCaptureKit).
         .target(name: "Capture", dependencies: ["ComputerProtocol", "ComputerCore"]),
         // The stdio server, the smart wait, the clipboard lock, TCC, the lifecycle.
@@ -27,7 +31,11 @@ let package = Package(
         // Capture's live proof on the Mac (scripts/mac/proof-computer-capture.sh); never shipped:
         // the app's build makes --product tc-computer alone.
         .executableTarget(name: "capture-proof", dependencies: ["Capture", "ComputerCore", "ComputerProtocol"]),
+        // Input's live proof on scratch windows (scripts/mac/input-proof.sh); never shipped, as capture-proof.
+        .executableTarget(name: "tc-input-proof", dependencies: ["Input"]),
         .testTarget(name: "ComputerProtocolTests", dependencies: ["ComputerProtocol"]),
-        .testTarget(name: "CaptureTests", dependencies: ["Capture", "ComputerCore", "ComputerProtocol"])
+        .testTarget(name: "CaptureTests", dependencies: ["Capture", "ComputerCore", "ComputerProtocol"]),
+        // Input's offline suites; fixtures are read by path from the repository through #filePath.
+        .testTarget(name: "InputTests", dependencies: ["Input"])
     ]
 )
