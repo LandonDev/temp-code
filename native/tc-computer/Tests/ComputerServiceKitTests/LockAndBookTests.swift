@@ -298,3 +298,32 @@ private final class LinesBox: @unchecked Sendable {
         #expect(s.feed(line("abcdefgh\nxy\n")) == [.overlong(8), .line(line("xy"))])
     }
 }
+
+@Suite struct AsyncGateTests {
+    @Test func bodiesRunOneAtATimeInArrivalOrder() async {
+        let gate = AsyncGate()
+        let order = LinesBox()
+        let inside = Counter()
+        let most = LinesBox()
+        await withTaskGroup(of: Void.self) { group in
+            for n in 0..<5 {
+                group.addTask {
+                    try? await Task.sleep(for: .milliseconds(n * 3))
+                    await gate.run {
+                        inside.bump()
+                        most.add("\(inside.count)")
+                        order.add("start \(n)")
+                        try? await Task.sleep(for: .milliseconds(10))
+                        order.add("end \(n)")
+                        inside.drop()
+                    }
+                }
+            }
+        }
+        #expect(most.all.allSatisfy { $0 == "1" }, "never two bodies at once")
+        let all = order.all
+        for at in stride(from: 0, to: all.count, by: 2) {
+            #expect(all[at].hasPrefix("start") && all[at + 1] == "end " + all[at].dropFirst("start ".count))
+        }
+    }
+}

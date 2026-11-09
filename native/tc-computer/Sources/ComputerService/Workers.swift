@@ -35,6 +35,8 @@ final class WorkerState: @unchecked Sendable {
 final class Worker: @unchecked Sendable {
     let session: String
     let pid: pid_t
+    /// one observation of this session × pid at a time (read, shot, re-read, stamp)
+    let observing = AsyncGate()
     private let queue: DispatchQueue
     private let state = WorkerState()
 

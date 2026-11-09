@@ -68,6 +68,7 @@ final class Counter: @unchecked Sendable {
     private let lock = NSLock()
     private var value = 0
     func bump() { lock.locked { value += 1 } }
+    func drop() { lock.locked { value -= 1 } }
     var count: Int { lock.locked { value } }
 }
 

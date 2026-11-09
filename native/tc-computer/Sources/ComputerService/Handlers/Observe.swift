@@ -135,8 +135,15 @@ extension ComputerService {
 
     // MARK: The observation
 
-    /// The reader's text, the shot when asked or thin, and the shell's own fields (shell §9.1 step 6).
+    /// The reader's text, the shot when asked or thin, and the shell's own fields (shell §9.1 step 6), as one
+    /// transaction per session × pid, stamped once: `seq` and `base` count only what the host gets.
     func observe(_ target: Resolved, _ knobs: ObserveKnobs, loading: Bool, waited: WaitReport?, cancel: CancelFlag) async throws -> Observation {
+        try await target.worker.observing.run {
+            try await observeOnce(target, knobs, loading: loading, waited: waited, cancel: cancel)
+        }
+    }
+
+    private func observeOnce(_ target: Resolved, _ knobs: ObserveKnobs, loading: Bool, waited: WaitReport?, cancel: CancelFlag) async throws -> Observation {
         let screenRecording = currentPermissions.screenRecording
         let maxEdge = knobs.maxEdge ?? ComputerDefaults.Shot.defaultMaxEdge
         let windowID = target.windowID
@@ -150,7 +157,7 @@ extension ComputerService {
             geometry: knobs.geometry ?? (knobs.screenshot == .always), menus: knobs.menus ?? false, space: space,
             loading: loading, noteThin: knobs.screenshot != .never && screenRecording
         )
-        var (text, seq, base) = try await read(target, request)
+        var text = try await read(target, request)
         if cancel.isSet { return try dropped(target) }
 
         var shot: Shot?
@@ -169,10 +176,13 @@ extension ComputerService {
             try await resetBase(target)
             request.space = space
             request.mode = .full
-            (text, seq, base) = try await read(target, request)
+            text = try await read(target, request)
         }
         if cancel.isSet { return try dropped(target) }
-        if let shot { book.setSpace(target.session, window: windowID, CoordinateSpace(width: shot.width, height: shot.height, scale: shot.scale)) }
+        // what coordinates mean from now on is the space this observation states, shot or no shot
+        book.setSpace(target.session, window: windowID, space)
+        if text.kind != .subtree { book.noteThin(target.session, pid: target.pid, thin: text.stats.thin) }
+        let (seq, base) = book.stamp(target.session, pid: target.pid, kind: text.kind)
         return Observation(
             epoch: epoch, session: target.session, app: target.app,
             window: Observation.Window(id: target.info.id, title: text.window.title, frame: text.window.frame),
@@ -181,21 +191,12 @@ extension ComputerService {
         )
     }
 
-    /// The reader's text, stamped on the worker right after the read, so `seq` and `base` follow the
-    /// reader's own order of reads (and its diff bases) however reads of the app overlap.
-    private func read(_ target: Resolved, _ request: ObserveRequest) async throws -> (text: ObservationText, seq: Int, base: Int?) {
+    private func read(_ target: Resolved, _ request: ObserveRequest) async throws -> ObservationText {
         let box = RequestBox(request: request)
-        let book = self.book
-        let session = target.session
-        let pid = target.pid
-        let read = try await target.worker.run { state in
+        return try await target.worker.run { state in
             guard let reader = state.reader else { throw ComputerError(kind: .windowNotFound, message: "The app's reader is gone.") }
-            let text = try reader.observe(box.request)
-            if text.kind != .subtree { book.noteThin(session, pid: pid, thin: text.stats.thin) }
-            let (seq, base) = book.stamp(session, pid: pid, kind: text.kind)
-            return TextBox(text: text, seq: seq, base: base)
-        }
-        return (read.text, read.seq, read.base)
+            return TextBox(text: try reader.observe(box.request))
+        }.text
     }
 
     func resetBase(_ target: Resolved) async throws {
@@ -250,9 +251,5 @@ extension ComputerService {
 /// An `ObserveRequest` handed to the worker (it holds no AX handle).
 private struct RequestBox: @unchecked Sendable { let request: ObserveRequest }
 
-/// The reader's answer handed back from the worker, with its stamp.
-private struct TextBox: @unchecked Sendable {
-    let text: ObservationText
-    let seq: Int
-    let base: Int?
-}
+/// The reader's answer handed back from the worker.
+private struct TextBox: @unchecked Sendable { let text: ObservationText }

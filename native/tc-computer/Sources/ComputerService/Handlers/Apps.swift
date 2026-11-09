@@ -67,8 +67,9 @@ extension ComputerService {
     /// its readers and drops its workers.
     func closeSession(_ session: String) async {
         book.close(session)
-        let flags = lock.withLock { sessionRequests[session].map { Array($0.values) } ?? [] }
-        for flag in flags { flag.set() }
+        // the router's cancel sets each flag and cancels each task, which wakes one waiting for its app's slot
+        let ids = lock.withLock { sessionRequests[session].map { Array($0.keys) } ?? [] }
+        for id in ids { router.cancel(id) }
         let deadline = ContinuousClock.now + env.timing.closeWait
         while lock.withLock({ sessionRequests[session] != nil }) && ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(5))

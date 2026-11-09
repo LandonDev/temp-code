@@ -97,6 +97,16 @@ private func held(_ pid: Int32, kind: HeldRecord.Kind = .button) -> HeldRecord {
         #expect(rig.reader().observed.last?.space.width == 1280)
     }
 
+    @Test func anAlwaysReadWhoseShotFailsStillMeansTheSpaceItStates() async throws {
+        let rig = ServiceRig()
+        await rig.ready()
+        rig.capture.failShots = true
+        let result = try #require(await rig.call("state.get", "{\(docTarget),\"screenshot\":\"always\",\"maxEdge\":640,\"wait\":\(quick)}").result)
+        #expect(result["shot"] == nil)
+        #expect(result["space"]?["width"]?.intValue == 640)
+        #expect(rig.service.book.space("s1", window: 7)?.width == 640)
+    }
+
     @Test func noteThinIsOffWithoutAShotAndWithoutScreenRecording() async throws {
         let rig = ServiceRig(screenRecording: false)
         await rig.ready()
@@ -150,6 +160,7 @@ private func held(_ pid: Int32, kind: HeldRecord.Kind = .button) -> HeldRecord {
         let result = try #require(await rig.call("state.get", "{\(docTarget),\"screenshot\":\"always\",\"wait\":\(quick)}").result)
         #expect(result["space"]?["width"]?.intValue == 1000)
         #expect(result["kind"]?.stringValue == "full")
+        #expect(result["seq"]?.intValue == 1, "the re-read is stamped once")
         #expect(rig.reader().resets == 1)
         #expect(rig.reader().observed.last?.space.width == 1000)
     }
@@ -330,6 +341,26 @@ private func held(_ pid: Int32, kind: HeldRecord.Kind = .button) -> HeldRecord {
         let closeAt = try #require(frames.firstIndex { if case .result(close.id, _) = $0 { true } else { false } })
         #expect(actionAt < closeAt, "close answers after the action it cancelled")
         #expect(rig.reader().closed)
+    }
+
+    @Test func closingASessionWakesAStreamWaitingForItsAppAndStartsNone() async throws {
+        let rig = ServiceRig()
+        await rig.ready(session: "s1")
+        _ = await rig.call("session.open", #"{"session":"s2"}"#)
+        let release = CancelFlag()
+        rig.input.onPerform = { _, _ in
+            while !release.isSet { usleep(2_000) }
+            return InputOutcome(tier: .process, via: nil, clipboard: nil, cursor: nil, lastInputAt: mach_absolute_time())
+        }
+        let busy = rig.send("action.run", #"{"session":"s2","app":{"app":"Doc"},"action":{"action":"key","text":"a"},"tiers":["process"],"wait":\#(quick)}"#)
+        #expect(await eventually { rig.log.count("perform") == 1 })
+        let stream = rig.send("capture.stream.start", "{\(docTarget),\"stream\":\"p1\"}")
+        try await Task.sleep(for: .milliseconds(50))
+        _ = await rig.call("session.close", #"{"session":"s1"}"#)
+        #expect(await rig.answer(stream).error?.data?.kind == .cancelled)
+        release.set()
+        _ = await rig.answer(busy)
+        #expect(rig.log.count("startStream") == 0)
     }
 
     @Test func closingASessionLetsGoOfItsHeldInputAndReaders() async throws {

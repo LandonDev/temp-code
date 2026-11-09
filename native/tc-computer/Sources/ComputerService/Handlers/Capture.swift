@@ -50,7 +50,16 @@ extension ComputerService {
             self?.sendFrame(frame, stream: id, target: target)
         }
         let entry = StreamEntry(id: id, session: target.session, pid: target.pid, handle: handle)
-        lock.withLock { streams[id] = entry }
+        // a close that came while the stream started fences it out
+        let kept = lock.withLock { () -> Bool in
+            guard book.isOpen(target.session) && !ctx.cancel.isSet else { return false }
+            streams[id] = entry
+            return true
+        }
+        guard kept else {
+            await handle.stop()
+            throw Router.cancelledError
+        }
         Task { [weak self] in
             let reason = await entry.handle.ended()
             guard let self, claimStream(id, only: entry.handle) != nil else { return }

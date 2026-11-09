@@ -282,7 +282,7 @@ public final class Router: @unchecked Sendable {
     }
 
     /// `$/cancel`: a waiting request leaves the queue answered `cancelled`; a running one has its flag set and its task cancelled.
-    private func cancel(_ id: Int) {
+    public func cancel(_ id: Int) {
         enum Found { case waiting, running(Running), none }
         let found: Found = lock.locked {
             if let at = waiting.firstIndex(where: { $0.id == id }) {

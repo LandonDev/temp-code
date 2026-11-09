@@ -39,6 +39,7 @@ enum SmartWait {
             if at - lastSignature >= signatureEveryMs, let change = watch.change {
                 lastSignature = at
                 sample.signature = try? await watch.worker.run { _ in change.signal.signature() }
+                if cancel.isSet || Task.isCancelled { return finish(rule.cancelled(at: MachTime.ms(from: t0, to: MachTime.now())), trace) }
             }
             if at - lastBusy >= busyEveryMs, let change = watch.change {
                 lastBusy = at
