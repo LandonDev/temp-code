@@ -907,9 +907,11 @@ async function appSections(
     ['the prefix "TC Pro"', 'TC Pro']
   ] as const) {
     await probeApp.step(`state.get finds it by ${by}`, async () => {
+      // by title: a never-activated app's inert window is neither main nor focused, so it is no default (§2.1)
       const o = await a.call('state.get', {
         session: SESSION,
         app: { app },
+        window: { title: 'TC Probe' },
         mode: 'full',
         wait: COMPUTER_WAIT.observe
       })
@@ -934,6 +936,7 @@ async function appSections(
     const r = await a.call('action.run', {
       session: SESSION,
       app: { pid: probePid },
+      window: { id: probeWindowId },
       epoch: read.epoch,
       action: { action: 'left_click', element: ping.index },
       tiers: ['ax'],
