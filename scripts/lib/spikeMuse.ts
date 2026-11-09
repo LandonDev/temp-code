@@ -222,7 +222,8 @@ function realBinary(): string | null {
 
 async function m0(ev: Evidence): Promise<void> {
   const c = ctx()
-  const env = { ...process.env, PATH: c.loginPath }
+  // The launcher may check for an update before it reads its arguments: no update, nothing past loopback.
+  const env = { ...process.env, PATH: c.loginPath, MUSE_NO_AUTO_UPDATE: '1', ...EGRESS_GUARD }
   const version = await run(c.museBin!, ['--version'], { env, timeoutMs: 60_000 })
   const serveHelp = await run(c.museBin!, ['serve', '--help'], { env, timeoutMs: 60_000 })
   const skillsHelp = await run(c.museBin!, ['skills', '--help'], { env, timeoutMs: 60_000 })
