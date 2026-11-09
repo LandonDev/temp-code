@@ -37,8 +37,7 @@
  */
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { appendFileSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { createInterface } from 'node:readline'
 import { openDb, Store } from '../src/main/server/db'
@@ -55,13 +54,14 @@ import { SESSION_IDLE_SETTING } from '../src/shared/computer/scheduleRules'
 import type { ComputerMethod, StepResult, Tier } from '../src/shared/computer/protocol'
 import type { PermissionPolicy, SessionMeta } from '../src/shared/events'
 import { buildTcComputer } from './lib/tcComputerBuild'
+import { repoRoot } from './lib/repoRoot'
 
 if (process.platform !== 'darwin') {
   console.log('skipped: macOS only')
   process.exit(0)
 }
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const ROOT = repoRoot()
 const WORK = '/tmp/tc-computer-schedule-e2e'
 const REPORT = join(WORK, 'report.json')
 const TRACE = join(WORK, 'trace.log')
