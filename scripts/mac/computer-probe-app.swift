@@ -4,16 +4,24 @@
 // never shipped.
 //
 // A regular app, so apps.list lists it, that never activates itself: tc-computer launches it in the
-// background and it stays there. Its window goes to the back so it covers nothing the person sees,
-// and it keeps no saved state, so quitting it leaves nothing behind.
+// background and it stays there. Its window is inert: it never becomes key or main, takes no click and
+// sits a level below every normal window, so it covers nothing the person sees and takes none of their
+// input; AX reads it and presses its button all the same. It keeps no saved state, so quitting it leaves
+// nothing behind.
 import AppKit
+
+/// A window the person can neither click nor bring forward.
+final class InertWindow: NSWindow {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
 
 final class ProbeDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
     private let result = NSTextField(labelWithString: "waiting")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let window = NSWindow(
+        let window = InertWindow(
             contentRect: NSRect(x: 160, y: 160, width: 360, height: 150),
             styleMask: [.titled, .closable],
             backing: .buffered,
@@ -43,7 +51,9 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
         ])
         window.contentView = content
 
-        // On screen for AX and capture, behind every other window, and never key: no activate call.
+        // On screen for AX and capture, below every normal window, and never key: no activate call.
+        window.ignoresMouseEvents = true
+        window.level = NSWindow.Level(rawValue: NSWindow.Level.normal.rawValue - 1)
         window.orderBack(nil)
         self.window = window
     }

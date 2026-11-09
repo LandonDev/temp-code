@@ -17,7 +17,14 @@
  *    held and the restart that releases it, and a clean exit on stdin EOF.
  *
  * Nothing here activates an app or takes the session tier: every action
- * runs with the `ax` and `process` tiers alone. The paste waits until the
+ * runs with the `ax` and `process` tiers alone. A launched app may still come
+ * in front whatever `-g` says, so the two apps run under the person's launch
+ * rule: they start only once the Mac has had 5 minutes with no input, the
+ * idle time is read every second while they run, and the moment the person
+ * touches the Mac they are hidden and killed and that attempt's results
+ * dropped; the next 5-minute gap tries again, up to 90 minutes in all, and
+ * what never got a gap is reported "not run: the person was at the Mac". A
+ * raise at launch behind that gate is noted, not failed. The paste waits until the
  * person has not copied for 5 s, and the proof never reads the pasteboard's
  * contents itself (only its change count), so it raises no paste prompt. It
  * asks for no permission. A check that the person's pointer and app stayed
@@ -27,7 +34,7 @@
  *
  * Run on the Mac: bun run script:e2e-tc-computer
  */
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import {
   appendFileSync,
   closeSync,
@@ -43,6 +50,7 @@ import {
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
+import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import {
   type ElementLine,
@@ -100,6 +108,12 @@ const QUIET_RETRY_MS = 10_000
 const QUIET_RETRIES = 3
 const PASTE_TEXT = 'tc-computer paste proof '.repeat(120).slice(0, 2_500)
 const NOT_QUIET = `the clipboard was not quiet for ${QUIET_MS / 1000} s after ${QUIET_RETRIES} more tries`
+/** The launch rule: no input this long before an app starts, the idle time read this often while it runs. */
+const LAUNCH_IDLE_S = 300
+const WATCH_EVERY_MS = 1_000
+/** How long the proof waits in all for a gap. */
+const GATE_WAIT_MS = 90 * 60_000
+const NOT_RUN = 'not run: the person was at the Mac'
 
 // ── the report ──────────────────────────────────────────────────────────
 
@@ -125,6 +139,8 @@ const report = {
   frames: { responses: 0, notifications: 0, violations: [] as string[] },
   steps: [] as StepRecord[],
   skipped: [] as { name: string; why: string }[],
+  /** Each try at the two apps: run whole, or aborted when the person touched the Mac. */
+  gate: [] as { attempt: number; at: string; outcome: 'ran' | 'aborted'; afterMs?: number }[],
   stopped: null as string | null,
   cleanup: [] as string[]
 }
@@ -182,8 +198,6 @@ class Chain {
 function record(step: StepRecord): void {
   if (step.data && !Object.keys(step.data).length) delete step.data
   report.steps.push(step)
-  if (step.outcome === 'skipped' && step.why)
-    report.skipped.push({ name: step.name, why: step.why })
 }
 
 /** Every `waited` a result carries, with where it sat. */
@@ -252,14 +266,52 @@ function pidsOf(name: string): number[] {
 }
 
 /**
- * How long the person has not touched the keyboard, pointer or trackpad. A step that took the
- * `session` tier would first need this ≥ 120 s and otherwise record `skipped: the person is active`;
- * no step here does. The pointer and frontmost checks read it to tell the person's own input from ours.
+ * How long the person has not touched the keyboard, pointer or trackpad (`HIDIdleTime`, which only
+ * the hardware moves). A step that took the `session` tier would first need this ≥ 120 s and
+ * otherwise record `skipped: the person is active`; no step here does. The pointer and frontmost
+ * checks read it to tell the person's own input from ours, and the launch rule reads it.
  */
-function personIdleSeconds(): number {
-  const out = execFileSync('ioreg', ['-c', 'IOHIDSystem'], { encoding: 'utf8' })
-  const m = /"HIDIdleTime" = (\d+)/.exec(out)
+const hidIdleSeconds = (ioreg: string): number => {
+  const m = /"HIDIdleTime" = (\d+)/.exec(ioreg)
   return m ? Number(m[1]) / 1e9 : 0
+}
+const personIdleSeconds = (): number =>
+  hidIdleSeconds(execFileSync('ioreg', ['-c', 'IOHIDSystem'], { encoding: 'utf8' }))
+const execFileAsync = promisify(execFile)
+const personIdleSecondsAsync = async (): Promise<number> =>
+  hidIdleSeconds((await execFileAsync('ioreg', ['-c', 'IOHIDSystem'], { encoding: 'utf8' })).stdout)
+
+/** Until the Mac has had LAUNCH_IDLE_S with no input; false when that cannot come before `deadline`. */
+async function awaitGap(deadline: number): Promise<boolean> {
+  for (;;) {
+    const shortMs = (LAUNCH_IDLE_S - (await personIdleSecondsAsync())) * 1_000
+    if (shortMs <= 0) return true
+    if (Date.now() + shortMs > deadline) return false
+    await sleep(Math.max(1_000, shortMs))
+  }
+}
+
+/** Reads the idle time every second from now on; `onInput` runs once, the first time the person touched the Mac since. */
+function watchPerson(onInput: () => void): { stop: () => void; firedAt: () => number | null } {
+  const since = Date.now()
+  let firedAt: number | null = null
+  let reading = false
+  const timer = setInterval(() => {
+    if (reading || firedAt !== null) return
+    reading = true
+    personIdleSecondsAsync()
+      .then((idle) => {
+        if (firedAt === null && Date.now() - idle * 1_000 > since) {
+          firedAt = Date.now()
+          onInput()
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        reading = false
+      })
+  }, WATCH_EVERY_MS)
+  return { stop: () => clearInterval(timer), firedAt: () => firedAt }
 }
 
 /** The Xcode every Swift build here uses; the Command Line Tools' toolchain is unreliable on this Mac. */
@@ -280,9 +332,13 @@ function swiftEnv(): NodeJS.ProcessEnv {
 
 // ── what the Mac looks like from outside the service ────────────────────
 
-function probe<T>(command: 'pointer' | 'frontmost' | 'pasteboard', timeoutMs = 10_000): T {
+function probe<T>(
+  command: 'pointer' | 'frontmost' | 'pasteboard' | 'hide',
+  args: string[] = [],
+  timeoutMs = 10_000
+): T {
   return JSON.parse(
-    execFileSync(PROBE_TOOL, [command], { encoding: 'utf8', timeout: timeoutMs })
+    execFileSync(PROBE_TOOL, [command, ...args], { encoding: 'utf8', timeout: timeoutMs })
   ) as T
 }
 
@@ -300,12 +356,18 @@ const personState = (): PersonState => ({
 /**
  * The person's frontmost app and pointer are where they were. When either moved and the person
  * used the Mac since `before`, it was them, not the service: the check is inconclusive, not failed.
+ * An app the step `launched` coming in front is a raise behind the launch gate: noted, not failed.
  */
-function assertPersonUntouched(before: PersonState, when: string): 'untouched' | 'person-active' {
+function assertPersonUntouched(
+  before: PersonState,
+  when: string,
+  launched?: number
+): 'untouched' | 'person-active' | 'raised at launch' {
   const after = personState()
   const moved = Math.hypot(after.pointer.x - before.pointer.x, after.pointer.y - before.pointer.y)
   if (after.frontmost === before.frontmost && moved < 0.5) return 'untouched'
   if (personIdleSeconds() * 1_000 < Date.now() - before.at) return 'person-active'
+  if (launched && after.frontmost === launched && moved < 0.5) return 'raised at launch'
   check(after.frontmost === before.frontmost, `${when}: the frontmost app changed`, {
     before: before.frontmost,
     after: after.frontmost
@@ -632,6 +694,7 @@ let textEditPid = 0
 let stopLine: string | null = null
 
 async function run(): Promise<void> {
+  const runStart = Date.now()
   rmSync(WORK, { recursive: true, force: true })
   mkdirSync(WORK, { recursive: true })
   writeFileSync(TRACE, '')
@@ -656,10 +719,6 @@ async function run(): Promise<void> {
     swiftc('computer-probe-app.swift', join(PROBE_APP, 'Contents/MacOS/TC Probe'))
     writeFileSync(join(PROBE_APP, 'Contents/Info.plist'), probeInfoPlist())
     execFileSync('codesign', ['-s', '-', '--force', PROBE_APP], { stdio: 'pipe' })
-    writeFileSync(
-      RTF,
-      `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Helvetica;}}\\f0\\fs24 ${PROBE_TEXT}\\par}\n`
-    )
   })
 
   const first: { svc?: Service; permissions?: Permissions } = {}
@@ -682,6 +741,72 @@ async function run(): Promise<void> {
   }
   const noPictures = granted.screenRecording ? null : 'Screen Recording is off for TempCode'
 
+  // ── the two apps, under the launch rule ──
+  // the first service has done its part; each try opens its own, so an aborted try leaves nothing running
+  a.closeStdin()
+  await within(a.exit, 2_000, 'the first service exiting')
+  const deadline = runStart + GATE_WAIT_MS
+  for (let attempt = 1; ; attempt++) {
+    if (!(await awaitGap(deadline))) {
+      record({ name: 'the probe app and TextEdit', outcome: 'skipped', ms: 0, why: NOT_RUN })
+      break
+    }
+    const at = new Date().toISOString()
+    const steps = report.steps.length
+    const waits = report.waits.length
+    const servicesFrom = services.length
+    const t0 = Date.now()
+    const watch = watchPerson(() => abortApps(servicesFrom))
+    try {
+      await appSections(attempt, noPictures)
+    } finally {
+      watch.stop()
+    }
+    const firedAt = watch.firedAt()
+    if (firedAt === null) {
+      report.gate.push({ attempt, at, outcome: 'ran' })
+      break
+    }
+    // the person came back: this try's results go, and the next gap tries again from the start
+    report.steps.splice(steps)
+    report.waits.splice(waits)
+    report.gate.push({ attempt, at, outcome: 'aborted', afterMs: firedAt - t0 })
+    abortApps(servicesFrom)
+  }
+
+  await new Chain().step('every frame matched the schemas', async (data) => {
+    data.frames = { responses: report.frames.responses, notifications: report.frames.notifications }
+    check(!report.frames.violations.length, 'no frame off the schema', report.frames.violations)
+  })
+}
+
+/** Hides then kills the scratch apps, and kills the services this try opened. */
+function abortApps(servicesFrom: number): void {
+  for (const pid of [probePid, textEditPid])
+    if (pid && alive(pid)) {
+      try {
+        probe('hide', [String(pid)])
+      } catch {
+        // killed next either way
+      }
+      process.kill(pid, 'SIGKILL')
+    }
+  for (const svc of services.slice(servicesFrom)) if (!svc.done) svc.proc.kill('SIGKILL')
+}
+
+/** One try at the probe app and the scratch TextEdit, on a service of its own. */
+async function appSections(attempt: number, noPictures: string | null): Promise<void> {
+  probePid = 0
+  textEditPid = 0
+  const opened: { svc?: Service } = {}
+  await new Chain().step('a service for the apps', async () => {
+    const svc = (opened.svc = new Service(`apps, try ${attempt}`))
+    await initialize(svc, DATA)
+    await svc.call('session.open', { session: SESSION })
+  })
+  const a = opened.svc
+  if (!a || a.done) return
+
   // ── the probe app ──
   const probeApp = new Chain()
   let probeWindowId = 0
@@ -693,7 +818,7 @@ async function run(): Promise<void> {
     check(r.launched === true && r.pid > 0, 'apps.launch launches it and gives its pid', r)
     probePid = r.pid
     data.pid = r.pid
-    data.person = assertPersonUntouched(before, 'after the launch')
+    data.person = assertPersonUntouched(before, 'after the launch', probePid)
   })
   await probeApp.step('apps.list shows the probe window', async (data) => {
     const app = await until(
@@ -813,7 +938,11 @@ async function run(): Promise<void> {
   }
 
   await te.step('open a scratch TextEdit in the background', async (data) => {
-    const before = pidsOf('TextEdit')
+    // written for each try: an aborted try's TextEdit may have saved over it
+    writeFileSync(RTF, `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Helvetica;}}\\f0\\fs24 ${PROBE_TEXT}\\par}\n`)
+    const running = pidsOf('TextEdit')
+    const person = personState()
+    // no restored windows, and nothing added to Open Recent
     execFileSync('open', [
       '-n',
       '-g',
@@ -822,10 +951,12 @@ async function run(): Promise<void> {
       RTF,
       '--args',
       '-ApplePersistenceIgnoreState',
-      'YES'
+      'YES',
+      '-NSRecentDocumentsLimit',
+      '0'
     ])
     textEditPid = await until(
-      () => pidsOf('TextEdit').find((p) => !before.includes(p)) ?? null,
+      () => pidsOf('TextEdit').find((p) => !running.includes(p)) ?? null,
       15_000,
       'new TextEdit process'
     )
@@ -839,6 +970,7 @@ async function run(): Promise<void> {
       15_000,
       'window of the scratch TextEdit'
     )
+    data.person = assertPersonUntouched(person, 'after the launch', textEditPid)
   })
   await te.step('1. state.get full with geometry', async (data) => {
     const o = await a.call('state.get', {
@@ -1169,10 +1301,6 @@ async function run(): Promise<void> {
     check(exit.code === 0, 'the service exits 0', exit)
   })
 
-  await new Chain().step('every frame matched the schemas', async (data) => {
-    data.frames = { responses: report.frames.responses, notifications: report.frames.notifications }
-    check(!report.frames.violations.length, 'no frame off the schema', report.frames.violations)
-  })
 }
 
 function probeInfoPlist(): string {
@@ -1253,6 +1381,9 @@ try {
   await cleanup()
 }
 report.finishedAt = new Date().toISOString()
+report.skipped = report.steps.flatMap((s) =>
+  s.outcome === 'skipped' && s.why ? [{ name: s.name, why: s.why }] : []
+)
 report.stopped =
   stopLine ??
   (crashed
