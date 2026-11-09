@@ -69,6 +69,9 @@ export function approvalLine(toolName: string, input: unknown, title?: string): 
     case 'websearch':
       return line('Search the web for', str('query'), 'Search the web')
   }
+  // An add-on's tool on the app server (`mcp__app__<addon>__<tool>`; an add-on's name holds no `__`): the bridge's card words.
+  const addon = /^mcp__app__([a-z][a-z0-9-]*)__(.+)$/.exec(name)
+  if (addon) return `Use ${cut(addon[2]!, DETAIL_CHARS)} from ${addon[1]}?`
   if (lower.startsWith('mcp__')) {
     const end = name.lastIndexOf('__')
     const server = end > 5 ? name.slice(5, end) : name.slice(5)
