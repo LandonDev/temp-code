@@ -4,6 +4,7 @@
  * only, never on the service's wire. Each line ends in the model's next move
  * (docs/computer-protocol.md "The model's words").
  */
+import { SESSION_REFUSALS, sessionRefusalWords, type SessionTierRefusal } from './scheduleRules'
 
 export const HOST_ERROR_KINDS = [
   /** not a Mac, headless, turned off, not built, down after crashes */
@@ -20,6 +21,8 @@ export const HOST_ERROR_KINDS = [
   'away',
   /** the gate refused the session tier */
   'session_refused',
+  /** a paste waited out the person's copies for as long as it may (scheduleRules.ts SCHEDULE.pasteWaitMaxMs) */
+  'clipboard_recent',
   /** Stop on the Activity row */
   'stopped',
   /** the thread is paused */
@@ -31,19 +34,8 @@ export const HOST_ERROR_KINDS = [
 ] as const
 export type HostErrorKind = (typeof HOST_ERROR_KINDS)[number]
 
-/** Why the session tier was refused (tierGate.ts); the tier scheduling thread's gate names its own. */
-export const SESSION_REFUSALS = ['no-scheduler', 'person-present', 'screen-locked', 'away-off', 'denied', 'timeout', 'cancelled'] as const
-export type SessionTierRefusal = (typeof SESSION_REFUSALS)[number]
-
-export const SESSION_REFUSAL_WORDS: Readonly<Record<SessionTierRefusal, string>> = {
-  'no-scheduler': 'nothing schedules it yet',
-  'person-present': 'the person is using the Mac',
-  'screen-locked': 'the screen is locked',
-  'away-off': 'the person is not away',
-  denied: 'the person said no',
-  timeout: 'it waited too long for its turn',
-  cancelled: 'the call was given up'
-}
+/** Why the session tier was refused, and its words, are the tier scheduler's (scheduleRules.ts). */
+export { SESSION_REFUSALS, sessionRefusalWords, type SessionTierRefusal }
 
 /** Why refused_app refused: TempCode itself, the system's prompts, or a launched app the host could not identify. */
 export type RefusedApp = 'tempcode' | 'prompts' | 'unchecked'
@@ -66,6 +58,7 @@ export const HOST_ERROR_WORDS: Readonly<Record<HostErrorKind, (detail?: string) 
   away: () => 'denied: the person is away; finish around this act and name it in your report',
   session_refused: (reason) =>
     `needs the session tier (the real pointer and keyboard), which is not available now${reason ? `: ${reason}` : ''}`,
+  clipboard_recent: () => 'the person copied something just now and a paste would swap their clipboard; try again in a minute',
   stopped: () => 'stopped by the person; no more computer use this turn',
   paused: () => 'refused: the thread is paused',
   cancelled: (why) => `cancelled: ${why ?? 'the call was given up'}`,
@@ -86,7 +79,7 @@ export function hostErrorLine(kind: HostErrorKind, detail?: string): string {
   return HOST_ERROR_WORDS[kind](detail)
 }
 
-/** The session tier refused, in words. */
-export function sessionRefusedLine(reason: SessionTierRefusal): string {
-  return hostErrorLine('session_refused', SESSION_REFUSAL_WORDS[reason])
+/** The session tier refused, in words; `app` names the app a `skipped-earlier` was about. */
+export function sessionRefusedLine(reason: SessionTierRefusal, app?: string): string {
+  return hostErrorLine('session_refused', sessionRefusalWords(reason, app))
 }

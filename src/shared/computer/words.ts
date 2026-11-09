@@ -162,7 +162,7 @@ export function actionWords(action: ComputerAction, ctx: TitleContext): string {
   }
 }
 
-const where = (ctx: TitleContext): string => `${ctx.appName}${ctx.window ? `, window ${JSON.stringify(ctx.window)}` : ''}`
+const where = (ctx: Pick<TitleContext, 'appName' | 'window'>): string => `${ctx.appName}${ctx.window ? `, window ${JSON.stringify(ctx.window)}` : ''}`
 const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
 
 function actingSteps(tool: ComputerToolName, args: ToolArgs): ComputerAction[] {
@@ -171,18 +171,38 @@ function actingSteps(tool: ComputerToolName, args: ToolArgs): ComputerAction[] {
   return []
 }
 
+/** What a card says when the call is expected to take the person's pointer and keyboard. */
+export const USING_SESSION_WORDS = ', using your pointer and keyboard'
+
 /**
  * The card's title (the card's row, the notifier and the away row read it):
  * `Click button "Save" in TextEdit, window "Untitled"`, a batch
  * `3 actions in Mail, window "New Message": click button "To", type "Lunch?", press super+Return`.
  * A flagged call leads with its kind: `Send in Mail: Reply to Ana (click button "Send")`.
- * A batch's reads are left out.
+ * A batch's reads are left out. With `session` (a step expected to need the
+ * session tier) it ends `, using your pointer and keyboard`, and an Allow
+ * then covers that tier too.
  */
-export function computerApprovalTitle(tool: ComputerToolName, args: ToolArgs, ctx: TitleContext, confirm: ConfirmNeed | null = null): string {
+export function computerApprovalTitle(
+  tool: ComputerToolName,
+  args: ToolArgs,
+  ctx: TitleContext,
+  confirm: ConfirmNeed | null = null,
+  opts: { session?: boolean } = {}
+): string {
   const steps = actingSteps(tool, args).map((a) => actionWords(a, ctx))
-  if (confirm) return confirmTitle(confirm, ctx.appName, steps.join(', ') || undefined)
-  if (steps.length === 1) return `${capital(steps[0])} in ${where(ctx)}`
-  return `${steps.length} actions in ${where(ctx)}: ${steps.join(', ')}`
+  const using = opts.session ? USING_SESSION_WORDS : ''
+  if (confirm) return confirmTitle(confirm, ctx.appName, steps.join(', ') || undefined) + using
+  if (steps.length === 1) return `${capital(steps[0])} in ${where(ctx)}${using}`
+  return `${steps.length} actions in ${where(ctx)}${using}: ${steps.join(', ')}`
+}
+
+/** The card tier scheduling raises for a held step: a tool name no harness calls. */
+export const COMPUTER_SESSION_TOOL = 'computer_session'
+
+/** That card's title: `Use your pointer and keyboard to click button "Save" in TextEdit, window "Untitled"`. */
+export function computerSessionAskTitle(stepWords: string, ctx: Pick<TitleContext, 'appName' | 'window'>): string {
+  return `Use your pointer and keyboard to ${stepWords} in ${where(ctx)}`
 }
 
 export interface ComputerApprovalInput {

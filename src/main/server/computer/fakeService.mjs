@@ -21,7 +21,7 @@ const windowInfo = (id, title = 'Untitled', minimized = false) => ({
 })
 const apps = [
   { name: 'TextEdit', pid: 16800, bundleId: 'com.apple.TextEdit', windows: [windowInfo(1581), windowInfo(1582, 'Notes.rtf', true)] },
-  ...['Thin', 'KeyWin', 'Sessiony', 'Stubborn', 'Slow', 'Crashy', 'NoAX', 'NoShot'].map((name, i) => ({
+  ...['Thin', 'KeyWin', 'Sessiony', 'Stubborn', 'Slow', 'Crashy', 'NoAX', 'NoShot', 'Touchy'].map((name, i) => ({
     name, pid: 16801 + i, bundleId: `dev.fake.${name.toLowerCase()}`, windows: [windowInfo((16801 + i) * 10)]
   })),
   { name: 'Preview', pid: 17000, bundleId: 'com.apple.Preview', windows: [windowInfo(170000, 'Preview')] },
@@ -51,6 +51,21 @@ function recordClick(ctx, action) {
   lastClicks.set(key, { at, answeredAt: Date.now() })
   for (const stream of streams.values()) if (stream.key === key) clickNote(stream, at)
 }
+// The pasteboard as clipboard.state reports it: the watch began a minute before the fake (so only a copy
+// counts), FAKE_CLIPBOARD_COPY_AT_MS puts one foreign copy that many ms after the fake started, and
+// FAKE_CLIPBOARD_COPY_EVERY_MS keeps making one at that period from the start.
+const watchingSince = startedAt - 60_000
+const copyAt = process.env.FAKE_CLIPBOARD_COPY_AT_MS === undefined ? null : startedAt + Number(process.env.FAKE_CLIPBOARD_COPY_AT_MS)
+const copyEvery = Number(process.env.FAKE_CLIPBOARD_COPY_EVERY_MS ?? 0)
+function foreignChangeAt() {
+  const now = Date.now()
+  const every = copyEvery > 0 ? startedAt + Math.floor((now - startedAt) / copyEvery) * copyEvery : null
+  const at = [copyAt, every].filter((t) => t !== null && t <= now)
+  return at.length ? Math.max(...at) : null
+}
+const recentCopy = (quietMs) => quietMs !== undefined && Date.now() - Math.max(foreignChangeAt() ?? 0, watchingSince) < quietMs
+// What a session step left in front, which input.restoreSession puts back.
+let restorable = null
 let initialized = false
 let dataDir
 let previewRunning = false
@@ -149,7 +164,12 @@ function observation(ctx, options = {}, action = 'observe') {
   return result
 }
 function sessionChange(app) {
-  return { frontmost: { before: brief(apps[0]), after: brief(app) }, pointer: { before: [10, 10], after: [20, 20] }, restorable: true }
+  restorable = app
+  const now = Date.now()
+  return {
+    frontmost: { before: brief(apps[0]), after: brief(app) }, pointer: { before: [10, 10], after: [20, 20] }, restorable: true,
+    armedAt: now - 5, idleAtArmMs: 130_000, lastInputAt: now
+  }
 }
 function elementLine(index, ctx) {
   // Changed and new lines in the diff take precedence after a diff was returned.
@@ -160,7 +180,7 @@ function elementLine(index, ctx) {
   }
   return 'group "Part"'
 }
-function step(ctx, action, tiers, index) {
+function step(ctx, action, tiers, index, pasteQuietMs) {
   const fail = (error) => ({ index, action: action.action, status: 'failed', error })
   for (const element of elements(action)) {
     if (element > ctx.state.maxIndex) return fail(failure('no_such_element', 'Read the app before using this element.', { element }))
@@ -180,7 +200,8 @@ function step(ctx, action, tiers, index) {
   let supported = ['process', 'session']
   if (['set_value', 'perform', 'select_text'].includes(verb)) supported = ['ax']
   if (verb === 'type' || (['left_click', 'right_click', 'double_click'].includes(verb) && action.element !== undefined)) supported = ['ax', 'process', 'session']
-  if (ctx.app.name === 'Sessiony' && (verb === 'hold_key' || (verb === 'perform' && action.name === 'raise'))) supported = ['session']
+  if (ctx.app.name === 'Sessiony' && (['hold_key', 'left_mouse_down', 'left_mouse_up'].includes(verb) || (verb === 'perform' && action.name === 'raise'))) supported = ['session']
+  if (ctx.app.name === 'Touchy') supported = ['session']
   if (ctx.app.name === 'Stubborn' && clicks.includes(verb)) supported = ['process', 'session']
   if (ctx.app.name === 'KeyWin' && ['key', 'hold_key', 'paste'].includes(verb) && !tiers.includes('process')) supported = ['session']
   // KeyWin's text takes no AX insert while keys may go: its type goes by keys, and fails the key window check
@@ -189,6 +210,14 @@ function step(ctx, action, tiers, index) {
   if (!tier) return fail(failure('needs_tier', 'Allow the tier this action needs.', { needed: supported[0] }))
   if (ctx.app.name === 'KeyWin' && tier === 'process' && ['type', 'key', 'paste'].includes(verb)) {
     return fail(failure('key_window_unavailable', 'Choose the target key window before sending input.', { keyWindow: { id: 99, title: 'Other' } }))
+  }
+  // the person touches the Mac during every session step of Touchy: the step stops, the change says what it did
+  if (ctx.app.name === 'Touchy' && tier === 'session') {
+    ctx.touched = true
+    return fail(failure('interrupted', 'The person took over the Mac during this step.', { by: 'person', session: sessionChange(ctx.app) }))
+  }
+  if (recentCopy(pasteQuietMs) && (verb === 'paste' || (verb === 'type' && (action.text ?? '').length >= 2000))) {
+    return fail(failure('clipboard_busy', 'The person copied something just now.', { reason: 'recent-copy' }))
   }
   result.tier = tier
   result.effect = ctx.app.name === 'Thin' ? 'unknown' : ctx.app.name === 'Stubborn' && clicks.includes(verb) && tier === 'process' ? 'none' : 'changed'
@@ -204,7 +233,7 @@ function actionResult(ctx, params, method, wasCancelled = false) {
   let stopped = false
   const steps = actions.map((action, index) => {
     if (stopped) return { index, action: action.action, status: 'not-run' }
-    const result = wasCancelled ? { index, action: action.action, status: 'failed', error: cancelled() } : step(ctx, action, params.tiers, index)
+    const result = wasCancelled ? { index, action: action.action, status: 'failed', error: cancelled() } : step(ctx, action, params.tiers, index, params.pasteQuietMs)
     stopped = result.status === 'failed'
     return result
   })
@@ -261,8 +290,6 @@ function handle({ id, method, params = {} }) {
     case 'session.open': sessions.add(params.session); return reply(id, {})
     case 'session.close': for (const key of lastClicks.keys()) if (key.startsWith(params.session + ':')) lastClicks.delete(key); for (const stream of streams.values()) if (stream.session === params.session) stopStream(stream.id); sessions.delete(params.session); states.delete(params.session); shots.delete(params.session); return reply(id, {})
     case 'capture.stream.stop': stopStream(params.stream); return reply(id, {})
-    case 'input.restoreSession': return reply(id, { frontmost: 'nothing', pointer: 'nothing', held: null })
-    case 'clipboard.state': return reply(id, { changeCount: 1, foreignChangeAt: null, watchingSince: startedAt })
     case 'escape.watch': {
       if (process.env.FAKE_ESCAPE_UNSUPPORTED === '1') return reply(id, { code: -32601, message: 'The method is unknown.' }, true)
       escapeUntil = params.on ? Date.now() + (params.leaseMs ?? 30000) : 0
@@ -272,6 +299,15 @@ function handle({ id, method, params = {} }) {
       }, Number(process.env.FAKE_ESCAPE_PRESS_MS))
       return reply(id, {})
     }
+    case 'input.restoreSession': {
+      const answer = restorable ? { frontmost: 'restored', pointer: 'restored', held: brief(restorable) } : { frontmost: 'nothing', pointer: 'nothing', held: null }
+      restorable = null
+      const hold = Number(process.env.FAKE_RESTORE_MS ?? 0)
+      if (hold > 0) setTimeout(() => reply(id, answer), hold)
+      else reply(id, answer)
+      return
+    }
+    case 'clipboard.state': return reply(id, { changeCount: 1, foreignChangeAt: foreignChangeAt(), watchingSince })
     case 'state.get': case 'action.run': case 'action.batch': case 'capture.screenshot': case 'capture.stream.start': case 'input.probe': {
       const ctx = target(params)
       if (ctx.app.name === 'Slow' && ['state.get', 'action.run', 'action.batch'].includes(method)) {
@@ -283,7 +319,16 @@ function handle({ id, method, params = {} }) {
         return
       }
       if (method === 'state.get') return reply(id, observation(ctx, params))
-      if (method.startsWith('action.')) return reply(id, actionResult(ctx, params, method))
+      if (method.startsWith('action.')) {
+        const result = actionResult(ctx, params, method)
+        if (!ctx.touched) return reply(id, result)
+        // the service says the person took over the moment its watch trips, then answers after the closing wait
+        notify('session/interrupted', { session: ctx.session, by: 'person', at: Date.now() })
+        const wait = Number(process.env.FAKE_CLOSING_WAIT_MS ?? 0)
+        if (wait > 0) setTimeout(() => reply(id, result), wait)
+        else reply(id, result)
+        return
+      }
       if (method === 'capture.screenshot') return reply(id, shot(ctx, 'screenshot'))
       if (method === 'capture.stream.start') {
         if (!permissions.screenRecording || ctx.app.name === 'NoShot') return refuse(id, shotFailure())

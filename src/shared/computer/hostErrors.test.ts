@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { COMPUTER_ERROR_KINDS } from './protocol'
-import { HOST_ERROR_KINDS, HOST_ERROR_WORDS, SESSION_REFUSALS, SESSION_REFUSAL_WORDS, hostErrorLine, noObservationLine, noReadForTextLine, sessionRefusedLine } from './hostErrors'
+import { HOST_ERROR_KINDS, HOST_ERROR_WORDS, SESSION_REFUSALS, hostErrorLine, noObservationLine, noReadForTextLine, sessionRefusalWords, sessionRefusedLine } from './hostErrors'
 
 describe('host error kinds', () => {
   it('each has words, and none but cancelled shadows a service kind', () => {
@@ -31,9 +31,17 @@ describe('host error kinds', () => {
     expect(hostErrorLine('refused_app', 'unchecked')).toContain("couldn't check which app this is")
   })
   it('a session refusal says the tier and the reason', () => {
-    for (const r of SESSION_REFUSALS) expect(SESSION_REFUSAL_WORDS[r].length).toBeGreaterThan(0)
+    for (const r of SESSION_REFUSALS) expect(sessionRefusalWords(r).length).toBeGreaterThan(0)
     expect(sessionRefusedLine('no-scheduler')).toBe(
       'needs the session tier (the real pointer and keyboard), which is not available now: nothing schedules it yet'
+    )
+    expect(sessionRefusedLine('skipped-earlier', 'TextEdit')).toBe(
+      'needs the session tier (the real pointer and keyboard), which is not available now: the person did not choose Run now for TextEdit earlier in this turn'
+    )
+  })
+  it("a paste that waited out the person's copies too long says to try again", () => {
+    expect(hostErrorLine('clipboard_recent')).toBe(
+      'the person copied something just now and a paste would swap their clipboard; try again in a minute'
     )
   })
 })

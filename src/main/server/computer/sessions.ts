@@ -62,7 +62,7 @@ function rowFor(t: ThreadComputer): ComputerSessionRow | null {
       const a = t.apps.get(key)
       return a ? [{ name: a.name, bundleId: a.bundleId, window: a.window?.title ?? null }] : []
     }),
-    running: t.live.running,
+    running: t.live.running && t.live.held ? { ...t.live.running, words: t.live.held } : t.live.running,
     tier: t.live.tier
   }
 }
@@ -159,11 +159,26 @@ export class ComputerSessions {
 
   /** A turn settled: the thread's session is no longer live (its row goes; the service may idle). */
   settleTurn(threadId: string): void {
+    void this.host.gate().settle?.(threadId, 'turn-end')
     const t = this.threads.get(threadId)
     if (!t?.live) return
     t.live = null
     this.touched()
     this.updateBusy()
+  }
+
+  /** The running call of a thread is held (the scheduler's line), or no longer (null): its row says the line. */
+  setHeld(threadId: string, line: string | null): void {
+    const live = this.threads.get(threadId)?.live
+    if (!live?.running || (live.held ?? null) === line) return
+    live.held = line
+    this.touched()
+  }
+
+  /** The thread behind a service session id (`session/interrupted` names the session). */
+  threadOfServiceSession(serviceSession: string): string | null {
+    for (const t of this.threads.values()) if (t.serviceSession === serviceSession) return t.threadId
+    return null
   }
 
   onRows(fn: (rows: ComputerSessionRow[]) => void): () => void {
@@ -219,15 +234,17 @@ export class ComputerSessions {
     t.inflight?.abort('stopped')
     await t.queue
     await this.closeSession(t)
+    await this.host.gate().settle?.(threadId, 'stopped')
     t.live = null
     this.touched()
     this.updateBusy()
     return wasLive
   }
 
-  /** The composer's Stop, a pause: cancel what is in flight. */
+  /** The composer's Stop, a pause: cancel what is in flight. A pause also lets go of what the gate holds for the thread. */
   cancel(threadId: string, why: 'interrupt' | 'paused'): void {
     this.threads.get(threadId)?.inflight?.abort(why)
+    if (why === 'paused') void this.host.gate().settle?.(threadId, 'paused')
   }
 
   /** registry.onMeta: turn boundaries, pause, archive. */
@@ -241,7 +258,7 @@ export class ComputerSessions {
     const t = this.threads.get(meta.id)
     if (!t || prev === meta.status) return
     if ((meta.status === 'starting' || meta.status === 'running') && (prev === undefined || SETTLED.includes(prev))) this.beginTurn(meta.id)
-    if (meta.status === 'paused') t.inflight?.abort('paused')
+    if (meta.status === 'paused') this.cancel(meta.id, 'paused')
     if (SETTLED.includes(meta.status)) this.settleTurn(meta.id)
   }
 
@@ -258,6 +275,7 @@ export class ComputerSessions {
       if (t.idleTimer !== null) this.clock.clearTimeout(t.idleTimer)
       await this.closeSession(t)
       this.targetKeys.delete(id)
+      await this.host.gate().settle?.(id, 'ended')
     }
     this.touched()
     this.updateBusy()

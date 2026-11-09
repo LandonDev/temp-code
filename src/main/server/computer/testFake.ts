@@ -28,6 +28,7 @@ export const FAKE_APPS = {
   Crashy: { name: 'Crashy', pid: 16806, bundleId: 'dev.fake.crashy', windowId: 168060 },
   NoAX: { name: 'NoAX', pid: 16807, bundleId: 'dev.fake.noax', windowId: 168070 },
   NoShot: { name: 'NoShot', pid: 16808, bundleId: 'dev.fake.noshot', windowId: 168080 },
+  Touchy: { name: 'Touchy', pid: 16809, bundleId: 'dev.fake.touchy', windowId: 168090 },
   Preview: { name: 'Preview', pid: 17000, bundleId: 'com.apple.Preview', windowId: 170000 },
   Finder: { name: 'Finder', pid: 400, bundleId: 'com.apple.finder', windowId: null }
 } as const

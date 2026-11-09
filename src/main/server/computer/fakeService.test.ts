@@ -384,6 +384,67 @@ describe('fake tc-computer wire', () => {
     }
   })
 
+  it("a session step says its span, and input.restoreSession puts back what it left in front once", async () => {
+    const c = new Client()
+    await c.open()
+    await c.call('state.get', c.target('Sessiony'))
+    expect(await c.call('input.restoreSession', {})).toEqual({ frontmost: 'nothing', pointer: 'nothing', held: null })
+    const down = await c.act('Sessiony', { action: 'left_mouse_down' }, ['ax', 'process', 'session'])
+    expect(down.step).toMatchObject({ status: 'ok', tier: 'session' })
+    const span = down.step.status === 'ok' ? down.step.session : undefined
+    expect(span?.armedAt).toBeLessThanOrEqual(span?.lastInputAt ?? 0)
+    expect(span?.idleAtArmMs).toBe(130_000)
+    expect(await c.act('Sessiony', { action: 'left_mouse_up' }, ['ax', 'process'])).toMatchObject({ step: { error: { kind: 'needs_tier', needed: 'session' } } })
+    expect(await c.call('input.restoreSession', { afterInterrupt: true })).toEqual({ frontmost: 'restored', pointer: 'restored', held: { pid: 16803, bundleId: 'dev.fake.sessiony', name: 'Sessiony' } })
+    expect(await c.call('input.restoreSession', {})).toEqual({ frontmost: 'nothing', pointer: 'nothing', held: null })
+  })
+
+  it('Touchy says the person took over before it answers the step interrupted, after the closing wait', async () => {
+    const c = new Client({ FAKE_CLOSING_WAIT_MS: '300' })
+    await c.open()
+    await c.call('state.get', c.target('Touchy'))
+    const started = Date.now()
+    const pending = c.call('action.run', { ...c.target('Touchy'), action: { action: 'key', text: 'a' }, tiers: ['ax', 'process', 'session'], observe: { mode: 'none' } })
+    await until(() => c.frames.some((f) => f.method === 'session/interrupted'))
+    const note = ComputerNotificationSchema.parse(c.frames.find((f) => f.method === 'session/interrupted'))
+    expect(note.params).toMatchObject({ session: 's1', by: 'person' })
+    const answer = await pending
+    expect(Date.now() - started).toBeGreaterThanOrEqual(280)
+    expect(answer.step).toMatchObject({ status: 'failed', error: { kind: 'interrupted', by: 'person', session: { restorable: true } } })
+    expect(await c.act('Touchy', { action: 'key', text: 'a' })).toMatchObject({ step: { error: { kind: 'needs_tier', needed: 'session' } } })
+  })
+
+  it('holds input.restoreSession for FAKE_RESTORE_MS', async () => {
+    const c = new Client({ FAKE_RESTORE_MS: '200' })
+    await c.open()
+    const started = Date.now()
+    await c.call('input.restoreSession', {})
+    expect(Date.now() - started).toBeGreaterThanOrEqual(180)
+  })
+
+  it("with pasteQuietMs, a paste or a long type inside the person's copy fails recent-copy; a short type and a quiet clipboard go", async () => {
+    const c = new Client({ FAKE_CLIPBOARD_COPY_AT_MS: '0' })
+    await c.open()
+    await c.call('state.get', c.target())
+    const state = await c.call('clipboard.state', {})
+    expect(state.foreignChangeAt).toBeGreaterThan(state.watchingSince)
+    const run = (action: ComputerAction, pasteQuietMs?: number) =>
+      c.call('action.run', { ...c.target(), action, tiers: ['ax', 'process'], observe: { mode: 'none' }, ...(pasteQuietMs === undefined ? {} : { pasteQuietMs }) })
+    expect(await run({ action: 'paste', text: 'x' }, 60_000)).toMatchObject({ step: { status: 'failed', error: { kind: 'clipboard_busy', reason: 'recent-copy' } } })
+    expect(await run({ action: 'type', text: 'x'.repeat(2_000) }, 60_000)).toMatchObject({ step: { status: 'failed', error: { reason: 'recent-copy' } } })
+    expect(await run({ action: 'type', text: 'short' }, 60_000)).toMatchObject({ step: { status: 'ok' } })
+    expect(await run({ action: 'paste', text: 'x' })).toMatchObject({ step: { status: 'ok', input: { via: 'paste' } } })
+    expect(await run({ action: 'paste', text: 'x' }, 0)).toMatchObject({ step: { status: 'ok' } })
+  })
+
+  it('FAKE_CLIPBOARD_COPY_EVERY_MS keeps the last foreign change fresh', async () => {
+    const c = new Client({ FAKE_CLIPBOARD_COPY_EVERY_MS: '100' })
+    await c.open()
+    await delay(250)
+    const state = await c.call('clipboard.state', {})
+    expect(Date.now() - (state.foreignChangeAt ?? 0)).toBeLessThan(150)
+  })
+
   it('Stubborn ignores every process click and honours session clicks', async () => {
     const c = new Client()
     await c.open()

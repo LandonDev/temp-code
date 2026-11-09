@@ -16,9 +16,10 @@ import {
   type Tier
 } from '@shared/computer/protocol'
 import { COMPUTER_ACTIONS, COMPUTER_TOOLS, formatStepLine, type ActionClass, type ComputerToolName } from '@shared/computer/tools'
-import { asFourTool, computerActivity, computerApprovalInput, computerApprovalTitle, needsApproval, type TitleContext } from '@shared/computer/words'
+import { actionWords, asFourTool, computerActivity, computerApprovalInput, computerApprovalTitle, needsApproval, type TitleContext } from '@shared/computer/words'
 import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
-import { hostErrorLine, noObservationLine, noReadForTextLine, sessionRefusedLine, type SessionTierRefusal } from '@shared/computer/hostErrors'
+import { hostErrorLine, noObservationLine, noReadForTextLine, sessionRefusedLine } from '@shared/computer/hostErrors'
+import { formatHeldLine } from '@shared/computer/scheduleRules'
 import type { PermissionPolicy, SessionMeta } from '@shared/events'
 import type { ApprovalRequest } from '../drivers/types'
 import { planBatch } from './batchPlan'
@@ -28,7 +29,7 @@ import { passwordTarget, refusedLaunch, refusedTarget, textTargetProblem, type P
 import { formatAppsList, outcomeOf, refusal, type ComputerToolOutcome, type LandedShot, type StepsResult } from './result'
 import type { ComputerService } from './service'
 import { landShot, nextShotNumber } from './shots'
-import type { SessionTierGate, TierGateContext } from './tierGate'
+import type { SessionTierGate, TierDecision, TierGateContext } from './tierGate'
 import type { SettingsStore, TierVerdicts } from './verdicts'
 
 /**
@@ -88,7 +89,14 @@ export interface ThreadComputer {
   /** app keys, last used first */
   used: string[]
   queue: Promise<unknown>
-  live: { since: number; lastCallAt: number; running: { tool: string; words: string; startedAt: number } | null; tier: Tier | null } | null
+  live: {
+    since: number
+    lastCallAt: number
+    running: { tool: string; words: string; startedAt: number } | null
+    tier: Tier | null
+    /** the running call is held for the session tier or the clipboard (schedule.ts): the row says this instead */
+    held?: string | null
+  } | null
   /** Stop this turn */
   stopped: boolean
   /** the call in flight (the queue runs one at a time) */
@@ -219,6 +227,7 @@ export async function runComputerTool(host: RunHost, t: ThreadComputer, ctx: Com
   } finally {
     if (t.live) {
       t.live.running = null
+      t.live.held = null
       t.live.lastCallAt = host.now()
     }
     host.touched(t)
@@ -243,27 +252,48 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
 
   // 3. the card, the permission read now: safe and edits ask for every act, every mode for a flag or a password field
   const permission = ctx.permission?.() ?? host.registry.get(threadId)?.permission ?? 'safe'
+  const approve = ctx.approve ?? ((req: ApprovalRequest) => host.registry.requestApproval(threadId, req))
   const hostNeed = passwordTarget(steps, app()?.book)
-  const need = needsApproval(tool, args, permission, hostNeed)
-  if (need.ask) {
+  const titleCtx = (): TitleContext => {
     const a = app()
-    const titleCtx: TitleContext = {
+    return {
       appName: a?.name ?? args.app ?? 'an app',
       window: args.window ?? a?.window?.title ?? null,
       element: (i) => a?.book.brief(i) ?? null,
       maskText: hostNeed !== null
     }
-    const approve = ctx.approve ?? ((req: ApprovalRequest) => host.registry.requestApproval(threadId, req))
+  }
+  const gateCtx = (classes: ActionClass[]): TierGateContext => {
+    const a = app()
+    return {
+      threadId,
+      rootId: ctx.rootId ?? host.rootOf(threadId),
+      permission,
+      app: a ? { pid: a.pid, bundleId: a.bundleId, name: a.name } : { pid: 0, bundleId: null, name: args.app ?? '' },
+      window: a?.window ?? null,
+      classes,
+      serviceSession: t.serviceSession,
+      ...(ctx.callId ? { callId: ctx.callId } : {}),
+      approve
+    }
+  }
+  const need = needsApproval(tool, args, permission, hostNeed)
+  if (need.ask) {
+    // a step expected to take the session tier says so on the card, and its Allow covers that tier too
+    const bundleId = app()?.bundleId ?? null
+    const session = steps.some((a) => sendsInput(a) && (host.verdicts.needsSession(bundleId, a) || (a.action === 'perform' && a.name === 'raise')))
+    const words = titleCtx()
     const allowed = await approve({
       toolName: `mcp__app__${tool}`,
-      input: computerApprovalInput(tool, args, titleCtx, need.confirm),
-      title: computerApprovalTitle(tool, args, titleCtx, need.confirm),
+      input: computerApprovalInput(tool, args, words, need.confirm),
+      title: computerApprovalTitle(tool, args, words, need.confirm, { session }),
       callId: ctx.callId,
       signal
     })
     if (!allowed) return refusal(abortedLine(signal) ?? hostErrorLine(host.registry.awayOn() ? 'away' : 'denied'))
     const after = abortedLine(signal)
     if (after) return refusal(after)
+    if (session) host.gate().cardAllowed?.(gateCtx([]), host.now())
   }
 
   const asked = new Set<PermissionName>()
@@ -386,7 +416,21 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
       remember(t, args.app!, obs)
       lookupApp(t, args.app!)!.needsFull = true
     }
-    const result = await runActions(host, { threadId, rootId: ctx.rootId ?? host.rootOf(threadId), approve: ctx.approve, session: t.serviceSession, permission, args, actions, single, signal, targeted, call, appOf: app, drop })
+    const result = await runActions(host, {
+      threadId,
+      session: t.serviceSession,
+      args,
+      actions,
+      single,
+      signal,
+      targeted,
+      call,
+      appOf: app,
+      drop,
+      gateCtx,
+      wordsOf: (a) => actionWords(a, titleCtx()),
+      callKey: `${threadId}:${++callSeq}`
+    })
     for (const s of result.steps) if (s.status === 'failed') noteMissing(s.error)
     for (const [i, s] of result.steps.entries()) if (s.status === 'ok' && s.shot) await land(s.shot, `step ${i + 1}`, i + 1)
     await take(result.observation)
@@ -473,7 +517,6 @@ interface ActionsRun {
   /** the call's own card, for the gate's ask past its bound */
   approve?: (req: ApprovalRequest) => Promise<boolean>
   session: string
-  permission: PermissionPolicy
   args: Args
   actions: ComputerAction[]
   single: boolean
@@ -482,7 +525,15 @@ interface ActionsRun {
   call: <M extends ComputerMethod>(method: M, params: ComputerParams<M>) => Promise<ComputerResult<M>>
   appOf: () => AppState | undefined
   drop: (obs: Observation) => void
+  /** the gate's context for the call's current app and window */
+  gateCtx: (classes: ActionClass[]) => TierGateContext
+  /** a step as the card names it */
+  wordsOf: (action: ComputerAction) => string
+  /** this call, unique on the host: the gate keys a paste's deadline by it */
+  callKey: string
 }
+
+let callSeq = 0
 
 /**
  * The actions in segments of equal tier lists. A step the service says needs
@@ -493,39 +544,54 @@ interface ActionsRun {
  * next read is full.
  */
 async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult & { hostLines: Map<number, string> }> {
-  const { actions, signal } = run
+  const { actions, signal, gateCtx } = run
   const gate = host.gate()
   const bundleOf = (): string | null => run.appOf()?.bundleId ?? null
-  const gateCtx = (classes: ActionClass[]): TierGateContext => {
-    const a = run.appOf()
-    return {
-      threadId: run.threadId,
-      rootId: run.rootId,
-      permission: run.permission,
-      app: a ? { pid: a.pid, bundleId: a.bundleId, name: a.name } : { pid: 0, bundleId: null, name: run.args.app ?? '' },
-      window: a?.window ?? null,
-      classes,
-      ...(run.approve ? { approve: run.approve } : {})
-    }
-  }
   const classes = [...new Set(actions.filter(sendsInput).map(classOf).filter((c): c is ActionClass => c !== null))]
   const admitted = gate.admitted(gateCtx(classes))
   const override = new Map<number, Tier[]>()
   const tiersOf = (a: ComputerAction, i: number): Tier[] => override.get(i) ?? host.verdicts.tiersFor(bundleOf(), a, admitted)
   const steps: StepResult[] = actions.map((a, index) => ({ index, action: a.action, status: 'not-run' }))
   const hostLines = new Map<number, string>()
+  /** a step that waited before it ran: the line said before its own */
+  const heldLines = new Map<number, string>()
   let observation: Observation | undefined
   let observationError: ComputerError | undefined
-  const refuse = (i: number, reason: SessionTierRefusal): void => {
-    steps[i] = { index: i, action: actions[i].action, status: 'failed', error: { kind: 'needs_tier', message: sessionRefusedLine(reason), needed: 'session' } }
+  /** A step that will not run: its error's words, its line the host's. */
+  const fail = (i: number, error: ComputerError): void => {
+    steps[i] = { index: i, action: actions[i].action, status: 'failed', error }
     hostLines.set(i, formatStepLine(steps[i], actions[i]))
   }
-  const askGate = async (i: number): Promise<Tier[] | null> => {
+  const refuse = (i: number, decision: Extract<TierDecision, { admit: false }>): void => {
+    const message =
+      decision.reason === 'cancelled' ? (abortedLine(signal) ?? sessionRefusedLine('cancelled')) : sessionRefusedLine(decision.reason, run.appOf()?.name ?? run.args.app)
+    fail(i, { kind: 'needs_tier', message, needed: 'session' })
+  }
+  const stepCtx = (i: number) => {
     const a = actions[i]
     const cls = classOf(a)
-    const decision = await gate.request({ ...gateCtx(cls ? [cls] : []), step: i, action: a, signal })
-    if (decision.admit) return host.verdicts.tiersFor(bundleOf(), a, true)
-    refuse(i, decision.reason)
+    return { ...gateCtx(cls ? [cls] : []), step: i, action: a, words: run.wordsOf(a), call: run.callKey, signal }
+  }
+  const askGate = async (i: number): Promise<Tier[] | null> => {
+    const decision = await gate.request(stepCtx(i))
+    if (!decision.admit) {
+      refuse(i, decision)
+      return null
+    }
+    const line = decision.via && decision.waitedMs !== undefined ? formatHeldLine({ waitedMs: decision.waitedMs, via: decision.via }) : null
+    if (line) heldLines.set(i, line)
+    return host.verdicts.tiersFor(bundleOf(), actions[i], true)
+  }
+  /** A paste the service held off for the person's copy: wait for a quiet clipboard, then run it again; null when it may not. */
+  const askClipboard = async (i: number, tiers: Tier[]): Promise<Tier[] | null> => {
+    const decision = gate.clipboard ? await gate.clipboard(stepCtx(i)) : { ok: false as const, message: hostErrorLine('clipboard_recent') }
+    if (decision.ok) {
+      const line = formatHeldLine({ waitedMs: decision.waitedMs, via: 'clipboard' })
+      if (line) heldLines.set(i, line)
+      return tiers
+    }
+    const message = decision.cancelled ? (abortedLine(signal) ?? hostErrorLine('cancelled')) : hostErrorLine('clipboard_recent')
+    fail(i, { kind: 'clipboard_busy', message, reason: 'recent-copy' })
     return null
   }
 
@@ -554,7 +620,7 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
     let failedAt: number | null = null
     for (const seg of segments) {
       const at = from + seg.from
-      const r = await runSegment(run, seg.actions, seg.tiers, seg.last)
+      const r = await runSegment(run, gate, classes, seg.actions, seg.tiers, seg.last)
       ranAny = true
       r.steps.forEach((s, k) => (steps[at + k] = { ...s, index: at + k }))
       for (const [k, s] of r.steps.entries()) host.verdicts.learn(r.observation?.app.bundleId ?? bundleOf(), seg.actions[k], s)
@@ -569,17 +635,21 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
         break
       }
     }
-    if (failedAt === null || retried.has(failedAt) || signal.aborted) break
+    if (failedAt === null || signal.aborted) break
     const failed = steps[failedAt]
     if (failed.status !== 'failed') break
     const a = actions[failedAt]
     let retry: Tier[] | null = null
-    if (failed.error.kind === 'needs_tier' && failed.error.needed === 'session') retry = await askGate(failedAt)
+    // the clipboard's wait has its own deadline (schedule.ts), so a paste refused again may wait again
+    const recentCopy = failed.error.kind === 'clipboard_busy' && failed.error.reason === 'recent-copy'
+    if (!recentCopy && retried.has(failedAt)) break
+    if (recentCopy) retry = await askClipboard(failedAt, tiersOf(a, failedAt))
+    else if (failed.error.kind === 'needs_tier' && failed.error.needed === 'session') retry = await askGate(failedAt)
     else if (failed.error.kind === 'key_window_unavailable')
       retry = a.action === 'type' ? ['ax'] : ((await askGate(failedAt))?.filter((tier) => tier !== 'process') ?? null)
     else break
     if (!retry) break
-    retried.add(failedAt)
+    if (!recentCopy) retried.add(failedAt)
     override.set(failedAt, retry)
     if (observation) run.drop(observation)
     observation = undefined
@@ -602,24 +672,31 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
       observationError = e.data ?? { kind: 'timeout', message: e.message }
     }
   }
+  for (const [i, line] of heldLines) if (steps[i].status !== 'not-run') hostLines.set(i, `${line}\n${hostLines.get(i) ?? formatStepLine(steps[i], actions[i])}`)
   return { steps, observation, observationError, hostLines }
 }
 
-async function runSegment(run: ActionsRun, actions: ComputerAction[], tiers: Tier[], last: boolean): Promise<StepsResult> {
+/** One acting request, through the gate: it may take `session` out of the tiers, holds the Mac for it and puts it back after. */
+async function runSegment(run: ActionsRun, gate: SessionTierGate, classes: ActionClass[], actions: ComputerAction[], tiers: Tier[], last: boolean): Promise<StepsResult> {
   const observe = last ? { mode: run.appOf()?.needsFull ? ('full' as const) : ('auto' as const), screenshot: shotPolicy(run.args.screenshot) } : { mode: 'none' as const }
   const wait = last ? COMPUTER_WAIT.action : COMPUTER_WAIT.step
+  const quiet = gate.pasteQuietMs !== undefined ? { pasteQuietMs: gate.pasteQuietMs } : {}
+  const ctx = { ...run.gateCtx(classes), tiers, actions, signal: run.signal }
   if (run.single) {
     const action = actions[0]
-    const r = await run.targeted('action.run', (tg) => ({
-      ...tg,
-      action,
-      tiers,
-      wait: action.action === 'wait' && action.duration ? waitActionWait(action.duration) : wait,
-      observe
-    }))
+    const r = await gate.run(ctx, (allowed) =>
+      run.targeted('action.run', (tg) => ({
+        ...tg,
+        action,
+        tiers: allowed,
+        wait: action.action === 'wait' && action.duration ? waitActionWait(action.duration) : wait,
+        observe,
+        ...quiet
+      }))
+    )
     return { steps: [r.step], observation: r.observation, observationError: r.observationError }
   }
-  return await run.targeted('action.batch', (tg) => ({ ...tg, actions, tiers, stepWait: COMPUTER_WAIT.step, wait, observe }))
+  return await gate.run(ctx, (allowed) => run.targeted('action.batch', (tg) => ({ ...tg, actions, tiers: allowed, stepWait: COMPUTER_WAIT.step, wait, observe, ...quiet })))
 }
 
 async function probeOnce(host: RunHost, run: ActionsRun, actions: ComputerAction[]): Promise<void> {

@@ -196,7 +196,8 @@ describe('tiers', () => {
     const gate: SessionTierGate = {
       admitted: () => false,
       request: async (c) => (asked.push(c.step), { admit: true }),
-      ran: (_c: TierGateContext, change) => ran.push(change)
+      ran: (_c: TierGateContext, change) => ran.push(change),
+      run: (c, send) => send(c.tiers)
     }
     const h = make({ gate })
     const o = await h.run('computer_batch', { app: 'Sessiony', actions: [{ action: 'hold_key', text: 'shift', duration: 1 }, { action: 'key', text: 'a' }] })
@@ -236,7 +237,7 @@ describe('tiers', () => {
   })
 
   it('Stubborn raises its click verdict to session through a gate that admits', async () => {
-    const gate: SessionTierGate = { admitted: () => true, request: async () => ({ admit: true }) }
+    const gate: SessionTierGate = { admitted: () => true, request: async () => ({ admit: true }), run: (c, send) => send(c.tiers) }
     const h = make({ gate })
     await h.run('computer_observe', { app: 'Stubborn' })
     await h.run('computer_act', { app: 'Stubborn', action: 'left_click', coordinate: [5, 5] })

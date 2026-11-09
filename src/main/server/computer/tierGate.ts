@@ -1,7 +1,7 @@
 import type { ActionClass } from '@shared/computer/tools'
-import type { ComputerAction, SessionChange } from '@shared/computer/protocol'
+import type { ActionResult, BatchResult, ComputerAction, SessionChange, Tier } from '@shared/computer/protocol'
 import type { PermissionPolicy } from '@shared/events'
-import { SESSION_REFUSAL_WORDS, type SessionTierRefusal } from '@shared/computer/hostErrors'
+import { sessionRefusalWords, type AdmitVia, type SessionTierRefusal } from '@shared/computer/scheduleRules'
 import type { ApprovalRequest } from '../drivers/types'
 
 /**
@@ -9,8 +9,9 @@ import type { ApprovalRequest } from '../drivers/types'
  * activates the app, moves the real pointer and types at the focused field.
  * During the spec build's fixture recording a scratch TextEdit came to the
  * front while the person typed and two of their keystrokes landed in it.
- * Until the tier scheduling thread's rule exists (its schedule.ts registers a
- * gate here at boot), every session-tier step is refused `no-scheduler`.
+ * The tier scheduler (schedule.ts) is the gate the server sets at boot on a
+ * host with a person to watch for; without it every session-tier step is
+ * refused `no-scheduler`.
  */
 
 export type { SessionTierRefusal }
@@ -22,33 +23,64 @@ export interface TierGateContext {
   app: { pid: number; bundleId: string | null; name: string }
   window: { id: number; title: string } | null
   classes: ActionClass[]
-  /**
-   * The call's own card, when its caller asks it some other way than this
-   * host's registry (a box thread on the Mac: the Mac bridge's card). A gate
-   * that asks the person past its bound uses this when present.
-   */
+  /** the thread's session on the service, for `session/interrupted` */
+  serviceSession: string
+  /** claude's tool_use id: a card sits under the tool's row */
+  callId?: string
+  /** the call's own card path: registry.requestApproval here, the Mac bridge's card for a box thread */
   approve?: (req: ApprovalRequest) => Promise<boolean>
 }
 
-export type TierDecision = { admit: true } | { admit: false; reason: SessionTierRefusal; message: string }
+export interface TierGateRequest extends TierGateContext {
+  step: number
+  action: ComputerAction
+  /** the step in words, as the call's card names it (words.ts actionWords): `click button "Save"` */
+  words: string
+  /** the call, unique on the host: a paste's deadline holds across its re-runs */
+  call: string
+  signal: AbortSignal
+}
+
+export interface TierGateRun extends TierGateContext {
+  tiers: Tier[]
+  actions: ComputerAction[]
+  signal: AbortSignal
+}
+
+export type TierDecision =
+  | { admit: true; via?: AdmitVia; waitedMs?: number }
+  | { admit: false; reason: SessionTierRefusal; message: string }
+
+export type ClipboardDecision = { ok: true; waitedMs: number } | { ok: false; cancelled?: true; message: string }
 
 export interface SessionTierGate {
   /** Before a call: may its tiers include 'session'? Fast, no wait. */
   admitted(ctx: TierGateContext): boolean
   /** A step needs the session tier the call did not allow: admit it (after any wait the gate owns) or refuse with a reason. */
-  request(ctx: TierGateContext & { step: number; action: ComputerAction; signal: AbortSignal }): Promise<TierDecision>
-  /** A session-tier step ran: what it took (input plan A6), for the scheduler's restore. */
+  request(ctx: TierGateRequest): Promise<TierDecision>
+  /** A session-tier step ran: what it took (input plan A6). */
   ran?(ctx: TierGateContext, change: SessionChange | undefined): void
+  /** Around every acting request: the gate may take `session` out of the tiers, holds the Mac for the call, and puts it back after. */
+  run<T extends ActionResult | BatchResult>(ctx: TierGateRun, send: (tiers: Tier[]) => Promise<T>): Promise<T>
+  /** A paste the service held off for the person's copy: wait until the clipboard is quiet, or say why not. */
+  clipboard?(ctx: TierGateRequest): Promise<ClipboardDecision>
+  /** sent with every acting request: a paste within this long of the person's copy fails `recent-copy` */
+  readonly pasteQuietMs?: number
+  /** The call's own card (safe, edits) named the session tier and was allowed at `at`. */
+  cardAllowed?(ctx: TierGateContext, at: number): void
+  /** The thread's turn ended, a Stop, a pause or its end: what the gate holds for it goes. */
+  settle?(threadId: string, why: 'turn-end' | 'stopped' | 'paused' | 'ended'): Promise<void>
 }
 
 export const REFUSE_SESSION_TIER: SessionTierGate = {
   admitted: () => false,
-  request: async () => ({ admit: false, reason: 'no-scheduler', message: SESSION_REFUSAL_WORDS['no-scheduler'] })
+  request: async () => ({ admit: false, reason: 'no-scheduler', message: sessionRefusalWords('no-scheduler') }),
+  run: (ctx, send) => send(ctx.tiers.filter((t) => t !== 'session'))
 }
 
 let current: SessionTierGate = REFUSE_SESSION_TIER
 
-/** The tier scheduling thread's gate; null puts the refusal back. */
+/** The tier scheduler; null puts the refusal back. */
 export function setSessionTierGate(gate: SessionTierGate | null): void {
   current = gate ?? REFUSE_SESSION_TIER
 }

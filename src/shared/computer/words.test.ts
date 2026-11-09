@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { COMPUTER_ACTION_NAMES, NO_INPUT_ACTIONS, type ComputerAction, type ElementBrief, type StepResult } from './protocol'
 import { NOT_EXECUTED_LINE, formatShotLine, formatStepLine } from './tools'
-import { actionWords, asFourTool, computerActivity, computerApprovalInput, computerApprovalTitle, computerPhrase, computerToolOf, needsApproval, type TitleContext } from './words'
+import {
+  COMPUTER_SESSION_TOOL,
+  actionWords,
+  asFourTool,
+  computerActivity,
+  computerApprovalInput,
+  computerApprovalTitle,
+  computerPhrase,
+  computerSessionAskTitle,
+  computerToolOf,
+  needsApproval,
+  type TitleContext
+} from './words'
 
 const book: Record<number, string> = { 14: 'button "Save"', 33: 'input "Subject" focused', 31: 'button "To"', 5: 'scroll area', 12: 'password "Password"' }
 const ctx = (over: Partial<TitleContext> = {}): TitleContext => ({
@@ -87,6 +99,22 @@ describe('the card title', () => {
     const c = ctx({ appName: 'Mail', window: 'New Message' })
     expect(computerApprovalTitle('computer_batch', { actions }, c)).toBe('3 actions in Mail, window "New Message": click button "To", type "Lunch?", press super+Return')
     expect(computerApprovalInput('computer_batch', { actions }, c)).toEqual({ app: 'Mail', window: 'New Message', actions: ['click button "To"', 'type "Lunch?"', 'press super+Return'] })
+  })
+  it('says when the call is expected to take the pointer and keyboard', () => {
+    expect(computerApprovalTitle('computer_act', { action: 'left_click', element: 14 } as ComputerAction, ctx(), null, { session: true })).toBe(
+      'Click button "Save" in TextEdit, window "Untitled", using your pointer and keyboard'
+    )
+    const actions = [{ action: 'left_click', element: 31 }, { action: 'key', text: 'Tab' }] as ComputerAction[]
+    expect(computerApprovalTitle('computer_batch', { actions }, ctx({ appName: 'Mail', window: null }), null, { session: true })).toBe(
+      '2 actions in Mail, using your pointer and keyboard: click button "To", press Tab'
+    )
+  })
+  it("names the held step's own card", () => {
+    expect(COMPUTER_SESSION_TOOL).toBe('computer_session')
+    expect(computerSessionAskTitle('click button "Save"', { appName: 'TextEdit', window: 'Untitled' })).toBe(
+      'Use your pointer and keyboard to click button "Save" in TextEdit, window "Untitled"'
+    )
+    expect(computerSessionAskTitle('press Tab', { appName: 'Mail', window: null })).toBe('Use your pointer and keyboard to press Tab in Mail')
   })
   it('a batch with one acting step reads like one act', () => {
     const actions = [{ action: 'screenshot' }, { action: 'key', text: 'Tab', repeat: 4 }] as ComputerAction[]
