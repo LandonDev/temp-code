@@ -89,6 +89,7 @@ import {
   type ComputerMethod,
   type WaitOptions
 } from '../src/shared/computer/protocol'
+import { ACTION_WORDS, DROPPED_ACTIONS, KEY_NAMES, MODIFIER_NAMES, MODIFIERS, ROLE_DEFAULTS, ROLE_TAGS, TYPING_ROLES } from '../src/shared/computer/observation'
 import { generate, method, type, union, writeOrCheck, type MethodSource, type SubsetEntry } from './gen-swift-contract'
 
 /** Every named type once, in the order Types.swift and Enums.swift list them; then the methods. */
@@ -217,11 +218,63 @@ export function generateComputer(): Record<string, string> {
   return generate(COMPUTER_SUBSET, { methods: COMPUTER_METHOD_SOURCE, header: HEADER, contract: COMPUTER_CONTRACT })
 }
 
+/** A Swift string literal: JSON's escapes, but `\u{…}` for the ones Swift spells otherwise. */
+const swiftString = (s: string): string =>
+  JSON.stringify(s).replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => `\\u{${hex.replace(/^0+(?=.)/, '')}}`)
+
+const sortedKeys = <T>(record: Readonly<Record<string, T>>): string[] => Object.keys(record).sort()
+
+function dictionary(name: string, doc: string, record: Readonly<Record<string, string>>): string[] {
+  return [
+    `    /// ${doc}`,
+    `    public static let ${name}: [String: String] = [`,
+    ...sortedKeys(record).map((k) => `        ${swiftString(k)}: ${swiftString(record[k])},`),
+    '    ]'
+  ]
+}
+
+const array = (items: readonly string[]): string => `[${items.map(swiftString).join(', ')}]`
+
+/**
+ * The words Input reads, from src/shared/computer/observation.ts: the key
+ * names, the modifiers and their aliases, the action words and the role
+ * defaults `perform` accepts. Input keeps no hand-written table of names.
+ */
+export function emitInputTables(): Record<string, string> {
+  const lines = [
+    ...HEADER.map((l) => l.replace('protocol.ts', 'observation.ts')),
+    '/// The observation grammar\'s words Input acts on (docs/computer-protocol.md §4.1, §5.1).',
+    'public enum InputTables {',
+    ...dictionary('keyNames', 'Lower-cased X11 keysym name or alias → the canonical name; a modifier is a key too.', KEY_NAMES),
+    `    /// The modifiers in the order a combo prints them; on the Mac \`super\` is Command and \`alt\` is Option.`,
+    `    public static let modifiers: [String] = ${array(MODIFIERS)}`,
+    ...dictionary('modifierNames', 'Lower-cased name → modifier.', MODIFIER_NAMES),
+    ...dictionary('actionWords', 'Raw AX action name → the word an observation lists.', ACTION_WORDS),
+    `    /// Raw actions never listed.`,
+    `    public static let droppedActions: Set<String> = ${array([...DROPPED_ACTIONS].sort())}`,
+    ...dictionary('roleTags', 'AX role, or `role:subrole`, → the word an element line prints.', ROLE_TAGS),
+    '    /// What every element of a role takes without listing it.',
+    '    public static let roleDefaults: [String: [String]] = [',
+    ...sortedKeys(ROLE_DEFAULTS).map((k) => `        ${swiftString(k)}: ${array(ROLE_DEFAULTS[k])},`),
+    '    ]',
+    '    /// Roles that take typing and `set_value` by default (unless read-only).',
+    `    public static let typingRoles: Set<String> = ${array([...TYPING_ROLES].sort())}`,
+    '}',
+    ''
+  ]
+  return { 'InputTables.swift': lines.join('\n') }
+}
+
 const here = dirname(fileURLToPath(import.meta.url))
 export const COMPUTER_GENERATED_DIR = resolve(here, '..', 'native', 'tc-computer', 'Sources', 'ComputerProtocol', 'Generated')
+export const INPUT_GENERATED_DIR = resolve(here, '..', 'native', 'tc-computer', 'Sources', 'Input', 'Generated')
 
 /** The notification file a method's fixture is named after: `$/` dropped, `/` → `-`. */
 export const notificationFixtureName = (m: string): string => `notify-${m.replace(/^\$\//, '').replace(/\//g, '-')}`
 
 
-if (import.meta.main) writeOrCheck(COMPUTER_GENERATED_DIR, generateComputer(), { check: 'check:swift-computer', gen: 'gen:swift-computer' })
+if (import.meta.main) {
+  const names = { check: 'check:swift-computer', gen: 'gen:swift-computer' }
+  writeOrCheck(COMPUTER_GENERATED_DIR, generateComputer(), names)
+  writeOrCheck(INPUT_GENERATED_DIR, emitInputTables(), names)
+}

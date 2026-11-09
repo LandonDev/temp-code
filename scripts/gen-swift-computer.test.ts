@@ -1,9 +1,10 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { ACTION_WORDS, KEY_NAMES, MODIFIER_NAMES, ROLE_DEFAULTS } from '../src/shared/computer/observation'
 import { COMPUTER_METHODS, COMPUTER_PROTOCOL, COMPUTER_WAIT } from '../src/shared/computer/protocol'
 import { GENERATED_DIR, generate, pascal } from './gen-swift-contract'
-import { COMPUTER_GENERATED_DIR, generateComputer } from './gen-swift-computer'
+import { COMPUTER_GENERATED_DIR, INPUT_GENERATED_DIR, emitInputTables, generateComputer } from './gen-swift-computer'
 
 // The computer wire's Swift, pinned on the generated text: the box cannot
 // build the service, so the names the Swift threads code against are proven
@@ -66,5 +67,35 @@ describe('the computer Swift', () => {
     expect(contract).toContain('public static let jpegQuality = 0.85')
     expect(contract).toContain('public static let computer = -32000')
     expect(contract).not.toMatch(/\$\{/)
+  })
+
+  it('carries the new methods, the paste verb and a session change on the error', () => {
+    const methods = files['Methods.swift']
+    expect(methods).toContain('public enum InputProbe: ContractMethod')
+    expect(methods).toContain('public typealias Output = SessionRestore')
+    expect(declaration(files['Enums.swift'], 'public enum ComputerActionName')).toContain('case paste')
+    const error = declaration(files['Types.swift'], 'public struct ComputerError:')
+    for (const field of ['reason: ErrorReason?', 'keyWindow: KeyWindow?', 'session: SessionChange?']) expect(error).toContain(`public let ${field}`)
+    expect(declaration(files['Types.swift'], 'public struct ProbeReport:')).toContain('public let `class`: ActionClass')
+  })
+})
+
+describe('the Input tables', () => {
+  const tables = emitInputTables()
+
+  it('are deterministic and are what Input/Generated holds', () => {
+    expect(emitInputTables()).toEqual(tables)
+    expect(onDisk(INPUT_GENERATED_DIR)).toEqual(tables)
+  })
+
+  it('carry every key name, modifier alias, action word and role default of the grammar', () => {
+    const text = tables['InputTables.swift']
+    for (const [k, v] of Object.entries(KEY_NAMES)) expect(text).toContain(`        ${JSON.stringify(k)}: ${JSON.stringify(v)},`)
+    for (const [k, v] of Object.entries(MODIFIER_NAMES)) expect(text).toContain(`        ${JSON.stringify(k)}: ${JSON.stringify(v)},`)
+    for (const [k, v] of Object.entries(ACTION_WORDS)) expect(text).toContain(`        ${JSON.stringify(k)}: ${JSON.stringify(v)},`)
+    expect(text).toContain('"row": ["press", "expand", "collapse"],')
+    expect(Object.keys(ROLE_DEFAULTS).every((r) => text.includes(`        ${JSON.stringify(r)}: [`))).toBe(true)
+    expect(text).toContain('public static let modifiers: [String] = ["shift", "ctrl", "alt", "super"]')
+    expect(text).not.toMatch(/\\u[0-9a-fA-F]{4}/)
   })
 })
