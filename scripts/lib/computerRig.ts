@@ -10,7 +10,8 @@
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { RunningServer } from '../../src/main/server/index'
@@ -240,6 +241,15 @@ export async function startRig(opts: { root: string; work: string; gate: Session
   process.env.TEMP_CODE_COMPUTER_BIN = bin
   const grants = JSON.parse(execFileSync(bin, ['permissions'], { encoding: 'utf8' })) as { accessibility: boolean }
   if (!grants.accessibility) throw new RigStop('Accessibility is off for TempCode: turn it on under System Settings → Privacy & Security → Accessibility')
+
+  // A throwaway vault with no accounts (scripts/e2e-project-plan.ts): every thread passes its CLI's own login
+  // through to the provider, and the person's ~/.aliax is never read or written.
+  const vault = join(opts.work, 'aliax')
+  mkdirSync(join(vault, 'secrets'), { recursive: true, mode: 0o700 })
+  writeFileSync(join(vault, 'vault.key'), `${randomBytes(32).toString('hex')}\n`, { mode: 0o600 })
+  writeFileSync(join(vault, 'profiles.json'), '{}\n')
+  const { configure } = await import('aliax-core')
+  configure({ dataDir: vault, fetch: (url, init) => fetch(url, init), secrets: { mode: 'fileKey', path: join(vault, 'vault.key') }, appName: 'temp-code-bench' })
 
   const pins = new LanePins()
   const server = await startServer(join(opts.work, 'data', 'app.db'), {
