@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Computer fixture form</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font: 14px/1.4 -apple-system, system-ui, sans-serif; margin: 24px; max-width: 720px; }
+  fieldset { margin: 0 0 16px; }
+  label { display: block; margin: 4px 0; }
+  #rows { height: 200px; overflow-y: auto; border: 1px solid #999; margin: 0; padding: 0 8px; }
+  #rows li { list-style: none; padding: 4px 0; }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #999; border-top-color: transparent; border-radius: 50%; animation: turn 0.8s linear infinite; vertical-align: middle; }
+  @keyframes turn { to { transform: rotate(360deg); } }
+  [hidden] { display: none; }
+</style>
+</head>
+<body>
+<h1>Order form</h1>
+<p>Scratch page for the computer-use fixtures. Nothing on it is real.</p>
+
+<form id="order" onsubmit="event.preventDefault(); document.getElementById('status').textContent = 'Submitted';">
+  <fieldset>
+    <legend>Contact</legend>
+    <label>Name <input id="name" name="name" placeholder="Ada Example" required></label>
+    <label>Email <input id="email" name="email" type="email" placeholder="ada@example.com"></label>
+    <label>Notes <textarea id="notes" name="notes" rows="3"></textarea></label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Order</legend>
+    <label>Size
+      <select id="size" name="size">
+        <option>Small</option>
+        <option selected>Medium</option>
+        <option>Large</option>
+      </select>
+    </label>
+    <label><input id="gift" name="gift" type="checkbox"> Gift wrap</label>
+    <div role="radiogroup" aria-label="Delivery">
+      <label><input type="radio" name="delivery" value="standard" checked> Standard</label>
+      <label><input type="radio" name="delivery" value="express"> Express</label>
+    </div>
+  </fieldset>
+
+  <button id="submit" type="submit">Submit</button>
+  <button id="confirm" type="button" onclick="document.getElementById('dialog').showModal()">Review order</button>
+  <button id="load" type="button">Load prices</button>
+  <span id="loading" role="progressbar" aria-label="Loading prices" aria-busy="true" hidden><span class="spinner"></span> Loading</span>
+  <span id="status" role="status"></span>
+</form>
+
+<p><a href="#history">Order history</a></p>
+
+<h2 id="history">History</h2>
+<ul id="rows" aria-label="Past orders"></ul>
+
+<dialog id="dialog" aria-labelledby="dialog-title">
+  <h2 id="dialog-title">Review order</h2>
+  <p>One medium order, standard delivery.</p>
+  <form method="dialog">
+    <button value="cancel">Cancel</button>
+    <button value="place">Place order</button>
+  </form>
+</dialog>
+
+<script>
+  const rows = document.getElementById('rows')
+  for (let i = 1; i <= 60; i++) {
+    const li = document.createElement('li')
+    li.textContent = `Order ${String(i).padStart(3, '0')}`
+    rows.appendChild(li)
+  }
+  document.getElementById('load').addEventListener('click', () => {
+    const loading = document.getElementById('loading')
+    loading.hidden = false
+    document.getElementById('status').textContent = ''
+    setTimeout(() => {
+      loading.hidden = true
+      document.getElementById('status').textContent = 'Prices loaded'
+    }, 3000)
+  })
+</script>
+</body>
+</html>
