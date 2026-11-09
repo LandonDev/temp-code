@@ -13,13 +13,20 @@ import { SessionRegistry } from './sessions'
 const emits = new Map<string, (event: AgentEvent) => void>()
 const spawned: string[] = []
 const disposed: string[] = []
+/** What a handle's needsReboot answers, by thread (codex: a home skill added since its spawn). */
+const owed = new Map<string, string>()
 vi.mock('./drivers', () => {
   const driver = (id: string) => ({
     id,
     start: async (ctx: { session: { id: string }; emit: (event: AgentEvent) => void }) => {
       emits.set(ctx.session.id, ctx.emit)
       spawned.push(ctx.session.id)
-      return { send: async () => {}, interrupt: () => {}, dispose: async () => void disposed.push(ctx.session.id) }
+      return {
+        send: async () => {},
+        interrupt: () => {},
+        needsReboot: () => owed.get(ctx.session.id) ?? null,
+        dispose: async () => void disposed.push(ctx.session.id)
+      }
     }
   })
   return { BUILT_IN_DRIVERS: { claude: driver('claude'), codex: driver('codex'), muse: driver('muse') } }
@@ -32,6 +39,7 @@ beforeEach(async () => {
   emits.clear()
   spawned.length = 0
   disposed.length = 0
+  owed.clear()
   root = await mkdtemp(join(tmpdir(), 'tc-addons-reboot-'))
   db = openDb(join(root, 'test.db'))
   registry = new SessionRegistry(new Store(db))
@@ -66,6 +74,23 @@ it('rebootAtNextTurn puts a live handle down at the next turn start, never mid-t
   await registry.send(id, 'the next turn')
   expect(disposed).toEqual([id])
   expect(spawnsOf(id)).toBe(2)
+  emits.get(id)!({ type: 'status', status: 'idle' })
+  await registry.send(id, 'and the one after keeps its handle')
+  expect(spawnsOf(id)).toBe(2)
+})
+
+it('a handle that owes a reboot (needsReboot) is put down at the next turn start, never mid-turn', async () => {
+  const id = await atRest('codex', 'gpt-6.1-sol')
+  emits.get(id)!({ type: 'status', status: 'running' })
+  owed.set(id, 'home skills changed')
+  await registry.send(id, 'a steer into the running turn')
+  expect(disposed).toEqual([])
+  emits.get(id)!({ type: 'status', status: 'idle' })
+  await sleep(20)
+  await registry.send(id, 'the next turn')
+  expect(disposed).toEqual([id])
+  expect(spawnsOf(id)).toBe(2)
+  owed.delete(id)
   emits.get(id)!({ type: 'status', status: 'idle' })
   await registry.send(id, 'and the one after keeps its handle')
   expect(spawnsOf(id)).toBe(2)

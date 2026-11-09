@@ -121,6 +121,10 @@ export interface DriverHandle {
   /** The harness process's pid, for the admission sampler's RSS reading
    *  (admission.ts); null or absent when the driver has no process of its own. */
   pid?: () => number | null
+  /** Asked at a turn start beside the model, effort and pin: a reason this
+   *  process must be put down and the turn run on a fresh one (codex: a
+   *  skill added to a home folder that its spawn-time disables miss), or null. */
+  needsReboot?: () => string | null
   dispose: () => Promise<void>
 }
 

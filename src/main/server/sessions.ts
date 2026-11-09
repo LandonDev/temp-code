@@ -4308,6 +4308,11 @@ export class SessionRegistry {
   private staleHandle(sessionId: string): boolean {
     if (!this.handles.has(sessionId)) return false
     if (this.pendingReboot.has(sessionId)) return true
+    const owed = this.handles.get(sessionId)?.needsReboot?.()
+    if (owed) {
+      console.log(`[sessions] ${sessionId}: a fresh harness for this turn (${owed})`)
+      return true
+    }
     const meta = this.store.getSession(sessionId)
     const spawned = this.spawnedWith.get(sessionId)
     if (!meta || !spawned) return false

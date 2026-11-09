@@ -19,6 +19,7 @@ import { serviceTierFor } from './codexTiers'
 import { THREAD_MARK } from '../processGuard'
 import { NICE_LEVEL } from '@shared/bashMarks'
 import { existsSync } from 'node:fs'
+import { codexSkillRoot, codexSkillScope, disableHomeSkillsArgs, homeSkillFiles, trackCodexSkills } from '../skills/codexSkills'
 
 /**
  * Codex driver — `codex app-server`, protocol v2 (verified live against
@@ -143,7 +144,9 @@ export class AppServerConn {
     cwd: string,
     onNotify: (method: string, params: Record<string, unknown>) => void,
     onRequest: (id: number | string, method: string, params: Record<string, unknown>) => void,
-    onExit: (code: number | null) => void
+    onExit: (code: number | null) => void,
+    /** What follows the binary: the home skills' disables, then `app-server` (the warm key's args). */
+    args: string[] = ['app-server']
   ) {
     this.onNotify = onNotify
     this.onRequest = onRequest
@@ -154,7 +157,7 @@ export class AppServerConn {
     // exists) and every build it runs inherits that. nice and ionice exec
     // into codex, so the pid the host tracks is the app-server's own.
     const [file, ...prefix] = lowered()
-    this.proc = spawn(file, [...prefix, binPath, 'app-server'], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
+    this.proc = spawn(file, [...prefix, binPath, ...args], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
     // stderr is read even when nobody wants it: an unread pipe stalls a
     // chatty child, and its tail is the only account of a boot that died.
     createInterface({ input: this.proc.stderr }).on('line', (line) => {
@@ -278,7 +281,7 @@ export const codexWarm = new WarmPool<AppServerConn>({
   // The guard's thread mark is per thread: a warm app-server carries its own warm id until a thread adopts it.
   rebind: [THREAD_MARK],
   spawn: async (id, spec, onExit) => {
-    const conn = new AppServerConn(spec.command, { ...spec.env, [THREAD_MARK]: `warm:${id}` }, spec.cwd ?? process.cwd(), () => {}, () => {}, () => onExit())
+    const conn = new AppServerConn(spec.command, { ...spec.env, [THREAD_MARK]: `warm:${id}` }, spec.cwd ?? process.cwd(), () => {}, () => {}, () => onExit(), spec.args)
     try {
       await conn.request('initialize', { clientInfo: CODEX_CLIENT_INFO })
     } catch (e) {
@@ -882,7 +885,24 @@ export const codexDriver: HarnessDriver = {
     // minutes, say) is booted again a couple of times; an exit after the
     // thread is up is a crash and is reported, never retried.
     let conn!: AppServerConn
-    const spec: WarmSpec = { command: binPath, args: ['app-server'], cwd: session.cwd, env: env as Record<string, string | undefined> }
+    // The skills store (skills/codexSkills.ts): the person's home skills are
+    // disabled for this process by path, and the store's folder for the
+    // thread's scope is its extra root, set before the thread starts.
+    const skillScope = codexSkillScope(session)
+    const disabledHome = skillScope ? homeSkillFiles() : []
+    const disabledSet = new Set(disabledHome)
+    /** The extra root the app-server holds, and the one its scope names now. */
+    let heldRoot: string | null = null
+    let wantedRoot: string | null = null
+    const setSkillRoot = async (root: string): Promise<void> => {
+      try {
+        await conn.request('skills/extraRoots/set', { extraRoots: [root] })
+        heldRoot = root
+      } catch (err) {
+        console.warn(`[codex] ${session.id}: skills/extraRoots/set refused (${err instanceof Error ? err.message : String(err)}); ${heldRoot ? 'the old root stays' : 'no store skills'}`)
+      }
+    }
+    const spec: WarmSpec = { command: binPath, args: [...disableHomeSkillsArgs(disabledHome), 'app-server'], cwd: session.cwd, env: env as Record<string, string | undefined> }
     const boot = async (attempt: number): Promise<void> => {
       let booted = false
       const onExit = (code: number | null): void => {
@@ -900,7 +920,7 @@ export const codexDriver: HarnessDriver = {
         console.log(`[codex] ${session.id}: adopted the warm app-server ${warm.id}`)
       } else {
         if (warm) warm.proc.kill()
-        conn = new AppServerConn(binPath, env, session.cwd, onNotify, onRequest, onExit)
+        conn = new AppServerConn(binPath, env, session.cwd, onNotify, onRequest, onExit, spec.args)
       }
       // The send's span says whether the app-server was adopted warm or spawned cold.
       ctx.mark?.('handle', warm?.proc.alive ? 'warm' : 'cold')
@@ -908,6 +928,10 @@ export const codexDriver: HarnessDriver = {
         if (!warm?.proc.alive) {
           await conn.request('initialize', { clientInfo: CODEX_CLIENT_INFO })
         }
+        // Per process, warm ones too: the store's folder of this moment, before the thread starts.
+        heldRoot = null
+        wantedRoot = skillScope ? codexSkillRoot(skillScope.workspaceId) : null
+        if (wantedRoot) await setSkillRoot(wantedRoot)
         // App tools (docs/PLAN-2.md M10): the stdio bridge forwards
         // app_list_threads / app_read_thread / app_start_thread back to the
         // app's WS server, so codex threads can operate the app like claude.
@@ -995,6 +1019,17 @@ export const codexDriver: HarnessDriver = {
         await new Promise((r) => setTimeout(r, backoff))
       }
     }
+    // A move of the scope reaches the live app-server at once (a symlinked root would not refresh).
+    const untrackSkills = skillScope
+      ? trackCodexSkills({
+          workspaceId: skillScope.workspaceId,
+          held: () => (conn.exited ? null : heldRoot),
+          moved: (root) => {
+            wantedRoot = root
+            if (!disposed && !conn.exited) void setSkillRoot(root)
+          }
+        })
+      : () => {}
     // The first usage numbers for the footer; updates arrive as notifications.
     conn.request('account/rateLimits/read', {}).then((snapshot) => observeCodexSnapshot(snapshot, account), () => {})
 
@@ -1071,6 +1106,8 @@ export const codexDriver: HarnessDriver = {
               setStatus('idle')
             })
         }
+        // A re-set that failed at the move is sent again before the next turn.
+        if (!currentTurnId && wantedRoot && wantedRoot !== heldRoot) await setSkillRoot(wantedRoot)
         if (gateMs !== null) ctx.mark?.('delivered', `mcp=${gateMs}`)
         // A person's steer into the running turn: turn/steer appends it to
         // exactly that turn, and refuses when it has ended ("no active turn
@@ -1150,8 +1187,14 @@ export const codexDriver: HarnessDriver = {
       pid(): number | null {
         return conn.pid
       },
+      needsReboot(): string | null {
+        // A skill added to a home folder since the spawn would load: this process's disables are fixed in its argv.
+        if (!skillScope) return null
+        return homeSkillFiles().some((f) => !disabledSet.has(f)) ? 'home skills changed' : null
+      },
       async dispose(): Promise<void> {
         disposed = true
+        untrackSkills()
         conn.kill()
         // The thread's own https port (endpoint.ts) outlives reboots of its child, not the session.
         await gateway()?.releaseScoped(session.id)
