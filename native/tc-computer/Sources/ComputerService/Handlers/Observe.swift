@@ -1,0 +1,239 @@
+import ApplicationServices
+import ComputerCore
+import ComputerProtocol
+import ComputerServiceKit
+import Foundation
+
+/// What a call resolved: the app, its worker and the window the reader, Input and Capture all act on.
+struct Resolved: Sendable {
+    let session: String
+    let pid: pid_t
+    let app: Observation.App
+    let worker: Worker
+    let info: WindowInfo
+    let launched: Bool
+
+    var windowID: UInt32 { UInt32(truncatingIfNeeded: info.id) }
+}
+
+/// The knobs of one observation, from `state.get` or an action's `observe`.
+struct ObserveKnobs: Sendable {
+    var mode: ObservationMode = .auto
+    var element: Int?
+    var screenshot: ScreenshotPolicy = .auto
+    var maxEdge: Int?
+    var geometry: Bool?
+    var menus: Bool?
+    var budgetBytes: Int = ComputerDefaults.ObservationBudget.defaultBytes
+
+    init() {}
+
+    init(_ options: ObserveOptions?) {
+        if options?.mode == .full { mode = .full }
+        screenshot = options?.screenshot ?? .auto
+        maxEdge = options?.maxEdge
+        geometry = options?.geometry
+        menus = options?.menus
+        budgetBytes = options?.budget?.bytes ?? ComputerDefaults.ObservationBudget.defaultBytes
+    }
+}
+
+extension ComputerService {
+    func registerObserve() {
+        router.on("state.get") { [self] (p: Methods.StateGet.Params, ctx) in try await stateGet(p, ctx) }
+    }
+
+    func stateGet(_ p: Methods.StateGet.Params, _ ctx: RequestContext) async throws -> Observation {
+        if let failure = EpochCheck.check(names: p.element, epoch: p.epoch, current: epoch) { throw failure }
+        let target = try await resolveTarget(session: p.session, app: p.app, window: p.window, launch: p.launch ?? false)
+        guard let lease = await slots.slot(target.pid).acquire(.shared, timeout: nil) else { throw Router.cancelledError }
+        defer { lease.release() }
+        let pixel = await pixelWatch(target)
+        let t0 = MachTime.now()
+        let sig0 = try await signature(target)
+        let waited = await SmartWait.run(
+            p.wait ?? ComputerDefaults.Wait.observe, from: t0, signature0: sig0, thin: book.lastThin(target.session, pid: target.pid),
+            watch: try await waitWatch(target, pixel: pixel), cancel: ctx.cancel, isRunning: { [inventory] in inventory.isRunning($0) },
+            tick: env.timing.waitTick, trace: trace
+        )
+        if waited.report.reason == .cancelled { throw Router.cancelledError }
+        var knobs = ObserveKnobs()
+        knobs.mode = p.mode ?? .auto
+        knobs.element = p.element
+        knobs.screenshot = p.screenshot ?? .auto
+        knobs.maxEdge = p.maxEdge
+        knobs.geometry = p.geometry
+        knobs.menus = p.menus
+        knobs.budgetBytes = p.budget?.bytes ?? ComputerDefaults.ObservationBudget.defaultBytes
+        return try await observe(target, knobs, loading: waited.report.busy, waited: waited.report, cancel: ctx.cancel)
+    }
+
+    // MARK: Resolving
+
+    /// The session open, Accessibility on, the app found (launched in the background when asked, then its
+    /// first window waited for), the window resolved on the session × pid worker, which keeps its element.
+    func resolveTarget(session: String, app: AppRef, window: WindowRef?, launch: Bool) async throws -> Resolved {
+        try requireSession(session)
+        try requireAccessibility()
+        let (pid, launched) = try await inventory.resolve(app, launch: launch)
+        let worker = workers.worker(session, pid)
+        let source = modules.windows
+        let readers = self.readers
+        if launched { try await waitForFirstWindow(pid: pid, worker: worker) }
+        let info = try await worker.run { state in
+            let (element, info) = try source.resolve(pid: pid, ref: window)
+            state.windows[UInt32(truncatingIfNeeded: info.id)] = element
+            if state.reader == nil { state.reader = try readers.reader(session: session, pid: pid) }
+            return info
+        }
+        env.windowEvents.watch(pid: pid)
+        let running = inventory.running().first { $0.pid == pid }
+        return Resolved(
+            session: session, pid: pid, app: Observation.App(pid: Int(pid), bundleId: running?.bundleId, name: running?.name ?? ""),
+            worker: worker, info: info, launched: launched
+        )
+    }
+
+    /// After a launch: the app's AX window list, polled every 100 ms up to 10 s.
+    private func waitForFirstWindow(pid: pid_t, worker: Worker) async throws {
+        let source = modules.windows
+        let deadline = ContinuousClock.now + env.timing.launchWindow
+        while ContinuousClock.now < deadline {
+            let count = (try? await worker.run { _ in try source.list(pid: pid).count }) ?? 0
+            if count > 0 { return }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        throw ComputerError(kind: .windowNotFound, message: "The app was launched but showed no window within \(env.timing.launchWindow).", candidates: [])
+    }
+
+    // MARK: The wait's inputs
+
+    /// Capture's watch on the window (only with Screen Recording); nil when it is off or never went live.
+    func pixelWatch(_ target: Resolved) async -> (any PixelChangeSignal)? {
+        guard currentPermissions.screenRecording else { return nil }
+        guard let signal = try? await capture.watch(windowID: target.windowID) else { return nil }
+        if signal.live { return signal }
+        return await signal.waitLive(timeout: .milliseconds(300)) ? signal : nil
+    }
+
+    func signature(_ target: Resolved) async throws -> UInt64 {
+        try await target.worker.run { state in state.reader?.changes.signature() ?? 0 }
+    }
+
+    func waitWatch(_ target: Resolved, pixel: (any PixelChangeSignal)?) async throws -> WaitWatch {
+        let change = try await target.worker.run { state in state.reader.map { ChangeBox(signal: $0.changes) } }
+        return WaitWatch(worker: target.worker, pid: target.pid, change: change, pixel: pixel)
+    }
+
+    // MARK: The observation
+
+    /// The reader's text, the shot when asked or thin, and the shell's own fields (shell §9.1 step 6).
+    func observe(_ target: Resolved, _ knobs: ObserveKnobs, loading: Bool, waited: WaitReport?, cancel: CancelFlag) async throws -> Observation {
+        let screenRecording = currentPermissions.screenRecording
+        let mayShoot = knobs.screenshot == .always || (knobs.screenshot == .auto && screenRecording)
+        let maxEdge = knobs.maxEdge ?? ComputerDefaults.Shot.defaultMaxEdge
+        let windowID = target.windowID
+        // the space first, so the text's geometry and the shot agree
+        var space = mayShoot
+            ? capture.space(windowID: windowID, frame: target.info.frame, maxEdge: maxEdge)
+            : book.space(target.session, window: windowID) ?? capture.space(windowID: windowID, frame: target.info.frame, maxEdge: ComputerDefaults.Shot.defaultMaxEdge)
+        var request = ObserveRequest(
+            window: WindowRef(id: target.info.id), mode: knobs.mode, element: knobs.element, budgetBytes: knobs.budgetBytes,
+            geometry: knobs.geometry ?? (knobs.screenshot == .always), menus: knobs.menus ?? false, space: space,
+            loading: loading, noteThin: knobs.screenshot != .never && screenRecording
+        )
+        var text = try await read(target, request)
+        if cancel.isSet { return try dropped(target) }
+
+        var shot: Shot?
+        var shotError: ComputerError?
+        let wantShot = knobs.element == nil && (knobs.screenshot == .always || (knobs.screenshot == .auto && text.stats.thin && screenRecording))
+        if wantShot {
+            do {
+                shot = try await takeShot(target, maxEdge: maxEdge, region: nil, format: nil, action: "observe")
+            } catch {
+                shotError = ComputerService.failure(error, or: .captureFailed)
+            }
+        }
+        if let shot, shot.width != space.width || shot.height != space.height {
+            // the window resized between the read and the shot: read again in the shot's space, whole
+            space = CoordinateSpace(width: shot.width, height: shot.height, scale: shot.scale)
+            try await resetBase(target)
+            request.space = space
+            request.mode = .full
+            text = try await read(target, request)
+        }
+        if cancel.isSet { return try dropped(target) }
+        if let shot { book.setSpace(target.session, window: windowID, CoordinateSpace(width: shot.width, height: shot.height, scale: shot.scale)) }
+        if text.kind != .subtree { book.noteThin(target.session, pid: target.pid, thin: text.stats.thin) }
+        let (seq, base) = book.stamp(target.session, pid: target.pid, kind: text.kind)
+        return Observation(
+            epoch: epoch, session: target.session, app: target.app,
+            window: Observation.Window(id: target.info.id, title: text.window.title, frame: text.window.frame),
+            kind: text.kind, seq: seq, base: base, text: text.text, space: space, stats: text.stats,
+            shot: shot, shotError: shotError, waited: waited
+        )
+    }
+
+    private func read(_ target: Resolved, _ request: ObserveRequest) async throws -> ObservationText {
+        let box = RequestBox(request: request)
+        return try await target.worker.run { state in
+            guard let reader = state.reader else { throw ComputerError(kind: .windowNotFound, message: "The app's reader is gone.") }
+            return TextBox(text: try reader.observe(box.request))
+        }.text
+    }
+
+    func resetBase(_ target: Resolved) async throws {
+        try await target.worker.run { state in state.reader?.resetBase() }
+    }
+
+    /// A read the model will never see (a cancel after it): the next auto read is full.
+    private func dropped(_ target: Resolved) throws -> Observation {
+        Task { try? await resetBase(target) }
+        throw Router.cancelledError
+    }
+
+    // MARK: Pictures
+
+    /// The one gate every picture path goes through (shell §9.2): Screen Recording off is
+    /// `permission_missing`, a minimized window `window_minimized`.
+    func captureGuard(_ target: Resolved) async throws {
+        guard currentPermissions.screenRecording else {
+            pokePermissions()
+            throw ComputerError(kind: .permissionMissing, message: "TempCode needs the Screen Recording permission to capture windows.", which: .screenRecording)
+        }
+        let source = modules.windows
+        let pid = target.pid
+        let ref = WindowRef(id: target.info.id)
+        let minimized = try await target.worker.run { state in
+            let (element, info) = try source.resolve(pid: pid, ref: ref)
+            state.windows[UInt32(truncatingIfNeeded: info.id)] = element
+            return info.minimized
+        }
+        if minimized {
+            throw ComputerError(kind: .windowMinimized, message: "The window is minimized; restore it to capture it.")
+        }
+    }
+
+    /// A screenshot to the session's next shot file, through the guard.
+    func takeShot(_ target: Resolved, maxEdge: Int, region: Region?, format: ShotFormat?, action: String) async throws -> Shot {
+        try await captureGuard(target)
+        guard let dataDir else { throw ComputerError(kind: .notInitialized, message: "The service has not been initialized.") }
+        let stem = try capture.nextStem(dataDir: dataDir, session: target.session, action: action)
+        var regionPoints: Rect?
+        if let region, region.count == 4 {
+            let space = book.space(target.session, window: target.windowID) ?? capture.space(windowID: target.windowID, frame: target.info.frame, maxEdge: ComputerDefaults.Shot.defaultMaxEdge)
+            regionPoints = Rect(
+                x: Double(region[0]) / space.scale, y: Double(region[1]) / space.scale,
+                w: Double(region[2] - region[0]) / space.scale, h: Double(region[3] - region[1]) / space.scale
+            )
+        }
+        return try await capture.screenshot(windowID: target.windowID, maxEdge: maxEdge, regionPoints: regionPoints, format: format, to: stem)
+    }
+}
+
+/// An `ObserveRequest` handed to the worker (it holds no AX handle).
+private struct RequestBox: @unchecked Sendable { let request: ObserveRequest }
+
+/// The reader's answer handed back from the worker.
+private struct TextBox: @unchecked Sendable { let text: ObservationText }

@@ -1,7 +1,6 @@
-// `tc-computer serve`: the Service shell thread writes the server here (docs/computer-protocol.md §1).
-import ComputerProtocol
+// tc-computer: TempCode's computer-use service on the Mac (docs/computer-protocol.md, native/tc-computer/README.md).
 import ComputerService
-import Foundation
 
-FileHandle.standardError.write(Data("tc-computer (protocol \(computerProtocol)): the service is not built yet\n".utf8))
-exit(64)
+MainActor.assumeIsolated {
+    CommandLineTool.main(Array(CommandLine.arguments.dropFirst()))
+}
