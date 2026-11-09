@@ -769,7 +769,9 @@ leaves the profile alone. Nothing signs in here: the login is one static file
 (`~/.config/muse/auth.json`: a device-code access token, the minted api_key,
 the email) that account sync carries from the Mac into every host's vault,
 and a thread's `muse serve` reads it from its account's config dir
-(`<userData>/muse-accounts/<account>/`, `TBH_CREDENTIAL_BACKEND=file`).
+(`<userData>/muse-accounts/accounts/<account>/<scope>/`,
+`TBH_CREDENTIAL_BACKEND=file`; a thread on no account gets
+`<userData>/muse-accounts/own/<scope>/` and the CLI's own login).
 
 What the spike found (2026-11-04, `.temp-code/plan-R5k0vrmrvU4D/findings.md`
 F2): the copied login is accepted (`muse usage` answers the subscription,
@@ -777,16 +779,18 @@ F2): the copied login is accepted (`muse usage` answers the subscription,
 EMPTY model catalog while the same key lists every model from the Mac. `muse
 serve` then logs "model catalog has no visible models; composing the
 logged-out fallback" and every turn fails `not logged in`, which the thread
-shows as the sign-in row. Nothing in temp-code changes that: a Muse thread
-belongs on the Mac until Meta serves the box's network. Also: `muse usage`
+shows as the sign-in row. That has changed since: on 2026-11-09 the catalog
+answered on the box and `bun run script:e2e-skills-drivers -- --host box` ran
+Muse Spark turns there, one on an account (the file backend) and one on the
+CLI's own login, each reading the store's skills. Also: `muse usage`
 rotates the access token in place and invalidates the other copies' usage
 calls; never run it against a synced copy (turns never rewrite the file).
 
 Memory: Muse keeps project memory in the repo (`<repo>/.agents/memory/`),
 which git carries; the memory set has no new rule. The harness set syncs
-Muse settings `.config/muse/settings.json`, Muse skills `.config/muse/skills/**`
-and Muse hooks `.config/muse/hooks/**`; `auth.json` is a secret name and
-never crosses. `muse serve` costs about 120 MiB idle plus 40 MiB per loaded
+Muse settings `.config/muse/settings.json` and Muse hooks
+`.config/muse/hooks/**` (skills come from the store); `auth.json` is a secret
+name and never crosses. `muse serve` costs about 120 MiB idle plus 40 MiB per loaded
 session (admission's median covers it).
 
 ### Routing by headroom: both hosts pick from one picture
@@ -834,21 +838,27 @@ A pinned account is routed regardless.
 
 ### Harness config: synced from the Mac
 
-The skills, slash commands, agents, hooks, settings and plugins the user set
-up for Claude Code and Codex live on the Mac, and the Mac's main process
-mirrors them onto the box over the same admin link the accounts use
+The slash commands, agents, hooks, settings and plugins the user set up for
+Claude Code and Codex live on the Mac, and the Mac's main process mirrors
+them onto the box over the same admin link the accounts use
 (`src/main/server/remote/{harnessSet,harnessSync}.ts`). The Mac's copy wins;
 the box never sends back. Nothing to do on the box: a headless host only
 receives (`harness.sync.enabled` defaults to off there, on for a desktop).
-Installing a skill on the Mac (Impeccable's `npx` installer puts it under
-`~/.agents/skills/`, links or copies it into `~/.claude/skills/`, and writes
-Codex's `~/.codex/hooks.json`) is enough: the box has it within seconds.
+
+Skills are not in the set any more: they are the skills store's ("Skills:
+written out on every host" below), which every CLI on every host reads, and
+only it. The four skill rules (`.claude/skills`, `.codex/skills`,
+`.agents/skills`, `.config/muse/skills`; `RETIRED_ROOTS` in harnessSet.ts)
+retired: the Mac walks and watches them no more, the box forgets at boot and
+at every manifest what it landed under them and leaves those files where
+they are (no later manifest can delete them), and an older Mac's skill
+entries are counted in one line (`214 files under retired skill roots
+ignored`), neither landed nor refused. A skill installed by hand on either
+host stays on that host until it is added in Settings → Skills.
 
 The set, relative to each HOME, each rule with the label the status line
 uses (`HARNESS_SET` in `harnessSet.ts`):
 
-- Claude skills: `.claude/skills/**` except `.claude/skills/synced/**` (the
-  CLI's own account-synced bucket: each side keeps its own)
 - Claude commands `.claude/commands/**`, Claude agents `.claude/agents/**`,
   Claude hooks `.claude/hooks/**` (the scripts settings.json's hook commands
   point at, when they live there), Claude settings `.claude/settings.json`
@@ -857,15 +867,13 @@ uses (`HARNESS_SET` in `harnessSet.ts`):
 - `enabledPlugins` and `mcpServers` of `~/.claude.json`, merged into the
   box's own file; every other key (`oauthAccount`, `projects`, …) stays as
   the box has it
-- Codex skills `.codex/skills/**` except `.codex/skills/.system/**`, Codex
-  prompts `.codex/prompts/**`, Codex config `.codex/config.toml`, Codex hooks
+- Codex prompts `.codex/prompts/**`, Codex config `.codex/config.toml`, Codex hooks
   `.codex/hooks.json` (the user-level hooks; the trust rows config.toml keeps
   for them, `[hooks.state."<home>/.codex/hooks.json:post_tool_use:0:0"]
   trusted_hash = …`, name the box's copy after path translation, and the hash
   is the hook's own, so a hooks.json that names `$HOME` lands byte for byte
   and stays trusted)
-- Shared skills `.agents/skills/**`, read by Claude Code and Codex alike
-- Muse settings `.config/muse/settings.json`, Muse skills `.config/muse/skills/**` (the binary cache skipped), Muse hooks `.config/muse/hooks/**`; `auth.json` never
+- Muse settings `.config/muse/settings.json`, Muse hooks `.config/muse/hooks/**`; `auth.json` never
 
 A project's own `.claude/skills/` lives in its repository and crosses with
 git, not with this sync.
@@ -878,19 +886,14 @@ a plain tree), `.DS_Store`, files over 16 MiB, and any Mach-O file (thin,
 either byte order, or a universal binary, told from a Java class file by the
 arch count): a macOS executable runs nowhere else, so the Mac leaves it out
 of the manifest and counts it as skipped, and the box refuses one at commit
-should a manifest name it anyway. Under every skills root, a skill's
-per-platform binary cache `<skill>/scripts/bin/**` is not even walked: that
-is where Impeccable's launcher (`scripts/impeccable`) looks for
-`bin/<os>-<arch>/impeccable` beside itself before filling
-`~/.impeccable/bin/<version>/` (outside the set) from the release channel on
-first use. The launcher, `scripts/VERSION` (the engine version), SKILL.md,
-`command-metadata.json` and the skill's `agents/*.toml` cross; the box
-downloads its own Linux engine the first time a hook or a thread runs it.
+should a manifest name it anyway. (The skills store refuses a skill's
+per-platform binary cache, `<skill>/scripts/bin/**`, for the same reason:
+each host fetches its own engine.)
 
 A symlink on the Mac is followed when its target is inside the Mac's HOME
-and outside `.ssh`, `.gnupg`, `.aws` and the like. A skill directory that is
-a link (into another skills root, a checkout, or a package cache under HOME
-such as `~/Library/Caches/…` or `~/.npm/_npx/…`) is walked as a directory:
+and outside `.ssh`, `.gnupg`, `.aws` and the like. A directory that is a link
+(into another rule root, a checkout, or a package cache under HOME such as
+`~/Library/Caches/…` or `~/.npm/_npx/…`) is walked as a directory:
 the box gets the target's files as a real directory under the same path,
 never the link. A link that points outside HOME (`/opt/homebrew/…`) is
 skipped and counted.
@@ -919,7 +922,9 @@ Status: Settings → Hosts on the Mac. This Mac's Sync group has the Harness
 config switch, with how many files stay on the Mac (over 16 MiB, a symlink
 out of reach, or a macOS binary) under it; each paired host's Sync group has
 a Harness config row, `143 files  synced 2m ago` (every set with files, in
-the set's order, from `sets` of `harness.status`, in its tooltip), `Never
+the set's order, from `sets` of `harness.status`, in its tooltip; only the
+sets still carried, `HARNESS_SET_LABELS`, so an older build's status shows no
+skill set), `Never
 synced`, or the last error, and Sync now at the group's heading
 (`harness.status` and `harness.sync` on the Mac's own socket). On the box, the `[harness-sync]` lines in the service's
 journal say what landed. Proof:
@@ -4288,8 +4293,7 @@ workspace whose threads get something other than the global view. A
 generation's name hashes everything its bytes depend on: the view's skills,
 the layout, the text key (the path map, the home and the view's folder) and
 any extras beside `skills/`. A folder of a given name is complete once it is
-renamed in and never changes, so a CLI pointed at it never sees a skill
-change under its feet; the next spawn gets the new generation.
+renamed in and never changes.
 
 A change builds the view's next generation beside its place and renames it
 in. A skill that did not change is hard-linked from the current generation,
@@ -4297,7 +4301,39 @@ so a write to one skill of fifty costs one skill; every file is read-only, so
 an edit in place cannot reach another generation through a shared inode. The
 `<view>` link moves by rename, so a reader through it sees the old folder or
 the new one whole. Old generations stay a day after they were replaced (and
-while a live CLI holds one), then go at boot or the hourly sweep.
+while a scope pointer names one or a live codex app-server holds one), then
+go at boot or the hourly sweep.
+
+**How each CLI reads it.** Every thread has a scope, its own workspace or
+`global`, and each (provider, scope) has a pointer that always reaches the
+scope's current generation, `<userData>/harness/<provider>/scope/<scope>`,
+moved by rename after every write-out. Every CLI reads the store's skills
+through it, and only those: never ~/.claude/skills, ~/.codex/skills,
+~/.agents/skills or ~/.config/muse/skills, which the app also never moves,
+renames or deletes.
+
+- Claude Code runs with `CLAUDE_CONFIG_DIR` set to a dir the app owns per
+  scope, `<userData>/harness/claude-config/<scope>/`: its `skills/` holds a
+  link per store skill through the pointer (so `/impeccable` stays
+  `/impeccable`) and the CLI's own account-synced bucket; every other entry
+  (projects, settings, CLAUDE.md, commands, agents, hooks, plugins, the
+  credentials file on Linux, `.claude.json`) links to the person's, so
+  transcripts and memory land where they always did. A routed thread
+  carries the placeholder login `CLAUDE_CODE_OAUTH_TOKEN=routed`, which the
+  gateway swaps for the thread's account. A live CLI re-reads its skills at
+  the first send after its scope moved.
+- Codex gets the scope's generation as an app-server extra root, set again
+  on every live app-server when the scope moves; each person's skill under
+  ~/.codex/skills and ~/.agents/skills is disabled for that process by its
+  SKILL.md path (`-c skills.config=…`, no config.toml written), and a skill
+  added there later reboots the thread's app-server at its next turn.
+- Muse runs under a config dir per (account, scope) whose `skills` links the
+  pointer; Muse reads it at every call ("Muse Code on the box" above).
+
+So a store write reaches a running Claude thread at its next turn and Codex
+and Muse at their next call or turn; the warm Claude pool is keyed by scope,
+so a write retires no warm process (an adopted one reloads at its first
+send).
 
 Skills name absolute paths, often their own install folder
 (`~/.codex/skills/build-cosmic-frontend/scripts/…`). As each text file is
@@ -4324,18 +4360,22 @@ link-up. `skills-imported:v1` marks it done. The person's folders are read,
 never changed.
 
 **Threads write skills.** `skill_list`, `skill_write` and `skill_remove` are
-on every thread (Claude in-process, Codex and Muse over the bridge). A new
-skill, or one a thread wrote last, is written at once; a change to a skill a
-person or the import wrote asks on a card that names the files that change.
-The answer comes once this host has written the new generation out; a
-running thread keeps the skills it started with.
+on every thread (Claude in-process, found by tool search; Codex and Muse over
+the bridge). A new skill, or one a thread wrote last, is written at once; a
+change to a skill a person or the import wrote asks on a card that names the
+files that change. The answer comes once this host has written the new
+generation out, and every thread sees it from its next turn. The name
+`synced` is refused: it is Claude Code's own skills folder.
 
 The composer's slash menu lists the store's skills for the thread's
-workspace, then the home folder's for names the store lacks, until the
-drivers point each CLI at the store.
+workspace and nothing from the home folders, which is what the CLIs run.
+Settings → Skills says the same under its title.
 
 Proof: `bun run script:e2e-skills-store` (two headless instances of the
-built tree; build first).
+built tree; build first) and `bun run script:e2e-skills-drivers -- --host
+box|mac` (one headless instance with the real CLIs; on 2026-11-09 the box
+leg passed every Claude and Muse check, the warm adoption included, with no
+codex CLI on the box).
 
 ### Add-ons: the add-on host and its tools
 

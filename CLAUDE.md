@@ -995,7 +995,8 @@ routed to (aliax-core's `forward`). Two listeners:
   `TEMP_CODE_E2E_MEMORY_LOW=1` on an isolated instance); a start that finds
   nothing logs the first field it differs on (`[warm] claude: miss
   (tools) 2 warm`: model, effort, tools, permission, settings, cwd,
-  resume, empty, refilling, memory). A warm process is never a session
+  skills (the Claude config dir of another scope), resume, empty,
+  refilling, memory). A warm process is never a session
   (not listed, counted, capped or load-guarded). `harness.warm` (admin)
   lists the pools with each process's retirement and the `misses` by
   field, and `{retire: true}` empties them; `TEMP_CODE_WARM_HARNESS=0`
@@ -1031,11 +1032,14 @@ mismatch logs one `[muse]` line.
   steer, cancel, `model/list`); `clientInfo.name` is `temp_code` (the wire
   refuses a hyphen); the environment is `harnessEnv()` plus the guard's marks,
   `MUSE_CONTRIBUTOR_MODE=0` (the person's code is not training data unless
-  they turn it on) and `XDG_CONFIG_HOME` for the thread's account. It does
-  NOT set `TBH_CREDENTIAL_BACKEND=file`: the config-dir spike (M2, below)
-  found the account dir's `auth.json` decides the login with it on both
-  hosts, and without it on Linux, but not reliably on the Mac, where the CLI
-  may go to the Keychain first.
+  they turn it on) and `XDG_CONFIG_HOME` for the thread's config dir (one per
+  account and skills scope, below). An account's dir also sets
+  `TBH_CREDENTIAL_BACKEND=file`: the config-dir spike (M2, below) found the
+  dir's `auth.json` decides the login with it on both hosts, and without it
+  only on Linux; the Mac's CLI may go to the Keychain first. The own dir
+  (a thread on no account) does not. Both set `GH_CONFIG_DIR` to the
+  person's gh dir when it is unset, since tool processes inherit the owned
+  `XDG_CONFIG_HOME` and `gh` would lose its login (M6).
   `harness/museProtocol.ts` is the pure mapping: `safe` → `:ask-me` +
   `promptUnmatched`, `edits` → `:ask-me` + `onRequest`, `auto` →
   `:unrestricted` + `allowAll`; the app-tools bridge rides `session/start`'s
@@ -1067,28 +1071,38 @@ mismatch logs one `[muse]` line.
   the minted `api_key` the model traffic presents, `user_email`,
   `subs_active`; no refresh, no expiry), aliax-core's `muse-code` service
   (adapters/muse.ts) captures the file whole and every host holds the copy
-  (tombstones on delete). `src/main/server/museConfigDirs.ts` keeps
-  `<userData>/muse-accounts/<account>/muse/` with that `auth.json` (0600, by
-  rename) and a symlink per other entry of the person's `~/.config/muse`
-  (settings, skills, hooks, trust), and the driver hands the dir to `muse
-  serve` as `XDG_CONFIG_HOME`; a thread routed to no account runs on the
-  CLI's own login. `isPickedProvider` (claude, codex, muse) is the gate for
+  (tombstones on delete). `src/main/server/museConfigDirs.ts` keeps one dir
+  per (account, skills scope): `<userData>/muse-accounts/accounts/<account>/
+  <scope>/muse/` with that `auth.json` (0600, by rename) and its digest in
+  `.auth-seed`, or `<userData>/muse-accounts/own/<scope>/muse/` for a thread
+  on no account, its `auth.json` a link to the person's own when they have
+  one (`accounts/` and `own/` are fixed names, so no account collides with
+  the own dir). In both, `skills` links the store's scope pointer ("Skills:
+  written out on every host"), which Muse reads at every call, and every
+  other entry of the person's `~/.config/muse` (settings, hooks, trust) is a
+  link; the driver hands the dir to `muse serve` as `XDG_CONFIG_HOME`.
+  `migrateMuseDirs` at boot recaptures and removes the old
+  `<root>/<account>/muse/` dirs. `isPickedProvider` (claude, codex, muse) is the gate for
   pins, the sticky account, the vanished rule and the chip
   (`isRoutedProvider` stays for what rides the gateway: headroom, 401 marks,
   the scope); a Muse pick lands at the next harness start, which the chip's
   menu says. Routing scores the observed windows and the live load alone;
   nothing polls Meta, and `muse usage` must never run against a copy (it
-  rotates the access token in place; `recaptureMuseDir` saves a dir's
-  rotated file back on dispose). The Aliax app's Add account runs `muse
+  rotates the access token in place; `recaptureMuseDir` on dispose saves only
+  a scope's copy that differs from its own seed, the newest when several do,
+  and seeds every copy it looked at with what it holds, so a scope's
+  untouched copy is never saved over another's rotation). The Aliax app's Add account runs `muse
   login` (its CLAUDE.md). No gateway lane: `-c endpoint_transport.base_url`
   does carry every model call (findings F4) but no rate-limit headers were
   seen, so the lane buys nothing yet; warm start is left for later (the
   bridge binds at `session/start`, so a warm host can be rebound).
 - On the box: `scripts/box/85-temp-code.sh` installs the CLI as agents; the
-  harness set syncs `~/.config/muse/{settings.json,skills,hooks}` and never
-  `auth.json`; account sync carries the login; but Meta serves the box's
-  address an empty catalog (findings F2), so a Muse thread there fails with
-  the sign-in row until that changes (docs/box.md "Muse Code on the box").
+  harness set syncs `~/.config/muse/{settings.json,hooks}` and never
+  `auth.json` (skills come from the store); account sync carries the login.
+  Meta served the box's address an empty catalog in the spike (findings F2);
+  on 2026-11-09 the catalog answered and the skills drivers proof ran Muse
+  turns on the box, on an account and on the CLI's own login (docs/box.md
+  "Muse Code on the box").
 - Proof: `bun run script:e2e-muse` (scripts/e2e-muse.ts: an in-process
   registry on the real binary and the login its config dir holds; a shell
   call, a denied network approval, a steer received, a cancel; skips with one
@@ -1114,7 +1128,15 @@ ignored): Claude Code takes the store as an SDK plugin dir (`plugins`,
 in the warm key); Codex as an app-server extra root
 (`skills/extraRoots/set`, watched); Muse has no add-a-dir route, and its
 closest shape, the per-account root with `TBH_CREDENTIAL_BACKEND=file` and a
-`muse/skills/` the store owns, still lacks a real turn to prove it.
+`muse/skills/` the store owns, still lacks a real turn to prove it. What the
+drivers took ("Skills: written out on every host"): not the plugin dir for
+Claude, since a plugin's skills are always named `<plugin>:<skill>` (C1a,
+C1d) and a person's skill keeps its bare name; Claude gets an owned config
+dir per scope instead (C2's hybrid: the store's `skills`, every other entry
+the person's). Codex takes the extra root and disables the home skills per
+process (`-c skills.config`); Muse the per-account root with the file
+backend, now keyed on (account, scope), which the skills drivers proof ran
+real turns from on the box.
 
 ## Remote access: the fixed port behind the tunnel
 - A second listener (src/main/server/remote/listener.ts) binds
@@ -1255,16 +1277,19 @@ closest shape, the per-account root with `TBH_CREDENTIAL_BACKEND=file` and a
   `/usr/local/bin` (macOS) or `~/.bun/bin` and `~/.local/bin` (elsewhere)
   first when the PATH lacks them; a publish once died `command not found:
   bun` without it.
-- Harness config (skills under `~/.claude/skills`, `~/.codex/skills` and
-  `~/.agents/skills`, commands, agents, `~/.claude/hooks`, settings.json,
-  plugins, Codex config and `~/.codex/hooks.json`, two keys of ~/.claude.json)
-  is mirrored Mac → box by the Mac's main process over the peer link
-  (`src/main/server/remote/harnessSync.ts`, `harness.*` RPCs, admin; paths
-  translated through `pathMap.ts`, so Codex's `[hooks.state."<home>/.codex/
-  hooks.json:…"]` trust rows name the box's copy). A skill dir that is a
-  symlink lands as a copied tree. A skill's per-platform binary cache
-  (`<skill>/scripts/bin/**`, Impeccable's) and any Mach-O file never cross:
-  the box downloads its own engine on first use. The set with its labels
+- Harness config (commands, agents, `~/.claude/hooks`, settings.json,
+  plugins, Codex prompts, config and `~/.codex/hooks.json`, Muse settings and
+  hooks, two keys of ~/.claude.json) is mirrored Mac → box by the Mac's main
+  process over the peer link (`src/main/server/remote/harnessSync.ts`,
+  `harness.*` RPCs, admin; paths translated through `pathMap.ts`, so Codex's
+  `[hooks.state."<home>/.codex/hooks.json:…"]` trust rows name the box's
+  copy). Skills are the skills store's, not harness sync's: the four skill
+  rules retired (`RETIRED_ROOTS`), the sender walks them no more, the
+  receiver forgets what it landed under them at start and at each manifest
+  (the files stay on disk) and counts an older sender's skill entries in one
+  line. A dir that is a symlink lands as a copied tree, and a Mach-O file
+  never crosses. The Sync row's tooltip names only the sets still carried
+  (`HARNESS_SET_LABELS`, src/shared/harnessSets.ts). The set with its labels
   (`HARNESS_SET` in `harnessSet.ts`), the exclusions and the status line
   (each set with its file count) are in docs/box.md "Harness config: synced
   from the Mac". Proof: `bun run script:e2e-harness-sync`.
@@ -2116,9 +2141,12 @@ skill folders and gives threads the skill tools.
   them.
 
 ## Skills: written out on every host
-The plan is .temp-code/plan--OsNna4IcfKO.md; the code is
-src/main/server/skills/. Pointing each CLI at the folder, the warm pool's
-shape and retiring harness sync are the "Skills into the drivers" thread's.
+The plans are .temp-code/plan--OsNna4IcfKO.md (the store core) and
+.temp-code/plan-JBpcLz-eGMhp.md (the drivers); the code is
+src/main/server/skills/. Every CLI reads the store's skills for its
+thread's scope, and only those: never ~/.claude/skills, ~/.codex/skills,
+~/.agents/skills or ~/.config/muse/skills, which the app never moves,
+renames or deletes either.
 - **Views** (views.ts): each provider (claude, codex, muse) has a `global`
   view, empty or not, and a workspace has its own `ws-<id>` view only when
   what its threads get differs from the global one (`visibleSkills`: a
@@ -2138,12 +2166,58 @@ shape and retiring harness sync are the "Skills into the drivers" thread's.
   before its files were read drops its folder. It runs at boot, on every
   store change and on a new peer home, one run at a time, a yield per skill;
   `dirFor(provider, workspaceId)` builds at once (no yield) while a change is
-  pending, so a spawn right after a write sees it. `gc()` at boot and hourly
-  removes a generation no view points at, not `inUse`, superseded over a day
-  ago (`generations.json`); leftovers of a dead process go at start.
-  `materializedSkillsDir(provider, workspaceId)` is the path the drivers
-  point a CLI at (null until configured); `inUse` and `generationExtras`
-  (files beside `skills/`, a plugin manifest) are theirs to fill.
+  pending, so a spawn right after a write sees it. `onPublished` fires after
+  every run and after a `dirFor` that built. `gc()` at boot and hourly
+  removes a generation no view or scope pointer points at, not `inUse` (the
+  live codex app-servers' roots, `codexLiveRoots`), superseded over a day ago
+  (`generations.json`); leftovers of a dead process go at start.
+  `generationExtras` stays empty.
+- **Scope pointers** (pointers.ts, `SkillPointers`): one stable path per
+  (provider, scope), `<userData>/harness/<provider>/scope/<global|ws-<id>>`,
+  a link to `../<generation>` of `dirFor(provider, workspaceId)`, so a
+  workspace with no view of its own names the global generation and keeps
+  its path when it gains or loses one. Re-pointed by rename on every
+  `onPublished` and workspace change (`onMoved` once per pointer that
+  moved, `movedAt`); a deleted workspace's pointer goes; a real folder in
+  a pointer's place is left alone. A thread's scope is `workspaceOfThread`
+  of the thread itself (index.ts's one resolver for the three drivers).
+- **Claude Code** (claudeRoots.ts, drivers/claude.ts): every thread runs
+  with `CLAUDE_CONFIG_DIR` = `<userData>/harness/claude-config/<scope>/`, a
+  dir the app owns: `skills/` holds one link per store skill through the
+  scope pointer (bare names; an edit is reached at once, an add or remove
+  relinks on `onMoved`) and `synced` → the person's account-synced bucket;
+  `.claude.json` and every other entry of the person's dir (projects,
+  settings, CLAUDE.md, commands, agents, hooks, plugins, `.credentials.json`
+  on Linux) are links, `projects/` made in the person's dir first; what the
+  CLI makes there itself (sessions, backups) stays per scope, and a
+  `.claude.json` it replaced by a rename is set aside as `.diverged` and
+  linked again. A routed Anthropic row holds `CLAUDE_CODE_OAUTH_TOKEN=routed`
+  for the gateway to replace (a Meta row keeps its token mode); a thread
+  with no route keeps the owned root (Linux signs in through the linked
+  credentials, the Mac fails with the CLI's sign-in error). `skillProblem`
+  refuses the name `synced`, and a row of that name is never linked. A live
+  CLI reloads its skills (`reloadSkills`, 10 s) at the first send after its
+  scope's pointer moved past the generation it loaded, never mid-turn; a
+  failure tries again at the next send.
+- **Codex** (codexSkills.ts, drivers/codex.ts): every app-server is spawned
+  with each home skill's SKILL.md disabled by path, both spellings of a
+  linked dir, never `.system` (`-c skills.config=[{path=…,enabled=false}]`,
+  no config.toml written; the argv the warm key and the spawn share), and
+  takes `<generation>/skills` of its scope as its extra root
+  (`skills/extraRoots/set`) after `initialize`, cold or adopted, again on
+  every live handle when the scope moves (a symlinked root does not refresh)
+  and before the next `turn/start` after a failed set. A SKILL.md added to
+  a home folder since the spawn makes `needsReboot` answer, and the
+  registry's `staleHandle` puts the process down at the next turn start.
+- **Muse** (museConfigDirs.ts): one config dir per (account, scope), its
+  `skills` a link to `<pointer>/skills`, read at every call ("Muse Code"
+  above).
+- **Freshness and the warm pool**: Codex and Muse see a write on their next
+  call or turn, Claude from its next turn; the skill tools say "every thread
+  sees it from its next turn". `CLAUDE_CONFIG_DIR` splits the warm key by
+  scope only, so a store write churns no warm process; an adopted one whose
+  spawn-time generation is behind reloads at its first send, and a miss on
+  the dir alone logs `[warm] claude: miss (skills)`.
 - **Path text** (skillText.ts): text files (`translatable`, valid UTF-8, a
   BOM kept) are localized as they are written: the other host's paths
   through memory sync's two-way map for each heard peer (`skillTextMap` over
@@ -2176,20 +2250,29 @@ shape and retiring harness sync are the "Skills into the drivers" thread's.
   `expectUpdatedAt`, so a skill that moved is refused with "call skill_write
   again". The answer waits for the write-out (`whenSettled`). The bridge
   calls write and remove with no client deadline.
-- **The slash menu** (commands.ts `configureCommandSkills`): claude's and
-  codex's user skills come first from the store's folder for the thread's
-  workspace, then, while `readHome` (on until the drivers own each CLI's
-  skill folder), from ~/.claude/skills or ~/.codex/skills for names the store
-  lacks; the synced bucket and `.system` read as before; the cache keys on
-  the generation.
+- **The slash menu** (commands.ts `configureCommandSkills`, `readHome:
+  false`): claude's and codex's user skills come from the store's folder for
+  the cwd's workspace, never the home folders; the synced bucket and
+  `.system` read as before; the cache keys on the generation. Settings →
+  Skills says under its title that threads read skills from there.
+- The skill tools are deferred on Claude (found by tool search, like the
+  add-on management tools); the bridge lists them on every codex and Muse
+  thread.
 - Proof: `bun run script:e2e-skills-store` (two headless instances of the
   built tree: the import, the seed, the views and their path text on both
   hosts, a new skill, an atomic rewrite under a 2 ms reader, the card denied
   then allowed, the slash menu, a removal, a restart that imports nothing
-  again). Unit: skills/{views,skillText,materialize,import,tools}, skillStore,
-  skillFiles, storeRpc, remote/storeSync.pair, memorySync, harnessSet,
-  commands, app-bridge, the renderer's toolBlock. docs/box.md "Skills:
-  written out on every host".
+  again), and `bun run script:e2e-skills-drivers -- --host box|mac` (one
+  headless instance with real CLIs: a probe skill answered by Claude under
+  its owned root by its bare name, a rewrite at the next turn, a warm
+  process adopted with no miss, Codex and Muse on an account and on the
+  CLI's own login; a missing CLI is missing proof, never a pass). Unit:
+  skills/{views,skillText,materialize,pointers,claudeRoots,codexSkills,
+  import,tools}, drivers/{claude-skills,codex-skills,warm}, museConfigDirs,
+  harness/museHost, skillStore, skillFiles, storeRpc, remote/storeSync.pair,
+  memorySync, harnessSet, harnessSync, commands, app-bridge,
+  sessions-addons, the renderer's toolBlock and SkillsPage. docs/box.md
+  "Skills: written out on every host".
 
 ## Background work and watching: a structured wait on the session row
 - The claude driver keeps every live background task as an item
