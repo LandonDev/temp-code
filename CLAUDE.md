@@ -1136,7 +1136,8 @@ dir per scope instead (C2's hybrid: the store's `skills`, every other entry
 the person's). Codex takes the extra root and disables the home skills per
 process (`-c skills.config`); Muse the per-account root with the file
 backend, now keyed on (account, scope), which the skills drivers proof ran
-real turns from on the box.
+real turns from on both hosts (2026-11-09; Codex 0.164.0 on the Mac read the
+stored skill's body, the question X1 left open).
 
 ## Remote access: the fixed port behind the tunnel
 - A second listener (src/main/server/remote/listener.ts) binds

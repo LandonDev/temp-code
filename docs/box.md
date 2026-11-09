@@ -4375,7 +4375,10 @@ Proof: `bun run script:e2e-skills-store` (two headless instances of the
 built tree; build first) and `bun run script:e2e-skills-drivers -- --host
 box|mac` (one headless instance with the real CLIs; on 2026-11-09 the box
 leg passed every Claude and Muse check, the warm adoption included, with no
-codex CLI on the box).
+codex CLI on the box; the Mac leg passed Claude, Codex 0.164.0 (it reads the
+stored skill's body and the rewrite) and Muse on an account and on the CLI's
+own login, with the warm step skipped there: an isolated instance on the Mac
+routes Claude through the installed app's shim, so it warms nothing).
 
 ### Add-ons: the add-on host and its tools
 
