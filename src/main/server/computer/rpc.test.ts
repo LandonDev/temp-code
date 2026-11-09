@@ -3,6 +3,8 @@ import { COMPUTER_TOOLS, computerToolJsonSchema } from '@shared/computer/tools'
 import type { ComputerPush } from '@shared/contract-computer'
 import { ComputerPushSchema } from '@shared/wireSchemas'
 import { MacThreadTokens } from '../macTools'
+import type { ComputerBridge } from './bridge'
+import { COMPUTER_BRIDGE_NOTE } from '@shared/computer/tools'
 import type { ComputerHost } from './mcp'
 import { ComputerRpc } from './rpc'
 import { computerHarness, type ComputerHarness } from './runHarness'
@@ -134,5 +136,53 @@ describe('the bridge', () => {
     expect((await queued).text).toBe('cancelled: the call was given up')
     expect(h.cards).toHaveLength(0)
     expect(count('action.run')).toBe(0)
+  })
+})
+
+describe('a box thread bridged to its Mac', () => {
+  function boxRpc() {
+    const runs: string[] = []
+    const stops: string[] = []
+    const listeners = new Set<() => void>()
+    const row = { threadId: 'b1', since: 1, lastCallAt: 1, apps: [{ name: 'TextEdit', bundleId: null, window: 'Untitled' }], running: null, tier: null, macPeer: 'env_mac', macName: 'Studio' }
+    const bridge = {
+      offered: (id: string) => id === 'b1',
+      run: async (ctx: { threadId: string }, tool: string) => (runs.push(`${ctx.threadId} ${tool}`), { steps: [], shots: [], body: 'ok', isError: false }),
+      rows: () => [row],
+      onRows: (fn: () => void) => (listeners.add(fn), () => listeners.delete(fn)),
+      stop: async (id: string) => (stops.push(id), true)
+    } as unknown as ComputerBridge
+    const tokens = new MacThreadTokens(null, 'computer')
+    const rpc = new ComputerRpc(null, () => 'computer use runs on a Mac', { bridge, tokens })
+    rpcs.push(rpc)
+    return { rpc, tokens, runs, stops, listeners }
+  }
+
+  it("computer.sessions answers the bridge's mirrored rows; computer.stop stops the bridged thread", async () => {
+    const b = boxRpc()
+    expect(b.rpc.sessions().sessions.map((r) => [r.threadId, r.macName])).toEqual([['b1', 'Studio']])
+    expect(b.rpc.sessions().service.state).toBe('unavailable')
+    expect(await b.rpc.stop('b1')).toEqual({ stopped: true })
+    expect(b.stops).toEqual(['b1'])
+    expect(await b.rpc.stop('other')).toEqual({ stopped: false })
+  })
+
+  it("app.computer and app.computerTools route a bridged thread behind its own token; another thread gets none", async () => {
+    const b = boxRpc()
+    const s = b.rpc.socket()
+    expect((await s.call({ sessionId: 'b1', token: b.tokens.tokenFor('b1'), call: 1, tool: 'computer_observe', args: { app: 'TextEdit' }, images: 'none' })).text).toBe('ok')
+    expect(b.runs).toEqual(['b1 computer_observe'])
+    expect(s.tools({ sessionId: 'b1', token: b.tokens.tokenFor('b1') }).tools.every((t) => t.description.endsWith(COMPUTER_BRIDGE_NOTE))).toBe(true)
+    expect(s.tools({ sessionId: 'b2', token: b.tokens.tokenFor('b2') }).tools).toEqual([])
+    expect((await s.call({ sessionId: 'b2', token: b.tokens.tokenFor('b2'), call: 2, tool: 'computer_observe', args: { app: 'x' }, images: 'none' })).isError).toBe(true)
+    await expect(s.call({ sessionId: 'b1', token: b.tokens.tokenFor('b2'), call: 3, tool: 'computer_observe', args: {}, images: 'none' })).rejects.toThrow(/computer token/)
+  })
+
+  it("a Mac's own push leaves out the sessions it holds for box threads", async () => {
+    const { h, rpc } = make()
+    await h.run('computer_observe', { app: 'TextEdit' }, 'env_abcdefghijklmnopqrstuv:b1')
+    await h.run('computer_observe', { app: 'TextEdit' }, 't1')
+    expect(h.sessions.rows().map((r) => r.threadId).sort()).toEqual(['env_abcdefghijklmnopqrstuv:b1', 't1'])
+    expect(rpc.sessions().sessions.map((r) => r.threadId)).toEqual(['t1'])
   })
 })

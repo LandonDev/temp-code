@@ -27,7 +27,9 @@ export function computerUnavailable(opts: AvailabilityProbe = {}): string | null
   const env = opts.env ?? process.env
   const platform = opts.platform ?? process.platform
   if (platform !== 'darwin') return 'computer use runs on a Mac'
-  if (opts.headless ?? isHeadless(env, platform)) return 'this host runs without a screen'
+  // A proof's isolated Mac instance runs headless and still serves computer use: tc-computer touches AppKit itself.
+  const proofHeadless = env.TEMP_CODE_COMPUTER === '1' && !!env.TEMP_CODE_USER_DATA
+  if ((opts.headless ?? isHeadless(env, platform)) && !proofHeadless) return 'this host runs without a screen'
   if (env.TEMP_CODE_COMPUTER === '0') return 'turned off'
   if (!(opts.exists ?? existsSync)(computerBinaryPath(env))) return 'tc-computer is not built'
   return null

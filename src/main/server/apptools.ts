@@ -92,6 +92,7 @@ import { INLINE_DIGEST_MAX_CHARS, mirrorRelPath, threadDigest } from './mirror'
 import type { SessionRegistry } from './sessions'
 import { macToolsHooks, toolUseIdOf } from './macTools'
 import { COMPUTER_APP_TOOLS, computerHooks, computerTools } from './computer/mcp'
+import { computerBridgeHooks } from './computer/bridge'
 import { skillList, skillRemove, skillWrite, type SkillToolDeps } from './skills/tools'
 import type { CrossHostAgents } from './crossHostAgents'
 import type { ProjectPlans } from './projectPlan'
@@ -174,7 +175,12 @@ export function hasAppBridge(): boolean {
  *  (codex, until the Preview and image results thread proves it takes them). */
 export function bridgeMcpConfig(sessionId: string, opts: { computerImages?: 'parts' | 'none' } = {}): Record<string, unknown> | null {
   if (!bridge) return null
-  const computer = computerHooks.current?.available() ? computerHooks.current : null
+  // Here where computer use runs, else a box thread whose Mac bridge offers it (computer/bridge.ts).
+  const computer = computerHooks.current?.available()
+    ? computerHooks.current
+    : computerBridgeHooks.current?.offered(sessionId) && computerBridgeHooks.tokens
+      ? { tokens: computerBridgeHooks.tokens }
+      : null
   return {
     command: bridge.command,
     args: [bridge.scriptPath],

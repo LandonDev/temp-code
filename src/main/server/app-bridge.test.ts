@@ -30,6 +30,8 @@ import {
 import { NOTE_DECISION_SHAPE, SKILL_REMOVE_SHAPE, SKILL_WRITE_SHAPE, ADOPT_THREAD_SHAPE, ARCHIVE_THREADS_SHAPE, BATCH_GATE_SHAPE, BATCH_RULES_SHAPE, CITE_SHAPE, HTML_PREVIEW_SHAPE, HTML_RENDER_SHAPE, MERGE_BRANCH_SHAPE, REPORT_FINDINGS_SHAPE } from './apptools'
 import * as addons from '@shared/addons'
 import { bridgeMcpConfig, setAppAddons, setAppBridge } from './apptools'
+import { computerBridgeHooks, type ComputerBridge } from './computer/bridge'
+import { MacThreadTokens } from './macTools'
 import {
   MERGE_BRANCH_PARAMS,
   MERGE_BRANCH_TOOL_DESCRIPTION,
@@ -483,6 +485,22 @@ describe('app-mcp-bridge add-on tools', () => {
     })
     expect(addonBridge.toolResult('addon_call', { content: [{ type: 'text', text: 'x' }] })).toEqual({ content: [{ type: 'text', text: 'x' }] })
     expect(addonBridge.toolResult('addon_list', '[]\nnote')).toEqual({ content: [{ type: 'text', text: '[]\nnote' }] })
+  })
+
+  it("bridgeMcpConfig gives a box thread its computer token while its Mac bridge offers computer use, and none otherwise", () => {
+    setAppBridge({ port: 1, scriptPath: '/x.mjs', command: 'node', env: {} })
+    const tokens = new MacThreadTokens(null, 'computer')
+    computerBridgeHooks.current = { offered: (id: string) => id === 'bridged' } as unknown as ComputerBridge
+    computerBridgeHooks.tokens = tokens
+    try {
+      const env = (id: string): Record<string, string> => bridgeMcpConfig(id, { computerImages: 'none' })!.env as Record<string, string>
+      expect(env('bridged')).toMatchObject({ TEMP_CODE_COMPUTER_TOKEN: tokens.tokenFor('bridged'), TEMP_CODE_COMPUTER_IMAGES: 'none' })
+      expect(env('plain').TEMP_CODE_COMPUTER_TOKEN).toBeUndefined()
+    } finally {
+      computerBridgeHooks.current = null
+      computerBridgeHooks.tokens = null
+      setAppBridge(null)
+    }
   })
 
   it('bridgeMcpConfig sets TEMP_CODE_ADDONS while the thread\'s scope holds an add-on', () => {

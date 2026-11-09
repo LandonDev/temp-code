@@ -66,7 +66,7 @@ import {
   MAX_COMPUTER_PREFIX,
   isMacComputerPeerMethod
 } from '@shared/contract-maccomputer'
-import { MacComputer, type ComputerHost, type ComputerRequestShape } from './macComputer'
+import { MacComputer, type MacComputerHost, type ComputerRequestShape } from './macComputer'
 
 /**
  * The Mac side of the Mac bridge (docs/box.md "The Mac bridge: what a box
@@ -174,7 +174,7 @@ export interface MacBridgeDeps {
   /** What peer.register says of this host besides its offers: its hostname, build and presence (remote/relayServe.ts registration). */
   registration?: () => { name: string; presence: import('@shared/contract-relay').MacPresence; build?: import('@shared/deployDrift').BuildFacts }
   /** This Mac's computer host (computer/mcp.ts computerHooks), or null where computer use is unavailable. */
-  computerHost?: () => ComputerHost | null
+  computerHost?: () => MacComputerHost | null
   /** Why computer use is unavailable here (computer/binary.ts computerUnavailable), or null; absent means it never is available. */
   computerUnavailable?: () => string | null
   /** Where a box thread's pictures land here before they are read back (macComputer.ts bridgedLanding). */

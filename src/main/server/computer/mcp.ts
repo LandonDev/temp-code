@@ -1,12 +1,13 @@
 import { readFile } from 'node:fs/promises'
 import { tool, type SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
 import type { z } from 'zod'
-import { COMPUTER_SEARCH_HINT, COMPUTER_TOOLS, MAX_IMAGE_PARTS, computerToolJsonSchema } from '@shared/computer/tools'
+import { COMPUTER_BRIDGE_NOTE, COMPUTER_SEARCH_HINT, COMPUTER_TOOLS, MAX_IMAGE_PARTS, computerToolJsonSchema } from '@shared/computer/tools'
 import type { AppComputerAnswer } from '@shared/contract-computer'
 import type { SessionMeta } from '@shared/events'
 import { deferredTool } from '../addons/exposure'
 import type { MacThreadTokens } from '../macTools'
 import { toolUseIdOf } from '../macTools'
+import { computerBridgeHooks } from './bridge'
 import { renderText, type ComputerToolOutcome } from './result'
 import type { ComputerService } from './service'
 import type { ComputerSessions } from './sessions'
@@ -16,7 +17,9 @@ import type { ComputerSessions } from './sessions'
  * (docs/computer-protocol.md "Tools on each harness"): in process for
  * Claude, deferred behind tool search so a thread that never touches an app
  * pays no schema; codex and Muse reach the same flow through the bridge
- * (rpc.ts). Box threads get none: computer use is unavailable there.
+ * (rpc.ts). A box thread gets them only when its bridge names a Mac that
+ * offers computer use (computer/bridge.ts): the same four, each description
+ * followed by COMPUTER_BRIDGE_NOTE, its calls carried to the Mac.
  */
 
 export interface ComputerHost {
@@ -61,27 +64,34 @@ export async function computerAnswer(o: ComputerToolOutcome, images: 'parts' | '
   return { text: renderText(o), isError: o.isError, images: parts }
 }
 
-/** The four tools as the bridge lists them: tools.ts is the one source of their schemas. */
-export function computerToolList(): { name: string; description: string; inputSchema: Record<string, unknown> }[] {
-  return COMPUTER_TOOLS.map((t) => ({ name: t.name, description: t.description, inputSchema: computerToolJsonSchema(t.input) }))
+/** The four tools as the bridge lists them: tools.ts is the one source of their schemas; `bridged` adds the Mac's note. */
+export function computerToolList(opts: { bridged?: boolean } = {}): { name: string; description: string; inputSchema: Record<string, unknown> }[] {
+  const note = opts.bridged ? COMPUTER_BRIDGE_NOTE : ''
+  return COMPUTER_TOOLS.map((t) => ({ name: t.name, description: t.description + note, inputSchema: computerToolJsonSchema(t.input) }))
 }
 
 const shapeOf = (input: z.ZodType): z.ZodRawShape => (input as unknown as { shape: z.ZodRawShape }).shape
 
-/** The four tools for one claude thread, deferred behind tool search; [] where computer use is unavailable. */
+/**
+ * The four tools for one claude thread, deferred behind tool search: run
+ * here where computer use is available, else carried to the thread's Mac when
+ * its bridge names one that offers it; [] otherwise.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function computerTools(session: SessionMeta, host: ComputerHost | null = computerHooks.current): SdkMcpToolDefinition<any>[] {
-  if (!host?.available()) return []
+export function computerTools(session: SessionMeta, host: ComputerHost | null = computerHooks.current, bridge = computerBridgeHooks.current): SdkMcpToolDefinition<any>[] {
+  const local = host?.available() ? host : null
+  if (!local && !bridge?.offered(session.id)) return []
   return COMPUTER_TOOLS.map((spec) =>
     deferredTool(
       tool(
         spec.name,
-        spec.description,
+        local ? spec.description : spec.description + COMPUTER_BRIDGE_NOTE,
         shapeOf(spec.input),
         async (args, extra) => {
           // the queue parses again with the tool's full schema, refinements and all
           const signal = (extra as { signal?: AbortSignal } | undefined)?.signal
-          const outcome = await host.sessions.run({ threadId: session.id, callId: toolUseIdOf(extra), signal }, spec.name, args)
+          const ctx = { threadId: session.id, callId: toolUseIdOf(extra), signal }
+          const outcome = local ? await local.sessions.run(ctx, spec.name, args) : await bridge!.run(ctx, spec.name, args)
           return computerContent(outcome, 'parts')
         },
         { searchHint: COMPUTER_SEARCH_HINT }

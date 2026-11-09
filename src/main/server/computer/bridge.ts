@@ -24,6 +24,7 @@ import type { SessionMeta, SessionStatus } from '@shared/events'
 import { MAC_AWAY_REFUSAL } from '../awayPrompts'
 import { CANCELLED_PAUSED, CANCELLED_STOPPED, type MacPause } from '../macPause'
 import { PeerOfflineError, type PeerCalls } from '../remote/peerCalls'
+import type { MacThreadTokens } from '../macTools'
 import { OfflineError } from '../threadResources'
 import { refusal, type ComputerToolOutcome, type LandedShot } from './result'
 import { abortedLine, checkComputerCall, type ComputerToolContext } from './run'
@@ -501,5 +502,9 @@ export class ComputerBridge {
   }
 }
 
-/** The box's bridge, for the tools (computer/mcp.ts) and the RPCs (computer/rpc.ts); index.ts sets it. */
-export const computerBridgeHooks: { current: ComputerBridge | null } = { current: null }
+/**
+ * The box's bridge, for the tools (computer/mcp.ts) and the RPCs
+ * (computer/rpc.ts), and the per-thread tokens of purpose `computer` its
+ * codex and Muse bridges carry; index.ts sets both.
+ */
+export const computerBridgeHooks: { current: ComputerBridge | null; tokens: MacThreadTokens | null } = { current: null, tokens: null }

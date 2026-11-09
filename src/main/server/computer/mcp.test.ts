@@ -2,11 +2,12 @@ import { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { afterEach, describe, expect, it } from 'vitest'
-import { COMPUTER_SEARCH_HINT, COMPUTER_TOOLS, computerToolJsonSchema } from '@shared/computer/tools'
+import { COMPUTER_BRIDGE_NOTE, COMPUTER_SEARCH_HINT, COMPUTER_TOOLS, computerToolJsonSchema } from '@shared/computer/tools'
 import type { SessionMeta } from '@shared/events'
 import { APP_TOOLS } from '../apptools'
 import { MacThreadTokens } from '../macTools'
-import { COMPUTER_APP_TOOLS, computerTools, type ComputerHost } from './mcp'
+import type { ComputerBridge } from './bridge'
+import { COMPUTER_APP_TOOLS, computerToolList, computerTools, type ComputerHost } from './mcp'
 import { computerHarness, type ComputerHarness } from './runHarness'
 
 const session = { id: 't1', permission: 'auto' } as unknown as SessionMeta
@@ -21,8 +22,8 @@ function hostOf(h: ComputerHarness, available = true): ComputerHost {
   return { available: () => available, sessions: h.sessions, service: h.service, tokens: new MacThreadTokens(null, 'computer') }
 }
 
-async function connect(host: ComputerHost) {
-  const server = createSdkMcpServer({ name: 'app', version: '0.1.0', alwaysLoad: true, tools: computerTools(session, host) })
+async function connect(host: ComputerHost | null, bridge: ComputerBridge | null = null) {
+  const server = createSdkMcpServer({ name: 'app', version: '0.1.0', alwaysLoad: true, tools: computerTools(session, host, bridge) })
   const [a, b] = InMemoryTransport.createLinkedPair()
   const client = new Client({ name: 'test', version: '1' })
   await server.instance.connect(a)
@@ -74,5 +75,39 @@ describe('computerTools', () => {
   it('APP_TOOLS lists the four, so the CLI never asks a second time', () => {
     expect(COMPUTER_APP_TOOLS).toEqual(['mcp__app__computer_apps', 'mcp__app__computer_observe', 'mcp__app__computer_act', 'mcp__app__computer_batch'])
     for (const name of COMPUTER_APP_TOOLS) expect(APP_TOOLS).toContain(name)
+  })
+})
+
+describe('computerTools on a box thread bridged to its Mac', () => {
+  const stubBridge = (offered: boolean) => {
+    const runs: { threadId: string; tool: string; args: unknown }[] = []
+    const bridge = {
+      offered: () => offered,
+      run: async (ctx: { threadId: string }, tool: string, args: unknown) => {
+        runs.push({ threadId: ctx.threadId, tool, args })
+        return { steps: ['set_value [3] · ax · changed'], shots: [], body: 'TextEdit "Untitled"', isError: false }
+      }
+    } as unknown as ComputerBridge
+    return { bridge, runs }
+  }
+
+  it('lists the four with the bridge note when the Mac offers computer use, none when it does not', async () => {
+    expect(computerTools(session, null, stubBridge(false).bridge)).toEqual([])
+    const { tools } = await (await connect(null, stubBridge(true).bridge)).listTools()
+    expect(tools.map((t) => t.name)).toEqual(COMPUTER_TOOLS.map((t) => t.name))
+    for (const t of tools) expect(t.description?.endsWith(COMPUTER_BRIDGE_NOTE)).toBe(true)
+    expect(computerToolList({ bridged: true }).every((t) => t.description.endsWith(COMPUTER_BRIDGE_NOTE))).toBe(true)
+    expect(computerToolList().some((t) => t.description.endsWith(COMPUTER_BRIDGE_NOTE))).toBe(false)
+  })
+
+  it('a call goes to the bridge, never to a host that is not available', async () => {
+    const h = computerHarness()
+    harnesses.push(h)
+    const { bridge, runs } = stubBridge(true)
+    const client = await connect(hostOf(h, false), bridge)
+    const out = (await client.callTool({ name: 'computer_act', arguments: { app: 'TextEdit', action: 'set_value', element: 3, value: 'x' } })) as { content: { type: string; text?: string }[] }
+    expect(runs).toEqual([{ threadId: 't1', tool: 'computer_act', args: expect.objectContaining({ app: 'TextEdit' }) }])
+    expect(out.content[0].text).toBe('set_value [3] · ax · changed\n\nTextEdit "Untitled"')
+    expect(h.requests()).toEqual([])
   })
 })

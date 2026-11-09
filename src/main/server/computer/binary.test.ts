@@ -12,6 +12,13 @@ describe('computer use availability', () => {
     expect(computerUnavailable({ ...mac, env: { TEMP_CODE_COMPUTER: '0' } })).toBe('turned off')
     expect(computerUnavailable({ ...mac, exists: () => false })).toBe('tc-computer is not built')
   })
+  it('a headless proof instance on a Mac serves computer use only with TEMP_CODE_COMPUTER=1 and TEMP_CODE_USER_DATA', () => {
+    const headless = { ...mac, headless: true }
+    expect(computerUnavailable({ ...headless, env: { TEMP_CODE_COMPUTER: '1', TEMP_CODE_USER_DATA: '/tmp/i' } })).toBeNull()
+    expect(computerUnavailable({ ...headless, env: { TEMP_CODE_COMPUTER: '1' } })).toBe('this host runs without a screen')
+    expect(computerUnavailable({ ...headless, env: { TEMP_CODE_USER_DATA: '/tmp/i' } })).toBe('this host runs without a screen')
+    expect(computerUnavailable({ ...headless, platform: 'linux', env: { TEMP_CODE_COMPUTER: '1', TEMP_CODE_USER_DATA: '/tmp/i' } })).toBe('computer use runs on a Mac')
+  })
   it('TEMP_CODE_COMPUTER_BIN names the binary, else resources/native', () => {
     expect(computerBinaryPath({ TEMP_CODE_COMPUTER_BIN: '/tmp/tc' })).toBe('/tmp/tc')
     expect(computerBinaryPath({})).toMatch(/resources\/native\/tc-computer$/)

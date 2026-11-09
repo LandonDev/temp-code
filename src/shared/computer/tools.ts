@@ -127,6 +127,9 @@ export type ComputerBatchInput = z.infer<typeof ComputerBatchInputSchema>
  * What tool search matches the four deferred tools by on Claude (the SDK's
  * `searchHint`); a placeholder Computer model instructions replaces.
  */
+/** After each tool's description on a thread whose calls cross the Mac bridge (computer/bridge.ts); the Computer model instructions thread owns its wording. */
+export const COMPUTER_BRIDGE_NOTE = " These act on the user's Mac, where the apps run; this thread runs on another host."
+
 export const COMPUTER_SEARCH_HINT =
   'computer use: read, click, type into and scroll the windows of Mac apps (TextEdit, Mail, Finder, a browser) through their accessibility tree; screenshots'
 

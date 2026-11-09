@@ -75,7 +75,7 @@ export interface MacComputerSessions {
   end(threadIds: string[]): Promise<void>
 }
 
-export interface ComputerHost {
+export interface MacComputerHost {
   sessions: MacComputerSessions
 }
 
@@ -114,7 +114,7 @@ export interface MacComputerClock {
 
 export interface MacComputerDeps {
   /** This Mac's computer host, or null where computer use is unavailable. */
-  host: () => ComputerHost | null
+  host: () => MacComputerHost | null
   /** Why computer use is unavailable on this Mac, or null when it is available. */
   unavailable: () => string | null
   bridge: MacComputerBridge
@@ -348,7 +348,7 @@ export class MacComputer {
     call: ComputerToolCall,
     own: CallState,
     deadlineAt: number,
-    host: ComputerHost
+    host: MacComputerHost
   ): Promise<void> {
     if (st.live) return await st.live.ready
     const now = this.clock.now()
