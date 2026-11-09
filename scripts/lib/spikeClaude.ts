@@ -518,6 +518,7 @@ async function c1g(ev: Evidence): Promise<void> {
 async function refreshGrantGuard(): Promise<{ pass: boolean; items: number; reason: string; services: string[] }> {
   if (process.platform === 'darwin') {
     const services = await claudeKeychainServices()
+    if (!services) return { pass: false, items: 0, reason: 'the Keychain listing failed', services: [] }
     for (const svc of services) {
       const r = await run('security', ['find-generic-password', '-s', svc, '-w'], { timeoutMs: 15_000 })
       if (r.code !== 0) return { pass: false, items: services.length, reason: 'a Keychain read failed', services }
@@ -541,10 +542,11 @@ async function refreshGrantGuard(): Promise<{ pass: boolean; items: number; reas
   }
 }
 
-/** Names of the Claude Keychain services, from attributes only. */
-async function claudeKeychainServices(): Promise<string[]> {
+/** Names of the Claude Keychain services, from attributes only; null when the listing failed. */
+async function claudeKeychainServices(): Promise<string[] | null> {
   if (process.platform !== 'darwin') return []
   const r = await run('security', ['dump-keychain'], { timeoutMs: 30_000 })
+  if (r.code !== 0) return null
   return uniq([...r.stdout.matchAll(/"svce"<blob>="(Claude Code-credentials[^"]*)"/g)].map((m) => m[1])).sort()
 }
 

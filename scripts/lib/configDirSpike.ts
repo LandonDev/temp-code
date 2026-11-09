@@ -212,12 +212,22 @@ export function findSecrets(text: string): SecretFinding[] {
       found.push({ kind, at: m.index ?? 0, length: m[0].length })
     }
   }
-  // A key and its string value; quotes escaped inside a string (stringified JSON) are not pairs.
-  for (const m of text.matchAll(/(?<!\\)"((?:[^"\\]|\\.)*)"\s*:\s*(?<!\\)"((?:[^"\\]|\\.)*)"/g)) {
-    const [, key, value] = m
-    if (!isSecretKey(key) || !value || isPlaceholder(value) || REDACTED.test(value)) continue
-    found.push({ kind: 'secret-key', at: m.index ?? 0, length: m[0].length, key })
+  // JSON: every string under a secret-named key, at any depth, as redactEvidence sees it.
+  let doc: unknown
+  try {
+    doc = JSON.parse(text)
+  } catch {
+    // not JSON: the token shapes alone
   }
+  const walk = (v: unknown, key: string | null): void => {
+    if (typeof v === 'string') {
+      if (key === null || !v || isPlaceholder(v) || REDACTED.test(v)) return
+      const at = text.indexOf(JSON.stringify(v))
+      found.push({ kind: 'secret-key', at, length: JSON.stringify(v).length, key })
+    } else if (Array.isArray(v)) v.forEach((x) => walk(x, key))
+    else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v as Record<string, unknown>)) walk(x, key ?? (isSecretKey(k) ? k : null))
+  }
+  if (doc !== undefined) walk(doc, null)
   return found.sort((a, b) => a.at - b.at)
 }
 

@@ -119,6 +119,13 @@ describe('findSecrets', () => {
     expect(findSecrets(JSON.stringify(redactEvidence(raw), null, 2))).toEqual([])
   })
 
+  it('finds a secret nested under a secret-named key, as redactEvidence removes it', () => {
+    for (const raw of [{ auth: { value: 'opaque-secret' } }, { passwords: ['opaque-secret'] }, { a: [{ b: { cookie: { c: 'opaque-secret' } } }] }]) {
+      expect(findSecrets(JSON.stringify(raw)).map((f) => f.kind)).toEqual(['secret-key'])
+      expect(findSecrets(JSON.stringify(redactEvidence(raw)))).toEqual([])
+    }
+  })
+
   it('reads no pairs out of stringified JSON inside a string', () => {
     expect(findSecrets(JSON.stringify({ note: JSON.stringify({ token: 'abc' }) }))).toEqual([])
   })
@@ -235,8 +242,9 @@ describe('placeholders', () => {
     expect(Object.keys(meta).some((k) => /refresh|expir/i.test(k))).toBe(false)
   })
 
-  it('no scan flags a placeholder file, and every placeholder value survives redaction', () => {
-    for (const text of [placeholderClaudeCredentials(), placeholderCodexAuth(), placeholderMuseAuth()]) expect(findSecrets(text)).toEqual([])
+  it('no token shape in a placeholder file is flagged, and every placeholder value survives redaction', () => {
+    // A login file's other strings sit under login keys (claudeAiOauth, tokens, providers.meta) and count as secret-key, as redaction treats them.
+    for (const text of [placeholderClaudeCredentials(), placeholderCodexAuth(), placeholderMuseAuth()]) expect(findSecrets(text).filter((f) => f.kind !== 'secret-key')).toEqual([])
     const values = [...PLACEHOLDERS]
     expect(redactEvidence({ token: values, log: values.join(' ') })).toEqual({ token: values, log: values.join(' ') })
   })

@@ -34,9 +34,11 @@ const CODEX_STRIP = /^(CODEX_|OPENAI_)/
  * The driver sets `chatgpt_base_url` per thread (thread/start's config); the
  * probe also sets it for the whole app-server, so the account calls codex
  * makes before any thread (workspace routing discovery) reach the fake too
- * and nothing leaves the machine.
+ * and nothing leaves the machine. `openai_base_url` does the same for the
+ * OpenAI API route codex falls back to with no ChatGPT login (X2a); codex
+ * 0.163 ignores the OPENAI_BASE_URL variable.
  */
-const APP_SERVER_ARGS = (): string[] => ['app-server', '-c', `chatgpt_base_url="${ctx().codexFront.url}/backend-api/"`]
+const APP_SERVER_ARGS = (): string[] => ['app-server', '-c', `chatgpt_base_url="${ctx().codexFront.url}/backend-api/"`, '-c', `openai_base_url="${ctx().codexFront.url}/v1"`]
 const CLIENT = { name: 'temp_code_spike', title: 'temp-code spike', version: '0.0.1' }
 
 interface Note {
@@ -539,12 +541,17 @@ async function x3(ev: Evidence, where: 'home' | 'extra'): Promise<void> {
       fresh.close()
     }
     ev.observed.steps = steps
+    // A body is observable only when the skill part sends one (0.163 does, 0.164 sends neither body nor path).
+    const body = (x: Record<string, unknown>): boolean | null => (x.editedBody === true ? true : x.original === true ? false : null)
+    const all = (x: Record<string, unknown>): boolean => x.editedDesc === true && x.late === true && x.gone === true
     judge(ev, {
       skillsChangedNotified: ev.observed.skillsChanged === true,
-      runningServesEdit: steps[0].edited === true,
-      runningListsAdd: steps[0].late === true,
-      warmServesAll: steps[1].edited === true && steps[1].late === true && steps[1].gone === true,
-      freshServesAll: steps[2].edited === true && steps[2].late === true && steps[2].gone === true
+      runningListsChanges: all(steps[0]),
+      runningServesEditedBody: body(steps[0]),
+      warmListsChanges: all(steps[1]),
+      warmServesEditedBody: body(steps[1]),
+      freshListsChanges: all(steps[2]),
+      freshServesEditedBody: body(steps[2])
     }, fakeNote())
   } finally {
     live.close()
