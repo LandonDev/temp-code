@@ -170,9 +170,16 @@ import {
   appStartThread,
   setAppBridge,
   setAppCrossHost,
+  setAppSkillTools,
   setAppToolsRegistry,
   setProjectPlans
 } from './apptools'
+import { SkillMaterializer, configureMaterializedSkills } from './skills/materialize'
+import { skillTextMap } from './skills/skillText'
+import { workspaceForPath } from './skills/views'
+import { SKILL_IMPORT_KEY, importSkills } from './skills/import'
+import { skillList, skillRemove, skillWrite, type SkillToolDeps } from './skills/tools'
+import type { SkillInput, SkillMeta } from '@shared/contract-skills'
 import { ProjectPlans, handleProjectPlan } from './projectPlan'
 import { Batches, batchChildren, handleBatch, setBatches } from './batch'
 import { hostBoardDigests } from './boardDigest'
@@ -201,7 +208,7 @@ import {
   showRef,
   workingTreeChanges
 } from './git'
-import { listCommands } from './commands'
+import { configureCommandSkills, listCommands } from './commands'
 import { workspaceIcon } from './wsicon'
 import { ATTACH_DIR, readAttachment, saveAttachment } from './attachments'
 import { attachmentDir, dataAttachmentsRoot, setAttachmentDirContext, treeAttachmentsRoot } from './attachmentDir'
@@ -584,6 +591,7 @@ export async function startServer(
         projectSettings.linkUp(id)
         rulesSync.linkUp(id)
         storeSync.linkUp(id)
+        runSkillImport()
         void awaySync.linkUp(id)
         void sessionMover.settleWith(id)
         relayServer.linkUp(id)
@@ -677,6 +685,75 @@ export async function startServer(
   const storeSync = new StoreSync({ environmentId, home: rulesSync, addons: addonStore, skills: skillStore, store, peers })
   storeSync.start()
   const stores = storeRpc({ addons: addonStore, skills: skillStore, sync: storeSync })
+  // The skills each CLI gets, written out under <userData>/harness on every
+  // host (skills/materialize.ts), their path text localized through memory
+  // sync's map of the peer's home; the drivers point a CLI at the generation.
+  const skillMaterializer = new SkillMaterializer({
+    root: join(options.dataDir ?? dirname(dbPath), 'harness'),
+    skills: skillStore,
+    workspaces: () => registry.listWorkspaces(),
+    platform: hostPlatform(),
+    home: homedir(),
+    textMap: () =>
+      skillTextMap({ platform: hostPlatform(), base: harnessSync.pathMap(), peers: memorySync.peerHomes(), translate: (h, w) => memorySync.translationFor(h, w) }),
+    onTextMap: (fn) => memorySync.onPeerHome(fn)
+  })
+  skillMaterializer.start()
+  configureMaterializedSkills(skillMaterializer)
+  // The slash menu lists the store's skills (and the home folder's, until the drivers own each CLI's skill folder).
+  configureCommandSkills({
+    storeDir: (provider, cwd) => join(skillMaterializer.dirFor(provider, workspaceForPath(registry.listWorkspaces(), cwd)), 'skills'),
+    readHome: true
+  })
+  /** A store write as a thread or the import makes it: storeRpc as this host's own caller, a refusal answered as its words. */
+  const storeWrite = (input: SkillInput, expectUpdatedAt: number): Promise<{ skill: SkillMeta } | string> =>
+    stores.handle({ method: 'skills.set', params: { skill: input, expectUpdatedAt } }, LOCAL_PRINCIPAL).then(
+      (r) => r as { skill: SkillMeta },
+      (err: unknown) => (err instanceof Error ? err.message : String(err))
+    )
+  const skillToolDeps: SkillToolDeps = {
+    environmentId,
+    rootOf: (s) => registry.get(registry.rootSessionOf(s.id)) ?? s,
+    workspaceOf: (s) => {
+      const all = registry.listWorkspaces()
+      const id = s.workspaceId ?? workspaceForPath(all, s.cwd)
+      const ws = id ? all.find((w) => w.id === id) : undefined
+      return ws ? { id: ws.id, name: ws.name } : null
+    },
+    requestApproval: (sessionId, req) => registry.requestApproval(sessionId, req),
+    skills: skillStore,
+    write: storeWrite,
+    remove: (id, expectUpdatedAt) =>
+      stores.handle({ method: 'skills.remove', params: { id, expectUpdatedAt } }, LOCAL_PRINCIPAL).then(
+        (r) => r as { removed: boolean },
+        (err: unknown) => (err instanceof Error ? err.message : String(err))
+      ),
+    settle: () => skillMaterializer.whenSettled()
+  }
+  setAppSkillTools(skillToolDeps)
+  // The one-time import of the person's skills (skills/import.ts): the Mac
+  // only, at boot and at each link-up until it has run once whole.
+  let skillImport: Promise<unknown> | null = null
+  const runSkillImport = (): void => {
+    if (skillImport || store.getSetting(SKILL_IMPORT_KEY) !== null) return
+    skillImport = importSkills({
+      platform: hostPlatform(),
+      home: homedir(),
+      store,
+      existing: () => skillStore.list(),
+      storeHome: () => {
+        const home = rulesSync.homeOf()
+        return home === environmentId ? null : { id: home, online: peers.get(home)?.connected ?? false }
+      },
+      follow: (id) => storeSync.syncWith(id),
+      write: storeWrite
+    })
+      .catch((err: unknown) => console.log(`[skills] import failed: ${err instanceof Error ? err.message : String(err)}`))
+      .finally(() => {
+        skillImport = null
+      })
+  }
+  runSkillImport()
   // Away from computer: one state on every host, newest wins (remote/awaySync.ts).
   const awaySync = new AwaySync({ away, peers })
   awaySync.start()
@@ -2595,6 +2672,22 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: registry.notes.write(req.params.sessionId, req.params.text) })
             break
           }
+          case 'app.skillList':
+          case 'app.skillWrite':
+          case 'app.skillRemove': {
+            // The bridge's skill tools (Codex, Muse): the same body as Claude's in-process ones.
+            const { sessionId, ...args } = req.params
+            const caller = registry.get(sessionId)
+            if (!caller) throw new Error(`unknown session: ${sessionId}`)
+            const result =
+              req.method === 'app.skillList'
+                ? await skillList(skillToolDeps, caller)
+                : req.method === 'app.skillWrite'
+                  ? await skillWrite(skillToolDeps, caller, args as Parameters<typeof skillWrite>[2])
+                  : await skillRemove(skillToolDeps, caller, args as Parameters<typeof skillRemove>[2])
+            sendFrame({ id: req.id, ok: true, result })
+            break
+          }
           case 'app.noteDecision': {
             const caller = registry.get(req.params.sessionId)
             if (!caller) throw new Error(`unknown session: ${req.params.sessionId}`)
@@ -3177,6 +3270,10 @@ export async function startServer(
       projectSettings.close()
       rulesSync.close()
       storeSync.close()
+      skillMaterializer.close()
+      configureMaterializedSkills(null)
+      configureCommandSkills(null)
+      setAppSkillTools(null)
       storePush.close()
       awaySync.close()
       uploads.close()
