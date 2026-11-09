@@ -418,7 +418,7 @@ final class Proof: @unchecked Sendable {
             gate.stepStarted()
             defer { gate.stepEnded() }
             timeline.note("restore begins")
-            let r = try engine.restoreSession()
+            let r = try engine.restoreSession(afterInterrupt: false)
             timeline.note("restore: frontmost \(r.frontmost.rawValue), pointer \(r.pointer.rawValue)")
             // a leg that ends in the app it began with has no app to give back: `nothing` is right then;
             // an app Input did not bring forward that came forward between steps: the app half gives way
@@ -477,7 +477,7 @@ final class Proof: @unchecked Sendable {
             report.notes.append("session leg: nothing put back: the person is active")
             return
         }
-        if let r = try? engine.restoreSession() { report.notes.append("session leg: restore at the end: frontmost \(r.frontmost.rawValue), pointer \(r.pointer.rawValue)") }
+        if let r = try? engine.restoreSession(afterInterrupt: false) { report.notes.append("session leg: restore at the end: frontmost \(r.frontmost.rawValue), pointer \(r.pointer.rawValue)") }
     }
 }
 

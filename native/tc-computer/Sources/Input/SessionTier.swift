@@ -49,6 +49,11 @@ public final class LiveSessionHost: SessionHost, @unchecked Sendable {
         CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: CGEventType(rawValue: ~0)!)
     }
 
+    /// kCGAnyInputEventType in the combined session state: what powerMonitor.getSystemIdleTime reads.
+    public func sessionIdleSeconds() -> Double {
+        CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
+    }
+
     public func isRunning(pid: Int) -> Bool {
         guard let app = NSRunningApplication(processIdentifier: pid_t(pid)) else { return false }
         return !app.isTerminated

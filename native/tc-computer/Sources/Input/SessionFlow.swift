@@ -30,6 +30,9 @@ public protocol SessionHost: SessionHostBase {
     func pointer() -> ScreenPoint
     /// seconds since the last keyboard or mouse event of the HID system
     func secondsSinceInput() -> Double
+    /// seconds since the last input event of the login session (the idle time Electron's
+    /// powerMonitor reads), for a step's span
+    func sessionIdleSeconds() -> Double
     func isRunning(pid: Int) -> Bool
     func minimized(_ w: Window) -> Bool
     func unminimize(_ w: Window) throws
@@ -43,6 +46,10 @@ public protocol SessionHost: SessionHostBase {
     func activate(_ app: AppBrief) -> Bool
     /// restore: puts the pointer back without an event
     func warpPointer(to p: ScreenPoint)
+}
+
+extension SessionHost {
+    public func sessionIdleSeconds() -> Double { secondsSinceInput() }
 }
 
 func sessionUnavailable(_ reason: ErrorReason, _ message: String, session: SessionChange? = nil) -> ComputerFailure {
@@ -95,6 +102,8 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
     var onTripBetweenCalls: (@Sendable () -> Void)?
     /// the person's trips so far: a step that waited compares it, since re-arming clears `watch.tripped`
     private var trips = 0
+    /// monotonic seconds of the latest trip
+    private var lastTripAt: Double?
 
     init(host: Host, watch: PersonWatching, sessionLock: MacLock, clock: InputClock) {
         self.host = host
@@ -112,15 +121,18 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
 
     /// The watch tripped while no step ran: the engine has released the held input.
     func notePersonBetweenCalls() {
-        state.withLock { ledger.personTripped() }
+        let now = clock.seconds()
+        state.withLock { ledger.personTripped(at: lastTripAt ?? now) }
     }
 
     private func armWatch() {
         guard !watch.armed else { return }
         watch.arm { [weak self] in
             guard let self else { return }
+            let at = self.clock.seconds()
             let between = self.state.withLock {
                 self.trips += 1
+                self.lastTripAt = at
                 return !self.running
             }
             if between { self.onTripBetweenCalls?() }
@@ -174,7 +186,9 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
     /// Runs one session step. `keys`: the step types or presses keys (secure input refuses it).
     /// `activate: false` skips bringing the app forward (`perform raise`, whose AX call is all it does).
     /// `holding` says, on every exit, whether session-tier input stays held, so the lock and the watch stay.
-    func run<T>(pid: Int32, window: Host.Window, keys: Bool, activate: Bool = true, cancelled: @escaping () -> Bool, holding: () -> Bool, body: (_ check: @escaping () throws -> Void) throws -> T) throws -> (T, SessionChange) {
+    /// `lastInput` is the step's last posted event (ticks), read once the body has returned or thrown:
+    /// with the moment the watch armed it is the step's span on its change.
+    func run<T>(pid: Int32, window: Host.Window, keys: Bool, activate: Bool = true, cancelled: @escaping () -> Bool, holding: () -> Bool, lastInput: () -> UInt64? = { nil }, body: (_ check: @escaping () throws -> Void) throws -> T) throws -> (T, SessionChange) {
         if host.screenLocked() { throw sessionUnavailable(.locked, "The screen is locked; the session tier can't use the keyboard or mouse.") }
         if keys, host.secureInputOn() {
             throw sessionUnavailable(.secureInput, "Secure input is on (a password field has focus somewhere); keys can't be sent.")
@@ -189,6 +203,9 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
         try waitFor({ steps.try() }, deadline: deadline, cancelled: cancelled, watchPerson: false)
         defer { steps.unlock() }
         guard mine() else { throw sessionUnavailable(.inUse, "Another computer session holds the Mac's keyboard and mouse.") }
+        // the span starts here: the system's idle before anything of the step's, then the watch
+        let idleAtArm = host.sessionIdleSeconds()
+        let arm = TickEpoch.now(clock)
         armWatch()
         state.withLock { running = true }
         defer {
@@ -214,11 +231,14 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
             let value = try body(check)
             let after = (host.frontmost(), host.pointer())
             state.withLock { ledger.stepEnded(frontmost: after.0, pointer: after.1, now: clock.seconds(), interrupted: false) }
-            return (value, SessionLedger.change(before: before, after: after, restorable: true))
+            let span = SessionSpan.of(arm: arm, idleSeconds: idleAtArm, lastTicks: lastInput())
+            return (value, SessionLedger.change(before: before, after: after, restorable: true, span: span))
         } catch {
             let after = (host.frontmost(), host.pointer())
-            state.withLock { ledger.stepEnded(frontmost: after.0, pointer: after.1, now: clock.seconds(), interrupted: isInterrupted(error)) }
-            throw withSession(error, SessionLedger.change(before: before, after: after, restorable: true))
+            let interrupted = isInterrupted(error)
+            state.withLock { ledger.stepEnded(frontmost: after.0, pointer: after.1, now: clock.seconds(), interrupted: interrupted, trippedAt: interrupted ? lastTripAt : nil) }
+            let span = SessionSpan.of(arm: arm, idleSeconds: idleAtArm, lastTicks: lastInput())
+            throw withSession(error, SessionLedger.change(before: before, after: after, restorable: true, span: span))
         }
     }
 
@@ -248,9 +268,10 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
     /// Whether the driver holds the session lock now (a step runs, or session input stays held).
     var holdsLock: Bool { state.withLock { lockHold != nil } }
 
-    /// `input.restoreSession`, after the engine released every held input: takes the lock and
-    /// puts back each half the ledger allows, then forgets the record.
-    func restore(cancelled: () -> Bool = { false }) throws -> SessionRestore {
+    /// `input.restoreSession`, after the engine released the held session input: takes the lock and
+    /// puts back each half the ledger allows, then forgets the record. `afterInterrupt`, within
+    /// 2 s of the person's trip, skips the person check (SessionLedger.plan).
+    func restore(afterInterrupt: Bool = false, cancelled: () -> Bool = { false }) throws -> SessionRestore {
         let deadline = clock.seconds() + InputTiming.sessionLockWaitS
         try waitFor({ steps.try() }, deadline: deadline, cancelled: cancelled, watchPerson: false)
         defer { steps.unlock() }
@@ -261,7 +282,7 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
             if already == nil { hold.release() }
         }
         var plan = state.withLock {
-            ledger.plan(now: clock.seconds(), secondsSinceInput: host.secondsSinceInput(), frontmost: host.frontmost(), pointer: host.pointer(), isRunning: host.isRunning(pid:))
+            ledger.plan(now: clock.seconds(), secondsSinceInput: host.secondsSinceInput(), frontmost: host.frontmost(), pointer: host.pointer(), isRunning: host.isRunning(pid:), afterInterrupt: afterInterrupt)
         }
         var put: AppBrief?
         if let app = plan.activate {

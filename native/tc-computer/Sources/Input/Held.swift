@@ -99,9 +99,9 @@ final class HeldInput: @unchecked Sendable {
         if h.tier == .session { onSessionReleased?() }
     }
 
-    /// Every pid's holds.
-    func releaseEverything() {
-        for pid in lock.withLock({ Array(holds.keys) }) { releaseAll(pid: pid) }
+    /// The session-tier holds alone; a process-tier hold stays down.
+    func releaseSession() {
+        for pid in lock.withLock({ holds.filter { $0.value.tier == .session }.map(\.key) }) { releaseAll(pid: pid) }
     }
 
     /// The auto-release: a hold this old with no up is let go. Returns the pids it released.

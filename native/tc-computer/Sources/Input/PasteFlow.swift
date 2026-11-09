@@ -53,6 +53,11 @@ public func clipboardBusy(_ message: String) -> ComputerFailure {
     ComputerFailure(.clipboardBusy, message)
 }
 
+/// The paste's own check refused: someone copied within the call's `pasteQuietMs`.
+public func recentCopyRefusal() -> ComputerFailure {
+    ComputerFailure(ComputerError(kind: .clipboardBusy, message: "The clipboard changed just now (someone copied); nothing was pasted.", reason: .recentCopy))
+}
+
 /// The paste flow under the Mac-wide clipboard lock: check, snapshot, write, check again,
 /// Command-V, wait for the destination, and on every exit put the person's clipboard back
 /// unless they copied meanwhile.
@@ -60,22 +65,28 @@ public struct PasteFlow {
     public let store: PasteboardStore
     public let lock: MacLock
     public let clock: InputClock
+    /// the shell's pasteboard watch: a foreign change within this many ms (`watchingSince` counted)
+    public let recentForeignCopy: @Sendable (_ withinMs: Int) -> Bool
 
-    public init(store: PasteboardStore, lock: MacLock, clock: InputClock) {
+    public init(store: PasteboardStore, lock: MacLock, clock: InputClock, recentForeignCopy: @escaping @Sendable (_ withinMs: Int) -> Bool = { _ in false }) {
         self.store = store
         self.lock = lock
         self.clock = clock
+        self.recentForeignCopy = recentForeignCopy
     }
 
     /// - checks: the destination and the key window, before the clipboard is touched
     /// - recheck: the same, after the write and before the keys
     /// - post: Command-V
     /// - evidence: the destination's evidence now, nil when unreadable
-    public func run(_ content: PasteContent, cancelled: () -> Bool, checks: () throws -> Void, recheck: () throws -> Void, post: () throws -> Void, evidence: () -> Evidence?) throws -> (ClipboardOutcome, StepEffect) {
+    /// - quietMs: the call's `pasteQuietMs`; with it, a foreign copy that recent refuses the paste
+    ///   `recent-copy` once the lock is held, before the pasteboard is read or written
+    public func run(_ content: PasteContent, quietMs: Int? = nil, cancelled: () -> Bool, checks: () throws -> Void, recheck: () throws -> Void, post: () throws -> Void, evidence: () -> Evidence?) throws -> (ClipboardOutcome, StepEffect) {
         guard let hold = lock.acquire(within: InputTiming.clipboardWaitS) else {
             throw clipboardBusy("Another paste is using the clipboard; try again.")
         }
         defer { hold.release() }
+        if let quietMs, recentForeignCopy(quietMs) { throw recentCopyRefusal() }
         let start = clock.seconds()
         let cap = start + Double(InputTiming.pasteCapMs) / 1000
         try checks()

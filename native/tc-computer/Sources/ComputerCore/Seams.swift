@@ -271,8 +271,10 @@ public struct InputTarget {
     public var cursor: [Int]?
     /// the shell's `$/cancel` flag for the call; Input checks it before every event and in every pause
     public let cancelled: @Sendable () -> Bool
+    /// the call's `pasteQuietMs`: a paste refuses `recent-copy` when a foreign copy came within it
+    public let pasteQuietMs: Int?
 
-    public init(pid: pid_t, windowID: UInt32, windowFrame: ComputerProtocol.Rect, window: AXUIElement, space: CoordinateSpace, element: ResolvedElement?, startElement: ResolvedElement?, cursor: [Int]?, cancelled: @escaping @Sendable () -> Bool = { false }) {
+    public init(pid: pid_t, windowID: UInt32, windowFrame: ComputerProtocol.Rect, window: AXUIElement, space: CoordinateSpace, element: ResolvedElement?, startElement: ResolvedElement?, cursor: [Int]?, cancelled: @escaping @Sendable () -> Bool = { false }, pasteQuietMs: Int? = nil) {
         self.pid = pid
         self.windowID = windowID
         self.windowFrame = windowFrame
@@ -282,6 +284,7 @@ public struct InputTarget {
         self.startElement = startElement
         self.cursor = cursor
         self.cancelled = cancelled
+        self.pasteQuietMs = pasteQuietMs
     }
 }
 
@@ -304,8 +307,9 @@ public protocol InputPerforming {
     /// `input.probe`: which classes the app honours at the process tier, each put back through AX
     func probe(_ target: InputTarget, classes: [ActionClass]) throws -> ProbeReport
     /// `input.restoreSession`: puts back what the session tier changed, unless the person moved since;
+    /// `afterInterrupt`, within 2 s of the person's trip, skips that check and keeps each half's own;
     /// throws `session_unavailable` when another holder keeps the session lock
-    func restoreSession() throws -> SessionRestore
+    func restoreSession(afterInterrupt: Bool) throws -> SessionRestore
     /// held-input cleanup (§5.1)
     func releaseHeld(pid: pid_t)
     /// the ups of a held record whose writer died, at its tier

@@ -222,6 +222,25 @@ final class PermissionWatch: Stoppable, @unchecked Sendable {
     }
 }
 
+extension ComputerService {
+    /// Input's question right before a paste, holding the clipboard lock and before the pasteboard is
+    /// read or written: did a foreign change come within `ms`, `watchingSince` counted as one
+    /// (`clipboard.state`'s rule)? The pasteboard is looked at now, since the poll may not have seen a
+    /// copy yet; a change since the lock's own look is foreign, as nothing of the paste is written yet.
+    func recentForeignCopy(withinMs ms: Int) -> Bool {
+        lookAtPasteboard(own: false)
+        let now = env.system.now()
+        return lock.withLock { clipboard.map { !$0.quiet(for: Double(ms), now: now) } ?? true }
+    }
+
+    /// One look at the pasteboard's change count outside the poll (the clipboard lock's edges, the paste's check).
+    func lookAtPasteboard(own: Bool) {
+        let count = env.system.pasteboardChangeCount()
+        let now = env.system.now()
+        lock.withLock { clipboard?.observe(changeCount: count, ownHoldSinceLastPoll: own, at: now) }
+    }
+}
+
 /// The pasteboard's change count every 250 ms, never its contents (`clipboard.state`, shell §6.2).
 final class PasteboardWatch: Stoppable, @unchecked Sendable {
     private weak var service: ComputerService?

@@ -15,7 +15,7 @@ extension Modules {
         Modules(
             readers: { LiveReaders() },
             input: { wiring in
-                InputEngine(clipboardLock: wiring.clipboardLock, sessionLock: wiring.sessionLock, onPersonInput: wiring.onPersonInput, onHeld: wiring.onHeld)
+                InputEngine(clipboardLock: wiring.clipboardLock, sessionLock: wiring.sessionLock, recentForeignCopy: wiring.recentForeignCopy, onPersonInput: wiring.onPersonInput, onHeld: wiring.onHeld)
             },
             capture: { log in LiveCapture(log: log) },
             windows: LiveWindows(),

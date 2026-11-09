@@ -60,22 +60,34 @@ class FlockMacLock: MacLock, @unchecked Sendable {
 }
 
 /// The pasteboard's lock. Its holds tell the pasteboard watch which changes are the service's own, and
-/// one held past 2.5 s is logged: nothing force-releases a paste in progress.
+/// one held past 2.5 s is logged: nothing force-releases a paste in progress. Each edge of a hold looks
+/// at the pasteboard (`look`): as a hold begins, a change since the last look is foreign unless an
+/// earlier hold of this service could have made it; as it ends, a change is the paste's own. So a copy
+/// made between two pastes, or while a paste waited for the lock, is never taken for the service's.
 final class ClipboardMacLock: FlockMacLock, @unchecked Sendable {
     private let state = NSLock()
     private var holding = 0
     private var heldSincePoll = false
     private let warn: @Sendable (String) -> Void
+    private let look: @Sendable (_ own: Bool) -> Void
 
-    init(locks: MacLocks, trace: Trace?, warn: @escaping @Sendable (String) -> Void) {
+    init(locks: MacLocks, trace: Trace?, warn: @escaping @Sendable (String) -> Void, look: @escaping @Sendable (_ own: Bool) -> Void = { _ in }) {
         self.warn = warn
+        self.look = look
         super.init(.clipboard, locks: locks, trace: trace)
     }
 
     override func held(_ on: Bool) {
-        state.withLock {
-            holding += on ? 1 : -1
-            if on { heldSincePoll = true }
+        if on {
+            look(takeHeldSincePoll())
+            state.withLock {
+                holding += 1
+                heldSincePoll = true
+            }
+        } else {
+            state.withLock { holding -= 1 }
+            look(true)
+            state.withLock { heldSincePoll = holding > 0 }
         }
     }
 

@@ -298,6 +298,7 @@ final class FakeInput: InputPerforming, @unchecked Sendable {
     private(set) var released: [pid_t] = []
     private(set) var stale: [HeldRecord] = []
     private(set) var cursors: [[Int]?] = []
+    private(set) var quiets: [Int?] = []
 
     init(wiring: InputWiring, log: CallLog) {
         self.wiring = wiring
@@ -306,7 +307,10 @@ final class FakeInput: InputPerforming, @unchecked Sendable {
 
     func perform(_ action: ComputerAction, on target: InputTarget, tiers: [Tier]) throws -> InputOutcome {
         log.add("perform \(action.action.rawValue)")
-        lock.withLock { cursors.append(target.cursor) }
+        lock.withLock {
+            cursors.append(target.cursor)
+            quiets.append(target.pasteQuietMs)
+        }
         if let onPerform = lock.withLock({ onPerform }) { return try onPerform(action, target) }
         if action.action == .cursorPosition { return InputOutcome(tier: nil, via: nil, clipboard: nil, cursor: target.cursor ?? [0, 0]) }
         return InputOutcome(tier: tiers.first, via: nil, clipboard: nil, cursor: action.coordinate, lastInputAt: mach_absolute_time())
@@ -317,8 +321,8 @@ final class FakeInput: InputPerforming, @unchecked Sendable {
         return ProbeReport(pid: Int(target.pid), bundleId: nil, keyWindow: .target, results: classes.map { .init(class: $0, outcome: .honoured, restored: true, ms: 1) })
     }
 
-    func restoreSession() throws -> SessionRestore {
-        log.add("restoreSession")
+    func restoreSession(afterInterrupt: Bool) throws -> SessionRestore {
+        log.add(afterInterrupt ? "restoreSession afterInterrupt" : "restoreSession")
         return SessionRestore(frontmost: .nothing, pointer: .nothing, held: nil)
     }
 
@@ -335,6 +339,7 @@ final class FakeInput: InputPerforming, @unchecked Sendable {
     var releasedPids: [pid_t] { lock.withLock { released } }
     var staleRecords: [HeldRecord] { lock.withLock { stale } }
     var seenCursors: [[Int]?] { lock.withLock { cursors } }
+    var seenPasteQuiets: [Int?] { lock.withLock { quiets } }
 }
 
 // MARK: Escape

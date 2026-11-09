@@ -20,16 +20,20 @@ public protocol WindowSource: Sendable {
     func windowID(of element: AXUIElement, pid: pid_t) -> UInt32?
 }
 
-/// What Input is built with (input A11): the two Mac-wide locks and the two callbacks.
+/// What Input is built with (input A11): the two Mac-wide locks, the pasteboard watch's word on a
+/// recent foreign copy, and the two callbacks.
 public struct InputWiring: Sendable {
     public var clipboardLock: any MacLock
     public var sessionLock: any MacLock
+    /// a foreign pasteboard change within this many ms, `watchingSince` counted (`clipboard.state`'s rule)
+    public var recentForeignCopy: @Sendable (_ withinMs: Int) -> Bool
     public var onPersonInput: @Sendable (pid_t) -> Void
     public var onHeld: @Sendable (HeldEvent) -> Void
 
-    public init(clipboardLock: any MacLock, sessionLock: any MacLock, onPersonInput: @escaping @Sendable (pid_t) -> Void, onHeld: @escaping @Sendable (HeldEvent) -> Void) {
+    public init(clipboardLock: any MacLock, sessionLock: any MacLock, recentForeignCopy: @escaping @Sendable (_ withinMs: Int) -> Bool = { _ in false }, onPersonInput: @escaping @Sendable (pid_t) -> Void, onHeld: @escaping @Sendable (HeldEvent) -> Void) {
         self.clipboardLock = clipboardLock
         self.sessionLock = sessionLock
+        self.recentForeignCopy = recentForeignCopy
         self.onPersonInput = onPersonInput
         self.onHeld = onHeld
     }

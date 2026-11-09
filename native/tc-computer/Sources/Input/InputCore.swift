@@ -69,13 +69,13 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
         do {
             switch tier {
             case .session:
-                var last: UInt64?
-                let (value, change) = try driver.run(pid: pid, window: window, keys: keys, activate: activate, cancelled: cancelled, holding: { held.holdsSession }) { check in
+                let last = LastInput()
+                let (value, change) = try driver.run(pid: pid, window: window, keys: keys, activate: activate, cancelled: cancelled, holding: { held.holdsSession }, lastInput: { last.ticks }) { check in
                     var ctx = StepContext(tier: .session, pid: pid, route: .hid, poster: Poster(sink: sink, clock: clock, route: .hid, check: check))
-                    defer { last = ctx.poster.lastInputAt }
+                    defer { last.ticks = ctx.poster.lastInputAt }
                     return try body(&ctx)
                 }
-                return (value, change, last)
+                return (value, change, last.ticks)
             default:
                 let check: () throws -> Void = { if cancelled() { throw cancelledFailure() } }
                 let route = EventRoute.pid(pid, windowID: windowID)
@@ -203,6 +203,35 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
         try post()
     }
 
+    // MARK: type's event rungs and the paste
+
+    /// What `type`'s event rungs did.
+    enum TypedBy {
+        case keys(SessionChange?, UInt64?)
+        case paste(ClipboardOutcome, SessionChange?, UInt64?)
+    }
+
+    /// `type`'s event rungs: keys when the text goes by keys, then the paste when it goes by
+    /// paste (long text, a cluster key events can't carry) or the keys showed no effect.
+    func typeByEvents(_ text: String, keys: () throws -> (StepEffect, SessionChange?, UInt64?), paste: () throws -> (ClipboardOutcome, SessionChange?, UInt64?)) throws -> TypedBy {
+        if TypingRoute.route(text) == .keys {
+            let (effect, change, last) = try keys()
+            if !TypingRoute.pasteAfterKeys(effect) { return .keys(change, last) }
+        }
+        let (outcome, change, last) = try paste()
+        return .paste(outcome, change, last)
+    }
+
+    /// The paste flow inside one step at `tier`, Command-V posted by the step. With `quietMs` the
+    /// flow first refuses a recent foreign copy, once it holds the clipboard lock.
+    func paste(_ content: PasteContent, flow: PasteFlow, quietMs: Int?, tier: Tier, pid: Int32, windowID: UInt32, window: Host.Window, cancelled: @escaping @Sendable () -> Bool, checks: () throws -> Void, recheck: () throws -> Void, evidence: () -> Evidence?) throws -> (ClipboardOutcome, SessionChange?, UInt64?) {
+        var outcome: ClipboardOutcome = .restored
+        let (_, change, last) = try step(tier: tier, pid: pid, windowID: windowID, window: window, keys: true, cancelled: cancelled) { ctx in
+            (outcome, _) = try flow.run(content, quietMs: quietMs, cancelled: cancelled, checks: checks, recheck: recheck, post: { try commandV(&ctx) }, evidence: evidence)
+        }
+        return (outcome, change, last)
+    }
+
     // MARK: release and restore
 
     func releaseHeld(pid: Int32) {
@@ -233,12 +262,19 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
         }
     }
 
-    /// `input.restoreSession`: every held input let go first (so restore never waits on its own hold), then the driver's restore.
-    func restoreSession() throws -> SessionRestore {
-        held.releaseEverything()
-        driver.settle(holding: false)
-        return try driver.restore()
+    /// `input.restoreSession`: the held session-tier input let go first (so restore never waits on
+    /// its own hold), then the driver's restore. A process-tier hold is another pid's business
+    /// (a drag in another session) and stays down.
+    func restoreSession(afterInterrupt: Bool = false) throws -> SessionRestore {
+        held.releaseSession()
+        driver.settle(holding: held.holdsSession)
+        return try driver.restore(afterInterrupt: afterInterrupt)
     }
+}
+
+/// The session step's last posted event, read after its body returned or threw.
+private final class LastInput {
+    var ticks: UInt64?
 }
 
 extension HeldInput {

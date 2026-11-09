@@ -33,24 +33,24 @@ extension ComputerService {
         router.on("action.run", keepsResult: true) { [self] (p: Methods.ActionRun.Params, ctx) -> ActionResult in
             let result = try await runActions(
                 session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch,
-                actions: [p.action], tiers: p.tiers, stepWait: nil, wait: p.wait, observe: p.observe, ctx: ctx
+                actions: [p.action], tiers: p.tiers, stepWait: nil, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, ctx: ctx
             )
             return ActionResult(step: result.steps[0], observation: result.observation, observationError: result.observationError)
         }
         router.on("action.batch", keepsResult: true) { [self] (p: Methods.ActionBatch.Params, ctx) in
             try await runActions(
                 session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch,
-                actions: p.actions, tiers: p.tiers, stepWait: p.stepWait, wait: p.wait, observe: p.observe, ctx: ctx
+                actions: p.actions, tiers: p.tiers, stepWait: p.stepWait, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, ctx: ctx
             )
         }
     }
 
     /// One or more actions on one app (shell §9.1): the steps in order, the `step` wait between those that can
     /// change the screen, a stop at the first failure, the `action` wait once after the last step that ran,
-    /// one observation.
+    /// one observation. `pasteQuietMs` goes to Input with every step: a paste refuses a copy that recent.
     func runActions(
         session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, actions: [ComputerAction],
-        tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, ctx: RequestContext
+        tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int? = nil, ctx: RequestContext
     ) async throws -> BatchResult {
         for action in actions {
             for element in [action.element, action.start_element].compactMap({ $0 }) {
@@ -80,7 +80,7 @@ extension ComputerService {
                 steps += notRun(actions, from: index + 1, first: .failed(FailedStep(index: index, action: action.action, error: Router.cancelledError)))
                 break
             }
-            var run = await step(index, action, target: target, tiers: tiers, maxEdge: observe?.maxEdge, ctx: ctx)
+            var run = await step(index, action, target: target, tiers: tiers, maxEdge: observe?.maxEdge, pasteQuietMs: pasteQuietMs, ctx: ctx)
             let isLast = index == actions.count - 1
             if !run.stops && !isLast, let t0 = run.t0, case .ok(let ok) = run.step {
                 let waited = await waitAfter(target, options: stepWait ?? ComputerDefaults.Wait.step, t0: t0, signature0: run.signature0, cancel: ctx.cancel)
@@ -125,7 +125,7 @@ extension ComputerService {
     }
 
     /// One step: the shell's own pictures and wait, or Input.
-    private func step(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], maxEdge: Int?, ctx: RequestContext) async -> StepRun {
+    private func step(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], maxEdge: Int?, pasteQuietMs: Int?, ctx: RequestContext) async -> StepRun {
         let thin = book.lastThin(target.session, pid: target.pid)
         switch action.action {
         case .screenshot, .zoom:
@@ -158,12 +158,12 @@ extension ComputerService {
                 return StepRun(step: failed(index, action, error, or: .windowNotFound))
             }
         default:
-            return await perform(index, action, target: target, tiers: tiers, ctx: ctx)
+            return await perform(index, action, target: target, tiers: tiers, pasteQuietMs: pasteQuietMs, ctx: ctx)
         }
     }
 
     /// Everything else, `cursor_position` included, goes to Input (shell §9.1 step 4).
-    private func perform(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], ctx: RequestContext) async -> StepRun {
+    private func perform(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], pasteQuietMs: Int?, ctx: RequestContext) async -> StepRun {
         let pixel = await pixelWatch(target)
         let keepAlive = keepWatchAlive(target, while: pixel != nil)
         defer { keepAlive?.cancel() }
@@ -185,7 +185,7 @@ extension ComputerService {
                 let start = try action.start_element.map { try reader.resolve($0) }
                 let inputTarget = InputTarget(
                     pid: pid, windowID: windowID, windowFrame: info.frame, window: window, space: space,
-                    element: element, startElement: start, cursor: cursor, cancelled: { flag.isSet }
+                    element: element, startElement: start, cursor: cursor, cancelled: { flag.isSet }, pasteQuietMs: pasteQuietMs
                 )
                 let sig0 = reader.changes.signature()
                 let outcome = try box.input.perform(action, on: inputTarget, tiers: tiers)

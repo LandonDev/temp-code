@@ -126,9 +126,11 @@ extension ComputerService {
             }
         }
         // it touches the frontmost app and the pointer, not one app's input: no slot, a queue of its own
-        router.on("input.restoreSession") { [self] (_: Empty, _) -> SessionRestore in
+        // `afterInterrupt`: the host's restore on the person's touch (session/interrupted), within 2 s of it
+        router.on("input.restoreSession") { [self] (p: Methods.InputRestoreSession.Params, _) -> SessionRestore in
             let box = InputBox(input: input)
-            return try await blocking { try box.input.restoreSession() }
+            let afterInterrupt = p.afterInterrupt ?? false
+            return try await blocking { try box.input.restoreSession(afterInterrupt: afterInterrupt) }
         }
     }
 }

@@ -56,7 +56,7 @@ public final class ComputerService: @unchecked Sendable {
         self.lifecycle = Lifecycle(env: environment, trace: trace)
         self.inventory = Inventory(workspace: environment.workspace, timing: environment.timing)
         self.locks = MacLocks(directory: environment.lockDirectory)
-        self.clipboardLock = ClipboardMacLock(locks: locks, trace: trace, warn: { relay.service?.log(.warn, $0) })
+        self.clipboardLock = ClipboardMacLock(locks: locks, trace: trace, warn: { relay.service?.log(.warn, $0) }, look: { own in relay.service?.lookAtPasteboard(own: own) })
         self.sessionLock = SessionMacLock(locks: locks, trace: trace)
         self.held = HeldInput(slots: slots, book: book, warn: { relay.service?.log(.warn, $0) })
         self.readers = modules.readers()
@@ -64,6 +64,7 @@ public final class ComputerService: @unchecked Sendable {
         self.input = modules.input(InputWiring(
             clipboardLock: clipboardLock,
             sessionLock: sessionLock,
+            recentForeignCopy: { ms in relay.service?.recentForeignCopy(withinMs: ms) ?? false },
             onPersonInput: { pid in relay.service?.personInput(pid: pid) },
             onHeld: { event in relay.service?.held.handle(event) }
         ))

@@ -16,9 +16,12 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
     let sink: EventSink
     let clock: InputClock
     let layout: KeyLayoutSource
+    /// the shell's pasteboard watch, asked right before a paste with the call's `pasteQuietMs`
+    let recentForeignCopy: @Sendable (_ withinMs: Int) -> Bool
     private let sweeper: DispatchSourceTimer
 
     public init(clipboardLock: MacLock, sessionLock: MacLock,
+                recentForeignCopy: @escaping @Sendable (_ withinMs: Int) -> Bool = { _ in false },
                 onPersonInput: @escaping @Sendable (pid_t) -> Void,
                 onHeld: @escaping @Sendable (HeldEvent) -> Void,
                 sink: EventSink = LiveEventSink(),
@@ -29,6 +32,7 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         let host = LiveSessionHost()
         self.host = host
         self.clipboardLock = clipboardLock
+        self.recentForeignCopy = recentForeignCopy
         self.pasteboard = pasteboard
         self.sink = sink
         self.clock = clock
@@ -84,9 +88,9 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         return ProbeRun(access: access, clock: clock).run(classes: classes.isEmpty ? [.scroll, .key, .click] : classes)
     }
 
-    public func restoreSession() throws -> SessionRestore {
+    public func restoreSession(afterInterrupt: Bool) throws -> SessionRestore {
         dispatchPrecondition(condition: .notOnQueue(.main))
-        return try core.restoreSession()
+        return try core.restoreSession(afterInterrupt: afterInterrupt)
     }
 
     public func releaseHeld(pid: pid_t) {

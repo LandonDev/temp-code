@@ -47,15 +47,13 @@ extension InputEngine {
             throw ComputerFailure(ComputerError(kind: .needsTier, message: "type needs the process tier here, which is not allowed now.", needed: held ?? .process))
         }
 
-        // rung 3: keys
-        if TypingRoute.route(text) == .keys {
-            let (effect, change, last) = try keys(text, tier: tier, target: target, dest: dest)
-            if !TypingRoute.pasteAfterKeys(effect) {
-                return InputOutcome(tier: tier, via: .keys, clipboard: nil, cursor: target.cursor, session: change, lastInputAt: last)
-            }
+        // rung 3: keys; rung 4: paste, plain text
+        switch try core.typeByEvents(text, keys: { try keys(text, tier: tier, target: target, dest: dest) }, paste: { try pasteStep(PasteContent(plain: text), tier: tier, target: target) }) {
+        case .keys(let change, let last):
+            return InputOutcome(tier: tier, via: .keys, clipboard: nil, cursor: target.cursor, session: change, lastInputAt: last)
+        case .paste(let outcome, let change, let last):
+            return InputOutcome(tier: tier, via: .paste, clipboard: outcome, cursor: target.cursor, session: change, lastInputAt: last)
         }
-        // rung 4: paste, plain text
-        return try paste(PasteContent(plain: text), tier: tier, target: target)
     }
 
     /// Unicode key events into the destination, with the evidence before and after.
@@ -81,8 +79,13 @@ extension InputEngine {
     /// tier posted to the pid, the destination and the key window checked before the clipboard
     /// is touched and again before Command-V.
     func paste(_ content: PasteContent, tier: Tier, target: InputTarget) throws -> InputOutcome {
+        let (outcome, change, last) = try pasteStep(content, tier: tier, target: target)
+        return InputOutcome(tier: tier, via: .paste, clipboard: outcome, cursor: target.cursor, session: change, lastInputAt: last)
+    }
+
+    private func pasteStep(_ content: PasteContent, tier: Tier, target: InputTarget) throws -> (ClipboardOutcome, SessionChange?, UInt64?) {
         let pid = target.pid
-        let flow = PasteFlow(store: pasteboard, lock: clipboardLock, clock: clock)
+        let flow = PasteFlow(store: pasteboard, lock: clipboardLock, clock: clock, recentForeignCopy: recentForeignCopy)
         var focusedAtCheck: AXUIElement?
         let checks: () throws -> Void = { [self] in
             if let e = target.element { try ProcessTier.confirmFocus(e, pid: pid, clock: clock) }
@@ -101,10 +104,6 @@ extension InputEngine {
             }
         }
         let dest = { target.element?.element ?? focusedAtCheck }
-        var outcome: ClipboardOutcome = .restored
-        let (_, change, last) = try core.step(tier: tier, pid: pid, windowID: target.windowID, window: target.window, keys: true, cancelled: target.cancelled) { ctx in
-            (outcome, _) = try flow.run(content, cancelled: target.cancelled, checks: checks, recheck: recheck, post: { try core.commandV(&ctx) }, evidence: { evidence(dest()) })
-        }
-        return InputOutcome(tier: tier, via: .paste, clipboard: outcome, cursor: target.cursor, session: change, lastInputAt: last)
+        return try core.paste(content, flow: flow, quietMs: target.pasteQuietMs, tier: tier, pid: pid, windowID: target.windowID, window: target.window, cancelled: target.cancelled, checks: checks, recheck: recheck, evidence: { evidence(dest()) })
     }
 }

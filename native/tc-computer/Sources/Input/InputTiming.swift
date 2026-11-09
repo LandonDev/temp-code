@@ -49,6 +49,8 @@ public enum InputTiming {
 
     /// a held button or key is let go this long after its down with no up
     public static let heldReleaseS = Double(ComputerDefaults.Service.heldInputReleaseMs) / 1000
+    /// `input.restoreSession { afterInterrupt }` skips the person check this long after their trip
+    public static let restoreAfterInterruptS = Double(ComputerDefaults.Service.restoreAfterInterruptMs) / 1000
     /// a click's `duration` cap
     public static let maxClickDurationS = Double(ComputerDefaults.ActionLimits.clickDurationMaxSeconds)
 
