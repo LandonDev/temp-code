@@ -417,7 +417,8 @@ async function chrome(): Promise<void> {
   await sleep(700)
   const one = await r.observe()
   const lines = (one.text ?? '').split('\n').slice(1)
-  check(app, 'a rebuild with one value changed is one ~ on the kept number', lines.length === 1 && lines[0] === `~ [${item7}] input "Item 7" = "value 7 edited"`, lines.join(' | ').slice(0, 200))
+  // the line may go on with what the element lists (` actions: press`: Chrome's inputs list AXPress)
+  check(app, 'a rebuild with one value changed is one ~ on the kept number', lines.length === 1 && lines[0].startsWith(`~ [${item7}] input "Item 7" = "value 7 edited"`), lines.join(' | ').slice(0, 200))
   r.close()
   await endChrome()
 
