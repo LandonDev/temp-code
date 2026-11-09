@@ -94,7 +94,7 @@ describe('taskReader', () => {
       // the wire's own rule: an element read without its epoch is refused
       StateGetParamsSchema.parse(params)
       asked.push(params)
-      return { epoch: 'ep-7', text: 'app "TextEdit" · window "n0.rtf" · 800×600\n[1] window "n0.rtf"\n  [3] text area = "x"' }
+      return { epoch: 'ep-7', text: 'app "TextEdit" · window "n0.rtf" · 800×600\n[1] window "n0.rtf"\n  [3] text area = "x"', stats: { thin: false } }
     }
     const r = taskReader(proof as never, () => 42, 'bench-proof', async () => ({ code: 0, stdout: '', stderr: '' }))
     await expect(r.element('TextEdit', 'n0', 3)).rejects.toThrow(/read TextEdit before/)
@@ -122,5 +122,29 @@ describe('otherProofIn', () => {
     expect(otherProofIn([...ps, '  300     1 bash scripts/mac/ax-reader-proof.sh tempcode-dev'].join('\n'), 100)).toBe('ax-reader-proof')
     // the comparison running beside the bench is another proof
     expect(otherProofIn([...ps, '  400     1 node scripts/.out/compare-computer-words.mjs'].join('\n'), 100)).toBe('compare-computer-words')
+  })
+})
+
+describe('taskReader on a thin tree', () => {
+  it('reads again while the tree is thin, after the settle wait, then takes what it has', async () => {
+    let n = 0
+    const asked: Record<string, unknown>[] = []
+    const proof = async (_m: 'state.get', params: Record<string, unknown>) => {
+      asked.push(params)
+      n++
+      return { epoch: `ep-${n}`, text: n < 3 ? 'app "Google Chrome" · window "b" · 800×600 · thin tree, see the screenshot\n[1] window "b"' : 'app "Google Chrome" · window "b" · 800×600\n[1] window "b"\n  [2] text "60 orders"', stats: { thin: n < 3 } }
+    }
+    const waits: number[] = []
+    const r = taskReader(proof as never, () => 7, 's', async () => ({ code: 0, stdout: '', stderr: '' }), async (ms) => void waits.push(ms))
+    const tree = await r.read('Google Chrome', 'b')
+    expect(n).toBe(3)
+    expect(waits).toEqual([750, 750])
+    expect(tree.lines.some((l) => l.type === 'element' && l.name === '60 orders')).toBe(true)
+    expect(asked[0]).toMatchObject({ mode: 'full', wait: { quietMs: 300 } })
+    // still thin after 8 reads: the check gets the thin tree and says what it lacks
+    let m = 0
+    const always = async () => ({ epoch: `e${++m}`, text: 'app "Google Chrome" · window "b" · 800×600 · thin tree, see the screenshot\n[1] window "b"', stats: { thin: true } })
+    await taskReader(always as never, () => 7, 's', async () => ({ code: 0, stdout: '', stderr: '' }), async () => {}).read('Google Chrome', 'b')
+    expect(m).toBe(9)
   })
 })

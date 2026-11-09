@@ -1,0 +1,2975 @@
+{
+  "version": 1,
+  "startedAt": 1794214962584,
+  "endedAt": 1794215473305,
+  "commit": "6f3071696c211012454c080fc137f78807d5837e",
+  "clean": true,
+  "mode": "gate",
+  "ungated": true,
+  "host": {
+    "macos": "27.2",
+    "chip": "Apple M4 Max",
+    "load1": 8.49755859375
+  },
+  "models": [
+    {
+      "model": "claude-opus-5-5"
+    },
+    {
+      "model": "gpt-6.1-sol"
+    },
+    {
+      "model": "muse-wonder-1.0"
+    }
+  ],
+  "runs": [
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "textedit-write",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "passed",
+      "stepBudget": 6,
+      "queuedMs": 0,
+      "wallMs": 11039,
+      "thinkMs": 9292,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 746,
+          "rowMs": 779,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 865,
+          "rowMs": 938,
+          "steps": [
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.google.Chrome",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "tokens": {
+        "input": 8,
+        "output": 432
+      }
+    },
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "chrome-read",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "failed",
+      "stepBudget": 8,
+      "queuedMs": 0,
+      "wallMs": 0,
+      "thinkMs": 0,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "",
+        "after": "",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": true
+      },
+      "reason": "took the front"
+    },
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "chrome-form",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "failed",
+      "stepBudget": 10,
+      "queuedMs": 0,
+      "wallMs": 0,
+      "thinkMs": 0,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "",
+        "after": "",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": true
+      },
+      "reason": "took the front"
+    },
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "chrome-delete",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "failed",
+      "stepBudget": 6,
+      "queuedMs": 0,
+      "wallMs": 0,
+      "thinkMs": 0,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "",
+        "after": "",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": true
+      },
+      "reason": "took the front"
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "chrome-form",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "failed",
+      "stepBudget": 10,
+      "queuedMs": 0,
+      "wallMs": 23115,
+      "thinkMs": 23115,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.google.Chrome",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": true
+      },
+      "reason": "took the front"
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "chrome-delete",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "failed",
+      "stepBudget": 6,
+      "queuedMs": 0,
+      "wallMs": 19852,
+      "thinkMs": 19852,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.google.Chrome",
+        "bounced": true,
+        "personActive": true,
+        "benchInFront": true
+      },
+      "reason": "took the front"
+    },
+    {
+      "model": "muse-wonder-1.0",
+      "provider": "muse",
+      "task": "devapp-form",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "failed",
+      "stepBudget": 14,
+      "queuedMs": 0,
+      "wallMs": 51847,
+      "thinkMs": 51845,
+      "calls": [
+        {
+          "tool": "computer_apps",
+          "hostMs": 285,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 3143,
+          "rowMs": 1,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 10,
+          "rowMs": 1,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": true
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 861,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 883,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 823,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_batch",
+          "hostMs": 1102,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            },
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_batch",
+          "hostMs": 829,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 389,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 1253,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder"
+      ],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "reason": "off-route: Reminder"
+    },
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "devapp-form",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "passed",
+      "stepBudget": 14,
+      "queuedMs": 0,
+      "wallMs": 43918,
+      "thinkMs": 34612,
+      "calls": [
+        {
+          "tool": "computer_apps",
+          "hostMs": 471,
+          "rowMs": 519,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 3138,
+          "rowMs": 3167,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 997,
+          "rowMs": 1044,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 854,
+          "rowMs": 882,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 834,
+          "rowMs": 861,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_batch",
+          "hostMs": 1022,
+          "rowMs": 1047,
+          "steps": [
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            },
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 866,
+          "rowMs": 893,
+          "steps": [
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 839,
+          "rowMs": 863,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.google.Chrome",
+        "after": "com.google.Chrome",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "tokens": {
+        "input": 19,
+        "output": 1219
+      }
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "devapp-form",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "failed",
+      "stepBudget": 14,
+      "queuedMs": 0,
+      "wallMs": 28091,
+      "thinkMs": 28091,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "reason": "no add-on named bench-854320a6"
+    },
+    {
+      "model": "muse-wonder-1.0",
+      "provider": "muse",
+      "task": "settings-toggle",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "failed",
+      "stepBudget": 12,
+      "queuedMs": 0,
+      "wallMs": 92287,
+      "thinkMs": 92287,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 712,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 2177,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 940,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 728,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 446,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 920,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder"
+      ],
+      "cards": [],
+      "front": {
+        "before": "com.google.Chrome",
+        "after": "com.example.person-app",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "reason": "off-route: Reminder"
+    },
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "settings-toggle",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "skipped",
+      "stepBudget": 12,
+      "queuedMs": 0,
+      "wallMs": 0,
+      "thinkMs": 0,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "",
+        "after": "",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": false
+      },
+      "reason": "System Settings is open"
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "settings-toggle",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "failed",
+      "stepBudget": 12,
+      "queuedMs": 0,
+      "wallMs": 19780,
+      "thinkMs": 19780,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "reason": "after turn one: the switch reads 0, not 1"
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "save-dialog",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "failed",
+      "stepBudget": 12,
+      "queuedMs": 0,
+      "wallMs": 20842,
+      "thinkMs": 20842,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "reason": "the target holds \"old\""
+    },
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "save-dialog",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "failed",
+      "stepBudget": 12,
+      "queuedMs": 0,
+      "wallMs": 61798,
+      "thinkMs": 51764,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 1106,
+          "rowMs": 1137,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 1834,
+          "rowMs": 1863,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 570,
+          "rowMs": 614,
+          "steps": [],
+          "screenshotAsked": true,
+          "shots": 1,
+          "isError": false
+        },
+        {
+          "tool": "computer_batch",
+          "hostMs": 1189,
+          "rowMs": 1220,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            },
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 894,
+          "rowMs": 919,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": "ax",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_apps",
+          "hostMs": 424,
+          "rowMs": 449,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 907,
+          "rowMs": 930,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 904,
+          "rowMs": 931,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": "ax",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 401,
+          "rowMs": 426,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_batch",
+          "hostMs": 1326,
+          "rowMs": 1361,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            },
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": true,
+          "shots": 1,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 104,
+          "rowMs": 139,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": null,
+              "ok": false,
+              "error": "needs the session tier (the real pointer and keyboard), which is not available now: nothing schedules it yet"
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "tokens": {
+        "input": 25,
+        "output": 2928
+      },
+      "reason": "the target holds \"old\""
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "textedit-write",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "failed",
+      "stepBudget": 6,
+      "queuedMs": 0,
+      "wallMs": 21720,
+      "thinkMs": 21720,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": false
+      },
+      "reason": "the text area holds \"Probe line one\\nProbe line two\""
+    },
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "chrome-read",
+      "taskVersion": 1,
+      "attempt": 2,
+      "outcome": "failed",
+      "stepBudget": 8,
+      "queuedMs": 0,
+      "wallMs": 12949,
+      "thinkMs": 9721,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 596,
+          "rowMs": 623,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 1134,
+          "rowMs": 1147,
+          "steps": [
+            {
+              "action": "scroll",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 426,
+          "rowMs": 449,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 946,
+          "rowMs": 982,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": true,
+          "shots": 1,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": true,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "tokens": {
+        "input": 12,
+        "output": 654
+      },
+      "reason": "the page changed:  ? orders"
+    },
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "chrome-read",
+      "taskVersion": 1,
+      "attempt": 3,
+      "outcome": "failed",
+      "stepBudget": 8,
+      "queuedMs": 0,
+      "wallMs": 10265,
+      "thinkMs": 7603,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 590,
+          "rowMs": 618,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 1059,
+          "rowMs": 1088,
+          "steps": [
+            {
+              "action": "scroll",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 901,
+          "rowMs": 928,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": true,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "tokens": {
+        "input": 10,
+        "output": 482
+      },
+      "reason": "the page changed:  ? orders"
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "chrome-read",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "failed",
+      "stepBudget": 8,
+      "queuedMs": 0,
+      "wallMs": 21096,
+      "thinkMs": 21096,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.google.Chrome",
+        "bounced": true,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "reason": "the reply lacks 15.53"
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "chrome-form",
+      "taskVersion": 1,
+      "attempt": 2,
+      "outcome": "failed",
+      "stepBudget": 10,
+      "queuedMs": 0,
+      "wallMs": 0,
+      "thinkMs": 0,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "",
+        "after": "",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": true
+      },
+      "reason": "took the front"
+    },
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "chrome-form",
+      "taskVersion": 1,
+      "attempt": 2,
+      "outcome": "failed",
+      "stepBudget": 10,
+      "queuedMs": 0,
+      "wallMs": 16704,
+      "thinkMs": 11516,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 639,
+          "rowMs": 670,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_batch",
+          "hostMs": 1592,
+          "rowMs": 1621,
+          "steps": [
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            },
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            },
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "effect": "none",
+              "ok": true
+            },
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            },
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 874,
+          "rowMs": 904,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 1056,
+          "rowMs": 1080,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 883,
+          "rowMs": 913,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": true,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "tokens": {
+        "input": 14,
+        "output": 966
+      },
+      "reason": "status null"
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "chrome-form",
+      "taskVersion": 1,
+      "attempt": 3,
+      "outcome": "failed",
+      "stepBudget": 10,
+      "queuedMs": 0,
+      "wallMs": 21426,
+      "thinkMs": 21426,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": true,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "reason": "status null"
+    },
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "chrome-form",
+      "taskVersion": 1,
+      "attempt": 3,
+      "outcome": "failed",
+      "stepBudget": 10,
+      "queuedMs": 0,
+      "wallMs": 20236,
+      "thinkMs": 14324,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 604,
+          "rowMs": 636,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_batch",
+          "hostMs": 1633,
+          "rowMs": 1661,
+          "steps": [
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            },
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            },
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "effect": "none",
+              "ok": true
+            },
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            },
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 956,
+          "rowMs": 983,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 381,
+          "rowMs": 410,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": null,
+              "ok": false,
+              "error": "[146] is gone from the window; read it again and use the new index"
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 887,
+          "rowMs": 911,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 1253,
+          "rowMs": 1281,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": true,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "tokens": {
+        "input": 15,
+        "output": 1100
+      },
+      "reason": "status null"
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "chrome-delete",
+      "taskVersion": 1,
+      "attempt": 2,
+      "outcome": "failed",
+      "stepBudget": 6,
+      "queuedMs": 0,
+      "wallMs": 21860,
+      "thinkMs": 21860,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": true,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "reason": "status null"
+    },
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "chrome-delete",
+      "taskVersion": 1,
+      "attempt": 2,
+      "outcome": "failed",
+      "stepBudget": 6,
+      "queuedMs": 0,
+      "wallMs": 9665,
+      "thinkMs": 8021,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 669,
+          "rowMs": 698,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 886,
+          "rowMs": 915,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [
+        {
+          "kind": "delete",
+          "title": "Delete in Google Chrome: Delete order BXQJ (72.63) from the Past orders list on the bench page (click button \"Delete order BXQJ\")"
+        }
+      ],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": true,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "tokens": {
+        "input": 8,
+        "output": 575
+      },
+      "reason": "status null"
+    },
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "chrome-delete",
+      "taskVersion": 1,
+      "attempt": 3,
+      "outcome": "failed",
+      "stepBudget": 6,
+      "queuedMs": 0,
+      "wallMs": 10475,
+      "thinkMs": 8981,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 560,
+          "rowMs": 590,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 851,
+          "rowMs": 878,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [
+        {
+          "kind": "delete",
+          "title": "Delete in Google Chrome: Delete order ML59 (28.92) from the Past orders list on the bench page (click button \"Delete order ML59\")"
+        }
+      ],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": true,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "tokens": {
+        "input": 8,
+        "output": 537
+      },
+      "reason": "status null"
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "chrome-delete",
+      "taskVersion": 1,
+      "attempt": 3,
+      "outcome": "failed",
+      "stepBudget": 6,
+      "queuedMs": 0,
+      "wallMs": 21082,
+      "thinkMs": 21082,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.google.Chrome",
+        "after": "com.apple.TextEdit",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "reason": "status null"
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "devapp-form",
+      "taskVersion": 1,
+      "attempt": 2,
+      "outcome": "failed",
+      "stepBudget": 14,
+      "queuedMs": 0,
+      "wallMs": 21585,
+      "thinkMs": 21585,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.apple.TextEdit",
+        "after": "com.apple.TextEdit",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "reason": "no add-on named bench-3517d57c"
+    },
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "save-dialog",
+      "taskVersion": 1,
+      "attempt": 2,
+      "outcome": "failed",
+      "stepBudget": 12,
+      "queuedMs": 0,
+      "wallMs": 49741,
+      "thinkMs": 42977,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 817,
+          "rowMs": 844,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 941,
+          "rowMs": 967,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 479,
+          "rowMs": 506,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_batch",
+          "hostMs": 1366,
+          "rowMs": 1396,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            },
+            {
+              "action": "left_click",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            },
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 618,
+          "rowMs": 655,
+          "steps": [],
+          "screenshotAsked": true,
+          "shots": 1,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 863,
+          "rowMs": 890,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": "ax",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 991,
+          "rowMs": 1023,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": true,
+          "shots": 1,
+          "isError": false
+        },
+        {
+          "tool": "computer_apps",
+          "hostMs": 301,
+          "rowMs": 325,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 98,
+          "rowMs": 130,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": null,
+              "ok": false,
+              "error": "needs the session tier (the real pointer and keyboard), which is not available now: nothing schedules it yet"
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.apple.TextEdit",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "tokens": {
+        "input": 21,
+        "output": 2465
+      },
+      "reason": "the target holds \"old\""
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "devapp-form",
+      "taskVersion": 1,
+      "attempt": 3,
+      "outcome": "failed",
+      "stepBudget": 14,
+      "queuedMs": 0,
+      "wallMs": 19777,
+      "thinkMs": 19777,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.apple.TextEdit",
+        "after": "com.apple.TextEdit",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "reason": "no add-on named bench-fc829de4"
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "settings-toggle",
+      "taskVersion": 1,
+      "attempt": 2,
+      "outcome": "failed",
+      "stepBudget": 12,
+      "queuedMs": 0,
+      "wallMs": 19930,
+      "thinkMs": 19930,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.apple.TextEdit",
+        "after": "com.example.person-app",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "reason": "after turn one: the switch reads 0, not 1"
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "settings-toggle",
+      "taskVersion": 1,
+      "attempt": 3,
+      "outcome": "skipped",
+      "stepBudget": 12,
+      "queuedMs": 0,
+      "wallMs": 0,
+      "thinkMs": 0,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "",
+        "after": "",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": false
+      },
+      "reason": "System Settings is open"
+    },
+    {
+      "model": "muse-wonder-1.0",
+      "provider": "muse",
+      "task": "save-dialog",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "failed",
+      "stepBudget": 12,
+      "queuedMs": 0,
+      "wallMs": 261958,
+      "thinkMs": 261947,
+      "calls": [
+        {
+          "tool": "computer_apps",
+          "hostMs": 344,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 627,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 552,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 921,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 911,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 497,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 866,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": "ax",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 870,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 484,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": true,
+          "shots": 1,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 912,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_batch",
+          "hostMs": 1111,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            },
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 846,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": "ax",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 487,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 852,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": "ax",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 485,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 885,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": "ax",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 895,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 419,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 813,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 892,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "type",
+              "tier": "ax",
+              "via": "ax-insert",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 969,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 423,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 432,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 867,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 927,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 893,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 899,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 494,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 53,
+          "rowMs": 1,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": true
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 556,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "wait",
+              "tier": null,
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 505,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 852,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_apps",
+          "hostMs": 414,
+          "rowMs": 1,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 867,
+          "rowMs": 1,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 1361,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 530,
+          "rowMs": 1,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 1013,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 856,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 999,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 1260,
+          "rowMs": 1,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 862,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 390,
+          "rowMs": 1,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 901,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 1149,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 867,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 552,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder"
+      ],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.apple.TextEdit",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": true
+      },
+      "reason": "off-route: Reminder"
+    },
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "save-dialog",
+      "taskVersion": 1,
+      "attempt": 3,
+      "outcome": "failed",
+      "stepBudget": 12,
+      "queuedMs": 0,
+      "wallMs": 60826,
+      "thinkMs": 52673,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 939,
+          "rowMs": 969,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 1059,
+          "rowMs": 1234,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 482,
+          "rowMs": 546,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_batch",
+          "hostMs": 1154,
+          "rowMs": 1179,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            },
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 161,
+          "rowMs": 193,
+          "steps": [
+            {
+              "action": "screenshot",
+              "tier": null,
+              "ok": true
+            }
+          ],
+          "screenshotAsked": true,
+          "shots": 1,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 443,
+          "rowMs": 469,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_batch",
+          "hostMs": 1042,
+          "rowMs": 1070,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            },
+            {
+              "action": "perform",
+              "tier": "ax",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 900,
+          "rowMs": 926,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_apps",
+          "hostMs": 411,
+          "rowMs": 437,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 89,
+          "rowMs": 115,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": null,
+              "ok": false,
+              "error": "needs the session tier (the real pointer and keyboard), which is not available now: nothing schedules it yet"
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 960,
+          "rowMs": 985,
+          "steps": [
+            {
+              "action": "left_click",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.apple.TextEdit",
+        "after": "com.example.person-app",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "tokens": {
+        "input": 26,
+        "output": 2696
+      },
+      "reason": "the target holds \"old\""
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "save-dialog",
+      "taskVersion": 1,
+      "attempt": 2,
+      "outcome": "failed",
+      "stepBudget": 12,
+      "queuedMs": 0,
+      "wallMs": 20479,
+      "thinkMs": 20479,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "reason": "the target holds \"old\""
+    },
+    {
+      "model": "muse-wonder-1.0",
+      "provider": "muse",
+      "task": "textedit-write",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "failed",
+      "stepBudget": 6,
+      "queuedMs": 0,
+      "wallMs": 29336,
+      "thinkMs": 29335,
+      "calls": [
+        {
+          "tool": "computer_apps",
+          "hostMs": 242,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 538,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 875,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 402,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 412,
+          "rowMs": 1,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder"
+      ],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "reason": "off-route: Reminder"
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "save-dialog",
+      "taskVersion": 1,
+      "attempt": 3,
+      "outcome": "failed",
+      "stepBudget": 12,
+      "queuedMs": 0,
+      "wallMs": 19656,
+      "thinkMs": 19656,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": false
+      },
+      "reason": "the target holds \"old\""
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "textedit-write",
+      "taskVersion": 1,
+      "attempt": 2,
+      "outcome": "failed",
+      "stepBudget": 6,
+      "queuedMs": 0,
+      "wallMs": 18997,
+      "thinkMs": 18997,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": false,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "reason": "the text area holds \"Probe line one\\nProbe line two\""
+    },
+    {
+      "model": "muse-wonder-1.0",
+      "provider": "muse",
+      "task": "chrome-read",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "failed",
+      "stepBudget": 8,
+      "queuedMs": 0,
+      "wallMs": 40488,
+      "thinkMs": 40488,
+      "calls": [
+        {
+          "tool": "computer_apps",
+          "hostMs": 252,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 645,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 1055,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "scroll",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 1024,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "scroll",
+              "tier": "process",
+              "effect": "none",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 1,
+          "rowMs": 0,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": true
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 897,
+          "rowMs": 0,
+          "steps": [
+            {
+              "action": "key",
+              "tier": "process",
+              "effect": "changed",
+              "ok": true
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder",
+        "Reminder"
+      ],
+      "cards": [],
+      "front": {
+        "before": "com.example.person-app",
+        "after": "com.example.person-app",
+        "bounced": true,
+        "personActive": true,
+        "benchInFront": false
+      },
+      "reason": "off-route: Reminder"
+    }
+  ],
+  "unrun": [
+    {
+      "model": "gpt-6.1-sol",
+      "task": "textedit-write",
+      "cause": "budget"
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "task": "chrome-read",
+      "cause": "budget"
+    },
+    {
+      "model": "muse-wonder-1.0",
+      "task": "chrome-form",
+      "cause": "budget"
+    },
+    {
+      "model": "muse-wonder-1.0",
+      "task": "chrome-delete",
+      "cause": "budget"
+    },
+    {
+      "model": "muse-wonder-1.0",
+      "task": "devapp-form",
+      "cause": "budget"
+    },
+    {
+      "model": "muse-wonder-1.0",
+      "task": "settings-toggle",
+      "cause": "budget"
+    },
+    {
+      "model": "muse-wonder-1.0",
+      "task": "save-dialog",
+      "cause": "budget"
+    },
+    {
+      "model": "muse-wonder-1.0",
+      "task": "textedit-write",
+      "cause": "budget"
+    },
+    {
+      "model": "muse-wonder-1.0",
+      "task": "chrome-read",
+      "cause": "budget"
+    }
+  ]
+}

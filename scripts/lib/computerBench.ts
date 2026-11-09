@@ -120,8 +120,8 @@ export const BENCH_TIMING = {
   idleSessionS: 120
 } as const
 
-/** Tool calls a run may make beside the computer tools without going off route. */
-export const ALLOWED_TOOLS: readonly string[] = ['ToolSearch', 'update_notes', 'TodoWrite', 'update_plan']
+/** Tool calls a run may make beside the computer tools without going off route; `Reminder` is Muse's own reminder child session (museProtocol.ts `reminderChild`), the harness's, not the model's. */
+export const ALLOWED_TOOLS: readonly string[] = ['ToolSearch', 'update_notes', 'TodoWrite', 'update_plan', 'Reminder']
 
 /** `mcp__app__computer_act` or `app.computer_act` → `computer_act`. */
 export const bareToolName = (name: string): string => name.replace(/^.*(?:__|\.)/, '')

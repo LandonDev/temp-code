@@ -299,7 +299,7 @@ export const COMPUTER_TASKS: ComputerTask[] = [
     version: 1,
     tier: 'background',
     shared: 'dev-instance',
-    stepBudget: 14,
+    stepBudget: 16,
     wallMs: TASK_WALL_MS,
     async setup(ctx) {
       const dev = await (ctx.devInstance?.() ?? Promise.resolve({ skip: 'no dev instance here' }))
@@ -320,7 +320,7 @@ export const COMPUTER_TASKS: ComputerTask[] = [
     version: 1,
     tier: 'background',
     shared: 'system-settings',
-    stepBudget: 12,
+    stepBudget: 8,
     wallMs: TASK_WALL_MS,
     async setup(ctx) {
       // An open System Settings is the person's window.
@@ -344,7 +344,8 @@ export const COMPUTER_TASKS: ComputerTask[] = [
     id: 'save-dialog',
     app: 'TextEdit',
     version: 1,
-    tier: 'background',
+    // The save panel runs out of process: every Opus run on the Mac (2026-11-09) met a session-tier refusal on its way.
+    tier: 'session',
     stepBudget: 12,
     wallMs: TASK_WALL_MS,
     async setup(ctx) {

@@ -293,7 +293,7 @@ async function devInstance(lane: Lane, dir: string, onBounce: () => void): Promi
   const dev = await startDevInstance({ root: ROOT, dir, groups: devGroups })
   R.pins.pin(lane.name, 'Electron', dev.pid)
   const front = await keepFront(probe, dev.pid, personFront)
-  if (front === 'took') {
+  if (front === 'took' && !UNGATED) {
     await dev.stop()
     throw new FailRun('took the front')
   }
@@ -422,8 +422,9 @@ async function oneRun(lane: Lane, task: ComputerTask, attempt: number): Promise<
         const held = await macReady(probe, UNGATED)
         if (held) throw new SkipRun(held)
         const { front } = await R.launch(lane.name, app, target)
-        if (front === 'took') throw new FailRun('took the front')
-        if (front === 'bounced') run.front.bounced = true
+        // Ungated, the person accepts the scratch windows coming forward: the front is not judged.
+        if (front === 'took' && !UNGATED) throw new FailRun('took the front')
+        if (front !== 'kept') run.front.bounced = true
       },
       devInstance: () => devInstance(lane, dir, () => (run.front.bounced = true))
     }
@@ -509,7 +510,7 @@ async function drive(lane: Lane, task: ComputerTask, start: TaskStart, run: Benc
       check = c.ok && task.policy && args.mode !== 'reference' ? task.policy(start, records) : c
     }
     const after1 = R.mac.frontmost()
-    const benchInFront = R.pins.pids(lane.name).includes(after1.pid)
+    const benchInFront = !UNGATED && R.pins.pids(lane.name).includes(after1.pid)
     if (benchInFront && before.bundleId) {
       try {
         R.mac.activate(before.bundleId)

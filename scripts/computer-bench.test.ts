@@ -205,6 +205,8 @@ describe('runFault', () => {
     expect(toolKind('ToolSearch')).toBe('allowed')
     expect(toolKind('mcp__app__update_notes')).toBe('allowed')
     expect(toolKind('Bash')).toBe('other')
+    // Muse's own reminder child session, as its driver names it (a Mac run of 2026-11-09 failed every Muse run on it)
+    expect(toolKind('Reminder')).toBe('allowed')
     expect(runFault(run())).toBeNull()
     expect(runFault(run({ otherTools: ['Bash', 'Bash', 'mcp__codex__cua_repl'] }))).toBe('off-route: Bash, cua_repl')
     expect(runFault(run({ calls: calls(9), stepBudget: 6 }))).toBe('over budget: 9 calls of 6')
@@ -472,5 +474,28 @@ describe('benchOutcome', () => {
     expect(benchOutcome({ mode: 'hand', ok: true, rebaseline: true, baselineRows: 0 })).toEqual({ fail: false, write: true, note: null })
     for (const mode of ['report-only', 'reference'] as const)
       expect(benchOutcome({ mode, ok: false, rebaseline: false, baselineRows: 0 })).toEqual({ fail: false, write: false, note: null })
+  })
+})
+
+describe('the Mac gate run of 2026-11-09, recorded', () => {
+  const recorded = JSON.parse(readFileSync(join(__dirname, 'lib/fixtures/computer-bench/mac-gate-2026-11-09.json'), 'utf8')) as BenchReport
+
+  it('reads back: Opus passed textedit-write and devapp-form, gpt-6.1-sol never reached its tools, and it failed with no baseline', () => {
+    const j = judgeBench(recorded, EMPTY_BASELINE)
+    const s = (model: string, task: string) => j.summaries.find((x) => x.model === model && x.task === task)!
+    expect(s('claude-opus-5-5', 'textedit-write')).toMatchObject({ runs: 1, passed: 1, callsMedian: 2 })
+    expect(s('claude-opus-5-5', 'devapp-form')).toMatchObject({ runs: 1, passed: 1, callsMedian: 8 })
+    expect(j.summaries.filter((x) => x.model === 'gpt-6.1-sol').every((x) => x.callsMedian === 0 || x.runs === 0)).toBe(true)
+    expect(j.ok).toBe(false)
+    // under today's rule a first gate run with no baseline passes and writes the rows of the tasks that passed
+    expect(benchOutcome({ mode: recorded.mode, ok: j.ok, rebaseline: false, baselineRows: 0 })).toMatchObject({ fail: false, write: true })
+    expect(mergeBaseline(EMPTY_BASELINE, recorded, { replace: false }).rows.map((r) => `${r.model} ${r.task}`)).toEqual([
+      'claude-opus-5-5 devapp-form',
+      'claude-opus-5-5 textedit-write'
+    ])
+  })
+
+  it('renders its table', () => {
+    expect(renderBenchTable(recorded, judgeBench(recorded, EMPTY_BASELINE))).toMatchSnapshot()
   })
 })

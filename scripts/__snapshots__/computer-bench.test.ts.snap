@@ -65,3 +65,89 @@ macOS 26.1, Apple M4 Max, load 4.6
 computer bench passed
 "
 `;
+
+exports[`the Mac gate run of 2026-11-09, recorded > renders its table 1`] = `
+"# Computer bench (gate)
+
+2026-11-09T09:02:42.584Z, 511 s, commit 6f307169
+macOS 27.2, Apple M4 Max, load 8.5, no idle wait (TC_BENCH_UNGATED)
+
+## claude-opus-5-5
+
+| task | passed | calls | host ms/call | wall s | think s | queued s | shots asked | shots taken | tiers | failures |
+|---|---|---|---|---|---|---|---|---|---|---|
+| textedit-write | 1/1 | 2 | 806 | 11.0 | 9.3 | 0.0 | 0 | 0 | ax 1 |  |
+| chrome-read | 0/3 | 3 | 836 | 10.3 | 7.6 | 0.0 | 0 | 0 | process 3, ax 1 | took the front; the page changed:  ? orders; the page changed:  ? orders |
+| chrome-form | 0/3 | 5 | 902 | 16.7 | 11.5 | 0.0 | 0 | 0 | ax 15, process 1 | took the front; status null; status null |
+| chrome-delete | 0/3 | 2 | 742 | 9.7 | 8.0 | 0.0 | 0 | 0 | ax 2 | took the front; status null; status null |
+| devapp-form | 1/1 | 8 | 860 | 43.9 | 34.6 | 0.0 | 0 | 0 | ax 7 |  |
+| settings-toggle | skipped | | | | | | | | | System Settings is open |
+| save-dialog | 0/3 | 11 | 900 | 60.8 | 51.8 | 0.0 | 2 | 2 | process 15, ax 6 | the target holds "old"; the target holds "old"; the target holds "old" |
+
+## gpt-6.1-sol
+
+| task | passed | calls | host ms/call | wall s | think s | queued s | shots asked | shots taken | tiers | failures |
+|---|---|---|---|---|---|---|---|---|---|---|
+| chrome-form | 0/3 | 0 | – | 21.4 | 21.4 | 0.0 | 0 | 0 | – | took the front; took the front; status null |
+| chrome-delete | 0/3 | 0 | – | 21.1 | 21.1 | 0.0 | 0 | 0 | – | took the front; status null; status null |
+| devapp-form | 0/3 | 0 | – | 21.6 | 21.6 | 0.0 | 0 | 0 | – | no add-on named bench-854320a6; no add-on named bench-3517d57c; no add-on named bench-fc829de4 |
+| settings-toggle | 0/2 | 0 | – | 19.9 | 19.9 | 0.0 | 0 | 0 | – | after turn one: the switch reads 0, not 1; after turn one: the switch reads 0, not 1 |
+| save-dialog | 0/3 | 0 | – | 20.5 | 20.5 | 0.0 | 0 | 0 | – | the target holds "old"; the target holds "old"; the target holds "old" |
+| textedit-write | 0/2 | 0 | – | 20.4 | 20.4 | 0.0 | 0 | 0 | – | the text area holds "Probe line one\\nProbe line two"; the text area holds "Probe line one\\nProbe line two" |
+| chrome-read | 0/1 | 0 | – | 21.1 | 21.1 | 0.0 | 0 | 0 | – | the reply lacks 15.53 |
+
+## muse-wonder-1.0
+
+| task | passed | calls | host ms/call | wall s | think s | queued s | shots asked | shots taken | tiers | failures |
+|---|---|---|---|---|---|---|---|---|---|---|
+| devapp-form | 0/1 | 10 | 845 | 51.8 | 51.8 | 0.0 | 0 | 0 | ax 7 | off-route: Reminder |
+| settings-toggle | 0/1 | 6 | 824 | 92.3 | 92.3 | 0.0 | 0 | 0 | ax 3 | off-route: Reminder |
+| save-dialog | 0/1 | 46 | 859 | 262.0 | 261.9 | 0.0 | 1 | 1 | process 16, ax 12 | off-route: Reminder |
+| textedit-write | 0/1 | 5 | 412 | 29.3 | 29.3 | 0.0 | 0 | 0 | ax 1 | off-route: Reminder |
+| chrome-read | 0/1 | 6 | 771 | 40.5 | 40.5 | 0.0 | 0 | 0 | process 3 | off-route: Reminder |
+
+## Verdicts
+
+| what | got | limit | |
+|---|---|---|---|
+| claude-opus-5-5 textedit-write: end state, runs passed | 1 | 1 | pass |
+| claude-opus-5-5 chrome-read: end state, runs passed | 0 | 2 | FAIL |
+| claude-opus-5-5 chrome-read: runs that took the front | 1 | 0 | FAIL |
+| claude-opus-5-5 chrome-form: end state, runs passed | 0 | 2 | FAIL |
+| claude-opus-5-5 chrome-form: runs that took the front | 1 | 0 | FAIL |
+| claude-opus-5-5 chrome-delete: end state, runs passed | 0 | 2 | FAIL |
+| claude-opus-5-5 chrome-delete: runs that took the front | 1 | 0 | FAIL |
+| gpt-6.1-sol chrome-form: end state, runs passed | 0 | 2 | FAIL |
+| gpt-6.1-sol chrome-form: runs that took the front | 2 | 0 | FAIL |
+| gpt-6.1-sol chrome-delete: end state, runs passed | 0 | 2 | FAIL |
+| gpt-6.1-sol chrome-delete: runs that took the front | 1 | 0 | FAIL |
+| muse-wonder-1.0 devapp-form: end state, runs passed | 0 | 1 | FAIL |
+| claude-opus-5-5 devapp-form: end state, runs passed | 1 | 1 | pass |
+| gpt-6.1-sol devapp-form: end state, runs passed | 0 | 2 | FAIL |
+| muse-wonder-1.0 settings-toggle: end state, runs passed | 0 | 1 | FAIL |
+| gpt-6.1-sol settings-toggle: end state, runs passed | 0 | 2 | FAIL |
+| gpt-6.1-sol save-dialog: end state, runs passed | 0 | 2 | FAIL |
+| claude-opus-5-5 save-dialog: end state, runs passed | 0 | 2 | FAIL |
+| gpt-6.1-sol textedit-write: end state, runs passed | 0 | 2 | FAIL |
+| gpt-6.1-sol chrome-read: end state, runs passed | 0 | 1 | FAIL |
+| muse-wonder-1.0 save-dialog: end state, runs passed | 0 | 1 | FAIL |
+| muse-wonder-1.0 save-dialog: runs that took the front | 1 | 0 | FAIL |
+| muse-wonder-1.0 textedit-write: end state, runs passed | 0 | 1 | FAIL |
+| muse-wonder-1.0 chrome-read: end state, runs passed | 0 | 1 | FAIL |
+| gpt-6.1-sol textedit-write: not reached before the bench's budget ran out | 0 | 1 | FAIL |
+| gpt-6.1-sol chrome-read: not reached before the bench's budget ran out | 0 | 1 | FAIL |
+| muse-wonder-1.0 chrome-form: not reached before the bench's budget ran out | 0 | 1 | FAIL |
+| muse-wonder-1.0 chrome-delete: not reached before the bench's budget ran out | 0 | 1 | FAIL |
+| muse-wonder-1.0 devapp-form: not reached before the bench's budget ran out | 0 | 1 | FAIL |
+| muse-wonder-1.0 settings-toggle: not reached before the bench's budget ran out | 0 | 1 | FAIL |
+| muse-wonder-1.0 save-dialog: not reached before the bench's budget ran out | 0 | 1 | FAIL |
+| muse-wonder-1.0 textedit-write: not reached before the bench's budget ran out | 0 | 1 | FAIL |
+| muse-wonder-1.0 chrome-read: not reached before the bench's budget ran out | 0 | 1 | FAIL |
+
+## Skipped
+
+- claude-opus-5-5 settings-toggle: System Settings is open
+
+computer bench failed: claude-opus-5-5 chrome-read: end state, runs passed; claude-opus-5-5 chrome-read: runs that took the front; claude-opus-5-5 chrome-form: end state, runs passed; claude-opus-5-5 chrome-form: runs that took the front; claude-opus-5-5 chrome-delete: end state, runs passed; claude-opus-5-5 chrome-delete: runs that took the front; gpt-6.1-sol chrome-form: end state, runs passed; gpt-6.1-sol chrome-form: runs that took the front; gpt-6.1-sol chrome-delete: end state, runs passed; gpt-6.1-sol chrome-delete: runs that took the front; muse-wonder-1.0 devapp-form: end state, runs passed; gpt-6.1-sol devapp-form: end state, runs passed; muse-wonder-1.0 settings-toggle: end state, runs passed; gpt-6.1-sol settings-toggle: end state, runs passed; gpt-6.1-sol save-dialog: end state, runs passed; claude-opus-5-5 save-dialog: end state, runs passed; gpt-6.1-sol textedit-write: end state, runs passed; gpt-6.1-sol chrome-read: end state, runs passed; muse-wonder-1.0 save-dialog: end state, runs passed; muse-wonder-1.0 save-dialog: runs that took the front; muse-wonder-1.0 textedit-write: end state, runs passed; muse-wonder-1.0 chrome-read: end state, runs passed; gpt-6.1-sol textedit-write: not reached before the bench's budget ran out; gpt-6.1-sol chrome-read: not reached before the bench's budget ran out; muse-wonder-1.0 chrome-form: not reached before the bench's budget ran out; muse-wonder-1.0 chrome-delete: not reached before the bench's budget ran out; muse-wonder-1.0 devapp-form: not reached before the bench's budget ran out; muse-wonder-1.0 settings-toggle: not reached before the bench's budget ran out; muse-wonder-1.0 save-dialog: not reached before the bench's budget ran out; muse-wonder-1.0 textedit-write: not reached before the bench's budget ran out; muse-wonder-1.0 chrome-read: not reached before the bench's budget ran out
+"
+`;

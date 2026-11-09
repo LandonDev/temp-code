@@ -20,7 +20,7 @@ import { ComputerRpcError } from '../../src/main/server/computer/connection'
 import type { ComputerSessions } from '../../src/main/server/computer/sessions'
 import { setSessionTierGate, type SessionTierGate } from '../../src/main/server/computer/tierGate'
 import { parseObservation, type ParsedObservation } from '../../src/shared/computer/observation'
-import type { AppRef, ComputerMethod, ComputerParams, ComputerResult, StepResult } from '../../src/shared/computer/protocol'
+import { COMPUTER_WAIT, type AppRef, type ComputerMethod, type ComputerParams, type ComputerResult, type StepResult } from '../../src/shared/computer/protocol'
 import type { HostCall, MacProbe } from './benchRun'
 import { keepFront } from './benchRun'
 import { exec } from './benchChecks'
@@ -161,21 +161,31 @@ export function recordCalls(sessions: ComputerSessions, pins: LanePins, now: () 
   return { calls: (id) => [...(byThread.get(id) ?? [])], clear: (id) => void byThread.delete(id) }
 }
 
+const THIN_REREADS = 8
+
 /**
  * The end state through the rig's own service session: a full read, and one
  * element's subtree, which the wire takes only with the epoch of the read
  * that numbered it (the last full read of that app).
  */
 export function taskReader(
-  proof: (method: 'state.get', params: ComputerParams<'state.get'>) => Promise<{ epoch: string; text: string }>,
+  proof: (method: 'state.get', params: ComputerParams<'state.get'>) => Promise<{ epoch: string; text: string; stats: { thin: boolean } }>,
   pidOf: (app: TaskApp) => number,
   session: string,
-  run: TaskReader['exec']
+  run: TaskReader['exec'],
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))
 ): TaskReader {
   const epochs = new Map<TaskApp, string>()
   return {
+    // After the service's settle wait; a thin tree (a background Chrome had not built its page's tree yet, the Mac run of
+    // 2026-11-09) is read again every 750 ms for up to 6 s before the check takes it.
     read: async (app, window): Promise<ParsedObservation> => {
-      const obs = await proof('state.get', { session, app: { pid: pidOf(app) }, window: { title: window }, mode: 'full' })
+      const ask = () => proof('state.get', { session, app: { pid: pidOf(app) }, window: { title: window }, mode: 'full', wait: COMPUTER_WAIT.observe })
+      let obs = await ask()
+      for (let i = 0; i < THIN_REREADS && obs.stats.thin; i++) {
+        await wait(750)
+        obs = await ask()
+      }
       epochs.set(app, obs.epoch)
       return parseObservation(obs.text)
     },
