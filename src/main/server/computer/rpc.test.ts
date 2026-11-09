@@ -102,7 +102,7 @@ describe('the bridge', () => {
     })
   })
 
-  it("lists a codex thread's tools in the cua words, and nothing for a thread the host does not know", () => {
+  it("lists a codex thread's tools in the cua words", () => {
     const { h, rpc } = make()
     h.set('t2', { provider: 'codex', model: 'gpt-6.1-sol' })
     const tokens = (rpc as unknown as { host: ComputerHost }).host.tokens
