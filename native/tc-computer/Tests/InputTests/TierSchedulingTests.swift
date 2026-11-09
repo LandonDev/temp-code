@@ -261,6 +261,16 @@ private final class HandedLock: MacLock, @unchecked Sendable {
         #expect(change?.pointer.after == [3, 3])
     }
 
+    @Test func inputBetweenTheKeysAndThePasteIsThePersonsSoThePasteKeepsItsOwnSpan() throws {
+        let rig = Rig()
+        // the paste's arm read input 20 ms before it, 80 ms after the keys' last event: the person
+        let touched = SessionChange(frontmost: .init(before: mail, after: mail), pointer: .init(before: [2, 2], after: [3, 3]), restorable: true, armedAt: 1_500, idleAtArmMs: 20, lastInputAt: 1_900)
+        #expect(rig.core.spanAcrossFallback(keys, touched) == touched)
+        // within the slack it is the keys' own event, read a moment apart
+        let quiet = SessionChange(frontmost: .init(before: mail, after: mail), pointer: .init(before: [2, 2], after: [3, 3]), restorable: true, armedAt: 1_500, idleAtArmMs: 70, lastInputAt: 1_900)
+        #expect(rig.core.spanAcrossFallback(keys, quiet)?.armedAt == 1_000)
+    }
+
     @Test func keysWithNoSpanLeaveThePastesOwnAndAPasteAloneIsItself() throws {
         let rig = Rig()
         let plain = SessionChange(frontmost: .init(), pointer: .init(before: [0, 0], after: [0, 0]), restorable: false)

@@ -207,10 +207,13 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
 
     /// One change for keys that showed no effect and the paste after them: the keys' arm and the
     /// person's idle time then, the paste's last event and where it left the Mac. The paste's own arm
-    /// read the keys as the latest input, so its span alone would hand the keys to the person.
+    /// read the keys as the latest input, so its span alone would hand the keys to the person. No
+    /// watch runs between the two, so they merge only when the paste's arm saw nothing newer than
+    /// the keys' last event; input in that gap is the person's, and the paste's own span keeps it so.
     func spanAcrossFallback(_ keys: SessionChange?, _ paste: SessionChange?) -> SessionChange? {
         guard let paste else { return keys }
-        guard let keys, let armedAt = keys.armedAt, let idle = keys.idleAtArmMs else { return paste }
+        guard let keys, let armedAt = keys.armedAt, let idle = keys.idleAtArmMs, let keysLast = keys.lastInputAt else { return paste }
+        if let pasteArmed = paste.armedAt, let pasteIdle = paste.idleAtArmMs, pasteArmed - pasteIdle > keysLast + Self.fallbackGapSlackMs { return paste }
         return SessionChange(
             frontmost: .init(before: keys.frontmost.before ?? paste.frontmost.before, after: paste.frontmost.after),
             pointer: .init(before: keys.pointer.before, after: paste.pointer.after),
@@ -220,6 +223,9 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
             lastInputAt: paste.lastInputAt ?? keys.lastInputAt
         )
     }
+
+    /// The idle time and the mach clock read the same event a few ms apart.
+    static var fallbackGapSlackMs: Double { 50 }
 
     /// What `type`'s event rungs did.
     enum TypedBy {
