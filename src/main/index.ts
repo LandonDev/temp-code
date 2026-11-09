@@ -20,6 +20,7 @@ import type { LaunchMirrorSnapshot, MirrorWrite } from '@shared/launchMirror'
 import { preconnectAccount } from './server/preconnect'
 import { spawnExecBrokerChild } from './execBrokerSpawn'
 import { spawnGatewayChild } from './gatewaySpawn'
+import { spawnAddonHostChild } from './addonHostSpawn'
 import { mayClaimShim, releaseGateway } from './server/gateway'
 import { killTrackedChildren } from './server/spawnBudget'
 import { handleAssetRequest, pagesRoot, registerAssetProtocol, registerSchemes, setRemoteMedia, setRemotePages } from './assets'
@@ -186,6 +187,8 @@ app.whenReady().then(async () => {
     watchMaster: !headless,
     // The gateway's byte path runs in a utility process of its own, on the Mac and on the headless box alike.
     spawnGatewayChild,
+    // So do the add-on registry's downstream MCP servers: the add-on host's own process (addonHostSpawn.ts).
+    spawnAddonHost: spawnAddonHostChild,
     // So do the helper children (git, gh, ps): the exec broker forks them, never this process.
     // TEMP_CODE_EXEC_BROKER=0 keeps them here (the before side of scripts/e2e-exec-broker.ts).
     spawnExecBroker: process.env.TEMP_CODE_EXEC_BROKER === '0' ? undefined : spawnExecBrokerChild,

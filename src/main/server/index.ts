@@ -51,6 +51,9 @@ import { StoreSync } from './remote/storeSync'
 import { AddonStore } from './addonStore'
 import { SkillStore } from './skillStore'
 import { storePushes, storeRpc } from './storeRpc'
+import { AddonHost } from './addons/addonHost'
+import { addonGrantHook, grantSourceFor } from './addons/grants'
+import type { SpawnAddonHost } from './addons/addonWire'
 import { approverOf, assertMayAnswer } from '@shared/addons'
 import { AwaySync } from './remote/awaySync'
 import { SessionMover, handleSessionMove } from './remote/sessionMover'
@@ -380,6 +383,8 @@ export async function startServer(
     preconnect?: (provider: string, account: string | null) => void
     /** Run the gateway's byte path in a utility process of its own (gatewayHost.ts); in this process when absent (tests, the in-process proofs). */
     spawnGatewayChild?: SpawnGatewayChild
+    /** Run every downstream MCP server of the add-on registry in a utility process of its own (addons/addonHost.ts); absent (tests, the in-process proofs), no add-on runs here. */
+    spawnAddonHost?: SpawnAddonHost
     /** Run every helper child (git, gh, ps, ss, lsof) from the exec broker's utility process (execBroker.ts); in this process when absent (tests, the in-process proofs). */
     spawnExecBroker?: SpawnExecBroker
     /** This app's updater (update.ts selfUpdate): fetch a version just published, by this host's Publisher or on a peer's word. The installed Mac app only. */
@@ -754,6 +759,12 @@ export async function startServer(
       })
   }
   runSkillImport()
+  // The add-on host (addons/addonHost.ts): every enabled add-on of this host's platform runs in a
+  // utility process of its own, its grant read fresh on each ask (the vault, or a test's file).
+  const addonGrants = grantSourceFor(addonStore, () => addonHost.grantsChanged(null))
+  const addonHost: AddonHost = new AddonHost({ store: addonStore, spawnChild: options.spawnAddonHost, grants: addonGrants, platform: () => hostPlatform(), cwd: () => workRoot(store).root })
+  addonGrantHook.current = (addonId) => addonHost.grantsChanged(addonId)
+  await addonHost.start()
   // Away from computer: one state on every host, newest wins (remote/awaySync.ts).
   const awaySync = new AwaySync({ away, peers })
   awaySync.start()
@@ -1916,7 +1927,8 @@ export async function startServer(
                 loop: currentLag(),
                 inFlight: inFlightRequests(),
                 gateway: { ...gateway.status().process, port: gateway.status().port },
-                execBroker: execBroker.status()
+                execBroker: execBroker.status(),
+                addonHost: addonHost.status()
               } satisfies DoctorGetResult
             })
             break
@@ -3259,6 +3271,8 @@ export async function startServer(
       builder.disposeAll()
       devRuns.disposeAll()
       await gateway.stop()
+      addonGrantHook.current = null
+      await addonHost.stop()
       execBroker.stop()
       clearInterval(syncTimer)
       accountSync.close()

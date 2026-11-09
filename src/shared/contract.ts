@@ -1337,6 +1337,8 @@ export type DoctorGetResult = Record<z.infer<typeof providerEnum>, DoctorReport>
   gateway?: { mode: 'child' | 'in-process'; pid: number; restarts: number; port: number }
   /** Where helper children (git, gh, ps) fork from: the exec broker's process (that pid, respawned `restarts` times) or the host's main process. */
   execBroker?: { mode: 'child' | 'in-process'; pid: number; restarts: number }
+  /** The add-on host's utility process (addons/addonHost.ts): its pid while one serves, how often it was respawned, and whether it is down after three exits in a minute. */
+  addonHost?: { pid: number | null; restarts: number; down: boolean }
 }
 
 export type ServerResponse =
