@@ -117,6 +117,27 @@ describe("DraftHostPicker", () => {
     expect(container.querySelector("[data-draft-host-picker]")).toBeNull();
   });
 
+  it("a chat outside every workspace starts on any connected host, at its home and outside every workspace there", async () => {
+    h.sessions = [{ id: "d", environmentId: "local", projectId: null, workspaceId: null, cwd: "~", blocks: [] }];
+    h.statuses.set("mini", { transport: "offline" });
+    render(<DraftHostPicker sessionId="d" />);
+    fireEvent.click(screen.getByRole("button", { name: "Start on This Mac" }));
+    await flush();
+    expect(options().map((o) => o.getAttribute("data-draft-host-option"))).toEqual(["local", "box"]);
+    expect(options().some(disabled)).toBe(false);
+    expect(document.querySelector("[data-draft-host-note]")).toBeNull();
+    expect(h.ensure).not.toHaveBeenCalled();
+    fireEvent.click(option("box"));
+    expect(h.sessions[0]).toMatchObject({ environmentId: "box", projectId: null, workspaceId: null, cwd: "~" });
+    // And back: never a workspace, whatever folder the window was last in.
+    cleanup();
+    render(<DraftHostPicker sessionId="d" />);
+    fireEvent.click(screen.getByRole("button", { name: "Start on The box" }));
+    await flush();
+    fireEvent.click(option("local"));
+    expect(h.sessions[0]).toMatchObject({ environmentId: "local", projectId: null, workspaceId: null, cwd: "~" });
+  });
+
   it("lists every connected host, the draft's checked; a host with a copy takes the draft", async () => {
     h.ensure.mockResolvedValue({ cwd: null, exists: false, project: null, note: "no checkout of temp-code" });
     h.statuses.set("mini", { transport: "offline" });

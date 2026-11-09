@@ -29,6 +29,7 @@ import {
   toServerAttachments,
 } from "./commands";
 import { sessionStore, type Link } from "./store";
+import { workspaceStore } from "./workspaces";
 
 /** Whether this Mac bridges threads made on the host (lib/macBridge.ts). */
 const bridge = vi.hoisted(() => ({ on: false, set: [] as string[] }));
@@ -158,6 +159,20 @@ describe("send", () => {
     sessionStore.mutate([session]);
     await send(session, "switch", [], undefined, undefined);
     expect(link.of("session.send")[0]).toMatchObject({ provider: "codex", model: "gpt-5.5" });
+  });
+
+  it("a draft outside every workspace says so, even in a workspace's folder; one in a workspace names it", async () => {
+    // The catalog knows /repo as a workspace: the draft's folder alone must not file it there.
+    vi.spyOn(workspaceStore, "workspaces", "get").mockReturnValue([
+      { id: "ws-repo", environmentId: "local", name: "repo", path: "/repo", git: true, githubRepo: null, githubRepoCheckedAt: null, createdAt: 1 },
+    ]);
+    const loose = newSession("local", "claude", "/repo");
+    const inside = newSession("local", "claude", "/repo", undefined, undefined, undefined, { workspaceId: "ws-repo" });
+    sessionStore.mutate([loose, inside]);
+    await send(loose, "outside", [], undefined, undefined);
+    await send(inside, "inside", [], undefined, undefined);
+    expect(link.of("session.create")[0]).toMatchObject({ id: loose.id, projectId: null, workspaceId: null, cwd: "/repo" });
+    expect(link.of("session.create")[1]).toMatchObject({ id: inside.id, workspaceId: "ws-repo" });
   });
 
   it("~ cwd is left to the server and fast is tuned after create", async () => {

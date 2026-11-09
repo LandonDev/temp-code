@@ -175,6 +175,12 @@ describe("planProjectDraft", () => {
     expect(draftPicks({ ...session, draftTitle: "Gateway audit" }).title).toBe("Gateway audit");
     expect(draftPicks(session).title).toBe("");
   });
+  it("rebuilds the home's draft at the home even when an older build saved it in a folder", () => {
+    const home = { ...base, projectId: null, workspaceId: null, cwd: "/Users/me/IdeaProjects/temp-code" };
+    expect(sessionFromDraft(home, null, 5)).toMatchObject({ cwd: "~", projectId: null, workspaceId: null });
+    expect(sessionFromDraft({ ...base, projectId: null }, null, 5).cwd).toBe("/work/alpha");
+  });
+
   it("keeps the record's text and picks in the rebuilt session", () => {
     const session = sessionFromDraft({ ...base, threadType: "planning" }, null, 5);
     expect(session).toMatchObject({ id: "d1", cwd: "/work/alpha", threadType: "planning", blocks: [], createdAt: 5 });

@@ -4,7 +4,7 @@ import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "./tcserver/types";
 import { threadsToMarkRead } from "./markRead";
 
 const catalog: Catalog = {
-  workspaces: [{ id: "w1", path: "/srv/work", environmentId: "env_box" } as WorkspaceMeta],
+  workspaces: [{ id: "w1", path: "/srv/work", environmentId: "env_box" } as WorkspaceMeta, { id: "w-tmp-a", path: "/tmp/a", environmentId: "local" } as WorkspaceMeta],
   projects: [{ id: "p1", workspaceId: "w1", cwd: "/srv/work/app", archived: false, environmentId: "env_box" } as ProjectMeta],
 };
 

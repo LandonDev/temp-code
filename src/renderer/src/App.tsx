@@ -164,14 +164,12 @@ import {
   rebaseToWorkspace,
   resolveSessionContext,
   type ResolvedContext,
-  workspacePathOfSession,
 } from "./lib/projectContext";
 import { deleteWorkspace, hostOfPath, projectForCwd } from "./lib/tcserver/projects";
 import type { ProjectMeta } from "./lib/tcserver/types";
 import {
   useWorkspaceCatalog,
   workspaceByPath,
-  workspaceIdOf,
   workspaceStore,
 } from "./lib/tcserver/workspaces";
 import { draftFromDefaults } from "./lib/tcserver/defaults";
@@ -656,7 +654,12 @@ export default function App() {
     perfMark("tab-switch", id);
     workspaceActions.activateTab(id);
     const tab = workspaceTabsStore.getState().tabs.find((entry) => entry.id === id);
-    if (tab) {
+    const shown = tab ? sessionStore.get(tab.focusedId) : undefined;
+    if (shown) {
+      // The window follows the thread it shows: one outside every workspace
+      // takes it to the home, so the next New chat never drafts in the last folder.
+      project.followSession(shown);
+    } else if (tab) {
       const cwd = workspaceTabCwd(
         tab,
         rebaseToWorkspace(sessionStore.getSnapshot(), workspaceStore.getSnapshot()),
@@ -1620,18 +1623,7 @@ export default function App() {
   // brings its workspace forward, or the deck filter would hide the tab we
   // are about to open and the rail and sessions list would disagree.
   const selectWorkspaceOfSession = useCallback(
-    (session: Pick<Session, "cwd" | "projectId" | "workspaceId">) => {
-      const catalog = workspaceStore.getSnapshot();
-      const projectCwd = projectStore.getState().projectCwd;
-      // A thread outside every workspace lives on the home, whatever folder
-      // it runs in.
-      if (catalog.loaded && workspaceIdOf(session, catalog.projects, catalog.workspaces) === null) {
-        if (projectCwd !== "~") project.setProjectCwd("~");
-        return;
-      }
-      const path = normalizeProjectPath(workspacePathOfSession(session, catalog));
-      if (looksLikeProject(path)) project.followWorkspace(path);
-    },
+    (session: Pick<Session, "cwd" | "projectId" | "workspaceId">) => project.followSession(session),
     [],
   );
 

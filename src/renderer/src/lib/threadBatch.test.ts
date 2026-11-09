@@ -28,7 +28,7 @@ import {
 import { batchConfirm } from "./threadBatchCopy";
 
 const catalog: Catalog = {
-  workspaces: [{ id: "w1", path: "/srv/work", environmentId: "env_box" } as WorkspaceMeta],
+  workspaces: [{ id: "w1", path: "/srv/work", environmentId: "env_box" } as WorkspaceMeta, { id: "w-tmp-a", path: "/tmp/a", environmentId: "local" } as WorkspaceMeta, { id: "w-tmp-here", path: "/tmp/here", environmentId: "local" } as WorkspaceMeta, { id: "w-tmp-other", path: "/tmp/other", environmentId: "local" } as WorkspaceMeta],
   projects: [{ id: "p1", workspaceId: "w1", cwd: "/srv/work/app", archived: false, environmentId: "env_box" } as ProjectMeta],
 };
 

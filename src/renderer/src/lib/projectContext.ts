@@ -87,6 +87,10 @@ export function workspacePathOfSession(
   session: Pick<Session, "cwd" | "projectId" | "workspaceId">,
   catalog: Catalog,
 ): string {
+  // Outside every workspace is the home, whatever folder it runs in (a box
+  // chat's home directory reads as a folder on the Mac); only a path-only
+  // row from before ids still sits in the workspace whose folder it is.
+  if (!session.projectId && !session.workspaceId) return workspaceByPath(catalog.workspaces, session.cwd)?.path ?? "~";
   const project = projectOf(catalog.projects, session);
   const workspaceId = project?.workspaceId ?? session.workspaceId;
   const workspace = workspaceId

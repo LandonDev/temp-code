@@ -202,6 +202,19 @@ describe("project actions", () => {
       expect(projectStore.getState().projectCwd).toBe("/elsewhere");
       expect(projectStore.getState().recents[0]?.path).toBe("/elsewhere");
     });
+
+    it("a thread outside every workspace takes the window home from its last folder, on the Mac or the box", () => {
+      const loose = { projectId: null, workspaceId: null };
+      for (const cwd of ["/Users/me", "/srv/agents/home", "~"]) {
+        projectStore.setState(initialProjectState({ projectCwd: MAC, selectedProjectId: "pM" }));
+        project.followSession({ ...loose, cwd });
+        // So the next New chat drafts on the home, not in the last folder.
+        expect(projectStore.getState().projectCwd).toBe("~");
+      }
+      projectStore.setState(initialProjectState({ projectCwd: "~", selectedProjectId: null }));
+      project.followSession({ cwd: BOX, projectId: null, workspaceId: "wB" });
+      expect(projectStore.getState().projectCwd).toBe(BOX);
+    });
   });
 
   it("a pick of the workspace the thread is already in puts a stale header right", () => {

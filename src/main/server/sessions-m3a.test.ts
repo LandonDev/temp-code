@@ -66,23 +66,29 @@ it('honors caller ids and rejects taken and invalid ids without altering the exi
   await expect(registry.create({ id: '../bad' })).rejects.toThrow()
   expect(store.getSession(session.id)?.title).toBe(session.title)
 })
-it('adopts old path-only sessions and assigns new path-only sessions to matching workspaces', async () => {
-  const a = await registry.create({ cwd: root })
-  const b = await registry.create({ cwd: join(root, 'other') })
-  const listener = vi.fn()
-  registry.onMeta(listener)
+it('a workspace made at a folder claims no thread already running there', async () => {
+  const a = await registry.create({ cwd: root, workspaceId: null })
   const catalog = vi.fn()
   registry.onCatalog(catalog)
   const workspace = await registry.createWorkspace(root)
-  expect(store.getSession(a.id)?.workspaceId).toBe(workspace.id)
-  expect(store.getSession(b.id)?.workspaceId).toBeNull()
-  expect(listener).toHaveBeenCalledWith(
-    expect.objectContaining({ id: a.id, workspaceId: workspace.id }),
-    expect.any(String)
-  )
+  expect(store.getSession(a.id)?.workspaceId).toBeNull()
   expect(catalog).toHaveBeenCalledWith('workspaces')
-  expect((await registry.create({ cwd: root })).workspaceId).toBe(workspace.id)
   expect((await registry.createWorkspace(root)).id).toBe(workspace.id)
+})
+it('a chat created outside every workspace stays outside, whatever its cwd', async () => {
+  const workspace = await registry.createWorkspace(root)
+  // The person's chat on the home: null says "no workspace", even in a workspace's folder.
+  const loose = await registry.create({ cwd: root, workspaceId: null, threadType: 'chat' })
+  expect(loose.workspaceId).toBeNull()
+  expect(loose.cwd).toBe(root)
+  expect(store.getSession(loose.id)?.workspaceId).toBeNull()
+  // A chat in the workspace still lands there, and runs at its folder.
+  const inside = await registry.create({ workspaceId: workspace.id, threadType: 'chat' })
+  expect(inside.workspaceId).toBe(workspace.id)
+  expect(inside.cwd).toBe(root)
+  // An older caller that leaves the workspace unsaid still takes its folder's.
+  expect((await registry.create({ cwd: root })).workspaceId).toBe(workspace.id)
+  expect((await registry.create({ cwd: join(root, 'other') })).workspaceId).toBeNull()
 })
 it('joins a concurrent create for the same folder: one row, one id', async () => {
   const [a, b] = await Promise.all([registry.createWorkspace(root), registry.createWorkspace(root)])

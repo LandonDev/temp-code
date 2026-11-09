@@ -16,7 +16,7 @@ import {
   windowRows,
   workspaceMarks,
 } from "./sidebarRows";
-import type { ProjectMeta, SessionMeta } from "./tcserver/types";
+import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "./tcserver/types";
 import { projectCardStatus } from "./projectCardModel";
 import {
   cardThreads,
@@ -333,7 +333,8 @@ describe("masterBlock", () => {
 });
 
 describe("workspaceMarks", () => {
-  const empty: Catalog = { workspaces: [], projects: [] };
+  // Path-only threads sit in a workspace only when their folder is one.
+  const empty: Catalog = { workspaces: [{ id: "w-a", path: "/a", environmentId: "local" } as WorkspaceMeta, { id: "w-b", path: "/b", environmentId: "local" } as WorkspaceMeta, { id: "w-srv-b", path: "/srv/b", environmentId: "local" } as WorkspaceMeta], projects: [] };
   const at = (cwd: string) => ({ cwd, workspaceId: null });
 
   it("is quiet for a seen, idle thread and unread for an unseen settled one", () => {

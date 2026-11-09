@@ -2050,13 +2050,9 @@ export class SessionRegistry {
       ...(opts.linkId ? { linkId: opts.linkId } : {}),
       createdAt: Date.now()
     }
+    // A thread outside every workspace stays there: a workspace made later at
+    // its folder never claims it.
     this.store.insertWorkspace(meta)
-    for (const session of this.store.listSessions()) {
-      if (session.projectId || session.workspaceId || workspacePathKey(session.cwd) !== key) continue
-      this.store.setSessionWorkspace(session.id, meta.id)
-      const next = this.store.getSession(session.id)
-      if (next) this.notifyMeta(next)
-    }
     this.notifyCatalog('workspaces')
     return meta
   }
@@ -2680,7 +2676,9 @@ export class SessionRegistry {
     if (!project && params.workspaceId && !workspace) {
       throw new Error(`unknown workspace: ${params.workspaceId}`)
     }
-    if (!project && !workspace && !params.workspaceId && params.cwd) {
+    // Only a create that left the workspace unsaid takes its folder's: an
+    // explicit null is a chat outside every workspace, whatever its cwd.
+    if (!project && params.workspaceId === undefined && params.cwd) {
       workspace = this.store.listWorkspaces().find((w) => w.path === params.cwd) ?? null
     }
     const cwd = project?.cwd ?? workspace?.path ?? params.cwd ?? homedir()

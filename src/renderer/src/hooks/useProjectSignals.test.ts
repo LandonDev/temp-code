@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { Catalog } from "../lib/projectContext";
 import type { Session } from "../lib/session";
+import type { WorkspaceMeta } from "../lib/tcserver/types";
 import { projectSignals, sessionNeedsYou } from "./useProjectSignals";
 
-const catalog: Catalog = { workspaces: [], projects: [] };
+// Path-only threads sit in a workspace only when their folder is one.
+const catalog: Catalog = {
+  workspaces: [{ id: "w-a", path: "/a", environmentId: "local" } as WorkspaceMeta, { id: "w-b", path: "/b", environmentId: "local" } as WorkspaceMeta, { id: "w-repo", path: "/repo", environmentId: "local" } as WorkspaceMeta],
+  projects: [],
+};
 
 type Signal = Parameters<typeof sessionNeedsYou>[0];
 

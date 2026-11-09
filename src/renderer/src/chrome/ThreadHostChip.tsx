@@ -17,7 +17,7 @@ import {
 } from "../lib/threadMove";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Facts } from "../surfaces/settings/hosts/Facts";
-import { retargetDraft } from "./DraftHostPicker";
+import { retargetDraft, retargetLooseDraft } from "./DraftHostPicker";
 import { useToastSync } from "./toastSync";
 import { Server } from "./icons";
 import type { MenuRow } from "./menuRows";
@@ -144,7 +144,7 @@ export function MoveThreadConfirm({
   );
 }
 
-/** An unsent draft onto `to`'s copy of its project, made there when missing (DraftHostPicker's pick). */
+/** An unsent draft onto `to`'s copy of its project, made there when missing, or a chat outside every workspace onto `to`'s home (DraftHostPicker's pick). */
 async function retargetDraftTo(
   sessionId: string,
   to: string,
@@ -152,6 +152,8 @@ async function retargetDraftTo(
   workspaces: readonly WorkspaceMeta[],
 ): Promise<void> {
   const draft = sessionStore.get(sessionId);
+  // A chat outside every workspace goes to that host's home, outside every workspace there too.
+  if (draft && !draft.projectId && !draft.workspaceId) return retargetLooseDraft(sessionId, to);
   const project = draft?.projectId ? projects.find((p) => p.id === draft.projectId && p.environmentId === draft.environmentId) : undefined;
   if (!project?.linkId) throw new Error("the draft's project is not linked to that host");
   const copy =

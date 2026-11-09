@@ -57,10 +57,13 @@ export function newBootSeed(cwd: string = lastProjectPath() ?? "~"): BootSeed {
   const environmentId = registry.primary().environmentId;
   const key = draftKeyOf({ ...ctx, environmentId }, catalog);
   const record = projectDrafts.get(key);
+  // A folder the catalog does not know (yet) is no workspace: the seed is the
+  // home's draft, at the home, never a loose chat in the window's last folder.
+  const seedCwd = ctx.projectId || ctx.workspaceId ? cwd : "~";
   const session =
     record && !sessionStore.metaOf(record.id)
       ? sessionFromDraft(record, null)
-      : newDefaultSession(environmentId, cwd, undefined, ctx.projectId ? ctx : { workspaceId: ctx.workspaceId });
+      : newDefaultSession(environmentId, seedCwd, undefined, ctx.projectId ? ctx : { workspaceId: ctx.workspaceId });
   if (session.id !== record?.id) projectDrafts.put(key, { ...draftPicks(session), segments: [], attachments: [] });
   return { session, tab: newTab(session.id) };
 }

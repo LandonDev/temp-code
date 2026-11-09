@@ -5,6 +5,7 @@ import {
   folderKey,
   homeOrWorkspacePath,
   loadSelectedProject,
+  landingPathOfSession,
   rebaseToWorkspace,
   resolveSessionContext,
   sameFolder,
@@ -84,10 +85,18 @@ describe("contextOfSession", () => {
 describe("workspacePathOfSession / rebaseToWorkspace", () => {
   it("maps a worktree thread to its workspace folder", () => {
     expect(workspacePathOfSession({ cwd: projects[0].cwd, projectId: "p1" }, catalog)).toBe("/home/me/repo");
-    expect(workspacePathOfSession({ cwd: "/tmp/x" }, catalog)).toBe("/tmp/x");
+    expect(workspacePathOfSession({ cwd: "/tmp/x", workspaceId: "w-unlisted" }, catalog)).toBe("/tmp/x");
+  });
+  it("places a thread outside every workspace on the home, whatever folder it runs in, on the Mac or the box", () => {
+    // A box chat's home directory and any folder that is no workspace read as the home here.
+    expect(workspacePathOfSession({ cwd: "/srv/agents/home", projectId: null, workspaceId: null }, catalog)).toBe("~");
+    expect(landingPathOfSession({ cwd: "/srv/agents/home", projectId: null, workspaceId: null }, catalog)).toBe("~");
+    expect(workspacePathOfSession({ cwd: "/tmp/x" }, catalog)).toBe("~");
+    expect(workspacePathOfSession({ cwd: "~" }, catalog)).toBe("~");
+    expect(workspacePathOfSession({ cwd: "/home/me/repo", workspaceId: "w1" }, catalog)).toBe("/home/me/repo");
   });
   it("returns the same array when nothing moves", () => {
-    const sessions = [{ cwd: "/tmp/x", projectId: null, workspaceId: null }];
+    const sessions = [{ cwd: "/home/me/repo", projectId: null, workspaceId: "w1" }];
     expect(rebaseToWorkspace(sessions, catalog)).toBe(sessions);
     const moved = rebaseToWorkspace([{ cwd: projects[0].cwd, projectId: "p1", workspaceId: null }], catalog);
     expect(moved[0].cwd).toBe("/home/me/repo");

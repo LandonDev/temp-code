@@ -102,7 +102,16 @@ column keep their 40px headers. The bar's icon buttons are 28px
 chip's focus ring is the global outline alone.
 The home (the rail's Chats: the chats outside every workspace) has no
 strip: its chats are the workspace column's Chats list, so chips would say
-it twice. Its live row holds the thread on screen's title alone, 13px
+it twice. A thread belongs to the home when it has neither a project nor a
+workspace, whatever folder it runs in, on the Mac or the box (a box chat's
+home directory is a folder to the Mac); only a path-only row from before ids
+sits in the workspace whose folder its cwd is (`workspacePathOfSession`). Its
+draft runs at the home, and its first send creates it with
+`workspaceId: null`, which the host never fills from the cwd. Showing a home
+thread, by a tab or the rail, moves the window to the home
+(`project.followSession`), so New chat from there never drafts in the
+window's last folder; a boot whose last folder the catalog does not know
+opens on the home's draft. Its live row holds the thread on screen's title alone, 13px
 medium foreground where the first chip's glyph would start (18px in), then
 the same end group; with the home's draft on screen, the end group alone.
 The title renames in place on a double-click and opens the thread's menu on
@@ -922,8 +931,11 @@ its name in mono; a folder that is no repo reads "No repo" in sans, and the
 wait for the branch is a `Skeleton` in a short name's shape, never a pill.
 
 The host in that row (chrome/DraftHostPicker.tsx) shows for a draft of a
-project linked across hosts: the host's glyph and name, and a menu of every
-connected host; picking one moves the draft there. A host with no copy
+project linked across hosts, or a chat outside every workspace: the host's
+glyph and name, and a menu of every connected host; picking one moves the
+draft there. A chat outside every workspace moves to that host's home and
+stays outside every workspace (`retargetLooseDraft`; the thread menu's
+"Move to <host>…" does the same for it). A host with no copy
 reads "New copy" and gets one on pick (`project.ensureLinked`); a host with
 no checkout is disabled and says why. A new project has its copies on
 every host whose workspace is linked within seconds (docs/box.md "One

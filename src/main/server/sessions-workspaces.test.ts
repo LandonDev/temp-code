@@ -153,14 +153,14 @@ it('concurrent creates through symlinks and trailing slashes join one promise an
   expect(pushes.mock.calls).toEqual([['workspaces']])
 })
 
-it('new workspaces adopt loose sessions whose cwd uses the same real folder', async () => {
+it('a new workspace never claims a chat outside every workspace in the same real folder', async () => {
   const folder = await checkout('loose', null)
   const alias = join(root, 'alias')
   await symlink(folder, alias)
   const session = await registry.create({ cwd: `${alias}/` })
   const workspace = await registry.createWorkspace(`${folder}/`)
   expect(workspace.path).toBe(folder)
-  expect(store.getSession(session.id)?.workspaceId).toBe(workspace.id)
+  expect(store.getSession(session.id)?.workspaceId).toBeNull()
 })
 
 it('a failed create releases its normalized in-flight key', async () => {

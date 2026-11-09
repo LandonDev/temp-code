@@ -3,7 +3,7 @@ import { useStore } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { createStore } from "zustand/vanilla";
 import { focusedFileTab, type WorkspaceTab } from "../lib/layout";
-import { loadSelectedProject, sameFolder, saveSelectedProject } from "../lib/projectContext";
+import { loadSelectedProject, sameFolder, saveSelectedProject, workspacePathOfSession } from "../lib/projectContext";
 import {
   lastProjectPath,
   loadArchivedProjects,
@@ -14,11 +14,12 @@ import {
   type RecentProject,
 } from "../lib/recents";
 import { linkedWorkspaceIds } from "../lib/linkedRail";
-import { sessionWorkCwd } from "../lib/session";
+import { sessionWorkCwd, type Session } from "../lib/session";
 import { sessionStore, useSessionShells, type SessionShell } from "../lib/tcserver/store";
 import {
   useWorkspaceCatalog,
   workspaceByPath,
+  workspaceIdOf,
   workspaceStore,
   type WorkspaceCatalog,
 } from "../lib/tcserver/workspaces";
@@ -210,6 +211,21 @@ export const project = {
   /** A pick of the workspace the window's thread already lives in: nothing
    *  opens, but a header left on another folder follows the thread. True
    *  when the thread was there, so the caller stops. */
+  /** The window goes where a thread it shows lives: a thread outside every
+   *  workspace to the home, whatever folder it runs in (on the Mac or the
+   *  box), so the next New chat drafts there and never in the window's last
+   *  folder; any other thread to its workspace. Nothing moves until the
+   *  catalog has loaded. */
+  followSession: (session: Pick<Session, "cwd" | "projectId" | "workspaceId">) => {
+    const catalog = workspaceStore.getSnapshot();
+    if (!catalog.loaded) return;
+    if (workspaceIdOf(session, catalog.projects, catalog.workspaces) === null) {
+      if (projectStore.getState().projectCwd !== "~") project.setProjectCwd("~");
+      return;
+    }
+    const path = normalizeProjectPath(workspacePathOfSession(session, catalog));
+    if (looksLikeProject(path)) project.followWorkspace(path);
+  },
   alreadyIn: (threadCwd: string | undefined, cwd: string): boolean => {
     if (!threadCwd || !sameProjectPath(threadCwd, cwd)) return false;
     project.followWorkspace(cwd);

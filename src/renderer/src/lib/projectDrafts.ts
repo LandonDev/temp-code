@@ -213,7 +213,10 @@ export function draftPicks(session: Session): DraftPatch {
   };
 }
 
-/** The draft's Session rebuilt from its record, at `place` when it moved. */
+/** The draft's Session rebuilt from its record, at `place` when it moved. A
+ *  draft outside every workspace is the home's and runs in its home: a record
+ *  saved with a folder (an older build's boot seed in the window's last
+ *  folder) never brings that folder back. */
 export function sessionFromDraft(record: DraftRecord, place: DraftPlace | null, now = Date.now()): Session {
   const where = place ?? record;
   return {
@@ -224,7 +227,7 @@ export function sessionFromDraft(record: DraftRecord, place: DraftPlace | null, 
     modelSettings: record.modelSettings,
     runtimeMode: record.runtimeMode,
     title: HARNESS_LABEL[record.harness],
-    cwd: where.cwd,
+    cwd: where.projectId || where.workspaceId ? where.cwd : "~",
     projectId: where.projectId,
     workspaceId: where.workspaceId,
     threadType: record.threadType,

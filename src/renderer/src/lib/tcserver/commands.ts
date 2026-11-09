@@ -6,7 +6,6 @@ import { policyForMode } from "./access";
 import { needsUpload, uploadAttachment } from "../attachmentUpload";
 import { registry, type Link } from "../connection";
 import { sessionStore } from "./store";
-import { workspaceByPath, workspaceStore } from "./workspaces";
 import type {
   AgentType,
   CreateSessionInput,
@@ -142,12 +141,9 @@ export async function ensureCreated(session: Session): Promise<SessionMeta> {
     // A name typed in the draft row is the thread's title, kept over the generated one.
     ...(draftTitleOf(session) ? { title: draftTitleOf(session) } : {}),
     projectId: session.projectId ?? null,
-    // A draft minted before the catalog loaded still lands in its folder's workspace.
-    workspaceId:
-      session.workspaceId ??
-      (session.projectId
-        ? null
-        : (workspaceByPath(workspaceStore.workspaces, session.cwd)?.id ?? null)),
+    // The draft's own workspace; null is a chat outside every workspace, which
+    // the host never files by its cwd (a workspace's folder included).
+    workspaceId: session.workspaceId ?? null,
   });
   const meta: SessionMeta = { ...wire, environmentId: link.environmentId };
   sessionStore.adopt(meta, { created: true });

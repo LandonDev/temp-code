@@ -77,7 +77,8 @@ describe("planBoot", () => {
       seed,
       [],
     );
-    expect(plan.projectCwd).toBe("/seed");
+    // "/seed" is no workspace the catalog knows: the seed is the home's draft.
+    expect(plan.projectCwd).toBe("~");
     expect(plan.sessions).toEqual([seed.session]);
     expect(plan.tabs).toEqual([seed.tab]);
     expect(plan.activeTabId).toBe(seed.tab.id);
@@ -169,5 +170,13 @@ describe("newBootSeed and the project's remembered draft", () => {
     const again = newBootSeed("/seed");
     expect(again.session.id).toBe(first.session.id);
     expect(projectDrafts.get(key)!.segments).toEqual([{ text: "where I was" }]);
+  });
+
+  it("a last folder the catalog does not know seeds the home's draft at the home, never in that folder", () => {
+    projectDrafts.reload();
+    const { session } = newBootSeed("/Users/me/IdeaProjects/temp-code");
+    expect(session).toMatchObject({ cwd: "~", projectId: null, workspaceId: null });
+    expect(projectDrafts.keyOfDraft(session.id)).toBe("loose:");
+    expect(projectDrafts.get("loose:")!.cwd).toBe("~");
   });
 });
