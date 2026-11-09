@@ -90,6 +90,8 @@
     "script:e2e-computer": "esbuild scripts/e2e-computer.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:aliax-core=./node_modules/aliax-core/src --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-computer.mjs && node scripts/.out/e2e-computer.mjs",
     "script:e2e-computer-bridge": "bun scripts/e2e-computer-bridge.ts",
     "script:compare-computer-words": "esbuild scripts/compare-computer-words.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:aliax-core=./node_modules/aliax-core/src --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/compare-computer-words.mjs && ALIAX_SHIM_PORT=9 node scripts/.out/compare-computer-words.mjs",
+    "script:e2e-computer-preview": "esbuild scripts/e2e-computer-preview.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:aliax-core=./node_modules/aliax-core/src --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-computer-preview.mjs && node scripts/.out/e2e-computer-preview.mjs",
+    "script:e2e-computer-ui": "bun scripts/e2e-computer-ui.ts",
     "script:e2e-queue": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-queue.ts",
     "script:e2e-titled-threads": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-titled-threads.ts",
     "script:e2e-checkpoint-turn": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-checkpoint-turn.ts",
