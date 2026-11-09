@@ -15,6 +15,8 @@ import {
   BENCH_RULE,
   BENCH_TIMING,
   EMPTY_BASELINE,
+  NO_BASELINE_LINE,
+  benchOutcome,
   baselinePath,
   callsLimit,
   hostMsLimit,
@@ -448,5 +450,27 @@ describe('BENCH_TIMING', () => {
   it('holds its numbers to the rule', () => {
     expect(BENCH_RULE.passOf).toBeLessThanOrEqual(1 + BENCH_RULE.reruns)
     expect(BENCH_TIMING.queueSkipMs).toBeLessThan(BENCH_TIMING.budgetMs)
+  })
+})
+
+describe('benchOutcome', () => {
+  it('passes a gate run with no baseline at all and has it write the first rows', () => {
+    expect(benchOutcome({ mode: 'gate', ok: false, rebaseline: false, baselineRows: 0 })).toEqual({ fail: false, write: true, note: NO_BASELINE_LINE })
+    expect(NO_BASELINE_LINE).toBe('no baseline, first run writes it')
+    // the first rows come from the tasks that passed: mergeBaseline adds only those
+    expect(mergeBaseline(EMPTY_BASELINE, report([run(), run({ task: 'chrome-read', outcome: 'failed', reason: 'x' })]), { replace: false }).rows.map((r) => r.task)).toEqual(['textedit-write'])
+  })
+
+  it('once rows exist, fails a red gate run and writes only a green one', () => {
+    expect(benchOutcome({ mode: 'gate', ok: false, rebaseline: false, baselineRows: 3 })).toEqual({ fail: true, write: false, note: null })
+    expect(benchOutcome({ mode: 'gate', ok: true, rebaseline: false, baselineRows: 3 })).toEqual({ fail: false, write: true, note: null })
+    expect(benchOutcome({ mode: 'gate', ok: false, rebaseline: true, baselineRows: 3 })).toEqual({ fail: true, write: true, note: null })
+  })
+
+  it('a hand run fails on its verdict and writes only with --rebaseline; report-only and reference never', () => {
+    expect(benchOutcome({ mode: 'hand', ok: false, rebaseline: false, baselineRows: 0 })).toEqual({ fail: true, write: false, note: null })
+    expect(benchOutcome({ mode: 'hand', ok: true, rebaseline: true, baselineRows: 0 })).toEqual({ fail: false, write: true, note: null })
+    for (const mode of ['report-only', 'reference'] as const)
+      expect(benchOutcome({ mode, ok: false, rebaseline: false, baselineRows: 0 })).toEqual({ fail: false, write: false, note: null })
   })
 })

@@ -50,6 +50,7 @@ import {
 import {
   BENCH_TIMING,
   EMPTY_BASELINE,
+  benchOutcome,
   baselinePath,
   findBase,
   judgeBench,
@@ -63,7 +64,7 @@ import {
   type BenchReport,
   type BenchRun
 } from './lib/computerBench'
-import { RigStop, asProbe, repoRoot, startRig, type Rig } from './lib/computerRig'
+import { RigStop, asProbe, otherProof, repoRoot, startRig, type Rig } from './lib/computerRig'
 import { killGroup, startDevInstance } from './lib/devInstance'
 import { COMPUTER_ONLY_LINE, COMPUTER_TASKS, gateTasks, taskById, type CallRecord, type CheckResult, type ComputerTask, type DevInstance, type TaskContext, type TaskId, type TaskStart } from './lib/computerTasks'
 import { buildIsCurrent, type BuildStamp } from './lib/soakJudge'
@@ -393,6 +394,13 @@ async function oneRun(lane: Lane, task: ComputerTask, attempt: number): Promise<
     cards: [],
     front: { before: '', after: '', bounced: false, personActive: false, benchInFront: false }
   }
+  // One proof on the Mac at a time: another computer proof running holds this run, at most 30 minutes.
+  for (const until = Date.now() + 30 * 60_000; ; ) {
+    const other = otherProof()
+    if (!other) break
+    if (Date.now() > until) return { ...run, reason: `another computer proof is running (${other})` }
+    await sleep(30_000)
+  }
   // Codex's own computer use may take the pointer or the front: the reference waits for the Mac to be idle 2 minutes.
   if (args.mode === 'reference') {
     const held = await macReady(probe, UNGATED, { quietMs: 120_000, everyMs: 30_000, maxMs: 30 * 60_000, skip: 'the person is active' })
@@ -597,15 +605,16 @@ try {
   const table = writeReports()
   console.log(table)
   const verdict = judgeBench(report, baseline)
-  const write = (args.mode === 'gate' && verdict.ok) || (args.rebaseline && (args.mode === 'gate' || args.mode === 'hand'))
-  if (write) {
+  const outcome = benchOutcome({ mode: args.mode, ok: verdict.ok, rebaseline: args.rebaseline, baselineRows: baseline.rows.length })
+  if (outcome.note) log(outcome.note)
+  if (outcome.write) {
     const next = mergeBaseline(baseline, report, { replace: args.rebaseline })
     if (JSON.stringify(next) !== JSON.stringify(baseline)) {
       writeBaseline(BASELINE, next)
       log(`baseline: ${next.rows.length} rows in ${BASELINE}`)
     }
   }
-  exitCode = (args.mode === 'gate' || args.mode === 'hand') && !verdict.ok ? 1 : 0
+  exitCode = outcome.fail ? 1 : 0
   log(`report: ${join(WORK, 'report.json')}`)
   await cleanup()
 }

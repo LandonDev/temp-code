@@ -369,6 +369,26 @@ export function mergeBaseline(b: Baseline, report: BenchReport, opts: { replace:
   return { version: 1, rows }
 }
 
+/** A gate run that finds no baseline at all: the person's rule of 2026-11-09, the step passes and the run writes the first rows. */
+export const NO_BASELINE_LINE = 'no baseline, first run writes it'
+
+/**
+ * What a run does with its verdict: whether it fails its exit, whether it
+ * writes the baseline (replacing rows with --rebaseline), and the line it
+ * ends with. A gate run with no baseline rows at all passes and writes the
+ * rows of the tasks that passed; after that a gate run writes the rows it
+ * lacks only when green. Report-only and reference runs never fail or write.
+ */
+export function benchOutcome(o: { mode: BenchMode; ok: boolean; rebaseline: boolean; baselineRows: number }): { fail: boolean; write: boolean; note: string | null } {
+  const judged = o.mode === 'gate' || o.mode === 'hand'
+  const firstRun = o.mode === 'gate' && o.baselineRows === 0
+  return {
+    fail: judged && !o.ok && !firstRun,
+    write: (o.mode === 'gate' && (o.ok || firstRun)) || (judged && o.rebaseline),
+    note: firstRun ? NO_BASELINE_LINE : null
+  }
+}
+
 // ── judging ─────────────────────────────────────────────────────────────
 
 export const callsLimit = (base: number, rule: BenchRule = BENCH_RULE): number => Math.max(rule.calls.ratio * base, base + rule.calls.plus)

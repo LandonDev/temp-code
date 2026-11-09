@@ -3794,6 +3794,7 @@ proof and the sizing rules; the pieces, by name:
   turns a leg the real person touched inconclusive).
 - The task benchmark (docs/computer-protocol.md §17): `bun run
 - The task benchmark (docs/computer-protocol.md §19): `bun run
+- The task benchmark (docs/computer-protocol.md §20): `bun run
   script:e2e-computer-bench` runs seven real desktop tasks (TextEdit, Chrome
   on bench.html, a dev instance's Settings, System Settings' one switch, a
   save dialog) on Opus 5.5, GPT-6.1 Sol and Muse Wonder 1.0 side by side,
@@ -3806,8 +3807,10 @@ proof and the sizing rules; the pieces, by name:
   `ComputerSessions.run` recorded with its host time. `BENCH_RULE`
   (scripts/lib/computerBench.ts) judges the end state, the median computer
   calls and the median host ms per call against
-  `<git-dir>/temp-code-gate/computer-bench/baseline.json` (written by the
-  first green `--gate` run, replaced by `--rebaseline`), a breach rerun twice
+  `<git-dir>/temp-code-gate/computer-bench/baseline.json` (a `--gate` run
+  that finds none passes with "no baseline, first run writes it" and writes
+  the rows of the tasks that passed; then a green run adds rows,
+  `--rebaseline` replaces them), a breach rerun twice
   and judged two of three. Flags: `--gate`, `--report-only`, `--runs n`,
   `--models`, `--tasks`, `--judge <report.json>` (any host), `--reference
   codex` (Codex's own computer use, by hand); `TC_BENCH_UNGATED=1` drops the

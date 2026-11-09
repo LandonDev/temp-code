@@ -154,7 +154,9 @@ system, never the model's word.
   before a launch), a thread the scheduler held queued past 5 minutes.
 - **The baseline** is `<git-dir>/temp-code-gate/computer-bench/baseline.json`
   in the checkout that publishes, one row per model, task and task version.
-  The first green gate run writes the rows it lacks; a row of another task
+  A gate run that finds no baseline at all passes with "no baseline, first
+  run writes it" and writes the rows of the tasks that passed; after that a
+  gate run writes the rows it lacks only when green. A row of another task
   version is ignored, so a changed task starts over; `--rebaseline` replaces
   the rows of every task that passed. A file that exists but cannot be read
   fails the step, naming its path and `--rebaseline`. `--report-only` and

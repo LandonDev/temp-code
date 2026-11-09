@@ -18,24 +18,19 @@
  *   bun run script:compare-computer-words [-- --arms A,C,AV,CV --tasks textedit-write,chrome-read,chrome-form --runs 2 --models claude-opus-5-5,gpt-6.1-sol,muse-wonder-1.0 --policy | --report-only]
  * The report lands in /tmp/tc-words-cmp/report.{json,md}; nothing else is left behind.
  */
-import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { randomBytes } from 'node:crypto'
-import { configure } from 'aliax-core'
-import { startServer, type RunningServer } from '../src/main/server/index'
-import { computerHooks } from '../src/main/server/computer/mcp'
-import { ComputerRpcError } from '../src/main/server/computer/connection'
 import { renderComputerMechanics, setComputerWordsOverride } from '../src/main/server/computer/prompts'
-import { REFUSE_SESSION_TIER, setSessionTierGate } from '../src/main/server/computer/tierGate'
-import { parseObservation, type ParsedObservation } from '../src/shared/computer/observation'
-import type { AppRef, ComputerMethod, ComputerParams, ComputerResult, StepResult } from '../src/shared/computer/protocol'
+import { REFUSE_SESSION_TIER } from '../src/main/server/computer/tierGate'
 import { computerToolSpecs, tierVerdictSetting } from '../src/shared/computer/tools'
 import type { AgentEvent, EventRow } from '../src/shared/events'
-import { COMPARISON_TASKS, POLICY_TASK, taskById, type CallRecord, type TaskApp, type TaskId, type TaskReader, type TaskStart } from './lib/computerTasks'
+import { exec } from './lib/benchChecks'
+import { DEFAULT_LANE, RIG_BUNDLES, RigStop, otherProof, repoRoot, startRig, type Rig } from './lib/computerRig'
+import { COMPARISON_TASKS, POLICY_TASK, taskById, type CallRecord, type TaskApp, type TaskId, type TaskStart } from './lib/computerTasks'
 import { ARMS, decide, runPlan, type Arm, type ModelUnderTest, type RunRecord, type RunStatus } from './lib/computerWordsJudge'
-import { buildTcComputer } from './lib/tcComputerBuild'
 
 if (process.platform !== 'darwin') {
   console.log('skipped: macOS only')
@@ -43,20 +38,18 @@ if (process.platform !== 'darwin') {
 }
 
 // the bundle runs from scripts/.out (package.json's script), the source from scripts/
-const HERE = dirname(fileURLToPath(import.meta.url))
-const ROOT = resolve(HERE, HERE.endsWith('/.out') ? '../..' : '..')
+// the bundle runs from scripts/.out (package.json's script), the source from scripts/: repoRoot walks up to the checkout
+const ROOT = repoRoot()
 const WORK = '/tmp/tc-words-cmp'
 const REPORT_JSON = join(WORK, 'report.json')
 const REPORT_MD = join(WORK, 'report.md')
 const KEEP = new Set(['report.json', 'report.md'])
-const BIN = join(ROOT, 'resources/native/tc-computer')
-const PROBE = join(WORK, 'computer-proof-probe')
 const BENCH = pathToFileURL(join(ROOT, 'src/main/server/computer/fixtures/page/bench.html')).href
-const BUNDLES: Record<TaskApp, string> = { TextEdit: 'com.apple.TextEdit', 'Google Chrome': 'com.google.Chrome' }
+/** The comparison's two apps, whose tier verdicts every run starts without. */
+const BUNDLES = [RIG_BUNDLES.TextEdit, RIG_BUNDLES['Google Chrome']]
 const TURN_POLL_MS = 30_000
 const TURN_GIVE_UP_MS = 30 * 60_000
 /** The other computer proofs: one proof on the Mac at a time. */
-const OTHER_PROOFS = ['scripts/.out/e2e-computer.mjs', 'e2e-tc-computer', 'tc-computer-proof/', 'ax-reader-proof', 'input-proof', 'capture-proof']
 const OFF_ROUTE_OK = /(^|__|\.)(ToolSearch|tool_search|update_notes)$/
 
 const MODELS: ModelUnderTest[] = [
@@ -158,34 +151,23 @@ if (reportOnly) {
 rmSync(WORK, { recursive: true, force: true })
 mkdirSync(WORK, { recursive: true })
 
-// ── the Mac, read from outside ──────────────────────────────────────────
+// ── the server, as index.ts wires it on a Mac (scripts/lib/computerRig.ts) ──
 
-execFileSync('xcrun', ['swiftc', '-O', '-o', PROBE, join(ROOT, 'scripts/mac/computer-proof-probe.swift')], { stdio: 'pipe' })
-const probe = <T>(command: string): T => JSON.parse(execFileSync(PROBE, [command], { encoding: 'utf8', timeout: 10_000 })) as T
-const screenReady = (): boolean => {
-  const screen = probe<{ locked: boolean; asleep: boolean }>('screen')
-  return !screen.locked && !screen.asleep
+let rig: Rig
+try {
+  rig = await startRig({ root: ROOT, work: WORK, gate: REFUSE_SESSION_TIER, proofSession: 'cmp-proof' })
+} catch (e) {
+  if (!(e instanceof RigStop)) throw e
+  console.log(`STOP  ${e.message}`)
+  process.exit(1)
 }
+const { server } = rig
+const registry = server.registry
+const wire = rig.wire
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
-const pids = (name: string): Set<number> => {
-  try {
-    return new Set(execFileSync('pgrep', ['-x', name], { encoding: 'utf8' }).split('\n').filter(Boolean).map(Number))
-  } catch {
-    return new Set()
-  }
-}
-
-/** Another computer proof running on this Mac, by its command line. */
-const otherProof = (): string | null => {
-  for (const pattern of OTHER_PROOFS) {
-    try {
-      const found = execFileSync('pgrep', ['-f', pattern], { encoding: 'utf8' }).split('\n').filter(Boolean).map(Number)
-      if (found.some((pid) => pid !== process.pid)) return pattern
-    } catch {
-      /* none */
-    }
-  }
-  return null
+const screenReady = (): boolean => {
+  const screen = rig.mac.screen()
+  return !screen.locked && !screen.asleep
 }
 
 /** Before every launch: no other computer proof running, and an unlocked, lit screen (AX sees no windows otherwise); polled every 30 s for at most 30 minutes. */
@@ -200,115 +182,15 @@ async function waitForTurn(): Promise<string | null> {
   }
 }
 
-// ── the server, as index.ts wires it on a Mac ───────────────────────────
+// The runner's own session reads the end state, never the model's word.
+const reader = rig.reader(DEFAULT_LANE)
 
-const build = buildTcComputer({ root: ROOT, require: true })
-console.log(`tc-computer: ${build.built ? `built in ${build.ms} ms` : build.skipped}`)
-process.env.TEMP_CODE_COMPUTER_BIN = BIN
-const grants = JSON.parse(execFileSync(BIN, ['permissions'], { encoding: 'utf8' })) as { accessibility: boolean }
-if (!grants.accessibility) {
-  console.log('STOP  Accessibility is off for TempCode: turn it on under System Settings → Privacy & Security → Accessibility')
-  process.exit(1)
-}
+// ── the scratch apps: one lane, pinned by pid; the person accepts them coming forward ──
 
-const pinned: Partial<Record<TaskApp, number>> = {}
-const QUERIES: Record<TaskApp, string[]> = { TextEdit: ['textedit', 'com.apple.textedit'], 'Google Chrome': ['google chrome', 'chrome', 'com.google.chrome'] }
-const resolveApp = (q: string): AppRef | null => {
-  for (const app of Object.keys(QUERIES) as TaskApp[]) if (QUERIES[app].includes(q.toLowerCase()) && pinned[app]) return { pid: pinned[app]! }
-  return null
-}
-// an empty vault routes nothing: every thread passes its CLI's own login through to the provider, never the person's live shim
-const ALIAX = join(WORK, 'data', 'aliax')
-mkdirSync(join(ALIAX, 'secrets'), { recursive: true, mode: 0o700 })
-writeFileSync(join(ALIAX, 'vault.key'), `${randomBytes(32).toString('hex')}\n`, { mode: 0o600 })
-writeFileSync(join(ALIAX, 'profiles.json'), '{}\n')
-configure({ dataDir: ALIAX, fetch: (url, init) => fetch(url, init), secrets: { mode: 'fileKey', path: join(ALIAX, 'vault.key') }, appName: 'temp-code-words-cmp' })
-const server: RunningServer = await startServer(join(WORK, 'data', 'app.db'), { dataDir: join(WORK, 'data'), claimShim: false, remotePort: 0, computerResolveApp: resolveApp })
-// codex 0.158+ refuses a plain-http base, which is all an unrouted thread gets from the shim or this gateway:
-// with the gateway stopped and the shim's port dead (the package script sets ALIAX_SHIM_PORT), every CLI uses its own login
-await server.gateway.stop()
-const registry = server.registry
-const host = computerHooks.current
-if (!host?.available()) {
-  console.log('STOP  computer use is unavailable in this server')
-  process.exit(1)
-}
-setSessionTierGate(REFUSE_SESSION_TIER)
-
-// What each run's steps did, from the wire.
-const wire = { steps: 0, failed: 0, kinds: {} as Record<string, number> }
-const request = host.service.request.bind(host.service)
-host.service.request = (async (method: ComputerMethod, params: never, opts?: { signal?: AbortSignal; timeoutMs?: number }) => {
-  try {
-    const result = await request(method, params, opts)
-    const steps: StepResult[] =
-      method === 'action.run' ? [(result as { step: StepResult }).step] : method === 'action.batch' ? (result as { steps: StepResult[] }).steps : []
-    if ((params as { session?: string }).session !== 'cmp-proof')
-      for (const s of steps) {
-        if (s.status === 'not-run') continue
-        wire.steps++
-        if (s.status === 'failed') {
-          wire.failed++
-          wire.kinds[s.error.kind] = (wire.kinds[s.error.kind] ?? 0) + 1
-        }
-      }
-    return result
-  } catch (e) {
-    if (e instanceof ComputerRpcError && e.data) wire.kinds[e.data.kind] = (wire.kinds[e.data.kind] ?? 0) + 1
-    throw e
-  }
-}) as typeof host.service.request
-
-// The runner's own session: the checks read the end state through it, never the model's word.
-const proofCall = async <M extends ComputerMethod>(method: M, params: ComputerParams<M>): Promise<ComputerResult<M>> => {
-  try {
-    return await request(method, params)
-  } catch (e) {
-    if (!(e instanceof ComputerRpcError) || e.data?.kind !== 'unknown_session') throw e
-    await request('session.open', { session: 'cmp-proof' })
-    return await request(method, params)
-  }
-}
-await request('session.open', { session: 'cmp-proof' })
-const reader: TaskReader = {
-  read: async (app, window): Promise<ParsedObservation> =>
-    parseObservation((await proofCall('state.get', { session: 'cmp-proof', app: { pid: pinned[app]! }, window: { title: window }, mode: 'full' })).text),
-  element: async (app, window, index): Promise<ParsedObservation> => {
-    // a call that names an element carries the epoch of the read it came from
-    const { epoch } = await proofCall('state.get', { session: 'cmp-proof', app: { pid: pinned[app]! }, window: { title: window }, mode: 'full' })
-    return parseObservation((await proofCall('state.get', { session: 'cmp-proof', app: { pid: pinned[app]! }, window: { title: window }, element: index, epoch })).text)
-  }
-}
-
-// ── the scratch apps ────────────────────────────────────────────────────
-
-const CHROME_PROFILE = join(WORK, 'chrome')
 async function open(app: TaskApp, target: string): Promise<void> {
-  const name = app === 'TextEdit' ? 'TextEdit' : 'Google Chrome'
-  const before = pids(name)
-  const args =
-    app === 'TextEdit'
-      ? ['-n', '-g', '-a', 'TextEdit', target, '--args', '-ApplePersistenceIgnoreState', 'YES']
-      : ['-n', '-g', '-a', 'Google Chrome', '--args', `--user-data-dir=${CHROME_PROFILE}`, '--no-first-run', '--no-default-browser-check', target]
-  execFileSync('open', args)
-  for (let i = 0; i < 60 && !pinned[app]; i++) {
-    await sleep(250)
-    pinned[app] = [...pids(name)].find((p) => !before.has(p))
-  }
-  if (!pinned[app]) throw new Error(`open -n gave no new ${name} pid`)
-  await sleep(app === 'TextEdit' ? 1_000 : 3_000)
+  await rig.launch(DEFAULT_LANE, app, target)
 }
-function closeScratch(): void {
-  for (const app of Object.keys(pinned) as TaskApp[]) {
-    try {
-      process.kill(pinned[app]!, 'SIGKILL')
-    } catch {
-      /* gone already */
-    }
-    delete pinned[app]
-  }
-  rmSync(CHROME_PROFILE, { recursive: true, force: true })
-}
+const closeScratch = (): void => rig.closeLane(DEFAULT_LANE)
 
 // ── one run ─────────────────────────────────────────────────────────────
 
@@ -339,7 +221,7 @@ async function oneRun(model: ModelUnderTest, taskId: TaskId, arm: Arm, run: numb
   }
   const wait = await waitForTurn()
   if (wait) return { ...base, status: 'skipped', detail: wait }
-  for (const b of Object.values(BUNDLES)) server.store.setSetting(tierVerdictSetting(b), null)
+  for (const b of BUNDLES) server.store.setSetting(tierVerdictSetting(b), null)
   setComputerWordsOverride(ARMS[arm])
   const nonce = randomBytes(4).toString('hex')
   const seed = 1 + (randomBytes(2).readUInt16BE(0) % 9000)
@@ -347,7 +229,12 @@ async function oneRun(model: ModelUnderTest, taskId: TaskId, arm: Arm, run: numb
   mkdirSync(dir, { recursive: true })
   let start: TaskStart
   try {
-    start = await task.setup({ nonce, seed, dir, benchUrl: BENCH, writeFile: async (p, t) => writeFileSync(p, t), open })
+    const started = await task.setup({ nonce, seed, dir, benchUrl: BENCH, writeFile: async (p, t) => writeFileSync(p, t), open, run: exec, home: homedir() })
+    if ('skip' in started) {
+      closeScratch()
+      return { ...base, status: 'skipped', detail: started.skip }
+    }
+    start = started
   } catch (e) {
     closeScratch()
     return { ...base, status: 'failed', detail: `setup: ${(e as Error).message}` }
@@ -363,7 +250,7 @@ async function oneRun(model: ModelUnderTest, taskId: TaskId, arm: Arm, run: numb
     const requestId = row.event.requestId
     queueMicrotask(() => void registry.approve(id, requestId, true))
   })
-  Object.assign(wire, { steps: 0, failed: 0, kinds: {} })
+  rig.resetWire()
   const t0 = Date.now()
   await registry.send(id, task.prompt(start))
   const done = await new Promise<boolean>((resolveDone) => {
@@ -429,7 +316,8 @@ async function oneRun(model: ModelUnderTest, taskId: TaskId, arm: Arm, run: numb
   // the policy check judges the flag alone: a delete flagged before the row went, however many calls it took
   else if (taskId !== POLICY_TASK && calls.length > task.stepBudget) verdict = { status: 'failed', detail: `${calls.length} computer calls, over ${task.stepBudget}` }
   else {
-    const c = await task.check(start, reader, reply, calls).catch((e: Error) => ({ ok: false, detail: `check: ${e.message}` }))
+    const checked = await task.check(start, reader, reply, calls).catch((e: Error) => ({ ok: false, detail: `check: ${e.message}` }))
+    const c = checked.ok && task.policy ? task.policy(start, calls) : checked
     verdict = { status: c.ok ? 'ok' : 'failed', detail: c.detail }
   }
   await registry.setArchived(id, true).catch(() => undefined)
@@ -438,9 +326,8 @@ async function oneRun(model: ModelUnderTest, taskId: TaskId, arm: Arm, run: numb
 }
 
 const cleanup = async (): Promise<void> => {
-  closeScratch()
   setComputerWordsOverride(null)
-  await registry.disposeAll().catch(() => undefined)
+  await rig.close()
   writeReports()
   for (const name of readdirSync(WORK)) if (!KEEP.has(name)) rmSync(join(WORK, name), { recursive: true, force: true })
 }

@@ -188,6 +188,52 @@ export function taskReader(
   }
 }
 
+// ── one proof on the Mac at a time ──────────────────────────────────────
+
+/** The other computer proofs, by a piece of their command line. */
+export const COMPUTER_PROOFS: readonly string[] = [
+  'scripts/.out/e2e-computer.mjs',
+  'e2e-tc-computer',
+  'tc-computer-proof/',
+  'ax-reader-proof',
+  'input-proof',
+  'capture-proof',
+  'compare-computer-words',
+  'e2e-computer-bench'
+]
+
+/**
+ * The first proof running in `ps -Ao pid=,ppid=,command=` output whose
+ * command line holds a pattern, leaving out this process and its ancestors
+ * (the package script's own shell names the script too).
+ */
+export function otherProofIn(ps: string, self: number, patterns: readonly string[] = COMPUTER_PROOFS): string | null {
+  const parent = new Map<number, number>()
+  const rows: { pid: number; command: string }[] = []
+  for (const line of ps.split('\n')) {
+    const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line)
+    if (!m) continue
+    parent.set(Number(m[1]), Number(m[2]))
+    rows.push({ pid: Number(m[1]), command: m[3] })
+  }
+  const mine = new Set<number>()
+  for (let pid: number | undefined = self; pid && !mine.has(pid); pid = parent.get(pid)) mine.add(pid)
+  for (const r of rows) {
+    if (mine.has(r.pid) || /\bpgrep\b|\bps -Ao\b/.test(r.command)) continue
+    const hit = patterns.find((p) => r.command.includes(p))
+    if (hit) return hit
+  }
+  return null
+}
+
+export function otherProof(patterns: readonly string[] = COMPUTER_PROOFS): string | null {
+  try {
+    return otherProofIn(execFileSync('ps', ['-Ao', 'pid=,ppid=,command='], { encoding: 'utf8' }), process.pid, patterns)
+  } catch {
+    return null
+  }
+}
+
 // ── the Mac, read from outside ──────────────────────────────────────────
 
 export interface MacReads {
@@ -285,6 +331,9 @@ export async function startRig(opts: { root: string; work: string; gate: Session
     remotePort: 0,
     computerResolveApp: (q) => pins.resolve(q)
   })
+  // codex 0.158+ refuses a plain-http base, which is all an unrouted thread gets from the shim or this gateway:
+  // with the gateway stopped and the shim's port dead (the package scripts set ALIAX_SHIM_PORT=9), every CLI uses its own login
+  await server.gateway.stop()
   const host = computerHooks.current
   if (!host?.available()) throw new RigStop('computer use is unavailable in this server')
   setSessionTierGate(opts.gate)
