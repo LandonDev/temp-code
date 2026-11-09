@@ -3619,6 +3619,21 @@ proof and the sizing rules; the pieces, by name:
   `capture/click` (P2) and takes `FAKE_SHOT_FILE` (or `FAKE_SHOT_FILES=a,b`
   in order, the last repeating), `FAKE_STREAM_END_MS`,
   `FAKE_ESCAPE_PRESS_MS`, `FAKE_ESCAPE_UNSUPPORTED` for the tests.
+- The preview's Mac proofs drive TC Probe launched with `--tick` (a label
+  counting ten times a second, so a capture stream, which sends only on a
+  change, keeps sending; scripts/lib/tcProbeApp.ts builds and launches it).
+  `bun run script:e2e-computer-preview` (esbuild → node): the real
+  tc-computer under `ComputerService`, `ComputerSessions`, `ComputerPreviews`
+  and `SessionHolds` with a fake viewer: the target after one observe, 4 ± 1
+  fps over 5 s, the stop, an `ax` click's `computer-click` inside Ping's frame
+  (also with the viewer's frame gate full), `escape.watch` on, its lease and
+  off read from the trace and `CGGetEventTapList`, a hold's banner hooks;
+  report under /tmp/tc-preview-proof. `bun run script:e2e-computer-ui`
+  (`--skip-build` reuses out/): an isolated preview instance on port 9241
+  with `TEMP_CODE_COMPUTER_PIN`, a sonnet thread in full access, the Computer
+  row, ≥ 3 frames and a mark, the screenshot row, captures dark and light,
+  then `computer.proofHold` and the banner's window (never focused, the
+  front app unchanged). Both need an unlocked, awake screen.
 - Pictures to each model: claude and Muse get a computer call's pictures as
   image parts; codex too (`codexComputerImages()` in drivers/codex.ts, its
   measured default `parts`; `TEMP_CODE_CODEX_COMPUTER_IMAGES=parts|steer|view`
