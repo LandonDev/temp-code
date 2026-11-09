@@ -133,6 +133,98 @@ SIGINT to its steps' process groups, so the publish's exit trap after a
 failed build stops the soak, which kills every process carrying its
 instance's TEMP_CODE_USER_DATA.
 
+## The store and computer proofs
+
+Seven publish rows prove the add-on registry, the skills store and computer
+use with nothing a person or a model has to do. Each runs its script entry
+with `--gate` (`bun run script:<name> -- --gate`), and every `--gate` keeps
+one contract:
+
+- **It never builds.** It waits for `out/` through scripts/lib/gateBuild.ts
+  (`waitForGateBuild`): the done file the gate names when it runs the build
+  beside it (`<git-dir>/temp-code-gate/build.done`, the build barrier in
+  "Tiers" above; release-publish's own stage file under `release:publish`),
+  else HEAD's stamp in out/bundle-map.json, 10 minutes at most. After the
+  wait it may compile its own scratch helpers (TC Probe, the probe binary)
+  and call `buildTcComputer({ require: true })`, a no-op when the stamp
+  matches.
+- **Two app instances at most**, and it kills what it started on any exit
+  (scripts/lib/proofCleanup.ts for the store proofs).
+- **It skips, with one line each**, a leg that spends a real model, needs
+  the person away, or opens an app other than TC Probe. Those legs are the
+  hand runs below.
+- **Off its host** it prints `skipped: <why>` and exits 0; its exit is the
+  verdict.
+- **A Mac row waits its turn** (scripts/lib/proofOrder.ts `otherProof()`:
+  no older computer proof running, within its cap), sets `TC_PROOF_UNGATED=1`
+  itself (TC Probe's window is never key and takes no keystrokes, so nothing
+  it opens can come forward or take input), and fails without Accessibility,
+  naming the grant and the app that holds the session: TempCode.app when the
+  Publish button runs it. A publish from a terminal needs that terminal
+  granted, or the rows fail by name. Without Screen Recording a row asks for
+  no picture and seeds its own instance with `computer.prompted.screenRecording`,
+  so no prompt can go out; its picture checks read skipped.
+- **A locked or dark screen** stops a Mac row as inconclusive: the
+  accessibility tree lists no windows then.
+- **Three greens.** A proof joined the gate only after three green `--gate`
+  runs in a row on each host it runs on (the sweep of 2026-11-09, below).
+
+| row | lane | host | boots | `--gate` leaves out | box | Mac | cap |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| e2e-addons | `e2e` | both | two paired headless instances, fake MCP servers | leg 4, the real claude-haiku-5-5 thread on this user's HOME | 22 s, 20 s, 22 s | | |
+| e2e-addon-grants | `e2e` | both | two paired headless instances, scripts/lib/fakeOAuthServer.ts | nothing (no model) | 133 s, 134 s, 134 s | | |
+| e2e-skills-store | `e2e` | both | two paired headless instances | nothing (no model) | 13 s, 15 s, 15 s | | |
+| e2e-skills-drivers | `e2e` | both | one headless instance, the real CLIs against scripts/lib/spikeFakes.ts | the real-model legs (`--host box\|mac`) | | | |
+| e2e-tc-computer | `computer` | Mac | the service and TC Probe | the TextEdit legs and the paste | n/a | | |
+| e2e-computer-bridge | `computer` | Mac | two headless instances (the box half seamed linux), the service, TC Probe | the SSH pair | n/a | | |
+| e2e-computer-preview | `computer` | Mac | the service and TC Probe | leg 4, the Escape tap, which takes the person's Escape | n/a | | |
+
+The four store rows run one at a time in the `e2e` lane after the fence;
+the three Mac rows run before `computer-bench` in its lane, so a cheap
+failure stops the gate before the models run. A row's cap is the build wait
+plus three times its slower host's time, rounded up to the minute
+(`proofCap`, `STORE_MEASURED_MS` and `COMPUTER_MEASURED_MS` in
+scripts/gate.ts).
+
+The drivers row judges the store's skill reaching each CLI and a rewrite
+reaching the next turn, and that Claude and Codex never list a home skill.
+Muse Code 1.4.14 lists skills from other harnesses' home folders
+(`~/.agents/skills`, `$CODEX_HOME/skills`): the row prints that as
+`KNOWN GAP` without failing, and fails with `KNOWN GAP CLOSED` once Muse
+stops, so the check is made strict then. e2e-addons' leg 8 times the codex
+first-turn gate with and without add-ons wherever codex is installed: on the
+box (codex 0.163.0, `~/.npm-global/bin/codex`) the medians were 517 ms with
+add-ons and 516 ms without.
+
+## Hand runs
+
+The proofs the gate cannot run: each spends a real model, needs the person
+away from the Mac, or drives an app other than TC Probe. Run each by hand
+after a change it covers. "Last" is the sweep of 2026-11-09 unless it says
+otherwise.
+
+| proof | host | needs | last time | last result |
+| --- | --- | --- | --- | --- |
+| `script:e2e-addons` (whole) | box | a Claude login on this user's HOME | 42 s | passed, 46 checks |
+| `script:e2e-skills-drivers -- --host box` | box | real Claude, Codex and Muse logins | | |
+| `script:e2e-skills-drivers -- --host mac` | Mac | the same, codex 0.164 or newer | | |
+| `script:spike-config-dirs -- --host box` | box | the CLIs (a probe, rerun after a CLI update) | 109 s | 27 ok, 10 partial, 2 fail, 1 skip; the secret sweep clean |
+| `script:spike-config-dirs -- --host mac` | Mac | the same | | |
+| `script:e2e-harness-sync` | box | none | 8 s | failed 3 of 40: its expectations predate Codex regenerating `.codex/skills/.system` and Muse writing `serve-exit.jsonl` in the scratch HOME; the fix is the drivers build's |
+| `script:e2e-computer-images` | box | real Claude and Codex turns (a fake service) | 82 s | passed, 8 cases |
+| `script:e2e-computer-images` | Mac | the same on the real service | | |
+| `script:e2e-tc-computer` (whole) | Mac | 5 idle minutes (TextEdit and the paste come forward) | | |
+| `script:e2e-computer` | Mac | real Sonnet turns | | |
+| `script:e2e-computer-bridge` over SSH | Mac and box | both clones built at one commit | | |
+| `script:e2e-computer-ax` | Mac | the person away; IntelliJ only with `TC_AX_INTELLIJ=1` | | |
+| `script:e2e-computer-input -- --session` | Mac | the person away | | |
+| `script:e2e-computer-capture -- --keep <dir>` | Mac | Screen Recording; minutes of watch scenes on its own inert windows | | |
+| `script:e2e-computer-schedule` | Mac | the session tier: its scratch TextEdits come forward | | |
+| `script:e2e-computer-preview` (whole) | Mac | it takes Escape for about two seconds | | |
+| `script:e2e-computer-ui` | Mac | a real Sonnet thread, 5 idle minutes | | |
+| `script:compare-computer-words` | Mac | one to two hours of real model runs | 39 min (the instructions build's run, not repeated) | every arm ran; no task passed on any model, Muse's runs off route; the words picked by the tie rule (docs/computer-protocol.md §19) |
+| `script:e2e-computer-bench` | Mac | "The bench's hand run" below | | |
+
 ## The computer bench
 
 `computer-bench` runs `bun run script:e2e-computer-bench -- --gate`
