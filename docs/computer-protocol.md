@@ -1474,6 +1474,14 @@ Per computer call: its host time (the rig's wrapper, entering `ComputerSessions.
 
 ## The unattended proof modes
 
+Proofs build wire coordinates through `intPoint` in
+`scripts/lib/computerPoint.ts`: `Math.round` on both axes after bounds or
+scale arithmetic. This covers Ping's centre in the held-input crash step,
+TextEdit's click point and the capture region's corners in
+`scripts/e2e-tc-computer.ts`. The wire still refuses fractional coordinates;
+the host forwards validated actions and element IDs without computing
+points from bounds or zoom.
+
 The preview builds its own copy of TC Probe through
 `scripts/lib/previewProbeApp.ts`. Its Ping button keeps AXPress and the
 pong callback, with highlight and state drawing masks cleared. AppKit's

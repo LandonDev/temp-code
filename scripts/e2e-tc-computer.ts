@@ -95,6 +95,7 @@ import {
   type WaitReport
 } from '../src/shared/computer/protocol'
 import { waitForGateBuild } from './lib/gateBuild'
+import { intPoint } from './lib/computerPoint'
 import { computerInitializeMs, computerProofMode, computerProofPolicy, LOST_TRY_LINE, lostTry, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
 import { OwnInput, personSince } from './lib/proofGate'
 import { buildTcComputer, type TcComputerBuildResult } from './lib/tcComputerBuild'
@@ -1135,7 +1136,7 @@ async function appSections(
       const read = await a.call('state.get', { ...target, mode: 'full', geometry: true, screenshot: 'never' })
       const ping = findElement(read, 'Ping', (e) => e.role === 'button' && e.name === 'Ping')
       check(ping.frame, 'Ping has geometry', ping)
-      const point: [number, number] = [ping.frame.x + ping.frame.w / 2, ping.frame.y + ping.frame.h / 2]
+      const point = intPoint(ping.frame.x + ping.frame.w / 2, ping.frame.y + ping.frame.h / 2)
       okStep((await a.call('action.run', { ...target, action: { action: 'mouse_move', coordinate: point }, tiers: ['process'], observe: { mode: 'none' } })).step)
       check(okStep((await a.call('action.run', { ...target, action: { action: 'left_mouse_down' }, tiers: ['process'], observe: { mode: 'none' } })).step).tier === 'process', 'button held at process tier')
       a.proc.kill('SIGKILL')
@@ -1171,7 +1172,7 @@ async function appSections(
   let area = 0
   let frame: LineFrame = { x: 0, y: 0, w: 0, h: 0 }
   let space: CoordinateSpace = { width: 1, height: 1, scale: 1 }
-  let clickPoint: [number, number] = [0, 0]
+  let clickPoint = intPoint(0, 0)
 
   const areaLength = async (): Promise<number> => {
     const o = await a.call('state.get', {
@@ -1281,10 +1282,10 @@ async function appSections(
   })
   await te.step('3. left_click inside the text area at the process tier', async (data) => {
     // to the right of the first line's end, so the caret moves wherever set_value left it
-    clickPoint = [
-      frame.x + frame.w - Math.round(24 * space.scale),
-      frame.y + Math.round(10 * space.scale)
-    ]
+    clickPoint = intPoint(
+      frame.x + frame.w - 24 * space.scale,
+      frame.y + 10 * space.scale
+    )
     const before = personState()
     const r = await a.call('action.run', {
       ...target(),
@@ -1437,10 +1438,8 @@ async function appSections(
       r.observation.shot ? shotNumber(r.observation.shot.path) : 0
     )
     const region: [number, number, number, number] = [
-      0,
-      0,
-      Math.min(400, step.shot.width),
-      Math.min(300, step.shot.height)
+      ...intPoint(0, 0),
+      ...intPoint(Math.min(400, step.shot.width), Math.min(300, step.shot.height))
     ]
     const shot = await a.call('capture.screenshot', { ...target(), region })
     checkShotFile(shot)

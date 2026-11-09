@@ -2121,7 +2121,11 @@ why and the measured headline.
 - **The contract.** The zod in src/shared/computer/ (protocol.ts,
   observation.ts, tools.ts) is the one source; `bun run gen:swift-computer`
   writes the Swift under each target's Generated/, and
-  `check:swift-computer` runs inside `bun run typecheck`. The parts:
+  `check:swift-computer` runs inside `bun run typecheck`. Coordinates stay
+  integers: proofs use scripts/lib/computerPoint.ts `intPoint` to round
+  both axes after bounds or scale arithmetic, including capture corners.
+  The host forwards validated actions and element IDs without deriving
+  points from bounds or zoom. The parts:
   Capture (§6, §7: one window, never the desktop; screenshots, the preview
   stream, the pixel signal), Input (§14: the `ax`, `process` and `session`
   tiers, the paste under the clipboard lock), the AX reader (§15: pure
