@@ -53,13 +53,14 @@ public protocol CaptureSource: WindowCapturing, PixelWatching, Sendable {
 public struct Modules: Sendable {
     public var readers: @Sendable () -> any ReaderPool
     public var input: @Sendable (InputWiring) -> any InputPerforming
-    public var capture: @Sendable () -> any CaptureSource
+    /// built with the service's `log`, which reaches the host as a `log` warn
+    public var capture: @Sendable (_ log: @escaping @Sendable (String) -> Void) -> any CaptureSource
     public var windows: any WindowSource
     /// Runs on the main thread before anything captures (`CaptureRuntime.prepare()`).
     public var prepare: @MainActor @Sendable () -> Void
 
     public init(readers: @escaping @Sendable () -> any ReaderPool, input: @escaping @Sendable (InputWiring) -> any InputPerforming,
-                capture: @escaping @Sendable () -> any CaptureSource, windows: any WindowSource, prepare: @escaping @MainActor @Sendable () -> Void = {}) {
+                capture: @escaping @Sendable (_ log: @escaping @Sendable (String) -> Void) -> any CaptureSource, windows: any WindowSource, prepare: @escaping @MainActor @Sendable () -> Void = {}) {
         self.readers = readers
         self.input = input
         self.capture = capture

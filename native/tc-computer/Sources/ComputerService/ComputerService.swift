@@ -57,7 +57,7 @@ public final class ComputerService: @unchecked Sendable {
         self.sessionLock = SessionMacLock(locks: locks, trace: trace)
         self.held = HeldInput(slots: slots, book: book, warn: { relay.service?.log(.warn, $0) })
         self.readers = modules.readers()
-        self.capture = modules.capture()
+        self.capture = modules.capture { relay.service?.log(.warn, $0) }
         self.input = modules.input(InputWiring(
             clipboardLock: clipboardLock,
             sessionLock: sessionLock,

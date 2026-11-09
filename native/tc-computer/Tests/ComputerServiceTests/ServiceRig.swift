@@ -77,7 +77,7 @@ final class ServiceRig: @unchecked Sendable {
                 inputBox.value = input
                 return input
             },
-            capture: { capture },
+            capture: { _ in capture },
             windows: windows
         )
         service = ComputerService(modules: modules, environment: env, build: BuildInfo(version: "1.0.9", build: "abc123"), trace: Trace(enabled: false, write: { _ in }), sink: lines)
