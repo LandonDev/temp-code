@@ -127,8 +127,9 @@ Two separate steps, on purpose, over one gate.
     the same lane, the bundle-size check (scripts/check-bundle-size.ts).
     `publish`: renderer-soak, renderer-soak-chat, renderer-soak-typing and
     renderer-soak-scroll (the build lane, after the build, one after the
-    other; Mac only), e2e-remote-fence, hub:test, ios:test, ios:test:client. A proof that
-    boots an instance belongs in `publish`.
+    other; Mac only), e2e-remote-fence, hub:test, ios:test, ios:test:client,
+    computer:test (native/tc-computer, the computer-use service's package). A
+    proof that boots an instance belongs in `publish`.
   - Steps in one lane run in array order, one at a time; lanes run at
     once (typecheck, vitest and build + bundle-size together), with a combined status
     line on a terminal and `✓ step 12s` lines plus a per-step time table
@@ -149,8 +150,9 @@ Two separate steps, on purpose, over one gate.
     `<git-dir>/temp-code-gate/typecheck`; `--full` runs it anyway.
   - The path map: a commit touching `ios/**`, scripts/gen-swift-contract.ts,
     src/shared/wireSchemas.ts, `src/shared/contract*.ts`,
-    `src/main/server/remote/**`, `infra/hub/**`, the fence proof or the iOS
-    runners pulls the `publish` tier into the hook as well, so a contract
+    `src/main/server/remote/**`, `infra/hub/**`, the fence proof, the iOS
+    runners, `native/tc-computer/**`, `src/shared/computer/**` or the computer
+    generator pulls the `publish` tier into the hook as well, so a contract
     change still cannot land stale Swift.
 
 1. **Every green commit tags locally.** A post-commit hook on master
@@ -3358,6 +3360,39 @@ proof and the sizing rules; the pieces, by name:
   put a pairing link or a key in a file or a log; the scripts scrub their
   output.
 
+## Computer use: the tc-computer contract
+- docs/computer-protocol.md is the contract every computer-use thread builds
+  to: the stdio JSON-RPC wire between the host and `tc-computer` (a Swift
+  service on the Mac, one per app instance), the observation (the AX tree as
+  indexed text, its diff and budget), the input tiers `ax`, `process`,
+  `session` with the clipboard lock, the smart wait, capture, and the four
+  `computer_*` tools whose verbs and parameter names are Anthropic's native
+  computer-use set with `element` refs beside `coordinate`. Only the contract
+  is in code so far: no service, tools or UI.
+- The zod in src/shared/computer/ is the one source: `protocol.ts` (every
+  method's params and result, the errors, the notifications, every number:
+  waits, budgets, caps, lock paths), `observation.ts` (the grammar's tables,
+  `parseKeyCombo`, and a strict `parseObservation` with `formatObservation`
+  as its inverse) and `tools.ts` (the tool inputs as flat JSON Schemas, the
+  action table, the bridge payloads, the tier verdict, the step lines). `bun
+  run gen:swift-computer` (scripts/gen-swift-computer.ts, on the iOS
+  generator with `COMPUTER_METHODS` as its method source) writes
+  native/tc-computer/Sources/ComputerProtocol/Generated/, with every default
+  in `ComputerDefaults`; never edit it: `check:swift-computer` is inside
+  `typecheck`.
+- native/tc-computer declares every target (ComputerProtocol, ComputerCore's
+  Seams.swift, AXReader, Input, Capture, ComputerService, the executable);
+  each sibling fills its own. `bun run computer:test` is the gate's
+  `computer-swift` step (Mac); the box's Linux toolchain under ~/toolchains
+  builds and tests it too.
+- Fixtures: src/main/server/computer/fixtures/ (its README): hand-written
+  wire frames for every method, error kind and notification, observation
+  texts for every grammar case, `page/form.html`, and `apps/` trees and
+  screenshots recorded on the Mac from scratch content only
+  (scripts/mac/record-computer-fixtures.sh). computerFixtures.test.ts holds
+  them to their schemas and runs the privacy guard (no `/Users/` but
+  `/Users/me`, no email outside example.com, the `TC_FIXTURE_DENY` list).
+
 ## The menu bar: one table
 src/shared/menuTree.ts is the menu as data, read by main (src/main/menu.ts),
 the in-app bar and the tests: TempCode, File, Edit, View (Show/Hide
@@ -3895,8 +3930,8 @@ this is the short one.
   scripts/gate.ts --tier commit --since <merge-base>` there. A red run
   answers "HELD: typecheck failed on <branch> · 3 errors", the last 20
   lines, "call merge_branch again", and lands a `notice` row of kind `gate`
-  (`GateNotice`, surfaces/GateCard.tsx). The gate's hub, ios and ios-client
-  steps are `mac: true`: a host off macOS (the box's merge gate, the box's
+  (`GateNotice`, surfaces/GateCard.tsx). The gate's hub, ios, ios-client and
+  computer-swift steps are `mac: true`: a host off macOS (the box's merge gate, the box's
   release step) skips them with a note, and the Mac's publish gate runs
   them before anything ships. The house preamble (`HOUSE_PREAMBLE`) tells a
   thread to run typecheck and the tests it wrote or touched, never the full

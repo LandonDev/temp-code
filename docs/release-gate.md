@@ -12,12 +12,13 @@ file. A sibling change that needs a new check (the bundle-size check after
 | tier | steps | runs |
 | --- | --- | --- |
 | `commit` | typecheck, vitest, build, bundle-size | in the post-commit hook, on every commit on master |
-| `publish` | renderer-soak, renderer-soak-chat, renderer-soak-typing, renderer-soak-scroll, e2e-remote-fence, hub, ios, ios-client | before signing in `release:publish`; and in the hook when a commit touches a guarded path. The four soaks, hub, ios and ios-client are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships |
+| `publish` | renderer-soak, renderer-soak-chat, renderer-soak-typing, renderer-soak-scroll, e2e-remote-fence, hub, ios, ios-client, computer-swift | before signing in `release:publish`; and in the hook when a commit touches a guarded path. The four soaks, hub, ios, ios-client and computer-swift are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships |
 
 Guarded paths (`TIER_PATHS`): `ios/**`, `scripts/gen-swift-contract.ts`,
 `src/shared/wireSchemas.ts`, `src/shared/contract*.ts`,
 `src/main/server/remote/**`, `infra/hub/**`, `scripts/e2e-remote-fence.ts`,
-`scripts/ios-*`. The train runs `gate --tier commit --since release-N`
+`scripts/ios-*`, `native/tc-computer/**`, `src/shared/computer/**`,
+`scripts/gen-swift-computer.ts`, `scripts/computer-test.sh`. The train runs `gate --tier commit --since release-N`
 (N from release.json; `HEAD~1` when the tag is missing), and any changed
 path since that ref that hits the map pulls its tier in, so a contract change
 still cannot land stale Swift between publishes. A proof that boots an
@@ -123,9 +124,10 @@ bun run gate [--tier commit|publish|all] [--since <ref>] [--full]
 - Steps in one lane run in array order, one at a time; lanes run at once.
   `commit` has three lanes (typecheck, vitest, build), so the three run
   together; the bundle-size check (scripts/check-bundle-size.ts, which
-  reads `out/`) follows the build in its lane. `publish` runs the fence, the hub and the two Swift packages in
-  parallel lanes; `ios` and `ios-client` share the `swift` lane because the
-  client package depends on the contract package.
+  reads `out/`) follows the build in its lane. `publish` runs the fence, the hub and the three Swift packages in
+  parallel lanes; `ios`, `ios-client` and `computer-swift` share the `swift`
+  lane, one after another (the client package depends on the contract
+  package).
 - On a terminal one status line shows what is running and for how long; in
   a log (the hook's /tmp/temp-code-auto-release.log) each step prints
   `HH:MM:SS › name` when it starts and `HH:MM:SS ✓ name 12s passed` when it
