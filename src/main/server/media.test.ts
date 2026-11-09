@@ -11,6 +11,7 @@ import {
   resetMediaTokens,
   setMediaHost,
   serveMedia,
+  serverMediaRoots,
   setMediaRoots,
   sniffMedia
 } from './media'
@@ -130,6 +131,16 @@ describe('the file host', () => {
     expect(await fsMedia(join(outside, 'secret.png'))).toBeNull()
     expect(await fsMedia(join(root, 'img', 'link.png'))).toBeNull()
     expect(await fsMedia(join(root, 'img', 'missing.png'))).toBeNull()
+  })
+
+  it("serves a thread's userData attachments (its computer screenshots) and still nothing outside every root", async () => {
+    const attachments = join(outside, 'attachments')
+    await mkdir(join(attachments, 'thread-1', 'computer'), { recursive: true })
+    await writeFile(join(attachments, 'thread-1', 'computer', '0001.png'), Buffer.concat([PNG, Buffer.alloc(16)]))
+    setMediaRoots(() => serverMediaRoots({ projects: [root], workspaces: [], attachments }))
+    expect(await fsMedia(join(attachments, 'thread-1', 'computer', '0001.png'))).toMatchObject({ kind: 'image', mime: 'image/png' })
+    expect(await fsMedia(join(outside, 'secret.png'))).toBeNull()
+    expect(serverMediaRoots({ projects: ['/p'], workspaces: ['/w'], attachments: null })).toEqual(['/p', '/w'])
   })
 
   it('refuses a root spelled as a prefix of another directory', () => {

@@ -124,6 +124,15 @@ export function setMediaRoots(provider: () => string[]): void {
   rootsProvider = provider
 }
 
+/**
+ * What the server's file host serves from: every project cwd and workspace
+ * path, and the userData attachments a thread with neither keeps (its
+ * computer screenshots among them, attachmentDir.ts). Nothing else.
+ */
+export function serverMediaRoots(r: { projects: string[]; workspaces: string[]; attachments: string | null }): string[] {
+  return [...r.projects, ...r.workspaces, ...(r.attachments ? [r.attachments] : [])]
+}
+
 function realOrNull(path: string): string | null {
   try {
     return realpathSync(path)

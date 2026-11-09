@@ -130,7 +130,7 @@ import { migrateHousePreamble, seedHousePreamble } from './projectPreamble'
 import { EventReader, startCheckpointWorker } from './dbWorkers'
 import { handleFsGit } from './fsgit'
 import { workRoot } from './workRoot'
-import { readMediaRange, setMediaHost, setMediaRoots } from './media'
+import { readMediaRange, serverMediaRoots, setMediaHost, setMediaRoots } from './media'
 import { CheckpointStore, inHeadMany, listTracked } from './checkpoint'
 import { handleCheckpoint } from './checkpointRpc'
 import { CheckpointTurns } from './checkpointTurns'
@@ -508,10 +508,13 @@ export async function startServer(
   // The file viewer's media host serves only files under these roots, and
   // names this host on every URL so another host's desktop reads from here.
   setMediaHost(environmentId)
-  setMediaRoots(() => [
-    ...registry.listProjects().map((p) => p.cwd),
-    ...registry.listWorkspaces().map((w) => w.path)
-  ])
+  setMediaRoots(() =>
+    serverMediaRoots({
+      projects: registry.listProjects().map((p) => p.cwd),
+      workspaces: registry.listWorkspaces().map((w) => w.path),
+      attachments: dataAttachmentsRoot()
+    })
+  )
   /** What a remote key may name by path (remote/fence.ts): the media
    *  roots plus the work root new workspaces go under — unless that is the
    *  bare home directory, which no key gets to browse. */
