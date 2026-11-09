@@ -477,17 +477,27 @@ async function x2e(ev: Evidence): Promise<void> {
   judge(ev, { inventoried: true, noLeaks: !leaks })
 }
 
-async function x3(ev: Evidence): Promise<void> {
+/**
+ * X3/X3b: the change set (add, edit, remove) under the skills of CODEX_HOME
+ * (X3) or of an extra root outside it, set with skills/extraRoots/set on
+ * every app-server as it opens (X3b); seen by a running thread, a warm
+ * app-server opened (and rooted) before the change, and a fresh one.
+ */
+async function x3(ev: Evidence, where: 'home' | 'extra'): Promise<void> {
   const c = ctx()
   const r = mkRun(ev.id)
   await gitInit(r.cwd)
   const n = makeNonces(ev.id)
-  const home = codexHome(join(r.dir, 'codex-home'), {
-    'skills/tc-probe-skill/SKILL.md': skillFile('tc-probe-skill', n.skillDesc, n.skillBody),
-    'skills/tc-gone-skill/SKILL.md': skillFile('tc-gone-skill', n.goneDesc, n.goneBody)
-  })
+  const seeds = { 'tc-probe-skill/SKILL.md': skillFile('tc-probe-skill', n.skillDesc, n.skillBody), 'tc-gone-skill/SKILL.md': skillFile('tc-gone-skill', n.goneDesc, n.goneBody) }
+  const home = codexHome(join(r.dir, 'codex-home'))
+  const skillsDir = where === 'home' ? join(home, 'skills') : join(r.dir, 'store-skills')
+  writeTree(skillsDir, seeds)
+  const rooted = async (conn: CodexConn): Promise<CodexConn> => {
+    if (where === 'extra') ev.observed.extraRootsSet = await conn.request('skills/extraRoots/set', { extraRoots: [skillsDir] }).then(() => 'ok', (e) => errText(e))
+    return conn
+  }
   c.codexFront.reset(ev.id, { ...n })
-  const skillInput = [{ type: 'skill', name: 'tc-probe-skill', path: join(home, 'skills', 'tc-probe-skill', 'SKILL.md') }, ...text('Use the skill.')]
+  const skillInput = [{ type: 'skill', name: 'tc-probe-skill', path: join(skillsDir, 'tc-probe-skill', 'SKILL.md') }, ...text('Use the skill.')]
   const look = async (conn: CodexConn, thread: string, label: string): Promise<Record<string, unknown>> => {
     const cached = await conn.request('skills/list', { cwds: [r.cwd] }).then(skillNames, (e) => [`error: ${errText(e)}`])
     const reloaded = await conn.request('skills/list', { cwds: [r.cwd], forceReload: true }).then(skillNames, (e) => [`error: ${errText(e)}`])
@@ -505,20 +515,20 @@ async function x3(ev: Evidence): Promise<void> {
       original: s.all.includes('skillBody')
     }
   }
-  const live = await open(ev, r, home)
-  const warm = await open(ev, r, home)
+  const live = await rooted(await open(ev, r, home))
+  const warm = await rooted(await open(ev, r, home))
   try {
     const thread = await startThread(live, r.cwd)
     ev.observed.turn1 = reqSummary((await turn(live, thread, text('Reply with ok.'))).requests)
     const from = live.notes.length
-    writeTree(join(home, 'skills'), { 'tc-late-skill/SKILL.md': skillFile('tc-late-skill', n.lateDesc, n.lateBody), 'tc-probe-skill/SKILL.md': skillFile('tc-probe-skill', n.editedDesc, n.editedBody) })
-    rmSync(join(home, 'skills', 'tc-gone-skill'), { recursive: true, force: true })
+    writeTree(skillsDir, { 'tc-late-skill/SKILL.md': skillFile('tc-late-skill', n.lateDesc, n.lateBody), 'tc-probe-skill/SKILL.md': skillFile('tc-probe-skill', n.editedDesc, n.editedBody) })
+    rmSync(join(skillsDir, 'tc-gone-skill'), { recursive: true, force: true })
     await sleep(2_000)
     ev.observed.skillsChanged = live.notes.slice(from).some((x) => x.method === 'skills/changed')
     const steps = [await look(live, thread, 'running thread')]
     const wThread = await startThread(warm, r.cwd)
     steps.push(await look(warm, wThread, 'warm app-server'))
-    const fresh = await open(ev, r, home)
+    const fresh = await rooted(await open(ev, r, home))
     try {
       steps.push(await look(fresh, await startThread(fresh, r.cwd), 'fresh app-server'))
     } finally {
@@ -617,7 +627,8 @@ export function codexExperiments(): Experiment[] {
     e('X2c', 'placeholder login, fake and real', x2c),
     e('X2d', 'resume across homes', x2d),
     e('X2e', 'what codex writes under an owned home', x2e),
-    e('X3', 'freshness of skills in CODEX_HOME', x3),
+    e('X3', 'freshness of skills in CODEX_HOME', (ev) => x3(ev, 'home')),
+    e('X3b', 'freshness of skills in an extra root', (ev) => x3(ev, 'extra')),
     e('X4', 'hooks.json under an owned home', x4),
     e('X5', 'custom prompts', x5)
   ]
