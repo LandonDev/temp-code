@@ -15,7 +15,7 @@
  * already shows) or answered only with a button that dismisses it; the
  * scratch project leaves IntelliJ's recent list. Opening a project brings
  * IntelliJ in front whatever `-g` says (seen 2026-11-09), so its step runs only
- * with TC_AX_INTELLIJ=1, for a person at the Mac who accepts the window, and is
+ * with TC_AX_INTELLIJ=1, behind the same idle gate as every launch, and is
  * otherwise skipped with that reason.
  *
  * Report: /tmp/tc-ax-proof/report.json { checks, timings, findings, skipped };
@@ -32,7 +32,6 @@ const OUT = '/tmp/tc-ax-proof'
 const TCAX = process.env.TC_AX_BIN ?? join(ROOT, 'native/tc-computer/.build/release/tc-ax')
 const REC = process.env.TC_AX_RECORDER ?? ''
 const IDLE_ANY = Number(process.env.TC_AX_IDLE_ANY ?? 300)
-const IDLE_IDEA = 120
 const IDLE_WAIT = Number(process.env.TC_AX_IDLE_WAIT ?? 5400)
 const RUN_DEADLINE = Date.now() + IDLE_WAIT * 1000
 
@@ -593,7 +592,7 @@ async function intellij(): Promise<void> {
     console.log(`skip  ${app.padEnd(12)} ${skipped[app]}`)
     return
   }
-  if (!(await waitIdle(IDLE_IDEA, app))) return
+  if (!(await waitIdle(IDLE_ANY, app))) return
   const exe = 'IntelliJ IDEA.app/Contents/MacOS/idea'
   const running = pidsOf(exe)[0]
   if (running) {

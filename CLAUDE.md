@@ -3661,7 +3661,8 @@ proof and the sizing rules; the pieces, by name:
 - The AX reader (docs/computer-protocol.md §15, plan
   .temp-code/plan-8sO1AAx_glmS.md): `AXText` holds every rule that needs no
   live element (keep, facts, the viewport cut, the index book with its
-  rebuilt-element match, folds, `TextBudget`, rendering, the diff,
+  rebuilt-element match: a DOM id, else a name unique among the parent's
+  children in both reads, else name and place; folds, `TextBudget`, rendering, the diff,
   `Builder.build`) and the tables generated from observation.ts
   (`Sources/AXText/Generated/ObservationTables.swift`, by `gen:swift-computer`),
   so the box tests it on its Linux toolchain; `AXReader` is the Mac's walk
@@ -3675,9 +3676,11 @@ proof and the sizing rules; the pieces, by name:
   --filter GoldenTests` and read before each commit; the grammar test parses
   all three. The live proof is `bash scripts/mac/ax-reader-proof.sh` on the
   Mac from a scratch clone: scratch apps only, every window read in the
-  background and never activated, an idle wait before each app and two
-  minutes before IntelliJ's scratch project ("skipped: the person is
-  active" otherwise). Targets, p95 warm: TextEdit 60 ms, Chrome form 250 ms,
+  background and never activated; a launch raises Chrome, the dev window and
+  IntelliJ whatever the flag, so each starts only past five minutes with no
+  input, is aborted when input resumes, and waits up to 90 minutes ("not run:
+  the person was at the Mac" otherwise); IntelliJ only with
+  `TC_AX_INTELLIJ=1`. Targets, p95 warm: TextEdit 60 ms, Chrome form 250 ms,
   a heavy page 600 ms, IntelliJ 500 ms, a dev instance 400 ms, the signature
   10 ms.
 

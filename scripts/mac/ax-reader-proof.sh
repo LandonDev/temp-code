@@ -5,11 +5,14 @@
 #
 #   bash scripts/mac/ax-reader-proof.sh [textedit] [chrome] [tempcode-dev] [intellij]   (default: all four)
 #
-# Scratch apps only, every window read in the background and never activated;
-# each app waits for the person to be away from the keyboard first (IntelliJ for
-# two minutes) and is skipped, "skipped: the person is active", rather than
-# shown over them. Writes /tmp/tc-ax-proof/report.json (checks, timings,
-# findings) and prints the table; no live observation text is kept.
+# Scratch apps only, every window read in the background and never activated.
+# A launch raises Chrome, the dev window and IntelliJ whatever the flag, so each
+# starts only past five minutes with no input (TC_AX_IDLE_ANY), its step is
+# aborted the moment input resumes, and the run waits up to 90 minutes
+# (TC_AX_IDLE_WAIT) for such gaps: an app with none is "not run: the person was
+# at the Mac". IntelliJ runs only with TC_AX_INTELLIJ=1. Writes
+# /tmp/tc-ax-proof/report.json (checks, timings, findings) and prints the table;
+# no live observation text is kept.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
