@@ -88,6 +88,8 @@ interface RunDetail extends RunRecord {
   readsReturned: number
   screenshots: number
   errorKinds: Record<string, number>
+  /** the tools other than the computer tools, tool search and update_notes, by name */
+  otherTools: Record<string, number>
   cards: string[]
   turns: number
   inputTokens?: number
@@ -222,6 +224,9 @@ writeFileSync(join(ALIAX, 'vault.key'), `${randomBytes(32).toString('hex')}\n`, 
 writeFileSync(join(ALIAX, 'profiles.json'), '{}\n')
 configure({ dataDir: ALIAX, fetch: (url, init) => fetch(url, init), secrets: { mode: 'fileKey', path: join(ALIAX, 'vault.key') }, appName: 'temp-code-words-cmp' })
 const server: RunningServer = await startServer(join(WORK, 'data', 'app.db'), { dataDir: join(WORK, 'data'), claimShim: false, remotePort: 0, computerResolveApp: resolveApp })
+// codex 0.158+ refuses a plain-http base, which is all an unrouted thread gets from the shim or this gateway:
+// with the gateway stopped and the shim's port dead (the package script sets ALIAX_SHIM_PORT), every CLI uses its own login
+await server.gateway.stop()
 const registry = server.registry
 const host = computerHooks.current
 if (!host?.available()) {
@@ -268,8 +273,11 @@ await request('session.open', { session: 'cmp-proof' })
 const reader: TaskReader = {
   read: async (app, window): Promise<ParsedObservation> =>
     parseObservation((await proofCall('state.get', { session: 'cmp-proof', app: { pid: pinned[app]! }, window: { title: window }, mode: 'full' })).text),
-  element: async (app, window, index): Promise<ParsedObservation> =>
-    parseObservation((await proofCall('state.get', { session: 'cmp-proof', app: { pid: pinned[app]! }, window: { title: window }, element: index })).text)
+  element: async (app, window, index): Promise<ParsedObservation> => {
+    // a call that names an element carries the epoch of the read it came from
+    const { epoch } = await proofCall('state.get', { session: 'cmp-proof', app: { pid: pinned[app]! }, window: { title: window }, mode: 'full' })
+    return parseObservation((await proofCall('state.get', { session: 'cmp-proof', app: { pid: pinned[app]! }, window: { title: window }, element: index, epoch })).text)
+  }
 }
 
 // ── the scratch apps ────────────────────────────────────────────────────
@@ -325,6 +333,7 @@ async function oneRun(model: ModelUnderTest, taskId: TaskId, arm: Arm, run: numb
     readsReturned: 0,
     screenshots: 0,
     errorKinds: {},
+    otherTools: {},
     cards: [],
     turns: 0
   }
@@ -372,13 +381,20 @@ async function oneRun(model: ModelUnderTest, taskId: TaskId, arm: Arm, run: numb
   const rows = registry.eventsAfter(id, 0)
   const calls: CallRecord[] = []
   const byTool: Record<string, number> = {}
+  const otherTools: Record<string, number> = {}
   let other = 0
+  // a harness writes a call's row more than once as its input settles: one call per id
+  const seen = new Set<string>()
   for (const r of rows) {
-    if (r.event.type !== 'tool-call' || r.event.partial) continue
+    if (r.event.type !== 'tool-call' || r.event.partial || seen.has(r.event.callId)) continue
+    seen.add(r.event.callId)
     const call = r.event
     const name = computerName(call.name)
     if (!name) {
-      if (!OFF_ROUTE_OK.test(call.name)) other++
+      if (!OFF_ROUTE_OK.test(call.name)) {
+        other++
+        otherTools[call.name] = (otherTools[call.name] ?? 0) + 1
+      }
       continue
     }
     byTool[name] = (byTool[name] ?? 0) + 1
@@ -402,6 +418,7 @@ async function oneRun(model: ModelUnderTest, taskId: TaskId, arm: Arm, run: numb
     readsReturned: byTool.computer_observe ?? 0,
     screenshots: calls.reduce((n, c) => n + (c.result.match(/^screenshot \d+ \(/gm)?.length ?? 0), 0),
     errorKinds: { ...wire.kinds },
+    otherTools,
     cards,
     turns: rows.filter((r) => r.event.type === 'turn-complete').length,
     ...(usage.length ? { inputTokens: usage.reduce((n, u) => n + (u.inputTokens ?? 0), 0), outputTokens: usage.reduce((n, u) => n + (u.outputTokens ?? 0), 0) } : {})
@@ -409,7 +426,8 @@ async function oneRun(model: ModelUnderTest, taskId: TaskId, arm: Arm, run: numb
   let verdict: { status: RunStatus; detail: string }
   if (!done) verdict = { status: 'failed', detail: 'past the wall time' }
   else if (other) verdict = { status: 'off-route', detail: `${other} calls of other tools` }
-  else if (calls.length > task.stepBudget) verdict = { status: 'failed', detail: `${calls.length} computer calls, over ${task.stepBudget}` }
+  // the policy check judges the flag alone: a delete flagged before the row went, however many calls it took
+  else if (taskId !== POLICY_TASK && calls.length > task.stepBudget) verdict = { status: 'failed', detail: `${calls.length} computer calls, over ${task.stepBudget}` }
   else {
     const c = await task.check(start, reader, reply, calls).catch((e: Error) => ({ ok: false, detail: `check: ${e.message}` }))
     verdict = { status: c.ok ? 'ok' : 'failed', detail: c.detail }
