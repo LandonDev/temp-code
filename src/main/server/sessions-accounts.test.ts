@@ -37,7 +37,7 @@ beforeEach(async () => {
   registry = new SessionRegistry(store)
 })
 afterEach(async () => {
-  await registry.disposeAll()
+  await registry.close()
   db.close()
   await rm(root, { recursive: true, force: true })
 })
@@ -60,7 +60,7 @@ async function idleOn(account: string | null): Promise<string> {
 
 /** The rows as a boot sees them: no harness behind any (a live one keeps its account, sticky). */
 async function cold(router: AccountRouter): Promise<void> {
-  await registry.disposeAll()
+  await registry.close()
   registry = new SessionRegistry(store)
   registry.limits = router
 }

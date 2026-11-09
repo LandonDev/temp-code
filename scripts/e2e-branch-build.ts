@@ -428,6 +428,6 @@ await pullBranch(project, 'sync', () => {}).then(
 check('diverged: local untouched, origin fetched', git(ff.cwd, 'rev-parse', 'HEAD') === localTip && (await remoteStatus(project, 'sync'))?.behind === 1)
 
 for (const dir of cleanup) git(repo, 'worktree', 'remove', '--force', dir)
-await registry.disposeAll()
+await registry.close()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

@@ -6147,18 +6147,24 @@ export class SessionRegistry {
     }
   }
 
-  async disposeAll(): Promise<void> {
+  /** Stop the registry before its store closes; late callbacks do nothing. */
+  async close(): Promise<void> {
     if (this.closed) return
     this.closed = true
     this.pendingTitles.clear()
-    if (this.sweepTimer) clearInterval(this.sweepTimer)
-    if (this.livenessTimer) clearInterval(this.livenessTimer)
-    this.scheduler.dispose()
     for (const { timer } of this.limitContinues.values()) clearTimeout(timer)
     this.limitContinues.clear()
     this.limited.clear()
     if (this.providerTicker) clearInterval(this.providerTicker)
     this.providerTicker = null
+    await this.disposeAll()
+  }
+
+  /** Put down every harness, keeping the registry usable for later sends. */
+  async disposeAll(): Promise<void> {
+    if (this.sweepTimer) clearInterval(this.sweepTimer)
+    if (this.livenessTimer) clearInterval(this.livenessTimer)
+    this.scheduler.dispose()
     for (const timer of this.capHolds.values()) if (timer) clearTimeout(timer)
     this.capHolds.clear()
     this.flushFolds()

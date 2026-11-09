@@ -661,7 +661,7 @@ for (const name of touchedLegs) {
 leg = 'end'
 scheduler.dispose()
 setSessionTierGate(null)
-await registry.disposeAll().catch(() => undefined)
+await registry.close().catch(() => undefined)
 await cleanup()
 const all = Object.values(report.legs).flatMap((l) => l.checks)
 const failed = all.filter((c) => c.outcome === 'failed').length

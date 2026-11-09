@@ -265,7 +265,7 @@ try {
   save()
   offMeta()
   killChildren()
-  await registry.disposeAll()
+  await registry.close()
   await current?.service.close()
   rpc?.close()
   server.close()

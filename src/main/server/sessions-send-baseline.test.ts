@@ -66,7 +66,7 @@ beforeEach(async () => {
 })
 afterEach(async () => {
   releaseEnsure()
-  await registry.disposeAll()
+  await registry.close()
   db.close()
   await rm(root, { recursive: true, force: true })
 })

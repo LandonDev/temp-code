@@ -50,5 +50,5 @@ console.log(`${ok1 ? 'PASS' : 'FAIL'}  session persisted new provider/model (${m
 console.log(`${ok2 ? 'PASS' : 'FAIL'}  native session is fresh (${claudeNativeId} → ${meta.nativeId})`)
 console.log(`${ok3 ? 'PASS' : 'FAIL'}  conversation crossed the harness boundary (codeword recalled)`)
 console.log(`${ok4 ? 'PASS' : 'FAIL'}  handoff stays out of the visible transcript`)
-await registry.disposeAll()
+await registry.close()
 process.exit(ok1 && ok2 && ok3 && ok4 ? 0 : 1)

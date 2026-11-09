@@ -213,7 +213,7 @@ describe('ensureLinked over the registry', () => {
   const home = process.env.HOME
   afterEach(async () => {
     process.env.HOME = home
-    await registry?.disposeAll()
+    await registry?.close()
     db?.close()
     if (root) await rm(root, { recursive: true, force: true })
   })

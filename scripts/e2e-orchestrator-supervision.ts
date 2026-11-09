@@ -211,6 +211,6 @@ check(
     listed.every((a: { title: string; idleForSeconds: number }) => a.title && a.idleForSeconds >= 0)
 )
 
-await registry.disposeAll()
+await registry.close()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

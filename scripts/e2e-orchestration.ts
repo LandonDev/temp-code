@@ -79,6 +79,6 @@ check(
 )
 check('spawn tool call visible in orchestrator transcript', registry.eventsAfter(orch.id, 0).some((r) => r.event.type === 'tool-call' && r.event.name.includes('spawn_agent')))
 
-await registry.disposeAll()
+await registry.close()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

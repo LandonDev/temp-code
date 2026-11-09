@@ -195,6 +195,6 @@ check(
   journal.split('\n').at(-2) ?? ''
 )
 
-await registry.disposeAll()
+await registry.close()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

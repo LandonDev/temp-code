@@ -253,7 +253,7 @@ check('four children carry the master id', kids.length === 4 && !!a && !!r && !!
 if (!a || !r || !p || !b) {
   console.log(`\n${failures} FAILURES (the master did not start its batch)`)
   log(finalText(master.id).slice(-300))
-  await registry.disposeAll()
+  await registry.close()
   process.exit(1)
 }
 check('three types', a.threadType === 'implementation' && r.threadType === 'research' && p.threadType === 'planning' && b.threadType === 'implementation')
@@ -405,7 +405,7 @@ const archived = await batches.archive(master.id, 'done', false)
 check('batch.archive done archives every done child and leaves the master', [a, r, b].every((k) => archived.succeeded.includes(k.id) && store.getSession(k.id)?.archived === true) && store.getSession(p.id)?.archived === true && store.getSession(master.id)?.archived === false, JSON.stringify(archived))
 check('the second master is untouched', store.getSession(second.id)?.archived === false && !registry.list({ archived: false }).some((s) => s.masterId === second.id))
 
-await registry.disposeAll()
+await registry.close()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 log(`scratch: ${root}`)
 process.exit(failures === 0 ? 0 : 1)

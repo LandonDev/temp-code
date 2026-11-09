@@ -221,6 +221,6 @@ const rows3 = registry.eventsAfter(manual.id, 0).map((r) => r.event)
 check('handoff row says manual', (rows3.find((e) => e.type === 'plan-handoff') as { how?: string } | undefined)?.how === 'manual')
 await settled(byHand.id).catch(() => {})
 
-await registry.disposeAll()
+await registry.close()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

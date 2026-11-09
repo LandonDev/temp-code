@@ -134,6 +134,6 @@ check('workspace checkout still untouched', snapshot() === before)
 git(repo, 'worktree', 'remove', '--force', project.cwd)
 git(repo, 'worktree', 'remove', '--force', adopted.cwd)
 
-await registry.disposeAll()
+await registry.close()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

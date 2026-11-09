@@ -130,6 +130,6 @@ if (s2) {
   check('the model answered it', plum)
 }
 
-await registry.disposeAll()
+await registry.close()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

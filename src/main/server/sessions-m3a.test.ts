@@ -25,7 +25,7 @@ beforeEach(async () => {
   registry = new SessionRegistry(store)
 })
 afterEach(async () => {
-  await registry.disposeAll()
+  await registry.close()
   db.close()
   await rm(root, { recursive: true, force: true })
 })
@@ -38,7 +38,7 @@ it('persists pin changes across a reopened DB and pushes metadata', async () => 
   expect(listener).toHaveBeenCalledWith(expect.objectContaining({ id: session.id, pinned: true }), expect.any(String))
   expect(() => registry.setPinned('missing', true)).toThrow('unknown session')
   off()
-  await registry.disposeAll()
+  await registry.close()
   db.close()
   db = openDb(join(root, 'test.db'))
   store = new Store(db)
@@ -50,7 +50,7 @@ it('persists pin changes across a reopened DB and pushes metadata', async () => 
 it('migrates pre-pin databases without changing their sessions', async () => {
   const session = await registry.create({ cwd: root, title: 'Keep me' })
   db.exec('ALTER TABLE sessions DROP COLUMN pinned')
-  await registry.disposeAll()
+  await registry.close()
   db.close()
   db = openDb(join(root, 'test.db'))
   store = new Store(db)

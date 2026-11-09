@@ -51,7 +51,7 @@ beforeEach(async () => {
   reads = []
 })
 afterEach(async () => {
-  await registry.disposeAll()
+  await registry.close()
   db.close()
   await rm(root, { recursive: true, force: true })
 })

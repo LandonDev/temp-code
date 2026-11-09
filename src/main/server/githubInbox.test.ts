@@ -150,7 +150,7 @@ beforeEach(async () => {
 })
 afterEach(async () => {
   expect(replies).toEqual([])
-  await registry.disposeAll()
+  await registry.close()
   db.close()
   await rm(root, { recursive: true, force: true })
 })

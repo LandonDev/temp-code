@@ -21,7 +21,7 @@ beforeEach(async () => {
   registry = new SessionRegistry(store)
 })
 afterEach(async () => {
-  await registry.disposeAll()
+  await registry.close()
   db.close()
   await rm(root, { recursive: true, force: true })
 })
@@ -147,7 +147,7 @@ it('runs only once, including after reopening the database', async () => {
   store.insertWorkspace(workspace('new', `${root}/`, 2))
   registry.foldWorkspaces()
   const marker = store.getSetting(WORKSPACE_FOLD_KEY)
-  await registry.disposeAll()
+  await registry.close()
   db.close()
   db = openDb(join(root, 'test.db'))
   store = new Store(db)

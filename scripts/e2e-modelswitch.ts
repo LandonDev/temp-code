@@ -39,5 +39,5 @@ const ok1 = meta.model === 'claude-opus-5' && meta.reasoning === 'medium'
 const ok2 = /pineapple/i.test(text)
 console.log(`${ok1 ? 'PASS' : 'FAIL'}  session persisted new model/reasoning (${meta.model}/${meta.reasoning})`)
 console.log(`${ok2 ? 'PASS' : 'FAIL'}  conversation survived the harness swap (codeword recalled)`)
-await registry.disposeAll()
+await registry.close()
 process.exit(ok1 && ok2 ? 0 : 1)

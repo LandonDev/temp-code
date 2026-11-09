@@ -35,7 +35,7 @@ beforeEach(() => {
 })
 afterEach(async () => {
   vi.useRealTimers()
-  await reg.disposeAll()
+  await reg.close()
   db.close()
 })
 

@@ -74,6 +74,6 @@ check('unstamped turn-ended error never marks the tree failed', metaOf(root2.id)
 check('unstamped turn-ended error never offers Continue', metaOf(root2.id).canContinue === false)
 await registry.delete(root2.id)
 
-await registry.disposeAll()
+await registry.close()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

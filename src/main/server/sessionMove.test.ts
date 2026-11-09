@@ -204,8 +204,8 @@ beforeEach(() => {
 afterEach(async () => {
   mac.mover.close()
   box.mover.close()
-  await mac.registry.disposeAll()
-  await box.registry.disposeAll()
+  await mac.registry.close()
+  await box.registry.close()
   mac.db.close()
   box.db.close()
   rmSync(T, { recursive: true, force: true })

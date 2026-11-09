@@ -52,7 +52,7 @@ beforeEach(async () => {
 })
 afterEach(async () => {
   cancelMirrors()
-  await registry.disposeAll()
+  await registry.close()
   db.close()
   await rm(root, { recursive: true, force: true })
 })
@@ -100,7 +100,7 @@ describe('startWith', () => {
       const again = new SessionRegistry(new Store(other))
       expect(again.get(meta.id)?.title).toBe('Durable')
       expect(userTexts(new Store(other), meta.id)).toEqual(['remember me'])
-      await again.disposeAll()
+      await again.close()
     } finally {
       other.close()
     }

@@ -70,7 +70,7 @@ beforeEach(async () => {
 })
 afterEach(async () => {
   vi.useRealTimers()
-  await registry.disposeAll()
+  await registry.close()
   db.close()
   await rm(root, { recursive: true, force: true })
 })
@@ -176,7 +176,7 @@ it('resumes recorded threads four at a time, children first, with the restart nu
   store.recordResumeAfterBoot([{ sessionId: paused, recordedAt: 10, lastUserSeq: null, shutdownAt: 10 }])
   store.recordResumeAfterBoot([{ sessionId: 'gone-thread', recordedAt: 10, lastUserSeq: null, shutdownAt: 10 }])
   // A new process: no handles, rows still say running.
-  await registry.disposeAll()
+  await registry.close()
   registry = new SessionRegistry(store)
   registry.resetStaleStatuses()
   for (const id of [parent, ...children, ...roots]) expect(store.getSession(id)?.status).toBe('running')
@@ -236,7 +236,7 @@ it('a harness that will not boot leaves the thread in error, counted as failed, 
   const good = await live()
   const bad = await live()
   registry.recordForResume(20)
-  await registry.disposeAll()
+  await registry.close()
   failBoots.add(bad)
   registry = new SessionRegistry(store)
   sends.clear()
@@ -252,7 +252,7 @@ it('a harness that will not boot leaves the thread in error, counted as failed, 
 
 it('a row with no shutdown stamp (the process died without its handler) is nudged with the boot time', async () => {
   const id = await live()
-  await registry.disposeAll()
+  await registry.close()
   registry = new SessionRegistry(store)
   expect(store.listResumeAfterBoot()).toMatchObject([{ sessionId: id, shutdownAt: null }])
   sends.clear()
@@ -264,7 +264,7 @@ it('a row with no shutdown stamp (the process died without its handler) is nudge
 
 it('resumeStopped carries the working clock across: a stopped thread resumes with its frozen time', async () => {
   const id = await live()
-  await registry.disposeAll()
+  await registry.close()
   registry = new SessionRegistry(store)
   store.updateSession(id, { status: 'stopped', busySince: null, frozenActiveElapsed: 90_000 })
   const before = Date.now()
@@ -291,7 +291,7 @@ import { HARNESS_GONE_GRACE_MS } from './sessions'
 
 it('a running thread with no harness flips to stopped once the grace is up, and keeps its working time', async () => {
   const id = await live()
-  await registry.disposeAll()
+  await registry.close()
   registry = new SessionRegistry(store)
   store.updateSession(id, { status: 'running', busySince: 1_000_000 - 30_000 })
   // First sighting starts the clock; nothing flips yet.
@@ -343,7 +343,7 @@ it('a handle whose process is gone counts as no harness', async () => {
 it('a paused thread is never a liveness candidate', async () => {
   const id = await live()
   await registry.pauseRun(id)
-  await registry.disposeAll()
+  await registry.close()
   registry = new SessionRegistry(store)
   expect(registry.sweepLiveness(HARNESS_GONE_GRACE_MS, 1)).toEqual([])
   expect(registry.sweepLiveness(HARNESS_GONE_GRACE_MS, 1 + 10 * HARNESS_GONE_GRACE_MS)).toEqual([])
@@ -352,7 +352,7 @@ it('a paused thread is never a liveness candidate', async () => {
 
 it('the sweep runs on its timer', async () => {
   const id = await live()
-  await registry.disposeAll()
+  await registry.close()
   registry = new SessionRegistry(store)
   store.updateSession(id, { status: 'running' })
   vi.useFakeTimers()
@@ -365,7 +365,7 @@ it('the sweep runs on its timer', async () => {
 
 it('Resume on a stopped thread boots a fresh harness and the thread runs again', async () => {
   const id = await live()
-  await registry.disposeAll()
+  await registry.close()
   registry = new SessionRegistry(store)
   store.updateSession(id, { status: 'running' })
   registry.sweepLiveness(0, 1)
@@ -383,7 +383,7 @@ it('Resume on a stopped thread boots a fresh harness and the thread runs again',
 it('resumes up to the running cap and leaves the rest queued with their nudge, started oldest first as slots free', async () => {
   const ids = [await live(), await live(), await live(), await live()]
   registry.recordForResume(10)
-  await registry.disposeAll()
+  await registry.close()
   registry = new SessionRegistry(store)
   registry.resetStaleStatuses()
   registry.admission = { cap: () => 2, memoryLow: () => false }

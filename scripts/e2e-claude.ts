@@ -165,7 +165,7 @@ async function main(): Promise<void> {
   )
 
   // --- 5. resume across "relaunch" -----------------------------------------
-  await registry.disposeAll()
+  await registry.close()
   const registry2 = new SessionRegistry(store)
   const replay = registry2.eventsAfter(a.id, 0)
   check('transcript survives relaunch', replay.length === rowsA.length + replayDelta(rowsA, replay))
@@ -206,7 +206,7 @@ async function main(): Promise<void> {
     .join(' ')
   check('bad model surfaced to the user', /model/i.test(badText), badText.slice(0, 80))
 
-  await registry2.disposeAll()
+  await registry2.close()
   console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
   process.exit(failures === 0 ? 0 : 1)
 }

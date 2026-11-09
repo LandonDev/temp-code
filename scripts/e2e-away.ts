@@ -132,6 +132,6 @@ check('the running turn was told the person is back', sent.some((t) => t.startsW
 await waitFor(worker.id, isSettle)
 check('the worker finished its turn', rows(worker.id).some((e) => e.type === 'turn-complete'))
 
-await registry.disposeAll()
+await registry.close()
 console.log(failures ? `\n${failures} FAILED` : '\nall passed')
 process.exit(failures ? 1 : 0)

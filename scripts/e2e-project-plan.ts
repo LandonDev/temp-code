@@ -213,7 +213,7 @@ check('landing again ticks nothing', plans.landed(project.id).length === 0)
 const pinned = plans.pin(project.id, true)
 check('"Keep as the project\'s plan" pins it with the tick count', pinned?.pinned === true && pinned.milestones.filter((m) => m.done).length === 1, JSON.stringify(pinned))
 
-await registry.disposeAll()
+await registry.close()
 await server.close()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

@@ -141,7 +141,7 @@ main()
   })
   .finally(async () => {
     batches.dispose()
-    await registry.disposeAll().catch(() => {})
+    await registry.close().catch(() => {})
     console.log(failures ? `${failures} FAILED` : 'ALL PASS')
     process.exit(failures ? 1 : 0)
   })

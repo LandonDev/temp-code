@@ -11,7 +11,7 @@ beforeEach(() => {
   registry = new SessionRegistry(store)
 })
 afterEach(async () => {
-  await registry.disposeAll()
+  await registry.close()
   db.close()
 })
 

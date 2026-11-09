@@ -194,7 +194,7 @@ check('the tree holds only the hand-made file', git('status', '--porcelain').tri
 offSpawns()
 offWatch()
 offEdits()
-await registry.disposeAll()
+await registry.close()
 await closeAllLiveWatchers()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

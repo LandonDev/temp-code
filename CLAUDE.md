@@ -2506,7 +2506,7 @@ why and the measured headline.
   rebuild); the scheduler pass waits for a quiet loop and comes at most
   every 250 ms while the loop lags.
   Server close stops that registry's thread mirror timers and awaits its writes before closing the reader and database (`mirror.ts`, `stopMirrors`).
-  `SessionRegistry.disposeAll()` marks the registry closed first, clears pending titles and timers, and keeps late title, fold, driver and report callbacks from using the store.
+  `SessionRegistry.close()` marks the registry closed first, clears pending titles and timers, and keeps late title, fold, driver and report callbacks from using the store; `disposeAll()` puts down the harnesses and leaves the registry usable.
 - Proof: `bun run script:e2e-interactive-lane` (200 git.diffStats against a
   scratch repo beside a focused socket reading a 2,000-row thread; on the
   Mac: focused p95 3 ms, 15 git children where 200 runs would spawn 600).

@@ -117,7 +117,7 @@ async function main(): Promise<void> {
   await waitFor(cursor.id, turnEnd, mr)
   check('cursor resume remembers', textOf(cursor.id, mr).includes('CURSOR-OK'), textOf(cursor.id, mr).slice(-60))
 
-  await registry.disposeAll()
+  await registry.close()
   console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
   process.exit(failures === 0 ? 0 : 1)
 }

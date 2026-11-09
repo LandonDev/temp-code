@@ -47,5 +47,5 @@ for (const c of cases) {
   allOk &&= ok
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${c.provider}/${c.model} (${meta.model}) → ${JSON.stringify(text.slice(0, 80))}${errs ? '  ERR: ' + errs.slice(0, 300) : ''}`)
 }
-await registry.disposeAll()
+await registry.close()
 process.exit(allOk ? 0 : 1)

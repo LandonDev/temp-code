@@ -61,7 +61,7 @@ beforeEach(async () => {
   failBoots.clear()
 })
 afterEach(async () => {
-  await registry.disposeAll()
+  await registry.close()
   db.close()
   await rm(root, { recursive: true, force: true })
 })
@@ -203,7 +203,7 @@ describe('boot', () => {
     const held = await queued('held', { title: 'Held', after: busy })
     expect(status(held)).toBe('queued')
     // A new registry over the same store: the in-memory queue is gone.
-    await registry.disposeAll()
+    await registry.close()
     registry = new SessionRegistry(store)
     registry.scheduler.holdUntil(new BootResumer({ store, registry }).run())
     await settle()

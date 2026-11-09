@@ -84,7 +84,7 @@ try {
     // 4. Nothing listed has a title and no rows.
     const empty = rebuilt.list({ archived: undefined }).filter((s) => other.eventsAfter(s.id, 0).length === 0)
     check('no listed thread has a title and no rows', empty.length === 0, empty.map((s) => s.title).join(', '))
-    await rebuilt.disposeAll()
+    await rebuilt.close()
   } finally {
     otherDb.close()
   }
@@ -100,7 +100,7 @@ try {
   const known = await sessionEvents(registry, { sessionId: child.id, afterSeq: 0 }, 'local', () => {})
   check('and answers a known one', Array.isArray(known) && known.length > 0)
 } finally {
-  await registry.disposeAll()
+  await registry.close()
   db.close()
   rmSync(dir, { recursive: true, force: true })
 }

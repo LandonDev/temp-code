@@ -243,7 +243,7 @@ const again = new Batches({ registry, store })
 check('steps survive', JSON.stringify(steps(again.get(master.id))) === JSON.stringify(steps(state)))
 check('a thread outside a batch gets the commit tier', MergeReviews.stepFor({ masterId: null }) === 'gate' && MergeReviews.stepFor({ masterId: 'x' }) === 'typecheck')
 
-await registry.disposeAll()
+await registry.close()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 log(`scratch: ${root}`)
 process.exit(failures === 0 ? 0 : 1)

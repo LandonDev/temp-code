@@ -148,6 +148,6 @@ await registry.interrupt(id)
 const end4 = await waitFor(id, (r) => r.event.type === 'status' && (r.event.status === 'idle' || r.event.status === 'stopped' || r.event.status === 'error'), before4)
 check('the cancel settled the row', end4.event.type === 'status' && end4.event.status !== 'error', (end4.event as { status: string }).status)
 
-await registry.disposeAll()
+await registry.close()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

@@ -196,5 +196,5 @@ results.push(
 )
 
 console.log(`\n${results.map(([l, t]) => `${l}: ${t}`).join('  |  ')}`)
-await registry.disposeAll()
+await registry.close()
 process.exit(0)

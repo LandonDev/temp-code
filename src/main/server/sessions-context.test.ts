@@ -25,13 +25,13 @@ beforeEach(async () => {
   registry = new SessionRegistry(store)
 })
 afterEach(async () => {
-  await registry.disposeAll()
+  await registry.close()
   db.close()
   await rm(root, { recursive: true, force: true })
 })
 
 async function reopen(): Promise<void> {
-  await registry.disposeAll()
+  await registry.close()
   db.close()
   db = openDb(join(root, 'test.db'))
   store = new Store(db)

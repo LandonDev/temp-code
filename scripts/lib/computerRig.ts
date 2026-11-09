@@ -415,7 +415,7 @@ export async function startRig(opts: {
     closeLanes,
     close: async () => {
       closeLanes()
-      await server.registry.disposeAll().catch(() => undefined)
+      await server.registry.close().catch(() => undefined)
     }
   }
 }

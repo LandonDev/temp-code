@@ -136,6 +136,6 @@ check(
 
 console.log(`\nRESULT repos=${snap.repos.length} cost=${cost} elapsed=${elapsed}ms fetches=${fetchesBefore} budgetedSpawns=${budgetedSpawns}`)
 
-await registry.disposeAll()
+await registry.close()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

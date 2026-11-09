@@ -265,6 +265,6 @@ const small = readFileSync(
 check('a short digest is untouched', !small.includes('_[earlier turns trimmed]_') && small.includes('hi'))
 check('a short digest still points at the transcript', small.includes('_Full transcript: '))
 
-await registry.disposeAll()
+await registry.close()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

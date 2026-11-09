@@ -155,7 +155,7 @@ try {
   check('the row is back on A', store.getSession(T)?.account === 'A' && routed.at(-1) === `${T}:A`, routed.join(','))
 } finally {
   await gateway.stop()
-  await registry.disposeAll()
+  await registry.close()
   db.close()
   upstream.close()
   rmSync(dataDir, { recursive: true, force: true })

@@ -3637,7 +3637,7 @@ export async function startServer(
       headroom.flush()
       admission.stop()
       away.dispose()
-      await registry.disposeAll()
+      await registry.close()
       offCheckpointEdits()
       closeWarmPools()
       await closeAllWatchers()

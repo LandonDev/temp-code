@@ -81,7 +81,7 @@ beforeEach(async () => {
   store.insertProject({ id: 'p1', workspaceId: 'ws1', name: 'app', mode: 'local', branch: null, cwd: ws, archived: false, createdAt: 1 })
 })
 afterEach(async () => {
-  await registry.disposeAll()
+  await registry.close()
   cancelMirrors()
   db.close()
   await rm(root, { recursive: true, force: true })

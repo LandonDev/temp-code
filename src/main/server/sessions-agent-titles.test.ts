@@ -52,7 +52,7 @@ beforeEach(async () => {
   contexts.clear()
 })
 afterEach(async () => {
-  await registry.disposeAll()
+  await registry.close()
   closeDb()
   vi.restoreAllMocks()
   await rm(root, { recursive: true, force: true })
@@ -105,6 +105,35 @@ it('no title back keeps the first line', async () => {
   expect(registry.get(id)?.title).toBe('Audit the gateway')
 })
 
+it('disposeAll keeps a title in flight and lets the next send boot a fresh harness', async () => {
+  const id = await child('Audit the gateway')
+  await registry.send(id, 'go')
+  const previous = contexts.get(id)!
+  const handle = (registry as unknown as { handles: Map<string, DriverHandle> }).handles.get(id)!
+  const dispose = vi.spyOn(handle, 'dispose')
+  registry.titleFromTask(id, 'Audit the gateway')
+  await registry.disposeAll()
+  expect(dispose).toHaveBeenCalledTimes(1)
+  titles[0].resolve('Gateway deadline audit')
+  await settle()
+  expect(registry.get(id)?.title).toBe('Gateway deadline audit')
+  await registry.send(id, 'carry on')
+  expect(contexts.get(id)).not.toBe(previous)
+  expect(registry.get(id)?.status).toBe('running')
+})
+
+it('disposeAll keeps a title waiting for the first turn to finish after a restart', async () => {
+  const session = await registry.startWith({ cwd: root, provider: 'claude' }, 'Audit the gateway')
+  expect(titles).toHaveLength(0)
+  await registry.disposeAll()
+  await registry.send(session.id, 'carry on')
+  contexts.get(session.id)!.emit({ type: 'turn-complete' })
+  expect(titles.map((title) => title.text)).toEqual(['Audit the gateway'])
+  titles[0].resolve('Gateway deadline audit')
+  await settle()
+  expect(registry.get(session.id)?.title).toBe('Gateway deadline audit')
+})
+
 it.each(['task', 'first turn'])('a %s title that resolves after close never reads or updates the store', async (source) => {
   let id: string
   if (source === 'task') {
@@ -116,7 +145,7 @@ it.each(['task', 'first turn'])('a %s title that resolves after close never read
     registry.append(id, { type: 'turn-complete' })
   }
   expect(titles).toHaveLength(1)
-  await registry.disposeAll()
+  await registry.close()
   closeDb()
   const read = vi.spyOn(store, 'getSession')
   const update = vi.spyOn(store, 'updateSession')
@@ -138,7 +167,7 @@ it('close blocks a title before driver teardown finishes', async () => {
   const handle = (registry as unknown as { handles: Map<string, DriverHandle> }).handles.get(id)!
   vi.spyOn(handle, 'dispose').mockReturnValue(stopped.promise)
   registry.titleFromTask(id, 'Audit the gateway')
-  const closing = registry.disposeAll()
+  const closing = registry.close()
   const read = vi.spyOn(store, 'getSession')
   const update = vi.spyOn(store, 'updateSession')
   titles[0].resolve('Gateway deadline audit')
@@ -166,7 +195,7 @@ it.each(['generation', 'update'])('a title %s failure logs once and never reject
 it('a title promise that rejects after close is still handled', async () => {
   const id = await child('Audit the gateway')
   registry.titleFromTask(id, 'Audit the gateway')
-  await registry.disposeAll()
+  await registry.close()
   closeDb()
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
   titles[0].reject(new Error('late failure'))
@@ -179,7 +208,7 @@ it('close clears titles waiting for their first turn and ignores late driver cal
   const pending = (registry as unknown as { pendingTitles: Map<string, unknown> }).pendingTitles
   expect(pending.size).toBe(1)
   const ctx = contexts.get(session.id)!
-  await registry.disposeAll()
+  await registry.close()
   closeDb()
   const read = vi.spyOn(store, 'getSession')
   const update = vi.spyOn(store, 'updateSession')
@@ -205,7 +234,7 @@ it('a driver that finishes booting after close is disposed without touching the 
   await child('Audit the gateway')
   await settle()
   expect(BUILT_IN_DRIVERS.claude.start).toHaveBeenCalledTimes(1)
-  await registry.disposeAll()
+  await registry.close()
   closeDb()
   const read = vi.spyOn(store, 'getSession')
   const update = vi.spyOn(store, 'updateSession')
@@ -225,7 +254,7 @@ it('reports arriving or waiting on a reboot when close starts leave the store al
   vi.spyOn(internals, 'rebootIfStale').mockReturnValueOnce(reboot.promise)
   const report = { agentId: 'child', title: 'Review', status: 'done' as const, text: 'Review complete' }
   registry.deliverAgentReport(id, report)
-  await registry.disposeAll()
+  await registry.close()
   closeDb()
   const read = vi.spyOn(store, 'getSession')
   const update = vi.spyOn(store, 'updateSession')
@@ -242,7 +271,7 @@ it('reports arriving or waiting on a reboot when close starts leave the store al
 it('a fold warm-up that finishes after close never lands its row', async () => {
   const id = await child('Audit the gateway')
   await settle()
-  await registry.disposeAll()
+  await registry.close()
   registry = new SessionRegistry(store)
   const row = store.appendEvent(id, { type: 'user-text', text: 'go' })
   const rows = deferred<Awaited<ReturnType<Store['readRows']>>>()
@@ -251,7 +280,7 @@ it('a fold warm-up that finishes after close never lands its row', async () => {
   internals.todoFoldOf(id)
   const warming = registry.whenFoldWarm(id)
   expect(store.readRows).toHaveBeenCalledTimes(1)
-  await registry.disposeAll()
+  await registry.close()
   closeDb()
   const put = vi.spyOn(store, 'putFold')
   const read = vi.spyOn(store, 'getSession')
@@ -271,7 +300,7 @@ it('an account refresh stops between slices when close starts', async () => {
   const internals = registry as unknown as { expectAccountsSliced: (match: () => boolean, slice: number) => Promise<void> }
   const refreshing = internals.expectAccountsSliced(() => true, 1)
   expect(refresh).toHaveBeenCalledTimes(1)
-  await registry.disposeAll()
+  await registry.close()
   closeDb()
   pause.resolve()
   await refreshing
@@ -286,7 +315,7 @@ it('a failover that resolves after close never changes the account or schedules 
   registry.limits = { routeFor: () => ({ route: null, current: null }), failover }
   registry.append(id, { type: 'error', message: 'Usage limit', limit: { window: '5h' } })
   expect(failover).toHaveBeenCalledTimes(1)
-  await registry.disposeAll()
+  await registry.close()
   closeDb()
   const read = vi.spyOn(store, 'getSession')
   const update = vi.spyOn(store, 'updateSession')
@@ -298,7 +327,7 @@ it('a failover that resolves after close never changes the account or schedules 
   expect(resume).not.toHaveBeenCalled()
 })
 
-it('close cancels the limit-continue and provider-wait timers', async () => {
+it('disposeAll keeps the limit-continue and provider-wait timers until close cancels them', async () => {
   const id = await child('Audit the gateway')
   await settle()
   registry.limits = {
@@ -319,6 +348,11 @@ it('close cancels the limit-continue and provider-wait timers', async () => {
   const clearTimer = vi.spyOn(globalThis, 'clearTimeout')
   const clearTicker = vi.spyOn(globalThis, 'clearInterval')
   await registry.disposeAll()
+  expect(clearTimer).not.toHaveBeenCalledWith(timeout)
+  expect(clearTicker).not.toHaveBeenCalledWith(interval)
+  expect(timers.limitContinues.size).toBe(1)
+  expect(timers.providerTicker).toBe(interval)
+  await registry.close()
   expect(clearTimer).toHaveBeenCalledWith(timeout)
   expect(clearTicker).toHaveBeenCalledWith(interval)
   expect(timers.limitContinues.size).toBe(0)
@@ -333,7 +367,7 @@ it.each(['resolve', 'reject'])('a steer that settles by %s after close does not 
   vi.spyOn(handle, 'send').mockReturnValueOnce(sent.promise)
   const internals = registry as unknown as { steerLive: (id: string, text: string) => boolean }
   expect(internals.steerLive(id, 'more work')).toBe(true)
-  await registry.disposeAll()
+  await registry.close()
   closeDb()
   const read = vi.spyOn(store, 'getSession')
   const append = vi.spyOn(store, 'appendEvent')
@@ -359,7 +393,7 @@ it.each(['notes', 'turn pass'])('a %s reminder waiting on a reboot stops after c
   const reminding = kind === 'notes'
     ? internals.runNotesReminder(id)
     : internals.runTurnPass(id, { verify: true, build: false, commit: 'off' })
-  await registry.disposeAll()
+  await registry.close()
   closeDb()
   const read = vi.spyOn(store, 'getSession')
   const append = vi.spyOn(store, 'appendEvent')
@@ -373,7 +407,7 @@ it('native-session recovery stops after its pending wait when close starts', asy
   const id = await child('Audit the gateway')
   await registry.send(id, 'go')
   contexts.get(id)!.nativeSessionLost?.()
-  await registry.disposeAll()
+  await registry.close()
   closeDb()
   const read = vi.spyOn(store, 'getSession')
   const update = vi.spyOn(store, 'updateSession')
@@ -386,7 +420,7 @@ it('plan settlement callbacks captured before close cannot use the store after c
   const id = await child('Plan')
   await settle()
   const flow = (registry as unknown as { planFlow: () => PlanFlowRegistry }).planFlow()
-  await registry.disposeAll()
+  await registry.close()
   closeDb()
   expect(flow.get(id)).toBeNull()
   expect(flow.listSessions()).toEqual([])
@@ -404,7 +438,7 @@ it.each(['resolve', 'reject'])('startWith avoids its final store read when send 
   const starting = registry.startWith({ cwd: root, provider: 'claude' }, 'Audit the gateway')
   await settle()
   expect(registry.send).toHaveBeenCalledTimes(1)
-  await registry.disposeAll()
+  await registry.close()
   closeDb()
   const read = vi.spyOn(store, 'getSession')
   const update = vi.spyOn(store, 'updateSession')

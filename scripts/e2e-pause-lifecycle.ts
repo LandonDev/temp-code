@@ -207,7 +207,7 @@ await tick()
 store.updateSession(restart.id, { status: 'running', busySince: Date.now() - 3_000 })
 await registry.pauseRun(restart.id)
 const frozenBeforeRestart = store.getSession(restart.id)?.frozenActiveElapsed ?? 0
-await registry.disposeAll()
+await registry.close()
 registry = new SessionRegistry(store)
 registry.resetStaleStatuses()
 check('boot cleanup preserves paused state', store.getSession(restart.id)?.status === 'paused')
@@ -307,6 +307,6 @@ check(
   metaOf(liveOrch.id)?.treeCanContinue === false
 )
 
-await registry.disposeAll()
+await registry.close()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

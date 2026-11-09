@@ -184,7 +184,7 @@ try {
   await registry.send(pinned.id, 'again')
   check('a workspace pin change respawns under the new pin on the next send', spawns.length === spawnsBefore + 1 && JSON.stringify(spawns.at(-1)?.route) === '{"account":"a@x.com","pin":true}', JSON.stringify(spawns.at(-1)?.route))
 } finally {
-  await registry.disposeAll()
+  await registry.close()
   rmSync(dataDir, { recursive: true, force: true })
 }
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)

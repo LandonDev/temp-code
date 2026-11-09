@@ -198,6 +198,6 @@ check('the waiting ones started oldest first', startOrder.join(',') === capped.s
 check('each capped thread has one user row', capped.every((id) => registry.eventsAfter(id, 0).filter((r) => r.event.type === 'user-text').length === 1))
 admission.stop()
 
-await registry.disposeAll()
+await registry.close()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

@@ -252,7 +252,7 @@ const cleanup = async (): Promise<void> => {
     // nothing registered
   }
   rmSync(join(homedir(), 'Library/Saved Application State', `${PROBE_BUNDLE_ID}.savedState`), { recursive: true, force: true })
-  await registry?.disposeAll().catch(() => undefined)
+  await registry?.close().catch(() => undefined)
   await service?.close().catch(() => undefined)
   saveReport()
   for (const name of readdirSync(WORK)) if (!KEEP.has(name)) rmSync(join(WORK, name), { recursive: true, force: true })

@@ -31,14 +31,14 @@ beforeEach(async () => {
   registry = new SessionRegistry(store)
 })
 afterEach(async () => {
-  await registry.disposeAll()
+  await registry.close()
   db.close()
   await rm(root, { recursive: true, force: true })
 })
 
 it('a respawn from a row holding a display slug hands the driver the catalog id', async () => {
   const session = await registry.create({ cwd: root, provider: 'claude', model: 'claude-fable-5-1' })
-  await registry.disposeAll()
+  await registry.close()
   // Poison the row behind the registry's back, as the pre-v180 send did,
   // then boot again on the same store and wake the thread.
   db.prepare(`UPDATE sessions SET model = 'fable-5.1' WHERE id = ?`).run(session.id)
