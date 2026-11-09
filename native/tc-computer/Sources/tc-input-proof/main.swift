@@ -63,7 +63,7 @@ DispatchQueue.global(qos: .userInitiated).async { [pids, tiers, wantSession, rep
         proof.session(textEdit: &te, chrome: &ch)
     }
     do { try proof.report.write(to: reportPath) } catch { FileHandle.standardError.write(Data("report: \(error)\n".utf8)) }
-    let pass = proof.report.legs.allSatisfy { $0.ok || $0.skipped != nil }
+    let pass = proof.report.pass
     print(pass ? "input proof: pass" : "input proof: FAIL")
     DispatchQueue.main.async { exit(pass ? 0 : 1) }
 }

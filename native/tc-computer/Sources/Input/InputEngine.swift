@@ -35,7 +35,7 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         self.layout = layout
         let core = InputCore(host: host, watch: watch, sessionLock: sessionLock, sink: sink, clock: clock, layout: layout, onPersonInput: onPersonInput, onHeld: onHeld)
         self.core = core
-        host.onActivation = { [weak core] in core?.driver.noteActivation() }
+        host.onActivation = { [weak core] pid in core?.driver.noteActivation(pid: pid) }
         host.observeActivations()
         // the 30 s auto-release of a held button
         sweeper = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))

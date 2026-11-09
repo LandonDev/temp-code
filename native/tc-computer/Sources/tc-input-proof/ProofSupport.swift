@@ -294,6 +294,9 @@ struct LegResult: Codable {
     var pointerMoved = false
     var retries = 0
     var skipped: String?
+    /// a process-tier leg the app did not act on, with nothing of the person's moved: a finding for
+    /// the measured table, not a failure (the probe must agree with it)
+    var ignored = false
     var error: String?
     var session: String?
 }
@@ -316,19 +319,22 @@ final class Report: @unchecked Sendable {
             "legs": try JSONSerialization.jsonObject(with: JSONEncoder().encode(legs)),
             "probes": try JSONSerialization.jsonObject(with: JSONEncoder().encode(probes)),
             "notes": notes,
-            "pass": legs.allSatisfy { $0.ok || $0.skipped != nil }
+            "pass": pass
         ]
         try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: path))
         try markdown().write(toFile: (path as NSString).deletingPathExtension + ".md", atomically: true, encoding: .utf8)
     }
 
     /// The report as a table per app: each leg, the tier it used, what it saw, its time.
+    /// The plan's pass: every leg did what it says, was skipped for the person, or is a process-tier finding.
+    var pass: Bool { legs.allSatisfy { $0.ok || $0.skipped != nil || $0.ignored } }
+
     func markdown() -> String {
         var out = ["# Input proof", ""]
         for app in Array(Set(legs.map(\.app))).sorted() {
             out += ["## \(app)", "", "| leg | tiers | used | result | ms |", "|---|---|---|---|---|"]
             for l in legs where l.app == app {
-                let result = l.skipped ?? (l.ok ? "ok: \(l.detail)" : "FAIL: \(l.detail)\(l.error.map { " (\($0))" } ?? "")")
+                let result = l.skipped ?? (l.ok ? "ok: \(l.detail)" : l.ignored ? "ignored: \(l.detail)" : "FAIL: \(l.detail)\(l.error.map { " (\($0))" } ?? "")")
                 out.append("| \(l.leg) | \(l.tiers.joined(separator: ",")) | \(l.tier ?? "-")\(l.via.map { " \($0)" } ?? "") | \(result.replacingOccurrences(of: "|", with: "/")) | \(Int(l.ms)) |")
             }
             out.append("")

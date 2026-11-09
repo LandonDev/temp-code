@@ -66,9 +66,11 @@ public struct SessionLedger: Sendable {
         record?.personTookOver = true
     }
 
-    /// An app came forward; Input's own come only while a step runs.
-    public mutating func activation() {
-        guard record != nil, !stepRunning else { return }
+    /// An app came forward. Input's own come while a step runs, or after it for the app the step
+    /// left in front (NSWorkspace says so on main once the step has returned); any other is foreign.
+    public mutating func activation(pid: Int?) {
+        guard let r = record, !stepRunning else { return }
+        if let pid, pid == r.lastFrontmost?.pid { return }
         record?.foreignActivations += 1
     }
 

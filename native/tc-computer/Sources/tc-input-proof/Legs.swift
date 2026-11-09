@@ -43,6 +43,8 @@ final class Proof: @unchecked Sendable {
                 r.clipboard = out.clipboard?.rawValue
                 Thread.sleep(forTimeInterval: 0.2)
                 (r.ok, r.detail) = verify(out)
+                // a process-tier step the app ignored is what the measured table records
+                r.ignored = !r.ok && tiers == [.process]
             } catch let f as ComputerFailure {
                 r.ms = Date().timeIntervalSince(t0) * 1000
                 r.error = "\(f.error.kind.rawValue): \(f.error.message)"
@@ -57,11 +59,12 @@ final class Proof: @unchecked Sendable {
             if r.frontmostMoved || r.pointerMoved {
                 if personMoved, retries < 3 { retries += 1; continue }
                 r.ok = false
+                r.ignored = false
                 r.detail += "; it moved the person's \(r.frontmostMoved ? "frontmost app" : "pointer")"
             }
             r.retries = retries
             report.legs.append(r)
-            print("\(r.ok ? "ok  " : "FAIL") \(app) \(leg) · \(r.tier ?? "-")\(r.via.map { " \($0)" } ?? "") · \(r.detail)\(r.error.map { " · \($0)" } ?? "")")
+            print("\(r.ok ? "ok  " : r.ignored ? "ign " : "FAIL") \(app) \(leg) · \(r.tier ?? "-")\(r.via.map { " \($0)" } ?? "") · \(r.detail)\(r.error.map { " · \($0)" } ?? "")")
             return
         }
     }
@@ -116,7 +119,7 @@ final class Proof: @unchecked Sendable {
             } else { missing("textedit", "left_click bold", "bold control") }
             if let bar { _ = P.set(bar, "AXValue", NSNumber(value: 0)) }
             let barBefore = bar.flatMap { P.number($0, "AXValue") }
-            step("textedit", "scroll down by AX pages", tiers: [.ax], ComputerAction(action: .scroll, element: 1, scroll_direction: .down, scroll_amount: 5), target: { s.target(text) }) { out in
+            step("textedit", "scroll down by AX pages", tiers: [.ax], ComputerAction(action: .scroll, element: 1, scroll_direction: .down, scroll_amount: 5), allow: [.actionUnsupported], target: { s.target(text) }) { out in
                 let now = bar.flatMap { P.number($0, "AXValue") }
                 return (out.tier == .ax && (now ?? 0) > (barBefore ?? 0), "scroll bar \(barBefore ?? -1) → \(now ?? -1)")
             }
@@ -235,6 +238,7 @@ final class Proof: @unchecked Sendable {
             step("chrome", "type into the notes", tiers: [.process], ComputerAction(action: .type, element: 1, text: "hello"), allow: [.keyWindowUnavailable], target: { s.target(notes) }) { out in
                 ((P.string(notes, "AXValue") ?? "").contains("hello"), "via \(out.via?.rawValue ?? "-")")
             }
+            keyLeft("chrome", in: name, at: 5, &s)
         }
         if let f = P.frame(gift) {
             let g0 = P.number(gift, "AXValue")
@@ -280,6 +284,19 @@ final class Proof: @unchecked Sendable {
         step("tempcode", "type into the composer", tiers: [.process], ComputerAction(action: .type, text: " typed"), allow: [.keyWindowUnavailable], target: { s.target() }) { out in
             ((P.string(composer, "AXValue") ?? "").contains("typed"), "via \(out.via?.rawValue ?? "-")")
         }
+        keyLeft("tempcode", in: composer, at: 3, &s)
+    }
+
+    /// The key class's direct leg beside the probe: focus a field and place its caret through AX
+    /// (inside the app, unseen), then Left at the process tier must move the caret back one.
+    func keyLeft(_ app: String, in field: AXUIElement, at caret: Int, _ s: inout Scratch) {
+        guard (P.string(field, "AXValue") ?? "").utf16.count >= caret else { return missing(app, "key Left in its field", "text in the field") }
+        _ = P.set(field, "AXFocused", kCFBooleanTrue)
+        _ = P.set(field, "AXSelectedTextRange", rangeValue(caret, 0))
+        Thread.sleep(forTimeInterval: 0.2)
+        step(app, "key Left in its field", tiers: [.process], ComputerAction(action: .key, text: "Left"), allow: [.keyWindowUnavailable], target: { s.target() }) { _ in
+            (P.range(field) == [caret - 1, 0], "caret \(caret) → \(P.range(field)?.first ?? -1)")
+        }
     }
 
     // MARK: the probe
@@ -288,7 +305,7 @@ final class Proof: @unchecked Sendable {
         do {
             let r = try engine.probe(s.target(), classes: [.scroll, .key, .click])
             var results: [String: String] = [:]
-            for x in r.results { results[x.class.rawValue] = x.outcome.rawValue + (x.reason.map { " (\($0))" } ?? "") }
+            for x in r.results { results[x.class.rawValue] = x.outcome.rawValue + (x.reason.map { " (\($0))" } ?? "") + (x.restored ? "" : ", not put back") }
             let total = r.results.reduce(0) { $0 + $1.ms }
             report.probes.append(ProbeLine(app: app, keyWindow: r.keyWindow.rawValue, results: results, restored: r.results.allSatisfy(\.restored), ms: total))
             print("probe \(app) · key window \(r.keyWindow.rawValue) · \(results)")
@@ -301,7 +318,7 @@ final class Proof: @unchecked Sendable {
     func compareProbes() {
         let direct: [String: (String) -> Bool] = [
             "scroll": { $0.contains("scroll 3 wheel clicks") || $0.contains("scroll the 60-row list") },
-            "key": { $0 == "key Right" || $0 == "type into the notes" || $0 == "type into the composer" },
+            "key": { $0 == "key Right" || $0 == "key Left in its field" },
             "click": { $0 == "left_click at a character" || $0 == "left_click into the notes" || $0 == "left_click into the composer" }
         ]
         for p in report.probes {

@@ -20,6 +20,10 @@ final class FakeProbe: ProbeAccess {
     var sets: [String] = []
     var posted: [[SyntheticEvent]] = []
     var focusedBack = false
+    /// reads of a value just set answer the old one this many times, as a web view's AX does
+    var lagReads = 0
+    private var stale: [String: TextRange] = [:]
+    private var staleReads = 0
 
     init(clock: FakeClock) { self.clock = clock }
 
@@ -35,9 +39,19 @@ final class FakeProbe: ProbeAccess {
     func focusedText() -> ProbeText<String>? { text() }
     func clickCandidate() -> ProbeText<String>? { text() }
     func number(_ e: String) -> Double? { clock.advance(readCost); return numbers[e] }
-    func range(_ e: String) -> TextRange? { clock.advance(readCost); return ranges[e] }
+    func range(_ e: String) -> TextRange? {
+        clock.advance(readCost)
+        if staleReads > 0, let old = stale[e] { staleReads -= 1; return old }
+        return ranges[e]
+    }
     func setNumber(_ e: String, _ v: Double) -> Bool { sets.append("number \(e)"); numbers[e] = v; return true }
-    func setRange(_ e: String, _ r: TextRange) -> Bool { sets.append("range \(e)"); ranges[e] = r; return true }
+    func setRange(_ e: String, _ r: TextRange) -> Bool {
+        sets.append("range \(e)")
+        stale[e] = ranges[e]
+        staleReads = lagReads
+        ranges[e] = r
+        return true
+    }
     func setFocused(_ e: String) -> Bool { sets.append("focus \(e)"); focusedBack = true; return true }
     func post(_ plan: [SyntheticEvent]) {
         posted.append(plan)
@@ -72,6 +86,19 @@ private func outcomes(_ r: ProbeReport) -> [String] {
         let deaf = FakeProbe(clock: clock)
         deaf.honours = []
         #expect(outcomes(ProbeRun(access: deaf, clock: clock).run(classes: [.scroll, .key, .click])) == ["scroll ignored", "key ignored", "click ignored"])
+    }
+
+    @Test func aPutBackThatShowsLateStillReadsRestored() {
+        let clock = FakeClock()
+        let p = FakeProbe(clock: clock)
+        p.lagReads = 3
+        let r = ProbeRun(access: p, clock: clock).run(classes: [.key])
+        #expect(r.results.first?.outcome == .honoured)
+        #expect(r.results.first?.restored == true)
+        // and one that never shows is not
+        let q = FakeProbe(clock: clock)
+        q.lagReads = 1_000
+        #expect(ProbeRun(access: q, clock: clock).run(classes: [.key]).results.first?.restored == false)
     }
 
     @Test func aWindowThatIsNotKeyLeavesKeyUntested() {

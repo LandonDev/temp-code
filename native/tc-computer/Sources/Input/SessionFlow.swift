@@ -106,8 +106,8 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
     var record: SessionRecord? { state.withLock { ledger.record } }
 
     /// An app came forward (NSWorkspace's activation notification).
-    func noteActivation() {
-        state.withLock { ledger.activation() }
+    func noteActivation(pid: Int?) {
+        state.withLock { ledger.activation(pid: pid) }
     }
 
     /// The watch tripped while no step ran: the engine has released the held input.

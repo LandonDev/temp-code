@@ -47,7 +47,7 @@ private let textEdit = AppBrief(pid: 7, bundleId: "com.apple.TextEdit", name: "T
         #expect(a.frontmost == .personMoved && a.pointer == .restored)
         // a foreign activation came and went: same endpoint, still the person's
         var b = afterOneStep()
-        b.activation()
+        b.activation(pid: 9)
         let pb = b.plan(now: 20, secondsSinceInput: 15, frontmost: textEdit, pointer: pt(400, 300), isRunning: { _ in true })
         #expect(pb.frontmost == .personMoved && pb.pointer == .restored)
         // the pointer moved more than 2 pt
@@ -71,10 +71,21 @@ private let textEdit = AppBrief(pid: 7, bundleId: "com.apple.TextEdit", name: "T
         #expect(l.plan(now: 30, secondsSinceInput: 99, frontmost: textEdit, pointer: pt(400, 300), isRunning: { _ in true }).frontmost == .personMoved)
     }
 
+    @Test func theLateWordOfInputsOwnActivationIsNotThePersons() {
+        // NSWorkspace says TextEdit came forward once the step that brought it has returned
+        var l = afterOneStep()
+        l.activation(pid: 7)
+        #expect(l.record?.foreignActivations == 0)
+        let plan = l.plan(now: 20, secondsSinceInput: 15, frontmost: textEdit, pointer: pt(400, 300), isRunning: { _ in true })
+        #expect(plan.frontmost == .restored)
+        l.activation(pid: nil)
+        #expect(l.record?.foreignActivations == 1)
+    }
+
     @Test func activationsDuringAStepAreInputsOwn() {
         var l = SessionLedger()
         l.stepBegan(frontmost: terminal, pointer: pt(0, 0), now: 1, secondsSinceInput: 99)
-        l.activation()
+        l.activation(pid: 9)
         l.stepEnded(frontmost: textEdit, pointer: pt(0, 0), now: 2, interrupted: false)
         #expect(l.record?.foreignActivations == 0)
     }

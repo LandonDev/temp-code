@@ -13,15 +13,16 @@ public final class LiveSessionHost: SessionHost, @unchecked Sendable {
     public typealias Window = AXUIElement
     private var observer: NSObjectProtocol?
     /// told of every app activation, while a record exists (the ledger counts the foreign ones)
-    var onActivation: (@Sendable () -> Void)?
+    var onActivation: (@Sendable (Int?) -> Void)?
 
     public init() {}
 
     /// Starts the activation observer; NSWorkspace delivers its notifications on main.
     func observeActivations() {
         guard observer == nil else { return }
-        observer = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: nil) { [weak self] _ in
-            self?.onActivation?()
+        observer = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: nil) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            self?.onActivation?(app.map { Int($0.processIdentifier) })
         }
     }
 

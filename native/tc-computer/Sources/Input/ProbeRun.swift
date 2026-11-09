@@ -166,13 +166,24 @@ public struct ProbeRun<Access: ProbeAccess> {
         access.post(EventPlans.scroll(c.value < 1 ? .down : .up, clicks: 1, at: c.point, modifiers: []))
         let after = waitFor({ access.number(c.bar) }, deadline: deadline) { ($0 ?? c.value) != c.value }
         // restoring runs to its end, past the deadline if it must
-        let restored = access.setNumber(c.bar, c.value) && access.number(c.bar).map { abs($0 - c.value) < 1e-6 } == true
+        let restored = access.setNumber(c.bar, c.value) && readsBack { access.number(c.bar).map { abs($0 - c.value) < 1e-6 } == true }
         return (ProbeJudge.outcome(before: c.value, after: after), nil, restored)
     }
 
     /// Puts a text candidate's caret and scroll back; true when both read back as before.
+    /// Reads until `matches` holds, for at most the call timeout: a web view answers an AX write
+    /// asynchronously, so the first read may still show the moved value.
+    private func readsBack(_ matches: () -> Bool) -> Bool {
+        let until = clock.seconds() + InputTiming.probeCallTimeoutS
+        while !matches() {
+            if clock.seconds() >= until { return false }
+            clock.sleep(ms: 10)
+        }
+        return true
+    }
+
     private func restoreText(_ c: ProbeText<Access.Element>) -> Bool {
-        var ok = access.setRange(c.element, c.range) && access.range(c.element) == c.range
+        var ok = access.setRange(c.element, c.range) && readsBack { access.range(c.element) == c.range }
         if let bar = c.bar, let v = c.barValue {
             ok = access.setNumber(bar, v) && ok
         }
