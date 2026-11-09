@@ -25,7 +25,9 @@ rewrites them in place; read each before committing).
 One class of private symbol is allowed in tc-computer (the person's ruling,
 2026-11-08): read-only calls, resolved by name at run time, each with a public
 fallback that a unit test forces. Nothing private that posts input or changes
-window state.
+window state. `CaptureTests/PrivateCallScanTests` holds every other shipped file
+to no run-time lookup and no SkyLight, CGS or SLS name; a new row here needs its
+exception there.
 
 | Symbol | Where | Why | Fallback |
 |---|---|---|---|
