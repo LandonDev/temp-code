@@ -55,10 +55,11 @@ function idleSeconds(): number {
   return m ? Number(m[1]) / 1e9 : 0
 }
 
-/** The frontmost app's name. */
+/** The frontmost app: its name and ASN (`lsappinfo info -only name` prints `"TempCode" ASN:0x0-0x220220: (in front)`), '' when unknown. */
 function frontApp(): string {
   const asn = sh(['lsappinfo', 'front']).out.trim()
-  return /"LSDisplayName"="([^"]*)"/.exec(sh(['lsappinfo', 'info', '-only', 'name', asn]).out)?.[1] ?? ''
+  if (!asn) return ''
+  return `${/^"([^"]*)"/.exec(sh(['lsappinfo', 'info', '-only', 'name', asn]).out)?.[1] ?? '?'} ${asn}`
 }
 
 /** Wait until the Mac has had no input for `seconds`; false when the person stays active. */
@@ -78,7 +79,7 @@ async function waitIdle(seconds: number, app: string): Promise<boolean> {
 /** After a launch: the person's front app must still be in front. */
 function stillBehind(before: string, app: string): boolean {
   const now = frontApp()
-  if (now === before) return true
+  if (now === before && now !== '') return true
   stopAll = `${now} came in front of ${before} after the ${app} launch`
   check(app, 'the launch stayed in the background', false, stopAll)
   return false
