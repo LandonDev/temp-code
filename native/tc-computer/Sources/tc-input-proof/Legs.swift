@@ -15,6 +15,10 @@ final class Proof: @unchecked Sendable {
     let gate = IdleGate(needed: 120)
     let timeline = Timeline()
     private(set) var engine: InputEngine!
+    /// the app in front before the session leg's first step, and after its last
+    private var legBegan: AppBrief?
+    private var legStepped = false
+    private var legEnded: AppBrief?
     private var interrupted: [pid_t] = []
 
     init() {
@@ -358,6 +362,11 @@ final class Proof: @unchecked Sendable {
             r.ms = Date().timeIntervalSince(t0) * 1000
             r.tier = out.tier?.rawValue
             r.via = out.via?.rawValue
+            if let c = out.session {
+                if !legStepped { legBegan = c.frontmost.before }
+                legStepped = true
+                legEnded = c.frontmost.after
+            }
             if let c = out.session { r.session = "front \(c.frontmost.before?.name ?? "-") → \(c.frontmost.after?.name ?? "-"), pointer \(c.pointer.before) → \(c.pointer.after)" }
             Thread.sleep(forTimeInterval: 0.2)
             (r.ok, r.detail) = verify(out)
@@ -411,7 +420,9 @@ final class Proof: @unchecked Sendable {
             timeline.note("restore begins")
             let r = try engine.restoreSession()
             timeline.note("restore: frontmost \(r.frontmost.rawValue), pointer \(r.pointer.rawValue)")
-            let ok = r.frontmost == .restored && r.pointer == .restored
+            // a leg that ends in the app it began with has no app to give back: `nothing` is right then
+            let sameApp = legBegan?.pid == legEnded?.pid
+            let ok = r.frontmost == (sameApp ? .nothing : .restored) && r.pointer == .restored
             report.legs.append(LegResult(app: "session", leg: "restoreSession gives back the app and the pointer", tiers: ["session"], ok: ok, detail: "frontmost \(r.frontmost.rawValue), pointer \(r.pointer.rawValue), held \(r.held?.name ?? "-")", ms: 0))
             print("\(ok ? "ok  " : "FAIL") session restore · \(r.frontmost.rawValue) \(r.pointer.rawValue)")
         } catch {
