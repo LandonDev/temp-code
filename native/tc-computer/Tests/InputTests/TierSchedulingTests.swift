@@ -244,6 +244,35 @@ private final class HandedLock: MacLock, @unchecked Sendable {
     }
 }
 
+@Suite struct FallbackSpanTests {
+    let keys = SessionChange(frontmost: .init(before: terminal, after: mail), pointer: .init(before: [1, 1], after: [2, 2]), restorable: true, armedAt: 1_000, idleAtArmMs: 130_000, lastInputAt: 1_400)
+    let paste = SessionChange(frontmost: .init(before: mail, after: mail), pointer: .init(before: [2, 2], after: [3, 3]), restorable: true, armedAt: 1_500, idleAtArmMs: 100, lastInputAt: 1_900)
+
+    @Test func keysThatFellBackToThePasteSpanFromTheKeysArmToThePastesLastEvent() throws {
+        let rig = Rig()
+        let typed = try rig.core.typeByEvents("hello", keys: { (StepEffect.none, keys, 1) }, paste: { (ClipboardOutcome.restored, paste, 2) })
+        guard case .paste(_, let change, _) = typed else { Issue.record("the type did not paste"); return }
+        #expect(change?.armedAt == 1_000)
+        #expect(change?.idleAtArmMs == 130_000)
+        #expect(change?.lastInputAt == 1_900)
+        #expect(change?.frontmost.before == terminal)
+        #expect(change?.frontmost.after == mail)
+        #expect(change?.pointer.before == [1, 1])
+        #expect(change?.pointer.after == [3, 3])
+    }
+
+    @Test func keysWithNoSpanLeaveThePastesOwnAndAPasteAloneIsItself() throws {
+        let rig = Rig()
+        let plain = SessionChange(frontmost: .init(), pointer: .init(before: [0, 0], after: [0, 0]), restorable: false)
+        #expect(rig.core.spanAcrossFallback(plain, paste) == paste)
+        #expect(rig.core.spanAcrossFallback(nil, paste) == paste)
+        #expect(rig.core.spanAcrossFallback(keys, nil) == keys)
+        let long = String(repeating: "x", count: InputTiming.keysMaxUnits + 1)
+        guard case .paste(_, let change, _) = try rig.core.typeByEvents(long, keys: { Issue.record("keys ran"); return (.changed, keys, 1) }, paste: { (.restored, paste, 2) }) else { return }
+        #expect(change == paste)
+    }
+}
+
 @Suite struct PasteQuietTests {
     let original = [PasteboardItemData(types: ["a"], data: ["a": Data([1, 2, 3])])]
 

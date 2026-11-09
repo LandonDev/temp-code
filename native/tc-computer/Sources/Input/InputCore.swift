@@ -205,6 +205,22 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
 
     // MARK: type's event rungs and the paste
 
+    /// One change for keys that showed no effect and the paste after them: the keys' arm and the
+    /// person's idle time then, the paste's last event and where it left the Mac. The paste's own arm
+    /// read the keys as the latest input, so its span alone would hand the keys to the person.
+    func spanAcrossFallback(_ keys: SessionChange?, _ paste: SessionChange?) -> SessionChange? {
+        guard let paste else { return keys }
+        guard let keys, let armedAt = keys.armedAt, let idle = keys.idleAtArmMs else { return paste }
+        return SessionChange(
+            frontmost: .init(before: keys.frontmost.before ?? paste.frontmost.before, after: paste.frontmost.after),
+            pointer: .init(before: keys.pointer.before, after: paste.pointer.after),
+            restorable: paste.restorable || keys.restorable,
+            armedAt: armedAt,
+            idleAtArmMs: idle,
+            lastInputAt: paste.lastInputAt ?? keys.lastInputAt
+        )
+    }
+
     /// What `type`'s event rungs did.
     enum TypedBy {
         case keys(SessionChange?, UInt64?)
@@ -214,12 +230,14 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
     /// `type`'s event rungs: keys when the text goes by keys, then the paste when it goes by
     /// paste (long text, a cluster key events can't carry) or the keys showed no effect.
     func typeByEvents(_ text: String, keys: () throws -> (StepEffect, SessionChange?, UInt64?), paste: () throws -> (ClipboardOutcome, SessionChange?, UInt64?)) throws -> TypedBy {
+        var keysChange: SessionChange?
         if TypingRoute.route(text) == .keys {
             let (effect, change, last) = try keys()
             if !TypingRoute.pasteAfterKeys(effect) { return .keys(change, last) }
+            keysChange = change
         }
         let (outcome, change, last) = try paste()
-        return .paste(outcome, change, last)
+        return .paste(outcome, spanAcrossFallback(keysChange, change), last)
     }
 
     /// The paste flow inside one step at `tier`, Command-V posted by the step. With `quietMs` the
