@@ -77,6 +77,7 @@ import { HostDevicesHub, MacDevices, handleHostDevices, hostDevicesOffers, isMac
 import { readSimulatorHolders } from './devices/ledger'
 import { MergeReviews, mergeReviews, setMergeReviews } from './mergeReview'
 import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './macTools'
+import type { AppRef } from '@shared/computer/protocol'
 import { computerUnavailable } from './computer/binary'
 import { computerHooks, type ComputerHost } from './computer/mcp'
 import { ComputerRpc } from './computer/rpc'
@@ -427,6 +428,8 @@ export async function startServer(
     devices?: MacDevices | null
     /** This host's screen and power state for the relay (src/main/presence.ts); default unknown/awake, never changing. */
     presence?: PresenceSource & { set?: (patch: Partial<Pick<MacPresence, 'screen' | 'power'>>) => MacPresence }
+    /** Proof seam (scripts/compare-computer-words.ts): pin a computer call's app query to a scratch pid; the app never sets it. */
+    computerResolveApp?: (query: string) => AppRef | null
   } = {}
 ): Promise<RunningServer> {
   bootMark('server-start')
@@ -1305,7 +1308,7 @@ export async function startServer(
       trace: process.env.TEMP_CODE_COMPUTER_TRACE === '1',
       unavailable: () => computerUnavailable()
     })
-    const pin = computerPinFromEnv()
+    const pin = options.computerResolveApp ?? computerPinFromEnv()
     const sessions = new ComputerSessions({
       service,
       registry: { get: (id) => registry.get(id), requestApproval: (id, req) => registry.requestApproval(id, req), awayOn: () => registry.awayOn() },
