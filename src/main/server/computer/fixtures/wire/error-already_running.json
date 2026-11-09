@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32000,
+    "message": "Another computer service is using this data directory.",
+    "data": {
+      "kind": "already_running",
+      "message": "Another computer service is using this data directory."
+    }
+  }
+}

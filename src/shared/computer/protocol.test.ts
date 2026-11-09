@@ -6,6 +6,7 @@ import {
   AppRefSchema,
   COMPUTER_ACTION_NAMES,
   COMPUTER_ACTION_SHAPE,
+  COMPUTER_ERROR_KINDS,
   COMPUTER_METHODS,
   COMPUTER_WAIT,
   ComputerActionSchema,
@@ -13,6 +14,7 @@ import {
   InputProbeParamsSchema,
   ProbeReportSchema,
   RegionSchema,
+  STEP_ONLY_ERROR_KINDS,
   SessionRestoreSchema,
   StateGetParamsSchema,
   StepResultSchema,
@@ -207,8 +209,8 @@ describe('targets and params', () => {
     expect(ActionBatchParamsSchema.safeParse({ ...base, actions: [] }).success).toBe(false)
   })
 
-  it('declares 16 methods, each with params and a result', () => {
-    expect(Object.keys(COMPUTER_METHODS)).toHaveLength(16)
+  it('declares 17 methods, each with params and a result', () => {
+    expect(Object.keys(COMPUTER_METHODS)).toHaveLength(17)
     for (const [name, m] of Object.entries(COMPUTER_METHODS)) {
       expect(m.params, name).toBeDefined()
       expect(m.result, name).toBeDefined()
@@ -232,5 +234,31 @@ describe('waits, regions and locks', () => {
   it('puts both locks in one directory under the temporary directory', () => {
     expect(lockPath('/var/folders/x/T/', 'clipboard')).toBe('/var/folders/x/T/tc-computer/clipboard.lock')
     expect(lockPath('/tmp', 'session')).toBe('/tmp/tc-computer/session.lock')
+  })
+})
+
+describe('the service shell\'s additions', () => {
+  it('answers clipboard.state with the change count, the last foreign change and the watch start', () => {
+    const { result } = COMPUTER_METHODS['clipboard.state']
+    expect(result.safeParse({ changeCount: 3, foreignChangeAt: null, watchingSince: 1 }).success).toBe(true)
+    expect(result.safeParse({ changeCount: 3, foreignChangeAt: 2, watchingSince: 1 }).success).toBe(true)
+    expect(result.safeParse({ changeCount: 3, watchingSince: 1 }).success).toBe(false)
+  })
+
+  it('lets an observation say why it carries no shot', () => {
+    const { result } = COMPUTER_METHODS['state.get']
+    const base = {
+      epoch: 'e', session: 's', app: { pid: 1, bundleId: null, name: 'A' },
+      window: { id: 2, title: 'W', frame: { x: 0, y: 0, w: 10, h: 10 } }, kind: 'full', seq: 1, text: '',
+      space: { width: 10, height: 10, scale: 1 },
+      stats: { elements: 0, lines: 0, bytes: 0, omitted: 0, thin: true, partial: false, readMs: 0 }
+    }
+    const shotError = { kind: 'permission_missing', message: 'Screen Recording is off.', which: 'screenRecording' }
+    expect(result.safeParse({ ...base, shotError }).success).toBe(true)
+  })
+
+  it('names already_running as an error a request answers', () => {
+    expect(COMPUTER_ERROR_KINDS).toContain('already_running')
+    expect(STEP_ONLY_ERROR_KINDS).not.toContain('already_running')
   })
 })

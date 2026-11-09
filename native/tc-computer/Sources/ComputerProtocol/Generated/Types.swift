@@ -411,9 +411,10 @@ public struct Observation: Codable, Hashable, Sendable {
     public let space: CoordinateSpace
     public let stats: ObservationStats
     public let shot: Shot?
+    public let shotError: ComputerError?
     public let waited: WaitReport?
 
-    public init(epoch: String, session: String, app: App, window: Window, kind: ObservationKind, seq: Int, base: Int? = nil, text: String, space: CoordinateSpace, stats: ObservationStats, shot: Shot? = nil, waited: WaitReport? = nil) {
+    public init(epoch: String, session: String, app: App, window: Window, kind: ObservationKind, seq: Int, base: Int? = nil, text: String, space: CoordinateSpace, stats: ObservationStats, shot: Shot? = nil, shotError: ComputerError? = nil, waited: WaitReport? = nil) {
         self.epoch = epoch
         self.session = session
         self.app = app
@@ -425,6 +426,7 @@ public struct Observation: Codable, Hashable, Sendable {
         self.space = space
         self.stats = stats
         self.shot = shot
+        self.shotError = shotError
         self.waited = waited
     }
 }
@@ -567,6 +569,29 @@ public struct SessionRestore: Codable, Hashable, Sendable {
         try container.encode(frontmost, forKey: .frontmost)
         try container.encode(pointer, forKey: .pointer)
         try container.encode(held, forKey: .held)
+    }
+}
+
+public struct ClipboardState: Codable, Hashable, Sendable {
+    public let changeCount: Int
+    public let foreignChangeAt: Double?
+    public let watchingSince: Double
+
+    public init(changeCount: Int, foreignChangeAt: Double?, watchingSince: Double) {
+        self.changeCount = changeCount
+        self.foreignChangeAt = foreignChangeAt
+        self.watchingSince = watchingSince
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case changeCount, foreignChangeAt, watchingSince
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(changeCount, forKey: .changeCount)
+        try container.encode(foreignChangeAt, forKey: .foreignChangeAt)
+        try container.encode(watchingSince, forKey: .watchingSince)
     }
 }
 

@@ -532,6 +532,7 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
     case textNotFound
     case keyWindowUnavailable
     case sessionUnavailable
+    case alreadyRunning
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -559,6 +560,7 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
         case "text_not_found": self = .textNotFound
         case "key_window_unavailable": self = .keyWindowUnavailable
         case "session_unavailable": self = .sessionUnavailable
+        case "already_running": self = .alreadyRunning
         default: self = .unknown(rawValue)
         }
     }
@@ -587,6 +589,7 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
         case .textNotFound: "text_not_found"
         case .keyWindowUnavailable: "key_window_unavailable"
         case .sessionUnavailable: "session_unavailable"
+        case .alreadyRunning: "already_running"
         case .unknown(let value): value
         }
     }

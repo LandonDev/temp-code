@@ -13,7 +13,11 @@ let package = Package(
     targets: [
         // The wire: Generated/ from src/shared/computer/protocol.ts, plus the framing. Foundation only.
         .target(name: "ComputerProtocol"),
-        // The seams the Service shell joins (Seams.swift); no implementation.
+        // The service's pure rules: the router, the outbox, the wait rule, the locks, the app matcher,
+        // the session book, the held ledger, the clipboard rule, the trace. Foundation only, so the
+        // box tests it on its Linux toolchain.
+        .target(name: "ComputerServiceKit", dependencies: ["ComputerProtocol"]),
+        // The seams the Service shell joins (Seams.swift), and PrivateSymbol; no implementation.
         .target(name: "ComputerCore", dependencies: ["ComputerProtocol"]),
         // The AX reader's rules that need no live element: keep, index, fold, budget, render, diff.
         // Foundation only, so the box tests it on its Linux toolchain.
@@ -32,7 +36,7 @@ let package = Package(
         // Window screenshots, the preview stream and the pixel watch (ScreenCaptureKit).
         .target(name: "Capture", dependencies: ["ComputerProtocol", "ComputerCore"]),
         // The stdio server, the smart wait, the clipboard lock, TCC, the lifecycle.
-        .target(name: "ComputerService", dependencies: ["ComputerProtocol", "ComputerCore", "AXReader", "Input", "Capture"]),
+        .target(name: "ComputerService", dependencies: ["ComputerServiceKit", "ComputerProtocol", "ComputerCore", "AXReader", "Input", "Capture"]),
         .executableTarget(name: "tc-computer", dependencies: ["ComputerService"]),
         // Capture's live proof on the Mac (scripts/mac/proof-computer-capture.sh); never shipped:
         // the app's build makes --product tc-computer alone.
@@ -40,12 +44,15 @@ let package = Package(
         // Input's live proof on scratch windows (scripts/mac/input-proof.sh); never shipped, as capture-proof.
         .executableTarget(name: "tc-input-proof", dependencies: ["Input"]),
         .testTarget(name: "ComputerProtocolTests", dependencies: ["ComputerProtocol"]),
+        .testTarget(name: "ComputerServiceKitTests", dependencies: ["ComputerServiceKit", "ComputerProtocol"]),
         .testTarget(name: "CaptureTests", dependencies: ["Capture", "ComputerCore", "ComputerProtocol"]),
         // Input's offline suites; fixtures are read by path from the repository through #filePath.
         .testTarget(name: "InputTests", dependencies: ["Input"]),
         // The reader's rules on hand-built snapshots and the recorded fixtures' goldens; runs on the box and the Mac.
         .testTarget(name: "AXTextTests", dependencies: ["AXText"], exclude: ["QuoteVectors.json", "Fixtures"]),
         // The live side without a live app: error mapping, handles, window ids, the change signal. Mac only.
-        .testTarget(name: "AXReaderTests", dependencies: ["AXReader", "AXText"])
+        .testTarget(name: "AXReaderTests", dependencies: ["AXReader", "AXText"]),
+        // The handlers over fakes of every module seam. Mac only.
+        .testTarget(name: "ComputerServiceTests", dependencies: ["ComputerService", "ComputerServiceKit", "ComputerCore", "ComputerProtocol"])
     ]
 )

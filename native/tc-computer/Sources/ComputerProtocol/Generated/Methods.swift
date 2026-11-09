@@ -367,4 +367,12 @@ public enum Methods {
 
         public typealias Output = SessionRestore
     }
+
+    public enum ClipboardState: ContractMethod {
+        public static let name = "clipboard.state"
+
+        public typealias Params = Empty
+
+        public typealias Output = TempCodeContract.ClipboardState
+    }
 }

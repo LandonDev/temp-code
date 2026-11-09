@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "id": 41,
+  "result": {
+    "changeCount": 1847,
+    "foreignChangeAt": 1762646400250,
+    "watchingSince": 1762646390000
+  }
+}

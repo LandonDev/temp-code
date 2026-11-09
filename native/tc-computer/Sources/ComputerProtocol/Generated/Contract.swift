@@ -14,6 +14,13 @@ public enum ComputerDefaults {
         public static let appSlotWaitMs = 5000
         public static let heldInputReleaseMs = 30000
         public static let batchMaxActions = 32
+        public static let maxInFlight = 32
+        public static let maxQueued = 256
+        public static let outboxBudgetBytes = 67108864
+        public static let serviceLockWaitMs = 3000
+        public static let launchWindowMs = 10000
+        public static let permissionPollGrantedMs = 30000
+        public static let clipboardPollMs = 250
     }
     public enum AXWalk {
         public static let maxNodes = 5000

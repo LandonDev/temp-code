@@ -34,7 +34,21 @@ export const SERVICE = {
   /** a held button or key is let go this long after its down with no up */
   heldInputReleaseMs: 30_000,
   /** actions in one `action.batch` */
-  batchMaxActions: 32
+  batchMaxActions: 32,
+  /** requests running at once; a slot frees only once its response is written */
+  maxInFlight: 32,
+  /** requests waiting for a slot before a new one answers `overloaded` */
+  maxQueued: 256,
+  /** unsent output past this means the host stopped reading: the service exits 70 */
+  outboxBudgetBytes: 64 * 1024 * 1024,
+  /** how long `initialize` waits for a service still exiting to let go of `<dataDir>/service.lock` */
+  serviceLockWaitMs: 3_000,
+  /** how long a launch waits for the app's first window */
+  launchWindowMs: 10_000,
+  /** how often a grant that is on is read again, so a revoked one is noticed */
+  permissionPollGrantedMs: 30_000,
+  /** how often the pasteboard's change count is read (`clipboard.state`) */
+  clipboardPollMs: 250
 } as const
 
 /** The AX walk (§4.3). */
@@ -105,7 +119,11 @@ export const TYPING = {
   pasteMaxUnits: 200_000
 } as const
 
-/** The two Mac-wide locks every service shares (§1, §5.3): `flock` on `$TMPDIR/<dir>/<file>`. */
+/**
+ * The two Mac-wide locks every service shares (§1, §5.3): `flock` on `<dir>/<file>` under the user's
+ * temporary directory as `confstr(_CS_DARWIN_USER_TEMP_DIR)` gives it, never `$TMPDIR`, so a process
+ * whose TMPDIR was overridden cannot split a lock.
+ */
 export const LOCKS = {
   dir: 'tc-computer',
   clipboard: 'clipboard.lock',
@@ -164,7 +182,7 @@ export type PermissionName = z.infer<typeof PermissionNameSchema>
 export const PermissionsSchema = z.object({ accessibility: z.boolean(), screenRecording: z.boolean() })
 export type Permissions = z.infer<typeof PermissionsSchema>
 
-/** Exactly one: `app` is a bundle id or a display name (§2.1). */
+/** Exactly one: `app` is a bundle id, a display name or an absolute path to an `.app` (§2.1). */
 export const AppRefSchema = z
   .object({ app: z.string().min(1).optional(), pid: int().positive().optional() })
   .refine((r) => (r.app === undefined) !== (r.pid === undefined), 'name the app by exactly one of app, pid')
@@ -485,25 +503,6 @@ export const ObservationStatsSchema = z.object({
 })
 export type ObservationStats = z.infer<typeof ObservationStatsSchema>
 
-export const ObservationSchema = z.object({
-  epoch: z.string(),
-  session: z.string(),
-  app: z.object({ pid: int(), bundleId: z.string().nullable(), name: z.string() }),
-  window: z.object({ id: int(), title: z.string(), frame: RectSchema }),
-  kind: ObservationKindSchema,
-  /** per session × app: +1 per full, diff or unchanged observation returned; a subtree carries the current one */
-  seq: int().nonnegative(),
-  /** the seq a diff is against */
-  base: int().nonnegative().optional(),
-  /** what the model reads (§4.1) */
-  text: z.string(),
-  space: CoordinateSpaceSchema,
-  stats: ObservationStatsSchema,
-  shot: ShotSchema.optional(),
-  waited: WaitReportSchema.optional()
-})
-export type Observation = z.infer<typeof ObservationSchema>
-
 // ── errors (§8) ─────────────────────────────────────────────────────────
 
 export const COMPUTER_ERROR_KINDS = [
@@ -528,7 +527,8 @@ export const COMPUTER_ERROR_KINDS = [
   'timeout',
   'text_not_found',
   'key_window_unavailable',
-  'session_unavailable'
+  'session_unavailable',
+  'already_running'
 ] as const
 export const ComputerErrorKindSchema = z.enum(COMPUTER_ERROR_KINDS)
 export type ComputerErrorKind = z.infer<typeof ComputerErrorKindSchema>
@@ -585,6 +585,28 @@ export const ComputerErrorSchema = z.object({
   session: SessionChangeSchema.optional()
 })
 export type ComputerError = z.infer<typeof ComputerErrorSchema>
+
+/** The observation (§4); here, after the errors, since a shot that could not be taken says why. */
+export const ObservationSchema = z.object({
+  epoch: z.string(),
+  session: z.string(),
+  app: z.object({ pid: int(), bundleId: z.string().nullable(), name: z.string() }),
+  window: z.object({ id: int(), title: z.string(), frame: RectSchema }),
+  kind: ObservationKindSchema,
+  /** per session × app: +1 per full, diff or unchanged observation returned; a subtree carries the current one */
+  seq: int().nonnegative(),
+  /** the seq a diff is against */
+  base: int().nonnegative().optional(),
+  /** what the model reads (§4.1) */
+  text: z.string(),
+  space: CoordinateSpaceSchema,
+  stats: ObservationStatsSchema,
+  shot: ShotSchema.optional(),
+  /** the screenshot this observation would carry could not be taken (Screen Recording off, minimized, capture failed) */
+  shotError: ComputerErrorSchema.optional(),
+  waited: WaitReportSchema.optional()
+})
+export type Observation = z.infer<typeof ObservationSchema>
 
 // ── step results (§3) ───────────────────────────────────────────────────
 
@@ -738,6 +760,19 @@ export const SessionRestoreSchema = z.object({
 })
 export type SessionRestore = z.infer<typeof SessionRestoreSchema>
 
+/**
+ * `clipboard.state`: when the pasteboard last changed by anyone but this service. It reads the change
+ * count only, never the contents. "Quiet for N ms" is `now − max(foreignChangeAt ?? 0, watchingSince) ≥ N`.
+ */
+export const ClipboardStateSchema = z.object({
+  changeCount: int(),
+  /** epoch ms, to the poll's 250 ms; null when no foreign change was seen since the watch began */
+  foreignChangeAt: z.number().nullable(),
+  /** epoch ms: a copy made before this is invisible to the watch */
+  watchingSince: z.number()
+})
+export type ClipboardState = z.infer<typeof ClipboardStateSchema>
+
 export const InitializeParamsSchema = z.object({
   protocol: int(),
   client: z.object({ name: z.string(), version: z.string() }),
@@ -781,7 +816,8 @@ export const COMPUTER_METHODS = {
   },
   'capture.stream.stop': { params: z.object({ stream: z.string().min(1) }), result: EmptySchema },
   'input.probe': { params: InputProbeParamsSchema, result: ProbeReportSchema },
-  'input.restoreSession': { params: EmptySchema, result: SessionRestoreSchema }
+  'input.restoreSession': { params: EmptySchema, result: SessionRestoreSchema },
+  'clipboard.state': { params: EmptySchema, result: ClipboardStateSchema }
 } as const satisfies Record<string, { params: z.ZodType; result: z.ZodType }>
 export type ComputerMethod = keyof typeof COMPUTER_METHODS
 export type ComputerParams<M extends ComputerMethod> = z.infer<(typeof COMPUTER_METHODS)[M]['params']>
