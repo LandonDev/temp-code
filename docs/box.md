@@ -4618,7 +4618,11 @@ thread's scope, and only those: never ~/.claude/skills, ~/.codex/skills,
 renames or deletes either. What still reads them after the one-time import:
 the import itself, Codex's scan of the home SKILL.md paths at each spawn
 and turn (to disable them), Claude's `skills/synced` bucket linked into the
-owned root, and Codex's `.system`, which the slash menu still reads.
+owned root, and Codex's `.system`, which the slash menu still reads. Muse
+Code 1.4.14 also lists what it finds in other harnesses' home folders
+(`~/.agents/skills`, `$CODEX_HOME/skills`, tagged `origin-family`), and no
+switch the sweep found stops it: a known gap, found by the drivers' `--gate`
+on 2026-11-09 and reported by every run of it until a host fix lands.
 - **Views** (views.ts): each provider (claude, codex, muse) has a `global`
   view, empty or not, and a workspace has its own `ws-<id>` view only when
   what its threads get differs from the global one (`visibleSkills`: a

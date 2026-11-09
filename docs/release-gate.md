@@ -12,13 +12,25 @@ file. A sibling change that needs a new check (the bundle-size check after
 | tier | steps | runs |
 | --- | --- | --- |
 | `commit` | typecheck, vitest, build, bundle-size | in the post-commit hook, on every commit on master |
-| `publish` | renderer-soak, renderer-soak-chat, renderer-soak-typing, renderer-soak-scroll, e2e-remote-fence, hub, ios, ios-client, computer-swift, computer-bench | before signing in `release:publish`; and in the hook when a commit touches a guarded path, all but computer-bench. The four soaks, hub, ios, ios-client, computer-swift and computer-bench are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships |
+| `publish` | renderer-soak, renderer-soak-chat, renderer-soak-typing, renderer-soak-scroll, e2e-remote-fence, e2e-addons, e2e-addon-grants, e2e-skills-store, e2e-skills-drivers, hub, ios, ios-client, computer-swift, e2e-tc-computer, e2e-computer-bridge, e2e-computer-preview, computer-bench | before signing in `release:publish`; and in the hook when a commit touches a guarded path, all but computer-bench. The four soaks, hub, ios, ios-client, computer-swift, e2e-tc-computer, e2e-computer-bridge, e2e-computer-preview and computer-bench are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships; the four store proofs run on both hosts |
 
 Guarded paths (`TIER_PATHS`): `ios/**`, `scripts/gen-swift-contract.ts`,
 `src/shared/wireSchemas.ts`, `src/shared/contract*.ts`,
 `src/main/server/remote/**`, `infra/hub/**`, `scripts/e2e-remote-fence.ts`,
 `scripts/ios-*`, `native/tc-computer/**`, `src/shared/computer/**`,
-`scripts/gen-swift-computer.ts`, `scripts/computer-test.sh`. The train runs `gate --tier commit --since release-N`
+`scripts/gen-swift-computer.ts`, `scripts/computer-test.sh`, the add-on,
+skills and computer host code (`src/main/server/addons/**`,
+`src/main/server/skills/**`, `src/main/server/computer/**`,
+`src/main/server/addonStore.ts`, `skillStore.ts`, `skillFiles.ts`,
+`storeRpc.ts`, `museConfigDirs.ts`, `src/shared/addons.ts`,
+`src/shared/skills.ts`, `src/shared/addonGrant*.ts`,
+`src/main/addonHostProcess.ts`, `src/main/addonHostSpawn.ts`,
+`scripts/app-mcp-bridge.mjs`) and the proofs and helpers
+(`scripts/e2e-addon*.ts`, `scripts/e2e-skills-*.ts`, `scripts/e2e-computer*.ts`,
+`scripts/e2e-tc-computer.ts`, `scripts/lib/gateBuild.ts`,
+`scripts/lib/tcComputerBuild.ts`, `scripts/lib/proofOrder.ts`). The drivers
+(src/main/server/drivers/claude.ts, codex.ts) stay out: nearly every commit
+touches them. The train runs `gate --tier commit --since release-N`
 (N from release.json; `HEAD~1` when the tag is missing), and any changed
 path since that ref that hits the map pulls its tier in, so a contract change
 still cannot land stale Swift between publishes. A proof that boots an

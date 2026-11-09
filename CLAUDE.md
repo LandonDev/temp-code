@@ -2069,7 +2069,10 @@ and .temp-code/plan-JBpcLz-eGMhp.md (the drivers).
   generation as its extra root (`skills/extraRoots/set`), and `needsReboot`
   when a home SKILL.md appeared since the spawn. Muse
   (src/main/server/museConfigDirs.ts): a config dir per (account, scope)
-  whose `skills` links the pointer.
+  whose `skills` links the pointer. Muse Code 1.4.14 also lists what it
+  finds in other harnesses' home folders (`~/.agents/skills`,
+  `$CODEX_HOME/skills`, tagged `origin-family`) and has no switch to stop
+  it: a known gap, which the drivers' `--gate` reports on every run.
 - **The home folders** (~/.claude/skills, ~/.codex/skills,
   ~/.agents/skills, ~/.config/muse/skills) are no live source after the
   import: never synced, never moved, renamed or deleted. What still reads
