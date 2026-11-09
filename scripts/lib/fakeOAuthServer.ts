@@ -46,6 +46,8 @@ export interface FakeOAuthOptions {
   clientSecret?: boolean
   /** /keyed's X-Api-Key */
   apiKey?: string
+  /** the authorization_code grant answers 400 with an error_description that echoes the code and the verifier */
+  exchangeError?: boolean
   logFile?: string
 }
 
@@ -71,7 +73,7 @@ export interface FakeOAuth {
   revokeAccess(): void
   /** Refuse every refresh_token grant with invalid_grant while on. */
   refuseRefresh(on: boolean): void
-  /** The next authorize answers this error instead of a code (once). */
+  /** The next authorize answers this error instead of a code (once); `{state}` in the description is replaced by the request's state. */
   deny(next: { error: string; description?: string } | null): void
   set(opts: Partial<FakeOAuthOptions>): void
   /** sha256 prefix of a value, as whoami answers it. */
@@ -125,6 +127,7 @@ function mcpServer(whoami: string): Server {
 export async function startFakeOAuthServer(initial: FakeOAuthOptions = {}): Promise<FakeOAuth> {
   const opts: Required<Omit<FakeOAuthOptions, 'apiKey' | 'logFile' | 'port'>> & Pick<FakeOAuthOptions, 'apiKey' | 'logFile'> = {
     lifetimeSec: 3600,
+    exchangeError: false,
     s256: true,
     registration: true,
     offlineAccess: true,
@@ -241,7 +244,7 @@ export async function startFakeOAuthServer(initial: FakeOAuthOptions = {}): Prom
         if (state) target.searchParams.set('state', state)
         if (denyNext) {
           target.searchParams.set('error', denyNext.error)
-          if (denyNext.description) target.searchParams.set('error_description', denyNext.description)
+          if (denyNext.description) target.searchParams.set('error_description', denyNext.description.replace('{state}', state ?? ''))
           note({ ...event, ok: false, error: denyNext.error })
           denyNext = null
         } else if (q.get('response_type') !== 'code' || q.get('code_challenge_method') !== 'S256' || !q.get('code_challenge')) {
@@ -272,6 +275,7 @@ export async function startFakeOAuthServer(initial: FakeOAuthOptions = {}): Prom
         if (client.secret && form.get('client_secret') !== client.secret) return refuse(401, 'invalid_client')
         if (resource && resource !== `${origin}/mcp`) return refuse(400, 'invalid_target')
         if (grantType === 'authorization_code') {
+          if (opts.exchangeError) return refuse(400, 'invalid_grant', `code ${form.get('code')} with verifier ${form.get('code_verifier')} was refused`)
           const code = codes.get(form.get('code') ?? '')
           if (!code || code.used || code.clientId !== client.id) return refuse(400, 'invalid_grant', 'the code is not valid')
           if (form.get('redirect_uri') !== code.redirectUri) return refuse(400, 'invalid_grant', 'redirect_uri differs')

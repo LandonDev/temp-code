@@ -1,0 +1,9 @@
+{
+  "resource": "https://api.mobbin.com/mcp",
+  "authorization_servers": [
+    "https://ujasntkfphywizsdaapi.supabase.co/auth/v1"
+  ],
+  "scopes_supported": [
+    "openid"
+  ]
+}

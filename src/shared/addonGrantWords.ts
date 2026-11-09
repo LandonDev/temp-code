@@ -16,6 +16,7 @@ export const SIGNIN_NOT_NEEDED = (name: string): string => `${name} answered wit
 export const SIGNIN_NO_PKCE = (host: string): string => `${host} does not offer PKCE, so the app will not sign in to it`
 export const SIGNIN_NO_REGISTRATION = (host: string): string => `${host} does not let apps register, so the app cannot sign in to it yet`
 export const SIGNIN_ISSUER = (host: string): string => `${host} answered for another sign-in server`
+export const SIGNIN_NO_SERVER = (host: string): string => `${host} names no sign-in server`
 export const SIGNIN_PORT_TAKEN = (port: number): string => `Port ${port} is in use on this Mac; close what holds it, then sign in again`
 export const SIGNIN_TIMEOUT = 'The sign-in timed out after 5 minutes'
 /** `error` an OAuth error code, `description` already redacted, cut and checked (oauthFlow.ts). */

@@ -14,6 +14,7 @@ import {
   SIGNIN_NO_PKCE,
   SIGNIN_NO_REFRESH,
   SIGNIN_NO_REGISTRATION,
+  SIGNIN_NO_SERVER,
   SIGNIN_NOT_NEEDED,
   SIGNIN_PORT_TAKEN,
   SIGNIN_SERVER,
@@ -31,6 +32,7 @@ describe('the add-on grant words', () => {
     expect(SIGNIN_NO_PKCE('auth.example.com')).toBe('auth.example.com does not offer PKCE, so the app will not sign in to it')
     expect(SIGNIN_NO_REGISTRATION('auth.example.com')).toBe('auth.example.com does not let apps register, so the app cannot sign in to it yet')
     expect(SIGNIN_ISSUER('auth.example.com')).toBe('auth.example.com answered for another sign-in server')
+    expect(SIGNIN_NO_SERVER('api.example.com')).toBe('api.example.com names no sign-in server')
     expect(SIGNIN_PORT_TAKEN(53682)).toBe('Port 53682 is in use on this Mac; close what holds it, then sign in again')
     expect(SIGNIN_TIMEOUT).toBe('The sign-in timed out after 5 minutes')
     expect(SIGNIN_DENIED('access_denied')).toBe('The sign-in was refused: access_denied')
