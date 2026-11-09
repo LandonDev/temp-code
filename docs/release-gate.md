@@ -409,7 +409,21 @@ these ran, so its numbers moved by up to 40 % between runs.
 | renderer-soak-chat | about 63 s (2026-11-02, by hand) | | 62 s by hand | 12 min | Mac only; the same window, after the board scene |
 | renderer-soak-typing | 47.8 s, 55.4 s (2026-11-05, a fresh clone) | | 62 s (2026-11-05, load 34) | 12 min | Mac only; its phases, after the chat scene |
 | renderer-soak-scroll | not measured (no Mac linked) | | about 40 s (2026-11-05, load 86) | 12 min | Mac only; four surfaces, after the typing scene |
+| e2e-addons | 22 s (2026-11-09, three runs) | | 20 to 22 s alone; 55 to 60 s in the gate, the build wait included | 12 min | the `e2e` lane after the fence; the real-Claude leg skipped |
+| e2e-addon-grants | 134 s (three runs) | | 133 s | 17 min | the same lane, after e2e-addons |
+| e2e-skills-store | 13 s (three runs) | | 12 to 15 s | 11 min | the same lane |
+| e2e-skills-drivers | 28 to 29 s (three runs) | | 10 s | 12 min | the same lane, last; the real CLIs against fakes |
+| e2e-tc-computer | 19 s (three runs) | | n/a | 11 min | Mac only; the `computer` lane, before the bench |
+| e2e-computer-bridge | 28 to 29 s (three runs) | | n/a | 12 min | Mac only; both halves on the Mac |
+| e2e-computer-preview | 23 to 24 s (three runs) | | n/a | 12 min | Mac only; the Escape leg skipped |
 | computer-bench | 511 s, one run (2026-11-09, ungated, before the codex route fix; failed: see "The bench's hand run") | | n/a | 15 min | Mac only; three model lanes in its own lane, beside the build |
+
+The box's share of the publish tier with the store rows (2026-11-09,
+`bun run gate --tier all --skip typecheck,vitest`, three runs: 205 s, 218 s
+and 218 s): the build (41 s) and bundle-size beside the `e2e` lane, whose
+store rows waited on `build.done` and then took about 3.5 minutes one after
+another (e2e-addon-grants 133 s of it); before them the box's publish tier
+was the fence's 2 s.
 
 With the three commit lanes at once on the box, vitest finished at 42 s
 and typecheck at 43 s while the build was still running, so the commit
