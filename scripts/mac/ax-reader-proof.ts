@@ -542,6 +542,7 @@ async function intellij(): Promise<void> {
   const pid = running ?? (await newPid(exe, []))
   allow.add(pid)
   if (!running) cleanups.push(() => void sh(['kill', String(pid)]))
+  if (!stillBehind(front, app)) return
   const mark = 'AXButton=Project: Hello, menu'
   let s: Session | undefined
   let scratch = 0
@@ -551,6 +552,8 @@ async function intellij(): Promise<void> {
       findings.push('intellij: the person came back; the scratch window was closed early')
       break
     }
+    // the project window may come up well after the open returned
+    if (!stillBehind(front, app)) return
     // the trust prompt a first open of a folder may ask
     const trust = windowsOf(pid).find((w) => w.title === "Trust and Open Project 'Hello'?")
     if (trust) {
@@ -558,6 +561,8 @@ async function intellij(): Promise<void> {
       const tr = await t.observe({ mode: 'full' })
       await t.send(`poke press ${indexOf(tr.text, /^button "Trust Project"/)}`)
       t.close()
+      await sleep(1000)
+      if (!stillBehind(front, app)) return
     }
     // a licence prompt: answered only with a dismissing button, else left and reported
     for (const w of windowsOf(pid).filter((w) => !before.has(w.id) && LICENCE.test(w.title))) {
@@ -572,6 +577,8 @@ async function intellij(): Promise<void> {
       }
       p.close()
       before.add(w.id)
+      await sleep(1000)
+      if (!stillBehind(front, app)) return
     }
     // only the window that appeared since the open, and only if it holds the scratch project's button
     const fresh = windowsOf(pid).find((w) => !before.has(w.id) && w.title === '')
