@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest'
 import type { SessionMeta } from '@shared/events'
+import { setAppBridge } from './apptools'
 import { threadPreamble } from './threads'
 
 const session = (threadType: SessionMeta['threadType']): SessionMeta =>
@@ -122,4 +123,18 @@ it('a project-plan thread surveys the whole project, keeps the five sections, an
   expect(text).toContain('call plan_complete once')
   expect(text).toContain('never start an implementation, planning or orchestration thread from here')
   expect(text).toContain('AskUserQuestion')
+})
+
+it('a Muse thread with the bridge gets the app tools note, never the "do not reach" sentence', () => {
+  const muse = { ...session('implementation'), provider: 'muse', model: 'muse-spark-1.3' } as SessionMeta
+  setAppBridge({ port: 1, scriptPath: '/x.mjs', command: 'node', env: {} })
+  try {
+    const text = threadPreamble(muse) ?? ''
+    expect(text).toContain('You run inside the temp-code app and can operate it')
+    expect(text).not.toContain('do not reach this harness')
+  } finally {
+    setAppBridge(null)
+  }
+  // With no bridge the sentence stands, as for codex.
+  expect(threadPreamble(muse) ?? '').toContain('do not reach this harness')
 })

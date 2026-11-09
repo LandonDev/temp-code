@@ -100,7 +100,7 @@ describe('skill_list', () => {
 describe('skill_write', () => {
   it('a new skill goes without a card, written by the root thread, expecting the name free, and the answer waits for the write-out', async () => {
     const out = await skillWrite(deps(), sub, { name: 'tidy', files: files('tidy') })
-    expect(out).toBe('wrote tidy v1 (1 file, 42 B) for Claude, Codex and Muse in temp-code; threads that start from now see it, running threads do not')
+    expect(out).toBe('wrote tidy v1 (1 file, 42 B) for Claude, Codex and Muse in temp-code; every thread sees it from its next turn')
     expect(cards).toEqual([])
     expect(calls[0]!.expect).toBe(0)
     expect(settles).toBe(1)

@@ -234,6 +234,11 @@ describe('app-mcp-bridge skill tools', () => {
     expect([bridge.METHOD_FOR.skill_list, bridge.METHOD_FOR.skill_write, bridge.METHOD_FOR.skill_remove]).toEqual(['app.skillList', 'app.skillWrite', 'app.skillRemove'])
     expect([bridge.clientTimeoutMs('skill_write'), bridge.clientTimeoutMs('skill_remove'), bridge.clientTimeoutMs('skill_list')]).toEqual([0, 0, 120_000])
   })
+
+  it('lists the three skill tools on every codex and Muse thread, with no add-on in scope', () => {
+    const listed = (bridge as unknown as { listedTools: (macToken?: string, addons?: boolean) => BridgeTool[] }).listedTools(undefined, false).map((t) => t.name)
+    expect(listed).toEqual(expect.arrayContaining([SKILL_LIST_TOOL, SKILL_WRITE_TOOL, SKILL_REMOVE_TOOL]))
+  })
 })
 
 describe('app-mcp-bridge add-on tools', () => {

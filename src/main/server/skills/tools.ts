@@ -64,7 +64,7 @@ export interface SkillRemoveArgs {
 }
 
 const MOVED = / changed since it was read$/
-const SEEN = 'threads that start from now see it, running threads do not'
+const SEEN = 'every thread sees it from its next turn'
 const STILL_WRITING = 'this host is still writing it out'
 
 type Scope = { workspaceId: string | null; workspaceName: string | null }

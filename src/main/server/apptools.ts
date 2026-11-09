@@ -678,7 +678,7 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
     name: 'app',
     version: '0.1.0',
     // Tool search is on for every claude thread (drivers/claude.ts): the app's own tools stay in every
-    // prompt, while add-on tools and the add-on management tools are found by search (deferredTool).
+    // prompt, while add-on tools, the add-on management tools and the skill tools are found by search (deferredTool).
     alwaysLoad: true,
     tools: [
       ...(research
@@ -789,13 +789,17 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
       tool(UPDATE_NOTES_TOOL_NAME, UPDATE_NOTES_DESCRIPTION, UPDATE_NOTES_SHAPE, async (args) =>
         text(registry ? appUpdateNotes(registry, session, args) : 'app registry not ready')
       ),
-      // The skill tools on every thread; a change to a person's skill raises a card on the call's own row.
-      tool(SKILL_LIST_TOOL, SKILL_LIST_DESCRIPTION, {}, async () => text(skillTools ? await skillList(skillTools, liveCaller(session)) : SKILLS_NOT_READY)),
-      tool(SKILL_WRITE_TOOL, SKILL_WRITE_DESCRIPTION, SKILL_WRITE_SHAPE, async (args, x) =>
-        text(skillTools ? await skillWrite(skillTools, liveCaller(session), args, { callId: toolUseIdOf(x) }) : SKILLS_NOT_READY)
+      // The skill tools on every thread, deferred: found by tool search. A change to a person's skill raises a card on the call's own row.
+      deferredTool(tool(SKILL_LIST_TOOL, SKILL_LIST_DESCRIPTION, {}, async () => text(skillTools ? await skillList(skillTools, liveCaller(session)) : SKILLS_NOT_READY))),
+      deferredTool(
+        tool(SKILL_WRITE_TOOL, SKILL_WRITE_DESCRIPTION, SKILL_WRITE_SHAPE, async (args, x) =>
+          text(skillTools ? await skillWrite(skillTools, liveCaller(session), args, { callId: toolUseIdOf(x) }) : SKILLS_NOT_READY)
+        )
       ),
-      tool(SKILL_REMOVE_TOOL, SKILL_REMOVE_DESCRIPTION, SKILL_REMOVE_SHAPE, async (args, x) =>
-        text(skillTools ? await skillRemove(skillTools, liveCaller(session), args, { callId: toolUseIdOf(x) }) : SKILLS_NOT_READY)
+      deferredTool(
+        tool(SKILL_REMOVE_TOOL, SKILL_REMOVE_DESCRIPTION, SKILL_REMOVE_SHAPE, async (args, x) =>
+          text(skillTools ? await skillRemove(skillTools, liveCaller(session), args, { callId: toolUseIdOf(x) }) : SKILLS_NOT_READY)
+        )
       ),
       // note_decision on every thread: the record of a choice made while the person is away.
       tool(NOTE_DECISION_TOOL_NAME, NOTE_DECISION_DESCRIPTION, NOTE_DECISION_SHAPE, async (args) =>

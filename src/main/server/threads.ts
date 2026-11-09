@@ -96,11 +96,12 @@ export function mergeNote(session: SessionMeta): string {
 `
 }
 
-/** claude reaches the app tools in-process, codex via the stdio bridge,
- *  cursor not yet (cursor-agent has no per-run MCP config). */
+/** claude reaches the app tools in-process, codex and muse via the stdio
+ *  bridge (muse mounts it on session/start), cursor not yet (cursor-agent
+ *  has no per-run MCP config). */
 function appToolsNote(session: SessionMeta): string {
   const available =
-    session.provider === 'claude' || (session.provider === 'codex' && hasAppBridge())
+    session.provider === 'claude' || ((session.provider === 'codex' || session.provider === 'muse') && hasAppBridge())
   if (!available) {
     return `You run inside the temp-code app, but its app tools (listing/reading/starting threads) do not reach this harness — for a handoff to another thread, ask the user to start it.`
   }

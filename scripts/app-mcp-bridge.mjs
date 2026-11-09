@@ -413,7 +413,7 @@ export const TOOLS = [
   {
     name: 'skill_write',
     description:
-      'Write one skill whole: its SKILL.md and every file beside it, replacing what was there. Pass `files` (text files, each path relative to the skill folder, SKILL.md at its root) or `dir` (a folder on this host holding the whole skill, binaries included), not both. SKILL.md starts with frontmatter giving the skill\'s `name` and a `description` of when to use it. Threads that start after the write see it; a running thread does not. Changing a skill a person wrote asks them first.',
+      'Write one skill whole: its SKILL.md and every file beside it, replacing what was there. Pass `files` (text files, each path relative to the skill folder, SKILL.md at its root) or `dir` (a folder on this host holding the whole skill, binaries included), not both. SKILL.md starts with frontmatter giving the skill\'s `name` and a `description` of when to use it. Every thread sees it from its next turn. Changing a skill a person wrote asks them first.',
     inputSchema: {
       type: 'object',
       properties: {

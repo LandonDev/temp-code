@@ -64,7 +64,7 @@ it('every claude spawn turns tool search on', async () => {
   expect(orchestrator.env?.ENABLE_TOOL_SEARCH).toBe('true')
 })
 
-it("the app's own tools are always loaded and the add-on management tools are deferred", async () => {
+it("the app's own tools are always loaded; the add-on management and skill tools are deferred", async () => {
   const { options } = await start()
   const app = await loads(options.mcpServers!.app as McpSdkServerConfigWithInstance)
   expect(app.app_list_threads).toBe(true)
@@ -72,6 +72,9 @@ it("the app's own tools are always loaded and the add-on management tools are de
   expect(app.addon_list).toBe(false)
   expect(app.addon_add).toBe(false)
   expect(app.addon_remove).toBe(false)
+  expect(app.skill_list).toBe(false)
+  expect(app.skill_write).toBe(false)
+  expect(app.skill_remove).toBe(false)
 })
 
 it('the orchestrator and Mac servers list every tool always loaded', async () => {

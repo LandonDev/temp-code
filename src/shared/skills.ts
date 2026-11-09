@@ -234,7 +234,7 @@ export const SKILL_LIST_DESCRIPTION =
 
 export const SKILL_WRITE_TOOL = 'skill_write'
 export const SKILL_WRITE_DESCRIPTION =
-  'Write one skill whole: its SKILL.md and every file beside it, replacing what was there. Pass `files` (text files, each path relative to the skill folder, SKILL.md at its root) or `dir` (a folder on this host holding the whole skill, binaries included), not both. SKILL.md starts with frontmatter giving the skill\'s `name` and a `description` of when to use it. Threads that start after the write see it; a running thread does not. Changing a skill a person wrote asks them first.'
+  'Write one skill whole: its SKILL.md and every file beside it, replacing what was there. Pass `files` (text files, each path relative to the skill folder, SKILL.md at its root) or `dir` (a folder on this host holding the whole skill, binaries included), not both. SKILL.md starts with frontmatter giving the skill\'s `name` and a `description` of when to use it. Every thread sees it from its next turn. Changing a skill a person wrote asks them first.'
 export const SKILL_WRITE_PARAMS = {
   name: 'Lowercase letters, digits and dashes, at most 64 characters; SKILL.md\'s `name` must match.',
   harnesses: 'Which CLIs get it: any of claude, codex, muse, or ["all"] (default).',
