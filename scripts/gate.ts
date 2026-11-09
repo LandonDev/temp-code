@@ -81,12 +81,12 @@ export const BUILD_WAIT_MS = 10 * 60_000
 /** A proof row's cap: the build wait plus three times its measured time, rounded up to the minute. */
 export const proofCap = (measuredMs: number): number => BUILD_WAIT_MS + Math.ceil((3 * measuredMs) / 60_000) * 60_000
 
-/** The store proofs' measured `--gate` times, the slower host's (docs/release-gate.md "The store and computer proofs"). */
+/** The store proofs' measured `--gate` times: the slower host's worst of three, to the second (the sweep of 2026-11-09; docs/release-gate.md "The store and computer proofs"). */
 export const STORE_MEASURED_MS = {
-  'e2e-addons': 5 * 60_000,
-  'e2e-addon-grants': 133_000,
-  'e2e-skills-store': 3 * 60_000,
-  'e2e-skills-drivers': 5 * 60_000
+  'e2e-addons': 23_000,
+  'e2e-addon-grants': 135_000,
+  'e2e-skills-store': 15_000,
+  'e2e-skills-drivers': 30_000
 } as const
 export const STORE_CAP_MS = Object.fromEntries(Object.entries(STORE_MEASURED_MS).map(([k, v]) => [k, proofCap(v)])) as Record<keyof typeof STORE_MEASURED_MS, number>
 
