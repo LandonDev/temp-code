@@ -13,6 +13,8 @@ import { AgentMarkdown } from "../AgentMarkdown";
 import type { OpenFileFn } from "../../lib/search";
 import { RowBornContext, useTranscriptHost } from "../transcriptSession";
 import { isTodoBlock } from "../transcriptActivity";
+import { isComputerShotBlock } from "../computerShots";
+import { ComputerShotRow } from "./ComputerShotRow";
 import { UserMessageBlock } from "./UserMessage";
 import { ToolCall } from "./ToolCall";
 import { HandoffDivider, SystemRow } from "./SystemRow";
@@ -88,6 +90,11 @@ export const TranscriptBlock = memo(function TranscriptBlock({
         />
       </PendingPage.Provider>
     );
+  }
+
+  // A computer call with a picture the model asked for: its line, then the picture.
+  if (isComputerShotBlock(block)) {
+    return <ComputerShotRow block={block} host={threadHost} cwd={cwd} onApproval={onApproval} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff} />;
   }
 
   if (block.role === "tool") {

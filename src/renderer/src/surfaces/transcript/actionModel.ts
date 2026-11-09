@@ -10,7 +10,7 @@ import { isAgentCall, mcpServerOf } from "../toolMarks";
 import { needsApproval, toolCallState } from "../transcriptActivity";
 
 /** The glyph a row leads with when it is neither running nor failed. */
-export type GlyphKey = ToolKind | "delete" | "app";
+export type GlyphKey = ToolKind | "delete" | "app" | "computer";
 
 /** What a row opens onto: a diff, a command card, the call's details, the file it read, a thread. */
 export type ActionOpens = "diff" | "command" | "details" | "file" | "thread" | "none";
@@ -110,12 +110,13 @@ function rowAction(block: Block, cwd: string | undefined, app: AppView | null, l
   if (app) {
     return {
       ...base,
-      glyph: "app",
+      glyph: app.glyph ?? "app",
       verb: app.label,
       object: app.detail,
       title: app.detail,
       opens: "details",
       threadId: app.threadId,
+      ...(app.tally ? { tally: app.tally } : {}),
     };
   }
 

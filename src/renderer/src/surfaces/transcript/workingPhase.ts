@@ -1,8 +1,11 @@
 // UI-16: what the live turn's working line says, pure.
+import { computerPhrase } from "@shared/computer/words";
 import { groupPhrase } from "../../lib/groupPhrase";
+import { inputOf } from "../../lib/toolDetails";
 import type { Block } from "../../lib/session";
 import type { TitleOf } from "../../lib/threadMentions";
 import { isProseBlock, isThinkingBlock, toldByWorkingLine } from "../transcriptActivity";
+import { computerCallOf } from "../computerShots";
 import { actionOf } from "./actionModel";
 import { latestLine, latestLineKey } from "./thinking";
 
@@ -31,6 +34,25 @@ export type WorkingPhase = {
 /** The wait's verb, as `waitLine` (shared/watch.ts) words it. */
 const WAIT_VERB = "Waiting on";
 
+/** The host's words for the thread's running computer call (its session row's `running`). */
+export type ComputerRunning = { words: string; held?: boolean } | null | undefined;
+
+/**
+ * One computer call on the line: the host's words when it has them (they name
+ * the element from its book: "Clicking Save in TextEdit"), split at the verb
+ * the call's own phrase has; a hold's words ("Waiting for the Mac to be
+ * free") are said whole, under a key of their own.
+ */
+function computerCall(block: Block, running: ComputerRunning): WorkingPhase {
+  const name = block.tool?.name ?? "";
+  const own = computerPhrase(name.replace(/^mcp__[^_]+(?:__)?/, "").replace(/^.*\./, ""), inputOf(block), { live: true });
+  if (running?.held) return { key: `hold:${block.id}`, words: running.words };
+  const words = running?.words ?? (own ? `${own.verb} ${own.object}` : "");
+  const verb = own && words.startsWith(`${own.verb} `) ? own.verb : (words.split(" ")[0] ?? "");
+  const object = words.slice(verb.length).trim();
+  return { key: `call:${block.id}`, words, call: { block, verb, object } };
+}
+
 /** Something of the turn's own has come: anything but the person's row and an empty thought or reply. */
 function started(turn: Block[]): boolean {
   return turn.some((b) => b.role !== "user" && !((b.role === "reasoning" || b.role === "assistant") && !b.text));
@@ -52,13 +74,14 @@ function started(turn: Block[]): boolean {
 export function workingPhase(
   turn: Block[],
   activity: string | null | undefined,
-  { cwd, titleOf, waitOn }: { cwd?: string; titleOf?: TitleOf; waitOn?: string | null } = {},
+  { cwd, titleOf, waitOn, computer }: { cwd?: string; titleOf?: TitleOf; waitOn?: string | null; computer?: ComputerRunning } = {},
 ): WorkingPhase {
   const last = turn[turn.length - 1];
   if (last?.role === "user" && last.pending) return { key: "sending", words: "Sending" };
   if (!started(turn) && activity) return { key: `host:${activity.split(",")[0]}`, words: activity };
   if (waitOn) return { key: "wait", words: `${WAIT_VERB} ${waitOn}`, wait: { verb: WAIT_VERB, object: waitOn } };
   const calls = turn.filter(toldByWorkingLine);
+  if (calls.length === 1 && computerCallOf(calls[0])) return computerCall(calls[0], computer);
   if (calls.length === 1) {
     const { verb, object } = actionOf(calls[0], cwd, null, true);
     return { key: `call:${calls[0].id}`, words: [verb, object].filter(Boolean).join(" "), call: { block: calls[0], verb, object } };

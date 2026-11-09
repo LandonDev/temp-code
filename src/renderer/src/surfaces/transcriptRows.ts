@@ -13,7 +13,7 @@
  */
 import type { Block } from "../lib/session";
 import { isErrorBlock } from "../lib/turnOutcome";
-import { awaitsUser, groupTurnItems, isHtmlRenderBlock, isStepBlock, isThinkingBlock, isTodoBlock, stepRows, toldByWorkingLine, type TurnItem } from "./transcriptActivity";
+import { awaitsUser, groupTurnItems, isStepBlock, isThinkingBlock, isTodoBlock, standsAlone, stepRows, toldByWorkingLine, type TurnItem } from "./transcriptActivity";
 
 export type TurnInfo = {
   id: string;
@@ -115,7 +115,7 @@ function shapeOf(item: TurnItem): "line" | "bubble" | "block" {
     case "approval":
       return "line";
     case "tool":
-      return block.question || isTodoBlock(block) || isHtmlRenderBlock(block) ? "block" : "line";
+      return block.question || isTodoBlock(block) || standsAlone(block) ? "block" : "line";
     case "system":
       return isErrorBlock(block) || (block.review?.outcome === "held" && !block.review.resolved) ? "block" : "line";
     default:

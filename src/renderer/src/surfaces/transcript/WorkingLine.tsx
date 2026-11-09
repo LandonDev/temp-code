@@ -18,7 +18,8 @@ import { useCountUp } from "../../motion/useCountUp";
 import { isEditBlock } from "../editModel";
 import { ToolDetails } from "../ToolDetails";
 import { actionGroupOf } from "../transcriptActivity";
-import { useTranscriptSession } from "../transcriptSession";
+import { useTranscriptHost, useTranscriptSession } from "../transcriptSession";
+import { useComputerRow } from "../../lib/computerSessions";
 import { actionOf } from "./actionModel";
 import { BODY_FRAME } from "./ActionRow";
 import { CommandCard } from "./CommandCard";
@@ -98,9 +99,16 @@ export function TurnLine({
 }) {
   const reduce = useReducedMotion() === true;
   const sessionId = useTranscriptSession() ?? "";
+  // The host words a running computer call with its element book; a hold with the scheduler's line.
+  const running = useComputerRow(useTranscriptHost(), sessionId)?.running;
+  const computerWords = running?.words;
+  const computerHeld = running?.held === true;
   const next = useMemo(
-    () => (draining ? DRAINING : workingPhase(turn, activity, { cwd, titleOf, waitOn })),
-    [draining, turn, activity, cwd, titleOf, waitOn],
+    () =>
+      draining
+        ? DRAINING
+        : workingPhase(turn, activity, { cwd, titleOf, waitOn, computer: computerWords ? { words: computerWords, held: computerHeld } : null }),
+    [draining, turn, activity, cwd, titleOf, waitOn, computerWords, computerHeld],
   );
   const phase = useHeldPhase(next, samePhase);
   // Live once in this mount: the line stays, and a pending closing ("Worked") is drawn.

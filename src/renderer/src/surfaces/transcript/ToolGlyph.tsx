@@ -1,20 +1,5 @@
 // A8 (action rows): the one 14px glyph a row leads with.
-import {
-  Bot,
-  FilePlusCorner,
-  FileText,
-  Folder,
-  Globe,
-  ListChecks,
-  MessageSquare,
-  PenLine,
-  Search,
-  Sparkles,
-  Terminal,
-  Trash2,
-  Wrench,
-  type IconComponent,
-} from "../../chrome/icons";
+import { Bot, FilePlusCorner, FileText, Folder, Globe, ListChecks, MessageSquare, PenLine, Search, Sparkles, SquareMousePointer, Terminal, Trash2, Wrench, type IconComponent } from "../../chrome/icons";
 import { StatusMark } from "../../components/ui/status";
 import type { Block } from "../../lib/session";
 import { useMetaById } from "../../lib/threads/agents";
@@ -42,6 +27,7 @@ export const GLYPH: Record<GlyphKey, IconComponent> = {
   skill: Sparkles,
   question: MessageSquare,
   app: Bot,
+  computer: SquareMousePointer,
   mcp: Wrench,
   tool: Wrench,
 };

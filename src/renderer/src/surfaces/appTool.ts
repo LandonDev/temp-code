@@ -6,8 +6,10 @@ import { bareAgentId } from "@shared/watch";
 import { inputOf, toolPathOf } from "../lib/toolDetails";
 import { hostOf } from "../lib/threads/researchBoard";
 import { isLive } from "../lib/toolPhrase";
+import { computerPhrase } from "@shared/computer/words";
 import { EDIT_TOOLS } from "./editModel";
 import { editPaths } from "./editCards";
+import { computerResultText } from "./computerShots";
 
 /**
  * Calls into the app itself (threads, subagents, memory) read as what they
@@ -15,7 +17,16 @@ import { editPaths } from "./editCards";
  * raw ids or file paths. A view carries the thread it is about, when it is
  * about one, so the row can link to it.
  */
-export type AppView = { label: string; detail: string; phrase: string; threadId?: string };
+export type AppView = {
+  label: string;
+  detail: string;
+  phrase: string;
+  threadId?: string;
+  /** A batch's step count, in the row's counts slot. */
+  tally?: string;
+  /** The row's glyph when it is not the app's own. */
+  glyph?: "computer";
+};
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const trim = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -69,6 +80,12 @@ export function appView(block: Block, titleOf: TitleOf, live = isLive(block)): A
     return null;
   }
   const short = shortName(name);
+  // A computer call in plain words: live from its input, settled from its result's step lines.
+  const computer = computerPhrase(short, i, { live, result: live ? undefined : (computerResultText(block.tool?.detail) ?? undefined) });
+  if (computer) {
+    const phrase = `${computer.verb.charAt(0).toLowerCase()}${computer.verb.slice(1)} ${computer.object}`;
+    return { label: computer.verb, detail: computer.object, phrase, glyph: "computer", ...(computer.tally ? { tally: computer.tally } : {}) };
+  }
   if (short === "spawn_agent" && Array.isArray(i.agents) && i.agents.length > 1) {
     const n = i.agents.length;
     return { label: tense("Spawned", "Spawning"), detail: `${n} agents`, phrase: `${tense("spawned", "spawning")} ${n} agents` };

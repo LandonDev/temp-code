@@ -15,6 +15,7 @@ import { kindOf, shortName, toolPhrase } from "../lib/toolPhrase";
 import { editModel, isEditBlock } from "./editModel";
 import { splitEditCards } from "./editCards";
 import { htmlRenderOf } from "./htmlRenderBlock";
+import { isComputerShotBlock } from "./computerShots";
 import { passActionsOf } from "../lib/turnClock";
 import { AGENT_TOOLS } from "./appTool";
 import { isOpenWait, isWaitCall, waitOutcomes } from "./agentSteps";
@@ -132,7 +133,7 @@ export function isActivityBlock(block: Block): boolean {
   if (isThinkingBlock(block)) return true;
   if (isFoldedStep(block)) return true;
   if (block.role !== "tool" && block.role !== "approval") return false;
-  if (isHtmlRenderBlock(block)) return false;
+  if (standsAlone(block)) return false;
   if (
     isEditTool(
       block.tool?.kind,
@@ -289,7 +290,7 @@ export function groupTurnItems(blocks: Block[]): TurnItem[] {
   const visible = blocks.filter(
     (block, index) =>
       !isIgnoredTurnBlock(block) &&
-      (isTodoBlock(block) || isHtmlRenderBlock(block) || !isHiddenTool(block)) &&
+      (isTodoBlock(block) || standsAlone(block) || !isHiddenTool(block)) &&
       !repeatsNextProse(blocks, index),
   );
   const items: TurnItem[] = [];
@@ -301,7 +302,7 @@ export function groupTurnItems(blocks: Block[]): TurnItem[] {
     activity = [];
   };
   for (const block of visible) {
-    const folds = !isHtmlRenderBlock(block) && !endsWork(block) && isActivityBlock(block);
+    const folds = !standsAlone(block) && !endsWork(block) && isActivityBlock(block);
     if (folds) {
       activity.push(block);
       continue;
@@ -325,6 +326,16 @@ export function isTodoBlock(block: Block): boolean {
  */
 export function isHtmlRenderBlock(block: Block): boolean {
   return htmlRenderOf(block) !== null;
+}
+
+/**
+ * A completed call whose result is something to look at stands as its own
+ * row where it settled, breaking the run: a published page, or a computer
+ * call with a picture the model asked for (computerShots.ts). Running, it
+ * folds into its group like any call and the working line tells it.
+ */
+export function standsAlone(block: Block): boolean {
+  return isHtmlRenderBlock(block) || isComputerShotBlock(block);
 }
 
 /** Empty reasoning and empty prose (a stream's placeholder) take no row. */

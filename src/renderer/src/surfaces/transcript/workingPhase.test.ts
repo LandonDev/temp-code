@@ -97,4 +97,29 @@ describe("workingPhase", () => {
     expect(workingPhase([user(), read("r", "a.ts"), user({ id: "u2", pending: true })], "x").key).toBe("sending");
     expect(workingPhase([user(), read("r", "a.ts"), thought("Then.")], "Waiting", { cwd: CWD }).key).toBe("call:r");
   });
+
+  it("tells a running computer call in the host's words, split at its verb, and a hold's words whole", () => {
+    const computer = (id: string, input: Record<string, unknown>): Block => ({
+      id,
+      role: "tool",
+      text: "mcp__app__computer_act",
+      tool: { callId: id, name: "mcp__app__computer_act", status: "running", input },
+    });
+    const click = computer("c1", { app: "TextEdit", action: "left_click", element: 14 });
+    expect(workingPhase([user(), click], null, { computer: { words: "Clicking Save in TextEdit" } })).toEqual({
+      key: "call:c1",
+      words: "Clicking Save in TextEdit",
+      call: { block: click, verb: "Clicking", object: "Save in TextEdit" },
+    });
+    const look = computer("c2", { app: "TextEdit", action: "screenshot" });
+    expect(workingPhase([user(), look], null, { computer: { words: "Looking at TextEdit" } }).call).toMatchObject({ verb: "Looking at", object: "TextEdit" });
+    // A held step says the scheduler's line whole, under a key of its own.
+    expect(workingPhase([user(), click], null, { computer: { words: "Waiting for the Mac to be free, 2nd in line", held: true } })).toEqual({
+      key: "hold:c1",
+      words: "Waiting for the Mac to be free, 2nd in line",
+    });
+    // Without the host's words (no row reached this desktop), the call's own live phrase.
+    expect(workingPhase([user(), click], null, {}).call).toMatchObject({ verb: "Clicking", object: "in TextEdit" });
+  });
 });
+
