@@ -83,6 +83,10 @@ import { ComputerRpc } from './computer/rpc'
 import { ComputerService } from './computer/service'
 import { ComputerSessions } from './computer/sessions'
 import { pruneStaleShots } from './computer/shots'
+import { ComputerBridge, computerBridgeHooks } from './computer/bridge'
+import { computerPinFromEnv } from './computer/pin'
+import { bridgedLanding } from './remote/macComputer'
+import { parseMacComputerKey } from '@shared/contract-maccomputer'
 import { OfflineError, ThreadResources } from './threadResources'
 import { SharedScanner, ThreadPorts } from './threadPorts'
 import { PortTail } from './portTail'
@@ -939,7 +943,11 @@ export async function startServer(
     // The thread cap counts the threads a host started here that are live (crossHostThreads below).
     liveThreads: (envId) => crossHostThreads.liveThreadsOf(envId),
     // The relay's host row on the carrier: this host's name, presence and build.
-    registration: () => relayServer.registration()
+    registration: () => relayServer.registration(),
+    // Computer use for a box thread (remote/macComputer.ts): this Mac's host, built below.
+    computerHost: () => computerHooks.current,
+    computerUnavailable: () => computerUnavailable(),
+    computerLanding: (key) => bridgedLanding(join(options.dataDir ?? dirname(dbPath), 'computer'), key)
   })
   // Threads another host starts here (docs/box.md "Threads across hosts"):
   // served over the Mac's link as peer.call pushes, and on this listener as
@@ -1297,11 +1305,15 @@ export async function startServer(
       trace: process.env.TEMP_CODE_COMPUTER_TRACE === '1',
       unavailable: () => computerUnavailable()
     })
+    const pin = computerPinFromEnv()
     const sessions = new ComputerSessions({
       service,
       registry: { get: (id) => registry.get(id), requestApproval: (id, req) => registry.requestApproval(id, req), awayOn: () => registry.awayOn() },
       store,
       dataDir: computerData,
+      // A box thread's pictures (its session keyed by box and thread) land apart, only to be read back to the box.
+      landing: (id) => (parseMacComputerKey(id) ? bridgedLanding(computerData, id) : join(attachmentDir(id), 'computer')),
+      ...(pin ? { resolveApp: pin } : {}),
       rootOf: (id) => registry.rootSessionOf(id)
     })
     computer = { available: () => computerUnavailable() === null, sessions, service, tokens: MacThreadTokens.fromEnv(process.env, 'computer') }
@@ -1310,7 +1322,33 @@ export async function startServer(
     setTimeout(() => void pruneStaleShots(computerData), 30_000).unref()
   }
   computerHooks.current = computer
-  const computerRpc = new ComputerRpc(computer, () => computerWhy)
+  // Computer use through the Mac bridge, the box side (computer/bridge.ts): where it cannot run here, a
+  // thread whose bridge names a Mac that offers it gets the four tools, carried to that Mac.
+  let computerBridge: ComputerBridge | null = null
+  const computerBridgeTokens = MacThreadTokens.fromEnv(process.env, 'computer')
+  if (computerWhy) {
+    const bridge = new ComputerBridge({
+      calls: peerCalls,
+      macPeerOf: (id) => macTools.macPeerOf(id).macPeer,
+      pause: macTools.pause,
+      sessions: { get: (id) => registry.get(id), list: () => registry.list() },
+      store,
+      landing: (s) => join(attachmentDir(s), 'computer'),
+      macName: (id) => hostNameOf(id) ?? id,
+      resources,
+      reboot: (id) => void registry.rebootAtNextTurn(id),
+      awayRefused: (id, what) => registry.awayNotice(id, 'approval', what)
+    })
+    peerCalls.onOffers((id, offers) => bridge.offersChanged(id, offers))
+    peerCalls.onDrop((id) => bridge.linkDown(id))
+    registry.onMeta((m) => bridge.onMeta(m))
+    registry.onRemoved((ids) => bridge.threadsEnded(ids))
+    resources.endComputer = (envId, thread, id) => bridge.end(envId, thread, id)
+    computerBridge = bridge
+  }
+  computerBridgeHooks.current = computerBridge
+  computerBridgeHooks.tokens = computerBridge ? computerBridgeTokens : null
+  const computerRpc = new ComputerRpc(computer, () => computerWhy, computerBridge ? { bridge: computerBridge, tokens: computerBridgeTokens } : null)
   // The box side: a thread here starting or spawning on a registered Mac,
   // reached by the app tools (apptools.ts, orchestration.ts).
   // Notices name this host as the environment switcher does.
@@ -2791,6 +2829,8 @@ export async function startServer(
             macTools.pause.stop(req.params.sessionId)
             // A computer call in flight is cancelled; the next call of the turn runs as usual.
             computer?.sessions.cancel(req.params.sessionId, 'interrupt')
+            // A box thread's computer calls waiting their turn answer cancelled (the one out on its Mac went with the Mac work above).
+            computerBridge?.cancel(req.params.sessionId)
             if (req.params.subtree) await registry.stopSubtree(req.params.sessionId)
             else await registry.stopRun(req.params.sessionId)
             sendFrame({ id: req.id, ok: true, result: null })
@@ -3532,6 +3572,7 @@ export async function startServer(
       setAppSkillTools(null)
       storePush.close()
       computerRpc.close()
+      computerBridge?.close()
       void computer?.service.close()
       awaySync.close()
       uploads.close()
