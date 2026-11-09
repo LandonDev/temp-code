@@ -1,6 +1,9 @@
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent, EventRow } from '../src/shared/events'
-import { BENCH_MODELS, laneOrder, parseBenchArgs, readRun, unionMs, type HostCall } from './lib/benchRun'
+import { BENCH_MODELS, keepFront, keepReport, laneOrder, parseBenchArgs, readRun, runStamp, unionMs, waitForQuiet, type HostCall, type MacProbe } from './lib/benchRun'
 import { runHostMs, summarize, type BenchRun } from './lib/computerBench'
 
 describe('parseBenchArgs', () => {
@@ -123,5 +126,57 @@ describe('readRun', () => {
     expect(unionMs([])).toBe(0)
     expect(unionMs([[0, 10], [5, 15], [20, 25]])).toBe(20)
     expect(unionMs([[5, 5], [10, 8]])).toBe(0)
+  })
+})
+
+describe('the person keeps the Mac', () => {
+  const idle = (seconds: number[]): Pick<MacProbe, 'idleSeconds'> => {
+    let i = 0
+    return { idleSeconds: async () => seconds[Math.min(i++, seconds.length - 1)] }
+  }
+  const noWait = async (): Promise<void> => {}
+
+  it('launches only after 5 s with no input, polled every 500 ms, and gives up after 60 s', async () => {
+    expect(await waitForQuiet(idle([6]), { wait: noWait })).toBe(true)
+    const waits: number[] = []
+    expect(await waitForQuiet(idle([0, 1, 2, 5]), { wait: async (ms) => void waits.push(ms) })).toBe(true)
+    expect(waits).toEqual([500, 500, 500])
+    waits.length = 0
+    expect(await waitForQuiet(idle([1]), { wait: async (ms) => void waits.push(ms) })).toBe(false)
+    expect(waits).toHaveLength(120)
+  })
+
+  it('sends a scratch app that came forward back, and says when it could not', async () => {
+    const before = { pid: 10, bundleId: 'com.apple.Terminal' }
+    const probe = (fronts: number[], activated: string[] = []): MacProbe => {
+      let i = 0
+      return {
+        idleSeconds: async () => 9,
+        frontmost: async () => ({ pid: fronts[Math.min(i++, fronts.length - 1)], bundleId: null }),
+        activate: async (id) => void activated.push(id)
+      }
+    }
+    expect(await keepFront(probe([10]), 77, before)).toBe('kept')
+    const activated: string[] = []
+    expect(await keepFront(probe([77, 10], activated), 77, before)).toBe('bounced')
+    expect(activated).toEqual(['com.apple.Terminal'])
+    expect(await keepFront(probe([77, 77]), 77, before)).toBe('took')
+    expect(await keepFront(probe([77, 77]), 77, { pid: 10, bundleId: null })).toBe('took')
+  })
+})
+
+describe('keepReport', () => {
+  it('writes last.json and keeps the 20 newest runs', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bench-reports-'))
+    try {
+      for (let i = 0; i < 23; i++) keepReport(dir, `{"n":${i}}`, runStamp(Date.UTC(2026, 10, 9, 2, i)))
+      expect(readFileSync(join(dir, 'last.json'), 'utf8')).toBe('{"n":22}')
+      const kept = readdirSync(join(dir, 'runs')).sort()
+      expect(kept).toHaveLength(20)
+      expect(kept[0]).toBe('20261109-020300.json')
+      expect(kept.at(-1)).toBe('20261109-022200.json')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

@@ -4,6 +4,8 @@
  * rows and the rig's host calls say about it (the calls with their host and
  * row times, think time, the tools off the route, the cards, the tokens).
  */
+import { mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { EventRow } from '../../src/shared/events'
 import { bareToolName, stepsOf, toolKind, type BenchCall, type BenchProvider } from './computerBench'
 
@@ -197,3 +199,60 @@ function tokensOf(rows: readonly EventRow[]): { tokens?: { input: number; output
   const last = rows.filter((r) => r.event.type === 'usage').at(-1)?.event
   return last?.type === 'usage' ? { tokens: { input: last.inputTokens ?? 0, output: last.outputTokens ?? 0 } } : {}
 }
+
+// ── the person keeps the Mac ────────────────────────────────────────────
+
+/** Seconds since the person's last input, the app in front, and a way to bring one forward again. */
+export interface MacProbe {
+  idleSeconds(): Promise<number>
+  frontmost(): Promise<{ pid: number; bundleId: string | null }>
+  activate(bundleId: string): Promise<void>
+}
+
+export const LAUNCH_GUARD = { quietMs: 5_000, everyMs: 500, maxMs: 60_000, bounceAfterMs: 1_000 } as const
+
+/** The line a run is skipped with when the person never paused long enough to launch a scratch app. */
+export const NEVER_QUIET = 'the person never paused for 5 s'
+
+/** Waits for the Mac to be quiet for `quietMs`, polled every `everyMs`, at most `maxMs`; false when it never was. */
+export async function waitForQuiet(probe: Pick<MacProbe, 'idleSeconds'>, opts: { quietMs?: number; everyMs?: number; maxMs?: number; wait?: (ms: number) => Promise<void> } = {}): Promise<boolean> {
+  const { quietMs = LAUNCH_GUARD.quietMs, everyMs = LAUNCH_GUARD.everyMs, maxMs = LAUNCH_GUARD.maxMs, wait = (ms) => new Promise((r) => setTimeout(r, ms)) } = opts
+  for (let waited = 0; ; waited += everyMs) {
+    if ((await probe.idleSeconds()) * 1000 >= quietMs) return true
+    if (waited >= maxMs) return false
+    await wait(everyMs)
+  }
+}
+
+/**
+ * A second after a launch: a scratch app in front sends the person's app
+ * back to the front. 'kept' when nothing moved, 'bounced' when it was put
+ * back, 'took' when it could not be (the run fails `took the front`).
+ */
+export async function keepFront(probe: MacProbe, scratchPid: number, before: { pid: number; bundleId: string | null }): Promise<'kept' | 'bounced' | 'took'> {
+  if ((await probe.frontmost()).pid !== scratchPid) return 'kept'
+  if (before.bundleId) {
+    try {
+      await probe.activate(before.bundleId)
+    } catch {
+      /* the check below says */
+    }
+  }
+  return (await probe.frontmost()).pid === scratchPid ? 'took' : 'bounced'
+}
+
+// ── where the gate's reports go ─────────────────────────────────────────
+
+/** `last.json` and `runs/<stamp>.json` beside the baseline, the 20 newest kept. */
+export function keepReport(dir: string, json: string, stamp: string, keep = 20): void {
+  const runs = join(dir, 'runs')
+  mkdirSync(runs, { recursive: true })
+  writeFileSync(join(dir, 'last.json.tmp'), json)
+  renameSync(join(dir, 'last.json.tmp'), join(dir, 'last.json'))
+  writeFileSync(join(runs, `${stamp}.json`), json)
+  const old = readdirSync(runs).filter((n) => n.endsWith('.json')).sort()
+  for (const name of old.slice(0, Math.max(0, old.length - keep))) rmSync(join(runs, name), { force: true })
+}
+
+/** A sortable stamp for a run's files: 20261109-021500. */
+export const runStamp = (at: number): string => new Date(at).toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
