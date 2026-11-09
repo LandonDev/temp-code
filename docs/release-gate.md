@@ -211,6 +211,24 @@ first-turn gate with and without add-ons wherever codex is installed: on the
 box (codex 0.163.0, `~/.npm-global/bin/codex`) the medians were 517 ms with
 add-ons and 516 ms without.
 
+### The sweep of 2026-11-09
+
+Each row above was green three times in a row on each host it runs on (the
+store rows on the box and the Mac, sparse-PATH runs among them; the Mac rows
+on the reviewed tip, after the screen unlocked). On the box `bun run gate
+--tier all --skip typecheck,vitest` passed three times (205 s, 218 s,
+218 s). The Mac's one whole `bun run gate --tier publish` stopped after 37 s
+on a fault the gate found: under the full tier's process count, `ps -axwwE`
+passed spawnSync's 1 MiB buffer, so e2e-addons failed, and the thrown error
+carried every process's environment into the step's log. scripts/lib/procScan.ts
+now allows 64 MiB and fails with the error code alone; e2e-addons then passed
+three times on the Mac (22 to 23 s). The whole tier was not run again, and so
+the soak check (a soak failing its CPU bound beside the `e2e` lane) is not
+measured: the board soak was stopped, not judged, and the Mac then locked
+with the person away. The `e2e` lane stays beside the soaks, the layout the
+person chose; if a soak breaks its CPU bound beside it at a publish, the
+store rows move behind the soaks in the build lane.
+
 ## Hand runs
 
 The proofs the gate cannot run: each spends a real model, needs the person
@@ -227,16 +245,16 @@ otherwise.
 | `script:spike-config-dirs -- --host mac` | Mac | the same | 298 s | 26 ok, 11 partial, 2 fail (C2a found no credential to start a turn, X5 no custom-prompt expansion), 1 skip (M0b needs `--upstream`); the secret sweep clean |
 | `script:e2e-harness-sync` | box | none | 8 s | failed 3 of 40: its expectations predate Codex regenerating `.codex/skills/.system` and Muse writing `serve-exit.jsonl` in the scratch HOME; the fix is the drivers build's |
 | `script:e2e-computer-images` | box | real Claude and Codex turns (a fake service) | 82 s | passed, 8 cases |
-| `script:e2e-computer-images` | Mac | the same on the real service | | |
-| `script:e2e-tc-computer` (whole) | Mac | 5 idle minutes (TextEdit and the paste come forward) | | |
-| `script:e2e-computer` | Mac | real Sonnet turns | | |
-| `script:e2e-computer-bridge` over SSH | Mac and box | both clones built at one commit | | |
-| `script:e2e-computer-ax` | Mac | the person away; IntelliJ only with `TC_AX_INTELLIJ=1` | | |
-| `script:e2e-computer-input -- --session` | Mac | the person away | | |
-| `script:e2e-computer-capture -- --keep <dir>` | Mac | Screen Recording; minutes of watch scenes on its own inert windows | | |
-| `script:e2e-computer-schedule` | Mac | the session tier: its scratch TextEdits come forward | | |
-| `script:e2e-computer-preview` (whole) | Mac | it takes Escape for about two seconds | | |
-| `script:e2e-computer-ui` | Mac | a real Sonnet thread, 5 idle minutes | | |
+| `script:e2e-computer-images` | Mac | the same on the real service | — | not run: the Mac was locked, the person away (2026-11-09) |
+| `script:e2e-tc-computer` (whole) | Mac | 5 idle minutes (TextEdit and the paste come forward) | — | not run: the Mac was locked, the person away (2026-11-09) |
+| `script:e2e-computer` | Mac | real Sonnet turns | — | not run: the Mac was locked, the person away (2026-11-09) |
+| `script:e2e-computer-bridge` over SSH | Mac and box | both clones built at one commit | — | not run: the Mac was locked, the person away (2026-11-09) |
+| `script:e2e-computer-ax` | Mac | the person away; IntelliJ only with `TC_AX_INTELLIJ=1` | — | not run: the Mac was locked, the person away (2026-11-09) |
+| `script:e2e-computer-input -- --session` | Mac | the person away | — | not run: the Mac was locked, the person away (2026-11-09) |
+| `script:e2e-computer-capture -- --keep <dir>` | Mac | Screen Recording; minutes of watch scenes on its own inert windows | — | not run: the Mac was locked, the person away (2026-11-09) |
+| `script:e2e-computer-schedule` | Mac | the session tier: its scratch TextEdits come forward | — | not run: the Mac was locked, the person away (2026-11-09) |
+| `script:e2e-computer-preview` (whole) | Mac | it takes Escape for about two seconds | 3 s | inconclusive: the Mac locked before its live legs (2026-11-09) |
+| `script:e2e-computer-ui` | Mac | a real Sonnet thread, 5 idle minutes | — | not run: the Mac was locked, the person away (2026-11-09) |
 | `script:compare-computer-words` | Mac | real model runs; the scratch windows come forward | 23 min for the 48 runs, then the policy check (the instructions build's run, 13:35 to 13:58 UTC, not repeated) | Opus 5.5 and Muse Wonder 1.0 passed every task on both words, GPT-6.1 Sol two of three; the cua words ship for Anthropic and OpenAI, the anthropic words for Meta (docs/computer-protocol.md §19.6) |
 | `script:e2e-computer-bench` | Mac | "The bench's hand run" below | | |
 
@@ -444,7 +462,12 @@ The publish tier alone on the Mac (2026-10-21, the same M4 Max at a load
 of 15 from other work, a fresh clone with `infra/hub` installed): 22 s,
 with the fence 3.9 s, hub 12 s, ios 4.0 s and ios-client 18 s in their
 lanes; 37 s on a colder run (fence 3.1 s, hub 4.1 s, ios 12 s, ios-client
-25 s). Beside the electron-vite build it took 59 s.
+25 s). Beside the electron-vite build it took 59 s. With the store and
+computer rows, the Mac's whole publish tier is not measured yet (2026-11-09:
+its one run stopped at e2e-addons' fixed process-scan fault, "The sweep of
+2026-11-09" above). The rows' own times add about 3.5 minutes to the `e2e`
+lane and about 70 s before the bench in the `computer` lane, both beside the
+build lane's soaks.
 
 ## The publish, phase by phase
 
