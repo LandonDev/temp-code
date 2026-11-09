@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { STEPS, TIER_PATHS, formatReport, gateDir, matchPath, parseArgs, readStoredHash, runSteps, selectSteps, shouldSkipTypecheck, storeHash, tiersForPaths, typecheckHash, type Step, macOnlySkips, judgeReport, spawnStep, stepArgs, atPublishSkips, fmtCap, SOAK_CAP_MS } from './gate'
+import { STEPS, TIER_PATHS, formatReport, gateDir, matchPath, parseArgs, readStoredHash, runSteps, selectSteps, shouldSkipTypecheck, storeHash, tiersForPaths, typecheckHash, type Step, macOnlySkips, judgeReport, spawnStep, stepArgs, atPublishSkips, fmtCap, SOAK_CAP_MS, BUILD_WAIT_MS, proofCap, STORE_MEASURED_MS, STORE_CAP_MS, COMPUTER_MEASURED_MS, COMPUTER_CAP_MS, buildBarrier, gate } from './gate'
 import { BENCH_TIMING } from './lib/computerBench'
 
 describe('the step list', () => {
@@ -22,7 +22,7 @@ describe('the step list', () => {
     expect(size.lane).toBe(build.lane)
     expect(STEPS.indexOf(size)).toBeGreaterThan(STEPS.indexOf(build))
     const publish = STEPS.filter((s) => s.tier === 'publish').map((s) => s.name)
-    expect(publish).toEqual(expect.arrayContaining(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'renderer-soak-scroll', 'e2e-remote-fence', 'hub', 'ios', 'ios-client', 'computer-swift', 'computer-bench']))
+    expect(publish).toEqual(expect.arrayContaining(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'renderer-soak-scroll', 'e2e-remote-fence', 'e2e-addons', 'e2e-addon-grants', 'e2e-skills-store', 'e2e-skills-drivers', 'hub', 'ios', 'ios-client', 'computer-swift', 'e2e-tc-computer', 'e2e-computer-bridge', 'e2e-computer-preview', 'computer-bench']))
     // The soaks read out/ too: in the build lane after the build and its size check, so they never race them,
     // one scene after the other, each failing on its CPU bound (no report-only flag).
     const soak = STEPS.find((s) => s.name === 'renderer-soak')!
@@ -44,7 +44,7 @@ describe('the step list', () => {
 
   it('selects by tier, honours --only and --skip, and refuses an unknown name', () => {
     expect(selectSteps({ tiers: new Set(['commit']) }).map((s) => s.name)).toEqual(['typecheck', 'vitest', 'build', 'bundle-size'])
-    expect(selectSteps({ tiers: new Set(['publish']) }).map((s) => s.name)).toEqual(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'renderer-soak-scroll', 'e2e-remote-fence', 'hub', 'ios', 'ios-client', 'computer-swift', 'computer-bench'])
+    expect(selectSteps({ tiers: new Set(['publish']) }).map((s) => s.name)).toEqual(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'renderer-soak-scroll', 'e2e-remote-fence', 'e2e-addons', 'e2e-addon-grants', 'e2e-skills-store', 'e2e-skills-drivers', 'hub', 'ios', 'ios-client', 'computer-swift', 'e2e-tc-computer', 'e2e-computer-bridge', 'e2e-computer-preview', 'computer-bench'])
     expect(selectSteps({ tiers: new Set(['commit', 'publish']) }).length).toBe(STEPS.length)
     expect(selectSteps({ tiers: new Set(['commit']), only: ['vitest'] }).map((s) => s.name)).toEqual(['vitest'])
     expect(selectSteps({ tiers: new Set(['commit']), skip: ['vitest'] }).map((s) => s.name)).toEqual(['typecheck', 'build', 'bundle-size'])
@@ -68,7 +68,7 @@ describe('the step list', () => {
 
 describe('the Mac-only steps', () => {
   it('skips the renderer soak, hub, ios and ios-client off macOS with a note, and nothing on it', () => {
-    expect([...macOnlySkips(STEPS, 'linux').keys()]).toEqual(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'renderer-soak-scroll', 'hub', 'ios', 'ios-client', 'computer-swift', 'computer-bench'])
+    expect([...macOnlySkips(STEPS, 'linux').keys()]).toEqual(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'renderer-soak-scroll', 'hub', 'ios', 'ios-client', 'computer-swift', 'e2e-tc-computer', 'e2e-computer-bridge', 'e2e-computer-preview', 'computer-bench'])
     expect(macOnlySkips(STEPS, 'linux').get('ios')).toBe('needs the Mac; release:publish runs it there')
     expect(macOnlySkips(STEPS, 'darwin').size).toBe(0)
     expect(STEPS.filter((s) => s.mac).every((s) => s.tier === 'publish')).toBe(true)
@@ -80,7 +80,8 @@ describe('the computer bench row and the caps', () => {
 
   it('is a publish step on the Mac in its own lane, with a cap, never pulled into a commit hook', () => {
     expect(bench).toMatchObject({ tier: 'publish', mac: true, lane: 'computer', onlyAtPublish: true, cmd: 'bun', args: ['run', 'script:e2e-computer-bench', '--', '--gate'] })
-    expect(STEPS.filter((s) => s.lane === 'computer')).toEqual([bench])
+    // Last in its lane, after the Mac's TC Probe proofs.
+    expect(STEPS.filter((s) => s.lane === 'computer').at(-1)).toBe(bench)
     expect(bench.capMs).toBe(15 * 60_000)
     // The script's own deadline leaves it a minute inside the cap to report and clean up.
     expect(BENCH_TIMING.budgetMs).toBeLessThan(bench.capMs!)
@@ -137,7 +138,149 @@ describe('the computer bench row and the caps', () => {
   })
 })
 
+describe('the store and computer proofs', () => {
+  const STORE = ['e2e-addons', 'e2e-addon-grants', 'e2e-skills-store', 'e2e-skills-drivers']
+  const MAC = ['e2e-tc-computer', 'e2e-computer-bridge', 'e2e-computer-preview']
+  const at = (name: string): number => STEPS.findIndex((s) => s.name === name)
+
+  it('runs each as a publish row through its script entry with --gate, under a cap', () => {
+    for (const name of [...STORE, ...MAC]) {
+      const s = STEPS.find((x) => x.name === name)!
+      expect(s, name).toMatchObject({ tier: 'publish', cmd: 'bun', args: ['run', `script:${name}`, '--', '--gate'] })
+      expect(s.capMs, name).toBeGreaterThan(BUILD_WAIT_MS)
+      expect(s.capMs! % 60_000, name).toBe(0)
+      expect(s.onlyAtPublish, name).toBeUndefined()
+    }
+  })
+
+  it('puts the store proofs one after the other in one lane, right after the fence, on both hosts', () => {
+    const fence = STEPS.find((s) => s.name === 'e2e-remote-fence')!
+    const lane = STEPS.filter((s) => s.lane === fence.lane).map((s) => s.name)
+    expect(lane).toEqual(['e2e-remote-fence', ...STORE])
+    for (const name of STORE) expect(STEPS[at(name)].mac, name).toBeUndefined()
+    expect(STORE.map(at)).toEqual(STORE.map((_, i) => at('e2e-remote-fence') + 1 + i))
+  })
+
+  it("puts the Mac's TC Probe proofs before the bench in the computer lane", () => {
+    expect(STEPS.filter((s) => s.lane === 'computer').map((s) => s.name)).toEqual([...MAC, 'computer-bench'])
+    for (const name of MAC) expect(STEPS[at(name)].mac, name).toBe(true)
+  })
+
+  it('caps a proof at the build wait plus three times its measured time, rounded up to the minute', () => {
+    expect(proofCap(133_000)).toBe(BUILD_WAIT_MS + 7 * 60_000)
+    expect(proofCap(60_000)).toBe(BUILD_WAIT_MS + 3 * 60_000)
+    for (const [name, ms] of Object.entries(STORE_MEASURED_MS)) expect(STORE_CAP_MS[name as keyof typeof STORE_CAP_MS]).toBe(proofCap(ms))
+    for (const [name, ms] of Object.entries(COMPUTER_MEASURED_MS)) expect(COMPUTER_CAP_MS[name as keyof typeof COMPUTER_CAP_MS]).toBe(proofCap(ms))
+  })
+})
+
+describe('the build barrier', () => {
+  // gate() prints its status and report; the tests read its results instead.
+  beforeEach(() => void vi.spyOn(console, 'log').mockImplementation(() => {}))
+  afterEach(() => vi.restoreAllMocks())
+
+  it('holds only a run that selects the build, after bundle-size when it runs', () => {
+    expect(buildBarrier(selectSteps({ tiers: new Set(['publish']) }), '/g')).toBeNull()
+    expect(buildBarrier(selectSteps({ tiers: new Set(['commit', 'publish']) }), '/g')).toEqual({ file: '/g/build.done', after: 'bundle-size' })
+    expect(buildBarrier(selectSteps({ tiers: new Set(['commit']), skip: ['bundle-size'] }), '/g')).toEqual({ file: '/g/build.done', after: 'build' })
+  })
+
+  it("removes last run's build.done, names it to every step and touches it once the size check passes", async () => {
+    const repo = mkdtempSync(join(tmpdir(), 'tc-gate-barrier-'))
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: repo })
+      const dir = gateDir(repo)
+      mkdirSync(dir, { recursive: true })
+      // Last run's file: a proof that read it would start before this run's build.
+      writeFileSync(join(dir, 'build.done'), 'stale\n')
+      const seen = join(repo, 'seen.txt')
+      const node = (body: string): string[] => ['-e', body]
+      const steps: Step[] = [
+        // The build checks the stale file is gone before it "builds".
+        { name: 'build', tier: 'commit', lane: 'build', why: '', cmd: process.execPath, args: node("if (require('fs').existsSync(process.env.TEMP_CODE_SOAK_BUILD_DONE)) process.exit(3); setTimeout(() => {}, 300)") },
+        { name: 'bundle-size', tier: 'commit', lane: 'build', why: '', cmd: process.execPath, args: node("if (require('fs').existsSync(process.env.TEMP_CODE_SOAK_BUILD_DONE)) process.exit(4)") },
+        // A proof in another lane: it starts at once, waits for the file, and records what it saw.
+        {
+          name: 'proof',
+          tier: 'publish',
+          lane: 'e2e',
+          why: '',
+          cmd: process.execPath,
+          args: node(
+            `const fs = require('fs'); const f = process.env.TEMP_CODE_SOAK_BUILD_DONE; const t = setInterval(() => { if (fs.existsSync(f)) { clearInterval(t); fs.writeFileSync(${JSON.stringify(seen)}, f) } }, 20)`
+          )
+        }
+      ]
+      const report = await gate({ repo, tiers: new Set(['commit', 'publish']), full: false, verbose: false, steps })
+      expect(report.results.map((r) => [r.name, r.outcome])).toEqual([
+        ['build', 'passed'],
+        ['bundle-size', 'passed'],
+        ['proof', 'passed']
+      ])
+      expect(readFileSync(seen, 'utf8')).toBe(join(dir, 'build.done'))
+      expect(existsSync(join(dir, 'build.done'))).toBe(true)
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  it('leaves a run without the build on the caller’s variable', async () => {
+    const repo = mkdtempSync(join(tmpdir(), 'tc-gate-nobarrier-'))
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: repo })
+      const seen = join(repo, 'seen.txt')
+      const step: Step = { name: 'proof', tier: 'publish', lane: 'e2e', why: '', cmd: process.execPath, args: ['-e', `require('fs').writeFileSync(${JSON.stringify(seen)}, process.env.TEMP_CODE_SOAK_BUILD_DONE ?? 'unset')`] }
+      const before = process.env.TEMP_CODE_SOAK_BUILD_DONE
+      process.env.TEMP_CODE_SOAK_BUILD_DONE = '/stage/build.done'
+      try {
+        await gate({ repo, tiers: new Set(['publish']), full: false, verbose: false, steps: [step] })
+      } finally {
+        if (before === undefined) delete process.env.TEMP_CODE_SOAK_BUILD_DONE
+        else process.env.TEMP_CODE_SOAK_BUILD_DONE = before
+      }
+      expect(readFileSync(seen, 'utf8')).toBe('/stage/build.done')
+      expect(existsSync(join(gateDir(repo), 'build.done'))).toBe(false)
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('tier selection by path', () => {
+  it('pulls the publish tier in for the add-on, skills and computer host code and their proofs', () => {
+    for (const path of [
+      'src/main/server/addons/addonHost.ts',
+      'src/main/server/skills/materialize.ts',
+      'src/main/server/computer/sessions.ts',
+      'src/main/server/addonStore.ts',
+      'src/main/server/skillStore.ts',
+      'src/main/server/skillFiles.ts',
+      'src/main/server/storeRpc.ts',
+      'src/main/server/museConfigDirs.ts',
+      'src/shared/addons.ts',
+      'src/shared/skills.ts',
+      'src/shared/addonGrant.ts',
+      'src/shared/addonGrantWords.ts',
+      'src/main/addonHostProcess.ts',
+      'src/main/addonHostSpawn.ts',
+      'scripts/app-mcp-bridge.mjs',
+      'scripts/e2e-addons.ts',
+      'scripts/e2e-addon-grants.ts',
+      'scripts/e2e-skills-store.ts',
+      'scripts/e2e-skills-drivers.ts',
+      'scripts/e2e-computer-bridge.ts',
+      'scripts/e2e-computer.ts',
+      'scripts/e2e-tc-computer.ts',
+      'scripts/lib/gateBuild.ts',
+      'scripts/lib/tcComputerBuild.ts',
+      'scripts/lib/proofOrder.ts'
+    ]) {
+      expect(tiersForPaths([path]).get('publish'), path).toEqual([path])
+    }
+    // The drivers stay out: nearly every commit touches them.
+    for (const path of ['src/main/server/drivers/claude.ts', 'src/main/server/drivers/codex.ts']) expect(tiersForPaths([path]).size, path).toBe(0)
+  })
+
   it('matches globs across segments and within one', () => {
     expect(matchPath('ios/**', 'ios/TempCode/Sources/A.swift')).toBe(true)
     expect(matchPath('ios/**', 'ios/Package.swift')).toBe(true)

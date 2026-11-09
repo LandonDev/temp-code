@@ -17,7 +17,9 @@
  * names it as `capMs`: past it the gate kills the step and fails it. A step
  * marked `onlyAtPublish` runs only when its tier was asked for, never when
  * changed paths alone pulled the tier into a commit's gate (the computer
- * bench's model threads). Every step's output lands in
+ * bench's model threads). A run that builds holds the proofs beside the
+ * build until it is done (buildBarrier: <git-dir>/temp-code-gate/build.done,
+ * named to every step as TEMP_CODE_SOAK_BUILD_DONE). Every step's output lands in
  * <git-dir>/temp-code-gate/logs/<step>.log; the last run's times in
  * <git-dir>/temp-code-gate/last-run.json.
  *
@@ -72,6 +74,29 @@ export interface Step {
  */
 /** A soak's outer limit: the 10 minutes it may wait for the build, its 90 s, and teardown. */
 export const SOAK_CAP_MS = 12 * 60_000
+
+/** The 10 minutes a proof may wait for the build (scripts/lib/gateBuild.ts). */
+export const BUILD_WAIT_MS = 10 * 60_000
+
+/** A proof row's cap: the build wait plus three times its measured time, rounded up to the minute. */
+export const proofCap = (measuredMs: number): number => BUILD_WAIT_MS + Math.ceil((3 * measuredMs) / 60_000) * 60_000
+
+/** The store proofs' measured `--gate` times, the slower host's (docs/release-gate.md "The store and computer proofs"). */
+export const STORE_MEASURED_MS = {
+  'e2e-addons': 5 * 60_000,
+  'e2e-addon-grants': 133_000,
+  'e2e-skills-store': 3 * 60_000,
+  'e2e-skills-drivers': 5 * 60_000
+} as const
+export const STORE_CAP_MS = Object.fromEntries(Object.entries(STORE_MEASURED_MS).map(([k, v]) => [k, proofCap(v)])) as Record<keyof typeof STORE_MEASURED_MS, number>
+
+/** The Mac's TC Probe proofs' measured `--gate` times (docs/release-gate.md "The store and computer proofs"). */
+export const COMPUTER_MEASURED_MS = {
+  'e2e-tc-computer': 3 * 60_000,
+  'e2e-computer-bridge': 4 * 60_000,
+  'e2e-computer-preview': 2 * 60_000
+} as const
+export const COMPUTER_CAP_MS = Object.fromEntries(Object.entries(COMPUTER_MEASURED_MS).map(([k, v]) => [k, proofCap(v)])) as Record<keyof typeof COMPUTER_MEASURED_MS, number>
 
 export const STEPS: Step[] = [
   {
@@ -162,6 +187,44 @@ export const STEPS: Step[] = [
     lane: 'e2e',
     why: 'the remote fence, pairing, webhook and hello rules against a real server (boots an instance)'
   },
+  // The store proofs: one at a time in the e2e lane after the fence, two
+  // headless instances each at most, each waiting for the build (build.done).
+  {
+    name: 'e2e-addons',
+    tier: 'publish',
+    cmd: 'bun',
+    args: ['run', 'script:e2e-addons', '--', '--gate'],
+    lane: 'e2e',
+    capMs: STORE_CAP_MS['e2e-addons'],
+    why: 'the add-on host, grants, exposure and the codex bridge against fake MCP servers on two paired headless instances; the real-Claude leg skipped (scripts/e2e-addons.ts --gate)'
+  },
+  {
+    name: 'e2e-addon-grants',
+    tier: 'publish',
+    cmd: 'bun',
+    args: ['run', 'script:e2e-addon-grants', '--', '--gate'],
+    lane: 'e2e',
+    capMs: STORE_CAP_MS['e2e-addon-grants'],
+    why: 'add-on grants signed in on the "mac", handed to and refreshed on the "box", against a fake OAuth server on two paired headless instances (scripts/e2e-addon-grants.ts --gate)'
+  },
+  {
+    name: 'e2e-skills-store',
+    tier: 'publish',
+    cmd: 'bun',
+    args: ['run', 'script:e2e-skills-store', '--', '--gate'],
+    lane: 'e2e',
+    capMs: STORE_CAP_MS['e2e-skills-store'],
+    why: 'the skills store on two paired headless instances: the import, the seed, the views and their path text, a rewrite under a reader, the card, the slash menu, a removal, a restart (scripts/e2e-skills-store.ts --gate)'
+  },
+  {
+    name: 'e2e-skills-drivers',
+    tier: 'publish',
+    cmd: 'bun',
+    args: ['run', 'script:e2e-skills-drivers', '--', '--gate'],
+    lane: 'e2e',
+    capMs: STORE_CAP_MS['e2e-skills-drivers'],
+    why: "the real Claude, Codex and Muse CLIs of one headless instance against the config-dir spike's fake providers: each reads the store's skill and never a home one, a rewrite reaches the next turn (scripts/e2e-skills-drivers.ts --gate)"
+  },
   {
     name: 'hub',
     tier: 'publish',
@@ -196,6 +259,39 @@ export const STEPS: Step[] = [
     args: ['run', 'computer:test'],
     lane: 'swift',
     why: 'the tc-computer Swift package: the generated wire types against the fixtures (swift build + test)',
+    mac: true
+  },
+  // The Mac's TC Probe proofs, before the bench in its lane, so a cheap
+  // failure stops the gate before the models run. Each waits for the build
+  // and for any older computer proof (scripts/lib/proofOrder.ts).
+  {
+    name: 'e2e-tc-computer',
+    tier: 'publish',
+    cmd: 'bun',
+    args: ['run', 'script:e2e-tc-computer', '--', '--gate'],
+    lane: 'computer',
+    capMs: COMPUTER_CAP_MS['e2e-tc-computer'],
+    why: 'the shipped tc-computer on TC Probe alone, ungated: launch in the background, list, find, Ping at the ax tier, the forced-miss service, a screenshot, a cancelled wait, a crash and restart (scripts/e2e-tc-computer.ts --gate)',
+    mac: true
+  },
+  {
+    name: 'e2e-computer-bridge',
+    tier: 'publish',
+    cmd: 'bun',
+    args: ['run', 'script:e2e-computer-bridge', '--', '--gate'],
+    lane: 'computer',
+    capMs: COMPUTER_CAP_MS['e2e-computer-bridge'],
+    why: "a box thread's computer calls through the Mac bridge with both halves on the Mac (--pair local: the box half a second headless instance seamed linux), on TC Probe, no model (scripts/e2e-computer-bridge.ts --gate)",
+    mac: true
+  },
+  {
+    name: 'e2e-computer-preview',
+    tier: 'publish',
+    cmd: 'bun',
+    args: ['run', 'script:e2e-computer-preview', '--', '--gate'],
+    lane: 'computer',
+    capMs: COMPUTER_CAP_MS['e2e-computer-preview'],
+    why: "the live preview's stream, acks and click marks against TC Probe, no model; the Escape tap's leg skipped, since it takes the person's Escape (scripts/e2e-computer-preview.ts --gate)",
     mac: true
   },
   {
@@ -247,7 +343,28 @@ export const TIER_PATHS: { pattern: string; tier: Tier; why: string }[] = [
   { pattern: 'native/tc-computer/**', tier: 'publish', why: 'the computer-use service package' },
   { pattern: 'src/shared/computer/**', tier: 'publish', why: 'the zod the computer wire types are generated from' },
   { pattern: 'scripts/gen-swift-computer.ts', tier: 'publish', why: 'the computer wire generator' },
-  { pattern: 'scripts/computer-test.sh', tier: 'publish', why: 'the computer package runner' }
+  { pattern: 'scripts/computer-test.sh', tier: 'publish', why: 'the computer package runner' },
+  { pattern: 'src/main/server/addons/**', tier: 'publish', why: 'the add-on host, its grants and tools' },
+  { pattern: 'src/main/server/skills/**', tier: 'publish', why: 'the skills materializer, pointers, roots and tools' },
+  { pattern: 'src/main/server/computer/**', tier: 'publish', why: 'the computer host: sessions, tools, preview' },
+  { pattern: 'src/main/server/addonStore.ts', tier: 'publish', why: 'the add-on table' },
+  { pattern: 'src/main/server/skillStore.ts', tier: 'publish', why: 'the skill tables' },
+  { pattern: 'src/main/server/skillFiles.ts', tier: 'publish', why: 'the skill folder reader and writer' },
+  { pattern: 'src/main/server/storeRpc.ts', tier: 'publish', why: 'the add-on and skill RPCs' },
+  { pattern: 'src/main/server/museConfigDirs.ts', tier: 'publish', why: "Muse's config dir per account and scope" },
+  { pattern: 'src/shared/addons.ts', tier: 'publish', why: 'the add-on rules' },
+  { pattern: 'src/shared/skills.ts', tier: 'publish', why: 'the skill rules' },
+  { pattern: 'src/shared/addonGrant*.ts', tier: 'publish', why: 'the grant blob and its words' },
+  { pattern: 'src/main/addonHostProcess.ts', tier: 'publish', why: "the add-on host's utility process" },
+  { pattern: 'src/main/addonHostSpawn.ts', tier: 'publish', why: 'the add-on host fork' },
+  { pattern: 'scripts/app-mcp-bridge.mjs', tier: 'publish', why: 'the codex and Muse app-tools bridge' },
+  { pattern: 'scripts/e2e-addon*.ts', tier: 'publish', why: 'the add-on proofs' },
+  { pattern: 'scripts/e2e-skills-*.ts', tier: 'publish', why: 'the skills proofs' },
+  { pattern: 'scripts/e2e-computer*.ts', tier: 'publish', why: 'the computer proofs' },
+  { pattern: 'scripts/e2e-tc-computer.ts', tier: 'publish', why: 'the tc-computer proof' },
+  { pattern: 'scripts/lib/gateBuild.ts', tier: 'publish', why: "the proofs' build wait" },
+  { pattern: 'scripts/lib/tcComputerBuild.ts', tier: 'publish', why: 'the tc-computer build' },
+  { pattern: 'scripts/lib/proofOrder.ts', tier: 'publish', why: 'one computer proof at a time' }
 ]
 
 /** The files whose change makes typecheck run again (see typecheckHash). */
@@ -576,8 +693,23 @@ export function judgeReport(
  *  what it started (release-publish's exit trap after a failed build). */
 const liveGroups = new Set<number>()
 
+/**
+ * The build barrier. When a run selects the `build` step, the proofs beside
+ * it must not read `out/` until the build and its size check are done: a
+ * stamp in out/bundle-map.json is no barrier, since a retry at the same HEAD
+ * finds last run's valid stamp while the build rewrites `out/`. So the run
+ * removes `<gate-dir>/build.done` at its start, touches it once `after`
+ * passes (bundle-size, else the build), and names it to every step as
+ * TEMP_CODE_SOAK_BUILD_DONE (scripts/lib/gateBuild.ts waits on it). A run
+ * without the build keeps the caller's variable, else the stamp check.
+ */
+export function buildBarrier(steps: readonly Step[], dir: string): { file: string; after: string } | null {
+  if (!steps.some((s) => s.name === 'build')) return null
+  return { file: join(dir, 'build.done'), after: steps.some((s) => s.name === 'bundle-size') ? 'bundle-size' : 'build' }
+}
+
 /** Spawns one step, streams its output to a log file (and stdout when verbose), keeps the tail. */
-export function spawnStep(opts: { repo: string; logDir: string; verbose: boolean; tailLines?: number }): RunOne {
+export function spawnStep(opts: { repo: string; logDir: string; verbose: boolean; tailLines?: number; env?: Record<string, string> }): RunOne {
   const tailLines = opts.tailLines ?? 60
   return (step, signal) =>
     new Promise((resolvePromise) => {
@@ -590,7 +722,7 @@ export function spawnStep(opts: { repo: string; logDir: string; verbose: boolean
       // (bun run → npm → tsc) and not just the first process.
       const child = spawn(step.cmd, args, {
         cwd: opts.repo,
-        env: { ...plainEnv(), ...step.env, FORCE_COLOR: '0', NO_COLOR: '1' },
+        env: { ...plainEnv(), ...opts.env, ...step.env, FORCE_COLOR: '0', NO_COLOR: '1' },
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: process.platform !== 'win32'
       })
@@ -674,6 +806,8 @@ export interface GateOptions {
   only?: string[]
   skip?: string[]
   verbose: boolean
+  /** The step list; STEPS unless a test names its own. */
+  steps?: readonly Step[]
 }
 
 export function parseArgs(argv: string[]): Omit<GateOptions, 'repo'> {
@@ -717,8 +851,10 @@ export async function gate(opts: GateOptions): Promise<Report> {
       console.log(`${stamp()} + ${tier} tier: ${hits.length === 1 ? hits[0] : `${hits[0]} and ${hits.length - 1} more`} changed since ${opts.since}`)
     }
   }
-  const steps = selectSteps({ tiers, only: opts.only, skip: opts.skip })
+  const steps = selectSteps({ tiers, only: opts.only, skip: opts.skip }, opts.steps)
   const dir = gateDir(opts.repo)
+  const barrier = buildBarrier(steps, dir)
+  if (barrier) rmSync(barrier.file, { force: true })
   const skipped = new Map([...macOnlySkips(steps), ...atPublishSkips(steps, pulled)])
   let hash: string | undefined
   const hashStep = steps.find((s) => s.hashSkip)
@@ -744,7 +880,7 @@ export async function gate(opts: GateOptions): Promise<Report> {
   if (tty) ticker = setInterval(draw, 1000)
   const report = await runSteps(
     steps,
-    spawnStep({ repo: opts.repo, logDir: join(dir, 'logs'), verbose: opts.verbose }),
+    spawnStep({ repo: opts.repo, logDir: join(dir, 'logs'), verbose: opts.verbose, ...(barrier ? { env: { TEMP_CODE_SOAK_BUILD_DONE: barrier.file } } : {}) }),
     {
       onStart: (step) => {
         running.set(step.name, Date.now())
@@ -752,6 +888,10 @@ export async function gate(opts: GateOptions): Promise<Report> {
         draw()
       },
       onFinish: (r) => {
+        if (barrier && r.name === barrier.after && r.outcome === 'passed') {
+          mkdirSync(dir, { recursive: true })
+          writeFileSync(barrier.file, `${new Date().toISOString()}\n`)
+        }
         running.delete(r.name)
         clear()
         const time = r.outcome === 'not run' || r.outcome === 'skipped' ? '' : ` ${fmtMs(r.ms)}`
