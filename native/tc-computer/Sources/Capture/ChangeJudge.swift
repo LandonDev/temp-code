@@ -40,7 +40,9 @@ public struct WatchFrame: Sendable {
     public var height: Int
     /// `SCStreamFrameInfo.dirtyRects` in frame pixels; nil when the attachment is missing.
     public var dirty: [CGRect]?
-    /// The frame's luma averaged over cells; read only when `dirty` is nil.
+    /// The frame's luma averaged over cells. Without dirty rects it says which cells changed;
+    /// with them it confirms them: a dirty cell whose luma did not move is not a change (a covered
+    /// window's frames are all dirty, whole, whether anything changed or not).
     public var luma: LumaGrid?
     public var atMs: Double
 
@@ -60,7 +62,10 @@ public struct WatchFrame: Sendable {
 /// `minArea` never counts; `largeCells` dirty cells or more always count, however often the same
 /// area repaints. In between, a frame counts when at least `minCells` of its cells are not
 /// ambient, a cell being ambient once it was dirty in `ambientHits` small frames within
-/// `windowMs`: a spinner counts for its first two frames, then goes quiet.
+/// `windowMs`: a spinner counts for its first two frames, then goes quiet. A frame with both dirty
+/// rects and luma keeps only the dirty cells whose luma moved more than `lumaDelta`, each with
+/// the dirty area inside it: ScreenCaptureKit reports a covered window's every frame as dirty,
+/// whole, so the rects alone would count a still window as changing.
 public struct ChangeJudge: Sendable {
     private let rule: ChangeRule
     private var sawBaseline = false
@@ -117,7 +122,18 @@ public struct ChangeJudge: Sendable {
                     for column in firstColumn...lastColumn { cells.insert(row * columns + column) }
                 }
             }
-            return (cells, Self.unionArea(clipped))
+            guard let luma = frame.luma, let previous = previousLuma, previous.columns == luma.columns, previous.rows == luma.rows,
+                  luma.columns == columns, luma.rows == rows
+            else { return (cells, Self.unionArea(clipped)) }
+            // Confirmed by luma: the dirty cells whose mean luma moved, each with its dirty area.
+            var confirmed = Set<Int>(), area = 0.0
+            for cell in cells where abs(Int(luma.values[cell]) - Int(previous.values[cell])) > rule.lumaDelta {
+                confirmed.insert(cell)
+                let box = CGRect(x: (cell % columns) * rule.cell, y: (cell / columns) * rule.cell, width: rule.cell, height: rule.cell)
+                let inside = clipped.map { $0.intersection(box) }.filter { !$0.isNull && $0.width > 0 && $0.height > 0 }
+                area += min(Double(box.width * box.height), Self.unionArea(inside))
+            }
+            return (confirmed, area)
         }
         guard let luma = frame.luma else { return nil }
         guard let previous = previousLuma, previous.columns == luma.columns, previous.rows == luma.rows else {

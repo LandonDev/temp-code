@@ -116,4 +116,28 @@ import Testing
         let empty = ShotGeometry.contentCrop(contentRect: .zero, pixelsPerPoint: 2, bufferWidth: 640, bufferHeight: 480)
         #expect(empty == CGRect(x: 0, y: 0, width: 640, height: 480))
     }
+
+    @Test func aStreamFrameIsTheWindowFittedInsideItsBuffer() {
+        // 800×628 pt at 2× and 960: a 960×753 buffer holding the window 959.24 px wide (the Mac
+        // proof's frames were 959×753); an exact aspect fills the buffer.
+        let buffer = ShotGeometry.output(points: CGSize(width: 800, height: 628), pointPixelScale: 2, maxEdge: 960)
+        #expect(buffer.width == 960 && buffer.height == 753)
+        let fitted = ShotGeometry.fitted(points: CGSize(width: 800, height: 628), in: buffer)
+        #expect(fitted.width == 959 && fitted.height == 753)
+        let crop = ShotGeometry.contentCrop(contentRect: CGRect(x: 0, y: 0, width: 479.6178, height: 376.5), pixelsPerPoint: 2, bufferWidth: 960, bufferHeight: 753)
+        #expect(Int(crop.width) == fitted.width && Int(crop.height) == fitted.height, "the crop and the start size agree")
+        let exact = ShotGeometry.fitted(points: CGSize(width: 800, height: 600), in: ShotGeometry.output(points: CGSize(width: 800, height: 600), pointPixelScale: 2, maxEdge: 960))
+        #expect(exact.width == 960 && exact.height == 720)
+        var rng = SplitMix64(seed: 99)
+        for _ in 0..<1_000 {
+            let points = CGSize(width: Double(rng.next() % 3_000 + 50), height: Double(rng.next() % 2_000 + 50))
+            let size = ShotGeometry.output(points: points, pointPixelScale: [1, 1.5, 2][Int(rng.next() % 3)], maxEdge: 960)
+            let fit = ShotGeometry.fitted(points: points, in: size)
+            #expect(fit.width <= size.width && fit.height <= size.height)
+            // One edge fills its buffer; the other keeps the window's aspect within a pixel.
+            #expect(fit.width == size.width || fit.height == size.height)
+            let k = min(Double(size.width) / Double(points.width), Double(size.height) / Double(points.height))
+            #expect(abs(Double(fit.width) - Double(points.width) * k) <= 1 && abs(Double(fit.height) - Double(points.height) * k) <= 1)
+        }
+    }
 }

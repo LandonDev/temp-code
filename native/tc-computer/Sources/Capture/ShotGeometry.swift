@@ -68,6 +68,20 @@ public enum ShotGeometry {
         return (capture, CGRect(x: max(0, x), y: max(0, y), width: width, height: height))
     }
 
+    /// The window's size inside a stream buffer of `buffer`: ScreenCaptureKit keeps the window's
+    /// aspect, so in a buffer whose whole-pixel size is a hair off that aspect the window fills one
+    /// edge and falls short of the other by under a pixel (800×628 pt in 960×753 is 959.24 px
+    /// wide). Rounded as `contentCrop` rounds, so it is the size of every frame the crop makes.
+    public static func fitted(points: CGSize, in buffer: ShotSize) -> (width: Int, height: Int) {
+        let width = Double(points.width), height = Double(points.height)
+        guard width > 0, height > 0 else { return (buffer.width, buffer.height) }
+        let k = min(Double(buffer.width) / width, Double(buffer.height) / height)
+        return (
+            min(buffer.width, max(1, Int((width * k).rounded()))),
+            min(buffer.height, max(1, Int((height * k).rounded())))
+        )
+    }
+
     /// The part of a stream's pixel buffer that holds the window: the sample's content rect
     /// times its pixels per point, rounded to whole pixels and kept inside the buffer. A sample
     /// held across a resize crops by its own metadata, never the stream's current size.

@@ -17,17 +17,21 @@ public final class ScreenCaptureKitCapture: WindowCapturing, PixelWatching, @unc
     private let granted: @Sendable () -> Bool
     private let windows: any ShareableWindowSource
     private let log: @Sendable (String) -> Void
+    private let trace: CaptureTraceHandler?
     private let watches = OSAllocatedUnfairLock<[UInt32: WatchStream]>(initialState: [:])
 
-    /// `log` reaches the shell's `log` notification.
+    /// `log` reaches the shell's `log` notification; `trace` hears what the streams do
+    /// (`CaptureTrace`), for the proof and a debug log.
     public init(
         granted: @escaping @Sendable () -> Bool = ScreenRecordingAccess.granted,
         windows: any ShareableWindowSource = ShareableWindows(),
-        log: @escaping @Sendable (String) -> Void = { _ in }
+        log: @escaping @Sendable (String) -> Void = { _ in },
+        trace: CaptureTraceHandler? = nil
     ) {
         self.granted = granted
         self.windows = windows
         self.log = log
+        self.trace = trace
     }
 
     /// The shell calls this on `window/changed`.
@@ -100,7 +104,8 @@ public final class ScreenCaptureKitCapture: WindowCapturing, PixelWatching, @unc
             fps: Self.clamp(fps, CaptureTuning.streamFPSRange),
             maxEdge: Self.clamp(maxEdge, CaptureTuning.streamEdgeRange),
             onFrame: onFrame,
-            log: log
+            log: log,
+            trace: trace
         )
         do {
             try await stream.start()
@@ -120,7 +125,7 @@ public final class ScreenCaptureKitCapture: WindowCapturing, PixelWatching, @unc
             return running
         }
         let (window, bounds) = try await target(windowID)
-        let fresh = WatchStream(windowID: windowID, filter: SCContentFilter(desktopIndependentWindow: window), points: bounds.size) { [weak self] ended in
+        let fresh = WatchStream(windowID: windowID, filter: SCContentFilter(desktopIndependentWindow: window), points: bounds.size, trace: trace) { [weak self] ended in
             self?.watches.withLock { watches in
                 if watches[windowID] === ended { watches[windowID] = nil }
             }

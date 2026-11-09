@@ -22,14 +22,19 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
         let buffer: CVPixelBuffer
         let contentRect: CGRect?
         let scaleFactor: Double
+        let displayTime: UInt64
     }
 
     private struct State {
         var gate = FrameGate<Sample>()
+        var novelty = PixelNovelty()
         var life = StreamLifecycle()
         var size: ShotSize
+        /// The window size (points) the stream is configured for.
+        var points: CGSize
         var lastResizeMs = -Double.infinity
         var reason: StreamEndReason?
+        var cause: CaptureTrace.StopCause?
         var finished: StreamEndReason?
         var waiters: [CheckedContinuation<StreamEndReason, Never>] = []
     }
@@ -42,12 +47,13 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
     private let maxEdge: Int
     private let onFrame: @Sendable (Frame) -> Void
     private let log: @Sendable (String) -> Void
+    private let trace: CaptureTraceHandler?
     private let queue: DispatchQueue
     private let state: OSAllocatedUnfairLock<State>
     private var stream: SCStream?
     private var clock: DispatchSourceTimer?
 
-    init(windowID: UInt32, filter: SCContentFilter, points: CGSize, fps: Int, maxEdge: Int, onFrame: @escaping @Sendable (Frame) -> Void, log: @escaping @Sendable (String) -> Void) {
+    init(windowID: UInt32, filter: SCContentFilter, points: CGSize, fps: Int, maxEdge: Int, onFrame: @escaping @Sendable (Frame) -> Void, log: @escaping @Sendable (String) -> Void, trace: CaptureTraceHandler? = nil) {
         self.windowID = windowID
         self.filter = filter
         self.pointPixelScale = Double(filter.pointPixelScale)
@@ -55,10 +61,12 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
         self.maxEdge = maxEdge
         self.onFrame = onFrame
         self.log = log
+        self.trace = trace
         let size = ShotGeometry.output(points: points, pointPixelScale: Double(filter.pointPixelScale), maxEdge: maxEdge)
-        startSize = (size.width, size.height)
+        // The frames' size: the crop of the window inside the buffer, not the buffer.
+        startSize = ShotGeometry.fitted(points: points, in: size)
         queue = DispatchQueue(label: "tc.capture.preview.\(windowID).\(UUID().uuidString.prefix(8))")
-        state = OSAllocatedUnfairLock(uncheckedState: State(size: size))
+        state = OSAllocatedUnfairLock(uncheckedState: State(size: size, points: points))
         super.init()
     }
 
@@ -79,6 +87,7 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
             // while our own stopCapture is in flight never turns the shell's stop into `.error`.
             let command = self.state.withLockUnchecked { state -> StreamLifecycle.Command? in
                 if state.reason == nil { state.reason = .stopped }
+                if state.cause == nil { state.cause = .handle }
                 return state.life.stop()
             }
             if let command { self.run(command) }
@@ -92,6 +101,7 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
                 let ack = state.gate.ack(seq, atMs: monotonicMs())
                 return (ack.send, ack.resume ? state.life.resume() : nil)
             }
+            if command != nil { self.trace?(.previewResumed(window: self.windowID)) }
             if let command { self.run(command) }
             if let send { self.send(send) }
         }
@@ -111,12 +121,25 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen, let info = FrameInfo(sampleBuffer), info.status == .complete, let buffer = sampleBuffer.imageBuffer else { return }
-        let sample = Sample(buffer: buffer, contentRect: info.contentRect, scaleFactor: info.scaleFactor)
-        let offered = state.withLockUnchecked { state -> Sample? in
+        // A complete sample of a covered window may hold the same pixels as the last: not new.
+        let fingerprint = Self.fingerprint(buffer)
+        let sample = Sample(buffer: buffer, contentRect: info.contentRect, scaleFactor: info.scaleFactor, displayTime: info.displayTime)
+        let (offered, fresh) = state.withLockUnchecked { state -> (Sample?, Bool) in
             switch state.life.state {
-            case .stopping, .stopped: return nil
-            default: return state.gate.offer(sample)
+            case .stopping, .stopped: return (nil, false)
+            default:
+                guard state.novelty.isNew(fingerprint: fingerprint, width: CVPixelBufferGetWidth(buffer), height: CVPixelBufferGetHeight(buffer)) else { return (nil, false) }
+                return (state.gate.offer(sample), true)
             }
+        }
+        guard fresh else { return }
+        if let trace {
+            let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
+            trace(.previewSample(
+                window: windowID, displayTime: info.displayTime, contentRect: info.contentRect, contentScale: info.contentScale,
+                scaleFactor: info.scaleFactor, bufferWidth: width, bufferHeight: height,
+                crop: Self.crop(sample, bufferWidth: width, bufferHeight: height), taken: offered != nil
+            ))
         }
         resizeIfNeeded(info.contentRect)
         if let offered { send(offered) }
@@ -126,19 +149,40 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
         queue.async {
             var reason = CaptureErrors.endReason(error)
             if case .error = reason, LiveWindows.bounds(self.windowID) == nil { reason = .windowClosed }
-            self.end(reason)
+            let error = error as NSError
+            self.end(reason, cause: .delegate(domain: error.domain, code: error.code))
         }
     }
 
     /// Encodes and sends a sample whose slot is reserved; a frame over the cap is dropped and
     /// the held sample, if any, takes its slot.
     private func send(_ sample: Sample) {
+        let startMs = monotonicMs()
         guard let frame = encode(sample) else {
             if let next = state.withLockUnchecked({ $0.gate.notSent() }) { send(next) }
             return
         }
+        let encodeMs = monotonicMs() - startMs
         let seq = state.withLockUnchecked { $0.gate.sent(atMs: monotonicMs()) }
+        trace?(.previewFrame(window: windowID, seq: seq, bytes: frame.data.count, width: frame.width, height: frame.height, encodeMs: encodeMs, sampleTime: sample.displayTime))
         onFrame(Frame(seq: seq, jpeg: frame.data, width: frame.width, height: frame.height, ts: epochMs()))
+    }
+
+    /// The BGRA buffer's fingerprint (PixelStats.fingerprint).
+    static func fingerprint(_ buffer: CVPixelBuffer) -> UInt64 {
+        guard CVPixelBufferLockBaseAddress(buffer, .readOnly) == kCVReturnSuccess else { return 0 }
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(buffer) else { return 0 }
+        let height = CVPixelBufferGetHeight(buffer), bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+        let plane = UnsafeRawBufferPointer(start: base, count: bytesPerRow * height)
+        return PixelStats.fingerprint(plane: plane, rowBytes: CVPixelBufferGetWidth(buffer) * 4, height: height, bytesPerRow: bytesPerRow)
+    }
+
+    /// The part of the sample's buffer that holds the window.
+    static func crop(_ sample: Sample, bufferWidth: Int, bufferHeight: Int) -> CGRect? {
+        sample.contentRect.map {
+            ShotGeometry.contentCrop(contentRect: $0, pixelsPerPoint: sample.scaleFactor, bufferWidth: bufferWidth, bufferHeight: bufferHeight)
+        }
     }
 
     /// The sample cropped to its window and fitted under the frame cap; nil (logged) drops it.
@@ -148,9 +192,7 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
             log("preview stream \(windowID): dropped a frame the pixel buffer could not become an image")
             return nil
         }
-        let crop = sample.contentRect.map {
-            ShotGeometry.contentCrop(contentRect: $0, pixelsPerPoint: sample.scaleFactor, bufferWidth: whole.width, bufferHeight: whole.height)
-        }
+        let crop = Self.crop(sample, bufferWidth: whole.width, bufferHeight: whole.height)
         let image = crop.flatMap { whole.cropping(to: $0) } ?? whole
         guard let jpeg = try? ImageEncoding.frameJPEG(encode: { try ImageEncoding.jpeg(image, quality: $0) }) else {
             log("preview stream \(windowID): dropped a frame still over \(CaptureTuning.frameJPEGCap / 1_024) KiB at quality \(CaptureTuning.frameQualityLadder.last ?? 0)")
@@ -174,11 +216,14 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
 
     private func tick() {
         if LiveWindows.bounds(windowID) == nil {
-            end(.windowClosed)
+            end(.windowClosed, cause: .windowGone)
             return
         }
         let command = state.withLockUnchecked { state in state.gate.tick(atMs: monotonicMs()) ? state.life.pause() : nil }
-        if let command { run(command) }
+        if let command {
+            trace?(.previewPaused(window: windowID))
+            run(command)
+        }
     }
 
     private func run(_ command: StreamLifecycle.Command) {
@@ -189,7 +234,8 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
             stream?.startCapture { error in
                 self.queue.async {
                     if let error {
-                        self.end(CaptureErrors.endReason(error))
+                        let code = error as NSError
+                        self.end(CaptureErrors.endReason(error), cause: .startFailed(domain: code.domain, code: code.code))
                     } else {
                         self.completed()
                     }
@@ -205,9 +251,10 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
     }
 
     /// The stream ended without a `stop()`: say why, and stop what is still capturing.
-    private func end(_ reason: StreamEndReason) {
+    private func end(_ reason: StreamEndReason, cause: CaptureTrace.StopCause) {
         let capturing = state.withLockUnchecked { state -> Bool in
             if state.reason == nil { state.reason = reason }
+            if state.cause == nil { state.cause = cause }
             return state.life.state == .running || state.life.state == .resuming
         }
         if capturing { stream?.stopCapture { _ in } }
@@ -217,24 +264,27 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
     private func finish() {
         clock?.cancel()
         clock = nil
-        let (reason, waiters) = state.withLockUnchecked { state -> (StreamEndReason, [CheckedContinuation<StreamEndReason, Never>]) in
+        let (reason, cause, waiters) = state.withLockUnchecked { state -> (StreamEndReason, CaptureTrace.StopCause, [CheckedContinuation<StreamEndReason, Never>]) in
             let reason = state.reason ?? .stopped
             state.finished = reason
             defer { state.waiters = [] }
-            return (reason, state.waiters)
+            return (reason, state.cause ?? .handle, state.waiters)
         }
         stream = nil
+        trace?(.previewEnded(window: windowID, cause: cause, reason: "\(reason)"))
         for waiter in waiters { waiter.resume(returning: reason) }
     }
 
     // MARK: Resize
 
-    /// A content rect off the configured aspect by more than 1% means the window resized and the
-    /// frame is letterboxed: the stream takes the window's live size, at most every 250 ms.
+    /// A content rect off the aspect of the window size the stream was configured for by more than
+    /// 1% means the window resized and the frame is letterboxed: the stream takes the window's live
+    /// size, at most every 250 ms. (Against the window's aspect, not the buffer's: whole pixels put
+    /// a short window's buffer more than 1% off its aspect for good.)
     private func resizeIfNeeded(_ contentRect: CGRect?) {
         guard let rect = contentRect, rect.width > 0, rect.height > 0 else { return }
         let due = state.withLockUnchecked { state -> Bool in
-            let configured = Double(state.size.width) / Double(state.size.height)
+            let configured = Double(state.points.width) / Double(state.points.height)
             let actual = Double(rect.width) / Double(rect.height)
             return abs(actual - configured) / configured > CaptureTuning.resizeTolerance
                 && monotonicMs() - state.lastResizeMs >= CaptureTuning.resizeEvery.milliseconds
@@ -242,6 +292,7 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
         guard due, let live = LiveWindows.bounds(windowID)?.size, live.width > 0, live.height > 0 else { return }
         let next = state.withLockUnchecked { state -> ShotSize in
             state.lastResizeMs = monotonicMs()
+            state.points = live
             state.size = ShotGeometry.output(points: live, pointPixelScale: pointPixelScale, maxEdge: maxEdge)
             return state.size
         }

@@ -90,3 +90,42 @@ import Testing
         #expect(base64 + 4_096 <= ComputerDefaults.PreviewStream.frameMaxBytes)
     }
 }
+
+@Suite struct PixelNoveltyTests {
+    private func fingerprint(_ bitmap: Bitmap) -> UInt64 {
+        bitmap.bytes.withUnsafeBytes { PixelStats.fingerprint(plane: $0, rowBytes: bitmap.width * 4, height: bitmap.height, bytesPerRow: bitmap.bytesPerRow) }
+    }
+
+    @Test func equalPixelsGiveEqualFingerprintsAndAnyByteChangesIt() {
+        let still = Bitmap.flatUI(width: 963, height: 241)
+        #expect(fingerprint(still) == fingerprint(Bitmap.flatUI(width: 963, height: 241)))
+        for (x, y) in [(0, 0), (962, 240), (481, 120), (960, 7)] {
+            var changed = still
+            changed.fill(x: x, y: y, width: 1, height: 1, (1, 2, 3, 4))
+            #expect(fingerprint(changed) != fingerprint(still), "pixel (\(x), \(y))")
+        }
+    }
+
+    @Test func rowPaddingIsIgnored() {
+        let tight = Bitmap.flatUI(width: 30, height: 64)
+        var padded = [UInt8](repeating: 0xEE, count: 64 * 128)
+        for y in 0..<64 {
+            for x in 0..<120 { padded[y * 128 + x] = tight.bytes[y * tight.bytesPerRow + x] }
+        }
+        let paddedHash = padded.withUnsafeBytes { PixelStats.fingerprint(plane: $0, rowBytes: 120, height: 64, bytesPerRow: 128) }
+        for index in stride(from: 120, to: padded.count, by: 128) { padded[index] = 0x11 }
+        let repadded = padded.withUnsafeBytes { PixelStats.fingerprint(plane: $0, rowBytes: 120, height: 64, bytesPerRow: 128) }
+        #expect(paddedHash == fingerprint(tight))
+        #expect(repadded == paddedHash)
+    }
+
+    @Test func onlyNewPixelsOrANewSizeAreNew() {
+        var novelty = PixelNovelty()
+        let answers = [(7, 960, 720), (7, 960, 720), (8, 960, 720), (8, 720, 720), (7, 720, 720)].map {
+            novelty.isNew(fingerprint: UInt64($0.0), width: $0.1, height: $0.2)
+        }
+        // The first sample; a covered window's same pixels again; new pixels; a resize; back to
+        // earlier pixels, which is still a change.
+        #expect(answers == [true, false, true, true, true])
+    }
+}

@@ -168,3 +168,82 @@ private func judge(rule: ChangeRule = .standard) -> ChangeJudge {
         #expect(judge.observe(WatchFrame(status: .complete, width: 320, height: 192, dirty: nil, luma: wider, atMs: 100)) == true)
     }
 }
+
+/// A covered window: ScreenCaptureKit reports every frame complete with one dirty rect over the
+/// whole frame, changed or not (the Mac proof, macOS 27.2). The luma grid decides which of those
+/// dirty cells changed.
+@Suite struct ChangeJudgeCoveredTests {
+    private static let columns = frameWidth / 8, rows = frameHeight / 8
+    private static let whole = [CGRect(x: 0, y: 0, width: frameWidth, height: frameHeight)]
+
+    private func grid(_ changed: Set<Int> = []) -> LumaGrid {
+        var values = [UInt8](repeating: 200, count: Self.columns * Self.rows)
+        for cell in changed { values[cell] = 90 }
+        return LumaGrid(columns: Self.columns, rows: Self.rows, values: values)
+    }
+
+    private func frame(_ luma: LumaGrid, dirty: [CGRect] = ChangeJudgeCoveredTests.whole, at ms: Double) -> WatchFrame {
+        WatchFrame(status: .complete, width: frameWidth, height: frameHeight, dirty: dirty, luma: luma, atMs: ms)
+    }
+
+    private func cells(_ rect: CGRect) -> Set<Int> {
+        var cells = Set<Int>()
+        for row in Int(rect.minY / 8)...Int((rect.maxY / 8).rounded(.up)) - 1 {
+            for column in Int(rect.minX / 8)...Int((rect.maxX / 8).rounded(.up)) - 1 { cells.insert(row * Self.columns + column) }
+        }
+        return cells
+    }
+
+    @Test func aStillCoveredWindowNeverCounts() {
+        var judge = ChangeJudge()
+        _ = judge.observe(frame(grid(), at: 0))
+        for step in 1...100 {
+            #expect(judge.observe(frame(grid(), at: Double(step) * 100)) == false)
+        }
+    }
+
+    @Test func aRepaintOfACoveredWindowCounts() {
+        var judge = ChangeJudge()
+        _ = judge.observe(frame(grid(), at: 0))
+        let block = cells(rect(points: 200, 150, 400, 300))
+        #expect(judge.observe(frame(grid(), at: 100)) == false)
+        #expect(judge.observe(frame(grid(block), at: 200)) == true)
+        #expect(judge.observe(frame(grid(block), at: 300)) == false, "the same pixels again")
+        #expect(judge.observe(frame(grid(), at: 400)) == true, "painted back")
+    }
+
+    @Test func aCoveredCaretCountsAtMostTwiceThenGoesAmbient() {
+        // The caret's own cell (or two) changes luma every 500 ms under a whole-frame dirty rect.
+        for column in [3, 17, 30] {
+            var judge = ChangeJudge()
+            _ = judge.observe(frame(grid(), at: 0))
+            let caret: Set<Int> = [5 * Self.columns + column, 6 * Self.columns + column]
+            var counted: [Double] = []
+            for tick in 1...100 {
+                let ms = Double(tick) * 100
+                let on = (tick / 5) % 2 == 1
+                if judge.observe(frame(grid(on ? caret : []), at: ms)) { counted.append(ms) }
+            }
+            #expect(counted.count <= 2)
+            #expect(counted.allSatisfy { $0 <= 1_500 })
+        }
+    }
+
+    @Test func lumaConfirmsOnlyTheDirtyCells() {
+        // A fine rect over cells whose luma did not move, while other (undirtied) cells did: nothing.
+        var judge = ChangeJudge()
+        _ = judge.observe(frame(grid(), at: 0))
+        let elsewhere = cells(rect(points: 400, 300, 300, 200))
+        #expect(judge.observe(frame(grid(elsewhere), dirty: [rect(points: 20, 20, 200, 150)], at: 100)) == false)
+    }
+
+    @Test func aConfirmedSmallRectKeepsItsOwnArea() {
+        // A 2×18 pt caret's rect over a cell whose luma moved is still a caret: too small to count.
+        var judge = ChangeJudge()
+        _ = judge.observe(frame(grid(), at: 0))
+        let caret = rect(points: 101, 101, 2, 18)
+        for blink in 1...20 {
+            #expect(judge.observe(frame(grid(blink % 2 == 1 ? cells(caret) : []), dirty: [caret], at: Double(blink) * 500)) == false)
+        }
+    }
+}

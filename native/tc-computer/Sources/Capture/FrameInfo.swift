@@ -10,6 +10,8 @@ struct FrameInfo {
     /// Where the window sits in the buffer, in points; times `scaleFactor` it is buffer pixels.
     let contentRect: CGRect?
     let scaleFactor: Double
+    /// The content's size against the frame's: below 1 when the stream scales the window down.
+    let contentScale: Double?
     /// The compositor's dirty rects; nil when the attachment is missing.
     let dirtyRects: [CGRect]?
     /// mach_absolute_time of the frame
@@ -24,6 +26,7 @@ struct FrameInfo {
         self.status = status
         contentRect = (first[.contentRect] as? NSDictionary).flatMap { CGRect(dictionaryRepresentation: $0 as CFDictionary) }
         scaleFactor = (first[.scaleFactor] as? NSNumber)?.doubleValue ?? 1
+        contentScale = (first[.contentScale] as? NSNumber)?.doubleValue
         dirtyRects = (first[.dirtyRects] as? [NSDictionary])?.compactMap { CGRect(dictionaryRepresentation: $0 as CFDictionary) }
         displayTime = (first[.displayTime] as? NSNumber)?.uint64Value ?? mach_absolute_time()
     }
