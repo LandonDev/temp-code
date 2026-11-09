@@ -285,7 +285,7 @@ app "TextEdit" · window "Untitled" · 1280×1072 · focused [42] · changes sin
 
 - Full text: at most 24,000 bytes (about 6,000 tokens) by default (`budget.bytes`, 2,000..96,000). Past it the reader keeps, in order, the focused element and its ancestors, interactive elements on screen, headings and text, then the rest; it folds the largest lists into summary lines first and ends with the `(truncated: …)` line. When even the focused path cannot fit, it drops the other-windows line, then the protected lines' `actions:`, then halves every quoted string down to 8 scalars, then drops outer ancestors other than the window line, their children rising.
 - Diff text: at most 12,000 bytes, else the observation is `full`.
-- `thin`: fewer than 3 elements with a role-default action and under 200 bytes of names and values, or a stub container covers most of the window. With `screenshot: 'auto'` (the default) a thin observation carries a screenshot and its header line ends ` · thin tree, see the screenshot`.
+- `thin`: fewer than 3 elements with a role-default action and under 200 bytes of names and values, the window, sheet or dialog line and its title-bar buttons not counted (an Electron window before its content is exposed is those alone), or a stub container covers most of the window. With `screenshot: 'auto'` (the default) a thin observation carries a screenshot and its header line ends ` · thin tree, see the screenshot`.
 - `screenshot: 'always'` attaches one to every observation; `'never'` to none.
 
 ## 5. Actions and input tiers
@@ -758,4 +758,15 @@ What `native/tc-computer` reads with, as built (plan `.temp-code/plan-8sO1AAx_gl
 
 ### 15.1 Timings
 
-TIMINGS_TABLE
+Measured on the Mac on 2026-11-09 with `tc-ax bench` (release build, 2 warm reads thrown away, then 20; full mode, default budget), against the targets of the plan:
+
+| Window | Nodes read | Kept | p50 / p95 total | p95 target | Signature p95 |
+|---|---|---|---|---|---|
+| TextEdit, the scratch document | 48 | 41 | 18.6 / 20.7 ms | 60 ms | 0.33 ms |
+| Chrome, `form.html` | 146 | 49 | 26.0 / 32.0 ms | 250 ms | 0.17 ms |
+| Chrome, `heavy.html` | 1,721 | 265 | 204 / 218 ms | 600 ms | 0.23 ms |
+| TempCode dev instance | | | TEMPCODE_ROW | 400 ms | |
+| IntelliJ, the scratch project | | | not run: opening a project brings IntelliJ in front | 500 ms | |
+| `Builder.build`, a synthetic 5,000-node window (`tc-ax replay --synthetic 5000`) | 5,001 | 739 | 10.0 / 10.8 ms | 15 ms | |
+
+A walk costs about 0.12 to 0.4 ms a node read (2.3 to 3.1 AX calls a node). The builder over a recorded fixture tree takes 0.2 to 0.4 ms.
