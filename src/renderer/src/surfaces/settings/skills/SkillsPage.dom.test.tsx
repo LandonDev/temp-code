@@ -23,6 +23,7 @@ vi.mock("../../chunks", async (original) => ({
 
 const { SkillsBody } = await import("./SkillsPage");
 const { Page } = await import("../../../components/page");
+const { settingsSectionDescription } = await import("../../../lib/settings");
 const { ConfirmHost } = await import("../../../chrome/ConfirmDialog");
 const { menuChunk } = await import("../../chunks");
 const { warmMenus } = await import("../../../chrome/menuRows");
@@ -68,7 +69,7 @@ const flush = () => act(async () => {});
 async function show(host: FakeStoreHost) {
   render(
     <>
-      <Page title="Skills">
+      <Page title="Skills" description={settingsSectionDescription("skills")}>
         <SkillsBody link={host.link} />
       </Page>
       <ConfirmHost />
@@ -83,6 +84,36 @@ async function menu(name: string) {
 }
 
 describe("Settings → Skills", () => {
+  const NOTE = "Threads read skills from here, not from the skill folders in your home.";
+  /** The page's one line under its title: the store is the source, said the same whatever the list shows. */
+  const noteUnderTitle = () => {
+    const title = screen.getByRole("heading", { level: 1, name: "Skills" });
+    return title.nextElementSibling?.textContent ?? null;
+  };
+
+  it("says under the title that threads read skills from here, while loading, failed, empty and loaded", async () => {
+    const silent = seeded();
+    silent.state.silent.add("skills.list");
+    await show(silent);
+    expect(noteUnderTitle()).toBe(NOTE);
+    cleanup();
+    const failed = seeded();
+    failed.state.refuse.set("skills.list", NO_ANSWER);
+    await show(failed);
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(noteUnderTitle()).toBe(NOTE);
+    cleanup();
+    await show(fakeStoreHost());
+    expect(screen.getByText("No skills")).toBeTruthy();
+    expect(noteUnderTitle()).toBe(NOTE);
+    cleanup();
+    await show(seeded());
+    expect(rowOf("tidy")).toBeTruthy();
+    expect(noteUnderTitle()).toBe(NOTE);
+    // Said once: no second copy anywhere on the page.
+    expect(document.body.textContent?.split(NOTE).length).toBe(2);
+  });
+
   it("draws rows in their shape while the host is silent", async () => {
     const host = seeded();
     host.state.silent.add("skills.list");

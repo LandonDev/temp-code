@@ -7,6 +7,7 @@ import { Page } from "../../components/page";
 import { registry, type Link } from "../../lib/connection";
 import { NO_ANSWER } from "../../lib/connection/openRead";
 import { bindServer } from "../../lib/native";
+import { settingsSectionDescription } from "../../lib/settings";
 import { dropHarnessAvailability } from "../../lib/harness/availability";
 import { registerBuiltinHarnesses } from "../../lib/harness/register";
 import { resetCatalogProbes } from "../../lib/tcserver/catalog";
@@ -215,14 +216,14 @@ const PAGES: Record<string, { title: string; description?: string; body: () => R
   hosts: { title: "Hosts", body: () => <HostsPage /> },
   workspace: { title: "temp-code", description: "/srv/agents/work/temp-code", body: () => <WorkspacePage workspaceId="w1" /> },
   addons: { title: "Add-ons", description: "MCP servers every thread can use.", body: () => <AddonsPage /> },
-  skills: { title: "Skills", description: "What every CLI reads before it works.", body: () => <SkillsPage /> },
+  skills: { title: "Skills", description: settingsSectionDescription("skills"), body: () => <SkillsPage /> },
   "addons-empty": {
     title: "Add-ons",
     description: "MCP servers every thread can use.",
     body: () => <AddonsPage />,
     answers: { "addons.list": { addons: [], status: {}, home: null }, "addons.grant.list": { grants: [] } },
   },
-  "skills-empty": { title: "Skills", description: "What every CLI reads before it works.", body: () => <SkillsPage />, answers: { "skills.list": { skills: [], home: null } } },
+  "skills-empty": { title: "Skills", description: settingsSectionDescription("skills"), body: () => <SkillsPage />, answers: { "skills.list": { skills: [], home: null } } },
   "addons-offline": {
     title: "Add-ons",
     description: "MCP servers every thread can use.",
@@ -231,7 +232,7 @@ const PAGES: Record<string, { title: string; description?: string; body: () => R
   },
   "skills-offline": {
     title: "Skills",
-    description: "What every CLI reads before it works.",
+    description: settingsSectionDescription("skills"),
     body: () => <SkillsPage />,
     answers: { "skills.list": { ...STORE_ANSWERS["skills.list"], home: OFFLINE } },
   },

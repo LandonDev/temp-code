@@ -50,7 +50,8 @@ export const SETTINGS_SECTIONS: {
   },
   { id: "providers", group: "threads", label: "Providers", description: "The agent CLIs this machine can run." },
   { id: "addons", group: "threads", label: "Add-ons", description: "MCP servers every thread can use." },
-  { id: "skills", group: "threads", label: "Skills", description: "What every CLI reads before it works." },
+  // The store is every CLI's only source of skills (CLAUDE.md "Skills: written out on every host"): the line says so, in every state of the page.
+  { id: "skills", group: "threads", label: "Skills", description: "Threads read skills from here, not from the skill folders in your home." },
   {
     id: "orchestration",
     group: "threads",
