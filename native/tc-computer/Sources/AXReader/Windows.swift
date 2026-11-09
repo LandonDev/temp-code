@@ -115,8 +115,24 @@ struct WindowResolver {
     }
 }
 
-/// Every window of an app, for `apps.list { windows: true }` (offered to the Service shell).
+/// Every window of an app, for `apps.list { windows: true }`, and the window resolution the Service shell's
+/// `WindowSource` answers with.
 public enum AppWindows {
+    /// spec §2.1's pick of `ref` among the app's windows: by id, then exact title, then substring, else main,
+    /// focused, the first standard window.
+    public static func resolve(pid: pid_t, ref: ComputerProtocol.WindowRef?) throws -> (element: AXUIElement, info: WindowInfo) {
+        let resolved = try WindowResolver(lookup: .live).resolve(app: AXUIElementCreateApplication(pid), pid: pid, ref: ref)
+        return (resolved.element, resolved.info)
+    }
+
+    /// One AX window's CGWindowID: the private symbol, else the window list's one match by title and frame.
+    public static func windowID(of window: AXUIElement, pid: pid_t) -> Int? {
+        if let id = WindowIDLookup.live.lookup(window) { return Int(id) }
+        let a = AX.batch(window, ["AXTitle", "AXPosition", "AXSize"])
+        guard let frame = AX.frame(a["AXPosition"]?.value, a["AXSize"]?.value) else { return nil }
+        return WindowMatch.pick(WindowList.entries(), pid: pid, title: AX.string(a["AXTitle"]?.value) ?? "", frame: frame)
+    }
+
     public static func list(pid: pid_t) -> [WindowInfo] {
         let app = AXUIElementCreateApplication(pid)
         let resolver = WindowResolver(lookup: .live)

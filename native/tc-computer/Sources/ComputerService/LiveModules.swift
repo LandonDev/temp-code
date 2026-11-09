@@ -1,4 +1,5 @@
 import ApplicationServices
+import AXReader
 import Capture
 import Input
 import CoreGraphics
@@ -9,16 +10,15 @@ import struct ComputerProtocol.WindowRef
 import Foundation
 
 extension Modules {
-    /// The binary's modules. Capture and Input are live; until the AX reader's build lands, every call
-    /// into it answers that it is not built.
+    /// The binary's modules: the AX reader, Input and Capture.
     public static func live() -> Modules {
         Modules(
-            readers: { NotBuilt() },
+            readers: { LiveReaders() },
             input: { wiring in
                 InputEngine(clipboardLock: wiring.clipboardLock, sessionLock: wiring.sessionLock, onPersonInput: wiring.onPersonInput, onHeld: wiring.onHeld)
             },
             capture: { log in LiveCapture(log: log) },
-            windows: NotBuilt(),
+            windows: LiveWindows(),
             prepare: { CaptureRuntime.prepare() }
         )
     }
@@ -82,15 +82,17 @@ final class LiveCapture: CaptureSource, @unchecked Sendable {
     }
 }
 
-/// Stands in for a module that has not landed.
-final class NotBuilt: ReaderPool, WindowSource, @unchecked Sendable {
-    private var failure: ComputerError {
-        ComputerError(kind: .captureFailed, message: "This build of tc-computer has no AX reader module yet.")
-    }
+/// The AX reader's `AXReaders`: one reader per session × pid, numbers per session × app.
+final class LiveReaders: ReaderPool, @unchecked Sendable {
+    private let readers = AXReaders()
 
-    func reader(session: String, pid: pid_t) throws -> any AppReading { throw failure }
-    func close(session: String) {}
-    func resolve(pid: pid_t, ref: WindowRef?) throws -> (element: AXUIElement, info: WindowInfo) { throw failure }
-    func list(pid: pid_t) throws -> [WindowInfo] { throw failure }
-    func windowID(of element: AXUIElement, pid: pid_t) -> UInt32? { nil }
+    func reader(session: String, pid: pid_t) throws -> any AppReading { try readers.reader(session: session, pid: pid) }
+    func close(session: String) { readers.close(session: session) }
+}
+
+/// The AX reader's window resolution and listing (`AppWindows`).
+struct LiveWindows: WindowSource {
+    func resolve(pid: pid_t, ref: WindowRef?) throws -> (element: AXUIElement, info: WindowInfo) { try AppWindows.resolve(pid: pid, ref: ref) }
+    func list(pid: pid_t) throws -> [WindowInfo] { AppWindows.list(pid: pid) }
+    func windowID(of element: AXUIElement, pid: pid_t) -> UInt32? { AppWindows.windowID(of: element, pid: pid).flatMap { UInt32(exactly: $0) } }
 }

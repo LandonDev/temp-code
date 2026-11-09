@@ -1,3 +1,4 @@
+import ApplicationServices
 import ComputerCore
 import ComputerProtocol
 @testable import ComputerService
@@ -603,5 +604,31 @@ private func held(_ pid: Int32, kind: HeldRecord.Kind = .button) -> HeldRecord {
         #expect(PrivateSymbol.lookup("tc_no_such_symbol", as: Trusted.self) == nil)
         #expect(PrivateSymbol.misses("all") == ["all"])
         #expect(PrivateSymbol.misses(" a, b ,") == ["a", "b"])
+    }
+}
+
+/// `Modules.live()` reaches the AX reader: what needs no Accessibility grant and no window of its own.
+@Suite struct LiveModulesTests {
+    /// a pid no app runs as: the highest a pid gets on macOS is 99,998
+    let gone: pid_t = 99_999
+
+    @Test func theReaderPoolIsTheAXReadersAndAnAppThatIsNotRunningIsNotFound() {
+        let readers = Modules.live().readers()
+        #expect(readers is LiveReaders)
+        do {
+            _ = try readers.reader(session: "s", pid: gone)
+            Issue.record("a pid no app runs as gave a reader")
+        } catch {
+            #expect(ComputerService.failure(error, or: .captureFailed).kind == .appNotFound)
+        }
+        readers.close(session: "s")
+    }
+
+    @Test func theWindowSourceListsNothingForAGoneAppAndNoIdForAnElementThatIsNoWindow() throws {
+        let windows = Modules.live().windows
+        #expect(windows is LiveWindows)
+        #expect(try windows.list(pid: gone).isEmpty)
+        // an application element has no CGWindowID and no frame of a window
+        #expect(windows.windowID(of: AXUIElementCreateApplication(gone), pid: gone) == nil)
     }
 }
