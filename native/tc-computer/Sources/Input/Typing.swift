@@ -30,9 +30,17 @@ extension InputEngine {
         let dest = target.element?.element ?? AX.element(AX.app(pid), "AXFocusedUIElement")
         if let dest { AX.setTimeout(dest, seconds: InputTiming.axTimeoutS) }
 
-        // rungs 1 and 2: AX insert, AX value
-        if chosen == .ax, let dest, let via = try AXTier.insert(dest, text, index: target.element?.index) {
-            return InputOutcome(tier: .ax, via: via, clipboard: nil, cursor: target.cursor, lastInputAt: clock.ticks())
+        // rungs 1 and 2: AX insert, AX value; an accepted write that changed nothing goes on to keys,
+        // or to needs_tier when no event tier is allowed
+        if chosen == .ax, let dest {
+            let before = evidence(dest)
+            if let via = try AXTier.insert(dest, text, index: target.element?.index) {
+                let at = clock.ticks()
+                let effect = text.isEmpty ? .unknown : self.effect(of: dest, since: before, within: InputTiming.keysEffectMs, cancelled: target.cancelled)
+                if !TypingRoute.nextRungAfterAX(effect) {
+                    return InputOutcome(tier: .ax, via: via, clipboard: nil, cursor: target.cursor, lastInputAt: at)
+                }
+            }
         }
         let eventTiers = tiers.filter { $0 == .process || $0 == .session }
         guard let tier = held ?? eventTiers.first, tiers.contains(tier) else {

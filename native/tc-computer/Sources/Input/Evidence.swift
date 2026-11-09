@@ -48,4 +48,11 @@ public enum TypingRoute: Equatable, Sendable {
     public static func pasteAfterKeys(_ effect: StepEffect) -> Bool {
         effect == .none
     }
+
+    /// After an AX write the app accepted: the next rung only when nothing changed. Chromium
+    /// accepts AXSelectedText on a contenteditable and drops it (a TempCode composer, measured);
+    /// after `changed` or `unknown` the text may be in, and it is never entered twice.
+    public static func nextRungAfterAX(_ effect: StepEffect) -> Bool {
+        effect == .none
+    }
 }

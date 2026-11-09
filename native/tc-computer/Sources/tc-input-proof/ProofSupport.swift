@@ -235,9 +235,6 @@ final class IdleGate: @unchecked Sendable {
         watch.disarm()
     }
 
-    /// The person's unmarked input reached the leg's watch: nothing more of theirs is taken or put back.
-    var personTookOver: Bool { watch.tripped }
-
     /// Reads the HID idle time; an input later than the proof's own last step is the person's.
     /// The proof's events are all posted before `stepEnded()`, so the grace is short.
     func sample() {

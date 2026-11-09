@@ -151,6 +151,10 @@ private func clickStates(_ plan: [SyntheticEvent]) -> [Int] {
         #expect(TypingRoute.pasteAfterKeys(.none))
         #expect(!TypingRoute.pasteAfterKeys(.unknown))
         #expect(!TypingRoute.pasteAfterKeys(.changed))
+        // an AX write the app accepted but that changed nothing goes on; one that may have landed never does
+        #expect(TypingRoute.nextRungAfterAX(.none))
+        #expect(!TypingRoute.nextRungAfterAX(.unknown))
+        #expect(!TypingRoute.nextRungAfterAX(.changed))
     }
 
     @Test func longTextAndLongClustersGoStraightToPaste() {

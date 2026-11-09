@@ -384,7 +384,10 @@ final class Proof: @unchecked Sendable {
             report.legs.append(LegResult(app: "session", leg: "restoreSession", tiers: ["session"], ok: false, detail: "", ms: 0, error: "\(error)"))
         }
         guard gate.stillQuiet() else { return giveBack() }
-        // a 5 s hold of shift, and 300 ms in an unmarked move from another source, as the person's
+        // a 5 s hold of shift, and 300 ms in an unmarked move from another source, as the person's.
+        // That stand-in is the proof's own: the leg's watch is set aside for it, and from the step's
+        // end the HID idle time alone says whether the person came (giveBack's stillQuiet).
+        gate.stopWatching()
         gate.stepStarted()
         let person = DispatchQueue(label: "proof.person")
         let posted = Box<Date?>(nil)
@@ -421,7 +424,7 @@ final class Proof: @unchecked Sendable {
 
     /// Puts back what the session leg took, whatever stopped it.
     func giveBack() {
-        if gate.personTookOver {
+        if !gate.stillQuiet() {
             report.notes.append("session leg: nothing put back: the person is active")
             return
         }
