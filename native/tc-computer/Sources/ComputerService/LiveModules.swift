@@ -45,11 +45,10 @@ final class LiveCapture: CaptureSource, @unchecked Sendable {
 
     func invalidate() { capture.invalidate() }
 
-    /// `ShotGeometry.output` over the window's frame at its display's backing scale. A screenshot's
-    /// edge is clamped as Capture clamps it; the preview's may sit under a screenshot's floor.
+    /// `ShotGeometry.output` over the window's frame at its display's backing scale, the edge clamped
+    /// as Capture clamps a screenshot's.
     func space(windowID: UInt32, frame: Rect, maxEdge: Int) -> CoordinateSpace {
-        let edge = maxEdge >= ComputerDefaults.Shot.minMaxEdge ? ShotGeometry.clampEdge(maxEdge) : maxEdge
-        let size = ShotGeometry.output(points: CGSize(width: frame.w, height: frame.h), pointPixelScale: LiveCapture.backingScale(frame), maxEdge: edge)
+        let size = ShotGeometry.output(points: CGSize(width: frame.w, height: frame.h), pointPixelScale: LiveCapture.backingScale(frame), maxEdge: ShotGeometry.clampEdge(maxEdge))
         return CoordinateSpace(width: size.width, height: size.height, scale: size.scale)
     }
 

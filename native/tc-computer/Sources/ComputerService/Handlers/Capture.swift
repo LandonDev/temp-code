@@ -44,7 +44,6 @@ extension ComputerService {
         if let old = claimStream(p.stream) { await old.handle.stop() }
 
         let maxEdge = p.maxEdge ?? ComputerDefaults.PreviewStream.defaultMaxEdge
-        let size = capture.space(windowID: target.windowID, frame: target.info.frame, maxEdge: maxEdge)
         let id = p.stream
         let handle = try await capture.startStream(windowID: target.windowID, fps: p.fps ?? ComputerDefaults.PreviewStream.defaultFps, maxEdge: maxEdge) { [weak self] frame in
             self?.sendFrame(frame, stream: id, target: target)
@@ -65,7 +64,7 @@ extension ComputerService {
             guard let self, claimStream(id, only: entry.handle) != nil else { return }
             notify("capture/streamEnded", CaptureStreamEndedNotification.Params(stream: id, reason: reason.wire))
         }
-        return Methods.CaptureStreamStart.Output(stream: id, width: size.width, height: size.height)
+        return Methods.CaptureStreamStart.Output(stream: id, width: handle.startSize.width, height: handle.startSize.height)
     }
 
     /// Takes a stream out of the table; whoever takes it sends its end, once.
