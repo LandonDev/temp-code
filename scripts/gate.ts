@@ -171,6 +171,15 @@ export const STEPS: Step[] = [
     lane: 'swift',
     why: 'the iOS client package against a live test server (boots an instance)',
     mac: true
+  },
+  {
+    name: 'computer-swift',
+    tier: 'publish',
+    cmd: 'bun',
+    args: ['run', 'computer:test'],
+    lane: 'swift',
+    why: 'the tc-computer Swift package: the generated wire types against the fixtures (swift build + test)',
+    mac: true
   }
 ]
 
@@ -195,11 +204,21 @@ export const TIER_PATHS: { pattern: string; tier: Tier; why: string }[] = [
   { pattern: 'src/main/server/remote/**', tier: 'publish', why: 'the remote listener, fence and pairing' },
   { pattern: 'infra/hub/**', tier: 'publish', why: 'the hub worker' },
   { pattern: 'scripts/e2e-remote-fence.ts', tier: 'publish', why: 'the fence proof itself' },
-  { pattern: 'scripts/ios-*', tier: 'publish', why: 'the iOS test runners' }
+  { pattern: 'scripts/ios-*', tier: 'publish', why: 'the iOS test runners' },
+  { pattern: 'native/tc-computer/**', tier: 'publish', why: 'the computer-use service package' },
+  { pattern: 'src/shared/computer/**', tier: 'publish', why: 'the zod the computer wire types are generated from' },
+  { pattern: 'scripts/gen-swift-computer.ts', tier: 'publish', why: 'the computer wire generator' },
+  { pattern: 'scripts/computer-test.sh', tier: 'publish', why: 'the computer package runner' }
 ]
 
 /** The files whose change makes typecheck run again (see typecheckHash). */
-export const TYPECHECK_INPUTS = ['*.ts', '*.tsx', '*.json', 'ios/TempCodeContract/Sources/TempCodeContract/Generated/*']
+export const TYPECHECK_INPUTS = [
+  '*.ts',
+  '*.tsx',
+  '*.json',
+  'ios/TempCodeContract/Sources/TempCodeContract/Generated/*',
+  'native/tc-computer/Sources/ComputerProtocol/Generated/*'
+]
 
 // ---------------------------------------------------------------- selection
 

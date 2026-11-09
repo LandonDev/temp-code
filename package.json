@@ -19,6 +19,7 @@
     "bundle:map": "bun scripts/bundle-map.ts",
     "ui:preview": "bun scripts/ui-preview.ts",
     "ios:test": "./scripts/ios-test.sh",
+    "computer:test": "./scripts/computer-test.sh",
     "ios:test:client": "bun scripts/ios-client-test.ts",
     "ios:device": "./scripts/ios-device.sh",
     "ios:device:duo": "TC_DEVICE_MODEL=iPhone19,4 TC_DEVICE_METHOD=ad-hoc ./scripts/ios-device.sh",
