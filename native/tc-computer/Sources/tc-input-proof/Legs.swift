@@ -13,6 +13,7 @@ import Input
 final class Proof: @unchecked Sendable {
     let report = Report()
     let gate = IdleGate(needed: 120)
+    let timeline = Timeline()
     private(set) var engine: InputEngine!
     private var interrupted: [pid_t] = []
 
@@ -347,8 +348,9 @@ final class Proof: @unchecked Sendable {
         var r = LegResult(app: "session", leg: leg, tiers: ["session"], ok: false, detail: "", ms: 0)
         // the step's own input ends when the engine returns; anything after it, the check's wait included, is the person's
         let resolved = target()
+        timeline.note("step \(leg) begins")
         let perform = { () throws -> InputOutcome in
-            defer { self.gate.stepEnded() }
+            defer { self.gate.stepEnded(); self.timeline.note("step \(leg) ends") }
             return try self.engine.perform(action, on: resolved, tiers: [.session])
         }
         do {
@@ -388,6 +390,8 @@ final class Proof: @unchecked Sendable {
         }
         gate.watchPerson()
         defer { gate.stopWatching() }
+        timeline.observe()
+        defer { report.notes.append("session leg timeline: " + timeline.stop().joined(separator: "; ")) }
         guard let text = te.find("AXTextArea"), let b = P.bounds(text, 5, 1) else { return missing("session", "setup", "TextEdit text") }
         let at = te.coordinate(CGPoint(x: b.x + 1, y: b.y + b.h / 2))
         guard sessionStep("left_click into TextEdit", ComputerAction(action: .leftClick, coordinate: at), target: { te.target() }, verify: { _ in (P.range(text) != nil, "caret \(P.range(text) ?? [])") }),
@@ -404,7 +408,9 @@ final class Proof: @unchecked Sendable {
             // the restore's pointer move is the proof's own
             gate.stepStarted()
             defer { gate.stepEnded() }
+            timeline.note("restore begins")
             let r = try engine.restoreSession()
+            timeline.note("restore: frontmost \(r.frontmost.rawValue), pointer \(r.pointer.rawValue)")
             let ok = r.frontmost == .restored && r.pointer == .restored
             report.legs.append(LegResult(app: "session", leg: "restoreSession gives back the app and the pointer", tiers: ["session"], ok: ok, detail: "frontmost \(r.frontmost.rawValue), pointer \(r.pointer.rawValue), held \(r.held?.name ?? "-")", ms: 0))
             print("\(ok ? "ok  " : "FAIL") session restore · \(r.frontmost.rawValue) \(r.pointer.rawValue)")
@@ -457,6 +463,33 @@ final class Proof: @unchecked Sendable {
             return
         }
         if let r = try? engine.restoreSession() { report.notes.append("session leg: restore at the end: frontmost \(r.frontmost.rawValue), pointer \(r.pointer.rawValue)") }
+    }
+}
+
+/// What happened in the session leg, in order and timed from its start: each step's start and
+/// end and every app activation NSWorkspace reported, so a restore that gives way says why.
+final class Timeline: @unchecked Sendable {
+    private let lock = NSLock()
+    private let start = Date()
+    private var lines: [String] = []
+    private var observer: NSObjectProtocol?
+
+    func note(_ what: String) {
+        let ms = Int(Date().timeIntervalSince(start) * 1000)
+        lock.withLock { lines.append("\(ms) ms \(what)") }
+    }
+
+    func observe() {
+        observer = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: nil) { [weak self] n in
+            let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            self?.note("activated \(app?.localizedName ?? "?") (\(app?.bundleIdentifier ?? "-"), pid \(app?.processIdentifier ?? 0))")
+        }
+    }
+
+    func stop() -> [String] {
+        if let observer { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
+        observer = nil
+        return lock.withLock { lines }
     }
 }
 
