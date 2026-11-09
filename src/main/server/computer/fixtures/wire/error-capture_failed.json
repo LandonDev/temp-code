@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 26,
+  "error": {
+    "code": -32000,
+    "message": "ScreenCaptureKit gave no image of the window.",
+    "data": {
+      "kind": "capture_failed",
+      "message": "ScreenCaptureKit gave no image of the window."
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "method": "permissions/changed",
+  "params": {
+    "accessibility": true,
+    "screenRecording": true
+  }
+}

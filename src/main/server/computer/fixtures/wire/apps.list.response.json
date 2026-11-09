@@ -1,0 +1,79 @@
+{
+  "jsonrpc": "2.0",
+  "id": 5,
+  "result": {
+    "apps": [
+      {
+        "pid": 16800,
+        "bundleId": "com.apple.TextEdit",
+        "name": "TextEdit",
+        "active": true,
+        "hidden": false,
+        "windows": [
+          {
+            "id": 1581,
+            "title": "Untitled",
+            "frame": {
+              "x": 3700,
+              "y": -244,
+              "w": 800,
+              "h": 670
+            },
+            "main": true,
+            "focused": true,
+            "minimized": false,
+            "onScreen": true,
+            "space": "current"
+          },
+          {
+            "id": 1580,
+            "title": "Notes.rtf",
+            "frame": {
+              "x": 0,
+              "y": 1300,
+              "w": 800,
+              "h": 800
+            },
+            "main": false,
+            "focused": false,
+            "minimized": true,
+            "onScreen": false,
+            "space": "unknown"
+          }
+        ]
+      },
+      {
+        "pid": 745,
+        "bundleId": "com.apple.finder",
+        "name": "Finder",
+        "active": false,
+        "hidden": false,
+        "windows": []
+      },
+      {
+        "pid": 20311,
+        "bundleId": "com.google.Chrome",
+        "name": "Google Chrome",
+        "active": false,
+        "hidden": false,
+        "windows": [
+          {
+            "id": 1702,
+            "title": "Computer fixture form",
+            "frame": {
+              "x": 120,
+              "y": 80,
+              "w": 1200,
+              "h": 900
+            },
+            "main": true,
+            "focused": false,
+            "minimized": false,
+            "onScreen": false,
+            "space": "other"
+          }
+        ]
+      }
+    ]
+  }
+}

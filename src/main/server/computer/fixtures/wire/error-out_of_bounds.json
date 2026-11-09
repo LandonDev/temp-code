@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": 24,
+  "error": {
+    "code": -32000,
+    "message": "1400,300 is outside the 1280×1072 window.",
+    "data": {
+      "kind": "out_of_bounds",
+      "message": "1400,300 is outside the 1280×1072 window.",
+      "coordinate": [
+        1400,
+        300
+      ],
+      "space": {
+        "width": 1280,
+        "height": 1072,
+        "scale": 1.6
+      }
+    }
+  }
+}

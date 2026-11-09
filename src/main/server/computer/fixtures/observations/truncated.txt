@@ -1,0 +1,17 @@
+app "Finder" · window "Downloads" · 1280×607 · focused [6]
+[1] window "Downloads"
+  [2] toolbar
+    [3] button "back" disabled
+    [4] button "forward" disabled
+    [5] search "Search" = ""
+  [6] outline "Downloads" focused
+    [7] row selected
+      [8] cell "probe.txt" actions: open
+    [9] row
+      [10] cell "notes.rtf" actions: open
+    [11] row
+      [12] cell "scratch" collapsed actions: open
+    … 1266 more below
+  [13] button "close"
+  [14] button "minimize"
+(truncated: 312 elements left out; observe with element: 6 to see one part whole)

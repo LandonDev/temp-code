@@ -1,0 +1,10 @@
+{
+  "jsonrpc": "2.0",
+  "method": "apps/changed",
+  "params": {
+    "pid": 16800,
+    "bundleId": "com.apple.TextEdit",
+    "name": "TextEdit",
+    "change": "launched"
+  }
+}

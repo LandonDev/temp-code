@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": 8,
+  "method": "session.close",
+  "params": {
+    "session": "thread-9fK2"
+  }
+}

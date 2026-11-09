@@ -1,0 +1,17 @@
+{
+  "jsonrpc": "2.0",
+  "method": "capture/frame",
+  "params": {
+    "stream": "preview-1",
+    "seq": 12,
+    "ts": 1762646400123,
+    "width": 960,
+    "height": 804,
+    "format": "jpeg",
+    "data": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==",
+    "cursor": [
+      480,
+      300
+    ]
+  }
+}

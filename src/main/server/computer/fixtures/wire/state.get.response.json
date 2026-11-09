@@ -1,0 +1,46 @@
+{
+  "jsonrpc": "2.0",
+  "id": 9,
+  "result": {
+    "epoch": "e-7Kq2",
+    "session": "thread-9fK2",
+    "app": {
+      "pid": 16800,
+      "bundleId": "com.apple.TextEdit",
+      "name": "TextEdit"
+    },
+    "window": {
+      "id": 1581,
+      "title": "Untitled",
+      "frame": {
+        "x": 3700,
+        "y": -244,
+        "w": 800,
+        "h": 670
+      }
+    },
+    "kind": "full",
+    "seq": 1,
+    "text": "app \"TextEdit\" · window \"Untitled\" · 1280×1072 · focused [3]\nother windows: \"Notes.rtf\" minimized\n[1] window \"Untitled\"\n  [2] scroll area\n    [3] text area = \"Hello from the probe\\nSecond line\" focused caret 0 actions: show menu\n    [4] ruler\n      [5]–[19] 15 × ruler marker\n  [20] group \"Formatting\"\n    [21] checkbox \"bold\" unchecked\n    [22] checkbox \"italic\" unchecked\n    [23] checkbox \"underline\" unchecked\n    [24] checkbox \"strikethrough\" unchecked\n    [25] button \"text color\" = \"Clear\" actions: show color panel\n    [26] button \"text background color\" = \"Clear\" actions: show color panel\n    [27] pop up \"typeface\" = \"Helvetica\"\n    [28] pop up \"style\" = \"Regular\"\n    [29] combo box \"font size\" = \"12\" actions: confirm\n      [30] button \"font size\"\n    [31] checkbox \"align left\" unchecked\n    [32] checkbox \"align center\" unchecked\n    [33] checkbox \"align right\" unchecked\n    [34] checkbox \"fully justify\" unchecked\n    [35] menu button \"list style\"\n    [36] pop up \"line spacing\" = \"1.0\"\n  [37] button \"close\"\n  [38] button \"full screen\" actions: zoom window\n  [39] button \"minimize\"\n  [40] menu button \"document actions\"",
+    "space": {
+      "width": 1280,
+      "height": 1072,
+      "scale": 1.6
+    },
+    "stats": {
+      "elements": 40,
+      "lines": 28,
+      "bytes": 1144,
+      "omitted": 0,
+      "thin": false,
+      "partial": false,
+      "readMs": 34
+    },
+    "waited": {
+      "waitedMs": 812,
+      "settled": true,
+      "busy": false,
+      "reason": "quiet"
+    }
+  }
+}

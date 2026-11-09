@@ -1,0 +1,16 @@
+{
+  "jsonrpc": "2.0",
+  "id": 19,
+  "error": {
+    "code": -32000,
+    "message": "No app named \"Textedt\" is running or installed.",
+    "data": {
+      "kind": "app_not_found",
+      "message": "No app named \"Textedt\" is running or installed.",
+      "candidates": [
+        "TextEdit",
+        "Terminal"
+      ]
+    }
+  }
+}

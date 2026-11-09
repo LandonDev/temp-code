@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "method": "capture/streamEnded",
+  "params": {
+    "stream": "preview-1",
+    "reason": "window-closed"
+  }
+}

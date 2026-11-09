@@ -1,0 +1,8 @@
+app "TextEdit" · window "Untitled" · 1280×1072 · focused [3]
+[1] window "Untitled" @0,0 1280×1072
+  [2] scroll area @0,90 1280×982
+    [3] text area = "Hello from the probe\nSecond line" focused caret 0 actions: show menu @0,90 1265×982
+  [21] checkbox "bold" unchecked @412,52 26×22
+  [37] button "close" @18,18 16×16
+  [45] menu "Format" @-12,40 200×300
+    [46] menu item "Bold" @-8,46 192×22

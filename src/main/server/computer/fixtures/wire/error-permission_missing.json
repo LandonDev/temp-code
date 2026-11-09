@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": 17,
+  "error": {
+    "code": -32000,
+    "message": "TempCode needs Screen Recording to see windows.",
+    "data": {
+      "kind": "permission_missing",
+      "message": "TempCode needs Screen Recording to see windows.",
+      "which": "screenRecording"
+    }
+  }
+}

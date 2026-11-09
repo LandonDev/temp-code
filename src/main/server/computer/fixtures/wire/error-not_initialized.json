@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 15,
+  "error": {
+    "code": -32000,
+    "message": "The service has not been initialized.",
+    "data": {
+      "kind": "not_initialized",
+      "message": "The service has not been initialized."
+    }
+  }
+}

@@ -1,0 +1,4 @@
+app "Canvas Demo" · window "Main" · 1024×768 · thin tree, see the screenshot
+[1] window "Main"
+  [2] group "Canvas"
+  [3] button "close"

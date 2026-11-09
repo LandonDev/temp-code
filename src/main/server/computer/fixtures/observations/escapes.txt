@@ -1,0 +1,9 @@
+app "Notes \"scratch\"" · window "Ünïcödé — 👋 مرحبا" · 1280×800 · focused [4]
+other windows: "Tab\there"
+[1] window "Ünïcödé — 👋 مرحبا"
+  [2] text "She said \"hi\"\tand left\\"
+  [3] input "Emoji 🧪" = "a\nb\r\nc bell\u0007"
+  [4] text area "RTL שלום" = "مرحبا بالعالم" focused selection 2..5
+  [5] button "Long name Long name Long name Long name Long name Long name Long name Long name Long name Long name …"
+  [6] text = "🙂 a value that runs on 🙂 a value that runs on 🙂 a value that runs on 🙂 a value that runs on 🙂 a value that runs on 🙂 a value that runs on 🙂 a value that runs on…(+47 chars)"
+  [7] link "path/with/slashes and a   separator" disabled

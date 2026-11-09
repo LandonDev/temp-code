@@ -1,0 +1,12 @@
+app "IntelliJ IDEA" · window "Hello – Hello.java" · 1280×800 · focused [9]
+[1] window "Hello – Hello.java"
+  [2] toolbar
+    [3] button "Run 'Hello'"
+    [4] button "Debug 'Hello'"
+  [5] scroll area "Project"
+    (outline "Project": items not exposed to accessibility; see the screenshot)
+  [6] tabs
+    [7] tab "Hello.java" selected
+  [8] scroll area "Editor"
+    [9] text area = "public class Hello {\n    public static void main(String[] args) {\n        System.out.println(\"Hello from the fixture\");\n    }\n}\n" focused caret 0
+    (list: items not exposed to accessibility; see the screenshot)

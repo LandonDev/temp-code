@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "id": 22,
+  "error": {
+    "code": -32000,
+    "message": "[12] came from an earlier service; read the tree again.",
+    "data": {
+      "kind": "stale_element",
+      "message": "[12] came from an earlier service; read the tree again.",
+      "element": 12,
+      "reason": "service-restarted"
+    }
+  }
+}

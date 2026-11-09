@@ -1,0 +1,23 @@
+{
+  "jsonrpc": "2.0",
+  "id": 12,
+  "result": {
+    "path": "/Users/me/Library/Application Support/TempCode/computer/shots/thread-9fK2/9-capture.jpg",
+    "format": "jpeg",
+    "width": 1280,
+    "height": 1072,
+    "bytes": 72978,
+    "scale": 1.6,
+    "window": {
+      "id": 1581,
+      "frame": {
+        "x": 3700,
+        "y": -244,
+        "w": 800,
+        "h": 670
+      }
+    },
+    "blank": false,
+    "capturedAt": 1762646400412
+  }
+}

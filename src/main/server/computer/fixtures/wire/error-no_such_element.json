@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": 23,
+  "error": {
+    "code": -32000,
+    "message": "No element [99] was ever shown in TextEdit.",
+    "data": {
+      "kind": "no_such_element",
+      "message": "No element [99] was ever shown in TextEdit.",
+      "element": 99
+    }
+  }
+}

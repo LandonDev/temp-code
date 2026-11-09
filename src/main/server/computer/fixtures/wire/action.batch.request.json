@@ -1,0 +1,54 @@
+{
+  "jsonrpc": "2.0",
+  "id": 11,
+  "method": "action.batch",
+  "params": {
+    "session": "thread-9fK2",
+    "app": {
+      "app": "TextEdit"
+    },
+    "epoch": "e-7Kq2",
+    "actions": [
+      {
+        "action": "select_text",
+        "element": 3,
+        "range": [
+          32,
+          32
+        ]
+      },
+      {
+        "action": "type",
+        "text": "!",
+        "element": 3
+      },
+      {
+        "action": "key",
+        "text": "super+s"
+      },
+      {
+        "action": "screenshot"
+      }
+    ],
+    "tiers": [
+      "ax",
+      "process"
+    ],
+    "stepWait": {
+      "minMs": 0,
+      "quietMs": 150,
+      "maxMs": 1000,
+      "busyMaxMs": 2000
+    },
+    "wait": {
+      "minMs": 300,
+      "quietMs": 450,
+      "maxMs": 1500,
+      "busyMaxMs": 5000
+    },
+    "observe": {
+      "mode": "auto",
+      "screenshot": "auto"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": 6,
+  "method": "apps.launch",
+  "params": {
+    "app": "TextEdit",
+    "open": [
+      "/Users/me/Desktop/probe.txt"
+    ]
+  }
+}

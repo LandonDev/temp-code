@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 27,
+  "error": {
+    "code": -32000,
+    "message": "TextEdit did not answer for 2 s.",
+    "data": {
+      "kind": "timeout",
+      "message": "TextEdit did not answer for 2 s."
+    }
+  }
+}

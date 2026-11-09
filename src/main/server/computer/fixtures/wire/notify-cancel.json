@@ -1,0 +1,7 @@
+{
+  "jsonrpc": "2.0",
+  "method": "$/cancel",
+  "params": {
+    "id": 7
+  }
+}

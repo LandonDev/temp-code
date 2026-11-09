@@ -1,0 +1,16 @@
+{
+  "jsonrpc": "2.0",
+  "id": 12,
+  "method": "capture.screenshot",
+  "params": {
+    "session": "thread-9fK2",
+    "app": {
+      "pid": 16800
+    },
+    "window": {
+      "title": "Untitled"
+    },
+    "maxEdge": 1280,
+    "format": "jpeg"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "jsonrpc": "2.0",
+  "id": 10,
+  "method": "action.run",
+  "params": {
+    "session": "thread-9fK2",
+    "app": {
+      "app": "TextEdit"
+    },
+    "epoch": "e-7Kq2",
+    "action": {
+      "action": "left_click",
+      "element": 21
+    },
+    "tiers": [
+      "ax",
+      "process"
+    ],
+    "wait": {
+      "minMs": 300,
+      "quietMs": 450,
+      "maxMs": 1500,
+      "busyMaxMs": 5000
+    },
+    "observe": {
+      "mode": "auto",
+      "screenshot": "auto"
+    }
+  }
+}

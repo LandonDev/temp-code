@@ -1,0 +1,16 @@
+{
+  "jsonrpc": "2.0",
+  "id": 20,
+  "error": {
+    "code": -32000,
+    "message": "TextEdit has no window titled \"Report\".",
+    "data": {
+      "kind": "window_not_found",
+      "message": "TextEdit has no window titled \"Report\".",
+      "candidates": [
+        "Untitled",
+        "Notes.rtf"
+      ]
+    }
+  }
+}

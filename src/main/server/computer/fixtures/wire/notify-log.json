@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "method": "log",
+  "params": {
+    "level": "warn",
+    "message": "TextEdit did not answer AXChildren within 2 s"
+  }
+}

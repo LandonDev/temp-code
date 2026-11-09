@@ -1,0 +1,1 @@
+app "TextEdit" · window "Untitled" · 1280×1072 · focused [3] · no changes

@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 16,
+  "error": {
+    "code": -32000,
+    "message": "This service speaks protocol 1; the host asked for 2.",
+    "data": {
+      "kind": "protocol_mismatch",
+      "message": "This service speaks protocol 1; the host asked for 2."
+    }
+  }
+}

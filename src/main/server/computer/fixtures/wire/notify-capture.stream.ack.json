@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "method": "capture.stream.ack",
+  "params": {
+    "stream": "preview-1",
+    "seq": 12
+  }
+}

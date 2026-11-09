@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "method": "session/interrupted",
+  "params": {
+    "session": "thread-9fK2",
+    "by": "person",
+    "at": 1762646400000
+  }
+}

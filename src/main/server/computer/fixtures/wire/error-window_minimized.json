@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 21,
+  "error": {
+    "code": -32000,
+    "message": "Notes.rtf is minimized, so it cannot be captured.",
+    "data": {
+      "kind": "window_minimized",
+      "message": "Notes.rtf is minimized, so it cannot be captured."
+    }
+  }
+}

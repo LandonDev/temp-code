@@ -1,0 +1,119 @@
+{
+  "jsonrpc": "2.0",
+  "id": 11,
+  "result": {
+    "steps": [
+      {
+        "index": 0,
+        "action": "select_text",
+        "status": "ok",
+        "tier": "ax",
+        "effect": "changed",
+        "element": {
+          "index": 3,
+          "line": "text area = \"Hello from the probe\\nSecond line\" focused caret 0 actions: show menu"
+        }
+      },
+      {
+        "index": 1,
+        "action": "type",
+        "status": "ok",
+        "tier": "ax",
+        "effect": "changed",
+        "element": {
+          "index": 3,
+          "line": "text area = \"Hello from the probe\\nSecond line\" focused caret 32 actions: show menu"
+        },
+        "input": {
+          "via": "ax-insert"
+        }
+      },
+      {
+        "index": 2,
+        "action": "key",
+        "status": "ok",
+        "tier": "process",
+        "effect": "changed",
+        "cursor": [
+          640,
+          536
+        ]
+      },
+      {
+        "index": 3,
+        "action": "screenshot",
+        "status": "ok",
+        "tier": null,
+        "effect": "unknown",
+        "shot": {
+          "path": "/Users/me/Library/Application Support/TempCode/computer/shots/thread-9fK2/8-screenshot.jpg",
+          "format": "jpeg",
+          "width": 1280,
+          "height": 1072,
+          "bytes": 72978,
+          "scale": 1.6,
+          "window": {
+            "id": 1581,
+            "frame": {
+              "x": 3700,
+              "y": -244,
+              "w": 800,
+              "h": 670
+            }
+          },
+          "blank": false,
+          "capturedAt": 1762646400412
+        }
+      }
+    ],
+    "observation": {
+      "epoch": "e-7Kq2",
+      "session": "thread-9fK2",
+      "app": {
+        "pid": 16800,
+        "bundleId": "com.apple.TextEdit",
+        "name": "TextEdit"
+      },
+      "window": {
+        "id": 1581,
+        "title": "Untitled",
+        "frame": {
+          "x": 3700,
+          "y": -244,
+          "w": 800,
+          "h": 670
+        }
+      },
+      "kind": "diff",
+      "seq": 3,
+      "text": "app \"TextEdit\" · window \"Untitled\" · 1280×1072 · focused [42] · changes since your last read\n- [20] group \"Formatting\" (and 16 inside)\n~ [3] text area = \"Hello from the probe\\nSecond line!\" caret 33 actions: show menu\n+ in [1]:\n  [41] sheet \"Save As\"\n    [42] input \"Save As:\" = \"Untitled\" focused selection 0..8\n    [43] button \"Cancel\"\n    [44] button \"Save\"",
+      "space": {
+        "width": 1280,
+        "height": 1072,
+        "scale": 1.6
+      },
+      "stats": {
+        "elements": 32,
+        "lines": 8,
+        "bytes": 365,
+        "omitted": 0,
+        "thin": false,
+        "partial": false,
+        "readMs": 34
+      },
+      "waited": {
+        "waitedMs": 812,
+        "settled": true,
+        "busy": false,
+        "reason": "quiet"
+      },
+      "base": 2
+    },
+    "waited": {
+      "waitedMs": 1043,
+      "settled": true,
+      "busy": false,
+      "reason": "quiet"
+    }
+  }
+}

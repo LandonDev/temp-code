@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 18,
+  "error": {
+    "code": -32000,
+    "message": "No session thread-x is open.",
+    "data": {
+      "kind": "unknown_session",
+      "message": "No session thread-x is open."
+    }
+  }
+}

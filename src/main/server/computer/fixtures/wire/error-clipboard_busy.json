@@ -1,0 +1,58 @@
+{
+  "jsonrpc": "2.0",
+  "id": 33,
+  "result": {
+    "step": {
+      "index": 0,
+      "action": "type",
+      "status": "failed",
+      "error": {
+        "kind": "clipboard_busy",
+        "message": "The clipboard stayed in use for 2 s."
+      }
+    },
+    "observation": {
+      "epoch": "e-7Kq2",
+      "session": "thread-9fK2",
+      "app": {
+        "pid": 16800,
+        "bundleId": "com.apple.TextEdit",
+        "name": "TextEdit"
+      },
+      "window": {
+        "id": 1581,
+        "title": "Untitled",
+        "frame": {
+          "x": 3700,
+          "y": -244,
+          "w": 800,
+          "h": 670
+        }
+      },
+      "kind": "unchanged",
+      "seq": 2,
+      "text": "app \"TextEdit\" · window \"Untitled\" · 1280×1072 · focused [3] · no changes",
+      "space": {
+        "width": 1280,
+        "height": 1072,
+        "scale": 1.6
+      },
+      "stats": {
+        "elements": 40,
+        "lines": 1,
+        "bytes": 78,
+        "omitted": 0,
+        "thin": false,
+        "partial": false,
+        "readMs": 34
+      },
+      "waited": {
+        "waitedMs": 812,
+        "settled": true,
+        "busy": false,
+        "reason": "quiet"
+      },
+      "base": 1
+    }
+  }
+}

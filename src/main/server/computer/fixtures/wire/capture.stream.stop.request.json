@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": 14,
+  "method": "capture.stream.stop",
+  "params": {
+    "stream": "preview-1"
+  }
+}

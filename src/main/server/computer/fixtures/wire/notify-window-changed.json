@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "method": "window/changed",
+  "params": {
+    "pid": 16800,
+    "windowId": 1581,
+    "change": "created"
+  }
+}

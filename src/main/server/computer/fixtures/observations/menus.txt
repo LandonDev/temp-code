@@ -1,0 +1,14 @@
+app "TextEdit" · window "Untitled" · 1280×1072 · focused [48]
+[1] window "Untitled"
+  [2] scroll area
+    [3] text area = "Hello from the probe\nSecond line" caret 0 actions: show menu
+[41] menu bar
+  [42] menu item "Apple"
+  [43] menu item "TextEdit"
+  [44] menu item "File"
+  [45] menu item "Edit"
+  [46] menu item "Format" expanded
+    [47] menu "Format"
+      [48] menu item "Font" focused
+      [49] menu item "Text"
+      [50] menu item "Make Plain Text" disabled

@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 25,
+  "error": {
+    "code": -32000,
+    "message": "The read was cancelled.",
+    "data": {
+      "kind": "cancelled",
+      "message": "The read was cancelled."
+    }
+  }
+}

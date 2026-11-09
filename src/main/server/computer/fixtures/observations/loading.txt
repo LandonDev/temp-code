@@ -1,0 +1,26 @@
+app "Google Chrome" · window "Computer fixture form" · 1280×960 · focused [14] · still loading
+[1] window "Computer fixture form"
+  [2] web area "Computer fixture form"
+    [3] heading "Order form"
+    [4] text "Scratch page for the computer-use fixtures. Nothing on it is real."
+    [5] input "Name" required
+    [6] input "Email"
+    [7] text area "Notes"
+    [8] pop up "Size" = "Medium"
+    [9] checkbox "Gift wrap" unchecked
+    [10] radio "Standard" checked
+    [11] radio "Express" unchecked
+    [12] button "Submit"
+    [13] button "Review order"
+    [14] button "Load prices" focused
+    [15] progress "Loading prices"
+    [16] link "Order history"
+    [17] heading "History"
+    [18] list "Past orders"
+      [19] text "Order 001"
+      [20] text "Order 002"
+      [21] text "Order 003"
+      … 57 more below
+  [22] toolbar
+    [23] button "back"
+    [24] input "Address and search bar" = "file:///Users/me/scratch/form.html"

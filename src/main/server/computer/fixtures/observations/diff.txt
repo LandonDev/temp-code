@@ -1,0 +1,13 @@
+app "TextEdit" · window "Untitled" · 1280×1072 · focused [42] · changes since your last read
+- [20] group "Formatting" (and 16 inside)
+- [5]–[19] 15 × ruler marker
+~ [3] text area = "Hello from the probe\nSecond line!" caret 33 actions: show menu
++ in [1]:
+  [41] sheet "Save As"
+    [42] input "Save As:" = "Untitled" focused selection 0..8
+    [43] button "Cancel"
+    [44] button "Save"
++ at top:
+  [45] menu "Format"
+    [46] menu item "Bold"
+    [47] menu item "Italic" disabled

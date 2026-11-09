@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "id": 13,
+  "method": "capture.stream.start",
+  "params": {
+    "session": "thread-9fK2",
+    "app": {
+      "app": "TextEdit"
+    },
+    "stream": "preview-1",
+    "fps": 4,
+    "maxEdge": 960
+  }
+}
