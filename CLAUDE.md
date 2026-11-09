@@ -1854,10 +1854,10 @@ names the far child).
 
 ## Add-ons and skills: one store, on the box
 The plan is .temp-code/plan-uv2o7r5RN64s.md. This build is the data layer;
-the registry core, the skills store core, the add-on OAuth leg, skills into
-the drivers and the settings pages build on it. The skills store core
-("Skills: written out on every host" below) writes the skill folders and
-gives threads the skill tools.
+the registry core (below, "The add-on host"), the skills store core, the
+add-on OAuth leg, skills into the drivers and the settings pages build on it.
+The skills store core ("Skills: written out on every host" below) writes the
+skill folders and gives threads the skill tools.
 - **What they are.** An add-on is an MCP server every harness will reach
   through the one `app` server: a stdio command each host runs, or an http
   address (`AddonSpec` in src/shared/contract-addons.ts). A skill is a folder
@@ -1907,8 +1907,8 @@ gives threads the skill tools.
   burst (`storePushes`). The bridge methods `app.addonList`, `app.addonAdd`,
   `app.addonRemove`, `app.addonFind`, `app.addonCall`, `app.skillList`,
   `app.skillWrite`, `app.skillRemove` are in the contract and `local`; the
-  skills core answers the three skill methods, and the add-on ones answer
-  unknown method until the registry core adds theirs. `skills.set` and
+  skills core answers the three skill methods and the registry core the five
+  add-on ones (addons/tools.ts). `skills.set` and
   `skills.remove` take `expectUpdatedAt` (0: the name must be free): the
   home refuses `refused: <name> changed since it was read` when the row moved
   since, and `updatedAt` rises on every write so the stamp names one write.
@@ -1936,6 +1936,51 @@ gives threads the skill tools.
   capabilities, addonStore, skillStore, skillFiles, storeRpc,
   remote/storeSync, remote/storeSync.pair (the two-host proof),
   sessions-approval, sessions-workspaces, crossHostThreads, facade.
+- **The add-on host** (plan .temp-code/plan-L1Vrd-CMiZJ7.md; docs/box.md
+  "Add-ons: the add-on host and its tools"). Every downstream MCP client runs
+  in a utility process of its own, `out/main/addonHost.js`
+  (src/main/addonHostProcess.ts, forked by addonHostSpawn.ts; the fifth main
+  entry in electron.vite.config.ts), never in main or the gateway's child.
+  `src/main/server/addons/`: `addonWire.ts` (the messages over the
+  gateway's generic `Wire`/`Calls`/`answer`, the constants, `grantGapsLine`),
+  `addonChild.ts` (`runAddonChild`: one `Downstream` per launch, kept in step
+  by spec digest; an error escaping a client fails that client alone, any
+  other ends the process), `downstream.ts` (the SDK `Client` over its own
+  `ProcessTransport` (exit code, 16 MB results plus framing) or Streamable
+  HTTP with the SSE fallback; `redact` of every grant value held; restarts on
+  1, 2, 5, 15, 60 s; the grant transitions), `addonHost.ts` (main's side:
+  off and other-platform decided from the rows, the launch set, respawn and
+  down after three exits a minute, the statuses and exposed tool lists into
+  the store, `call`, `grantsChanged`; `doctor.get` gains `addonHost`),
+  `grants.ts` (`AddonGrantSource`, `resolveGrant` to env or headers with a
+  digest, the vault source, the `TEMP_CODE_ADDON_GRANTS` seam honoured only
+  with TEMP_CODE_USER_DATA, aliax.ts's `onSecretSaved` → `addonGrantHook`),
+  `scope.ts` (`workspaceIdOf` the thread's root, `visibleTools`, `hasAddons`),
+  `exposure.ts` (`AddonExposure.attach` registers each visible ready tool on
+  a claude thread's live `app` server as `mcp__app__<addon>__<tool>`,
+  deferred, schema verbatim through `inputSchemaOf`, removed and re-registered
+  as the store moves; the driver releases it when its handle ends;
+  `deferredTool` for the management tools; step 0 proved the CLI refreshes
+  an sdk server's tools mid-session and calls a double-`__` name),
+  `tools.ts` (`appAddonList/Add/Remove/Find/Call`: add always asks the admin
+  card and writes through `storeRpc` as the local principal with the root
+  thread as writer, waiting up to 30 s for this host's state; remove asks
+  unless a thread wrote it last; call follows the permission: auto runs, edits
+  runs a read-only tool, safe asks) and `scopeFlip.ts` (a scope gaining its
+  first add-on or losing its last marks its codex and Muse handles
+  `SessionRegistry.rebootAtNextTurn`, since the bridge's `TEMP_CODE_ADDONS`
+  is fixed at spawn). Every claude spawn sets `ENABLE_TOOL_SEARCH=true`; the
+  app, orchestrator and Mac servers are `alwaysLoad`; `addon_list`,
+  `addon_add`, `addon_remove` are deferred app tools; the bridge
+  (scripts/app-mcp-bridge.mjs) lists those three always and `addon_find`,
+  `addon_call` with `TEMP_CODE_ADDONS`, waits on the server's deadline for
+  add, remove and call, and passes a call's result back whole. An add-on
+  tool's card reads `Use <tool> from <addon>?` (approvalLine.ts). The process
+  guard sweeps an orphaned stdio server by its `TEMP_CODE_ADDON` mark.
+  `TEMP_CODE_ADDON_TRACE=1` logs one line per connect, list and exit. Proof:
+  `bun run script:e2e-addons`; unit tests under src/main/server/addons/,
+  app-bridge, approvalLine, claude-toolsearch, processGuard, sessions-addons,
+  gatewayWire, gatewayHost.
 
 ## Skills: written out on every host
 The plan is .temp-code/plan--OsNna4IcfKO.md; the code is

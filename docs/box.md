@@ -4297,6 +4297,70 @@ drivers point each CLI at the store.
 Proof: `bun run script:e2e-skills-store` (two headless instances of the
 built tree; build first).
 
+### Add-ons: the add-on host and its tools
+
+Every host runs its own downstream servers, in a process of its own: the
+add-on host (`out/main/addonHost.js`, forked by `src/main/addonHostSpawn.ts`,
+serviceName `TempCode Add-ons`). It holds one MCP client per add-on that is
+enabled and whose `platforms` include this host (`hostPlatform()`), stdio or
+http, and nothing downstream ever runs in the main process or in the gateway's
+child: a huge result or an uncaught error in the MCP SDK cuts no thread's
+provider stream. Main (`src/main/server/addons/addonHost.ts`) decides which
+rows run here (`off` and `other-platform` without the child), sends the whole
+launch set, and writes the child's statuses and tool lists into the store; the
+`addon-status` push follows. The child exits when main is gone; main respawns
+it with the launches; three exits in a minute and every add-on reads `failed`,
+"The add-on host kept exiting; it is tried again in 10 minutes", and it is
+tried once more after that. `doctor.get` names its pid, restarts and whether it
+is down.
+
+Grants cross one way only: the child asks main (`grant`, over the same
+MessagePort plumbing as the gateway, `gatewayWire.ts`), main reads the grant
+fresh from the vault (aliax-core `readSecret('addon', <id>)`; on an isolated
+instance `TEMP_CODE_ADDON_GRANTS=<file>`, JSON keyed by add-on name) and
+answers env values for a stdio server or headers for an http one. A saved
+grant (`onSecretSaved`) or a change of that file tells the child at once. No
+start state, launch, status or log line carries a value: every text a client
+sends toward main or a log is redacted of every value it has held. A stdio
+server starts from the base keys of the harness environment only
+(`ADDON_BASE_ENV_KEYS`: PATH, HOME, the locale and the XDG dirs), never the
+app's own environment, plus its grant's values, `TEMP_CODE_ADDON=<id>` and the
+guard's instance mark, in its own process group in the host's work root; an
+add-on host that dies leaves it to the process guard, which sweeps it as
+thread `addon:<id>` after the usual 60 s.
+
+What each state says (the settings pages read these words): `needs-grant`
+"Needs values for FAKE_TOKEN and X-Api-Key", "Needs a sign-in on the Mac", or
+"The server refused the grant" (an http 401 or 403; the same values are never
+tried again, a changed value is); `failed` "Exited (code 3): <the server's last
+stderr line>", "Exited (signal SIGKILL)", "Disconnected: <why>", a crash
+restarting after 1, 2, 5, 15 then 60 s (back to 1 s after a minute up). An
+http server that answers 404 or 405 to the first POST is spoken to over SSE
+instead. A result over 16 MB is answered as an error on either transport.
+
+Claude threads get each add-on tool as a real tool on their `app` server,
+`mcp__app__<addon>__<tool>`, deferred behind tool search (every claude spawn
+sets `ENABLE_TOOL_SEARCH=true`; the app's own servers are `alwaysLoad`), and
+the tools follow the store live: a registration on the running server sends
+`tools/list_changed`, and the CLI lists the server again before its next
+request. Proven on a real claude-haiku-5-5 session on CLI 2.1.303
+(2026-11-08): a deferred `mcp__app__fake__echo` was found by ToolSearch
+(`select:mcp__app__fake__echo`) and called, and a tool registered after the
+first turn was in the second turn's tool list and called, with no new
+harness. Codex and Muse threads get `addon_find` and `addon_call` on the bridge
+while their scope held an enabled add-on at spawn (`TEMP_CODE_ADDONS`); a
+scope that gains its first or loses its last reboots their harness at the
+next turn start. Every thread has `addon_list`, `addon_add` (the admin card
+always) and `addon_remove` (a card unless a thread wrote the add-on last).
+
+Proof: `bun run script:e2e-addons` (after one `electron-vite build`): a paired
+pair of isolated instances for the registry, the grant, http and SSE, the
+bridge, a crash, the add-on host's exits and removal, then an unpaired
+instance on this user's HOME for a real claude-haiku-5-5 thread (pairing it
+would run memory and account sync against the real home). Measured on the box
+on 2026-11-08: a crashed stdio server back to ready in ADDON_E2E_RESTART_MS;
+the codex first-turn gate: ADDON_E2E_GATE.
+
 ## One project across hosts: a far start lands in the linked project
 
 A thread one host starts on another (`app_start_thread` or `spawn_agent`
