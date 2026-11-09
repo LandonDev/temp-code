@@ -32,7 +32,10 @@
  * lands while a call that may post is out, or within half a second of its
  * answer, reads as the proof's, and each such call waits for one whole watch
  * interval with nothing masked first (scripts/lib/proofGate.ts). A raise at
- * launch behind that gate is noted, not failed. The paste waits until the
+ * launch behind that gate is noted, not failed. `TC_PROOF_UNGATED=1` drops
+ * the idle wait and the abort on input for one run the person has agreed to
+ * sit beside (the scratch windows may come forward and take a keystroke);
+ * the screen check stays, and the report says the gate was off. The paste waits until the
  * person has not copied for 5 s, and the proof never reads the pasteboard's
  * contents itself (only its change count), so it raises no paste prompt. It
  * asks for no permission. A check that the person's pointer and app stayed
@@ -117,8 +120,10 @@ const QUIET_RETRY_MS = 10_000
 const QUIET_RETRIES = 3
 const PASTE_TEXT = 'tc-computer paste proof '.repeat(120).slice(0, 2_500)
 const NOT_QUIET = `the clipboard was not quiet for ${QUIET_MS / 1000} s after ${QUIET_RETRIES} more tries`
+/** For a run the person sits beside by their own leave: no idle wait and no abort on input; the screen check stays. */
+const UNGATED = process.env.TC_PROOF_UNGATED === '1'
 /** The launch rule: no input this long before an app starts, the idle time read this often while it runs. */
-const LAUNCH_IDLE_S = 300
+const LAUNCH_IDLE_S = UNGATED ? 0 : 300
 const WATCH_EVERY_MS = 1_000
 /** How long the proof waits in all for a gap. */
 const GATE_WAIT_MS = 90 * 60_000
@@ -154,6 +159,8 @@ const report = {
   frames: { responses: 0, notifications: 0, violations: [] as string[] },
   steps: [] as StepRecord[],
   skipped: [] as { name: string; why: string }[],
+  /** The idle gate was off for this run, by the person's leave (TC_PROOF_UNGATED=1). */
+  ungated: UNGATED,
   /** Each try at the two apps: run whole, or aborted when the person touched the Mac. */
   gate: [] as {
     attempt: number
@@ -373,7 +380,7 @@ function watchPerson(deadline: number, onStop: () => void): Watch {
     if (Date.now() > deadline) return fire('deadline')
     try {
       const [idle, awake] = await Promise.all([personIdleSecondsAsync(), screenAwake()])
-      if (personSince(Date.now(), idle, since, ownInput)) fire('input')
+      if (!UNGATED && personSince(Date.now(), idle, since, ownInput)) fire('input')
       else if (!awake) fire('locked')
     } catch {
       // the next look reads again
