@@ -40,7 +40,9 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, readF
 import { createServer, type Server } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { configure, vault } from 'aliax-core'
+// Bun on the Mac has no node:sqlite; the root export also loads usage storage.
+import { configure } from 'aliax-core/config'
+import * as vault from 'aliax-core/vault'
 import { startFakeOAuthServer } from './lib/fakeOAuthServer'
 
 import { waitForGateBuild } from './lib/gateBuild'
