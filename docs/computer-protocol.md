@@ -505,7 +505,7 @@ Each target but the first two starts as one placeholder file. `Seams.swift` fixe
 
 ```swift
 public struct ObserveRequest: Sendable {              // the Service shell builds it from state.get / ObserveOptions
-  public var window: WindowRef?; public var mode: ObservationMode   // .auto | .full (generated)
+  public var window: ComputerProtocol.WindowRef?; public var mode: ObservationMode   // .auto | .full (generated)
   public var element: Int?; public var budgetBytes: Int
   public var geometry: Bool; public var menus: Bool; public var space: CoordinateSpace
 }
@@ -554,7 +554,7 @@ public protocol WindowCapturing {                     // Capture
 }
 ```
 
-Every struct here has an explicit `public init` taking all its fields (Swift's memberwise initializer is internal, and the sibling targets build these values). `ResolvedElement`, `InputTarget`, `AppReading` and `InputPerforming` sit behind `#if canImport(ApplicationServices)`, so the package also builds on Linux, where the box's toolchain tests `ComputerProtocol`. `ComputerFailure { error: ComputerError }` is what any part throws. The shell maps the agent cursor into each frame's pixels before it sends `capture/frame`. The threads may add members; renaming one is a change to this document first.
+Every struct here has an explicit `public init` taking all its fields (Swift's memberwise initializer is internal, and the sibling targets build these values). `ResolvedElement`, `InputTarget`, `AppReading` and `InputPerforming` sit behind `#if canImport(ApplicationServices)`, so the package also builds on Linux, where the box's toolchain tests `ComputerProtocol`. `ComputerFailure { error: ComputerError }` is what any part throws. ApplicationServices brings Carbon's own `WindowRef`, `Rect` and `Point` (QuickDraw, MacTypes), so a file that imports it names the wire's types `ComputerProtocol.WindowRef`, `ComputerProtocol.Rect` and `ComputerProtocol.Point`; Seams.swift does, and only the Mac's SDK shows the clash. The shell maps the agent cursor into each frame's pixels before it sends `capture/frame`. The threads may add members; renaming one is a change to this document first.
 
 ## 12. The generator
 

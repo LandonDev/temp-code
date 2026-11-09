@@ -9,6 +9,9 @@ import ApplicationServices
 // (docs/computer-protocol.md §11). Generated wire types are used as they are;
 // these are the rest. A thread may add members; renaming one is a change to
 // the document first.
+//
+// ApplicationServices brings Carbon's own `WindowRef`, `Rect` and `Point`, so a
+// file that imports it names the wire's as `ComputerProtocol.WindowRef` and so on.
 
 /// A protocol failure any part throws; the Service shell turns it into a
 /// step's error or a `-32000` JSON-RPC error.
@@ -26,7 +29,7 @@ public struct ComputerFailure: Error, Hashable, Sendable {
 
 /// What the Service shell asks the AX reader for, built from `state.get` or `ObserveOptions`.
 public struct ObserveRequest: Sendable {
-    public var window: WindowRef?
+    public var window: ComputerProtocol.WindowRef?
     public var mode: ObservationMode
     /// one element's subtree, whole
     public var element: Int?
@@ -35,7 +38,7 @@ public struct ObserveRequest: Sendable {
     public var menus: Bool
     public var space: CoordinateSpace
 
-    public init(window: WindowRef?, mode: ObservationMode, element: Int?, budgetBytes: Int, geometry: Bool, menus: Bool, space: CoordinateSpace) {
+    public init(window: ComputerProtocol.WindowRef?, mode: ObservationMode, element: Int?, budgetBytes: Int, geometry: Bool, menus: Bool, space: CoordinateSpace) {
         self.window = window
         self.mode = mode
         self.element = element
@@ -113,7 +116,7 @@ public protocol ChangeSignal: AnyObject {
 /// Capture.
 public protocol WindowCapturing {
     /// `regionPoints`: the region already mapped from session pixels to window points by the shell.
-    func screenshot(windowID: UInt32, maxEdge: Int, regionPoints: Rect?, format: ShotFormat, to path: String) async throws -> Shot
+    func screenshot(windowID: UInt32, maxEdge: Int, regionPoints: ComputerProtocol.Rect?, format: ShotFormat, to path: String) async throws -> Shot
     func startStream(windowID: UInt32, fps: Int, maxEdge: Int, onFrame: @escaping @Sendable (Frame) -> Void) async throws -> any StreamHandle
 }
 
@@ -125,14 +128,14 @@ public struct ResolvedElement {
     public let element: AXUIElement
     public let role: String
     /// screen points
-    public let frame: Rect
+    public let frame: ComputerProtocol.Rect
     /// raw AX action names
     public let actions: [String]
     /// which of AXValue, AXSelectedText, AXSelectedTextRange, AXFocused, AXSelected are settable
     public let settable: Set<String>
     public let brief: ElementBrief
 
-    public init(index: Int, element: AXUIElement, role: String, frame: Rect, actions: [String], settable: Set<String>, brief: ElementBrief) {
+    public init(index: Int, element: AXUIElement, role: String, frame: ComputerProtocol.Rect, actions: [String], settable: Set<String>, brief: ElementBrief) {
         self.index = index
         self.element = element
         self.role = role
@@ -148,7 +151,7 @@ public struct InputTarget {
     public let pid: pid_t
     public let windowID: UInt32
     /// screen points
-    public let windowFrame: Rect
+    public let windowFrame: ComputerProtocol.Rect
     /// to map a coordinate to a screen point
     public let space: CoordinateSpace
     public let element: ResolvedElement?
@@ -156,7 +159,7 @@ public struct InputTarget {
     /// the agent cursor `[x, y]`, session space
     public var cursor: [Int]?
 
-    public init(pid: pid_t, windowID: UInt32, windowFrame: Rect, space: CoordinateSpace, element: ResolvedElement?, startElement: ResolvedElement?, cursor: [Int]?) {
+    public init(pid: pid_t, windowID: UInt32, windowFrame: ComputerProtocol.Rect, space: CoordinateSpace, element: ResolvedElement?, startElement: ResolvedElement?, cursor: [Int]?) {
         self.pid = pid
         self.windowID = windowID
         self.windowFrame = windowFrame
