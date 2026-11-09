@@ -52,6 +52,9 @@ import { AddonStore } from './addonStore'
 import { SkillStore } from './skillStore'
 import { storePushes, storeRpc } from './storeRpc'
 import { AddonHost } from './addons/addonHost'
+import { AddonExposure } from './addons/exposure'
+import { workspaceIdOf } from './addons/scope'
+import { appAddonAdd, appAddonCall, appAddonFind, appAddonList, appAddonRemove, type AddonToolDeps } from './addons/tools'
 import { addonGrantHook, grantSourceFor } from './addons/grants'
 import type { SpawnAddonHost } from './addons/addonWire'
 import { approverOf, assertMayAnswer } from '@shared/addons'
@@ -175,6 +178,7 @@ import {
   setAppCrossHost,
   setAppSkillTools,
   setAppToolsRegistry,
+  setAppAddons,
   setProjectPlans
 } from './apptools'
 import { SkillMaterializer, configureMaterializedSkills } from './skills/materialize'
@@ -1442,6 +1446,31 @@ export async function startServer(
   archiveTimer.unref()
   setOrchestrationRegistry(registry)
   setAppToolsRegistry(registry)
+  // The add-on registry's tools (addons/): a claude thread's add-on tools live on its app server and
+  // its management tools answer here; the codex and Muse bridge's app.addon* cases below share them.
+  const addonToolDeps: AddonToolDeps = {
+    sessions: registry,
+    store: addonStore,
+    host: addonHost,
+    rpc: stores,
+    environmentId,
+    workspaceName: (id) => registry.listWorkspaces().find((w) => w.id === id)?.name ?? null
+  }
+  const addonExposure = new AddonExposure({
+    store: addonStore,
+    host: addonHost,
+    workspaceOf: (id) => {
+      const s = registry.get(id)
+      return s ? workspaceIdOf(registry, s) : null
+    },
+    call: (addonId, tool, args, opts) => addonHost.call(addonId, tool, args, opts)
+  })
+  setAppAddons({
+    exposure: addonExposure,
+    list: (caller) => appAddonList(addonToolDeps, caller, 'claude'),
+    add: (caller, args) => appAddonAdd(addonToolDeps, caller, args, 'claude'),
+    remove: (caller, args) => appAddonRemove(addonToolDeps, caller, args)
+  })
   void runDoctor() // warm the cache so the new-session modal opens ready
   // the probed harnesses ask their CLIs for models; the linked hosts hear the rows
   void probeCatalogs().then(() => rulesSync.catalogChanged())
@@ -3024,6 +3053,30 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: await batchRuns.archiveTool(callerOf(registry, sessionId), args) })
             break
           }
+          // The bridge's add-on tools (addons/tools.ts), for codex and Muse threads.
+          case 'app.addonList':
+            sendFrame({ id: req.id, ok: true, result: appAddonList(addonToolDeps, callerOf(registry, req.params.sessionId), 'bridge') })
+            break
+          case 'app.addonAdd': {
+            const { sessionId, ...args } = req.params
+            sendFrame({ id: req.id, ok: true, result: await appAddonAdd(addonToolDeps, callerOf(registry, sessionId), args, 'bridge') })
+            break
+          }
+          case 'app.addonRemove': {
+            const { sessionId, ...args } = req.params
+            sendFrame({ id: req.id, ok: true, result: await appAddonRemove(addonToolDeps, callerOf(registry, sessionId), args) })
+            break
+          }
+          case 'app.addonFind': {
+            const { sessionId, ...args } = req.params
+            sendFrame({ id: req.id, ok: true, result: appAddonFind(addonToolDeps, callerOf(registry, sessionId), args) })
+            break
+          }
+          case 'app.addonCall': {
+            const { sessionId, ...args } = req.params
+            sendFrame({ id: req.id, ok: true, result: await appAddonCall(addonToolDeps, callerOf(registry, sessionId), args) })
+            break
+          }
           case 'review.override': {
             const reviews = mergeReviews()
             if (!reviews) throw new Error('merge reviews are not available here')
@@ -3273,6 +3326,8 @@ export async function startServer(
       devRuns.disposeAll()
       await gateway.stop()
       addonGrantHook.current = null
+      setAppAddons(null)
+      addonExposure.dispose()
       await addonHost.stop()
       execBroker.stop()
       clearInterval(syncTimer)
