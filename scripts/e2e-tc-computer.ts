@@ -26,9 +26,10 @@
  * what never got a gap is reported "not run: the person was at the Mac". A
  * locked Mac or a dark display is no gap, and stops a try as input does. The
  * proof's own process-tier events move the Mac's idle time too, so input that
- * lands while a call that may post is out, or within a second of its answer,
- * reads as the proof's. A raise at launch behind that gate is noted, not
- * failed. The paste waits until the
+ * lands while a call that may post is out, or within half a second of its
+ * answer, reads as the proof's, and each such call waits for one whole watch
+ * interval with nothing masked first (scripts/lib/proofGate.ts). A raise at
+ * launch behind that gate is noted, not failed. The paste waits until the
  * person has not copied for 5 s, and the proof never reads the pasteboard's
  * contents itself (only its change count), so it raises no paste prompt. It
  * asks for no permission. A check that the person's pointer and app stayed
@@ -86,6 +87,7 @@ import {
   type StepResult,
   type WaitReport
 } from '../src/shared/computer/protocol'
+import { OwnInput, personSince } from './lib/proofGate'
 import { buildTcComputer, type TcComputerBuildResult } from './lib/tcComputerBuild'
 
 if (process.platform !== 'darwin') {
@@ -121,7 +123,7 @@ const NOT_RUN = 'not run: the person was at the Mac'
 const ABORTED = 'aborted: the person came back'
 const NOT_RUN_LOCKED = `${NOT_RUN}, and it was locked or dark when they were away`
 /** Input this soon after one of the proof's own posting calls answered is its own event's echo. */
-const OWN_INPUT_TAIL_MS = 1_000
+const OWN_INPUT_MARGIN_MS = 500
 /** In the scratch TextEdit's arguments, so an abort finds it before `open` has told us its pid. */
 const RUN_MARK = `tc-computer-proof-${process.pid}-${Date.now()}`
 
@@ -301,20 +303,22 @@ const execFileAsync = promisify(execFile)
 const personIdleSecondsAsync = async (): Promise<number> =>
   hidIdleSeconds((await execFileAsync('ioreg', ['-c', 'IOHIDSystem'], { encoding: 'utf8' })).stdout)
 
-/**
- * The stretches the proof itself may have posted input: from each `action.run`, `action.batch` or
- * `initialize` (which releases held input) going out to OWN_INPUT_TAIL_MS after its answer.
- */
-const ownInput = {
-  spans: [] as { from: number; to: number | null }[],
-  open(): { from: number; to: number | null } {
-    const span = { from: Date.now(), to: null as number | null }
-    this.spans.push(span)
-    return span
-  },
-  covers(at: number): boolean {
-    return this.spans.some((s) => at >= s.from - 100 && at <= (s.to ?? Infinity) + OWN_INPUT_TAIL_MS)
-  }
+/** The stretches the proof itself may have posted input (scripts/lib/proofGate.ts). */
+const ownInput = new OwnInput(OWN_INPUT_MARGIN_MS)
+
+/** A call that may post input: an action at a tier past `ax`, or `initialize`, which lets go of held input. */
+function postsInput(method: ComputerMethod, params: unknown): boolean {
+  if (method === 'initialize') return true
+  if (method !== 'action.run' && method !== 'action.batch') return false
+  const tiers = (params as { tiers?: string[] }).tiers
+  return !tiers || tiers.some((t) => t !== 'ax')
+}
+
+/** Before a posting call: one whole watch interval with nothing masked, then a look at the idle time. */
+async function paceOwnInput(): Promise<void> {
+  const due = ownInput.clearAt(WATCH_EVERY_MS)
+  if (Date.now() < due) await sleep(due - Date.now())
+  await currentWatch?.look()
 }
 
 /** The screen is unlocked, on this console, and the main display awake. */
@@ -353,35 +357,43 @@ async function awaitGap(deadline: number): Promise<boolean> {
  * person touched the Mac since (input inside the proof's own posting spans is its own), the screen locked
  * or went dark, or the run's `deadline` passed.
  */
-function watchPerson(
-  deadline: number,
-  onStop: () => void
-): { stop: () => void; fired: () => { at: number; why: 'input' | 'deadline' | 'locked' } | null } {
+function watchPerson(deadline: number, onStop: () => void): Watch {
   const since = Date.now()
   let fired: { at: number; why: 'input' | 'deadline' | 'locked' } | null = null
-  let reading = false
   const fire = (why: 'input' | 'deadline' | 'locked'): void => {
     if (fired) return
     fired = { at: Date.now(), why }
     onStop()
   }
-  const timer = setInterval(() => {
-    if (reading || fired) return
+  const look = async (): Promise<void> => {
+    if (fired) return
     if (Date.now() > deadline) return fire('deadline')
+    try {
+      const [idle, awake] = await Promise.all([personIdleSecondsAsync(), screenAwake()])
+      if (personSince(Date.now(), idle, since, ownInput)) fire('input')
+      else if (!awake) fire('locked')
+    } catch {
+      // the next look reads again
+    }
+  }
+  let reading = false
+  const timer = setInterval(() => {
+    if (reading) return
     reading = true
-    Promise.all([personIdleSecondsAsync(), screenAwake()])
-      .then(([idle, awake]) => {
-        const lastInput = Date.now() - idle * 1_000
-        if (lastInput > since && !ownInput.covers(lastInput)) fire('input')
-        else if (!awake) fire('locked')
-      })
-      .catch(() => {})
-      .finally(() => {
-        reading = false
-      })
+    void look().finally(() => {
+      reading = false
+    })
   }, WATCH_EVERY_MS)
-  return { stop: () => clearInterval(timer), fired: () => fired }
+  return { stop: () => clearInterval(timer), fired: () => fired, look }
 }
+
+interface Watch {
+  stop: () => void
+  fired: () => { at: number; why: 'input' | 'deadline' | 'locked' } | null
+  /** One read now, as the timer's: the pacing's unmasked look */
+  look: () => Promise<void>
+}
+let currentWatch: Watch | null = null
 
 /** The Xcode every Swift build here uses; the Command Line Tools' toolchain is unreliable on this Mac. */
 function swiftEnv(): NodeJS.ProcessEnv {
@@ -506,10 +518,7 @@ class Service {
     // the proof's own requests are held to the wire too
     requestFrameSchema(method).parse(frame)
     if (this.gone) return { id, answer: Promise.reject(new Check(this.gone)) }
-    const span =
-      method === 'action.run' || method === 'action.batch' || method === 'initialize'
-        ? ownInput.open()
-        : null
+    const span = postsInput(method, params) ? ownInput.open(Date.now()) : null
     const answer = new Promise<Answer<M>>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
@@ -542,6 +551,7 @@ class Service {
     params: ComputerParams<M>,
     timeoutMs?: number
   ): Promise<ComputerResult<M>> {
+    if (postsInput(method, params)) await paceOwnInput()
     const answer = await this.send(method, params, timeoutMs).answer
     if (!answer.ok)
       throw new Check(
@@ -557,6 +567,7 @@ class Service {
     params: ComputerParams<M>,
     kind: ComputerErrorKind
   ): Promise<RpcError> {
+    if (postsInput(method, params)) await paceOwnInput()
     const answer = await this.send(method, params).answer
     check(!answer.ok, `${method} should answer ${kind}`, answer.ok ? answer.result : undefined)
     check(answer.error.data?.kind === kind, `${method} should answer ${kind}`, answer.error)
@@ -843,11 +854,14 @@ async function run(): Promise<void> {
     const t0 = Date.now()
     const abort = (): void => abortApps(servicesFrom)
     tryAborted = false
-    const watch = watchPerson(deadline, abort)
+    const watch = (currentWatch = watchPerson(deadline, abort))
     try {
       await appSections(attempt, noPictures, abort)
+      // the try counts only once the watch has had an interval past the last posting call with nothing masked
+      await paceOwnInput()
     } finally {
       watch.stop()
+      currentWatch = null
     }
     const fired = watch.fired()
     if (!fired && !tryAborted) {
@@ -1200,6 +1214,8 @@ async function appSections(
   })
   await te.step('4a. a second clipboard holder is refused', async (data) => {
     if (!(await quietClipboard())) throw skip(NOT_QUIET)
+    // paced before the lock is held and the clock starts, so the call's own pacing is a look alone
+    await paceOwnInput()
     const holder = holdLock('clipboard', 3_000)
     await holder.held
     const t0 = performance.now()
@@ -1225,6 +1241,7 @@ async function appSections(
     if (!(await quietClipboard())) throw skip(NOT_QUIET)
     const lengthBefore = await areaLength()
     const countBefore = probe<PasteboardCount>('pasteboard').changeCount
+    await paceOwnInput()
     const noted = Date.now()
     const traceFrom = statSync(TRACE).size
     const r = await a.call('action.run', {
