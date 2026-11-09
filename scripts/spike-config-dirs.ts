@@ -15,7 +15,7 @@
  *
  * Flags: --host mac|box, --harness claude,codex,muse, --only C1a,X3,
  * --upstream, --dev-user-data <dir>, --claude-account <name>,
- * --codex-account <name>, --claude <path>, --keep (leave the temp trees, less
+ * --codex-account <name>, --codex-model <id>, --claude <path>, --keep (leave the temp trees, less
  * any login file that is not a placeholder).
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -144,7 +144,7 @@ const c: Ctx = {
   codexHomes: {},
   codexAccepted: null,
   museAccepted: null,
-  codexModel: null,
+  codexModel: flag('codex-model'),
   museModelsPath
 }
 setCtx(c)
@@ -154,13 +154,13 @@ const version = async (bin: string | null): Promise<string | null> => {
   const r = await run(bin, ['--version'], { env: { ...process.env, PATH: lp }, timeoutMs: 60_000 })
   return r.code === 0 ? firstLine(r.stdout) : null
 }
-c.claude.login = flag('claude') ?? (await which('claude'))
+c.claude.login = flag('claude') ?? which('claude', lp)
 c.claude.loginVersion = await version(c.claude.login)
 const loginNewer = !!c.claude.loginVersion && (!c.claude.bundledVersion || compareVersions(c.claude.loginVersion, c.claude.bundledVersion) > 0)
 c.claude.choice = flag('claude') ?? (loginNewer ? c.claude.login : null)
 c.claude.choiceVersion = c.claude.choice ? c.claude.loginVersion : c.claude.bundledVersion
-c.codexBin = await which('codex')
-c.museBin = await which('muse')
+c.codexBin = which('codex', lp)
+c.museBin = which('muse', lp)
 if (devDir) c.dev = await openDev(devDir)
 for (const name of [c.claudeAccountOverride, c.codexAccountOverride]) if (name) scrub.push(name, encodeURIComponent(name))
 

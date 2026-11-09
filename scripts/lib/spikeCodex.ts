@@ -30,6 +30,13 @@ import { listTree, run, sleep, spawnTracked, within, writeTree, type ResponsesRe
 import type { ChildProcess } from 'node:child_process'
 
 const CODEX_STRIP = /^(CODEX_|OPENAI_)/
+/**
+ * The driver sets `chatgpt_base_url` per thread (thread/start's config); the
+ * probe also sets it for the whole app-server, so the account calls codex
+ * makes before any thread (workspace routing discovery) reach the fake too
+ * and nothing leaves the machine.
+ */
+const APP_SERVER_ARGS = (): string[] => ['app-server', '-c', `chatgpt_base_url="${ctx().codexFront.url}/backend-api/"`]
 const CLIENT = { name: 'temp_code_spike', title: 'temp-code spike', version: '0.0.1' }
 
 interface Note {
@@ -43,12 +50,14 @@ class CodexConn {
   notes: Note[] = []
   serverRequests: string[] = []
   stderr: string[] = []
+  /** codex's own log lines about workspace routing and the account check. */
+  routing: string[] = []
   exited: number | null | undefined = undefined
   private pending = new Map<number, { ok: (v: unknown) => void; bad: (e: Error) => void }>()
   private next = 1
 
   constructor(env: Record<string, string | undefined>, cwd: string) {
-    this.proc = spawnTracked(ctx().codexBin!, ['app-server'], { env, cwd })
+    this.proc = spawnTracked(ctx().codexBin!, APP_SERVER_ARGS(), { env, cwd })
     createInterface({ input: this.proc.stdout! }).on('line', (line) => {
       let m: { id?: number | string; method?: string; params?: Record<string, unknown>; result?: unknown; error?: { message?: string } }
       try {
@@ -72,6 +81,7 @@ class CodexConn {
       if (!l.trim()) return
       this.stderr.push(l.slice(0, 300))
       this.stderr.splice(0, Math.max(0, this.stderr.length - 30))
+      if (/routing|accounts?[/_ ]check|workspace/i.test(l) && this.routing.length < 20) this.routing.push(l.replace(/\x1b\[[0-9;]*m/g, '').slice(-300))
     })
     this.proc.on('error', () => undefined)
     this.proc.on('exit', (code) => {
@@ -129,7 +139,7 @@ function codexHome(dir: string, files: Record<string, string> = {}): string {
 async function open(ev: Evidence, r: RunDirs, home: string): Promise<CodexConn> {
   const c = new CodexConn(codexEnv(ev, r, home), r.cwd)
   ev.cli = { path: ctx().codexBin, version: ev.cli?.version ?? null }
-  ev.argv = ['app-server']
+  ev.argv = APP_SERVER_ARGS()
   await c.request('initialize', { clientInfo: CLIENT })
   return c
 }
@@ -186,6 +196,7 @@ function reqSummary(reqs: ResponsesRequestRecord[]): Record<string, unknown> & {
     bearer: uniq(reqs.map((r) => r.bearer)),
     accountId: uniq(reqs.map((r) => r.accountId)),
     answered: main.map((r) => r.answered),
+    bodies: reqs.filter((r) => r.path.endsWith('/responses')).map((r) => ({ ...r.body, tools: r.tools.length, main: r.main })),
     all: uniq(main.flatMap((r) => [...r.hits.instructions, ...r.hits.input, ...r.hits.tools])).sort(),
     last: uniq(main.flatMap((r) => r.hits.last)).sort()
   }
@@ -206,23 +217,35 @@ function skillNames(res: unknown): string[] {
   return uniq(names).sort()
 }
 
-let modelCache: string | null = null
-/** A model the catalog lists, the smallest one when it names one. */
-async function codexModel(): Promise<string> {
-  if (modelCache) return modelCache
-  const c = ctx()
-  if (c.codexModel) return (modelCache = c.codexModel)
-  const r = mkRun('codex-model')
+let modelsCache: string[] | null = null
+/** Every model the catalog lists, by id. */
+async function codexModels(): Promise<string[]> {
+  if (modelsCache) return modelsCache
+  const r = mkRun('codex-models')
   const ev = { env: {}, unset: [] } as unknown as Evidence
   const conn = new CodexConn(codexEnv(ev, r, codexHome(join(r.dir, 'home-codex'))), r.cwd)
   try {
     await conn.request('initialize', { clientInfo: CLIENT })
     const res = await conn.request<{ data?: { model?: string; id?: string }[] }>('model/list', {})
-    const ids = (res.data ?? []).map((m) => m.model ?? m.id ?? '').filter(Boolean)
-    modelCache = ids.find((x) => /mini/.test(x)) ?? ids.find((x) => /spark/.test(x)) ?? ids[0] ?? 'gpt-5.5'
+    modelsCache = (res.data ?? []).map((m) => m.model ?? m.id ?? '').filter(Boolean)
   } finally {
     conn.close()
   }
+  return modelsCache
+}
+
+let modelCache: string | null = null
+/**
+ * The model the fake runs use: gpt-5.5 when listed, since codex 0.163 sends
+ * the gpt-6 rows' requests with no `tools` field (X0b records it) and the
+ * fake then has no shell tool to call; else the smallest the catalog names.
+ */
+async function codexModel(): Promise<string> {
+  if (modelCache) return modelCache
+  const c = ctx()
+  if (c.codexModel) return (modelCache = c.codexModel)
+  const ids = await codexModels()
+  modelCache = ids.find((x) => x === 'gpt-5.5') ?? ids.find((x) => /mini/.test(x)) ?? ids.find((x) => /spark/.test(x)) ?? ids[0] ?? 'gpt-5.5'
   return modelCache
 }
 
@@ -259,8 +282,9 @@ async function x0(ev: Evidence): Promise<void> {
     schemaGenerated: gen.code === 0,
     methods: methods.length,
     relevantMethods: relevant,
-    schemaKeys: [...keys].sort(),
-    model: await codexModel()
+    schemaFields: [...keys].sort(),
+    model: await codexModel(),
+    models: await codexModels()
   }
   judge(ev, { schema: gen.code === 0, skillsList: relevant.includes('skills/list'), extraRoots: relevant.includes('skills/extraRoots/set'), hooksList: relevant.includes('hooks/list') }, `codex ${firstLine(version.stdout)}`)
 }
@@ -279,7 +303,14 @@ async function x0b(ev: Evidence): Promise<void> {
     c.codexFront.script = [{ shell: `echo ${nonce}` }]
     const t2 = await turn(conn, thread, text('Run the probe command.'))
     const s2 = reqSummary(t2.requests)
-    ev.observed = { textTurn: { ...t1, requests: undefined, ...reqSummary(t1.requests) }, shellTurn: { ...t2, requests: undefined, ...s2 }, serverRequests: uniq(conn.serverRequests), stderr: conn.stderr.slice(-5) }
+    ev.observed = { model: await codexModel(), textTurn: { ...t1, requests: undefined, ...reqSummary(t1.requests) }, shellTurn: { ...t2, requests: undefined, ...s2 }, serverRequests: uniq(conn.serverRequests), routingLog: conn.routing, stderr: conn.stderr.slice(-5) }
+    // What the catalog's first model sends: the request's top-level fields, tools or none.
+    const first = (await codexModels())[0]
+    if (first && first !== (await codexModel())) {
+      const t = await conn.request<{ thread?: { id?: string } }>('thread/start', threadParams(r.cwd, first))
+      const t3 = t.thread?.id ? await turn(conn, t.thread.id, text('Reply with ok.')) : null
+      ev.observed.firstModel = { model: first, completed: t3?.completed ?? false, bodies: t3 ? reqSummary(t3.requests).bodies : null }
+    }
     const accepted = t1.completed && t1.text.includes('ok') && t2.completed && s2.all.includes('shellOutput')
     c.codexAccepted = accepted
     judge(ev, { textTurn: t1.completed && t1.text.includes('ok'), functionCallRan: t2.completed && s2.all.includes('shellOutput') }, accepted ? 'the fake is accepted' : 'fake not accepted: X1–X5 rest on listings')
@@ -311,7 +342,7 @@ async function x1(ev: Evidence): Promise<void> {
     const t2 = await turn(conn, thread, [{ type: 'skill', name: 'tc-xroot-skill', path: join(flat, 'tc-xroot-skill', 'SKILL.md') }, ...text('Use the skill.')])
     const s1 = reqSummary(t1.requests)
     const s2 = reqSummary(t2.requests)
-    ev.observed = { extraRootsSet: set, skillsList: listed.filter(isProbeName), configSkillKeys: config, listingTurn: s1, skillPartTurn: s2, completed: [t1.completed, t2.completed], errors: [t1.error, t2.error] }
+    ev.observed = { extraRootsSet: set, skillsList: listed.filter(isProbeName), configSkillFields: config, listingTurn: s1, skillPartTurn: s2, completed: [t1.completed, t2.completed], errors: [t1.error, t2.error] }
     judge(ev, {
       extraRootsAccepted: set === 'ok',
       flatListed: listed.includes('tc-xroot-skill'),
@@ -526,7 +557,7 @@ async function x4(ev: Evidence): Promise<void> {
         if (Array.isArray(v)) return v.forEach(walk)
         if (v && typeof v === 'object') {
           const o = v as Record<string, unknown>
-          if (typeof o.eventName === 'string') hooks.push(Object.fromEntries(Object.entries(o).filter(([k]) => /eventName|enabled|trust|currentHash|source|key|path/i.test(k))))
+          if (typeof o.eventName === 'string') hooks.push(Object.fromEntries(Object.entries(o).filter(([k]) => /eventName|enabled|trust|currentHash|source|key|path/i.test(k)).map(([k, x]) => [k === 'key' ? 'hookId' : k, x])))
           Object.values(o).forEach(walk)
         }
       }

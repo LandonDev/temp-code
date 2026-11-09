@@ -10,7 +10,8 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync, writeFileS
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { createServer as createTlsServer } from 'node:https'
 import { dirname, join } from 'node:path'
-import { PLACEHOLDERS, nonceHits, type TreeEntry } from './configDirSpike'
+import { brotliDecompressSync, gunzipSync, inflateSync, zstdDecompressSync } from 'node:zlib'
+import { CODEX_ACCOUNT_PLACEHOLDER, PLACEHOLDERS, nonceHits, type TreeEntry } from './configDirSpike'
 
 // ── processes ────────────────────────────────────────────────────────────────
 
@@ -135,6 +136,20 @@ const readBody = (req: IncomingMessage): Promise<Buffer> =>
     req.on('error', () => ok(Buffer.concat(chunks)))
   })
 
+/** A request body as sent: zstd, gzip, deflate or brotli undone (codex compresses its sampling calls). */
+function decoded(req: IncomingMessage, raw: Buffer): Buffer {
+  const enc = String(req.headers['content-encoding'] ?? '').toLowerCase()
+  try {
+    if (enc === 'zstd') return zstdDecompressSync(raw)
+    if (enc === 'gzip') return gunzipSync(raw)
+    if (enc === 'deflate') return inflateSync(raw)
+    if (enc === 'br') return brotliDecompressSync(raw)
+  } catch {
+    // left as sent: the body reads as unparsable
+  }
+  return raw
+}
+
 const tokenKind = (token: string | null): 'placeholder' | 'other' | 'none' => (!token ? 'none' : PLACEHOLDERS.has(token) ? 'placeholder' : 'other')
 
 function bearerOf(req: IncomingMessage): string | null {
@@ -255,7 +270,7 @@ export class FakeAnthropic {
     if (url.pathname === '/v1/messages' && req.method === 'POST') {
       let body: { model?: string; stream?: boolean; system?: unknown; tools?: { name: string; input_schema?: unknown }[]; messages?: unknown[] } = {}
       try {
-        body = JSON.parse(raw.toString('utf8') || '{}') as typeof body
+        body = JSON.parse(decoded(req, raw).toString('utf8') || '{}') as typeof body
       } catch {
         // an unreadable body is answered as a side call
       }
@@ -351,6 +366,8 @@ export interface ResponsesRequestRecord {
   hits: { instructions: string[]; input: string[]; tools: string[]; last: string[] }
   tools: string[]
   answered: string
+  /** The body as received: its content-encoding, size, and whether it parsed. */
+  body: { encoding: string; bytes: number; parsed: boolean; fields: string[] }
 }
 
 interface ResponsesTool {
@@ -427,7 +444,8 @@ export class FakeResponses {
       main: false,
       hits: { instructions: [], input: [], tools: [], last: [] },
       tools: [],
-      answered: ''
+      answered: '',
+      body: { encoding: String(req.headers['content-encoding'] ?? ''), bytes: raw.length, parsed: false, fields: [] }
     }
     this.requests.push(rec)
     if (this.forward) {
@@ -443,10 +461,21 @@ export class FakeResponses {
       }
       return json(res, 404, { error: 'fake: no recorded models' })
     }
+    // Codex's workspace routing discovery: the placeholder account, routed to this front.
+    if (req.method === 'GET' && url.pathname.endsWith('/wham/accounts/check')) {
+      rec.answered = 'accounts'
+      return json(res, 200, codexAccountsCheck(this.url))
+    }
+    if (req.method === 'GET' && url.pathname.endsWith('/wham/settings/user')) {
+      rec.answered = 'settings'
+      return json(res, 200, {})
+    }
     if (req.method === 'POST' && url.pathname.endsWith('/responses')) {
       let body: { model?: string; instructions?: unknown; input?: unknown[]; tools?: ResponsesTool[] } = {}
       try {
-        body = JSON.parse(raw.toString('utf8') || '{}') as typeof body
+        body = JSON.parse(decoded(req, raw).toString('utf8') || '{}') as typeof body
+        rec.body.parsed = true
+        rec.body.fields = Object.keys(body).sort()
       } catch {
         // answered as a plain turn
       }
@@ -533,6 +562,12 @@ export class FakeResponses {
       json(res, 502, { error: { message: `forward failed: ${(e as Error).message}` } })
     }
   }
+}
+
+/** An accounts/check answer naming the placeholder account, its backend this front's origin. */
+export function codexAccountsCheck(origin: string): Record<string, unknown> {
+  const entry = { id: CODEX_ACCOUNT_PLACEHOLDER, name: null, plan_type: 'pro', structure: 'personal', workspace_backend_origin: origin, account_routing_override: 'NO_CONSTRAINT', profile_picture_url: null }
+  return { accounts: [entry], default_account_id: CODEX_ACCOUNT_PLACEHOLDER }
 }
 
 // ── M0b: the Muse models recorder ────────────────────────────────────────────

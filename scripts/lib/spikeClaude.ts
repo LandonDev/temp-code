@@ -253,7 +253,7 @@ function turnSummary(reqs: AnthropicRequestRecord[]): Record<string, unknown> & 
     requests: reqs.length,
     main: main.length,
     paths: uniq(reqs.map((r) => `${r.method} ${r.path}`)),
-    auth: uniq(reqs.map((r) => `${r.auth}:${r.token}`)),
+    credentialsSent: uniq(reqs.map((r) => `${r.auth}:${r.token}`)),
     betas: uniq(reqs.flatMap((r) => r.betas)).sort(),
     answered: main.map((r) => r.answered),
     probeTools: uniq(main.flatMap((r) => r.tools)),
@@ -938,9 +938,9 @@ async function c3e(ev: Evidence): Promise<void> {
     delivery: x.delivery,
     root: x.root,
     argv: x.spec.args,
-    key: warmKey(x.spec).length,
-    keyHash: Bun.hash(warmKey(x.spec)).toString(16),
-    envKeys: Object.keys(x.spec.env).filter((k) => /^(CLAUDE|ANTHROPIC|HOME$)/.test(k)).sort()
+    shapeLength: warmKey(x.spec).length,
+    shapeHash: Bun.hash(warmKey(x.spec)).toString(16),
+    envNames: Object.keys(x.spec.env).filter((k) => /^(CLAUDE|ANTHROPIC|HOME$)/.test(k)).sort()
   }))
   if (rows.length < 2) return skip(ev, 'needs the specs C1a, C1b and C2b recorded in the same run')
   const pairs: Record<string, string[]> = {}

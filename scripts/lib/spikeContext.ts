@@ -4,7 +4,7 @@
  * per-run directories and environments, and the read-only listings of the
  * person's own config dirs around the runs that keep the real HOME.
  */
-import { mkdirSync } from 'node:fs'
+import { accessSync, constants, existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { WarmSpec } from '../../src/main/server/drivers/warm'
@@ -163,18 +163,28 @@ export function personalDiff(before: Record<string, TreeEntry[]>, after: Record<
 /** Entries by path and kind, the shape the inventories record. */
 export const inventory = (entries: TreeEntry[]): string[] => entries.map((e) => `${e.kind === 'dir' ? 'd' : e.kind === 'link' ? 'l' : 'f'} ${e.path}${e.target ? ` -> ${e.target}` : ''}`)
 
-/** `command -v` through the login shell. */
-export async function which(bin: string): Promise<string | null> {
-  const shell = process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash')
-  const r = await run(shell, ['-lc', `command -v ${bin}`], { timeoutMs: 15_000 })
-  const path = r.stdout.trim().split('\n').pop() ?? ''
-  return r.code === 0 && path.startsWith('/') ? path : null
+/** The first `bin` on `path`, walked in-process as binaries.ts resolveBinary does. */
+export function which(bin: string, path: string): string | null {
+  for (const dir of path.split(':').filter(Boolean)) {
+    const p = join(dir, bin)
+    try {
+      accessSync(p, constants.X_OK)
+      return p
+    } catch {
+      // not here
+    }
+  }
+  return null
 }
 
+/** The login shell's PATH plus the per-user bin dirs the app appends (binaries.ts EXTRA_BIN_DIRS). */
 export async function loginPath(): Promise<string> {
   const shell = process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash')
   const r = await run(shell, ['-lc', 'printf %s "$PATH"'], { timeoutMs: 15_000 })
-  return r.stdout.trim() || process.env.PATH || ''
+  const path = r.stdout.trim() || process.env.PATH || ''
+  const seen = new Set(path.split(':'))
+  const extra = ['.local/bin', '.bun/bin', '.cargo/bin', '.npm-global/bin'].map((d) => join(homedir(), d)).filter((d) => !seen.has(d) && existsSync(d))
+  return extra.length ? `${path}:${extra.join(':')}` : path
 }
 
 export async function versionOf(bin: string | null, args = ['--version']): Promise<string | null> {

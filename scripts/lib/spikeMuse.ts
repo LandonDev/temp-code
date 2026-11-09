@@ -171,7 +171,7 @@ async function skillList(h: MuseHost, sessionId: string): Promise<{ selector: st
 function museRoot(dir: string, files: Record<string, string> = {}): string {
   writeTree(dir, { 'muse/auth.json': placeholderMuseAuth(), ...files })
   const fakeUser = join(dirname(dir), `${basename(dir)}-fake-user-muse`)
-  writeTree(fakeUser, { 'settings.json': '{}\n' })
+  writeTree(fakeUser, { 'settings.json': '{"schema_version":1}\n' })
   symlinkSync(join(fakeUser, 'settings.json'), join(dir, 'muse', 'settings.json'))
   return dir
 }
@@ -236,19 +236,22 @@ async function m0(ev: Evidence): Promise<void> {
   } catch (e) {
     init = { error: errText(e) }
   }
-  const served = Object.entries(init ?? {}).find(([k]) => /fingerprint/i.test(k))?.[1] ?? null
+  const served = ((init?.schema as { fingerprint?: string } | undefined)?.fingerprint) ?? null
   ev.observed = {
     serveFlags: serveHelp.stdout.split('\n').filter((l) => /skill|plugin|trust|config|provider|-c,/i.test(l)).map((l) => l.trim()),
     skillsHelp: skillsHelp.stdout.split('\n').filter((l) => l.trim()).slice(0, 30).map((l) => l.trim()),
     sdkFingerprint: EXPECTED_SCHEMA_FINGERPRINT,
     servedFingerprint: served,
     fingerprintWarning: warning,
-    initializeKeys: Object.keys(init ?? {}),
+    initializeFields: Object.keys(init ?? {}),
+    initializeError: (init?.error as string | undefined) ?? null,
+    museHome: init?.museHome ?? null,
+    sandboxAvailability: init?.sandboxAvailability ?? null,
     binaryEnvNames: strings.env.filter((x) => /SKILL|PLUGIN|CONFIG|HOME|CREDENTIAL|DIR|BACKEND|CONTRIB/.test(x)),
-    binarySkillKeys: strings.keys,
+    binarySkillSettings: strings.keys,
     sessionConfig: 'SessionConfig admits only mcpServers (msp.d.ts SessionStartParams.config)'
   }
-  judge(ev, { versioned: version.code === 0, echoHostStarts: !!init && !('error' in init), fingerprintMatches: warning === null }, `muse ${firstLine(version.stdout)}`)
+  judge(ev, { versioned: version.code === 0, echoHostStarts: !!init && !('error' in init), fingerprintMatches: served ? served === EXPECTED_SCHEMA_FINGERPRINT : null }, `muse ${firstLine(version.stdout)}`)
 }
 
 async function m0b(ev: Evidence): Promise<void> {

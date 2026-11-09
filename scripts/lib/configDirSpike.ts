@@ -27,9 +27,13 @@ export const PLACEHOLDER_EMAIL = 'tc-placeholder@example.invalid'
 
 const b64url = (value: unknown): string => Buffer.from(JSON.stringify(value)).toString('base64url')
 
-/** An unsigned JWT with these claims (`alg: none`): the shape codex parses, signed by nobody. */
+/**
+ * A JWT with these claims that nobody signed: the shape codex parses. The
+ * signature part is a fixed word, not empty: codex 0.163 reads a token with
+ * an empty third part as no login at all.
+ */
 export function placeholderJwt(claims: Record<string, unknown>): string {
-  return `${b64url({ alg: 'none', typ: 'JWT' })}.${b64url(claims)}.`
+  return `${b64url({ alg: 'none', typ: 'JWT' })}.${b64url(claims)}.${Buffer.from('tc-placeholder-signature').toString('base64url')}`
 }
 
 /** The claims of a JWT's payload, null when it is not one. */
