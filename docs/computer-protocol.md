@@ -675,6 +675,23 @@ current turn, led by `COMPUTER_PICTURES_TEXT`. Its `tcimg_<n>` user-message
 echo adds no transcript row; a refused steer drops without starting a turn.
 The `view` prompt asks for file reads only within the proof.
 
+**On the Mac (2026-11-09).** The same proof, run as esbuild → node (the Mac's
+bun has no `node:sqlite`), with codex pointed past the Aliax shim (an
+in-process run has no gateway, and codex 0.164.0 refuses the shim's http
+origin):
+
+| Harness / model | CLI | Mode | Code only | Fixture then code |
+|---|---|---|---|---|
+| Claude / claude-sonnet-5-5 | 2.1.312 | parts | Pass | Pass |
+| Codex / gpt-6.1-sol | 0.164.0 | parts | Pass | Pass |
+| Codex / gpt-6.1-sol | 0.164.0 | steer | Pass | Fail: one letter misread |
+| Codex / gpt-6.1-sol | 0.164.0 | view | Pass | Pass |
+| Muse / Muse Spark 1.3 | 1.4.14 | parts | Not run: CLI login expired | Not run: CLI login expired |
+
+The steer case's picture arrived (the reply read five of six letters), so
+`parts` stays codex's default. Muse's picture delivery stands on the box's
+run, where parts passed both cases on the same CLI.
+
 **The peer payloads** (Bridge path): a box thread's tool call crosses the Mac bridge as `ComputerToolCallSchema`, a union discriminated on `tool` whose `args` is that tool's own input schema (`{ tool: 'computer_act', args: ComputerActInput, threadId, permission }` and so on), with `permission` the thread's `PermissionPolicy` (`'safe' | 'edits' | 'auto'`, src/shared/events.ts, as the bridge's other calls send it). It comes back as `ComputerPeerAnswerSchema` (`src/shared/contract-maccomputer.ts`): `{ steps: string[], body: string | null, isError, away?: true, images: { label: string /* "step 2" | "observation" */, data: string, mimeType: string, width: number, height: number }[], row }`, the step lines and the body apart, since a `text` with its `screenshot` lines left out cannot be split back where `mode: 'none'` left no body. The box writes each image under the thread's attachment dir and builds the same outcome a Mac thread gets, so `renderText` lays the lines out for both hosts. `ComputerToolResultSchema { text, images }` stays the bridge script's answer (`AppComputerAnswerSchema`). Policy, approvals and the load guard are the Mac's (§18).
 
 **The verdict** (§5.2) is `TierVerdictSchema`, stored under `tierVerdictSetting(bundleId)` (`computer.tiers.<bundleId>`); a class with none starts at `DEFAULT_TIER` (`process`), and `VERDICT_MISSES_TO_RAISE` (2) is the run of `none` that raises it.
