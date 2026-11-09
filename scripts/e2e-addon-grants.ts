@@ -29,19 +29,25 @@
  *  12. cleanup (TC_GRANTS_KEEP=1 keeps the temp dir)
  *
  * Run: bun run script:e2e-addon-grants   (after one `electron-vite build`)
+ * --gate waits for the gate build; no app build runs here. All children
+ * are killed on normal exit, signals and uncaught errors.
  * Nothing here touches /Applications/TempCode.app, the real Aliax vault, the
  * gateway marker or the box's live temp-code.service.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync } from 'node:fs'
 import { createServer, type Server } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { configure, vault } from 'aliax-core'
 import { startFakeOAuthServer } from './lib/fakeOAuthServer'
 
+import { waitForGateBuild } from './lib/gateBuild'
+import { proofCleanup } from './lib/proofCleanup'
+
 const REPO = resolve(import.meta.dir, '..')
+const GATE = process.argv.includes('--gate')
 const KEEP = process.env.TC_GRANTS_KEEP === '1'
 const LIFETIME_SEC = 20
 const out: string[] = []
@@ -68,6 +74,8 @@ const step = (name: string): void => {
   say(`── ${name}`)
 }
 
+if (GATE) await waitForGateBuild({ tree: REPO, log })
+
 if (!existsSync(join(REPO, 'out', 'main', 'index.js')) || !existsSync(join(REPO, 'out', 'main', 'addonHost.js'))) {
   console.error('out/main is missing or has no addonHost.js: run electron-vite build first')
   process.exit(2)
@@ -83,8 +91,9 @@ const freePort = (): Promise<number> =>
 
 const root = (() => {
   const d = mkdtempSync(join(tmpdir(), 'tc-grants-e2e-'))
-  return Bun.spawnSync(['realpath', d]).stdout.toString().trim() || d
+  return realpathSync(d)
 })()
+const owned = proofCleanup(root)
 
 type Inst = { name: string; home: string; data: string; tmp: string; work: string; remote: number; log: string; proc?: ChildProcess; platform: 'darwin' | 'linux' }
 const mk = async (name: string, platform: 'darwin' | 'linux'): Promise<Inst> => {
@@ -135,6 +144,7 @@ function launch(inst: Inst): void {
   const proc = spawn(argv[0]!, argv.slice(1), { cwd: REPO, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true })
   proc.stdout?.on('data', (c: Buffer) => appendFileSync(inst.log, c))
   proc.stderr?.on('data', (c: Buffer) => appendFileSync(inst.log, c))
+  owned.track(proc, true)
   inst.proc = proc
 }
 const logOf = (inst: Inst): string => (existsSync(inst.log) ? readFileSync(inst.log, 'utf8') : '')
@@ -274,8 +284,8 @@ const cleanup = async (): Promise<void> => {
   await sleep(1500)
   for (const inst of instances) await down(inst)
   await fake.close()
+  owned.stop()
 }
-process.on('SIGINT', () => void cleanup().then(() => process.exit(130)))
 const tokenEvents = (grantType: string) => fake.events.filter((e) => e.kind === 'token' && e.grantType === grantType && e.ok)
 const registrations = () => fake.events.filter((e) => e.kind === 'register')
 const authorizes = () => fake.events.filter((e) => e.kind === 'authorize') as { redirectUri: string }[]

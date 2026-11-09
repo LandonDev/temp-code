@@ -21,16 +21,22 @@
  *  9. mac restarted imports nothing again and reuses its generations
  * 10. no instance logged an uncaught error
  * Run: bun scripts/e2e-skills-store.ts   (build first: electron-vite build)
+ * --gate waits for the gate build; no app build runs here. All children
+ * are killed on normal exit, signals and uncaught errors.
  * Nothing here touches /Applications/TempCode.app, a real HOME, the real
  * Aliax vault, the gateway marker or the box's live temp-code.service.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
-import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
+import { waitForGateBuild } from './lib/gateBuild'
+import { proofCleanup } from './lib/proofCleanup'
+
 const REPO = resolve(import.meta.dir, '..')
+const GATE = process.argv.includes('--gate')
 const KEEP = process.env.TC_SS_KEEP === '1'
 let failures = 0
 const check = (name: string, ok: boolean, detail = ''): boolean => {
@@ -40,6 +46,8 @@ const check = (name: string, ok: boolean, detail = ''): boolean => {
 }
 const log = (m: string): void => console.log(`      ${m}`)
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
+if (GATE) await waitForGateBuild({ tree: REPO, log })
 
 if (!existsSync(join(REPO, 'out', 'main', 'index.js'))) {
   console.error('out/main is missing: run electron-vite build first')
@@ -56,8 +64,9 @@ const freePort = (): Promise<number> =>
 
 const root = (() => {
   const d = mkdtempSync(join(tmpdir(), 'tc-skills-store-e2e-'))
-  return Bun.spawnSync(['realpath', d]).stdout.toString().trim() || d
+  return realpathSync(d)
 })()
+const owned = proofCleanup(root)
 type Inst = { name: string; home: string; data: string; tmp: string; work: string; remote: number; log: string; proc?: ChildProcess }
 const mk = async (name: string): Promise<Inst> => {
   const inst = {
@@ -126,6 +135,7 @@ function launch(inst: Inst): void {
   const proc = spawn(argv[0], argv.slice(1), { cwd: REPO, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true })
   proc.stdout?.on('data', (c: Buffer) => appendFileSync(inst.log, c))
   proc.stderr?.on('data', (c: Buffer) => appendFileSync(inst.log, c))
+  owned.track(proc, true)
   inst.proc = proc
 }
 
@@ -224,29 +234,18 @@ const killHard = async (inst: Inst): Promise<void> => {
     /* gone */
   }
 }
-/** Electron children can outlive their group: anything still carrying this run's userData goes too. */
-function killStragglers(): void {
-  for (const pid of readdirSync('/proc').filter((n) => /^\d+$/.test(n))) {
-    try {
-      if (readFileSync(`/proc/${pid}/environ`, 'utf8').includes(`TEMP_CODE_USER_DATA=${root}/`)) process.kill(Number(pid), 'SIGKILL')
-    } catch {
-      /* not ours, or gone */
-    }
-  }
-}
 const cleanup = async (): Promise<void> => {
   await Promise.all([killHard(mac), killHard(box)])
-  if (process.platform === 'linux') killStragglers()
+  owned.stop()
   if (!KEEP && failures === 0) rmSync(root, { recursive: true, force: true })
   else log(`left for inspection: ${root}`)
 }
-process.on('SIGINT', () => void cleanup().then(() => process.exit(130)))
 
 const upOf = (inst: Inst): Promise<boolean> => until(`${inst.name} up`, 90_000, () => existsSync(join(inst.data, 'server.json')))
 
-launch(mac)
-launch(box)
 try {
+  launch(mac)
+  launch(box)
   const up = (await upOf(mac)) && (await upOf(box))
   if (!check('both headless instances published their local socket', up)) throw new Error(`no server.json; logs ${mac.log} ${box.log}`)
   log(`logs ${mac.log} ${box.log}`)

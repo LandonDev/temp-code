@@ -36,19 +36,28 @@
  *      temp dir), no fakeMcpServer process left.
  *
  * Run: bun run script:e2e-addons   (after one `electron-vite build`)
+ * --gate skips leg 4 (real Claude on the real HOME) and never launches
+ * its unpaired instance. The paired legs use only fake or dead providers.
+ * --gate waits for the gate build; no app build runs here. All children
+ * are killed on normal exit, signals and uncaught errors.
  * Nothing here touches /Applications/TempCode.app, the real Aliax vault's
  * grants (a TEMP_CODE_ADDON_GRANTS file holds the fake values), the gateway
  * marker or the box's live temp-code.service.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { homedir, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
 
+import { waitForGateBuild } from './lib/gateBuild'
+import { proofCleanup } from './lib/proofCleanup'
+import { createProcScan, hasEnv, commandMatches } from './lib/procScan'
+
 const REPO = resolve(import.meta.dir, '..')
+const GATE = process.argv.includes('--gate')
 const KEEP = process.env.TC_ADDONS_KEEP === '1'
 const BUN = process.execPath
 const FAKE = join(REPO, 'scripts', 'lib', 'fakeMcpServer.ts')
@@ -65,6 +74,8 @@ const log = (m: string): void => console.log(`      ${m}`)
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 const prefix = (v: string): string => createHash('sha256').update(v).digest('hex').slice(0, 12)
 
+if (GATE) await waitForGateBuild({ tree: REPO, log })
+
 if (!existsSync(join(REPO, 'out', 'main', 'index.js')) || !existsSync(join(REPO, 'out', 'main', 'addonHost.js'))) {
   console.error('out/main is missing or has no addonHost.js: run electron-vite build first')
   process.exit(2)
@@ -80,8 +91,9 @@ const freePort = (): Promise<number> =>
 
 const root = (() => {
   const d = mkdtempSync(join(tmpdir(), 'tc-addons-e2e-'))
-  return Bun.spawnSync(['realpath', d]).stdout.toString().trim() || d
+  return realpathSync(d)
 })()
+const owned = proofCleanup(root)
 const GRANTS = join(root, 'grants.json')
 const CALLS = join(root, 'calls.log')
 const TOKEN = `fake-token-${Math.random().toString(36).slice(2, 10)}`
@@ -139,6 +151,7 @@ function launch(inst: Inst, opts: { platform: 'darwin' | 'linux'; isolated: bool
   const proc = spawn(argv[0]!, argv.slice(1), { cwd: REPO, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true })
   proc.stdout?.on('data', (c: Buffer) => appendFileSync(inst.log, c))
   proc.stderr?.on('data', (c: Buffer) => appendFileSync(inst.log, c))
+  owned.track(proc, true)
   inst.proc = proc
 }
 const logOf = (inst: Inst): string => (existsSync(inst.log) ? readFileSync(inst.log, 'utf8') : '')
@@ -228,31 +241,11 @@ async function answerCard(inst: Inst, sessionId: string, allow: boolean, after =
 const lastSeq = async (inst: Inst, sessionId: string): Promise<number> => (await events(inst, sessionId)).reduce((m, r) => Math.max(m, r.seq), 0)
 const text = (r: { content: { type: string; text?: string }[] }): string => r.content.map((c) => c.text ?? `[${c.type}]`).join('\n')
 
+const procScan = createProcScan()
 /** The processes carrying TEMP_CODE_ADDON=<id> on this machine. */
-function addonProcesses(addonId: string): number[] {
-  const out: number[] = []
-  for (const pid of readdirSync('/proc').filter((p) => /^\d+$/.test(p))) {
-    try {
-      if (readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').includes(`TEMP_CODE_ADDON=${addonId}`)) out.push(Number(pid))
-    } catch {
-      // gone, or not ours
-    }
-  }
-  return out
-}
-/** The fake servers this run started (their command line names this run's temp dir). */
-function fakeProcesses(): number[] {
-  const out: number[] = []
-  for (const pid of readdirSync('/proc').filter((p) => /^\d+$/.test(p))) {
-    try {
-      const cmd = readFileSync(`/proc/${pid}/cmdline`, 'utf8')
-      if (cmd.includes('fakeMcpServer') && cmd.includes(root)) out.push(Number(pid))
-    } catch {
-      // gone
-    }
-  }
-  return out
-}
+const addonProcesses = (addonId: string): number[] => procScan.processes().filter((row) => hasEnv(row, `TEMP_CODE_ADDON=${addonId}`)).map((row) => row.pid)
+/** The fake servers whose command line names this run's temp dir. */
+const fakeProcesses = (): number[] => procScan.processes().filter((row) => commandMatches(row, 'fakeMcpServer', root)).map((row) => row.pid)
 
 /** The codex stdio bridge, as codex spawns it: an MCP client on its stdio. */
 function bridge(inst: Inst, sessionId: string, addons: boolean) {
@@ -260,6 +253,7 @@ function bridge(inst: Inst, sessionId: string, addons: boolean) {
     env: { PATH: process.env.PATH ?? '', TEMP_CODE_PORT: String(portOf(inst)), TEMP_CODE_SESSION: sessionId, ...(addons ? { TEMP_CODE_ADDONS: '1' } : {}) },
     stdio: ['pipe', 'pipe', 'inherit']
   })
+  owned.track(proc)
   let buf = ''
   let next = 1
   const waiting = new Map<number, (m: { result?: unknown; error?: { message: string } }) => void>()
@@ -306,6 +300,7 @@ async function down(inst: Inst): Promise<void> {
 
 // ── the fake http servers ───────────────────────────────────────────────
 const http = spawn(BUN, [FAKE, '--http', '0', '--sse', '0', '--require', 'X-Api-Key=right-value', '--log', CALLS], { stdio: ['ignore', 'pipe', 'inherit'] })
+owned.track(http)
 const ports = await new Promise<{ http: number; sse: number }>((ok) => http.stdout!.once('data', (d: Buffer) => ok(JSON.parse(d.toString()))))
 const stdioSpec = () => ({ transport: 'stdio' as const, command: BUN, args: [FAKE, '--stdio', '--log', CALLS], env: ['FAKE_TOKEN'], auth: 'fields' as const })
 
@@ -317,6 +312,7 @@ const cleanup = async (): Promise<void> => {
   await sleep(1500)
   for (const inst of instances) await down(inst)
   http.kill()
+  owned.stop()
   for (const pid of fakeProcesses()) {
     try {
       process.kill(pid, 'SIGKILL')
@@ -325,7 +321,6 @@ const cleanup = async (): Promise<void> => {
     }
   }
 }
-process.on('SIGINT', () => void cleanup().then(() => process.exit(130)))
 
 try {
   // ── the pair ─────────────────────────────────────────────────────────
@@ -444,7 +439,7 @@ try {
   type Doctor = { addonHost: { pid: number | null; restarts: number; down: boolean }; gateway: { pid: number; port: number } }
   const doctor = (): Promise<Doctor> => rpc<Doctor>(box, 'doctor.get')
   const first = await doctor()
-  const ppidOf = (pid: number): number => Number(readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ')[1]!.split(' ')[1])
+  const { ppidOf } = procScan
   const lost = addonProcesses(fakeId).filter((pid) => ppidOf(pid) === first.addonHost.pid)
   process.kill(first.addonHost.pid!, 'SIGKILL')
   const respawned = await until('a new add-on host', 30_000, async () => {
@@ -470,7 +465,7 @@ try {
   log(`stdio servers the killed hosts left: ${lost.length}; the guard sweeps them after its 60 s grace`)
 
   // ── 8. the codex first-turn gate ──────────────────────────────────────
-  const codex = ['codex', join(homedir(), '.local', 'bin', 'codex'), join(homedir(), '.bun', 'bin', 'codex')].find((c) => {
+  const codex = (GATE ? ['codex'] : ['codex', join(homedir(), '.local', 'bin', 'codex'), join(homedir(), '.bun', 'bin', 'codex')]).find((c) => {
     try {
       execFileSync(c, ['--version'], { stdio: 'ignore' })
       return true
@@ -522,57 +517,60 @@ try {
   await down(box)
 
   // ── 4. the Claude lane, on this user's HOME, unpaired ─────────────────
-  const claude = await mk('claude', true)
-  instances.push(claude)
-  const claudeProj = join(claude.work, 'proj')
-  mkdirSync(claudeProj, { recursive: true })
-  execFileSync('git', ['init', '-q', '-b', 'master', claudeProj])
-  launch(claude, { platform: 'linux', isolated: false })
-  if (!check('the Claude instance published its local socket', await until('claude up', 90_000, () => existsSync(join(claude.data, 'server.json'))))) throw new Error(`no server.json; log ${claude.log}`)
-  const cWs = await rpc<{ id: string }>(claude, 'workspace.create', { path: claudeProj, name: 'proj' })
-  const cProject = await rpc<{ id: string }>(claude, 'project.create', { workspaceId: cWs.id, name: 'proj', mode: 'local' })
-  await rpc(claude, 'addons.set', { addon: { name: 'fake', workspaceId: cWs.id, description: 'A fake add-on for the proof: echo, image', spec: stdioSpec() } })
-  check('fake is ready on the Claude instance', await until('fake ready', 30_000, async () => (await statusOf(claude, 'fake'))?.state === 'ready'))
-  const nonce = Math.random().toString(36).slice(2, 8)
-  const thread = await rpc<Meta>(claude, 'session.create', { provider: 'claude', model: 'claude-haiku-5-5', projectId: cProject.id, title: 'Uses the fake add-on', threadType: 'chat', permission: 'auto' })
-  const settled = (after: number): Promise<boolean> =>
-    until('the turn settles', 240_000, async () =>
-      (await events(claude, thread.id)).some((r) => r.seq > after && (r.event.type === 'turn-complete' || (r.event.type === 'status' && (r.event.status === 'idle' || r.event.status === 'error'))))
+  if (GATE) console.log('SKIP  leg 4: real claude-haiku-5-5 turn on the real HOME')
+  else {
+    const claude = await mk('claude', true)
+    instances.push(claude)
+    const claudeProj = join(claude.work, 'proj')
+    mkdirSync(claudeProj, { recursive: true })
+    execFileSync('git', ['init', '-q', '-b', 'master', claudeProj])
+    launch(claude, { platform: 'linux', isolated: false })
+    if (!check('the Claude instance published its local socket', await until('claude up', 90_000, () => existsSync(join(claude.data, 'server.json'))))) throw new Error(`no server.json; log ${claude.log}`)
+    const cWs = await rpc<{ id: string }>(claude, 'workspace.create', { path: claudeProj, name: 'proj' })
+    const cProject = await rpc<{ id: string }>(claude, 'project.create', { workspaceId: cWs.id, name: 'proj', mode: 'local' })
+    await rpc(claude, 'addons.set', { addon: { name: 'fake', workspaceId: cWs.id, description: 'A fake add-on for the proof: echo, image', spec: stdioSpec() } })
+    check('fake is ready on the Claude instance', await until('fake ready', 30_000, async () => (await statusOf(claude, 'fake'))?.state === 'ready'))
+    const nonce = Math.random().toString(36).slice(2, 8)
+    const thread = await rpc<Meta>(claude, 'session.create', { provider: 'claude', model: 'claude-haiku-5-5', projectId: cProject.id, title: 'Uses the fake add-on', threadType: 'chat', permission: 'auto' })
+    const settled = (after: number): Promise<boolean> =>
+      until('the turn settles', 240_000, async () =>
+        (await events(claude, thread.id)).some((r) => r.seq > after && (r.event.type === 'turn-complete' || (r.event.type === 'status' && (r.event.status === 'idle' || r.event.status === 'error'))))
+      )
+    const turn = async (message: string): Promise<Row[]> => {
+      const after = await lastSeq(claude, thread.id)
+      await rpc(claude, 'session.send', { sessionId: thread.id, text: message })
+      await settled(after + 1)
+      return (await events(claude, thread.id)).filter((r) => r.seq > after)
+    }
+    const callsTo = (rows: Row[], name: string) => rows.filter((r) => r.event.type === 'tool-call' && r.event.name === name && !(r.event as { partial?: boolean }).partial)
+    const resultsOf = (rows: Row[], name: string) => {
+      const ids = new Set(callsTo(rows, name).map((r) => r.event.callId))
+      return rows.filter((r) => r.event.type === 'tool-result' && ids.has(r.event.callId)).map((r) => r.event.output ?? '')
+    }
+    const one = await turn(
+      `Use tool search to find the fake add-on's echo tool, call it with the text "ping-${nonce}", then find and call the fake add-on's image tool. Reply with one word: done.`
     )
-  const turn = async (message: string): Promise<Row[]> => {
-    const after = await lastSeq(claude, thread.id)
-    await rpc(claude, 'session.send', { sessionId: thread.id, text: message })
-    await settled(after + 1)
-    return (await events(claude, thread.id)).filter((r) => r.seq > after)
+    check('the thread called mcp__app__fake__echo', callsTo(one, 'mcp__app__fake__echo').length > 0, JSON.stringify(one.filter((r) => r.event.type === 'tool-call').map((r) => r.event.name)))
+    check("the fake's log has the nonce", callsLogged().some((c) => c.tool === 'echo' && String(c.arguments?.text) === `ping-${nonce}`))
+    check("the image tool's result holds an image part", resultsOf(one, 'mcp__app__fake__image').some((o) => o.includes('[image]')), JSON.stringify(resultsOf(one, 'mcp__app__fake__image')))
+    await rpc(claude, 'addons.set', { addon: { name: 'late', workspaceId: cWs.id, description: 'Added while the thread was idle', spec: stdioSpec() } })
+    grants.late = { fields: { FAKE_TOKEN: TOKEN } }
+    writeGrants()
+    check('late is ready', await until('late ready', 30_000, async () => (await statusOf(claude, 'late'))?.state === 'ready'))
+    const two = await turn(`A new add-on named "late" was just added. Use tool search to find its echo tool and call it with the text "pong-${nonce}". Reply with one word: done.`)
+    check('the next turn called mcp__app__late__echo', callsTo(two, 'mcp__app__late__echo').length > 0, JSON.stringify(two.filter((r) => r.event.type === 'tool-call').map((r) => r.event.name)))
+    check("the fake's log has the second nonce", callsLogged().some((c) => c.tool === 'echo' && String(c.arguments?.text) === `pong-${nonce}`))
+    const stalls = join(claude.data, 'logs', 'stalls.log')
+    const spans = existsSync(stalls) ? readFileSync(stalls, 'utf8').split('\n').filter((l) => l.includes(`send session=${thread.id} `)) : []
+    const handle = /handle=\d+\((\w+)/.exec(spans[1] ?? '')?.[1] ?? null
+    log(`the second send's handle: ${handle ?? 'not in stalls.log'} (live = the same harness, the tool reached it live)`)
+    if (handle) check('the late add-on reached the live harness (no respawn)', handle === 'live', spans[1] ?? '')
+    await rpc(claude, 'addons.remove', { id: (await list(claude)).addons.find((a) => a.name === 'fake')!.id })
+    const three = await turn('Use tool search to look for a tool named mcp__app__fake__echo. Reply with exactly FOUND if it exists, otherwise MISSING.')
+    const reply = three.filter((r) => r.event.type === 'assistant-text' && !r.event.delta).map((r) => r.event.text ?? '').join(' ')
+    check("a removed add-on is gone from the thread's tool search", callsTo(three, 'mcp__app__fake__echo').length === 0 && /MISSING/.test(reply), reply)
+    await rpc(claude, 'session.archive', { sessionId: thread.id }).catch(() => {})
   }
-  const callsTo = (rows: Row[], name: string) => rows.filter((r) => r.event.type === 'tool-call' && r.event.name === name && !(r.event as { partial?: boolean }).partial)
-  const resultsOf = (rows: Row[], name: string) => {
-    const ids = new Set(callsTo(rows, name).map((r) => r.event.callId))
-    return rows.filter((r) => r.event.type === 'tool-result' && ids.has(r.event.callId)).map((r) => r.event.output ?? '')
-  }
-  const one = await turn(
-    `Use tool search to find the fake add-on's echo tool, call it with the text "ping-${nonce}", then find and call the fake add-on's image tool. Reply with one word: done.`
-  )
-  check('the thread called mcp__app__fake__echo', callsTo(one, 'mcp__app__fake__echo').length > 0, JSON.stringify(one.filter((r) => r.event.type === 'tool-call').map((r) => r.event.name)))
-  check("the fake's log has the nonce", callsLogged().some((c) => c.tool === 'echo' && String(c.arguments?.text) === `ping-${nonce}`))
-  check("the image tool's result holds an image part", resultsOf(one, 'mcp__app__fake__image').some((o) => o.includes('[image]')), JSON.stringify(resultsOf(one, 'mcp__app__fake__image')))
-  await rpc(claude, 'addons.set', { addon: { name: 'late', workspaceId: cWs.id, description: 'Added while the thread was idle', spec: stdioSpec() } })
-  grants.late = { fields: { FAKE_TOKEN: TOKEN } }
-  writeGrants()
-  check('late is ready', await until('late ready', 30_000, async () => (await statusOf(claude, 'late'))?.state === 'ready'))
-  const two = await turn(`A new add-on named "late" was just added. Use tool search to find its echo tool and call it with the text "pong-${nonce}". Reply with one word: done.`)
-  check('the next turn called mcp__app__late__echo', callsTo(two, 'mcp__app__late__echo').length > 0, JSON.stringify(two.filter((r) => r.event.type === 'tool-call').map((r) => r.event.name)))
-  check("the fake's log has the second nonce", callsLogged().some((c) => c.tool === 'echo' && String(c.arguments?.text) === `pong-${nonce}`))
-  const stalls = join(claude.data, 'logs', 'stalls.log')
-  const spans = existsSync(stalls) ? readFileSync(stalls, 'utf8').split('\n').filter((l) => l.includes(`send session=${thread.id} `)) : []
-  const handle = /handle=\d+\((\w+)/.exec(spans[1] ?? '')?.[1] ?? null
-  log(`the second send's handle: ${handle ?? 'not in stalls.log'} (live = the same harness, the tool reached it live)`)
-  if (handle) check('the late add-on reached the live harness (no respawn)', handle === 'live', spans[1] ?? '')
-  await rpc(claude, 'addons.remove', { id: (await list(claude)).addons.find((a) => a.name === 'fake')!.id })
-  const three = await turn('Use tool search to look for a tool named mcp__app__fake__echo. Reply with exactly FOUND if it exists, otherwise MISSING.')
-  const reply = three.filter((r) => r.event.type === 'assistant-text' && !r.event.delta).map((r) => r.event.text ?? '').join(' ')
-  check("a removed add-on is gone from the thread's tool search", callsTo(three, 'mcp__app__fake__echo').length === 0 && /MISSING/.test(reply), reply)
-  await rpc(claude, 'session.archive', { sessionId: thread.id }).catch(() => {})
 } catch (err) {
   check('the run completed', false, err instanceof Error ? err.message : String(err))
 } finally {
