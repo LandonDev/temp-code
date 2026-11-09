@@ -621,7 +621,7 @@ async function orchestrator(): Promise<void> {
     await until(30_000, async () => (await macPending()).some((r) => r.kind === 'computer' && r.status === 'pending'))
     await boxCall('computer.stop', { sessionId: t1 })
     const stoppedOut = await toStop
-    check("stop: the call answers stopped through the Mac's reply", stoppedOut.text.trimEnd().endsWith('stopped by the person'), stoppedOut.text)
+    check("stop: the call answers stopped through the Mac's reply", stoppedOut.text.includes('stopped by the person'), stoppedOut.text)
     check("stop: the card is gone", await until(5_000, async () => !(await macPending()).some((r) => r.kind === 'computer' && r.status === 'pending')))
     const stopCalls = macCalls(t1)
     const later = await computer(t1, 'computer_observe', { app: APP, window: APP })

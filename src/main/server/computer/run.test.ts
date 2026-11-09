@@ -378,7 +378,7 @@ describe('turns another host drives', () => {
     await h.run('computer_observe', { app: 'TextEdit' }, key)
     expect(h.sessions.rowOf(key)).toMatchObject({ threadId: key, apps: [{ name: 'TextEdit' }], running: null })
     await h.sessions.stop(key)
-    expect((await h.run('computer_observe', { app: 'TextEdit' }, key)).body).toBe('stopped by the person')
+    expect((await h.run('computer_observe', { app: 'TextEdit' }, key)).body).toBe('stopped by the person; no more computer use this turn')
     h.sessions.beginTurn(key)
     expect((await h.run('computer_observe', { app: 'TextEdit' }, key)).isError).toBe(false)
     expect(h.sessions.rows().map((r) => r.threadId)).toEqual([key])

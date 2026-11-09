@@ -61,7 +61,7 @@ function fakeHost() {
       })
       emit()
       const permission = ctx.permission?.() ?? 'safe'
-      if (permission !== 'auto' && needsApproval(tool as ComputerToolCall['tool'], args as Parameters<typeof needsApproval>[1])) {
+      if (needsApproval(tool as ComputerToolCall['tool'], args as Parameters<typeof needsApproval>[1], permission).ask) {
         const ok = await ctx.approve!({
           toolName: `mcp__app__${tool}`,
           input: { app: String(args.app), window: (args.window as string) ?? null, actions: ['click button "Save"'] },
@@ -347,7 +347,7 @@ describe('MacComputer: the live session and the guard', () => {
     const p = s.call({ thread: 's1' })
     await until(() => s.lives().some((r) => r.sessionId === 's1' && r.status === 'held'), 'in line')
     expect(await s.end('stopped', 's1')).toEqual({ ended: true })
-    expect(await s.settle(p)).toEqual({ ok: false, error: 'stopped by the person' })
+    expect(await s.settle(p)).toEqual({ ok: false, error: 'stopped by the person; no more computer use this turn' })
     expect(s.mb.guard.heldCount(ENV)).toBe(0)
     await s.end('settled', 's0')
     await new Promise((ok) => setTimeout(ok, 20))

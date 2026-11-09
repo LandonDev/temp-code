@@ -207,7 +207,7 @@ describe('ComputerBridge: one call', () => {
     expect((await queued).body).toBe('cancelled: the call was given up')
     const stopped = b.run('computer_observe', observe)
     void b.bridge.stop('t1')
-    expect((await stopped).body).toBe('stopped by the person')
+    expect((await stopped).body).toBe('stopped by the person; no more computer use this turn')
     b.reply(b.ofMethod('mac.computer')[0].callId, answer({ steps: [], body: 'stopped by the person', isError: true }))
     await first
     await settle()
@@ -262,7 +262,7 @@ describe('ComputerBridge: one call', () => {
     const p = b.run('computer_observe', observe)
     await b.until(() => b.out.length === 1, 'out')
     b.reply(b.out[0].callId, { text: 'old shape', images: [] })
-    expect((await p).body).toBe('computer use is unavailable here: the Mac sent an answer this host cannot read')
+    expect((await p).body).toBe('computer use is off on this host: the Mac sent an answer this host cannot read; do the work another way')
   })
 })
 
@@ -304,7 +304,7 @@ describe('ComputerBridge: pause, Stop, Away, offline', () => {
     expect(b.ofMethod('mac.computerEnd').map((c) => c.params.args)).toEqual([{ reason: 'stopped' }])
     b.reply(b.out[0].callId, answer({ steps: ['key a · ax · changed', 'Not executed: an earlier action in this batch failed.'], body: 'stopped by the person', isError: true }))
     expect(await p).toMatchObject({ steps: ['key a · ax · changed', 'Not executed: an earlier action in this batch failed.'], body: 'stopped by the person' })
-    expect((await b.run('computer_observe', observe)).body).toBe('stopped by the person')
+    expect((await b.run('computer_observe', observe)).body).toBe('stopped by the person; no more computer use this turn')
     expect(b.ofMethod('mac.computer')).toHaveLength(1)
     b.status('t1', 'idle')
     b.status('t1', 'running')
@@ -360,7 +360,7 @@ describe('ComputerBridge: pause, Stop, Away, offline', () => {
     await b.until(() => b.out.length === 1, 'out')
     await b.bridge.stop('t1')
     await b.clock.advance(STOP_REPLY_MS + 1)
-    expect((await p).body).toBe('stopped by the person')
+    expect((await p).body).toBe('stopped by the person; no more computer use this turn')
   })
 
   it('an answer that says away writes the away row; a refusal for Away answers away and writes it too', async () => {
@@ -373,7 +373,7 @@ describe('ComputerBridge: pause, Stop, Away, offline', () => {
     const q = b.run('computer_act', click)
     await b.until(() => b.out.length === 2, 'out')
     b.fail(b.out[1].callId, MAC_AWAY_REFUSAL)
-    expect((await q).body).toBe('denied: the person is away')
+    expect((await q).body).toBe('denied: the person is away; finish around this act and name it in your report')
     expect(b.away).toHaveLength(2)
   })
 
@@ -387,12 +387,12 @@ describe('ComputerBridge: pause, Stop, Away, offline', () => {
 
   it('no Mac named, the Mac offline before a call, and the Mac going offline during one', async () => {
     const b = box()
-    expect((await b.run('computer_observe', observe, 'plain')).body).toBe('computer use is unavailable here: the Mac bridge is off for this thread (turn it on from the thread menu)')
+    expect((await b.run('computer_observe', observe, 'plain')).body).toBe('computer use is off on this host: the Mac bridge is off for this thread (turn it on from the thread menu); do the work another way')
     const p = b.run('computer_observe', observe)
     await b.until(() => b.out.length === 1, 'out')
     b.calls.drop(1)
     expect((await p).body).toBe(COMPUTER_MAC_WENT_OFFLINE)
-    expect((await b.run('computer_observe', observe)).body).toMatch(/^computer use is unavailable here: Mac offline: env_mac/)
+    expect((await b.run('computer_observe', observe)).body).toMatch(/^computer use is off on this host: Mac offline: env_mac/)
   })
 })
 

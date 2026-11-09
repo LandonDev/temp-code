@@ -291,8 +291,8 @@ export class MacComputer {
       line(`refused (unavailable: ${why})`)
       throw new Error(computerUnavailableOnMac(why ?? 'the computer host is not running'))
     }
-    // nobody would answer the card: refused before anything waits; reads and full access go on
-    if (call.permission !== 'auto' && needsApproval(call.tool, call.args as Parameters<typeof needsApproval>[1]) && this.deps.bridge.away()) {
+    // nobody would answer the card: refused before anything waits; reads and an unflagged act in full access go on
+    if (needsApproval(call.tool, call.args as Parameters<typeof needsApproval>[1], call.permission).ask && this.deps.bridge.away()) {
       line('refused (away)')
       throw new Error(MAC_AWAY_REFUSAL)
     }
