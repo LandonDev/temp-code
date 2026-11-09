@@ -23,9 +23,10 @@
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const ROOT = resolve(import.meta.dir, '..', '..')
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const PAGES = join(ROOT, 'src/main/server/computer/fixtures/page')
 const OUT = '/tmp/tc-ax-proof'
 const TCAX = process.env.TC_AX_BIN ?? join(ROOT, 'native/tc-computer/.build/release/tc-ax')
@@ -41,8 +42,22 @@ const timings: Record<string, unknown> = {}
 const findings: string[] = []
 const skipped: Record<string, string> = {}
 const allow = new Set<number>()
-/** the app whose step the person's input interrupted; checks after it are not recorded */
+/** the app whose step the person's input interrupted; checks after it are not recorded, and it launches nothing more */
 let cameBack = ''
+/** the app whose idle gate passed: the watch guards its step from then on */
+let gateOpen = ''
+/** the running bench, which the watch stops */
+let benchProc: ReturnType<typeof Bun.spawn> | undefined
+
+/** Whether the watch interrupts `step` now: its idle gate has passed, it was not interrupted yet, and input resumed. */
+export function interrupts(step: string, state: { cameBack: string; gateOpen: string; idle: number }): boolean {
+  return !state.cameBack && state.gateOpen === step && state.idle < 2
+}
+
+/** Every launch asks first: after the person came back, a step launches nothing more. */
+function mayLaunch(app: string): void {
+  if (cameBack === app) throw new Error('the person came back')
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -81,6 +96,7 @@ async function waitIdle(seconds: number, app: string): Promise<boolean> {
     }
     await sleep(5000)
   }
+  gateOpen = app
   return true
 }
 
@@ -194,14 +210,22 @@ function numbered(text: string | undefined): Map<string, number> {
   return seen
 }
 
-function bench(app: string, pid: number, title: string, contains?: string, windowId?: number): void {
-  const r = sh([TCAX, 'bench', '--pid', String(pid), '--expect-title', title, '--reads', '20', '--warm', '2', '--signature', '50',
-                ...(contains ? ['--contains', contains] : []), ...(windowId ? ['--window-id', String(windowId)] : [])], axEnv())
+/** A child process, not a blocking one: the watch must be able to stop it. */
+async function bench(app: string, pid: number, title: string, contains?: string, windowId?: number): Promise<void> {
+  if (cameBack) return
+  const proc = Bun.spawn([TCAX, 'bench', '--pid', String(pid), '--expect-title', title, '--reads', '20', '--warm', '2', '--signature', '50',
+                          ...(contains ? ['--contains', contains] : []), ...(windowId ? ['--window-id', String(windowId)] : [])],
+                         { env: { ...process.env, ...axEnv() }, stdout: 'pipe', stderr: 'pipe' })
+  benchProc = proc
+  const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
+  await proc.exited
+  benchProc = undefined
+  if (cameBack) return
   try {
-    timings[app] = JSON.parse(r.out)
-    console.log(`time  ${app.padEnd(12)} ${r.out.trim()}`)
+    timings[app] = JSON.parse(out)
+    console.log(`time  ${app.padEnd(12)} ${out.trim()}`)
   } catch {
-    findings.push(`${app}: bench failed: ${r.err.trim().split('\n').pop()}`)
+    findings.push(`${app}: bench failed: ${err.trim().split('\n').pop()}`)
   }
 }
 
@@ -223,6 +247,7 @@ async function textedit(): Promise<void> {
   const exe = 'TextEdit.app/Contents/MacOS/TextEdit'
   const before = pidsOf(exe)
   // a separate instance that restores none of the person's documents (the recorder's flags)
+  mayLaunch(app)
   sh(['open', '-n', '-g', '-a', 'TextEdit', '--args', '-ApplePersistenceIgnoreState', 'YES', '-NSShowAppCentricOpenPanelInsteadOfUntitledFile', 'NO', '-NSDocumentSaveNewDocumentsToCloud', 'NO'])
   const pid = await newPid(exe, before)
   allow.add(pid)
@@ -286,7 +311,7 @@ async function textedit(): Promise<void> {
   check(app, 'a stopped app answers timeout within 2.5 s', stopped.ok === false && stopped.error?.kind === 'timeout' && took <= 2_500, `${stopped.error?.kind ?? stopped.kind} in ${took} ms`)
 
   s.close()
-  bench(app, pid, title)
+  await bench(app, pid, title)
 }
 
 /** Close the document unsaved through its sheet's Delete, then end the instance. Never Save. */
@@ -316,6 +341,7 @@ async function chromeOn(page: string, title: string): Promise<number> {
   const exe = 'Google Chrome.app/Contents/MacOS/Google Chrome'
   const before = pidsOf(exe)
   const front = frontApp()
+  mayLaunch('chrome')
   sh(['open', '-n', '-g', '-a', 'Google Chrome', '--args', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
       '--disable-features=Translate', '--force-renderer-accessibility', `file://${PAGES}/${page}`])
   const pid = await newPid(exe, before, (p) => sh(['ps', '-o', 'command=', '-p', String(p)]).out.includes(`--user-data-dir=${profile}`))
@@ -418,7 +444,7 @@ async function chrome(): Promise<void> {
   check(app, "scrolling the list is a ~ on the list with its new summary", /\n~ \[\d+\] list "Past orders"\n  … \d+ more below, \d+ above/.test(scrolled.text ?? ''))
 
   s.close()
-  bench(app, pid, title)
+  await bench(app, pid, title)
   await endChrome()
 
   // the rebuilt-element rule on a real rebuild
@@ -446,7 +472,7 @@ async function chrome(): Promise<void> {
   const h = new Session(hpid, htitle)
   await settled(h, /heading "Section 1"/)
   h.close()
-  bench('chrome-heavy', hpid, htitle)
+  await bench('chrome-heavy', hpid, htitle)
   await endChrome()
 }
 
@@ -470,6 +496,7 @@ async function tempcodeDev(): Promise<void> {
     ALIAX_CREDENTIAL_BACKEND: 'file', CLAUDE_CONFIG_DIR: join(data, 'claude'), CODEX_HOME: join(data, 'codex'), TEMP_CODE_WARM_HARNESS: '0', TEMP_CODE_SOAK_WINDOW: '1'
   } as Record<string, string>
   delete env.ELECTRON_RUN_AS_NODE
+  mayLaunch(app)
   const preview = Bun.spawn(['bunx', 'electron-vite', 'preview', '--skipBuild'], { cwd: ROOT, env, stdout: 'ignore', stderr: 'ignore' })
   const exe = join(ROOT, 'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron')
   const pid = await newPid(exe, [], (p) => sh(['ps', 'eww', '-o', 'command=', '-p', String(p)]).out.includes(`TEMP_CODE_USER_DATA=${data}`))
@@ -502,7 +529,7 @@ async function tempcodeDev(): Promise<void> {
   check(app, 'a popup opening keeps every number that stayed', shared.length >= 5 && moved.length === 0, `${shared.length} shared, ${moved.length} renumbered`)
   await s.send(`poke press ${options}`)
   s.close()
-  bench(app, pid, title)
+  await bench(app, pid, title)
 }
 
 // ── IntelliJ ─────────────────────────────────────────────────────────────
@@ -566,6 +593,7 @@ async function intellij(): Promise<void> {
   })
   const before = new Set((running ? windowsOf(running) : []).map((w) => w.id))
   const front = frontApp()
+  mayLaunch(app)
   sh(['open', '-g', '-a', 'IntelliJ IDEA', dir])
   cleanups.push(() => void findings.push(`intellij: in front before ${JSON.stringify(front)}, after ${JSON.stringify(frontApp())}`))
   const pid = running ?? (await newPid(exe, []))
@@ -632,7 +660,7 @@ async function intellij(): Promise<void> {
   findings.push(`intellij: ${(full as { stats?: { elements?: number } }).stats?.elements} elements kept, thin=${(full as { stats?: { thin?: boolean } }).stats?.thin}, ${stubs} stub lines`)
   check(app, 'the scratch project window was read', full.kind === 'full')
   s.close()
-  bench(app, pid, '', mark, scratch)
+  await bench(app, pid, '', mark, scratch)
   // only the scratch window closes: its own close button, after its id, title and mark matched it
   const c = new Session(pid, '', mark, scratch)
   const now = await c.observe({ mode: 'full' })
@@ -643,31 +671,36 @@ async function intellij(): Promise<void> {
 
 // ── run ──────────────────────────────────────────────────────────────────
 
-const apps: Record<string, () => Promise<void>> = { textedit, chrome, 'tempcode-dev': tempcodeDev, intellij }
-const wanted = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(apps)
-rmSync(OUT, { recursive: true, force: true })
-mkdirSync(OUT, { recursive: true })
-for (const name of wanted) {
-  // the moment input resumes, the step's scratch apps go and its checks stop counting
-  const watch = setInterval(() => {
-    if (cameBack || idleSeconds() >= 2) return
-    cameBack = name
-    skipped[name] = 'not run: the person came back'
-    console.log(`skip  ${name.padEnd(12)} ${skipped[name]}`)
-    void cleanUp()
-  }, 1000)
-  try {
-    await apps[name]!()
-  } catch (e) {
-    check(name, 'ran to the end', false, String((e as Error).message ?? e).slice(0, 200))
-  } finally {
-    clearInterval(watch)
-    await cleanUp()
-    cameBack = ''
+if (import.meta.main) {
+  const apps: Record<string, () => Promise<void>> = { textedit, chrome, 'tempcode-dev': tempcodeDev, intellij }
+  const wanted = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(apps)
+  rmSync(OUT, { recursive: true, force: true })
+  mkdirSync(OUT, { recursive: true })
+  for (const name of wanted) {
+    // the moment input resumes, the step's scratch apps go and its checks stop counting
+    // armed once the step's idle gate passed: input during the wait itself is the wait's business
+    const watch = setInterval(() => {
+      if (cameBack || gateOpen !== name || !interrupts(name, { cameBack, gateOpen, idle: idleSeconds() })) return
+      cameBack = name
+      skipped[name] = 'not run: the person came back'
+      console.log(`skip  ${name.padEnd(12)} ${skipped[name]}`)
+      benchProc?.kill()
+      void cleanUp()
+    }, 1000)
+    try {
+      await apps[name]!()
+    } catch (e) {
+      check(name, 'ran to the end', false, String((e as Error).message ?? e).slice(0, 200))
+    } finally {
+      clearInterval(watch)
+      await cleanUp()
+      cameBack = ''
+      gateOpen = ''
+    }
   }
+  const failed = checks.filter((c) => !c.pass).length
+  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ checks, timings, findings, skipped }, null, 2))
+  console.log(`\n${checks.length - failed} passed, ${failed} failed, ${Object.keys(skipped).length} skipped; ${join(OUT, 'report.json')}`)
+  for (const f of findings) console.log(`note  ${f}`)
+  process.exit(failed ? 1 : 0)
 }
-const failed = checks.filter((c) => !c.pass).length
-writeFileSync(join(OUT, 'report.json'), JSON.stringify({ checks, timings, findings, skipped }, null, 2))
-console.log(`\n${checks.length - failed} passed, ${failed} failed, ${Object.keys(skipped).length} skipped; ${join(OUT, 'report.json')}`)
-for (const f of findings) console.log(`note  ${f}`)
-process.exit(failed ? 1 : 0)

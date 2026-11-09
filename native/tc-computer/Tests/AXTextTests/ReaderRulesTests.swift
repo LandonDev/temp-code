@@ -116,7 +116,10 @@ import Testing
         0: N(role: "AXWebArea", frame: Rect(x: 0, y: 0, w: 800, h: 600), children: [1, 2, 5]),
         1: N(role: "AXGroup", frame: Rect(x: 0, y: 0, w: 800, h: 100), children: [3]),
         3: N(role: "AXProgressIndicator", frame: Rect(x: 10, y: 10, w: 16, h: 16), children: []),
-        2: N(role: "AXList", frame: Rect(x: 0, y: 200, w: 800, h: 100), children: [4, 6]),
+        2: N(role: "AXList", frame: Rect(x: 0, y: 200, w: 800, h: 100), children: [4, 6, 8]),
+        // a row the list scrolled away, parked at its bottom edge as a 1-point sliver, a spinner inside
+        8: N(role: "AXGroup", frame: Rect(x: 0, y: 299, w: 800, h: 1), children: [9]),
+        9: N(role: "AXBusyIndicator", frame: Rect(x: 10, y: 299, w: 16, h: 16), children: []),
         4: N(role: "AXBusyIndicator", frame: Rect(x: 10, y: 210, w: 16, h: 16), children: []),
         6: N(role: "AXBusyIndicator", frame: Rect(x: 10, y: 450, w: 16, h: 16), children: []),
         5: N(role: "AXGroup", frame: Rect(x: 0, y: 900, w: 800, h: 100), children: [7]),

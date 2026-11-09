@@ -137,19 +137,21 @@ public enum BusyScan {
     /// The indicators under `root`, each with the clip containers between `root` and it, `root` included.
     public static func find<N>(root: N, clip: Rect?, maxNodes: Int = maxNodes, stop: () -> Bool = { false }, read: (N) -> Read<N>) -> [(node: N, kind: BusyRule.Kind, containers: [N])] {
         var found: [(node: N, kind: BusyRule.Kind, containers: [N])] = []
-        var queue: [(node: N, clip: Rect?, containers: [N])] = [(root, clip, [])]
+        // `sliver`: the parent is a clip container, so a 1-point child is a row scrolled away, as the walk cuts it
+        var queue: [(node: N, clip: Rect?, containers: [N], sliver: Bool)] = [(root, clip, [], false)]
         var at = 0
         while at < queue.count, at < maxNodes, !stop() {
-            let (node, clip, containers) = queue[at]
+            let (node, clip, containers, sliver) = queue[at]
             at += 1
             let r = read(node)
-            if at > 1, Viewport.missed(r.frame, clip) != nil { continue }
+            if at > 1, Viewport.missed(r.frame, clip, sliver: sliver) != nil { continue }
             if r.role == "AXBusyIndicator" { found.append((node, .busy, containers)) }
             if r.role == "AXProgressIndicator" { found.append((node, .progress, containers)) }
             let role = r.role ?? ""
             let inner = Viewport.childClip(role: role, frame: r.frame, clip: clip)
             let below = Viewport.clipRoles.contains(role) ? containers + [node] : containers
-            queue += r.children.map { ($0, inner, below) }
+            let clips = Viewport.clipRoles.contains(role)
+            queue += r.children.map { ($0, inner, below, clips) }
         }
         return found
     }
