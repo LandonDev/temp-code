@@ -77,7 +77,9 @@ public enum Diff {
             }
         }
         if let footer { summaries[0] = footer }
-        return Base(windowID: windowID, structure: structure, lines: lines, order: order, summaries: summaries, stubs: stubs, others: layout.others, fullBytes: fullBytes)
+        return Base(windowID: windowID, structure: structure, lines: lines, order: order, summaries: summaries, stubs: stubs,
+                    // the windows the model was shown: none when the budget left the line out
+                    others: layout.othersLine == nil ? [] : layout.others, fullBytes: fullBytes)
     }
 
     /// Spec §4.4 with plan §4.2: full on another window, a move, a new order or

@@ -167,17 +167,34 @@ func sample(value: String = "Hello from the probe\nSecond line", extra: (Tree) -
         #expect(reader.read(doc(length: 50_001, caret: 10)).kind == .diff)
     }
 
-    @Test func aLineTheBudgetCutDifferentlyIsAChange() {
+    /// A window holding one focused field and nothing that can leave: a small budget shortens, it never omits.
+    func protectedOnly(actions: [String] = [], others: [OtherWindow] = []) -> AXSnapshot {
         let t = Tree()
         let field = t.id()
-        let name = "A field with a long name " + String(repeating: "x", count: 80)
-        let s = snapshot([t.window(id: 900_000, [t.node("AXTextField", id: field, title: name, value: .string("v"), frame: r(0), settable: ["AXValue"], range: [0, 0])]
-            + (0..<200).map { i in Tree(start: 50_000 + NodeID(i)).node("AXStaticText", value: .string("Paragraph \(i) of a long scratch page"), frame: r(0)) })], focused: field)
+        return snapshot([t.window(id: 900_000, [t.node("AXTextField", id: field, title: String(repeating: "\u{1}", count: 100),
+                                                       value: .string(String(repeating: "\u{1}", count: 160)), frame: r(0), actions: actions,
+                                                       settable: ["AXValue"], range: [0, 0])])], focused: field, others: others)
+    }
+
+    @Test func aLineTheBudgetCutDifferentlyIsAChange() {
+        let s = protectedOnly(actions: ["Name:" + String(repeating: "x", count: 400)])
         let reader = Reader()
         let cut = reader.read(s, budget: 2_000)
-        #expect(!cut.text.contains(name))
+        #expect(cut.stats.omitted == 0 && !cut.text.contains("actions:"))
+        // the field's line is the whole window, so its ~ line passes 60% of the text: the change is seen and said whole
         let whole = reader.read(s, budget: 96_000)
-        #expect(whole.kind != .unchanged)
+        #expect(whole.fullReason == .tooLarge)
+        #expect(whole.text.hasSuffix("actions: " + String(repeating: "x", count: 400)))
+    }
+
+    @Test func theOtherWindowsLineTheBudgetHidOrRestoredIsSaid() {
+        let s = protectedOnly(others: (0..<30).map { OtherWindow(title: "Scratch window \($0)") })
+        let reader = Reader()
+        #expect(reader.read(s).text.contains("\nother windows: "))
+        let hidden = reader.read(s, budget: 2_000)
+        #expect(hidden.stats.omitted == 0 && hidden.fullReason == .unsaid && !hidden.text.contains("other windows"))
+        let shown = reader.read(s)
+        #expect(shown.kind == .diff && shown.text.contains("\nother windows: \"Scratch window 0\""))
     }
 
     @Test func aFooterOrTheLastOtherWindowGoingAwayIsAFullRead() {
