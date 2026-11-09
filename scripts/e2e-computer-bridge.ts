@@ -35,6 +35,7 @@
  * TC_BOX_BUN names bun on the box (default /srv/agents/home/.bun/bin/bun);
  * TC_BOX_REPORT_DIR where the report is copied there.
  */
+import { gateScreenSkip } from './lib/macScreen'
 import { spawn, type ChildProcess, execFileSync } from 'node:child_process'
 import { createHash, createHmac, randomBytes } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -289,6 +290,12 @@ async function orchestrator(): Promise<void> {
     console.log('skipped: macOS only')
     return
   }
+  const screenSkip = gateScreenSkip(GATE, REPO)
+  if (screenSkip) {
+    console.log(screenSkip)
+    process.exit(0)
+  }
+
   const WORK = '/tmp/tc-computer-bridge'
   const REPORT = join(WORK, 'report.json')
   const NONCE = randomBytes(4).toString('hex')

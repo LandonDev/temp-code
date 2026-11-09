@@ -20,6 +20,7 @@
  *   bun run script:e2e-computer-bench -- --judge <report.json>   (re-judge a saved report; runs nothing)
  *   bun run script:e2e-computer-bench -- --reference codex       (Codex's own computer use, by hand)
  */
+import { gateScreenSkip } from './lib/macScreen'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, loadavg } from 'node:os'
@@ -103,6 +104,12 @@ if (args.judge) {
 }
 if (process.platform !== 'darwin') {
   console.log('skipped: macOS only')
+  process.exit(0)
+}
+
+const screenSkip = gateScreenSkip(args.mode === 'gate', ROOT)
+if (screenSkip) {
+  console.log(screenSkip)
   process.exit(0)
 }
 

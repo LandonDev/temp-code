@@ -1523,8 +1523,19 @@ calls without the grant; its test also checks the actual host does not prompt,
 even if the service reports a late Screen Recording error. The preview's
 request guard refuses `escape.watch { on: true }` in gate mode.
 
-These modes need an unlocked, awake Mac for AX and capture. They fail promptly
-if it is locked or dark; they do not unlock it, wake it or wait for the person.
+These modes need an unlocked, awake Mac for AX and capture. At entry they
+exit 0 with `skipped: the Mac is locked or asleep` if the screen is locked,
+asleep or unreadable; the bench's `--gate` entry does the same. The publish
+gate checks once before its lanes start and skips these four `screen: true`
+rows with a note; `computer-swift` still runs. The tiny cached Swift check
+uses the same session-lock, on-console and display-sleep rule as the proof
+probe. It never unlocks, wakes or waits for the Mac. Losing the screen after
+a proof starts still fails that proof as inconclusive.
+
+The tc-computer proof keeps its `initialize` bound at 500 ms for a hand run.
+Under `--gate` it allows 2,000 ms, since publish runs it beside the soaks,
+Swift builds and other proofs.
+
 On 2026-11-09 all three modes passed three consecutive runs in the isolated
 Mac clone, with Accessibility and Screen Recording granted. Wall times were
 19.082/18.828/19.075 s for tc-computer (17 passes and 10 skips each),

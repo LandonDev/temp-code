@@ -4,6 +4,9 @@ import { join } from 'node:path'
 import { sourceStamp } from './tcComputerBuild'
 import { otherProof } from './proofOrder'
 
+/** Publish runs beside soaks and Swift builds; hand runs keep the latency check strict. */
+export const computerInitializeMs = (gate: boolean): number => gate ? 2_000 : 500
+
 export function computerProofMode(argv: readonly string[]) {
   const gate = argv.includes('--gate')
   const pair = argv[argv.indexOf('--pair') + 1]

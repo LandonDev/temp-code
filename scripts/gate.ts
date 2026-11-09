@@ -35,6 +35,8 @@ import { execFileSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
+import { readMacScreen, SCREEN_SKIP_NOTE, type MacScreen } from './lib/macScreen'
+
 export type Tier = 'commit' | 'publish'
 
 export interface Step {
@@ -58,6 +60,8 @@ export interface Step {
    *  tree): skipped elsewhere with a note, since release:publish runs the
    *  publish tier on the Mac before anything ships. */
   mac?: boolean
+  /** Needs an unlocked, awake Mac; skipped when the screen cannot be read or used. */
+  screen?: boolean
   /** The step's hard cap from its start: past it the gate kills its process
    *  group (SIGTERM, SIGKILL 5 s later) and fails it "passed its cap". */
   capMs?: number
@@ -272,7 +276,8 @@ export const STEPS: Step[] = [
     lane: 'computer',
     capMs: COMPUTER_CAP_MS['e2e-tc-computer'],
     why: 'the shipped tc-computer on TC Probe alone, ungated: launch in the background, list, find, Ping at the ax tier, the forced-miss service, a screenshot, a cancelled wait, a crash and restart (scripts/e2e-tc-computer.ts --gate)',
-    mac: true
+    mac: true,
+    screen: true
   },
   {
     name: 'e2e-computer-bridge',
@@ -282,7 +287,8 @@ export const STEPS: Step[] = [
     lane: 'computer',
     capMs: COMPUTER_CAP_MS['e2e-computer-bridge'],
     why: "a box thread's computer calls through the Mac bridge with both halves on the Mac (--pair local: the box half a second headless instance seamed linux), on TC Probe, no model (scripts/e2e-computer-bridge.ts --gate)",
-    mac: true
+    mac: true,
+    screen: true
   },
   {
     name: 'e2e-computer-preview',
@@ -292,7 +298,8 @@ export const STEPS: Step[] = [
     lane: 'computer',
     capMs: COMPUTER_CAP_MS['e2e-computer-preview'],
     why: "the live preview's stream, acks and click marks against TC Probe, no model; the Escape tap's leg skipped, since it takes the person's Escape (scripts/e2e-computer-preview.ts --gate)",
-    mac: true
+    mac: true,
+    screen: true
   },
   {
     name: 'computer-bench',
@@ -304,7 +311,8 @@ export const STEPS: Step[] = [
     capMs: 15 * 60_000,
     onlyAtPublish: true,
     why: 'real desktop tasks (TextEdit, Chrome, a dev window, System Settings, a save dialog) through the computer tools and tc-computer on three models side by side, in the background tiers: each end state, median tool calls and median host time per call against the baseline in the gate dir (scripts/e2e-computer-bench.ts --gate, about 6 min, 15 min at most)',
-    mac: true
+    mac: true,
+    screen: true
   }
 ]
 
@@ -314,6 +322,21 @@ export function macOnlySkips(steps: readonly Step[], platform: NodeJS.Platform =
   if (platform === 'darwin') return out
   for (const s of steps) if (s.mac) out.set(s.name, 'needs the Mac; release:publish runs it there')
   return out
+}
+
+/** Read once for the selected publish screen rows, before any lane starts. */
+export function screenOnlySkips(
+  steps: readonly Step[],
+  read: () => MacScreen | null,
+  platform: NodeJS.Platform = process.platform
+): Map<string, string> {
+  const rows = steps.filter((s) => s.tier === 'publish' && s.screen)
+  if (platform !== 'darwin' || rows.length === 0) return new Map()
+  try {
+    const screen = read()
+    if (screen && !screen.locked && !screen.asleep) return new Map()
+  } catch { /* An unreadable screen cannot run the proof. */ }
+  return new Map(rows.map((s) => [s.name, SCREEN_SKIP_NOTE]))
 }
 
 /** The `onlyAtPublish` steps of a tier that changed paths alone pulled in, with the note the report carries. */
@@ -808,6 +831,9 @@ export interface GateOptions {
   verbose: boolean
   /** The step list; STEPS unless a test names its own. */
   steps?: readonly Step[]
+  /** Host and screen seams for runner tests. */
+  platform?: NodeJS.Platform
+  readScreen?: () => MacScreen | null
 }
 
 export function parseArgs(argv: string[]): Omit<GateOptions, 'repo'> {
@@ -855,7 +881,12 @@ export async function gate(opts: GateOptions): Promise<Report> {
   const dir = gateDir(opts.repo)
   const barrier = buildBarrier(steps, dir)
   if (barrier) rmSync(barrier.file, { force: true })
-  const skipped = new Map([...macOnlySkips(steps), ...atPublishSkips(steps, pulled)])
+  const skipped = new Map([...macOnlySkips(steps, opts.platform), ...atPublishSkips(steps, pulled)])
+  for (const [name, note] of screenOnlySkips(
+    steps.filter((s) => !skipped.has(s.name)),
+    opts.readScreen ?? (() => readMacScreen(join(dir, 'logs'))),
+    opts.platform
+  )) skipped.set(name, note)
   let hash: string | undefined
   const hashStep = steps.find((s) => s.hashSkip)
   if (hashStep) {

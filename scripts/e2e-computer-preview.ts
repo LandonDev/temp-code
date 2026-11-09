@@ -26,6 +26,7 @@
  *
  * Run on the Mac: bun run script:e2e-computer-preview (esbuild → node, as script:e2e-computer).
  */
+import { gateScreenSkip } from './lib/macScreen'
 import { execFileSync } from 'node:child_process'
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -52,6 +53,12 @@ if (process.platform !== 'darwin') {
 const GATE = computerProofMode(process.argv).gate
 if (GATE) process.env.TC_PROOF_UNGATED = '1'
 const ROOT = repoRoot()
+const screenSkip = gateScreenSkip(GATE, ROOT)
+if (screenSkip) {
+  console.log(screenSkip)
+  process.exit(0)
+}
+
 if (GATE) await waitForGateBuild({ tree: ROOT, log: console.log })
 await waitForComputerProof(console.log)
 const WORK = '/tmp/tc-preview-proof'

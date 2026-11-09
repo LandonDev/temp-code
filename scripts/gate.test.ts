@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { STEPS, TIER_PATHS, formatReport, gateDir, matchPath, parseArgs, readStoredHash, runSteps, selectSteps, shouldSkipTypecheck, storeHash, tiersForPaths, typecheckHash, type Step, macOnlySkips, judgeReport, spawnStep, stepArgs, atPublishSkips, fmtCap, SOAK_CAP_MS, BUILD_WAIT_MS, proofCap, STORE_MEASURED_MS, STORE_CAP_MS, COMPUTER_MEASURED_MS, COMPUTER_CAP_MS, buildBarrier, gate } from './gate'
+import { STEPS, TIER_PATHS, formatReport, gateDir, matchPath, parseArgs, readStoredHash, runSteps, selectSteps, shouldSkipTypecheck, storeHash, tiersForPaths, typecheckHash, type Step, macOnlySkips, judgeReport, spawnStep, stepArgs, atPublishSkips, fmtCap, SOAK_CAP_MS, BUILD_WAIT_MS, proofCap, STORE_MEASURED_MS, STORE_CAP_MS, COMPUTER_MEASURED_MS, COMPUTER_CAP_MS, buildBarrier, gate, screenOnlySkips } from './gate'
 import { BENCH_TIMING } from './lib/computerBench'
 
 describe('the step list', () => {
@@ -72,6 +72,84 @@ describe('the Mac-only steps', () => {
     expect(macOnlySkips(STEPS, 'linux').get('ios')).toBe('needs the Mac; release:publish runs it there')
     expect(macOnlySkips(STEPS, 'darwin').size).toBe(0)
     expect(STEPS.filter((s) => s.mac).every((s) => s.tier === 'publish')).toBe(true)
+  })
+})
+
+describe('the screen steps', () => {
+  const names = ['e2e-tc-computer', 'e2e-computer-bridge', 'e2e-computer-preview', 'computer-bench']
+  const note = 'the Mac is locked or asleep; run it by hand when unlocked'
+
+  it('marks only the four publish screen proofs; the Swift tests still run', () => {
+    expect(STEPS.filter((s) => s.screen).map((s) => s.name)).toEqual(names)
+    expect(STEPS.filter((s) => s.screen).every((s) => s.mac && s.tier === 'publish')).toBe(true)
+    expect(STEPS.find((s) => s.name === 'computer-swift')?.screen).toBeUndefined()
+  })
+
+  it.each([
+    ['locked', () => ({ locked: true, asleep: false })],
+    ['asleep', () => ({ locked: false, asleep: true })],
+    ['unreadable', () => null],
+    ['failed', () => { throw new Error('screen read failed') }]
+  ] as const)('reads once and skips screen rows when %s, keeping the other rows', async (_name, read) => {
+    const reader = vi.fn(read)
+    const skipped = screenOnlySkips(STEPS, reader, 'darwin')
+    expect(reader).toHaveBeenCalledTimes(1)
+    expect([...skipped]).toEqual(names.map((name) => [name, note]))
+    const ran: string[] = []
+    const report = await runSteps(STEPS.filter((s) => s.screen || s.name === 'computer-swift'), async (step) => {
+      ran.push(step.name)
+      return { exitCode: 0, tail: '' }
+    }, {}, skipped)
+    expect(ran).toEqual(['computer-swift'])
+    expect(report.ok).toBe(true)
+    for (const name of names) expect(formatReport(report)).toContain(`${name}`)
+    expect(formatReport(report)).toMatch(/skipped {2}the Mac is locked or asleep; run it by hand when unlocked/)
+  })
+
+  it('runs all screen rows when unlocked', async () => {
+    const reader = vi.fn(() => ({ locked: false, asleep: false }))
+    const skipped = screenOnlySkips(STEPS, reader, 'darwin')
+    expect(reader).toHaveBeenCalledTimes(1)
+    expect(skipped.size).toBe(0)
+    const ran: string[] = []
+    const report = await runSteps(STEPS.filter((s) => s.screen), async (step) => {
+      ran.push(step.name)
+      return { exitCode: 0, tail: '' }
+    }, {}, skipped)
+    expect(ran).toEqual(names)
+    expect(report.ok).toBe(true)
+  })
+
+  it('never checks off macOS, for the commit tier, or without screen rows', () => {
+    const reader = vi.fn(() => { throw new Error('must not check') })
+    expect(screenOnlySkips(STEPS, reader, 'linux').size).toBe(0)
+    expect(screenOnlySkips(selectSteps({ tiers: new Set(['commit']) }), reader, 'darwin').size).toBe(0)
+    expect(screenOnlySkips(STEPS.filter((s) => !s.screen), reader, 'darwin').size).toBe(0)
+    expect(reader).not.toHaveBeenCalled()
+  })
+
+  it('uses the skip map in the gate runner before starting lanes', async () => {
+    const repo = mkdtempSync(join(tmpdir(), 'tc-gate-screen-'))
+    const output = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: repo })
+      const reader = vi.fn(() => ({ locked: true, asleep: false }))
+      const steps: Step[] = [
+        { name: 'screen', tier: 'publish', lane: 'computer', mac: true, screen: true, cmd: process.execPath, args: ['-e', 'process.exit(9)'], why: '' },
+        { name: 'compile', tier: 'publish', lane: 'swift', mac: true, cmd: process.execPath, args: ['-e', ''], why: '' }
+      ]
+      const report = await gate({ repo, tiers: new Set(['publish']), full: false, verbose: false, steps, platform: 'darwin', readScreen: reader })
+      expect(reader).toHaveBeenCalledTimes(1)
+      expect(report.ok).toBe(true)
+      expect(report.results).toEqual([
+        expect.objectContaining({ name: 'screen', outcome: 'skipped', note }),
+        expect.objectContaining({ name: 'compile', outcome: 'passed' })
+      ])
+      expect(JSON.parse(readFileSync(join(gateDir(repo), 'last-run.json'), 'utf8')).steps[0]).toMatchObject({ name: 'screen', outcome: 'skipped', note })
+    } finally {
+      output.mockRestore()
+      rmSync(repo, { recursive: true, force: true })
+    }
   })
 })
 

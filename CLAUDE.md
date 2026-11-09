@@ -158,6 +158,11 @@ Two separate steps, on purpose, over one gate.
     `<git-dir>/temp-code-gate/logs/<step>.log`, the times in
     `last-run.json` beside it. docs/release-gate.md has the measured
     times on the Mac and the box.
+  - Publish rows e2e-tc-computer, e2e-computer-bridge, e2e-computer-preview
+    and computer-bench need the screen: the gate checks once on macOS and
+    skips them if locked, asleep or unreadable; computer-swift still runs.
+    Direct `--gate` runs also skip with exit 0 before work; run the skipped
+    proofs by hand when unlocked (scripts/lib/macScreen.ts).
   - vitest runs one bounded forks pool (vitest.config.ts: four forks on
     Linux, half the cores on the Mac; the box's pids budget counts threads)
     and the gate's step writes the JSON report beside its log and reads it
@@ -2191,10 +2196,11 @@ why and the measured headline.
   -- --gate` (both halves on the Mac, the box half seamed linux) and `bun
   run script:e2e-computer-preview -- --gate` (the Escape leg skipped), then
   `computer-bench`. Their shared rule (no picture and no prompt without
-  Screen Recording, a named failure without Accessibility, a locked screen
-  failing at once) is scripts/lib/computerProofGate.ts; docs/computer-protocol.md
-  "The unattended proof modes". The preview's scratch copy of TC Probe draws no
-  highlight on Ping (scripts/lib/previewProbeApp.ts), so its second click
+  Screen Recording, a named failure without Accessibility) is
+  scripts/lib/computerProofGate.ts; scripts/lib/macScreen.ts skips their
+  `--gate` runs at entry if the screen is locked, asleep or unreadable
+  (docs/computer-protocol.md "The unattended proof modes"). The preview's
+  scratch copy of TC Probe draws no highlight on Ping (scripts/lib/previewProbeApp.ts), so its second click
   changes no pixel and the no-frame check holds. The hand runs, each with what it needs:
   `script:e2e-tc-computer` whole (TextEdit and the paste: 5 idle minutes),
   `script:e2e-computer` (real Sonnet turns), `script:e2e-computer-bridge`

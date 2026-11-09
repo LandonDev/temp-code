@@ -10,6 +10,7 @@ import { SessionHolds } from '../../src/main/server/computer/hold'
 import type { ComputerService } from '../../src/main/server/computer/service'
 import type { ComputerSessions } from '../../src/main/server/computer/sessions'
 import {
+  computerInitializeMs,
   computerProofMode,
   computerProofPolicy,
   requireGateNative,
@@ -20,6 +21,10 @@ import {
 
 const grants = (screenRecording: boolean) => ({ accessibility: true, screenRecording })
 describe('unattended computer proof policy', () => {
+  it('allows publish load for initialize and keeps hand runs strict', () => {
+    expect(computerInitializeMs(true)).toBe(2_000)
+    expect(computerInitializeMs(false)).toBe(500)
+  })
   it('seeds the host prompt marker and sends text-only calls without Screen Recording', () => {
     const policy = computerProofPolicy(true, grants(false))
     expect(new Map(policy.settings).get(SCREEN_RECORDING_PROMPTED)).toBe('1')

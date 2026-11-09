@@ -14,6 +14,17 @@ file. A sibling change that needs a new check (the bundle-size check after
 | `commit` | typecheck, vitest, build, bundle-size | in the post-commit hook, on every commit on master |
 | `publish` | renderer-soak, renderer-soak-chat, renderer-soak-typing, renderer-soak-scroll, e2e-remote-fence, e2e-addons, e2e-addon-grants, e2e-skills-store, e2e-skills-drivers, hub, ios, ios-client, computer-swift, e2e-tc-computer, e2e-computer-bridge, e2e-computer-preview, computer-bench | before signing in `release:publish`; and in the hook when a commit touches a guarded path, all but computer-bench. The four soaks, hub, ios, ios-client, computer-swift, e2e-tc-computer, e2e-computer-bridge, e2e-computer-preview and computer-bench are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships; the four store proofs run on both hosts |
 
+The four rows `e2e-tc-computer`, `e2e-computer-bridge`,
+`e2e-computer-preview` and `computer-bench` also have `screen: true`.
+When the selection includes a screen row, the gate checks the Mac's screen
+once before starting any lane. A locked, sleeping or unreadable screen skips those rows with
+`skipped  the Mac is locked or asleep; run it by hand when unlocked`;
+`computer-swift` still compiles and tests. The check uses the proof's
+CoreGraphics rule in a tiny Swift binary cached in the gate's log dir
+(1.8 s compile cap, at most 400 ms to read, sharing a 1.95 s budget).
+It never checks off macOS or for a commit-only run. Direct `--gate` proof and bench runs make the same check
+before work and exit 0 with `skipped: the Mac is locked or asleep`.
+
 Guarded paths (`TIER_PATHS`): `ios/**`, `scripts/gen-swift-contract.ts`,
 `src/shared/wireSchemas.ts`, `src/shared/contract*.ts`,
 `src/main/server/remote/**`, `infra/hub/**`, `scripts/e2e-remote-fence.ts`,
@@ -179,8 +190,9 @@ one contract:
   granted, or the rows fail by name. Without Screen Recording a row asks for
   no picture and seeds its own instance with `computer.prompted.screenRecording`,
   so no prompt can go out; its picture checks read skipped.
-- **A locked or dark screen** stops a Mac row as inconclusive: the
-  accessibility tree lists no windows then.
+- **A locked or sleeping screen at entry** skips the four screen rows;
+  a read failure skips them too. A proof that loses the screen after it
+  starts still fails as inconclusive: its checks did not run whole.
 - **Three greens.** A proof joined the gate only after three green `--gate`
   runs in a row on each host it runs on (the sweep of 2026-11-09, below).
 
@@ -295,8 +307,8 @@ system, never the model's word.
 - **One proof at a time**: a run waits while an older computer proof runs on
   the Mac (one started first; two never wait on each other), at most 30
   minutes and never past the step's budget, else it is skipped.
-- **A locked or dark screen** holds every launch, gated or not: AX sees no
-  windows then.
+- **A locked or dark screen** skips a `--gate` run at entry. Other runs
+  hold each launch: AX sees no windows then.
 - **The baseline** is `<git-dir>/temp-code-gate/computer-bench/baseline.json`
   in the checkout that publishes, one row per model, task and task version.
   A gate run that finds no baseline at all passes with "no baseline, first
