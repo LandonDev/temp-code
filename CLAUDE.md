@@ -1855,8 +1855,9 @@ names the far child).
 ## Add-ons and skills: one store, on the box
 The plan is .temp-code/plan-uv2o7r5RN64s.md. This build is the data layer;
 the registry core, the skills store core, the add-on OAuth leg, skills into
-the drivers and the settings pages build on it. Nothing here exposes a tool,
-runs a downstream server or writes a skill folder yet.
+the drivers and the settings pages build on it. The skills store core
+("Skills: written out on every host" below) writes the skill folders and
+gives threads the skill tools.
 - **What they are.** An add-on is an MCP server every harness will reach
   through the one `app` server: a stdio command each host runs, or an http
   address (`AddonSpec` in src/shared/contract-addons.ts). A skill is a folder
@@ -1906,8 +1907,12 @@ runs a downstream server or writes a skill folder yet.
   burst (`storePushes`). The bridge methods `app.addonList`, `app.addonAdd`,
   `app.addonRemove`, `app.addonFind`, `app.addonCall`, `app.skillList`,
   `app.skillWrite`, `app.skillRemove` are in the contract and `local`; the
-  cores add their handlers, and until then they answer unknown method. The
-  phone speaks none of these.
+  skills core answers the three skill methods, and the add-on ones answer
+  unknown method until the registry core adds theirs. `skills.set` and
+  `skills.remove` take `expectUpdatedAt` (0: the name must be free): the
+  home refuses `refused: <name> changed since it was read` when the row moved
+  since, and `updatedAt` rises on every write so the stamp names one write.
+  The phone speaks none of these.
 - **The cards.** The words are pure (`addonCard`, `addonRemoveCard`,
   `skillChangeCard`, `skillRemoveCard`). `skill_write` and `skill_remove` ask
   only over a skill a person or an import wrote last; `addon_remove` only over
@@ -1925,11 +1930,88 @@ runs a downstream server or writes a skill folder yet.
 - **The layout the drivers will read**: `<userData>/harness/<provider>/
   <view>@<digest12>/skills/<name>/`, one generation per view, built beside
   and renamed into place, with a symlink `<view>` to the current one; `view`
-  is `global` or `ws-<workspaceId>`.
+  is `global` or `ws-<workspaceId>`; `digest12` is the generation's own hash
+  (below).
 - Tests: addons, skills, addonGrant, secretPaths, contract-addons,
   capabilities, addonStore, skillStore, skillFiles, storeRpc,
   remote/storeSync, remote/storeSync.pair (the two-host proof),
   sessions-approval, sessions-workspaces, crossHostThreads, facade.
+
+## Skills: written out on every host
+The plan is .temp-code/plan--OsNna4IcfKO.md; the code is
+src/main/server/skills/. Pointing each CLI at the folder, the warm pool's
+shape and retiring harness sync are the "Skills into the drivers" thread's.
+- **Views** (views.ts): each provider (claude, codex, muse) has a `global`
+  view, empty or not, and a workspace has its own `ws-<id>` view only when
+  what its threads get differs from the global one (`visibleSkills`: a
+  disabled or harness-excluded workspace row still shadows the global row).
+  `workspaceForPath` is the deepest workspace holding a folder, by real path.
+- **Generations** (materialize.ts, `SkillMaterializer`): each view is written
+  to `<userData>/harness/<provider>/<view>@<12 hex>/skills/<name>/`. The name
+  hashes the view's skills, `GENERATION_LAYOUT`, the text key and the extras
+  (`generationName`), so a folder of a given name holds one content and never
+  changes. A build writes beside its place (`.tmp-<pid>-<seq>`) and renames
+  in; a skill whose digest, text key and in-view mentions match the view's
+  current generation (its `.tc-generation.json`) is hard-linked from there,
+  every other is written fresh; files are 0444 (0555 executable) so an edit in
+  place cannot reach a sibling generation. The `<view>` symlink is swapped by
+  rename only while a fresh plan still wants that generation; a build whose
+  rows moved under it publishes nothing, and one that finds a skill rewritten
+  before its files were read drops its folder. It runs at boot, on every
+  store change and on a new peer home, one run at a time, a yield per skill;
+  `dirFor(provider, workspaceId)` builds at once (no yield) while a change is
+  pending, so a spawn right after a write sees it. `gc()` at boot and hourly
+  removes a generation no view points at, not `inUse`, superseded over a day
+  ago (`generations.json`); leftovers of a dead process go at start.
+  `materializedSkillsDir(provider, workspaceId)` is the path the drivers
+  point a CLI at (null until configured); `inUse` and `generationExtras`
+  (files beside `skills/`, a plugin manifest) are theirs to fill.
+- **Path text** (skillText.ts): text files (`translatable`, valid UTF-8, a
+  BOM kept) are localized as they are written: the other host's paths
+  through memory sync's two-way map for each heard peer (`skillTextMap` over
+  `MemorySync.peerHomes()`, kept in `memory-sync:peer-homes`; the base map
+  read this host's way until a peer is heard), then each
+  `<home|~|$HOME|${HOME}>/<root>/<name>` for a skill of the view, under any
+  CLI's skills root, becomes the view's stable folder. Nothing else changes.
+- **The import** (import.ts, `importSkills`): once, on the Mac
+  (`hostPlatform()` darwin), every skill under ~/.claude/skills,
+  ~/.codex/skills, ~/.agents/skills (Claude and Codex) and
+  ~/.config/muse/skills goes into the store as `{ kind: 'import', from }`,
+  its CLIs every root's that had it. Copies that differ only by the root they
+  spell are one row; truly different ones keep the newest file's copy and are
+  logged as merged. Dot entries, Claude's synced bucket and plain files pass
+  quietly; a bad name, no SKILL.md, a refused file or a link out of HOME
+  (`reachableUnderHome`) are named; a native binary is dropped from an
+  otherwise good skill (`readSkillDir`'s `dropNative`). It follows the home
+  first, writes with `expectUpdatedAt: 0`, never overwrites, defers while the
+  home is offline (the next link-up runs it) and sets `skills-imported:v1`
+  once whole. The folders are read only.
+- **The tools** (tools.ts; Claude in-process through `setAppSkillTools`, the
+  bridge through index.ts's `app.skill*` cases): `skill_list` (the
+  workspace's rows, disabled ones too, `here` when this thread's CLI gets
+  it), `skill_write` (files or a folder, never both; scope defaults to the
+  thread's workspace; the root thread is the writer) and `skill_remove`. A
+  change to a skill a person or an import wrote last asks on the schema's
+  card plus a `changes` line (`skillChanges`), on the call's own row for
+  Claude (its tool_use id) and on an id no row has for a bridge call; a
+  denial or Away writes nothing. The checked row's `updatedAt` rides as
+  `expectUpdatedAt`, so a skill that moved is refused with "call skill_write
+  again". The answer waits for the write-out (`whenSettled`). The bridge
+  calls write and remove with no client deadline.
+- **The slash menu** (commands.ts `configureCommandSkills`): claude's and
+  codex's user skills come first from the store's folder for the thread's
+  workspace, then, while `readHome` (on until the drivers own each CLI's
+  skill folder), from ~/.claude/skills or ~/.codex/skills for names the store
+  lacks; the synced bucket and `.system` read as before; the cache keys on
+  the generation.
+- Proof: `bun run script:e2e-skills-store` (two headless instances of the
+  built tree: the import, the seed, the views and their path text on both
+  hosts, a new skill, an atomic rewrite under a 2 ms reader, the card denied
+  then allowed, the slash menu, a removal, a restart that imports nothing
+  again). Unit: skills/{views,skillText,materialize,import,tools}, skillStore,
+  skillFiles, storeRpc, remote/storeSync.pair, memorySync, harnessSet,
+  commands, app-bridge, the renderer's toolBlock. docs/box.md "Skills:
+  written out on every host".
 
 ## Background work and watching: a structured wait on the session row
 - The claude driver keeps every live background task as an item

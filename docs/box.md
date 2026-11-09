@@ -4233,6 +4233,70 @@ in-memory link: the seed, a forwarded write, a box edit and removal by push,
 the workspace map, a workspace the box lacks, the refusal, a binary file's
 round trip and the seed clash).
 
+### Skills: written out on every host
+
+Every host writes the skills each CLI gets out of the store into its own
+data dir, so a CLI reads a plain folder and never the database:
+
+```
+<userData>/harness/<provider>/<view>@<12 hex>/skills/<name>/…   one generation
+<userData>/harness/<provider>/<view>                              symlink to the current one
+```
+
+`provider` is claude, codex or muse; `view` is `global`, or `ws-<id>` for a
+workspace whose threads get something other than the global view. A
+generation's name hashes everything its bytes depend on: the view's skills,
+the layout, the text key (the path map, the home and the view's folder) and
+any extras beside `skills/`. A folder of a given name is complete once it is
+renamed in and never changes, so a CLI pointed at it never sees a skill
+change under its feet; the next spawn gets the new generation.
+
+A change builds the view's next generation beside its place and renames it
+in. A skill that did not change is hard-linked from the current generation,
+so a write to one skill of fifty costs one skill; every file is read-only, so
+an edit in place cannot reach another generation through a shared inode. The
+`<view>` link moves by rename, so a reader through it sees the old folder or
+the new one whole. Old generations stay a day after they were replaced (and
+while a live CLI holds one), then go at boot or the hourly sweep.
+
+Skills name absolute paths, often their own install folder
+(`~/.codex/skills/build-cosmic-frontend/scripts/…`). As each text file is
+written out, the other host's paths become this host's (memory sync's map
+for the peer it has heard from, the peer's home and work root kept in the
+`memory-sync:peer-homes` setting), and a skill of the view named under any
+CLI's skills root (`~`, `$HOME`, `${HOME}` or the home itself) becomes the
+view's folder. So a box thread pointed at the store loses nothing when
+harness sync retires.
+
+**The import.** The first boot of the Mac with this build reads
+~/.claude/skills, ~/.codex/skills, ~/.agents/skills and
+~/.config/muse/skills into the store as imports, so the store starts full;
+the box never imports (its folders are harness-sync copies of the Mac's).
+A skill in several roots is one row run by every CLI that had it; two copies
+that differ only in which root they spell are equal, and truly different
+copies keep the newest (one line in the Mac's log names the kept copy).
+Claude's synced bucket, dot entries, a folder with no SKILL.md and a link
+out of HOME are passed over; a native binary is left out of an otherwise
+good skill, since each host fetches its own. A name the store already holds
+stays the store's. On a Mac already paired the import reads the box's rows
+first and writes to the box; with the box offline it waits for the next
+link-up. `skills-imported:v1` marks it done. The person's folders are read,
+never changed.
+
+**Threads write skills.** `skill_list`, `skill_write` and `skill_remove` are
+on every thread (Claude in-process, Codex and Muse over the bridge). A new
+skill, or one a thread wrote last, is written at once; a change to a skill a
+person or the import wrote asks on a card that names the files that change.
+The answer comes once this host has written the new generation out; a
+running thread keeps the skills it started with.
+
+The composer's slash menu lists the store's skills for the thread's
+workspace, then the home folder's for names the store lacks, until the
+drivers point each CLI at the store.
+
+Proof: `bun run script:e2e-skills-store` (two headless instances of the
+built tree; build first).
+
 ## One project across hosts: a far start lands in the linked project
 
 A thread one host starts on another (`app_start_thread` or `spawn_agent`
