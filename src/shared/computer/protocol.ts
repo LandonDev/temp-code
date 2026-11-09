@@ -268,7 +268,7 @@ export const ShotSchema = z.object({
 })
 export type Shot = z.infer<typeof ShotSchema>
 
-/** `line`: the element's observation line, no indent and no prefix. */
+/** `line`: the element's observation line after its indent and `[<index>] ` (`button "Save"`). */
 export const ElementBriefSchema = z.object({ index: ElementIndexSchema, line: z.string() })
 export type ElementBrief = z.infer<typeof ElementBriefSchema>
 
