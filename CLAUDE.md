@@ -2098,9 +2098,6 @@ and .temp-code/plan-JBpcLz-eGMhp.md (the drivers).
   runtime. It waits for the gate build before starting that child.
 
 ## Computer use: the Mac's apps from any thread
-- The preview proof uses `scripts/lib/previewProbeApp.ts` to clear Ping's
-  highlight and state drawing in its scratch copy of TC Probe. Its second
-  AX click can then change no pixels; the no-frame check stays in place.
 docs/computer-protocol.md is the contract and the long account, by
 section; docs/box.md "Computer use: the Mac's apps from any thread" has
 why and the measured headline.
@@ -2192,7 +2189,9 @@ why and the measured headline.
   `computer-bench`. Their shared rule (no picture and no prompt without
   Screen Recording, a named failure without Accessibility, a locked screen
   failing at once) is scripts/lib/computerProofGate.ts; docs/computer-protocol.md
-  "The unattended proof modes". The hand runs, each with what it needs:
+  "The unattended proof modes". The preview's scratch copy of TC Probe draws no
+  highlight on Ping (scripts/lib/previewProbeApp.ts), so its second click
+  changes no pixel and the no-frame check holds. The hand runs, each with what it needs:
   `script:e2e-tc-computer` whole (TextEdit and the paste: 5 idle minutes),
   `script:e2e-computer` (real Sonnet turns), `script:e2e-computer-bridge`
   over SSH (the real pair), `script:e2e-computer-ax` and

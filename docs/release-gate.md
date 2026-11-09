@@ -186,9 +186,9 @@ one contract:
 | e2e-addon-grants | `e2e` | both | two paired headless instances, scripts/lib/fakeOAuthServer.ts | nothing (no model) | 133 s, 134 s, 134 s | 134 s, 134 s, 134 s | 17 min |
 | e2e-skills-store | `e2e` | both | two paired headless instances | nothing (no model) | 13 s, 15 s, 15 s | 13 s, 13 s, 13 s | 11 min |
 | e2e-skills-drivers | `e2e` | both | one headless instance, the real CLIs against scripts/lib/spikeFakes.ts | the real-model legs (`--host box\|mac`) | 10 s, 10 s, 10 s | 29 s, 28 s, 29 s | 12 min |
-| e2e-tc-computer | `computer` | Mac | the service and TC Probe | the TextEdit legs and the paste | n/a | | |
-| e2e-computer-bridge | `computer` | Mac | two headless instances (the box half seamed linux), the service, TC Probe | the SSH pair | n/a | | |
-| e2e-computer-preview | `computer` | Mac | the service and TC Probe | leg 4, the Escape tap, which takes the person's Escape | n/a | | |
+| e2e-tc-computer | `computer` | Mac | the service and TC Probe | the TextEdit legs and the paste | n/a | 19 s, 19 s, 19 s | 11 min |
+| e2e-computer-bridge | `computer` | Mac | two headless instances (the box half seamed linux), the service, TC Probe | the SSH pair | n/a | 28 s, 29 s, 28 s | 12 min |
+| e2e-computer-preview | `computer` | Mac | the service and TC Probe | leg 4, the Escape tap, which takes the person's Escape | n/a | 24 s, 23 s, 23 s | 12 min |
 
 The four store rows run one at a time in the `e2e` lane after the fence;
 the three Mac rows run before `computer-bench` in its lane, so a cheap

@@ -90,11 +90,11 @@ export const STORE_MEASURED_MS = {
 } as const
 export const STORE_CAP_MS = Object.fromEntries(Object.entries(STORE_MEASURED_MS).map(([k, v]) => [k, proofCap(v)])) as Record<keyof typeof STORE_MEASURED_MS, number>
 
-/** The Mac's TC Probe proofs' measured `--gate` times (docs/release-gate.md "The store and computer proofs"). */
+/** The Mac's TC Probe proofs' measured `--gate` times: the worst of three, to the second (the sweep of 2026-11-09; docs/release-gate.md "The store and computer proofs"). */
 export const COMPUTER_MEASURED_MS = {
-  'e2e-tc-computer': 3 * 60_000,
-  'e2e-computer-bridge': 4 * 60_000,
-  'e2e-computer-preview': 2 * 60_000
+  'e2e-tc-computer': 20_000,
+  'e2e-computer-bridge': 29_000,
+  'e2e-computer-preview': 24_000
 } as const
 export const COMPUTER_CAP_MS = Object.fromEntries(Object.entries(COMPUTER_MEASURED_MS).map(([k, v]) => [k, proofCap(v)])) as Record<keyof typeof COMPUTER_MEASURED_MS, number>
 
