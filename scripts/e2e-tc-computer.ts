@@ -907,7 +907,7 @@ async function appSections(
     ['the prefix "TC Pro"', 'TC Pro']
   ] as const) {
     await probeApp.step(`state.get finds it by ${by}`, async () => {
-      // by title: a never-activated app's inert window is neither main nor focused, so it is no default (§2.1)
+      // by title, so these steps hold the app's match alone; the default window has a step of its own
       const o = await a.call('state.get', {
         session: SESSION,
         app: { app },
@@ -925,6 +925,25 @@ async function appSections(
       probeObservation = o
     })
   }
+  await probeApp.step('state.get with no window takes the first standard window (§2.1)', async (data) => {
+    // never activated, the probe window is neither main nor focused: the standard-window fallback must find it
+    const root = elementLines(probeObservation!)[0]
+    data.windowLine = root.role
+    const answer = await a.send('state.get', {
+      session: SESSION,
+      app: { pid: probePid },
+      mode: 'full',
+      wait: COMPUTER_WAIT.observe
+    }).answer
+    if (answer.ok) {
+      check(answer.result.window.id === probeWindowId, 'the default is the probe window', answer.result.window)
+      return
+    }
+    // a dialog is no standard window, so it is no default: the only miss §2.1 allows
+    check(answer.error.data?.kind === 'window_not_found', 'a miss answers window_not_found', answer.error)
+    check(root.role === 'dialog', 'the default passed over a standard window', root)
+    data.default = 'none: AppKit calls the probe window a dialog'
+  })
   await probeApp.step('left_click on Ping at the ax tier', async (data) => {
     const read = probeObservation!
     const ping = findElement(
