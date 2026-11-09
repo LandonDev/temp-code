@@ -1,9 +1,15 @@
 /** A viewer may draw one frame and retain only the newest frame behind it. */
 export const PREVIEW_STARVE_MS = 5_000
+/**
+ * A watcher takes no frame until it is `ready` (its start answer has gone
+ * out: a frame before it would name a preview id the client does not know
+ * yet, never be drawn and never be acked); until then the newest frame waits
+ * in its pending slot.
+ */
 export class PreviewGate<F extends { seq: number }> {
   private readonly watchers = new Map<
     string,
-    { send: (frame: F) => void; lastAck: number; flight?: F; pending?: F }
+    { send: (frame: F) => void; lastAck: number; ready: boolean; flight?: F; pending?: F }
   >()
   private latest: F | undefined
   private readonly withheld = new Set<number>()
@@ -12,9 +18,17 @@ export class PreviewGate<F extends { seq: number }> {
     private readonly serviceAck: (seq: number) => void
   ) {}
   add(id: string, send: (frame: F) => void): void {
-    const watcher = { send, lastAck: this.now(), flight: this.latest }
-    this.watchers.set(id, watcher)
-    if (watcher.flight) send(watcher.flight)
+    this.watchers.set(id, { send, lastAck: this.now(), ready: false, pending: this.latest })
+  }
+  /** The watcher knows its id now: it gets the newest frame (which can wake a starved service once drawn). */
+  ready(id: string): void {
+    const w = this.watchers.get(id)
+    if (!w || w.ready) return
+    w.ready = true
+    if (w.flight || !w.pending) return
+    w.flight = w.pending
+    w.pending = undefined
+    w.send(w.flight)
   }
   remove(id: string): void {
     this.watchers.delete(id)
@@ -28,7 +42,7 @@ export class PreviewGate<F extends { seq: number }> {
     else this.withheld.add(serviceSeq)
     if (this.watchers.size) this.latest = frame
     for (const w of this.watchers.values()) {
-      if (w.flight) w.pending = frame
+      if (w.flight || !w.ready) w.pending = frame
       else {
         w.flight = frame
         w.send(frame)

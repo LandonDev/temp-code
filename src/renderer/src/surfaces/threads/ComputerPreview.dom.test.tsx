@@ -228,6 +228,14 @@ describe("ComputerPreview", () => {
     }
   });
 
+  it("says an end that came while its start waited, from the start's own answer", async () => {
+    link.answer = async () => ({ preview: "pv_1", app: "TextEdit", window: "Untitled", width: 0, height: 0, ended: "minimized" });
+    mount();
+    await flush();
+    expect(screen.getByText("The window is minimized")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
   it("follows the agent to another window on the same preview id", async () => {
     mount();
     await flush();

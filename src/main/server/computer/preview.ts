@@ -35,7 +35,9 @@ interface Stream {
   stream: string | null
   routed: boolean
   edge: number
-  answer: Omit<ComputerPreviewStart, 'preview'>
+  answer: Omit<ComputerPreviewStart, 'preview' | 'ended'>
+  /** why the stream last ended, until one starts again: a start that lands on it says so in its answer */
+  ended: ComputerPreviewEndReason | null
   queue: Promise<void>
   revision: number
 }
@@ -51,6 +53,8 @@ export class ComputerPreviews {
       sessions: ComputerSessions
       log?: (line: string) => void
       clock?: Clock
+      /** runs a watcher's first frame after its start answer has been sent; default the next macrotask */
+      defer?: (fn: () => void) => void
     }
   ) {
     this.off.push(deps.service.onNotification((n) => this.notification(n)))
@@ -98,6 +102,7 @@ export class ComputerPreviews {
         routed: false,
         edge: 0,
         answer: { app: '', window: null, width: 0, height: 0 },
+        ended: null,
         queue: Promise.resolve(),
         revision: 0,
         gate: new PreviewGate(
@@ -123,7 +128,11 @@ export class ComputerPreviews {
       await queued
       if (queued === s.queue) break
     }
-    return { preview: id, ...s.answer }
+    // Frames go to this watcher only after its answer is on the socket (index.ts sends it once this
+    // resolves): a frame naming an id the client has not been told would never be drawn or acked.
+    const stream = s
+    ;(this.deps.defer ?? ((fn: () => void) => void setTimeout(fn, 0)))(() => stream.gate.ready(id))
+    return { preview: id, ...s.answer, ...(s.ended ? { ended: s.ended } : {}) }
   }
   ack(connection: object, preview: string, seq: number): void {
     const s = this.find(connection, preview)
@@ -159,6 +168,7 @@ export class ComputerPreviews {
   }
   private ended(s: Stream, reason: ComputerPreviewEndReason): void {
     s.routed = false
+    s.ended = reason
     s.gate.reset()
     this.push(s, { state: 'ended', reason })
   }
@@ -204,6 +214,7 @@ export class ComputerPreviews {
           maxEdge: edge
         })
         if (revision !== s.revision || !s.routed) return
+        s.ended = null
         s.answer = { ...s.answer, width: size.width, height: size.height }
         this.push(s, { state: 'live', ...s.answer })
       } catch (error) {

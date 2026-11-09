@@ -12,6 +12,8 @@ describe('PreviewGate', () => {
     )
     gate.add('a', (f) => a.push(f.seq))
     gate.add('b', (f) => b.push(f.seq))
+    gate.ready('a')
+    gate.ready('b')
     for (let seq = 1; seq <= 4; seq++) gate.frame({ seq })
     expect(a).toEqual([1])
     expect(b).toEqual([1])
@@ -33,6 +35,8 @@ describe('PreviewGate', () => {
     )
     gate.add('a', () => {})
     gate.add('b', () => {})
+    gate.ready('a')
+    gate.ready('b')
     gate.frame({ seq: 1 })
     now = 4000
     gate.ack('b', 1)
@@ -59,16 +63,38 @@ describe('PreviewGate', () => {
       (seq) => service.push(seq)
     )
     gate.add('quiet', () => {})
+    gate.ready('quiet')
     gate.frame({ seq: 1 })
     now = PREVIEW_STARVE_MS
     gate.frame({ seq: 2 })
     gate.frame({ seq: 3 })
     gate.add('new', (f) => draws.push(f.seq))
+    expect(draws).toEqual([])
+    gate.ready('new')
     expect(draws).toEqual([3])
     gate.ack('new', 3)
     expect(service).toEqual([1, 2, 3])
     gate.frame({ seq: 4 })
     expect(draws).toEqual([3, 4])
+  })
+  it('sends a watcher nothing before it is ready, then the newest frame alone', () => {
+    const draws: number[] = [],
+      service: number[] = []
+    const gate = new PreviewGate<{ seq: number }>(
+      () => 0,
+      (seq) => service.push(seq)
+    )
+    gate.add('a', (f) => draws.push(f.seq))
+    gate.frame({ seq: 1 })
+    gate.frame({ seq: 2 })
+    expect(draws).toEqual([])
+    expect(service).toEqual([1, 2])
+    gate.ready('a')
+    gate.ready('a')
+    expect(draws).toEqual([2])
+    gate.ack('a', 2)
+    gate.frame({ seq: 3 })
+    expect(draws).toEqual([2, 3])
   })
   it('acks discarded frames and ignores draws from an old stream', () => {
     const service: number[] = []

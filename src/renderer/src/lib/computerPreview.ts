@@ -138,6 +138,10 @@ export function useComputerPreview(entry: ComputerEntry, opts: PreviewOptions): 
           return;
         }
         preview = started.preview;
+        if (started.ended) {
+          setState({ status: "ended", reason: started.ended });
+          return;
+        }
         shown = { app: started.app, window: started.window, width: started.width, height: started.height };
         setState({ status: "live", ...shown, frames });
       })

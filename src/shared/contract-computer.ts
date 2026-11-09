@@ -119,6 +119,8 @@ export interface ComputerPreviewStart {
   window: string | null
   width: number
   height: number
+  /** the stream ended while this start waited (a minimized window, Screen Recording off): no frames come until it starts again */
+  ended?: ComputerPreviewEndReason
 }
 
 /** To every client, once per burst (at most four a second). */

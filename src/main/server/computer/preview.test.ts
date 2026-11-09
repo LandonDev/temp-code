@@ -66,6 +66,13 @@ describe('ComputerPreviews over tc-computer', () => {
       expect(a.filter((f) => f.push === 'computer-frame').length).toBeGreaterThan(1)
     )
   })
+  it('sends a watcher no frame until its start answer has gone out', async () => {
+    const { previews, a, va } = await setup()
+    const result = await previews.start(va, { threadId: 't1', maxEdge: 512 })
+    expect(result.ended).toBeUndefined()
+    expect(a.some((f) => f.push === 'computer-frame')).toBe(false)
+    await vi.waitFor(() => expect(a.find((f) => f.push === 'computer-frame')?.preview).toBe(result.preview))
+  })
   it('shares the largest edge, reduces it when needed, and stops the last socket', async () => {
     const { h, previews, va, vb } = await setup()
     const first = await previews.start(va, { threadId: 't1', maxEdge: 960 })
@@ -158,7 +165,8 @@ describe('ComputerPreviews over tc-computer', () => {
     const stream = (request.mock.calls[0][1] as { stream: string }).stream
     receive({ method: 'capture/streamEnded', params: { stream, reason: 'window-closed' } })
     finish({ stream, width: 512, height: 429 })
-    await starting
+    // The client knows its preview id only from this answer: the end rides in it too.
+    expect((await starting).ended).toBe('window-closed')
     expect(a.at(-1)).toMatchObject({ state: 'ended', reason: 'window-closed' })
     expect(a.some((f) => f.state === 'live')).toBe(false)
   })
@@ -176,7 +184,8 @@ describe('ComputerPreviews over tc-computer', () => {
   ] as const)('reports refused starts as %s / %s', async (window, env, reason) => {
     const { h, previews, va, a } = await setup(env)
     if (window) await h.run('computer_observe', { app: 'TextEdit', window })
-    await previews.start(va, { threadId: 't1', maxEdge: 512 })
+    const answer = await previews.start(va, { threadId: 't1', maxEdge: 512 })
+    expect(answer.ended).toBe(reason)
     expect(a.at(-1)).toMatchObject({ state: 'ended', reason })
   })
   it('reopens the session and resumes after a service epoch', async () => {
