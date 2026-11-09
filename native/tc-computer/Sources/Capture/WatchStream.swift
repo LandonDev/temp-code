@@ -1,3 +1,5 @@
+#if canImport(ScreenCaptureKit)
+
 import ComputerCore
 import CoreMedia
 import CoreVideo
@@ -141,6 +143,8 @@ final class WatchStream: NSObject, PixelChangeSignal, SCStreamOutput, SCStreamDe
     // MARK: Lifetime
 
     private func startClock() {
+        // An error can stop the watch between startCapture returning and this running.
+        guard !stopped else { return }
         let clock = DispatchSource.makeTimerSource(queue: queue)
         clock.schedule(deadline: .now() + .seconds(1), repeating: .seconds(1))
         clock.setEventHandler { [weak self] in self?.tick() }
@@ -159,12 +163,14 @@ final class WatchStream: NSObject, PixelChangeSignal, SCStreamOutput, SCStreamDe
             state.stopped = true
             return state.gate.stop()
         }
-        guard let waiters else { return }
         clock?.cancel()
         clock = nil
+        guard let waiters else { return }
         if capturing { stream?.stopCapture { _ in } }
         stream = nil
         for waiter in waiters { waiter.resume(returning: false) }
         onStop(self)
     }
 }
+
+#endif

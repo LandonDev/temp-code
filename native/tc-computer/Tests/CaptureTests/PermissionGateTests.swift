@@ -1,3 +1,5 @@
+#if canImport(ScreenCaptureKit)
+
 @testable import Capture
 import ComputerCore
 import ComputerProtocol
@@ -62,3 +64,5 @@ private func expectScreenRecordingMissing(_ body: () async throws -> Void) async
         #expect(!FileManager.default.fileExists(atPath: path + ".tmp"))
     }
 }
+
+#endif

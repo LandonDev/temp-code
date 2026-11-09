@@ -1,3 +1,5 @@
+#if canImport(ScreenCaptureKit)
+
 import AppKit
 import CoreGraphics
 
@@ -16,3 +18,5 @@ public enum CaptureRuntime {
     }
 }
 
+
+#endif

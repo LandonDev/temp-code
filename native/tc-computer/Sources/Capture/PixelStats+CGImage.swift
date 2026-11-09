@@ -1,3 +1,5 @@
+#if canImport(ScreenCaptureKit)
+
 import CoreGraphics
 import Foundation
 
@@ -35,3 +37,5 @@ extension PixelStats {
         Bitmap(image: image).map { flatness($0) } ?? 1
     }
 }
+
+#endif

@@ -1,3 +1,5 @@
+#if canImport(ScreenCaptureKit)
+
 @testable import Capture
 import ComputerProtocol
 import CoreGraphics
@@ -77,3 +79,5 @@ private func magic(_ data: Data) -> ShotFormat? {
         #expect(PixelStats.flatness(Bitmap.flatUI(width: 640, height: 400).image) > 0.9)
     }
 }
+
+#endif

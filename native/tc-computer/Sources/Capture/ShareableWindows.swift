@@ -1,3 +1,5 @@
+#if canImport(ScreenCaptureKit)
+
 import ComputerCore
 import Foundation
 import os
@@ -42,3 +44,5 @@ public final class ShareableWindows: ShareableWindowSource, @unchecked Sendable 
         abs(window.frame.width - size.width) <= 0.5 && abs(window.frame.height - size.height) <= 0.5
     }
 }
+
+#endif

@@ -1,3 +1,5 @@
+#if canImport(ScreenCaptureKit)
+
 import CoreGraphics
 import Foundation
 
@@ -13,3 +15,5 @@ public enum LiveWindows {
         return CGRect(dictionaryRepresentation: dictionary as CFDictionary)
     }
 }
+
+#endif

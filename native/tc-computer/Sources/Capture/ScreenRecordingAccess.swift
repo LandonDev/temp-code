@@ -1,3 +1,5 @@
+#if canImport(ScreenCaptureKit)
+
 import CoreGraphics
 
 /// The Screen Recording grant, read without ever prompting. Every Capture entry point checks it
@@ -14,3 +16,5 @@ public enum ScreenRecordingAccess {
         CGRequestScreenCaptureAccess()
     }
 }
+
+#endif

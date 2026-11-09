@@ -1,3 +1,5 @@
+#if canImport(ScreenCaptureKit)
+
 @testable import Capture
 import ComputerCore
 import ComputerProtocol
@@ -48,3 +50,5 @@ private func scError(_ code: SCStreamError.Code) -> NSError {
         #expect(StreamEndReason.error("x").wire.rawValue == "error")
     }
 }
+
+#endif

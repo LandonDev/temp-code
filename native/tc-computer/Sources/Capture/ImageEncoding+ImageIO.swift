@@ -1,3 +1,5 @@
+#if canImport(ScreenCaptureKit)
+
 import ComputerCore
 import ComputerProtocol
 import CoreGraphics
@@ -42,3 +44,5 @@ extension ImageEncoding {
         return data as Data
     }
 }
+
+#endif

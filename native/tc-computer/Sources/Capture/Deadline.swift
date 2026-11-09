@@ -1,3 +1,5 @@
+#if canImport(ScreenCaptureKit)
+
 import Foundation
 import os
 
@@ -27,3 +29,5 @@ func withDeadline<T: Sendable>(
         }
     }
 }
+
+#endif

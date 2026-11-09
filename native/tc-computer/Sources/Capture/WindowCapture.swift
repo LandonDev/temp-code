@@ -1,3 +1,5 @@
+#if canImport(ScreenCaptureKit)
+
 import ComputerCore
 import ComputerProtocol
 import CoreGraphics
@@ -204,3 +206,5 @@ enum ShotFile {
         }
     }
 }
+
+#endif

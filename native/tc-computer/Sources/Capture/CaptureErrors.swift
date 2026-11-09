@@ -1,3 +1,5 @@
+#if canImport(ScreenCaptureKit)
+
 import ComputerCore
 import ComputerProtocol
 import Foundation
@@ -39,3 +41,5 @@ public enum CaptureErrors {
         return SCStreamError.Code(rawValue: error.code)
     }
 }
+
+#endif

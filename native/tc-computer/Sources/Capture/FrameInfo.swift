@@ -1,3 +1,5 @@
+#if canImport(ScreenCaptureKit)
+
 import CoreMedia
 import Foundation
 @preconcurrency import ScreenCaptureKit
@@ -47,3 +49,5 @@ private let machTimebase: Double = {
     mach_timebase_info(&info)
     return Double(info.numer) / Double(info.denom)
 }()
+
+#endif

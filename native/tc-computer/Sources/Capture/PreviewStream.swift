@@ -1,3 +1,5 @@
+#if canImport(ScreenCaptureKit)
+
 import ComputerCore
 import CoreMedia
 import CoreVideo
@@ -73,7 +75,12 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
 
     func stop() async {
         queue.async {
-            let command = self.state.withLockUnchecked { $0.life.stop() }
+            // The reason is ours before the stop goes out, so an error ScreenCaptureKit reports
+            // while our own stopCapture is in flight never turns the shell's stop into `.error`.
+            let command = self.state.withLockUnchecked { state -> StreamLifecycle.Command? in
+                if state.reason == nil { state.reason = .stopped }
+                return state.life.stop()
+            }
             if let command { self.run(command) }
         }
         _ = await ended()
@@ -155,6 +162,8 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
     // MARK: The clock, the lifecycle and the end
 
     private func startClock() {
+        // An error can end the stream between startCapture returning and this running.
+        guard state.withLockUnchecked({ $0.finished == nil }) else { return }
         let clock = DispatchSource.makeTimerSource(queue: queue)
         let every = CaptureTuning.streamTick
         clock.schedule(deadline: .now() + every.timeInterval, repeating: every.timeInterval)
@@ -252,3 +261,5 @@ extension Duration {
         .nanoseconds(Int(milliseconds * 1e6))
     }
 }
+
+#endif
