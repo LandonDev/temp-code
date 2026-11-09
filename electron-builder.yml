@@ -62,10 +62,11 @@ mac:
   # will download. A published build MUST be signed either way.
   notarize: false
   # Mach-O files outside the Electron frameworks are not signed by default;
-  # the Appshots Swift helper has to carry the same identity or
+  # the Appshots helper and tc-computer must carry the same identity or
   # notarization rejects the bundle.
   binaries:
     - Contents/Resources/app/resources/native/appshot-helper
+    - Contents/Resources/app/resources/native/tc-computer
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.

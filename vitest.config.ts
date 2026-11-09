@@ -46,7 +46,7 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
-          include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/*.test.ts'],
+          include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/**/*.test.ts'],
           exclude: [...configDefaults.exclude, '**/*.dom.test.tsx'],
           setupFiles: [storageSetup]
         }

@@ -5,6 +5,7 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { buildTcComputer } from './scripts/lib/tcComputerBuild'
 
 /** Measurement builds (scripts/measure-react-compiler.ts): the profiling
  *  reconciler makes <Profiler> report in production mode and keeps the dev
@@ -44,6 +45,21 @@ function appshotHelper(): Plugin {
       } catch {
         console.warn('[appshot-helper] swiftc failed or missing — Appshots will be disabled')
       }
+    }
+  }
+}
+
+/** Builds the computer-use service; watch mode leaves the cold build in the background. */
+function tcComputer(): Plugin {
+  const root = resolve('.')
+  return {
+    name: 'tc-computer',
+    buildStart() {
+      buildTcComputer({
+        root,
+        background: this.meta.watchMode,
+        require: process.env.TEMP_CODE_REQUIRE_NATIVE === '1'
+      })
     }
   }
 }
@@ -96,7 +112,7 @@ function bundleMap(): Plugin {
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin({ exclude: ['aliax-core', '@muse-code/sdk'] }), appshotHelper()],
+    plugins: [externalizeDepsPlugin({ exclude: ['aliax-core', '@muse-code/sdk'] }), appshotHelper(), tcComputer()],
     resolve: {
       alias: {
         '@shared': resolve('src/shared')

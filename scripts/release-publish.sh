@@ -192,7 +192,7 @@ fi
 # electron-vite into out/, then the bundle-size check. The train's gate
 # typechecked this very commit, so the typecheck is not run again here.
 begin build
-bunx electron-vite build >"$STAGE/build.log" 2>&1 || { tail -40 "$STAGE/build.log" >&2; exit 1; }
+TEMP_CODE_REQUIRE_NATIVE=1 bunx electron-vite build >"$STAGE/build.log" 2>&1 || { tail -40 "$STAGE/build.log" >&2; exit 1; }
 bun scripts/check-bundle-size.ts >>"$STAGE/build.log" 2>&1 || { tail -40 "$STAGE/build.log" >&2; exit 1; }
 touch "$STAGE/build.done"
 end
@@ -238,6 +238,11 @@ bunx electron-builder --mac $TARGETS --arm64 --publish never \
   >"$STAGE/sign.log" 2>&1 || { tail -40 "$STAGE/sign.log" >&2; exit 1; }
 APP=dist/mac-arm64/TempCode.app
 [ -d "$APP" ] || { echo "electron-builder left no $APP" >&2; exit 1; }
+COMPUTER="$APP/Contents/Resources/app/resources/native/tc-computer"
+[ -f "$COMPUTER" ] || { echo "REFUSING TO PUBLISH $VERSION: signed app has no tc-computer" >&2; exit 1; }
+codesign --verify --strict -R="anchor apple generic and certificate leaf[subject.OU] = \"$TEAM\"" "$COMPUTER" >"$STAGE/computer-sign.log" 2>&1 || {
+  echo "REFUSING TO PUBLISH $VERSION: tc-computer fails codesign --verify --strict for team $TEAM" >&2; exit 1
+}
 ZIP="dist/TempCode-$VERSION-arm64.zip"
 [ -f "$ZIP" ] || { echo "electron-builder left no $ZIP" >&2; exit 1; }
 if [ ! -f dist/latest-mac.yml ]; then
