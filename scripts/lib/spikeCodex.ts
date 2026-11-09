@@ -417,7 +417,7 @@ async function realCodex(ev: Evidence): Promise<Record<string, unknown>> {
   try {
     const thread = await startThread(conn, r.cwd)
     const t = await turn(conn, thread, text('Reply with the single word ok.'), 180_000)
-    return { model, ok: t.completed && !t.error, status: t.status, error: t.error, text: t.text, paths: uniq(t.requests.map((q) => `${q.method} ${q.path}`)), leaks: inventory(listTree(r.home)), home: inventory(listTree(home, 2)) }
+    return { model, ok: t.completed && !t.error, status: t.status, error: t.error, text: t.text, paths: uniq(t.requests.map((q) => `${q.method} ${q.path}`)), answered: t.requests.map((q) => `${q.method} ${q.path} ${q.answered}`), routingLog: conn.routing, leaks: inventory(listTree(r.home)), home: inventory(listTree(home, 2)) }
   } finally {
     conn.close()
     c.codexFront.forward = null

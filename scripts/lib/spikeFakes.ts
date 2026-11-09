@@ -468,7 +468,7 @@ export class FakeResponses {
     }
     if (this.forward) {
       rec.answered = 'forwarded'
-      return this.pass(req, res, raw, this.forward(req.url ?? '/'))
+      return this.pass(req, res, raw, this.forward(req.url ?? '/'), rec)
     }
     if (req.method === 'GET' && url.pathname.endsWith('/muse-code/models')) {
       rec.answered = this.museModels ? 'models' : '404'
@@ -569,11 +569,12 @@ export class FakeResponses {
   }
 
   /** A real run: the request goes on to `target` as it came, the answer comes back as it went. */
-  private async pass(req: IncomingMessage, res: ServerResponse, body: Buffer, target: string): Promise<void> {
+  private async pass(req: IncomingMessage, res: ServerResponse, body: Buffer, target: string, rec: ResponsesRequestRecord): Promise<void> {
     const headers: Record<string, string> = {}
     for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string' && !/^(host|connection|content-length|accept-encoding|upgrade)$/i.test(k)) headers[k] = v
     try {
       const r = await fetch(target, { method: req.method, headers, body: req.method === 'GET' || req.method === 'HEAD' ? undefined : body })
+      rec.answered = `forwarded ${r.status}`
       const out: Record<string, string> = {}
       r.headers.forEach((v, k) => {
         if (!/^(content-encoding|content-length|transfer-encoding|connection)$/i.test(k)) out[k] = v
@@ -582,6 +583,7 @@ export class FakeResponses {
       if (r.body) for await (const chunk of r.body as unknown as AsyncIterable<Uint8Array>) res.write(chunk)
       res.end()
     } catch (e) {
+      rec.answered = `forward failed: ${(e as Error).message.slice(0, 120)}`
       json(res, 502, { error: { message: `forward failed: ${(e as Error).message}` } })
     }
   }
