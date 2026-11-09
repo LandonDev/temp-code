@@ -114,6 +114,13 @@ describe('what a harness is told at spawn', () => {
     expect(implementerSpawnPrompt(meta)).toContain(AWAY_ON)
   })
 
+  it('the away block points at the computer tools first, and a Mac subagent only without them', () => {
+    expect(AWAY_ON).toContain("For anything that needs a Mac app's screen, use the computer tools when this thread has them")
+    expect(AWAY_ON).toContain('otherwise spawn a gpt-6.1-sol subagent on the Mac')
+    expect(AWAY_ON).not.toContain('use computer use')
+    expect(AWAY_ON.split('\n').filter((l) => l.includes('computer tools'))).toHaveLength(1)
+  })
+
   it("a master's mechanics ask its report to gather the batch's decisions", () => {
     expect(MASTER_MECHANICS).toContain('Decisions made while you were away')
   })

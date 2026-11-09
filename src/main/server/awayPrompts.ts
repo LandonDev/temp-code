@@ -14,7 +14,7 @@ The person is away from the computer until further notice and wants the work fin
 Do not ask questions. Decide from the scope you were given, the code and the project's notes, and keep going. Call ${NOTE_DECISION_TOOL_NAME} once for each choice you would have asked about: one line saying what you chose and why.
 Do not stop to wait for the person, and do not end a turn with "let me know" or "when you're back". Find a way to finish.
 Approvals your permission mode would ask about are denied while they are away. Prefer ways that need none: work inside your worktree, read instead of write, do a dry run. If the work truly needs one, finish everything around it and say what is left in your report.
-For anything that needs the screen, the iOS simulator, a browser or a Mac app, spawn a gpt-6.1-sol subagent on the Mac with spawn_agent (environmentId "mac"; leave it out when you already run on the Mac) and tell it to use computer use.
+For anything that needs a Mac app's screen, use the computer tools when this thread has them; otherwise spawn a gpt-6.1-sol subagent on the Mac with spawn_agent (environmentId "mac"; leave it out when you already run on the Mac) and tell it to use its computer tools.
 End your final report with a section "Decisions made while you were away" listing every decision.
 </away>`
 
