@@ -601,6 +601,19 @@ ignores mouse events, and shows inactive so it never takes focus. Its
 glow. It follows the system theme. Only opacity changes: the base entrance
 fade and fast exit fade, with the fast fade for reduced motion.
 
+#### The live proofs on the Mac
+
+Two proofs drive the real `tc-computer` on a ticking TC Probe and need an
+unlocked, awake screen. `bun run script:e2e-computer-preview` checks the
+relay, the click record, the escape watch and the session hold, writing its
+report under /tmp/tc-preview-proof. `bun run script:e2e-computer-ui` checks
+the Computer row, the preview, the screenshot row and the banner through a
+real thread in an isolated instance, writing its report under
+/tmp/tc-preview-reports/ui. Neither has run yet. On 2026-11-09, at
+c68b770a, the result was "not run: the Mac was locked, the person away".
+Landing B merged on the box's typecheck and tests, `computer:test` on the
+Mac (482) and three review rounds.
+
 ## 9. The tools the models see
 
 Four tools on the app MCP server, the same on every harness: claude in-process (`mcp__app__computer_*` through the SDK's `mcpServers.app`), codex and Muse through `scripts/app-mcp-bridge.mjs` (codex's `mcp_servers.app`, Muse's `session/start` `config.mcpServers.app`). `tools.ts` holds their zod input shapes and result shapes; Computer sessions and tools registers them in `apptools.ts` and the bridge (with `app-bridge.test.ts` holding the two schemas equal, as it does for the other app tools), and Computer model instructions owns every description string.

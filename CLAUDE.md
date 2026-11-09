@@ -3638,7 +3638,9 @@ proof and the sizing rules; the pieces, by name:
   front app unchanged); its cleanup ends only the instance's own process
   group. Both need an unlocked, awake screen: `ScreenWatch` reads it before
   each launch and every second, and a lock or a dark display stops the run
-  as inconclusive and cleans up.
+  as inconclusive and cleans up. Neither has run yet: on 2026-11-09 they
+  read "not run: the Mac was locked, the person away"
+  (docs/computer-protocol.md "The live proofs on the Mac").
 - Pictures to each model: claude and Muse get a computer call's pictures as
   image parts; codex too (`codexComputerImages()` in drivers/codex.ts, its
   measured default `parts`; `TEMP_CODE_CODEX_COMPUTER_IMAGES=parts|steer|view`
