@@ -13,7 +13,11 @@
  * lane run in array order, one at a time; different lanes run at once, with
  * one status line while they do and a per-step time table when they finish.
  * On the first failure nothing more starts, the running steps are stopped,
- * and the failed step's log tail is printed. Every step's output lands in
+ * and the failed step's log tail is printed. A step with an outer limit
+ * names it as `capMs`: past it the gate kills the step and fails it. A step
+ * marked `onlyAtPublish` runs only when its tier was asked for, never when
+ * changed paths alone pulled the tier into a commit's gate (the computer
+ * bench's model threads). Every step's output lands in
  * <git-dir>/temp-code-gate/logs/<step>.log; the last run's times in
  * <git-dir>/temp-code-gate/last-run.json.
  *
@@ -52,6 +56,12 @@ export interface Step {
    *  tree): skipped elsewhere with a note, since release:publish runs the
    *  publish tier on the Mac before anything ships. */
   mac?: boolean
+  /** The step's hard cap from its start: past it the gate kills its process
+   *  group (SIGTERM, SIGKILL 5 s later) and fails it "passed its cap". */
+  capMs?: number
+  /** Runs only when its tier was asked for (`--tier publish|all`), never when
+   *  changed paths alone pulled the tier in (atPublishSkips). */
+  onlyAtPublish?: boolean
 }
 
 /**
@@ -60,6 +70,9 @@ export interface Step {
  * on a commit whose paths hit TIER_PATHS. A proof that boots an instance
  * belongs in `publish`.
  */
+/** A soak's outer limit: the 10 minutes it may wait for the build, its 90 s, and teardown. */
+export const SOAK_CAP_MS = 12 * 60_000
+
 export const STEPS: Step[] = [
   {
     name: 'typecheck',
@@ -101,6 +114,7 @@ export const STEPS: Step[] = [
     tier: 'publish',
     cmd: 'bun',
     args: ['scripts/measure-renderer-soak.ts', '--gate'],
+    capMs: SOAK_CAP_MS,
     // After the commit tier's build and bundle-size when both tiers run, so
     // it never reads an out/ that is being written.
     lane: 'build',
@@ -112,6 +126,7 @@ export const STEPS: Step[] = [
     tier: 'publish',
     cmd: 'bun',
     args: ['scripts/measure-renderer-soak.ts', '--gate', '--scene', 'chat'],
+    capMs: SOAK_CAP_MS,
     // The same lane, after the board scene: one instance at a time.
     lane: 'build',
     why: "the same 50 s on one plain chat streaming, with its own CPU bound (scripts/measure-renderer-soak.ts --gate --scene chat, 90 s at most)",
@@ -122,6 +137,7 @@ export const STEPS: Step[] = [
     tier: 'publish',
     cmd: 'bun',
     args: ['scripts/measure-renderer-soak.ts', '--gate', '--scene', 'typing'],
+    capMs: SOAK_CAP_MS,
     // The same lane, after the chat scene: one instance at a time.
     lane: 'build',
     why: "the master's composer typed into beside its board under the board's load, the master's churn and a 3,000-edit flood every 10 s: keystroke to frame p95 within 16 ms idle and 33 ms busy, no long task over 100 ms while typing, every character in order (scripts/measure-renderer-soak.ts --gate --scene typing, 90 s at most)",
@@ -132,6 +148,7 @@ export const STEPS: Step[] = [
     tier: 'publish',
     cmd: 'bun',
     args: ['scripts/measure-renderer-soak.ts', '--gate', '--scene', 'scroll'],
+    capMs: SOAK_CAP_MS,
     // The same lane, after the typing scene: one instance at a time.
     lane: 'build',
     why: "the master's transcript, its board, the rail and the workspace column each turned by the wheel at 60 Hz for 4 s and flung under the board's load: every one moves and no long task runs while it does; the frame rate and the longest frame are reported against the target until a run on the Mac sizes them (scripts/measure-renderer-soak.ts --gate --scene scroll, 90 s at most)",
@@ -180,6 +197,18 @@ export const STEPS: Step[] = [
     lane: 'swift',
     why: 'the tc-computer Swift package: the generated wire types against the fixtures (swift build + test)',
     mac: true
+  },
+  {
+    name: 'computer-bench',
+    tier: 'publish',
+    cmd: 'bun',
+    args: ['run', 'script:e2e-computer-bench', '--', '--gate'],
+    // Its own lane: real model threads for minutes, beside the build, the soaks and the Swift lanes.
+    lane: 'computer',
+    capMs: 15 * 60_000,
+    onlyAtPublish: true,
+    why: 'real desktop tasks (TextEdit, Chrome, a dev window, System Settings, a save dialog) through the computer tools and tc-computer on three models side by side, in the background tiers: each end state, median tool calls and median host time per call against the baseline in the gate dir (scripts/e2e-computer-bench.ts --gate, about 6 min, 15 min at most)',
+    mac: true
   }
 ]
 
@@ -190,6 +219,16 @@ export function macOnlySkips(steps: readonly Step[], platform: NodeJS.Platform =
   for (const s of steps) if (s.mac) out.set(s.name, 'needs the Mac; release:publish runs it there')
   return out
 }
+
+/** The `onlyAtPublish` steps of a tier that changed paths alone pulled in, with the note the report carries. */
+export function atPublishSkips(steps: readonly Step[], pulled: ReadonlySet<Tier>): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const s of steps) if (s.onlyAtPublish && pulled.has(s.tier)) out.set(s.name, 'runs at publish')
+  return out
+}
+
+/** `15m`, `90s`: a cap as the report says it. */
+export const fmtCap = (ms: number): string => (ms % 60_000 === 0 ? `${ms / 60_000}m` : ms % 1000 === 0 ? `${ms / 1000}s` : `${ms}ms`)
 
 /**
  * Which paths pull a tier into a commit's gate. A commit that touches one of
@@ -429,11 +468,16 @@ export async function runSteps(
       }
       events.onStart?.(step)
       const start = Date.now()
+      // The cap aborts the step alone, through the same kill a failure uses.
+      const cap = step.capMs ? new AbortController() : null
+      const capTimer = cap ? setTimeout(() => cap.abort(), step.capMs) : undefined
+      const signal = cap ? AbortSignal.any([controller.signal, cap.signal]) : controller.signal
       let result: StepResult
       try {
-        const { exitCode, tail } = await runOne(step, controller.signal)
+        const { exitCode, tail } = await runOne(step, signal)
         const ms = Date.now() - start
-        if (exitCode === 0) result = { name: step.name, outcome: 'passed', ms }
+        if (cap?.signal.aborted) result = { name: step.name, outcome: 'failed', ms, exitCode, tail, note: `passed its ${fmtCap(step.capMs!)} cap` }
+        else if (exitCode === 0) result = { name: step.name, outcome: 'passed', ms }
         else if (controller.signal.aborted && failed) result = { name: step.name, outcome: 'stopped', ms, exitCode, tail }
         else result = { name: step.name, outcome: 'failed', ms, exitCode, tail }
       } catch (err) {
@@ -442,8 +486,11 @@ export async function runSteps(
           outcome: controller.signal.aborted && failed ? 'stopped' : 'failed',
           ms: Date.now() - start,
           exitCode: null,
-          tail: err instanceof Error ? err.message : String(err)
+          tail: err instanceof Error ? err.message : String(err),
+          ...(cap?.signal.aborted ? { note: `passed its ${fmtCap(step.capMs!)} cap` } : {})
         }
+      } finally {
+        clearTimeout(capTimer)
       }
       if (result.outcome === 'failed' && !failed) {
         failed = true
@@ -660,17 +707,19 @@ const stamp = (): string => new Date().toTimeString().slice(0, 8)
 
 export async function gate(opts: GateOptions): Promise<Report> {
   const tiers = new Set(opts.tiers)
+  const pulled = new Set<Tier>()
   if (opts.since) {
     const changed = changedPathsSince(opts.repo, opts.since)
     for (const [tier, hits] of tiersForPaths(changed)) {
       if (tiers.has(tier)) continue
       tiers.add(tier)
+      pulled.add(tier)
       console.log(`${stamp()} + ${tier} tier: ${hits.length === 1 ? hits[0] : `${hits[0]} and ${hits.length - 1} more`} changed since ${opts.since}`)
     }
   }
   const steps = selectSteps({ tiers, only: opts.only, skip: opts.skip })
   const dir = gateDir(opts.repo)
-  const skipped = macOnlySkips(steps)
+  const skipped = new Map([...macOnlySkips(steps), ...atPublishSkips(steps, pulled)])
   let hash: string | undefined
   const hashStep = steps.find((s) => s.hashSkip)
   if (hashStep) {

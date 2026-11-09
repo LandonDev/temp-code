@@ -3,7 +3,8 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { STEPS, TIER_PATHS, formatReport, gateDir, matchPath, parseArgs, readStoredHash, runSteps, selectSteps, shouldSkipTypecheck, storeHash, tiersForPaths, typecheckHash, type Step, macOnlySkips, judgeReport, spawnStep, stepArgs } from './gate'
+import { STEPS, TIER_PATHS, formatReport, gateDir, matchPath, parseArgs, readStoredHash, runSteps, selectSteps, shouldSkipTypecheck, storeHash, tiersForPaths, typecheckHash, type Step, macOnlySkips, judgeReport, spawnStep, stepArgs, atPublishSkips, fmtCap, SOAK_CAP_MS } from './gate'
+import { BENCH_TIMING } from './lib/computerBench'
 
 describe('the step list', () => {
   it('has unique names, a tier and a lane on every step, and the hook-facing steps in the commit tier', () => {
@@ -21,7 +22,7 @@ describe('the step list', () => {
     expect(size.lane).toBe(build.lane)
     expect(STEPS.indexOf(size)).toBeGreaterThan(STEPS.indexOf(build))
     const publish = STEPS.filter((s) => s.tier === 'publish').map((s) => s.name)
-    expect(publish).toEqual(expect.arrayContaining(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'renderer-soak-scroll', 'e2e-remote-fence', 'hub', 'ios', 'ios-client', 'computer-swift']))
+    expect(publish).toEqual(expect.arrayContaining(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'renderer-soak-scroll', 'e2e-remote-fence', 'hub', 'ios', 'ios-client', 'computer-swift', 'computer-bench']))
     // The soaks read out/ too: in the build lane after the build and its size check, so they never race them,
     // one scene after the other, each failing on its CPU bound (no report-only flag).
     const soak = STEPS.find((s) => s.name === 'renderer-soak')!
@@ -43,7 +44,7 @@ describe('the step list', () => {
 
   it('selects by tier, honours --only and --skip, and refuses an unknown name', () => {
     expect(selectSteps({ tiers: new Set(['commit']) }).map((s) => s.name)).toEqual(['typecheck', 'vitest', 'build', 'bundle-size'])
-    expect(selectSteps({ tiers: new Set(['publish']) }).map((s) => s.name)).toEqual(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'renderer-soak-scroll', 'e2e-remote-fence', 'hub', 'ios', 'ios-client', 'computer-swift'])
+    expect(selectSteps({ tiers: new Set(['publish']) }).map((s) => s.name)).toEqual(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'renderer-soak-scroll', 'e2e-remote-fence', 'hub', 'ios', 'ios-client', 'computer-swift', 'computer-bench'])
     expect(selectSteps({ tiers: new Set(['commit', 'publish']) }).length).toBe(STEPS.length)
     expect(selectSteps({ tiers: new Set(['commit']), only: ['vitest'] }).map((s) => s.name)).toEqual(['vitest'])
     expect(selectSteps({ tiers: new Set(['commit']), skip: ['vitest'] }).map((s) => s.name)).toEqual(['typecheck', 'build', 'bundle-size'])
@@ -67,10 +68,72 @@ describe('the step list', () => {
 
 describe('the Mac-only steps', () => {
   it('skips the renderer soak, hub, ios and ios-client off macOS with a note, and nothing on it', () => {
-    expect([...macOnlySkips(STEPS, 'linux').keys()]).toEqual(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'renderer-soak-scroll', 'hub', 'ios', 'ios-client', 'computer-swift'])
+    expect([...macOnlySkips(STEPS, 'linux').keys()]).toEqual(['renderer-soak', 'renderer-soak-chat', 'renderer-soak-typing', 'renderer-soak-scroll', 'hub', 'ios', 'ios-client', 'computer-swift', 'computer-bench'])
     expect(macOnlySkips(STEPS, 'linux').get('ios')).toBe('needs the Mac; release:publish runs it there')
     expect(macOnlySkips(STEPS, 'darwin').size).toBe(0)
     expect(STEPS.filter((s) => s.mac).every((s) => s.tier === 'publish')).toBe(true)
+  })
+})
+
+describe('the computer bench row and the caps', () => {
+  const bench = STEPS.find((s) => s.name === 'computer-bench')!
+
+  it('is a publish step on the Mac in its own lane, with a cap, never pulled into a commit hook', () => {
+    expect(bench).toMatchObject({ tier: 'publish', mac: true, lane: 'computer', onlyAtPublish: true, cmd: 'bun', args: ['run', 'script:e2e-computer-bench', '--', '--gate'] })
+    expect(STEPS.filter((s) => s.lane === 'computer')).toEqual([bench])
+    expect(bench.capMs).toBe(15 * 60_000)
+    // The script's own deadline leaves it a minute inside the cap to report and clean up.
+    expect(BENCH_TIMING.budgetMs).toBeLessThan(bench.capMs!)
+  })
+
+  it('gives every soak row its cap', () => {
+    const soaks = STEPS.filter((s) => s.name.startsWith('renderer-soak'))
+    expect(soaks).toHaveLength(4)
+    for (const s of soaks) expect(s.capMs, s.name).toBe(SOAK_CAP_MS)
+    expect(SOAK_CAP_MS).toBe(12 * 60_000)
+  })
+
+  it('skips an onlyAtPublish step when changed paths alone pulled its tier, and keeps it when the tier was asked for', async () => {
+    expect([...atPublishSkips(STEPS, new Set(['publish']))]).toEqual([['computer-bench', 'runs at publish']])
+    expect(atPublishSkips(STEPS, new Set()).size).toBe(0)
+    const publish = selectSteps({ tiers: new Set(['publish']) })
+    const ran: string[] = []
+    const report = await runSteps(
+      publish.filter((s) => s.name === 'computer-bench' || s.name === 'e2e-remote-fence'),
+      async (s) => {
+        ran.push(s.name)
+        return { exitCode: 0, tail: '' }
+      },
+      {},
+      atPublishSkips(publish, new Set(['publish']))
+    )
+    expect(ran).toEqual(['e2e-remote-fence'])
+    expect(report.ok).toBe(true)
+    expect(formatReport(report)).toMatch(/– computer-bench\s+skipped {2}runs at publish/)
+  })
+
+  it('says a cap in minutes, seconds or milliseconds', () => {
+    expect(fmtCap(15 * 60_000)).toBe('15m')
+    expect(fmtCap(90_000)).toBe('90s')
+    expect(fmtCap(300)).toBe('300ms')
+  })
+
+  it('kills a step past its cap and fails it with the cap’s line', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tc-gate-cap-'))
+    try {
+      const sleeper: Step = { name: 'sleeper', tier: 'publish', cmd: process.execPath, args: ['-e', 'setInterval(() => {}, 1000)'], lane: 'x', why: '', capMs: 300 }
+      const quick: Step = { name: 'quick', tier: 'publish', cmd: process.execPath, args: ['-e', ''], lane: 'y', why: '', capMs: 60_000 }
+      const t0 = Date.now()
+      const report = await runSteps([sleeper, quick], spawnStep({ repo: dir, logDir: join(dir, 'logs'), verbose: false }))
+      expect(Date.now() - t0).toBeLessThan(5000)
+      expect(report.ok).toBe(false)
+      const by = Object.fromEntries(report.results.map((r) => [r.name, r]))
+      expect(by.sleeper).toMatchObject({ outcome: 'failed', note: 'passed its 300ms cap' })
+      expect(by.quick.outcome).toBe('passed')
+      expect(formatReport(report)).toMatch(/✗ sleeper .* failed {2}passed its 300ms cap/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 
