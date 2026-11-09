@@ -3,7 +3,7 @@ import type { MacBridgeHeld } from '@shared/contract-macbridge'
 import { MacLoadGuard, loadLimitFor, nextBusy, type HoldEnd } from './macLoadGuard'
 
 function guard(
-  opts: { load?: number; cores?: number; max?: Record<string, number>; limit?: number | null } = {}
+  opts: { load?: number; cores?: number; max?: Record<string, number>; computer?: Record<string, number>; limit?: number | null } = {}
 ) {
   const sample = { load: opts.load ?? 0, cores: opts.cores ?? 8 }
   const caps = opts.max ?? {}
@@ -13,6 +13,7 @@ function guard(
   let now = 1_000_000
   const g = new MacLoadGuard({
     maxRunning: (envId) => caps[envId] ?? 4,
+    maxComputer: (envId) => opts.computer?.[envId] ?? 2,
     loadLimit: () => pinned,
     sample: () => ({ ...sample }),
     intervalMs: 0,
@@ -126,6 +127,69 @@ describe('MacLoadGuard: the cap', () => {
     expect(g.heldCount('box')).toBe(0)
     // Running count untouched by the ones that never started.
     expect(g.runningCount('box')).toBe(1)
+  })
+})
+
+describe('MacLoadGuard: computer sessions', () => {
+  it('a session fits under both caps and counts toward the host cap', () => {
+    const { g } = guard({ max: { box: 3 }, computer: { box: 2 } })
+    expect(g.acquire('box', 's1', Infinity, 'computer')).toEqual({ admitted: true })
+    expect(g.acquire('box', 'j1', Infinity)).toEqual({ admitted: true })
+    expect(g.runningCount('box')).toBe(2)
+    expect(g.computerCount('box')).toBe(1)
+    expect(g.acquire('box', 's2', Infinity, 'computer')).toEqual({ admitted: true })
+    const j2 = g.acquire('box', 'j2', Infinity)
+    expect(j2.admitted).toBe(false)
+    if (!j2.admitted) expect(j2.held.reason).toBe('cap')
+  })
+
+  it('the computer cap holds a session with reason computer and its counts; a command behind it still starts', async () => {
+    const { g, changes } = guard({ max: { box: 4 }, computer: { box: 1 } })
+    g.acquire('box', 's1', Infinity, 'computer')
+    const s2 = g.acquire('box', 's2', Infinity, 'computer')
+    expect(s2.admitted).toBe(false)
+    if (s2.admitted) throw new Error('unreachable')
+    expect(s2.held).toEqual({ reason: 'computer', position: 1, load: 0, limit: 16, cores: 8, maxRunning: 4, running: 1, computer: 1, maxComputer: 1 })
+    expect(g.acquire('box', 'j1', Infinity)).toEqual({ admitted: true })
+    expect(g.runningCount('box')).toBe(2)
+    const s3 = g.acquire('box', 's3', Infinity, 'computer')
+    if (s3.admitted) throw new Error('unreachable')
+    expect(s3.held.position).toBe(2)
+    g.release('s1')
+    expect(await endOf(s2.done)).toBe('admitted')
+    expect(g.computerCount('box')).toBe(1)
+    expect(changes.filter(([id]) => id === 's3').at(-1)?.[1]).toMatchObject({ reason: 'computer', position: 1 })
+  })
+
+  it('a command held by the host cap behind a session held by the computer cap: positions count per cap', async () => {
+    const { g } = guard({ max: { box: 2 }, computer: { box: 1 } })
+    g.acquire('box', 's1', Infinity, 'computer')
+    g.acquire('box', 'j1', Infinity)
+    const s2 = g.acquire('box', 's2', Infinity, 'computer')
+    const j2 = g.acquire('box', 'j2', Infinity)
+    if (s2.admitted || j2.admitted) throw new Error('unreachable')
+    expect(s2.held).toMatchObject({ reason: 'computer', position: 1 })
+    expect(j2.held).toMatchObject({ reason: 'cap', position: 1 })
+    g.release('j1')
+    expect(await endOf(j2.done)).toBe('admitted')
+    expect(await endOf(s2.done)).toBe('open')
+    g.release('s1')
+    expect(await endOf(s2.done)).toBe('admitted')
+    expect([g.runningCount('box'), g.computerCount('box')]).toEqual([2, 1])
+  })
+
+  it('release frees both counts; a busy Mac holds both kinds with reason load', () => {
+    const { g, setLoad } = guard({ computer: { box: 2 } })
+    g.acquire('box', 's1', Infinity, 'computer')
+    g.release('s1')
+    expect(g.runningCount('box')).toBe(0)
+    expect(g.computerCount('box')).toBe(0)
+    setLoad(100)
+    g.sample()
+    const s = g.acquire('box', 's2', Infinity, 'computer')
+    const j = g.acquire('box', 'j', Infinity)
+    if (s.admitted || j.admitted) throw new Error('unreachable')
+    expect([s.held.reason, s.held.position, j.held.reason, j.held.position]).toEqual(['load', 1, 'load', 2])
   })
 })
 

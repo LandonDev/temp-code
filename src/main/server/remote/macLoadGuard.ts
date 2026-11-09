@@ -1,5 +1,6 @@
 import { cpus, loadavg } from 'node:os'
 import {
+  MAC_BRIDGE_DEFAULT_MAX_COMPUTER,
   MAC_LOAD_LIMIT_PER_CORE,
   MAC_LOAD_RESUME_FRACTION,
   MAC_LOAD_SAMPLE_MS,
@@ -22,6 +23,11 @@ import {
  *    every new command and job is held, whatever its host; they resume once
  *    the load is back under three quarters of the limit (1.5 × cores by
  *    default), so a load bouncing around the limit does not flap the queue.
+ *  - Per host, a cap on live computer sessions
+ *    (`macBridge.maxComputer.<envId>`, default 2; contract-maccomputer.ts).
+ *    A computer session is a running job too, so it counts toward the host's
+ *    cap on commands and jobs as well; a command waiting behind a session the
+ *    computer cap holds still starts when it fits.
  *  - A held call is not refused: the caller's tool result is delayed. It
  *    waits only as long as the call's own deadline allows (`until`), can be
  *    cancelled from the Mac (Stop on its row), and every change of standing
@@ -46,6 +52,8 @@ export const osLoadSample = (): LoadSample => ({
 export interface MacLoadGuardDeps {
   /** The host's cap on concurrent commands and jobs. */
   maxRunning: (envId: string) => number
+  /** The host's cap on live computer sessions; MAC_BRIDGE_DEFAULT_MAX_COMPUTER when absent. */
+  maxComputer?: (envId: string) => number
   /** `macBridge.loadLimit` when set by hand, else null for MAC_LOAD_LIMIT_PER_CORE × cores. */
   loadLimit: () => number | null
   sample?: () => LoadSample
@@ -60,12 +68,16 @@ export interface MacLoadGuardDeps {
 /** How a hold ended: its turn came, the call's deadline passed first, or the Mac stopped it. */
 export type HoldEnd = 'admitted' | 'expired' | 'cancelled'
 
+/** What waits on the guard: a command or job, or a computer session (which is also a running job). */
+export type HoldKind = 'job' | 'computer'
+
 export type Admission =
   { admitted: true } | { admitted: false; held: MacBridgeHeld; done: Promise<HoldEnd> }
 
 interface Waiter {
   id: string
   envId: string
+  kind: HoldKind
   until: number
   held: MacBridgeHeld
   resolve: (end: HoldEnd) => void
@@ -89,8 +101,10 @@ export function nextBusy(wasBusy: boolean, load: number, limit: number): boolean
 }
 
 export class MacLoadGuard {
-  /** Request ids running per host (commands and jobs the bridge admitted). */
+  /** Request ids running per host (commands, jobs and computer sessions the bridge admitted). */
   private readonly running = new Map<string, Set<string>>()
+  /** The computer sessions among them, per host. */
+  private readonly computers = new Map<string, Set<string>>()
   /** Held calls per host, oldest first. */
   private readonly queues = new Map<string, Waiter[]>()
   private last: LoadSample & { at: number }
@@ -149,6 +163,11 @@ export class MacLoadGuard {
     return this.running.get(envId)?.size ?? 0
   }
 
+  /** Live computer sessions the host holds (they count in runningCount too). */
+  computerCount(envId: string): number {
+    return this.computers.get(envId)?.size ?? 0
+  }
+
   heldCount(envId: string): number {
     return this.queues.get(envId)?.length ?? 0
   }
@@ -174,20 +193,22 @@ export class MacLoadGuard {
    * and the host under its cap, else after its turn. `until` is the call's
    * own deadline; past it the hold ends `expired`.
    */
-  acquire(envId: string, id: string, until: number): Admission {
-    if (this.fits(envId)) {
-      this.mark(envId, id)
+  acquire(envId: string, id: string, until: number, kind: HoldKind = 'job'): Admission {
+    if (this.fits(envId, kind)) {
+      this.mark(envId, id, kind)
       return { admitted: true }
     }
     const queue = this.queues.get(envId) ?? []
     this.queues.set(envId, queue)
     let settle!: (end: HoldEnd) => void
     const done = new Promise<HoldEnd>((resolve) => (settle = resolve))
+    const reason = this.reasonOf(envId, kind)
     const waiter: Waiter = {
       id,
       envId,
+      kind,
       until,
-      held: this.standing(envId, queue.length + 1),
+      held: this.standing(envId, reason, 1 + queue.filter((w) => this.reasonOf(envId, w.kind) === reason).length),
       resolve: settle,
       timer: null
     }
@@ -217,6 +238,9 @@ export class MacLoadGuard {
 
   /** A command or job the guard admitted ended (whatever way): its slot is free. */
   release(id: string): void {
+    for (const [envId, set] of this.computers) {
+      if (set.delete(id) && set.size === 0) this.computers.delete(envId)
+    }
     for (const [envId, set] of this.running) {
       if (set.delete(id)) {
         if (set.size === 0) this.running.delete(envId)
@@ -233,30 +257,54 @@ export class MacLoadGuard {
     this.timer = null
     for (const q of [...this.queues.values()]) for (const w of [...q]) this.end(w, 'cancelled')
     this.running.clear()
+    this.computers.clear()
   }
 
   // ── inside ─────────────────────────────────────────────────────────
 
-  private fits(envId: string): boolean {
-    return !this.busy && this.runningCount(envId) < this.deps.maxRunning(envId)
+  private maxComputerOf(envId: string): number {
+    return this.deps.maxComputer?.(envId) ?? MAC_BRIDGE_DEFAULT_MAX_COMPUTER
   }
 
-  private mark(envId: string, id: string): void {
+  private computerFull(envId: string): boolean {
+    return this.computerCount(envId) >= this.maxComputerOf(envId)
+  }
+
+  private fits(envId: string, kind: HoldKind): boolean {
+    return (
+      !this.busy &&
+      this.runningCount(envId) < this.deps.maxRunning(envId) &&
+      (kind !== 'computer' || !this.computerFull(envId))
+    )
+  }
+
+  /** What holds a waiter of this kind now: the load, else the computer cap, else the host's cap. */
+  private reasonOf(envId: string, kind: HoldKind): MacBridgeHeld['reason'] {
+    if (this.busy) return 'load'
+    return kind === 'computer' && this.computerFull(envId) ? 'computer' : 'cap'
+  }
+
+  private mark(envId: string, id: string, kind: HoldKind): void {
     const set = this.running.get(envId) ?? new Set<string>()
     set.add(id)
     this.running.set(envId, set)
+    if (kind !== 'computer') return
+    const own = this.computers.get(envId) ?? new Set<string>()
+    own.add(id)
+    this.computers.set(envId, own)
   }
 
-  private standing(envId: string, position: number): MacBridgeHeld {
+  private standing(envId: string, reason: MacBridgeHeld['reason'], position: number): MacBridgeHeld {
     const limit = loadLimitFor(this.last, this.deps.loadLimit())
     return {
-      reason: this.busy ? 'load' : 'cap',
+      reason,
       position,
       load: this.last.load,
       limit,
       cores: this.last.cores,
       maxRunning: this.deps.maxRunning(envId),
-      running: this.runningCount(envId)
+      running: this.runningCount(envId),
+      ...(reason === 'computer' ? { computer: this.computerCount(envId), maxComputer: this.maxComputerOf(envId) } : {})
     }
   }
 
@@ -268,37 +316,48 @@ export class MacLoadGuard {
     queue.splice(at, 1)
     if (queue.length === 0) this.queues.delete(w.envId)
     if (w.timer) clearTimeout(w.timer)
-    if (how === 'admitted') this.mark(w.envId, w.id)
+    if (how === 'admitted') this.mark(w.envId, w.id, w.kind)
     else this.log(`${w.envId}: ${w.id} ${how} after waiting`)
     w.resolve(how)
     this.deps.onChange?.(w.id, null)
     if (how !== 'admitted') this.restand(w.envId)
   }
 
-  /** Let the head of every host's queue go while it fits, in order; then tell the rest where they stand. */
+  /**
+   * Let go, in arrival order, every waiter whose own caps let it in (a
+   * command behind a session the computer cap holds still starts); then tell
+   * the rest where they stand.
+   */
   private drain(): void {
     for (const [envId, queue] of [...this.queues]) {
-      while (queue.length && this.fits(envId)) this.end(queue[0], 'admitted')
+      for (const w of [...queue]) if (this.fits(envId, w.kind)) this.end(w, 'admitted')
       this.restand(envId)
     }
   }
 
+  /** Each waiter's standing: its reason, and its place among those ahead of it held by the same cap. */
   private restand(envId: string): void {
     const queue = this.queues.get(envId)
     if (!queue) return
-    queue.forEach((w, i) => {
-      const next = this.standing(envId, i + 1)
+    const ahead = new Map<MacBridgeHeld['reason'], number>()
+    for (const w of queue) {
+      const reason = this.reasonOf(envId, w.kind)
+      const position = (ahead.get(reason) ?? 0) + 1
+      ahead.set(reason, position)
+      const next = this.standing(envId, reason, position)
       if (
         next.position !== w.held.position ||
         next.reason !== w.held.reason ||
         next.load !== w.held.load ||
         next.limit !== w.held.limit ||
         next.running !== w.held.running ||
-        next.maxRunning !== w.held.maxRunning
+        next.maxRunning !== w.held.maxRunning ||
+        next.computer !== w.held.computer ||
+        next.maxComputer !== w.held.maxComputer
       ) {
         w.held = next
         this.deps.onChange?.(w.id, next)
       }
-    })
+    }
   }
 }

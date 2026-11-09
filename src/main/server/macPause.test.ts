@@ -83,7 +83,7 @@ function box() {
       (value) => ({ ok: true as const, value }),
       (err: unknown) => ({ ok: false as const, error: err instanceof Error ? err.message : String(err) })
     )
-  return { sessions, calls, out, reply, pause, jobThreads, heldChanges, lines, guard, ofMethod, settle }
+  return { sessions, calls, out, reply, pause, jobThreads, heldChanges, lines, guard, send, ofMethod, settle }
 }
 
 describe('isMacRead', () => {
@@ -228,6 +228,20 @@ describe('MacPause: the hold', () => {
     expect(run.length).toBe(1)
     b.reply(run[0].callId, 'went')
     expect(await long).toEqual({ ok: true, value: 'went' })
+  })
+
+  it("whilePaused 'refuse' refuses at once: never sent, never held, nothing listed on the Mac", async () => {
+    const b = box()
+    b.pause.onStatus('root', 'paused')
+    const refused = await b.settle(
+      b.pause.guard({ sessionId: 'child', macPeer: 'env_mac', method: 'mac.computer', waitMs: 0, whilePaused: 'refuse' }, b.send('mac.computer', 'child'))
+    )
+    expect(refused).toEqual({ ok: false, error: REFUSED_PAUSED })
+    expect(b.out).toEqual([])
+    expect(b.pause.heldCount('root')).toBe(0)
+    b.pause.onStatus('root', 'running')
+    void b.pause.guard({ sessionId: 'child', macPeer: 'env_mac', method: 'mac.computer', waitMs: 0, whilePaused: 'refuse' }, b.send('mac.computer', 'child'))
+    expect(b.ofMethod('mac.computer').length).toBe(1)
   })
 
   it('reads are never held: a paused thread still sends them', () => {

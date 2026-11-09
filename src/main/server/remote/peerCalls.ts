@@ -80,6 +80,9 @@ interface PendingCall {
   timer: NodeJS.Timeout
 }
 
+const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>): boolean =>
+  a.size === b.size && [...a].every((x) => b.has(x))
+
 export class PeerOfflineError extends Error {
   constructor(envId: string) {
     super(`Mac offline: ${envId} has no live link to this host`)
@@ -92,6 +95,7 @@ export class PeerCalls {
   private readonly calls = new Map<string, PendingCall>()
   private readonly registerListeners = new Set<(envId: string, offers: ReadonlySet<string>) => void>()
   private readonly dropListeners = new Set<(envId: string, offers: ReadonlySet<string>) => void>()
+  private readonly offersListeners = new Set<(envId: string, offers: ReadonlySet<string>) => void>()
 
   constructor(
     readonly environmentId: string,
@@ -119,7 +123,24 @@ export class PeerCalls {
       const offers = new Set(params.offers)
       for (const l of this.registerListeners) l(params.from, offers)
     }
+    const offers = new Set(params.offers)
+    if (!sameSet(prior?.offers ?? new Set(), offers)) for (const l of this.offersListeners) l(params.from, offers)
     return { environmentId: this.environmentId }
+  }
+
+  /**
+   * A peer registered with a different set of offers than the one it
+   * replaces, on the same socket or a new one (a first registration counts
+   * against none): the Mac turned computer use on or off for this host.
+   */
+  onOffers(listener: (envId: string, offers: ReadonlySet<string>) => void): () => void {
+    this.offersListeners.add(listener)
+    return () => this.offersListeners.delete(listener)
+  }
+
+  /** What a registered peer offers, while it is registered. */
+  offersOf(envId: string): ReadonlySet<string> | null {
+    return this.registered.get(envId)?.offers ?? null
   }
 
   /** A peer (re)registered on a new socket: what was waiting on it may go now. */

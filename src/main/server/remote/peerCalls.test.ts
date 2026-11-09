@@ -256,6 +256,26 @@ describe('PeerCalls', () => {
     expect(heard).toEqual(['env_mac:mac-bridge', 'env_mac:mac-bridge,x'])
   })
 
+  it('onOffers hears a changed set of offers on the same socket or a new one, never an equal one; offersOf reads the live set', () => {
+    const calls = new PeerCalls('env_box', () => {})
+    const heard: string[] = []
+    calls.onOffers((id, offers) => heard.push(`${id}:${[...offers].sort().join(',')}`))
+    const s1 = { connection: 1, keyId: 'k1', remote: true, send: () => {} }
+    const register = (socket: typeof s1, offers: string[]): void => {
+      handlePeerRequest(calls, socket, { method: 'peer.register', params: { from: 'env_mac', offers } })
+    }
+    expect(calls.offersOf('env_mac')).toBeNull()
+    register(s1, ['mac-bridge'])
+    register(s1, ['mac-bridge'])
+    register(s1, ['mac-bridge', 'computer'])
+    register({ ...s1, connection: 2 }, ['computer', 'mac-bridge'])
+    register({ ...s1, connection: 3 }, ['mac-bridge'])
+    expect(heard).toEqual(['env_mac:mac-bridge', 'env_mac:computer,mac-bridge', 'env_mac:mac-bridge'])
+    expect([...(calls.offersOf('env_mac') ?? [])]).toEqual(['mac-bridge'])
+    calls.drop(3)
+    expect(calls.offersOf('env_mac')).toBeNull()
+  })
+
   it('a newer registration takes the id over; the old socket closing leaves it registered', () => {
     const { calls } = link(async () => null, { connection: 1 })
     const newer = { connection: 2, keyId: 'k1', remote: true, send: () => {} }

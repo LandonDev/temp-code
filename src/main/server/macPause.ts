@@ -85,6 +85,13 @@ export interface GuardedCall {
   shape?: Omit<MacHeldCall, 'id' | 'since' | 'method'>
   /** How long the caller would have waited for this call: a hold past it answers REFUSED_PAUSED. */
   waitMs: number
+  /**
+   * While the thread is paused: hold the call until it resumes (the default),
+   * or refuse it at once with REFUSED_PAUSED, never held nor listed in
+   * `mac.held` (a computer call: the Mac's screen moves on, so a click held
+   * for minutes would land on something else).
+   */
+  whilePaused?: 'hold' | 'refuse'
 }
 
 let heldSeq = 0
@@ -138,6 +145,10 @@ export class MacPause {
    */
   guard<T>(call: GuardedCall, send: (callId: string) => Promise<T>): Promise<T> {
     if (isMacRead(call.method) || !this.isPaused(call.sessionId)) return this.dispatch(call, send)
+    if (call.whilePaused === 'refuse') {
+      this.log(`thread=${call.sessionId}: ${call.method} refused (paused)`)
+      return Promise.reject(new Error(REFUSED_PAUSED))
+    }
     return new Promise<T>((resolve, reject) => {
       const id = `h${++heldSeq}_${this.now().toString(36)}`
       const held: Held = {
