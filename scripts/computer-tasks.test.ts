@@ -42,6 +42,8 @@ describe('bench.html', () => {
       expect(rows).toEqual(seededOrders(seed).map((o) => `Order ${o.id} · ${o.price}`))
       expect(rows).toHaveLength(BENCH_ORDERS)
       expect(doc.getElementById('count')!.textContent).toBe('60 orders')
+      // the status and the count sit in the sticky bar, in view whatever the list's scroll
+      expect([...doc.querySelectorAll('#bar > p')].map((p) => p.id)).toEqual(['status', 'count'])
     }
     expect(new Set(seededOrders(3).map((o) => o.id)).size).toBe(BENCH_ORDERS)
   })
@@ -116,6 +118,21 @@ describe('the tasks', () => {
   it('gives the gate every background task', () => {
     expect(gateTasks().map((t) => t.id)).toEqual(COMPUTER_TASKS.filter((t) => t.tier === 'background').map((t) => t.id))
     expect(gateTasks([{ ...taskById('save-dialog'), tier: 'session' }, taskById('chrome-read')]).map((t) => t.id)).toEqual(['chrome-read'])
+  })
+
+  it("read the status off Chrome's tree when no element is called status, by what the page writes there", () => {
+    const chrome = [
+      `app "Google Chrome" · window "${benchWindow('n0')}" · 1280×800`,
+      `[1] window "${benchWindow('n0')}"`,
+      '  [2] web area "TempCode bench n0"',
+      '    [3] group',
+      `      [4] text = "${FORM_STATUS}"`,
+      '      [5] text = "60 orders"',
+      '    [6] text = "Order ABCD · 12.40"'
+    ].join('\n')
+    expect(statusText(parseObservation(chrome))).toBe(FORM_STATUS)
+    expect(orderCount(parseObservation(chrome))).toBe(60)
+    expect(statusText(parseObservation(chrome.replace(`text = "${FORM_STATUS}"`, 'text = "Order list"')))).toBeNull()
   })
 
   it('read the status and the count off a read', () => {

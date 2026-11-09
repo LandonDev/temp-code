@@ -170,11 +170,15 @@ export const FORM_STATUS = 'Submitted: Ana Ruiz, ana@example.com, L, gift, expre
 type Element = Extract<ObservationLine, { type: 'element' }>
 const elements = (o: ParsedObservation): Element[] => o.lines.filter((l): l is Element => l.type === 'element')
 
-/** The page's status line: the status element's name or value, else the text right under it. */
+/** What the page ever writes into its status line. */
+const STATUS_WORDS = /^(Submitted: |Deleted )/
+
+/** The page's status line: the status element's name or value, else the text right under it; with no status element, the text that reads like one. */
 export function statusText(o: ParsedObservation): string | null {
   const lines = o.lines
   const i = lines.findIndex((l) => l.type === 'element' && l.role === 'status')
-  if (i < 0) return null
+  // Chrome may draw the status element as a plain group, or leave it out while empty: then its text is the line
+  if (i < 0) return elements(o).map((e) => e.value ?? e.name ?? '').find((t) => STATUS_WORDS.test(t)) ?? null
   const s = lines[i] as Element
   const own = s.value ?? s.name
   if (own) return own

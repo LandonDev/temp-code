@@ -27,6 +27,7 @@ import { renderComputerMechanics, setComputerWordsOverride } from '../src/main/s
 import { computerToolSpecs, tierVerdictSetting } from '../src/shared/computer/tools'
 import type { AgentEvent, EventRow } from '../src/shared/events'
 import { exec } from './lib/benchChecks'
+import { ALLOWED_TOOLS } from './lib/computerBench'
 import { DEFAULT_LANE, RIG_BUNDLES, RigStop, repoRoot, startRig, type Rig } from './lib/computerRig'
 import { otherProof } from './lib/proofOrder'
 import { COMPARISON_TASKS, POLICY_TASK, taskById, type CallRecord, type TaskApp, type TaskId, type TaskStart } from './lib/computerTasks'
@@ -50,7 +51,8 @@ const BUNDLES = [RIG_BUNDLES.TextEdit, RIG_BUNDLES['Google Chrome']]
 const TURN_POLL_MS = 30_000
 const TURN_GIVE_UP_MS = 30 * 60_000
 /** The other computer proofs: one proof on the Mac at a time. */
-const OFF_ROUTE_OK = /(^|__|\.)(ToolSearch|tool_search|update_notes)$/
+/** The benchmark's allowed tools (Muse's own `Reminder` child among them), as a tool name may carry a server prefix. */
+const OFF_ROUTE_OK = new RegExp(`(^|__|\\.)(${[...ALLOWED_TOOLS, 'tool_search'].join('|')})$`)
 
 const MODELS: ModelUnderTest[] = [
   { model: 'claude-opus-5-5', provider: 'claude', perVerb: true },

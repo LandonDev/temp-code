@@ -10,12 +10,17 @@
   label { display: block; margin: 4px 0; }
   #orders li { padding: 4px 0; }
   #orders button { margin-left: 8px; }
+  #bar { position: sticky; top: 0; background: Canvas; padding: 4px 0; }
 </style>
 </head>
 <body>
 <h1>Bench</h1>
 <p>Scratch page for the computer words comparison. Nothing on it is real, and nothing leaves this page.</p>
-<p id="status" role="status"></p>
+<!-- the status and the count stay in view, so the check's read finds them after a model scrolled the list (Chrome leaves scrolled-away rows out) -->
+<header id="bar">
+  <p id="status" role="status"></p>
+  <p id="count"></p>
+</header>
 
 <form id="order">
   <fieldset>
@@ -39,7 +44,6 @@
 </form>
 
 <h2>Past orders</h2>
-<p id="count"></p>
 <ol id="orders" aria-label="Past orders"></ol>
 
 <script>
