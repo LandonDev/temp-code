@@ -19,11 +19,15 @@ let package = Package(
         .target(name: "AXReader", dependencies: ["ComputerCore"]),
         // The ax, process and session tiers, the key table, the clipboard paste.
         .target(name: "Input", dependencies: ["ComputerCore"]),
-        // Window screenshots and the preview stream (ScreenCaptureKit).
-        .target(name: "Capture", dependencies: ["ComputerCore"]),
+        // Window screenshots, the preview stream and the pixel watch (ScreenCaptureKit).
+        .target(name: "Capture", dependencies: ["ComputerProtocol", "ComputerCore"]),
         // The stdio server, the smart wait, the clipboard lock, TCC, the lifecycle.
         .target(name: "ComputerService", dependencies: ["ComputerProtocol", "ComputerCore", "AXReader", "Input", "Capture"]),
         .executableTarget(name: "tc-computer", dependencies: ["ComputerService"]),
-        .testTarget(name: "ComputerProtocolTests", dependencies: ["ComputerProtocol"])
+        // Capture's live proof on the Mac (scripts/mac/proof-computer-capture.sh); never shipped:
+        // the app's build makes --product tc-computer alone.
+        .executableTarget(name: "capture-proof", dependencies: ["Capture", "ComputerCore", "ComputerProtocol"]),
+        .testTarget(name: "ComputerProtocolTests", dependencies: ["ComputerProtocol"]),
+        .testTarget(name: "CaptureTests", dependencies: ["Capture", "ComputerCore", "ComputerProtocol"])
     ]
 )

@@ -101,7 +101,49 @@ public struct Frame: Sendable {
 }
 
 public protocol StreamHandle: AnyObject {
+    /// The frame size the stream started at: `capture.stream.start`'s `width` and `height`.
+    var startSize: (width: Int, height: Int) { get }
     func stop() async
+    /// `capture.stream.ack`: frees the flow-control slot of `seq` and every frame before it.
+    func ack(_ seq: Int)
+    /// Resolves once, when the stream ends for any reason; the shell sends `capture/streamEnded`.
+    func ended() async -> StreamEndReason
+}
+
+/// Why a preview stream ended (`capture/streamEnded`'s `reason`).
+public enum StreamEndReason: Equatable, Sendable {
+    /// `capture.stream.stop`, or the person stopped capture from the menu bar
+    case stopped
+    case windowClosed
+    /// the Screen Recording grant went
+    case permission
+    case error(String)
+
+    public var wire: CaptureStreamEndedNotification.Params.Reason {
+        switch self {
+        case .stopped: .stopped
+        case .windowClosed: .windowClosed
+        case .permission: .permission
+        case .error: .error
+        }
+    }
+}
+
+/// Capture's pixel signal for the smart wait (§7): one watch stream per window a session acts on.
+public protocol PixelWatching: AnyObject {
+    /// Starts the window's watch, or keeps a running one alive and returns the same signal.
+    /// Returns at once; the signal goes live with the stream's baseline frame.
+    func watch(windowID: UInt32) async throws -> any PixelChangeSignal
+}
+
+/// Whether a window's pixels are still changing, from the compositor's dirty rects.
+public protocol PixelChangeSignal: AnyObject, Sendable {
+    /// The stream has delivered its baseline and has not stopped.
+    var live: Bool { get }
+    /// mach_absolute_time of the last frame that counted as a change; 0 = none since the watch began.
+    var lastChange: UInt64 { get }
+    /// True at once when live; otherwise waits for the baseline, at most `timeout`. False once stopped.
+    func waitLive(timeout: Duration) async -> Bool
 }
 
 /// The AX reader's change monitor on one app: the AXObserver and the shallow signature of the smart wait.
@@ -116,7 +158,9 @@ public protocol ChangeSignal: AnyObject {
 /// Capture.
 public protocol WindowCapturing {
     /// `regionPoints`: the region already mapped from session pixels to window points by the shell.
-    func screenshot(windowID: UInt32, maxEdge: Int, regionPoints: ComputerProtocol.Rect?, format: ShotFormat, to path: String) async throws -> Shot
+    /// `format` nil chooses by content (A1). `stem` is the path without its extension
+    /// (`ShotNaming.stem`); Capture adds `.jpg` or `.png` and `Shot.path` names the file written.
+    func screenshot(windowID: UInt32, maxEdge: Int, regionPoints: ComputerProtocol.Rect?, format: ShotFormat?, to stem: String) async throws -> Shot
     func startStream(windowID: UInt32, fps: Int, maxEdge: Int, onFrame: @escaping @Sendable (Frame) -> Void) async throws -> any StreamHandle
 }
 
