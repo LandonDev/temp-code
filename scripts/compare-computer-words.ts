@@ -272,12 +272,11 @@ async function oneRun(model: ModelUnderTest, taskId: TaskId, arm: Arm, run: numb
   const byTool: Record<string, number> = {}
   const otherTools: Record<string, number> = {}
   let other = 0
-  // a harness writes a call's row more than once as its input settles: one call per id
-  const seen = new Set<string>()
-  for (const r of rows) {
-    if (r.event.type !== 'tool-call' || r.event.partial || seen.has(r.event.callId)) continue
-    seen.add(r.event.callId)
-    const call = r.event
+  // a harness writes a call's row more than once as its input settles: one call per id, in the order the calls began,
+  // with the input of its last row (claude's first row can still lack fields such as `confirm`)
+  const last = new Map<string, Extract<AgentEvent, { type: 'tool-call' }>>()
+  for (const r of rows) if (r.event.type === 'tool-call' && !r.event.partial) last.set(r.event.callId, r.event)
+  for (const call of last.values()) {
     const name = computerName(call.name)
     if (!name) {
       if (!OFF_ROUTE_OK.test(call.name)) {
@@ -373,7 +372,8 @@ try {
   for (const m of live) {
     const d = decide(report.runs, m, report.textLength)
     const ship = d.ship ?? { shape: 'anthropic', tools: 'act' }
-    const arm = (Object.keys(ARMS) as Arm[]).find((a) => ARMS[a].shape === ship.shape && ARMS[a].tools === ship.tools)!
+    // `--policy --arms C` checks one arm's words for a recheck; else the words the runs above kept
+    const arm = policyOnly && flag('arms') ? arms[0] : (Object.keys(ARMS) as Arm[]).find((a) => ARMS[a].shape === ship.shape && ARMS[a].tools === ship.tools)!
     const r = await oneRun(m, POLICY_TASK, arm, 1)
     report.runs.push(r)
     report.policy.push({ model: m.model, arm, status: r.status, ...(r.detail ? { detail: r.detail } : {}) })
