@@ -1,0 +1,583 @@
+{
+  "version": 1,
+  "startedAt": 1794189600000,
+  "endedAt": 1794189960000,
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "clean": true,
+  "mode": "gate",
+  "host": {
+    "macos": "26.1",
+    "chip": "Apple M4 Max",
+    "load1": 4.6
+  },
+  "models": [
+    {
+      "model": "claude-opus-5-5"
+    },
+    {
+      "model": "gpt-6.1-sol"
+    },
+    {
+      "model": "muse-wonder-1.0",
+      "skipped": "muse-wonder-1.0 is not in this host’s Muse catalog"
+    }
+  ],
+  "runs": [
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "textedit-write",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "passed",
+      "stepBudget": 6,
+      "queuedMs": 0,
+      "wallMs": 9400,
+      "thinkMs": 7100,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 180,
+          "rowMs": 240,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 95,
+          "rowMs": 150,
+          "steps": [
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "ok": true,
+              "effect": "changed"
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.apple.Terminal",
+        "after": "com.apple.Terminal",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": false
+      },
+      "tokens": {
+        "input": 18200,
+        "output": 410
+      }
+    },
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "chrome-read",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "passed",
+      "stepBudget": 8,
+      "queuedMs": 0,
+      "wallMs": 14200,
+      "thinkMs": 10900,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 420,
+          "rowMs": 510,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 380,
+          "rowMs": 460,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 140,
+          "rowMs": 210,
+          "steps": [
+            {
+              "action": "scroll",
+              "tier": "process",
+              "ok": true,
+              "effect": "changed"
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.apple.Terminal",
+        "after": "com.apple.Terminal",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": false
+      },
+      "tokens": {
+        "input": 31000,
+        "output": 390
+      }
+    },
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "chrome-form",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "passed",
+      "stepBudget": 10,
+      "queuedMs": 0,
+      "wallMs": 16800,
+      "thinkMs": 12100,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 400,
+          "rowMs": 480,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_batch",
+          "hostMs": 910,
+          "rowMs": 1020,
+          "steps": [
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "ok": true,
+              "effect": "changed"
+            },
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "ok": true,
+              "effect": "changed"
+            },
+            {
+              "action": "perform",
+              "tier": "ax",
+              "ok": true,
+              "effect": "changed"
+            },
+            {
+              "action": "left_click",
+              "tier": "process",
+              "ok": true,
+              "effect": "changed"
+            },
+            {
+              "action": "left_click",
+              "tier": "process",
+              "ok": true,
+              "effect": "changed"
+            },
+            {
+              "action": "perform",
+              "tier": "ax",
+              "ok": true,
+              "effect": "changed"
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.apple.Terminal",
+        "after": "com.apple.Terminal",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": false
+      },
+      "tokens": {
+        "input": 27400,
+        "output": 820
+      }
+    },
+    {
+      "model": "claude-opus-5-5",
+      "provider": "claude",
+      "task": "settings-toggle",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "skipped",
+      "stepBudget": 12,
+      "queuedMs": 0,
+      "wallMs": 0,
+      "thinkMs": 0,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.apple.Terminal",
+        "after": "com.apple.Terminal",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": false
+      },
+      "reason": "System Settings is open"
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "textedit-write",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "passed",
+      "stepBudget": 6,
+      "queuedMs": 0,
+      "wallMs": 11800,
+      "thinkMs": 9200,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 170,
+          "rowMs": 260,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 110,
+          "rowMs": 190,
+          "steps": [
+            {
+              "action": "type",
+              "tier": null,
+              "ok": true,
+              "via": "keys",
+              "effect": "changed"
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 160,
+          "rowMs": 230,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.apple.Terminal",
+        "after": "com.apple.Terminal",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": false
+      }
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "chrome-read",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "failed",
+      "stepBudget": 8,
+      "queuedMs": 0,
+      "wallMs": 19500,
+      "thinkMs": 15800,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 430,
+          "rowMs": 560,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 390,
+          "rowMs": 500,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 370,
+          "rowMs": 490,
+          "steps": [],
+          "screenshotAsked": true,
+          "shots": 1,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.apple.Terminal",
+        "after": "com.apple.Terminal",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": false
+      },
+      "reason": "the reply lacks 63.18"
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "chrome-read",
+      "taskVersion": 1,
+      "attempt": 2,
+      "outcome": "passed",
+      "stepBudget": 8,
+      "queuedMs": 0,
+      "wallMs": 12900,
+      "thinkMs": 10100,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 410,
+          "rowMs": 540,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 150,
+          "rowMs": 230,
+          "steps": [
+            {
+              "action": "scroll",
+              "tier": "process",
+              "ok": true,
+              "effect": "changed"
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.apple.Terminal",
+        "after": "com.apple.Terminal",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": false
+      }
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "chrome-read",
+      "taskVersion": 1,
+      "attempt": 3,
+      "outcome": "passed",
+      "stepBudget": 8,
+      "queuedMs": 0,
+      "wallMs": 15300,
+      "thinkMs": 11800,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 420,
+          "rowMs": 530,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_act",
+          "hostMs": 145,
+          "rowMs": 220,
+          "steps": [
+            {
+              "action": "scroll",
+              "tier": "process",
+              "ok": true,
+              "effect": "changed"
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_observe",
+          "hostMs": 360,
+          "rowMs": 470,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.apple.Terminal",
+        "after": "com.apple.Terminal",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": false
+      }
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "chrome-form",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "passed",
+      "stepBudget": 10,
+      "queuedMs": 0,
+      "wallMs": 22400,
+      "thinkMs": 17600,
+      "calls": [
+        {
+          "tool": "computer_observe",
+          "hostMs": 400,
+          "rowMs": 500,
+          "steps": [],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_batch",
+          "hostMs": 980,
+          "rowMs": 1100,
+          "steps": [
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "ok": true,
+              "effect": "changed"
+            },
+            {
+              "action": "set_value",
+              "tier": "ax",
+              "ok": true,
+              "effect": "changed"
+            },
+            {
+              "action": "perform",
+              "tier": "ax",
+              "ok": true,
+              "effect": "changed"
+            },
+            {
+              "action": "left_click",
+              "tier": null,
+              "ok": false,
+              "error": "needs the session tier (the real pointer and keyboard), which is not available now: the person is using the Mac"
+            },
+            {
+              "action": null,
+              "tier": null,
+              "ok": false,
+              "error": "not run"
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        },
+        {
+          "tool": "computer_batch",
+          "hostMs": 520,
+          "rowMs": 640,
+          "steps": [
+            {
+              "action": "perform",
+              "tier": "ax",
+              "ok": true,
+              "effect": "changed"
+            },
+            {
+              "action": "perform",
+              "tier": "ax",
+              "ok": true,
+              "effect": "changed"
+            }
+          ],
+          "screenshotAsked": false,
+          "shots": 0,
+          "isError": false
+        }
+      ],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.apple.Terminal",
+        "after": "com.apple.Terminal",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": false
+      }
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "provider": "codex",
+      "task": "settings-toggle",
+      "taskVersion": 1,
+      "attempt": 1,
+      "outcome": "skipped",
+      "stepBudget": 12,
+      "queuedMs": 0,
+      "wallMs": 0,
+      "thinkMs": 0,
+      "calls": [],
+      "otherTools": [],
+      "cards": [],
+      "front": {
+        "before": "com.apple.Terminal",
+        "after": "com.apple.Terminal",
+        "bounced": false,
+        "personActive": false,
+        "benchInFront": false
+      },
+      "reason": "System Settings is open"
+    }
+  ],
+  "unrun": [
+    {
+      "model": "gpt-6.1-sol",
+      "task": "save-dialog",
+      "cause": "scheduler"
+    }
+  ]
+}

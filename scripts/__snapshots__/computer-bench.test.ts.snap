@@ -1,0 +1,67 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderBenchTable > renders a recorded gate report 1`] = `
+"# Computer bench (gate)
+
+2026-11-09T02:00:00.000Z, 360 s, commit 01234567
+macOS 26.1, Apple M4 Max, load 4.6
+
+## claude-opus-5-5
+
+| task | passed | calls | host ms/call | wall s | think s | queued s | shots asked | shots taken | tiers | failures |
+|---|---|---|---|---|---|---|---|---|---|---|
+| textedit-write | 1/1 | 2 | 138 | 9.4 | 7.1 | 0.0 | 0 | 0 | ax 1 |  |
+| chrome-read | 1/1 | 3 | 380 | 14.2 | 10.9 | 0.0 | 0 | 0 | process 1 |  |
+| chrome-form | 1/1 | 2 | 655 | 16.8 | 12.1 | 0.0 | 0 | 0 | ax 4, process 2 |  |
+| settings-toggle | skipped | | | | | | | | | System Settings is open |
+
+## gpt-6.1-sol
+
+| task | passed | calls | host ms/call | wall s | think s | queued s | shots asked | shots taken | tiers | failures |
+|---|---|---|---|---|---|---|---|---|---|---|
+| textedit-write | 1/1 | 3 | 160 | 11.8 | 9.2 | 0.0 | 0 | 0 | keys 1 |  |
+| chrome-read | 2/3 | 3 | 360 | 15.3 | 11.8 | 0.0 | 0 | 0 | process 2 | the reply lacks 63.18 |
+| chrome-form | 1/1 | 3 | 520 | 22.4 | 17.6 | 0.0 | 0 | 0 | ax 5 |  |
+| settings-toggle | skipped | | | | | | | | | System Settings is open |
+
+## Verdicts
+
+| what | got | limit | |
+|---|---|---|---|
+| claude-opus-5-5 textedit-write: end state, runs passed | 1 | 1 | pass |
+| claude-opus-5-5 textedit-write: median computer calls | 2 | 4 | pass |
+| claude-opus-5-5 textedit-write: median host ms per call | 138 | 280 | pass |
+| claude-opus-5-5 textedit-write: median wall s | 9.4 | 9.8 | pass |
+| claude-opus-5-5 textedit-write: median think s | 7.1 | 7.4 | pass |
+| claude-opus-5-5 chrome-read: end state, runs passed | 1 | 1 | pass |
+| claude-opus-5-5 chrome-read: median computer calls | 3 | 5 | pass |
+| claude-opus-5-5 chrome-read: median host ms per call | 380 | 510 | pass |
+| claude-opus-5-5 chrome-read: median wall s | 14.2 | 13.8 | over, reported |
+| claude-opus-5-5 chrome-read: median think s | 10.9 | 10.4 | over, reported |
+| claude-opus-5-5 chrome-form: end state, runs passed | 1 | 1 | pass |
+| claude-opus-5-5 chrome-form: median computer calls | 2 | 4 | pass |
+| claude-opus-5-5 chrome-form: median host ms per call | 655 | 832 | pass |
+| claude-opus-5-5 chrome-form: median wall s | 16.8 | 15.9 | over, reported |
+| claude-opus-5-5 chrome-form: median think s | 12.1 | 11.7 | over, reported |
+| gpt-6.1-sol textedit-write: end state, runs passed | 1 | 1 | pass |
+| gpt-6.1-sol textedit-write: median computer calls | 3 | 5 | pass |
+| gpt-6.1-sol textedit-write: median host ms per call | 160 | 300 | pass |
+| gpt-6.1-sol textedit-write: median wall s | 11.8 | 11 | over, reported |
+| gpt-6.1-sol textedit-write: median think s | 9.2 | 8.8 | over, reported |
+| gpt-6.1-sol chrome-read: end state, runs passed | 2 | 2 | pass |
+| gpt-6.1-sol chrome-read: median computer calls | 3 | 4 | pass |
+| gpt-6.1-sol chrome-read: median host ms per call | 360 | 430 | pass |
+| gpt-6.1-sol chrome-read: median wall s | 15.3 | 12.5 | over, reported |
+| gpt-6.1-sol chrome-read: median think s | 11.8 | 9.9 | over, reported |
+| gpt-6.1-sol chrome-form: end state, runs passed | 1 | 1 | pass |
+
+## Skipped
+
+- muse-wonder-1.0: muse-wonder-1.0 is not in this host’s Muse catalog
+- claude-opus-5-5 settings-toggle: System Settings is open
+- gpt-6.1-sol settings-toggle: System Settings is open
+- gpt-6.1-sol save-dialog: not reached, the scheduler held the runs
+
+computer bench passed
+"
+`;

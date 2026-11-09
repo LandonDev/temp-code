@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "rows": [
+    {
+      "model": "claude-opus-5-5",
+      "task": "chrome-form",
+      "taskVersion": 1,
+      "callsMedian": 2,
+      "hostMsMedian": 640,
+      "wallMsMedian": 15900,
+      "thinkMsMedian": 11700,
+      "commit": "fedcba98",
+      "at": 1794100000000
+    },
+    {
+      "model": "claude-opus-5-5",
+      "task": "chrome-read",
+      "taskVersion": 1,
+      "callsMedian": 3,
+      "hostMsMedian": 360,
+      "wallMsMedian": 13800,
+      "thinkMsMedian": 10400,
+      "commit": "fedcba98",
+      "at": 1794100000000
+    },
+    {
+      "model": "claude-opus-5-5",
+      "task": "textedit-write",
+      "taskVersion": 1,
+      "callsMedian": 2,
+      "hostMsMedian": 130,
+      "wallMsMedian": 9800,
+      "thinkMsMedian": 7400,
+      "commit": "fedcba98",
+      "at": 1794100000000
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "task": "chrome-read",
+      "taskVersion": 1,
+      "callsMedian": 2,
+      "hostMsMedian": 280,
+      "wallMsMedian": 12500,
+      "thinkMsMedian": 9900,
+      "commit": "fedcba98",
+      "at": 1794100000000
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "task": "textedit-write",
+      "taskVersion": 1,
+      "callsMedian": 3,
+      "hostMsMedian": 150,
+      "wallMsMedian": 11000,
+      "thinkMsMedian": 8800,
+      "commit": "fedcba98",
+      "at": 1794100000000
+    }
+  ]
+}
