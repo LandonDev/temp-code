@@ -232,6 +232,13 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'addons.tools': 'read',
   'addons.set': 'admin',
   'addons.remove': 'admin',
+  // Add-on grants (contract-addonGrants.ts): the view is read; values and refreshes are admin; a sign-in opens a browser on this machine, so never for a remote key.
+  'addons.grant.list': 'read',
+  'addons.grant.setFields': 'admin',
+  'addons.grant.clear': 'admin',
+  'addons.grant.refresh': 'admin',
+  'addons.grant.signIn': 'local',
+  'addons.grant.cancel': 'local',
   'skills.list': 'read',
   'skills.get': 'read',
   'skills.set': 'admin',

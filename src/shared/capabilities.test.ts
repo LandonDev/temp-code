@@ -56,7 +56,10 @@ describe('METHOD_CAPABILITY', () => {
         'host.releaseCheckout.set',
         // This Mac's dev server forwards and their per-host switch (contract-ports.ts).
         'ports.forwards',
-        'ports.setForwarding'
+        'ports.setForwarding',
+        // An add-on sign-in opens a browser on this machine (contract-addonGrants.ts).
+        'addons.grant.signIn',
+        'addons.grant.cancel'
       ].sort()
     )
   })
@@ -133,7 +136,11 @@ describe('METHOD_CAPABILITY', () => {
         'addons.set',
         'addons.remove',
         'skills.set',
-        'skills.remove'
+        'skills.remove',
+        // Add-on grants (contract-addonGrants.ts): values, a removal and the owner's refresh.
+        'addons.grant.setFields',
+        'addons.grant.clear',
+        'addons.grant.refresh'
       ].sort()
     )
   })

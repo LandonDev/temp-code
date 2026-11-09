@@ -25,6 +25,7 @@ import { AdmissionRequestSchemas } from './contract-admission'
 import { AwayRequestSchemas } from './contract-away'
 import { AddonAddArgsSchema, AddonCallArgsSchema, AddonFindArgsSchema, AddonRemoveArgsSchema, AddonRequestSchemas } from './contract-addons'
 import { SkillRemoveArgsSchema, SkillRequestSchemas, SkillWriteArgsSchema } from './contract-skills'
+import { AddonGrantRequestSchemas } from './contract-addonGrants'
 import { AGENT_TYPES, REASONING_LEVELS } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -170,6 +171,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...AwayRequestSchemas,
   // The add-on registry and the skills store (contract-addons.ts, contract-skills.ts): one copy, on the box.
   ...AddonRequestSchemas,
+  ...AddonGrantRequestSchemas,
   ...SkillRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
   z.object({
@@ -1458,6 +1460,8 @@ export type ServerPush =
   // link hears the box's and follows (remote/storeSync.ts).
   | import('./contract-addons').AddonsPush
   | import('./contract-addons').AddonStatusPush
+  // Add-on grants (contract-addonGrants.ts): every grant view of this host, never a value, to every client socket.
+  | import('./contract-addonGrants').AddonGrantsPush
   | import('./contract-skills').SkillsPush
   // Thread resources (contract-resources.ts): a thread's ledger rows after any change.
   | import('./contract-resources').ResourcesPush
