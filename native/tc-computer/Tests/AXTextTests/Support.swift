@@ -42,7 +42,8 @@ func snapshot(_ roots: [AXNode], app: String = "TextEdit", windowID: Int = 7, fr
                       menuBar: menuBar, focusedID: focused, ambientActions: ambient)
 }
 
-/// One reader's state across reads: its book and its base.
+/// One reader's state across reads: its book and its base. `noteThin` is off unless a test asks: a small
+/// hand-built tree is often thin, and under `noteThin` a thin tree's lines carry geometry (shell A12).
 final class Reader {
     let book: IndexBook
     var base: Base?
@@ -53,7 +54,7 @@ final class Reader {
 
     @discardableResult
     func read(_ s: AXSnapshot, mode: ObservationMode = .auto, budget: Int = 24_000, geometry: Bool = false, subtree: Int? = nil,
-              loading: Bool = false, noteThin: Bool = true, space: CoordinateSpace = space) -> Built {
+              loading: Bool = false, noteThin: Bool = false, space: CoordinateSpace = space) -> Built {
         let (built, next) = Builder.build(s, BuildRequest(mode: mode, subtreeOf: subtree, budgetBytes: budget, geometry: geometry, space: space, loading: loading, noteThin: noteThin), book: book, base: base)
         if let next { base = next }
         return built

@@ -170,15 +170,26 @@ func r(_ y: Double) -> Rect { Rect(x: 10, y: y, w: 100, h: 20) }
     @Test func thinCountsRoleDefaultsAndTextOnly() {
         let thin = snapshot([t.window([t.node("AXGroup", title: "Canvas", frame: r(0), actions: ["AXShowMenu"]), t.node("AXButton", "AXCloseButton", frame: r(0), actions: ["AXPress"])])])
         #expect(Keep.tree(thin).thin)
-        #expect(text(thin).hasPrefix("app \"TextEdit\" · window \"Untitled\" · 1280×1072 · thin tree, see the screenshot"))
+        #expect(Reader().read(thin, noteThin: true).text.hasPrefix("app \"TextEdit\" · window \"Untitled\" · 1280×1072 · thin tree, see the screenshot"))
         let rich = snapshot([t.window((0..<3).map { t.node("AXButton", title: "B\($0)", frame: r(0), actions: ["AXPress"]) })])
         #expect(!Keep.tree(rich).thin)
         let wordy = snapshot([t.window((0..<3).map { _ in t.node("AXStaticText", value: .string(String(repeating: "word ", count: 20)), frame: r(0)) })])
         #expect(!Keep.tree(wordy).thin)
-        #expect(!Reader().read(thin, noteThin: false).text.contains("thin tree"))
+        #expect(!Reader().read(thin).text.contains("thin tree"))
         // an Electron window before its content is exposed: the window and its title-bar buttons alone
         let bare = snapshot([t.window(["AXCloseButton", "AXFullScreenButton", "AXMinimizeButton"].map { t.node("AXButton", $0, frame: r(0), actions: ["AXPress"]) })])
         #expect(Keep.tree(bare).thin)
+    }
+
+    @Test func aThinTreeUnderNoteThinCarriesGeometryForItsScreenshot() {
+        let thin = snapshot([t.window([t.node("AXGroup", title: "Canvas", frame: r(0), actions: ["AXShowMenu"])])])
+        // the screenshot will follow: every line says where it is, in the request's space
+        #expect(Array(Reader().read(thin, noteThin: true).text.split(separator: "\n").dropFirst()) == ["[1] window \"Untitled\" @0,0 1280×1072", "  [2] group \"Canvas\" actions: show menu @20,0 200×40"])
+        // no screenshot (`never`, or no Screen Recording): no note and no geometry
+        #expect(body(thin) == ["[1] window \"Untitled\"", "  [2] group \"Canvas\" actions: show menu"])
+        // a tree rich enough to act from gets neither, `noteThin` or not
+        let rich = snapshot([t.window((0..<3).map { t.node("AXButton", title: "B\($0)", frame: r(0), actions: ["AXPress"]) })])
+        #expect(!Reader().read(rich, noteThin: true).text.contains("@"))
     }
 
     @Test func aContainerOfTextlessRowsIsAStubAndThinWhenItCoversTheWindow() {

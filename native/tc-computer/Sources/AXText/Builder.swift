@@ -46,7 +46,9 @@ public enum Builder {
         // another window's tree is no candidate for a rebuilt match: only the same element keeps its number there
         let sameWindow = base?.windowID == s.window.id
         let indexed = book.assign(kept, base: subtree || !sameWindow ? nil : base, sameWindow: sameWindow)
-        var layout = Layout.build(kept, indexed, snapshot: s, space: request.space, geometry: request.geometry, wholeValues: subtree)
+        // a thin tree under `noteThin` will carry a screenshot, so its lines carry geometry in that shot's space (shell A12)
+        let geometry = request.geometry || (kept.thin && request.noteThin)
+        var layout = Layout.build(kept, indexed, snapshot: s, space: request.space, geometry: geometry, wholeValues: subtree)
         let focused = layout.rows.first { $0.kind == .element && $0.facts.states.first == "focused" }?.index
         var header = HeaderFacts(focused: focused, loading: request.loading, change: nil, thin: kept.thin && request.noteThin)
         let fitted = TextBudget.fit(&layout, header: header, budget: budget)
