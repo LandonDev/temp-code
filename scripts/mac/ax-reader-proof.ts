@@ -180,6 +180,20 @@ function indexOf(text: string | undefined, pattern: RegExp): number {
   throw new Error(`no line matching ${pattern}`)
 }
 
+/** Element line (after its number) → number, for lines that appear once. */
+function numbered(text: string | undefined): Map<string, number> {
+  const seen = new Map<string, number>()
+  const twice = new Set<string>()
+  for (const line of (text ?? '').split('\n')) {
+    const m = /^\s*\[(\d+)\] (.*)$/.exec(line)
+    if (!m) continue
+    if (seen.has(m[2])) twice.add(m[2])
+    seen.set(m[2], Number(m[1]))
+  }
+  for (const line of twice) seen.delete(line)
+  return seen
+}
+
 function bench(app: string, pid: number, title: string, contains?: string, windowId?: number): void {
   const r = sh([TCAX, 'bench', '--pid', String(pid), '--expect-title', title, '--reads', '20', '--warm', '2', '--signature', '50',
                 ...(contains ? ['--contains', contains] : []), ...(windowId ? ['--window-id', String(windowId)] : [])], axEnv())
@@ -479,8 +493,13 @@ async function tempcodeDev(): Promise<void> {
   const options = indexOf(first.text, /^pop up "Workspace options"/)
   await s.send(`poke press ${options}`)
   await sleep(1000)
-  const dialog = await s.observe()
-  check(app, 'a popup opening keeps every number that stayed', dialog.kind === 'diff' && /\n\+ /.test(dialog.text ?? '') && !/\n- /.test(dialog.text ?? ''), dialog.kind ?? '')
+  // a modal menu hides the page from accessibility, so the read may well be full: what counts is that
+  // every element both full reads show, by its line, kept its number
+  const after = await s.observe({ mode: 'full' })
+  const before = numbered(first.text), now = numbered(after.text)
+  const shared = [...before.keys()].filter((line) => now.has(line))
+  const moved = shared.filter((line) => before.get(line) !== now.get(line))
+  check(app, 'a popup opening keeps every number that stayed', shared.length >= 5 && moved.length === 0, `${shared.length} shared, ${moved.length} renumbered`)
   await s.send(`poke press ${options}`)
   s.close()
   bench(app, pid, title)

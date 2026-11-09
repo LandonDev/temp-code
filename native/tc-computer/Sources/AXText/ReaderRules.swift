@@ -113,6 +113,48 @@ public enum BusyRule {
     }
 }
 
+/// The busy scan (A11): Chrome announces no spinner it shows (no AXCreated,
+/// AXElementBusyChanged or AXLoadComplete names it, measured 2026-11-09), so
+/// when the app changed since the last scan the web areas the last walk found
+/// are scanned breadth first for one: never into a child whose frame misses
+/// its clip, at most `maxNodes` nodes.
+public enum BusyScan {
+    public static let maxNodes = 400
+    public static let maxMs = 25.0
+
+    public struct Read<N> {
+        public var role: String?
+        public var frame: Rect?
+        public var children: [N]
+
+        public init(role: String?, frame: Rect?, children: [N]) {
+            self.role = role
+            self.frame = frame
+            self.children = children
+        }
+    }
+
+    /// The indicators under `root`, each with the clip containers between `root` and it, `root` included.
+    public static func find<N>(root: N, clip: Rect?, maxNodes: Int = maxNodes, stop: () -> Bool = { false }, read: (N) -> Read<N>) -> [(node: N, kind: BusyRule.Kind, containers: [N])] {
+        var found: [(node: N, kind: BusyRule.Kind, containers: [N])] = []
+        var queue: [(node: N, clip: Rect?, containers: [N])] = [(root, clip, [])]
+        var at = 0
+        while at < queue.count, at < maxNodes, !stop() {
+            let (node, clip, containers) = queue[at]
+            at += 1
+            let r = read(node)
+            if at > 1, Viewport.missed(r.frame, clip) != nil { continue }
+            if r.role == "AXBusyIndicator" { found.append((node, .busy, containers)) }
+            if r.role == "AXProgressIndicator" { found.append((node, .progress, containers)) }
+            let role = r.role ?? ""
+            let inner = Viewport.childClip(role: role, frame: r.frame, clip: clip)
+            let below = Viewport.clipRoles.contains(role) ? containers + [node] : containers
+            queue += r.children.map { ($0, inner, below) }
+        }
+        return found
+    }
+}
+
 /// The smart wait's shallow signature (spec §7) over parts the live side reads, with A7's two limits.
 public struct Signature: Sendable {
     /// a focused value longer than this hashes as its length and selection

@@ -65,6 +65,8 @@ final class ChangeMonitor: ChangeSignal, @unchecked Sendable {
     private var window: AXUIElement?
     private var scrollAreas: [AXUIElement] = []
     private var candidates: [Candidate] = []
+    /// `lastChange` when the web areas were last scanned (A11's busy scan)
+    private var scannedAt: UInt64 = 0
     /// notifications the app element refused, registered on the window instead
     private var onWindow: [String] = []
 
@@ -168,24 +170,22 @@ final class ChangeMonitor: ChangeSignal, @unchecked Sendable {
     }
 
     /// A busy indicator, an indeterminate progress or a busy web area that shows now
-    /// (spec §7, A11): each candidate and its containers read again, the clip made from their frames now.
+    /// (spec §7, A11): each candidate and its containers read again, the clip made from their frames now;
+    /// with none showing and the app changed since the last scan, the web areas are scanned for a new one.
     func busyIndicatorShowing() -> Bool {
         lock.lock()
         let list = candidates
         let w = window
         lock.unlock()
-        var alive: [Candidate] = []
-        var showing = false
         let frameOf = { (el: AXUIElement) -> ComputerProtocol.Rect? in
             let b = AX.batch(el, ["AXPosition", "AXSize"])
             return AX.frame(b["AXPosition"]?.value, b["AXSize"]?.value)
         }
         let windowFrame = w.flatMap(frameOf)
-        for c in list {
+        /// nil: the element is gone
+        func shows(_ c: Candidate) -> Bool? {
             let a = AX.batch(c.element, ["AXRole", "AXValue", "AXElementBusy", "AXLoaded", "AXPosition", "AXSize"])
-            if case .gone? = a["AXRole"] { continue }
-            alive.append(c)
-            if showing { continue }
+            if case .gone? = a["AXRole"] { return nil }
             let clips = [windowFrame].compactMap { $0 } + c.containers.compactMap(frameOf)
             let hasValue: Bool = {
                 switch AX.scalar(a["AXValue"]?.value) {
@@ -194,12 +194,46 @@ final class ChangeMonitor: ChangeSignal, @unchecked Sendable {
                 default: false
                 }
             }()
-            showing = BusyRule.showing(c.kind, frame: AX.frame(a["AXPosition"]?.value, a["AXSize"]?.value), hasValue: hasValue,
-                                       busy: AX.bool(a["AXElementBusy"]?.value), loaded: AX.bool(a["AXLoaded"]?.value), clips: clips)
+            return BusyRule.showing(c.kind, frame: AX.frame(a["AXPosition"]?.value, a["AXSize"]?.value), hasValue: hasValue,
+                                    busy: AX.bool(a["AXElementBusy"]?.value), loaded: AX.bool(a["AXLoaded"]?.value), clips: clips)
+        }
+        var alive: [Candidate] = []
+        var showing = false
+        for c in list {
+            guard let s = shows(c) else { continue }
+            alive.append(c)
+            showing = showing || s
+        }
+        var found: [Candidate] = []
+        let change = lastChange
+        lock.lock()
+        let scan = !showing && change != scannedAt
+        if scan { scannedAt = change }
+        lock.unlock()
+        if scan {
+            let start = DispatchTime.now().uptimeNanoseconds
+            var budget = BusyScan.maxNodes
+            for area in alive where area.kind == .webArea && budget > 0 {
+                let clip = ([windowFrame].compactMap { $0 } + area.containers.compactMap(frameOf)).reduce(nil as ComputerProtocol.Rect?) { Viewport.intersect($0, $1) }
+                var read = 0
+                let hits = BusyScan.find(root: area.element, clip: clip, maxNodes: budget,
+                                         stop: { Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6 > BusyScan.maxMs }) { el in
+                    read += 1
+                    let b = AX.batch(el, ["AXRole", "AXPosition", "AXSize", "AXChildren"])
+                    return BusyScan.Read(role: AX.string(b["AXRole"]?.value), frame: AX.frame(b["AXPosition"]?.value, b["AXSize"]?.value), children: AX.elements(b["AXChildren"]?.value))
+                }
+                budget -= read
+                for h in hits where !alive.contains(where: { CFEqual($0.element, h.node) }) && !found.contains(where: { CFEqual($0.element, h.node) }) {
+                    let c = Candidate(element: h.node, kind: h.kind, containers: Array((area.containers + h.containers).suffix(8)))
+                    found.append(c)
+                    showing = showing || (shows(c) ?? false)
+                }
+            }
         }
         lock.lock()
-        // a candidate that answered invalid leaves the list
+        // a candidate that answered invalid leaves the list; one the scan found joins it
         candidates.removeAll { c in !alive.contains { CFEqual($0.element, c.element) } && list.contains { CFEqual($0.element, c.element) } }
+        candidates += found.filter { f in !candidates.contains { CFEqual($0.element, f.element) } }
         lock.unlock()
         return showing
     }

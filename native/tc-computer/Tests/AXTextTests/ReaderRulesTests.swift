@@ -107,3 +107,36 @@ import Testing
         #expect(sig(counts: many + [7]) == sig(counts: many + [8]))
     }
 }
+
+@Suite struct BusyScanTests {
+    /// A node of a tree the scan reads: role, frame, children by id.
+    struct N { var role: String; var frame: Rect?; var children: [Int] }
+
+    let tree: [Int: N] = [
+        0: N(role: "AXWebArea", frame: Rect(x: 0, y: 0, w: 800, h: 600), children: [1, 2, 5]),
+        1: N(role: "AXGroup", frame: Rect(x: 0, y: 0, w: 800, h: 100), children: [3]),
+        3: N(role: "AXProgressIndicator", frame: Rect(x: 10, y: 10, w: 16, h: 16), children: []),
+        2: N(role: "AXList", frame: Rect(x: 0, y: 200, w: 800, h: 100), children: [4, 6]),
+        4: N(role: "AXBusyIndicator", frame: Rect(x: 10, y: 210, w: 16, h: 16), children: []),
+        6: N(role: "AXBusyIndicator", frame: Rect(x: 10, y: 450, w: 16, h: 16), children: []),
+        5: N(role: "AXGroup", frame: Rect(x: 0, y: 900, w: 800, h: 100), children: [7]),
+        7: N(role: "AXProgressIndicator", frame: Rect(x: 10, y: 910, w: 16, h: 16), children: [])
+    ]
+
+    func read(_ id: Int) -> BusyScan.Read<Int> {
+        let n = tree[id]!
+        return BusyScan.Read(role: n.role, frame: n.frame, children: n.children)
+    }
+
+    @Test func findsTheIndicatorsInsideTheirClipWithTheirContainers() {
+        let hits = BusyScan.find(root: 0, clip: Rect(x: 0, y: 0, w: 800, h: 600), read: read)
+        #expect(hits.map(\.node) == [3, 4])
+        #expect(hits.map(\.kind) == [.progress, .busy])
+        #expect(hits[0].containers == [0] && hits[1].containers == [0, 2])
+    }
+
+    @Test func stopsAtItsCapOrWhenTold() {
+        #expect(BusyScan.find(root: 0, clip: nil, maxNodes: 3, read: read).isEmpty)
+        #expect(BusyScan.find(root: 0, clip: nil, stop: { true }, read: read).isEmpty)
+    }
+}
