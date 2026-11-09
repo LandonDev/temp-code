@@ -186,7 +186,10 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
         try host.raise(window)
         let deadline = clock.seconds() + Double(InputTiming.activationMs) / 1000
         while true {
-            if host.frontmost()?.pid == Int(pid), host.isFocusedWindow(window, pid: pid) { return }
+            if host.frontmost()?.pid == Int(pid), host.isFocusedWindow(window, pid: pid) {
+                // a trip during the last write stops the step here, before anything is posted
+                return try check()
+            }
             if clock.seconds() >= deadline {
                 throw sessionUnavailable(.activationRefused, "The app did not come forward with its window focused; a sheet or another window may hold focus.")
             }
