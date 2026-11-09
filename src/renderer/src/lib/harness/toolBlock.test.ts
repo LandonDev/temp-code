@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Block } from "../session";
-import { resumeTurnClock } from "./toolBlock";
+import { attachApprovalBlock, resumeTurnClock, upsertToolBlock } from "./toolBlock";
 
 const user = (over: Partial<Block> = {}): Block => ({ id: "u", role: "user", text: "go", startedAt: 10_000, ...over });
 const reply: Block = { id: "a", role: "assistant", text: "ok" };
@@ -49,5 +49,30 @@ describe("resumeTurnClock", () => {
     expect(resumeTurnClock(ranOn, 20_000)).toBe(ranOn);
     const none = [reply];
     expect(resumeTurnClock(none, 20_000)).toBe(none);
+  });
+});
+
+describe("a skill card from the host", () => {
+  const open: Block = { id: "t1", role: "tool", text: "Running tests", tool: { callId: "toolu_other", title: "Running tests", status: "running" } };
+  const card = { requestId: "a-1", title: "Change the skill alpha", name: "skill_write", input: { where: "Every workspace" } };
+
+  it("a bridge card (an id no row has) stands on its own while another call is open, and its call's row never takes it", () => {
+    const withCard = attachApprovalBlock([user(), open], "/w", { ...card, callId: "skill-card:abcd1234" }, "c1");
+    expect(withCard).toHaveLength(3);
+    expect(withCard[1]).toBe(open);
+    expect(withCard[2]).toMatchObject({ id: "c1", approval: { requestId: "a-1" }, tool: { callId: "skill-card:abcd1234", name: "skill_write" } });
+    // The bridge's call row lands after the card, under its own id.
+    const withCall = upsertToolBlock(withCard, "/w", { callId: "item_9", title: "app skill_write", status: "running" }, "c2");
+    expect(withCall).toHaveLength(4);
+    expect(withCall[2]).toBe(withCard[2]);
+    expect(withCall[3].approval).toBeUndefined();
+  });
+
+  it("a Claude card names its call's row and attaches to it", () => {
+    const call: Block = { id: "t2", role: "tool", text: "app skill_write", tool: { callId: "toolu_skill", title: "app skill_write", status: "running" } };
+    const out = attachApprovalBlock([user(), open, call], "/w", { ...card, callId: "toolu_skill" });
+    expect(out).toHaveLength(3);
+    expect(out[1]).toBe(open);
+    expect(out[2]).toMatchObject({ id: "t2", approval: { requestId: "a-1" } });
   });
 });

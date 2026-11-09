@@ -399,6 +399,56 @@ export const TOOLS = [
       required: ['decision']
     }
   },
+  // ── the skills store (src/shared/skills.ts; app-bridge.test.ts keeps these equal) ──
+  {
+    name: 'skill_list',
+    description:
+      'List the skills in the app\'s store that apply to this thread: name, description, which CLIs get it, where it applies, version and who last wrote it.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'skill_write',
+    description:
+      'Write one skill whole: its SKILL.md and every file beside it, replacing what was there. Pass `files` (text files, each path relative to the skill folder, SKILL.md at its root) or `dir` (a folder on this host holding the whole skill, binaries included), not both. SKILL.md starts with frontmatter giving the skill\'s `name` and a `description` of when to use it. Threads that start after the write see it; a running thread does not. Changing a skill a person wrote asks them first.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Lowercase letters, digits and dashes, at most 64 characters; SKILL.md\'s `name` must match.' },
+        harnesses: {
+          type: 'array',
+          items: { type: 'string', enum: ['all', 'claude', 'codex', 'muse'] },
+          minItems: 1,
+          maxItems: 4,
+          description: 'Which CLIs get it: any of claude, codex, muse, or ["all"] (default).'
+        },
+        scope: { type: 'string', enum: ['workspace', 'global'], description: 'workspace (default): threads in this thread\'s workspace. global: every thread.' },
+        files: {
+          type: 'array',
+          maxItems: 512,
+          items: {
+            type: 'object',
+            properties: { path: { type: 'string', maxLength: 1024 }, text: { type: 'string' }, executable: { type: 'boolean' } },
+            required: ['path', 'text']
+          },
+          description: 'The skill\'s text files, each { path, text, executable? }.'
+        },
+        dir: { type: 'string', description: 'Instead of files: a folder on this host holding the whole skill.' }
+      },
+      required: ['name']
+    }
+  },
+  {
+    name: 'skill_remove',
+    description: 'Remove a skill by name. Removing one a person wrote or imported asks them first.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'The skill\'s name.' },
+        scope: { type: 'string', enum: ['workspace', 'global'], description: 'workspace (default): the one in this thread\'s workspace. global: the one every thread sees.' }
+      },
+      required: ['name']
+    }
+  },
   {
     name: 'html_preview',
     description: HTML_PREVIEW_TOOL_DESCRIPTION,
@@ -738,7 +788,7 @@ export function listedTools(macToken = MAC_TOKEN) {
   return macToken ? [...TOOLS, ...MAC_TOOLS, ...MAC_JOB_TOOLS] : TOOLS
 }
 
-const METHOD_FOR = {
+export const METHOD_FOR = {
   app_list_threads: 'app.listThreads',
   app_read_thread: 'app.readThread',
   app_start_thread: 'app.startThread',
@@ -760,8 +810,14 @@ const METHOD_FOR = {
   batch_gate: 'app.batchGate',
   batch_rules: 'app.batchRules',
   adopt_thread: 'app.adoptThread',
-  archive_threads: 'app.archiveThreads'
+  archive_threads: 'app.archiveThreads',
+  skill_list: 'app.skillList',
+  skill_write: 'app.skillWrite',
+  skill_remove: 'app.skillRemove'
 }
+
+/** Tools whose answer may wait on the person's card (requestApproval's own five minutes): no client deadline, or a late Allow would still write after the bridge answered a failure. */
+const WAITS_ON_A_CARD = new Set(['skill_write', 'skill_remove'])
 
 /** The MCP content parts a tool result turns into (the preview's PNG rides as an image). */
 export function toolContent(name, result) {
@@ -773,6 +829,12 @@ export function toolContent(name, result) {
     ]
   }
   return [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result) }]
+}
+
+/** The client deadline of one tool call: 0 is none. */
+export function clientTimeoutMs(name, args) {
+  if (name === 'wait_for_agent') return args?.timeoutSeconds ? (args.timeoutSeconds + 30) * 1000 : 0
+  return WAITS_ON_A_CARD.has(name) ? 0 : 120_000
 }
 
 async function callTool(name, args) {
@@ -794,12 +856,7 @@ async function callTool(name, args) {
   if (!method) throw new Error(`unknown tool: ${name}`)
   // wait_for_agent sleeps until the agent settles (0 = no deadline); an
   // explicit timeoutSeconds gets a small buffer on top.
-  const timeoutMs =
-    name === 'wait_for_agent'
-      ? args?.timeoutSeconds
-        ? (args.timeoutSeconds + 30) * 1000
-        : 0
-      : 120_000
+  const timeoutMs = clientTimeoutMs(name, args)
   const result = await appRequest(method, args ?? {}, timeoutMs)
   if (name === 'app_read_thread' && result === null) {
     return [{ type: 'text', text: 'refused: unknown thread id. app_list_threads shows valid ids.' }]

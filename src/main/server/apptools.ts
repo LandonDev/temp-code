@@ -30,6 +30,18 @@ import {
 import { CITE_CLAIM_MAX, CITE_TOOL_DESCRIPTION, CITE_TOOL_NAME, CITE_TOOL_PARAMS } from '@shared/research'
 import { NOTES_MAX_CHARS } from '@shared/contract'
 import {
+  SKILL_HARNESSES,
+  SKILL_LIST_DESCRIPTION,
+  SKILL_LIST_TOOL,
+  SKILL_MAX_FILES,
+  SKILL_REMOVE_DESCRIPTION,
+  SKILL_REMOVE_PARAMS,
+  SKILL_REMOVE_TOOL,
+  SKILL_WRITE_DESCRIPTION,
+  SKILL_WRITE_PARAMS,
+  SKILL_WRITE_TOOL
+} from '@shared/skills'
+import {
   canonicalSection,
   NOTE_SECTIONS,
   sectionBody,
@@ -66,7 +78,8 @@ import { mergeReviews } from './mergeReview'
 import { preview as previewHtml, publish as publishHtml, type HtmlPreview } from './htmlRender'
 import { INLINE_DIGEST_MAX_CHARS, mirrorRelPath, threadDigest } from './mirror'
 import type { SessionRegistry } from './sessions'
-import { macToolsHooks } from './macTools'
+import { macToolsHooks, toolUseIdOf } from './macTools'
+import { skillList, skillRemove, skillWrite, type SkillToolDeps } from './skills/tools'
 import type { CrossHostAgents } from './crossHostAgents'
 import type { ProjectPlans } from './projectPlan'
 import { batchMembershipOf, hostCatalogView, hostParamDescription, hostServing, isMasterSession, toolLine } from './orchestration'
@@ -525,6 +538,38 @@ export function setProjectPlans(plans: ProjectPlans | null): void {
   projectPlans = plans
 }
 
+// The skill tools every thread gets (skills/tools.ts holds their one body; the bridge reaches it through index.ts).
+let skillTools: SkillToolDeps | null = null
+export function setAppSkillTools(deps: SkillToolDeps | null): void {
+  skillTools = deps
+}
+
+export const SKILL_WRITE_SHAPE = {
+  name: z.string().describe(SKILL_WRITE_PARAMS.name),
+  harnesses: z
+    .array(z.enum(['all', ...SKILL_HARNESSES]))
+    .min(1)
+    .max(4)
+    .optional()
+    .describe(SKILL_WRITE_PARAMS.harnesses),
+  scope: z.enum(['workspace', 'global']).optional().describe(SKILL_WRITE_PARAMS.scope),
+  files: z
+    .array(z.object({ path: z.string().max(1_024), text: z.string(), executable: z.boolean().optional() }))
+    .max(SKILL_MAX_FILES)
+    .optional()
+    .describe(SKILL_WRITE_PARAMS.files),
+  dir: z.string().optional().describe(SKILL_WRITE_PARAMS.dir)
+}
+
+export const SKILL_REMOVE_SHAPE = {
+  name: z.string().describe(SKILL_REMOVE_PARAMS.name),
+  scope: z.enum(['workspace', 'global']).optional().describe(SKILL_REMOVE_PARAMS.scope)
+}
+
+const SKILLS_NOT_READY = 'error: the skills store is not ready on this host'
+/** The caller as the registry holds it now: its title and workspace may have moved since the harness booted. */
+const liveCaller = (session: SessionMeta): SessionMeta => registry?.get(session.id) ?? session
+
 export const PLAN_COMPLETE_TOOL_NAME = 'plan_complete'
 export const PLAN_COMPLETE_TOOL_DESCRIPTION =
   'Planning and project-plan threads only: say the plan is COMPLETE — the plan file is fully written and every decision is settled. Call it once, as the last tool call before your closing message. For an ordinary plan the app then starts the implementation thread itself (when auto-start is on) and tells whoever started this plan; a project plan gets `status: complete` and the user picks the next milestone from its options — nothing starts on its own. Refused while the plan file is missing or empty.'
@@ -702,6 +747,14 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
       tool(UPDATE_NOTES_TOOL_NAME, UPDATE_NOTES_DESCRIPTION, UPDATE_NOTES_SHAPE, async (args) =>
         text(registry ? appUpdateNotes(registry, session, args) : 'app registry not ready')
       ),
+      // The skill tools on every thread; a change to a person's skill raises a card on the call's own row.
+      tool(SKILL_LIST_TOOL, SKILL_LIST_DESCRIPTION, {}, async () => text(skillTools ? await skillList(skillTools, liveCaller(session)) : SKILLS_NOT_READY)),
+      tool(SKILL_WRITE_TOOL, SKILL_WRITE_DESCRIPTION, SKILL_WRITE_SHAPE, async (args, x) =>
+        text(skillTools ? await skillWrite(skillTools, liveCaller(session), args, { callId: toolUseIdOf(x) }) : SKILLS_NOT_READY)
+      ),
+      tool(SKILL_REMOVE_TOOL, SKILL_REMOVE_DESCRIPTION, SKILL_REMOVE_SHAPE, async (args, x) =>
+        text(skillTools ? await skillRemove(skillTools, liveCaller(session), args, { callId: toolUseIdOf(x) }) : SKILLS_NOT_READY)
+      ),
       // note_decision on every thread: the record of a choice made while the person is away.
       tool(NOTE_DECISION_TOOL_NAME, NOTE_DECISION_DESCRIPTION, NOTE_DECISION_SHAPE, async (args) =>
         text(registry ? appNoteDecision(registry, session, args) : 'app registry not ready')
@@ -776,5 +829,8 @@ export const APP_TOOLS = [
   `mcp__app__${BATCH_GATE_TOOL_NAME}`,
   `mcp__app__${BATCH_RULES_TOOL_NAME}`,
   `mcp__app__${ADOPT_THREAD_TOOL_NAME}`,
-  `mcp__app__${ARCHIVE_THREADS_TOOL_NAME}`
+  `mcp__app__${ARCHIVE_THREADS_TOOL_NAME}`,
+  `mcp__app__${SKILL_LIST_TOOL}`,
+  `mcp__app__${SKILL_WRITE_TOOL}`,
+  `mcp__app__${SKILL_REMOVE_TOOL}`
 ]

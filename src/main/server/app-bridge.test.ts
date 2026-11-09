@@ -23,7 +23,7 @@ import {
   BATCH_RULES_TOOL_DESCRIPTION,
   BATCH_RULES_TOOL_NAME
 } from '@shared/gate'
-import { NOTE_DECISION_SHAPE, ADOPT_THREAD_SHAPE, ARCHIVE_THREADS_SHAPE, BATCH_GATE_SHAPE, BATCH_RULES_SHAPE, CITE_SHAPE, HTML_PREVIEW_SHAPE, HTML_RENDER_SHAPE, MERGE_BRANCH_SHAPE, REPORT_FINDINGS_SHAPE } from './apptools'
+import { NOTE_DECISION_SHAPE, SKILL_REMOVE_SHAPE, SKILL_WRITE_SHAPE, ADOPT_THREAD_SHAPE, ARCHIVE_THREADS_SHAPE, BATCH_GATE_SHAPE, BATCH_RULES_SHAPE, CITE_SHAPE, HTML_PREVIEW_SHAPE, HTML_RENDER_SHAPE, MERGE_BRANCH_SHAPE, REPORT_FINDINGS_SHAPE } from './apptools'
 import {
   MERGE_BRANCH_PARAMS,
   MERGE_BRANCH_TOOL_DESCRIPTION,
@@ -31,6 +31,16 @@ import {
   REPORT_FINDINGS_TOOL_DESCRIPTION,
   REVIEW_FINDING_PARAMS
 } from '@shared/review'
+import {
+  SKILL_LIST_DESCRIPTION,
+  SKILL_LIST_TOOL,
+  SKILL_REMOVE_DESCRIPTION,
+  SKILL_REMOVE_PARAMS,
+  SKILL_REMOVE_TOOL,
+  SKILL_WRITE_DESCRIPTION,
+  SKILL_WRITE_PARAMS,
+  SKILL_WRITE_TOOL
+} from '@shared/skills'
 
 const bridgePath = join(import.meta.dirname, '..', '..', '..', 'scripts', 'app-mcp-bridge.mjs')
 
@@ -45,6 +55,8 @@ type BridgeTool = {
 
 const bridge = (await import(bridgePath)) as {
   TOOLS: BridgeTool[]
+  METHOD_FOR: Record<string, string>
+  clientTimeoutMs: (name: string, args?: unknown) => number
   toolContent: (name: string, result: unknown) => Array<Record<string, unknown>>
 }
 
@@ -200,5 +212,24 @@ describe('app-mcp-bridge batch_gate', () => {
     for (const [name, schema] of Object.entries(t.inputSchema.properties)) {
       expect(schema.description).toBe(BATCH_GATE_PARAMS[name as keyof typeof BATCH_GATE_PARAMS])
     }
+  })
+})
+
+describe('app-mcp-bridge skill tools', () => {
+  it('copies the shared words, maps each to its app.skill* method and waits on a card with no client deadline', () => {
+    const list = bridge.TOOLS.find((x) => x.name === SKILL_LIST_TOOL)!
+    expect(list.description).toBe(SKILL_LIST_DESCRIPTION)
+    expect(Object.keys(list.inputSchema.properties)).toEqual([])
+    const write = bridge.TOOLS.find((x) => x.name === SKILL_WRITE_TOOL)!
+    expect(write.description).toBe(SKILL_WRITE_DESCRIPTION)
+    expect(Object.keys(write.inputSchema.properties)).toEqual(Object.keys(SKILL_WRITE_SHAPE))
+    for (const [name, schema] of Object.entries(write.inputSchema.properties)) expect(schema.description).toBe(SKILL_WRITE_PARAMS[name as keyof typeof SKILL_WRITE_PARAMS])
+    expect(write.inputSchema.required).toEqual(['name'])
+    const remove = bridge.TOOLS.find((x) => x.name === SKILL_REMOVE_TOOL)!
+    expect(remove.description).toBe(SKILL_REMOVE_DESCRIPTION)
+    expect(Object.keys(remove.inputSchema.properties)).toEqual(Object.keys(SKILL_REMOVE_SHAPE))
+    for (const [name, schema] of Object.entries(remove.inputSchema.properties)) expect(schema.description).toBe(SKILL_REMOVE_PARAMS[name as keyof typeof SKILL_REMOVE_PARAMS])
+    expect([bridge.METHOD_FOR.skill_list, bridge.METHOD_FOR.skill_write, bridge.METHOD_FOR.skill_remove]).toEqual(['app.skillList', 'app.skillWrite', 'app.skillRemove'])
+    expect([bridge.clientTimeoutMs('skill_write'), bridge.clientTimeoutMs('skill_remove'), bridge.clientTimeoutMs('skill_list')]).toEqual([0, 0, 120_000])
   })
 })
