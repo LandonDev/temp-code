@@ -118,7 +118,9 @@ beforeAll(async () => {
 }, 60_000)
 afterAll(async () => {
   await server.close()
-  rmSync(root, { recursive: true, force: true })
+  // A thread created here boots a real claude CLI under the scope's owned config dir in this root
+  // (skills/claudeRoots.ts); it writes its own state there for a moment after its input closes.
+  rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
 })
 
 describe('status', () => {
