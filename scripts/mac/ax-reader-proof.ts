@@ -5,7 +5,9 @@
  *
  * The person's rules (2026-11-08): every window is read in the background and
  * never activated (`open -g`, AX reads and AX actions only); each scratch app
- * starts only once the Mac has had no input for TC_AX_IDLE_ANY seconds (30),
+ * starts only once the Mac has had no input for TC_AX_IDLE_ANY seconds (300:
+ * scratch windows come forward whatever `-g` says, so the person chose five
+ * minutes away, 2026-11-09),
  * IntelliJ's scratch project for 120, waiting up to TC_AX_IDLE_WAIT seconds
  * (900) and else "skipped: the person is active"; a launch that brings its app
  * in front ends the run; IntelliJ's licence prompt is avoided (no run when it
@@ -27,7 +29,7 @@ const PAGES = join(ROOT, 'src/main/server/computer/fixtures/page')
 const OUT = '/tmp/tc-ax-proof'
 const TCAX = process.env.TC_AX_BIN ?? join(ROOT, 'native/tc-computer/.build/release/tc-ax')
 const REC = process.env.TC_AX_RECORDER ?? ''
-const IDLE_ANY = Number(process.env.TC_AX_IDLE_ANY ?? 30)
+const IDLE_ANY = Number(process.env.TC_AX_IDLE_ANY ?? 300)
 const IDLE_IDEA = 120
 const IDLE_WAIT = Number(process.env.TC_AX_IDLE_WAIT ?? 900)
 
