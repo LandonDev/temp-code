@@ -45,9 +45,9 @@ import Testing
         let m = machine(c, takes: true)
         _ = m.prepare(7)
         c.now += 100
-        #expect(m.retries(7, thin: true) == [10_250, 10_500, 11_000, 11_500])
+        #expect(m.retries(7, thin: true) == [10_250, 10_500, 11_000, 11_500, 12_500, 13_500])
         c.now += 600
-        #expect(m.retries(7, thin: true) == [11_000, 11_500])
+        #expect(m.retries(7, thin: true) == [11_000, 11_500, 12_500, 13_500])
         #expect(m.retries(7, thin: false).isEmpty)
         c.now = 15_001
         #expect(m.retries(7, thin: true).isEmpty)

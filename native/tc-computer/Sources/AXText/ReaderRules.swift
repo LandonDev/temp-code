@@ -43,7 +43,8 @@ public enum WindowMatch {
 /// AXManualAccessibility, set once per pid on its first read (plan §5.4).
 /// Success marks a Chromium or Electron process; -25205 a native one. A
 /// Chromium read that comes back thin within 5 s of the set is read again at
-/// 250, 500, 1,000 and 1,500 ms after it, and the first one not thin wins.
+/// 250, 500, 1,000, 1,500, 2,500 and 3,500 ms after it, and the first one not
+/// thin wins (an Electron window's web area came 1.5 to 3 s after the set, 2026-11-09).
 public final class ManualAccessibility: @unchecked Sendable {
     public enum Process: Sendable, Equatable {
         /// set at this clock time, ms
@@ -51,7 +52,7 @@ public final class ManualAccessibility: @unchecked Sendable {
         case native
     }
 
-    public static let retryAfterMs: [Double] = [250, 500, 1_000, 1_500]
+    public static let retryAfterMs: [Double] = [250, 500, 1_000, 1_500, 2_500, 3_500]
     public static let retryWindowMs: Double = 5_000
 
     private let lock = NSLock()
