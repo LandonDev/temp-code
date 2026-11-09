@@ -28,6 +28,7 @@ import {
   placeholderMuseAuth,
   PLACEHOLDER_EMAIL
 } from './configDirSpike'
+import { preferredProofBun, runProofBun } from './proofBun'
 import { waitForGateBuild } from './gateBuild'
 import { FakeAnthropic, FakeResponses, skillCall, sleep } from './spikeFakes'
 import { proxyPeerPid } from './skillsDriversPeers'
@@ -186,6 +187,12 @@ export async function runSkillsDriversGate(repo: string): Promise<number> {
   }
   // A gate must wait before it starts any instance, and must never build.
   await waitForGateBuild({ tree: repo, log })
+  const runtime = preferredProofBun(process.execPath, process.env.HOME || homedir())
+  if (runtime) {
+    log(`using the user's Bun for the gate: ${runtime}`)
+    return runProofBun(runtime, join(repo, 'scripts/e2e-skills-drivers.ts'), process.argv.slice(2))
+  }
+  log(`gate runtime: Bun ${process.versions.bun ?? 'unknown'} (${process.execPath})`)
   // Resolve before substituting HOME: the login shell must read the real user's profile.
   const callerEnv = { ...process.env }
   const realHome = callerEnv.HOME || homedir()

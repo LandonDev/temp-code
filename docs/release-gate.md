@@ -157,7 +157,10 @@ one contract:
   required leg cannot judge fails (the drivers row's Claude leg).
   The grants, skills-store and computer-bridge proofs launch the clone's
   Electron binary through `scripts/lib/proofElectron.ts`, so their sparse
-  PATH does not need `node` to run Electron's npm launcher.
+  PATH does not need a `node` entry. The drivers gate uses the user's
+  `~/.bun/bin/bun` through `scripts/lib/proofBun.ts` before it creates its rig:
+  `bun run` can otherwise select another Bun from an ancestor npm `.bin`.
+  The runtime child receives termination signals and returns its exit code.
 - **It skips, with one line each**, a leg that spends a real model, needs
   the person away, or opens an app other than TC Probe. Those legs are the
   hand runs below.

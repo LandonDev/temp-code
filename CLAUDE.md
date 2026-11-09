@@ -2094,6 +2094,10 @@ and .temp-code/plan-JBpcLz-eGMhp.md (the drivers).
   and `--host box|mac` runs real turns by hand. Both `--gate` modes are
   publish rows.
 
+- The skills drivers gate uses the user's `~/.bun/bin/bun` through
+  `scripts/lib/proofBun.ts`, so an ancestor npm `.bin` cannot select another
+  runtime. It waits for the gate build before starting that child.
+
 ## Computer use: the Mac's apps from any thread
 docs/computer-protocol.md is the contract and the long account, by
 section; docs/box.md "Computer use: the Mac's apps from any thread" has
