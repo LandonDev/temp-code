@@ -3754,6 +3754,26 @@ proof and the sizing rules; the pieces, by name:
   a heavy page 600 ms, IntelliJ 500 ms, a dev instance 400 ms, the signature
   10 ms.
 
+- Computer use through the Mac bridge (docs/computer-protocol.md §18,
+  docs/box.md "Computer use from a box thread"): a box thread whose bridge
+  names a Mac gets the four tools while that Mac offers `computer` in its
+  `peer.register` (the host's switch `macBridge.computer.<envId>`, off by
+  default; the box keeps the offer as `macBridge.computerOffer.<envId>`).
+  Each call is `mac.computer` (`contract-maccomputer.ts`), run on the Mac by
+  `remote/macComputer.ts` in a session keyed `macComputerKey(box, thread)`: the
+  policy and switch checked, Away refused, a live session a running request of
+  kind `computer` on the load guard under `macBridge.maxComputer.<envId>`
+  (default 2), a card of kind `computer` in safe and edits, the row back as
+  `peer.progress`, the pictures read back. `mac.computerEnd` settles, stops or
+  ends it. The box's `computer/bridge.ts` queues the calls per thread, lands
+  the pictures under the thread, mirrors the row on its own `computer` push
+  (`macPeer`, `macName`, `asking`) and records a `computer` ledger row; the
+  renderer's `lib/computerSessions.ts` keeps each host's rows and
+  `chrome/ComputerAskToasts.tsx` names the Mac while a card waits there. Seam:
+  `TEMP_CODE_COMPUTER_PIN="TextEdit=<pid>"` (isolated instances only) pins an
+  app query to a pid; a headless Mac instance serves computer use with
+  `TEMP_CODE_COMPUTER=1`. Proof: `bun run script:e2e-computer-bridge`.
+
 ## The menu bar: one table
 src/shared/menuTree.ts is the menu as data, read by main (src/main/menu.ts),
 the in-app bar and the tests: TempCode, File, Edit, View (Show/Hide

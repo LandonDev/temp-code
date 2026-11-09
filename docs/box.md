@@ -1706,6 +1706,56 @@ request waits for a decision on the Mac"). Deciding, remembering and every
 setting stay the Mac's own. The phone shows them on a box's host detail
 under "On <Mac>" (docs/IOS-DESIGN.md "Host activity").
 
+### Computer use from a box thread
+
+A box thread with the Mac bridge on can use the Mac's apps: the same four
+`computer_*` tools a Mac thread has (docs/computer-protocol.md §18), each
+call run on the Mac in a session the Mac owns for that thread. The box
+carries the call; the Mac decides it.
+
+The switch. Each host's Mac bridge group on the Mac's Settings → Hosts has a
+Computer use row under Access, off by default and hidden while Access is
+Off. Turned on, the Mac offers computer use in its `peer.register`; the box
+keeps that offer for while the Mac is offline, and the threads bridged to that
+Mac get the tools at their next turn. Where the Mac cannot serve computer use
+(no tc-computer, no screen) the switch is off with the reason. A call while it
+is off answers "refused: computer use is off for this host; turn on Computer
+use for it in the Mac's Settings → Hosts".
+
+The card. In safe and edits each acting call asks on the Mac: "box wants to
+use TextEdit on this Mac", its steps in words, Allow or Deny, nothing
+remembered. Full access never asks. While a card waits, the box thread's
+Activity row says "Waiting for approval on <Mac>" and a toast over the box
+thread names the Mac; only the person at the Mac decides.
+
+The guard and the cap. A live session is a running job on the Mac's load
+guard: it counts toward the host's "Commands at once" and its own "Computer
+sessions at once" (default 2, in the host's Settings… dialog while the switch
+is on). A call at either cap waits in line, "Waiting for the Mac, 2 of 2
+computer sessions, 1st in line", on the Mac's running list and the box row,
+within its deadline. The slot goes back at the box turn's settle, a Stop, the
+link dropping or three idle minutes.
+
+Pause, Stop, Away. A paused box thread's computer calls are refused at the
+box; a pause or the composer's Stop cancels the call out on the Mac. Stop on
+the Activity row ends computer use for the turn on both hosts: the call in
+flight answers what it did and "stopped by the person". With Away on, an
+acting call that would ask is refused at once and the box writes its away
+row.
+
+Where things land. The pictures are files under the box thread's own
+attachment dir, numbered by the thread; none stays on the Mac. The session is
+a "computer use" row on the box thread's resources ledger; archiving the
+thread (or removing the row) ends it on the Mac. The Mac's running list shows
+each live session as "Using TextEdit, window "Untitled"" with Stop.
+
+Proof: `bun run script:e2e-computer-bridge`, run on the Mac in a clone of the
+branch, with the box half started over SSH in a clone on the box (both built):
+the switch, the offer, an observe whose picture lands on the box byte for
+byte, an act, the card denied then allowed, the cap, pause, Stop, Away, the
+codex bridge, the switch off mid-turn, archive and the Mac offline. Its report
+and the Mac's trace are copied to `.temp-code/computer-bridge/mac/` here.
+
 ### The fleet switches: Pause all, Resume all, Stop all, Archive done
 
 Fifteen threads need one click, not fifteen. Every scope has the same five
