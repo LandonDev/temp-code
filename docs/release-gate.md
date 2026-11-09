@@ -150,6 +150,11 @@ one contract:
   matches.
 - **Two app instances at most**, and it kills what it started on any exit
   (scripts/lib/proofCleanup.ts for the store proofs).
+- **It finds its CLIs the way the app does** (scripts/lib/gateCli.ts: the
+  real user's login shell, then PATH, then the usual user bin dirs), never
+  by the caller's PATH alone: the gate's children inherit a sparse one, and
+  the drivers row's first gate run passed judging nothing. A row whose
+  required leg cannot judge fails (the drivers row's Claude leg).
 - **It skips, with one line each**, a leg that spends a real model, needs
   the person away, or opens an app other than TC Probe. Those legs are the
   hand runs below.
@@ -174,7 +179,7 @@ one contract:
 | e2e-addons | `e2e` | both | two paired headless instances, fake MCP servers | leg 4, the real claude-haiku-5-5 thread on this user's HOME | 22 s, 20 s, 22 s | | |
 | e2e-addon-grants | `e2e` | both | two paired headless instances, scripts/lib/fakeOAuthServer.ts | nothing (no model) | 133 s, 134 s, 134 s | | |
 | e2e-skills-store | `e2e` | both | two paired headless instances | nothing (no model) | 13 s, 15 s, 15 s | | |
-| e2e-skills-drivers | `e2e` | both | one headless instance, the real CLIs against scripts/lib/spikeFakes.ts | the real-model legs (`--host box\|mac`) | | | |
+| e2e-skills-drivers | `e2e` | both | one headless instance, the real CLIs against scripts/lib/spikeFakes.ts | the real-model legs (`--host box\|mac`) | 10 s, 10 s, 10 s | | |
 | e2e-tc-computer | `computer` | Mac | the service and TC Probe | the TextEdit legs and the paste | n/a | | |
 | e2e-computer-bridge | `computer` | Mac | two headless instances (the box half seamed linux), the service, TC Probe | the SSH pair | n/a | | |
 | e2e-computer-preview | `computer` | Mac | the service and TC Probe | leg 4, the Escape tap, which takes the person's Escape | n/a | | |
@@ -206,7 +211,7 @@ otherwise.
 | proof | host | needs | last time | last result |
 | --- | --- | --- | --- | --- |
 | `script:e2e-addons` (whole) | box | a Claude login on this user's HOME | 42 s | passed, 46 checks |
-| `script:e2e-skills-drivers -- --host box` | box | real Claude, Codex and Muse logins | | |
+| `script:e2e-skills-drivers -- --host box` | box | real Claude, Codex and Muse logins | 75 s | passed, 21 checks, codex 0.163.0 included; Muse's catalog listed 51 home skills on the real HOME (the known gap) |
 | `script:e2e-skills-drivers -- --host mac` | Mac | the same, codex 0.164 or newer | | |
 | `script:spike-config-dirs -- --host box` | box | the CLIs (a probe, rerun after a CLI update) | 109 s | 27 ok, 10 partial, 2 fail, 1 skip; the secret sweep clean |
 | `script:spike-config-dirs -- --host mac` | Mac | the same | | |
