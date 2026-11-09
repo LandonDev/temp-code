@@ -27,11 +27,9 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { randomBytes } from 'node:crypto'
 import { computerHooks } from '../src/main/server/computer/mcp'
-import { REFUSE_SESSION_TIER, setSessionTierGate, type SessionTierGate } from '../src/main/server/computer/tierGate'
 import { probeCatalogs } from '../src/main/server/drivers/catalogProbe'
 import { installedCodexVersion } from '../src/main/server/drivers/codexVersion'
 import { modelInfo, type ProviderId } from '../src/shared/catalog'
-import { SESSION_REFUSAL_WORDS } from '../src/shared/computer/hostErrors'
 import type { AgentEvent, EventRow } from '../src/shared/events'
 import { exec } from './lib/benchChecks'
 import {
@@ -194,7 +192,7 @@ for (const sig of ['SIGTERM', 'SIGINT'] as const) {
 // ── the rig ─────────────────────────────────────────────────────────────
 
 try {
-  rig = await startRig({ root: ROOT, work: WORK, gate: REFUSE_SESSION_TIER, proofSession: 'bench-proof', log })
+  rig = await startRig({ root: ROOT, work: WORK, sessionTier: args.session ? 'scheduled' : 'refused', proofSession: 'bench-proof', log })
 } catch (e) {
   if (!(e instanceof RigStop)) throw e
   console.log(`STOP  ${e.message}`)
@@ -205,16 +203,7 @@ const R: Rig = rig
 const registry = R.server.registry
 const probe = asProbe(R.mac)
 
-/** --session: the session tier admitted only while the person has been away from the Mac two minutes. */
-const IDLE_SESSION_GATE: SessionTierGate = {
-  admitted: () => R.mac.idleSeconds() >= BENCH_TIMING.idleSessionS,
-  request: async () =>
-    R.mac.idleSeconds() >= BENCH_TIMING.idleSessionS
-      ? { admit: true }
-      : { admit: false, reason: 'person-present', message: SESSION_REFUSAL_WORDS['person-present'] }
-}
-if (args.session) setSessionTierGate(IDLE_SESSION_GATE)
-log(args.session ? 'session tier: only while the Mac has been idle 2 minutes' : 'tiers ax and process only; the session tier is refused')
+log(args.session ? "session tier: the host's own scheduler (the person away: no input for 120 s, or Away)" : 'tiers ax and process only; the session tier is refused')
 if (UNGATED) log(`${BENCH_UNGATED_ENV}=1: no idle wait before a launch; only a locked or dark screen holds a run`)
 
 // ── lanes and tasks ─────────────────────────────────────────────────────

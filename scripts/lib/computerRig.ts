@@ -18,7 +18,8 @@ import type { RunningServer } from '../../src/main/server/index'
 import { computerHooks, type ComputerHost } from '../../src/main/server/computer/mcp'
 import { ComputerRpcError } from '../../src/main/server/computer/connection'
 import type { ComputerSessions } from '../../src/main/server/computer/sessions'
-import { setSessionTierGate, type SessionTierGate } from '../../src/main/server/computer/tierGate'
+import { PersonIdle } from '../../src/main/personIdle'
+import { REFUSE_SESSION_TIER, setSessionTierGate } from '../../src/main/server/computer/tierGate'
 import { parseObservation, type ParsedObservation } from '../../src/shared/computer/observation'
 import { COMPUTER_WAIT, type AppRef, type ComputerMethod, type ComputerParams, type ComputerResult, type StepResult } from '../../src/shared/computer/protocol'
 import type { HostCall, MacProbe } from './benchRun'
@@ -303,7 +304,14 @@ const pidsOf = (name: string): Set<number> => {
  * off: the rig asks for no permission), starts the server with the pins as
  * its resolveApp and sets the session tier's gate.
  */
-export async function startRig(opts: { root: string; work: string; gate: SessionTierGate; proofSession: string; log?: (line: string) => void }): Promise<Rig> {
+export async function startRig(opts: {
+  root: string
+  work: string
+  /** 'refused': the background tiers only; 'scheduled': the host's own tier scheduler, over the person's idle time the probe reads */
+  sessionTier: 'refused' | 'scheduled'
+  proofSession: string
+  log?: (line: string) => void
+}): Promise<Rig> {
   // Loaded here, not at the top: the lanes and the call wrapper are tested without a server or a Swift build.
   const { startServer } = await import('../../src/main/server/index')
   const { buildTcComputer } = await import('./tcComputerBuild')
@@ -339,14 +347,15 @@ export async function startRig(opts: { root: string; work: string; gate: Session
     dataDir: join(opts.work, 'data'),
     claimShim: false,
     remotePort: 0,
-    computerResolveApp: (q) => pins.resolve(q)
+    computerResolveApp: (q) => pins.resolve(q),
+    ...(opts.sessionTier === 'scheduled' ? { personIdle: new PersonIdle({ getSystemIdleTime: () => mac.idleSeconds() }) } : {})
   })
   // codex 0.158+ refuses a plain-http base, which is all an unrouted thread gets from the shim or this gateway:
   // with the gateway stopped and the shim's port dead (the package scripts set ALIAX_SHIM_PORT=9), every CLI uses its own login
   await server.gateway.stop()
   const host = computerHooks.current
   if (!host?.available()) throw new RigStop('computer use is unavailable in this server')
-  setSessionTierGate(opts.gate)
+  if (opts.sessionTier === 'refused') setSessionTierGate(REFUSE_SESSION_TIER)
 
   const wire = { steps: 0, failed: 0, kinds: {} as Record<string, number> }
   const request = host.service.request.bind(host.service)

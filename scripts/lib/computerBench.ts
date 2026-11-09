@@ -115,9 +115,7 @@ export const BENCH_TIMING = {
   /** a run still queued past it is skipped with the scheduler's line */
   queueSkipMs: 5 * 60_000,
   /** a scratch app launches only after this long with no input */
-  launchQuietMs: 5_000,
-  /** the hand run's session tier: the Mac idle at least this long */
-  idleSessionS: 120
+  launchQuietMs: 5_000
 } as const
 
 /** Tool calls a run may make beside the computer tools without going off route; `Reminder` is Muse's own reminder child session (museProtocol.ts `reminderChild`), the harness's, not the model's. */

@@ -24,7 +24,6 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { randomBytes } from 'node:crypto'
 import { renderComputerMechanics, setComputerWordsOverride } from '../src/main/server/computer/prompts'
-import { REFUSE_SESSION_TIER } from '../src/main/server/computer/tierGate'
 import { computerToolSpecs, tierVerdictSetting } from '../src/shared/computer/tools'
 import type { AgentEvent, EventRow } from '../src/shared/events'
 import { exec } from './lib/benchChecks'
@@ -155,7 +154,7 @@ mkdirSync(WORK, { recursive: true })
 
 let rig: Rig
 try {
-  rig = await startRig({ root: ROOT, work: WORK, gate: REFUSE_SESSION_TIER, proofSession: 'cmp-proof' })
+  rig = await startRig({ root: ROOT, work: WORK, sessionTier: 'refused', proofSession: 'cmp-proof' })
 } catch (e) {
   if (!(e instanceof RigStop)) throw e
   console.log(`STOP  ${e.message}`)

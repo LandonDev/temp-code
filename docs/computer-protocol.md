@@ -1278,7 +1278,7 @@ Per computer call: its host time (the rig's wrapper, entering `ComputerSessions.
 
 ### 21.5 Flags
 
-`--gate` (the gate tasks, one run each, reruns on a breach, the judge's exit, missing baseline rows written), `--report-only` (the same, exit 0, nothing written), `--models a,b`, `--tasks a,b`, `--runs n` (exactly n runs, no reruns), `--session` (the session tasks too, the tier admitted only while the Mac has been idle 2 minutes; never in the gate), `--rebaseline`, `--judge <report.json>` (judge a saved report against the baseline; runs nothing, on any host), `--reference codex`. `TC_BENCH_UNGATED=1` is the person's leave to run with no idle wait (the scratch windows may come forward): only a locked or dark screen holds a launch, since AX sees no windows then, and the report says the run was ungated.
+`--gate` (the gate tasks, one run each, reruns on a breach, the judge's exit, missing baseline rows written), `--report-only` (the same, exit 0, nothing written), `--models a,b`, `--tasks a,b`, `--runs n` (exactly n runs, no reruns), `--session` (the session tasks too, the tier through the host's own scheduler of §20, the person away; never in the gate), `--rebaseline`, `--judge <report.json>` (judge a saved report against the baseline; runs nothing, on any host), `--reference codex`. `TC_BENCH_UNGATED=1` is the person's leave to run with no idle wait (the scratch windows may come forward): only a locked or dark screen holds a launch, since AX sees no windows then, and the report says the run was ungated.
 
 ### 21.6 The reference
 
