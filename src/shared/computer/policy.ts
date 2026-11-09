@@ -72,7 +72,7 @@ export const ConfirmSchema = z.object({
 })
 export type Confirm = z.infer<typeof ConfirmSchema>
 
-/** What a card asks for: a model's flag, or the host's own password rule. */
+/** What a card asks for: a model's flag, or the host's own password rule (whose `what` is empty: the steps say it). */
 export interface ConfirmNeed {
   kind: HostConfirmKind
   what: string
@@ -92,7 +92,7 @@ export const CONFIRM_TITLE_MAX = 160
  * while the whole fits CONFIRM_TITLE_MAX.
  */
 export function confirmTitle(need: ConfirmNeed, app: string, steps?: string): string {
-  const head = `${CONFIRM_KIND_INFO[need.kind].label} in ${app}: ${need.what}`
+  const head = `${CONFIRM_KIND_INFO[need.kind].label} in ${app}${need.what ? `: ${need.what}` : ''}`
   const whole = steps ? `${head} (${steps})` : head
   return whole.length <= CONFIRM_TITLE_MAX ? whole : head
 }

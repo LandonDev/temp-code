@@ -4,7 +4,9 @@
  * title and input, and the activity line the thread's row and Activity show.
  * Reads never ask; every action that sends input does, one card per call.
  */
+import type { PermissionPolicy } from '../events'
 import { parseElementLine } from './observation'
+import { confirmInput, confirmTitle, type Confirm, type ConfirmNeed, type HostConfirmKind } from './policy'
 import { COMPUTER_ACTION_NAMES, NO_INPUT_ACTIONS, type ComputerAction, type ComputerActionName, type ElementBrief } from './protocol'
 import type { ComputerToolName } from './tools'
 
@@ -19,15 +21,37 @@ export function computerToolOf(name: string): { tool: ComputerToolName; action?:
   return null
 }
 
+/** A call as one of the four tools: a per-verb call becomes computer_act with its action, every other field (confirm too) kept. */
+export function asFourTool(name: string, args: unknown): { tool: ComputerToolName; args: Record<string, unknown> } | null {
+  const of = computerToolOf(name)
+  if (!of) return null
+  const raw = args && typeof args === 'object' ? { ...(args as Record<string, unknown>) } : {}
+  return { tool: of.tool, args: of.action ? { ...raw, action: of.action } : raw }
+}
+
 const sendsInput = (a: { action: ComputerActionName }): boolean => !NO_INPUT_ACTIONS.includes(a.action)
 
-type ToolArgs = { action?: ComputerActionName; actions?: { action: ComputerActionName }[] }
+type ToolArgs = { action?: ComputerActionName; actions?: { action: ComputerActionName }[]; confirm?: Confirm }
 
-/** Does this call need a card in safe or edits? apps and observe never; act or batch only with an action that sends input. */
-export function needsApproval(tool: ComputerToolName, args: ToolArgs): boolean {
-  if (tool === 'computer_act') return args.action !== undefined && sendsInput({ action: args.action })
-  if (tool === 'computer_batch') return (args.actions ?? []).some(sendsInput)
-  return false
+export interface ApprovalNeed {
+  /** a card before the call */
+  ask: boolean
+  /** what the card says the act is: the model's flag, or the host's own password rule */
+  confirm: ConfirmNeed | null
+}
+
+/**
+ * Does this call need a card? An act or batch that sends input asks in safe
+ * and edits; a flagged one (`confirm`) asks in every mode, full access
+ * included; so does the host's own need (`password`), which leads the card,
+ * keeping the model's words where it flagged too. apps and observe never ask.
+ */
+export function needsApproval(tool: ComputerToolName, args: ToolArgs, permission: PermissionPolicy = 'safe', hostNeed: ConfirmNeed | null = null): ApprovalNeed {
+  const acts =
+    tool === 'computer_act' ? args.action !== undefined && sendsInput({ action: args.action }) : tool === 'computer_batch' ? (args.actions ?? []).some(sendsInput) : false
+  const flag = (tool === 'computer_act' || tool === 'computer_batch') && args.confirm ? { kind: args.confirm.kind as HostConfirmKind, what: args.confirm.what } : null
+  const confirm = hostNeed ? { kind: hostNeed.kind, what: flag?.what ?? hostNeed.what } : flag
+  return { ask: confirm !== null || (acts && permission !== 'auto'), confirm }
 }
 
 export interface TitleContext {
@@ -36,6 +60,8 @@ export interface TitleContext {
   window: string | null
   /** the thread's book: an element's line, or null when it has none */
   element: (index: number) => ElementBrief | null
+  /** text goes into a password field: steps say how long it is, never what */
+  maskText?: boolean
 }
 
 const quoteShort = (text: string, max = 60): string => {
@@ -76,6 +102,19 @@ const CLICK_VERBS: Partial<Record<ComputerActionName, string>> = {
   triple_click: 'triple-click'
 }
 
+const isPassword = (index: number | undefined, ctx: TitleContext): boolean => {
+  if (index === undefined) return false
+  const line = ctx.element(index)?.line
+  return line === 'password' || !!line?.startsWith('password ')
+}
+
+/** The text a step puts in, quoted, or only its length when it goes into a password field. */
+function textWords(text: string, action: ComputerAction, ctx: TitleContext): string {
+  if (!ctx.maskText && !isPassword(action.element, ctx)) return quoteShort(text)
+  const n = [...text].length
+  return `${n} character${n === 1 ? '' : 's'}`
+}
+
 /** One acting step in words, lower-case: `click button "Save"`, `type "Lunch?" into input "Subject"`. */
 export function actionWords(action: ComputerAction, ctx: TitleContext): string {
   const at = target(action, ctx)
@@ -96,15 +135,15 @@ export function actionWords(action: ComputerAction, ctx: TitleContext): string {
     case 'scroll':
       return mods(`scroll ${action.scroll_direction} ${action.scroll_amount}${at ? ` on ${at}` : ''}`)
     case 'type':
-      return `type ${quoteShort(action.text ?? '')}${at ? ` into ${at}` : ''}`
+      return `type ${textWords(action.text ?? '', action, ctx)}${at ? ` into ${at}` : ''}`
     case 'paste':
-      return `paste ${quoteShort(action.text ?? '')}${at ? ` into ${at}` : ''}`
+      return `paste ${textWords(action.text ?? '', action, ctx)}${at ? ` into ${at}` : ''}`
     case 'key':
       return `press ${action.text}${action.repeat && action.repeat > 1 ? ` ${action.repeat} times` : ''}`
     case 'hold_key':
       return `hold ${action.text} for ${action.duration} s`
     case 'set_value':
-      return `set ${at} to ${quoteShort(action.value ?? '')}`
+      return `set ${at} to ${textWords(action.value ?? '', action, ctx)}`
     case 'select_text':
       return `select ${action.text !== undefined ? quoteShort(action.text) : `${action.range?.[0]}..${action.range?.[1]}`} in ${at}`
     case 'perform':
@@ -135,17 +174,31 @@ function actingSteps(tool: ComputerToolName, args: ToolArgs): ComputerAction[] {
  * The card's title (the card's row, the notifier and the away row read it):
  * `Click button "Save" in TextEdit, window "Untitled"`, a batch
  * `3 actions in Mail, window "New Message": click button "To", type "Lunch?", press super+Return`.
+ * A flagged call leads with its kind: `Send in Mail: Reply to Ana (click button "Send")`.
  * A batch's reads are left out.
  */
-export function computerApprovalTitle(tool: ComputerToolName, args: ToolArgs, ctx: TitleContext): string {
+export function computerApprovalTitle(tool: ComputerToolName, args: ToolArgs, ctx: TitleContext, confirm: ConfirmNeed | null = null): string {
   const steps = actingSteps(tool, args).map((a) => actionWords(a, ctx))
+  if (confirm) return confirmTitle(confirm, ctx.appName, steps.join(', ') || undefined)
   if (steps.length === 1) return `${capital(steps[0])} in ${where(ctx)}`
   return `${steps.length} actions in ${where(ctx)}: ${steps.join(', ')}`
 }
 
-/** The card's input, for the preview thread's card: the app, the window and each acting step in words. */
-export function computerApprovalInput(tool: ComputerToolName, args: ToolArgs, ctx: TitleContext): { app: string; window: string | null; actions: string[] } {
-  return { app: ctx.appName, window: ctx.window, actions: actingSteps(tool, args).map((a) => actionWords(a, ctx)) }
+export interface ComputerApprovalInput {
+  app: string
+  window: string | null
+  actions: string[]
+  confirm?: { kind: HostConfirmKind; label: string; what: string }
+}
+
+/** The card's input, for the preview thread's card: the app, the window, each acting step in words, and the flag with its label. */
+export function computerApprovalInput(tool: ComputerToolName, args: ToolArgs, ctx: TitleContext, confirm: ConfirmNeed | null = null): ComputerApprovalInput {
+  return {
+    app: ctx.appName,
+    window: ctx.window,
+    actions: actingSteps(tool, args).map((a) => actionWords(a, ctx)),
+    ...(confirm ? { confirm: confirmInput(confirm) } : {})
+  }
 }
 
 const ACTIVITY: Partial<Record<ComputerActionName, string>> = {

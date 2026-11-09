@@ -144,6 +144,7 @@ import {
   reportPathFor,
   threadPreamble
 } from './threads'
+import { computerMechanicsFor } from './apptools'
 import { batchMembershipOf, isMasterSession, masterPinNotice, notifyParentOfSettle, settleTargets } from './orchestration'
 import { batches } from './batch'
 import { foldTodo, newTodoFold, tallyOf, type TaskTally, type TodoFold } from './todos'
@@ -3048,6 +3049,9 @@ export class SessionRegistry {
     if (retyped) this.store.setRetyped(sessionId, false)
     if (first || retyped) {
       const parts = [threadPreamble(meta)]
+      // COMPUTER_MECHANICS, as its own part, for every codex and Muse thread that has the tools,
+      // whatever its type (a subagent's threadPreamble is null); claude reads it in its system prompt
+      if (meta.provider !== 'claude') parts.push(computerMechanicsFor(meta))
       // Planning and research threads WRITE their planPath file (plan /
       // report) — only executing types read it as a brief. A subagent's
       // planPath is its findings file (a research explorer's angle file),

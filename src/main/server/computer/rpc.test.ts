@@ -67,7 +67,7 @@ describe('computer.sessions and the push', () => {
     const slow = h.run('computer_observe', { app: 'Slow' })
     await until(() => rpc.sessions().sessions.length === 1, 'the live row')
     expect(await rpc.stop('t1')).toEqual({ stopped: true })
-    expect((await slow).body).toBe('stopped by the person')
+    expect((await slow).body).toBe('stopped by the person; no more computer use this turn')
   })
 })
 
@@ -100,6 +100,15 @@ describe('the bridge', () => {
     expect(rpc.socket().tools({ sessionId: 't1', token })).toEqual({
       tools: COMPUTER_TOOLS.map((t) => ({ name: t.name, description: t.description, inputSchema: computerToolJsonSchema(t.input) }))
     })
+  })
+
+  it("lists a codex thread's tools in the cua words, and nothing for a thread the host does not know", () => {
+    const { h, rpc } = make()
+    h.set('t2', { provider: 'codex', model: 'gpt-6.1-sol' })
+    const tokens = (rpc as unknown as { host: ComputerHost }).host.tokens
+    const { tools } = rpc.socket().tools({ sessionId: 't2', token: tokens.tokenFor('t2') })
+    expect(tools.map((t) => t.name)).toEqual(['computer_apps', 'computer_observe', 'computer_act', 'computer_batch'])
+    expect(tools[1].description).toContain('getAXState')
   })
 
   it('app.computerCancel denies a waiting card, and an Allow after it acts on nothing', async () => {

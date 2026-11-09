@@ -2,18 +2,21 @@ import { createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { afterEach, describe, expect, it } from 'vitest'
-import { COMPUTER_BRIDGE_NOTE, COMPUTER_SEARCH_HINT, COMPUTER_TOOLS, computerToolJsonSchema } from '@shared/computer/tools'
+import { COMPUTER_ACTION_NAMES } from '@shared/computer/protocol'
+import { COMPUTER_BRIDGE_NOTE, COMPUTER_SEARCH_HINT, COMPUTER_TOOLS, computerToolJsonSchema, computerToolSpecs } from '@shared/computer/tools'
 import type { SessionMeta } from '@shared/events'
 import { APP_TOOLS } from '../apptools'
 import { MacThreadTokens } from '../macTools'
 import type { ComputerBridge } from './bridge'
 import { COMPUTER_APP_TOOLS, computerToolList, computerTools, type ComputerHost } from './mcp'
+import { setComputerWordsOverride } from './prompts'
 import { computerHarness, type ComputerHarness } from './runHarness'
 
-const session = { id: 't1', permission: 'auto' } as unknown as SessionMeta
+const session = { id: 't1', permission: 'auto', provider: 'claude', model: 'claude-opus-5-5' } as unknown as SessionMeta
 const harnesses: ComputerHarness[] = []
 const clients: Client[] = []
 afterEach(async () => {
+  setComputerWordsOverride(null)
   await Promise.all(clients.splice(0).map((c) => c.close()))
   for (const h of harnesses.splice(0)) await h.close()
 })
@@ -22,8 +25,8 @@ function hostOf(h: ComputerHarness, available = true): ComputerHost {
   return { available: () => available, sessions: h.sessions, service: h.service, tokens: new MacThreadTokens(null, 'computer') }
 }
 
-async function connect(host: ComputerHost | null, bridge: ComputerBridge | null = null) {
-  const server = createSdkMcpServer({ name: 'app', version: '0.1.0', alwaysLoad: true, tools: computerTools(session, host, bridge) })
+async function connect(host: ComputerHost | null, bridge: ComputerBridge | null = null, meta: SessionMeta = session) {
+  const server = createSdkMcpServer({ name: 'app', version: '0.1.0', alwaysLoad: true, tools: computerTools(meta, host, bridge) })
   const [a, b] = InMemoryTransport.createLinkedPair()
   const client = new Client({ name: 'test', version: '1' })
   await server.instance.connect(a)
@@ -72,9 +75,25 @@ describe('computerTools', () => {
     expect(shot.content[1].mimeType).toBe('image/jpeg')
   })
 
-  it('APP_TOOLS lists the four, so the CLI never asks a second time', () => {
-    expect(COMPUTER_APP_TOOLS).toEqual(['mcp__app__computer_apps', 'mcp__app__computer_observe', 'mcp__app__computer_act', 'mcp__app__computer_batch'])
+  it('APP_TOOLS lists every name either tool shape gives, so the CLI never asks a second time', () => {
+    expect(COMPUTER_APP_TOOLS.slice(0, 4)).toEqual(['mcp__app__computer_apps', 'mcp__app__computer_observe', 'mcp__app__computer_act', 'mcp__app__computer_batch'])
+    expect(COMPUTER_APP_TOOLS.slice(4)).toEqual(COMPUTER_ACTION_NAMES.map((a) => `mcp__app__computer_${a}`))
     for (const name of COMPUTER_APP_TOOLS) expect(APP_TOOLS).toContain(name)
+  })
+
+  it("gives each thread its model's words, and the per-verb set under the comparison's override", async () => {
+    const h = computerHarness()
+    harnesses.push(h)
+    const opus = await (await connect(hostOf(h))).listTools()
+    expect(opus.tools.find((t) => t.name === 'computer_observe')!.description).toBe(computerToolSpecs('anthropic', 'act')[1].description)
+    expect(computerToolList({ provider: 'codex', model: 'gpt-6.1-sol' }).find((t) => t.name === 'computer_observe')!.description).toContain('getAXState')
+    expect(computerToolList({ provider: 'muse', model: 'muse-wonder-1.0' }).find((t) => t.name === 'computer_observe')!.description).not.toContain('getAXState')
+    setComputerWordsOverride({ shape: 'anthropic', tools: 'per-verb' })
+    const perVerb = await (await connect(hostOf(h))).listTools()
+    expect(perVerb.tools.map((t) => t.name)).toEqual(computerToolSpecs('anthropic', 'per-verb').map((t) => t.name))
+    const clicked = (await (await connect(hostOf(h))).callTool({ name: 'computer_left_click', arguments: { app: 'TextEdit', coordinate: [5, 5] } })) as { isError?: boolean; content: { text?: string }[] }
+    expect(clicked.isError).toBe(false)
+    expect(clicked.content[0].text).toMatch(/^left_click 5,5 · /)
   })
 })
 
@@ -96,8 +115,8 @@ describe('computerTools on a box thread bridged to its Mac', () => {
     const { tools } = await (await connect(null, stubBridge(true).bridge)).listTools()
     expect(tools.map((t) => t.name)).toEqual(COMPUTER_TOOLS.map((t) => t.name))
     for (const t of tools) expect(t.description?.endsWith(COMPUTER_BRIDGE_NOTE)).toBe(true)
-    expect(computerToolList({ bridged: true }).every((t) => t.description.endsWith(COMPUTER_BRIDGE_NOTE))).toBe(true)
-    expect(computerToolList().some((t) => t.description.endsWith(COMPUTER_BRIDGE_NOTE))).toBe(false)
+    expect(computerToolList(session, { bridged: true }).every((t) => t.description.endsWith(COMPUTER_BRIDGE_NOTE))).toBe(true)
+    expect(computerToolList(session).some((t) => t.description.endsWith(COMPUTER_BRIDGE_NOTE))).toBe(false)
   })
 
   it('a call goes to the bridge, never to a host that is not available', async () => {

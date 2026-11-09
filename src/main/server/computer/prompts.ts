@@ -104,8 +104,8 @@ export const CONFIRM_WORDS: readonly string[] = Object.entries(CONFIRM_KIND_INFO
 export type ModelFamily = 'anthropic' | 'openai' | 'meta'
 
 /** By the model's maker, whichever harness runs it: a Meta row under the claude harness is a Meta model. */
-export function modelFamily(provider: ProviderId, model: string): ModelFamily | null {
-  if (provider === 'muse' || isMetaModel(provider, model) || model.startsWith('muse-')) return 'meta'
+export function modelFamily(provider: ProviderId, model: string | undefined): ModelFamily | null {
+  if (provider === 'muse' || (model && (isMetaModel(provider, model) || model.startsWith('muse-')))) return 'meta'
   if (provider === 'claude') return 'anthropic'
   if (provider === 'codex') return 'openai'
   return null

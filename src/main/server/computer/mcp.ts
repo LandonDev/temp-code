@@ -1,25 +1,30 @@
 import { readFile } from 'node:fs/promises'
 import { tool, type SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
 import type { z } from 'zod'
-import { COMPUTER_BRIDGE_NOTE, COMPUTER_SEARCH_HINT, COMPUTER_TOOLS, MAX_IMAGE_PARTS, computerToolJsonSchema } from '@shared/computer/tools'
+import { COMPUTER_ACTION_NAMES } from '@shared/computer/protocol'
+import { COMPUTER_BRIDGE_NOTE, COMPUTER_SEARCH_HINT, COMPUTER_TOOL_NAMES, MAX_IMAGE_PARTS, computerToolJsonSchema, computerToolSpecs } from '@shared/computer/tools'
 import type { AppComputerAnswer } from '@shared/contract-computer'
 import type { SessionMeta } from '@shared/events'
 import { deferredTool } from '../addons/exposure'
 import type { MacThreadTokens } from '../macTools'
 import { toolUseIdOf } from '../macTools'
 import { computerBridgeHooks } from './bridge'
+import { wordsFor } from './prompts'
 import { renderText, type ComputerToolOutcome } from './result'
 import type { ComputerService } from './service'
 import type { ComputerSessions } from './sessions'
 
 /**
- * The four computer tools on every Mac thread's `app` server
+ * The computer tools on every Mac thread's `app` server
  * (docs/computer-protocol.md "Tools on each harness"): in process for
  * Claude, deferred behind tool search so a thread that never touches an app
  * pays no schema; codex and Muse reach the same flow through the bridge
  * (rpc.ts). A box thread gets them only when its bridge names a Mac that
- * offers computer use (computer/bridge.ts): the same four, each description
- * followed by COMPUTER_BRIDGE_NOTE, its calls carried to the Mac.
+ * offers computer use (computer/bridge.ts): the same tools, each description
+ * followed by COMPUTER_BRIDGE_NOTE, its calls carried to the Mac. Each thread
+ * gets the words and the tool shape `wordsFor` gives its model (prompts.ts);
+ * `offersComputerTools` (apptools.ts) decides whether it gets any, and its
+ * COMPUTER_MECHANICS with them.
  */
 
 export interface ComputerHost {
@@ -34,7 +39,8 @@ export interface ComputerHost {
 /** Set by index.ts on a host where computer use may run; null elsewhere. */
 export const computerHooks: { current: ComputerHost | null } = { current: null }
 
-export const COMPUTER_APP_TOOLS: readonly string[] = COMPUTER_TOOLS.map((t) => `mcp__app__${t.name}`)
+/** Every name either tool shape lists, on every host: claude's allow list covers them and the warm pool's argv stays one shape. */
+export const COMPUTER_APP_TOOLS: readonly string[] = [...COMPUTER_TOOL_NAMES, ...COMPUTER_ACTION_NAMES.map((a) => `computer_${a}`)].map((n) => `mcp__app__${n}`)
 
 type Content = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
 
@@ -64,16 +70,17 @@ export async function computerAnswer(o: ComputerToolOutcome, images: 'parts' | '
   return { text: renderText(o), isError: o.isError, images: parts }
 }
 
-/** The four tools as the bridge lists them: tools.ts is the one source of their schemas; `bridged` adds the Mac's note. */
-export function computerToolList(opts: { bridged?: boolean } = {}): { name: string; description: string; inputSchema: Record<string, unknown> }[] {
+/** The thread's tools as the bridge lists them, in the thread's words: tools.ts is the one source of their schemas; `bridged` adds the Mac's note. */
+export function computerToolList(session: Pick<SessionMeta, 'provider' | 'model'>, opts: { bridged?: boolean } = {}): { name: string; description: string; inputSchema: Record<string, unknown> }[] {
   const note = opts.bridged ? COMPUTER_BRIDGE_NOTE : ''
-  return COMPUTER_TOOLS.map((t) => ({ name: t.name, description: t.description + note, inputSchema: computerToolJsonSchema(t.input) }))
+  const { shape, tools } = wordsFor(session)
+  return computerToolSpecs(shape, tools).map((t) => ({ name: t.name, description: t.description + note, inputSchema: computerToolJsonSchema(t.input) }))
 }
 
 const shapeOf = (input: z.ZodType): z.ZodRawShape => (input as unknown as { shape: z.ZodRawShape }).shape
 
 /**
- * The four tools for one claude thread, deferred behind tool search: run
+ * One claude thread's tools in its words, deferred behind tool search: run
  * here where computer use is available, else carried to the thread's Mac when
  * its bridge names one that offers it; [] otherwise.
  */
@@ -81,7 +88,8 @@ const shapeOf = (input: z.ZodType): z.ZodRawShape => (input as unknown as { shap
 export function computerTools(session: SessionMeta, host: ComputerHost | null = computerHooks.current, bridge = computerBridgeHooks.current): SdkMcpToolDefinition<any>[] {
   const local = host?.available() ? host : null
   if (!local && !bridge?.offered(session.id)) return []
-  return COMPUTER_TOOLS.map((spec) =>
+  const { shape, tools } = wordsFor(session)
+  return computerToolSpecs(shape, tools).map((spec) =>
     deferredTool(
       tool(
         spec.name,

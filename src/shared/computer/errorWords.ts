@@ -54,7 +54,9 @@ export const COMPUTER_ERROR_WORDS: Readonly<Record<ComputerErrorKind, Words>> = 
   unknown_session: NOT_READY,
   already_running: () => 'another computer service is still stopping; try the call again in a few seconds',
   permission_missing: (e) =>
-    `TempCode lacks the ${e.which === 'screenRecording' ? 'Screen Recording' : 'Accessibility'} permission; the person turns it on in System Settings, Privacy & Security`,
+    e.which === 'screenRecording'
+      ? 'TempCode lacks the Screen Recording permission; the person turns it on under System Settings → Privacy & Security → Screen & System Audio Recording'
+      : 'TempCode lacks the Accessibility permission; the person turns it on under System Settings → Privacy & Security → Accessibility',
   app_not_found: (e, ctx) => {
     const head = `no app matches ${ctx.app ? quote(ctx.app) : 'that name'}`
     if (!e.candidates?.length) return `${head}; computer_apps lists them all`
@@ -93,7 +95,7 @@ export const COMPUTER_ERROR_WORDS: Readonly<Record<ComputerErrorKind, Words>> = 
     `${ctx.action?.text ? `no key named ${quote(ctx.action.text)}` : 'no such key'}; use xdotool names such as Return, Tab, Escape, super+c`,
   interrupted: () => 'the person used the Mac, so this step stopped; carry on in the background or try later',
   app_busy: () => 'another thread is acting in this app; try again in a moment',
-  cancelled: () => 'cancelled before it ran',
+  cancelled: () => 'cancelled before it finished',
   clipboard_busy: () => 'the clipboard was busy; try again',
   capture_failed: () => 'the window could not be captured; read the tree instead, or try the screenshot again',
   timeout: (_e, ctx) => `${ctx.app ?? 'the app'} did not answer within 2 s and may be hung; try again, or work in another window`,

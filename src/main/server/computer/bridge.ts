@@ -134,6 +134,11 @@ export class ComputerBridge {
 
   // ── the offer ──────────────────────────────────────────────────────
 
+  /** The thread's row, for the words its tools list in. */
+  meta(sessionId: string): SessionMeta | null {
+    return this.deps.sessions.get(sessionId) ?? null
+  }
+
   /** The thread's bridge names a Mac whose last peer.register offered computer use to this host. */
   offered(sessionId: string): boolean {
     const mac = this.deps.macPeerOf(sessionId)

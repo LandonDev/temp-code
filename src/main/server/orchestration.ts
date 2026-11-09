@@ -2,6 +2,7 @@ import { execFileBudgeted as execFileP } from './spawnBudget'
 import { NOTES_MECHANICS, STEER_MECHANICS } from './notesPrompts'
 import { awayMechanics } from './awayPrompts'
 import { nanoid } from 'nanoid'
+import { computerMechanicsFor } from './apptools'
 import { anglePathFor, SHOWING_VISUALS } from './threads'
 import { mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -1533,7 +1534,9 @@ export function masterPinNotice(master: boolean): string {
 /** The mechanics a session is prompted with: the spawn toolset, plus the
  *  master block when the session is its project's master. */
 export function mechanicsFor(session: SessionMeta): string {
-  const base = `${orchestratorMechanics(rulesFor(session), policyRole(session))}\n\n${awayMechanics(awayNow())}`
+  // COMPUTER_MECHANICS rides here for claude alone: a codex or Muse thread reads it in its first message (sessions.ts)
+  const computer = session.provider === 'claude' ? computerMechanicsFor(session) : ''
+  const base = `${orchestratorMechanics(rulesFor(session), policyRole(session))}\n\n${awayMechanics(awayNow())}${computer ? `\n\n${computer}` : ''}`
   return isMasterSession(session) ? `${base}\n\n${MASTER_MECHANICS}` : base
 }
 

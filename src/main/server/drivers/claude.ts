@@ -36,7 +36,7 @@ import {
   researchWriteRoots,
   rulesFor
 } from '../orchestration'
-import { APP_TOOLS, appToolsMcp, releaseAppTools } from '../apptools'
+import { APP_TOOLS, appToolsMcp, computerMechanicsFor, releaseAppTools } from '../apptools'
 import { withMacTools } from '../macTools'
 import { expandSlashRefs } from '../slash'
 import { resolveClaude } from './binaries'
@@ -1646,6 +1646,8 @@ export const claudeDriver: HarnessDriver = {
     // A project's master thread (CLAUDE.md "Master threads") steers its
     // batch and never edits code itself, whatever the conduct rules say.
     const master = isMasterSession(session)
+    // COMPUTER_MECHANICS for a thread with no typed prompt; a typed one reads it through mechanicsFor
+    const computer = computerMechanicsFor(session)
     const options: Options = {
       abortController: abort,
       ...(claudeCli.path ? { pathToClaudeCodeExecutable: claudeCli.path } : {}),
@@ -1767,7 +1769,9 @@ export const claudeDriver: HarnessDriver = {
             }
           : {
               mcpServers: { app: appToolsMcp(session) },
-              allowedTools: [...APP_TOOLS, ...webTools]
+              allowedTools: [...APP_TOOLS, ...webTools],
+              // a subagent with no thread type takes this branch and no mechanicsFor: COMPUTER_MECHANICS rides alone
+              ...(computer ? { systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const, append: computer } } : {})
             })
     }
 

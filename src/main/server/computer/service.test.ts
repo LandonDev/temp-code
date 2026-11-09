@@ -159,7 +159,7 @@ describe('ComputerService', () => {
     let why: string | null = 'tc-computer is not built'
     const { service, spawns } = make({}, { unavailable: () => why })
     const err = await service.request('permissions.get', {}).catch((e) => e)
-    expect((err as Error).message).toBe('computer use is unavailable here: tc-computer is not built')
+    expect((err as Error).message).toBe('computer use is off on this host: tc-computer is not built; do the work another way')
     expect(spawns()).toBe(0)
     why = null
     await service.request('permissions.get', {})

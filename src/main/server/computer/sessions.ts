@@ -8,6 +8,7 @@ import { hostErrorLine } from '@shared/computer/hostErrors'
 import { refusal, type ComputerToolOutcome } from './result'
 import { runComputerTool, type ComputerRegistry, type ComputerToolContext, type RunHost, type ThreadComputer } from './run'
 import type { Clock, ComputerService } from './service'
+import { TargetResolver } from './policy'
 import { pruneServiceShots } from './shots'
 import { currentSessionTierGate, type SessionTierGate } from './tierGate'
 import { TierVerdicts, type SettingsStore } from './verdicts'
@@ -78,8 +79,13 @@ export class ComputerSessions {
   constructor(private readonly opts: ComputerSessionsOptions) {
     this.clock = opts.clock ?? REAL_CLOCK
     this.verdicts = new TierVerdicts(opts.store, this.clock)
+    const targets = new TargetResolver()
     opts.service.onEpoch(() => {
       for (const t of this.threads.values()) t.openedIn = null
+      targets.invalidate()
+    })
+    opts.service.onNotification((n) => {
+      if (n.method === 'apps/changed') targets.invalidate()
     })
     this.host = {
       service: opts.service,
@@ -88,6 +94,7 @@ export class ComputerSessions {
       registry: opts.registry,
       store: opts.store,
       resolveApp: opts.resolveApp,
+      targets,
       landing: opts.landing ?? ((id) => join(attachmentDir(id), 'computer')),
       rootOf: opts.rootOf ?? ((id) => id),
       now: () => this.clock.now(),
@@ -114,6 +121,11 @@ export class ComputerSessions {
     })
     t.queue = job.catch(() => undefined)
     return job
+  }
+
+  /** The thread's row, for the words its bridge lists. */
+  meta(threadId: string): SessionMeta | null {
+    return this.opts.registry.get(threadId)
   }
 
   rows(): ComputerSessionRow[] {

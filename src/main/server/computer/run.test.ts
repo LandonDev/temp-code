@@ -33,7 +33,7 @@ describe('observe', () => {
     const h = make()
     const o = await h.run('computer_observe', { app: 'TextEdit', screenshot: true, menus: true })
     expect(o.isError).toBe(false)
-    expect(last(h, 'state.get').params).toMatchObject({ session: 't1', app: { app: 'TextEdit' }, launch: true, mode: 'auto', screenshot: 'always', menus: true, wait: COMPUTER_WAIT.observe })
+    expect(last(h, 'state.get').params).toMatchObject({ session: 't1', app: { pid: 16800 }, launch: false, mode: 'auto', screenshot: 'always', menus: true, wait: COMPUTER_WAIT.observe })
     await h.run('computer_observe', { app: 'TextEdit', full: true, screenshot: false })
     expect(last(h, 'state.get').params).toMatchObject({ mode: 'full', screenshot: 'never', window: { id: 1581 } })
     await h.run('computer_observe', { app: 'TextEdit', window: 'Notes' })
@@ -64,7 +64,7 @@ describe('act', () => {
   it('an element of an unread app answers no_observation with no request', async () => {
     const h = make()
     const o = await h.run('computer_act', { app: 'TextEdit', action: 'left_click', element: 5 })
-    expect(o).toMatchObject({ isError: true, body: '[5] comes from no observation of TextEdit in this thread; read the window first' })
+    expect(o).toMatchObject({ isError: true, body: '[5] comes from no read of TextEdit in this thread; read the window first' })
     expect(count(h, 'action.run')).toBe(0)
   })
 
@@ -131,7 +131,8 @@ describe('the queue', () => {
     h.sessions.cancel('t1', 'interrupt')
     expect((await slow).body).toBe('cancelled: the turn was stopped')
     expect((await next).isError).toBe(false)
-    const gets = h.requests().filter((r) => r.method === 'state.get').map((r) => `${r.params.session}:${(r.params.app as { app: string }).app}`)
+    const name: Record<number, string> = { 16800: 'TextEdit', 16805: 'Slow' }
+    const gets = h.requests().filter((r) => r.method === 'state.get').map((r) => `${r.params.session}:${name[(r.params.app as { pid: number }).pid]}`)
     expect(gets).toEqual(['t1:Slow', 't2:TextEdit', 't1:TextEdit'])
   })
 
@@ -268,7 +269,7 @@ describe('the service going and coming', () => {
     expect(crashed.body).toMatch(/^the computer service restarted during this call/)
     const stale = await h.run('computer_act', { app: 'TextEdit', action: 'left_click', element: 21 })
     expect(stale.isError).toBe(true)
-    expect(stale.body).toBe('Read the app again after the service restart.')
+    expect(stale.body).toBe('the computer service restarted, so every index is stale; read the window again')
     expect(count(h, 'session.open')).toBe(2)
     expect((await h.run('computer_observe', { app: 'TextEdit' })).isError).toBe(false)
   })
@@ -285,7 +286,7 @@ describe('the service going and coming', () => {
   it('a missing Accessibility grant asks the system once per install and says where the switch is', async () => {
     const h = make()
     const first = await h.run('computer_observe', { app: 'NoAX' })
-    expect(first.body).toBe(`Allow accessibility to read this app.; ${PERMISSION_SWITCH.accessibility}`)
+    expect(first.body).toBe('TempCode lacks the Accessibility permission; the person turns it on under System Settings → Privacy & Security → Accessibility')
     await h.run('computer_observe', { app: 'NoAX' })
     await settle()
     expect(count(h, 'permissions.request')).toBe(1)
@@ -299,7 +300,9 @@ describe('the service going and coming', () => {
     expect(obs.steps).toEqual([`Screen Recording is off: ${PERMISSION_SWITCH.screenRecording}`])
     expect(obs.body).toMatch(/^app "NoShot"/)
     const shot = await h.run('computer_batch', { app: 'NoShot', actions: [{ action: 'screenshot' }] })
-    expect(shot.steps[0]).toBe('screenshot · failed: Allow screen recording to take a screenshot.')
+    expect(shot.steps[0]).toBe(
+      'screenshot · failed: TempCode lacks the Screen Recording permission; the person turns it on under System Settings → Privacy & Security → Screen & System Audio Recording'
+    )
     await settle()
     expect(count(h, 'permissions.request')).toBe(1)
   })
@@ -316,7 +319,7 @@ describe('pause and Stop', () => {
     await until(() => count(h, 'action.run') === 1, 'the action')
     h.set('t1', { status: 'paused' })
     const o = await slow
-    expect(o.steps[0]).toMatch(/^key a · failed: The request was cancelled\.$/)
+    expect(o.steps[0]).toBe('key a · failed: cancelled before it finished')
     expect(o.body).toBe('cancelled: the thread was paused')
   })
 
@@ -327,10 +330,10 @@ describe('pause and Stop', () => {
     expect(h.sessions.rows().map((r) => r.threadId)).toEqual(['t1'])
     expect(await h.sessions.stop('t1')).toBe(true)
     const o = await slow
-    expect(o.steps).toEqual(['key a · failed: The request was cancelled.', 'Not executed: an earlier action in this batch failed.'])
-    expect(o).toMatchObject({ body: 'stopped by the person', isError: true })
+    expect(o.steps).toEqual(['key a · failed: cancelled before it finished', 'Not executed: an earlier action in this batch failed.'])
+    expect(o).toMatchObject({ body: 'stopped by the person; no more computer use this turn', isError: true })
     expect(count(h, 'session.close')).toBe(1)
-    expect((await h.run('computer_observe', { app: 'TextEdit' })).body).toBe('stopped by the person')
+    expect((await h.run('computer_observe', { app: 'TextEdit' })).body).toBe('stopped by the person; no more computer use this turn')
     h.set('t1', { status: 'watching' })
     h.set('t1', { status: 'running' })
     expect((await h.run('computer_observe', { app: 'TextEdit' })).isError).toBe(false)

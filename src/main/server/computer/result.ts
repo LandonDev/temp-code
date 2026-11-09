@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
 import { MAX_IMAGE_PARTS, OBSERVATION_FAILED_PREFIX, formatShotLine, formatStepLine, type ComputerToolResult } from '@shared/computer/tools'
 import type { AppInfo, ComputerAction, ComputerError, Observation, StepResult } from '@shared/computer/protocol'
 
@@ -38,13 +39,27 @@ export interface StepsResult {
   observationError?: ComputerError
 }
 
-/** The outcome of actions that ran: step lines (a host line takes a step's place where given), the shots, the body. */
-export function outcomeOf(actions: ComputerAction[], result: StepsResult, shots: LandedShot[], hostLines: ReadonlyMap<number, string> = new Map()): ComputerToolOutcome {
-  const steps = result.steps.map((step, i) => hostLines.get(i) ?? formatStepLine(step, actions[i] ?? { action: step.action }))
+/**
+ * The outcome of actions that ran: step lines (a host line takes a step's
+ * place where given; a failed step in the host's words, errorLine), the
+ * shots, the body.
+ */
+export function outcomeOf(
+  actions: ComputerAction[],
+  result: StepsResult,
+  shots: LandedShot[],
+  hostLines: ReadonlyMap<number, string> = new Map(),
+  ctx: ErrorContext = {}
+): ComputerToolOutcome {
+  const steps = result.steps.map((step, i) => {
+    const action = actions[i] ?? ({ action: step.action } as ComputerAction)
+    const worded = step.status === 'failed' ? { ...step, error: { ...step.error, message: errorLine(step.error, { ...ctx, action }) } } : step
+    return hostLines.get(i) ?? formatStepLine(worded, action)
+  })
   const body = result.observation
     ? result.observation.text
     : result.observationError
-      ? OBSERVATION_FAILED_PREFIX + result.observationError.message
+      ? OBSERVATION_FAILED_PREFIX + errorLine(result.observationError, { app: ctx.app, window: ctx.window })
       : null
   return { steps, shots, body, isError: false }
 }

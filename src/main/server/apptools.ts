@@ -91,8 +91,9 @@ import { preview as previewHtml, publish as publishHtml, type HtmlPreview } from
 import { INLINE_DIGEST_MAX_CHARS, mirrorRelPath, threadDigest } from './mirror'
 import type { SessionRegistry } from './sessions'
 import { macToolsHooks, toolUseIdOf } from './macTools'
-import { COMPUTER_APP_TOOLS, computerHooks, computerTools } from './computer/mcp'
+import { COMPUTER_APP_TOOLS, computerHooks, computerTools, type ComputerHost } from './computer/mcp'
 import { computerBridgeHooks } from './computer/bridge'
+import { provenanceOf, renderComputerMechanics, wordsFor } from './computer/prompts'
 import { skillList, skillRemove, skillWrite, type SkillToolDeps } from './skills/tools'
 import type { CrossHostAgents } from './crossHostAgents'
 import type { ProjectPlans } from './projectPlan'
@@ -167,6 +168,31 @@ export function setAppBridge(info: AppBridgeInfo | null): void {
 }
 export function hasAppBridge(): boolean {
   return bridge !== null
+}
+
+/**
+ * Does this thread get the computer tools, and COMPUTER_MECHANICS with them?
+ * Computer use runs on this host, or the thread's Mac bridge names a Mac that
+ * offers it, and the thread's harness reaches the app server: claude in
+ * process, codex and Muse through the app bridge. A cursor thread gets neither.
+ */
+export function offersComputerTools(
+  session: Pick<SessionMeta, 'provider'> & { id?: string },
+  host: ComputerHost | null = computerHooks.current,
+  bridged: (session: { id?: string }) => boolean = (s) => !!s.id && !!computerBridgeHooks.current?.offered(s.id)
+): boolean {
+  if (!host?.available() && !bridged(session)) return false
+  return session.provider === 'claude' || ((session.provider === 'codex' || session.provider === 'muse') && hasAppBridge())
+}
+
+/**
+ * COMPUTER_MECHANICS for this thread (computer/prompts.ts), or '' when it
+ * gets no computer tools. Read once: claude's system prompt (mechanicsFor and
+ * the driver's fallback for a subagent), codex's and Muse's first message.
+ */
+export function computerMechanicsFor(session: SessionMeta, host: ComputerHost | null = computerHooks.current): string {
+  if (!offersComputerTools(session, host)) return ''
+  return renderComputerMechanics({ ...wordsFor(session), search: session.provider === 'claude', provenance: provenanceOf(session) })
 }
 
 /** MCP server entry for a codex thread's config override (config.toml

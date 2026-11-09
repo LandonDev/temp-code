@@ -140,7 +140,10 @@ export class ComputerSocket {
   tools(p: { sessionId: string; token: string }): AppComputerToolsAnswer {
     this.checkToken(p.sessionId, p.token)
     const server = this.serverOf(p.sessionId, 'list')
-    return { tools: server ? computerToolList({ bridged: 'bridge' in server }) : [] }
+    if (!server) return { tools: [] }
+    // the thread's words; the default ones for a thread the registry does not list
+    const meta = ('local' in server ? server.local.sessions.meta(p.sessionId) : server.bridge.meta(p.sessionId)) ?? { provider: 'claude' as const, model: '' }
+    return { tools: computerToolList(meta, { bridged: 'bridge' in server }) }
   }
 
   /** The socket closed: the bridge is gone, and so is every call it made. */

@@ -28,7 +28,7 @@ export function computerHarness(opts: { env?: Record<string, string>; gate?: Ses
   const log = join(dataDir, 'requests.log')
   const rows = new Map<string, string>()
   const store = { getSetting: (k: string) => rows.get(k) ?? null, setSetting: (k: string, v: string | null) => void (v === null ? rows.delete(k) : rows.set(k, v)) }
-  const metas = new Map<string, { status: SessionStatus; permission: PermissionPolicy }>()
+  const metas = new Map<string, { status: SessionStatus; permission: PermissionPolicy; provider?: string; model?: string }>()
   const cards: Card[] = []
   let away = false
   const registry = {
@@ -53,7 +53,7 @@ export function computerHarness(opts: { env?: Record<string, string>; gate?: Ses
     clock: opts.clock,
     log: () => undefined
   })
-  const set = (threadId: string, meta: Partial<{ status: SessionStatus; permission: PermissionPolicy }>): void => {
+  const set = (threadId: string, meta: Partial<{ status: SessionStatus; permission: PermissionPolicy; provider: string; model: string }>): void => {
     const next = { status: 'running' as SessionStatus, permission: 'auto' as PermissionPolicy, ...metas.get(threadId), ...meta }
     metas.set(threadId, next)
     sessions.onMeta({ id: threadId, archived: false, ...next } as unknown as SessionMeta)

@@ -111,6 +111,8 @@ function observation(ctx, options = {}, action = 'observe') {
     text = texts[ctx.app.name === 'Thin' ? 'thin' : kind]
   }
   text = rewrite(text, ctx)
+  // FAKE_PASSWORD=1: the focused text area is a password field
+  if (process.env.FAKE_PASSWORD === '1') text = text.replace('[3] text area', '[3] password "Password"')
   const lines = text.split('\n')
   const result = {
     epoch, session: ctx.session, app: brief(ctx.app), window: { id: ctx.window.id, title: ctx.window.title, frame },

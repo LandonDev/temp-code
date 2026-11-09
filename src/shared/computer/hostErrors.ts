@@ -1,8 +1,8 @@
 /**
  * The failures the host says itself, beside the service's own
  * `ComputerErrorKind` (docs/computer-protocol.md "Permission and Stop"). TS
- * only, never on the service's wire. The words are first words: the Computer
- * model instructions thread owns the wording and replaces them here.
+ * only, never on the service's wire. Each line ends in the model's next move
+ * (docs/computer-protocol.md "The model's words").
  */
 
 export const HOST_ERROR_KINDS = [
@@ -25,7 +25,9 @@ export const HOST_ERROR_KINDS = [
   /** the thread is paused */
   'paused',
   /** the call was given up before it ran, or a pause cancelled it */
-  'cancelled'
+  'cancelled',
+  /** TempCode's own window, macOS's password and Touch ID prompts, or an app whose identity could not be checked */
+  'refused_app'
 ] as const
 export type HostErrorKind = (typeof HOST_ERROR_KINDS)[number]
 
@@ -43,26 +45,41 @@ export const SESSION_REFUSAL_WORDS: Readonly<Record<SessionTierRefusal, string>>
   cancelled: 'the call was given up'
 }
 
-/** Each kind's line; `detail` is the reason, the zod issue or the app, as the kind takes it. */
-export const HOST_ERROR_WORDS: Readonly<Record<HostErrorKind, (detail?: string) => string>> = {
-  service_unavailable: (reason) => `computer use is unavailable here${reason ? `: ${reason}` : ''}`,
-  service_restarted: () =>
-    'the computer service restarted during this call, so the action may or may not have happened; read the window again',
-  /** the detail is the whole line, noObservationLine's */
-  no_observation: (line) => line ?? 'that element comes from no observation in this thread; read the window first',
-  invalid_args: (issue) => `invalid arguments${issue ? `: ${issue}` : ''}`,
-  denied: () => 'denied: the person did not allow it',
-  away: () => 'denied: the person is away',
-  session_refused: (reason) =>
-    `needs the session tier (the real pointer and keyboard), which is not available now${reason ? `: ${reason}` : ''}`,
-  stopped: () => 'stopped by the person',
-  paused: () => 'refused: the thread is paused',
-  cancelled: (why) => `cancelled: ${why ?? 'the call was given up'}`
+/** Why refused_app refused: TempCode itself, the system's prompts, or a launched app the host could not identify. */
+export type RefusedApp = 'tempcode' | 'prompts' | 'unchecked'
+
+const REFUSED_APP_WORDS: Readonly<Record<RefusedApp, string>> = {
+  tempcode: "TempCode's own window is off limits to computer use",
+  prompts: "macOS's password and Touch ID prompts are the person's to answer",
+  unchecked: "couldn't check which app this is, so nothing was sent; try the call again"
 }
 
-/** `[12] comes from no observation of TextEdit in this thread; read the window first`. */
+/** Each kind's line; `detail` is the reason, the zod issue or the app, as the kind takes it. */
+export const HOST_ERROR_WORDS: Readonly<Record<HostErrorKind, (detail?: string) => string>> = {
+  service_unavailable: (reason) => `computer use is off on this host${reason ? `: ${reason}` : ''}; do the work another way`,
+  service_restarted: () =>
+    'the computer service restarted during this call, so the action may or may not have happened; read the window again before acting',
+  /** the detail is the whole line, noObservationLine's or noReadForTextLine's */
+  no_observation: (line) => line ?? 'that element comes from no read in this thread; read the window first',
+  invalid_args: (issue) => `invalid arguments${issue ? `: ${issue}` : ''}; see the tool's description`,
+  denied: () => 'denied: the person did not allow it; do not reach the same effect another way',
+  away: () => 'denied: the person is away; finish around this act and name it in your report',
+  session_refused: (reason) =>
+    `needs the session tier (the real pointer and keyboard), which is not available now${reason ? `: ${reason}` : ''}`,
+  stopped: () => 'stopped by the person; no more computer use this turn',
+  paused: () => 'refused: the thread is paused',
+  cancelled: (why) => `cancelled: ${why ?? 'the call was given up'}`,
+  refused_app: (why) => REFUSED_APP_WORDS[(why as RefusedApp | undefined) ?? 'tempcode'] ?? REFUSED_APP_WORDS.tempcode
+}
+
+/** `[12] comes from no read of TextEdit in this thread; read the window first`. */
 export function noObservationLine(element: number, app: string): string {
-  return `[${element}] comes from no observation of ${app} in this thread; read the window first`
+  return `[${element}] comes from no read of ${app} in this thread; read the window first`
+}
+
+/** Text into an app this thread has not read: the host has no tree to check where it goes. */
+export function noReadForTextLine(app: string): string {
+  return `read ${app}'s window before typing into it`
 }
 
 export function hostErrorLine(kind: HostErrorKind, detail?: string): string {

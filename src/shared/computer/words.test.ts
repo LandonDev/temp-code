@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { COMPUTER_ACTION_NAMES, NO_INPUT_ACTIONS, type ComputerAction, type ElementBrief } from './protocol'
-import { actionWords, computerActivity, computerApprovalInput, computerApprovalTitle, computerToolOf, needsApproval, type TitleContext } from './words'
+import { actionWords, asFourTool, computerActivity, computerApprovalInput, computerApprovalTitle, computerToolOf, needsApproval, type TitleContext } from './words'
 
-const book: Record<number, string> = { 14: 'button "Save"', 33: 'input "Subject" focused', 31: 'button "To"', 5: 'scroll area' }
+const book: Record<number, string> = { 14: 'button "Save"', 33: 'input "Subject" focused', 31: 'button "To"', 5: 'scroll area', 12: 'password "Password"' }
 const ctx = (over: Partial<TitleContext> = {}): TitleContext => ({
   appName: 'TextEdit',
   window: 'Untitled',
@@ -22,15 +22,44 @@ describe('computerToolOf', () => {
 
 describe('needsApproval', () => {
   it('apps and observe never ask', () => {
-    expect(needsApproval('computer_apps', {})).toBe(false)
-    expect(needsApproval('computer_observe', {})).toBe(false)
+    expect(needsApproval('computer_apps', {})).toEqual({ ask: false, confirm: null })
+    expect(needsApproval('computer_observe', {})).toEqual({ ask: false, confirm: null })
   })
-  it('an act asks unless its action sends no input', () => {
-    for (const action of COMPUTER_ACTION_NAMES) expect(needsApproval('computer_act', { action })).toBe(!NO_INPUT_ACTIONS.includes(action))
+  it('an act asks in safe and edits unless its action sends no input, and never in full access unflagged', () => {
+    for (const action of COMPUTER_ACTION_NAMES) {
+      expect(needsApproval('computer_act', { action }).ask).toBe(!NO_INPUT_ACTIONS.includes(action))
+      expect(needsApproval('computer_act', { action }, 'edits').ask).toBe(!NO_INPUT_ACTIONS.includes(action))
+      expect(needsApproval('computer_act', { action }, 'auto').ask).toBe(false)
+    }
   })
   it('a batch asks only with an acting step', () => {
-    expect(needsApproval('computer_batch', { actions: [{ action: 'screenshot' }, { action: 'wait' }, { action: 'zoom' }] })).toBe(false)
-    expect(needsApproval('computer_batch', { actions: [{ action: 'screenshot' }, { action: 'key' }] })).toBe(true)
+    expect(needsApproval('computer_batch', { actions: [{ action: 'screenshot' }, { action: 'wait' }, { action: 'zoom' }] }).ask).toBe(false)
+    expect(needsApproval('computer_batch', { actions: [{ action: 'screenshot' }, { action: 'key' }] }).ask).toBe(true)
+  })
+  it('a flag asks in every mode, full access included, and names the kind', () => {
+    const confirm = { kind: 'send', what: 'Reply to Ana' } as const
+    expect(needsApproval('computer_act', { action: 'left_click', confirm }, 'auto')).toEqual({ ask: true, confirm })
+    expect(needsApproval('computer_batch', { actions: [{ action: 'left_click' }], confirm }, 'auto')).toEqual({ ask: true, confirm })
+  })
+  it("the host's password need asks in every mode and leads the card, keeping the model's words", () => {
+    const password = { kind: 'password', what: '' } as const
+    expect(needsApproval('computer_act', { action: 'type' }, 'auto', password)).toEqual({ ask: true, confirm: password })
+    expect(needsApproval('computer_act', { action: 'type', confirm: { kind: 'personal_data', what: 'the password for example.com' } }, 'auto', password)).toEqual({
+      ask: true,
+      confirm: { kind: 'password', what: 'the password for example.com' }
+    })
+  })
+})
+
+describe('asFourTool', () => {
+  it('makes a per-verb call computer_act with its action, keeping confirm', () => {
+    const confirm = { kind: 'delete', what: 'x' }
+    expect(asFourTool('mcp__app__computer_left_click', { app: 'Mail', element: 3, confirm })).toEqual({
+      tool: 'computer_act',
+      args: { app: 'Mail', element: 3, confirm, action: 'left_click' }
+    })
+    expect(asFourTool('computer_batch', { app: 'Mail' })).toEqual({ tool: 'computer_batch', args: { app: 'Mail' } })
+    expect(asFourTool('Read', {})).toBeNull()
   })
 })
 
@@ -133,3 +162,26 @@ describe('computerActivity', () => {
     expect(computerActivity('mcp__app__update_notes', {})).toBeNull()
   })
 })
+
+describe('a flagged card', () => {
+  it('leads with the kind and keeps the step words while they fit', () => {
+    const confirm = { kind: 'send' as const, what: "Reply to Ana accepting Friday's lunch" }
+    const c = ctx({ appName: 'Mail', window: 'Re: Lunch' })
+    expect(computerApprovalTitle('computer_act', { action: 'left_click', element: 14 } as ComputerAction, c, confirm)).toBe(
+      'Send in Mail: Reply to Ana accepting Friday\'s lunch (click button "Save")'
+    )
+    expect(computerApprovalInput('computer_act', { action: 'left_click', element: 14 } as ComputerAction, c, confirm).confirm).toEqual({
+      kind: 'send',
+      label: 'Send',
+      what: confirm.what
+    })
+  })
+
+  it('never shows text going into a password field', () => {
+    expect(actionWords({ action: 'type', text: 'hunter2', element: 12 } as ComputerAction, ctx())).toBe('type 7 characters into password "Password"')
+    expect(actionWords({ action: 'set_value', value: 'hunter2', element: 12 } as ComputerAction, ctx())).toBe('set password "Password" to 7 characters')
+    expect(actionWords({ action: 'paste', text: 'x' } as ComputerAction, ctx({ maskText: true }))).toBe('paste 1 character')
+    expect(actionWords({ action: 'type', text: 'Lunch?', element: 33 } as ComputerAction, ctx())).toBe('type "Lunch?" into input "Subject"')
+  })
+})
+

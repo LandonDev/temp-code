@@ -20,6 +20,8 @@ function lineOf(e: ElementLine): string {
 
 export class ElementBook {
   private readonly entries = new Map<number, Entry>()
+  /** the element the latest read named focused, if it named one */
+  focused: number | null = null
 
   get size(): number {
     return this.entries.size
@@ -36,15 +38,24 @@ export class ElementBook {
 
   clear(): void {
     this.entries.clear()
+    this.focused = null
+  }
+
+  /** Whether any element the book holds has this role (`password`). */
+  hasRole(role: string): boolean {
+    for (const e of this.entries.values()) if (e.line === role || e.line.startsWith(`${role} `)) return true
+    return false
   }
 
   /** Take one observation the model got. A text off the grammar empties the book: names fall back to indices. */
   apply(text: string, kind: ObservationKind): void {
     let lines: ObservationLine[]
     try {
-      lines = parseObservation(text).lines
+      const parsed = parseObservation(text)
+      lines = parsed.lines
+      if (kind !== 'subtree') this.focused = parsed.header.focused ?? null
     } catch {
-      this.entries.clear()
+      this.clear()
       return
     }
     if (kind === 'unchanged') return

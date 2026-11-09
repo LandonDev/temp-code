@@ -16,13 +16,15 @@ import {
   type Tier
 } from '@shared/computer/protocol'
 import { COMPUTER_ACTIONS, COMPUTER_TOOLS, formatStepLine, type ActionClass, type ComputerToolName } from '@shared/computer/tools'
-import { computerActivity, computerApprovalInput, computerApprovalTitle, computerToolOf, needsApproval, type TitleContext } from '@shared/computer/words'
-import { hostErrorLine, noObservationLine, sessionRefusedLine, type SessionTierRefusal } from '@shared/computer/hostErrors'
+import { asFourTool, computerActivity, computerApprovalInput, computerApprovalTitle, needsApproval, type TitleContext } from '@shared/computer/words'
+import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
+import { hostErrorLine, noObservationLine, noReadForTextLine, sessionRefusedLine, type SessionTierRefusal } from '@shared/computer/hostErrors'
 import type { PermissionPolicy, SessionMeta } from '@shared/events'
 import type { ApprovalRequest } from '../drivers/types'
 import { planBatch } from './batchPlan'
 import { ComputerHostError, ComputerRpcError } from './connection'
 import { ElementBook } from './elements'
+import { passwordTarget, refusedLaunch, refusedTarget, textTargetProblem, type PinnedApp, type TargetResolver } from './policy'
 import { formatAppsList, outcomeOf, refusal, type ComputerToolOutcome, type LandedShot, type StepsResult } from './result'
 import type { ComputerService } from './service'
 import { landShot, nextShotNumber } from './shots'
@@ -104,6 +106,8 @@ export interface RunHost {
   registry: ComputerRegistry
   store: SettingsStore
   resolveApp?: (query: string) => AppRef | null
+  /** the call's app pinned to a pid, the list cached until apps/changed */
+  targets: TargetResolver
   landing(threadId: string): string
   rootOf(threadId: string): string
   now(): number
@@ -169,16 +173,19 @@ type Targeted = <M extends ComputerMethod>(method: M, params: (target: TargetBas
 /**
  * Step 1 of a call, on its own (the Mac bridge's box side checks a call with
  * it before it crosses): a per-verb name becomes `computer_act` with its
- * action, and the tool's full schema parses the arguments.
+ * action, `confirm` kept, the tool's full schema parses the arguments, and a
+ * batch's text step after another input must name its element.
  */
 export function checkComputerCall(toolName: string, rawArgs: unknown): { ok: true; tool: ComputerToolName; args: Record<string, unknown> } | { ok: false; line: string } {
-  const of = computerToolOf(toolName)
-  if (!of) return { ok: false, line: hostErrorLine('invalid_args', `no computer tool is called ${toolName}`) }
-  const spec = COMPUTER_TOOLS.find((s) => s.name === of.tool)!
-  const raw = rawArgs && typeof rawArgs === 'object' ? (rawArgs as Record<string, unknown>) : {}
-  const parsed = spec.input.safeParse(of.action ? { ...raw, action: of.action } : raw)
+  const four = asFourTool(toolName, rawArgs)
+  if (!four) return { ok: false, line: hostErrorLine('invalid_args', `no computer tool is called ${toolName}`) }
+  const spec = COMPUTER_TOOLS.find((s) => s.name === four.tool)!
+  const parsed = spec.input.safeParse(four.args)
   if (!parsed.success) return { ok: false, line: hostErrorLine('invalid_args', issueWords(parsed.error)) }
-  return { ok: true, tool: of.tool, args: parsed.data as Record<string, unknown> }
+  const args = parsed.data as Args
+  const textProblem = textTargetProblem(actionsOf(four.tool, args))
+  if (textProblem) return { ok: false, line: textProblem }
+  return { ok: true, tool: four.tool, args }
 }
 
 export async function runComputerTool(host: RunHost, t: ThreadComputer, ctx: ComputerToolContext, toolName: string, rawArgs: unknown, signal: AbortSignal): Promise<ComputerToolOutcome> {
@@ -218,21 +225,31 @@ export async function runComputerTool(host: RunHost, t: ThreadComputer, ctx: Com
 async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolContext, tool: ComputerToolName, args: Args, signal: AbortSignal): Promise<ComputerToolOutcome> {
   const threadId = ctx.threadId
   const app = (): AppState | undefined => (args.app ? lookupApp(t, args.app) : undefined)
+  const steps = actionsOf(tool, args)
 
-  // 3. the card, the permission read now
+  // read first: an element, or text, needs a read of the app in this thread
+  const named =
+    tool === 'computer_observe' ? (args.element !== undefined ? [args.element as number] : []) : steps.flatMap(actionElements)
+  if (named.length && !app()) return refusal(noObservationLine(named[0], args.app!))
+  if (steps.some((s) => s.action === 'type' || s.action === 'paste') && !app()) return refusal(hostErrorLine('no_observation', noReadForTextLine(args.app!)))
+
+  // 3. the card, the permission read now: safe and edits ask for every act, every mode for a flag or a password field
   const permission = ctx.permission?.() ?? host.registry.get(threadId)?.permission ?? 'safe'
-  if (permission !== 'auto' && needsApproval(tool, args)) {
+  const hostNeed = passwordTarget(steps, app()?.book)
+  const need = needsApproval(tool, args, permission, hostNeed)
+  if (need.ask) {
     const a = app()
     const titleCtx: TitleContext = {
       appName: a?.name ?? args.app ?? 'an app',
       window: args.window ?? a?.window?.title ?? null,
-      element: (i) => a?.book.brief(i) ?? null
+      element: (i) => a?.book.brief(i) ?? null,
+      maskText: hostNeed !== null
     }
     const approve = ctx.approve ?? ((req: ApprovalRequest) => host.registry.requestApproval(threadId, req))
     const allowed = await approve({
       toolName: `mcp__app__${tool}`,
-      input: computerApprovalInput(tool, args, titleCtx),
-      title: computerApprovalTitle(tool, args, titleCtx),
+      input: computerApprovalInput(tool, args, titleCtx, need.confirm),
+      title: computerApprovalTitle(tool, args, titleCtx, need.confirm),
       callId: ctx.callId,
       signal
     })
@@ -270,29 +287,27 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     }
   }
 
+  const errCtx: ErrorContext = { app: args.app, window: args.window, ...(tool === 'computer_act' ? { action: steps[0] } : {}) }
   try {
     if (tool === 'computer_apps') {
+      const refused = typeof args.launch === 'string' ? refusedLaunch(args.launch) : null
+      if (refused) return refusal(refused)
       const apps = await runApps(call, args)
       return abortedLine(signal) ? refusal(abortedLine(signal)!) : apps
     }
 
-    // 5. the target
+    // 5. the target: the app pinned to a pid before any request, and checked
+    const pin = await pinApp(host, args.app!, call)
+    if ('line' in pin) return refusal(pin.line)
+    const refused = refusedTarget(pin.app, steps.some(sendsInput) ? 'act' : 'read')
+    if (refused) return refusal(refused)
     const a = app()
-    const named =
-      tool === 'computer_observe'
-        ? args.element !== undefined
-          ? [args.element as number]
-          : []
-        : tool === 'computer_act'
-          ? actionElements(args as ComputerAction)
-          : (args.actions as ComputerAction[]).flatMap(actionElements)
-    if (named.length && !a) return refusal(noObservationLine(named[0], args.app!))
     const bound = !args.window && a?.window ? { id: a.window.id } : undefined
     const target = (useBound = true): TargetBase => ({
       session: t.serviceSession,
-      app: host.resolveApp?.(args.app!) ?? { app: args.app! },
+      app: { pid: pin.app.pid },
       ...(args.window ? { window: { title: args.window } } : bound && useBound ? { window: bound } : {}),
-      launch: true,
+      launch: false,
       ...(named.length && a ? { epoch: a.epoch } : {})
     })
     /** A bound window that closed falls back to the app's main window, once. */
@@ -350,12 +365,12 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
         discarded()
         return refusal(stopped)
       }
-      const out = outcomeOf([], { steps: [], observation: obs }, shots)
+      const out = outcomeOf([], { steps: [], observation: obs }, shots, undefined, errCtx)
       return { ...out, steps: notes }
     }
 
     const single = tool === 'computer_act'
-    const actions: ComputerAction[] = single ? [actionOf(args)] : (args.actions as ComputerAction[])
+    const actions: ComputerAction[] = steps
     /** An observation the model will not see: the book takes it, and that app's next read is full. */
     const drop = (obs: Observation): void => {
       remember(t, args.app!, obs)
@@ -367,7 +382,7 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     await take(result.observation)
     const lastTier = [...result.steps].reverse().find((s) => s.status === 'ok' && s.tier !== null)
     if (t.live && lastTier?.status === 'ok') t.live.tier = lastTier.tier
-    const out = outcomeOf(actions, result, shots, result.hostLines)
+    const out = outcomeOf(actions, result, shots, result.hostLines, errCtx)
     const stoppedLine = abortedLine(signal)
     if (stoppedLine && result.observation) discarded()
     return { ...out, steps: [...out.steps, ...notes], ...(stoppedLine ? { body: stoppedLine, isError: true } : {}) }
@@ -376,12 +391,9 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     if (stoppedLine) return refusal(stoppedLine)
     if (e instanceof ComputerHostError) return refusal(e.message)
     if (e instanceof ComputerRpcError) {
-      if (e.data?.kind === 'permission_missing' && e.data.which) {
-        const first = !host.store.getSetting(permissionPromptedSetting(e.data.which))
-        askOnce(e.data.which)
-        return refusal(`${e.data.message}${first ? `; ${PERMISSION_SWITCH[e.data.which]}` : ''}`)
-      }
-      return refusal(e.data?.message ?? e.message)
+      // the line says where the switch is; the system asks once per install
+      if (e.data?.kind === 'permission_missing' && e.data.which) askOnce(e.data.which)
+      return refusal(e.data ? errorLine(e.data, errCtx) : e.message)
     }
     host.log(`computer call failed in ${threadId}: ${(e as Error).stack ?? e}`)
     return refusal(`the computer call failed: ${(e as Error).message}`)
@@ -396,8 +408,28 @@ async function runApps(call: <M extends ComputerMethod>(m: M, p: ComputerParams<
 }
 
 function actionOf(args: Args): ComputerAction {
-  const { app: _app, window: _window, screenshot: _screenshot, ...action } = args
+  const { app: _app, window: _window, screenshot: _screenshot, confirm: _confirm, ...action } = args
   return action as ComputerAction
+}
+
+/** The steps a call runs: computer_act's one, computer_batch's list, none for apps and observe. */
+function actionsOf(tool: ComputerToolName, args: Args): ComputerAction[] {
+  return tool === 'computer_act' ? [actionOf(args)] : tool === 'computer_batch' ? (args.actions as ComputerAction[]) : []
+}
+
+/** The proof's pin (resolveApp with a pid) wins; else the resolver, on the service's own app methods. */
+async function pinApp(host: RunHost, query: string, call: <M extends ComputerMethod>(m: M, p: ComputerParams<M>) => Promise<ComputerResult<M>>): Promise<{ app: PinnedApp } | { line: string }> {
+  const proof = host.resolveApp?.(query)
+  if (proof?.pid !== undefined) return { app: { pid: proof.pid, bundleId: null, name: query } }
+  return host.targets.resolve(
+    proof?.app ?? query,
+    {
+      list: async () => (await call('apps.list', {})).apps,
+      launch: (app) => call('apps.launch', { app }),
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms))
+    },
+    (e) => (e instanceof ComputerRpcError ? (e.data ?? null) : null)
+  )
 }
 
 /** The app's state from an observation the model gets: who it is, its window, the epoch, the book. */
