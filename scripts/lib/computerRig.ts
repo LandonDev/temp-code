@@ -10,8 +10,9 @@
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { execFileSync } from 'node:child_process'
-import { rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { RunningServer } from '../../src/main/server/index'
 import { computerHooks, type ComputerHost } from '../../src/main/server/computer/mcp'
 import { ComputerRpcError } from '../../src/main/server/computer/connection'
@@ -23,6 +24,19 @@ import type { HostCall, MacProbe } from './benchRun'
 import { keepFront } from './benchRun'
 import { exec } from './benchChecks'
 import type { TaskApp, TaskReader } from './computerTasks'
+
+/**
+ * The checkout a rig script runs in: the first folder up from `from` holding
+ * the repo's package.json. A script bundled into scripts/.out/ sits two
+ * levels down, so its own file's parent is scripts/, not the root.
+ */
+export function repoRoot(from: string = dirname(fileURLToPath(import.meta.url))): string {
+  for (let dir = from; ; dir = dirname(dir)) {
+    const pkg = join(dir, 'package.json')
+    if (existsSync(pkg) && (JSON.parse(readFileSync(pkg, 'utf8')) as { name?: string }).name === 'temp-code') return dir
+    if (dirname(dir) === dir) throw new Error(`no temp-code checkout above ${from}`)
+  }
+}
 
 // ── the apps ────────────────────────────────────────────────────────────
 

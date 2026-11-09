@@ -124,7 +124,8 @@ const SAMPLE: Record<ComputerActionName, ComputerAction> = {
   wait: { action: 'wait', duration: 2 },
   set_value: { action: 'set_value', element: 7, value: 'Ana Ruiz' },
   perform: { action: 'perform', element: 11, name: 'AXPress' },
-  select_text: { action: 'select_text', element: 7, text: 'world' }
+  select_text: { action: 'select_text', element: 7, text: 'world' },
+  paste: { action: 'paste', text: 'Ana · Ruiz', format: 'text', element: 7 }
 } as Record<ComputerActionName, ComputerAction>
 
 const ok = (action: ComputerAction, extra: Record<string, unknown>): StepResult =>

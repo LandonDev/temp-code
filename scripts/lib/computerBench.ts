@@ -57,7 +57,8 @@ export interface BenchRun {
   provider: BenchProvider
   task: string
   taskVersion: number
-  attempt: 1 | 2 | 3
+  /** 1-based: a gate run's reruns are 2 and 3, a hand run's `--runs n` 1 to n */
+  attempt: number
   outcome: 'passed' | 'failed' | 'skipped'
   /** the check's detail, `off-route: Bash`, `over budget: 9 calls of 6`, `timed out`, `took the front`, a skip's line */
   reason?: string

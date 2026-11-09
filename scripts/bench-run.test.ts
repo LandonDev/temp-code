@@ -10,6 +10,7 @@ describe('parseBenchArgs', () => {
   it('reads every flag', () => {
     expect(parseBenchArgs([])).toEqual({ mode: 'hand', models: null, tasks: null, runs: null, session: false, rebaseline: false, judge: null })
     expect(parseBenchArgs(['--gate'])).toMatchObject({ mode: 'gate' })
+    expect(parseBenchArgs(['--', '--gate'])).toMatchObject({ mode: 'gate' })
     expect(parseBenchArgs(['--report-only', '--models', 'gpt-6.1-sol, claude-opus-5-5', '--tasks', 'chrome-read'])).toMatchObject({
       mode: 'report-only',
       models: ['gpt-6.1-sol', 'claude-opus-5-5'],

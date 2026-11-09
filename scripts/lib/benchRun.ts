@@ -38,6 +38,8 @@ export function parseBenchArgs(argv: readonly string[]): BenchArgs {
       return v
     }
     const list = (): string[] => value().split(',').map((s) => s.trim()).filter(Boolean)
+    // `bun run script -- --gate` may hand node the separator itself.
+    if (a === '--') continue
     if (a === '--gate') modes.add((out.mode = 'gate'))
     else if (a === '--report-only') modes.add((out.mode = 'report-only'))
     else if (a === '--reference') {
