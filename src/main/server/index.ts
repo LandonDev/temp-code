@@ -80,6 +80,7 @@ import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './m
 import type { AppRef } from '@shared/computer/protocol'
 import { computerUnavailable } from './computer/binary'
 import { computerHooks, type ComputerHost } from './computer/mcp'
+import { ComputerPreviews, handleComputerPreview } from './computer/preview'
 import { ComputerRpc } from './computer/rpc'
 import { ComputerService } from './computer/service'
 import { ComputerSessions } from './computer/sessions'
@@ -1328,6 +1329,7 @@ export async function startServer(
     setTimeout(() => void pruneStaleShots(computerData), 30_000).unref()
   }
   computerHooks.current = computer
+  const previews = computer ? new ComputerPreviews(computer) : null
   // Computer use through the Mac bridge, the box side (computer/bridge.ts): where it cannot run here, a
   // thread whose bridge names a Mac that offers it gets the four tools, carried to that Mac.
   let computerBridge: ComputerBridge | null = null
@@ -1774,6 +1776,7 @@ export async function startServer(
    */
   const attach = (ws: WebSocket, principal: Principal, profile: WireProfile = profileFor({ principal })): void => {
     const connection = ++connections
+    const previewConnection = { connection }
     const unsubs = new Map<string, () => void>()
     /** This socket carries `sessionId`'s rows from now on (once per socket). */
     const subscribeSocket = (sessionId: string): void => {
@@ -2093,6 +2096,8 @@ export async function startServer(
         if (batched.handled) return sendFrame({ id: req.id, ok: true, result: batched.result })
         const macBridged = handleMacBridge(req, macBridge)
         if (macBridged.handled) return sendFrame({ id: req.id, ok: true, result: macBridged.result })
+        const preview = await handleComputerPreview(req, previews, { connection: previewConnection, send: sendFrame })
+        if (preview.handled) return sendFrame({ id: req.id, ok: true, result: preview.result })
         const devices = await handleHostDevices(req, hostDevices, { connection, send: sendFrame })
         if (devices.handled) return sendFrame({ id: req.id, ok: true, result: devices.result })
         const macTooled = await macTools.handle(req)
@@ -3366,6 +3371,7 @@ export async function startServer(
       heldListeners.delete(onHeld)
       peerCalls.drop(connection)
       hostDevices.dropConnection(connection)
+      previews?.dropConnection(previewConnection)
       for (const off of unsubs.values()) off()
       unsubs.clear()
       for (const off of fsWatches.values()) off()
@@ -3579,6 +3585,7 @@ export async function startServer(
       storePush.close()
       computerRpc.close()
       computerBridge?.close()
+      void previews?.close()
       void computer?.service.close()
       awaySync.close()
       uploads.close()

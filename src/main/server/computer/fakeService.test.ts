@@ -5,7 +5,7 @@ import { basename, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  COMPUTER_ACTION_NAMES, COMPUTER_METHODS, ComputerNotificationSchema, RpcErrorResponseSchema,
+  PREVIEW_STREAM, COMPUTER_ACTION_NAMES, COMPUTER_METHODS, ComputerNotificationSchema, RpcErrorResponseSchema,
   SessionChangeSchema, resultFrameSchema, requestFrameSchema,
   type ComputerAction, type ComputerMethod, type ComputerParams, type ComputerResult, type Observation, type Shot
 } from '../../../shared/computer/protocol'
@@ -550,5 +550,93 @@ describe('fake service environment knobs', () => {
     expect(await c.call('state.get', c.target('Thin'))).toMatchObject({ shotError: { kind: 'permission_missing', which: 'screenRecording' } })
     await c.error('capture.screenshot', c.target(), 'permission_missing')
     expect(await c.act('TextEdit', { action: 'zoom', region: [0, 0, 10, 10] })).toMatchObject({ step: { error: { kind: 'permission_missing', which: 'screenRecording' } } })
+  })
+})
+
+describe('fake preview, Escape and shot controls', () => {
+  const notes = (c: Client, method: string) => c.frames.filter((f) => f.method === method).map((f) => {
+    const note = ComputerNotificationSchema.parse(f)
+    return note.params as Record<string, unknown>
+  })
+  it('sends frames at fps, waits at maxUnacked, resumes on host ack, and stops', async () => {
+    const c = new Client(); await c.open()
+    const size = await c.call('capture.stream.start', { ...c.target(), stream: 'pv', fps: 15, maxEdge: 512 })
+    expect(size).toEqual({ stream: 'pv', width: 512, height: 429 })
+    await until(() => notes(c, 'capture/frame').length === 2)
+    await delay(170); expect(notes(c, 'capture/frame')).toHaveLength(PREVIEW_STREAM.maxUnacked)
+    c.write(JSON.stringify({ jsonrpc: '2.0', method: 'capture.stream.ack', params: { stream: 'pv', seq: 1 } }))
+    await until(() => notes(c, 'capture/frame').length === 3)
+    expect(notes(c, 'capture/frame').map((n) => n.seq)).toEqual([1, 2, 3])
+    const first = notes(c, 'capture/frame')[0]
+    expect(first).toMatchObject({ width: 512, height: 429, format: 'jpeg' })
+    expect(Buffer.from(String(first.data), 'base64').subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]))
+    await c.call('capture.stream.stop', { stream: 'pv' })
+    c.write(JSON.stringify({ jsonrpc: '2.0', method: 'capture.stream.ack', params: { stream: 'pv', seq: 3 } }))
+    await delay(90); expect(notes(c, 'capture/frame')).toHaveLength(3)
+  })
+  it('ends streams through the knob and refuses minimized windows and missing permission', async () => {
+    const c = new Client({ FAKE_STREAM_END_MS: '15', FAKE_STREAM_END_REASON: 'permission' }); await c.open()
+    await c.call('capture.stream.start', { ...c.target(), stream: 'pv' })
+    await until(() => notes(c, 'capture/streamEnded').length === 1)
+    expect(notes(c, 'capture/streamEnded')[0]).toEqual({ stream: 'pv', reason: 'permission' })
+    await c.error('capture.stream.start', { ...c.target(), window: { id: 1582 }, stream: 'pv2' }, 'window_minimized')
+    const denied = new Client({ FAKE_SCREEN_RECORDING: '0' }); await denied.open()
+    await denied.error('capture.stream.start', { ...denied.target(), stream: 'pv' }, 'permission_missing')
+  })
+  it('maps clicks to every matching stream without a frame and carries only matching recent clicks', async () => {
+    const c = new Client({ FAKE_NO_FRAMES: '1' }); await c.open()
+    await c.call('capture.stream.start', { ...c.target(), stream: 'a', maxEdge: 512 })
+    await c.call('capture.stream.start', { ...c.target(), stream: 'b', maxEdge: 960 })
+    await c.act('TextEdit', { action: 'left_click', coordinate: [320, 268] })
+    expect(notes(c, 'capture/click')).toEqual([
+      { stream: 'a', at: [128, 107], width: 512, height: 429 },
+      { stream: 'b', at: [240, 201], width: 960, height: 804 }
+    ])
+    await c.call('capture.stream.stop', { stream: 'a' }); await c.call('capture.stream.stop', { stream: 'b' })
+    await c.call('capture.stream.start', { ...c.target(), stream: 'carried', maxEdge: 512 })
+    await until(() => notes(c, 'capture/click').length === 3)
+    expect(notes(c, 'capture/click')[2].stream).toBe('carried')
+    await c.call('capture.stream.start', { ...c.target('Thin'), stream: 'other' })
+    await delay(50); expect(notes(c, 'capture/click')).toHaveLength(3)
+    expect(notes(c, 'capture/frame')).toHaveLength(0)
+  })
+  it('expires carried clicks and clears them when a service session closes', async () => {
+    const c = new Client({ FAKE_NO_FRAMES: '1' }); await c.open()
+    await c.act('TextEdit', { action: 'left_click', coordinate: [10, 20] })
+    await delay(PREVIEW_STREAM.clickCarryMs + 20)
+    await c.call('capture.stream.start', { ...c.target(), stream: 'expired' })
+    await c.act('TextEdit', { action: 'left_click', coordinate: [10, 20] })
+    await until(() => notes(c, 'capture/click').length === 1)
+    await c.call('session.close', { session: 's1' }); await c.call('session.open', { session: 's1' })
+    await c.call('capture.stream.start', { ...c.target(), stream: 'new-session' })
+    await delay(30); expect(notes(c, 'capture/click')).toHaveLength(1)
+  })
+  it('takes Escape only within an enabled lease and can model an older service', async () => {
+    const c = new Client({ FAKE_ESCAPE_PRESS_MS: '20' }); await c.open()
+    await c.call('escape.watch', { on: true, leaseMs: 1000 })
+    await until(() => notes(c, 'escape/pressed').length === 1)
+    await c.call('escape.watch', { on: true, leaseMs: 1000 }); await c.call('escape.watch', { on: false })
+    await delay(45); expect(notes(c, 'escape/pressed')).toHaveLength(1)
+    const expired = new Client({ FAKE_ESCAPE_PRESS_MS: '1050' }); await expired.open()
+    await expired.call('escape.watch', { on: true, leaseMs: 1000 })
+    await delay(1100); expect(notes(expired, 'escape/pressed')).toHaveLength(0)
+    const old = new Client({ FAKE_ESCAPE_UNSUPPORTED: '1' }); await old.open()
+    await old.error('escape.watch', { on: true, leaseMs: 30000 }, undefined, -32601)
+  })
+  it('copies FAKE_SHOT_FILE for observation, screenshot, zoom and capture shots', async () => {
+    const file = join(temp(), 'proof.jpg')
+    const bytes = readFileSync(new URL('./fixtures/wire/notify-capture-frame.json', import.meta.url), 'utf8')
+    const jpeg = Buffer.from(JSON.parse(bytes).params.data, 'base64')
+    writeFileSync(file, jpeg)
+    const c = new Client({ FAKE_SHOT_FILE: file }); await c.open()
+    const observation = await c.call('state.get', { ...c.target(), screenshot: 'always' })
+    const screenshot = await c.act('TextEdit', { action: 'screenshot' })
+    const zoom = await c.act('TextEdit', { action: 'zoom', region: [0, 0, 100, 100] })
+    const capture = await c.call('capture.screenshot', c.target())
+    expect(screenshot.step.status).toBe('ok'); expect(zoom.step.status).toBe('ok')
+    if (screenshot.step.status !== 'ok' || zoom.step.status !== 'ok') throw new Error('Shot action failed')
+    for (const shot of [observation.shot, screenshot.step.shot, zoom.step.shot, capture]) {
+      expect(shot).toBeDefined(); expect(readFileSync(shot!.path)).toEqual(jpeg); expect(shot!.bytes).toBe(jpeg.length)
+    }
   })
 })

@@ -7,6 +7,7 @@ import { createInterface } from 'node:readline'
 const fixture = (path) => readFileSync(new URL(`./fixtures/${path}`, import.meta.url), 'utf8')
 const texts = Object.fromEntries(['full', 'diff', 'unchanged', 'thin'].map((kind) => [kind, fixture(`observations/${kind}.txt`).trimEnd()]))
 const initial = JSON.parse(fixture('wire/initialize.response.json')).result
+const streamJpeg = JSON.parse(fixture('wire/notify-capture-frame.json')).params.data
 const startedAt = Date.now()
 const epoch = 'e-' + Array.from({ length: 8 }, () => randomInt(36).toString(36)).join('')
 const frame = { x: 100, y: 100, w: 800, h: 670 }
@@ -32,6 +33,24 @@ const states = new Map()
 const shots = new Map()
 const pending = new Map()
 const permissions = { accessibility: true, screenRecording: process.env.FAKE_SCREEN_RECORDING !== '0' }
+const streams = new Map()
+const lastClicks = new Map()
+let escapeUntil = 0
+let escapeTimer
+function stopStream(id) {
+  const stream = streams.get(id)
+  if (stream) { clearInterval(stream.timer); clearTimeout(stream.endTimer) }
+  streams.delete(id)
+}
+function clickNote(stream, at) {
+  notify('capture/click', { stream: stream.id, at: at.map((v, i) => Math.round(v * (i ? stream.height / space.height : stream.width / space.width))), width: stream.width, height: stream.height })
+}
+function recordClick(ctx, action) {
+  const at = action.coordinate ?? [640, 536]
+  const key = `${ctx.session}:${ctx.window.id}`
+  lastClicks.set(key, { at, answeredAt: Date.now() })
+  for (const stream of streams.values()) if (stream.key === key) clickNote(stream, at)
+}
 let initialized = false
 let dataDir
 let previewRunning = false
@@ -87,8 +106,9 @@ function shot(ctx, action) {
   const count = shots.get(ctx.session) + 1
   shots.set(ctx.session, count)
   const path = join(dir, `${String(count).padStart(4, '0')}-${action}.jpg`)
-  writeFileSync(path, jpeg)
-  return { path, format: 'jpeg', ...space, bytes: jpeg.length, window: { id: ctx.window.id, frame }, blank: false, capturedAt: Date.now() }
+  const bytes = process.env.FAKE_SHOT_FILE ? readFileSync(process.env.FAKE_SHOT_FILE) : jpeg
+  writeFileSync(path, bytes)
+  return { path, format: 'jpeg', ...space, bytes: bytes.length, window: { id: ctx.window.id, frame }, blank: false, capturedAt: Date.now() }
 }
 function rewrite(text, ctx) {
   return text.replace(/^app "[^"]*" · window "[^"]*"/, `app ${JSON.stringify(ctx.app.name)} · window ${JSON.stringify(ctx.window.title)}`)
@@ -172,6 +192,7 @@ function step(ctx, action, tiers, index) {
   if (verb === 'type') result.input = { via: tier === 'ax' ? 'ax-insert' : 'keys' }
   if (verb === 'paste') result.input = { via: 'paste', clipboard: 'restored' }
   if (tier === 'session') result.session = sessionChange(ctx.app)
+  if (clicks.includes(verb) || ['left_mouse_down', 'perform'].includes(verb)) recordClick(ctx, action)
   ctx.state.dirty = true
   return result
 }
@@ -197,6 +218,11 @@ function handle({ id, method, params = {} }) {
       if (request.method === 'state.get') refuse(params.id, cancelled())
       else reply(params.id, actionResult(request.ctx, request.params, request.method, true))
     }
+    return
+  }
+  if (method === 'capture.stream.ack' && id === undefined) {
+    const stream = streams.get(params.stream)
+    if (stream) for (const seq of stream.unacked) if (seq <= params.seq) stream.unacked.delete(seq)
     return
   }
   if (id === undefined) return
@@ -230,11 +256,19 @@ function handle({ id, method, params = {} }) {
       return reply(id, { pid: app.pid, launched })
     }
     case 'session.open': sessions.add(params.session); return reply(id, {})
-    case 'session.close': sessions.delete(params.session); states.delete(params.session); shots.delete(params.session); return reply(id, {})
-    case 'capture.stream.stop': return reply(id, {})
+    case 'session.close': for (const key of lastClicks.keys()) if (key.startsWith(params.session + ':')) lastClicks.delete(key); for (const stream of streams.values()) if (stream.session === params.session) stopStream(stream.id); sessions.delete(params.session); states.delete(params.session); shots.delete(params.session); return reply(id, {})
+    case 'capture.stream.stop': stopStream(params.stream); return reply(id, {})
     case 'input.restoreSession': return reply(id, { frontmost: 'nothing', pointer: 'nothing', held: null })
     case 'clipboard.state': return reply(id, { changeCount: 1, foreignChangeAt: null, watchingSince: startedAt })
-    case 'escape.watch': return reply(id, {})
+    case 'escape.watch': {
+      if (process.env.FAKE_ESCAPE_UNSUPPORTED === '1') return reply(id, { code: -32601, message: 'The method is unknown.' }, true)
+      escapeUntil = params.on ? Date.now() + (params.leaseMs ?? 30000) : 0
+      clearTimeout(escapeTimer)
+      if (params.on && process.env.FAKE_ESCAPE_PRESS_MS) escapeTimer = setTimeout(() => {
+        if (Date.now() < escapeUntil) notify('escape/pressed', { at: Date.now() })
+      }, Number(process.env.FAKE_ESCAPE_PRESS_MS))
+      return reply(id, {})
+    }
     case 'state.get': case 'action.run': case 'action.batch': case 'capture.screenshot': case 'capture.stream.start': case 'input.probe': {
       const ctx = target(params)
       if (ctx.app.name === 'Slow' && ['state.get', 'action.run', 'action.batch'].includes(method)) {
@@ -248,7 +282,29 @@ function handle({ id, method, params = {} }) {
       if (method === 'state.get') return reply(id, observation(ctx, params))
       if (method.startsWith('action.')) return reply(id, actionResult(ctx, params, method))
       if (method === 'capture.screenshot') return reply(id, shot(ctx, 'screenshot'))
-      if (method === 'capture.stream.start') return reply(id, { stream: params.stream, width: 960, height: 804 })
+      if (method === 'capture.stream.start') {
+        if (!permissions.screenRecording || ctx.app.name === 'NoShot') return refuse(id, shotFailure())
+        if (ctx.window.minimized) return refuse(id, failure('window_minimized', 'Restore the window before previewing it.'))
+        stopStream(params.stream)
+        const width = params.maxEdge ?? 960
+        const height = Math.round(width * space.height / space.width)
+        const stream = { id: params.stream, session: params.session, key: `${params.session}:${ctx.window.id}`, width, height, seq: 0, unacked: new Set() }
+        streams.set(stream.id, stream)
+        stream.timer = setInterval(() => {
+          if (stream.unacked.size >= 2 || process.env.FAKE_NO_FRAMES === '1') return
+          const seq = ++stream.seq
+          stream.unacked.add(seq)
+          notify('capture/frame', { stream: stream.id, seq, ts: Date.now(), width, height, format: 'jpeg', data: streamJpeg })
+        }, 1000 / (params.fps ?? 4))
+        if (process.env.FAKE_STREAM_END_MS) stream.endTimer = setTimeout(() => {
+          stopStream(stream.id)
+          notify('capture/streamEnded', { stream: stream.id, reason: process.env.FAKE_STREAM_END_REASON ?? 'window-closed' })
+        }, Number(process.env.FAKE_STREAM_END_MS))
+        reply(id, { stream: stream.id, width, height })
+        const click = lastClicks.get(stream.key)
+        if (click && Date.now() - click.answeredAt <= 2000) clickNote(stream, click.at)
+        return
+      }
       return reply(id, { pid: ctx.app.pid, bundleId: ctx.app.bundleId, keyWindow: ctx.app.name === 'KeyWin' ? 'other' : 'target',
         results: (params.classes ?? ['scroll', 'key', 'click']).map((kind) => ({ class: kind, outcome: ctx.app.name === 'Thin' ? 'untested' : ctx.app.name === 'Stubborn' && kind === 'click' ? 'ignored' : 'honoured',
           ...(ctx.app.name === 'Thin' ? { reason: 'thin tree' } : {}), restored: true, ms: 5 })) })

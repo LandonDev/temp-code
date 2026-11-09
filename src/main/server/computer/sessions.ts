@@ -1,3 +1,4 @@
+import type { PreviewTarget } from './preview'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import type { ComputerSessionRow } from '@shared/contract-computer'
@@ -70,6 +71,8 @@ export class ComputerSessions {
   readonly verdicts: TierVerdicts
   private readonly threads = new Map<string, ThreadComputer>()
   private readonly statuses = new Map<string, SessionStatus>()
+  private readonly targetListeners = new Set<(threadId: string) => void>()
+  private readonly targetKeys = new Map<string, string>()
   private readonly rowListeners = new Set<(rows: ComputerSessionRow[]) => void>()
   private readonly clock: Clock
   private readonly host: RunHost
@@ -115,6 +118,7 @@ export class ComputerSessions {
         return await runComputerTool(this.host, t, ctx, tool, args, signal)
       } finally {
         if (t.inflight === own) t.inflight = null
+        this.targetChanged(t.threadId)
         this.armIdleClose(t)
         this.updateBusy()
       }
@@ -165,6 +169,40 @@ export class ComputerSessions {
   onRows(fn: (rows: ComputerSessionRow[]) => void): () => void {
     this.rowListeners.add(fn)
     return () => this.rowListeners.delete(fn)
+  }
+
+  previewTarget(threadId: string): PreviewTarget | null {
+    const t = this.threads.get(threadId)
+    const app = t?.apps.get(t.used[0])
+    return t?.live && app?.window ? {
+      serviceSession: t.serviceSession,
+      app: { pid: app.pid, name: app.name },
+      window: { ...app.window }
+    } : null
+  }
+
+  onTarget(fn: (threadId: string) => void): () => void {
+    this.targetListeners.add(fn)
+    return () => this.targetListeners.delete(fn)
+  }
+
+  async ensureOpen(threadId: string): Promise<string> {
+    const t = this.threads.get(threadId)
+    if (!t?.live || t.stopped) throw new Error('Computer session closed')
+    const conn = await this.opts.service.connection()
+    if (t.openedIn !== conn.epoch) {
+      await this.opts.service.request('session.open', { session: t.serviceSession })
+      if (this.threads.get(threadId) !== t || !t.live || t.stopped) throw new Error('Computer session closed')
+      t.openedIn = conn.epoch
+    }
+    return t.serviceSession
+  }
+
+  private targetChanged(threadId: string): void {
+    const key = JSON.stringify(this.previewTarget(threadId))
+    if ((this.targetKeys.get(threadId) ?? 'null') === key) return
+    this.targetKeys.set(threadId, key)
+    for (const fn of this.targetListeners) fn(threadId)
   }
 
   /**
@@ -219,6 +257,7 @@ export class ComputerSessions {
       await t.queue
       if (t.idleTimer !== null) this.clock.clearTimeout(t.idleTimer)
       await this.closeSession(t)
+      this.targetKeys.delete(id)
     }
     this.touched()
     this.updateBusy()
@@ -255,6 +294,7 @@ export class ComputerSessions {
     t.openedIn = null
     t.apps.clear()
     t.used = []
+    this.targetChanged(t.threadId)
     await pruneServiceShots(this.opts.dataDir, t.serviceSession).catch(() => undefined)
   }
 
