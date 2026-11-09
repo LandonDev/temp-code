@@ -114,6 +114,22 @@ export function baseEnv(strip: RegExp): Record<string, string | undefined> {
   return env
 }
 
+/**
+ * Every codex and Muse child runs behind a proxy that does not exist, loopback
+ * exempt: whatever a CLI sends anywhere but the fakes (codex's model refresh
+ * to chatgpt.com, an update check) fails on the machine instead of leaving it.
+ */
+export const EGRESS_GUARD: Record<string, string> = {
+  HTTPS_PROXY: 'http://127.0.0.1:9',
+  HTTP_PROXY: 'http://127.0.0.1:9',
+  ALL_PROXY: 'http://127.0.0.1:9',
+  https_proxy: 'http://127.0.0.1:9',
+  http_proxy: 'http://127.0.0.1:9',
+  all_proxy: 'http://127.0.0.1:9',
+  NO_PROXY: '127.0.0.1,localhost,::1',
+  no_proxy: '127.0.0.1,localhost,::1'
+}
+
 /** Note on the evidence what the probe set and removed. */
 export function noteEnv(ev: Evidence, set: Record<string, string>, unset: string[] = []): void {
   ev.env = { ...ev.env, ...set }

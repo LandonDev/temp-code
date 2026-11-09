@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { codexFrontPath, makeNonces, placeholderCodexAuth, skillFile } from './configDirSpike'
 import {
+  EGRESS_GUARD,
   baseEnv,
   ctx,
   errText,
@@ -132,7 +133,7 @@ class CodexConn {
 
 /** The environment of a codex run: the inherited one less every CODEX_ and OPENAI_ variable, then `set`. */
 function codexEnv(ev: Evidence, r: RunDirs, home: string, set: Record<string, string> = {}): Record<string, string | undefined> {
-  const own = { HOME: r.home, CODEX_HOME: home, CODEX_CA_CERTIFICATE: ctx().caPath, ...set }
+  const own = { HOME: r.home, CODEX_HOME: home, CODEX_CA_CERTIFICATE: ctx().caPath, ...EGRESS_GUARD, ...set }
   noteEnv(ev, own)
   return { ...baseEnv(CODEX_STRIP), ...own }
 }

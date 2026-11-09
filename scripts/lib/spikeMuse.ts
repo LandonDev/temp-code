@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync,
 import { basename, dirname, join } from 'node:path'
 import { makeNonces, nonceHits, placeholderMuseAuth, redactEvidence, skillFile, type ProbeNonces } from './configDirSpike'
 import {
+  EGRESS_GUARD,
   baseEnv,
   ctx,
   errText,
@@ -70,6 +71,9 @@ async function museOpen(ev: Evidence, r: RunDirs, o: MuseOpts = {}): Promise<Mus
     XDG_STATE_HOME: join(r.dir, 'state'),
     XDG_CACHE_HOME: join(r.dir, 'cache'),
     MUSE_CONTRIBUTOR_MODE: '0',
+    // The launcher's hourly self-update would present the root's auth.json to Meta.
+    MUSE_NO_AUTO_UPDATE: '1',
+    ...EGRESS_GUARD,
     ...(o.fileBackend === false ? {} : { TBH_CREDENTIAL_BACKEND: 'file' }),
     ...(o.env ?? {})
   }
