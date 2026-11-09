@@ -118,15 +118,29 @@ struct WindowResolver {
 /// Every window of an app, for `apps.list { windows: true }`, and the window resolution the Service shell's
 /// `WindowSource` answers with.
 public enum AppWindows {
+    /// The app's element under the walk's messaging timeout (process-wide too), so a hung app answers
+    /// `timeout` after one wait even before any `AppReader` set it.
+    static func appElement(_ pid: pid_t) -> AXUIElement {
+        _ = timeoutSet
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, Float(ComputerDefaults.AXWalk.messagingTimeoutMs) / 1_000)
+        return app
+    }
+
+    private static let timeoutSet: Void = {
+        AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), Float(ComputerDefaults.AXWalk.messagingTimeoutMs) / 1_000)
+    }()
+
     /// spec §2.1's pick of `ref` among the app's windows: by id, then exact title, then substring, else main,
     /// focused, the first standard window.
     public static func resolve(pid: pid_t, ref: ComputerProtocol.WindowRef?) throws -> (element: AXUIElement, info: WindowInfo) {
-        let resolved = try WindowResolver(lookup: .live).resolve(app: AXUIElementCreateApplication(pid), pid: pid, ref: ref)
+        let resolved = try WindowResolver(lookup: .live).resolve(app: appElement(pid), pid: pid, ref: ref)
         return (resolved.element, resolved.info)
     }
 
     /// One AX window's CGWindowID: the private symbol, else the window list's one match by title and frame.
     public static func windowID(of window: AXUIElement, pid: pid_t) -> Int? {
+        _ = timeoutSet
         if let id = WindowIDLookup.live.lookup(window) { return Int(id) }
         let a = AX.batch(window, ["AXTitle", "AXPosition", "AXSize"])
         guard let frame = AX.frame(a["AXPosition"]?.value, a["AXSize"]?.value) else { return nil }
@@ -134,7 +148,7 @@ public enum AppWindows {
     }
 
     public static func list(pid: pid_t) -> [WindowInfo] {
-        let app = AXUIElementCreateApplication(pid)
+        let app = appElement(pid)
         let resolver = WindowResolver(lookup: .live)
         let entries = WindowList.entries()
         return resolver.windows(of: app).compactMap { try? resolver.describe($0, app: app, pid: pid, list: entries) }
