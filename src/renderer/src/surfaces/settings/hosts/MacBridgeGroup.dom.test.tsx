@@ -116,7 +116,7 @@ describe("MacBridgeGroup", () => {
     const { container } = render(<MacBridgeGroup host={host({ computerUnavailable: "tc-computer is not built" })} />);
     expect(container.querySelector("[data-mac-bridge-computer]")?.textContent).toContain("Unavailable here: tc-computer is not built");
     const toggle = screen.getByLabelText("Computer use for box");
-    expect(toggle.hasAttribute("data-disabled") || toggle.getAttribute("aria-disabled") === "true").toBe(true);
+    expect((toggle as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("says a switch that did not save under its row", async () => {
