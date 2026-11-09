@@ -24,16 +24,20 @@
  * Probe never activates, its window can never be key or main and takes no
  * click, it keeps no saved state and leaves no recent-document entry. Every
  * action runs at the ax and process tiers, and every step also checks the
- * person's frontmost app and pointer did not move (skipped for a step during
- * which the person used the Mac, as the watch saw it outside a second after
- * the proof's own action calls, whose process-tier events move the idle time
- * too). A try starts once the screen is unlocked and awake (AX sees no window
- * on a locked one); a lock or a dark display during a try ends it at once:
- * TC Probe hidden and ended, the threads interrupted, its checks set aside as
- * void. The person's own input ends nothing (they accept the scratch windows
- * coming forward). 90 minutes of a locked or dark screen is "not run", which
- * is not green. One proof on the Mac at a time: whoever starts this checks
- * that no other computer proof runs first. It asks for no
+ * person's frontmost app and pointer did not move. A try starts only after 5
+ * minutes with no input on an unlocked, awake screen (AX sees no window on a
+ * locked one); a watch reads the idle time and the screen every second, and
+ * the person's input (anything outside a second after the proof's own action
+ * calls, whose process-tier events move the idle time too) or a lock ends the
+ * try at once: TC Probe hidden and ended, the threads interrupted, its checks
+ * set aside as void. Another gap is awaited, 90 minutes in all; none is "not
+ * run", which is not green. TC_PROOF_UNGATED=1, for a run the person has
+ * agreed to sit beside (the scratch windows may come forward), drops the idle
+ * wait and the abort on input, as the shell's proof does: a try starts once
+ * the screen is awake, a lock or a dark display still ends it, and a step
+ * during which the person used the Mac skips its frontmost-and-pointer check;
+ * the report says `ungated: true`. One proof on the Mac at a time: whoever
+ * starts this checks that no other computer proof runs first. It asks for no
  * permission and removes everything but its report and the service's trace
  * under /tmp/tc-computer-e2e.
  *
@@ -87,11 +91,16 @@ const NONCE = randomBytes(4).toString('hex')
 const APP = 'TC Probe'
 const PROBE_APP = join(WORK, `${APP}.app`)
 const PROBE_BUNDLE_ID = 'dev.landon.tempcode.computer-e2e-probe'
-/** How long a try may wait for an unlocked, awake screen. */
+/** The idle gate off, by the person's leave: they sit beside the run. */
+const UNGATED = process.env.TC_PROOF_UNGATED === '1'
+/** A launch starts only after this long with no input (the person's rule for proofs that launch an app). */
+const LAUNCH_IDLE_S = UNGATED ? 0 : 300
+/** How long the tries may wait for a gap. */
 const LAUNCH_WAIT_MS = 90 * 60_000
 const LSREGISTER = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
 const HELLO = `Hello from TempCode ${NONCE}`
-const NOT_RUN = 'not run: the Mac was locked or its display dark for 90 minutes'
+const NOT_RUN = UNGATED ? 'not run: the Mac was locked or its display dark for 90 minutes' : 'not run: the person was at the Mac'
+const NOT_RUN_LOCKED = `${NOT_RUN}, and it was locked or dark when they were away`
 /** Input this soon after one of the proof's own posting calls answered is its own event's echo. */
 const OWN_INPUT_TAIL_MS = 1_000
 
@@ -108,12 +117,14 @@ const report = {
   startedAt: new Date().toISOString(),
   finishedAt: '',
   model: MODEL,
+  /** The idle gate was off for this run, by the person's leave (TC_PROOF_UNGATED=1). */
+  ungated: UNGATED,
   checks: [] as { name: string; outcome: Outcome; at: string; detail?: string }[],
   tiers: [] as { method: string; tier: Tier }[],
   errors: [] as { method: string; kind: string }[],
   toolCalls: {} as Record<string, string[]>,
   bounce: null as string | null,
-  tries: [] as { at: string; outcome: 'clean' | 'locked'; voided?: { name: string; outcome: Outcome }[] }[],
+  tries: [] as { at: string; outcome: 'clean' | 'input' | 'locked'; voided?: { name: string; outcome: Outcome }[] }[],
   cleanup: [] as string[]
 }
 const check = (name: string, ok: boolean | 'inconclusive' | 'skipped', detail = ''): void => {
@@ -159,11 +170,20 @@ const ownInput = {
   }
 }
 
-/** Waits for an unlocked, awake screen (AX sees no window on a locked one); false once the deadline passes. */
-async function waitForScreen(deadline: number): Promise<boolean> {
+/** Set when an idle stretch long enough for a try came while the Mac was locked or dark. */
+let lockedGap = false
+
+/** Waits for LAUNCH_IDLE_S with no input on an unlocked, awake screen; false once the deadline passes. */
+async function waitForGap(deadline: number): Promise<boolean> {
   while (Date.now() < deadline) {
-    if (await screenAwake()) return true
-    await sleep(10_000)
+    const idle = UNGATED ? 0 : await probeAsync<{ seconds: number }>('idle').then((r) => r.seconds, () => 0)
+    if (idle >= LAUNCH_IDLE_S) {
+      if (await screenAwake()) return true
+      lockedGap = true
+      await sleep(10_000)
+      continue
+    }
+    await sleep(Math.min(30_000, Math.max(1_000, (LAUNCH_IDLE_S - idle) * 1_000)))
   }
   return false
 }
@@ -171,23 +191,30 @@ async function waitForScreen(deadline: number): Promise<boolean> {
 /** When the person last touched the Mac outside the proof's own posting spans, as the watch saw it. */
 let personInputAt = 0
 
-/** Every second: notes the person's input; a locked or dark screen fires `onLocked` once. */
-function startWatch(onLocked: () => void): { stop: () => void; locked: () => boolean } {
-  let locked = false
+/**
+ * Every second from `since`: notes the person's input, which fires `onFire` once unless ungated; a
+ * locked or dark screen fires it either way.
+ */
+function startWatch(since: number, onFire: () => void): { stop: () => void; fired: () => 'input' | 'locked' | null } {
+  let fired: 'input' | 'locked' | null = null
+  const fire = (why: 'input' | 'locked'): void => {
+    if (fired) return
+    fired = why
+    onFire()
+  }
   const timer = setInterval(() => {
     void Promise.all([probeAsync<{ seconds: number }>('idle'), screenAwake()]).then(
       ([{ seconds }, awake]) => {
         const lastInput = Date.now() - seconds * 1_000
-        if (!ownInput.covers(lastInput)) personInputAt = Math.max(personInputAt, lastInput)
-        if (!awake && !locked) {
-          locked = true
-          onLocked()
-        }
+        const person = lastInput > since && !ownInput.covers(lastInput)
+        if (person) personInputAt = Math.max(personInputAt, lastInput)
+        if (person && !UNGATED) fire('input')
+        else if (!awake) fire('locked')
       },
       () => undefined
     )
   }, 1_000)
-  return { stop: () => clearInterval(timer), locked: () => locked }
+  return { stop: () => clearInterval(timer), fired: () => fired }
 }
 
 /** Holds the person's frontmost app and pointer to what they were across `run`. */
@@ -560,19 +587,20 @@ async function run(): Promise<void> {
     await none.close()
   }
 
-  // One try on an awake screen: a lock or a dark display during it (AX sees no window then) hides and
-  // ends TC Probe, interrupts the threads and voids the try's checks; the next try waits for the screen,
-  // up to 90 minutes in all. The person's own input ends nothing: they may work beside the proof.
+  // One try per quiet gap: the person's input (unless ungated) or a lock or dark display during a try
+  // (AX sees no window then) hides and ends TC Probe, interrupts the threads and voids the try's checks;
+  // another gap is awaited, up to 90 minutes in all.
   const deadline = Date.now() + LAUNCH_WAIT_MS
+  if (UNGATED) console.log('ungated (TC_PROOF_UNGATED=1): no idle wait, the person\'s input ends nothing')
   for (;;) {
-    if (!(await waitForScreen(deadline))) {
-      check('a try on an awake screen', 'inconclusive', NOT_RUN)
+    if (!(await waitForGap(deadline))) {
+      check(UNGATED ? 'a try on an awake screen' : 'a try in a quiet gap', 'inconclusive', lockedGap && !UNGATED ? NOT_RUN_LOCKED : NOT_RUN)
       break
     }
     tries++
     const mark = report.checks.length
     const at = new Date().toISOString()
-    const watch = startWatch(() => {
+    const watch = startWatch(Date.now(), () => {
       if (scratchPid) probeAsync(`hide ${scratchPid}`).catch(() => undefined)
       killProbeApp()
       for (const id of liveThreads) void reg.interrupt(id).catch(() => undefined)
@@ -580,16 +608,17 @@ async function run(): Promise<void> {
     try {
       await oneTry()
     } catch (e) {
-      if (!watch.locked()) check('the try finished', false, ((e as Error).stack ?? String(e)).split('\n').slice(0, 4).join(' '))
+      if (!watch.fired()) check('the try finished', false, ((e as Error).stack ?? String(e)).split('\n').slice(0, 4).join(' '))
     }
     watch.stop()
     killProbeApp()
-    if (!watch.locked()) {
+    const why = watch.fired()
+    if (!why) {
       report.tries.push({ at, outcome: 'clean' })
       break
     }
-    report.tries.push({ at, outcome: 'locked', voided: report.checks.splice(mark).map((c) => ({ name: c.name, outcome: c.outcome })) })
-    console.log(`      try ${tries} ended: the screen locked or went dark; waiting for it to wake`)
+    report.tries.push({ at, outcome: why, voided: report.checks.splice(mark).map((c) => ({ name: c.name, outcome: c.outcome })) })
+    console.log(`      try ${tries} ended: ${why === 'input' ? 'the person used the Mac' : 'the screen locked or went dark'}; waiting for another gap`)
   }
 
   wss.close()

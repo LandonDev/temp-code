@@ -3664,10 +3664,12 @@ proof and the sizing rules; the pieces, by name:
   the service state and the live rows. Proofs: the unit tests over
   computer/fakeService.mjs on the box, and `bun run script:e2e-computer` on the
   Mac (real claude threads on TC Probe, the proof's own inert scratch app,
-  pinned by pid; ax and process tiers only; a try once the screen is
-  unlocked and awake, ended and voided if it locks or goes dark; the
-  person's app and pointer held still; one computer proof on the Mac at a
-  time).
+  pinned by pid; ax and process tiers only; a try only after 5 minutes with
+  no input on an unlocked, awake screen, ended and voided the moment the
+  person touches the Mac or it locks or goes dark; `TC_PROOF_UNGATED=1`
+  drops the idle wait and the abort on input, as the shell's proof does;
+  the person's app and pointer held still; one computer proof on the Mac at
+  a time).
 - Fixtures: src/main/server/computer/fixtures/ (its README): hand-written
   wire frames for every method, error kind and notification, observation
   texts for every grammar case, `page/form.html`, and `apps/` trees and
