@@ -6,12 +6,13 @@
  * Every thread runs at medium effort in full access, so a card comes only
  * from a flag or the password rule; the runner answers Allow and counts it.
  *
- * The person keeps the Mac: a scratch app launches (`open -n -g`, its own
- * process, every query pinned to its pid) only after two minutes with no
- * input, the session tier is refused for every arm, and a run the person
- * touched the Mac during is void and runs again on fresh content, at most
- * three times, then counts as inconclusive. Before every run the tier
- * verdicts of both apps are deleted, so no arm learns for the next.
+ * Each scratch app is its own process (`open -n -g`), every query pinned to
+ * its pid, so the person's own TextEdit and Chrome are never a target; the
+ * person accepts the scratch windows coming forward. A run starts only on an
+ * unlocked, lit screen and with no other computer proof running on the Mac
+ * (one proof at a time). The session tier is refused for every arm, and the
+ * tier verdicts of both apps are deleted before every run, so no arm learns
+ * for the next.
  *
  * Run on the Mac, under the installed TempCode.app so TCC answers for it:
  *   bun run script:compare-computer-words [-- --arms A,C,AV,CV --tasks textedit-write,chrome-read,chrome-form --runs 2 --models claude-opus-5-5,gpt-6.1-sol,muse-wonder-1.0 --policy | --report-only]
@@ -51,10 +52,10 @@ const BIN = join(ROOT, 'resources/native/tc-computer')
 const PROBE = join(WORK, 'computer-proof-probe')
 const BENCH = pathToFileURL(join(ROOT, 'src/main/server/computer/fixtures/page/bench.html')).href
 const BUNDLES: Record<TaskApp, string> = { TextEdit: 'com.apple.TextEdit', 'Google Chrome': 'com.google.Chrome' }
-const IDLE_NEEDED_S = 120
-const IDLE_POLL_MS = 30_000
-const IDLE_GIVE_UP_MS = 30 * 60_000
-const VOID_RETRIES = 3
+const TURN_POLL_MS = 30_000
+const TURN_GIVE_UP_MS = 30 * 60_000
+/** The other computer proofs: one proof on the Mac at a time. */
+const OTHER_PROOFS = ['scripts/.out/e2e-computer.mjs', 'e2e-tc-computer', 'tc-computer-proof/', 'ax-reader-proof', 'input-proof', 'capture-proof']
 const OFF_ROUTE_OK = /(^|__|\.)(ToolSearch|tool_search|update_notes)$/
 
 const MODELS: ModelUnderTest[] = [
@@ -90,9 +91,6 @@ interface RunDetail extends RunRecord {
   turns: number
   inputTokens?: number
   outputTokens?: number
-  voids: number
-  /** the frontmost app or the pointer moved while the person was away from the Mac */
-  bounced?: string
 }
 interface PolicyCheck {
   model: string
@@ -161,9 +159,10 @@ mkdirSync(WORK, { recursive: true })
 
 execFileSync('xcrun', ['swiftc', '-O', '-o', PROBE, join(ROOT, 'scripts/mac/computer-proof-probe.swift')], { stdio: 'pipe' })
 const probe = <T>(command: string): T => JSON.parse(execFileSync(PROBE, [command], { encoding: 'utf8', timeout: 10_000 })) as T
-const frontmost = (): { pid: number; bundleId: string | null } => probe('frontmost')
-const pointer = (): { x: number; y: number } => probe('pointer')
-const idleSeconds = (): number => probe<{ seconds: number }>('idle').seconds
+const screenReady = (): boolean => {
+  const screen = probe<{ locked: boolean; asleep: boolean }>('screen')
+  return !screen.locked && !screen.asleep
+}
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 const pids = (name: string): Set<number> => {
   try {
@@ -173,14 +172,29 @@ const pids = (name: string): Set<number> => {
   }
 }
 
-/** Two minutes with no input before any launch; polled every 30 s for at most 30 minutes. */
-async function waitForQuiet(): Promise<boolean> {
-  const giveUp = Date.now() + IDLE_GIVE_UP_MS
-  while (idleSeconds() < IDLE_NEEDED_S) {
-    if (Date.now() > giveUp) return false
-    await sleep(IDLE_POLL_MS)
+/** Another computer proof running on this Mac, by its command line. */
+const otherProof = (): string | null => {
+  for (const pattern of OTHER_PROOFS) {
+    try {
+      const found = execFileSync('pgrep', ['-f', pattern], { encoding: 'utf8' }).split('\n').filter(Boolean).map(Number)
+      if (found.some((pid) => pid !== process.pid)) return pattern
+    } catch {
+      /* none */
+    }
   }
-  return true
+  return null
+}
+
+/** Before every launch: no other computer proof running, and an unlocked, lit screen (AX sees no windows otherwise); polled every 30 s for at most 30 minutes. */
+async function waitForTurn(): Promise<string | null> {
+  const giveUp = Date.now() + TURN_GIVE_UP_MS
+  for (;;) {
+    const other = otherProof()
+    const why = other ? `another computer proof is running (${other})` : screenReady() ? null : 'the screen is locked or dark'
+    if (!why) return null
+    if (Date.now() > giveUp) return why
+    await sleep(TURN_POLL_MS)
+  }
 }
 
 // ── the server, as index.ts wires it on a Mac ───────────────────────────
@@ -261,7 +275,6 @@ async function open(app: TaskApp, target: string): Promise<void> {
     app === 'TextEdit'
       ? ['-n', '-g', '-a', 'TextEdit', target, '--args', '-ApplePersistenceIgnoreState', 'YES']
       : ['-n', '-g', '-a', 'Google Chrome', '--args', `--user-data-dir=${CHROME_PROFILE}`, '--no-first-run', '--no-default-browser-check', target]
-  const personFront = frontmost()
   execFileSync('open', args)
   for (let i = 0; i < 60 && !pinned[app]; i++) {
     await sleep(250)
@@ -269,11 +282,6 @@ async function open(app: TaskApp, target: string): Promise<void> {
   }
   if (!pinned[app]) throw new Error(`open -n gave no new ${name} pid`)
   await sleep(app === 'TextEdit' ? 1_000 : 3_000)
-  if (frontmost().pid === pinned[app] && personFront.bundleId) {
-    execFileSync('osascript', ['-e', `tell application id "${personFront.bundleId}" to activate`])
-    await sleep(500)
-    if (frontmost().pid === pinned[app]) throw new Error(`the scratch ${name} took the front and the person's app could not be put back`)
-  }
 }
 function closeScratch(): void {
   for (const app of Object.keys(pinned) as TaskApp[]) {
@@ -311,112 +319,97 @@ async function oneRun(model: ModelUnderTest, taskId: TaskId, arm: Arm, run: numb
     screenshots: 0,
     errorKinds: {},
     cards: [],
-    turns: 0,
-    voids: 0
+    turns: 0
   }
-  for (let attempt = 0; attempt <= VOID_RETRIES; attempt++) {
-    if (!(await waitForQuiet())) return { ...base, status: 'skipped', detail: 'the person is active' }
-    const tRun = Date.now()
-    const front0 = frontmost()
-    const point0 = pointer()
-    for (const b of Object.values(BUNDLES)) server.store.setSetting(tierVerdictSetting(b), null)
-    setComputerWordsOverride(ARMS[arm])
-    const nonce = randomBytes(4).toString('hex')
-    const seed = 1 + (randomBytes(2).readUInt16BE(0) % 9000)
-    const dir = join(WORK, 'runs', nonce)
-    mkdirSync(dir, { recursive: true })
-    let start: TaskStart
-    try {
-      start = await task.setup({ nonce, seed, dir, benchUrl: BENCH, writeFile: async (p, t) => writeFileSync(p, t), open })
-    } catch (e) {
-      closeScratch()
-      return { ...base, status: 'failed', detail: `setup: ${(e as Error).message}` }
-    }
-    const thread = await registry.create({ provider: model.provider as never, model: model.model, reasoning: 'medium', permission: 'auto', cwd: dir, threadType: 'chat' })
-    const id = thread.id
-    const cards: string[] = []
-    const off = registry.subscribe(id, (row: EventRow) => {
-      if (row.event.type !== 'approval-request') return
-      const kind = ((row.event.input as { confirm?: { kind?: string } } | undefined)?.confirm?.kind ?? 'none') as string
-      cards.push(kind)
-      // the card's row is emitted before requestApproval sets its resolver: Allow after this job
-      const requestId = row.event.requestId
-      queueMicrotask(() => void registry.approve(id, requestId, true))
-    })
-    Object.assign(wire, { steps: 0, failed: 0, kinds: {} })
-    const t0 = Date.now()
-    await registry.send(id, task.prompt(start))
-    const done = await new Promise<boolean>((resolveDone) => {
-      const timer = setTimeout(() => (stop(), resolveDone(false)), task.wallMs)
-      const stop = registry.subscribe(id, (row: EventRow) => {
-        if (!settled(row.event)) return
-        clearTimeout(timer)
-        stop()
-        resolveDone(true)
-      })
-    })
-    if (!done) await registry.interrupt(id).catch(() => undefined)
-    const wallMs = Date.now() - t0
-    off()
-    const rows = registry.eventsAfter(id, 0)
-    const calls: CallRecord[] = []
-    const byTool: Record<string, number> = {}
-    let other = 0
-    for (const r of rows) {
-      if (r.event.type !== 'tool-call' || r.event.partial) continue
-      const call = r.event
-      const name = computerName(call.name)
-      if (!name) {
-        if (!OFF_ROUTE_OK.test(call.name)) other++
-        continue
-      }
-      byTool[name] = (byTool[name] ?? 0) + 1
-      const result = rows.find((x) => x.event.type === 'tool-result' && x.event.callId === call.callId)
-      const out = result?.event.type === 'tool-result' ? result.event.output : ''
-      calls.push({ name, input: (call.input ?? {}) as Record<string, unknown>, result: typeof out === 'string' ? out : JSON.stringify(out) })
-    }
-    const reply = rows
-      .filter((r) => r.event.type === 'assistant-text' && !(r.event as { delta?: boolean }).delta)
-      .map((r) => (r.event as { text: string }).text)
-      .join('\n')
-    const usage = rows.filter((r) => r.event.type === 'usage').map((r) => r.event as { inputTokens?: number; outputTokens?: number })
-    const detail: RunDetail = {
-      ...base,
-      computerCalls: calls.length,
-      otherCalls: other,
-      steps: wire.steps,
-      failedSteps: wire.failed,
-      wallMs,
-      calls: byTool,
-      readsReturned: byTool.computer_observe ?? 0,
-      screenshots: calls.reduce((n, c) => n + (c.result.match(/^screenshot \d+ \(/gm)?.length ?? 0), 0),
-      errorKinds: { ...wire.kinds },
-      cards,
-      turns: rows.filter((r) => r.event.type === 'turn-complete').length,
-      ...(usage.length ? { inputTokens: usage.reduce((n, u) => n + (u.inputTokens ?? 0), 0), outputTokens: usage.reduce((n, u) => n + (u.outputTokens ?? 0), 0) } : {}),
-      voids: attempt
-    }
-    let verdict: { status: RunStatus; detail: string }
-    if (!done) verdict = { status: 'failed', detail: 'past the wall time' }
-    else if (other) verdict = { status: 'off-route', detail: `${other} calls of other tools` }
-    else if (calls.length > task.stepBudget) verdict = { status: 'failed', detail: `${calls.length} computer calls, over ${task.stepBudget}` }
-    else {
-      const c = await task.check(start, reader, reply, calls).catch((e: Error) => ({ ok: false, detail: `check: ${e.message}` }))
-      verdict = { status: c.ok ? 'ok' : 'failed', detail: c.detail }
-    }
-    const front1 = frontmost()
-    const point1 = pointer()
-    await registry.setArchived(id, true).catch(() => undefined)
+  const wait = await waitForTurn()
+  if (wait) return { ...base, status: 'skipped', detail: wait }
+  for (const b of Object.values(BUNDLES)) server.store.setSetting(tierVerdictSetting(b), null)
+  setComputerWordsOverride(ARMS[arm])
+  const nonce = randomBytes(4).toString('hex')
+  const seed = 1 + (randomBytes(2).readUInt16BE(0) % 9000)
+  const dir = join(WORK, 'runs', nonce)
+  mkdirSync(dir, { recursive: true })
+  let start: TaskStart
+  try {
+    start = await task.setup({ nonce, seed, dir, benchUrl: BENCH, writeFile: async (p, t) => writeFileSync(p, t), open })
+  } catch (e) {
     closeScratch()
-    const touched = idleSeconds() < (Date.now() - tRun) / 1000
-    if (!touched) {
-      const moved = front0.pid !== front1.pid || Math.abs(point0.x - point1.x) >= 0.5 || Math.abs(point0.y - point1.y) >= 0.5
-      if (moved && front0.bundleId && front0.pid !== front1.pid) execFileSync('osascript', ['-e', `tell application id "${front0.bundleId}" to activate`])
-      return { ...detail, ...verdict, ...(moved ? { bounced: `app ${front0.pid} → ${front1.pid}, pointer ${point0.x},${point0.y} → ${point1.x},${point1.y}` } : {}) }
-    }
-    console.log(`      void: the person used the Mac during ${model.model} ${taskId} ${arm} run ${run}`)
+    return { ...base, status: 'failed', detail: `setup: ${(e as Error).message}` }
   }
-  return { ...base, status: 'inconclusive', detail: 'the Mac was in use', voids: VOID_RETRIES + 1 }
+  const thread = await registry.create({ provider: model.provider as never, model: model.model, reasoning: 'medium', permission: 'auto', cwd: dir, threadType: 'chat' })
+  const id = thread.id
+  const cards: string[] = []
+  const off = registry.subscribe(id, (row: EventRow) => {
+    if (row.event.type !== 'approval-request') return
+    const kind = ((row.event.input as { confirm?: { kind?: string } } | undefined)?.confirm?.kind ?? 'none') as string
+    cards.push(kind)
+    // the card's row is emitted before requestApproval sets its resolver: Allow after this job
+    const requestId = row.event.requestId
+    queueMicrotask(() => void registry.approve(id, requestId, true))
+  })
+  Object.assign(wire, { steps: 0, failed: 0, kinds: {} })
+  const t0 = Date.now()
+  await registry.send(id, task.prompt(start))
+  const done = await new Promise<boolean>((resolveDone) => {
+    const timer = setTimeout(() => (stop(), resolveDone(false)), task.wallMs)
+    const stop = registry.subscribe(id, (row: EventRow) => {
+      if (!settled(row.event)) return
+      clearTimeout(timer)
+      stop()
+      resolveDone(true)
+    })
+  })
+  if (!done) await registry.interrupt(id).catch(() => undefined)
+  const wallMs = Date.now() - t0
+  off()
+  const rows = registry.eventsAfter(id, 0)
+  const calls: CallRecord[] = []
+  const byTool: Record<string, number> = {}
+  let other = 0
+  for (const r of rows) {
+    if (r.event.type !== 'tool-call' || r.event.partial) continue
+    const call = r.event
+    const name = computerName(call.name)
+    if (!name) {
+      if (!OFF_ROUTE_OK.test(call.name)) other++
+      continue
+    }
+    byTool[name] = (byTool[name] ?? 0) + 1
+    const result = rows.find((x) => x.event.type === 'tool-result' && x.event.callId === call.callId)
+    const out = result?.event.type === 'tool-result' ? result.event.output : ''
+    calls.push({ name, input: (call.input ?? {}) as Record<string, unknown>, result: typeof out === 'string' ? out : JSON.stringify(out) })
+  }
+  const reply = rows
+    .filter((r) => r.event.type === 'assistant-text' && !(r.event as { delta?: boolean }).delta)
+    .map((r) => (r.event as { text: string }).text)
+    .join('\n')
+  const usage = rows.filter((r) => r.event.type === 'usage').map((r) => r.event as { inputTokens?: number; outputTokens?: number })
+  const detail: RunDetail = {
+    ...base,
+    computerCalls: calls.length,
+    otherCalls: other,
+    steps: wire.steps,
+    failedSteps: wire.failed,
+    wallMs,
+    calls: byTool,
+    readsReturned: byTool.computer_observe ?? 0,
+    screenshots: calls.reduce((n, c) => n + (c.result.match(/^screenshot \d+ \(/gm)?.length ?? 0), 0),
+    errorKinds: { ...wire.kinds },
+    cards,
+    turns: rows.filter((r) => r.event.type === 'turn-complete').length,
+    ...(usage.length ? { inputTokens: usage.reduce((n, u) => n + (u.inputTokens ?? 0), 0), outputTokens: usage.reduce((n, u) => n + (u.outputTokens ?? 0), 0) } : {})
+  }
+  let verdict: { status: RunStatus; detail: string }
+  if (!done) verdict = { status: 'failed', detail: 'past the wall time' }
+  else if (other) verdict = { status: 'off-route', detail: `${other} calls of other tools` }
+  else if (calls.length > task.stepBudget) verdict = { status: 'failed', detail: `${calls.length} computer calls, over ${task.stepBudget}` }
+  else {
+    const c = await task.check(start, reader, reply, calls).catch((e: Error) => ({ ok: false, detail: `check: ${e.message}` }))
+    verdict = { status: c.ok ? 'ok' : 'failed', detail: c.detail }
+  }
+  await registry.setArchived(id, true).catch(() => undefined)
+  closeScratch()
+  return { ...detail, ...verdict }
 }
 
 const cleanup = async (): Promise<void> => {
