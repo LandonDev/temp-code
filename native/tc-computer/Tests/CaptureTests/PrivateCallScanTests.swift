@@ -3,7 +3,8 @@ import Testing
 
 /// The other-Space proof moves its own window with SkyLight's private calls; nothing that ships
 /// may reach them. Every target but `capture-proof` is scanned for the private prefixes and for
-/// run-time symbol lookup, but the AX reader's one lookup (native/tc-computer/README.md, "Private symbols").
+/// run-time symbol lookup, which only `ComputerCore/PrivateSymbol.swift` may do: the binary's one
+/// private-symbol policy (native/tc-computer/README.md, scripts/tc-computer-guard.test.ts).
 @Suite struct PrivateCallScanTests {
     private static let sources = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -23,13 +24,9 @@ import Testing
             for case let file as String in files where file.hasSuffix(".swift") {
                 let text = try String(contentsOf: root.appendingPathComponent(file), encoding: .utf8)
                 let hits = pattern.matches(in: text, range: NSRange(text.startIndex..., in: text))
-                var found = hits.compactMap { Range($0.range, in: text).map { String(text[$0]) } }
-                // the AX reader's window id: `_AXUIElementGetWindow`, read-only and resolved by name (the person's
-                // ruling, 2026-11-08; native/tc-computer/README.md), is the one run-time lookup that ships, and only that name
-                if target == "AXReader", file == "Windows.swift" {
-                    found.removeAll { $0 == "dlopen" || $0 == "dlsym" }
-                    #expect(text.components(separatedBy: "Symbol(name: ").count == 2 && text.contains("Symbol(name: \"_AXUIElementGetWindow\")"))
-                }
+                let lookupAllowed = target == "ComputerCore" && file == "PrivateSymbol.swift"
+                let found = hits.compactMap { Range($0.range, in: text).map { String(text[$0]) } }
+                    .filter { !(lookupAllowed && $0.hasPrefix("dl")) }
                 #expect(found.isEmpty, "\(target)/\(file) names \(found)")
                 scanned[target, default: 0] += 1
             }
