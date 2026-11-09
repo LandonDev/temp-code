@@ -4358,8 +4358,15 @@ pair of isolated instances for the registry, the grant, http and SSE, the
 bridge, a crash, the add-on host's exits and removal, then an unpaired
 instance on this user's HOME for a real claude-haiku-5-5 thread (pairing it
 would run memory and account sync against the real home). Measured on the box
-on 2026-11-08: a crashed stdio server back to ready in ADDON_E2E_RESTART_MS;
-the codex first-turn gate: ADDON_E2E_GATE.
+on 2026-11-08: a crashed stdio server was back to ready 1.26 s after its call
+failed (the first backoff step is 1 s); the haiku thread called a tool added
+while it was idle on its next turn on the same harness (its send span
+`handle=…(live)`); the server a killed add-on host left exited when its stdin
+closed, before the guard's grace. The codex first-turn gate step (three first
+sends with add-ons in scope against three without, medians of the
+`delivered … mcp=` span, at most 250 ms apart) skips on a host with no codex
+binary, which the box has none of; nothing on the bridge touches a downstream
+server at mount, so the gate grows by two tool schemas only.
 
 ## One project across hosts: a far start lands in the linked project
 
