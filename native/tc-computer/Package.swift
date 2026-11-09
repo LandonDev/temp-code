@@ -15,8 +15,14 @@ let package = Package(
         .target(name: "ComputerProtocol"),
         // The seams the Service shell joins (Seams.swift); no implementation.
         .target(name: "ComputerCore", dependencies: ["ComputerProtocol"]),
-        // AX tree → indexed text, the diff, the element map, the change monitor.
-        .target(name: "AXReader", dependencies: ["ComputerCore"]),
+        // The AX reader's rules that need no live element: keep, index, fold, budget, render, diff.
+        // Foundation only, so the box tests it on its Linux toolchain.
+        .target(name: "AXText", dependencies: ["ComputerProtocol"]),
+        // AX tree → indexed text, the diff, the element map, the change monitor. Every file sits under
+        // `#if canImport(ApplicationServices)`, so the package still builds on Linux.
+        .target(name: "AXReader", dependencies: ["ComputerCore", "AXText"]),
+        // The AX reader's dev tool for the live proof and the timings (scripts/mac/ax-reader-proof.sh); never shipped.
+        .executableTarget(name: "tc-ax", dependencies: ["AXReader", "AXText", "ComputerCore"]),
         // The ax, process and session tiers, the key table, the clipboard paste.
         .target(
             name: "Input",
@@ -36,6 +42,10 @@ let package = Package(
         .testTarget(name: "ComputerProtocolTests", dependencies: ["ComputerProtocol"]),
         .testTarget(name: "CaptureTests", dependencies: ["Capture", "ComputerCore", "ComputerProtocol"]),
         // Input's offline suites; fixtures are read by path from the repository through #filePath.
-        .testTarget(name: "InputTests", dependencies: ["Input"])
+        .testTarget(name: "InputTests", dependencies: ["Input"]),
+        // The reader's rules on hand-built snapshots and the recorded fixtures' goldens; runs on the box and the Mac.
+        .testTarget(name: "AXTextTests", dependencies: ["AXText"], exclude: ["QuoteVectors.json"]),
+        // The live side without a live app: error mapping, handles, window ids, the change signal. Mac only.
+        .testTarget(name: "AXReaderTests", dependencies: ["AXReader", "AXText"])
     ]
 )
