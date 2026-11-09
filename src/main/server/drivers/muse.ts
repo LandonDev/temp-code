@@ -17,7 +17,7 @@ import type {
 } from '@muse-code/sdk/dist/src/msp'
 import type { Attachment } from '@shared/events'
 import { bridgeMcpConfig } from '../apptools'
-import { museConfigDirFor, recaptureMuseDir } from '../museConfigDirs'
+import { museConfigDirFor, museDirKind, museSkillsFor, recaptureMuseDir } from '../museConfigDirs'
 import { exitWords, spawnMuseHost, type MuseHost } from './harness/museHost'
 import {
   answersOf,
@@ -74,7 +74,9 @@ const TRACE = process.env.TEMP_CODE_MUSE_TRACE === '1'
 async function start(ctx: DriverCtx): Promise<DriverHandle> {
   const { session, emit } = ctx
   const translator = createTranslator(ctx)
-  const configDir = museConfigDirFor(ctx.route?.account ?? null)
+  // One config dir per (account, skills scope), its skills the store's (museConfigDirs.ts).
+  const skills = museSkillsFor(session)
+  const configDir = museConfigDirFor(ctx.route?.account ?? null, skills?.scope, skills?.pointer ?? null)
   const facts: SessionFacts = { cwd: session.cwd, model: session.model, permission: session.permission, bridge: bridgeMcpConfig(session.id) }
 
   let disposed = false
@@ -145,6 +147,7 @@ async function start(ctx: DriverCtx): Promise<DriverHandle> {
       sessionId: session.id,
       cwd: session.cwd,
       configDir,
+      credentialFile: museDirKind(configDir) === 'account',
       args,
       onStderr,
       onExit: (exit) => {

@@ -1,6 +1,7 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync, renameSync, rmSync, statSync, symlinkSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
+import { RESERVED_SKILL_NAME } from '@shared/skills'
 import { SCOPE_DIR } from './materialize'
 import { scopeKeyOf, type ScopeKey, type SkillPointers } from './pointers'
 
@@ -27,8 +28,8 @@ import { scopeKeyOf, type ScopeKey, type SkillPointers } from './pointers'
 export const CLAUDE_ROOTS = 'claude-config'
 /** The placeholder the gateway replaces with the thread's account. */
 export const ROUTED_OAUTH = 'routed'
-/** The name Claude Code keeps under skills/ for its account-synced skills. */
-export const SYNCED_SKILLS = 'synced'
+/** The name Claude Code keeps under skills/ for its account-synced skills (skillProblem refuses it for a new skill). */
+export const SYNCED_SKILLS = RESERVED_SKILL_NAME
 const CLAUDE_JSON = '.claude.json'
 /** linkTo's tmp name, left behind only by a process that died between its two calls. */
 const LEFTOVER_RE = /\.lnk-\d+$/

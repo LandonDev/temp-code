@@ -48,8 +48,13 @@ const decoder = new TextDecoder()
  * clean and no secret, nothing under the binary cache, no native binary
  * (each host fetches its own), and the limits.
  */
+/** The name Claude Code reserves under skills/ for its account-synced skills. */
+export const RESERVED_SKILL_NAME = 'synced'
+
 export function skillProblem(name: string, files: readonly { path: string; bytes: Uint8Array }[]): string | null {
   if (!SKILL_NAME_RE.test(name)) return 'name takes lowercase letters, digits and dashes, at most 64 characters'
+  // Claude Code keeps its account-synced skills under skills/synced, so a skill of that name never loads there.
+  if (name === RESERVED_SKILL_NAME) return `${RESERVED_SKILL_NAME} is Claude Code's own skills folder; choose another name`
   if (files.length === 0) return 'a skill needs its SKILL.md'
   if (files.length > SKILL_MAX_FILES) return `a skill holds at most ${SKILL_MAX_FILES} files; this one has ${files.length}`
   let total = 0

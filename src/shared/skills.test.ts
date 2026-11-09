@@ -36,6 +36,7 @@ describe('skillProblem', () => {
     const elf = Uint8Array.from([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1, 0])
     const cases: [string, ReturnType<typeof skill>, RegExp][] = [
       ['Tidy', skill('Tidy'), /^name takes/],
+      ['synced', skill('synced'), /^synced is Claude Code's own skills folder; choose another name$/],
       ['tidy', [], /needs its SKILL.md/],
       ['tidy', [file('README.md', 'x')], /SKILL.md is missing/],
       ['tidy', [file('SKILL.md', '# no frontmatter')], /frontmatter giving the skill's name and a description/],

@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -22,6 +22,7 @@ vi.mock('./binaries', () => ({ harnessEnv: async () => ({ PATH: process.env.PATH
 vi.mock('../apptools', () => ({ bridgeMcpConfig: () => ({ command: '/usr/bin/node', args: ['/app/bridge.mjs'], env: { TEMP_CODE_SESSION: 's1', TEMP_CODE_PORT: '1' } }) }))
 
 const { museDriver, FIRST_OUTPUT_MS } = await import('./muse')
+const { configureMuseDirs, configureMuseSkills } = await import('../museConfigDirs')
 
 const of = <T extends AgentEvent['type']>(events: AgentEvent[], type: T) => events.filter((e): e is Extract<AgentEvent, { type: T }> => e.type === type)
 const waitFor = async (pred: () => boolean, label: string, ms = 10_000) => {
@@ -284,6 +285,38 @@ describe('the muse driver over the fake host', () => {
       expect(t.nativeIds.length).toBe(1)
     } finally {
       delete process.env.FAKE_MUSE_SANDBOX
+    }
+  })
+
+  it.skipIf(process.platform !== 'linux')('runs `muse serve` under its (account, scope) dir: the own dir for a thread on no account, the account\'s with the file backend', async () => {
+    const root = join(fakeDir, 'muse-accounts')
+    configureMuseDirs({ root, readBlob: (a) => (a === 'me@x' ? '{"providers":{"meta":{"access_token":"t"}}}' : null), userConfigDir: join(fakeDir, 'cfg', 'muse') })
+    configureMuseSkills({ scopeOf: (s) => s.workspaceId, pointers: { path: (_p, ws) => join(fakeDir, 'scope', ws ? `ws-${ws}` : 'global') } })
+    const environ = (pid: number): Record<string, string> =>
+      Object.fromEntries(
+        readFileSync(`/proc/${pid}/environ`, 'utf8')
+          .split('\0')
+          .filter(Boolean)
+          .map((kv) => [kv.slice(0, kv.indexOf('=')), kv.slice(kv.indexOf('=') + 1)])
+      )
+    try {
+      const own = ctxFor({ workspaceId: 'w1' } as Partial<SessionMeta>)
+      const h1 = await museDriver.start(own.ctx)
+      handles.push(h1)
+      const e1 = environ(h1.pid!()!)
+      expect(e1.XDG_CONFIG_HOME).toBe(join(root, 'own', 'ws-w1'))
+      expect(e1.TBH_CREDENTIAL_BACKEND).toBeUndefined()
+      expect(readlinkSync(join(root, 'own', 'ws-w1', 'muse', 'skills'))).toBe(join(fakeDir, 'scope', 'ws-w1', 'skills'))
+      const acct = ctxFor({ id: 's2', workspaceId: null } as Partial<SessionMeta>, { route: { account: 'me@x' } as DriverCtx['route'] })
+      const h2 = await museDriver.start(acct.ctx)
+      handles.push(h2)
+      const e2 = environ(h2.pid!()!)
+      expect(e2.XDG_CONFIG_HOME).toBe(join(root, 'accounts', 'me@x', 'global'))
+      expect(e2.TBH_CREDENTIAL_BACKEND).toBe('file')
+      expect(e2.GH_CONFIG_DIR).toBeTruthy()
+    } finally {
+      configureMuseDirs(null)
+      configureMuseSkills(null)
     }
   })
 })

@@ -7,6 +7,8 @@ import {
   type SpawnedMspConnection
 } from '@muse-code/sdk'
 import type { InitializeResult } from '@muse-code/sdk/dist/src/msp'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { version as appVersion } from '../../../../../package.json'
 import { guardInstanceEnv, THREAD_MARK } from '../../processGuard'
 import { harnessEnv } from '../binaries'
@@ -27,15 +29,22 @@ import { resolveMuseBinary } from './child'
  *
  * The environment REPLACES the child's (the SDK passes it through verbatim):
  * the login PATH and the gateway-free `harnessEnv()`, the process guard's
- * marks, `XDG_CONFIG_HOME` for the account's config dir (museConfigDirs.ts)
- * and contributor mode off unless a setting turns it on, since the person's
- * code is not training data by default.
+ * marks, `XDG_CONFIG_HOME` for the thread's config dir (museConfigDirs.ts:
+ * one per account and skills scope, or the own dir of a thread on no
+ * account), and contributor mode off unless a setting turns it on, since the
+ * person's code is not training data by default. An account's dir reads its
+ * login from the file there (`TBH_CREDENTIAL_BACKEND=file`, the one setting
+ * the config-dir spike proved on both hosts); and since tool processes
+ * inherit the owned `XDG_CONFIG_HOME`, `gh` is kept on the person's own
+ * config (`GH_CONFIG_DIR`) or it would lose its login.
  */
 export interface MuseHostOptions {
   sessionId: string
   cwd: string
-  /** The account's config dir (`<dir>/muse/auth.json`); absent = the CLI's own `~/.config`. */
+  /** The thread's config dir (`<dir>/muse/…`); absent = the CLI's own `~/.config`. */
   configDir?: string | null
+  /** The dir is an account's: its login is the file there, never the Keychain. */
+  credentialFile?: boolean
   contributorMode?: boolean
   /** Extra variables, after the defaults (the app-tools bridge's). */
   env?: Record<string, string>
@@ -59,7 +68,14 @@ export interface MuseHost {
 /** `clientInfo.name` must match ^[a-z0-9_]+$ (SS1.4.1): a hyphen is refused. */
 export const MUSE_CLIENT_INFO = { name: 'temp_code', version: appVersion } as const
 
-export async function museEnv(opts: Pick<MuseHostOptions, 'sessionId' | 'configDir' | 'contributorMode' | 'env'>): Promise<NodeJS.ProcessEnv> {
+/** The person's gh config dir: `$GH_CONFIG_DIR`, else `$XDG_CONFIG_HOME/gh` of this process, else `~/.config/gh`. */
+export function personGhConfigDir(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.GH_CONFIG_DIR) return env.GH_CONFIG_DIR
+  const xdg = env.XDG_CONFIG_HOME
+  return join(xdg && xdg.trim() ? xdg : join(homedir(), '.config'), 'gh')
+}
+
+export async function museEnv(opts: Pick<MuseHostOptions, 'sessionId' | 'configDir' | 'credentialFile' | 'contributorMode' | 'env'>): Promise<NodeJS.ProcessEnv> {
   const env: NodeJS.ProcessEnv = {
     ...(await harnessEnv()),
     ...guardInstanceEnv(),
@@ -67,7 +83,12 @@ export async function museEnv(opts: Pick<MuseHostOptions, 'sessionId' | 'configD
     MUSE_CONTRIBUTOR_MODE: opts.contributorMode ? '1' : '0',
     ...(opts.env ?? {})
   }
-  if (opts.configDir) env.XDG_CONFIG_HOME = opts.configDir
+  if (opts.configDir) {
+    // Read before XDG_CONFIG_HOME moves: the person's gh dir is under their own config home.
+    if (!env.GH_CONFIG_DIR) env.GH_CONFIG_DIR = personGhConfigDir(env)
+    env.XDG_CONFIG_HOME = opts.configDir
+    if (opts.credentialFile) env.TBH_CREDENTIAL_BACKEND = 'file'
+  }
   return env
 }
 
