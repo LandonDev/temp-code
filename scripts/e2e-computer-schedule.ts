@@ -22,7 +22,8 @@
  * It runs when asked, whether or not the person is using the Mac (the person
  * accepts the scratch windows coming forward), but never on a locked or dark
  * screen, and never beside another computer proof: it waits for a running
- * e2e-computer, e2e-tc-computer, input, capture or AX reader proof to end. A
+ * e2e-computer, the computer bench (queued or running), compare-computer-words,
+ * e2e-tc-computer, input, capture or AX reader proof to end. A
  * sentinel (the probe's listen-only tap) notes every input event that carries
  * neither the service's mark (`tccp`) nor the proof's (`tcpr`): a leg the
  * person touched turns its failed checks inconclusive, since their input moves
@@ -112,7 +113,7 @@ const pointer = (): { x: number; y: number } => probe('pointer')
 const rawIdleOnce = (): number => probe<{ seconds: number }>('idle').seconds
 
 // One computer proof on the Mac at a time: wait for any other to end.
-const OTHER_PROOFS = /e2e-computer\.(ts|mjs)|e2e-tc-computer|tc-input-proof|capture-proof|ax-reader-proof|tc-ax-proof/
+const OTHER_PROOFS = /e2e-computer\.(ts|mjs)|e2e-computer-bench|compare-computer-words|e2e-tc-computer|tc-input-proof|capture-proof|ax-reader-proof|tc-ax-proof/
 const otherProofs = (): string[] => {
   try {
     return execFileSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' })
