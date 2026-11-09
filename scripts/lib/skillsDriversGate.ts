@@ -2,7 +2,9 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import {
+  accessSync,
   appendFileSync,
+  constants,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -10,11 +12,12 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  statSync,
   writeFileSync
 } from 'node:fs'
 import { createServer, request as httpRequest, type Server } from 'node:http'
 import { request as httpsRequest } from 'node:https'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { Database } from 'bun:sqlite'
 import { chromiumEncrypt, deriveChromiumKey } from 'aliax-core/vault'
@@ -28,6 +31,14 @@ import {
 import { waitForGateBuild } from './gateBuild'
 import { FakeAnthropic, FakeResponses, skillCall, sleep } from './spikeFakes'
 import { proxyPeerPid } from './skillsDriversPeers'
+import {
+  claudeJudgeFailure,
+  composeGatePath,
+  GATE_CLIS,
+  resolveGateCli,
+  shellWord,
+  type GateCli
+} from './gateCli'
 import {
   advertisedSkillFile,
   argvFromPs,
@@ -106,19 +117,6 @@ const put = (path: string, text: string): void => {
 }
 const md = (name: string, body: string): string =>
   `---\nname: ${name}\ndescription: Skills drivers gate probe.\n---\n${body}\n`
-const findBinary = (name: string): string | null =>
-  (process.env.PATH ?? '')
-    .split(':')
-    .map((p) => join(p, name))
-    .find((p) => {
-      try {
-        execFileSync('test', ['-x', p])
-        return true
-      } catch {
-        return false
-      }
-    }) ?? null
-
 function seedVault(dir: string): void {
   mkdirSync(join(dir, 'secrets'), { recursive: true, mode: 0o700 })
   const password = randomBytes(32).toString('hex')
@@ -188,6 +186,41 @@ export async function runSkillsDriversGate(repo: string): Promise<number> {
   }
   // A gate must wait before it starts any instance, and must never build.
   await waitForGateBuild({ tree: repo, log })
+  // Resolve before substituting HOME: the login shell must read the real user's profile.
+  const callerEnv = { ...process.env }
+  const realHome = callerEnv.HOME || homedir()
+  const binaries = Object.fromEntries(
+    GATE_CLIS.map((name) => [
+      name,
+      resolveGateCli(name, {
+        home: realHome,
+        env: callerEnv,
+        platform: process.platform,
+        probe: (shell, args, env) =>
+          execFileSync(shell, args, {
+            env,
+            cwd: realHome,
+            encoding: 'utf8',
+            timeout: 20_000,
+            stdio: ['ignore', 'pipe', 'pipe']
+          }),
+        executable: (path) => {
+          try {
+            accessSync(path, constants.X_OK)
+            return statSync(path).isFile()
+          } catch {
+            return false
+          }
+        }
+      })
+    ])
+  ) as Record<GateCli, string | null>
+  for (const name of GATE_CLIS) log(`${name} binary: ${binaries[name] ?? 'unresolved'}`)
+  let claudeNotJudgedWhy = binaries.claude
+    ? 'the Claude leg did not finish'
+    : callerEnv.TC_SD_GATE_CLAUDE_BIN !== undefined
+      ? `TC_SD_GATE_CLAUDE_BIN is not an executable absolute path (${callerEnv.TC_SD_GATE_CLAUDE_BIN})`
+      : 'binary not found through the real login shell, caller PATH, or app user bin dirs'
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'tc-skills-gate-')))
   const home = join(root, 'home'),
     data = join(root, 'data'),
@@ -525,17 +558,23 @@ export async function runSkillsDriversGate(repo: string): Promise<number> {
     )
     const bin = join(root, 'bin')
     mkdirSync(bin)
-    const museBin = findBinary('muse')
+    const museBin = binaries.muse
     if (museBin) {
       put(
         join(bin, 'muse'),
-        `#!/bin/bash\nexec '${museBin}' "$@" -c 'endpoint_transport.base_url="${origin}"' ${process.platform === 'linux' ? '--disable-sandbox' : ''}\n`
+        `#!/bin/bash\nexec ${shellWord(museBin)} "$@" -c ${shellWord(`endpoint_transport.base_url="${origin}"`)} ${process.platform === 'linux' ? '--disable-sandbox' : ''}\n`
       )
       execFileSync('chmod', ['+x', join(bin, 'muse')])
     }
-    put(join(home, '.bash_profile'), `export PATH="${bin}:${process.env.PATH}"\n`)
+    const childPath = composeGatePath(
+      GATE_CLIS.map((name) => binaries[name]),
+      callerEnv.PATH ?? '',
+      bin
+    )
+    put(join(home, '.bash_profile'), `export PATH=${shellWord(childPath)}\n`)
     const env: Record<string, string> = {
       ...(process.env as Record<string, string>),
+      PATH: childPath,
       HOME: home,
       TMPDIR: tmp,
       SHELL: '/bin/bash',
@@ -630,7 +669,7 @@ export async function runSkillsDriversGate(repo: string): Promise<number> {
       throw new Error('negative control imported')
     await write(1)
     check('store probe reaches all three scope pointers', true)
-    if (!findBinary('claude')) skip('claude: binary missing on PATH')
+    if (!binaries.claude) log('claude: required binary unresolved; its leg cannot judge')
     else {
       phase = 'claude'
       anthropic.script = [{ tool: skillCall(PROBE_SKILL) }, { text: 'gate claude one' }]
@@ -695,8 +734,8 @@ export async function runSkillsDriversGate(repo: string): Promise<number> {
     const catalog = await rpc<Record<string, { models?: { id: string }[] }>>('catalog.get')
     for (const provider of ['codex', 'muse'] as const) {
       phase = provider
-      if (!findBinary(provider)) {
-        skip(`${provider}: binary missing on PATH`)
+      if (!binaries[provider]) {
+        skip(`${provider}: binary missing from real login shell and fallback paths`)
         continue
       }
       const model = provider === 'codex' ? 'gpt-6-luna' : catalog.muse?.models?.[0]?.id
@@ -796,6 +835,8 @@ export async function runSkillsDriversGate(repo: string): Promise<number> {
     check('harness.status names no skill set', !hasSkillSet(await rpc('harness.status')))
     log(`legs that judge: ${judges.join(', ') || 'none'}`)
   } catch (e) {
+    if (binaries.claude && !judges.includes('claude'))
+      claudeNotJudgedWhy = e instanceof Error ? e.message : String(e)
     check('gate completed', false, e instanceof Error ? e.message : String(e))
   } finally {
     await cleanup()
@@ -803,6 +844,8 @@ export async function runSkillsDriversGate(repo: string): Promise<number> {
     process.removeListener('SIGTERM', onSignal)
     process.removeListener('exit', onExit)
   }
+  const missingClaude = claudeJudgeFailure(judges, claudeNotJudgedWhy)
+  if (missingClaude) check(missingClaude, false)
   // Include shutdown telemetry: the verdict comes only after every child has stopped.
   if (existsSync(join(root, 'denied.log')))
     denied.push(readFileSync(join(root, 'denied.log'), 'utf8'))

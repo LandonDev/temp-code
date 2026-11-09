@@ -49,15 +49,18 @@ import { createHash } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { homedir, tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
 
 import { waitForGateBuild } from './lib/gateBuild'
+import { hostCli } from './lib/gateCli'
 import { proofCleanup } from './lib/proofCleanup'
 import { createProcScan, hasEnv, commandMatches } from './lib/procScan'
 
 const REPO = resolve(import.meta.dir, '..')
 const GATE = process.argv.includes('--gate')
+/** Codex as the app finds it, resolved before any instance gets a temp HOME; its dir leads every instance's PATH. */
+const CODEX = hostCli('codex')
 const KEEP = process.env.TC_ADDONS_KEEP === '1'
 const BUN = process.execPath
 const FAKE = join(REPO, 'scripts', 'lib', 'fakeMcpServer.ts')
@@ -119,8 +122,12 @@ const mk = async (name: string, realHome = false): Promise<Inst> => {
 }
 
 /** This shell's environment less every TEMP_CODE_* and CLAUDE* key: the box service's hub token and this thread's marks stay out of a proof instance. */
-const baseEnv = (): Record<string, string> =>
-  Object.fromEntries(Object.entries(process.env as Record<string, string>).filter(([k]) => !k.startsWith('TEMP_CODE_') && !k.startsWith('CLAUDE') && k !== 'ANTHROPIC_BASE_URL'))
+const baseEnv = (): Record<string, string> => {
+  const env = Object.fromEntries(Object.entries(process.env as Record<string, string>).filter(([k]) => !k.startsWith('TEMP_CODE_') && !k.startsWith('CLAUDE') && k !== 'ANTHROPIC_BASE_URL'))
+  // The gate's children inherit a sparse PATH: codex's own dir leads it, so the instances spawn the codex leg 8 found.
+  if (CODEX) env.PATH = [dirname(CODEX), env.PATH].filter(Boolean).join(':')
+  return env
+}
 
 function launch(inst: Inst, opts: { platform: 'darwin' | 'linux'; isolated: boolean }): void {
   const env: Record<string, string> = {
@@ -465,14 +472,7 @@ try {
   log(`stdio servers the killed hosts left: ${lost.length}; the guard sweeps them after its 60 s grace`)
 
   // ── 8. the codex first-turn gate ──────────────────────────────────────
-  const codex = (GATE ? ['codex'] : ['codex', join(homedir(), '.local', 'bin', 'codex'), join(homedir(), '.bun', 'bin', 'codex')]).find((c) => {
-    try {
-      execFileSync(c, ['--version'], { stdio: 'ignore' })
-      return true
-    } catch {
-      return false
-    }
-  })
+  const codex = CODEX
   if (!codex) log('SKIP  the codex first-turn gate: no codex binary on this host')
   else {
     const gateOf = (sessionId: string): number | null => {

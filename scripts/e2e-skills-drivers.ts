@@ -32,6 +32,10 @@
  * Run: bun scripts/e2e-skills-drivers.ts [--host box|mac]   (build first: electron-vite build)
  * Gate: add --gate for one temp-HOME instance, placeholder accounts and
  * loopback fake providers. It waits for the gate build and never builds.
+ * Gate lookup uses the real user's login shell, then pins the resolved bin
+ * dirs on the temp instance's PATH. Claude must judge; Codex and Muse may skip.
+ * Negative gate seam: TC_SD_GATE_CLAUDE_BIN=<absolute path> overrides Claude
+ * lookup with no fallback. A nonexistent path must fail the required leg.
  */
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
