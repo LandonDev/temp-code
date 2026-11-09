@@ -25,7 +25,7 @@ import { UsageCellsSkeleton } from "./accounts/usage";
 import { STATIC_WARN_MS, type OwnerView, type RowAction } from "./accounts/rowLine";
 
 /** The mark each section leads with: the harness's, or Meta's vendor mark. */
-const HARNESS: Record<ServiceId, MarkId> = { "claude-code": "claude", codex: "codex", cursor: "cursor", meta: "meta", "muse-code": "muse" };
+const HARNESS: Partial<Record<ServiceId, MarkId>> = { "claude-code": "claude", codex: "codex", cursor: "cursor", meta: "meta", "muse-code": "muse" };
 
 /** Services whose accounts are API keys: added with Add key…, never signed in to, switched or refreshed. */
 const KEY_SERVICES = new Set<ServiceId>(["meta"]);
@@ -99,7 +99,8 @@ function ProviderSection({ service, props, now, columns }: { service: ServiceVie
   const convertible = claude ? service.profiles.filter((p) => !p.static || (p.expiresAt !== undefined && p.expiresAt - now <= STATIC_WARN_MS)).length : 0;
   const keyed = KEY_SERVICES.has(service.id);
   // A key has no refresher: every host holds it, so there is no home to pick.
-  const showHome = environments.length > 0 && service.id !== "cursor" && !keyed;
+  const provider = PROVIDER_OF[service.id];
+  const showHome = !!provider && environments.length > 0 && service.id !== "cursor" && !keyed;
   const menu = service.installed && (service.canSaveCurrent || convertible > 0 || showHome);
   const reportOf = (p: ProfileView) => reports?.find((r) => r.profileName === p.name);
   // While a Refresh masks the reports, each row's last one shapes its skeleton.
@@ -166,8 +167,8 @@ function ProviderSection({ service, props, now, columns }: { service: ServiceVie
                       {convertible === service.profiles.length ? "Convert all to one-year tokens" : `Convert ${convertible} to one-year tokens`}
                     </DropdownMenuItem>
                   ) : null}
-                  {showHome ? (
-                    <HomeMenu home={homes[PROVIDER_OF[service.id]]} environments={environments} localName={localName} onSetHome={(id) => props.onSetHome(PROVIDER_OF[service.id], id)} />
+                  {showHome && provider ? (
+                    <HomeMenu home={homes[provider]} environments={environments} localName={localName} onSetHome={(id) => props.onSetHome(provider, id)} />
                   ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>

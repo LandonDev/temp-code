@@ -11,6 +11,7 @@ import { StaticTokens } from './aliax/staticTokens'
 import type { AccountSync } from './server/remote/accountSync'
 import { statsHost } from './aliax/stats/statsService'
 import { ACCOUNT_PROVIDERS, SERVICE_OF, type AccountsSnapshot, type KeyProfileView, type MintProgress } from '@shared/accounts'
+import { ADDON_GRANT_MANAGED } from '@shared/addonGrantWords'
 
 /**
  * The main-process half of the embedded Aliax pages (Accounts, Stats): the
@@ -75,6 +76,8 @@ const CLAUDE_CREDENTIALS = 'Claude Code-credentials'
 
 async function loginStart(serviceId: ServiceId, loginHint?: string): Promise<ActionResult> {
   switch (serviceId) {
+    case 'addon':
+      return { ok: false, error: ADDON_GRANT_MANAGED }
     case 'meta':
       // A key, not a sign-in: the Accounts page's Add key… dialog (aliax:profiles:addKey).
       return { ok: false, error: 'Meta uses an API key: add one with Add key…' }
@@ -254,6 +257,7 @@ export function registerAliaxPages(server: { accounts: AliaxPagesHost; accountSy
   // saved only when it answers; the error is the dialog's one red line.
   handle('aliax:profiles:addKey', (_e, input: { serviceId: ServiceId; name?: string; key: string }) =>
     asResult(async () => {
+      if (input?.serviceId === 'addon') return { ok: false, error: ADDON_GRANT_MANAGED }
       if (input?.serviceId !== 'meta') return { ok: false, error: 'This service takes a sign-in, not a key' }
       try {
         const name = await accounts.saveApiKey('meta', { key: String(input.key ?? ''), name: input.name })
@@ -267,6 +271,7 @@ export function registerAliaxPages(server: { accounts: AliaxPagesHost; accountSy
   )
   handle('aliax:profiles:capture', (_e, serviceId: ServiceId) =>
     asResult(async () => {
+      if (serviceId === 'addon') return { ok: false, error: ADDON_GRANT_MANAGED }
       const result = await accounts.capture(serviceId)
       notifyAccountsChanged()
       void sync?.syncAll()
@@ -284,6 +289,7 @@ export function registerAliaxPages(server: { accounts: AliaxPagesHost; accountSy
   // at once); the bare vault delete only for a page served before the server.
   handle('aliax:profiles:delete', (_e, serviceId: ServiceId, name: string) =>
     asResult(async () => {
+      if (serviceId === 'addon') return { ok: false, error: ADDON_GRANT_MANAGED }
       if (sync) {
         const out = await sync.deleteProfile(serviceId, name)
         notifyAccountsChanged()

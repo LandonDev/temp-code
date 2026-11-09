@@ -19,7 +19,8 @@ export const SERVICE_OF: Record<AccountProvider, ServiceId> = {
   meta: 'meta',
   muse: 'muse-code'
 }
-export const PROVIDER_OF: Record<ServiceId, AccountProvider> = {
+/** Partial: the `addon` service (add-on grants) is no account provider, so routing, pins and the Accounts page never list it. */
+export const PROVIDER_OF: Partial<Record<ServiceId, AccountProvider>> = {
   'claude-code': 'claude',
   codex: 'codex',
   cursor: 'cursor',

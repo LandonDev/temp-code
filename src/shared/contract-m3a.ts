@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const AccountProviderSchema = z.enum(['claude', 'codex', 'cursor'])
-export const ServiceIdSchema = z.enum(['claude-code', 'codex', 'cursor'])
+export const ServiceIdSchema = z.enum(['claude-code', 'codex', 'cursor', 'meta', 'muse-code', 'addon'])
 
 /** aliax-core sync.ts Transfer, as it crosses the wire. */
 const LimitFieldSchema = z.object({ limit: z.number().optional(), remaining: z.number().optional(), resetsAt: z.number().optional() })

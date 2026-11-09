@@ -35,6 +35,7 @@ export function AccountsPage(): React.JSX.Element {
   const [login, setLogin] = useState<Login | null>(null);
   /** The key service whose Add key… dialog is open. */
   const [keyFor, setKeyFor] = useState<ServiceId | null>(null);
+  const keyProvider = keyFor ? PROVIDER_OF[keyFor] : undefined;
   // The page, not the row, holds the Remove confirm: the refreshed list drops
   // the row before the confirm's exit plays.
   const [removing, setRemoving] = useState<Removing | null>(null);
@@ -200,7 +201,7 @@ export function AccountsPage(): React.JSX.Element {
       <AddKeyDialog
         open={keyFor !== null}
         onOpenChange={(open) => !open && setKeyFor(null)}
-        serviceName={keyFor && isRoutedProvider(PROVIDER_OF[keyFor]) ? SIGN_IN_NAME[PROVIDER_OF[keyFor]] : ""}
+        serviceName={keyProvider && isRoutedProvider(keyProvider) ? SIGN_IN_NAME[keyProvider] : ""}
         submit={({ name, key }) => window.aliax.addKey({ serviceId: keyFor ?? "meta", name, key })}
         onAdded={(name) => {
           toast.success(name ? `Added ${name}` : "Key added");
