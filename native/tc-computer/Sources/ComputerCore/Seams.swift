@@ -37,8 +37,12 @@ public struct ObserveRequest: Sendable {
     public var geometry: Bool
     public var menus: Bool
     public var space: CoordinateSpace
+    /// the smart wait ended with a busy indicator showing: the header says ` · still loading`
+    public var loading: Bool
+    /// false when the call's screenshot policy is `never`: a thin tree is then not told to look at one
+    public var noteThin: Bool
 
-    public init(window: ComputerProtocol.WindowRef?, mode: ObservationMode, element: Int?, budgetBytes: Int, geometry: Bool, menus: Bool, space: CoordinateSpace) {
+    public init(window: ComputerProtocol.WindowRef?, mode: ObservationMode, element: Int?, budgetBytes: Int, geometry: Bool, menus: Bool, space: CoordinateSpace, loading: Bool = false, noteThin: Bool = true) {
         self.window = window
         self.mode = mode
         self.element = element
@@ -46,6 +50,8 @@ public struct ObserveRequest: Sendable {
         self.geometry = geometry
         self.menus = menus
         self.space = space
+        self.loading = loading
+        self.noteThin = noteThin
     }
 }
 
@@ -281,6 +287,10 @@ public protocol AppReading: AnyObject {
     /// throws `stale_element` or `no_such_element`
     func resolve(_ index: Int) throws -> ResolvedElement
     var changes: any ChangeSignal { get }
+    /// forget the base: the next auto read is full (the shell dropped an observation it took)
+    func resetBase()
+    /// stop the change monitor and free the element handles
+    func close()
 }
 
 /// Input. Every call is synchronous and runs off the main thread; every failure is a `ComputerFailure`.

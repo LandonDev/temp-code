@@ -607,9 +607,10 @@ public struct RawAXNode: Codable, Hashable, Sendable {
     public let actions: [String]?
     public let settable: [String]?
     public let selectedTextRange: [Int]?
+    public let id: String?
     public let children: [RawAXNode]
 
-    public init(role: String, subrole: String? = nil, roleDescription: String? = nil, title: String? = nil, value: RawAXValue? = nil, description: String? = nil, help: String? = nil, placeholder: String? = nil, identifier: String? = nil, domIdentifier: String? = nil, titleElementValue: String? = nil, enabled: Bool? = nil, focused: Bool? = nil, selected: Bool? = nil, expanded: Bool? = nil, required: Bool? = nil, invalid: Bool? = nil, modal: Bool? = nil, minimized: Bool? = nil, busy: Bool? = nil, loaded: Bool? = nil, visible: Bool? = nil, frame: Rect? = nil, actions: [String]? = nil, settable: [String]? = nil, selectedTextRange: [Int]? = nil, children: [RawAXNode]) {
+    public init(role: String, subrole: String? = nil, roleDescription: String? = nil, title: String? = nil, value: RawAXValue? = nil, description: String? = nil, help: String? = nil, placeholder: String? = nil, identifier: String? = nil, domIdentifier: String? = nil, titleElementValue: String? = nil, enabled: Bool? = nil, focused: Bool? = nil, selected: Bool? = nil, expanded: Bool? = nil, required: Bool? = nil, invalid: Bool? = nil, modal: Bool? = nil, minimized: Bool? = nil, busy: Bool? = nil, loaded: Bool? = nil, visible: Bool? = nil, frame: Rect? = nil, actions: [String]? = nil, settable: [String]? = nil, selectedTextRange: [Int]? = nil, id: String? = nil, children: [RawAXNode]) {
         self.role = role
         self.subrole = subrole
         self.roleDescription = roleDescription
@@ -636,6 +637,7 @@ public struct RawAXNode: Codable, Hashable, Sendable {
         self.actions = actions
         self.settable = settable
         self.selectedTextRange = selectedTextRange
+        self.id = id
         self.children = children
     }
 }

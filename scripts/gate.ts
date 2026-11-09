@@ -218,7 +218,8 @@ export const TYPECHECK_INPUTS = [
   '*.json',
   'ios/TempCodeContract/Sources/TempCodeContract/Generated/*',
   'native/tc-computer/Sources/ComputerProtocol/Generated/*',
-  'native/tc-computer/Sources/Input/Generated/*'
+  'native/tc-computer/Sources/Input/Generated/*',
+  'native/tc-computer/Sources/AXText/Generated/*'
 ]
 
 // ---------------------------------------------------------------- selection

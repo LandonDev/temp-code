@@ -172,6 +172,16 @@ export function actionWord(raw: string): string | null {
   return raw.trim().toLowerCase().replace(/,\s*/g, ' ') || null
 }
 
+/**
+ * Actions a process puts on every web-content node (§4.1, amendment A5): in a
+ * process where `AXManualAccessibility` succeeded, inside a web area, they
+ * count as defaults of every role, so they never print and never keep an
+ * element. The browser's own toolbar and tab strip keep theirs.
+ */
+export const AMBIENT_ACTIONS: Readonly<Record<string, readonly string[]>> = {
+  chromium: ['AXShowMenu', 'AXScrollToVisible']
+}
+
 /** What every element of a role takes without listing it (§4.1 "Role defaults"). */
 export const ROLE_DEFAULTS: Readonly<Record<string, readonly string[]>> = {
   button: ['press'],
@@ -738,9 +748,10 @@ function parseOthers(text: string): OtherWindow[] {
 /**
  * The observation text as lines, held to the grammar: a full or subtree
  * observation is a tree (depth grows one level at a time, an index at most
- * once, the `(truncated …)` line last); a diff is marker lines and added
- * groups; `unchanged` is the header alone. Anything else throws with its
- * line number.
+ * once, the `(truncated …)` line last); a diff is marker lines, added groups,
+ * a changed container's new summary lines one level under its `~` line, and
+ * a changed `(truncated …)` line last; `unchanged` is the header alone.
+ * Anything else throws with its line number.
  */
 export function parseObservation(text: string): ParsedObservation {
   const rows = text.split('\n')
@@ -768,6 +779,8 @@ export function parseObservation(text: string): ParsedObservation {
   const diff = header.change === 'diff'
   let prevDepth = -1
   let inAdded = false
+  // a changed container's new summary lines, one level under its `~` line (amendment A2)
+  let underChanged = false
   for (let r = at; r < rows.length; r++) {
     const n = r + 1
     const line = parseLineAt(rows[r], n)
@@ -776,12 +789,16 @@ export function parseObservation(text: string): ParsedObservation {
     if (line.type === 'added') {
       if (!diff) throw new ObservationParseError(n, 'an added group outside a diff')
       inAdded = true
+      underChanged = false
       prevDepth = 0
     } else if (marked) {
       if (!diff) throw new ObservationParseError(n, 'a marked line outside a diff')
       inAdded = false
+      underChanged = line.marker === '~'
     } else if (line.type === 'truncated') {
       // depth 0, last
+    } else if (diff && underChanged && line.type === 'more') {
+      if (line.depth !== 1) throw new ObservationParseError(n, "a changed container's summary is one level under its line")
     } else {
       const depth = line.depth
       if (diff) {

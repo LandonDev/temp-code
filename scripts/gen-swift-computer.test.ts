@@ -1,10 +1,10 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { ACTION_WORDS, KEY_NAMES, MODIFIER_NAMES, ROLE_DEFAULTS } from '../src/shared/computer/observation'
+import { ACTION_WORDS, KEY_NAMES, MODIFIER_NAMES, ROLE_DEFAULTS, ROLE_TAGS, STATE_WORDS } from '../src/shared/computer/observation'
 import { COMPUTER_METHODS, COMPUTER_PROTOCOL, COMPUTER_WAIT } from '../src/shared/computer/protocol'
 import { GENERATED_DIR, generate, pascal } from './gen-swift-contract'
-import { COMPUTER_GENERATED_DIR, INPUT_GENERATED_DIR, emitInputTables, generateComputer } from './gen-swift-computer'
+import { COMPUTER_GENERATED_DIR, INPUT_GENERATED_DIR, OBSERVATION_TABLES_DIR, emitInputTables, emitObservationTables, generateComputer } from './gen-swift-computer'
 
 // The computer wire's Swift, pinned on the generated text: the box cannot
 // build the service, so the names the Swift threads code against are proven
@@ -57,6 +57,18 @@ describe('the computer Swift', () => {
     expect(files['StepResult.swift']).toContain('case notRun(NotRunStep)')
     expect(files['ComputerNotification.swift']).toContain('case captureFrame(CaptureFrameNotification)')
     expect(files['HostNotification.swift']).toContain('case cancel(CancelHostNotification)')
+  })
+
+  it("writes the observation grammar's tables for the AX reader, and the committed file is that", () => {
+    const tables = emitObservationTables()
+    expect(readFileSync(join(OBSERVATION_TABLES_DIR, 'ObservationTables.swift'), 'utf8')).toBe(tables)
+    expect(readdirSync(OBSERVATION_TABLES_DIR)).toEqual(['ObservationTables.swift'])
+    for (const [key, word] of Object.entries(ROLE_TAGS)) expect(tables).toContain(`        ${JSON.stringify(key)}: ${JSON.stringify(word)}`)
+    expect(tables).toContain('"pop up": ["press", "show menu"]')
+    expect(tables).toContain('"chromium": ["AXShowMenu", "AXScrollToVisible"]')
+    expect(tables).toContain(`public static let stateWords: [String] = [${STATE_WORDS.map((w) => JSON.stringify(w)).join(', ')}]`)
+    expect(tables).toContain('public static let headerSeparator = " · "')
+    expect(tables).not.toMatch(/\$\{|\\u/)
   })
 
   it('carries the protocol number and the defaults', () => {

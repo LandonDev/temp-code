@@ -99,7 +99,8 @@ describe('observation fixtures', () => {
   const cases = ['full', 'diff', 'unchanged', 'truncated', 'thin', 'stub', 'loading', 'geometry', 'menus', 'escapes']
   const texts = [
     ...cases.map((c) => join(root, 'observations', `${c}.txt`)),
-    ...walk(join(root, 'apps')).filter((p) => p.endsWith('/observation.txt'))
+    // the AX reader's goldens: a full read, the diff from the state before, the budget's cut
+    ...walk(join(root, 'apps')).filter((p) => /\/(observation|diff|truncated)\.txt$/.test(p))
   ]
 
   it('cover every grammar case', () => {

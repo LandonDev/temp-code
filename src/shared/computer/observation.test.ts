@@ -131,6 +131,15 @@ describe('observations', () => {
     expect(lineOf(`${diff}\n~ [2]–[4] 3 × marker`)).toBe(2)
     expect(lineOf(`${header} · no changes\n[1] window`)).toBe(2)
   })
+
+  it("take a changed container's new summary lines under its ~ line, and a changed truncated line last", () => {
+    const diff = `${header} · changes since your last read`
+    const text = `${diff}\n~ [18] list "Past orders"\n  … 50 more below, 7 above\n(truncated: 12 elements left out; observe with element: 18 to see one part whole)`
+    expect(formatObservation(parseObservation(text))).toBe(text)
+    expect(lineOf(`${diff}\n~ [18] list\n    … 50 more below`)).toBe(3)
+    expect(lineOf(`${diff}\n- [18] list\n  … 50 more below`)).toBe(3)
+    expect(lineOf(`${diff}\n~ [18] list\n  [19] button`)).toBe(3)
+  })
 })
 
 describe('cutting names and values', () => {

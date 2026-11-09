@@ -921,6 +921,8 @@ export interface RawAXNode {
   settable?: string[]
   /** `[location, length]`, as AXSelectedTextRange gives it */
   selectedTextRange?: number[]
+  /** equal across one app's recorded states when the recorder saw one element (CFEqual); absent in older recordings */
+  id?: string
   children: RawAXNode[]
 }
 
@@ -952,6 +954,7 @@ export const RawAXNodeSchema: z.ZodType<RawAXNode> = z.lazy(() =>
     actions: z.array(z.string()).optional(),
     settable: z.array(z.string()).optional(),
     selectedTextRange: z.array(int()).length(2).optional(),
+    id: z.string().optional(),
     children: z.array(RawAXNodeSchema)
   })
 )
