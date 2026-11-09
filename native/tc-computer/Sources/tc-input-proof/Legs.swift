@@ -175,6 +175,10 @@ final class Proof: @unchecked Sendable {
                 let open = P.walk(s.app, max: 400).contains { P.string($0, "AXRole") == "AXMenu" }
                 return (!open, open ? "the menu stayed" : "closed")
             }
+            // a menu left open would swallow the legs after it: close it through AX, whatever the leg said
+            for menu in P.walk(s.app, max: 400) where P.string(menu, "AXRole") == "AXMenu" {
+                _ = AXUIElementPerformAction(menu, "AXCancel" as CFString)
+            }
         }
         let saved = board()
 
