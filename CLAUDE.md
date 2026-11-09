@@ -3582,9 +3582,9 @@ proof and the sizing rules; the pieces, by name:
   indexed text, its diff and budget), the input tiers `ax`, `process`,
   `session` with the clipboard lock, the smart wait, capture, and the four
   `computer_*` tools whose verbs and parameter names are Anthropic's native
-  computer-use set with `element` refs beside `coordinate`. In code so far:
-  the contract, the Capture module, Input and the AX reader; no service,
-  tools or UI.
+  computer-use set with `element` refs beside `coordinate`. In code: the
+  contract, Capture, Input, the AX reader and the service shell
+  (docs/computer-protocol.md §15); no host tools or UI yet.
 - The zod in src/shared/computer/ is the one source: `protocol.ts` (every
   method's params and result, the errors, the notifications, every number:
   waits, budgets, caps, lock paths), `observation.ts` (the grammar's tables,
@@ -3597,12 +3597,42 @@ proof and the sizing rules; the pieces, by name:
   in `ComputerDefaults`; never edit it: `check:swift-computer` is inside
   `typecheck`.
 - native/tc-computer declares every target (ComputerProtocol, ComputerCore's
-  Seams.swift, AXReader, Input, Capture, ComputerService, the executable);
-  each sibling fills its own. `bun run computer:test` is the gate's
-  `computer-swift` step (Mac). The whole package builds only on the Mac
-  (Input and Capture import Apple frameworks); on the box, with the Linux
-  toolchain under ~/toolchains, `sh scripts/computer-text-test.sh` tests
-  ComputerProtocol and AXText from a scratch package linked to the checkout.
+  Seams.swift, AXReader, Input, Capture, ComputerServiceKit, ComputerService,
+  the executable). `bun run computer:test` is the gate's `computer-swift`
+  step (Mac). The whole package builds only on the Mac (Input and Capture
+  import Apple frameworks); on the box, with the Linux toolchain under
+  ~/toolchains, `sh scripts/computer-text-test.sh` tests ComputerProtocol,
+  ComputerServiceKit and AXText from a scratch package linked to the checkout.
+- The service shell (native/tc-computer/README.md, docs/computer-protocol.md
+  §15): `tc-computer serve` is one process per app instance; the main thread
+  runs AppKit and never blocks, a stdin thread feeds the `Router` (32 requests
+  in flight, a slot freed only once its answer is written, 256 queued), one
+  writer thread drains the two-lane `Outbox`, every AX call runs on a worker
+  per session × pid, and actions take a fair per-app slot (5 s, `app_busy`).
+  The smart wait (`WaitRule`) counts from Input's `lastInputAt`; pixels count
+  only while the last read was thin or nothing AX moved, and a busy indicator
+  holds the wait. The Mac-wide clipboard and session locks are `flock`s under
+  the Darwin user temp dir, taken by Input through the shell's `MacLock`
+  adapters; `clipboard.state` reports foreign copies from the change count
+  alone. `<dataDir>/held.json` is the held-input crash ledger, released at the
+  next `initialize`. Exit codes: 0 clean, 75 restart for a new Screen
+  Recording grant, 70 fault or 64 MiB unread, 64 usage, 69 old macOS.
+  `TEMP_CODE_COMPUTER_TRACE=1` traces frames, locks and waits on stderr.
+  Private symbols go through `ComputerCore/PrivateSymbol.swift` alone, with a
+  public fallback and a forced-miss test (`TC_COMPUTER_PRIVATE_MISS`), listed
+  in the README; scripts/tc-computer-guard.test.ts holds that and keeps
+  `print(` and stdout writes out of every product target.
+- Build: scripts/lib/tcComputerBuild.ts (the `tcComputer()` plugin) builds
+  only the `tc-computer` product on macOS into resources/native/tc-computer
+  beside a content stamp (a match skips the build; `TEMP_CODE_SKIP_NATIVE=1`
+  skips it; dev builds in the background and only warns);
+  `TEMP_CODE_REQUIRE_NATIVE=1`, set by release-publish.sh, makes a failure
+  stop the publish, which also checks the signed app's tc-computer with
+  `codesign --verify --strict`. electron-builder signs it under
+  `mac.binaries`. Proof: `bun run script:e2e-tc-computer` (macOS only;
+  TextEdit and a scratch app in the background, never activated, `ax` and
+  `process` tiers only, the paste under the clipboard lock and skipped after a
+  recent copy).
 - Fixtures: src/main/server/computer/fixtures/ (its README): hand-written
   wire frames for every method, error kind and notification, observation
   texts for every grammar case, `page/form.html`, and `apps/` trees and

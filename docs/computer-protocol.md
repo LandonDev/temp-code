@@ -10,7 +10,7 @@ TempCode's own computer use: a Swift service on the Mac, `tc-computer`, reads ac
 6. the tools the models see, with Anthropic's native computer-use verbs and parameter names, element refs beside coordinates, and how a screenshot reaches each harness;
 7. recorded fixtures from real apps, scratch content only.
 
-**In code today** is the contract alone: the zod in `src/shared/computer/` (`protocol.ts` the wire, `observation.ts` the grammar, `tools.ts` the model-facing shapes), the Swift Codable types generated from it, the `native/tc-computer` package with every target declared, the fixtures, and tests in both languages that parse the fixtures; and the Capture module (§6, §7: screenshots, the preview stream and the pixel watch, with its live proof on the Mac). No service, no tools, no UI yet. Where this document and the zod differ, the zod is right and this document is stale.
+**In code today**: the contract (the zod in `src/shared/computer/`: `protocol.ts` the wire, `observation.ts` the grammar, `tools.ts` the model-facing shapes; the Swift Codable types generated from it; the fixtures and the tests in both languages that parse them) and the service shell (§15: the stdio server, the smart wait, the locks, TCC, the lifecycle, the `tc-computer` binary and its build). Capture is in (§6); the AX reader and Input modules land from their own builds; there are no host tools and no UI yet. Where this document and the zod differ, the zod is right and this document is stale.
 
 ## 0. Layers, files and who builds what
 
@@ -37,12 +37,13 @@ The binary is `tc-computer`, built by the Service shell's electron.vite plugin f
 ## 1. Process and framing
 
 - **One service per app instance on the Mac**, spawned as `tc-computer serve` with stdin and stdout as pipes and stderr as a log. All of that instance's threads share it: AX element handles and the diff state live in the service. Each thread is a `session` inside it. A dev or proof instance spawns its own.
-- **The two things there is one of per Mac**, the pasteboard and the real pointer and keyboard, are guarded by advisory file locks every service on the Mac shares, so a dev instance's service can never paste or take the session over the installed app's: `flock` on `$TMPDIR/tc-computer/clipboard.lock` (§5.3) and on `$TMPDIR/tc-computer/session.lock` (held for the whole of a `session`-tier step, and while a `session`-tier button is held down, §5.1).
+- **The two things there is one of per Mac**, the pasteboard and the real pointer and keyboard, are guarded by advisory file locks every service on the Mac shares, so a dev instance's service can never paste or take the session over the installed app's: `flock` on `clipboard.lock` (§5.3) and `session.lock` (held for the whole of a `session`-tier step, and while a `session`-tier button is held down, §5.1) in `tc-computer/` under the user's temporary directory as `confstr(_CS_DARWIN_USER_TEMP_DIR)` gives it, never `$TMPDIR`, so a process whose TMPDIR was overridden cannot split a lock.
 - **Frames**: one JSON-RPC 2.0 object per line, UTF-8, `"jsonrpc":"2.0"` on every frame, no newline inside a frame. A line is at most 16 MiB; screenshots never ride the wire (they go to files), preview frames are capped at 512 KiB. The envelope is the framing's: `RpcRequestSchema`, `RpcErrorResponseSchema`, `requestFrameSchema(method)` and `resultFrameSchema(method)` in `protocol.ts`; `RPCFrame`, `LineReader` and `encodeLine` in `native/tc-computer/Sources/ComputerProtocol/Framing.swift`. The notification unions hold `{ method, params }` alone, since the generator tells a union's branches apart by one literal field.
 - **Direction**: the host sends requests and two notifications (`$/cancel`, `capture.stream.ack`); the service answers requests and sends notifications. The service never sends a request.
 - **Ids**: the host's integers, increasing. Responses may arrive out of order.
 - **Lifecycle**: the host sends `initialize` first; any other method before it answers error `not_initialized`. `shutdown` is answered, then the service exits 0 within 2 s. The service also exits on stdin EOF and when its parent is gone (`getppid() == 1`, polled every 5 s, as the appshot helper does). A crash is respawned by the host with backoff (Computer sessions and tools); the new process has a new `epoch` and knows no sessions, so every element index from before is stale.
 - **Cancellation**: `$/cancel { id }` stops request `id` at its next safe point (between batch steps, inside any wait, before an input event is posted). A cancelled `action.run` or `action.batch` answers its normal result: the steps already done keep their results, the step it stopped is `failed` with kind `cancelled`, the rest `not-run`, and no observation is taken (`observationError` kind `cancelled`). Any other cancelled request answers error `cancelled`. Thread Pause and Stop use it.
+- **Admission**: at most 32 requests run at once, and a request's slot frees only once its response is on the pipe, so a host that stops reading holds at most 32 answers in memory; later ones wait in arrival order, and once 256 wait a new one answers -32603 `overloaded: 256 requests waiting` at once. stdin is always read: `$/cancel`, `permissions.get`, `clipboard.state` and `shutdown` never wait behind work, so `permissions.get` serves as the liveness ping.
 - **Concurrency**: reads (`state.get`, `capture.*`, `apps.*`) run concurrently. Actions are serialized per app (one at a time per pid, across sessions); an action that waits more than 5 s for an app's slot fails `app_busy`. Any `session`-tier step holds the Mac-wide session lock. Reads of one app wait for its running action.
 - **Versioning**: `COMPUTER_PROTOCOL = 1`. Adding a method, an optional field, an error kind or an enum value keeps 1; the generated Swift enums carry an `unknown(String)` case and the host tolerates unknown notification methods. Anything else bumps it; `initialize` with another number answers error `protocol_mismatch` and the host refuses the service.
 
@@ -92,7 +93,7 @@ Named so the generator emits each once (`COMPUTER_SUBSET` in scripts/gen-swift-c
 
 ### 2.1 Resolving a target
 
-- `app` matches, in order: a bundle id exactly; a running app's display name case-insensitively; an installed app's name (only with `launch: true`, which launches it in the background, `activates: false`); a unique case-insensitive prefix of a running app's name. No match answers `app_not_found` with up to five close names in `data.candidates`.
+- `app` matches, in order: a bundle id exactly; a running app's display name case-insensitively; an absolute path to an `.app` (the running app whose bundle it is, else, with `launch: true`, that app launched); an installed app's name (only with `launch: true`, which launches it in the background, `activates: false`); a unique case-insensitive prefix of a running app's name. No match answers `app_not_found` with up to five close names in `data.candidates`.
 - `window` absent: the app's AXMainWindow, else AXFocusedWindow, else its first standard window. `id` is the CGWindowID from `apps.list`; `title` matches exactly, then as a substring. No match answers `window_not_found` with the app's window titles.
 - The **focus window** of an observation is the resolved window plus whatever is attached to it: sheets, open menus (an AXMenu the app shows), popovers and the app's focused dialog. A new standalone window does not replace the target; the observation header names it (§4.1).
 
@@ -118,6 +119,7 @@ Every method's params and result are a zod schema in `COMPUTER_METHODS` (`protoc
 | `capture.stream.stop` | `{ stream: string }` | `{}` |
 | `input.probe` | `Target & { classes?: ActionClass[] }` (default `['scroll', 'key', 'click']`) | `ProbeReport`: which classes the app honours at the `process` tier, each tried only where its state can be put back through AX (§14.6) |
 | `input.restoreSession` | `{}` | `SessionRestore`: what the `session` tier changed since the last restore, put back unless the person moved since (§14.5); `session_unavailable` when another holder keeps the session lock for 5 s |
+| `clipboard.state` | `{}` | `{ changeCount: number, foreignChangeAt: number \| null, watchingSince: number }` (epoch ms): when the pasteboard last changed by anyone but this service, from the change count alone (§15.4) |
 
 Notifications from the host: `$/cancel { id }`, `capture.stream.ack { stream, seq }`.
 
@@ -163,6 +165,7 @@ type Observation = {
   space: CoordinateSpace      // what coordinates mean now (§6)
   stats: { elements: number; lines: number; bytes: number; omitted: number; thin: boolean; partial: boolean; readMs: number }
   shot?: Shot
+  shotError?: ComputerError   // the shot this observation would carry could not be taken: Screen Recording off, minimized, capture failed
   waited?: WaitReport
 }
 ```
@@ -415,6 +418,8 @@ The Capture module (`native/tc-computer/Sources/Capture/`, `ScreenCaptureKitCapt
 | `observe` (a plain `state.get`) | 0 | 300 | 1,000 | 5,000 |
 | `wait` action | 0 | 450 | `duration × 1000` | `duration × 1000` |
 
+Two rules of the service shell refine this (§15.3): **pixels count only while accessibility is weak** (a change in the window's pixels, from Capture's watch stream, restarts the quiet clock only while the last read of the app was thin or no AX change has been seen since the action, and never moves the cap), and **a busy indicator holds the wait** (while one shows, quiet does not end the wait; once one has shown, the wait ends at `busyMaxMs`, or once the indicator is gone and the window is quiet).
+
 So an action that changes nothing returns in about 0.75 s, a click that redraws in about a second, a page load when it has loaded or at 5 s with ` · still loading` in the header. The Task benchmark tunes these four rows and nothing else moves. No model ever needs to sleep; the tool descriptions say so.
 
 **The pixel watch** (Capture's `PixelWatching`, A4). An AX notification says the app changed something; it does not say a page is still painting. So the quiet clock also listens to the window's own pixels (A5): `watch(windowID:)` starts, or keeps alive, one small SCStream per window a session acts on (256 px long edge, 10 fps, never encoded) and returns its `PixelChangeSignal` at once. The first complete frame is the baseline: it never counts, and it makes the signal `live` (37 ms cold on the Mac). Each later frame goes to `ChangeJudge`, on a grid of 8 px cells:
@@ -463,6 +468,7 @@ type ComputerError = { kind: ComputerErrorKind; message: string } & Partial<{
 | `text_not_found` | `select_text` found no match (with its prefix and suffix) | `element` |
 | `key_window_unavailable` | a `process`-tier key, `hold_key`, `type` by keys or `paste` whose target window is not the app's key window; nothing was posted | `keyWindow?` |
 | `session_unavailable` | the session tier cannot run: the screen is locked, secure input is on (keys only), activation was refused (the window did not get keyboard focus), or another service held the session lock for 5 s | `reason` |
+| `already_running` | `initialize`: another service holds `<dataDir>/service.lock` for 3 s | |
 
 `message` is one plain sentence a model can act on ("[12] is gone; read the tree again"); the Computer model instructions thread owns the wording table (`COMPUTER_ERROR_WORDS`). `STEP_ONLY_ERROR_KINDS` (`action_unsupported`, `needs_tier`, `invalid_key`, `interrupted`, `app_busy`, `clipboard_busy`, `text_not_found`, `key_window_unavailable`) only ever ride in a step; the rest can answer a request. In Swift a part throws `ComputerFailure` (ComputerCore) and the Service shell puts it where it belongs.
 
@@ -563,6 +569,7 @@ Every lookup of a pid matches the executable's path, never `pgrep -f` (which mat
 | `Capture` | library | ComputerProtocol, ComputerCore, ScreenCaptureKit | Capture: screenshots, the preview stream, the pixel watch (§6, §7) |
 | `ComputerService` | library | all four | Service shell |
 | `tc-computer` | executable | ComputerService | Service shell |
+| `ComputerServiceKit` | library | ComputerProtocol (Foundation only) | Service shell: the pure rules (§15.1) |
 | `ComputerProtocolTests` | test | ComputerProtocol | Computer protocol spec: decodes and round-trips every `fixtures/wire/*.json` in place, and the framing |
 | `capture-proof` | executable, never shipped | Capture | Capture: the live proof on the Mac (§6) |
 | `CaptureTests` | test | Capture | Capture: the geometry, naming, flow control, lifecycle, change judge, encoding, error mapping, the permission gate and the private-call scan; the Foundation-only suites run on Linux too |
@@ -571,6 +578,10 @@ Every lookup of a pid matches the executable's path, never `pgrep -f` (which mat
 | `AXTextTests` | test | AXText | AX reader: the rules on hand-built snapshots, the goldens of `fixtures/apps` (box and Mac) |
 | `AXReaderTests` | test | AXReader | AX reader: the AX glue without a live app (Mac) |
 | `tc-ax` | executable | AXReader | AX reader: the dev tool of the live proof and the timings; never shipped |
+| `ComputerServiceKitTests` | test | ComputerServiceKit | Service shell |
+| `ComputerServiceTests` | test | ComputerService | Service shell: the service in process over a fake of every seam |
+
+The whole package builds only on the Mac; the box tests `ComputerProtocol`, `ComputerServiceKit` and `AXText` from a scratch package (`scripts/computer-text-test.sh`).
 
 ComputerService and the executable start as one placeholder file each; the AX reader (§15), Capture (§6, §7) and Input (§14) are built, the reader's Apple-only files under `#if canImport(ApplicationServices)` so `AXText` and its tests build and run on Linux. `Seams.swift` fixes the joins the Service shell makes. Generated wire types (`ComputerAction`, `Tier`, `Rect`, `CoordinateSpace`, `Shot`, `ShotFormat`, `ElementBrief`, `ObservationStats`, `ObservationKind`, `WindowInfo`, `ComputerError`) are used as they are; the rest are defined here, in `ComputerCore`:
 
@@ -663,6 +674,8 @@ public protocol WindowCapturing {                     // Capture
 ```
 
 Every struct here has an explicit `public init` taking all its fields (Swift's memberwise initializer is internal, and the sibling targets build these values). `ResolvedElement`, `InputTarget`, `AppReading` and `InputPerforming` sit behind `#if canImport(ApplicationServices)`, so the package also builds on Linux, where the box's toolchain tests `ComputerProtocol`. `ComputerFailure { error: ComputerError }` is what any part throws. ApplicationServices brings Carbon's own `WindowRef`, `Rect` and `Point` (QuickDraw, MacTypes), so a file that imports it names the wire's types `ComputerProtocol.WindowRef`, `ComputerProtocol.Rect` and `ComputerProtocol.Point`; Seams.swift does, and only the Mac's SDK shows the clash. The shell maps the agent cursor into each frame's pixels before it sends `capture/frame`. The threads may add members; renaming one is a change to this document first.
+
+Members the builds added since (each named in its own build's report): `ObserveRequest.loading` (the wait ended busy: the header says ` · still loading`) and `noteThin` (the call's screenshot is not `never` and Screen Recording is on: a thin tree says so and carries geometry in the request's space), `AppReading.resetBase()` and `close()`; `InputTarget.window` (the resolved window element) and `cancelled` (the request's `$/cancel` flag); `InputOutcome.session` and `lastInputAt` (the `mach_absolute_time` of the last event posted or AX change made, from which the wait counts); `MacLock` and `MacLockHold` (the shell implements both locks, Input takes them); `HeldRecord` and `HeldEvent` with Input's `onHeld` callback, called before a lasting down is posted and after its up, and `InputPerforming.probe`, `restoreSession` and `releaseStale`; `StreamHandle.ack` and `ended()` with `StreamEndReason`, `PixelWatching` and `PixelChangeSignal`; `CoordinateMapping`. `ComputerError` conforms to `Error` in `ComputerProtocol` (`ComputerError+Error.swift`), so the Foundation-only kit can catch it. `ComputerCore/PrivateSymbol.swift` is the one way a product target reaches a private function (§15.6).
 
 ## 12. The generator
 
@@ -771,3 +784,67 @@ Measured on the Mac on 2026-11-09 with `tc-ax bench` (release build, 2 warm read
 | `Builder.build`, a synthetic 5,000-node window (`tc-ax replay --synthetic 5000`) | 5,001 | 739 | 10.0 / 10.8 ms | 15 ms | |
 
 A walk costs about 0.12 to 0.4 ms a node read (2.3 to 3.1 AX calls a node). The builder over a recorded fixture tree takes 0.2 to 0.4 ms.
+
+## 15. The service shell
+
+`native/tc-computer/Sources/ComputerServiceKit/` (pure, Foundation only), `Sources/ComputerService/` and `Sources/tc-computer/`. The shell resolves, routes, waits and owns the locks; the modules read, act and capture.
+
+### 15.1 Process shape
+
+- `tc-computer serve` ignores SIGPIPE, sets the activation policy to `.prohibited` (no Dock icon, no menu bar), prepares Capture on the main thread and runs `NSApp.run()`. **The main thread runs the AppKit loop and never blocks**: Input's person watch and key layout reach it with `DispatchQueue.main.async`; no AX call, capture or request runs there.
+- stdin is read by one thread with blocking `read(2)` into a line splitter that drops a line past 16 MiB up to its newline (answered -32700 with a null id); stdout is written by one thread draining the outbox; stderr carries log text only. **stdout carries frames and nothing else**: no product target calls `print(` or writes `FileHandle.standardOutput`.
+- Each request runs as a Swift task. Every blocking module call runs on a **worker**, one serial queue per session × pid, which keeps that pair's AX handles: the resolved window elements and the reader. Only `Sendable` values come back to the request task.
+- **App slots**: one per pid, fair. Actions take it exclusively in arrival order (5 s, else the step fails `app_busy`); reads take it shared and wait for a running or queued action. A session holding a button or key down (Input's `onHeld`) is the slot's sticky owner until it is let go: its own actions go through, other sessions' wait. `apps.*`, `permissions.*`, `clipboard.state` and `input.restoreSession` take no slot.
+- **The outbox** has two lanes: responses and every notification but `capture/frame` first, frames only when the first lane is empty. An unsent `window/changed` of the same pid, window and change is replaced by the newer one; at most 100 `log` lines wait, past that the oldest go and one warn says how many. Producers never block; a host that leaves 64 MiB unread is treated as gone (exit 70).
+- **The pure rules** (`ComputerServiceKit`, tested on the box): `Router` (framing errors, the init gate, typed handlers naming a bad field, admission, cancel), `Outbox`, `WaitRule`, `MacLocks` and `FileLock`, `AppMatcher`, `SessionBook` and `EpochCheck`, `HeldLedger`, `ClipboardWatchRule`, `Trace`, `LineSplitter`, `FileDescriptorSink`.
+
+### 15.2 Lifecycle and what the host may rely on
+
+Every exit the service decides on runs one path within 2 s: stop reading, cancel every request, let go of held input, stop every stream (`capture/streamEnded` `stopped`), close the readers, drain the outbox until 500 ms are left, exit; a timer ends the process at 2 s whatever is unfinished. The first cause fixes the code.
+
+1. **Respawning is always safe.** Locks die with the process; held input is released at the next `initialize` (below); shots are never overwritten; nothing else persists. Input's session record (what `input.restoreSession` would put back) is lost.
+2. **Every process has a new `epoch`.** A call naming a session the new process never opened answers `unknown_session`: open it again (`session.open` is idempotent) and retry once. Element indices from the old epoch answer `stale_element` (`service-restarted`). Preview streams do not survive.
+3. **Exit codes**: 0 a clean exit (stdin EOF, `shutdown`, SIGTERM, SIGINT, SIGHUP, a failed write to stdout, the parent gone); 75 a restart to take a new Screen Recording grant (§15.5): respawn at once, no backoff; 64 a bad command line; 69 macOS older than 14; 70 an internal fault, or 64 MiB the host never read. A signal is a crash; so is any other code.
+4. **stdout carries frames only.** A line that is not a JSON-RPC frame means a broken binary: kill and respawn.
+5. **Liveness**: `permissions.get` answers from memory, takes no slot and waits on no worker, so it answers while an app hangs every AX call and all 32 slots are taken.
+6. **One service per data dir**: `initialize` takes `<dataDir>/service.lock`, waits 3 s for a service still exiting, else answers `already_running`. A second `initialize` with the same `dataDir` answers the first result again; with another, -32600.
+7. **The paste window**: a crash in the at most 2.5 s between writing the pasteboard and restoring it leaves the service's text on the clipboard; the lock frees.
+
+**Held input across a crash**: `<dataDir>/held.json` holds every button or key held past one event pair, written (by rename) before the down is posted and removed after its up, from Input's `onHeld`. At `initialize` the records whose writer pid is dead go to Input's `releaseStale`, which posts their ups at their tier, and one `log` info says how many. A down and up posted close together (an ordinary click, a chord, typing) is not recorded.
+
+### 15.3 The smart wait as built
+
+Times count from `t0`, Input's `lastInputAt` (else the moment `perform` returned). Before posting, the shell starts or keeps Capture's watch on the window (only with Screen Recording) and waits up to 300 ms for its baseline, then reads the reader's signature (`sig0`) on the worker; a keep-alive touches the watch every 10 s while the step and its wait run. The runner samples every 25 ms: the AX change stamp and the watch's last counted change from memory, the signature every 100 ms and the busy indicator every 200 ms on the worker. The rule (`WaitRule`):
+
+1. Nothing ends before `minMs`; the quiet clock starts there and restarts at every change: an AX notification after `t0`, a new signature, a busy indicator coming or going, a pixel change that counts.
+2. A pixel change counts only while the session's last read of the app was thin, or no AX notification and no signature change has been seen since `t0`; it never moves the cap.
+3. While a busy indicator shows, quiet does not end the wait; once one has shown, the cap is `busyMaxMs`.
+4. It ends `quiet` at `quietMs` of quiet with no indicator showing; else `busy-max` or `max` at the cap; `cancelled` on `$/cancel`. An app that quits ends it `quiet` at once.
+
+The step's `effect` comes from the same samples: `changed` when anything counted moved, else `unknown` when the session's last read of the app was thin, else `none`. `screenshot`, `zoom` and `cursor_position` skip the wait (`reason: 'skipped'`); the `wait` action runs the rule with its own row. The observation that follows passes `loading` (the wait ended busy) and `noteThin` to the reader. A batch waits `stepWait` after each step that can change the screen, stops at the first failure and waits `wait` once after the last step that ran.
+
+### 15.4 The Mac-wide locks and the clipboard signal
+
+`MacLocks` takes `flock(LOCK_EX | LOCK_NB)` through a fresh descriptor per acquire, tried every 10 ms, in a `0700` directory; a flock belongs to its open file description, so two sessions in one service exclude each other as two services do, and the kernel drops it when the process dies. Input takes both locks itself, through the shell's two `MacLock` adapters: the clipboard one for a paste and its restore (2 s, else `clipboard_busy`; a hold past 2.5 s is logged, never broken), the session one for a `session`-tier step or hold (5 s, else `session_unavailable` `in-use`). `tc-computer hold-lock clipboard|session <ms>` takes one from the command line, prints `{"held":true}` and lets go after `ms`.
+
+`clipboard.state` comes from the pasteboard's change count, read every 250 ms from `initialize` on, never its contents (so it cannot raise macOS's paste privacy prompt). A change seen while this service held its clipboard lock at any moment since the last read is its own; any other change, another service's paste included, stamps `foreignChangeAt`, and so does a paste whose outcome was `kept-person-copy`. "Quiet for N ms" is `now − max(foreignChangeAt ?? 0, watchingSince) ≥ N`. The service refuses nothing on it: when a paste may run is the host's call.
+
+### 15.5 TCC
+
+Accessibility is `AXIsProcessTrusted()`, read live. Screen Recording is read from a fresh child, `tc-computer permissions` (`{"accessibility":bool,"screenRecording":bool}`), since a long-lived process may keep its first answer; a child of the service is a child of TempCode, so TCC answers for TempCode. The grants are read every 2 s while one is off, every 30 s while both are on, and at once when a module says one is missing; a flip sends `permissions/changed`. When Screen Recording comes on, the service waits up to 10 s for requests in flight and exits 75 so its captures take the grant. `permissions.request` asks the system at most once per grant per process run; the service never asks on its own. A call that needs a grant that is off answers `permission_missing` with `which`; an observation's shot that cannot be taken never fails the observation: it comes back with `shotError`. Every picture path (`capture.screenshot`, `capture.stream.start`, the `screenshot` and `zoom` actions, an observation's shot) goes through one guard: Screen Recording off is `permission_missing`, a minimized window `window_minimized`.
+
+### 15.6 Private symbols
+
+A private symbol is allowed in a product target only when it is read-only, resolved by name at run time through `ComputerCore/PrivateSymbol.swift` (the one file that calls `dlsym`), has a public fallback, and has a unit test that forces the lookup to miss (`PrivateSymbol.forcedMisses`; `TC_COMPUTER_PRIVATE_MISS=all` or a comma list for a whole process). `native/tc-computer/README.md` lists each one with its fallback and test, and what was refused. `scripts/tc-computer-guard.test.ts` holds the rules and the stdout rule over every product target.
+
+### 15.7 Trace
+
+`TEMP_CODE_COMPUTER_TRACE=1` in the service's environment logs on stderr every frame in (`→`) and out (`←`) with a millisecond stamp, every lock taken and let go, and every wait's report (`wait 812ms quiet ax=3 sig=1 px=0`). A `capture/frame`'s data prints as `<jpeg 41233 bytes>`; a line past 2,000 characters is cut with `…(+N)`. Off, stderr carries warnings and errors only.
+
+### 15.8 Build and signing
+
+`scripts/lib/tcComputerBuild.ts`, run by the `tcComputer()` plugin in `electron.vite.config.ts`, builds only the `tc-computer` product on macOS (`swift build -c release --arch arm64`, with the Xcode `scripts/ios-xcode.sh` picks) into `resources/native/tc-computer`, by rename, beside `tc-computer.stamp` (`{"stamp","version","build"}`; `tc-computer version` and `initialize` read it, `dev` without one). A stamp that matches a content hash of the package's sources skips the build; `TEMP_CODE_SKIP_NATIVE=1` skips it outright; dev builds it in the background and only warns on a failure; `TEMP_CODE_REQUIRE_NATIVE=1` makes a failure throw, and `scripts/release-publish.sh` sets it for its build, then checks that the signed app carries `tc-computer` and that it passes `codesign --verify --strict` for the team. electron-builder signs it under `mac.binaries` with the app's identity; it needs no entitlement of its own, since the TCC grants are TempCode's.
+
+### 15.9 Tests and the proof
+
+`ComputerServiceKitTests` (box and Mac) cover every rule of §15.1 to §15.7; `ComputerServiceTests` (Mac) run the service in process over a fake of every seam (`Tests/ComputerServiceTests/Fakes/`): the observation's assembly, the action's order, the guard on every picture path, batches, sticky slots and the ledger, cancels, the lifecycle's exits. `scripts/lib/tcComputerBuild.test.ts` and `scripts/tc-computer-guard.test.ts` run in vitest. `bun run script:e2e-tc-computer` (macOS only) drives TextEdit and a scratch app end to end over stdio, launched in the background and never activated, at the `ax` and `process` tiers only; its paste takes the clipboard lock and is skipped after a recent copy, and it leaves no file or prompt behind.
