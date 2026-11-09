@@ -3498,8 +3498,8 @@ proof and the sizing rules; the pieces, by name:
   indexed text, its diff and budget), the input tiers `ax`, `process`,
   `session` with the clipboard lock, the smart wait, capture, and the four
   `computer_*` tools whose verbs and parameter names are Anthropic's native
-  computer-use set with `element` refs beside `coordinate`. Only the contract
-  is in code so far: no service, tools or UI.
+  computer-use set with `element` refs beside `coordinate`. In code so far:
+  the contract and the Capture module; no service, tools or UI.
 - The zod in src/shared/computer/ is the one source: `protocol.ts` (every
   method's params and result, the errors, the notifications, every number:
   waits, budgets, caps, lock paths), `observation.ts` (the grammar's tables,
@@ -3523,6 +3523,31 @@ proof and the sizing rules; the pieces, by name:
   (scripts/mac/record-computer-fixtures.sh). computerFixtures.test.ts holds
   them to their schemas and runs the privacy guard (no `/Users/` but
   `/Users/me`, no email outside example.com, the `TC_FIXTURE_DENY` list).
+- Capture (native/tc-computer/Sources/Capture/, `ScreenCaptureKitCapture`;
+  docs/computer-protocol.md §6 and §7) does one window, never the desktop,
+  and makes no ScreenCaptureKit call while `CGPreflightScreenCaptureAccess`
+  is false (`permission_missing`; prompting is the host's). Screenshots:
+  live bounds by `CGWindowListCreateDescriptionFromArray` (a minimized
+  window too), shareable windows on every Space, no shadow margin, a zoom
+  captured whole and cropped, written beside the shell's stem
+  (`ShotNaming`, `ShotCounter`) and renamed on with `RENAME_EXCL`, so no
+  shot is ever replaced; with no named format JPEG 0.85, and PNG too when
+  the image is flat (`flatPNG` 0.85), kept when no larger. The preview
+  stream sends a sample only when its pixel fingerprint changed (a covered
+  window's samples are all `complete` and wholly dirty), two frames out at
+  most, the newest held, capture stopped after 5 s unacked; frames stay
+  inline (busiest p95 225 KiB, 6.7 ms). The pixel watch (`PixelWatching`,
+  one 256 px 10 fps stream per window, 30 s linger) feeds `ChangeJudge`:
+  dirty cells confirmed by luma, small changes ignored, ambient cells
+  (spinners, carets) quiet after two frames; a counting frame restarts the
+  smart wait's quiet clock. `CoordinateMapping` (ComputerCore) maps a
+  session pixel to the screen at its centre. Every number is
+  `CaptureTuning`, the wire's read from `ComputerDefaults`
+  (src/shared/computer/captureParity.test.ts). Proof on the Mac: `bash
+  scripts/mac/proof-computer-capture.sh` (capture-proof, never shipped:
+  scenes 0–19 on its own inert windows below `.normal` and a second process
+  of itself, SkyLight only in its PrivateSpaces.swift, which a unit test
+  keeps out of every other target).
 
 ## The menu bar: one table
 src/shared/menuTree.ts is the menu as data, read by main (src/main/menu.ts),

@@ -10,7 +10,7 @@ TempCode's own computer use: a Swift service on the Mac, `tc-computer`, reads ac
 6. the tools the models see, with Anthropic's native computer-use verbs and parameter names, element refs beside coordinates, and how a screenshot reaches each harness;
 7. recorded fixtures from real apps, scratch content only.
 
-**In code today** is the contract alone: the zod in `src/shared/computer/` (`protocol.ts` the wire, `observation.ts` the grammar, `tools.ts` the model-facing shapes), the Swift Codable types generated from it, the `native/tc-computer` package with every target declared, the fixtures, and tests in both languages that parse the fixtures. No service, no tools, no UI yet. Where this document and the zod differ, the zod is right and this document is stale.
+**In code today** is the contract alone: the zod in `src/shared/computer/` (`protocol.ts` the wire, `observation.ts` the grammar, `tools.ts` the model-facing shapes), the Swift Codable types generated from it, the `native/tc-computer` package with every target declared, the fixtures, and tests in both languages that parse the fixtures; and the Capture module (§6, §7: screenshots, the preview stream and the pixel watch, with its live proof on the Mac). No service, no tools, no UI yet. Where this document and the zod differ, the zod is right and this document is stale.
 
 ## 0. Layers, files and who builds what
 
@@ -23,7 +23,7 @@ TempCode's own computer use: a Swift service on the Mac, `tc-computer`, reads ac
 | Swift package skeleton, every target declared | `native/tc-computer/Package.swift` | Computer protocol spec; each Swift thread fills its own target |
 | AX tree → indexed text, diff, element map, change monitor | `native/tc-computer/Sources/AXReader/` | AX reader |
 | `ax` / `process` / `session` input, key table, clipboard paste | `native/tc-computer/Sources/Input/` | Input tiers |
-| Window screenshots, preview stream | `native/tc-computer/Sources/Capture/` | Capture |
+| Window screenshots, preview stream, pixel watch | `native/tc-computer/Sources/Capture/` | Capture |
 | stdio server, smart wait, clipboard lock, TCC, lifecycle, `main` | `native/tc-computer/Sources/ComputerService/`, `Sources/tc-computer/` | Service shell |
 | Host: spawn, sessions per thread, tier memory | `src/main/server/computer/` | Computer sessions and tools |
 | When the `session` tier may run | `src/main/server/computer/schedule.ts` | Tier scheduling |
@@ -347,10 +347,50 @@ Reading a `password` value is never possible; typing into one is.
 
 ## 6. Coordinates and capture
 
-- **The coordinate space** is the target window's screenshot: origin at the top-left of the window's frame (title bar included), x right, y down, integer pixels. `scale` is pixels per window point. Every `coordinate`, `start_coordinate`, `region`, `@x,y` and `cursor_position` uses it, as Anthropic's tools do with full-display screenshots. The service maps a point to the screen as `window.frame.origin + point / scale`.
+- **The coordinate space** is the target window's screenshot: origin at the top-left of the window's frame (title bar included), x right, y down, integer pixels. `scale` is pixels per window point. Every `coordinate`, `start_coordinate`, `region`, `@x,y` and `cursor_position` uses it, as Anthropic's tools do with full-display screenshots. A session pixel maps to the screen at its centre, `window.frame.origin + (p + 0.5) / scale`, and a screen point back to `floor((s - origin) × scale)`, so the round trip lands on the same pixel (`CoordinateMapping` in ComputerCore; Input and the shell both call it).
 - Each session × window keeps the space of its last full `screenshot` (or observation screenshot). Before any, the space is the one a screenshot at the default `maxEdge` would have. `zoom` never changes it. Every observation states it (`space`, and the header's `<width>×<height>`). A point outside it answers `out_of_bounds { coordinate, space }`.
-- **Screenshots**: ScreenCaptureKit, `SCContentFilter(desktopIndependentWindow:)`, so occluded windows and windows on other Spaces are captured without raising them (`blank: true` when the compositor gave a blank frame); a minimized window answers `window_minimized`. No cursor in the image. Measured on the Mac: `SCShareableContent` takes about 44 ms (the service caches it and refreshes on `window/changed`), the first capture of a process 69–91 ms and later ones 15–26 ms, JPEG encoding 2–4 ms; at 1280 px a text-heavy window is about 200 KB and a sparse one 30–75 KB. A covered window and one parked off screen both captured. The process must touch `NSApplication.shared` and `CGMainDisplayID()` before its first capture, or ScreenCaptureKit asserts (Service shell). Shareable windows include many 30 pt menu-bar and desktop strips; the window is picked by CGWindowID from the AX window, never by area. Long edge `maxEdge` (default 1280, 512..2576) and at most 3,750,000 pixels: inside every current Claude model's limit (2,576 px long edge for the toolset models) and Anthropic's 1280×800 advice for web pages. JPEG at quality 0.85 by default. Files go to `<dataDir>/shots/<session>/<n>-<action>.jpg`, `n` a per-session capture counter that only grows (every screenshot, zoom and observation shot takes the next), so no shot overwrites another; the host prunes them (Computer sessions and tools).
-- **The preview stream** (`capture.stream.*`): an SCStream on the window at `fps` (1..15), frames downscaled to `maxEdge` (default 960), sent as `capture/frame` with the JPEG inline, at most 512 KiB a frame. Flow control: at most 2 frames unacknowledged per stream (`capture.stream.ack { stream, seq }`); a newer frame replaces an unsent one, so the service never queues a response behind frames. Frames carry the agent cursor, converted into the frame's own pixels, so the preview draws it; nothing is painted into the image. The stream ends with `capture/streamEnded` when the window closes, the grant goes, or on `capture.stream.stop`.
+
+The Capture module (`native/tc-computer/Sources/Capture/`, `ScreenCaptureKitCapture`) does everything below for one window, never the desktop. Every number is in `CaptureTuning.swift`; the ones the wire states come from the generated `ComputerDefaults`, and `src/shared/computer/captureParity.test.ts` refuses a literal in their place.
+
+**Screen Recording.** `ScreenRecordingAccess.granted()` reads `CGPreflightScreenCaptureAccess()` and never prompts; `request()` raises the system's dialog. Every entry point checks the grant before any ScreenCaptureKit call (one without it raises the prompt) and throws `permission_missing { which: 'screenRecording' }`. Prompting is the host's decision: only when a computer tool needs the grant and it is off, at most once per install, never at boot. ScreenCaptureKit may keep a process's first answer, so the host respawns the service once when `permissions/changed` turns Screen Recording on. `CaptureRuntime.prepare()` touches `NSApplication.shared` and `CGMainDisplayID()` once (ScreenCaptureKit asserts without them); the shell calls it in `main` and every entry point calls it too.
+
+**Screenshots** (`screenshot(windowID:maxEdge:regionPoints:format:to:)`):
+
+- The window's live bounds come from the window server on every call (`LiveWindows`, `CGWindowListCreateDescriptionFromArray`, global points, top-left origin, never clamped; it answers for a minimized window too, which `CGWindowListCopyWindowInfo(.optionIncludingWindow)` drops). Its `SCWindow` comes from a cached `SCShareableContent` listed with `onScreenWindowsOnly: false`, so windows on other Spaces are there; the cache refreshes once when the id is missing or the size moved more than 0.5 pt, and `invalidate()` drops it on `window/changed`. The window is picked by CGWindowID, never by area.
+- `SCContentFilter(desktopIndependentWindow:)` with no cursor, `ignoreShadowsSingleWindow` (the shadow's margin would shift every coordinate), `ignoreGlobalClipSingleWindow` (a window past a screen edge comes whole), best resolution, BGRA, sRGB. A covered window, one half off its display and a minimized one all capture their current pixels. Whether a minimized window answers `window_minimized` is the shell's call from AXMinimized.
+- Size (`ShotGeometry`): `k = min(1, maxEdge / longEdge, sqrt(3,750,000 / pixels))` of the native size, never upscaled; one `scale` for both axes, width and height floored once. A zoom captures the whole window at the zoom's scale and crops the region (single-window capture ignores `sourceRect`), so the written image is the region at full resolution fitted to `maxEdge`. The capture races a 5 s deadline (`capture_failed` past it).
+- `blank` is true when every channel, alpha included, spans at most 3 levels: a window the compositor has not drawn.
+- **Format (A1).** A named `format` is used as named. With none, JPEG 0.85; when the image's flatness (on every 4th row, the share of pixels within 2 levels of their right neighbour) is at least 0.85, PNG too, kept when no larger. Text-dense UI comes out PNG (the proof's text window: 64.6 KB against 88.1 KB of JPEG), photographic content JPEG, and a mostly white window with little text JPEG too, since its PNG is the larger. `Shot.format` says which, and the host takes the image's mime type from it.
+- **Files (A2).** The shell names the stem, `ShotNaming.stem` → `<dataDir>/shots/<session>/<nnnn>-<action>` (four digits, more past 9999; the action lower-cased with anything outside `[a-z0-9_]` made `_`), and Capture adds `.jpg` or `.png`. `ShotCounter` gives each session its next number, starting above the highest file already there, so a reopened session or a restarted service never reuses a name. The file is written beside its name and moved on with `renamex_np(RENAME_EXCL)`: the host never reads half a file and no shot is ever replaced. The host prunes them (Computer sessions and tools).
+
+**The preview stream** (`capture.stream.*`, `startStream`): an SCStream on the window at `fps` (1..15, default 4), downscaled to `maxEdge` (256..2576, default 960), frames sent as `capture/frame` with the JPEG inline.
+
+- **Only new pixels.** ScreenCaptureKit marks every sample of a covered window `complete` with a dirty rect over the whole frame, whether anything changed or not (macOS 27.2: 24 complete samples in 2.4 s of a still window, 2 distinct buffers). So a sample is sent only when its pixel fingerprint or size differs from the last one's (`PixelStats.fingerprint`, about 0.3 ms at 960 px; `PixelNovelty`).
+- **Flow control** (`FrameGate`): at most 2 frames out without an ack; a newer sample replaces the held one, so nothing is encoded that will not be sent and the newest picture goes next. An ack covers every earlier frame (the pipe is ordered); one for a frame never sent is ignored. A frame left unacked for 5 s stops the stream's capture (a 1 s clock checks, so a still window that sent one frame pauses too) until the next ack, which resumes it; `StreamLifecycle` orders the pause, resume and stop calls, each waiting for the last to complete, `stop()` winning over all.
+- **Frames.** Each frame is the sample cropped to its content rect (`contentRect × scaleFactor` is buffer pixels; `contentScale` must not be applied), so a window mid-resize is never letterboxed, then JPEG 0.85, re-encoded at 0.7 and 0.55 to stay under 380 KiB (the base64 line with its JSON fits the 512 KiB cap), dropped with a `log` line past that. `capture.stream.start` answers the window's size inside the buffer (`StreamHandle.startSize`, `ShotGeometry.fitted`), which every frame's crop matches. A content rect more than 1% off the configured window's aspect reconfigures the stream, at most every 250 ms.
+- Frames carry the agent cursor, converted by the shell into the frame's own pixels; nothing is painted into the image. While any stream or watch runs on a window, macOS draws its window-sharing badge in the title bar, and frames show it; a screenshot with nothing streaming shows the traffic lights.
+- **The end** (`StreamHandle.ended()`, `StreamEndReason`, A3): `stopped` (`capture.stream.stop`, or the person stopping capture from the menu bar), `windowClosed`, `permission`, or `error`; the shell sends `capture/streamEnded`. A closed window ends its stream through ScreenCaptureKit's `noCaptureSource` (−3815) 25–55 ms after it goes, the 1 s bounds check behind it; a window ordered out but kept alive keeps its bounds and its stream, and AX's `window/changed` is what says it is gone.
+- **Frames stay inline** (measured, the busiest scene: colour noise shifting every 100 ms at 960 px and 4 fps): p95 225 KiB of JPEG and p95 6.7 ms to encode, under the 300 KiB and 25 ms bounds for staying inline; a flat window's frames were p95 32 KB in 3.0 ms.
+
+**Measured** on the Mac (macOS 27.2, Xcode 27.1, `bash scripts/mac/proof-computer-capture.sh`, 2026-11-08; every proof window under the person's own windows the whole time):
+
+| What | Measured |
+|---|---|
+| First shot of a process / of a new `ScreenCaptureKitCapture` | 143 ms / 77 ms |
+| Warm shot, encode and write included, 1280 / 2576 | p50 29.4 / 30.4 ms, p95 34.0 / 32.9 ms |
+| Covered window: probe phrase read by Vision, occluder pixels | read; 0.0000% |
+| Marker centroid against `CoordinateMapping.pixel` / zoom centring | within 1.04 px / 0.00 px |
+| Preview, flat window, 4 fps | 3.6 fps, p95 32 KB, p95 encode 3.0 ms |
+| Preview, busiest window, 4 fps | 4.0 fps, p95 225 KiB, p95 encode 6.7 ms |
+| Starved stream | paused 5.00 s after the unacked frame; new pixels 52 ms after the ack |
+| Watch cold start to live | 37 ms |
+| Repaint to a counting watch frame | p50 57 ms, p95 91 ms (covered: p95 102 ms) |
+| Still window / caret / spinner, counting frames | 0 of 100 / 0 over 10 s / 1 of 50 |
+| CPU of the capturing process | watch 0.5%, preview 1.3% (flat) to 2.2% (busy) of a core |
+
+**Amendments, landed with Capture:** A1 (format by content, above), A2 (`format: ShotFormat?` and the stem), A3 (`StreamHandle.startSize`, `ack`, `ended()`, `StreamEndReason`), A4 (`PixelWatching`, `PixelChangeSignal`, §7), A5 (the pixel restart of the quiet clock, §7), A6 (the centre-of-pixel mapping, above), A7 (shareable windows on every Space, live bounds on every call, the shadow and clip settings, the zoom's crop, no ScreenCaptureKit call without the grant, frames only for new pixels, the 5 s starvation, shots never replaced).
+
+**The live proof** (`capture-proof`, an executable target never shipped; `bash scripts/mac/proof-computer-capture.sh`) runs scenes 0–19 on its own windows and on a second process of itself as the foreign window, writes `report.json` and its images to `/tmp/tc-capture-proof`, and exits non-zero on a failed check. Its windows are inert: never key or main, ignoring the mouse, a level below `.normal`, never activated; nothing moves the pointer or sends a key, and it leaves no file or recent-document entry behind. The other-Space scene moves its own window with SkyLight's private calls, looked up at run time in `PrivateSpaces.swift` and skipped with one line on a Mac with one Space per display; a unit test fails if any other target names `SLS`, `CGS`, `dlopen` or SkyLight.
 
 ## 7. The smart wait
 
@@ -366,6 +406,14 @@ Reading a `password` value is never possible; typing into one is.
 | `wait` action | 0 | 450 | `duration × 1000` | `duration × 1000` |
 
 So an action that changes nothing returns in about 0.75 s, a click that redraws in about a second, a page load when it has loaded or at 5 s with ` · still loading` in the header. The Task benchmark tunes these four rows and nothing else moves. No model ever needs to sleep; the tool descriptions say so.
+
+**The pixel watch** (Capture's `PixelWatching`, A4). An AX notification says the app changed something; it does not say a page is still painting. So the quiet clock also listens to the window's own pixels (A5): `watch(windowID:)` starts, or keeps alive, one small SCStream per window a session acts on (256 px long edge, 10 fps, never encoded) and returns its `PixelChangeSignal` at once. The first complete frame is the baseline: it never counts, and it makes the signal `live` (37 ms cold on the Mac). Each later frame goes to `ChangeJudge`, on a grid of 8 px cells:
+
+- A frame's dirty cells are those its dirty rects touch whose mean luma also moved more than 6 levels (a covered window's frames are all dirty, whole, whether anything changed or not); with no dirty rects, the cells whose luma moved. Idle frames never count.
+- A dirty area under 0.05% of the frame never counts (a 2×18 pt caret is about 0.008%). Eight or more dirty cells always count: a page painting in, a list scrolling, a video playing, a sheet sliding down.
+- Between the two, a cell dirty in three small frames within 2 s is ambient (a spinner, a ticking clock), and a small frame counts when at least two of its cells are not ambient: a spinner counts twice, then goes quiet; a progress bar moving into new cells keeps counting.
+
+A counting frame stamps `lastChange` with its display time, the mach clock AX's `ChangeSignal.lastChange` uses. The shell calls `watch` at every `state.get` and before posting each action's input, awaits `waitLive` (at most 300 ms) when the signal is not live yet, and reads the signal or calls `watch` at least every 10 s while an action runs and through its wait; the stream stops 30 s after its last use, and at once when the window goes. While the signal is live, a `lastChange` later than the quiet clock's last restart restarts it, exactly as an AX notification does, never past `maxMs` (a busy indicator still extends to `busyMaxMs`). A watch that is not live (starting, stopped, or a window the compositor does not draw) adds nothing, and the wait runs on AX alone. Every number of the judge is `CaptureTuning.changeRule`, for the Task benchmark to tune.
 
 ## 8. Errors and notifications
 
@@ -496,12 +544,14 @@ Every lookup of a pid matches the executable's path, never `pgrep -f` (which mat
 | `ComputerCore` | library | ComputerProtocol, ApplicationServices | Computer protocol spec: `Seams.swift`, the protocols below and `ComputerFailure`, no implementation |
 | `AXReader` | library | ComputerCore | AX reader |
 | `Input` | library | ComputerCore | Input tiers |
-| `Capture` | library | ComputerCore, ScreenCaptureKit | Capture |
+| `Capture` | library | ComputerProtocol, ComputerCore, ScreenCaptureKit | Capture: screenshots, the preview stream, the pixel watch (§6, §7) |
 | `ComputerService` | library | all four | Service shell |
 | `tc-computer` | executable | ComputerService | Service shell |
 | `ComputerProtocolTests` | test | ComputerProtocol | Computer protocol spec: decodes and round-trips every `fixtures/wire/*.json` in place, and the framing |
+| `capture-proof` | executable, never shipped | Capture | Capture: the live proof on the Mac (§6) |
+| `CaptureTests` | test | Capture | Capture: the geometry, naming, flow control, lifecycle, change judge, encoding, error mapping, the permission gate and the private-call scan; the Foundation-only suites run on Linux too |
 
-Each target but the first two starts as one placeholder file. `Seams.swift` fixes the joins the Service shell makes. Generated wire types (`ComputerAction`, `Tier`, `Rect`, `CoordinateSpace`, `Shot`, `ShotFormat`, `ElementBrief`, `ObservationStats`, `ObservationKind`, `WindowInfo`, `ComputerError`) are used as they are; the rest are defined here, in `ComputerCore`:
+AXReader, Input, ComputerService and the executable start as one placeholder file each; Capture is built (§6, §7). `Seams.swift` fixes the joins the Service shell makes. Generated wire types (`ComputerAction`, `Tier`, `Rect`, `CoordinateSpace`, `Shot`, `ShotFormat`, `ElementBrief`, `ObservationStats`, `ObservationKind`, `WindowInfo`, `ComputerError`) are used as they are; the rest are defined here, in `ComputerCore`:
 
 ```swift
 public struct ObserveRequest: Sendable {              // the Service shell builds it from state.get / ObserveOptions
@@ -531,7 +581,24 @@ public struct InputOutcome: Sendable {
   public var clipboard: ClipboardOutcome?; public var cursor: [Int]?   // .restored | .keptPersonCopy
 }
 public struct Frame: Sendable { public let seq: Int; public let jpeg: Data; public let width: Int; public let height: Int; public let ts: Double }
-public protocol StreamHandle: AnyObject { func stop() async }
+public protocol StreamHandle: AnyObject {              // A3
+  var startSize: (width: Int, height: Int) { get }    // capture.stream.start's width and height
+  func stop() async
+  func ack(_ seq: Int)                                // capture.stream.ack: frees seq and every frame before it
+  func ended() async -> StreamEndReason               // once, for any end; the shell sends capture/streamEnded
+}
+public enum StreamEndReason: Equatable, Sendable { case stopped, windowClosed, permission, error(String) }
+public protocol PixelWatching: AnyObject {            // A4, §7
+  func watch(windowID: UInt32) async throws -> any PixelChangeSignal
+}
+public protocol PixelChangeSignal: AnyObject, Sendable {
+  var live: Bool { get }; var lastChange: UInt64 { get }   // mach time of the last counting frame; 0 = none
+  func waitLive(timeout: Duration) async -> Bool
+}
+public enum CoordinateMapping {                       // A6: a session pixel ↔ a screen point, at the pixel's centre
+  static func screenPoint(pixel: [Int], windowOrigin: CGPoint, scale: Double) -> CGPoint
+  static func pixel(screenPoint: CGPoint, windowOrigin: CGPoint, scale: Double) -> [Int]
+}
 
 public protocol AppReading: AnyObject {              // AXReader: one per session × pid
   func observe(_ request: ObserveRequest) throws -> ObservationText
@@ -549,7 +616,8 @@ public protocol InputPerforming {                     // Input
 }
 public protocol WindowCapturing {                     // Capture
   // regionPoints: the region already mapped from session pixels to window points by the shell
-  func screenshot(windowID: UInt32, maxEdge: Int, regionPoints: Rect?, format: ShotFormat, to path: String) async throws -> Shot
+  // format nil chooses by content (A1); stem is the path without its extension, Shot.path the file written (A2)
+  func screenshot(windowID: UInt32, maxEdge: Int, regionPoints: Rect?, format: ShotFormat?, to stem: String) async throws -> Shot
   func startStream(windowID: UInt32, fps: Int, maxEdge: Int, onFrame: @escaping @Sendable (Frame) -> Void) async throws -> any StreamHandle
 }
 ```
@@ -562,7 +630,7 @@ Every struct here has an explicit `public init` taking all its fields (Swift's m
 
 - Scripts: `gen:swift-computer` and `check:swift-computer`, the latter inside `typecheck` beside `check:swift-contract`; `computer:test` (scripts/computer-test.sh, which picks an Xcode as scripts/ios-test.sh does) builds and tests the package.
 - The gate: `TYPECHECK_INPUTS` holds `native/tc-computer/Sources/ComputerProtocol/Generated/*`, so a hand edit to the generated files cannot ride a cached typecheck; the `computer-swift` step (publish tier, `mac: true`, lane `swift`) runs `bun run computer:test`; `TIER_PATHS` pulls the publish tier in for `native/tc-computer/**`, `src/shared/computer/**`, `scripts/gen-swift-computer.ts` and `scripts/computer-test.sh`. electron-builder leaves `native/**` out of the app (the built binary goes in through `resources/native`).
-- Tests: `src/shared/computer/{protocol,observation,tools}.test.ts`, `src/main/server/computer/computerFixtures.test.ts` (every fixture, the grammar on every observation text, the recorded apps against their meta, the privacy guard) and `scripts/gen-swift-computer.test.ts` (the generated names, the committed files, the iOS output unchanged); in Swift, `ComputerProtocolTests` decodes and round-trips every `fixtures/wire` file in place, and the framing. On the box the Linux toolchain under `~/toolchains` builds and tests the whole package (the AX seams sit behind `canImport(ApplicationServices)`); the Mac runs `computer:test` in the publish gate.
+- Tests: `src/shared/computer/{protocol,observation,tools}.test.ts`, `src/main/server/computer/computerFixtures.test.ts` (every fixture, the grammar on every observation text, the recorded apps against their meta, the privacy guard) and `scripts/gen-swift-computer.test.ts` (the generated names, the committed files, the iOS output unchanged), and `src/shared/computer/captureParity.test.ts` (Capture's tuning reads the wire's numbers from `ComputerDefaults`); in Swift, `ComputerProtocolTests` decodes and round-trips every `fixtures/wire` file in place, and the framing, and `CaptureTests` holds Capture's pure parts, its ScreenCaptureKit error mapping and its permission gate. On the box the Linux toolchain under `~/toolchains` builds and tests the whole package (the AX seams sit behind `canImport(ApplicationServices)`, every Capture file that needs a macOS framework behind `canImport(ScreenCaptureKit)`); the Mac runs `computer:test` in the publish gate.
 
 ## 13. Changing the contract
 
