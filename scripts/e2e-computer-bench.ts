@@ -450,9 +450,12 @@ async function drive(lane: Lane, task: ComputerTask, start: TaskStart, run: Benc
   made(id)
   liveThreads.add(id)
   R.pins.bind(id, lane.name)
-  // Every card is answered Allow at once; its kind and title are in the rows.
+  // Every card is answered Allow; its kind and title are in the rows. The card's row is
+  // emitted before requestApproval sets its resolver, so the Allow goes after this job.
   const offCards = registry.subscribe(id, (row: EventRow) => {
-    if (row.event.type === 'approval-request') void registry.approve(id, row.event.requestId, true)
+    if (row.event.type !== 'approval-request') return
+    const requestId = row.event.requestId
+    queueMicrotask(() => void registry.approve(id, requestId, true))
   })
   try {
     let after = lastSeq(id)
