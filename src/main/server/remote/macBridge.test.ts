@@ -263,7 +263,8 @@ describe('MacBridge policy', () => {
     expect(b.mb.sharedOf('env_box')).toEqual([shared])
     expect(b.mb.hosts()).toEqual([
       { environmentId: 'env_box', name: 'box', policy: 'off', shared: [shared], showRunning: true,
-        registered: false, maxRunning: 4, maxThreads: 2, running: 0, held: 0, threads: 0 }
+        registered: false, maxRunning: 4, maxThreads: 2, running: 0, held: 0, threads: 0,
+        computer: false, computerUnavailable: 'computer use is not built into this app', maxComputer: 2, computerLive: 0 }
     ])
   })
 
@@ -1222,5 +1223,120 @@ describe("MacBridge: what a key may read and stop (macBridge.activity, macBridge
       if (before === undefined) delete process.env.TEMP_CODE_E2E_SEED
       else process.env.TEMP_CODE_E2E_SEED = before
     }
+  })
+})
+
+describe('MacBridge: computer use for a host', () => {
+  /** A bridge whose link records every request it sends, with computer use available unless said otherwise. */
+  function linked(opts: { unavailable?: string | null } = {}) {
+    const settings = new Map<string, string>()
+    const sent: { method: string; params: { offers?: string[] } }[] = []
+    const mb = new MacBridge({
+      environmentId: 'env_mac',
+      store: { getSetting: (k) => settings.get(k) ?? null, setSetting: (k, v) => (v === null ? settings.delete(k) : settings.set(k, v)) },
+      managedRoots: () => [],
+      environments: () => [{ id: 'env_box', name: 'box' }],
+      link: () => async (method: string, params: unknown) => {
+        sent.push({ method, params: params as { offers?: string[] } })
+        return { environmentId: 'env_box' }
+      },
+      home,
+      log: () => {},
+      load: { sample: () => ({ load: 0, cores: 8 }), intervalMs: 0 },
+      computerHost: () => null,
+      computerUnavailable: () => (opts.unavailable === undefined ? null : opts.unavailable)
+    })
+    const offers = (): string[][] => sent.filter((x) => x.method === 'peer.register').map((x) => x.params.offers ?? [])
+    return { mb, settings, sent, offers }
+  }
+
+  it('the switch and the cap are kept per known host, the cap within its bounds', () => {
+    const { mb } = linked()
+    expect(() => mb.setComputer('env_other', true)).toThrow(/unknown host/)
+    expect(mb.setComputer('env_box', true)[0]).toMatchObject({ computer: true, maxComputer: 2, computerLive: 0, computerUnavailable: null })
+    expect(mb.setLimits('env_box', { maxComputer: 5 })[0]).toMatchObject({ maxComputer: 5, maxRunning: 4 })
+    expect(() => mb.setLimits('env_box', { maxComputer: 0 })).toThrow(/computer sessions: a whole number from 1 to 8/)
+    expect(() => mb.setLimits('env_box', { maxComputer: 9 })).toThrow(/from 1 to 8/)
+    expect(mb.setLimits('env_box', { maxComputer: null })[0].maxComputer).toBe(2)
+    expect(mb.setComputer('env_box', false)[0].computer).toBe(false)
+    expect(handleMacBridge({ id: 'x', method: 'macBridge.computer.set', params: { environmentId: 'env_box', on: true } } as never, mb)).toMatchObject({
+      handled: true,
+      result: [{ computer: true }]
+    })
+  })
+
+  it('peer.register offers computer use only with Access above Off, the switch on and computer use available here', async () => {
+    const on = linked()
+    await on.mb.linkUp('env_box')
+    on.mb.setComputer('env_box', true)
+    await on.mb.linkUp('env_box')
+    on.mb.setPolicy('env_box', 'read')
+    await new Promise((ok) => setTimeout(ok, 0))
+    expect(on.offers()).toEqual([['mac-bridge'], ['mac-bridge'], ['mac-bridge', 'computer']])
+    const missing = linked({ unavailable: 'no tc-computer here' })
+    missing.mb.setPolicy('env_box', 'full')
+    missing.mb.setComputer('env_box', true)
+    await missing.mb.linkUp('env_box')
+    expect(missing.offers()).toEqual([['mac-bridge']])
+    expect(missing.mb.hosts()[0].computerUnavailable).toBe('no tc-computer here')
+  })
+
+  it('a change of the offer registers again on a live link, so the host hears it at once', async () => {
+    const { mb, offers } = linked()
+    mb.setPolicy('env_box', 'read')
+    await mb.linkUp('env_box')
+    mb.setComputer('env_box', true)
+    await new Promise((ok) => setTimeout(ok, 0))
+    mb.setPolicy('env_box', 'off')
+    await new Promise((ok) => setTimeout(ok, 0))
+    mb.setShared('env_box', [])
+    await new Promise((ok) => setTimeout(ok, 0))
+    expect(offers()).toEqual([['mac-bridge'], ['mac-bridge', 'computer'], ['mac-bridge']])
+  })
+
+  it('the switch with no link registers nothing', () => {
+    const { mb, sent } = linked()
+    mb.setPolicy('env_box', 'read')
+    mb.setComputer('env_box', true)
+    expect(sent).toEqual([])
+  })
+
+  it("activity lists a live computer session with its app and window and leaves the host's computer fields off", async () => {
+    const settings = new Map<string, string>([['macBridge.policy.env_box', 'read'], ['macBridge.computer.env_box', 'on']])
+    const mb = new MacBridge({
+      environmentId: 'env_mac',
+      store: { getSetting: (k) => settings.get(k) ?? null, setSetting: (k, v) => (v === null ? settings.delete(k) : settings.set(k, v)) },
+      managedRoots: () => [],
+      environments: () => [{ id: 'env_box', name: 'box' }],
+      link: () => null,
+      home,
+      log: () => {},
+      load: { sample: () => ({ load: 0, cores: 8 }), intervalMs: 0 },
+      computerUnavailable: () => null,
+      computerHost: () => ({
+        sessions: {
+          run: async () => ({ steps: [], shots: [], body: 'ok', isError: false }),
+          rowOf: (id: string) => ({ threadId: id, since: 1, lastCallAt: 1, apps: [{ name: 'TextEdit', bundleId: null, window: 'Untitled' }], running: null, tier: null }),
+          onRows: () => () => {},
+          beginTurn: () => {},
+          settleTurn: () => {},
+          stop: async () => true,
+          end: async () => {}
+        }
+      })
+    })
+    await mb.handle(
+      'mac.computer',
+      { thread: { id: 's1', title: 'drives' }, args: { call: { tool: 'computer_observe', args: { app: 'TextEdit' }, threadId: 's1', permission: 'auto' }, turn: 't1', rootId: 's1' } } as never,
+      { from: 'env_box', deadlineAt: Date.now() + 60 * 60_000, callId: 'c1' }
+    )
+    const a = mb.activity()
+    expect(a.calls).toEqual([
+      expect.objectContaining({ kind: 'computer', method: 'mac.computer', sessionId: 's1', status: 'running', computer: { app: 'TextEdit', window: 'Untitled' } })
+    ])
+    expect(Object.keys(a.hosts[0]!)).not.toContain('computer')
+    expect(Object.keys(a.hosts[0]!)).not.toContain('maxComputer')
+    expect(mb.hosts()[0]).toMatchObject({ computerLive: 1 })
+    mb.close()
   })
 })

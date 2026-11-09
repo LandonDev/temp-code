@@ -9,6 +9,7 @@ import type { ClientRequest, ServerPush } from '@shared/contract'
 import {
   heldLine,
   MAC_APPROVAL_WAIT_MS,
+  MAC_BRIDGE_OFF,
   MAC_BRIDGE_DEFAULT_MAX_RUNNING,
   MAC_BRIDGE_DEFAULT_MAX_THREADS,
   MAC_BRIDGE_MAX_RUNNING_CAP,
@@ -54,7 +55,18 @@ import { isHostDevicesPeerMethod } from '@shared/contract-hostdevices'
 import { isPublishPeerMethod } from '@shared/contract-publish'
 import { isRelayPeerMethod } from '@shared/contract-relay'
 import { MacJobs, type JobSpawner } from './macJobs'
-import { MacLoadGuard, type HoldEnd, type LoadSample } from './macLoadGuard'
+import { MacLoadGuard, type HoldEnd, type HoldKind, type LoadSample } from './macLoadGuard'
+import {
+  COMPUTER_HOLD_EXPIRED,
+  COMPUTER_HOLD_STOPPED,
+  COMPUTER_SWITCH_PREFIX,
+  MAC_BRIDGE_DEFAULT_MAX_COMPUTER,
+  MAC_BRIDGE_MAX_COMPUTER_CAP,
+  MAC_COMPUTER_OFFER,
+  MAX_COMPUTER_PREFIX,
+  isMacComputerPeerMethod
+} from '@shared/contract-maccomputer'
+import { MacComputer, type ComputerHost, type ComputerRequestShape } from './macComputer'
 
 /**
  * The Mac side of the Mac bridge (docs/box.md "The Mac bridge: what a box
@@ -86,6 +98,13 @@ import { MacLoadGuard, type HoldEnd, type LoadSample } from './macLoadGuard'
  *    (`macBridge.showRunning.<envId>`, off by default under full, on
  *    otherwise) is on: the request still exists, with Stop, but carries
  *    `quiet: true` and the renderer draws no card for it (runPresentation).
+ *  - Computer use (macComputer.ts): a host whose policy is above Off and
+ *    whose switch (`macBridge.computer.<envId>`, off by default) is on gets
+ *    the `computer` offer in peer.register, so its bridged threads get the
+ *    four computer_* tools; each call runs here in a session keyed by the
+ *    box thread, a live session holds a guard slot under the host's cap and
+ *    its computer cap (`macBridge.maxComputer.<envId>`, default 2), and an
+ *    acting call in safe and edits asks a card of kind computer.
  *  - The load guard (macLoadGuard.ts) sits between the decision and the
  *    spawn of every command and job: at most `macBridge.maxRunning.<envId>`
  *    (default 4) of a host's run at once, and while the Mac's one-minute
@@ -154,6 +173,12 @@ export interface MacBridgeDeps {
   away?: () => boolean
   /** What peer.register says of this host besides its offers: its hostname, build and presence (remote/relayServe.ts registration). */
   registration?: () => { name: string; presence: import('@shared/contract-relay').MacPresence; build?: import('@shared/deployDrift').BuildFacts }
+  /** This Mac's computer host (computer/mcp.ts computerHooks), or null where computer use is unavailable. */
+  computerHost?: () => ComputerHost | null
+  /** Why computer use is unavailable here (computer/binary.ts computerUnavailable), or null; absent means it never is available. */
+  computerUnavailable?: () => string | null
+  /** Where a box thread's pictures land here before they are read back (macComputer.ts bridgedLanding). */
+  computerLanding?: (key: string) => string
 }
 
 // ── the policy, pure ─────────────────────────────────────────────────
@@ -343,6 +368,8 @@ export class MacBridge {
   private readonly log: (line: string) => void
   /** The caps and the load watch (macLoadGuard.ts); every held call's standing lands on its request. */
   readonly guard: MacLoadGuard
+  /** A held computer session's standing goes to its caller too (macComputer.ts sends it to the box). */
+  private readonly standingListeners = new Map<string, (held: MacBridgeHeld) => void>()
 
   constructor(private readonly deps: MacBridgeDeps) {
     this.home = deps.home ?? homedir()
@@ -350,6 +377,7 @@ export class MacBridge {
     this.log = deps.log ?? ((line) => console.log(`[mac-bridge] ${line}`))
     this.guard = new MacLoadGuard({
       maxRunning: (envId) => this.maxRunningOf(envId),
+      maxComputer: (envId) => this.maxComputerOf(envId),
       loadLimit: () => this.loadLimitPinned(),
       ...(deps.load?.sample ? { sample: deps.load.sample } : {}),
       ...(deps.load?.intervalMs !== undefined ? { intervalMs: deps.load.intervalMs } : {}),
@@ -369,10 +397,50 @@ export class MacBridge {
 
   setPolicy(envId: string, policy: MacBridgePolicy): MacBridgeHostPolicy[] {
     this.knownHost(envId)
+    const offered = this.computerOffered(envId)
     this.deps.store.setSetting(`${POLICY_PREFIX}${envId}`, policy === 'off' ? null : policy)
     if (policy === 'off' || policy === 'read') this.jobsInstance?.endHost(envId)
+    if (policy === 'off') this.computerInstance?.endHost(envId)
     this.log(`${this.nameOf(envId)} (${envId}): policy ${policy}`)
+    if (offered !== this.computerOffered(envId)) this.registerAgain(envId)
     return this.hosts()
+  }
+
+  // ── computer use (macComputer.ts) ───────────────────────────────────
+
+  /** Computer use for a host: its switch, off by default. */
+  computerOf(envId: string): boolean {
+    return this.deps.store.getSetting(`${COMPUTER_SWITCH_PREFIX}${envId}`) === 'on'
+  }
+
+  /** Why this Mac cannot serve computer use, or null when it can. */
+  computerUnavailable(): string | null {
+    return this.deps.computerUnavailable ? this.deps.computerUnavailable() : 'computer use is not built into this app'
+  }
+
+  /** What peer.register offers a host: computer use only with Access above Off, the switch on and this Mac able to serve it. */
+  computerOffered(envId: string): boolean {
+    return this.policyOf(envId) !== 'off' && this.computerOf(envId) && this.computerUnavailable() === null
+  }
+
+  /** The switch; off ends the host's live sessions. A change of the offer registers again on a live link, so the host hears it now. */
+  setComputer(envId: string, on: boolean): MacBridgeHostPolicy[] {
+    this.knownHost(envId)
+    const offered = this.computerOffered(envId)
+    this.deps.store.setSetting(`${COMPUTER_SWITCH_PREFIX}${envId}`, on ? 'on' : null)
+    if (!on) this.computerInstance?.endHost(envId)
+    this.log(`${this.nameOf(envId)} (${envId}): computer use ${on ? 'on' : 'off'}`)
+    if (offered !== this.computerOffered(envId)) this.registerAgain(envId)
+    return this.hosts()
+  }
+
+  /** Concurrent computer sessions this host may hold on the Mac. */
+  maxComputerOf(envId: string): number {
+    return this.intSetting(`${MAX_COMPUTER_PREFIX}${envId}`, MAC_BRIDGE_DEFAULT_MAX_COMPUTER, 1, MAC_BRIDGE_MAX_COMPUTER_CAP)
+  }
+
+  private registerAgain(envId: string): void {
+    if (this.registered.has(envId)) void this.linkUp(envId)
   }
 
   sharedOf(envId: string): string[] {
@@ -444,7 +512,7 @@ export class MacBridge {
   /** A host's caps; null puts one back to its default. A raised cap releases held calls at once. */
   setLimits(
     envId: string,
-    limits: { maxRunning?: number | null; maxThreads?: number | null }
+    limits: { maxRunning?: number | null; maxThreads?: number | null; maxComputer?: number | null }
   ): MacBridgeHostPolicy[] {
     this.knownHost(envId)
     if (limits.maxRunning !== undefined) {
@@ -459,8 +527,14 @@ export class MacBridge {
         throw new Error(`threads: a whole number from 0 to ${MAC_BRIDGE_MAX_THREADS_CAP}`)
       this.deps.store.setSetting(`${MAX_THREADS_PREFIX}${envId}`, n === null ? null : String(n))
     }
+    if (limits.maxComputer !== undefined) {
+      const n = limits.maxComputer
+      if (n !== null && (!Number.isInteger(n) || n < 1 || n > MAC_BRIDGE_MAX_COMPUTER_CAP))
+        throw new Error(`computer sessions: a whole number from 1 to ${MAC_BRIDGE_MAX_COMPUTER_CAP}`)
+      this.deps.store.setSetting(`${MAX_COMPUTER_PREFIX}${envId}`, n === null ? null : String(n))
+    }
     this.log(
-      `${this.nameOf(envId)} (${envId}): caps running ${this.maxRunningOf(envId)}, threads ${this.maxThreadsOf(envId)}`
+      `${this.nameOf(envId)} (${envId}): caps running ${this.maxRunningOf(envId)}, threads ${this.maxThreadsOf(envId)}, computer sessions ${this.maxComputerOf(envId)}`
     )
     this.guard.reconsider()
     return this.hosts()
@@ -508,6 +582,7 @@ export class MacBridge {
   }
 
   hosts(): MacBridgeHostPolicy[] {
+    const unavailable = this.computerUnavailable()
     return this.deps.environments().map((e) => ({
       environmentId: e.id,
       name: e.name,
@@ -519,7 +594,11 @@ export class MacBridge {
       maxThreads: this.maxThreadsOf(e.id),
       running: this.guard.runningCount(e.id),
       held: this.guard.heldCount(e.id),
-      threads: this.deps.liveThreads?.(e.id) ?? 0
+      threads: this.deps.liveThreads?.(e.id) ?? 0,
+      computer: this.computerOf(e.id),
+      computerUnavailable: unavailable,
+      maxComputer: this.maxComputerOf(e.id),
+      computerLive: this.guard.computerCount(e.id)
     }))
   }
 
@@ -541,7 +620,11 @@ export class MacBridge {
     try {
       await request('peer.register', {
         from: this.deps.environmentId,
-        offers: [MAC_BRIDGE_OFFER, ...(this.deps.offers?.() ?? [])],
+        offers: [
+          MAC_BRIDGE_OFFER,
+          ...(this.computerOffered(envId) ? [MAC_COMPUTER_OFFER] : []),
+          ...(this.deps.offers?.() ?? [])
+        ],
         home: this.home,
         ...(this.deps.registration?.() ?? {})
       })
@@ -556,6 +639,7 @@ export class MacBridge {
 
   linkDown(envId: string): void {
     this.registered.delete(envId)
+    this.computerInstance?.linkDown(envId)
     // What that box held is its own to list again when the link is back.
     for (const [id, row] of [...this.heldRows])
       if (row.environmentId === envId) this.dropHeldRow(id)
@@ -609,7 +693,8 @@ export class MacBridge {
       this.guard.cancel(id)
       return { ok: true }
     }
-    p.decide(allow, remember)
+    // A computer card remembers nothing: every acting call asks, as a Mac thread's does.
+    p.decide(allow, p.request.kind === 'computer' ? false : remember)
     return { ok: true }
   }
 
@@ -625,10 +710,12 @@ export class MacBridge {
     for (const p of this.pendingById.values())
       if (p.request.status === 'pending')
         pendingCount.set(p.request.environmentId, (pendingCount.get(p.request.environmentId) ?? 0) + 1)
-    const hosts = this.hosts().map(({ shared: _shared, showRunning: _show, ...host }) => ({
-      ...host,
-      pending: pendingCount.get(host.environmentId) ?? 0
-    }))
+    const hosts = this.hosts().map(
+      ({ shared: _shared, showRunning: _show, computer: _c, computerUnavailable: _u, maxComputer: _m, computerLive: _l, ...host }) => ({
+        ...host,
+        pending: pendingCount.get(host.environmentId) ?? 0
+      })
+    )
     const calls: MacBridgeCall[] = []
     for (const r of this.pending()) {
       if (r.status === 'pending') continue
@@ -644,6 +731,7 @@ export class MacBridge {
         ...(r.argv ? { argv: r.argv } : {}),
         ...(r.cwd !== undefined ? { cwd: r.cwd } : {}),
         ...(r.path !== undefined ? { path: r.path } : {}),
+        ...(r.computer ? { computer: { app: r.computer.app, window: r.computer.window } } : {}),
         status: r.status,
         ...(r.held ? { held: r.held } : {}),
         ...(r.interactive ? { interactive: true as const } : {}),
@@ -692,15 +780,17 @@ export class MacBridge {
     envId: string,
     id: string,
     until: number,
-    line: (decision: string) => void
+    line: (decision: string) => void,
+    kind: HoldKind = 'job'
   ): Promise<void> {
-    const gate = this.guard.acquire(envId, id, until)
+    const gate = this.guard.acquire(envId, id, until, kind)
     if (gate.admitted) return
     const p = this.pendingById.get(id)
     if (p) {
       p.request = { ...p.request, status: 'held', held: gate.held }
       this.emit({ push: 'macBridge.request', request: p.request })
     }
+    this.standingListeners.get(id)?.(gate.held)
     line(`held (${leadDetail(heldLine(gate.held), 'Waiting for the Mac') ?? heldLine(gate.held)})`)
     const end: HoldEnd = await gate.done
     if (end === 'admitted') {
@@ -709,11 +799,7 @@ export class MacBridge {
     }
     this.finish(id, end === 'expired' ? 'expired' : 'stopped')
     line(end === 'expired' ? 'held until the call ran out of time' : 'stopped while waiting')
-    throw new Error(
-      end === 'expired'
-        ? 'the Mac stayed too busy: the call ran out of time while waiting its turn'
-        : 'stopped at the Mac while waiting its turn'
-    )
+    throw new Error(end === 'expired' ? COMPUTER_HOLD_EXPIRED : COMPUTER_HOLD_STOPPED)
   }
 
   /** The guard moved a held call (its place, its reason, the load) or let it go: the row follows. */
@@ -722,6 +808,7 @@ export class MacBridge {
     if (!p || p.request.status !== 'held' || !held) return
     p.request = { ...p.request, held }
     this.emit({ push: 'macBridge.request', request: p.request })
+    this.standingListeners.get(id)?.(held)
   }
 
   /** Nobody is at the Mac to answer while the person is away: a call that would ask is refused at once. */
@@ -820,6 +907,7 @@ export class MacBridge {
       cancelled++
       void id
     }
+    cancelled += this.computerInstance?.cancel(env.id, thread.id, wanted, args.reason) ?? 0
     const jobsEnded = args.jobs ? (this.jobsInstance?.stopThread(env.id, thread.id, line) ?? 0) : 0
     line(`${args.reason === 'paused' ? 'paused' : 'stopped'}: ${cancelled} cancelled, ${jobsEnded} job(s) ended`)
     return { cancelled, jobsEnded }
@@ -901,6 +989,13 @@ export class MacBridge {
       return method === 'mac.cancel'
         ? this.cancel(env, thread, params.args as MacCancelArgs, line)
         : this.held(env, thread, params.args as MacHeldArgs, line)
+    // Computer use decides its own policy, switch and card (macComputer.ts).
+    if (isMacComputerPeerMethod(method))
+      return this.computer.handle(env, thread, method, params.args, {
+        deadlineAt: ctx.deadlineAt,
+        ...(ctx.callId ? { callId: ctx.callId } : {}),
+        ...(ctx.progress ? { progress: ctx.progress } : {})
+      })
     // The box holds a paused thread's commands, jobs and writes itself; only a read comes marked, and only a prompt-free one is answered.
     if (thread.paused && !['mac.readFile', 'mac.listDir', 'mac.fetchFile'].includes(method)) {
       line('refused (paused)')
@@ -912,9 +1007,7 @@ export class MacBridge {
     const unattended = threadRunsUnattended(thread)
     if (policy === 'off') {
       line('refused (bridge off)')
-      throw new Error(
-        "the Mac bridge is off for this host: turn it on in the Mac's Settings → Hosts"
-      )
+      throw new Error(MAC_BRIDGE_OFF)
     }
     if (isMacJobPeerMethod(method))
       return this.jobs.handle(env, thread, method, params.args, {
@@ -1129,7 +1222,77 @@ export class MacBridge {
     return this.jobsInstance
   }
 
+  // ── computer use (macComputer.ts) ────────────────────────────────────
+
+  private computerInstance: MacComputer | null = null
+  get computer(): MacComputer {
+    this.computerInstance ??= new MacComputer({
+      host: () => this.deps.computerHost?.() ?? null,
+      unavailable: () => this.computerUnavailable(),
+      ...(this.deps.computerLanding ? { landing: this.deps.computerLanding } : {}),
+      bridge: {
+        policyOf: (envId) => this.policyOf(envId),
+        computerOf: (envId) => this.computerOf(envId),
+        away: () => this.deps.away?.() ?? false,
+        askComputer: (shape, until, callId) => this.ask(shape, until, false, callId),
+        finishCard: (id, outcome) => this.finish(id, outcome),
+        openLive: (shape, stop) => this.openLive(shape, stop),
+        holdLive: (envId, id, until, opts) => this.holdLive(envId, id, until, opts),
+        updateLive: (id, computer) => {
+          const p = this.pendingById.get(id)
+          if (!p || (p.request.computer?.app === computer.app && p.request.computer?.window === computer.window)) return
+          p.request = { ...p.request, computer: { ...computer, actions: [] } }
+          this.emit({ push: 'macBridge.request', request: p.request })
+        },
+        finishLive: (id, outcome) => this.finish(id, outcome)
+      },
+      log: this.log
+    })
+    return this.computerInstance
+  }
+
+  /** A live computer session as a running request with Stop: listed on the Mac, never a card. */
+  private openLive(shape: ComputerRequestShape, stop: () => void): string {
+    const id = `mb_${randomBytes(9).toString('base64url')}`
+    const request: MacBridgeRequest = { ...shape, id, createdAt: Date.now(), expiresAt: Number.MAX_SAFE_INTEGER, status: 'running' }
+    // No expiry: the session ends at the box turn's settle, a Stop or three idle minutes (macComputer.ts).
+    const timer = setTimeout(() => {}, 0)
+    this.pendingById.set(id, { request, timer, stop, decide: () => {} })
+    this.emit({ push: 'macBridge.request', request })
+    return id
+  }
+
+  /** The guard for a live session (kind computer): in line with its standing, out of it when the call is given up; running again once admitted. */
+  private async holdLive(
+    envId: string,
+    id: string,
+    until: number,
+    opts: { signal: AbortSignal; onStanding: (held: MacBridgeHeld) => void }
+  ): Promise<void> {
+    const line = (decision: string): void => this.log(`${this.nameOf(envId)} (${envId}) computer session ${id} → ${decision}`)
+    const leave = (): void => void this.guard.cancel(id)
+    this.standingListeners.set(id, opts.onStanding)
+    opts.signal.addEventListener('abort', leave, { once: true })
+    try {
+      if (opts.signal.aborted) {
+        this.finish(id, 'stopped')
+        throw new Error(COMPUTER_HOLD_STOPPED)
+      }
+      await this.hold(envId, id, until, line, 'computer')
+    } finally {
+      opts.signal.removeEventListener('abort', leave)
+      this.standingListeners.delete(id)
+    }
+    const p = this.pendingById.get(id)
+    if (p && p.request.status === 'held') {
+      p.request = { ...p.request, status: 'running' }
+      delete p.request.held
+      this.emit({ push: 'macBridge.request', request: p.request })
+    }
+  }
+
   close(): void {
+    this.computerInstance?.close()
     this.jobsInstance?.closeAll()
     this.guard.close()
     this.heldRows.clear()
@@ -1268,9 +1431,12 @@ export function handleMacBridge(
         handled: true,
         result: bridge.setLimits(req.params.environmentId, {
           ...(req.params.maxRunning !== undefined ? { maxRunning: req.params.maxRunning } : {}),
-          ...(req.params.maxThreads !== undefined ? { maxThreads: req.params.maxThreads } : {})
+          ...(req.params.maxThreads !== undefined ? { maxThreads: req.params.maxThreads } : {}),
+          ...(req.params.maxComputer !== undefined ? { maxComputer: req.params.maxComputer } : {})
         })
       }
+    case 'macBridge.computer.set':
+      return { handled: true, result: bridge.setComputer(req.params.environmentId, req.params.on) }
     case 'macBridge.loadLimit.set':
       return { handled: true, result: bridge.setLoadLimit(req.params.limit) }
     case 'macBridge.load.get':

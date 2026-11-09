@@ -37,6 +37,8 @@ export const MAC_RUN_DEFAULT_TIMEOUT_MS = 120_000
 export const MAC_RUN_MAX_TIMEOUT_MS = 30 * 60_000
 /** stdout and stderr together; past it the middle is dropped (MAC_RUN_HEAD_BYTES first, MAC_RUN_TAIL_BYTES last) and the result says truncated. */
 export const MAC_RUN_OUTPUT_CAP = 4 * 1024 * 1024
+/** The Mac's answer to a call from a host whose bridge is off. */
+export const MAC_BRIDGE_OFF = "the Mac bridge is off for this host: turn it on in the Mac's Settings → Hosts"
 /** How long a request waits on the person at the Mac before it counts as denied. */
 export const MAC_APPROVAL_WAIT_MS = 10 * 60_000
 
