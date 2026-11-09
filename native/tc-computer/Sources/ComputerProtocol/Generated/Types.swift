@@ -572,7 +572,7 @@ public struct SessionRestore: Codable, Hashable, Sendable {
     }
 }
 
-public struct ClipboardState: Codable, Hashable, Sendable {
+public struct ClipboardActivity: Codable, Hashable, Sendable {
     public let changeCount: Int
     public let foreignChangeAt: Double?
     public let watchingSince: Double

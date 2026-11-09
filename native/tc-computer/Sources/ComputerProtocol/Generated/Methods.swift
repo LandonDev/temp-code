@@ -373,6 +373,6 @@ public enum Methods {
 
         public typealias Params = Empty
 
-        public typealias Output = TempCodeContract.ClipboardState
+        public typealias Output = ClipboardActivity
     }
 }

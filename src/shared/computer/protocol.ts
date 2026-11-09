@@ -764,14 +764,14 @@ export type SessionRestore = z.infer<typeof SessionRestoreSchema>
  * `clipboard.state`: when the pasteboard last changed by anyone but this service. It reads the change
  * count only, never the contents. "Quiet for N ms" is `now − max(foreignChangeAt ?? 0, watchingSince) ≥ N`.
  */
-export const ClipboardStateSchema = z.object({
+export const ClipboardActivitySchema = z.object({
   changeCount: int(),
   /** epoch ms, to the poll's 250 ms; null when no foreign change was seen since the watch began */
   foreignChangeAt: z.number().nullable(),
   /** epoch ms: a copy made before this is invisible to the watch */
   watchingSince: z.number()
 })
-export type ClipboardState = z.infer<typeof ClipboardStateSchema>
+export type ClipboardActivity = z.infer<typeof ClipboardActivitySchema>
 
 export const InitializeParamsSchema = z.object({
   protocol: int(),
@@ -817,7 +817,7 @@ export const COMPUTER_METHODS = {
   'capture.stream.stop': { params: z.object({ stream: z.string().min(1) }), result: EmptySchema },
   'input.probe': { params: InputProbeParamsSchema, result: ProbeReportSchema },
   'input.restoreSession': { params: EmptySchema, result: SessionRestoreSchema },
-  'clipboard.state': { params: EmptySchema, result: ClipboardStateSchema }
+  'clipboard.state': { params: EmptySchema, result: ClipboardActivitySchema }
 } as const satisfies Record<string, { params: z.ZodType; result: z.ZodType }>
 export type ComputerMethod = keyof typeof COMPUTER_METHODS
 export type ComputerParams<M extends ComputerMethod> = z.infer<(typeof COMPUTER_METHODS)[M]['params']>
