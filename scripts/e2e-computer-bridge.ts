@@ -559,8 +559,9 @@ async function orchestrator(): Promise<void> {
     if (!field || !ping) await stop('the scratch window shows no input or Ping button')
     const set = await computer(t1, 'computer_act', { app: APP, window: APP, action: 'set_value', element: Number(field), value: `Lunch ${NONCE}?` })
     check('act: set_value runs at ax and changes the window', !set.isError && /set_value .* · ax · changed/.test(set.text), set.text.slice(0, 300))
-    const after = await computer(t1, 'computer_observe', { app: APP, window: APP })
-    check('act: the observation shows the value', after.text.includes(`Lunch ${NONCE}?`))
+    // The act's own answer already carried the change, so a plain read would be "no changes": read the whole tree.
+    const after = await computer(t1, 'computer_observe', { app: APP, window: APP, full: true })
+    check('act: the observation shows the value', after.text.includes(`Lunch ${NONCE}?`), after.text.slice(0, 300))
 
     // 5. the card
     await awaitScreen()
@@ -635,8 +636,11 @@ async function orchestrator(): Promise<void> {
     await until(10_000, async () => (await boxCall<{ enabled: boolean }>('away.get', {})).enabled === true)
     const awayOut = await computer(t1, 'computer_act', clickArgs)
     check('away: an acting call that would ask answers away', awayOut.text.includes('denied: the person is away'), awayOut.text)
-    const events = await boxCall<{ rows: { event: { type: string; kind?: string; away?: unknown } }[] }>('session.events', { sessionId: t1, afterSeq: 0 })
-    check('away: the box thread has an away notice', events.rows.some((r) => r.event.type === 'notice' && (r.event.kind === 'away' || !!r.event.away)))
+    // The local socket answers session.events as the rows themselves; a remote one wraps them in { rows }.
+    type Row = { event: { type: string; kind?: string; away?: unknown } }
+    const events = await boxCall<Row[] | { rows: Row[] }>('session.events', { sessionId: t1, afterSeq: 0 })
+    const eventRows = Array.isArray(events) ? events : events.rows
+    check('away: the box thread has an away notice', eventRows.some((r) => r.event.type === 'notice' && (r.event.kind === 'away' || !!r.event.away)))
     check('away: an observe still works', !(await computer(t1, 'computer_observe', { app: APP, window: APP })).isError)
     await rpc(mac, 'away.set', { enabled: false })
 
