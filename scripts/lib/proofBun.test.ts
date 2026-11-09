@@ -27,9 +27,10 @@ it('forwards signals, retains gate args and reports the child exit code', async 
   })
   expect(launch).toHaveBeenCalledWith('/user/bun', ['/clone/proof.ts', '--gate'], {
     env: process.env,
-    stdio: 'inherit',
-    detached: true
+    stdio: 'inherit'
   })
+  // Never its own process group: the gate's SIGKILL to the step's group must reach a child stuck in shutdown.
+  expect((launch.mock.calls[0] as unknown[])[2]).not.toHaveProperty('detached')
   events.emit('SIGTERM')
   events.emit('SIGINT')
   events.emit('exit')

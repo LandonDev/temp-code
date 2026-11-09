@@ -28,7 +28,8 @@ export function preferredProofBun(
   }
 }
 
-/** The parent starts no app; the runtime child owns the rig and receives its exit signals. */
+/** The parent starts no app; the runtime child owns the rig and receives its exit signals. It stays in the
+ *  caller's process group, so the gate's group kill (SIGTERM, then SIGKILL) reaches it whatever the wrapper does. */
 export function runProofBun(
   bun: string,
   script: string,
@@ -38,8 +39,7 @@ export function runProofBun(
   return new Promise((resolve) => {
     const child: ChildProcess = (opts.spawn ?? spawn)(bun, [script, ...args], {
       env: process.env,
-      stdio: 'inherit',
-      detached: true
+      stdio: 'inherit'
     })
     const events = opts.events ?? process
     let stopping = false
