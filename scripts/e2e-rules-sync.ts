@@ -4,8 +4,9 @@
  * isolated headless instances of the BUILT tree, the rig of
  * scripts/e2e-linked-projects.ts ("mac" plays the Mac, "box" plays the box,
  * the settings home). Only mac serves Muse Code models
- * (TEMP_CODE_PROBED_CATALOG answers its probe), as on the real pair, where
- * Meta gives the box an empty catalog.
+ * (TEMP_CODE_PROBED_CATALOG answers its probe), so the rig holds a model one
+ * host alone runs; on the real pair both hosts have listed Muse since
+ * 2026-11-09.
  *
  *  - mac saves box: the rules sync seeds the box's copy and the two hosts
  *    exchange catalogs
