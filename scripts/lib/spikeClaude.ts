@@ -214,6 +214,12 @@ class ClaudeRun {
 
 // ── reading what the CLI said ────────────────────────────────────────────────
 
+/** A tool's first required property, else its first property, else `fallback`. */
+function firstParamOf(schema: unknown, fallback: string): string {
+  const s = (schema ?? {}) as { required?: string[]; properties?: Record<string, unknown> }
+  return s.required?.[0] ?? Object.keys(s.properties ?? {})[0] ?? fallback
+}
+
 const commandNames = (init: Init | null): string[] => ((init?.commands ?? []) as { name: string }[]).map((c) => c.name)
 const agentNames = (init: Init | null): string[] => ((init?.agents ?? []) as { name: string }[]).map((a) => a.name)
 /** The listed name of `base`: bare or plugin-qualified. */
@@ -397,8 +403,23 @@ async function pluginRun(ev: Evidence, o: PluginRunOptions): Promise<{ observed:
     c.anth.script = [{ tool: skillCall(toolSkill) }]
     const t2 = await s.turn('Use the probe skill.')
     const t3 = await s.turn(`/${cmd ?? 'tc-probe-cmd'}`)
-    c.anth.script = [{ tool: toolEndingWith('tc_probe_echo', { word: 'probe' }) }]
+    // CLI 2.1.312 defers MCP tools behind ToolSearch: the probe tool is then absent from the request until selected.
+    const mcpName = ((s.init?.tools as string[] | undefined) ?? []).find((x) => x.endsWith('tc_probe_echo')) ?? null
+    let searched = false
+    c.anth.script = [
+      {
+        tool: (tools) => {
+          const direct = toolEndingWith('tc_probe_echo', { word: 'probe' })(tools)
+          if (direct || !mcpName || !tools.some((x) => x.name === 'ToolSearch')) return direct
+          searched = true
+          const search = tools.find((x) => x.name === 'ToolSearch')!
+          return { name: 'ToolSearch', input: { [firstParamOf(search.input_schema, 'query')]: `select:${mcpName}` } }
+        }
+      },
+      { tool: (tools) => (searched ? (toolEndingWith('tc_probe_echo', { word: 'probe' })(tools) ?? (mcpName ? { name: mcpName, input: { word: 'probe' } } : null)) : null) }
+    ]
     const t4 = await s.turn('Call the probe tool.')
+    observed.mcpDeferred = searched
     const turns = { slashSkill: turnSummary(t1.requests), skillTool: turnSummary(t2.requests), slashCommand: turnSummary(t3.requests), mcpTool: turnSummary(t4.requests) }
     observed.turns = turns
     observed.results = [t1.result, t2.result, t3.result, t4.result]
@@ -414,7 +435,7 @@ async function pluginRun(ev: Evidence, o: PluginRunOptions): Promise<{ observed:
         skillByTool: turns.skillTool.fresh.includes('goneBody'),
         command: turns.slashCommand.fresh.includes('cmd'),
         agent: turns.slashSkill.fresh.includes('agent') || turns.slashSkill.tools.includes('agent'),
-        ...(o.skipMcp ? { mcpAbsent: !mcpPresent } : { mcp: mcpPresent && turns.mcpTool.fresh.includes('mcp') }),
+        ...(o.skipMcp ? { mcpAbsent: !mcpPresent && !mcpName } : { mcp: turns.mcpTool.fresh.includes('mcp') }),
         hook: existsSync(marker)
       }
     }
@@ -557,7 +578,7 @@ async function c2a(ev: Evidence): Promise<void> {
       turn: t ? { result: t.result, ...turnSummary(reqs) } : { error: turnError },
       ownedRoot: inventory(listTree(r.config)),
       credentialsFileInRoot: existsSync(join(r.config, '.credentials.json')),
-      keychainServices: process.platform === 'darwin' ? { before: servicesBefore, after: await claudeKeychainServices() } : null,
+      credentialItems: process.platform === 'darwin' ? { before: servicesBefore, after: await claudeKeychainServices() } : null,
       personalDirs: personalDiff(before, personalListing())
     }
     const attempted = reqs.some((q) => q.main)

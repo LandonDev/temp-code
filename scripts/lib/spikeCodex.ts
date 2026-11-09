@@ -331,7 +331,7 @@ async function x1(ev: Evidence): Promise<void> {
   writeTree(flat, { 'tc-xroot-skill/SKILL.md': skillFile('tc-xroot-skill', n.skillDesc, n.skillBody) })
   writeTree(nested, { 'skills/tc-xroot2-skill/SKILL.md': skillFile('tc-xroot2-skill', n.lateDesc, n.lateBody) })
   const home = codexHome(join(r.dir, 'codex-home'))
-  c.codexFront.reset(ev.id, { flatDesc: n.skillDesc, flatBody: n.skillBody, nestedDesc: n.lateDesc, nestedBody: n.lateBody })
+  c.codexFront.reset(ev.id, { flatDesc: n.skillDesc, flatBody: n.skillBody, nestedDesc: n.lateDesc, nestedBody: n.lateBody, flatPath: join(flat, 'tc-xroot-skill') })
   const conn = await open(ev, r, home)
   try {
     const set = await conn.request('skills/extraRoots/set', { extraRoots: [flat, nested] }).then(() => 'ok', (e) => errText(e))
@@ -348,7 +348,8 @@ async function x1(ev: Evidence): Promise<void> {
       flatListed: listed.includes('tc-xroot-skill'),
       nestedListed: listed.includes('tc-xroot2-skill'),
       flatInPrompt: c.codexAccepted === false ? null : s1.all.includes('flatDesc'),
-      bodyBySkillPart: c.codexAccepted === false ? null : s2.all.includes('flatBody')
+      bodyBySkillPart: c.codexAccepted === false ? null : s2.all.includes('flatBody'),
+      pathBySkillPart: c.codexAccepted === false ? null : s2.all.includes('flatPath')
     }, fakeNote())
   } finally {
     conn.close()
@@ -496,7 +497,7 @@ async function x3(ev: Evidence, where: 'home' | 'extra'): Promise<void> {
     if (where === 'extra') ev.observed.extraRootsSet = await conn.request('skills/extraRoots/set', { extraRoots: [skillsDir] }).then(() => 'ok', (e) => errText(e))
     return conn
   }
-  c.codexFront.reset(ev.id, { ...n })
+  c.codexFront.reset(ev.id, { ...n, skillPath: join(skillsDir, 'tc-probe-skill') })
   const skillInput = [{ type: 'skill', name: 'tc-probe-skill', path: join(skillsDir, 'tc-probe-skill', 'SKILL.md') }, ...text('Use the skill.')]
   const look = async (conn: CodexConn, thread: string, label: string): Promise<Record<string, unknown>> => {
     const cached = await conn.request('skills/list', { cwds: [r.cwd] }).then(skillNames, (e) => [`error: ${errText(e)}`])
@@ -511,8 +512,11 @@ async function x3(ev: Evidence, where: 'home' | 'extra'): Promise<void> {
       gone: !reloaded.includes('tc-gone-skill'),
       lateInPrompt: s.all.includes('lateDesc'),
       goneInPrompt: s.all.includes('goneDesc'),
-      edited: s.all.includes('editedBody'),
-      original: s.all.includes('skillBody')
+      edited: s.all.includes('editedBody') || s.all.includes('editedDesc'),
+      editedBody: s.all.includes('editedBody'),
+      editedDesc: s.all.includes('editedDesc'),
+      original: s.all.includes('skillBody'),
+      pathSent: s.all.includes('skillPath')
     }
   }
   const live = await rooted(await open(ev, r, home))
@@ -581,8 +585,9 @@ async function x4(ev: Evidence): Promise<void> {
     }
   }
   const untrusted = await once()
-  const hash = (untrusted.hooks as { eventName: string; currentHash?: string }[]).find((h) => /userPromptSubmit/i.test(h.eventName))?.currentHash
-  const row = hash ? `[hooks.state."${join(home, 'hooks.json')}:user_prompt_submit:0:0"]\ntrusted_hash = "${hash}"\n` : null
+  // Keyed by the id codex reports: it names the canonical path (/private/var/… on macOS, where TMPDIR is /var/…).
+  const hook = (untrusted.hooks as { eventName: string; currentHash?: string; hookId?: string }[]).find((h) => /userPromptSubmit/i.test(h.eventName))
+  const row = hook?.currentHash && hook.hookId ? `[hooks.state."${hook.hookId}"]\ntrusted_hash = "${hook.currentHash}"\n` : null
   if (row) writeFileSync(join(home, 'config.toml'), row)
   const trusted = row ? await once() : null
   ev.observed = { untrusted, trustRow: row, trusted }

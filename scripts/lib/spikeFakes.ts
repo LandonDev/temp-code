@@ -281,7 +281,7 @@ export class FakeAnthropic {
       rec.stream = !!body.stream
       const tools = Array.isArray(body.tools) ? body.tools : []
       rec.main = tools.length > 0 && Array.isArray(body.messages)
-      rec.tools = tools.map((t) => t.name).filter((n) => /^mcp__|^Skill$|^Agent$|^Task$|tc[-_]probe/.test(n))
+      rec.tools = tools.map((t) => t.name).filter((n) => /^mcp__|^Skill$|^Agent$|^Task$|^ToolSearch$|tc[-_]probe/.test(n))
       const messages = Array.isArray(body.messages) ? body.messages : []
       // A conversation only grows; a shorter one is a new session under the same tag.
       const from = rec.main && messages.length >= this.seen ? this.seen : 0
@@ -455,6 +455,12 @@ export class FakeResponses {
       body: { encoding: String(req.headers['content-encoding'] ?? ''), bytes: raw.length, parsed: false, fields: [] }
     }
     this.requests.push(rec)
+    // Codex's workspace routing discovery: the placeholder account, routed to this front. Answered here in a real
+    // run too: the gateway's real account list never names the placeholder account the local auth.json carries.
+    if (req.method === 'GET' && url.pathname.endsWith('/wham/accounts/check')) {
+      rec.answered = 'accounts'
+      return json(res, 200, codexAccountsCheck(this.url))
+    }
     if (this.forward) {
       rec.answered = 'forwarded'
       return this.pass(req, res, raw, this.forward(req.url ?? '/'))
@@ -467,11 +473,6 @@ export class FakeResponses {
         return
       }
       return json(res, 404, { error: 'fake: no recorded models' })
-    }
-    // Codex's workspace routing discovery: the placeholder account, routed to this front.
-    if (req.method === 'GET' && url.pathname.endsWith('/wham/accounts/check')) {
-      rec.answered = 'accounts'
-      return json(res, 200, codexAccountsCheck(this.url))
     }
     if (req.method === 'GET' && url.pathname.endsWith('/wham/settings/user')) {
       rec.answered = 'settings'

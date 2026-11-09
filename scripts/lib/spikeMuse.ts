@@ -55,7 +55,7 @@ interface MuseOpts {
   fileBackend?: boolean
   /** XDG_CONFIG_HOME; the run's config root by default. */
   config?: string
-  /** Keep the person's HOME and XDG dirs (M0b). */
+  /** Keep the person's HOME and config root (M0b); data, state and cache dirs are still the run's. */
   realHome?: boolean
   baseUrl?: string
   args?: string[]
@@ -65,15 +65,16 @@ interface MuseOpts {
 async function museOpen(ev: Evidence, r: RunDirs, o: MuseOpts = {}): Promise<MuseHost> {
   const c = ctx()
   const own: Record<string, string> = {
-    ...(o.realHome
-      ? {}
-      : { HOME: r.home, XDG_CONFIG_HOME: o.config ?? r.config, XDG_DATA_HOME: join(r.dir, 'data'), XDG_STATE_HOME: join(r.dir, 'state'), XDG_CACHE_HOME: join(r.dir, 'cache') }),
+    ...(o.realHome ? {} : { HOME: r.home, XDG_CONFIG_HOME: o.config ?? r.config }),
+    XDG_DATA_HOME: join(r.dir, 'data'),
+    XDG_STATE_HOME: join(r.dir, 'state'),
+    XDG_CACHE_HOME: join(r.dir, 'cache'),
     MUSE_CONTRIBUTOR_MODE: '0',
     ...(o.fileBackend === false ? {} : { TBH_CREDENTIAL_BACKEND: 'file' }),
     ...(o.env ?? {})
   }
   noteEnv(ev, own)
-  const inherited = o.realHome ? { ...process.env, PATH: c.loginPath, TC_SPIKE_RUN: c.run } : baseEnv(MUSE_STRIP)
+  const inherited = o.realHome ? { ...baseEnv(/^(XDG_(DATA|STATE|CACHE)_HOME$|TBH_)/), ...(process.env.XDG_CONFIG_HOME ? { XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME } : {}) } : baseEnv(MUSE_STRIP)
   const env = { ...inherited, ...own } as Record<string, string>
   const args = [
     'serve',
@@ -261,17 +262,24 @@ async function m0b(ev: Evidence): Promise<void> {
   const rec = await new ModelsRecorder(['https://api.meta.ai', 'https://api.meta.ai/v1']).start()
   const before = personalListing()
   try {
-    const h = await museOpen(ev, r, { realHome: true, fileBackend: false, baseUrl: rec.url })
+    // The person's own login, its catalog fetched afresh (the run's data dirs hold no cached one): the
+    // default credential backend first, then the file one (the person's ~/.config/muse/auth.json).
+    const attempts: Record<string, unknown>[] = []
     let models: string | number = 0
-    try {
-      const res = await within(h.conn.request('model/list', {}), 60_000, 'model/list')
-      models = ((res.models as unknown[] | undefined) ?? []).length
-    } catch (e) {
-      models = `error: ${errText(e)}`
-    } finally {
-      await h.close()
+    for (const fileBackend of [false, true]) {
+      const h = await museOpen(ev, r, { realHome: true, fileBackend, baseUrl: rec.url })
+      try {
+        const res = await within(h.conn.request('model/list', {}), 60_000, 'model/list')
+        models = ((res.models as unknown[] | undefined) ?? []).length
+      } catch (e) {
+        models = `error: ${errText(e)}`
+      } finally {
+        await h.close()
+      }
+      attempts.push({ backend: fileBackend ? 'file' : 'default', models, recorded: !!rec.answer })
+      if (rec.answer) break
     }
-    ev.observed = { tried: rec.tried, refused: rec.refused, models, answeredBy: rec.answer?.origin ?? null, personalDirs: personalDiff(before, personalListing()) }
+    ev.observed = { attempts, tried: rec.tried, refused: rec.refused, models, answeredBy: rec.answer?.origin ?? null, personalDirs: personalDiff(before, personalListing()) }
     if (rec.answer) {
       const body = JSON.stringify(redactEvidence(JSON.parse(rec.answer.body)), null, 2)
       mkdirSync(dirname(c.museModelsPath), { recursive: true })
@@ -363,16 +371,18 @@ async function m2(ev: Evidence): Promise<void> {
     museRoot(r.config)
     c.museFront.reset(`${ev.id}-${label}`, {})
     const mark = c.museFront.requests.length
+    const t0 = Date.now()
     try {
       const h = await museOpen(ev, r, { fileBackend })
+      let modelList: string
       try {
-        await within(h.conn.request('model/list', {}), 30_000, 'model/list').catch(() => undefined)
+        modelList = await within(h.conn.request('model/list', {}), 30_000, 'model/list').then((x) => `${((x.models as unknown[] | undefined) ?? []).length} models`, (e) => `error: ${errText(e)}`)
         await sleep(1_000)
       } finally {
         await h.close()
       }
       const reqs = c.museFront.since(mark)
-      out[label] = { requests: reqs.map((q) => `${q.method} ${q.path}`), bearer: uniq(reqs.map((q) => q.bearer)) }
+      out[label] = { requests: reqs.map((q) => `${q.method} ${q.path}`), bearer: uniq(reqs.map((q) => q.bearer)), modelList, ms: Date.now() - t0 }
     } catch (e) {
       out[label] = { error: errText(e) }
     }
