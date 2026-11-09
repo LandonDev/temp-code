@@ -67,6 +67,13 @@ export interface ThreadResourcesDeps {
   runOn: (environmentId: string, thread: SessionMeta, argv: string[], cwd: string) => Promise<RunResult>
   /** The home of a host, for `~` in its commands (this host's by default). */
   homeOf?: (environmentId: string) => string | null
+  /**
+   * End a box thread's computer session on its Mac (computer/bridge.ts
+   * ComputerBridge.end): what removing a `computer` row does, instead of a
+   * command. `ended: false` means the Mac held nothing for it; a rejection
+   * with `offline: true` leaves the row waiting for the Mac's link.
+   */
+  endComputer?: (environmentId: string, thread: SessionMeta, identifier: string) => Promise<{ ended: boolean }>
   now?: () => number
   log?: (line: string) => void
 }
@@ -97,6 +104,9 @@ export class ThreadResources {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
   }
+
+  /** How a `computer` row is removed (the deps' endComputer, or set once the bridge exists). */
+  endComputer: ThreadResourcesDeps['endComputer'] | null = null
 
   /** Adds what the ledger does not keep to a row on its way out: a port's forwards (portForward.ts). */
   decorate: ((r: ThreadResource) => ThreadResource) | null = null
@@ -197,6 +207,17 @@ export class ThreadResources {
   /** A resource ended on its own (a port stopped listening): its live row is stamped with the note. */
   ended(environmentId: string, kind: ThreadResourceKind, identifier: string, note: string): number {
     return this.markRemoved(environmentId, [{ kind, identifier }], note)
+  }
+
+  /** A box thread's computer session on a Mac (computer/bridge.ts): one live row per thread there, labelled by the first app it used. */
+  recordComputer(sessionId: string, macPeer: string, label: string): void {
+    if (this.live(macPeer, 'computer', sessionId)) return
+    this.record(sessionId, macPeer, { created: [{ kind: 'computer', identifier: sessionId, label: label || 'Computer use', branch: null }], removed: [] })
+  }
+
+  /** That session ended without a removal (the thread ended, the idle close, a Stop): its live row is stamped with the note. */
+  computerEnded(sessionId: string, macPeer: string, note: string): number {
+    return this.ended(macPeer, 'computer', sessionId, note)
   }
 
   /** A port's listener changed hands (a watcher restarted the server): the row follows the new pid. */
@@ -347,7 +368,7 @@ export class ThreadResources {
     this.stamp(row.id, { removeRequestedAt: this.now(), note: null })
     try {
       const runner: ResourceRunner = (argv, cwd) => this.deps.runOn(row.environmentId, thread, argv, cwd)
-      const outcome = await removeResource(row, runner)
+      const outcome = row.kind === 'computer' ? await this.removeComputer(row, thread) : await removeResource(row, runner)
       this.stamp(row.id, { removedAt: this.now(), note: outcome.note })
       this.log(`thread=${row.sessionId} removed ${row.kind} ${row.identifier} on ${row.environmentId}${outcome.note ? ` (${outcome.note})` : ''}`)
       return { id: row.id, outcome: 'removed', note: outcome.note }
@@ -361,6 +382,14 @@ export class ThreadResources {
     } finally {
       this.removing.delete(row.id)
     }
+  }
+
+  /** A computer row is ended on its Mac by the bridge, never by a command. */
+  private async removeComputer(row: ThreadResource, thread: SessionMeta): Promise<{ note: string | null }> {
+    const end = this.endComputer ?? this.deps.endComputer
+    if (!end) throw new Error('computer use through the Mac bridge is not running here')
+    const { ended } = await end(row.environmentId, thread, row.identifier)
+    return { note: ended ? null : 'was already gone' }
   }
 
   private stamp(id: string, patch: { removeRequestedAt?: number | null; removedAt?: number | null; note?: string | null }): void {

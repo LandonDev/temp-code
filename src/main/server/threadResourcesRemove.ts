@@ -18,6 +18,8 @@ import { parseLsof, parseSs } from './threadPortsParse'
  *   port        kill -TERM <pid> only while that pid still listens on the
  *               port (ss on Linux, lsof on macOS), up to 3 s for it to go,
  *               then kill -KILL; another process on the port is never touched.
+ *   computer    no command: ThreadResources asks the Mac bridge to end the
+ *               box thread's session (mac.computerEnd ended).
  * A resource already gone is a removal with a note, not a failure.
  */
 
@@ -47,6 +49,9 @@ export async function removeResource(row: ThreadResource, run: ResourceRunner): 
       return removeDevInstance(row, run)
     case 'port':
       return removePort(row, run)
+    case 'computer':
+      // ThreadResources ends it through the Mac bridge (computer/bridge.ts); no command names it.
+      throw new Error('refused: a computer session is ended by the Mac bridge, not by a command')
   }
 }
 

@@ -167,6 +167,37 @@ describe('ThreadResources ledger', () => {
       expect(ledger.list('root')[0]).toMatchObject({ removeRequestedAt: null, note: 'denied at the Mac' })
       expect(ledger.waitingOn(MAC)).toEqual([])
     })
+    it('a computer session is one row per thread on its Mac, filed under the root, ended through the bridge', async () => {
+      const end = vi.fn(async () => ({ ended: true }))
+      ledger.endComputer = end
+      ledger.recordComputer('child', MAC, 'TextEdit')
+      ledger.recordComputer('child', MAC, 'Notes')
+      const rows = ledger.list('root')
+      expect(rows).toMatchObject([{ kind: 'computer', identifier: 'child', environmentId: MAC, label: 'TextEdit' }])
+      const [result] = await ledger.remove('root')
+      expect(result).toMatchObject({ outcome: 'removed', note: null })
+      expect(end).toHaveBeenCalledWith(MAC, sessions.get('root'), 'child')
+      expect(runOn).not.toHaveBeenCalled()
+      ledger.recordComputer('child', MAC, '')
+      expect(ledger.list('root')).toMatchObject([{ label: 'Computer use' }])
+      end.mockResolvedValueOnce({ ended: false })
+      expect((await ledger.remove('root'))[0]).toMatchObject({ outcome: 'removed', note: 'was already gone' })
+    })
+    it('a computer row whose Mac is offline waits and is retried on its link-up; one that ended on its own is stamped', async () => {
+      const end = vi.fn(async (): Promise<{ ended: boolean }> => {
+        throw new OfflineError(MAC)
+      })
+      ledger.endComputer = end
+      ledger.recordComputer('root', MAC, 'TextEdit')
+      expect((await ledger.remove('root'))[0]).toMatchObject({ outcome: 'waiting' })
+      end.mockImplementation(async () => ({ ended: true }))
+      await ledger.linkUp(MAC)
+      expect(ledger.list('root')).toEqual([])
+      ledger.recordComputer('root', MAC, 'TextEdit')
+      expect(ledger.computerEnded('root', MAC, 'closed after 10 idle minutes')).toBe(1)
+      const [row] = ledger.list('root', true).filter((r) => r.note === 'closed after 10 idle minutes')
+      expect(row).toMatchObject({ kind: 'computer', removedAt: expect.any(Number) })
+    })
     it('a row whose thread is gone cannot run as it', async () => {
       ledger.record('root', ME, { created: [{ kind: 'worktree', identifier: '/a', label: 'a', branch: null }], removed: [] })
       sessions.delete('root')
