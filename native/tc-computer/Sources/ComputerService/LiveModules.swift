@@ -1,6 +1,7 @@
 import ApplicationServices
 import ComputerCore
 import ComputerProtocol
+import struct ComputerProtocol.WindowRef
 import Foundation
 
 extension Modules {

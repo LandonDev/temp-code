@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import ComputerProtocol
+import struct ComputerProtocol.WindowRef
 import ComputerServiceKit
 import Foundation
 

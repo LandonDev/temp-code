@@ -1,4 +1,5 @@
 import ComputerProtocol
+import struct ComputerProtocol.WindowRef
 import Foundation
 
 #if canImport(ApplicationServices)

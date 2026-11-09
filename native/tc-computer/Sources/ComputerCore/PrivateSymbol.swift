@@ -30,8 +30,8 @@ public enum PrivateSymbol {
 
     #if canImport(Darwin)
     /// RTLD_DEFAULT, `((void *) -2)` on Darwin, which Swift does not import.
-    private static let defaultHandle = UnsafeMutableRawPointer(bitPattern: -2)
+    nonisolated(unsafe) private static let defaultHandle = UnsafeMutableRawPointer(bitPattern: -2)
     #else
-    private static let defaultHandle: UnsafeMutableRawPointer? = nil
+    nonisolated(unsafe) private static let defaultHandle: UnsafeMutableRawPointer? = nil
     #endif
 }

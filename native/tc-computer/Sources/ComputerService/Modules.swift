@@ -1,6 +1,7 @@
 import ApplicationServices
 import ComputerCore
 import ComputerProtocol
+import struct ComputerProtocol.WindowRef
 import Foundation
 
 /// What the shell needs of the AX reader's `AXReaders`: one reader per session × pid.

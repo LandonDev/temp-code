@@ -1,6 +1,7 @@
 import ApplicationServices
 import ComputerCore
 import ComputerProtocol
+import struct ComputerProtocol.WindowRef
 @testable import ComputerService
 import ComputerServiceKit
 import Foundation

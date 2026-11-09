@@ -40,12 +40,15 @@ extension ComputerService {
         case .go: break
         }
         do {
-            let result = try await initializeOnce(p)
+            let (result, released) = try await initializeOnce(p)
             lock.withLock {
                 initResult = (p.dataDir, result)
                 initializing = false
             }
             router.markInitialized()
+            if released > 0 {
+                log(.info, "released \(released) held \(released == 1 ? "input" : "inputs") a stopped service left down")
+            }
             startWatchers()
             return result
         } catch {
@@ -54,7 +57,8 @@ extension ComputerService {
         }
     }
 
-    private func initializeOnce(_ p: Methods.Initialize.Params) async throws -> Methods.Initialize.Output {
+    /// Answers the result and how many held inputs it let go of; that log waits for `markInitialized`, since `log` drops a line before it.
+    private func initializeOnce(_ p: Methods.Initialize.Params) async throws -> (Methods.Initialize.Output, Int) {
         let dataDir = URL(fileURLWithPath: p.dataDir, isDirectory: true)
         try? FileManager.default.createDirectory(at: dataDir, withIntermediateDirectories: true)
         let lockPath = dataDir.appendingPathComponent("service.lock").path
@@ -69,19 +73,18 @@ extension ComputerService {
         if !stale.isEmpty {
             let input = self.input
             await Task.detached { for record in stale { input.releaseStale(record) } }.value
-            log(.info, "released \(stale.count) held \(stale.count == 1 ? "input" : "inputs") a stopped service left down")
         }
 
         let read = readPermissions()
         lock.withLock { permissions = read }
-        return Methods.Initialize.Output(
+        return (Methods.Initialize.Output(
             protocol: computerProtocol,
             service: .init(version: build.version, build: build.build),
             epoch: epoch,
             os: .init(version: env.system.osVersion(), arch: env.system.arch()),
             permissions: read,
             displays: env.system.displays()
-        )
+        ), stale.count)
     }
 
     /// `initialize` stays answered from `initResult`; this is for `log`, which waits for it.
