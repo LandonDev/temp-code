@@ -1852,6 +1852,85 @@ names the far child).
   unit tests away, awaySync, sessions-away, macBridge, macTools, the
   drivers' answers and denials, AwayRow.dom, AwayReturn.dom.
 
+## Add-ons and skills: one store, on the box
+The plan is .temp-code/plan-uv2o7r5RN64s.md. This build is the data layer;
+the registry core, the skills store core, the add-on OAuth leg, skills into
+the drivers and the settings pages build on it. Nothing here exposes a tool,
+runs a downstream server or writes a skill folder yet.
+- **What they are.** An add-on is an MCP server every harness will reach
+  through the one `app` server: a stdio command each host runs, or an http
+  address (`AddonSpec` in src/shared/contract-addons.ts). A skill is a folder
+  every CLI will read from a folder the app writes: SKILL.md at its root and
+  the files beside it (src/shared/contract-skills.ts). Both are global
+  (`workspaceId: null`) or one workspace's, a workspace row shadowing the
+  global row of its name (`visibleRows`, `visibleSkills`); ids `ad_` / `sk_`
+  plus 12; names `ADDON_NAME_RE` (≤ 20, so `<addon>__<tool>` fits Claude's 64)
+  and `SKILL_NAME_RE`. Each row keeps `addedBy` and `writtenBy` (`Writer`: a
+  person with an optional key name, a thread, or an import).
+- **Tables** (created by each store's constructor on the app database):
+  `addons` and this host's `addon_tool_cache` (src/main/server/addonStore.ts:
+  `set` validates, mints, stamps and refuses a name taken in its scope; `put`
+  is the sync's write; the tool cache is voided when the spec's digest moves;
+  the status is in memory, set by the registry core); `skills` and
+  `skill_files` (skillStore.ts: a skill written whole in one transaction, the
+  description read from SKILL.md, `version` moving only when the files, the
+  harnesses or enabled change; `put` takes files only when the digest moved).
+  No column holds a secret: `env` and `headers` name the values, which live in
+  the add-on's grant. A deleted workspace drops its rows
+  (`registry.onWorkspaceDeleted`).
+- **The rules** (pure, shared, the renderer can read them): `addonProblem`
+  (no secret in `command`, `args` or `url` by `looksSecret`, plain http only
+  to this machine, `tokenEnv` only with oauth and required by a stdio oauth
+  add-on, unique names, fields needing a name) and `exposedNames` (a cut or
+  clashing name ends `_` plus four hex of its sha256) in src/shared/addons.ts;
+  `skillProblem` (SKILL.md with frontmatter naming the skill, clean paths, no
+  secret path, nothing under `scripts/bin/`, no native binary, 512 files, 4
+  MiB a file, 16 MiB a skill), `skillDigest`, `skillFrontmatter`,
+  `viewDigest`, `viewDirName` in src/shared/skills.ts. `isSecretPath` and
+  `validRelPath` moved to src/shared/secretPaths.ts (harnessSet.ts re-exports
+  them), and src/shared/sha256.ts is a hash with no runtime import.
+  `readSkillDir` and `writeSkillTree` (src/main/server/skillFiles.ts) read and
+  write a skill folder, never outside it; a link leaving the folder is refused.
+- **One copy, on the box** (remote/storeSync.ts, `StoreSync`, beside
+  RulesSync, whose home and `sharedScopes` it reads): the Mac follows both
+  tables, seeds each shared scope once, forwards every write of a shared scope
+  and refuses it while the box is out of reach; a workspace the box has no
+  copy of stays the Mac's own. docs/box.md "Add-ons and skills: one copy, on
+  the box" has the rules.
+- **Wire** (src/main/server/storeRpc.ts, one line per method in index.ts):
+  `addons.list` (every row, this host's status, the named scope's `home`),
+  `addons.tools`, `skills.list`, `skills.get` are read; `addons.set`,
+  `addons.remove`, `skills.set`, `skills.remove` are admin, and keep the
+  writers a request carries only for an admin caller (the Mac's sync). The
+  `addons`, `addon-status` and `skills` pushes go to every client once per
+  burst (`storePushes`). The bridge methods `app.addonList`, `app.addonAdd`,
+  `app.addonRemove`, `app.addonFind`, `app.addonCall`, `app.skillList`,
+  `app.skillWrite`, `app.skillRemove` are in the contract and `local`; the
+  cores add their handlers, and until then they answer unknown method. The
+  phone speaks none of these.
+- **The cards.** The words are pure (`addonCard`, `addonRemoveCard`,
+  `skillChangeCard`, `skillRemoveCard`). `skill_write` and `skill_remove` ask
+  only over a skill a person or an import wrote last; `addon_remove` only over
+  an add-on a person wrote last; `addon_add` always, and only a person with an
+  admin key may allow it: SessionRegistry keeps the tool of each pending
+  approval (`pendingApprovalTool`), and `assertMayAnswer` refuses an allow
+  with `forbidden: approving an add-on needs a person with an admin key` on
+  `session.approve` from a key without admin, on a far parent's
+  `thread.answer` and on an MCP key's prompt answer. A deny always passes.
+- **The grant** (src/shared/addonGrant.ts): `AddonGrantBlobSchema`
+  (`mintedBy: 'app'`, the typed fields, an OAuth client with its fixed
+  loopback `redirectPort`), `grantNeeds`, `grantGaps` (a client registered and
+  never signed in reads `sign-in`). The aliax-core `addon` service, the Mac's
+  sign-in and the handoff to the box are the OAuth build's.
+- **The layout the drivers will read**: `<userData>/harness/<provider>/
+  <view>@<digest12>/skills/<name>/`, one generation per view, built beside
+  and renamed into place, with a symlink `<view>` to the current one; `view`
+  is `global` or `ws-<workspaceId>`.
+- Tests: addons, skills, addonGrant, secretPaths, contract-addons,
+  capabilities, addonStore, skillStore, skillFiles, storeRpc,
+  remote/storeSync, remote/storeSync.pair (the two-host proof),
+  sessions-approval, sessions-workspaces, crossHostThreads, facade.
+
 ## Background work and watching: a structured wait on the session row
 - The claude driver keeps every live background task as an item
   (`BackgroundTaskSchema` in src/shared/events.ts: id, the model's label,

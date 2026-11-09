@@ -4190,6 +4190,49 @@ renderer's `lib/tcserver/rules.test.ts`, `Orchestration.dom.test.tsx` and
 headless instances; only the one playing the Mac serves Muse rows, through
 `TEMP_CODE_PROBED_CATALOG`; build first).
 
+### Add-ons and skills: one copy, on the box
+
+The add-on registry (MCP servers every harness reaches through the one `app`
+server) and the skills store (skills every CLI reads from a folder the app
+writes) keep their rows in the app database: `addons` (and this host's own
+`addon_tool_cache`, never synced), `skills` and `skill_files`. No column holds
+a secret: an add-on's `env` and `headers` name values that live in its grant,
+an aliax-core profile of service `addon` named by the row's id.
+
+Both tables have one copy, on the same home as the rules
+(`src/main/server/remote/storeSync.ts`, `StoreSync`, which reads RulesSync's
+home and shared scopes). The Mac follows it on link-up, on the box's `addons`,
+`skills` or `workspaces` push and every 5 minutes: it reads the box's rows,
+writes them here with the box's ids, times and writers, fetches a skill's files
+(`skills.get`) only when its digest moved, and drops a row of a shared scope
+the box no longer lists. Before a shared scope's first follow it seeds once
+(`store-sync:seeded:<envId>:<table>`): each row of that scope the box lacks
+goes there with its id and writers, so a workspace linked after the first sync
+keeps its rows. A name the box already uses in that scope is the box's: the
+Mac's row is dropped, and the log names both ids. A workspace the box has no
+copy of keeps its rows on the Mac, never forwarded and never dropped.
+
+A write on the Mac to a shared scope goes to the box (`addons.set`,
+`addons.remove`, `skills.set`, `skills.remove` over the admin link, the
+writers carried) and the box's answer lands here. With the box out of reach
+it is refused with `refused: add-ons and skills live on box; it is offline`
+and nothing is written. A follow whose read went out before such a write never
+writes its older answer over it. `addons.list` and `skills.list` answer
+`home: { name, online }` for the named scope, which the settings pages print.
+
+Each host runs its own downstream servers, so what an add-on's tools are and
+its state (`addons.tools`, the status in `addons.list`, the `addon-status`
+push) are this host's alone. Removing an add-on on the box deletes its grant
+there; the tombstone carries the deletion to the Mac.
+
+Tests: `addonStore.test.ts`, `skillStore.test.ts`, `skillFiles.test.ts`,
+`storeRpc.test.ts`, `remote/storeSync.test.ts`, and the two-host proof
+`remote/storeSync.pair.test.ts` (a box and a Mac in one process, each with its
+own database, stores, RulesSync, StoreSync and storeRpc, joined by an
+in-memory link: the seed, a forwarded write, a box edit and removal by push,
+the workspace map, a workspace the box lacks, the refusal, a binary file's
+round trip and the seed clash).
+
 ## One project across hosts: a far start lands in the linked project
 
 A thread one host starts on another (`app_start_thread` or `spawn_agent`
