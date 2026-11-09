@@ -209,7 +209,10 @@ export async function runComputerTool(host: RunHost, t: ThreadComputer, ctx: Com
 
   const now = host.now()
   t.live = t.live ?? { since: now, lastCallAt: now, running: null, tier: null }
-  t.live.running = { tool, words: computerActivity(tool, args)?.text ?? 'Using the computer', startedAt: now }
+  // the words name the element from the thread's book: "Clicking Save in TextEdit"
+  const known = args.app ? lookupApp(t, args.app) : undefined
+  const words = computerActivity(tool, args, (i) => known?.book.brief(i) ?? null, known?.name)?.text
+  t.live.running = { tool, words: words ?? 'Using the computer', startedAt: now }
   host.touched(t)
   try {
     return await runChecked(host, t, ctx, tool, args, signal)

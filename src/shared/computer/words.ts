@@ -8,7 +8,7 @@ import type { PermissionPolicy } from '../events'
 import { parseElementLine } from './observation'
 import { confirmInput, confirmTitle, type Confirm, type ConfirmNeed, type HostConfirmKind } from './policy'
 import { COMPUTER_ACTION_NAMES, NO_INPUT_ACTIONS, type ComputerAction, type ComputerActionName, type ElementBrief } from './protocol'
-import type { ComputerToolName } from './tools'
+import { parseStepLine, type ComputerToolName } from './tools'
 
 /** A tool's own name: `mcp__app__computer_act` and `computer_act` alike, a per-verb `computer_left_click` as its verb. */
 export function computerToolOf(name: string): { tool: ComputerToolName; action?: ComputerActionName } | null {
@@ -202,45 +202,180 @@ export function computerApprovalInput(tool: ComputerToolName, args: ToolArgs, ct
   }
 }
 
-const ACTIVITY: Partial<Record<ComputerActionName, string>> = {
-  left_click: 'Clicking in',
-  right_click: 'Clicking in',
-  middle_click: 'Clicking in',
-  double_click: 'Clicking in',
-  triple_click: 'Clicking in',
-  left_mouse_down: 'Clicking in',
-  left_mouse_up: 'Clicking in',
-  left_click_drag: 'Dragging in',
-  mouse_move: 'Pointing in',
-  scroll: 'Scrolling in',
-  type: 'Typing in',
-  paste: 'Pasting in',
-  key: 'Pressing keys in',
-  hold_key: 'Pressing keys in',
-  set_value: 'Setting a value in',
-  select_text: 'Selecting text in',
-  perform: 'Using',
-  screenshot: 'Looking at',
-  zoom: 'Looking at',
-  cursor_position: 'Looking at',
-  wait: 'Waiting on'
+// ── a call in plain words: the working line, the transcript's row, the Activity row ──
+
+/** A computer call in words: the verb a row draws muted, the object in foreground, a batch's step count. */
+export interface ComputerPhrase {
+  verb: string
+  object: string
+  tally?: string
 }
 
-/** The activity line describeTool shows for a computer tool, or null for any other tool. */
-export function computerActivity(name: string, input: unknown): { text: string; kind: 'investigate' | 'edit' } | null {
-  const of = computerToolOf(name)
-  if (!of) return null
-  const i = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
-  const app = typeof i.app === 'string' && i.app.trim() ? i.app.trim() : 'an app'
-  if (of.tool === 'computer_apps') return { text: 'Listing apps', kind: 'investigate' }
-  if (of.tool === 'computer_observe') return { text: `Reading ${app}`, kind: 'investigate' }
-  if (of.tool === 'computer_batch') {
-    const actions = Array.isArray(i.actions) ? (i.actions as { action?: ComputerActionName }[]) : []
-    const acts = actions.some((a) => a && typeof a.action === 'string' && sendsInput({ action: a.action }))
-    return { text: `Working in ${app}`, kind: acts ? 'edit' : 'investigate' }
+export interface PhraseOptions {
+  /** present tense while the call runs, past once it settled */
+  live: boolean
+  /** an element's book line (the host passes its book; the renderer has none while a call runs) */
+  brief?: (index: number) => ElementBrief | null
+  /** the settled result's text: its step lines name each element and its header the app */
+  result?: string
+  /** the app's own name when the host knows it, before the result says it */
+  app?: string
+}
+
+type Named = { role: string; name: string | null } | null
+type Forms = readonly [live: string, settled: string]
+
+/** Never words a person should not read on a collapsed row: a name that is a URL or a path reads as its role. */
+const LOOKS_LIKE_PATH = /:\/\/|^[/~]|^[A-Za-z]:\\/
+
+function elementWords(e: Named): string | null {
+  if (!e) return null
+  if (e.name && e.name.trim() && !LOOKS_LIKE_PATH.test(e.name)) return e.name.trim()
+  if (!e.role) return null
+  return `${/^[aeiou]/.test(e.role) ? 'an' : 'a'} ${e.role}`
+}
+
+function briefNamed(brief: ElementBrief | null): Named {
+  if (!brief) return null
+  try {
+    const e = parseElementLine(`[${brief.index}] ${brief.line}`)
+    return { role: e.role, name: e.name ?? null }
+  } catch {
+    return null
   }
-  const action = of.action ?? (typeof i.action === 'string' ? (i.action as ComputerActionName) : undefined)
-  const verb = action ? ACTIVITY[action] : undefined
-  if (!action || !verb) return { text: `Using ${app}`, kind: 'edit' }
-  return { text: `${verb} ${app}`, kind: sendsInput({ action }) ? 'edit' : 'investigate' }
+}
+
+const CLICK_FORMS: Partial<Record<ComputerActionName, Forms>> = {
+  left_click: ['Clicking', 'Clicked'],
+  right_click: ['Right-clicking', 'Right-clicked'],
+  middle_click: ['Middle-clicking', 'Middle-clicked'],
+  double_click: ['Double-clicking', 'Double-clicked'],
+  triple_click: ['Triple-clicking', 'Triple-clicked']
+}
+
+const titleWords = (s: string): string => s.replace(/\b[a-z]/g, (c) => c.toUpperCase())
+const keyWords = (s: unknown): string | null => (typeof s === 'string' && s.trim() && s.length <= 40 ? s.trim() : null)
+
+type StepInput = { action?: unknown; element?: unknown; text?: unknown; scroll_direction?: unknown; name?: unknown }
+
+/** One action in words, with the element it names (already resolved) in the app. */
+function stepPhrase(a: StepInput, element: Named, app: string, live: boolean): ComputerPhrase {
+  const f = (forms: Forms): string => forms[live ? 0 : 1]
+  const who = elementWords(element)
+  const inApp = `in ${app}`
+  const on = (thing: string | null): string => (thing ? `${thing} ${inApp}` : inApp)
+  const action = a.action as ComputerActionName
+  const click = CLICK_FORMS[action]
+  if (click) return { verb: f(click), object: on(who) }
+  switch (action) {
+    case 'type':
+      return { verb: f(['Typing', 'Typed']), object: who ? `into ${who} ${inApp}` : inApp }
+    case 'paste':
+      return { verb: f(['Pasting', 'Pasted']), object: who ? `into ${who} ${inApp}` : inApp }
+    case 'key':
+      return { verb: f(['Pressing', 'Pressed']), object: on(keyWords(a.text) ?? 'a key') }
+    case 'hold_key':
+      return { verb: f(['Holding', 'Held']), object: on(keyWords(a.text) ?? 'a key') }
+    case 'scroll':
+      return { verb: f(['Scrolling', 'Scrolled']), object: on(typeof a.scroll_direction === 'string' ? a.scroll_direction : null) }
+    case 'left_click_drag':
+      return { verb: f(['Dragging', 'Dragged']), object: inApp }
+    case 'mouse_move':
+      return who ? { verb: f(['Pointing at', 'Pointed at']), object: on(who) } : { verb: f(['Moving', 'Moved']), object: on('the pointer') }
+    case 'left_mouse_down':
+      return { verb: f(['Pressing', 'Pressed']), object: on('the mouse button') }
+    case 'left_mouse_up':
+      return { verb: f(['Letting go of', 'Let go of']), object: on('the mouse button') }
+    case 'set_value':
+      return { verb: f(['Setting', 'Set']), object: on(who ?? 'a value') }
+    case 'select_text':
+      return { verb: f(['Selecting', 'Selected']), object: on('text') }
+    case 'perform': {
+      const what = keyWords(a.name)
+      return { verb: f(['Using', 'Used']), object: on([what && titleWords(what), who && `on ${who}`].filter(Boolean).join(' ') || null) }
+    }
+    case 'screenshot':
+      return { verb: f(['Looking at', 'Looked at']), object: app }
+    case 'zoom':
+      return { verb: f(['Zooming into', 'Zoomed into']), object: app }
+    case 'wait':
+      return { verb: f(['Waiting on', 'Waited on']), object: app }
+    case 'cursor_position':
+      return { verb: f(['Finding', 'Found']), object: on('the pointer') }
+    default:
+      return { verb: f(['Using', 'Used']), object: app }
+  }
+}
+
+/** The app the observation's header names (`app "TextEdit" · window …`), when the result has one. */
+function resultApp(result: string | undefined): string | null {
+  if (!result) return null
+  for (const line of result.split('\n')) {
+    const m = /^app ("(?:[^"\\]|\\.)*")/.exec(line)
+    if (m) {
+      try {
+        return JSON.parse(m[1]) as string
+      } catch {
+        return null
+      }
+    }
+  }
+  return null
+}
+
+const isAction = (a: unknown): a is StepInput & { action: ComputerActionName } =>
+  !!a && typeof a === 'object' && (COMPUTER_ACTION_NAMES as readonly unknown[]).includes((a as StepInput).action)
+
+/**
+ * A computer call in plain words: "Clicking Save in TextEdit" while it runs,
+ * "Clicked Save in TextEdit" once it settled. An element is named by its
+ * name, else its role ("a button"), never its index; typed text, URLs and
+ * paths never enter the words. Null for any other tool.
+ */
+export function computerPhrase(tool: string, input: unknown, opts: PhraseOptions): ComputerPhrase | null {
+  const of = computerToolOf(tool)
+  if (!of) return null
+  const live = opts.live
+  const f = (forms: Forms): string => forms[live ? 0 : 1]
+  const i = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
+  const app = (!live ? resultApp(opts.result) : null) ?? opts.app ?? (typeof i.app === 'string' && i.app.trim() ? i.app.trim() : 'an app')
+  if (of.tool === 'computer_apps') return { verb: f(['Listing', 'Listed']), object: 'apps' }
+  if (of.tool === 'computer_observe') return { verb: f(['Reading', 'Read']), object: app }
+
+  const actions: (StepInput & { action: ComputerActionName })[] =
+    of.tool === 'computer_batch'
+      ? (Array.isArray(i.actions) ? i.actions : []).filter(isAction)
+      : isAction({ ...i, action: of.action ?? i.action })
+        ? [{ ...i, action: (of.action ?? i.action) as ComputerActionName }]
+        : []
+  if (!actions.length) return of.tool === 'computer_batch' ? { verb: f(['Working', 'Worked']), object: `in ${app}` } : { verb: f(['Using', 'Used']), object: app }
+
+  // the settled result's first lines are the step lines, one per action, in order
+  const lines = !live && opts.result ? opts.result.split('\n') : []
+  const named = (k: number): Named => {
+    const line = lines[k] !== undefined ? parseStepLine(lines[k]) : null
+    if (line && line.action === actions[k].action) return line.element ? { role: line.element.role, name: line.element.name } : null
+    const index = actions[k].element
+    return typeof index === 'number' && opts.brief ? briefNamed(opts.brief(index)) : null
+  }
+  const acting = actions.flatMap((a, k) => (sendsInput(a) ? [k] : []))
+  const one = acting.length === 1 ? acting[0] : actions.length === 1 ? 0 : null
+  if (one !== null) return stepPhrase(actions[one], named(one), app, live)
+  return { verb: f(['Working', 'Worked']), object: `in ${app}`, tally: `${actions.length} steps` }
+}
+
+/** The activity line the thread's row, Activity and the working line show while a computer call runs; null for any other tool. */
+export function computerActivity(
+  name: string,
+  input: unknown,
+  brief?: (index: number) => ElementBrief | null,
+  app?: string
+): { text: string; kind: 'investigate' | 'edit' } | null {
+  const phrase = computerPhrase(name, input, { live: true, brief, app })
+  if (!phrase) return null
+  const of = computerToolOf(name)!
+  const i = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
+  const steps: unknown[] = of.tool === 'computer_batch' ? (Array.isArray(i.actions) ? i.actions : []) : of.tool === 'computer_act' ? [{ ...i, action: of.action ?? i.action }] : []
+  const acts = steps.length === 0 ? of.tool === 'computer_act' : steps.some((a) => !isAction(a) || sendsInput(a))
+  return { text: `${phrase.verb} ${phrase.object}`, kind: acts ? 'edit' : 'investigate' }
 }

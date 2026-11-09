@@ -414,3 +414,116 @@ export function formatShotLine(n: number, where: number | 'observation', shot: {
   const source = where === 'observation' ? 'observation' : `step ${where}`
   return `screenshot ${n} (${source}): ${shot.path} (${shot.width}×${shot.height})${attached ? '' : NOT_ATTACHED}`
 }
+
+export interface ShotLine {
+  n: number
+  from: { step: number } | 'observation'
+  path: string
+  width: number
+  height: number
+  attached: boolean
+}
+
+const SHOT_LINE = /^screenshot ([1-9]\d*) \((observation|step ([1-9]\d*))\): (.+) \(([1-9]\d*)×([1-9]\d*)\)( \(not attached\))?$/
+
+/** One `formatShotLine` line back to its parts; null for any other line. */
+export function parseShotLine(line: string): ShotLine | null {
+  const m = SHOT_LINE.exec(line)
+  if (!m) return null
+  return {
+    n: Number(m[1]),
+    from: m[3] === undefined ? 'observation' : { step: Number(m[3]) },
+    path: m[4],
+    width: Number(m[5]),
+    height: Number(m[6]),
+    attached: m[7] === undefined
+  }
+}
+
+export interface StepLine {
+  action: ComputerActionName
+  /** what the step acted on, as its line wrote it (`[14] button "Save"`, `down 3 on [5]`); empty for a step with none */
+  target: string
+  /** the element the line names with its role (a bare `[14]` the service had no line for is left out) */
+  element?: { index: number; role: string; name: string | null }
+  /** the tier, or for a `type` the way it went in: `ax`, `ax-insert`, `no tier` */
+  tier?: string
+  effect?: StepEffect
+  /** a failed step's reason */
+  failed?: string
+}
+
+const ROLE_STOP = /^(?:with|to|into|on|in)\b/
+const NO_TARGET: readonly ComputerActionName[] = ['screenshot', 'cursor_position', 'left_mouse_down', 'left_mouse_up']
+
+/** Where the head of a step line ends: the first separator outside a quoted name or value. */
+function headEnd(line: string): number {
+  let quoted = false
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]
+    if (quoted) {
+      if (c === '\\') i++
+      else if (c === '"') quoted = false
+    } else if (c === '"') quoted = true
+    else if (line.startsWith(STEP_SEPARATOR, i)) return i
+  }
+  return line.length
+}
+
+/** The first `[n] role "name"` in a target, outside quotes. */
+function targetElement(target: string): StepLine['element'] {
+  let quoted = false
+  for (let i = 0; i < target.length; i++) {
+    const c = target[i]
+    if (quoted) {
+      if (c === '\\') i++
+      else if (c === '"') quoted = false
+      continue
+    }
+    if (c === '"') {
+      quoted = true
+      continue
+    }
+    const m = c === '[' ? /^\[([1-9]\d*)\]/.exec(target.slice(i)) : null
+    if (!m) continue
+    const rest = target.slice(i + m[0].length)
+    const role = /^ ([a-z][a-z0-9:-]*(?: [a-z][a-z0-9:-]*)*?)(?= "| with | to |$)/.exec(rest)
+    if (!role || ROLE_STOP.test(role[1])) return undefined
+    const after = rest.slice(role[0].length)
+    const name = /^ ("(?:[^"\\]|\\.)*")/.exec(after)
+    return { index: Number(m[1]), role: role[1], name: name ? (JSON.parse(name[1]) as string) : null }
+  }
+  return undefined
+}
+
+const EFFECT_OF: Readonly<Record<string, StepEffect>> = Object.fromEntries(Object.entries(EFFECT_WORDS).map(([k, v]) => [v, k as StepEffect]))
+
+/** One `formatStepLine` line back to its parts; null for any other line (a `Not executed` line, a shot line, the body). */
+export function parseStepLine(line: string): StepLine | null {
+  const end = headEnd(line)
+  const head = line.slice(0, end)
+  const space = head.indexOf(' ')
+  const action = space < 0 ? head : head.slice(0, space)
+  if (!(COMPUTER_ACTION_NAMES as readonly string[]).includes(action)) return null
+  const name = action as ComputerActionName
+  const target = space < 0 ? '' : head.slice(space + 1)
+  // these name nothing (stepTarget), so a `screenshot 1 (observation): …` line is a shot line
+  if (target && NO_TARGET.includes(name)) return null
+  const out: StepLine = { action: name, target }
+  const element = targetElement(target)
+  if (element) out.element = element
+  if (end === line.length) return out
+  const rest = line.slice(end + STEP_SEPARATOR.length)
+  if (rest.startsWith('failed: ')) return { ...out, failed: rest.slice('failed: '.length) }
+  if (NO_INPUT_ACTIONS.includes(name)) return out
+  const [tier, effect, ...extra] = rest.split(STEP_SEPARATOR)
+  if (!tier || extra.length || (effect !== undefined && !EFFECT_OF[effect])) return null
+  return { ...out, tier, ...(effect !== undefined ? { effect: EFFECT_OF[effect] } : {}) }
+}
+
+/**
+ * The text that leads a computer call's pictures when codex gets them as a
+ * steer into its running turn (drivers/codex.ts). Worded here first; the
+ * Computer model instructions thread owns it from now on.
+ */
+export const COMPUTER_PICTURES_TEXT = 'The screenshots your last computer call took, in the order its screenshot lines name them.'

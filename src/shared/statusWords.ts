@@ -115,3 +115,10 @@ export const COMPACTING_WORDS = 'Compacting context'
 
 /** The claude driver's status detail while it asks the model about background tasks it left idle; the desktop folds it into the turn's working line. */
 export const BACKGROUND_CHECK_WORDS = 'Checking background tasks'
+
+/** The tier a computer action ran at, as a person reads it: the Activity row's detail and the held line. Never ax, process or session. */
+export const COMPUTER_TIER_WORDS: Readonly<Record<'ax' | 'process' | 'session', string>> = {
+  ax: 'in the background',
+  process: 'to the app',
+  session: 'on the screen'
+}

@@ -350,7 +350,7 @@ it('describeTool words every tool the strip can meet; an unknown name is humaniz
   expect(say('Skill', {})).toBe('Using a skill')
   expect(say('mcp__app__computer_observe', { app: 'TextEdit' })).toBe('Reading TextEdit')
   expect(say('mcp__app__computer_act', { app: 'TextEdit', action: 'type', text: 'hi' })).toBe('Typing in TextEdit')
-  expect(say('computer_batch', { app: 'Mail', actions: [{ action: 'key', text: 'a' }] })).toBe('Working in Mail')
+  expect(say('computer_batch', { app: 'Mail', actions: [{ action: 'key', text: 'a' }, { action: 'key', text: 'b' }] })).toBe('Working in Mail')
   expect(say('mcp__app__computer_apps')).toBe('Listing apps')
 })
 

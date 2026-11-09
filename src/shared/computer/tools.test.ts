@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { COMPUTER_ACTION_NAMES, type ComputerAction, type StepResult } from './protocol'
 import {
@@ -15,6 +17,8 @@ import {
   computerToolJsonSchema,
   formatShotLine,
   formatStepLine,
+  parseShotLine,
+  parseStepLine,
   perVerbTools,
   stepTarget,
   tierVerdictSetting
@@ -150,5 +154,76 @@ describe('the result text', () => {
     const shot = { path: '/w/.temp-code/attachments/s/computer/0007.jpg', width: 1280, height: 800 }
     expect(formatShotLine(1, 'observation', shot, true)).toBe('screenshot 1 (observation): /w/.temp-code/attachments/s/computer/0007.jpg (1280×800)')
     expect(formatShotLine(5, 2, shot, false)).toBe('screenshot 5 (step 2): /w/.temp-code/attachments/s/computer/0007.jpg (1280×800) (not attached)')
+  })
+})
+
+describe('the line parsers', () => {
+  const ok = (action: ComputerAction['action'], extra: object): StepResult => ({ index: 0, action, status: 'ok', tier: 'ax', effect: 'changed', ...extra }) as StepResult
+  const save = { index: 14, line: 'button "Save"' }
+
+  it('read a shot line back whole, both sources, attached or not', () => {
+    const shot = { path: '/w/My Files (old)/.temp-code/attachments/s/computer/0007.jpg', width: 1280, height: 800 }
+    for (const where of ['observation', 2] as const)
+      for (const attached of [true, false]) {
+        const line = formatShotLine(3, where, shot, attached)
+        const back = parseShotLine(line)
+        expect(back, line).toEqual({ n: 3, from: where === 'observation' ? 'observation' : { step: 2 }, ...shot, attached })
+        expect(formatShotLine(back!.n, back!.from === 'observation' ? 'observation' : back!.from.step, back!, back!.attached)).toBe(line)
+      }
+  })
+
+  it('refuse lines that are not shot lines', () => {
+    for (const junk of ['', 'screenshot', 'screenshot 0 (observation): /a (1×1)', 'screenshot 1 (step two): /a (1×1)', 'left_click [14] button "Save" · ax · changed', 'screenshot 1 (observation): /a'])
+      expect(parseShotLine(junk), junk).toBeNull()
+  })
+
+  it('read a step line back to its action, element, tier and effect', () => {
+    const cases: [StepResult, ComputerAction, Partial<ReturnType<typeof parseStepLine>>][] = [
+      [ok('left_click', { element: save }), { action: 'left_click', element: 14 }, { action: 'left_click', element: { index: 14, role: 'button', name: 'Save' }, tier: 'ax', effect: 'changed' }],
+      [ok('left_click', { tier: 'process', effect: 'none' }), { action: 'left_click', coordinate: [5, 6], text: 'shift' }, { target: '5,6 with shift', tier: 'process', effect: 'none' }],
+      [ok('right_click', { element: { index: 2, line: 'scroll area' } }), { action: 'right_click', element: 2, text: 'shift' }, { element: { index: 2, role: 'scroll area', name: null } }],
+      [ok('type', { element: { index: 33, line: 'input "Sub · ject" = "" focused' }, input: { via: 'ax-insert' } }), { action: 'type', text: 'a · "b"', element: 33 }, { element: { index: 33, role: 'input', name: 'Sub · ject' }, tier: 'ax-insert', effect: 'changed' }],
+      [ok('set_value', { element: { index: 33, line: 'text area' } }), { action: 'set_value', element: 33, value: 'Hi' }, { element: { index: 33, role: 'text area', name: null } }],
+      [ok('perform', { element: { index: 9, line: 'pop up "Font"' } }), { action: 'perform', element: 9, name: 'show menu' }, { element: { index: 9, role: 'pop up', name: 'Font' } }],
+      [ok('scroll', { tier: 'session', effect: 'unknown' }), { action: 'scroll', scroll_direction: 'down', scroll_amount: 3, element: 5 }, { target: 'down 3 on [5]', tier: 'session', effect: 'unknown' }],
+      [ok('key', { tier: null, effect: 'none' }), { action: 'key', text: 'Tab', repeat: 4 }, { target: 'Tab ×4', tier: 'no tier', effect: 'none' }],
+      [ok('screenshot', { tier: null, effect: 'unknown' }), { action: 'screenshot' }, { action: 'screenshot', target: '' }],
+      [ok('zoom', { tier: null }), { action: 'zoom', region: [1, 2, 3, 4] }, { target: '1,2 to 3,4' }],
+      [ok('cursor_position', { tier: null, text: 'X=512, Y=384' }), { action: 'cursor_position' }, { target: '' }]
+    ]
+    for (const [step, action, want] of cases) {
+      const line = formatStepLine(step, action)
+      const back = parseStepLine(line)
+      expect(back, line).toMatchObject(want)
+      if (!('element' in want)) expect(back?.element, line).toBeUndefined()
+    }
+  })
+
+  it('read a failure whole, separators and quotes in its reason too', () => {
+    const failed: StepResult = { index: 1, action: 'perform', status: 'failed', error: { kind: 'action_unsupported', message: '[3] has no action "open" · try "press".' } }
+    expect(parseStepLine(formatStepLine(failed, { action: 'perform', element: 3, name: 'open' }))).toEqual({
+      action: 'perform',
+      target: 'open on [3]',
+      failed: '[3] has no action "open" · try "press".'
+    })
+  })
+
+  it('read the wire fixtures as the host writes them', () => {
+    const wire = join(__dirname, '../../main/server/computer/fixtures/wire')
+    const json = (name: string): { params: { action?: ComputerAction; actions?: ComputerAction[] }; result: { step?: StepResult; steps?: StepResult[] } } =>
+      ({ ...JSON.parse(readFileSync(join(wire, `${name}.request.json`), 'utf8')), result: JSON.parse(readFileSync(join(wire, `${name}.response.json`), 'utf8')).result })
+    const run = json('action.run')
+    const batch = json('action.batch')
+    const pairs: [StepResult, ComputerAction][] = [[run.result.step!, run.params.action!], ...batch.result.steps!.map((s, i) => [s, batch.params.actions![i]] as [StepResult, ComputerAction])]
+    for (const [step, action] of pairs) {
+      const line = formatStepLine(step, action)
+      expect(parseStepLine(line)?.action, line).toBe(step.action)
+    }
+    expect(parseStepLine(formatStepLine(run.result.step!, run.params.action!))?.element).toEqual({ index: 21, role: 'checkbox', name: 'bold' })
+  })
+
+  it('refuse every other line', () => {
+    for (const junk of [NOT_EXECUTED_LINE, '', 'screenshot 1 (observation): /a (1×1)', 'app "TextEdit" · window "Untitled" · 1280×800', 'click [14] · ax · changed', 'key a · ax · sort of', 'stopped by the person'])
+      expect(parseStepLine(junk), junk).toBeNull()
   })
 })

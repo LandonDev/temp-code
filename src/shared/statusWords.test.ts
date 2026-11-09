@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  COMPUTER_TIER_WORDS,
   detailText,
   leadDetail,
   legacyActivity,
@@ -91,5 +92,10 @@ describe('statusWords', () => {
   it('puts an unread steer behind what the turn does', () => {
     expect(thenYourMessage('Running the gate')).toBe('Running the gate, then your message')
     expect(plainStatus('Working', thenYourMessage('Compacting context'))).toBe('Working: Compacting context, then your message')
+  })
+
+  it('says a computer tier in a person\'s words, never its name', () => {
+    expect(COMPUTER_TIER_WORDS).toEqual({ ax: 'in the background', process: 'to the app', session: 'on the screen' })
+    for (const words of Object.values(COMPUTER_TIER_WORDS)) expect(words).not.toMatch(/\b(ax|process|session)\b/i)
   })
 })
