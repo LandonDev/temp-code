@@ -179,7 +179,17 @@ public enum TextBudget {
                     let n = remove(subtree(r))
                     omitted += n
                     lost[r, default: 0] += n
-                    if let p = layout.liveParent(r) { liveKids[p] -= 1 }
+                    // a parent of a class already passed, kept only for this row, leaves with it
+                    var child = r
+                    while let p = layout.liveParent(child) {
+                        liveKids[p] -= 1
+                        let up = layout.rows[p]
+                        guard liveKids[p] == 0, up.isElementLine, up.cls < cls, !protected.contains(p), !fits else { break }
+                        let m = remove(subtree(p))
+                        omitted += m
+                        lost[p, default: 0] += m
+                        child = p
+                    }
                 }
             }
         }

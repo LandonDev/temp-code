@@ -91,6 +91,18 @@ import Testing
         #expect(reader.read(s, budget: 2_000).kind == .unchanged)
     }
 
+    @Test func aGroupLeftEmptyByALaterClassLeavesWithItsLastRow() {
+        // named groups (other) hold only buttons (interactive): the groups were skipped while they had rows
+        let groups = (0..<60).map { g in t.node("AXGroup", title: "Section \(g)", frame: r(0), (0..<6).map { i in t.node("AXButton", title: "Button \(g).\(i)", frame: r(0), actions: ["AXPress"]) }) }
+        let built = Reader().read(snapshot([t.window(groups)]), budget: 2_000)
+        fits(built, 2_000)
+        let lines = built.text.split(separator: "\n")
+        // no group survives without a row under it
+        for (i, line) in lines.enumerated() where line.contains("] group \"Section") {
+            #expect(i + 1 < lines.count && lines[i + 1].contains("] button"), "\(line)")
+        }
+    }
+
     @Test func theTextNeverPassesTheBudgetAndOmittedCountsWhatLeft() {
         for budget in [2_000, 3_500, 8_000] {
             let items = (0..<200).map { i in t.node("AXStaticText", value: .string("Line \(i) \"quoted\" \\ \u{7} tail"), frame: r(0)) }

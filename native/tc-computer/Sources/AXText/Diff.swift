@@ -32,6 +32,8 @@ public struct Base: Sendable {
 
 public enum FullReason: String, Sendable {
     case first, windowChanged, moved, reordered, tooLarge, reset
+    /// the truncation footer or the other-windows line went away: no diff line says that
+    case unsaid
 }
 
 public enum DiffOutcome: Sendable, Equatable {
@@ -119,7 +121,8 @@ public enum Diff {
         for r in now.layout.rows.indices where now.layout.prints(r) && now.layout.rows[r].kind == .element { bodies[now.layout.rows[r].index] = r }
         walk(next.order, from: 0) { i in
             guard let old = base.lines[i], let line = next.lines[i] else { return }
-            let facts = old.compare != line.compare
+            // the shown line too: a budget's cut or dropped actions change what the model reads
+            let facts = old.compare != line.compare || old.body != line.body
             guard facts || summaryChanged.contains(i) else { return }
             out.append("~ " + (bodies[i].map { now.layout.body($0) } ?? line.body))
             if summaryChanged.contains(i), let s = next.summaries[i] { out.append(Layout.indent(1) + s) }
@@ -147,7 +150,9 @@ public enum Diff {
             }
         }
         if let t = next.summaries[0], t != base.summaries[0] { out.append(t) }
-        if next.others != base.others, !next.others.isEmpty, let o = now.layout.othersLine { out.insert(o, at: 0) }
+        if base.summaries[0] != nil, next.summaries[0] == nil { return .full(.unsaid) }
+        if !base.others.isEmpty, next.others.isEmpty { return .full(.unsaid) }
+        if next.others != base.others, let o = now.layout.othersLine { out.insert(o, at: 0) }
         if out.isEmpty { return .unchanged }
 
         var header = now.header

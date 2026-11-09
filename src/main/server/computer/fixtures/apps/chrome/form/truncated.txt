@@ -30,8 +30,7 @@ app "Google Chrome" · window "Computer fixture form - Google Chrome" · 930×12
           [29] button "Review order"
           [30] button "Load prices"
           [31] link "Order history"
-          [33] list "Past orders"
-            … 52 more below
+          [32] heading "History"
       [42] pop up "Tab search"
       [43] tab "Computer fixture form" selected actions: show menu
         [44] button "Close"
@@ -39,4 +38,4 @@ app "Google Chrome" · window "Computer fixture form - Google Chrome" · 930×12
   [46] button "close"
   [47] button "full screen" actions: zoom window, show menu
   [48] button "minimize"
-(truncated: 9 elements left out; observe with element: 33 to see one part whole)
+(truncated: 9 elements left out; observe with element: 14 to see one part whole)

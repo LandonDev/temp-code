@@ -93,6 +93,19 @@ func numbers(_ text: String) -> [String: Int] {
         #expect(built.text.hasSuffix("\n~ [1] window \"Scratch thread\""))
     }
 
+    @Test func anotherWindowOfTheSameTitleTakesNoNumberFromTheFirst() {
+        let reader = Reader()
+        let t = Tree()
+        let first = t.node("AXButton", title: "Save", frame: r(0), actions: ["AXPress"])
+        reader.read(snapshot([t.window(id: 900_000, [first] + filler())], windowID: 7))
+        let u = Tree(start: 1000)
+        let second = u.node("AXButton", title: "Save", frame: r(0), actions: ["AXPress"])
+        let built = reader.read(snapshot([u.window(id: 900_001, [second] + filler())], windowID: 8))
+        #expect(built.fullReason == .windowChanged)
+        #expect(reader.book.index(of: second.id) != reader.book.index(of: first.id))
+        #expect(reader.book.index(of: first.id) == 2)
+    }
+
     @Test func rebuiltRowsThatSwapPlacesForceAFullRead() {
         let reader = Reader()
         reader.read(page(Tree(), [("A", "a"), ("B", "b")]))

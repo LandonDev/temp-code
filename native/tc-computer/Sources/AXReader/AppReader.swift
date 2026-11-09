@@ -175,11 +175,15 @@ public final class AppReader: AppReading, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         var el = try element(index)
-        if el == nil {
-            let (snapshot, _, _) = try read(ObserveRequest(window: nil, mode: .auto, element: nil, budgetBytes: ComputerDefaults.ObservationBudget.defaultBytes,
-                                                         geometry: false, menus: false, space: CoordinateSpace(width: 1, height: 1, scale: 1)))
-            _ = book.assign(Keep.tree(snapshot), base: base, sameWindow: base?.windowID == snapshot.window.id)
-            el = try element(index)
+        if el == nil, let base {
+            // one re-read of the window the numbers came from, so a rebuilt element is found; that window gone, the number is stale
+            do {
+                let (snapshot, _, _) = try read(ObserveRequest(window: ComputerProtocol.WindowRef(id: base.windowID), mode: .auto, element: nil,
+                                                             budgetBytes: ComputerDefaults.ObservationBudget.defaultBytes, geometry: false, menus: false,
+                                                             space: CoordinateSpace(width: 1, height: 1, scale: 1)))
+                _ = book.assign(Keep.tree(snapshot), base: base, sameWindow: true)
+                el = try element(index)
+            } catch let f as ComputerFailure where f.error.kind == .windowNotFound {}
         }
         guard let el else { throw ComputerFailure(ComputerError(kind: .staleElement, message: "[\(index)] is gone; read the tree again", element: index, reason: .gone)) }
         return try describe(index, el)

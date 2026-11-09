@@ -167,6 +167,35 @@ func sample(value: String = "Hello from the probe\nSecond line", extra: (Tree) -
         #expect(reader.read(doc(length: 50_001, caret: 10)).kind == .diff)
     }
 
+    @Test func aLineTheBudgetCutDifferentlyIsAChange() {
+        let t = Tree()
+        let field = t.id()
+        let name = "A field with a long name " + String(repeating: "x", count: 80)
+        let s = snapshot([t.window(id: 900_000, [t.node("AXTextField", id: field, title: name, value: .string("v"), frame: r(0), settable: ["AXValue"], range: [0, 0])]
+            + (0..<200).map { i in Tree(start: 50_000 + NodeID(i)).node("AXStaticText", value: .string("Paragraph \(i) of a long scratch page"), frame: r(0)) })], focused: field)
+        let reader = Reader()
+        let cut = reader.read(s, budget: 2_000)
+        #expect(!cut.text.contains(name))
+        let whole = reader.read(s, budget: 96_000)
+        #expect(whole.kind != .unchanged)
+    }
+
+    @Test func aFooterOrTheLastOtherWindowGoingAwayIsAFullRead() {
+        let t = Tree()
+        let ids = (0..<200).map { _ in t.id() }
+        func doc(_ n: Int) -> AXSnapshot {
+            snapshot([t.window(id: 900_000, ids.prefix(n).map { t.node("AXStaticText", id: $0, value: .string("Paragraph \($0) of a long scratch page"), frame: r(0)) })])
+        }
+        let reader = Reader()
+        #expect(reader.read(doc(200), budget: 4_000).text.contains("(truncated: "))
+        #expect(reader.read(doc(20), budget: 4_000).fullReason == .unsaid)
+        let others = Reader()
+        others.read(sample())
+        var alone = sample()
+        alone.otherWindows = []
+        #expect(others.read(alone).fullReason == .unsaid)
+    }
+
     @Test func noBaseIsAFullRead() {
         let reader = Reader()
         reader.read(sample())
