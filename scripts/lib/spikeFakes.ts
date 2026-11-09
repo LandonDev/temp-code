@@ -580,6 +580,13 @@ export class FakeResponses {
         if (!/^(content-encoding|content-length|transfer-encoding|connection)$/i.test(k)) out[k] = v
       })
       res.writeHead(r.status, out)
+      if (!r.ok) {
+        // A refusal's first line is the evidence (redacted at write); its body goes back whole.
+        const text = await r.text()
+        rec.answered += `: ${text.trim().split('\n')[0]?.slice(0, 200) ?? ''}`
+        res.end(text)
+        return
+      }
       if (r.body) for await (const chunk of r.body as unknown as AsyncIterable<Uint8Array>) res.write(chunk)
       res.end()
     } catch (e) {
