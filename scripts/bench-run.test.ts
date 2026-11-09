@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent, EventRow } from '../src/shared/events'
-import { BENCH_MODELS, keepFront, keepReport, laneOrder, parseBenchArgs, readRun, runStamp, unionMs, waitForQuiet, type HostCall, type MacProbe } from './lib/benchRun'
+import { BENCH_MODELS, DARK_SCREEN, NEVER_QUIET, keepFront, keepReport, laneOrder, macReady, parseBenchArgs, readRun, runStamp, unionMs, waitForQuiet, type HostCall, type MacProbe } from './lib/benchRun'
 import { runHostMs, summarize, type BenchRun } from './lib/computerBench'
 
 describe('parseBenchArgs', () => {
@@ -149,12 +149,27 @@ describe('the person keeps the Mac', () => {
     expect(waits).toHaveLength(120)
   })
 
+  it('ungated, waits only for an unlocked, lit screen; gated, for the quiet', async () => {
+    const screens = (states: { locked: boolean; asleep: boolean }[]) => {
+      let i = 0
+      // the person is typing all along: an ungated run never looks at it
+      return { idleSeconds: async () => 0, screen: async () => states[Math.min(i++, states.length - 1)] }
+    }
+    const lit = { locked: false, asleep: false }
+    expect(await macReady(screens([lit]), true, { wait: noWait })).toBeNull()
+    expect(await macReady(screens([{ locked: true, asleep: false }, { locked: false, asleep: true }, lit]), true, { wait: noWait })).toBeNull()
+    expect(await macReady(screens([{ locked: true, asleep: false }]), true, { wait: noWait })).toBe(DARK_SCREEN)
+    expect(await macReady(screens([lit]), false, { wait: noWait })).toBe(NEVER_QUIET)
+    expect(await macReady({ idleSeconds: async () => 9, screen: async () => lit }, false, { wait: noWait })).toBeNull()
+  })
+
   it('sends a scratch app that came forward back, and says when it could not', async () => {
     const before = { pid: 10, bundleId: 'com.apple.Terminal' }
     const probe = (fronts: number[], activated: string[] = []): MacProbe => {
       let i = 0
       return {
         idleSeconds: async () => 9,
+        screen: async () => ({ locked: false, asleep: false }),
         frontmost: async () => ({ pid: fronts[Math.min(i++, fronts.length - 1)], bundleId: null }),
         activate: async (id) => void activated.push(id)
       }

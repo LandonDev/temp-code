@@ -203,12 +203,18 @@ function tokensOf(rows: readonly EventRow[]): { tokens?: { input: number; output
 
 // ── the person keeps the Mac ────────────────────────────────────────────
 
-/** Seconds since the person's last input, the app in front, and a way to bring one forward again. */
+/** Seconds since the person's last input, the app in front, the screen, and a way to bring an app forward again. */
 export interface MacProbe {
   idleSeconds(): Promise<number>
   frontmost(): Promise<{ pid: number; bundleId: string | null }>
   activate(bundleId: string): Promise<void>
+  /** the session's screen lock (or another user on the console) and the main display's sleep */
+  screen(): Promise<{ locked: boolean; asleep: boolean }>
 }
+
+/** `TC_BENCH_UNGATED=1`: the person's leave to run with no idle wait, the scratch windows free to come forward; a locked or dark screen still holds a run, since AX sees no windows then. */
+export const BENCH_UNGATED_ENV = 'TC_BENCH_UNGATED'
+export const DARK_SCREEN = 'the screen stayed locked or dark'
 
 export const LAUNCH_GUARD = { quietMs: 5_000, everyMs: 500, maxMs: 60_000, bounceAfterMs: 1_000 } as const
 
@@ -222,6 +228,26 @@ export async function waitForQuiet(probe: Pick<MacProbe, 'idleSeconds'>, opts: {
     if ((await probe.idleSeconds()) * 1000 >= quietMs) return true
     if (waited >= maxMs) return false
     await wait(everyMs)
+  }
+}
+
+/**
+ * May a run launch now? Gated: the Mac quiet for `quietMs` (waitForQuiet).
+ * Ungated: only an unlocked, lit screen, looked at every 2 s for at most
+ * `maxMs`. Null to go ahead, else the run's skip line.
+ */
+export async function macReady(
+  probe: Pick<MacProbe, 'idleSeconds' | 'screen'>,
+  ungated: boolean,
+  opts: { quietMs?: number; everyMs?: number; maxMs?: number; wait?: (ms: number) => Promise<void>; skip?: string } = {}
+): Promise<string | null> {
+  if (!ungated) return (await waitForQuiet(probe, opts)) ? null : (opts.skip ?? NEVER_QUIET)
+  const { maxMs = LAUNCH_GUARD.maxMs, wait = (ms) => new Promise((r) => setTimeout(r, ms)) } = opts
+  for (let waited = 0; ; waited += 2_000) {
+    const s = await probe.screen()
+    if (!s.locked && !s.asleep) return null
+    if (waited >= maxMs) return DARK_SCREEN
+    await wait(2_000)
   }
 }
 

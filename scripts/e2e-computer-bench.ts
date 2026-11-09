@@ -36,14 +36,14 @@ import type { AgentEvent, EventRow } from '../src/shared/events'
 import { exec } from './lib/benchChecks'
 import {
   BENCH_MODELS,
-  NEVER_QUIET,
+  BENCH_UNGATED_ENV,
   keepFront,
   keepReport,
   laneOrder,
   parseBenchArgs,
   readRun,
+  macReady,
   runStamp,
-  waitForQuiet,
   type BenchArgs,
   type BenchModel
 } from './lib/benchRun'
@@ -117,6 +117,8 @@ const WORK = join('/tmp/tc-computer-bench', STAMP)
 const KEEP = new Set(['report.json', 'report.md'])
 const BENCH_URL = pathToFileURL(join(ROOT, 'src/main/server/computer/fixtures/page/bench.html')).href
 const REFERENCE_LINE = 'Use your computer use tools for this task.'
+/** The person's leave to run with no idle wait; only a locked or dark screen holds a run. */
+const UNGATED = process.env[BENCH_UNGATED_ENV] === '1'
 /** A lane that waited longer than this in the scheduler had its runs held by it, not by the bench's speed. */
 const HELD_MS = 60_000
 mkdirSync(WORK, { recursive: true })
@@ -137,6 +139,7 @@ const report: BenchReport = {
   commit: git('rev-parse', 'HEAD'),
   clean: git('status', '--porcelain', '--untracked-files=no') === '',
   mode: args.mode,
+  ...(UNGATED ? { ungated: true } : {}),
   host: { macos: sh('sw_vers', ['-productVersion']), chip: sh('sysctl', ['-n', 'machdep.cpu.brand_string']), load1: loadavg()[0] },
   models: [],
   runs: [],
@@ -211,6 +214,7 @@ const IDLE_SESSION_GATE: SessionTierGate = {
 }
 if (args.session) setSessionTierGate(IDLE_SESSION_GATE)
 log(args.session ? 'session tier: only while the Mac has been idle 2 minutes' : 'tiers ax and process only; the session tier is refused')
+if (UNGATED) log(`${BENCH_UNGATED_ENV}=1: no idle wait before a launch; only a locked or dark screen holds a run`)
 
 // ── lanes and tasks ─────────────────────────────────────────────────────
 
@@ -282,7 +286,8 @@ function waitForOut(): Promise<string | null> {
 async function devInstance(lane: Lane, dir: string, onBounce: () => void): Promise<DevInstance | { skip: string }> {
   const notReady = await waitForOut()
   if (notReady) return { skip: notReady }
-  if (!(await waitForQuiet(probe))) return { skip: NEVER_QUIET }
+  const held = await macReady(probe, UNGATED)
+  if (held) return { skip: held }
   const personFront = R.mac.frontmost()
   const dev = await startDevInstance({ root: ROOT, dir, groups: devGroups })
   R.pins.pin(lane.name, 'Electron', dev.pid)
@@ -389,8 +394,10 @@ async function oneRun(lane: Lane, task: ComputerTask, attempt: number): Promise<
     front: { before: '', after: '', bounced: false, personActive: false, benchInFront: false }
   }
   // Codex's own computer use may take the pointer or the front: the reference waits for the Mac to be idle 2 minutes.
-  if (args.mode === 'reference' && !(await waitForQuiet(probe, { quietMs: 120_000, everyMs: 30_000, maxMs: 30 * 60_000 })))
-    return { ...run, reason: 'the person is active' }
+  if (args.mode === 'reference') {
+    const held = await macReady(probe, UNGATED, { quietMs: 120_000, everyMs: 30_000, maxMs: 30 * 60_000, skip: 'the person is active' })
+    if (held) return { ...run, reason: held }
+  }
   return withLock(task.shared, async () => {
     const nonce = randomBytes(4).toString('hex')
     const dir = join(WORK, 'runs', `${lane.name}-${task.id}-${nonce}`)
@@ -404,7 +411,8 @@ async function oneRun(lane: Lane, task: ComputerTask, attempt: number): Promise<
       run: exec,
       home: homedir(),
       open: async (app, target) => {
-        if (!(await waitForQuiet(probe))) throw new SkipRun(NEVER_QUIET)
+        const held = await macReady(probe, UNGATED)
+        if (held) throw new SkipRun(held)
         const { front } = await R.launch(lane.name, app, target)
         if (front === 'took') throw new FailRun('took the front')
         if (front === 'bounced') run.front.bounced = true

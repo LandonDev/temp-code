@@ -3793,6 +3793,7 @@ proof and the sizing rules; the pieces, by name:
   the person; no idle gate, one computer proof at a time, a sentinel tap that
   turns a leg the real person touched inconclusive).
 - The task benchmark (docs/computer-protocol.md §17): `bun run
+- The task benchmark (docs/computer-protocol.md §19): `bun run
   script:e2e-computer-bench` runs seven real desktop tasks (TextEdit, Chrome
   on bench.html, a dev instance's Settings, System Settings' one switch, a
   save dialog) on Opus 5.5, GPT-6.1 Sol and Muse Wonder 1.0 side by side,
@@ -3809,7 +3810,9 @@ proof and the sizing rules; the pieces, by name:
   first green `--gate` run, replaced by `--rebaseline`), a breach rerun twice
   and judged two of three. Flags: `--gate`, `--report-only`, `--runs n`,
   `--models`, `--tasks`, `--judge <report.json>` (any host), `--reference
-  codex` (Codex's own computer use, by hand). The gate row is
+  codex` (Codex's own computer use, by hand); `TC_BENCH_UNGATED=1` drops the
+  idle waits by the person's leave, a locked or dark screen still holding a
+  launch. The gate row is
   `computer-bench`; docs/release-gate.md "The computer bench".
 - Fixtures: src/main/server/computer/fixtures/ (its README): hand-written
   wire frames for every method, error kind and notification, observation

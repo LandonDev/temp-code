@@ -166,12 +166,14 @@ export interface MacReads {
   frontmost(): { pid: number; bundleId: string | null }
   pointer(): { x: number; y: number }
   idleSeconds(): number
+  screen(): { locked: boolean; asleep: boolean }
   activate(bundleId: string): void
 }
 
 /** The probe's answers as the launch guard reads them. */
 export const asProbe = (mac: MacReads): MacProbe => ({
   idleSeconds: async () => mac.idleSeconds(),
+  screen: async () => mac.screen(),
   frontmost: async () => mac.frontmost(),
   activate: async (id) => mac.activate(id)
 })
@@ -232,6 +234,7 @@ export async function startRig(opts: { root: string; work: string; gate: Session
     frontmost: () => probe('frontmost'),
     pointer: () => probe('pointer'),
     idleSeconds: () => probe<{ seconds: number }>('idle').seconds,
+    screen: () => probe('screen'),
     activate: (bundleId) => void execFileSync('osascript', ['-e', `tell application id "${bundleId}" to activate`])
   }
   process.env.TEMP_CODE_COMPUTER_BIN = bin

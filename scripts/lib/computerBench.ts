@@ -85,6 +85,8 @@ export interface BenchReport {
   commit: string
   clean: boolean
   mode: BenchMode
+  /** run with TC_BENCH_UNGATED=1: no idle wait, by the person's leave */
+  ungated?: boolean
   host: { macos: string; chip: string; load1: number }
   models: { model: string; skipped?: string }[]
   runs: BenchRun[]
@@ -456,7 +458,7 @@ export function renderBenchTable(report: BenchReport, judged: BenchJudgement): s
     `# Computer bench (${report.mode})`,
     '',
     `${new Date(report.startedAt).toISOString()}, ${Math.round((report.endedAt - report.startedAt) / 1000)} s, commit ${report.commit.slice(0, 8)}${report.clean ? '' : ' (dirty)'}`,
-    `macOS ${report.host.macos}, ${report.host.chip}, load ${report.host.load1.toFixed(1)}`
+    `macOS ${report.host.macos}, ${report.host.chip}, load ${report.host.load1.toFixed(1)}${report.ungated ? ', no idle wait (TC_BENCH_UNGATED)' : ''}`
   ]
   const models = [...new Set(judged.summaries.map((s) => s.model))]
   for (const model of models) {
