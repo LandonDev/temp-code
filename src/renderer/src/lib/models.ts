@@ -104,6 +104,16 @@ const MUSE_CONTEXT = 1_007_997;
 
 export const MODELS: AgentModel[] = [
   {
+    id: "claude:fable-5.2",
+    harness: "claude",
+    name: "Claude Fable 5.2",
+    nativeId: "claude-fable-5-2",
+    contextWindow: 1_000_000,
+    settings: CLAUDE_FRONTIER_SETTINGS.map((setting) =>
+      setting.id === "effort" ? { ...setting, value: "high" } : setting,
+    ),
+  },
+  {
     id: "claude:fable-5.1",
     harness: "claude",
     name: "Claude Fable 5.1",

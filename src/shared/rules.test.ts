@@ -50,7 +50,9 @@ describe('model policy by role', () => {
   })
 
   it('Fable defaults to orchestrators only; every other model to everyone', () => {
-    for (const id of ['claude-fable-5-1', 'claude-fable-5']) {
+    for (const id of ['claude-fable-5-2', 'claude-fable-5-1', 'claude-fable-5']) {
+      expect(defaultApproval('claude', id)).toBe('orchestrators')
+      expect(explicitModels({ ...DEFAULT_RULES, models: {} }).models[`claude:${id}`]).toEqual({ approved: 'orchestrators' })
       expect(modelApproved(DEFAULT_RULES, 'claude', id, 'thread')).toBe(false)
       expect(modelApproved(DEFAULT_RULES, 'claude', id, 'orchestrator')).toBe(true)
       // Orchestrators-only keeps the full ladder: the bound is who, not how hard.

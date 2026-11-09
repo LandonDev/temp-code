@@ -268,7 +268,7 @@ The model policy's `approved` is `true`, `'orchestrators'` or `false`
 (src/shared/rules.ts). `modelApproved(rules, provider, model, role)` lets
 an `'orchestrators'` model through only for an `'orchestrator'` role.
 Settings → Orchestration's model row reads Everyone / Orchestrators only /
-Off. Fable (`claude-fable-5-1`, `claude-fable-5`) defaults to orchestrators
+Off. Fable (`claude-fable-5-2`, `claude-fable-5-1`, `claude-fable-5`) defaults to orchestrators
 only in `DEFAULT_RULES.models`; a saved rules object replaces the whole
 map, so a database with its own entries keeps them.
 

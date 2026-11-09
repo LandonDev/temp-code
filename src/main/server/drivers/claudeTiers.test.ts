@@ -54,6 +54,18 @@ describe('claude speed tiers', () => {
     expect(claudeFastFor({ fast: true }, 'nope')).toBe(false)
   })
 
+  it('offers Fable 5.2 fast mode only when the CLI lists it', () => {
+    const tiers = tiersFromSupportedModels([
+      { value: 'claude-fable-5-2[1m]', resolvedModel: 'claude-fable-5-2', supportsFastMode: true }
+    ])
+    applyClaudeTiers(tiers)
+    expect(CATALOG.claude.models.find((m) => m.id === 'claude-fable-5-2')!.speedTiers).toEqual(['fast'])
+    expect(claudeFastFor({ fast: true }, 'claude-fable-5-2')).toBe(true)
+    expect(claudeFastFor({ fast: false }, 'claude-fable-5-2')).toBe(false)
+    applyClaudeTiers({ 'claude-fable-5-1': ['fast'] })
+    expect(claudeFastFor({ fast: true }, 'claude-fable-5-2')).toBe(false)
+  })
+
   it('a broken cache reads as nothing', () => {
     expect(readClaudeTierCache(memoryStore())).toBeNull()
     expect(readClaudeTierCache(memoryStore({ 'claude.speedTiers': '{nope' }))).toBeNull()

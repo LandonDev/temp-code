@@ -321,18 +321,22 @@ describe("live catalog overlays", () => {
   });
 });
 
-describe("Claude Fable 5.1", () => {
+describe.each(["5.2", "5.1"])("Claude Fable %s", (version) => {
+  const slug = `claude:fable-${version}`;
+  const native = `claude-fable-${version.replace(".", "-")}`;
   afterEach(() => {
     resetHarnessModelOverlays();
   });
 
-  it("leads the built-in Claude list and resolves from its native id", () => {
+  it("keeps the built-in Claude order and resolves from its native id", () => {
     expect(hasLiveCatalog("claude")).toBe(false);
-    expect(modelsFor("claude")[0]?.id).toBe("claude:fable-5.1");
-    const model = resolveModel("claude", "claude-fable-5-1");
-    expect(model.id).toBe("claude:fable-5.1");
-    expect(model.name).toBe("Claude Fable 5.1");
+    expect(modelsFor("claude").slice(0, 2).map((m) => m.id)).toEqual(["claude:fable-5.2", "claude:fable-5.1"]);
+    expect(defaultModelId("claude")).toBe("claude:fable-5.1");
+    const model = resolveModel("claude", native);
+    expect(model.id).toBe(slug);
+    expect(model.name).toBe(`Claude Fable ${version}`);
     expect(model.contextWindow).toBe(1_000_000);
+    expect(model.settings?.find((s) => s.id === "effort")?.value).toBe(version === "5.2" ? "high" : "medium");
     expect(model.settings?.find((s) => s.id === "effort")?.options.map((o) => o.value)).toEqual([
       "low",
       "medium",
@@ -349,25 +353,27 @@ describe("Claude Fable 5.1", () => {
   it("is the same entry once the live catalog overlays Claude", () => {
     setHarnessModels("claude", agentModelsFor(CATALOG.claude), CATALOG.claude.defaultModel);
     expect(hasLiveCatalog("claude")).toBe(true);
-    const live = modelsFor("claude")[0];
-    expect(live?.nativeId).toBe("claude-fable-5-1");
-    expect(live?.name).toBe("Fable 5.1");
-    expect(resolveModel("claude", "claude-fable-5-1")).toBe(live);
-    expect(resolveModel("claude", "claude:fable-5.1")).toBe(live);
+    const live = modelsFor("claude").find((m) => m.nativeId === native);
+    expect(live?.nativeId).toBe(native);
+    expect(live?.name).toBe(`Fable ${version}`);
+    expect(defaultModelId("claude")).toBe("claude:claude-fable-5-1");
+    expect(live?.settings?.find((s) => s.id === "effort")?.value).toBe(version === "5.2" ? "high" : "medium");
+    expect(resolveModel("claude", native)).toBe(live);
+    expect(resolveModel("claude", slug)).toBe(live);
     expect(live?.settings?.find((s) => s.id === "context")).toBeTruthy();
   });
 
   it("a built-in picker id still names its native model after the overlay", () => {
     // A thread hydrated before the catalog landed carries `claude:fable-5.1`;
     // the send path must not strip that to `fable-5.1`.
-    expect(nativeModelId("claude:fable-5.1")).toBe("claude-fable-5-1");
+    expect(nativeModelId(slug)).toBe(native);
     setHarnessModels("claude", agentModelsFor(CATALOG.claude), CATALOG.claude.defaultModel);
-    expect(nativeModelId("claude:fable-5.1")).toBe("claude-fable-5-1");
+    expect(nativeModelId(slug)).toBe(native);
     expect(nativeModelId("claude:opus-5.5")).toBe("claude-opus-5-5");
     // The boot guard compares these two; equal means the thread moves onto the live id.
-    const resolved = resolveModel("claude", "claude:fable-5.1");
-    expect(resolved.id).toBe("claude:claude-fable-5-1");
-    expect(nativeModelId(resolved)).toBe(nativeModelId("claude:fable-5.1"));
+    const resolved = resolveModel("claude", slug);
+    expect(resolved.id).toBe(`claude:${native}`);
+    expect(nativeModelId(resolved)).toBe(nativeModelId(slug));
     // An id the catalog does not list still falls back to the prefix strip.
     expect(nativeModelId("claude:claude-opus-4-1")).toBe("claude-opus-4-1");
   });

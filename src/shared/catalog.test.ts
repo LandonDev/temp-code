@@ -19,6 +19,7 @@ describe('resolveModel', () => {
     expect(resolveModel('claude', 'gpt-6-astra')).toEqual({ provider: 'codex', model: 'gpt-6-astra' })
   })
   it('a bare display slug maps to the catalog id; a real or foreign id passes through untouched', () => {
+    expect(resolveModel('claude', 'fable-5.2')).toEqual({ provider: 'claude', model: 'claude-fable-5-2' })
     expect(resolveModel('claude', 'fable-5.1')).toEqual({ provider: 'claude', model: 'claude-fable-5-1' })
     expect(resolveModel('claude', 'opus-5.5')).toEqual({ provider: 'claude', model: 'claude-opus-5-5' })
     expect(resolveModel('claude', 'Sonnet-5.5')).toEqual({ provider: 'claude', model: 'claude-sonnet-5-5' })
@@ -42,6 +43,22 @@ describe('resolveModel', () => {
     expect(claude).toContain('claude-sonnet-5-5')
     expect(claude).toContain('claude-haiku-5-5')
     expect(claude).not.toContain('claude-sonnet-5')
+  })
+})
+
+describe('Fable 5.2', () => {
+  it('leads the Claude list with a 1M window and high effort, keeping 5.1 and its default', () => {
+    expect(CATALOG.claude.models.slice(0, 2).map((m) => m.id)).toEqual(['claude-fable-5-2', 'claude-fable-5-1'])
+    const row = modelInfo('claude', 'claude-fable-5-2')!
+    expect(row.label).toBe('Fable 5.2')
+    expect(row.context).toBe(1_000_000)
+    expect(row.defaultReasoning).toBe('high')
+    expect(row.reasoning).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+    expect(row.speedTiers).toEqual(modelInfo('claude', 'claude-fable-5-1')!.speedTiers)
+    expect(supportsContext1m('claude', row.id)).toBe(true)
+    expect(resolveModel('claude', row.id)).toEqual({ provider: 'claude', model: row.id })
+    expect(CATALOG.claude.defaultModel).toBe('claude-fable-5-1')
+    expect(modelInfo('claude', 'claude-fable-5-1')!.defaultReasoning).toBe('medium')
   })
 })
 

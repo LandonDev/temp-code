@@ -156,10 +156,12 @@ it('the table by role: a thread sees orchestrators-only rows marked with the not
     models: { ...DEFAULT_RULES.models, 'claude:claude-opus-5-5': { approved: false } }
   }
   const thread = spawnableModels(rules, 'thread')
+  expect(thread).toContain('claude-fable-5-2 (low|medium|high|xhigh|max) +1m (orchestrators only)')
   expect(thread).toContain('claude-fable-5-1 (low|medium|high|xhigh|max) +1m (orchestrators only)')
   expect(thread).toContain('Models marked orchestrators-only cannot be spawned as subagents from here; app_start_thread may still start them as threads')
   expect(thread).not.toContain('claude-opus-5-5')
   const orch = spawnableModels(rules, 'orchestrator')
+  expect(orch).toContain('claude-fable-5-2 (low|medium|high|xhigh|max) +1m\n')
   expect(orch).toContain('claude-fable-5-1 (low|medium|high|xhigh|max) +1m\n')
   expect(orch).not.toContain('orchestrators only')
   expect(orch).not.toContain('claude-opus-5-5')

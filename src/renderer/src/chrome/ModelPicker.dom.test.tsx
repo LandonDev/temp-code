@@ -19,6 +19,7 @@ import { emptyAccounts, type AccountsSnapshot } from "@server/shared/accounts";
 import type { Link } from "../lib/connection/types";
 import type { ServerPush } from "@server/shared/contract";
 import { warmMenus } from "./menuRows";
+import { CATALOG } from "@server/shared/catalog";
 
 // The menus here are drawn by their parts (components/ui/lazy-menus.tsx): warm their body first.
 beforeAll(async () => {
@@ -69,6 +70,25 @@ beforeAll(async () => {
 });
 
 describe("ModelPicker", () => {
+  it("lists Fable 5.2 above 5.1 and picks it with high effort and the 1M choice", async () => {
+    setHarnessModels("claude", agentModelsFor(CATALOG.claude), CATALOG.claude.defaultModel);
+    saveModelPickerTab("claude");
+    const onChange = vi.fn();
+    render(<ModelPicker harness="claude" model="claude:claude-fable-5-1" onChange={onChange} />);
+    let menu = await open(/Fable 5\.1/);
+    const fables = within(menu).getAllByRole("option", { name: /Fable 5\.[12]/ });
+    expect(fables.map((row) => row.textContent)).toEqual([expect.stringContaining("Fable 5.2"), expect.stringContaining("Fable 5.1")]);
+    await act(async () => fireEvent.click(fables[0]));
+    expect(onChange).toHaveBeenCalledWith("claude", "claude:claude-fable-5-2");
+    cleanup();
+    picker("claude", "claude:claude-fable-5-2");
+    menu = await open(/Fable 5\.2/);
+    expect(within(menu).getByRole("combobox", { name: "Effort" }).textContent).toContain("High");
+    const context = within(menu).getByRole("combobox", { name: "Context" });
+    await act(async () => fireEvent.click(context));
+    expect(screen.getByRole("option", { name: "1M", exact: true })).toBeTruthy();
+  });
+
   it("Muse Code lists its probed models under its own name, the effort on the ladder the probe gave", async () => {
     seed("muse", [
       { id: "muse-wonder-1.0", label: "Muse Wonder 1.0", reasoning: EFFORTS, defaultReasoning: "max", context: 1_007_997 },
