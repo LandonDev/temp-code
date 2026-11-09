@@ -115,11 +115,19 @@ export interface RoutedEndpoint {
  * it, so no owner probe is needed. Without a certificate the thread falls
  * back to the shared path (unscoped on a new codex, scoped on an old one).
  */
+/**
+ * Proof seam (scripts/compare-computer-words.ts): `TEMP_CODE_DIRECT_PROVIDERS=codex`
+ * leaves those CLIs on their own login and default base, never the shim or this
+ * gateway. An unrouted codex thread otherwise gets a plain-http base it refuses.
+ */
+const directProviders = (): string[] => (process.env.TEMP_CODE_DIRECT_PROVIDERS ?? '').split(',').filter(Boolean)
+
 export async function routedEndpointFor(
   service: Service,
   scope: { thread: string; route: AccountRoute | null; model?: string | null },
   deps: Partial<EndpointDeps> = {}
 ): Promise<RoutedEndpoint> {
+  if (directProviders().includes(service)) return { url: null, account: null }
   const d = { ...defaults, ...deps }
   const model = scopeModel(scope.model)
   if (service === 'codex' && scope.route) {

@@ -41,6 +41,17 @@ describe('endpointFor', () => {
     expect(routeUrl('http://127.0.0.1:5/codex', 'T', { account: 'k', pin: true, service: 'meta' }, 'muse-spark-1.3')).toBe('http://127.0.0.1:5/codex/~t=T;a=k;pin=1;m=muse-spark-1.3;s=meta')
   })
 
+  it('TEMP_CODE_DIRECT_PROVIDERS leaves a listed CLI on its own login and the rest routed', async () => {
+    vi.stubEnv('TEMP_CODE_DIRECT_PROVIDERS', 'codex')
+    const deps = { shimInstalled: () => false, gatewayUrl: (s: string) => `http://127.0.0.1:5/${s}`, scopedCodexUrl: async () => null }
+    try {
+      expect(await routedEndpointFor('codex', { thread: 'T', route: null }, deps)).toEqual({ url: null, account: null })
+      expect(await routedEndpointFor('claude', { thread: 'T', route: null }, deps)).toEqual({ url: 'http://127.0.0.1:5/claude', account: null })
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('routedEndpointFor scopes the URL only when the owner lists scoped-routes, and remembers the answer per origin', async () => {
     let now = 1_000_000
     const gatewayUrl = (s: string) => `http://127.0.0.1:5/${s}`

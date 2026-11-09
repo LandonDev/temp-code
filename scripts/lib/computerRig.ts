@@ -304,9 +304,9 @@ export async function startRig(opts: {
     computerResolveApp: (q) => pins.resolve(q),
     ...(opts.sessionTier === 'scheduled' ? { personIdle: new PersonIdle({ getSystemIdleTime: () => mac.idleSeconds() }) } : {})
   })
-  // codex 0.158+ refuses a plain-http base, which is all an unrouted thread gets from the shim or this gateway:
-  // with the gateway stopped and the shim's port dead (the package scripts set ALIAX_SHIM_PORT=9), every CLI uses its own login
-  await server.gateway.stop()
+  // codex 0.158+ refuses a plain-http base, which is all an unrouted thread gets from the shim or this gateway, so the
+  // package scripts set TEMP_CODE_DIRECT_PROVIDERS=codex: codex keeps its own login, claude rides the shim as the person's
+  // threads do (with the gateway stopped and the shim skipped, the claude CLI exited 1 at once on the Mac, 2026-11-09)
   const host = computerHooks.current
   if (!host?.available()) throw new RigStop('computer use is unavailable in this server')
   if (opts.sessionTier === 'refused') setSessionTierGate(REFUSE_SESSION_TIER)
@@ -385,7 +385,12 @@ export async function startRig(opts: {
       }
     }
     pins.unpin(lane)
-    rmSync(profileOf(lane), { recursive: true, force: true })
+    // Chrome may still be writing its profile a moment after the kill (ENOTEMPTY on the Mac, 2026-11-09)
+    try {
+      rmSync(profileOf(lane), { recursive: true, force: true, maxRetries: 10, retryDelay: 300 })
+    } catch (e) {
+      console.log(`      the scratch Chrome profile of ${lane} stays until the cleanup: ${(e as Error).message}`)
+    }
   }
   const lanes = new Set<string>()
   const closeLanes = (): void => {
