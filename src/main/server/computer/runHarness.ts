@@ -22,7 +22,16 @@ export interface Card {
   decide: (allow: boolean) => void
 }
 
-export function computerHarness(opts: { env?: Record<string, string>; gate?: SessionTierGate; resolveApp?: (q: string) => AppRef | null; clock?: ManualClock } = {}) {
+export function computerHarness(
+  opts: {
+    env?: Record<string, string>
+    gate?: SessionTierGate
+    /** a gate that needs the service and the sessions (the scheduler) */
+    makeGate?: (parts: { service: ComputerService; sessions: ComputerSessions }) => SessionTierGate
+    resolveApp?: (q: string) => AppRef | null
+    clock?: ManualClock
+  } = {}
+) {
   const dataDir = mkdtempSync(join(tmpdir(), 'tc-computer-run-'))
   const landingRoot = mkdtempSync(join(tmpdir(), 'tc-computer-landing-'))
   const log = join(dataDir, 'requests.log')
@@ -42,17 +51,19 @@ export function computerHarness(opts: { env?: Record<string, string>; gate?: Ses
     awayOn: () => away
   }
   const service = new ComputerService({ dataDir, env: { ...process.env, FAKE_LOG: log, ...opts.env }, bin: () => fakeServiceBin(), log: () => undefined })
+  let gate: SessionTierGate | undefined = opts.gate
   const sessions = new ComputerSessions({
     service,
     registry,
     store,
     dataDir,
     landing: (id) => join(landingRoot, id),
-    gate: opts.gate ? () => opts.gate! : undefined,
+    gate: opts.gate || opts.makeGate ? () => gate! : undefined,
     resolveApp: opts.resolveApp,
     clock: opts.clock,
     log: () => undefined
   })
+  if (opts.makeGate) gate = opts.makeGate({ service, sessions })
   const set = (threadId: string, meta: Partial<{ status: SessionStatus; permission: PermissionPolicy; provider: string; model: string }>): void => {
     const next = { status: 'running' as SessionStatus, permission: 'auto' as PermissionPolicy, ...metas.get(threadId), ...meta }
     metas.set(threadId, next)
@@ -68,6 +79,7 @@ export function computerHarness(opts: { env?: Record<string, string>; gate?: Ses
     cards,
     set,
     setAway: (on: boolean) => (away = on),
+    gate: () => gate,
     run: (tool: string, args: unknown, threadId = 't1', ctx: { signal?: AbortSignal; callId?: string } = {}): Promise<ComputerToolOutcome> =>
       sessions.run({ threadId, ...ctx }, tool, args),
     /** every request line the fake received, parsed, in order */

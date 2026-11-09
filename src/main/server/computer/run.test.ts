@@ -8,6 +8,9 @@ import { computerHarness, type ComputerHarness } from './runHarness'
 import { IDLE_CLOSE_MS } from './sessions'
 import { ManualClock, settle } from './testFake'
 import type { SessionTierGate, TierGateContext } from './tierGate'
+import { PersonIdle } from '../../personIdle'
+import { staticPresence } from '../../presence'
+import { SessionScheduler, type SessionSchedulerOptions } from './schedule'
 
 const harnesses: ComputerHarness[] = []
 const make = (opts: Parameters<typeof computerHarness>[0] = {}): ComputerHarness => {
@@ -449,5 +452,148 @@ describe('needsFull', () => {
     expect(th.apps.get('b')!.needsFull).toBe(true)
     remember(th, 'App', obs('full', 'app "App" · window "W" · 1×1\n[1] window "W"'))
     expect(th.apps.get('b')!.needsFull).toBe(false)
+  })
+})
+
+/**
+ * The tier scheduler as the server wires it, over the fake service: a real
+ * PersonIdle over a raw idle the test moves (`away` puts the person's last
+ * input five minutes back, `present` keeps it now), shortened numbers.
+ */
+function scheduled(env: Record<string, string> = {}, numbers: Partial<SessionSchedulerOptions> = { pollMs: 50, recentCopyMs: 1_600, pasteWaitMaxMs: 4_000, clipboardPollMs: 50 }) {
+  let rawLast = Date.now() - 300_000
+  let present = false
+  const raw = { getSystemIdleTime: () => (present ? 0 : Math.floor((Date.now() - rawLast) / 1000)) }
+  const idle = new PersonIdle(raw)
+  const lines: (string | null)[] = []
+  let sched!: SessionScheduler
+  const h = make({
+    env,
+    makeGate: ({ service, sessions }) =>
+      (sched = new SessionScheduler({
+        service,
+        idle,
+        presence: staticPresence({ screen: 'unlocked', power: 'awake' }),
+        awayOn: () => false,
+        getSetting: () => null,
+        held: (t, l) => {
+          lines.push(l)
+          sessions.setHeld(t, l)
+        },
+        threadOf: (s) => sessions.threadOfServiceSession(s),
+        log: () => undefined,
+        ...numbers
+      }))
+  })
+  return {
+    h,
+    idle,
+    lines,
+    sched: () => sched,
+    setPresent: (on: boolean) => (present = on),
+    /** the raw idle source sees input now */
+    key: () => (rawLast = Date.now())
+  }
+}
+
+describe('tier scheduling', () => {
+  it('holds a session step while the person is present, says so on the row, and runs it once they go, its wait before its line, then restores', async () => {
+    const s = scheduled()
+    s.setPresent(true)
+    const call = s.h.run('computer_act', { app: 'Sessiony', action: 'hold_key', text: 'shift', duration: 1 })
+    await until(() => s.lines.includes('Waiting for the Mac to be free'), 'the held line')
+    expect(s.h.sessions.rows()[0].running?.words).toBe('Waiting for the Mac to be free')
+    await new Promise((r) => setTimeout(r, 1_100))
+    s.setPresent(false)
+    const o = await call
+    expect(o.steps[0]).toMatch(/^waited 1s for the Mac to be free\nhold_key shift for 1 s · session · changed$/)
+    expect(s.lines.at(-1)).toBeNull()
+    const methods = s.h.requests().map((r) => r.method)
+    expect(methods.lastIndexOf('input.restoreSession')).toBeGreaterThan(methods.lastIndexOf('action.run'))
+    expect(last(s.h, 'input.restoreSession').params).toEqual({})
+  })
+
+  it("restores after the person's touch before the step's reply", async () => {
+    const s = scheduled({ FAKE_CLOSING_WAIT_MS: '1500' })
+    let done = false
+    const call = s.h.run('computer_act', { app: 'Touchy', action: 'key', text: 'a' }).then((o) => ((done = true), o))
+    await until(() => count(s.h, 'input.restoreSession') === 1, 'the restore')
+    expect(done).toBe(false)
+    expect(last(s.h, 'input.restoreSession').params).toEqual({ afterInterrupt: true })
+    const o = await call
+    expect(o.steps[0]).toMatch(/^key a · failed: The person took over the Mac during this step\.$/)
+    expect(count(s.h, 'input.restoreSession')).toBe(1)
+  })
+
+  it("takes the step's own input out of the idle time, and keeps the person's key after it", async () => {
+    const s = scheduled({ FAKE_CLOSING_WAIT_MS: '1500' })
+    const own = s.h.run('computer_act', { app: 'Sessiony', action: 'hold_key', text: 'shift', duration: 1 })
+    await until(() => count(s.h, 'action.run') === 2, 'the session step')
+    await new Promise((r) => setTimeout(r, 200))
+    s.key() // the step's own key, inside its span
+    expect(s.idle.getSystemIdleTime()).toBeGreaterThanOrEqual(299)
+    await own
+    expect(s.idle.getSystemIdleTime()).toBeGreaterThanOrEqual(129)
+    const person = s.h.run('computer_act', { app: 'Sessiony', action: 'hold_key', text: 'shift', duration: 1 })
+    await until(() => count(s.h, 'action.run') === 4, 'the second session step')
+    await new Promise((r) => setTimeout(r, 1_200))
+    s.key() // the person, during the closing wait
+    await person
+    expect(s.idle.getSystemIdleTime()).toBeLessThanOrEqual(1)
+  })
+
+  it('a pause while held answers cancelled: the thread was paused and sends no session action; Stop answers stopped', async () => {
+    const s = scheduled()
+    s.setPresent(true)
+    const paused = s.h.run('computer_act', { app: 'Sessiony', action: 'hold_key', text: 'shift', duration: 1 })
+    await until(() => s.lines.includes('Waiting for the Mac to be free'), 'the held line')
+    s.h.set('t1', { status: 'paused' })
+    const o = await paused
+    expect(o).toMatchObject({ body: 'cancelled: the thread was paused', isError: true })
+    expect(o.steps[0]).toBe('hold_key shift for 1 s · failed: cancelled: the thread was paused')
+    expect(count(s.h, 'action.run')).toBe(1)
+    s.h.set('t1', { status: 'running' })
+    const stopped = s.h.run('computer_act', { app: 'Sessiony', action: 'hold_key', text: 'shift', duration: 1 })
+    await until(() => s.lines.filter((l) => l !== null).length === 2, 'held again')
+    await s.h.sessions.stop('t1')
+    expect((await stopped).body).toBe('stopped by the person')
+    expect(count(s.h, 'action.run')).toBe(2)
+  })
+
+  it('Stop during a session step restores the Mac', async () => {
+    const s = scheduled({ FAKE_CLOSING_WAIT_MS: '10000' })
+    const call = s.h.run('computer_act', { app: 'Sessiony', action: 'hold_key', text: 'shift', duration: 1 })
+    await until(() => count(s.h, 'action.run') === 2, 'the session step')
+    expect(last(s.h, 'action.run').params.tiers).toContain('session')
+    await s.h.sessions.stop('t1')
+    expect((await call).body).toBe('stopped by the person')
+    expect(count(s.h, 'input.restoreSession')).toBe(1)
+  })
+
+  it('sends pasteQuietMs with every acting call; the default gate sends none', async () => {
+    const s = scheduled({}, {})
+    await s.h.run('computer_act', { app: 'TextEdit', action: 'key', text: 'a' })
+    expect(last(s.h, 'action.run').params.pasteQuietMs).toBe(5_000)
+    const plain = make()
+    await plain.run('computer_act', { app: 'TextEdit', action: 'key', text: 'a' })
+    expect(last(plain, 'action.run').params.pasteQuietMs).toBeUndefined()
+  })
+
+  it("a paste the service held off for the person's copy waits for a quiet clipboard and runs again from the paste alone", async () => {
+    const s = scheduled({ FAKE_CLIPBOARD_COPY_AT_MS: '0' })
+    const o = await s.h.run('computer_batch', { app: 'TextEdit', actions: [{ action: 'left_click', coordinate: [5, 5] }, { action: 'paste', text: 'from the thread' }] })
+    const batches = s.h.requests().filter((r) => r.method === 'action.batch')
+    expect(batches.map((b) => (b.params.actions as { action: string }[]).map((a) => a.action))).toEqual([['left_click', 'paste'], ['paste']])
+    expect(count(s.h, 'clipboard.state')).toBeGreaterThan(0)
+    expect(s.lines).toContain('Waiting for the clipboard')
+    expect(o.steps[0]).toBe('left_click 5,5 · process · changed')
+    expect(o.steps[1]).toMatch(/^waited [12]s for the clipboard, the person had just copied\npaste .* · changed$/)
+  })
+
+  it('a person who keeps copying ends the paste with clipboard_recent', async () => {
+    const s = scheduled({ FAKE_CLIPBOARD_COPY_EVERY_MS: '100' }, { pollMs: 50, recentCopyMs: 400, pasteWaitMaxMs: 1_000, clipboardPollMs: 50 })
+    const o = await s.h.run('computer_act', { app: 'TextEdit', action: 'paste', text: 'x' })
+    expect(o.steps[0]).toMatch(/· failed: the person copied something just now and a paste would swap their clipboard; try again in a minute$/)
+    expect(count(s.h, 'action.run')).toBeGreaterThanOrEqual(1)
   })
 })

@@ -86,9 +86,9 @@ export interface ClipboardQuietInput {
   watchingSince: number
 }
 
-/** `now − max(foreignChangeAt ?? 0, watchingSince) ≥ recentCopyMs`: a copy made before the watch began counts as made at its start. */
-export function clipboardQuiet(state: ClipboardQuietInput, now: number): boolean {
-  return now - Math.max(state.foreignChangeAt ?? 0, state.watchingSince) >= SCHEDULE.recentCopyMs
+/** `now − max(foreignChangeAt ?? 0, watchingSince) ≥ quietMs`: a copy made before the watch began counts as made at its start. */
+export function clipboardQuiet(state: ClipboardQuietInput, now: number, quietMs: number = SCHEDULE.recentCopyMs): boolean {
+  return now - Math.max(state.foreignChangeAt ?? 0, state.watchingSince) >= quietMs
 }
 
 /** 4s, 2m 14s, 3m, 1h 2m: a wait as the held line says it. */

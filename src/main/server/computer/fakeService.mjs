@@ -32,6 +32,8 @@ const sessions = new Set()
 const states = new Map()
 const shots = new Map()
 const pending = new Map()
+// replies held for the closing wait: a cancel answers them at once with what ran
+const delayed = new Map()
 const permissions = { accessibility: true, screenRecording: process.env.FAKE_SCREEN_RECORDING !== '0' }
 const streams = new Map()
 const lastClicks = new Map()
@@ -244,6 +246,13 @@ function actionResult(ctx, params, method, wasCancelled = false) {
 }
 function handle({ id, method, params = {} }) {
   if (method === '$/cancel' && id === undefined) {
+    const held = delayed.get(params.id)
+    if (held) {
+      delayed.delete(params.id)
+      clearTimeout(held.timer)
+      reply(params.id, held.result)
+      return
+    }
     const request = pending.get(params.id)
     if (request) {
       pending.delete(params.id)
@@ -321,11 +330,12 @@ function handle({ id, method, params = {} }) {
       if (method === 'state.get') return reply(id, observation(ctx, params))
       if (method.startsWith('action.')) {
         const result = actionResult(ctx, params, method)
-        if (!ctx.touched) return reply(id, result)
-        // the service says the person took over the moment its watch trips, then answers after the closing wait
-        notify('session/interrupted', { session: ctx.session, by: 'person', at: Date.now() })
+        // the service says the person took over the moment its watch trips, before the call's closing wait
+        if (ctx.touched) notify('session/interrupted', { session: ctx.session, by: 'person', at: Date.now() })
+        const steps = result.steps ?? [result.step]
+        const session = steps.some((step) => step.tier === 'session' || step.error?.session)
         const wait = Number(process.env.FAKE_CLOSING_WAIT_MS ?? 0)
-        if (wait > 0) setTimeout(() => reply(id, result), wait)
+        if (session && wait > 0) delayed.set(id, { result, timer: setTimeout(() => (delayed.delete(id), reply(id, result)), wait) })
         else reply(id, result)
         return
       }

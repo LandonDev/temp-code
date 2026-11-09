@@ -85,6 +85,8 @@ import { SessionHolds, computerBannerHooks, handleComputerProofHold } from './co
 import { ComputerRpc } from './computer/rpc'
 import { ComputerService } from './computer/service'
 import { ComputerSessions } from './computer/sessions'
+import { SessionScheduler } from './computer/schedule'
+import { setSessionTierGate } from './computer/tierGate'
 import { pruneStaleShots } from './computer/shots'
 import { ComputerBridge, computerBridgeHooks } from './computer/bridge'
 import { computerPinFromEnv } from './computer/pin'
@@ -1308,6 +1310,7 @@ export async function startServer(
   // harness start, so a dev tree whose build finishes after boot still gets it.
   const computerWhy = computerUnavailable({ exists: () => true })
   let computer: ComputerHost | null = null
+  let scheduler: SessionScheduler | null = null
   if (!computerWhy) {
     const computerData = join(options.dataDir ?? dirname(dbPath), 'computer')
     const service = new ComputerService({
@@ -1331,6 +1334,22 @@ export async function startServer(
     registry.onMeta((m) => sessions.onMeta(m))
     registry.onRemoved((ids) => void sessions.end(ids))
     setTimeout(() => void pruneStaleShots(computerData), 30_000).unref()
+    // The session tier (computer/schedule.ts): only where there is a person's idle time to read; without it the tier stays refused.
+    if (options.personIdle) {
+      scheduler = new SessionScheduler({
+        service,
+        idle: options.personIdle,
+        presence,
+        awayOn: () => registry.awayOn(),
+        getSetting: (key) => store.getSetting(key),
+        held: (threadId, line) => {
+          registry.setToolHold(threadId, line)
+          sessions.setHeld(threadId, line)
+        },
+        threadOf: (serviceSession) => sessions.threadOfServiceSession(serviceSession)
+      })
+      setSessionTierGate(scheduler)
+    }
   }
   computerHooks.current = computer
   const previews = computer ? new ComputerPreviews(computer) : null
@@ -3595,6 +3614,8 @@ export async function startServer(
       computerBridge?.close()
       holds?.close()
       void previews?.close()
+      scheduler?.dispose()
+      if (scheduler) setSessionTierGate(null)
       void computer?.service.close()
       awaySync.close()
       uploads.close()
