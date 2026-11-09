@@ -102,13 +102,17 @@ describe('the bridge', () => {
     })
   })
 
-  it("lists a codex thread's tools in the cua words", () => {
+  it("lists a codex thread's tools in the cua words and a Muse thread's in the anthropic ones", () => {
     const { h, rpc } = make()
     h.set('t2', { provider: 'codex', model: 'gpt-6.1-sol' })
     const tokens = (rpc as unknown as { host: ComputerHost }).host.tokens
     const { tools } = rpc.socket().tools({ sessionId: 't2', token: tokens.tokenFor('t2') })
     expect(tools.map((t) => t.name)).toEqual(['computer_apps', 'computer_observe', 'computer_act', 'computer_batch'])
     expect(tools[1].description).toContain('getAXState')
+    h.set('t3', { provider: 'muse', model: 'muse-wonder-1.0' })
+    const muse = rpc.socket().tools({ sessionId: 't3', token: tokens.tokenFor('t3') }).tools
+    expect(muse[1].description).not.toContain('getAXState')
+    expect(muse.map((t) => t.description)).toEqual(COMPUTER_TOOLS.map((t) => t.description))
   })
 
   it('app.computerCancel denies a waiting card, and an Allow after it acts on nothing', async () => {
