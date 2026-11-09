@@ -3,14 +3,15 @@
  * by scripts/mac/ax-reader-proof.sh with TC_AX_BIN (tc-ax) and TC_AX_RECORDER
  * (the fixture recorder, for one key event posted to a pid) built.
  *
- * The person's rules (2026-11-08): every window is read in the background and
- * never activated (`open -g`, AX reads and AX actions only); each scratch app
- * starts only once the Mac has had no input for TC_AX_IDLE_ANY seconds (300:
- * scratch windows come forward whatever `-g` says, so the person chose five
- * minutes away, 2026-11-09),
- * IntelliJ's scratch project for 120, waiting up to TC_AX_IDLE_WAIT seconds
- * (900) and else "skipped: the person is active"; a launch that brings its app
- * in front ends the run; IntelliJ's licence prompt is avoided (no run when it
+ * The person's rules (2026-11-08, 2026-11-09): every window is read through AX
+ * alone and never activated by the proof (`open -g`, AX reads and AX actions);
+ * a launch still raises Chrome and the dev window whatever the flag, so each
+ * scratch app starts only once the Mac has had no input for TC_AX_IDLE_ANY
+ * seconds (300), and a step is aborted, its scratch apps killed, the moment
+ * input resumes ("not run: the person came back"). The whole run waits up to
+ * TC_AX_IDLE_WAIT seconds (5400) for such gaps; an app with none is "not run:
+ * the person was at the Mac", never passed. A raise at launch is a note, not a
+ * failure. IntelliJ's licence prompt is avoided (no run when it
  * already shows) or answered only with a button that dismisses it; the
  * scratch project leaves IntelliJ's recent list. Opening a project brings
  * IntelliJ in front whatever `-g` says (seen 2026-11-09), so its step runs only
@@ -31,7 +32,8 @@ const TCAX = process.env.TC_AX_BIN ?? join(ROOT, 'native/tc-computer/.build/rele
 const REC = process.env.TC_AX_RECORDER ?? ''
 const IDLE_ANY = Number(process.env.TC_AX_IDLE_ANY ?? 300)
 const IDLE_IDEA = 120
-const IDLE_WAIT = Number(process.env.TC_AX_IDLE_WAIT ?? 900)
+const IDLE_WAIT = Number(process.env.TC_AX_IDLE_WAIT ?? 5400)
+const RUN_DEADLINE = Date.now() + IDLE_WAIT * 1000
 
 type Check = { app: string; name: string; pass: boolean; detail: string }
 const checks: Check[] = []
@@ -39,7 +41,8 @@ const timings: Record<string, unknown> = {}
 const findings: string[] = []
 const skipped: Record<string, string> = {}
 const allow = new Set<number>()
-let stopAll = ''
+/** the app whose step the person's input interrupted; checks after it are not recorded */
+let cameBack = ''
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -49,6 +52,7 @@ function sh(cmd: string[], env?: Record<string, string>): { code: number; out: s
 }
 
 function check(app: string, name: string, pass: boolean, detail = ''): boolean {
+  if (cameBack === app) return pass
   checks.push({ app, name, pass, detail })
   console.log(`${pass ? 'pass' : 'FAIL'}  ${app.padEnd(12)} ${name}${detail ? `  (${detail})` : ''}`)
   return pass
@@ -69,11 +73,10 @@ function frontApp(): string {
 
 /** Wait until the Mac has had no input for `seconds`; false when the person stays active. */
 async function waitIdle(seconds: number, app: string): Promise<boolean> {
-  const deadline = Date.now() + IDLE_WAIT * 1000
   while (idleSeconds() < seconds) {
-    if (Date.now() > deadline) {
-      skipped[app] = 'skipped: the person is active'
-      console.log(`skip  ${app.padEnd(12)} skipped: the person is active`)
+    if (Date.now() > RUN_DEADLINE) {
+      skipped[app] = 'not run: the person was at the Mac'
+      console.log(`skip  ${app.padEnd(12)} ${skipped[app]}`)
       return false
     }
     await sleep(5000)
@@ -81,13 +84,10 @@ async function waitIdle(seconds: number, app: string): Promise<boolean> {
   return true
 }
 
-/** After a launch: the person's front app must still be in front. */
-function stillBehind(before: string, app: string): boolean {
+/** After a launch: a raise is expected behind the idle gate, so it is noted, never a failure. */
+function noteFront(before: string, app: string): void {
   const now = frontApp()
-  if (now === before && now !== '') return true
-  stopAll = `${now} came in front of ${before} after the ${app} launch`
-  check(app, 'the launch stayed in the background', false, stopAll)
-  return false
+  if (now !== before) findings.push(`${app}: ${now || 'an unreadable app'} came in front of ${before || 'an unreadable app'} at a launch`)
 }
 
 function pidsOf(exe: string): number[] {
@@ -213,7 +213,7 @@ async function textedit(): Promise<void> {
   const pid = await newPid(exe, before)
   allow.add(pid)
   cleanups.push(() => discardTextEdit(pid))
-  if (!stillBehind(front, app)) return
+  noteFront(front, app)
   const title = 'Untitled'
   await waitWindow(pid, title, 20_000)
   const s = new Session(pid, title)
@@ -312,7 +312,7 @@ async function chromeOn(page: string, title: string): Promise<number> {
     rmSync(profile, { recursive: true, force: true })
   }
   cleanups.push(stopChrome)
-  if (!stillBehind(front, 'chrome')) throw new Error(stopAll)
+  noteFront(front, 'chrome')
   await waitWindow(pid, title, 30_000)
   return pid
 }
@@ -466,7 +466,7 @@ async function tempcodeDev(): Promise<void> {
     for (let i = 0; i < 20 && sh(['kill', '-0', String(pid)]).code === 0; i++) await sleep(500)
     rmSync(data, { recursive: true, force: true })
   })
-  if (!stillBehind(front, app)) return
+  noteFront(front, app)
   const title = 'New thread'
   await waitWindow(pid, title, 60_000)
   await sleep(3000)
@@ -552,7 +552,7 @@ async function intellij(): Promise<void> {
   const pid = running ?? (await newPid(exe, []))
   allow.add(pid)
   if (!running) cleanups.push(() => void sh(['kill', String(pid)]))
-  if (!stillBehind(front, app)) return
+  noteFront(front, app)
   const mark = 'AXButton=Project: Hello, menu'
   let s: Session | undefined
   let scratch = 0
@@ -563,7 +563,7 @@ async function intellij(): Promise<void> {
       break
     }
     // the project window may come up well after the open returned
-    if (!stillBehind(front, app)) return
+    noteFront(front, app)
     // the trust prompt a first open of a folder may ask
     const trust = windowsOf(pid).find((w) => w.title === "Trust and Open Project 'Hello'?")
     if (trust) {
@@ -572,7 +572,7 @@ async function intellij(): Promise<void> {
       await t.send(`poke press ${indexOf(tr.text, /^button "Trust Project"/)}`)
       t.close()
       await sleep(1000)
-      if (!stillBehind(front, app)) return
+      noteFront(front, app)
     }
     // a licence prompt: answered only with a dismissing button, else left and reported
     for (const w of windowsOf(pid).filter((w) => !before.has(w.id) && LICENCE.test(w.title))) {
@@ -588,7 +588,7 @@ async function intellij(): Promise<void> {
       p.close()
       before.add(w.id)
       await sleep(1000)
-      if (!stillBehind(front, app)) return
+      noteFront(front, app)
     }
     // only the window that appeared since the open, and only if it holds the scratch project's button
     const fresh = windowsOf(pid).find((w) => !before.has(w.id) && w.title === '')
@@ -629,17 +629,26 @@ const wanted = process.argv.slice(2).length ? process.argv.slice(2) : Object.key
 rmSync(OUT, { recursive: true, force: true })
 mkdirSync(OUT, { recursive: true })
 for (const name of wanted) {
-  if (stopAll) break
+  // the moment input resumes, the step's scratch apps go and its checks stop counting
+  const watch = setInterval(() => {
+    if (cameBack || idleSeconds() >= 2) return
+    cameBack = name
+    skipped[name] = 'not run: the person came back'
+    console.log(`skip  ${name.padEnd(12)} ${skipped[name]}`)
+    void cleanUp()
+  }, 1000)
   try {
     await apps[name]!()
   } catch (e) {
     check(name, 'ran to the end', false, String((e as Error).message ?? e).slice(0, 200))
   } finally {
+    clearInterval(watch)
     await cleanUp()
+    cameBack = ''
   }
 }
 const failed = checks.filter((c) => !c.pass).length
-writeFileSync(join(OUT, 'report.json'), JSON.stringify({ checks, timings, findings, skipped, stopped: stopAll || undefined }, null, 2))
+writeFileSync(join(OUT, 'report.json'), JSON.stringify({ checks, timings, findings, skipped }, null, 2))
 console.log(`\n${checks.length - failed} passed, ${failed} failed, ${Object.keys(skipped).length} skipped; ${join(OUT, 'report.json')}`)
 for (const f of findings) console.log(`note  ${f}`)
 process.exit(failed ? 1 : 0)
