@@ -2093,7 +2093,6 @@ and .temp-code/plan-JBpcLz-eGMhp.md (the drivers).
   headless instance against the spike's fakes (scripts/lib/spikeFakes.ts),
   and `--host box|mac` runs real turns by hand. Both `--gate` modes are
   publish rows.
-
 - The skills drivers gate uses the user's `~/.bun/bin/bun` through
   `scripts/lib/proofBun.ts`, so an ancestor npm `.bin` cannot select another
   runtime. It waits for the gate build before starting that child.
