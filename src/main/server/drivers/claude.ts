@@ -44,6 +44,7 @@ import { isMetaModel, type ProviderId } from '@shared/catalog'
 import { routedEndpointFor } from '../endpoint'
 import { gateway } from '../gateway'
 import { spawnOrAdoptClaude } from './claudeWarm'
+import { ROUTED_OAUTH, claudeSkillRootFor, claudeSkillsGeneration } from '../skills/claudeRoots'
 import { claudeFastFor, noteClaudeInit } from './claudeTiers'
 import { guardInstanceEnv, unwrapBashCommand, wrapBashCommand } from '../processGuard'
 
@@ -419,6 +420,28 @@ export function metaClaudeEnv(session: { provider: ProviderId; model: string }):
     ENABLE_TOOL_SEARCH: 'true'
   }
 }
+
+/**
+ * The skills store's part of a CLI's env (skills/claudeRoots.ts): the
+ * scope's owned config dir, and for a routed Anthropic row the placeholder
+ * login the gateway replaces with the thread's account (a Meta row keeps
+ * metaClaudeEnv's token mode). A thread with no route keeps the owned root,
+ * so it never reads the home skills either. Empty with no store.
+ */
+export function claudeSkillEnv(
+  session: { provider: ProviderId; model: string },
+  root: { dir: string } | null,
+  endpoint: string | null | undefined
+): Record<string, string> {
+  if (!root) return {}
+  return {
+    CLAUDE_CONFIG_DIR: root.dir,
+    ...(endpoint && !isMetaModel(session.provider, session.model) ? { CLAUDE_CODE_OAUTH_TOKEN: ROUTED_OAUTH } : {})
+  }
+}
+
+/** How long a turn waits for the CLI to re-read its skills before it goes on without them. */
+export const SKILL_RELOAD_MS = 10_000
 
 export function claudeExtraArgs(session: { model: string; context1m?: boolean; fast?: boolean }): Record<string, string> {
   return {
@@ -1613,6 +1636,10 @@ export const claudeDriver: HarnessDriver = {
     // Provider traffic goes through Aliax's shim or our own gateway, which
     // swap in this thread's account's token and read the limit headers.
     const { url: endpoint } = await routedEndpointFor('claude', { thread: session.id, route: ctx.route ?? null, model: session.model })
+    // The skills store's owned config dir for this thread's scope: the CLI reads the store, and only the store.
+    const skillRoot = claudeSkillRootFor(session)
+    // The generation the CLI last loaded: its spawn's (a warm process's spawn when adopted), then each reload's.
+    let skillsGeneration: string | null = null
 
     const writeRoots = researchWriteRoots(session)
     const webTools = permittedWebTools(session.permission)
@@ -1636,6 +1663,7 @@ export const claudeDriver: HarnessDriver = {
         ENABLE_TOOL_SEARCH: 'true',
         ...guardInstanceEnv(),
         ...(endpoint ? { ANTHROPIC_BASE_URL: endpoint } : {}),
+        ...claudeSkillEnv(session, skillRoot, endpoint),
         ...metaClaudeEnv(session)
       },
       // 1M rides the CLI's `[1m]` model suffix — the same lever as Claude
@@ -1763,6 +1791,7 @@ export const claudeDriver: HarnessDriver = {
         { thread: session.id, scope: ctx.route ? { thread: session.id, ...ctx.route, model: session.model } : null, warmable }
       )
       cli = spawned.proc
+      skillsGeneration = spawned.skillsGeneration
       // The send's phase line says whether the process was adopted warm or spawned cold.
       ctx.mark?.('handle', spawned.warmId ? 'warm' : 'cold')
       setPhase(ctx, state, spawned.warmId ? 'initializing' : 'cli-starting')
@@ -1919,6 +1948,32 @@ export const claudeDriver: HarnessDriver = {
       }
     })()
 
+    /**
+     * At a turn's start: the scope's pointer names another generation than the
+     * one the CLI loaded, so it re-reads its skills. Acknowledged by the
+     * generation asked for, so a move during the reload is the next send's;
+     * a failure or the deadline leaves it to the next send and the turn goes on.
+     */
+    const reloadSkillsIfMoved = async (): Promise<void> => {
+      if (!skillRoot || skillsGeneration === null) return
+      const wanted = claudeSkillsGeneration(skillRoot.workspaceId)
+      if (!wanted || wanted === skillsGeneration) return
+      let timer: NodeJS.Timeout | undefined
+      try {
+        await Promise.race([
+          q.reloadSkills(),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error(`no answer in ${SKILL_RELOAD_MS / 1000} s`)), SKILL_RELOAD_MS)
+          })
+        ])
+        skillsGeneration = wanted
+      } catch (err) {
+        console.warn(`[claude] ${session.id}: skills reload failed: ${err instanceof Error ? err.message : String(err)}`)
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+
     return {
       confirmsSteers: true,
       async send(text: string, attachments?: Attachment[], opts?: SendOpts): Promise<void> {
@@ -1940,6 +1995,8 @@ export const claudeDriver: HarnessDriver = {
             setPhase(ctx, state, word)
           }
         }
+        // The store moved since the CLI loaded its skills: it re-reads them before this turn (never mid-turn).
+        if (!midTurn) await reloadSkillsIfMoved()
         // The harness only runs a LEADING /command natively; mid-message
         // and additional skill references get expanded server-side.
         const expanded = await expandSlashRefs('claude', session.cwd, text)

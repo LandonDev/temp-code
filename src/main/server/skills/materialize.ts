@@ -15,7 +15,7 @@ import {
   symlinkSync,
   writeFileSync
 } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type { HistoryMapping } from '../pathMap'
 import { SKILL_HARNESSES, generationDirName, skillDigest, type SkillHarness } from '@shared/skills'
 import { writeSkillTreeSync } from '../skillFiles'
@@ -36,8 +36,10 @@ import { planView, planViews, type ViewPlan } from './views'
  * a given name is complete once renamed in and never changes. It is built
  * beside its place and renamed in; an unchanged skill is hard-linked from
  * the view's current generation, and every file is read-only so an edit in
- * place can never reach a sibling generation. Drivers point a CLI at the
- * generation path (`materializedSkillsDir`), never the symlink.
+ * place can never reach a sibling generation. The drivers reach a scope's
+ * current generation through a pointer of their own (pointers.ts:
+ * `<root>/<provider>/scope/<key>`), refreshed on every `onPublished`; gc
+ * spares what those pointers name.
  */
 
 export const GENERATION_LAYOUT = 1
@@ -46,6 +48,8 @@ export const GENERATION_MANIFEST = '.tc-generation.json'
 export const GENERATIONS_LEDGER = 'generations.json'
 export const SUPERSEDED_KEEP_MS = 24 * 60 * 60_000
 export const GC_EVERY_MS = 60 * 60_000
+/** `<root>/<provider>/scope/`: the drivers' scope pointers (pointers.ts), each a link to a generation of this provider. */
+export const SCOPE_DIR = 'scope'
 const SETTLE_TIMEOUT_MS = 10_000
 
 export interface GenerationManifest {
@@ -110,6 +114,7 @@ export class SkillMaterializer {
   private settled: (() => void)[] = []
   /** A real folder found where a view's symlink belongs: said once. */
   private readonly foreign = new Set<string>()
+  private readonly published = new Set<() => void>()
 
   constructor(private readonly deps: MaterializerDeps) {}
 
@@ -161,6 +166,22 @@ export class SkillMaterializer {
     for (const fn of this.settled.splice(0)) fn()
   }
 
+  /** `fn` after every run, whatever it changed, and after `dirFor` built a generation itself: what a view reads may have moved. */
+  onPublished(fn: () => void): () => void {
+    this.published.add(fn)
+    return () => this.published.delete(fn)
+  }
+
+  private publish(): void {
+    for (const fn of [...this.published]) {
+      try {
+        fn()
+      } catch (err) {
+        this.log(`a published listener failed: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+  }
+
   private markDirty(): void {
     if (this.closed) return
     this.dirty = true
@@ -192,6 +213,7 @@ export class SkillMaterializer {
     const dir = join(this.providerDir(provider), name)
     if (this.currentOf(provider, plan.view) === name && existsSync(dir)) return dir
     const result = drive(this.build(plan))
+    this.publish()
     if (result.stale) {
       // Only a store whose files disagree with their row gets here: the view as it stands is the best answer.
       const current = this.currentOf(provider, plan.view)
@@ -233,6 +255,7 @@ export class SkillMaterializer {
         this.log(`${provider}/${view} removed`)
       }
     }
+    if (!this.closed) this.publish()
   }
 
   private providerDir(provider: SkillHarness): string {
@@ -394,7 +417,28 @@ export class SkillMaterializer {
     this.writeLedger(ledger)
   }
 
-  /** Remove each generation no view points at, no live CLI holds, superseded more than a day ago. */
+  /** The generations the scope pointers name (pointers.ts writes them as `../<generation>`). */
+  private pointed(provider: SkillHarness): Set<string> {
+    const out = new Set<string>()
+    const dir = join(this.providerDir(provider), SCOPE_DIR)
+    let names: string[]
+    try {
+      names = readdirSync(dir)
+    } catch {
+      return out
+    }
+    for (const name of names) {
+      try {
+        const target = basename(readlinkSync(join(dir, name)))
+        if (GENERATION_RE.test(target)) out.add(target)
+      } catch {
+        // not a link: nothing it names
+      }
+    }
+    return out
+  }
+
+  /** Remove each generation no view or scope pointer points at, no live CLI holds, superseded more than a day ago. */
   gc(): void {
     try {
       const ledger = this.readLedger()
@@ -411,7 +455,7 @@ export class SkillMaterializer {
         } catch {
           continue
         }
-        const currents = new Set(this.viewsOnDisk(provider).map((v) => this.currentOf(provider, v)))
+        const currents = new Set<string | null>([...this.viewsOnDisk(provider).map((v) => this.currentOf(provider, v)), ...this.pointed(provider)])
         for (const name of entries) {
           const key = `${provider}/${name}`
           seen.add(key)

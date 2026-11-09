@@ -3,6 +3,7 @@ import { createInterface } from 'node:readline'
 import { PassThrough } from 'node:stream'
 import type { RouteScope } from 'aliax-core'
 import { gateway } from '../gateway'
+import { claudeGenerationOfRoot } from '../skills/claudeRoots'
 import { WarmPool, type WarmSpec } from './warm'
 
 /**
@@ -60,6 +61,9 @@ export function spawnClaude(spec: WarmSpec, signal: AbortSignal | undefined, lab
   return proc
 }
 
+/** The skills generation each warm process was spawned under (its CLAUDE_CONFIG_DIR's scope then): an adopted one behind it reloads at its first send. */
+const warmGenerations = new WeakMap<ChildProcess, string | null>()
+
 const killClaude = (proc: ChildProcess): void => {
   if (!proc.killed && proc.exitCode === null) proc.kill('SIGTERM')
 }
@@ -72,6 +76,7 @@ export const claudeWarm = new WarmPool<ChildProcess>({
     const url = gateway()?.warmClaudeUrl(id)
     if (!url) throw new Error('the gateway is not running')
     const proc = spawnClaude({ ...spec, env: claudeWarm.envFor(spec, { ANTHROPIC_BASE_URL: url }) }, undefined, `warm ${id}`)
+    warmGenerations.set(proc, claudeGenerationOfRoot(spec.env.CLAUDE_CONFIG_DIR))
     proc.once('exit', () => {
       gateway()?.releaseWarm(id)
       onExit()
@@ -116,8 +121,14 @@ export interface ClaudeSpawnChoice {
  * What `spawnClaudeCodeProcess` hands the SDK: the warm process when one of
  * this spec's shape is waiting (rebound to the thread's scope), else a cold
  * spawn, which for a warmable thread also becomes the shape to keep warm.
+ * `skillsGeneration` is the skills generation the process loaded (the
+ * driver reloads its skills at a send when the scope has moved past it).
  */
-export function spawnOrAdoptClaude(spec: WarmSpec, signal: AbortSignal | undefined, choice: ClaudeSpawnChoice): { proc: ChildProcess; warmId: string | null } {
+export function spawnOrAdoptClaude(
+  spec: WarmSpec,
+  signal: AbortSignal | undefined,
+  choice: ClaudeSpawnChoice
+): { proc: ChildProcess; warmId: string | null; skillsGeneration: string | null } {
   if (choice.warmable) {
     const warm = claudeWarm.adopt(spec)
     if (warm) {
@@ -125,11 +136,11 @@ export function spawnOrAdoptClaude(spec: WarmSpec, signal: AbortSignal | undefin
       // A local spawn dies with the SDK's abort signal; the adopted one does the same.
       if (signal) signal.addEventListener('abort', () => killClaude(warm.proc), { once: true })
       console.log(`[claude] ${choice.thread}: adopted the warm process ${warm.id}`)
-      return { proc: holdStdin(warm.proc, rebound), warmId: warm.id }
+      return { proc: holdStdin(warm.proc, rebound), warmId: warm.id, skillsGeneration: warmGenerations.get(warm.proc) ?? null }
     }
     // adopt() logged the miss and made this the shape to keep warm.
   } else {
     claudeWarm.miss(spec)
   }
-  return { proc: spawnClaude(spec, signal, choice.thread), warmId: null }
+  return { proc: spawnClaude(spec, signal, choice.thread), warmId: null, skillsGeneration: claudeGenerationOfRoot(spec.env.CLAUDE_CONFIG_DIR) }
 }

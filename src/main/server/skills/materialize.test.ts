@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DatabaseSync } from 'node:sqlite'
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync, writeFileSync, chmodSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync, chmodSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { SkillFile } from '@shared/contract-skills'
 import { SkillStore } from '../skillStore'
+import { SkillPointers } from './pointers'
 import {
   GENERATION_MANIFEST,
+  SCOPE_DIR,
   SUPERSEDED_KEEP_MS,
   SkillMaterializer,
   configureMaterializedSkills,
@@ -383,6 +385,74 @@ describe('gc', () => {
     expect(gens()).toEqual([g2, g4].sort())
     const ledger = JSON.parse(readFileSync(join(root, 'generations.json'), 'utf8'))
     expect(Object.keys(ledger)).toEqual([])
+  })
+})
+
+describe('onPublished', () => {
+  it('fires after a swap, after a run that only removed a view, and after dirFor built a generation itself', async () => {
+    workspaces = [{ id: 'w1', path: join(tmp, 'w1') }]
+    put('alpha')
+    const m = await started()
+    let fired = 0
+    const off = m.onPublished(() => fired++)
+    const own = put('local', { workspaceId: 'w1' })
+    await m.whenSettled()
+    expect(fired).toBe(1)
+    store.remove(own.id)
+    await m.whenSettled()
+    expect(logs).toContain('claude/ws-w1 removed')
+    expect(fired).toBe(2)
+    // A write the run has not reached: dirFor builds it, and says so.
+    put('beta')
+    m.dirFor('claude', null)
+    expect(fired).toBe(3)
+    await m.whenSettled()
+    // A run that changed nothing still publishes; nothing listens once off.
+    expect(fired).toBe(4)
+    off()
+    put('beta', { body: 'x' })
+    await m.whenSettled()
+    expect(fired).toBe(4)
+  })
+})
+
+describe('gc and the scope pointers', () => {
+  it('spares a generation a scope pointer names, however long ago it was superseded', async () => {
+    put('alpha', { body: '1' })
+    const m = await started()
+    const g1 = current()
+    mkdirSync(join(root, 'claude', SCOPE_DIR), { recursive: true })
+    symlinkSync(join('..', g1), join(root, 'claude', SCOPE_DIR, 'ws-old'))
+    put('alpha', { body: '2' })
+    await m.whenSettled()
+    clock += SUPERSEDED_KEEP_MS + 1
+    m.gc()
+    expect(gens()).toContain(g1)
+    rmSync(join(root, 'claude', SCOPE_DIR, 'ws-old'))
+    m.gc()
+    clock += SUPERSEDED_KEEP_MS + 1
+    m.gc()
+    expect(gens()).not.toContain(g1)
+  })
+
+  it('a workspace\'s last own skill removed from the store moves its scope pointer back to the global generation', async () => {
+    workspaces = [{ id: 'w1', path: join(tmp, 'w1') }]
+    put('alpha')
+    const m = await started()
+    const pointers = new SkillPointers({ root, materializer: m, workspaces: () => workspaces, log: (l) => logs.push(l) })
+    pointers.start()
+    const scope = join(root, 'claude', SCOPE_DIR, 'ws-w1')
+    expect(readlinkSync(scope)).toBe(join('..', current()))
+    const own = put('local', { workspaceId: 'w1' })
+    await m.whenSettled()
+    expect(readlinkSync(scope)).toBe(join('..', current('claude', 'ws-w1')))
+    expect(readdirSync(join(scope, 'skills'))).toEqual(['alpha', 'local'])
+    store.remove(own.id)
+    await m.whenSettled()
+    expect(existsSync(view('claude', 'ws-w1'))).toBe(false)
+    expect(readlinkSync(scope)).toBe(join('..', current()))
+    expect(readdirSync(join(scope, 'skills'))).toEqual(['alpha'])
+    pointers.close()
   })
 })
 

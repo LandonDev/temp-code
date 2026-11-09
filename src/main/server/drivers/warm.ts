@@ -117,7 +117,9 @@ const FLAG_FIELD: Record<string, string> = {
   settings: 'settings',
   resume: 'resume'
 }
-const FIELD_ORDER = ['resume', 'model', 'effort', 'tools', 'permission', 'settings', 'cwd']
+const FIELD_ORDER = ['resume', 'model', 'effort', 'tools', 'permission', 'settings', 'cwd', 'skills']
+/** Env keys a difference in reads as `skills`: Claude's owned config dir names the thread's skills scope (skills/claudeRoots.ts). */
+const SKILLS_ENV = ['CLAUDE_CONFIG_DIR']
 
 /** `--flag value` and `--flag=value` pairs; a flag with no value is `true`; anything else is positional. */
 function flagsOf(args: string[]): Map<string, string> {
@@ -147,7 +149,8 @@ export function shapeDiff(a: WarmSpec, b: WarmSpec, rebind: string[] = []): stri
     if (fa.get(name) !== fb.get(name)) fields.add(FLAG_FIELD[name] ?? (name === '_' ? 'args' : name))
   }
   if ((a.cwd ?? null) !== (b.cwd ?? null)) fields.add('cwd')
-  if (JSON.stringify(shapeEnv(a, rebind)) !== JSON.stringify(shapeEnv(b, rebind))) fields.add('env')
+  for (const k of SKILLS_ENV) if (a.env[k] !== b.env[k]) fields.add('skills')
+  if (JSON.stringify(shapeEnv(a, [...rebind, ...SKILLS_ENV])) !== JSON.stringify(shapeEnv(b, [...rebind, ...SKILLS_ENV]))) fields.add('env')
   if (a.command !== b.command) fields.add('command')
   const rank = (f: string): number => {
     const i = FIELD_ORDER.indexOf(f)

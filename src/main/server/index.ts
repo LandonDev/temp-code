@@ -187,6 +187,7 @@ import {
   setProjectPlans
 } from './apptools'
 import { SkillMaterializer, configureMaterializedSkills } from './skills/materialize'
+import { SkillPointers, configureSkillPointers } from './skills/pointers'
 import { skillTextMap } from './skills/skillText'
 import { workspaceForCwd, workspaceOfThread } from './skills/views'
 import { SKILL_IMPORT_KEY, importSkills } from './skills/import'
@@ -751,6 +752,16 @@ export async function startServer(
   })
   skillMaterializer.start()
   configureMaterializedSkills(skillMaterializer)
+  // One stable path per (provider, scope) the drivers point a CLI at (skills/pointers.ts),
+  // moved to the scope's current generation after every write-out.
+  const skillScopePointers = new SkillPointers({
+    root: join(options.dataDir ?? dirname(dbPath), 'harness'),
+    materializer: skillMaterializer,
+    workspaces: () => registry.listWorkspaces(),
+    onWorkspaces: (fn) => registry.onCatalog((kind) => kind === 'workspaces' && fn())
+  })
+  skillScopePointers.start()
+  configureSkillPointers(skillScopePointers)
   // The slash menu lists the store's skills (and the home folder's, until the drivers own each CLI's skill folder).
   configureCommandSkills({
     storeDir: (provider, cwd) => join(skillMaterializer.dirFor(provider, workspaceForCwd(registry.listWorkspaces(), registry.listProjects(), cwd)), 'skills'),
@@ -3434,6 +3445,8 @@ export async function startServer(
       projectSettings.close()
       rulesSync.close()
       storeSync.close()
+      skillScopePointers.close()
+      configureSkillPointers(null)
       skillMaterializer.close()
       configureMaterializedSkills(null)
       configureCommandSkills(null)

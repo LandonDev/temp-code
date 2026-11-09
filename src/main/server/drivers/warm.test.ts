@@ -213,6 +213,15 @@ describe('WarmPool', () => {
     expect(shapeDiff({ ...base, cwd: '/x' }, flag('--model', 'z'))).toEqual(['model', 'cwd'])
   })
 
+  it('a spec differing only in its skills scope (CLAUDE_CONFIG_DIR) misses as skills, never as env', () => {
+    const at = (dir: string): WarmSpec => spec({ env: { ...spec().env, CLAUDE_CONFIG_DIR: dir } })
+    const global = at('/data/harness/claude-config/global')
+    expect(missField(at('/data/harness/claude-config/ws-w1'), [global])).toBe('skills')
+    expect(shapeDiff(at('/data/harness/claude-config/ws-w1'), global)).toEqual(['skills'])
+    expect(shapeDiff(spec({ env: { ...global.env, OTHER: '1' } }), global)).toEqual(['env'])
+    expect(warmKey(at('/a'))).not.toBe(warmKey(at('/b')))
+  })
+
   it('status lists every warm process and counts misses by field', async () => {
     const lines: string[] = []
     pool.close()
