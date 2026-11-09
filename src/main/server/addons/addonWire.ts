@@ -106,3 +106,11 @@ export function grantGapsLine(gaps: readonly string[]): string {
 
 /** A size in the result cap's words: `16.5 MB`. */
 export const megabytes = (bytes: number): string => `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`
+
+/** Main's handle on the add-on host's utility process (addonHostSpawn.ts makes it; tests pass an in-memory pair). */
+export interface AddonHostLink {
+  wire: import('../gatewayWire').Wire<AddonWireMessage>
+  kill(): void
+  onExit(fn: (code: number | null) => void): void
+}
+export type SpawnAddonHost = () => AddonHostLink

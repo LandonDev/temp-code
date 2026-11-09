@@ -102,7 +102,7 @@ export default defineConfig({
         '@shared': resolve('src/shared')
       }
     },
-    // Four entries: boot.js (package.json `main`) enables Node's compile
+    // Six entries: boot.js (package.json `main`) enables Node's compile
     // cache and requires index.js, the real bundle, through it; boot.ts
     // shares no module with index.ts. gateway.js is the gateway's utility
     // process (gatewaySpawn.ts forks it); the modules it shares with
@@ -112,6 +112,9 @@ export default defineConfig({
     // the stats index and bundle run there, never on main's loop.
     // execBroker.js is the exec broker's utility process (execBrokerSpawn.ts
     // forks it): every helper child forks from it, never from main.
+    // addonHost.js is the add-on host's utility process (addonHostSpawn.ts
+    // forks it): every downstream MCP client runs there, never in main or
+    // the gateway, so an add-on's fault cuts no provider stream.
     build: {
       rollupOptions: {
         input: {
@@ -119,7 +122,8 @@ export default defineConfig({
           boot: resolve('src/main/boot.ts'),
           gateway: resolve('src/main/gatewayProcess.ts'),
           statsWorker: resolve('src/main/aliax/stats/statsWorker.ts'),
-          execBroker: resolve('src/main/execBrokerProcess.ts')
+          execBroker: resolve('src/main/execBrokerProcess.ts'),
+          addonHost: resolve('src/main/addonHostProcess.ts')
         }
       }
     }
