@@ -1525,7 +1525,13 @@ request guard refuses `escape.watch { on: true }` in gate mode.
 
 These modes need an unlocked, awake Mac for AX and capture. They fail promptly
 if it is locked or dark; they do not unlock it, wake it or wait for the person.
-On 2026-11-09 the isolated clone built successfully in 56.8 s and both grants
-were present, but the Mac was locked. The live checks could not reach the
-three-green bar; those rows remain unproven until that bar passes. The patch
-handoff report records each attempted run and its result.
+On 2026-11-09 all three modes passed three consecutive runs in the isolated
+Mac clone, with Accessibility and Screen Recording granted. Wall times were
+19.082/18.828/19.075 s for tc-computer (17 passes and 10 skips each),
+28.368/28.875/28.361 s for bridge (43 passes each), and
+23.601/23.347/23.112 s for preview (16 passes and one skip each). Every accepted
+preview run passed the unchanged-click check with zero frames in 1.5 s.
+The one requested publish-tier run then failed at hub startup because
+`@cloudflare/vitest-pool-workers` was missing; the gate stopped the other rows.
+It was not retried. The handoff report includes each attempt, the preview
+fixture fix, and the publish report's step times.
