@@ -7,7 +7,7 @@ import { scopeKeyOf, type ScopeKey, type SkillPointers } from './pointers'
 
 /**
  * Claude Code reads the skills store, and only the store (CLAUDE.md "Skills:
- * written out on every host"): each scope has a config dir the app owns,
+ * one store, materialized per host"): each scope has a config dir the app owns,
  * handed to the CLI as CLAUDE_CONFIG_DIR.
  *
  *   <userData>/harness/claude-config/<scope>/

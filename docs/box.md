@@ -845,8 +845,8 @@ them onto the box over the same admin link the accounts use
 the box never sends back. Nothing to do on the box: a headless host only
 receives (`harness.sync.enabled` defaults to off there, on for a desktop).
 
-Skills are not in the set any more: they are the skills store's ("Skills:
-written out on every host" below), which every CLI on every host reads, and
+Skills are not in the set any more: they are the skills store's ("Skills: one store,
+materialized per host" below), which every CLI on every host reads, and
 only it. The four skill rules (`.claude/skills`, `.codex/skills`,
 `.agents/skills`, `.config/muse/skills`; `RETIRED_ROOTS` in harnessSet.ts)
 retired: the Mac walks and watches them no more, the box forgets at boot and
@@ -4331,7 +4331,110 @@ in-memory link: the seed, a forwarded write, a box edit and removal by push,
 the workspace map, a workspace the box lacks, the refusal, a binary file's
 round trip and the seed clash).
 
-### Skills: written out on every host
+
+#### The code, by name
+
+- **What they are.** An add-on is an MCP server every harness reaches
+  through the one `app` server: a stdio command each host runs, or an http
+  address (`AddonSpec` in src/shared/contract-addons.ts). A skill is a folder
+  every CLI reads from a folder the app writes: SKILL.md at its root and
+  the files beside it (src/shared/contract-skills.ts). Both are global
+  (`workspaceId: null`) or one workspace's, a workspace row shadowing the
+  global row of its name (`visibleRows`, `visibleSkills`); ids `ad_` / `sk_`
+  plus 12; names `ADDON_NAME_RE` (≤ 20, so `<addon>__<tool>` fits Claude's 64)
+  and `SKILL_NAME_RE`. Each row keeps `addedBy` and `writtenBy` (`Writer`: a
+  person with an optional key name, a thread, or an import).
+- **Tables** (created by each store's constructor on the app database):
+  `addons` and this host's `addon_tool_cache` (src/main/server/addonStore.ts:
+  `set` validates, mints, stamps and refuses a name taken in its scope; `put`
+  is the sync's write; the tool cache is voided when the spec's digest moves;
+  the status is in memory, set by the registry core); `skills` and
+  `skill_files` (skillStore.ts: a skill written whole in one transaction, the
+  description read from SKILL.md, `version` moving only when the files, the
+  harnesses or enabled change; `put` takes files only when the digest moved).
+  No column holds a secret: `env` and `headers` name the values, which live in
+  the add-on's grant. A deleted workspace drops its rows
+  (`registry.onWorkspaceDeleted`).
+- **The rules** (pure, shared, the renderer can read them): `addonProblem`
+  (no secret in `command`, `args` or `url` by `looksSecret`, plain http only
+  to this machine, `tokenEnv` only with oauth and required by a stdio oauth
+  add-on, unique names, fields needing a name) and `exposedNames` (a cut or
+  clashing name ends `_` plus four hex of its sha256) in src/shared/addons.ts;
+  `skillProblem` (SKILL.md with frontmatter naming the skill, clean paths, no
+  secret path, nothing under `scripts/bin/`, no native binary, 512 files, 4
+  MiB a file, 16 MiB a skill), `skillDigest`, `skillFrontmatter`,
+  `viewDigest`, `viewDirName` in src/shared/skills.ts. `isSecretPath` and
+  `validRelPath` moved to src/shared/secretPaths.ts (harnessSet.ts re-exports
+  them), and src/shared/sha256.ts is a hash with no runtime import.
+  `readSkillDir` and `writeSkillTree` (src/main/server/skillFiles.ts) read and
+  write a skill folder, never outside it; a link leaving the folder is refused.
+- **One copy, on the box** (remote/storeSync.ts, `StoreSync`, beside
+  RulesSync, whose home and `sharedScopes` it reads): the Mac follows both
+  tables, seeds each shared scope once, forwards every write of a shared scope
+  and refuses it while the box is out of reach; a workspace the box has no
+  copy of stays the Mac's own.
+- **Wire** (src/main/server/storeRpc.ts, one line per method in index.ts):
+  `addons.list` (every row, this host's status, the named scope's `home`),
+  `addons.tools`, `skills.list`, `skills.get` are read; `addons.set`,
+  `addons.remove`, `skills.set`, `skills.remove` are admin, and keep the
+  writers a request carries only for an admin caller (the Mac's sync). The
+  `addons`, `addon-status` and `skills` pushes go to every client once per
+  burst (`storePushes`). The bridge methods `app.addonList`, `app.addonAdd`,
+  `app.addonRemove`, `app.addonFind`, `app.addonCall`, `app.skillList`,
+  `app.skillWrite`, `app.skillRemove` are in the contract and `local`; the
+  skills core answers the three skill methods and the registry core the five
+  add-on ones (addons/tools.ts). `skills.set` and
+  `skills.remove` take `expectUpdatedAt` (0: the name must be free): the
+  home refuses `refused: <name> changed since it was read` when the row moved
+  since, and `updatedAt` rises on every write so the stamp names one write.
+  The phone speaks none of these.
+- **The cards.** The words are pure (`addonCard`, `addonRemoveCard`,
+  `skillChangeCard`, `skillRemoveCard`). `skill_write` and `skill_remove` ask
+  only over a skill a person or an import wrote last; `addon_remove` only over
+  an add-on a person wrote last; `addon_add` always, and only a person with an
+  admin key may allow it: SessionRegistry keeps the tool of each pending
+  approval (`pendingApprovalTool`), and `assertMayAnswer` refuses an allow
+  with `forbidden: approving an add-on needs a person with an admin key` on
+  `session.approve` from a key without admin, on a far parent's
+  `thread.answer` and on an MCP key's prompt answer. A deny always passes.
+- **The grant** (src/shared/addonGrant.ts): `AddonGrantBlobSchema`
+  (`mintedBy: 'app'`, the typed fields, an OAuth client with its fixed
+  loopback `redirectPort`), `grantNeeds`, `grantGaps` (a client registered and
+  never signed in reads `sign-in`). What holds, signs in and moves it is
+  "Add-on grants" below.
+- **The layout the drivers read**: `<userData>/harness/<provider>/
+  <view>@<digest12>/skills/<name>/`, one generation per view, built beside
+  and renamed into place, with a symlink `<view>` to the current one; `view`
+  is `global` or `ws-<workspaceId>`; `digest12` is the generation's own hash
+  (below).
+- Tests: addons, skills, addonGrant, secretPaths, contract-addons,
+  capabilities, addonStore, skillStore, skillFiles, storeRpc,
+  remote/storeSync, remote/storeSync.pair (the two-host proof),
+  sessions-approval, sessions-workspaces, crossHostThreads, facade.
+- **The settings pages.** Settings → Add-ons and Settings → Skills (plan
+  .temp-code/plan-vJP8mPAPorvc.md; src/renderer/src/surfaces/settings/addons/
+  and skills/, docs/LAYOUT.md "Settings → Add-ons and Skills") read through
+  this machine: `addons.list` and, apart from it, `addons.grant.list` (unread
+  grants are never shown as nothing saved; the grant rows wait with "Loading"),
+  or `skills.list`, with the `addons`, `addon-status` (the whole map, so it
+  replaces), `addon-grants` and `skills` pushes folded in through a ref
+  (useAddons.ts, useSkills.ts). Every word the pages say that no shared
+  module has is in addonWords.ts (`addonMark`, `grantFact`, `addonMenuRows`,
+  the form ↔ spec) or skillForm.ts. A new add-on sends a fresh `ad_` id
+  (`newAddonId`), so a taken name is refused instead of replacing that row; a
+  skill's switch reads the skill whole (`skills.get`) and writes it back, and
+  every skill write and removal carries `expectUpdatedAt`. Sign in… is
+  desktop only; Sign out is `addons.grant.clear`; the key dialog's Clear sends
+  every value as null. The skill editor is `SkillTextEditor` (a CodeMirror
+  buffer over a string, one `EditorState` per path) reached only through
+  `editorChunk.surface`, so CodeMirror never joins the settings chunk.
+  `PageActions` (components/page.tsx) puts a page's one ghost verb on its
+  title line; `PageRow`'s `onOpen` makes a row open its dialog. Tests beside
+  each module (SkillTextEditor.test.tsx runs on jsdom in the node project, the
+  dom project stubbing CodeMirror); `SETTINGS_PREVIEW=addons,skills` draws
+  them.
+
+### Skills: one store, materialized per host
 
 Every host writes the skills each CLI gets out of the store into its own
 data dir, so a CLI reads a plain folder and never the database:
@@ -4433,6 +4536,173 @@ stored skill's body and the rewrite) and Muse on an account and on the CLI's
 own login, with the warm step skipped there: an isolated instance on the Mac
 routes Claude through the installed app's shim, so it warms nothing).
 
+
+#### The code, by name
+
+The plans are .temp-code/plan--OsNna4IcfKO.md (the store core) and
+.temp-code/plan-JBpcLz-eGMhp.md (the drivers); the code is
+src/main/server/skills/. Every CLI reads the store's skills for its
+thread's scope, and only those: never ~/.claude/skills, ~/.codex/skills,
+~/.agents/skills or ~/.config/muse/skills, which the app never moves,
+renames or deletes either. What still reads them after the one-time import:
+the import itself, Codex's scan of the home SKILL.md paths at each spawn
+and turn (to disable them), Claude's `skills/synced` bucket linked into the
+owned root, and Codex's `.system`, which the slash menu still reads.
+- **Views** (views.ts): each provider (claude, codex, muse) has a `global`
+  view, empty or not, and a workspace has its own `ws-<id>` view only when
+  what its threads get differs from the global one (`visibleSkills`: a
+  disabled or harness-excluded workspace row still shadows the global row).
+  `workspaceForPath` is the deepest workspace holding a folder, by real path.
+- **Generations** (materialize.ts, `SkillMaterializer`): each view is written
+  to `<userData>/harness/<provider>/<view>@<12 hex>/skills/<name>/`. The name
+  hashes the view's skills, `GENERATION_LAYOUT`, the text key and the extras
+  (`generationName`), so a folder of a given name holds one content and never
+  changes. A build writes beside its place (`.tmp-<pid>-<seq>`) and renames
+  in; a skill whose digest, text key and in-view mentions match the view's
+  current generation (its `.tc-generation.json`) is hard-linked from there,
+  every other is written fresh; files are 0444 (0555 executable) so an edit in
+  place cannot reach a sibling generation. The `<view>` symlink is swapped by
+  rename only while a fresh plan still wants that generation; a build whose
+  rows moved under it publishes nothing, and one that finds a skill rewritten
+  before its files were read drops its folder. It runs at boot, on every
+  store change and on a new peer home, one run at a time, a yield per skill;
+  `dirFor(provider, workspaceId)` builds at once (no yield) while a change is
+  pending, so a spawn right after a write sees it. `onPublished` fires after
+  every run and after a `dirFor` that built. `gc()` at boot and hourly
+  removes a generation no view or scope pointer points at, not `inUse` (the
+  live codex app-servers' roots, `codexLiveRoots`), superseded over a day ago
+  (`generations.json`); leftovers of a dead process go at start.
+  `generationExtras` stays empty.
+- **Scope pointers** (pointers.ts, `SkillPointers`): one stable path per
+  (provider, scope), `<userData>/harness/<provider>/scope/<global|ws-<id>>`,
+  a link to `../<generation>` of `dirFor(provider, workspaceId)`, so a
+  workspace with no view of its own names the global generation and keeps
+  its path when it gains or loses one. Re-pointed by rename on every
+  `onPublished` and workspace change (`onMoved` once per pointer that
+  moved, `movedAt`); a deleted workspace's pointer goes; a real folder in
+  a pointer's place is left alone. A thread's scope is `workspaceOfThread`
+  of the thread itself (index.ts's one resolver for the three drivers).
+- **Claude Code** (claudeRoots.ts, drivers/claude.ts): every thread runs
+  with `CLAUDE_CONFIG_DIR` = `<userData>/harness/claude-config/<scope>/`, a
+  dir the app owns: `skills/` holds one link per store skill through the
+  scope pointer (bare names; an edit is reached at once, an add or remove
+  relinks on `onMoved`) and `synced` → the person's account-synced bucket;
+  `.claude.json` and every other entry of the person's dir (projects,
+  settings, CLAUDE.md, commands, agents, hooks, plugins, `.credentials.json`
+  on Linux) are links, `projects/` made in the person's dir first; what the
+  CLI makes there itself (sessions, backups) stays per scope, and a
+  `.claude.json` it replaced by a rename is set aside as `.diverged` and
+  linked again. A routed Anthropic row holds `CLAUDE_CODE_OAUTH_TOKEN=routed`
+  for the gateway to replace (a Meta row keeps its token mode); a thread
+  with no route keeps the owned root (Linux signs in through the linked
+  credentials, the Mac fails with the CLI's sign-in error). `skillProblem`
+  refuses the name `synced`, and a row of that name is never linked. A live
+  CLI reloads its skills (`reloadSkills`, 10 s) at the first send after its
+  scope's pointer moved past the generation it loaded, never mid-turn; a
+  failure tries again at the next send.
+- **Codex** (codexSkills.ts, drivers/codex.ts): every app-server is spawned
+  with each home skill's SKILL.md disabled by path, both spellings of a
+  linked dir, never `.system` (`-c skills.config=[{path=…,enabled=false}]`,
+  no config.toml written; the argv the warm key and the spawn share), and
+  takes `<generation>/skills` of its scope as its extra root
+  (`skills/extraRoots/set`) after `initialize`, cold or adopted, again on
+  every live handle when the scope moves (a symlinked root does not refresh)
+  and before the next `turn/start` after a failed set. A SKILL.md added to
+  a home folder since the spawn makes `needsReboot` answer, and the
+  registry's `staleHandle` puts the process down at the next turn start.
+- **Muse** (museConfigDirs.ts): one config dir per (account, scope), its
+  `skills` a link to `<pointer>/skills`, read at every call ("Muse Code"
+  above).
+- **Freshness and the warm pool**: Codex and Muse see a write on their next
+  call or turn, Claude from its next turn; the skill tools say "every thread
+  sees it from its next turn". `CLAUDE_CONFIG_DIR` splits the warm key by
+  scope only, so a store write churns no warm process; an adopted one whose
+  spawn-time generation is behind reloads at its first send, and a miss on
+  the dir alone logs `[warm] claude: miss (skills)`.
+- **Path text** (skillText.ts): text files (`translatable`, valid UTF-8, a
+  BOM kept) are localized as they are written: the other host's paths
+  through memory sync's two-way map for each heard peer (`skillTextMap` over
+  `MemorySync.peerHomes()`, kept in `memory-sync:peer-homes`; the base map
+  read this host's way until a peer is heard), then each
+  `<home|~|$HOME|${HOME}>/<root>/<name>` for a skill of the view, under any
+  CLI's skills root, becomes the view's stable folder. Nothing else changes.
+- **The import** (import.ts, `importSkills`): once, on the Mac
+  (`hostPlatform()` darwin), every skill under ~/.claude/skills,
+  ~/.codex/skills, ~/.agents/skills (Claude and Codex) and
+  ~/.config/muse/skills goes into the store as `{ kind: 'import', from }`,
+  its CLIs every root's that had it. Copies that differ only by the root they
+  spell are one row; truly different ones keep the newest file's copy and are
+  logged as merged. Dot entries, Claude's synced bucket and plain files pass
+  quietly; a bad name, no SKILL.md, a refused file or a link out of HOME
+  (`reachableUnderHome`) are named; a native binary is dropped from an
+  otherwise good skill (`readSkillDir`'s `dropNative`). It follows the home
+  first, writes with `expectUpdatedAt: 0`, never overwrites, defers while the
+  home is offline (the next link-up runs it) and sets `skills-imported:v1`
+  once whole. The folders are read only.
+- **The tools** (tools.ts; Claude in-process through `setAppSkillTools`, the
+  bridge through index.ts's `app.skill*` cases): `skill_list` (the
+  workspace's rows, disabled ones too, `here` when this thread's CLI gets
+  it), `skill_write` (files or a folder, never both; scope defaults to the
+  thread's workspace; the root thread is the writer) and `skill_remove`. A
+  change to a skill a person or an import wrote last asks on the schema's
+  card plus a `changes` line (`skillChanges`), on the call's own row for
+  Claude (its tool_use id) and on an id no row has for a bridge call; a
+  denial or Away writes nothing. The checked row's `updatedAt` rides as
+  `expectUpdatedAt`, so a skill that moved is refused with "call skill_write
+  again". The answer waits for the write-out (`whenSettled`). The bridge
+  calls write and remove with no client deadline.
+- **The slash menu** (commands.ts `configureCommandSkills`, `readHome:
+  false`): claude's and codex's user skills come from the store's folder for
+  the cwd's workspace, never the home folders; the synced bucket and
+  `.system` read as before; the cache keys on the generation. Settings →
+  Skills says under its title that threads read skills from there.
+- The skill tools are deferred on Claude (found by tool search, like the
+  add-on management tools); the bridge lists them on every codex and Muse
+  thread.
+- Proof: `bun run script:e2e-skills-store` (two headless instances of the
+  built tree: the import, the seed, the views and their path text on both
+  hosts, a new skill, an atomic rewrite under a 2 ms reader, the card denied
+  then allowed, the slash menu, a removal, a restart that imports nothing
+  again), and `bun run script:e2e-skills-drivers -- --host box|mac` (one
+  headless instance with real CLIs: a probe skill answered by Claude under
+  its owned root by its bare name, a rewrite at the next turn, a warm
+  process adopted with no miss, Codex and Muse on an account and on the
+  CLI's own login; a missing CLI is missing proof, never a pass). Unit:
+  skills/{views,skillText,materialize,pointers,claudeRoots,codexSkills,
+  import,tools}, drivers/{claude-skills,codex-skills,warm}, museConfigDirs,
+  harness/museHost, skillStore, skillFiles, storeRpc, remote/storeSync.pair,
+  memorySync, harnessSet, harnessSync, commands, app-bridge,
+  sessions-addons, the renderer's toolBlock and SkillsPage.
+
+#### The config-dir spike
+
+`bun run script:spike-config-dirs -- --host box|mac` (scripts/spike-config-dirs.ts,
+its sections scripts/lib/spike{Claude,Codex,Muse}.ts, the pure helper
+scripts/lib/configDirSpike.ts with scripts/spike-config-dirs.test.ts) runs one
+experiment per id (C* Claude, X* Codex, M* Muse) under a temp config root and
+a temp HOME against loopback fakes with placeholder logins, and writes one
+redacted evidence file each to `scripts/.out/config-dir-spike/<host>/`; rerun
+it after a CLI update. `--upstream --dev-user-data <dir>` adds the real halves
+through an isolated dev instance's gateway (the Mac leg); M0b records Meta's
+model list to scripts/lib/fixtures/muse-models.json, which the Muse fake
+serves. The answers and the evidence of 2026-11-09 are in
+`.temp-code/findings/claude-config-dir.md` (force-added; `.temp-code/` is
+ignored): Claude Code takes the store as an SDK plugin dir (`plugins`,
+`pluginDelivery: 'initialize'`, `reloadSkills()` for a live change, nothing
+in the warm key); Codex as an app-server extra root
+(`skills/extraRoots/set`, watched); Muse has no add-a-dir route, and its
+closest shape, the per-account root with `TBH_CREDENTIAL_BACKEND=file` and a
+`muse/skills/` the store owns, still lacks a real turn to prove it. What the
+drivers took ("Skills: one store, materialized per host"): not the plugin dir for
+Claude, since a plugin's skills are always named `<plugin>:<skill>` (C1a,
+C1d) and a person's skill keeps its bare name; Claude gets an owned config
+dir per scope instead (C2's hybrid: the store's `skills`, every other entry
+the person's). Codex takes the extra root and disables the home skills per
+process (`-c skills.config`); Muse the per-account root with the file
+backend, now keyed on (account, scope), which the skills drivers proof ran
+real turns from on both hosts (2026-11-09; Codex 0.164.0 on the Mac read the
+stored skill's body, the question X1 left open).
+
 ### Add-ons: the add-on host and its tools
 
 Every host runs its own downstream servers, in a process of its own: the
@@ -4503,6 +4773,54 @@ sends with add-ons in scope against three without, medians of the
 `delivered … mcp=` span, at most 250 ms apart) skips on a host with no codex
 binary, which the box has none of; nothing on the bridge touches a downstream
 server at mount, so the gate grows by two tool schemas only.
+
+
+#### The code, by name
+
+- **The add-on host** (plan .temp-code/plan-L1Vrd-CMiZJ7.md). Every downstream MCP client runs
+  in a utility process of its own, `out/main/addonHost.js`
+  (src/main/addonHostProcess.ts, forked by addonHostSpawn.ts; the fifth main
+  entry in electron.vite.config.ts), never in main or the gateway's child.
+  `src/main/server/addons/`: `addonWire.ts` (the messages over the
+  gateway's generic `Wire`/`Calls`/`answer`, the constants, `grantGapsLine`),
+  `addonChild.ts` (`runAddonChild`: one `Downstream` per launch, kept in step
+  by spec digest; an error escaping a client fails that client alone, any
+  other ends the process), `downstream.ts` (the SDK `Client` over its own
+  `ProcessTransport` (exit code, 16 MB results plus framing) or Streamable
+  HTTP with the SSE fallback; `redact` of every grant value held; restarts on
+  1, 2, 5, 15, 60 s; the grant transitions), `addonHost.ts` (main's side:
+  off and other-platform decided from the rows, the launch set, respawn and
+  down after three exits a minute, the statuses and exposed tool lists into
+  the store, `call`, `grantsChanged`; `doctor.get` gains `addonHost`),
+  `grants.ts` (`AddonGrantSource`, `resolveGrant` to env or headers with a
+  digest, the vault source, the `TEMP_CODE_ADDON_GRANTS` seam honoured only
+  with TEMP_CODE_USER_DATA, aliax.ts's `onSecretSaved` → `addonGrantHook`),
+  `scope.ts` (`workspaceIdOf` the thread's root, `visibleTools`, `hasAddons`),
+  `exposure.ts` (`AddonExposure.attach` registers each visible ready tool on
+  a claude thread's live `app` server as `mcp__app__<addon>__<tool>`,
+  deferred, schema verbatim through `inputSchemaOf`, removed and re-registered
+  as the store moves; the driver releases it when its handle ends;
+  `deferredTool` for the management tools; step 0 proved the CLI refreshes
+  an sdk server's tools mid-session and calls a double-`__` name),
+  `tools.ts` (`appAddonList/Add/Remove/Find/Call`: add always asks the admin
+  card and writes through `storeRpc` as the local principal with the root
+  thread as writer, waiting up to 30 s for this host's state; remove asks
+  unless a thread wrote it last; call follows the permission: auto runs, edits
+  runs a read-only tool, safe asks) and `scopeFlip.ts` (a scope gaining its
+  first add-on or losing its last marks its codex and Muse handles
+  `SessionRegistry.rebootAtNextTurn`, since the bridge's `TEMP_CODE_ADDONS`
+  is fixed at spawn). Every claude spawn sets `ENABLE_TOOL_SEARCH=true`; the
+  app, orchestrator and Mac servers are `alwaysLoad`; `addon_list`,
+  `addon_add`, `addon_remove` are deferred app tools; the bridge
+  (scripts/app-mcp-bridge.mjs) lists those three always and `addon_find`,
+  `addon_call` with `TEMP_CODE_ADDONS`, waits on the server's deadline for
+  add, remove and call, and passes a call's result back whole. An add-on
+  tool's card reads `Use <tool> from <addon>?` (approvalLine.ts). The process
+  guard sweeps an orphaned stdio server by its `TEMP_CODE_ADDON` mark.
+  `TEMP_CODE_ADDON_TRACE=1` logs one line per connect, list and exit. Proof:
+  `bun run script:e2e-addons`; unit tests under src/main/server/addons/,
+  app-bridge, approvalLine, claude-toolsearch, processGuard, sessions-addons,
+  gatewayWire, gatewayHost.
 
 ## One project across hosts: a far start lands in the linked project
 
@@ -4638,6 +4956,59 @@ the consent page needed one click, and the tab read "Signed in to mobbin. You
 can close this tab." Mobbin read `ready` with 8 tools and the grant held a
 refresh token. A second sign-in registered nothing and reused the client on
 port 58702. The instance log's trace lines name hosts and statuses only.
+
+
+#### The code, by name
+
+- **Add-on grants** (plan .temp-code/plan-8YMm3ynnFZYs.md). A grant is an
+  aliax-core profile of the `addon` service (aliax-core/src/adapters/addon.ts, at the commit
+  package.json pins, 80345ae): one per add-on, named by its id, `internal`, so no account
+  page lists it and `PROVIDER_OF` (now partial) maps it to no provider; the
+  Aliax pages refuse to capture, sign in, key or delete one. It is static
+  exactly when its blob has no `oauth` section: typed values (an API key) go
+  to every host and leave by tombstone, like a Meta key. An OAuth grant always
+  has an owner: signed in on the Mac, handed to the box through accountSync's
+  two-phase handoff, refreshed there (core's `refreshAddon`, under the
+  profile lock), the Mac keeping an access copy with the client and port. Core
+  lets a sign-in land over a static row and never lets a static copy land over
+  a row with one. accountSync sends a grant only to the host that holds its
+  add-on's row as the scope's home (`addonHome`), never to a link of a scope
+  only this host has, and lands a peer's grant as from an admin when the row
+  is known here (`addonKnown`, `policyFor`). `AddonGrants`
+  (src/main/server/addons/addonGrants.ts) is the add-on host's grant source:
+  `read` from the vault fresh; `refresh` on a downstream 401 (the owner forces
+  one at most every 30 s, keeping a later ask for the window's end; a copy
+  asks its owner's `addons.grant.refresh`, then pulls); the keeper (on the
+  owner min(5 min, a quarter of the token's life) ahead of the end, on a copy
+  half that, one second more than its lead asked for since a timer may wake a
+  moment early, retries on 1, 2, 5, 10 min past the end, stopped by a
+  refusal, which marks the view, or a removal; `onClaimed` reschedules when a
+  handed grant becomes this host's); writes on one host (`writerOf`: the host
+  that refreshes it, else the scope's home, else here; others forward over the
+  admin link, `GRANT_OFFLINE` when it is down, `GRANT_ON_MAC` on a box with no
+  link to the Mac), under the profile lock, with typed values presented once
+  to the add-on's `initialize` (grantProbe.ts; 401 or 403 refuses them); the
+  sweep (a grant whose row is gone leaves, with a tombstone only on the
+  scope's home or a scope this host keeps alone); the view (`AddonGrantView`,
+  never a value) and its push. The sign-in (oauthFlow.ts on the SDK's
+  client/auth.js helpers, oauthCallback.ts the one-shot 127.0.0.1 listener)
+  runs only on a host with a window: discovery from the 401's challenge,
+  RFC 9728 and RFC 8414 metadata, the issuer and resource checked, S256
+  required, `offline_access` added when offered, dynamic registration on a
+  fixed port saved before the browser opens and reused at every later sign-in
+  (a taken port is named, `SIGNIN_PORT_TAKEN`; nothing re-registers on its
+  own), PKCE and the resource on authorize and exchange; a failure is worded
+  by its step and HTTP status alone (src/shared/addonGrantWords.ts holds every
+  line). RPCs (src/shared/contract-addonGrants.ts): `addons.grant.list`
+  (read), `setFields`, `clear`, `refresh` (admin), `signIn`, `cancel` (local,
+  since a sign-in opens a browser here); the `addon-grants` push, each sign-in
+  step at once. Seam: `TEMP_CODE_OAUTH_BROWSER=follow` with
+  TEMP_CODE_USER_DATA signs in with no browser by following the authorize
+  redirect. Proof: `bun run script:e2e-addon-grants` (two headless instances
+  and scripts/lib/fakeOAuthServer.ts; 51 checks, 133 s); unit tests
+  addonGrants, oauthFlow (Mobbin's recorded answers under addons/fixtures/),
+  oauthCallback, grantProbe, accountSync.addon, contract-m3a,
+  contract-addonGrants, addonGrantWords, and core's test/addon.test.ts.
 
 ### One project across hosts: the card and the strip list the same threads
 

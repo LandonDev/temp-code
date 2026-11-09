@@ -10,7 +10,7 @@ import { rewriteSkillPaths, skillFileText } from './skillText'
 
 /**
  * The one-time import of the skills the person already has (CLAUDE.md
- * "Skills: written out on every host"): on the Mac, every skill under
+ * "Skills: one store, materialized per host"): on the Mac, every skill under
  * ~/.claude/skills, ~/.codex/skills, ~/.agents/skills and
  * ~/.config/muse/skills goes into the store, so it starts full. The folders
  * are read only, never changed; the box's are harness-sync copies of the

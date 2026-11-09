@@ -20,7 +20,7 @@ export type SetRule =
 
 /**
  * The skill folders harness sync carried until the skills store took them
- * (CLAUDE.md "Skills: written out on every host"): no rule walks them, a
+ * (CLAUDE.md "Skills: one store, materialized per host"): no rule walks them, a
  * receiver forgets what it landed under them (the files stay where they
  * are), and an older sender's entries under them are counted, never landed.
  */

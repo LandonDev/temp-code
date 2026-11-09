@@ -5,7 +5,7 @@ import { SCOPE_DIR, type SkillMaterializer } from './materialize'
 
 /**
  * One stable path per (provider, scope) that always reaches the scope's
- * current skills (CLAUDE.md "Skills: written out on every host"):
+ * current skills (CLAUDE.md "Skills: one store, materialized per host"):
  *
  *   <root>/<provider>/scope/<global|ws-<id>>   a symlink to ../<view>@<12 hex>
  *

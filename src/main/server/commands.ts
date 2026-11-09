@@ -25,7 +25,7 @@ import type { SlashCommand } from '@shared/domain'
  * installed-plugins layout to key off on either host, only the CLI's
  * directory cache and an empty synced bucket.
  *
- * The skills store (CLAUDE.md "Skills: written out on every host"): once
+ * The skills store (CLAUDE.md "Skills: one store, materialized per host"): once
  * configured, claude's and codex's user skills come first from the store's
  * written-out folder for the thread's workspace, then, while `readHome`,
  * from ~/.claude/skills or ~/.codex/skills for names the store lacks (a

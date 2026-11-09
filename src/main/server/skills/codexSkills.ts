@@ -5,7 +5,7 @@ import type { SkillPointers } from './pointers'
 
 /**
  * Codex reads the skills store, and only the store (CLAUDE.md "Skills:
- * written out on every host"): the store's folder for the thread's scope is
+ * one store, materialized per host"): the store's folder for the thread's scope is
  * an app-server extra root (`skills/extraRoots/set`, re-set on every live
  * app-server when the scope moves), and every skill in the person's
  * ~/.codex/skills and ~/.agents/skills is disabled for that one process by

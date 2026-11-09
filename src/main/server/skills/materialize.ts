@@ -25,8 +25,8 @@ import { localizeSkillFile, textKey, type TextContext } from './skillText'
 import { planView, planViews, type ViewPlan } from './views'
 
 /**
- * The skills each CLI gets, written out on every host (CLAUDE.md "Skills:
- * written out on every host"):
+ * The skills each CLI gets, written out on every host (CLAUDE.md "Skills: one store,
+ * materialized per host"):
  *
  *   <root>/<provider>/<view>@<12 hex>/skills/<name>/…   one generation
  *   <root>/<provider>/<view>                              symlink to the current one
