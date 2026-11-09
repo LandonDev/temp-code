@@ -39,10 +39,14 @@ public enum Viewport {
         return frame.x + frame.w <= clip.x ? .above : .below
     }
 
-    /// A child the walk does not descend into: known, non-zero, and missing its clip.
-    public static func missed(_ frame: Rect?, _ clip: Rect?) -> Side? {
-        guard let f = frame, !isZero(f), let c = clip, !meets(f, c) else { return nil }
-        return side(of: f, against: c)
+    /// A child the walk does not descend into: known, non-zero, and missing its clip. Under a
+    /// clip container (`sliver`), a frame one point thin or less misses too: Chrome pins the
+    /// rows an overflow box scrolled away to its edge as 1-point slivers.
+    public static func missed(_ frame: Rect?, _ clip: Rect?, sliver: Bool = false) -> Side? {
+        guard let f = frame, !isZero(f), let c = clip else { return nil }
+        if !meets(f, c) { return side(of: f, against: c) }
+        if sliver, f.w <= 1 || f.h <= 1 { return f.y + f.h / 2 >= c.y + c.h / 2 ? .below : .above }
+        return nil
     }
 
     /// A container that lists its visible children: the ones before the first

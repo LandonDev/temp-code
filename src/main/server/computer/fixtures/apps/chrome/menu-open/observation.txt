@@ -43,66 +43,15 @@ app "Google Chrome" · window "Computer fixture form - Google Chrome" · 930×12
             [42] text = "Order 006"
             [43] text = "Order 007"
             [44] text = "Order 008"
-            [45] text = "Order 009"
-            [46] text = "Order 010"
-            [47] text = "Order 011"
-            [48] text = "Order 012"
-            [49] text = "Order 013"
-            [50] text = "Order 014"
-            [51] text = "Order 015"
-            [52] text = "Order 016"
-            [53] text = "Order 017"
-            [54] text = "Order 018"
-            [55] text = "Order 019"
-            [56] text = "Order 020"
-            [57] text = "Order 021"
-            [58] text = "Order 022"
-            [59] text = "Order 023"
-            [60] text = "Order 024"
-            [61] text = "Order 025"
-            [62] text = "Order 026"
-            [63] text = "Order 027"
-            [64] text = "Order 028"
-            [65] text = "Order 029"
-            [66] text = "Order 030"
-            [67] text = "Order 031"
-            [68] text = "Order 032"
-            [69] text = "Order 033"
-            [70] text = "Order 034"
-            [71] text = "Order 035"
-            [72] text = "Order 036"
-            [73] text = "Order 037"
-            [74] text = "Order 038"
-            [75] text = "Order 039"
-            [76] text = "Order 040"
-            [77] text = "Order 041"
-            [78] text = "Order 042"
-            [79] text = "Order 043"
-            [80] text = "Order 044"
-            [81] text = "Order 045"
-            [82] text = "Order 046"
-            [83] text = "Order 047"
-            [84] text = "Order 048"
-            [85] text = "Order 049"
-            [86] text = "Order 050"
-            [87] text = "Order 051"
-            [88] text = "Order 052"
-            [89] text = "Order 053"
-            [90] text = "Order 054"
-            [91] text = "Order 055"
-            [92] text = "Order 056"
-            [93] text = "Order 057"
-            [94] text = "Order 058"
-            [95] text = "Order 059"
-            [96] text = "Order 060"
-        [97] menu actions: cancel
-          [98] menu item "Small" actions: cancel, pick
-          [99] menu item "Medium" selected actions: cancel, pick
-          [100] menu item "Large" actions: cancel, pick
-      [101] pop up "Tab search"
-      [102] tab "Computer fixture form - Memory usage - 36.4 MB" selected actions: show menu
-        [103] button "Close"
-      [104] button "New Tab" actions: show menu
-  [105] button "close"
-  [106] button "full screen" actions: zoom window, show menu
-  [107] button "minimize"
+            … 52 more below
+        [45] menu actions: cancel
+          [46] menu item "Small" actions: cancel, pick
+          [47] menu item "Medium" selected actions: cancel, pick
+          [48] menu item "Large" actions: cancel, pick
+      [49] pop up "Tab search"
+      [50] tab "Computer fixture form - Memory usage - 36.4 MB" selected actions: show menu
+        [51] button "Close"
+      [52] button "New Tab" actions: show menu
+  [53] button "close"
+  [54] button "full screen" actions: zoom window, show menu
+  [55] button "minimize"

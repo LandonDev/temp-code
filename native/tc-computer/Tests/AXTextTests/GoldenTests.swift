@@ -86,10 +86,11 @@ enum Goldens {
         try Goldens.check(state, "diff.txt", built.text)
     }
 
-    @Test func theFormUnderAFourThousandByteBudgetReadsAsItsTruncation() throws {
+    /// At the 2,000-byte minimum: once Chrome's scrolled-away rows are counted, the whole form is 2,220 bytes.
+    @Test func theFormUnderTheSmallestBudgetReadsAsItsTruncation() throws {
         let state = "chrome/form"
-        let built = Reader().read(try Goldens.snapshot(state, ids: NodeIDSource()), budget: 4_000, space: try Goldens.space(state))
-        #expect(built.text.utf8.count <= 4_000 && built.stats.omitted > 0)
+        let built = Reader().read(try Goldens.snapshot(state, ids: NodeIDSource()), budget: 2_000, space: try Goldens.space(state))
+        #expect(built.text.utf8.count <= 2_000 && built.stats.omitted > 0)
         try Goldens.check(state, "truncated.txt", built.text)
     }
 }

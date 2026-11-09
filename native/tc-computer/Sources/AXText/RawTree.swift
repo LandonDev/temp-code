@@ -88,16 +88,13 @@ public enum RawTree {
         // a list naming no visible row is not believed (IntelliJ's is empty with its rows on screen): judge by frame
         if firstVisible == nil { marked = [] }
         var hidden = Hidden()
+        let sliver = Viewport.clipRoles.contains(raw.role)
         for (i, child) in raw.children.enumerated() {
-            if marked.contains(i) {
-                if child.visible == true {
-                    n.children.append(node(child, clip: inner, ids: ids, focused: &focused, nodes: &nodes))
-                } else if let first = firstVisible, i < first {
-                    hidden.above += 1
-                } else {
-                    hidden.below += 1
-                }
-            } else if let side = Viewport.missed(child.frame, inner) {
+            // a child the list names as hidden is counted; any other is judged by its frame too
+            // (Chrome lists every child of an overflow box as visible)
+            if marked.contains(i), child.visible != true {
+                if let first = firstVisible, i < first { hidden.above += 1 } else { hidden.below += 1 }
+            } else if let side = Viewport.missed(child.frame, inner, sliver: sliver) {
                 if side == .above { hidden.above += 1 } else { hidden.below += 1 }
             } else {
                 n.children.append(node(child, clip: inner, ids: ids, focused: &focused, nodes: &nodes))

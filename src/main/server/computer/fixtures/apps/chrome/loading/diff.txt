@@ -2,7 +2,7 @@ app "Google Chrome" · window "Computer fixture form - Google Chrome" · 930×12
 - [31] link "Order history"
 ~ [14] web area "Computer fixture form"
 ~ [30] button "Load prices" focused
-~ [95] tab "Computer fixture form - Memory usage - 36.4 MB" selected actions: show menu
+~ [43] tab "Computer fixture form - Memory usage - 36.4 MB" selected actions: show menu
 + in [14]:
-  [101] progress "Loading prices"
-  [102] link "Order history"
+  [49] progress "Loading prices"
+  [50] link "Order history"

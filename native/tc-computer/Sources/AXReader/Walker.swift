@@ -86,7 +86,7 @@ final class Walker {
         stopped = true
     }
 
-    private func node(_ el: AXUIElement, clip: ComputerProtocol.Rect?, depth: Int, menuBar: Bool, containers: [AXUIElement], root: Bool, isWindow: Bool) throws -> Outcome {
+    private func node(_ el: AXUIElement, clip: ComputerProtocol.Rect?, depth: Int, menuBar: Bool, containers: [AXUIElement], root: Bool, isWindow: Bool, sliver: Bool = false) throws -> Outcome {
         if stopped { return .skip }
         if counts.nodes >= caps.maxNodes || Self.now() > deadline {
             if root && isWindow && counts.nodes == 0 { throw AXErrorMap.timeout("The window") }
@@ -109,7 +109,7 @@ final class Walker {
         let frame = AX.frame(a["AXPosition"]?.value, a["AXSize"]?.value)
         // a popover or a menu may hang outside its window: it is judged by its own frame
         let floats = role == "AXPopover" || role == "AXMenu"
-        if !root, cut, !menuBar, !floats, let side = Viewport.missed(frame, clip) { return .hidden(side) }
+        if !root, cut, !menuBar, !floats, let side = Viewport.missed(frame, clip, sliver: sliver) { return .hidden(side) }
         let id = handles.intern(el)
         if seen.contains(id) || depth > caps.maxDepth { return .skip }
         seen.insert(id)
@@ -193,7 +193,7 @@ final class Walker {
                 if let first = firstVisible, i < first { hidden.above += 1 } else { hidden.below += 1 }
                 continue
             }
-            switch try node(child, clip: inner, depth: depth + 1, menuBar: menuBar, containers: below, root: false, isWindow: false) {
+            switch try node(child, clip: inner, depth: depth + 1, menuBar: menuBar, containers: below, root: false, isWindow: false, sliver: isContainer) {
             case .node(let c): n.children.append(c)
             case .hidden(.above): hidden.above += 1
             case .hidden(.below): hidden.below += 1

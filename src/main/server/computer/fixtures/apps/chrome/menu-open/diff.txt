@@ -1,15 +1,15 @@
-app "Google Chrome" · window "Computer fixture form - Google Chrome" · 930×1280 · focused [103] · changes since your last read
+app "Google Chrome" · window "Computer fixture form - Google Chrome" · 930×1280 · focused [51] · changes since your last read
 - [23] menu item = "Medium" selected actions: cancel
 ~ [14] web area "Computer fixture form"
 ~ [22] pop up "Size" = "Medium" expanded
-~ [95] tab "Computer fixture form - Memory usage - 36.4 MB" selected actions: show menu
+~ [43] tab "Computer fixture form - Memory usage - 36.4 MB" selected actions: show menu
 + in [22]:
-  [101] menu actions: cancel
-    [102] menu item = "Small" actions: cancel
-    [103] menu item = "Medium" focused selected actions: cancel
-    [104] menu item = "Large" actions: cancel
+  [49] menu actions: cancel
+    [50] menu item = "Small" actions: cancel
+    [51] menu item = "Medium" focused selected actions: cancel
+    [52] menu item = "Large" actions: cancel
 + in [13]:
-  [105] menu actions: cancel
-    [106] menu item "Small" actions: cancel, pick
-    [107] menu item "Medium" selected actions: cancel, pick
-    [108] menu item "Large" actions: cancel, pick
+  [53] menu actions: cancel
+    [54] menu item "Small" actions: cancel, pick
+    [55] menu item "Medium" selected actions: cancel, pick
+    [56] menu item "Large" actions: cancel, pick
