@@ -48,6 +48,7 @@ public enum ComputerDefaults {
         public static let minFps = 1
         public static let maxFps = 15
         public static let defaultMaxEdge = 960
+        public static let minMaxEdge = 256
         public static let frameMaxBytes = 524288
         public static let maxUnacked = 2
     }

@@ -1,29 +1,31 @@
+import ComputerProtocol
 import Foundation
 
-/// Every number the Capture module runs on, in one place (docs/computer-protocol.md §6).
-/// `src/shared/computer/captureParity.test.ts` reads this file with fixed patterns and holds the
-/// mirrored values equal to `SHOT` and `PREVIEW_STREAM` in protocol.ts: keep each one a single
-/// `public static let name = literal` line.
+/// Every number the Capture module runs on, in one place (docs/computer-protocol.md §6). The
+/// ones the wire states come from `ComputerDefaults`, generated from `SHOT` and `PREVIEW_STREAM`
+/// in protocol.ts; `src/shared/computer/captureParity.test.ts` reads this file with fixed
+/// patterns and fails when one of them is written as a literal here: keep each a single
+/// `public static let name = value` line.
 public enum CaptureTuning {
     // Screenshots (SHOT in protocol.ts)
-    public static let jpegQuality = 0.85
-    public static let edgeDefault = 1_280
-    public static let edgeRange = 512...2_576
-    public static let pixelCap = 3_750_000
+    public static let jpegQuality = ComputerDefaults.Shot.jpegQuality
+    public static let edgeDefault = ComputerDefaults.Shot.defaultMaxEdge
+    public static let edgeRange = ComputerDefaults.Shot.minMaxEdge...ComputerDefaults.Shot.maxMaxEdge
+    public static let pixelCap = ComputerDefaults.Shot.maxPixels
     /// Flatness at or above which a shot with no named format is also tried as PNG (A1).
     public static let flatPNG = 0.85
     public static let shotTimeout: Duration = .seconds(5)
 
     // The preview stream (PREVIEW_STREAM in protocol.ts)
-    public static let streamFPSDefault = 4
-    public static let streamFPSRange = 1...15
-    public static let streamEdgeDefault = 960
-    public static let streamEdgeRange = 256...2_576
+    public static let streamFPSDefault = ComputerDefaults.PreviewStream.defaultFps
+    public static let streamFPSRange = ComputerDefaults.PreviewStream.minFps...ComputerDefaults.PreviewStream.maxFps
+    public static let streamEdgeDefault = ComputerDefaults.PreviewStream.defaultMaxEdge
+    public static let streamEdgeRange = ComputerDefaults.PreviewStream.minMaxEdge...ComputerDefaults.Shot.maxMaxEdge
     /// A frame's JPEG stays under this, so its base64 line with the JSON around it fits the
     /// wire's 512 KiB frame cap.
     public static let frameJPEGCap = 380 * 1_024
-    public static let frameQualityLadder = [0.85, 0.7, 0.55]
-    public static let unackedSlots = 2
+    public static let frameQualityLadder = [jpegQuality, 0.7, 0.55]
+    public static let unackedSlots = ComputerDefaults.PreviewStream.maxUnacked
     /// A frame unacked this long stops the stream's capture until the next ack.
     public static let starveAfter: Duration = .seconds(5)
     /// The stream's own clock for the starvation check.

@@ -1,4 +1,5 @@
 @testable import Capture
+import ComputerProtocol
 import Foundation
 import Testing
 
@@ -86,6 +87,6 @@ import Testing
 
     @Test func theFrameCapLeavesTheWireRoomForBase64AndJSON() {
         let base64 = (CaptureTuning.frameJPEGCap + 2) / 3 * 4
-        #expect(base64 + 4_096 <= 512 * 1_024)
+        #expect(base64 + 4_096 <= ComputerDefaults.PreviewStream.frameMaxBytes)
     }
 }

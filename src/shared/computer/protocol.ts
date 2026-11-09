@@ -87,6 +87,8 @@ export const PREVIEW_STREAM = {
   minFps: 1,
   maxFps: 15,
   defaultMaxEdge: 960,
+  /** the stream's long edge may go below a screenshot's: the preview is a thumbnail */
+  minMaxEdge: 256,
   frameMaxBytes: 512 * 1024,
   maxUnacked: 2
 } as const
@@ -628,7 +630,7 @@ export const CaptureScreenshotParamsSchema = TargetSchema.extend({
 export const CaptureStreamStartParamsSchema = TargetSchema.extend({
   stream: z.string().min(1),
   fps: int().min(PREVIEW_STREAM.minFps).max(PREVIEW_STREAM.maxFps).optional(),
-  maxEdge: int().min(256).max(SHOT.maxMaxEdge).optional()
+  maxEdge: int().min(PREVIEW_STREAM.minMaxEdge).max(SHOT.maxMaxEdge).optional()
 })
 
 export const InitializeParamsSchema = z.object({
