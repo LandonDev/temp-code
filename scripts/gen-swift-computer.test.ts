@@ -5,6 +5,7 @@ import { ACTION_WORDS, KEY_NAMES, MODIFIER_NAMES, ROLE_DEFAULTS, ROLE_TAGS, STAT
 import { COMPUTER_METHODS, COMPUTER_PROTOCOL, COMPUTER_WAIT } from '../src/shared/computer/protocol'
 import { GENERATED_DIR, generate, pascal } from './gen-swift-contract'
 import { COMPUTER_GENERATED_DIR, INPUT_GENERATED_DIR, OBSERVATION_TABLES_DIR, emitInputTables, emitObservationTables, generateComputer } from './gen-swift-computer'
+import { QUOTE_VECTORS_PATH, quoteVectors } from './quote-vectors'
 
 // The computer wire's Swift, pinned on the generated text: the box cannot
 // build the service, so the names the Swift threads code against are proven
@@ -69,6 +70,11 @@ describe('the computer Swift', () => {
     expect(tables).toContain(`public static let stateWords: [String] = [${STATE_WORDS.map((w) => JSON.stringify(w)).join(', ')}]`)
     expect(tables).toContain('public static let headerSeparator = " · "')
     expect(tables).not.toMatch(/\$\{|\\u/)
+  })
+
+  it("holds the AX reader's quoting vectors to JSON.stringify", () => {
+    expect(readFileSync(QUOTE_VECTORS_PATH, 'utf8')).toBe(quoteVectors())
+    for (const { input, quoted } of JSON.parse(quoteVectors()) as { input: string; quoted: string }[]) expect(quoted).toBe(JSON.stringify(input))
   })
 
   it('carries the protocol number and the defaults', () => {

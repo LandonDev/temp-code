@@ -1,1 +1,58 @@
-[]
+[
+  {
+    "input": "plain",
+    "quoted": "\"plain\""
+  },
+  {
+    "input": "",
+    "quoted": "\"\""
+  },
+  {
+    "input": "She said \"hi\"",
+    "quoted": "\"She said \\\"hi\\\"\""
+  },
+  {
+    "input": "back\\slash",
+    "quoted": "\"back\\\\slash\""
+  },
+  {
+    "input": "path/with/slashes </script>",
+    "quoted": "\"path/with/slashes </script>\""
+  },
+  {
+    "input": "\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f",
+    "quoted": "\"\\u0000\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007\\b\\t\\n\\u000b\\f\\r\\u000e\\u000f\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017\\u0018\\u0019\\u001a\\u001b\\u001c\\u001d\\u001e\\u001f\""
+  },
+  {
+    "input": "tab\there, line\nbreak, return\r, feed\f, bell\u0007, backspace\b",
+    "quoted": "\"tab\\there, line\\nbreak, return\\r, feed\\f, bell\\u0007, backspace\\b\""
+  },
+  {
+    "input": "del and nel",
+    "quoted": "\"del and nel\""
+  },
+  {
+    "input": "line and paragraph separators",
+    "quoted": "\"line and paragraph separators\""
+  },
+  {
+    "input": "bom﻿",
+    "quoted": "\"bom﻿\""
+  },
+  {
+    "input": "é and é",
+    "quoted": "\"é and é\""
+  },
+  {
+    "input": "emoji 👋 🧪 and a family 👨‍👩‍👧",
+    "quoted": "\"emoji 👋 🧪 and a family 👨‍👩‍👧\""
+  },
+  {
+    "input": "مرحبا بالعالم שלום",
+    "quoted": "\"مرحبا بالعالم שלום\""
+  },
+  {
+    "input": "ünïcödé — “quotes” ‘single’ …",
+    "quoted": "\"ünïcödé — “quotes” ‘single’ …\""
+  }
+]

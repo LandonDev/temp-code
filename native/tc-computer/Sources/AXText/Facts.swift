@@ -178,10 +178,12 @@ public enum Facts {
         var fullValue: String?
         var valueTotal = 0
         if let v = rawValue, !v.isEmpty, !toggle, role != "password" {
-            // a prefix-read value: the part never read counts in UTF-16 units, all AX gives
-            let unread = node.valueLength.map { Swift.max(0, $0 - v.utf16.count) } ?? 0
+            // a prefix-read value: AX gives the whole length in UTF-16 units only, so the
+            // unread part counts in scalars at the prefix's own ratio (exact for uniform text)
+            let units = v.utf16.count, scalars = v.unicodeScalars.count
+            let unread = node.valueLength.map { Swift.max(0, $0 - units) } ?? 0
             fullValue = v
-            valueTotal = v.unicodeScalars.count + unread
+            valueTotal = scalars + Int((Double(unread) * Double(scalars) / Double(Swift.max(units, 1))).rounded())
             shownValue = ctx.wholeValues ? v : Cut.value(v, total: valueTotal)
         }
 
