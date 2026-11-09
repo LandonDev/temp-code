@@ -39,6 +39,9 @@ export interface StoredFile {
 
 export const mintSkillId = (): string => `sk_${nanoid(12)}`
 
+/** A write or removal decided on a row that has moved since (skills.set / skills.remove `expectUpdatedAt`). */
+export const movedRefusal = (name: string): string => `refused: ${name} changed since it was read`
+
 const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 const encoder = new TextEncoder()
 
@@ -142,10 +145,13 @@ export class SkillStore {
    * Write one skill whole (create, or replace by id, else by scope and
    * name): its files replace what was there, in one transaction with its
    * row. The description is SKILL.md's. Version is 1 on create and moves by
-   * one on a write that changes the files, the harnesses or enabled.
+   * one on a write that changes the files, the harnesses or enabled;
+   * `updatedAt` rises on every write, even inside one millisecond, so a
+   * caller's `expectUpdatedAt` names one write. With `expectUpdatedAt` the
+   * row must still stand at that stamp (0: the scope's name is free).
    * Throws `refused: …`.
    */
-  set(raw: SkillInput, writer: Writer): SkillMeta {
+  set(raw: SkillInput, writer: Writer, opts: { expectUpdatedAt?: number } = {}): SkillMeta {
     const input = SkillInputSchema.parse(raw)
     const files: StoredFile[] = input.files.map((f) => ({ path: f.path, bytes: fileBytes(f), executable: f.executable === true }))
     const problem = skillProblem(input.name, files)
@@ -153,6 +159,10 @@ export class SkillStore {
     const existing = input.id ? this.meta(input.id) : this.byName(input.workspaceId, input.name)
     const id = existing?.id ?? input.id ?? mintSkillId()
     const clash = this.byName(input.workspaceId, input.name)
+    if (opts.expectUpdatedAt !== undefined) {
+      const stands = opts.expectUpdatedAt === 0 ? !existing && !clash : existing?.updatedAt === opts.expectUpdatedAt
+      if (!stands) throw new Error(movedRefusal(input.name))
+    }
     if (clash && clash.id !== id) throw new Error(`refused: a skill named ${input.name} already exists there`)
     const md = files.find((f) => f.path === SKILL_MD)!
     const digest = skillDigest(files)
@@ -174,7 +184,7 @@ export class SkillStore {
       addedBy: existing?.addedBy ?? input.addedBy ?? writer,
       writtenBy: input.writtenBy ?? writer,
       createdAt: existing?.createdAt ?? now,
-      updatedAt: now
+      updatedAt: existing ? Math.max(now, existing.updatedAt + 1) : now
     }
     this.transaction(() => {
       this.writeRow(meta)
@@ -211,7 +221,12 @@ export class SkillStore {
     return true
   }
 
-  remove(id: string): boolean {
+  /** With `expectUpdatedAt`, refused when the row moved since (`refused: <name> changed since it was read`). */
+  remove(id: string, opts: { expectUpdatedAt?: number } = {}): boolean {
+    if (opts.expectUpdatedAt !== undefined) {
+      const row = this.meta(id)
+      if (row && row.updatedAt !== opts.expectUpdatedAt) throw new Error(movedRefusal(row.name))
+    }
     let gone = false
     this.transaction(() => {
       gone = this.deleteRows(id)

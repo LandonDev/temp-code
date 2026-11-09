@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { readSkillDir, writeSkillTree } from './skillFiles'
+import { readSkillDir, writeSkillTree, writeSkillTreeSync } from './skillFiles'
 import { fileBytes } from './skillStore'
 
 let tmp: string
@@ -95,6 +95,40 @@ describe('writeSkillTree', () => {
     await expect(writeSkillTree(out, [{ path: 'sub/x.md', bytes: new Uint8Array(1), executable: false }])).rejects.toThrow(/outside the skill folder/)
     symlinkSync(join(tmp, 'elsewhere', 'f'), join(out, 'f.md'))
     await expect(writeSkillTree(out, [{ path: 'f.md', bytes: new Uint8Array(1), executable: false }])).rejects.toThrow(/is a link/)
+    expect(readdirSync(join(tmp, 'elsewhere'))).toEqual([])
+  })
+})
+
+describe('writeSkillTreeSync', () => {
+  const files = [
+    { path: 'SKILL.md', bytes: new TextEncoder().encode(skillMd), executable: false },
+    { path: 'scripts/run.sh', bytes: new TextEncoder().encode('echo hi\n'), executable: true }
+  ]
+
+  it('writes what writeSkillTree writes, and 0444/0555 when read-only', async () => {
+    const a = join(tmp, 'a')
+    const b = join(tmp, 'b')
+    await writeSkillTree(a, files)
+    writeSkillTreeSync(b, files)
+    expect(await readSkillDir(b)).toEqual(await readSkillDir(a))
+    expect(statSync(join(b, 'scripts/run.sh')).mode & 0o777).toBe(0o755)
+    const ro = join(tmp, 'ro')
+    writeSkillTreeSync(ro, files, { readOnly: true })
+    expect(statSync(join(ro, 'SKILL.md')).mode & 0o777).toBe(0o444)
+    expect(statSync(join(ro, 'scripts/run.sh')).mode & 0o777).toBe(0o555)
+    // Folders stay writable by their owner, so a generation can be removed.
+    expect(statSync(join(ro, 'scripts')).mode & 0o200).toBe(0o200)
+  })
+
+  it('refuses the same paths and links, writing nothing', () => {
+    const out = join(tmp, 'gen')
+    expect(() => writeSkillTreeSync(out, [files[0]!, { path: '../escape.txt', bytes: new Uint8Array(1), executable: false }])).toThrow(/outside the skill folder/)
+    expect(readdirSync(out)).toEqual([])
+    mkdirSync(join(tmp, 'elsewhere'))
+    symlinkSync(join(tmp, 'elsewhere'), join(out, 'sub'))
+    expect(() => writeSkillTreeSync(out, [{ path: 'sub/x.md', bytes: new Uint8Array(1), executable: false }])).toThrow(/outside the skill folder/)
+    symlinkSync(join(tmp, 'elsewhere', 'gone'), join(out, 'f.md'))
+    expect(() => writeSkillTreeSync(out, [{ path: 'f.md', bytes: new Uint8Array(1), executable: false }])).toThrow(/is a link/)
     expect(readdirSync(join(tmp, 'elsewhere'))).toEqual([])
   })
 })

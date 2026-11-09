@@ -163,6 +163,11 @@ export interface Manifest {
 
 const within = (path: string, root: string): boolean => path === root || path.startsWith(root.endsWith(sep) ? root : root + sep)
 
+/** Where a symlink under HOME may lead and still be followed: inside the real HOME and outside its credential dirs. The skills store's import reads the same rule. */
+export function reachableUnderHome(real: string, realHome: string): boolean {
+  return within(real, realHome) && !SENSITIVE_UNDER_HOME.some((d) => within(real, join(realHome, d)))
+}
+
 /**
  * Walk the set under `home`. A symlink is followed (a skill linked in from
  * a checkout is the usual case) only when its real target is inside HOME
@@ -186,8 +191,7 @@ export async function buildManifest(
   } catch {
     return { entries, skipped }
   }
-  const sensitive = SENSITIVE_UNDER_HOME.map((d) => join(realHome, d))
-  const reachable = (real: string): boolean => within(real, realHome) && !sensitive.some((s) => within(real, s))
+  const reachable = (real: string): boolean => reachableUnderHome(real, realHome)
 
   const addFile = async (relPath: string, abs: string, st: Stats): Promise<void> => {
     if (!inSet(relPath, rules)) return

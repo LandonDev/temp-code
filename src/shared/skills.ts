@@ -178,7 +178,7 @@ export function viewDigest(skills: readonly Pick<SkillMeta, 'name' | 'digest'>[]
 
 /** A view's folder name under `<userData>/harness/<provider>/`: `global`, or `ws-<workspaceId>` for a workspace with a skill of its own. */
 export const viewDirName = (workspaceId: string | null): string => (workspaceId === null ? 'global' : `ws-${workspaceId.replace(/[^A-Za-z0-9_-]/g, '_')}`)
-/** One generation's folder: `<view>@<first 12 hex of the view digest>`. */
+/** One generation's folder: `<view>@<first 12 hex of digest>`, the digest the generation's whole content hash (skills/materialize.ts `generationName`). */
 export const generationDirName = (view: string, digest: string): string => `${view}@${digest.slice(0, 12)}`
 
 // ── the cards ───────────────────────────────────────────────────────────
@@ -197,18 +197,19 @@ export function sizeWords(bytes: number): string {
 /** Whether writing over or removing a skill asks the person: when a person or an import wrote it last. A new skill never asks. */
 export const skillWriteAsks = (existing: { writtenBy: Writer } | null): boolean => existing !== null && existing.writtenBy.kind !== 'thread'
 
-/** `skill_write`'s card over a person's or an import's skill: what the new version holds. */
+/** `skill_write`'s card over a person's or an import's skill: what the new version holds, and `changes`, which of its files differ from the stored copy (skills/tools.ts `skillChanges`). */
 export function skillChangeCard(
-  next: { name: string; harnesses: SkillHarnesses; fileCount: number; bytes: number },
+  next: { name: string; harnesses: SkillHarnesses; fileCount: number; bytes: number; changes: string },
   existing: { writtenBy: Writer },
   ctx: { workspaceName: string | null }
-): { title: string; input: { where: string; harnesses: string; files: string; writtenBy: string } } {
+): { title: string; input: { where: string; harnesses: string; files: string; changes: string; writtenBy: string } } {
   return {
     title: `Change the skill ${next.name}`,
     input: {
       where: scopeWords(ctx.workspaceName),
       harnesses: harnessWords(next.harnesses),
       files: `${next.fileCount} ${next.fileCount === 1 ? 'file' : 'files'}, ${sizeWords(next.bytes)}`,
+      changes: next.changes,
       writtenBy: writerWords(existing.writtenBy)
     }
   }

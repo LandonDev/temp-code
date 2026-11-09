@@ -135,6 +135,25 @@ describe('one copy on the box, two hosts', () => {
     expect(mac.skills.get(s.id)).toEqual(box.skills.get(s.id))
   })
 
+  it('a stale stamp is refused on the box through a forward, and the current one goes', async () => {
+    await mac.sync.syncWith(BOX)
+    const made = ((await mac.rpc.handle({ method: 'skills.set', params: { skill: { name: 'tidy', workspaceId: null, files: [md('tidy')] }, expectUpdatedAt: 0 } }, LOCAL)) as { skill: SkillMeta }).skill
+    // Both hosts hold the home's stamp.
+    expect(mac.skills.meta(made.id)?.updatedAt).toBe(box.skills.meta(made.id)?.updatedAt)
+    // A person on the box saves the same files: the stamp moves there before the Mac followed.
+    box.skills.set({ id: made.id, name: 'tidy', workspaceId: null, files: [md('tidy')] }, { kind: 'person' })
+    const stale = (expectUpdatedAt: number): StoreRequest => ({ method: 'skills.set', params: { skill: { id: made.id, name: 'tidy', workspaceId: null, files: [md('tidy', 'New.')] }, expectUpdatedAt } })
+    await expect(mac.rpc.handle(stale(made.updatedAt), LOCAL)).rejects.toThrow('refused: tidy changed since it was read')
+    await expect(mac.rpc.handle({ method: 'skills.remove', params: { id: made.id, expectUpdatedAt: made.updatedAt } }, LOCAL)).rejects.toThrow('changed since it was read')
+    expect(box.skills.meta(made.id)?.description).toBe('Tidy code.')
+    // The name is taken: a new write expecting it free is refused.
+    await expect(mac.rpc.handle({ method: 'skills.set', params: { skill: { name: 'tidy', workspaceId: null, files: [md('tidy')] }, expectUpdatedAt: 0 } }, LOCAL)).rejects.toThrow('changed since it was read')
+    await mac.sync.syncWith(BOX)
+    const now = mac.skills.meta(made.id)!
+    await mac.rpc.handle(stale(now.updatedAt), LOCAL)
+    expect(box.skills.meta(made.id)?.description).toBe('New.')
+  })
+
   it('a Mac write is forwarded and reads back the same on both halves, ids equal', async () => {
     await mac.sync.syncWith(BOX)
     const row = await macSet(addon({ description: 'GitHub issues' }))

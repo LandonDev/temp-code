@@ -1,3 +1,4 @@
+import { chmodSync, lstatSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { chmod, lstat, mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, sep } from 'node:path'
 import type { SkillFile } from '@shared/contract-skills'
@@ -69,26 +70,58 @@ export async function readSkillDir(dir: string): Promise<SkillFile[]> {
   return out.map(wireFile)
 }
 
-/**
- * Write a skill's files under `dir` (made if missing): parent folders,
- * contents, and the executable bit as 0755 or 0644. A path that is not a
- * clean relative path, or that would land outside `dir`, is refused before
- * anything is written.
- */
-export async function writeSkillTree(dir: string, files: readonly StoredFile[]): Promise<void> {
-  await mkdir(dir, { recursive: true })
-  const root = await realpath(dir)
-  const targets = files.map((f) => {
+/** The modes a written tree takes: 0755/0644, or 0555/0444 for a tree nothing may edit in place (a materialized generation). */
+export interface TreeModes {
+  readOnly?: boolean
+}
+const fileMode = (executable: boolean, modes: TreeModes): number => (modes.readOnly ? (executable ? 0o555 : 0o444) : executable ? 0o755 : 0o644)
+
+/** Each file's target under `root`, refused before anything is written when a path is not clean or would land outside. */
+function plannedTargets(root: string, files: readonly StoredFile[]): { file: StoredFile; target: string }[] {
+  return files.map((f) => {
     const target = join(root, ...f.path.split('/'))
     if (!validRelPath(f.path) || !inside(root, target) || relative(root, target).startsWith('..')) throw new Error(`refused: ${JSON.stringify(f.path)} is outside the skill folder`)
     return { file: f, target }
   })
-  for (const { file, target } of targets) {
+}
+
+const outsideRefusal = (file: StoredFile): Error => new Error(`refused: ${file.path} is outside the skill folder`)
+const linkRefusal = (file: StoredFile): Error => new Error(`refused: ${file.path} is a link; a skill writes files`)
+
+/**
+ * Write a skill's files under `dir` (made if missing): parent folders,
+ * contents, and the executable bit as 0755 or 0644 (0555 or 0444 with
+ * `readOnly`). A path that is not a clean relative path, or that would land
+ * outside `dir`, is refused before anything is written.
+ */
+export async function writeSkillTree(dir: string, files: readonly StoredFile[], modes: TreeModes = {}): Promise<void> {
+  await mkdir(dir, { recursive: true })
+  const root = await realpath(dir)
+  for (const { file, target } of plannedTargets(root, files)) {
     await mkdir(dirname(target), { recursive: true })
     // A folder made above may be a link that an earlier write planted; its real place must still be inside.
-    if (!inside(root, await realpath(dirname(target)))) throw new Error(`refused: ${file.path} is outside the skill folder`)
-    if ((await lstat(target).catch(() => null))?.isSymbolicLink()) throw new Error(`refused: ${file.path} is a link; a skill writes files`)
+    if (!inside(root, await realpath(dirname(target)))) throw outsideRefusal(file)
+    if ((await lstat(target).catch(() => null))?.isSymbolicLink()) throw linkRefusal(file)
     await writeFile(target, file.bytes)
-    await chmod(target, file.executable ? 0o755 : 0o644)
+    await chmod(target, fileMode(file.executable, modes))
+  }
+}
+
+/** writeSkillTree's synchronous twin, for the materializer's one-skill steps (skills/materialize.ts); the same checks. */
+export function writeSkillTreeSync(dir: string, files: readonly StoredFile[], modes: TreeModes = {}): void {
+  mkdirSync(dir, { recursive: true })
+  const root = realpathSync(dir)
+  for (const { file, target } of plannedTargets(root, files)) {
+    mkdirSync(dirname(target), { recursive: true })
+    if (!inside(root, realpathSync(dirname(target)))) throw outsideRefusal(file)
+    let link = false
+    try {
+      link = lstatSync(target).isSymbolicLink()
+    } catch {
+      /* not there yet */
+    }
+    if (link) throw linkRefusal(file)
+    writeFileSync(target, file.bytes, { mode: fileMode(file.executable, modes) })
+    chmodSync(target, fileMode(file.executable, modes))
   }
 }

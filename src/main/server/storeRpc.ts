@@ -112,17 +112,18 @@ export function storeRpc(deps: StoreRpcDeps) {
     return { addon: addons.set(input, writer) }
   }
 
-  async function setSkill(raw: SkillInput, principal: Principal): Promise<{ skill: SkillMeta }> {
+  async function setSkill(raw: SkillInput, principal: Principal, expectUpdatedAt: number | undefined): Promise<{ skill: SkillMeta }> {
     const problem = skillProblem(raw.name, raw.files.map((f) => ({ path: f.path, bytes: fileBytes(f) })))
     if (problem) throw new Error(`refused: ${problem}`)
     sameHome(raw.id ? skills.meta(raw.id) : null, raw.workspaceId, raw.name)
     const { input, writer } = stamp(raw, principal)
-    if (await forward('skills.set', { skill: input }, input.workspaceId)) {
+    const expect = expectUpdatedAt === undefined ? {} : { expectUpdatedAt }
+    if (await forward('skills.set', { skill: input, ...expect }, input.workspaceId)) {
       const meta = (input.id && skills.meta(input.id)) || skills.byName(input.workspaceId, input.name)
       if (!meta) throw new Error(`the skill ${input.name} did not come back from the home`)
       return { skill: meta }
     }
-    return { skill: skills.set(input, writer) }
+    return { skill: skills.set(input, writer, expect) }
   }
 
   async function handle(req: StoreRequest, principal: Principal): Promise<unknown> {
@@ -151,12 +152,13 @@ export function storeRpc(deps: StoreRpcDeps) {
         return { skill } satisfies { skill: Skill }
       }
       case 'skills.set':
-        return setSkill(req.params.skill, principal)
+        return setSkill(req.params.skill, principal, req.params.expectUpdatedAt)
       case 'skills.remove': {
         const meta = skills.meta(req.params.id)
         if (!meta) return { removed: false }
-        if (await forward('skills.remove', { id: meta.id }, meta.workspaceId)) return { removed: true }
-        return { removed: skills.remove(meta.id) }
+        const expect = req.params.expectUpdatedAt === undefined ? {} : { expectUpdatedAt: req.params.expectUpdatedAt }
+        if (await forward('skills.remove', { id: meta.id, ...expect }, meta.workspaceId)) return { removed: true }
+        return { removed: skills.remove(meta.id, expect) }
       }
     }
   }

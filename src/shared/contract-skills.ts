@@ -75,10 +75,14 @@ export const SkillRequestSchemas = [
   z.object({ id: z.string(), method: z.literal('skills.list'), params: z.object({ workspaceId: z.string().nullable().optional() }).optional() }),
   /** → { skill: Skill } */
   request('skills.get', z.object({ id: z.string() })),
-  /** → { skill: SkillMeta }: forwarded to the home */
-  request('skills.set', z.object({ skill: SkillInputSchema })),
-  /** → { removed: boolean } */
-  request('skills.remove', z.object({ id: z.string() }))
+  /**
+   * → { skill: SkillMeta }: forwarded to the home. `expectUpdatedAt`: the
+   * row's `updatedAt` the caller decided on (0: the scope's name must be
+   * free); the home refuses the write when the row moved since.
+   */
+  request('skills.set', z.object({ skill: SkillInputSchema, expectUpdatedAt: z.number().int().min(0).optional() })),
+  /** → { removed: boolean }; `expectUpdatedAt` as for skills.set */
+  request('skills.remove', z.object({ id: z.string(), expectUpdatedAt: z.number().int().min(0).optional() }))
 ] as const
 
 export interface SkillsList {

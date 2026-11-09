@@ -54,6 +54,35 @@ describe('SkillStore', () => {
     expect(store.files(first.id).map((f) => f.path)).toEqual(['SKILL.md'])
   })
 
+  it('stamps updatedAt higher on every write, even inside one millisecond', () => {
+    const first = store.set(input(), you)
+    const second = store.set(input(), you)
+    const third = store.set(input(), thread)
+    expect([first.updatedAt, second.updatedAt, third.updatedAt]).toEqual([1_000, 1_001, 1_002])
+    // A same-files save moves the stamp and the writer but not the version.
+    expect(third).toMatchObject({ version: 1, writtenBy: thread })
+  })
+
+  it('refuses a write or a removal decided on a row that has moved (expectUpdatedAt)', () => {
+    // 0: the scope's name must be free.
+    const first = store.set(input(), thread, { expectUpdatedAt: 0 })
+    expect(() => store.set(input(), thread, { expectUpdatedAt: 0 })).toThrow('refused: tidy changed since it was read')
+    // A person saves the same files under a fixed clock: the version stays, the stamp moves, the thread's stale stamp is refused.
+    const person = store.set(input(), you)
+    expect(person.version).toBe(first.version)
+    expect(() => store.set(input(), thread, { expectUpdatedAt: first.updatedAt })).toThrow('refused: tidy changed since it was read')
+    expect(() => store.remove(first.id, { expectUpdatedAt: first.updatedAt })).toThrow('refused: tidy changed since it was read')
+    expect(store.meta(first.id)?.writtenBy).toEqual(you)
+    // The current stamp passes; absent behaves as before.
+    const next = store.set(input(), thread, { expectUpdatedAt: person.updatedAt })
+    expect(next.writtenBy).toEqual(thread)
+    expect(store.set(input(), you).version).toBe(1)
+    const now = store.meta(first.id)!
+    expect(store.remove(first.id, { expectUpdatedAt: now.updatedAt })).toBe(true)
+    // A removal of a row already gone answers false, whatever the stamp.
+    expect(store.remove(first.id, { expectUpdatedAt: now.updatedAt })).toBe(false)
+  })
+
   it('keeps binary files and the executable bit byte for byte', () => {
     const bytes = Uint8Array.from([0, 1, 2, 250, 255, 0x7f])
     const bom = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode('text with a BOM')])

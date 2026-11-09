@@ -143,14 +143,20 @@ describe('skillFrontmatter', () => {
 describe('the cards', () => {
   it('words a change and a removal of a person\'s skill, never asking for a new one or a thread\'s own', () => {
     const person = { writtenBy: { kind: 'person' as const } }
-    expect(skillChangeCard({ name: 'tidy', harnesses: 'all', fileCount: 4, bytes: 12 * 1024 }, person, { workspaceName: null })).toEqual({
+    const card = skillChangeCard({ name: 'tidy', harnesses: 'all', fileCount: 4, bytes: 12 * 1024, changes: 'SKILL.md changed' }, person, { workspaceName: null })
+    expect(card).toEqual({
       title: 'Change the skill tidy',
-      input: { where: 'Every workspace', harnesses: 'Claude, Codex and Muse', files: '4 files, 12 KB', writtenBy: 'You' }
+      input: { where: 'Every workspace', harnesses: 'Claude, Codex and Muse', files: '4 files, 12 KB', changes: 'SKILL.md changed', writtenBy: 'You' }
     })
-    expect(skillChangeCard({ name: 'tidy', harnesses: ['muse', 'claude'], fileCount: 1, bytes: 300 }, { writtenBy: { kind: 'import', from: 'x' } }, { workspaceName: 'temp-code' }).input).toEqual({
+    // The card lists its rows in this order: what changed sits right after the files.
+    expect(Object.keys(card.input)).toEqual(['where', 'harnesses', 'files', 'changes', 'writtenBy'])
+    expect(
+      skillChangeCard({ name: 'tidy', harnesses: ['muse', 'claude'], fileCount: 1, bytes: 300, changes: 'only which CLIs get it' }, { writtenBy: { kind: 'import', from: 'x' } }, { workspaceName: 'temp-code' }).input
+    ).toEqual({
       where: 'temp-code',
       harnesses: 'Claude and Muse',
       files: '1 file, 300 B',
+      changes: 'only which CLIs get it',
       writtenBy: 'Imported'
     })
     expect(skillRemoveCard({ name: 'tidy', writtenBy: { kind: 'person', key: 'Phone' } }, { workspaceName: null })).toEqual({

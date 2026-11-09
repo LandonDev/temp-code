@@ -138,6 +138,22 @@ describe('storeRpc', () => {
     pushes.close()
   })
 
+  it('passes expectUpdatedAt to the home on a forward and checks it here on its own scope', async () => {
+    forwards = true
+    await rpc().handle({ method: 'skills.set', params: { skill: skill(), expectUpdatedAt: 0 } }, LOCAL).catch(() => {})
+    expect(forwarded[0]).toMatchObject({ method: 'skills.set', params: { expectUpdatedAt: 0 } })
+    forwards = false
+    const made = (await rpc().handle({ method: 'skills.set', params: { skill: skill(), expectUpdatedAt: 0 } }, LOCAL)) as { skill: SkillMeta }
+    await expect(rpc().handle({ method: 'skills.set', params: { skill: skill(), expectUpdatedAt: 0 } }, LOCAL)).rejects.toThrow('refused: tidy changed since it was read')
+    await expect(rpc().handle({ method: 'skills.set', params: { skill: skill(), expectUpdatedAt: made.skill.updatedAt - 1 } }, LOCAL)).rejects.toThrow('changed since it was read')
+    await expect(rpc().handle({ method: 'skills.remove', params: { id: made.skill.id, expectUpdatedAt: made.skill.updatedAt + 5 } }, LOCAL)).rejects.toThrow('changed since it was read')
+    forwards = true
+    await rpc().handle({ method: 'skills.remove', params: { id: made.skill.id, expectUpdatedAt: made.skill.updatedAt } }, LOCAL)
+    expect(forwarded.at(-1)).toEqual({ method: 'skills.remove', params: { id: made.skill.id, expectUpdatedAt: made.skill.updatedAt }, workspaceId: null })
+    forwards = false
+    expect(await rpc().handle({ method: 'skills.remove', params: { id: made.skill.id, expectUpdatedAt: made.skill.updatedAt } }, LOCAL)).toEqual({ removed: true })
+  })
+
   it('a refusal from the home reaches the caller, nothing written here', async () => {
     deps.sync!.forward = async () => {
       throw new Error('refused: add-ons and skills live on box; it is offline')

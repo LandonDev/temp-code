@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import { requiredCapability } from '@shared/capabilities'
 import { parseMapping } from '../pathMap'
-import { MemorySync, SETTLE_GAP_MS, handleMemory } from './memorySync'
+import { MemorySync, PEER_HOMES_KEY, SETTLE_GAP_MS, handleMemory } from './memorySync'
 import { encodeProjectDir } from './memorySet'
 import { TOMBSTONE_MS } from './memoryMerge'
 
@@ -368,5 +368,28 @@ describe('the receiver', () => {
     await expect(link.request('memory.files', { generation: 'g1', files: [{ relPath: '.claude/plans/ok.md', mtime: T0, sha256: 'b'.repeat(64), mode: 0o644, dataBase64: 'eA==' }], done: true })).rejects.toThrow(/does not match its hash/)
     expect(walk(box)).toEqual([])
     expect((await receiver.status()).environments).toEqual([])
+  })
+})
+
+describe('the peers\' homes', () => {
+  it('both legs keep the other host\'s home and work root, say when they move, and read them back after a restart', async () => {
+    const { sender, receiver, macStore, boxStore } = pair()
+    const heardMac: number[] = []
+    const heardBox: number[] = []
+    sender.onPeerHome(() => heardMac.push(1))
+    receiver.onPeerHome(() => heardBox.push(1))
+    expect(sender.peerHomes()).toEqual([])
+    await sender.syncWith('env_box')
+    // The driver hears the receiver's answer, the receiver the driver's exchange.
+    expect(sender.peerHomes()).toEqual([{ environmentId: 'env_box', home: box, workRoot: work }])
+    expect(receiver.peerHomes()).toEqual([{ environmentId: 'env_mac', home: mac, workRoot: join(mac, 'IdeaProjects') }])
+    expect([heardMac.length, heardBox.length]).toEqual([1, 1])
+    // A second exchange naming the same homes says nothing.
+    await sender.syncWith('env_box')
+    expect([heardMac.length, heardBox.length]).toEqual([1, 1])
+    // Kept in the settings: a fresh MemorySync on the same store reads them before any exchange.
+    expect(JSON.parse(macStore.rows[PEER_HOMES_KEY]!)).toEqual({ env_box: { home: box, workRoot: work } })
+    const again = new MemorySync({ environmentId: 'env_box', store: boxStore, peers: { get: () => undefined, all: () => [] }, dataDir: join(root, 'box-data'), pathMap: () => ({ roots: {}, prefixes: {} }) })
+    expect(again.peerHomes()).toEqual(receiver.peerHomes())
   })
 })

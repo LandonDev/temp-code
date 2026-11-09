@@ -122,6 +122,14 @@ interface EnvRecord {
   conflicts: number
 }
 
+/** The last home and work root each peer named in an exchange, by environment id: the skills store's text map reads them (skills/skillText.ts). */
+export const PEER_HOMES_KEY = 'memory-sync:peer-homes'
+export interface PeerHome {
+  environmentId: string
+  home: string
+  workRoot?: string
+}
+
 export interface MemorySyncDeps {
   environmentId: string
   store: { getSetting(key: string): string | null; setSetting(key: string, value: string | null): void }
@@ -156,7 +164,54 @@ export class MemorySync {
   private queue: Promise<unknown> = Promise.resolve()
   private closed = false
 
+  private peerHomeMap: Record<string, { home: string; workRoot?: string }> | null = null
+  private readonly peerHomeListeners = new Set<() => void>()
+
   constructor(private readonly deps: MemorySyncDeps) {}
+
+  // ── the peers' homes ───────────────────────────────────────────────────
+
+  private loadPeerHomes(): Record<string, { home: string; workRoot?: string }> {
+    if (this.peerHomeMap) return this.peerHomeMap
+    let map: Record<string, { home: string; workRoot?: string }> = {}
+    try {
+      const raw = JSON.parse(this.deps.store.getSetting(PEER_HOMES_KEY) ?? '{}') as unknown
+      if (raw && typeof raw === 'object') map = raw as typeof map
+    } catch {
+      /* a bad value reads as none heard */
+    }
+    this.peerHomeMap = map
+    return map
+  }
+
+  /** Every peer heard from in an exchange, either leg, with the home and work root it named last. */
+  peerHomes(): PeerHome[] {
+    return Object.entries(this.loadPeerHomes())
+      .filter(([, v]) => typeof v?.home === 'string' && v.home.startsWith('/'))
+      .map(([environmentId, v]) => ({ environmentId, home: v.home, ...(typeof v.workRoot === 'string' ? { workRoot: v.workRoot } : {}) }))
+      .sort((a, b) => (a.environmentId < b.environmentId ? -1 : 1))
+  }
+
+  /** Called when a peer names a home or work root other than the one kept. */
+  onPeerHome(fn: () => void): () => void {
+    this.peerHomeListeners.add(fn)
+    return () => this.peerHomeListeners.delete(fn)
+  }
+
+  private notePeerHome(environmentId: string, home: string, workRoot: string | undefined): void {
+    const map = this.loadPeerHomes()
+    const was = map[environmentId]
+    if (was && was.home === home && was.workRoot === workRoot) return
+    map[environmentId] = { home, ...(workRoot ? { workRoot } : {}) }
+    this.deps.store.setSetting(PEER_HOMES_KEY, JSON.stringify(map))
+    for (const fn of this.peerHomeListeners) {
+      try {
+        fn()
+      } catch (err) {
+        this.log(`peer home listener: ${(err as Error).message}`)
+      }
+    }
+  }
 
   private home(): string {
     return this.deps.home?.() ?? homedir()
@@ -508,6 +563,7 @@ export class MemorySync {
         bytes += file.dataBase64.length
       }
       // The receiver's files whose side won: landed here, translated.
+      if (answer.home.startsWith('/')) this.notePeerHome(environmentId, answer.home, answer.workRoot)
       const mapping = this.translationFor(answer.home, answer.workRoot)
       const landed: Record<string, string> = {}
       let written = 0
@@ -589,6 +645,7 @@ export class MemorySync {
     const home = this.home()
     const mine = new Map((await listMemory(home, { cache: this.cache as HashCache })).entries.map((e) => [e.relPath, e]))
     const state = this.loadState()
+    this.notePeerHome(params.from, params.home, params.workRoot)
     const mapping = this.translationFor(params.home, params.workRoot)
     this.noticeDeletions(state, params.from, new Set(mine.keys()))
     const ledger = this.ledgerOf(state, params.from)
