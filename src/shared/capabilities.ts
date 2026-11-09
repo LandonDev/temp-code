@@ -437,6 +437,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'macBridge.shared.set': 'local',
   'macBridge.showRunning.set': 'local',
   'macBridge.limits.set': 'local',
+  'macBridge.computer.set': 'local',
   'macBridge.loadLimit.set': 'local',
   'macBridge.load.get': 'local',
   'macBridge.admitThread': 'local',

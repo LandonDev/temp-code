@@ -53,6 +53,9 @@ export const MAC_LOAD_RESUME_FRACTION = 0.75
 export const MAC_LOAD_SAMPLE_MS = 15_000
 export const MAC_BRIDGE_MAX_RUNNING_CAP = 64
 export const MAC_BRIDGE_MAX_THREADS_CAP = 32
+/** Concurrent computer sessions one host may hold on the Mac, unless `macBridge.maxComputer.<envId>` says otherwise (contract-maccomputer.ts). */
+export const MAC_BRIDGE_DEFAULT_MAX_COMPUTER = 2
+export const MAC_BRIDGE_MAX_COMPUTER_CAP = 8
 
 // ── mac_run streaming (remote/peerStreams.ts, macRunLive.ts) ──────────
 /** Past MAC_RUN_OUTPUT_CAP, the first this many bytes of output are kept… */
@@ -299,8 +302,13 @@ export interface MacBridgeRequest extends MacRunRememberOffer {
   hostName: string
   sessionId: string
   threadTitle: string
-  kind: 'read' | 'run' | 'write'
-  method: MacMethod
+  kind: 'read' | 'run' | 'write' | 'computer'
+  method: MacMethod | 'mac.computer'
+  /**
+   * computer (contract-maccomputer.ts): a card's app, window and acting steps
+   * in words; a live session's app and window last used, with no actions.
+   */
+  computer?: MacBridgeComputer
   /** read: the real path asked for. */
   path?: string
   /** read: the folder "allow this folder for this thread" would admit; absent when it would be home or '/'. */
@@ -336,6 +344,13 @@ export interface MacBridgeRequest extends MacRunRememberOffer {
 
 export type MacBridgeOutcome = 'allowed' | 'denied' | 'expired' | 'stopped' | 'done'
 
+/** What a computer request names: the app, its window, and on a card each acting step in words. */
+export interface MacBridgeComputer {
+  app: string
+  window: string | null
+  actions: string[]
+}
+
 /**
  * Why an allowed command or job waits on the Mac before it starts (the load
  * guard, remote/macLoadGuard.ts): the host is at its cap of concurrent
@@ -343,7 +358,8 @@ export type MacBridgeOutcome = 'allowed' | 'denied' | 'expired' | 'stopped' | 'd
  * renderer draws it as "Waiting for the Mac, load 12.3 of 8, 3rd in line".
  */
 export interface MacBridgeHeld {
-  reason: 'cap' | 'load'
+  /** cap: the host's commands and jobs; load: the Mac's load; computer: the host's computer sessions. */
+  reason: 'cap' | 'load' | 'computer'
   /** 1-based place in the host's queue; held calls start in order. */
   position: number
   /** The Mac's one-minute load average at the last sample, its limit and its cores. */
@@ -353,6 +369,9 @@ export interface MacBridgeHeld {
   /** The host's cap on concurrent commands and jobs, and how many run now. */
   maxRunning: number
   running: number
+  /** computer: the host's live computer sessions and its cap on them. */
+  computer?: number
+  maxComputer?: number
 }
 
 /** 1 → 1st, 2 → 2nd, 3 → 3rd, 11 → 11th, 22 → 22nd. */
@@ -383,7 +402,9 @@ export function heldFacts(held: MacBridgeHeld): string[] {
   const why =
     held.reason === 'load'
       ? `load ${held.load.toFixed(1)} of ${trimNumber(held.limit)}`
-      : `${held.running} of ${held.maxRunning} running`
+      : held.reason === 'computer'
+        ? `${held.computer ?? 0} of ${held.maxComputer ?? 0} computer sessions`
+        : `${held.running} of ${held.maxRunning} running`
   return [why, `${ordinal(held.position)} in line`]
 }
 
@@ -436,6 +457,11 @@ export interface MacBridgeHostPolicy {
   running: number
   held: number
   threads: number
+  /** Computer use for this host (`macBridge.computer.<envId>`, off by default), why this Mac cannot serve it (null when it can), the cap on live sessions and how many are live. */
+  computer: boolean
+  computerUnavailable: string | null
+  maxComputer: number
+  computerLive: number
 }
 
 /**
@@ -451,12 +477,14 @@ export interface MacBridgeCall {
   hostName: string
   sessionId: string
   threadTitle: string
-  kind: 'read' | 'run' | 'write'
-  method: MacMethod
+  kind: 'read' | 'run' | 'write' | 'computer'
+  method: MacMethod | 'mac.computer'
   command?: string
   argv?: string[]
   cwd?: string
   path?: string
+  /** computer: the app and window the session last used. */
+  computer?: { app: string; window: string | null }
   status: 'held' | 'running' | 'paused'
   held?: MacBridgeHeld
   interactive?: true
@@ -689,9 +717,12 @@ export const MacBridgeRequestSchemas = [
     z.object({
       environmentId: envId,
       maxRunning: z.number().int().min(1).max(MAC_BRIDGE_MAX_RUNNING_CAP).nullable().optional(),
-      maxThreads: z.number().int().min(0).max(MAC_BRIDGE_MAX_THREADS_CAP).nullable().optional()
+      maxThreads: z.number().int().min(0).max(MAC_BRIDGE_MAX_THREADS_CAP).nullable().optional(),
+      maxComputer: z.number().int().min(1).max(MAC_BRIDGE_MAX_COMPUTER_CAP).nullable().optional()
     })
   ),
+  /** → MacBridgeHostPolicy[]. Computer use for a host (contract-maccomputer.ts); off ends its live sessions. */
+  request('macBridge.computer.set', z.object({ environmentId: envId, on: z.boolean() })),
   /** → MacBridgeLoad. The one-minute load over which new commands and jobs are held; null follows the cores again. */
   request('macBridge.loadLimit.set', z.object({ limit: z.number().positive().max(10_000).nullable() })),
   /** → MacBridgeLoad, as last sampled. */

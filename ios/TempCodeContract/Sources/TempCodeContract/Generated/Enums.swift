@@ -564,6 +564,7 @@ public enum ThreadResourceKind: RawRepresentable, Codable, Hashable, Sendable {
     case simulator
     case devInstance
     case port
+    case computer
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -573,6 +574,7 @@ public enum ThreadResourceKind: RawRepresentable, Codable, Hashable, Sendable {
         case "simulator": self = .simulator
         case "devInstance": self = .devInstance
         case "port": self = .port
+        case "computer": self = .computer
         default: self = .unknown(rawValue)
         }
     }
@@ -583,6 +585,7 @@ public enum ThreadResourceKind: RawRepresentable, Codable, Hashable, Sendable {
         case .simulator: "simulator"
         case .devInstance: "devInstance"
         case .port: "port"
+        case .computer: "computer"
         case .unknown(let value): value
         }
     }

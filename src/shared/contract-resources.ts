@@ -13,8 +13,10 @@ import type { PortForwardInfo } from './contract-ports'
 // A `port` is a dev server the thread's command opened (docs/box.md "Dev
 // servers on the box"): removing it kills the listening pid, and a port that
 // stops listening is stamped removed on its own.
+// A `computer` is a box thread's computer session on the Mac
+// (contract-maccomputer.ts): removing it ends the session there.
 
-export const THREAD_RESOURCE_KINDS = ['worktree', 'simulator', 'devInstance', 'port'] as const
+export const THREAD_RESOURCE_KINDS = ['worktree', 'simulator', 'devInstance', 'port', 'computer'] as const
 export type ThreadResourceKind = (typeof THREAD_RESOURCE_KINDS)[number]
 
 export interface ThreadResource {
@@ -24,9 +26,9 @@ export interface ThreadResource {
   /** The host the resource lives on: this host's environment id, or the Mac's for a bridged call. */
   environmentId: string
   kind: ThreadResourceKind
-  /** worktree: the absolute path; simulator: the UDID; devInstance: the userData dir; port: the port number. */
+  /** worktree: the absolute path; simulator: the UDID; devInstance: the userData dir; port: the port number; computer: the box thread's id. */
   identifier: string
-  /** What a person recognises it by: the branch, the simulator's name, the dir's base name, a port's announced URL or command. */
+  /** What a person recognises it by: the branch, the simulator's name, the dir's base name, a port's announced URL or command, the first app a computer session used. */
   label: string
   /** worktree only: the branch the command created, deleted with it when it has no unpushed commits; null means none to delete. */
   branch: string | null

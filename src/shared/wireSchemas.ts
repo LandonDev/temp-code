@@ -950,13 +950,15 @@ export const MemorySyncStatusSchema = z.object({
 })
 
 export const MacBridgeHeldSchema = z.object({
-  reason: z.enum(['cap', 'load']),
+  reason: z.enum(['cap', 'load', 'computer']),
   position: z.number().int(),
   load: z.number(),
   limit: z.number(),
   cores: z.number().int(),
   maxRunning: z.number().int(),
-  running: z.number().int()
+  running: z.number().int(),
+  computer: z.number().int().optional(),
+  maxComputer: z.number().int().optional()
 })
 export const MacBridgeLoadSchema = z.object({
   load: z.number(),
@@ -973,12 +975,13 @@ export const MacBridgeCallSchema = z.object({
   hostName: z.string(),
   sessionId: z.string(),
   threadTitle: z.string(),
-  kind: z.enum(['read', 'run', 'write']),
-  method: z.enum(MAC_METHODS),
+  kind: z.enum(['read', 'run', 'write', 'computer']),
+  method: z.enum([...MAC_METHODS, 'mac.computer']),
   command: z.string().optional(),
   argv: z.array(z.string()).optional(),
   cwd: z.string().optional(),
   path: z.string().optional(),
+  computer: z.object({ app: z.string(), window: z.string().nullable() }).optional(),
   status: z.enum(['held', 'running', 'paused']),
   held: MacBridgeHeldSchema.optional(),
   interactive: z.literal(true).optional(),

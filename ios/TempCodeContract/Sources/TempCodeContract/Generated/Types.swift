@@ -3683,6 +3683,7 @@ public struct MacBridgeHeld: Codable, Hashable, Sendable {
     public enum Reason: RawRepresentable, Codable, Hashable, Sendable {
         case cap
         case load
+        case computer
         /// A value this build does not know; `rawValue` keeps it.
         case unknown(String)
 
@@ -3690,6 +3691,7 @@ public struct MacBridgeHeld: Codable, Hashable, Sendable {
             switch rawValue {
             case "cap": self = .cap
             case "load": self = .load
+            case "computer": self = .computer
             default: self = .unknown(rawValue)
             }
         }
@@ -3698,6 +3700,7 @@ public struct MacBridgeHeld: Codable, Hashable, Sendable {
             switch self {
             case .cap: "cap"
             case .load: "load"
+            case .computer: "computer"
             case .unknown(let value): value
             }
         }
@@ -3710,8 +3713,10 @@ public struct MacBridgeHeld: Codable, Hashable, Sendable {
     public let cores: Int
     public let maxRunning: Int
     public let running: Int
+    public let computer: Int?
+    public let maxComputer: Int?
 
-    public init(reason: Reason, position: Int, load: Double, limit: Double, cores: Int, maxRunning: Int, running: Int) {
+    public init(reason: Reason, position: Int, load: Double, limit: Double, cores: Int, maxRunning: Int, running: Int, computer: Int? = nil, maxComputer: Int? = nil) {
         self.reason = reason
         self.position = position
         self.load = load
@@ -3719,6 +3724,8 @@ public struct MacBridgeHeld: Codable, Hashable, Sendable {
         self.cores = cores
         self.maxRunning = maxRunning
         self.running = running
+        self.computer = computer
+        self.maxComputer = maxComputer
     }
 }
 
@@ -3747,6 +3754,7 @@ public struct MacBridgeCall: Codable, Hashable, Sendable {
         case read
         case run
         case write
+        case computer
         /// A value this build does not know; `rawValue` keeps it.
         case unknown(String)
 
@@ -3755,6 +3763,7 @@ public struct MacBridgeCall: Codable, Hashable, Sendable {
             case "read": self = .read
             case "run": self = .run
             case "write": self = .write
+            case "computer": self = .computer
             default: self = .unknown(rawValue)
             }
         }
@@ -3764,6 +3773,7 @@ public struct MacBridgeCall: Codable, Hashable, Sendable {
             case .read: "read"
             case .run: "run"
             case .write: "write"
+            case .computer: "computer"
             case .unknown(let value): value
             }
         }
@@ -3774,6 +3784,7 @@ public struct MacBridgeCall: Codable, Hashable, Sendable {
         case macFetchFile
         case macRun
         case macWriteFile
+        case macComputer
         /// A value this build does not know; `rawValue` keeps it.
         case unknown(String)
 
@@ -3784,6 +3795,7 @@ public struct MacBridgeCall: Codable, Hashable, Sendable {
             case "mac.fetchFile": self = .macFetchFile
             case "mac.run": self = .macRun
             case "mac.writeFile": self = .macWriteFile
+            case "mac.computer": self = .macComputer
             default: self = .unknown(rawValue)
             }
         }
@@ -3795,8 +3807,28 @@ public struct MacBridgeCall: Codable, Hashable, Sendable {
             case .macFetchFile: "mac.fetchFile"
             case .macRun: "mac.run"
             case .macWriteFile: "mac.writeFile"
+            case .macComputer: "mac.computer"
             case .unknown(let value): value
             }
+        }
+    }
+    public struct Computer: Codable, Hashable, Sendable {
+        public let app: String
+        public let window: String?
+
+        public init(app: String, window: String?) {
+            self.app = app
+            self.window = window
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case app, window
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(app, forKey: .app)
+            try container.encode(window, forKey: .window)
         }
     }
     public enum Status: RawRepresentable, Codable, Hashable, Sendable {
@@ -3836,12 +3868,13 @@ public struct MacBridgeCall: Codable, Hashable, Sendable {
     public let argv: [String]?
     public let cwd: String?
     public let path: String?
+    public let computer: Computer?
     public let status: Status
     public let held: MacBridgeHeld?
     public let interactive: Bool?
     public let createdAt: Int
 
-    public init(id: String, environmentId: String, hostName: String, sessionId: String, threadTitle: String, kind: Kind, method: Method, command: String? = nil, argv: [String]? = nil, cwd: String? = nil, path: String? = nil, status: Status, held: MacBridgeHeld? = nil, interactive: Bool? = nil, createdAt: Int) {
+    public init(id: String, environmentId: String, hostName: String, sessionId: String, threadTitle: String, kind: Kind, method: Method, command: String? = nil, argv: [String]? = nil, cwd: String? = nil, path: String? = nil, computer: Computer? = nil, status: Status, held: MacBridgeHeld? = nil, interactive: Bool? = nil, createdAt: Int) {
         self.id = id
         self.environmentId = environmentId
         self.hostName = hostName
@@ -3853,6 +3886,7 @@ public struct MacBridgeCall: Codable, Hashable, Sendable {
         self.argv = argv
         self.cwd = cwd
         self.path = path
+        self.computer = computer
         self.status = status
         self.held = held
         self.interactive = interactive

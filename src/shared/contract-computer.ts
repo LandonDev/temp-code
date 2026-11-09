@@ -36,7 +36,14 @@ export const ComputerSessionRowSchema = z.object({
   apps: z.array(z.object({ name: z.string(), bundleId: z.string().nullable(), window: z.string().nullable() })),
   running: z.object({ tool: z.string(), words: z.string(), startedAt: z.number().int() }).nullable(),
   /** the tier the last step that sent input ran at */
-  tier: TierSchema.nullable()
+  tier: TierSchema.nullable(),
+  // A box thread's row mirrored from its Mac (contract-maccomputer.ts); the bridge alone sets these.
+  /** the Mac's environment id */
+  macPeer: z.string().optional(),
+  /** what this host calls the Mac */
+  macName: z.string().optional(),
+  /** a card waits on the Mac: its title as a question (approvalLine's form) */
+  asking: z.object({ line: z.string() }).optional()
 })
 export type ComputerSessionRow = z.infer<typeof ComputerSessionRowSchema>
 
