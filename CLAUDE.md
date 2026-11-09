@@ -3664,8 +3664,9 @@ proof and the sizing rules; the pieces, by name:
   the service state and the live rows. Proofs: the unit tests over
   computer/fakeService.mjs on the box, and `bun run script:e2e-computer` on the
   Mac (real claude threads on TC Probe, the proof's own inert scratch app,
-  launched only after 5 minutes with no input and pinned by pid; ax and
-  process tiers only; the person's app and pointer held still).
+  pinned by pid; ax and process tiers only; a try only after 5 minutes with
+  no input on an unlocked screen, ended and voided the moment the person
+  touches the Mac; the person's app and pointer held still).
 - Fixtures: src/main/server/computer/fixtures/ (its README): hand-written
   wire frames for every method, error kind and notification, observation
   texts for every grammar case, `page/form.html`, and `apps/` trees and
