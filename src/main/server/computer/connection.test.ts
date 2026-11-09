@@ -65,6 +65,18 @@ describe('ComputerConnection', () => {
     expect(result.observationError?.kind).toBe('cancelled')
   })
 
+  it('a request given up before it was sent is never written', async () => {
+    const log = join(dataDir(), 'requests.log')
+    const c = await start({ FAKE_LOG: log })
+    const abort = new AbortController()
+    abort.abort()
+    const err = await c.request('permissions.get', {}, { signal: abort.signal }).catch((e) => e)
+    expect(err).toBeInstanceOf(ComputerHostError)
+    expect(err.kind).toBe('cancelled')
+    await c.request('apps.list', {})
+    expect(readFileSync(log, 'utf8')).not.toContain('permissions.get')
+  })
+
   it('an error frame is a ComputerRpcError carrying its ComputerError', async () => {
     const c = await start()
     const err = await c.request('apps.launch', { app: 'Nope' }).catch((e) => e)

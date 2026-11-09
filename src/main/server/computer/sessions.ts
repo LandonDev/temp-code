@@ -4,7 +4,8 @@ import type { ComputerSessionRow } from '@shared/contract-computer'
 import type { AppRef } from '@shared/computer/protocol'
 import type { SessionMeta, SessionStatus } from '@shared/events'
 import { attachmentDir } from '../attachmentDir'
-import type { ComputerToolOutcome } from './result'
+import { hostErrorLine } from '@shared/computer/hostErrors'
+import { refusal, type ComputerToolOutcome } from './result'
 import { runComputerTool, type ComputerRegistry, type ComputerToolContext, type RunHost, type ThreadComputer } from './run'
 import type { Clock, ComputerService } from './service'
 import { pruneServiceShots } from './shots'
@@ -88,6 +89,7 @@ export class ComputerSessions {
       t.inflight = own
       const signal = ctx.signal ? AbortSignal.any([ctx.signal, own.signal]) : own.signal
       try {
+        if (t.ended) return refusal(hostErrorLine('cancelled', 'the thread ended'))
         return await runComputerTool(this.host, t, ctx, tool, args, signal)
       } finally {
         if (t.inflight === own) t.inflight = null
@@ -174,7 +176,9 @@ export class ComputerSessions {
       const t = this.threads.get(id)
       if (!t) continue
       this.threads.delete(id)
+      t.ended = true
       t.inflight?.abort('ended')
+      await t.queue
       if (t.idleTimer !== null) this.clock.clearTimeout(t.idleTimer)
       await this.closeSession(t)
     }
@@ -197,7 +201,8 @@ export class ComputerSessions {
         stopped: false,
         inflight: null,
         idleTimer: null,
-        nextShot: null
+        nextShot: null,
+        ended: false
       }
       this.threads.set(threadId, t)
     }

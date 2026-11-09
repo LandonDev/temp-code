@@ -210,6 +210,17 @@ describe('tiers', () => {
     ])
   })
 
+  it('a key-window retry of a key that the gate admits leaves process out', async () => {
+    const gate: SessionTierGate = { admitted: () => false, request: async () => ({ admit: true }) }
+    const h = make({ gate })
+    const o = await h.run('computer_act', { app: 'KeyWin', action: 'key', text: 'a' })
+    expect(h.requests().filter((r) => r.method === 'action.run').map((r) => r.params.tiers)).toEqual([
+      ['ax', 'process'],
+      ['ax', 'session']
+    ])
+    expect(o.steps).toEqual(['key a · session · changed'])
+  })
+
   it('Stubborn raises its click verdict to session through a gate that admits', async () => {
     const gate: SessionTierGate = { admitted: () => true, request: async () => ({ admit: true }) }
     const h = make({ gate })
@@ -313,6 +324,36 @@ describe('pause and Stop', () => {
   })
 })
 
+describe('a call given up late', () => {
+  it('a read stopped after the service answered says stopped, and the next read is full', async () => {
+    const h = make()
+    await h.run('computer_observe', { app: 'TextEdit' })
+    const abort = new AbortController()
+    const request = h.service.request.bind(h.service)
+    h.service.request = (async (method: string, params: never, opts?: object) => {
+      const answer = await request(method as never, params, opts)
+      if (method === 'state.get') abort.abort()
+      return answer
+    }) as typeof h.service.request
+    const o = await h.run('computer_observe', { app: 'TextEdit' }, 't1', { signal: abort.signal })
+    expect(o).toMatchObject({ isError: true, body: 'cancelled: the call was given up' })
+    h.service.request = request
+    await h.run('computer_observe', { app: 'TextEdit' })
+    expect(last(h, 'state.get').params.mode).toBe('full')
+  })
+
+  it("the thread's end refuses the calls still queued, and they send nothing", async () => {
+    const h = make()
+    const slow = h.run('computer_observe', { app: 'Slow' })
+    const queued = h.run('computer_act', { app: 'TextEdit', action: 'key', text: 'a' })
+    await until(() => count(h, 'state.get') === 1, 'the slow read')
+    await h.sessions.end(['t1'])
+    expect((await slow).body).toBe('cancelled: the thread ended')
+    expect((await queued).body).toBe('cancelled: the thread ended')
+    expect(count(h, 'action.run')).toBe(0)
+  })
+})
+
 describe('closing', () => {
   it("the thread's end closes the session and removes the service's shots", async () => {
     const h = make()
@@ -350,7 +391,8 @@ describe('needsFull', () => {
     stopped: false,
     inflight: null,
     idleTimer: null,
-    nextShot: null
+    nextShot: null,
+    ended: false
   })
   const obs = (kind: Observation['kind'], text: string): Observation =>
     ({

@@ -242,6 +242,8 @@ export class ComputerConnection {
     if (!checked.success)
       return Promise.reject(new ComputerRpcError(RPC_ERROR.invalidParams, `invalid params for ${method}: ${checked.error.issues[0]?.message ?? 'refused'}`))
     if (this.exit) return Promise.reject(new ComputerHostError('service_restarted'))
+    // given up before it was sent (a Stop while the session opened): never written, so it cannot act
+    if (opts.signal?.aborted) return Promise.reject(new ComputerHostError('cancelled'))
     const id = ++this.nextId
     return new Promise<ComputerResult<M>>((resolve, reject) => {
       const p: Pending = { method, startedAt: (this.opts.now ?? Date.now)(), resolve: resolve as (v: unknown) => void, reject, timer: null }

@@ -89,6 +89,8 @@ export interface ThreadComputer {
   stopped: boolean
   /** the call in flight (the queue runs one at a time) */
   inflight: AbortController | null
+  /** the thread ended: calls still queued answer cancelled and send nothing */
+  ended: boolean
   idleTimer: unknown
   nextShot: number | null
 }
@@ -256,7 +258,10 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
   }
 
   try {
-    if (tool === 'computer_apps') return await runApps(call, args)
+    if (tool === 'computer_apps') {
+      const apps = await runApps(call, args)
+      return abortedLine(signal) ? refusal(abortedLine(signal)!) : apps
+    }
 
     // 5. the target
     const a = app()
@@ -303,6 +308,11 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
       if (!asked.has(error.which)) notes.push(`${error.which === 'screenRecording' ? 'Screen Recording' : 'Accessibility'} is off: ${PERMISSION_SWITCH[error.which]}`)
       askOnce(error.which)
     }
+    /** The model will not see the observation just taken: that app's next read is full. */
+    const discarded = (): void => {
+      const st = app()
+      if (st) st.needsFull = true
+    }
     const take = async (obs: Observation | undefined): Promise<void> => {
       if (!obs) return
       remember(t, args.app!, obs)
@@ -322,6 +332,11 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
         wait: COMPUTER_WAIT.observe
       }))
       await take(obs)
+      const stopped = abortedLine(signal)
+      if (stopped) {
+        discarded()
+        return refusal(stopped)
+      }
       const out = outcomeOf([], { steps: [], observation: obs }, shots)
       return { ...out, steps: notes }
     }
@@ -341,6 +356,7 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     if (t.live && lastTier?.status === 'ok') t.live.tier = lastTier.tier
     const out = outcomeOf(actions, result, shots, result.hostLines)
     const stoppedLine = abortedLine(signal)
+    if (stoppedLine && result.observation) discarded()
     return { ...out, steps: [...out.steps, ...notes], ...(stoppedLine ? { body: stoppedLine, isError: true } : {}) }
   } catch (e) {
     const stoppedLine = abortedLine(signal)
@@ -500,7 +516,8 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
     const a = actions[failedAt]
     let retry: Tier[] | null = null
     if (failed.error.kind === 'needs_tier' && failed.error.needed === 'session') retry = await askGate(failedAt)
-    else if (failed.error.kind === 'key_window_unavailable') retry = a.action === 'type' ? ['ax'] : await askGate(failedAt)
+    else if (failed.error.kind === 'key_window_unavailable')
+      retry = a.action === 'type' ? ['ax'] : ((await askGate(failedAt))?.filter((tier) => tier !== 'process') ?? null)
     else break
     if (!retry) break
     retried.add(failedAt)
