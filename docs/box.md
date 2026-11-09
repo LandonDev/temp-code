@@ -4601,11 +4601,17 @@ Settings → Skills says the same under its title.
 Proof: `bun run script:e2e-skills-store` (two headless instances of the
 built tree; build first) and `bun run script:e2e-skills-drivers -- --host
 box|mac` (one headless instance with the real CLIs; on 2026-11-09 the box
-leg passed every Claude and Muse check, the warm adoption included, with no
-codex CLI on the box; the Mac leg passed Claude, Codex 0.164.0 (it reads the
+leg passed every Claude and Muse check, the warm adoption included, and the
+docs sweep's rerun the same day passed all 21 checks, codex 0.163.0
+included, in 75 s; the Mac leg passed Claude, Codex 0.164.0 (it reads the
 stored skill's body and the rewrite) and Muse on an account and on the CLI's
 own login, with the warm step skipped there: an isolated instance on the Mac
-routes Claude through the installed app's shim, so it warms nothing).
+routes Claude through the installed app's shim, so it warms nothing). Both
+have a `--gate` that is a publish row: the store proof's needs no model and
+took 13 to 15 s on the box, three runs; the drivers proof's runs the real
+CLIs of one headless instance against the config-dir spike's fakes, a
+home-only skill in every CLI's home folder of a temp HOME, and took about
+10 s on the box. It found Muse's gap (above).
 
 
 #### The code, by name
@@ -4846,8 +4852,12 @@ while it was idle on its next turn on the same harness (its send span
 closed, before the guard's grace. The codex first-turn gate step (three first
 sends with add-ons in scope against three without, medians of the
 `delivered … mcp=` span, at most 250 ms apart) skips on a host with no codex
-binary, which the box has none of; nothing on the bridge touches a downstream
-server at mount, so the gate grows by two tool schemas only.
+binary; nothing on the bridge touches a downstream server at mount, so the
+gate grows by two tool schemas only. The docs sweep of 2026-11-09 timed it on
+the box (codex 0.163.0 at `~/.npm-global/bin/codex`): medians 517 ms with
+add-ons and 516 ms without. `--gate` (a publish row, docs/release-gate.md
+"The store and computer proofs") leaves out the haiku leg and took 20 to
+22 s on the box, three runs; the whole run took 42 s.
 
 
 #### The code, by name
@@ -5021,6 +5031,8 @@ either host recovered within a second of the refresh; the box offline and back
 24 s. The first run found two faults the unit tests had not: a keeper timer
 that woke a moment early skipped its refresh and waited a minute, and a grant
 claimed after a handoff kept the copy's timing. Both are fixed and tested.
+Its `--gate`, a publish row, needs no model and skips nothing: three runs on
+the box in the docs sweep of 2026-11-09 took 133 to 134 s, 48 checks each.
 
 The real thing, on the Mac on 2026-11-08: an isolated windowed instance (its
 own userData and vault, no remote port, no pairing) added Mobbin
