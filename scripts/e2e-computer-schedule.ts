@@ -19,14 +19,18 @@
  *  6. the card: Run now, the lease ending on the next input, Skip, skipped
  *     earlier, and in Ask me the call's own card naming the session tier
  *
- * The person keeps the Mac: the proof starts only after two minutes of quiet,
- * and a sentinel (the probe's listen-only tap) stops every leg the moment an
- * input event carries neither the service's mark (`tccp`) nor the proof's
- * (`tcpr`): it puts things back, cleans up and records `inconclusive: the
- * person came back`. Scratch content only; it asks for no permission and
- * removes everything but its report and the service's trace under
- * /tmp/tc-computer-schedule-e2e. Exit: 0 green, 1 a failure, 2 inconclusive,
- * 3 skipped because the person is using the Mac.
+ * It runs when asked, whether or not the person is using the Mac (the person
+ * accepts the scratch windows coming forward), but never on a locked or dark
+ * screen, and never beside another computer proof: it waits for a running
+ * e2e-computer, e2e-tc-computer, input, capture or AX reader proof to end. A
+ * sentinel (the probe's listen-only tap) notes every input event that carries
+ * neither the service's mark (`tccp`) nor the proof's (`tcpr`): a leg the
+ * person touched turns its failed checks inconclusive, since their input moves
+ * the very idle time the scheduler reads, and a leg that waits for the Mac to
+ * read free gives up after a bound. Scratch content only; it asks for no
+ * permission and removes everything but its report and the service's trace
+ * under /tmp/tc-computer-schedule-e2e. Exit: 0 green, 1 a failure, 2
+ * inconclusive, 3 skipped on a locked or dark screen.
  *
  * Run on the Mac, under the installed TempCode.app so TCC answers for it:
  *   bun run script:e2e-computer-schedule   (esbuild → node: the Mac's bun has no node:sqlite)
@@ -107,8 +111,24 @@ const frontmost = (): { pid: number; bundleId: string | null } => probe('frontmo
 const pointer = (): { x: number; y: number } => probe('pointer')
 const rawIdleOnce = (): number => probe<{ seconds: number }>('idle').seconds
 
-if (rawIdleOnce() < 120) {
-  console.log('skipped: the person is using the Mac')
+// One computer proof on the Mac at a time: wait for any other to end.
+const OTHER_PROOFS = /e2e-computer\.(ts|mjs)|e2e-tc-computer|tc-input-proof|capture-proof|ax-reader-proof|tc-ax-proof/
+const otherProofs = (): string[] => {
+  try {
+    return execFileSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' })
+      .split('\n')
+      .filter((l) => OTHER_PROOFS.test(l) && !l.includes('e2e-computer-schedule') && !l.trimStart().startsWith(`${process.pid} `))
+  } catch {
+    return []
+  }
+}
+for (let said = false; otherProofs().length; await sleep(15_000)) {
+  if (!said) console.log(`waiting for another computer proof to end: ${otherProofs()[0]?.trim().slice(0, 120)}`)
+  said = true
+}
+const screen = probe<{ locked: boolean; asleep: boolean }>('screen')
+if (screen.locked || screen.asleep) {
+  console.log('skipped: the screen is locked or dark')
   rmSync(WORK, { recursive: true, force: true })
   process.exit(3)
 }
@@ -170,8 +190,11 @@ let personFront: { pid: number; bundleId: string | null } | null = null
 let savedPasteboard = false
 let service: ComputerService | null = null
 let sentinel: ChildProcess | null = null
-let personBack = false
+/** legs during which the real person touched the Mac */
+const touchedLegs = new Set<string>()
+let finished = false
 const cleanup = async (): Promise<void> => {
+  finished = true
   stopTypist()
   sentinel?.kill('SIGTERM')
   idleStream.kill('SIGTERM')
@@ -210,6 +233,8 @@ const stop = async (why: string, code: number): Promise<never> => {
   process.exit(code)
 }
 process.on('SIGINT', () => void stop('interrupted', 1))
+process.on('uncaughtException', (e) => void stop(`crashed in ${leg}: ${e.stack ?? e}`, 1))
+process.on('unhandledRejection', (e) => void stop(`crashed in ${leg}: ${(e as Error)?.stack ?? e}`, 1))
 
 // ── setup ───────────────────────────────────────────────────────────────
 
@@ -247,12 +272,17 @@ const A = await openScratch('a')
 const B = await openScratch('b')
 
 // The sentinel: from here on, any input without either mark is the person.
-sentinel = stream(['sentinel', '--allow-marks', `${SERVICE_MARK},${PROOF_MARK}`], (v) => {
-  if (v.person && !personBack) {
-    personBack = true
-    void stop('inconclusive: the person came back', 2)
-  }
-})
+// The sentinel notes the person's input; it re-arms after each event, since the probe exits on the first.
+const armSentinel = (): void => {
+  if (finished) return
+  sentinel = stream(['sentinel', '--allow-marks', `${SERVICE_MARK},${PROOF_MARK}`], (v) => {
+    if (!v.person) return
+    if (!touchedLegs.has(leg)) console.log(`      [${leg}] the person used the Mac`)
+    touchedLegs.add(leg)
+  })
+  sentinel.on('exit', () => setTimeout(armSentinel, 500))
+}
+armSentinel()
 await sleep(500)
 
 // B in front, raised by a separate service at the session tier, which then shuts down: the measured
@@ -391,6 +421,17 @@ const textAreaOf = (text: string): number => {
   if (!line || line.type !== 'element') throw new Error('the scratch window shows no text area')
   return line.index
 }
+/** A call that waits for the Mac to read free gives up after ms: the thread's Stop ends it, and the leg says so. */
+async function within<T>(p: Promise<T>, ms: number, threadId: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined
+  const late = new Promise<'late'>((r) => (timer = setTimeout(() => r('late'), ms)))
+  const first = await Promise.race([p, late])
+  clearTimeout(timer)
+  if (first !== 'late') return first
+  note('gave up waiting', `${threadId} after ${ms / 1000} s`)
+  await sessions.stop(threadId)
+  return p
+}
 async function untilIdle(ms: number, timeoutMs = 30_000): Promise<boolean> {
   const end = Date.now() + timeoutMs
   while (Date.now() < end) {
@@ -430,7 +471,7 @@ console.log(`\n[${leg}]`)
     pointerMoved ||= !near(pointer(), pointer0, 0.5)
   }, 250)
   const count = await typing
-  const o = await call
+  const o = await within(call, 60_000, t)
   clearInterval(sampler)
   const ran = Date.now()
   check('the thread said "Waiting for the Mac to be free"', heldSeen)
@@ -458,7 +499,7 @@ console.log(`\n[${leg}]`)
   while (!sessionSent(since) && Date.now() < end) await sleep(20)
   await sleep(400)
   const keyAt = oneKey('y')
-  const o = await call
+  const o = await within(call, 60_000, t)
   const interrupted = notices.find((n) => n.method === 'session/interrupted' && n.at >= since)
   check('the step stopped interrupted', /interrupted|took over/i.test(o.steps.join(' ')), o.steps.join(' | '))
   check('the service said so within 100 ms of the key', !!interrupted && interrupted.at - keyAt <= 100, interrupted ? `${interrupted.at - keyAt} ms` : 'no notice')
@@ -541,7 +582,7 @@ console.log(`\n[${leg}]`)
   while (!sessionSent(since) && Date.now() < end) await sleep(20)
   await sleep(1_000)
   await sessions.stop(r)
-  const ro = await held
+  const ro = await within(held, 60_000, r)
   check('Stop during a session step ends it', ro.isError && /stopped by the person/.test(ro.body ?? ''), ro.body ?? '')
   check('and restores', wire.some((w) => w.method === 'input.restoreSession' && w.at >= since))
   await sleep(1_000)
@@ -575,8 +616,13 @@ console.log(`\n[${leg}]`)
   )
   stopTypist()
   await typing
-  await registry.approve(t, card!.requestId, true)
-  const fo = await first
+  if (!card) {
+    await sessions.stop(t)
+    await first
+    await stop('no card came up; the rest of the card leg cannot run', 1)
+  }
+  await registry.approve(t, card.requestId, true)
+  const fo = await within(first, 60_000, t)
   check('Run now: the click ran at the session tier', / · session · /.test(fo.steps.join('\n')), fo.steps.join(' | '))
   await sleep(2_000)
   oneKey('w') // the person's next input ends the lease
@@ -584,7 +630,13 @@ console.log(`\n[${leg}]`)
   await sleep(1_000)
   const second = run(t, 'computer_act', { app: 'TextEdit', window: A.title, action: 'left_click', element: areaA })
   check('a second card once the lease ended', await untilCards(2))
-  await registry.approve(t, cardsOf()[1]!.requestId, false)
+  const skipCard = cardsOf()[1]
+  if (!skipCard) {
+    await sessions.stop(t)
+    await second
+    await stop('no second card came up', 1)
+  }
+  await registry.approve(t, skipCard.requestId, false)
   const so = await second
   check('Skip: refused skipped', /the person did not choose Run now$/.test(so.steps[0] ?? ''), so.steps[0] ?? '')
   const third = await run(t, 'computer_act', { app: 'TextEdit', window: A.title, action: 'left_click', element: areaA })
@@ -596,11 +648,22 @@ console.log(`\n[${leg}]`)
   check("in Ask me, the call's own card", await untilCards(3))
   const own = cardsOf()[2]
   check('names the session tier', (own?.title ?? '').endsWith(', using your pointer and keyboard') && own?.choices === undefined, own?.title ?? '')
-  await registry.approve(t, own!.requestId, true)
-  const ao = await safe
+  if (!own) {
+    await sessions.stop(t)
+    await safe
+    await stop("the call's own card did not come up", 1)
+  }
+  await registry.approve(t, own.requestId, true)
+  const ao = await within(safe, 60_000, t)
   check('Allow: the click ran at the session tier with no second card', / · session · /.test(ao.steps.join('\n')) && cardsOf().length === 3, ao.steps.join(' | '))
 }
 
+for (const name of touchedLegs) {
+  const l = report.legs[name]
+  if (!l) continue
+  l.notes.personUsedTheMac = true
+  for (const c of l.checks) if (c.outcome === 'failed') Object.assign(c, { outcome: 'inconclusive', detail: `${c.detail ?? ''} (the person used the Mac during this leg)`.trim() })
+}
 leg = 'end'
 scheduler.dispose()
 setSessionTierGate(null)
