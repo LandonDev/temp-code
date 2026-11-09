@@ -20,9 +20,8 @@
  *   bun run script:e2e-computer-bench -- --judge <report.json>   (re-judge a saved report; runs nothing)
  *   bun run script:e2e-computer-bench -- --reference codex       (Codex's own computer use, by hand)
  */
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, loadavg } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -65,6 +64,7 @@ import {
   type BenchRun
 } from './lib/computerBench'
 import { RigStop, asProbe, repoRoot, startRig, type Rig } from './lib/computerRig'
+import { killGroup, startDevInstance } from './lib/devInstance'
 import { COMPUTER_ONLY_LINE, COMPUTER_TASKS, gateTasks, taskById, type CallRecord, type CheckResult, type ComputerTask, type DevInstance, type TaskContext, type TaskId, type TaskStart } from './lib/computerTasks'
 import { buildIsCurrent, type BuildStamp } from './lib/soakJudge'
 
@@ -186,13 +186,6 @@ for (const sig of ['SIGTERM', 'SIGINT'] as const) {
     void cleanup().finally(() => process.exit(sig === 'SIGINT' ? 130 : 143))
   })
 }
-function killGroup(pgid: number, sig: NodeJS.Signals): void {
-  try {
-    process.kill(-pgid, sig)
-  } catch {
-    /* gone */
-  }
-}
 
 // ── the rig ─────────────────────────────────────────────────────────────
 
@@ -281,105 +274,25 @@ function waitForOut(): Promise<string | null> {
   return outReady
 }
 
-const freePort = (): Promise<number> =>
-  new Promise((resolvePort, reject) => {
-    const s = createServer()
-    s.once('error', reject)
-    s.listen(0, '127.0.0.1', () => {
-      const port = (s.address() as { port: number }).port
-      s.close(() => resolvePort(port))
-    })
-  })
-
-/** One expression in the instance's page, over CDP, on the global WebSocket. */
-async function cdpEval<T>(port: number, expression: string): Promise<T> {
-  const targets = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as { type: string; url: string; webSocketDebuggerUrl?: string }[]
-  const page = targets.find((t) => t.type === 'page' && t.webSocketDebuggerUrl && t.url.endsWith('index.html'))
-  if (!page) throw new Error('no page yet')
-  const ws = new WebSocket(page.webSocketDebuggerUrl!)
-  try {
-    await new Promise<void>((ok, fail) => {
-      ws.addEventListener('open', () => ok(), { once: true })
-      ws.addEventListener('error', () => fail(new Error('CDP socket failed')), { once: true })
-    })
-    type Answer = { result?: { result: { value?: T } }; error?: { message: string } }
-    const answer = new Promise<Answer>((ok) =>
-      ws.addEventListener('message', (ev) => {
-        const msg = JSON.parse(String(ev.data)) as { id?: number }
-        if (msg.id === 1) ok(msg as never)
-      })
-    )
-    ws.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { expression, returnByValue: true, awaitPromise: true } }))
-    const r: Answer = await Promise.race([answer, sleep(10_000).then((): Answer => ({ error: { message: 'CDP timed out' } }))])
-    if (r.error) throw new Error(r.error.message)
-    return r.result!.result.value as T
-  } finally {
-    ws.close()
-  }
-}
-
-/** The instance's main process: the Electron binary in its process group. */
-function electronMain(pgid: number): number | null {
-  for (const line of sh('ps', ['-Ao', 'pid=,pgid=,comm=']).split('\n')) {
-    const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line)
-    if (m && Number(m[2]) === pgid && /\/MacOS\/Electron$/.test(m[3])) return Number(m[1])
-  }
-  return null
-}
-
 /**
- * A fresh isolated preview instance per run (§2.1): its own userData, Aliax
- * vault and debug port, its window inactive (TEMP_CODE_SOAK_WINDOW, so it
- * never takes the person's focus and keeps painting behind their windows),
- * ready once its socket is connected, its main process pinned as Electron.
+ * The run's dev instance (scripts/lib/devInstance.ts), once out/ is HEAD's
+ * build and the Mac has been quiet 5 s, its main process pinned as Electron
+ * in the lane and the person's app kept in front.
  */
 async function devInstance(lane: Lane, dir: string, onBounce: () => void): Promise<DevInstance | { skip: string }> {
   const notReady = await waitForOut()
   if (notReady) return { skip: notReady }
   if (!(await waitForQuiet(probe))) return { skip: NEVER_QUIET }
-  const userData = join(dir, 'dev')
-  const port = await freePort()
-  // The plain environment gate.ts gives its steps: no hook's GIT_* variables.
-  const env: Record<string, string> = {
-    ...Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined && !e[0].startsWith('GIT_'))),
-    TEMP_CODE_USER_DATA: userData,
-    TEMP_CODE_SOAK_WINDOW: '1',
-    TEMP_CODE_ALIAX_DATA_DIR: join(dir, 'aliax'),
-    TEMP_CODE_WARM_HARNESS: '0',
-    TEMP_CODE_REMOTE_PORT: '0',
-    TEMP_CODE_DEBUG_PORT: String(port)
-  }
-  delete env.ELECTRON_RUN_AS_NODE
-  const out = openSync(join(dir, 'dev.log'), 'a')
   const personFront = R.mac.frontmost()
-  const child: ChildProcess = spawn(join(ROOT, 'node_modules', '.bin', 'electron-vite'), ['preview', '--skipBuild'], { cwd: ROOT, env, detached: true, stdio: ['ignore', out, out] })
-  const pgid = child.pid!
-  devGroups.add(pgid)
-  const stop = async (): Promise<void> => {
-    killGroup(pgid, 'SIGTERM')
-    for (let i = 0; i < 20 && electronMain(pgid); i++) await sleep(250)
-    killGroup(pgid, 'SIGKILL')
-    devGroups.delete(pgid)
-    rmSync(userData, { recursive: true, force: true })
+  const dev = await startDevInstance({ root: ROOT, dir, groups: devGroups })
+  R.pins.pin(lane.name, 'Electron', dev.pid)
+  const front = await keepFront(probe, dev.pid, personFront)
+  if (front === 'took') {
+    await dev.stop()
+    throw new FailRun('took the front')
   }
-  try {
-    let connected = false
-    for (let i = 0; i < 240 && !connected; i++) {
-      connected = await cdpEval<boolean>(port, '!!window.__monocode?.registry?.primary()?.connected').catch(() => false)
-      if (!connected) await sleep(500)
-    }
-    if (!connected) throw new Error('the dev instance never connected within 2 minutes')
-    const pid = electronMain(pgid)
-    if (!pid) throw new Error("no Electron main process in the dev instance's group")
-    R.pins.pin(lane.name, 'Electron', pid)
-    const front = await keepFront(probe, pid, personFront)
-    if (front === 'took') throw new FailRun('took the front')
-    if (front === 'bounced') onBounce()
-    return { userData, window: (await cdpEval<string>(port, 'document.title')) || 'TempCode', stop }
-  } catch (e) {
-    await stop()
-    throw e
-  }
+  if (front === 'bounced') onBounce()
+  return { userData: dev.userData, window: dev.window, stop: dev.stop }
 }
 
 // ── one run ─────────────────────────────────────────────────────────────

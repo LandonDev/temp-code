@@ -183,3 +183,27 @@ describe('keepReport', () => {
     }
   })
 })
+
+describe('the dev instance', () => {
+  it('finds the Electron binary in its process group, never a helper or another group', async () => {
+    const { electronMainIn, devEnv } = await import('./lib/devInstance')
+    const ps = [
+      '  501   500 /Users/me/tc/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron',
+      '  502   500 /Users/me/tc/node_modules/electron/dist/Electron.app/Contents/Frameworks/Electron Helper (Renderer).app/Contents/MacOS/Electron Helper (Renderer)',
+      '  777   700 /Applications/Slack.app/Contents/Frameworks/Slack Helper.app/Contents/MacOS/Electron',
+      '  500   500 node'
+    ].join('\n')
+    expect(electronMainIn(ps, 500)).toBe(501)
+    expect(electronMainIn(ps, 600)).toBeNull()
+    const env = devEnv({ PATH: '/bin', ELECTRON_RUN_AS_NODE: '1', GIT_INDEX_FILE: 'x' }, '/tmp/run', 9333)
+    expect(env).toEqual({
+      PATH: '/bin',
+      TEMP_CODE_USER_DATA: '/tmp/run/dev',
+      TEMP_CODE_SOAK_WINDOW: '1',
+      TEMP_CODE_ALIAX_DATA_DIR: '/tmp/run/aliax',
+      TEMP_CODE_WARM_HARNESS: '0',
+      TEMP_CODE_REMOTE_PORT: '0',
+      TEMP_CODE_DEBUG_PORT: '9333'
+    })
+  })
+})
