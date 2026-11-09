@@ -11,7 +11,6 @@ import { hasAddons, workspaceIdOf, type ScopeSessions, type ScopeStore } from '.
  */
 
 const BRIDGED = new Set(['codex', 'muse'])
-const keyOf = (workspaceId: string | null): string => workspaceId ?? ''
 
 export interface ScopeFlipDeps {
   store: ScopeStore & { onChange(fn: () => void): () => void }
@@ -20,29 +19,18 @@ export interface ScopeFlipDeps {
 }
 
 export function watchScopeFlips(deps: ScopeFlipDeps): () => void {
-  const had = new Map<string, boolean>()
   const scopeOf = (s: SessionMeta): string | null => workspaceIdOf(deps.sessions, s)
-  const known = (workspaceId: string | null): boolean => {
-    const key = keyOf(workspaceId)
-    if (!had.has(key)) had.set(key, hasAddons(deps.store, workspaceId))
-    return had.get(key)!
-  }
-  // What every live bridged thread's scope holds now, before anything changes.
-  for (const id of deps.sessions.liveIds()) {
-    const s = deps.sessions.get(id)
-    if (s && BRIDGED.has(s.provider)) known(scopeOf(s))
-  }
+  // The rows as they stood before each change: what every handle spawned since the last one saw.
+  let before = deps.store.list()
   return deps.store.onChange(() => {
-    const now = new Map<string, boolean>()
+    const prev = before
+    const was = { list: () => prev, status: () => ({}), tools: () => null }
+    before = deps.store.list()
     for (const id of deps.sessions.liveIds()) {
       const s = deps.sessions.get(id)
       if (!s || !BRIDGED.has(s.provider)) continue
       const workspaceId = scopeOf(s)
-      const key = keyOf(workspaceId)
-      const before = known(workspaceId)
-      if (!now.has(key)) now.set(key, hasAddons(deps.store, workspaceId))
-      if (now.get(key) !== before) deps.rebootAtNextTurn(id)
+      if (hasAddons(was, workspaceId) !== hasAddons(deps.store, workspaceId)) deps.rebootAtNextTurn(id)
     }
-    for (const key of had.keys()) had.set(key, now.get(key) ?? hasAddons(deps.store, key === '' ? null : key))
   })
 }

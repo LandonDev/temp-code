@@ -16,7 +16,7 @@
  * or of the required header's value), env (the variable names it sees),
  * crash (a line on stderr, exit 3; `signal: true` kills itself, `token: true`
  * prints FAKE_TOKEN), slow (waits `ms`, logs a cancel; `fail: true` then
- * throws FAKE_TOKEN as it was at the call), big (`bytes` of text), structured, fail (isError),
+ * throws FAKE_TOKEN as it was at the call), fail (an isError result; `token: true` names FAKE_TOKEN in it), big (`bytes` of text), structured, fail (isError),
  * printtoken (writes FAKE_TOKEN to stderr and throws it), add_tool (adds a
  * tool and sends tools/list_changed). tools/list pages eight at a time.
  */
@@ -58,7 +58,7 @@ const tools: ToolDef[] = [
   { name: 'slow', description: 'Wait the given milliseconds', inputSchema: obj({ ms: { type: 'number' }, fail: { type: 'boolean' } }, ['ms']) },
   { name: 'big', description: 'Answer a text of the given size', inputSchema: obj({ bytes: { type: 'number' } }, ['bytes']) },
   { name: 'structured', description: 'Answer content with structuredContent', inputSchema: obj() },
-  { name: 'fail', description: 'Answer an error result', inputSchema: obj() },
+  { name: 'fail', description: 'Answer an error result', inputSchema: obj({ token: { type: 'boolean' } }) },
   { name: 'printtoken', description: 'Print the token to stderr and throw it', inputSchema: obj() },
   { name: 'add_tool', description: 'Add a tool and announce the list changed', inputSchema: obj({ name: { type: 'string' } }, ['name']) }
 ]
@@ -106,7 +106,9 @@ function makeServer(headerValue: () => string | undefined): Server {
       case 'structured':
         return { content: [{ type: 'text', text: '{"ok":true}' }], structuredContent: { ok: true } }
       case 'fail':
-        return { content: [{ type: 'text', text: 'failed on purpose' }], isError: true }
+        return args.token
+          ? { content: [{ type: 'text', text: `failed with token ${process.env.FAKE_TOKEN}` }], structuredContent: { token: process.env.FAKE_TOKEN }, isError: true }
+          : { content: [{ type: 'text', text: 'failed on purpose' }], isError: true }
       case 'printtoken':
         process.stderr.write(`my token is ${process.env.FAKE_TOKEN}\n`)
         throw new Error(`bad token ${process.env.FAKE_TOKEN}`)

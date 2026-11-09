@@ -271,10 +271,13 @@ export class Downstream {
       const max = this.deps.maxResultBytes ?? ADDON_RESULT_MAX_BYTES
       if (bytes > max) return errorResult(`The result was ${megabytes(bytes)}, over the ${megabytes(max)} the app passes on.`)
       const content = Array.isArray(result.content) ? result.content : []
+      if (!result.isError) return { content, ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {}) }
+      // An error result is the server's error text (an SDK server turns a thrown error into one): redacted like a thrown one.
+      const structured = result.structuredContent === undefined ? undefined : this.redactJson(result.structuredContent)
       return {
-        content,
-        ...(result.isError ? { isError: true } : {}),
-        ...(result.structuredContent !== undefined ? { structuredContent: result.structuredContent } : {})
+        content: content.map((part) => (part.type === 'text' && typeof part.text === 'string' ? { ...part, text: this.redact(part.text) } : part)),
+        isError: true,
+        ...(structured !== undefined ? { structuredContent: structured } : {})
       }
     } catch (error) {
       if (conn.failure) return errorResult(conn.failure)
@@ -315,6 +318,14 @@ export class Downstream {
     return redact(text, this.secrets)
   }
 
+  private redactJson(value: unknown): unknown {
+    try {
+      return JSON.parse(this.redact(JSON.stringify(value)))
+    } catch {
+      return undefined
+    }
+  }
+
   private async connect(): Promise<void> {
     if (this.closed) return
     this.report('starting')
@@ -327,17 +338,24 @@ export class Downstream {
     const conn: Conn = { client: this.newClient(), transport: null as unknown as Transport, kind: 'stdio', digest: grant.digest, up: 0, closing: false, dialing: true, failure: null }
     this.conn = conn
     const connectMs = this.deps.connectTimeoutMs ?? ADDON_CONNECT_TIMEOUT_MS
-    const timer = setTimeout(() => {
-      // Close the transport only: the connect below rejects and its catch reports this.
-      conn.failure = `Did not answer in ${Math.round(connectMs / 1000)} s`
-      conn.closing = true
-      void conn.transport?.close().catch(() => {})
-    }, connectMs)
-    try {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    // The deadline rejects on its own: an SSE start waiting for its endpoint event never settles when its transport closes.
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        conn.failure = `Did not answer in ${Math.round(connectMs / 1000)} s`
+        conn.closing = true
+        reject(new Error(conn.failure))
+      }, connectMs)
+    })
+    const work = (async () => {
       if (launch.spec.transport === 'stdio') await this.dialStdio(conn, grant)
       else await this.dialHttp(conn, launch.spec.url)
       conn.dialing = false
-      const tools = await this.listAll(conn)
+      return this.listAll(conn)
+    })()
+    work.catch(() => {})
+    try {
+      const tools = await Promise.race([work, deadline])
       clearTimeout(timer)
       if (this.conn !== conn) return
       conn.up = this.now()
@@ -524,8 +542,9 @@ export class Downstream {
   private async dropConn(conn: Conn): Promise<void> {
     if (this.conn === conn) this.conn = null
     conn.closing = true
-    await conn.client.close().catch(() => {})
-    await conn.transport?.close().catch(() => {})
+    // Bounded: a transport stuck mid-start may never settle its close (a stdio server gets SIGKILL after 3 s inside it).
+    const closed = Promise.allSettled([conn.client.close(), conn.transport?.close()])
+    await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 5_000).unref?.())])
   }
 
   private async disconnect(): Promise<void> {

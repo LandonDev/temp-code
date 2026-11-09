@@ -132,6 +132,8 @@ describe('a stdio add-on', () => {
     const thrown = await call(t.down, 'printtoken')
     expect(thrown.isError).toBe(true)
     expect(text(thrown)).toContain('bad token …')
+    // An error RESULT is error text too (an SDK server turns a thrown error into one).
+    expect(await call(t.down, 'fail', { token: true })).toEqual({ content: [{ type: 'text', text: 'failed with token …' }], structuredContent: { token: '…' }, isError: true })
     // A grant rotated during a slow call: the late error names the old token, redacted.
     const slow = call(t.down, 'slow', { ms: 300, fail: true })
     await new Promise((r) => setTimeout(r, 50))
@@ -226,6 +228,39 @@ describe('an http add-on', () => {
     expect(t.down.current).toEqual({ state: 'needs-grant', detail: GRANT_REFUSED_LINE, tools: 0 })
     expect(requests).toBe(seen)
   })
+
+  it('an SSE server that never sends its endpoint fails at the deadline, and close still returns', async () => {
+    const { createServer } = await import('node:http')
+    const stalled = createServer((req, res) => {
+      if (req.method === 'GET') res.writeHead(200, { 'content-type': 'text/event-stream' }).write(': open\n\n')
+      else res.writeHead(405).end()
+    })
+    const port = await new Promise<number>((resolve) => stalled.listen(0, '127.0.0.1', () => resolve((stalled.address() as { port: number }).port)))
+    try {
+      const statuses: AddonStatus[] = []
+      const down = new Downstream({
+        launch: { id: 'ad_stall', name: 'stall', spec: { transport: 'http', url: `http://127.0.0.1:${port}/sse`, headers: [], auth: 'none' }, specDigest: 'd' },
+        baseEnv: BASE_ENV,
+        cwd: dir,
+        grant: async () => fields({}),
+        status: (s) => statuses.push(s),
+        tools: () => {},
+        unauthorized: () => {},
+        log: () => {},
+        connectTimeoutMs: 1_000,
+        backoffMs: [60_000]
+      })
+      down.start()
+      await until(() => statuses.some((s) => s.state === 'failed'), 5_000)
+      expect(statuses.find((s) => s.state === 'failed')!.detail).toBe('Did not answer in 1 s')
+      const closing = Date.now()
+      await down.close()
+      expect(Date.now() - closing).toBeLessThan(6_000)
+    } finally {
+      stalled.closeAllConnections()
+      stalled.close()
+    }
+  }, 20_000)
 
   it('settles on SSE when the server answers 405 to a POST', async () => {
     const t = make(httpSpec(ports.sse, 'sse'), () => fields({}, { 'X-Api-Key': 'right' }))

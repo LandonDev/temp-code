@@ -71,6 +71,16 @@ it('rebootAtNextTurn puts a live handle down at the next turn start, never mid-t
   expect(spawnsOf(id)).toBe(2)
 })
 
+it('a thread started after the watcher still reboots at its scope\'s first add-on', async () => {
+  const store = new AddonStore(new DatabaseSync(':memory:'))
+  const stop = watchScopeFlips({ store, sessions: registry, rebootAtNextTurn: (id) => registry.rebootAtNextTurn(id) })
+  const codex = await atRest('codex', 'gpt-6.1-sol')
+  store.set({ name: 'fake', workspaceId: null, spec: { transport: 'stdio', command: 'x', args: [], env: [], auth: 'none' } }, { kind: 'person' })
+  await registry.send(codex, 'next')
+  expect(spawnsOf(codex)).toBe(2)
+  stop()
+})
+
 it('a scope gaining its first add-on marks its codex and Muse handles, not its claude ones', async () => {
   const codex = await atRest('codex', 'gpt-6.1-sol')
   const muse = await atRest('muse', 'muse-spark-1.3')
