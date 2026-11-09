@@ -673,6 +673,8 @@ export class SessionRegistry {
   private providerTicker: NodeJS.Timeout | null = null
   /** The agent ids a live wait_for_agent of each thread covers, with how many waits name each (setAwaiting). */
   private readonly awaiting = new Map<string, Map<string, number>>()
+  /** A tool call held before it runs, per thread (computer/schedule.ts: "Waiting for the Mac to be free"); setToolHold. */
+  private readonly toolHolds = new Map<string, string>()
   /** The thread scheduler: `after` and the running cap (CLAUDE.md "Master threads"). */
   readonly scheduler: ThreadScheduler
   /** One phase line per send in stalls.log (sendSpans.ts): where a slow send spent its time. */
@@ -3964,6 +3966,7 @@ export class SessionRegistry {
       this.foldDirty.delete(id)
       this.pendingGoals.delete(id)
       this.liveContexts.delete(id)
+      this.toolHolds.delete(id)
     }
     for (const l of this.movedListeners) l(rootId, ids, to)
     for (const l of this.removedListeners) l(ids)
@@ -4029,6 +4032,7 @@ export class SessionRegistry {
       this.foldDirty.delete(id)
       this.pendingGoals.delete(id)
       this.liveContexts.delete(id)
+      this.toolHolds.delete(id)
       this.notices.delete(id)
       this.notesReminded.delete(id)
       this.turnCommitted.delete(id)
@@ -4592,8 +4596,11 @@ export class SessionRegistry {
       // The stop outlives a question's or an approval's `running` cleanup
       // and a `waiting`: the CLI's result still has to arrive.
       if (STOP_CLEARING_STATUSES.has(event.status)) this.stopping.delete(sessionId)
-      // A settle ends the turn's phase with it.
-      if (!PHASE_STATUSES.has(event.status)) this.phases.delete(sessionId)
+      // A settle ends the turn's phase with it, and any tool hold.
+      if (!PHASE_STATUSES.has(event.status)) {
+        this.phases.delete(sessionId)
+        this.toolHolds.delete(sessionId)
+      }
       // A turn starting: a request still open from before it is none of
       // this turn's (one a CLI abandoned, a stream a dead gateway child
       // cut), so the provider wait counts only requests sent from here on.
@@ -5307,6 +5314,16 @@ export class SessionRegistry {
     if (meta) this.notifyMeta(meta)
   }
 
+  /** A tool call of the thread is held before it runs (a computer step waiting
+   *  for the Mac or the clipboard): its line is the live row's status detail
+   *  until null, a settle or the thread's removal. */
+  setToolHold(sessionId: string, line: string | null): void {
+    const meta = this.row(sessionId)
+    if (line === null ? !this.toolHolds.delete(sessionId) : !meta || this.toolHolds.get(sessionId) === line) return
+    if (line !== null) this.toolHolds.set(sessionId, line)
+    if (meta) this.notifyMeta(meta)
+  }
+
   /** The next steer into a thread's turn (orchestration.ts: a wait_for_agent
    *  there returns on it). `cancel` drops the waiter. */
   nextSteer(sessionId: string): { promise: Promise<string>; cancel: () => void } {
@@ -5955,8 +5972,9 @@ export class SessionRegistry {
   /** A row's status line both ways: `statusDetail`, what its word is about
    *  as the row draws it, and `activity`, the legacy string old readers take
    *  (statusWords.ts). Watching: the batch's reason or what it watches;
-   *  queued: why it waits; working: the agents a wait_for_agent holds it
-   *  on, else what it does, or the provider wait. Agents read by title. */
+   *  queued: why it waits; working: a tool call held before it runs, else
+   *  the agents a wait_for_agent holds it on, else what it does, or the
+   *  provider wait. Agents read by title. */
   private statusWordsOf(
     session: SessionMeta,
     background: BackgroundWork | null,
@@ -5980,6 +5998,11 @@ export class SessionRegistry {
     // message", never a wait of its own.
     const live = session.status === 'running' || session.status === 'starting'
     const held = live && this.steerUnread(session.id)
+    const hold = live ? this.toolHolds.get(session.id) : undefined
+    if (hold) {
+      const said = held ? thenYourMessage(hold) : hold
+      return { activity: said, statusDetail: said }
+    }
     if (live && awaiting?.size) {
       const line = waitLine([...awaiting.keys()], titleOf)
       const said = held ? thenYourMessage(line) : line

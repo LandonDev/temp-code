@@ -368,3 +368,37 @@ it('a Bash call is named by its first command past a cd, an export or a variable
   expect(say('cd /x')).toBe('Running cd')
   expect(say('   ')).toBe('Running a command')
 })
+
+it("a held tool call is the live row's words, before its call and the provider wait, takes an unread steer, and clears", async () => {
+  const id = await live()
+  emit(id, { type: 'tool-call', callId: 'c1', name: 'mcp__app__computer_act', input: {} })
+  registry.setToolHold(id, 'Waiting for the Mac to be free')
+  expect(registry.get(id)).toMatchObject({ activity: 'Waiting for the Mac to be free', statusDetail: 'Waiting for the Mac to be free' })
+  emit(id, { type: 'phase', phase: 'waiting-provider' })
+  expect(registry.get(id)?.statusDetail).toBe('Waiting for the Mac to be free')
+  registry.setToolHold(id, 'Waiting for the Mac to be free, 2nd in line')
+  expect(registry.get(id)?.statusDetail).toBe('Waiting for the Mac to be free, 2nd in line')
+  expect(registry.queueAdd(id, 'skip the save', { steer: true }).kind).toBe('steered')
+  await settle()
+  expect(registry.get(id)?.statusDetail).toBe('Waiting for the Mac to be free, 2nd in line, then your message')
+  registry.setToolHold(id, null)
+  expect(registry.get(id)?.statusDetail).toBe('Waiting for the provider, then your message')
+})
+
+it('a settle clears a tool hold, and a hold on a row at rest says nothing', async () => {
+  const id = await live()
+  const pushes: (string | null | undefined)[] = []
+  registry.onMeta((m) => {
+    if (m.id === id) pushes.push(m.statusDetail)
+  })
+  registry.setToolHold(id, 'Waiting for the clipboard')
+  registry.setToolHold(id, 'Waiting for the clipboard')
+  expect(pushes).toEqual(['Waiting for the clipboard'])
+  emit(id, { type: 'status', status: 'idle' })
+  expect(registry.get(id)?.statusDetail ?? null).toBeNull()
+  emit(id, { type: 'status', status: 'running' })
+  expect(registry.get(id)?.statusDetail).toBe('Thinking')
+  registry.setToolHold(id, null)
+  registry.setToolHold('nobody', 'Waiting for the clipboard')
+  expect(registry.get('nobody')).toBeNull()
+})
