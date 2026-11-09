@@ -1,0 +1,58 @@
+{
+  "id": "M3",
+  "harness": "muse",
+  "host": "mac",
+  "title": "skills in the owned root",
+  "at": "2026-11-09T00:48:30.744Z",
+  "cli": {
+    "path": "/Users/landon/.local/bin/muse",
+    "version": null
+  },
+  "env": {
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M3/home",
+    "XDG_CONFIG_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M3/config",
+    "XDG_DATA_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M3/data",
+    "XDG_STATE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M3/state",
+    "XDG_CACHE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M3/cache",
+    "MUSE_CONTRIBUTOR_MODE": "0",
+    "TBH_CREDENTIAL_BACKEND": "file"
+  },
+  "unset": [],
+  "argv": [
+    "serve",
+    "-c",
+    "endpoint_transport.base_url=\"http://127.0.0.1:54265\""
+  ],
+  "commands": [],
+  "observed": {
+    "provider": "fake",
+    "listed": [
+      {
+        "selector": "tc-gone-skill",
+        "source": "user"
+      },
+      {
+        "selector": "tc-probe-skill",
+        "source": "user"
+      }
+    ],
+    "turn": {
+      "completed": true,
+      "error": null,
+      "hits": [],
+      "requestHits": [
+        "goneDesc",
+        "skillBody",
+        "skillDesc"
+      ]
+    },
+    "checks": {
+      "listed": true,
+      "resolved": true,
+      "bodyReached": true
+    },
+    "ms": 2407
+  },
+  "status": "ok",
+  "verdict": "listed yes, resolved yes, bodyReached yes; provider fake"
+}

@@ -1,0 +1,61 @@
+{
+  "id": "C2f",
+  "harness": "claude",
+  "host": "box",
+  "title": "warm adoption under an owned root",
+  "at": "2026-11-09T00:16:31.278Z",
+  "cli": {
+    "path": "/srv/agents/home/.local/bin/claude",
+    "version": "2.1.303 (Claude Code)"
+  },
+  "env": {
+    "HOME": "/tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C2f-fake/home",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CONFIG_DIR": "/tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C2f-fake/config",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:45807",
+    "ANTHROPIC_AUTH_TOKEN": "tc-placeholder"
+  },
+  "unset": [],
+  "argv": null,
+  "commands": [],
+  "observed": {
+    "poolLog": [
+      "[warm] probe: w0afc1af2521b warm in /tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C2f-fake/work (1 warm)",
+      "[warm] probe: adopted w0afc1af2521b (3003 ms old)",
+      "[warm] probe: w38b81e95184a warm in /tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C2f-fake/work (1 warm)",
+      "[warm] probe: closed w38b81e95184a"
+    ],
+    "fake": {
+      "adopted": true,
+      "keysEqual": true,
+      "latencyMs": 85,
+      "plugins_applied": true,
+      "listed": [
+        "tc-store:tc-probe-cmd",
+        "tc-store:tc-gone-skill",
+        "tc-store:tc-probe-skill"
+      ],
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "text": "ok",
+        "num_turns": 3
+      },
+      "skillBody": true
+    },
+    "real": {
+      "skipped": "needs --upstream and --dev-user-data (the Mac leg)"
+    },
+    "checks": {
+      "adopted": true,
+      "pluginsApplied": true,
+      "skillInvoked": true,
+      "realAdopted": null,
+      "realSkill": null
+    },
+    "ms": 4063
+  },
+  "status": "ok",
+  "verdict": "adopted yes, pluginsApplied yes, skillInvoked yes, realAdopted -, realSkill -; adoption 85 ms"
+}

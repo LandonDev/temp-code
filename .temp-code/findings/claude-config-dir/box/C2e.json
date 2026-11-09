@@ -1,0 +1,114 @@
+{
+  "id": "C2e",
+  "harness": "claude",
+  "host": "box",
+  "title": "owned root linking into a home",
+  "at": "2026-11-09T00:16:30.655Z",
+  "cli": {
+    "path": "/srv/agents/home/.local/bin/claude",
+    "version": "2.1.303 (Claude Code)"
+  },
+  "env": {
+    "HOME": "/tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C2e/home",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CONFIG_DIR": "/tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C2e/config",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:45807",
+    "ANTHROPIC_AUTH_TOKEN": "tc-placeholder"
+  },
+  "unset": [],
+  "argv": null,
+  "commands": [],
+  "observed": {
+    "turn": {
+      "requests": 3,
+      "main": 3,
+      "paths": [
+        "POST /v1/messages"
+      ],
+      "credentialsSent": [
+        "bearer:placeholder"
+      ],
+      "betas": [
+        "claude-code-20250219",
+        "context-management-2025-06-27",
+        "effort-2025-11-24",
+        "interleaved-thinking-2025-05-14",
+        "mid-conversation-tool-changes-2026-07-01",
+        "per-turn-control-2026-07-01",
+        "prompt-caching-scope-2026-01-05",
+        "thinking-display-updates-2026-08-18",
+        "thinking-token-count-2026-05-13"
+      ],
+      "answered": [
+        "tool:Bash",
+        "text",
+        "text"
+      ],
+      "probeTools": [
+        "Agent",
+        "Skill"
+      ],
+      "system": [],
+      "tools": [],
+      "messages": [
+        "claudeMd",
+        "envMarker",
+        "memory",
+        "ownSkill"
+      ],
+      "last": [
+        "ownSkill"
+      ],
+      "fresh": [
+        "claudeMd",
+        "envMarker",
+        "memory",
+        "ownSkill"
+      ]
+    },
+    "results": [
+      {
+        "subtype": "success",
+        "is_error": false,
+        "text": "ok",
+        "num_turns": 2
+      },
+      {
+        "subtype": "success",
+        "is_error": false,
+        "text": "ok",
+        "num_turns": 1
+      }
+    ],
+    "transcriptsUnderLinkedProjects": [
+      "-tmp-tc-config-spike-2026-11-09T00-16-21-589Z-box-C2e-work/91a051a8-deb1-426c-8fc2-076b5380ee72.jsonl"
+    ],
+    "transcriptRealDir": "/tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C2e/fakehome/.claude/projects",
+    "links": {
+      "projects": "link",
+      "CLAUDE.md": "link",
+      "settings.json": "link",
+      "plugins": "link",
+      ".claude.json": "link"
+    },
+    "createdInRoot": [
+      "d backups",
+      "d session-env",
+      "d sessions",
+      "d shell-snapshots"
+    ],
+    "leaks": [],
+    "checks": {
+      "memory": true,
+      "claudeMd": true,
+      "settingsEnv": true,
+      "ownSkill": true,
+      "transcriptInFakeHome": true,
+      "linksSurvived": true
+    },
+    "ms": 623
+  },
+  "status": "ok",
+  "verdict": "memory yes, claudeMd yes, settingsEnv yes, ownSkill yes, transcriptInFakeHome yes, linksSurvived yes"
+}

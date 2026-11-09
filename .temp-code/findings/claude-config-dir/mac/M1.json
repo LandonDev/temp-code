@@ -1,0 +1,81 @@
+{
+  "id": "M1",
+  "harness": "muse",
+  "host": "mac",
+  "title": "skill roots outside XDG_CONFIG_HOME",
+  "at": "2026-11-09T00:27:09.515Z",
+  "cli": {
+    "path": "/Users/landon/.local/bin/muse",
+    "version": null
+  },
+  "env": {
+    "MUSE_CONTRIBUTOR_MODE": "0",
+    "TBH_CREDENTIAL_BACKEND": "file"
+  },
+  "unset": [],
+  "argv": [
+    "serve",
+    "--provider",
+    "echo",
+    "-c",
+    "skills.extra_roots=[\"/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/M1/extra\"]"
+  ],
+  "commands": [],
+  "observed": {
+    "routes": [
+      {
+        "route": "none",
+        "accepted": true,
+        "listed": []
+      },
+      {
+        "route": "--trust-workspace",
+        "accepted": true,
+        "listed": [
+          {
+            "selector": "tc-ws-agents-skill",
+            "source": "project"
+          },
+          {
+            "selector": "tc-ws-claude-skill",
+            "source": "project"
+          }
+        ]
+      },
+      {
+        "route": "-c skills.paths",
+        "accepted": false,
+        "error": "connection reached EOF [stderr: muse serve: -c skills.paths: refusing run: unknown key: no such setting (see `--help` for the -c/--config shape) | usage: muse serve [OPTIONS] (run `muse serve --help` "
+      },
+      {
+        "route": "-c skills.dirs",
+        "accepted": false,
+        "error": "connection reached EOF [stderr: muse serve: -c skills.dirs: refusing run: unknown key: no such setting (see `--help` for the -c/--config shape) | usage: muse serve [OPTIONS] (run `muse serve --help` f"
+      },
+      {
+        "route": "-c skills.extra_dirs",
+        "accepted": false,
+        "error": "connection reached EOF [stderr: muse serve: -c skills.extra_dirs: refusing run: unknown key: no such setting (see `--help` for the -c/--config shape) | usage: muse serve [OPTIONS] (run `muse serve --h"
+      },
+      {
+        "route": "-c skills.roots",
+        "accepted": false,
+        "error": "connection reached EOF [stderr: muse serve: -c skills.roots: refusing run: unknown key: no such setting (see `--help` for the -c/--config shape) | usage: muse serve [OPTIONS] (run `muse serve --help` "
+      },
+      {
+        "route": "-c skills.extra_roots",
+        "accepted": false,
+        "error": "connection reached EOF [stderr: muse serve: -c skills.extra_roots: refusing run: unknown key: no such setting (see `--help` for the -c/--config shape) | usage: muse serve [OPTIONS] (run `muse serve --"
+      }
+    ],
+    "checks": {
+      "appOwnedDirRoute": false,
+      "trustWorkspaceLoadsMuse": false,
+      "trustWorkspaceLoadsAgents": true,
+      "trustWorkspaceLoadsClaude": true
+    },
+    "ms": 1188
+  },
+  "status": "partial",
+  "verdict": "appOwnedDirRoute no, trustWorkspaceLoadsMuse no, trustWorkspaceLoadsAgents yes, trustWorkspaceLoadsClaude yes; 7 routes tried"
+}

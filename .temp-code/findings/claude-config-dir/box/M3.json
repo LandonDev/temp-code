@@ -1,0 +1,59 @@
+{
+  "id": "M3",
+  "harness": "muse",
+  "host": "box",
+  "title": "skills in the owned root",
+  "at": "2026-11-09T00:46:28.354Z",
+  "cli": {
+    "path": "/srv/agents/home/.local/bin/muse",
+    "version": null
+  },
+  "env": {
+    "HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M3/home",
+    "XDG_CONFIG_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M3/config",
+    "XDG_DATA_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M3/data",
+    "XDG_STATE_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M3/state",
+    "XDG_CACHE_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M3/cache",
+    "MUSE_CONTRIBUTOR_MODE": "0",
+    "TBH_CREDENTIAL_BACKEND": "file"
+  },
+  "unset": [],
+  "argv": [
+    "serve",
+    "-c",
+    "endpoint_transport.base_url=\"http://127.0.0.1:38281\"",
+    "--disable-sandbox"
+  ],
+  "commands": [],
+  "observed": {
+    "provider": "fake",
+    "listed": [
+      {
+        "selector": "tc-gone-skill",
+        "source": "user"
+      },
+      {
+        "selector": "tc-probe-skill",
+        "source": "user"
+      }
+    ],
+    "turn": {
+      "completed": true,
+      "error": null,
+      "hits": [],
+      "requestHits": [
+        "goneDesc",
+        "skillBody",
+        "skillDesc"
+      ]
+    },
+    "checks": {
+      "listed": true,
+      "resolved": true,
+      "bodyReached": true
+    },
+    "ms": 834
+  },
+  "status": "ok",
+  "verdict": "listed yes, resolved yes, bodyReached yes; provider fake"
+}

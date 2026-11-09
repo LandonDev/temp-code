@@ -1,0 +1,117 @@
+{
+  "id": "C2b",
+  "harness": "claude",
+  "host": "box",
+  "title": "owned root, ANTHROPIC_AUTH_TOKEN",
+  "at": "2026-11-09T00:16:28.000Z",
+  "cli": {
+    "path": "/srv/agents/home/.local/bin/claude",
+    "version": "2.1.303 (Claude Code)"
+  },
+  "env": {
+    "HOME": "/tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C2b/home",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CONFIG_DIR": "/tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C2b/config",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:45807",
+    "ANTHROPIC_AUTH_TOKEN": "tc-placeholder"
+  },
+  "unset": [
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_OAUTH_REFRESH_TOKEN",
+    "CLAUDE_CODE_OAUTH_TOKEN"
+  ],
+  "argv": [
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--input-format",
+    "stream-json",
+    "--model",
+    "claude-haiku-5-5",
+    "--permission-mode",
+    "bypassPermissions",
+    "--allow-dangerously-skip-permissions"
+  ],
+  "commands": [],
+  "observed": {
+    "summary": "ANTHROPIC_AUTH_TOKEN (token mode, as metaClaudeEnv and the e2e proofs)",
+    "fake": {
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "text": "ok",
+        "num_turns": 1
+      },
+      "requests": 1,
+      "main": 1,
+      "paths": [
+        "POST /v1/messages"
+      ],
+      "credentialsSent": [
+        "bearer:placeholder"
+      ],
+      "betas": [
+        "claude-code-20250219",
+        "context-management-2025-06-27",
+        "effort-2025-11-24",
+        "interleaved-thinking-2025-05-14",
+        "mid-conversation-tool-changes-2026-07-01",
+        "per-turn-control-2026-07-01",
+        "prompt-caching-scope-2026-01-05",
+        "thinking-display-updates-2026-08-18",
+        "thinking-token-count-2026-05-13"
+      ],
+      "answered": [
+        "text"
+      ],
+      "probeTools": [
+        "Agent",
+        "Skill"
+      ],
+      "system": [],
+      "tools": [],
+      "messages": [],
+      "last": [],
+      "fresh": [],
+      "apiKeySource": "none",
+      "account": {
+        "email": null,
+        "organization": null,
+        "subscriptionType": null,
+        "tokenSource": "ANTHROPIC_AUTH_TOKEN",
+        "apiKeySource": null
+      },
+      "oauthBeta": false,
+      "fastModeOffered": true,
+      "fast_mode_state": "off",
+      "leaks": [],
+      "ownedRoot": [
+        "f .claude.json",
+        "d .claude.json.lock",
+        "d backups",
+        "f backups/.claude.json.backup.1794183388090",
+        "d projects",
+        "d projects/-tmp-tc-config-spike-2026-11-09T00-16-21-589Z-box-C2b-work",
+        "d sessions",
+        "f sessions/910631.c0853f69abe3667841a8824111f9731f34d5e97cbad6ae33ccb2375885ca01fa.key",
+        "f sessions/910631.json"
+      ]
+    },
+    "real": {
+      "skipped": "needs --upstream and --dev-user-data (the Mac leg)"
+    },
+    "real1m": {
+      "skipped": "needs --upstream and --dev-user-data (the Mac leg)"
+    },
+    "checks": {
+      "placeholderSent": true,
+      "subscriptionBeta": false,
+      "realTurn": null
+    },
+    "ms": 860
+  },
+  "status": "partial",
+  "verdict": "placeholderSent yes, subscriptionBeta no, realTurn -; apiKeySource none"
+}

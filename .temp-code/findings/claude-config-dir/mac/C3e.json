@@ -1,0 +1,495 @@
+{
+  "id": "C3e",
+  "harness": "claude",
+  "host": "mac",
+  "title": "argv and warm key side by side",
+  "at": "2026-11-09T00:24:19.948Z",
+  "cli": null,
+  "env": {},
+  "unset": [],
+  "argv": null,
+  "commands": [],
+  "observed": {
+    "specs": [
+      {
+        "id": "C1a-",
+        "delivery": "argv",
+        "root": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C1a-/config",
+        "argv": [
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--input-format",
+          "stream-json",
+          "--model",
+          "claude-haiku-5-5",
+          "--permission-mode",
+          "bypassPermissions",
+          "--allow-dangerously-skip-permissions",
+          "--plugin-dir",
+          "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C1a-/plugin"
+        ],
+        "shapeLength": 3282,
+        "shapeHash": "5d5fe48d6f87497d",
+        "envNames": [
+          "ANTHROPIC_AUTH_TOKEN",
+          "ANTHROPIC_BASE_URL",
+          "CLAUDE_AGENT_SDK_VERSION",
+          "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CONFIG_DIR",
+          "CLAUDE_EFFORT",
+          "CLAUDE_PID",
+          "HOME"
+        ]
+      },
+      {
+        "id": "C1b-",
+        "delivery": "initialize",
+        "root": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C1b-/config",
+        "argv": [
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--input-format",
+          "stream-json",
+          "--model",
+          "claude-haiku-5-5",
+          "--permission-mode",
+          "bypassPermissions",
+          "--allow-dangerously-skip-permissions",
+          "--await-initialize"
+        ],
+        "shapeLength": 3180,
+        "shapeHash": "86a06f3eb607a083",
+        "envNames": [
+          "ANTHROPIC_AUTH_TOKEN",
+          "ANTHROPIC_BASE_URL",
+          "CLAUDE_AGENT_SDK_VERSION",
+          "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CONFIG_DIR",
+          "CLAUDE_EFFORT",
+          "CLAUDE_PID",
+          "HOME"
+        ]
+      },
+      {
+        "id": "C1c-",
+        "delivery": "initialize",
+        "root": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C1c-/config",
+        "argv": [
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--input-format",
+          "stream-json",
+          "--model",
+          "claude-haiku-5-5",
+          "--permission-mode",
+          "bypassPermissions",
+          "--allow-dangerously-skip-permissions",
+          "--await-initialize"
+        ],
+        "shapeLength": 3180,
+        "shapeHash": "2b79977f9eba1df2",
+        "envNames": [
+          "ANTHROPIC_AUTH_TOKEN",
+          "ANTHROPIC_BASE_URL",
+          "CLAUDE_AGENT_SDK_VERSION",
+          "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CONFIG_DIR",
+          "CLAUDE_EFFORT",
+          "CLAUDE_PID",
+          "HOME"
+        ]
+      },
+      {
+        "id": "C1d-",
+        "delivery": "initialize",
+        "root": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C1d-/config",
+        "argv": [
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--input-format",
+          "stream-json",
+          "--model",
+          "claude-haiku-5-5",
+          "--permission-mode",
+          "bypassPermissions",
+          "--allow-dangerously-skip-permissions",
+          "--await-initialize"
+        ],
+        "shapeLength": 3180,
+        "shapeHash": "6f32676024b3e29f",
+        "envNames": [
+          "ANTHROPIC_AUTH_TOKEN",
+          "ANTHROPIC_BASE_URL",
+          "CLAUDE_AGENT_SDK_VERSION",
+          "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CONFIG_DIR",
+          "CLAUDE_EFFORT",
+          "CLAUDE_PID",
+          "HOME"
+        ]
+      },
+      {
+        "id": "C1g-argv",
+        "delivery": "argv",
+        "root": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C1g-argv/config",
+        "argv": [
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--input-format",
+          "stream-json",
+          "--model",
+          "claude-haiku-5-5",
+          "--permission-mode",
+          "bypassPermissions",
+          "--allow-dangerously-skip-permissions",
+          "--plugin-dir",
+          "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C1g-argv/plugin"
+        ],
+        "shapeLength": 3364,
+        "shapeHash": "6015338d185d51e9",
+        "envNames": [
+          "ANTHROPIC_AUTH_TOKEN",
+          "ANTHROPIC_BASE_URL",
+          "CLAUDE_AGENT_SDK_VERSION",
+          "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CONFIG_DIR",
+          "CLAUDE_EFFORT",
+          "CLAUDE_PID",
+          "HOME"
+        ]
+      },
+      {
+        "id": "C1g-initialize",
+        "delivery": "initialize",
+        "root": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C1g-initialize/config",
+        "argv": [
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--input-format",
+          "stream-json",
+          "--model",
+          "claude-haiku-5-5",
+          "--permission-mode",
+          "bypassPermissions",
+          "--allow-dangerously-skip-permissions",
+          "--await-initialize"
+        ],
+        "shapeLength": 3276,
+        "shapeHash": "bc0d7c98e6bd35f4",
+        "envNames": [
+          "ANTHROPIC_AUTH_TOKEN",
+          "ANTHROPIC_BASE_URL",
+          "CLAUDE_AGENT_SDK_VERSION",
+          "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CONFIG_DIR",
+          "CLAUDE_EFFORT",
+          "CLAUDE_PID",
+          "HOME"
+        ]
+      },
+      {
+        "id": "C2b",
+        "delivery": "none",
+        "root": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C2b/config",
+        "argv": [
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--input-format",
+          "stream-json",
+          "--model",
+          "claude-haiku-5-5",
+          "--permission-mode",
+          "bypassPermissions",
+          "--allow-dangerously-skip-permissions"
+        ],
+        "shapeLength": 3156,
+        "shapeHash": "e32fa7b0d3e232b7",
+        "envNames": [
+          "ANTHROPIC_AUTH_TOKEN",
+          "ANTHROPIC_BASE_URL",
+          "CLAUDE_AGENT_SDK_VERSION",
+          "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CONFIG_DIR",
+          "CLAUDE_EFFORT",
+          "CLAUDE_PID",
+          "HOME"
+        ]
+      },
+      {
+        "id": "C2c",
+        "delivery": "none",
+        "root": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C2c/config",
+        "argv": [
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--input-format",
+          "stream-json",
+          "--model",
+          "claude-haiku-5-5",
+          "--permission-mode",
+          "bypassPermissions",
+          "--allow-dangerously-skip-permissions"
+        ],
+        "shapeLength": 3221,
+        "shapeHash": "da588f97d9fea2ce",
+        "envNames": [
+          "ANTHROPIC_BASE_URL",
+          "CLAUDE_AGENT_SDK_VERSION",
+          "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CODE_OAUTH_TOKEN",
+          "CLAUDE_CONFIG_DIR",
+          "CLAUDE_EFFORT",
+          "CLAUDE_PID",
+          "HOME"
+        ]
+      },
+      {
+        "id": "C2d",
+        "delivery": "none",
+        "root": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C2d/config",
+        "argv": [
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--input-format",
+          "stream-json",
+          "--model",
+          "claude-haiku-5-5",
+          "--permission-mode",
+          "bypassPermissions",
+          "--allow-dangerously-skip-permissions"
+        ],
+        "shapeLength": 3114,
+        "shapeHash": "998f9e821c9803c9",
+        "envNames": [
+          "ANTHROPIC_BASE_URL",
+          "CLAUDE_AGENT_SDK_VERSION",
+          "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+          "CLAUDE_CODE_ENTRYPOINT",
+          "CLAUDE_CONFIG_DIR",
+          "CLAUDE_EFFORT",
+          "CLAUDE_PID",
+          "HOME"
+        ]
+      }
+    ],
+    "differences": {
+      "C1a- vs C1b-": [
+        "cwd",
+        "await-initialize",
+        "plugin-dir",
+        "env"
+      ],
+      "C1a- vs C1c-": [
+        "cwd",
+        "await-initialize",
+        "plugin-dir",
+        "env"
+      ],
+      "C1a- vs C1d-": [
+        "cwd",
+        "await-initialize",
+        "plugin-dir",
+        "env"
+      ],
+      "C1a- vs C1g-argv": [
+        "cwd",
+        "plugin-dir",
+        "env",
+        "command"
+      ],
+      "C1a- vs C1g-initialize": [
+        "cwd",
+        "await-initialize",
+        "plugin-dir",
+        "env",
+        "command"
+      ],
+      "C1a- vs C2b": [
+        "cwd",
+        "plugin-dir",
+        "env"
+      ],
+      "C1a- vs C2c": [
+        "cwd",
+        "plugin-dir",
+        "env"
+      ],
+      "C1a- vs C2d": [
+        "cwd",
+        "plugin-dir",
+        "env"
+      ],
+      "C1b- vs C1c-": [
+        "cwd",
+        "env"
+      ],
+      "C1b- vs C1d-": [
+        "cwd",
+        "env"
+      ],
+      "C1b- vs C1g-argv": [
+        "cwd",
+        "await-initialize",
+        "plugin-dir",
+        "env",
+        "command"
+      ],
+      "C1b- vs C1g-initialize": [
+        "cwd",
+        "env",
+        "command"
+      ],
+      "C1b- vs C2b": [
+        "cwd",
+        "await-initialize",
+        "env"
+      ],
+      "C1b- vs C2c": [
+        "cwd",
+        "await-initialize",
+        "env"
+      ],
+      "C1b- vs C2d": [
+        "cwd",
+        "await-initialize",
+        "env"
+      ],
+      "C1c- vs C1d-": [
+        "cwd",
+        "env"
+      ],
+      "C1c- vs C1g-argv": [
+        "cwd",
+        "await-initialize",
+        "plugin-dir",
+        "env",
+        "command"
+      ],
+      "C1c- vs C1g-initialize": [
+        "cwd",
+        "env",
+        "command"
+      ],
+      "C1c- vs C2b": [
+        "cwd",
+        "await-initialize",
+        "env"
+      ],
+      "C1c- vs C2c": [
+        "cwd",
+        "await-initialize",
+        "env"
+      ],
+      "C1c- vs C2d": [
+        "cwd",
+        "await-initialize",
+        "env"
+      ],
+      "C1d- vs C1g-argv": [
+        "cwd",
+        "await-initialize",
+        "plugin-dir",
+        "env",
+        "command"
+      ],
+      "C1d- vs C1g-initialize": [
+        "cwd",
+        "env",
+        "command"
+      ],
+      "C1d- vs C2b": [
+        "cwd",
+        "await-initialize",
+        "env"
+      ],
+      "C1d- vs C2c": [
+        "cwd",
+        "await-initialize",
+        "env"
+      ],
+      "C1d- vs C2d": [
+        "cwd",
+        "await-initialize",
+        "env"
+      ],
+      "C1g-argv vs C1g-initialize": [
+        "cwd",
+        "await-initialize",
+        "plugin-dir",
+        "env"
+      ],
+      "C1g-argv vs C2b": [
+        "cwd",
+        "plugin-dir",
+        "env",
+        "command"
+      ],
+      "C1g-argv vs C2c": [
+        "cwd",
+        "plugin-dir",
+        "env",
+        "command"
+      ],
+      "C1g-argv vs C2d": [
+        "cwd",
+        "plugin-dir",
+        "env",
+        "command"
+      ],
+      "C1g-initialize vs C2b": [
+        "cwd",
+        "await-initialize",
+        "env",
+        "command"
+      ],
+      "C1g-initialize vs C2c": [
+        "cwd",
+        "await-initialize",
+        "env",
+        "command"
+      ],
+      "C1g-initialize vs C2d": [
+        "cwd",
+        "await-initialize",
+        "env",
+        "command"
+      ],
+      "C2b vs C2c": [
+        "cwd",
+        "env"
+      ],
+      "C2b vs C2d": [
+        "cwd",
+        "env"
+      ],
+      "C2c vs C2d": [
+        "cwd",
+        "env"
+      ]
+    },
+    "checks": {
+      "argvCarriesPluginDir": true,
+      "initializeKeepsArgvFlat": true
+    },
+    "ms": 3
+  },
+  "status": "ok",
+  "verdict": "argvCarriesPluginDir yes, initializeKeepsArgvFlat yes; the owned root rides the env (CLAUDE_CONFIG_DIR), so it splits the warm key per root"
+}

@@ -1,0 +1,92 @@
+{
+  "id": "M4",
+  "harness": "muse",
+  "host": "box",
+  "title": "freshness of skills in the owned root",
+  "at": "2026-11-09T00:46:29.189Z",
+  "cli": {
+    "path": "/srv/agents/home/.local/bin/muse",
+    "version": null
+  },
+  "env": {
+    "HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M4/home",
+    "XDG_CONFIG_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M4/config",
+    "XDG_DATA_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M4/data",
+    "XDG_STATE_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M4/state",
+    "XDG_CACHE_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M4/cache",
+    "MUSE_CONTRIBUTOR_MODE": "0",
+    "TBH_CREDENTIAL_BACKEND": "file"
+  },
+  "unset": [],
+  "argv": [
+    "serve",
+    "-c",
+    "endpoint_transport.base_url=\"http://127.0.0.1:38281\"",
+    "--disable-sandbox"
+  ],
+  "commands": [],
+  "observed": {
+    "skillChanged": 0,
+    "provider": "fake",
+    "steps": [
+      {
+        "step": "before the change",
+        "listed": [
+          "tc-gone-skill",
+          "tc-probe-skill"
+        ],
+        "late": false,
+        "gone": false,
+        "edited": false,
+        "original": true,
+        "error": null
+      },
+      {
+        "step": "running session",
+        "listed": [
+          "tc-late-skill",
+          "tc-probe-skill"
+        ],
+        "late": true,
+        "gone": true,
+        "edited": true,
+        "original": true,
+        "error": null
+      },
+      {
+        "step": "new session, same serve",
+        "listed": [
+          "tc-late-skill",
+          "tc-probe-skill"
+        ],
+        "late": true,
+        "gone": true,
+        "edited": true,
+        "original": false,
+        "error": null
+      },
+      {
+        "step": "fresh serve",
+        "listed": [
+          "tc-late-skill",
+          "tc-probe-skill"
+        ],
+        "late": true,
+        "gone": true,
+        "edited": true,
+        "original": false,
+        "error": null
+      }
+    ],
+    "checks": {
+      "skillChangedNotified": false,
+      "runningListsChange": true,
+      "runningServesEdit": true,
+      "newSessionServesAll": true,
+      "freshServeServesAll": true
+    },
+    "ms": 5844
+  },
+  "status": "partial",
+  "verdict": "skillChangedNotified no, runningListsChange yes, runningServesEdit yes, newSessionServesAll yes, freshServeServesAll yes; provider fake"
+}

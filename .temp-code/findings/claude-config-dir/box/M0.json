@@ -1,0 +1,114 @@
+{
+  "id": "M0",
+  "harness": "muse",
+  "host": "box",
+  "title": "muse version, serve flags, fingerprint, routes",
+  "at": "2026-11-09T00:46:23.130Z",
+  "cli": {
+    "path": "/srv/agents/home/.local/bin/muse",
+    "version": "Muse Code 1.4.14 (1.4.14-R7309.1)"
+  },
+  "env": {
+    "HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M0/home",
+    "XDG_CONFIG_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M0/config",
+    "XDG_DATA_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M0/data",
+    "XDG_STATE_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M0/state",
+    "XDG_CACHE_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M0/cache",
+    "MUSE_CONTRIBUTOR_MODE": "0",
+    "TBH_CREDENTIAL_BACKEND": "file"
+  },
+  "unset": [],
+  "argv": [
+    "serve",
+    "--provider",
+    "echo",
+    "--disable-sandbox"
+  ],
+  "commands": [
+    "muse --version",
+    "muse serve --help",
+    "muse skills --help"
+  ],
+  "observed": {
+    "serveFlags": [
+      "Usage: muse serve [--provider <PROVIDER>] [--model <MODEL>] [--preset <PRESET>] [OPTIONS]",
+      "socket daemon instead, and each session narrows trust under the",
+      "-c, --config <KEY=VALUE>",
+      "Provider selection (this process only; never rewrites settings):",
+      "--provider <PROVIDER>",
+      "Startup provider for this host: echo, meta, or local (default: from",
+      "Model id for non-echo providers (default: your configured model, else",
+      "the provider's default)",
+      "--trust-workspace",
+      "Load each session workspace's skills and rules",
+      "Socket daemon (multi-client; sessions choose trust per session):",
+      "--allow-workspace-trust",
+      "Allow sessions on this daemon to choose workspace trust (socket-only:",
+      "requires --listen; sessions default untrusted)",
+      "muse serve --provider meta",
+      "muse serve --provider meta --model <MODEL>"
+    ],
+    "skillsHelp": [
+      "usage: muse skills list [--source all|user|project|built-in|plugin] [--enabled-only] [--workspace <path>] [--trust-workspace] [--json]",
+      "usage: muse skills inspect <skill-id-or-path> [--source all|user|project|built-in|plugin] [--workspace <path>] [--trust-workspace] [--json]",
+      "usage: muse skills enable <skill-id-or-path> --scope user|project|built-in|plugin [--workspace <path>] [--trust-workspace] [--json]",
+      "usage: muse skills user-only <skill-id-or-path> --scope user|project|built-in|plugin [--workspace <path>] [--trust-workspace] [--json]",
+      "usage: muse skills disable <skill-id-or-path> --scope user|project|built-in|plugin [--workspace <path>] [--trust-workspace] [--json]",
+      "usage: muse skills validate <path> [--json]",
+      "usage: muse skills install <path> [--scope user] [--name NAME] [--force] [--json]",
+      "usage: muse skills import --from claude|codex [--scope user] [--dry-run] [--force] [--json]",
+      "usage: muse skills update <skill-id> [--json]",
+      "usage: muse skills uninstall <skill-id> [--keep-files] [--json]"
+    ],
+    "sdkFingerprint": "sha256:c94c3d1f2f51e6424074b9ec43eac3eedcf532d3dcd77351ec1383a87d3049c6",
+    "servedFingerprint": "sha256:c94c3d1f2f51e6424074b9ec43eac3eedcf532d3dcd77351ec1383a87d3049c6",
+    "fingerprintWarning": null,
+    "initializeFields": [
+      "experimentalApi",
+      "grantedCapabilities",
+      "museHome",
+      "platformFamily",
+      "platformOs",
+      "sandboxAvailability",
+      "schema",
+      "serverInfo",
+      "sessionDurability",
+      "userAgent"
+    ],
+    "initializeError": null,
+    "museHome": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M0/data/muse",
+    "sandboxAvailability": "available",
+    "binaryEnvNames": [
+      "MUSE_PROJECTS_HOME",
+      "TBH_SELFTEST_SCENARIO_OUT_DIR"
+    ],
+    "binarySkillSettings": [
+      "skill.configherdrherdr",
+      "skill.normalized_skill",
+      "skill.skill_decision",
+      "skills.activation",
+      "skills.activationsettings",
+      "skills.activatioonitor",
+      "skills.allowed_identitiesextensions",
+      "skills.allowed_identitiessource",
+      "skills.allowed_sourcesextensions",
+      "skills.allowed_sourcesuser",
+      "skills.denied_identitiesextensions",
+      "skills.denied_identitiessource",
+      "skills.fallbackextensions",
+      "skills.fallbacksettings",
+      "skills.fallbacksource",
+      "skills.locksettings",
+      "skills.presentsource"
+    ],
+    "sessionConfig": "SessionConfig admits only mcpServers (msp.d.ts SessionStartParams.config)",
+    "checks": {
+      "versioned": true,
+      "echoHostStarts": true,
+      "fingerprintMatches": true
+    },
+    "ms": 477
+  },
+  "status": "ok",
+  "verdict": "versioned yes, echoHostStarts yes, fingerprintMatches yes; muse Muse Code 1.4.14 (1.4.14-R7309.1)"
+}

@@ -1,0 +1,64 @@
+{
+  "id": "X4",
+  "harness": "codex",
+  "host": "mac",
+  "title": "hooks.json under an owned home",
+  "at": "2026-11-09T00:43:23.632Z",
+  "cli": {
+    "path": "/opt/homebrew/bin/codex",
+    "version": null
+  },
+  "env": {
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/X4/home",
+    "CODEX_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/X4/codex-home",
+    "CODEX_CA_CERTIFICATE": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/tls/ca.pem"
+  },
+  "unset": [],
+  "argv": [
+    "app-server",
+    "-c",
+    "chatgpt_base_url=\"https://127.0.0.1:53439/backend-api/\""
+  ],
+  "commands": [],
+  "observed": {
+    "untrusted": {
+      "hooks": [
+        {
+          "hookId": "/private/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/X4/codex-home/hooks.json:user_prompt_submit:0:0",
+          "eventName": "userPromptSubmit",
+          "sourcePath": "/private/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/X4/codex-home/hooks.json",
+          "source": "user",
+          "enabled": true,
+          "currentHash": "sha256:5ec4df5877b14bd795aa781f37304db241fc4ccff2260fc0a659c0d67353009f",
+          "trustStatus": "untrusted"
+        }
+      ],
+      "fired": false,
+      "completed": true
+    },
+    "trustRow": "[hooks.state.\"/private/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/X4/codex-home/hooks.json:user_prompt_submit:0:0\"]\ntrusted_hash = \"sha256:5ec4df5877b14bd795aa781f37304db241fc4ccff2260fc0a659c0d67353009f\"\n",
+    "trusted": {
+      "hooks": [
+        {
+          "hookId": "/private/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/X4/codex-home/hooks.json:user_prompt_submit:0:0",
+          "eventName": "userPromptSubmit",
+          "sourcePath": "/private/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/X4/codex-home/hooks.json",
+          "source": "user",
+          "enabled": true,
+          "currentHash": "sha256:5ec4df5877b14bd795aa781f37304db241fc4ccff2260fc0a659c0d67353009f",
+          "trustStatus": "trusted"
+        }
+      ],
+      "fired": true,
+      "completed": true
+    },
+    "checks": {
+      "listed": true,
+      "firesUntrusted": false,
+      "firesTrusted": true
+    },
+    "ms": 16802
+  },
+  "status": "partial",
+  "verdict": "listed yes, firesUntrusted no, firesTrusted yes"
+}

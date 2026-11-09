@@ -1,0 +1,77 @@
+{
+  "id": "M5",
+  "harness": "muse",
+  "host": "box",
+  "title": "what moves with the config root",
+  "at": "2026-11-09T00:46:35.033Z",
+  "cli": {
+    "path": "/srv/agents/home/.local/bin/muse",
+    "version": null
+  },
+  "env": {
+    "HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M5/home",
+    "XDG_CONFIG_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M5/configB",
+    "XDG_DATA_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M5/data",
+    "XDG_STATE_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M5/state",
+    "XDG_CACHE_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M5/cache",
+    "MUSE_CONTRIBUTOR_MODE": "0",
+    "TBH_CREDENTIAL_BACKEND": "file"
+  },
+  "unset": [],
+  "argv": [
+    "serve",
+    "-c",
+    "endpoint_transport.base_url=\"http://127.0.0.1:38281\"",
+    "--disable-sandbox"
+  ],
+  "commands": [],
+  "observed": {
+    "config": [
+      "d muse",
+      "f muse/auth.json",
+      "l muse/settings.json -> /tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M5/config-fake-user-muse/settings.json"
+    ],
+    "data": [
+      "d muse",
+      "d muse/local-tracing",
+      "d muse/local-tracing/bootstrap",
+      "f muse/local-tracing/bootstrap/cli-59d5ceef-987f-40cf-b75a-c1ba3310ad53.log",
+      "f muse/local-tracing/bootstrap/cli-bf480cca-d2b5-4c05-8619-8650ea7c585e.log",
+      "d muse/model-catalog",
+      "f muse/model-catalog/6d657461__p746268.json",
+      "d muse/plugins",
+      "d muse/plugins/cache",
+      "d muse/plugins/cache/builtin",
+      "f muse/serve-exit.jsonl",
+      "f muse/session-index.db",
+      "f muse/session-index.db-shm",
+      "f muse/session-index.db-wal",
+      "d muse/session-server",
+      "d muse/sessions",
+      "f muse/sessions/.msp-maintenance-owner.lock",
+      "d muse/sessions/.msp-view-g6",
+      "d muse/sessions/.msp-view-g6/01a1bdc5-6ede-72e0-8814-a93553a2aa5b",
+      "d muse/sessions/2026",
+      "d muse/sessions/2026/11",
+      "d muse/skills",
+      "d muse/skills/bundled",
+      "d muse/skills/bundled/muse-core--exact-minimal-literal-tests~unavailable",
+      "d muse/skills/bundled/muse-core--exact-minimal-literal-tests~v1",
+      "d muse/skills/bundled/muse-core~unavailable",
+      "d muse/skills/bundled/muse-core~v1"
+    ],
+    "state": [],
+    "cache": [],
+    "home": [],
+    "resumeUnderRootB": "ok",
+    "provider": "fake",
+    "checks": {
+      "sessionsOutsideConfigRoot": true,
+      "noHomeLeaks": true,
+      "resumesUnderRootB": true
+    },
+    "ms": 1088
+  },
+  "status": "ok",
+  "verdict": "sessionsOutsideConfigRoot yes, noHomeLeaks yes, resumesUnderRootB yes"
+}

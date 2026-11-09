@@ -1,0 +1,131 @@
+{
+  "id": "C1f",
+  "harness": "claude",
+  "host": "box",
+  "title": "the same skill in the root and the plugin",
+  "at": "2026-11-09T00:16:25.366Z",
+  "cli": {
+    "path": "/srv/agents/home/.local/bin/claude",
+    "version": "2.1.303 (Claude Code)"
+  },
+  "env": {
+    "HOME": "/tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C1f/home",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CONFIG_DIR": "/tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C1f/config",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:45807",
+    "ANTHROPIC_AUTH_TOKEN": "tc-placeholder"
+  },
+  "unset": [],
+  "argv": null,
+  "commands": [],
+  "observed": {
+    "listed": [
+      "tc-dup-skill",
+      "tc-store:tc-dup-skill"
+    ],
+    "bare": {
+      "requests": 1,
+      "main": 1,
+      "paths": [
+        "POST /v1/messages"
+      ],
+      "credentialsSent": [
+        "bearer:placeholder"
+      ],
+      "betas": [
+        "claude-code-20250219",
+        "context-management-2025-06-27",
+        "effort-2025-11-24",
+        "interleaved-thinking-2025-05-14",
+        "mid-conversation-tool-changes-2026-07-01",
+        "per-turn-control-2026-07-01",
+        "prompt-caching-scope-2026-01-05",
+        "thinking-display-updates-2026-08-18",
+        "thinking-token-count-2026-05-13"
+      ],
+      "answered": [
+        "text"
+      ],
+      "probeTools": [
+        "Agent",
+        "Skill",
+        "mcp__plugin_tc-store_tc-probe__tc_probe_echo"
+      ],
+      "system": [],
+      "tools": [],
+      "messages": [
+        "pluginDesc",
+        "userBody",
+        "userDesc"
+      ],
+      "last": [
+        "pluginDesc",
+        "userDesc"
+      ],
+      "fresh": [
+        "pluginDesc",
+        "userBody",
+        "userDesc"
+      ]
+    },
+    "qualified": {
+      "requests": 1,
+      "main": 1,
+      "paths": [
+        "POST /v1/messages"
+      ],
+      "credentialsSent": [
+        "bearer:placeholder"
+      ],
+      "betas": [
+        "claude-code-20250219",
+        "context-management-2025-06-27",
+        "effort-2025-11-24",
+        "interleaved-thinking-2025-05-14",
+        "mid-conversation-tool-changes-2026-07-01",
+        "per-turn-control-2026-07-01",
+        "prompt-caching-scope-2026-01-05",
+        "thinking-display-updates-2026-08-18",
+        "thinking-token-count-2026-05-13"
+      ],
+      "answered": [
+        "text"
+      ],
+      "probeTools": [
+        "Agent",
+        "Skill",
+        "mcp__plugin_tc-store_tc-probe__tc_probe_echo"
+      ],
+      "system": [],
+      "tools": [],
+      "messages": [
+        "pluginBody",
+        "pluginDesc",
+        "userBody",
+        "userDesc"
+      ],
+      "last": [
+        "pluginBody"
+      ],
+      "fresh": [
+        "pluginBody"
+      ]
+    },
+    "listing": [
+      "tc-dup-skill",
+      "tc-store:tc-dup-skill",
+      "tc-store:tc-gone-skill",
+      "tc-store:tc-probe-skill"
+    ],
+    "checks": {
+      "bothListed": true,
+      "bareExpandsUser": true,
+      "bareExpandsPlugin": false,
+      "qualifiedExpandsPlugin": true
+    },
+    "ms": 691
+  },
+  "status": "partial",
+  "verdict": "bothListed yes, bareExpandsUser yes, bareExpandsPlugin no, qualifiedExpandsPlugin yes; listed tc-dup-skill, tc-store:tc-dup-skill"
+}

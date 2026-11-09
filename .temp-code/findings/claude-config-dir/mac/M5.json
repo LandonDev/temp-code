@@ -1,0 +1,75 @@
+{
+  "id": "M5",
+  "harness": "muse",
+  "host": "mac",
+  "title": "what moves with the config root",
+  "at": "2026-11-09T00:48:43.406Z",
+  "cli": {
+    "path": "/Users/landon/.local/bin/muse",
+    "version": null
+  },
+  "env": {
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M5/home",
+    "XDG_CONFIG_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M5/configB",
+    "XDG_DATA_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M5/data",
+    "XDG_STATE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M5/state",
+    "XDG_CACHE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M5/cache",
+    "MUSE_CONTRIBUTOR_MODE": "0",
+    "TBH_CREDENTIAL_BACKEND": "file"
+  },
+  "unset": [],
+  "argv": [
+    "serve",
+    "-c",
+    "endpoint_transport.base_url=\"http://127.0.0.1:54265\""
+  ],
+  "commands": [],
+  "observed": {
+    "config": [
+      "d muse",
+      "f muse/auth.json",
+      "l muse/settings.json -> /var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M5/config-fake-user-muse/settings.json"
+    ],
+    "data": [
+      "d muse",
+      "d muse/local-tracing",
+      "d muse/local-tracing/bootstrap",
+      "f muse/local-tracing/bootstrap/cli-0d41e11f-2ad0-4c03-9ddc-fa4af606d3c8.log",
+      "f muse/local-tracing/bootstrap/cli-b95fcc43-da85-4e8c-a0fc-d616ba686448.log",
+      "d muse/model-catalog",
+      "f muse/model-catalog/6d657461__p746268.json",
+      "d muse/plugins",
+      "d muse/plugins/cache",
+      "d muse/plugins/cache/builtin",
+      "f muse/serve-exit.jsonl",
+      "f muse/session-index.db",
+      "f muse/session-index.db-shm",
+      "f muse/session-index.db-wal",
+      "d muse/sessions",
+      "f muse/sessions/.msp-maintenance-owner.lock",
+      "d muse/sessions/.msp-view-g6",
+      "d muse/sessions/.msp-view-g6/01a1bdc7-67b8-7cf0-b0ce-aa19b63196b0",
+      "d muse/sessions/2026",
+      "d muse/sessions/2026/11",
+      "d muse/skills",
+      "d muse/skills/bundled",
+      "d muse/skills/bundled/muse-core--exact-minimal-literal-tests~unavailable",
+      "d muse/skills/bundled/muse-core--exact-minimal-literal-tests~v1",
+      "d muse/skills/bundled/muse-core~unavailable",
+      "d muse/skills/bundled/muse-core~v1"
+    ],
+    "state": [],
+    "cache": [],
+    "home": [],
+    "resumeUnderRootB": "ok",
+    "provider": "fake",
+    "checks": {
+      "sessionsOutsideConfigRoot": true,
+      "noHomeLeaks": true,
+      "resumesUnderRootB": true
+    },
+    "ms": 3754
+  },
+  "status": "ok",
+  "verdict": "sessionsOutsideConfigRoot yes, noHomeLeaks yes, resumesUnderRootB yes"
+}

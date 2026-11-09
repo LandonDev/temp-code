@@ -1,0 +1,190 @@
+{
+  "id": "X0b",
+  "harness": "codex",
+  "host": "box",
+  "title": "the fake Responses front accepted",
+  "at": "2026-11-09T00:15:33.376Z",
+  "cli": {
+    "path": "/srv/agents/home/.npm-global/bin/codex",
+    "version": null
+  },
+  "env": {
+    "HOME": "/tmp/tc-config-spike/2026-11-09T00-14-57-253Z-box/X0b/home",
+    "CODEX_HOME": "/tmp/tc-config-spike/2026-11-09T00-14-57-253Z-box/X0b/codex-home",
+    "CODEX_CA_CERTIFICATE": "/tmp/tc-config-spike/2026-11-09T00-14-57-253Z-box/tls/ca.pem"
+  },
+  "unset": [],
+  "argv": [
+    "app-server",
+    "-c",
+    "chatgpt_base_url=\"https://127.0.0.1:37823/backend-api/\""
+  ],
+  "commands": [],
+  "observed": {
+    "model": "gpt-5.5",
+    "textTurn": {
+      "completed": true,
+      "status": "completed",
+      "error": null,
+      "text": "ok",
+      "requests": 9,
+      "paths": [
+        "POST /backend-api/codex/analytics-events/events",
+        "POST /backend-api/ps/mcp",
+        "GET /backend-api/ps/plugins/suggested/codex",
+        "GET /backend-api/wham/settings/user",
+        "POST /backend-api/codex/responses"
+      ],
+      "bearer": [
+        "placeholder",
+        "none"
+      ],
+      "accountId": [
+        "placeholder",
+        "none"
+      ],
+      "answered": [
+        "text"
+      ],
+      "bodies": [
+        {
+          "encoding": "zstd",
+          "bytes": 16135,
+          "parsed": true,
+          "fields": [
+            "client_metadata",
+            "include",
+            "input",
+            "model",
+            "parallel_tool_calls",
+            "prompt_cache_key",
+            "reasoning",
+            "store",
+            "stream",
+            "text",
+            "tool_choice",
+            "tools"
+          ],
+          "tools": 13,
+          "main": true
+        }
+      ],
+      "all": [],
+      "last": []
+    },
+    "shellTurn": {
+      "completed": true,
+      "status": "completed",
+      "error": null,
+      "text": "ok",
+      "requests": 6,
+      "paths": [
+        "GET /backend-api/ps/plugins/suggested/codex",
+        "POST /backend-api/codex/responses",
+        "POST /backend-api/codex/analytics-events/events"
+      ],
+      "bearer": [
+        "placeholder"
+      ],
+      "accountId": [
+        "placeholder"
+      ],
+      "answered": [
+        "call:exec_command",
+        "text"
+      ],
+      "bodies": [
+        {
+          "encoding": "zstd",
+          "bytes": 16269,
+          "parsed": true,
+          "fields": [
+            "client_metadata",
+            "include",
+            "input",
+            "model",
+            "parallel_tool_calls",
+            "prompt_cache_key",
+            "reasoning",
+            "store",
+            "stream",
+            "text",
+            "tool_choice",
+            "tools"
+          ],
+          "tools": 13,
+          "main": true
+        },
+        {
+          "encoding": "zstd",
+          "bytes": 16464,
+          "parsed": true,
+          "fields": [
+            "client_metadata",
+            "include",
+            "input",
+            "model",
+            "parallel_tool_calls",
+            "prompt_cache_key",
+            "reasoning",
+            "store",
+            "stream",
+            "text",
+            "tool_choice",
+            "tools"
+          ],
+          "tools": 13,
+          "main": true
+        }
+      ],
+      "all": [
+        "shellOutput"
+      ],
+      "last": [
+        "shellOutput"
+      ]
+    },
+    "serverRequests": [],
+    "routingLog": [],
+    "stderr": [
+      "\u001b[2m2026-11-09T00:15:33.558124Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_models_manager::manager\u001b[0m\u001b[2m:\u001b[0m failed to refresh available models: unexpected status 401 Unauthorized: Could not parse your authentication token. Please try signing in again., url: https://chatgpt.com/backend-api/codex/models?client_",
+      "\u001b[2m2026-11-09T00:15:33.598998Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_models_manager::manager\u001b[0m\u001b[2m:\u001b[0m failed to refresh available models: unexpected status 401 Unauthorized: Could not parse your authentication token. Please try signing in again., url: https://chatgpt.com/backend-api/codex/models?client_",
+      "\u001b[2m2026-11-09T00:15:33.613421Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mrmcp::transport::worker\u001b[0m\u001b[2m:\u001b[0m worker quit with fatal: Transport channel closed, when UnexpectedServerResponse(\"HTTP 404: {\\\"error\\\":{\\\"message\\\":\\\"fake: not here\\\"}}\")",
+      "\u001b[2m2026-11-09T00:15:33.632290Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mrmcp::transport::worker\u001b[0m\u001b[2m:\u001b[0m worker quit with fatal: Transport channel closed, when UnexpectedServerResponse(\"HTTP 404: {\\\"error\\\":{\\\"message\\\":\\\"fake: not here\\\"}}\")",
+      "\u001b[2m2026-11-09T00:15:33.676380Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: HTTP error: 426 Upgrade Required, url: wss://127.0.0.1:37823/backend-api/codex/responses"
+    ],
+    "firstModel": {
+      "model": "gpt-6.1-sol",
+      "completed": true,
+      "bodies": [
+        {
+          "encoding": "zstd",
+          "bytes": 24390,
+          "parsed": true,
+          "fields": [
+            "client_metadata",
+            "include",
+            "input",
+            "model",
+            "parallel_tool_calls",
+            "prompt_cache_key",
+            "reasoning",
+            "store",
+            "stream",
+            "text",
+            "tool_choice"
+          ],
+          "tools": 0,
+          "main": false
+        }
+      ]
+    },
+    "checks": {
+      "textTurn": true,
+      "functionCallRan": true
+    },
+    "ms": 663
+  },
+  "status": "ok",
+  "verdict": "textTurn yes, functionCallRan yes; the fake is accepted"
+}

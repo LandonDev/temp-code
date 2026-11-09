@@ -1,0 +1,33 @@
+{
+  "id": "C0",
+  "harness": "claude",
+  "host": "mac",
+  "title": "CLI versions",
+  "at": "2026-11-09T00:23:30.772Z",
+  "cli": {
+    "path": "/Users/landon/.local/bin/claude",
+    "version": "2.1.312 (Claude Code)"
+  },
+  "env": {},
+  "unset": [],
+  "argv": null,
+  "commands": [],
+  "observed": {
+    "login": {
+      "path": "/Users/landon/.local/bin/claude",
+      "version": "2.1.312 (Claude Code)"
+    },
+    "bundled": {
+      "path": "/private/tmp/tc-config-spike/tree/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude",
+      "version": "2.1.280"
+    },
+    "runs": "login PATH",
+    "rule": "the newer of the login-PATH claude and the SDK bundled CLI (binaries.ts resolveClaude)",
+    "ms": 0,
+    "atEnd": {
+      "login": "2.1.312 (Claude Code)"
+    }
+  },
+  "status": "ok",
+  "verdict": "runs 2.1.312 (Claude Code) (login PATH); login 2.1.312 (Claude Code), bundled 2.1.280"
+}

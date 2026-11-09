@@ -1,0 +1,76 @@
+{
+  "id": "C2f",
+  "harness": "claude",
+  "host": "mac",
+  "title": "warm adoption under an owned root",
+  "at": "2026-11-09T00:23:48.243Z",
+  "cli": {
+    "path": "/Users/landon/.local/bin/claude",
+    "version": "2.1.312 (Claude Code)"
+  },
+  "env": {
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C2f-real/home",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CONFIG_DIR": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C2f-real/config",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:51377/claude/~t=tc-spike-C2f-2026-11-09T00-23-30-361Z-mac;a=<account>;m=claude-haiku-5-5",
+    "ANTHROPIC_AUTH_TOKEN": "tc-placeholder"
+  },
+  "unset": [],
+  "argv": null,
+  "commands": [],
+  "observed": {
+    "poolLog": [
+      "[warm] probe: w05276f96435b warm in /var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C2f-real/work (1 warm)",
+      "[warm] probe: adopted w05276f96435b (3004 ms old)",
+      "[warm] probe: w2fef34c2704b warm in /var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C2f-real/work (1 warm)",
+      "[warm] probe: closed w2fef34c2704b"
+    ],
+    "fake": {
+      "adopted": true,
+      "keysEqual": true,
+      "latencyMs": 82,
+      "plugins_applied": true,
+      "listed": [
+        "tc-store:tc-probe-cmd",
+        "tc-store:tc-gone-skill",
+        "tc-store:tc-probe-skill"
+      ],
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "text": "ok",
+        "num_turns": 3
+      },
+      "skillBody": true
+    },
+    "real": {
+      "adopted": true,
+      "keysEqual": true,
+      "latencyMs": 82,
+      "plugins_applied": true,
+      "listed": [
+        "tc-store:tc-probe-cmd",
+        "tc-store:tc-gone-skill",
+        "tc-store:tc-probe-skill"
+      ],
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "text": "tcnonce-C2freal-skillbody",
+        "num_turns": 3
+      },
+      "skillBody": true
+    },
+    "checks": {
+      "adopted": true,
+      "pluginsApplied": true,
+      "skillInvoked": true,
+      "realAdopted": true,
+      "realSkill": true
+    },
+    "ms": 10192
+  },
+  "status": "ok",
+  "verdict": "adopted yes, pluginsApplied yes, skillInvoked yes, realAdopted yes, realSkill yes; adoption 82 ms"
+}

@@ -1,0 +1,245 @@
+{
+  "host": "mac",
+  "rows": [
+    {
+      "id": "C0",
+      "status": "ok",
+      "verdict": "runs 2.1.312 (Claude Code) (login PATH); login 2.1.312 (Claude Code), bundled 2.1.280",
+      "at": "2026-11-09T00:23:30.772Z"
+    },
+    {
+      "id": "C1a",
+      "status": "ok",
+      "verdict": "skillListed yes, skillBySlash yes, skillByTool yes, command yes, agent yes, mcp yes, hook yes; names {\"slash\":\"tc-store:tc-probe-skill\",\"tool\":\"tc-store:tc-gone-skill\"}",
+      "at": "2026-11-09T00:41:59.794Z"
+    },
+    {
+      "id": "C1b",
+      "status": "ok",
+      "verdict": "skillListed yes, skillBySlash yes, skillByTool yes, command yes, agent yes, mcp yes, hook yes; names {\"slash\":\"tc-store:tc-probe-skill\",\"tool\":\"tc-store:tc-gone-skill\"}",
+      "at": "2026-11-09T00:42:00.400Z"
+    },
+    {
+      "id": "C1c",
+      "status": "ok",
+      "verdict": "skillListed yes, skillBySlash yes, skillByTool yes, command yes, agent yes, mcpAbsent yes, hook yes; names {\"slash\":\"tc-store:tc-probe-skill\",\"tool\":\"tc-store:tc-gone-skill\"}",
+      "at": "2026-11-09T00:23:32.068Z"
+    },
+    {
+      "id": "C1d",
+      "status": "ok",
+      "verdict": "skillListed yes, skillBySlash yes, skillByTool yes, command yes, agent yes, mcp yes, hook yes; names {\"slash\":\"plugin:tc-probe-skill\",\"tool\":\"plugin:tc-gone-skill\"}",
+      "at": "2026-11-09T00:42:00.989Z"
+    },
+    {
+      "id": "C1e",
+      "status": "ok",
+      "verdict": "listed yes, expanded yes; write access under --add-dir is not observable under bypassPermissions; the SDK documents it as a working-directory root",
+      "at": "2026-11-09T00:23:33.209Z"
+    },
+    {
+      "id": "C1f",
+      "status": "partial",
+      "verdict": "bothListed yes, bareExpandsUser yes, bareExpandsPlugin no, qualifiedExpandsPlugin yes; listed tc-dup-skill, tc-store:tc-dup-skill",
+      "at": "2026-11-09T00:23:33.692Z"
+    },
+    {
+      "id": "C1g",
+      "status": "ok",
+      "verdict": "argv.skillListed yes, argv.skillBySlash yes, argv.skillByTool yes, argv.command yes, argv.agent yes, argv.mcp yes, argv.hook yes, initialize.skillListed yes, initialize.skillBySlash yes, initialize.skillByTool yes, initialize.command yes, initialize.agent yes, initialize.mcp yes, initialize.hook yes; bundled 2.1.280",
+      "at": "2026-11-09T00:42:01.589Z"
+    },
+    {
+      "id": "C2a",
+      "status": "fail",
+      "verdict": "turnAttempted no, realCredentialResolved -; apiKeySource none",
+      "at": "2026-11-09T00:42:05.011Z"
+    },
+    {
+      "id": "C2b",
+      "status": "partial",
+      "verdict": "placeholderSent yes, subscriptionBeta no, realTurn yes; apiKeySource none",
+      "at": "2026-11-09T00:23:38.831Z"
+    },
+    {
+      "id": "C2c",
+      "status": "ok",
+      "verdict": "placeholderSent yes, subscriptionBeta yes, realTurn yes; apiKeySource none",
+      "at": "2026-11-09T00:23:42.497Z"
+    },
+    {
+      "id": "C2d",
+      "status": "ok",
+      "verdict": "placeholderSent yes, subscriptionBeta yes, realTurn yes; apiKeySource none",
+      "at": "2026-11-09T00:23:45.014Z"
+    },
+    {
+      "id": "C2e",
+      "status": "ok",
+      "verdict": "memory yes, claudeMd yes, settingsEnv yes, ownSkill yes, transcriptInFakeHome yes, linksSurvived yes",
+      "at": "2026-11-09T00:23:47.696Z"
+    },
+    {
+      "id": "C2f",
+      "status": "ok",
+      "verdict": "adopted yes, pluginsApplied yes, skillInvoked yes, realAdopted yes, realSkill yes; adoption 82 ms",
+      "at": "2026-11-09T00:23:48.243Z"
+    },
+    {
+      "id": "C2g",
+      "status": "partial",
+      "verdict": "resumesUnderEmptyRoot no, resumesWithLinkedProjects yes",
+      "at": "2026-11-09T00:23:58.536Z"
+    },
+    {
+      "id": "C3a",
+      "status": "ok",
+      "verdict": "liveAdd yes, liveEdit yes, liveRemove yes, nextSpawnAll yes; first at {\"add\":\"reloadSkills\",\"edit\":\"reloadSkills\",\"remove\":\"reloadSkills\"}",
+      "at": "2026-11-09T00:23:59.940Z"
+    },
+    {
+      "id": "C3b",
+      "status": "ok",
+      "verdict": "liveAdd yes, liveEdit yes, liveRemove yes, nextSpawnAll yes; first at {\"add\":\"reloadSkills\",\"edit\":\"reloadSkills\",\"remove\":\"reloadSkills\"}",
+      "at": "2026-11-09T00:24:03.054Z"
+    },
+    {
+      "id": "C3c",
+      "status": "partial",
+      "verdict": "argv.adopted yes, argv.servesChange no, initialize.adopted yes, initialize.servesChange yes",
+      "at": "2026-11-09T00:24:06.069Z"
+    },
+    {
+      "id": "C3d",
+      "status": "partial",
+      "verdict": "adopted yes, p2Applied yes, servesP2 yes, servesP1 no",
+      "at": "2026-11-09T00:24:15.914Z"
+    },
+    {
+      "id": "C3e",
+      "status": "ok",
+      "verdict": "argvCarriesPluginDir yes, initializeKeepsArgvFlat yes; the owned root rides the env (CLAUDE_CONFIG_DIR), so it splits the warm key per root",
+      "at": "2026-11-09T00:24:19.948Z"
+    },
+    {
+      "id": "X0",
+      "status": "ok",
+      "verdict": "schema yes, skillsList yes, extraRoots yes, hooksList yes; codex codex-cli 0.164.0",
+      "at": "2026-11-09T00:24:19.951Z"
+    },
+    {
+      "id": "X0b",
+      "status": "ok",
+      "verdict": "textTurn yes, functionCallRan yes; the fake is accepted",
+      "at": "2026-11-09T00:24:21.189Z"
+    },
+    {
+      "id": "X1",
+      "status": "partial",
+      "verdict": "extraRootsAccepted yes, flatListed yes, nestedListed yes, flatInPrompt yes, bodyBySkillPart no, pathBySkillPart no",
+      "at": "2026-11-09T00:47:43.178Z"
+    },
+    {
+      "id": "X2a",
+      "status": "partial",
+      "verdict": "initializes yes, threadStarts yes, turnCompletes no",
+      "at": "2026-11-09T00:24:46.283Z"
+    },
+    {
+      "id": "X2c",
+      "status": "partial",
+      "verdict": "placeholderBearer yes, placeholderAccount yes, fakeTurn yes, realTurn no",
+      "at": "2026-11-09T00:47:56.307Z"
+    },
+    {
+      "id": "X2d",
+      "status": "partial",
+      "verdict": "resumesUnderEmptyHome no, resumesWithLinks yes",
+      "at": "2026-11-09T00:25:34.337Z"
+    },
+    {
+      "id": "X2e",
+      "status": "ok",
+      "verdict": "inventoried yes, noLeaks yes",
+      "at": "2026-11-09T00:25:50.719Z"
+    },
+    {
+      "id": "X3",
+      "status": "ok",
+      "verdict": "skillsChangedNotified yes, runningServesEdit yes, runningListsAdd yes, warmServesAll yes, freshServesAll yes",
+      "at": "2026-11-09T00:42:32.664Z"
+    },
+    {
+      "id": "X3b",
+      "status": "ok",
+      "verdict": "skillsChangedNotified yes, runningServesEdit yes, runningListsAdd yes, warmServesAll yes, freshServesAll yes",
+      "at": "2026-11-09T00:42:58.423Z"
+    },
+    {
+      "id": "X4",
+      "status": "partial",
+      "verdict": "listed yes, firesUntrusted no, firesTrusted yes",
+      "at": "2026-11-09T00:43:23.632Z"
+    },
+    {
+      "id": "X5",
+      "status": "fail",
+      "verdict": "listedAsSkill no, expandedInTurn no; the method list names no prompts method (X0)",
+      "at": "2026-11-09T00:27:00.136Z"
+    },
+    {
+      "id": "M0",
+      "status": "ok",
+      "verdict": "versioned yes, echoHostStarts yes, fingerprintMatches yes; muse Muse Code 1.4.14 (1.4.14-R7309.1)",
+      "at": "2026-11-09T00:27:07.995Z"
+    },
+    {
+      "id": "M0b",
+      "status": "ok",
+      "verdict": "recorded yes, modelListServed yes",
+      "at": "2026-11-09T00:43:40.535Z"
+    },
+    {
+      "id": "M0c",
+      "status": "ok",
+      "verdict": "modelsListed yes, textTurn yes, functionCallRan yes; the fake is accepted",
+      "at": "2026-11-09T00:48:21.149Z"
+    },
+    {
+      "id": "M1",
+      "status": "partial",
+      "verdict": "appOwnedDirRoute no, trustWorkspaceLoadsMuse no, trustWorkspaceLoadsAgents yes, trustWorkspaceLoadsClaude yes; 7 routes tried",
+      "at": "2026-11-09T00:27:09.515Z"
+    },
+    {
+      "id": "M2",
+      "status": "ok",
+      "verdict": "fileBackendReadsRootLogin yes, defaultReadsRootLogin yes; default backend sent placeholder",
+      "at": "2026-11-09T00:48:25.357Z"
+    },
+    {
+      "id": "M3",
+      "status": "ok",
+      "verdict": "listed yes, resolved yes, bodyReached yes; provider fake",
+      "at": "2026-11-09T00:48:30.744Z"
+    },
+    {
+      "id": "M4",
+      "status": "partial",
+      "verdict": "skillChangedNotified no, runningListsChange yes, runningServesEdit yes, newSessionServesAll yes, freshServeServesAll yes; provider fake",
+      "at": "2026-11-09T00:48:33.152Z"
+    },
+    {
+      "id": "M5",
+      "status": "ok",
+      "verdict": "sessionsOutsideConfigRoot yes, noHomeLeaks yes, resumesUnderRootB yes",
+      "at": "2026-11-09T00:48:43.406Z"
+    },
+    {
+      "id": "M6",
+      "status": "partial",
+      "verdict": "toolSeesOwnedRoot yes, gitKeepsConfig yes, ghKeepsLogin no",
+      "at": "2026-11-09T00:48:47.160Z"
+    }
+  ]
+}

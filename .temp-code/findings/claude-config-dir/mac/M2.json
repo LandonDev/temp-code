@@ -1,0 +1,56 @@
+{
+  "id": "M2",
+  "harness": "muse",
+  "host": "mac",
+  "title": "which login a thread reads",
+  "at": "2026-11-09T00:48:25.357Z",
+  "cli": {
+    "path": "/Users/landon/.local/bin/muse",
+    "version": null
+  },
+  "env": {
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M2-default/home",
+    "XDG_CONFIG_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M2-default/config",
+    "XDG_DATA_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M2-default/data",
+    "XDG_STATE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M2-default/state",
+    "XDG_CACHE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/M2-default/cache",
+    "MUSE_CONTRIBUTOR_MODE": "0",
+    "TBH_CREDENTIAL_BACKEND": "file"
+  },
+  "unset": [],
+  "argv": [
+    "serve",
+    "-c",
+    "endpoint_transport.base_url=\"http://127.0.0.1:54265\""
+  ],
+  "commands": [],
+  "observed": {
+    "file": {
+      "requests": [
+        "GET /muse-code/models"
+      ],
+      "bearer": [
+        "placeholder"
+      ],
+      "modelList": "4 models",
+      "ms": 1932
+    },
+    "default": {
+      "requests": [
+        "GET /muse-code/models"
+      ],
+      "bearer": [
+        "placeholder"
+      ],
+      "modelList": "4 models",
+      "ms": 3453
+    },
+    "checks": {
+      "fileBackendReadsRootLogin": true,
+      "defaultReadsRootLogin": true
+    },
+    "ms": 5387
+  },
+  "status": "ok",
+  "verdict": "fileBackendReadsRootLogin yes, defaultReadsRootLogin yes; default backend sent placeholder"
+}

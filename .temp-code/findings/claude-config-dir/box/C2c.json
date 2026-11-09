@@ -1,0 +1,117 @@
+{
+  "id": "C2c",
+  "harness": "claude",
+  "host": "box",
+  "title": "owned root, CLAUDE_CODE_OAUTH_TOKEN",
+  "at": "2026-11-09T00:16:28.861Z",
+  "cli": {
+    "path": "/srv/agents/home/.local/bin/claude",
+    "version": "2.1.303 (Claude Code)"
+  },
+  "env": {
+    "HOME": "/tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C2c/home",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CONFIG_DIR": "/tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C2c/config",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:45807",
+    "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-tc-placeholder-000000000000000000000000000000000000000000000000"
+  },
+  "unset": [
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_OAUTH_REFRESH_TOKEN",
+    "CLAUDE_CODE_OAUTH_TOKEN"
+  ],
+  "argv": [
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--input-format",
+    "stream-json",
+    "--model",
+    "claude-haiku-5-5",
+    "--permission-mode",
+    "bypassPermissions",
+    "--allow-dangerously-skip-permissions"
+  ],
+  "commands": [],
+  "observed": {
+    "summary": "CLAUDE_CODE_OAUTH_TOKEN (what `claude setup-token` prints)",
+    "fake": {
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "text": "ok",
+        "num_turns": 1
+      },
+      "requests": 1,
+      "main": 1,
+      "paths": [
+        "POST /v1/messages"
+      ],
+      "credentialsSent": [
+        "bearer:placeholder"
+      ],
+      "betas": [
+        "claude-code-20250219",
+        "context-management-2025-06-27",
+        "effort-2025-11-24",
+        "extended-cache-ttl-2025-04-11",
+        "interleaved-thinking-2025-05-14",
+        "mid-conversation-tool-changes-2026-07-01",
+        "oauth-2025-04-20",
+        "per-turn-control-2026-07-01",
+        "prompt-caching-scope-2026-01-05",
+        "thinking-display-updates-2026-08-18",
+        "thinking-token-count-2026-05-13"
+      ],
+      "answered": [
+        "text"
+      ],
+      "probeTools": [
+        "Agent",
+        "Skill"
+      ],
+      "system": [],
+      "tools": [],
+      "messages": [],
+      "last": [],
+      "fresh": [],
+      "apiKeySource": "none",
+      "account": {
+        "email": null,
+        "organization": null,
+        "subscriptionType": null,
+        "tokenSource": "CLAUDE_CODE_OAUTH_TOKEN",
+        "apiKeySource": null
+      },
+      "oauthBeta": true,
+      "fastModeOffered": true,
+      "fast_mode_state": "off",
+      "leaks": [],
+      "ownedRoot": [
+        "f .claude.json",
+        "d .claude.json.lock",
+        "f .claude.json.tmp.910824.96caf30b946f",
+        "d backups",
+        "f backups/.claude.json.backup.1794183388955",
+        "d projects",
+        "d projects/-tmp-tc-config-spike-2026-11-09T00-16-21-589Z-box-C2c-work",
+        "d sessions",
+        "f sessions/910824.e30bfc35c8c0b404999900cc19c90a1b839c2afbe38937420f1fd48926f97f57.key",
+        "f sessions/910824.json"
+      ]
+    },
+    "real": {
+      "skipped": "needs --upstream and --dev-user-data (the Mac leg)"
+    },
+    "checks": {
+      "placeholderSent": true,
+      "subscriptionBeta": true,
+      "realTurn": null
+    },
+    "ms": 910
+  },
+  "status": "ok",
+  "verdict": "placeholderSent yes, subscriptionBeta yes, realTurn -; apiKeySource none"
+}

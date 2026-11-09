@@ -1,0 +1,103 @@
+{
+  "id": "C2a",
+  "harness": "claude",
+  "host": "box",
+  "title": "owned root, no credential, real HOME",
+  "at": "2026-11-09T00:40:54.531Z",
+  "cli": {
+    "path": "/srv/agents/home/.local/bin/claude",
+    "version": "2.1.303 (Claude Code)"
+  },
+  "env": {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CONFIG_DIR": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/C2a/config",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:38373"
+  },
+  "unset": [
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_OAUTH_REFRESH_TOKEN",
+    "CLAUDE_CODE_OAUTH_TOKEN"
+  ],
+  "argv": null,
+  "commands": [],
+  "observed": {
+    "guard": {
+      "result": "pass",
+      "items": 1,
+      "reason": "the credentials file holds no refresh grant"
+    },
+    "account": {
+      "email": null,
+      "organization": null,
+      "subscriptionType": null,
+      "tokenSource": "none",
+      "apiKeySource": null
+    },
+    "apiKeySource": "none",
+    "turn": {
+      "result": {
+        "subtype": "success",
+        "is_error": true,
+        "text": "Not logged in · Please run /login",
+        "num_turns": 1
+      },
+      "requests": 0,
+      "main": 0,
+      "paths": [],
+      "credentialsSent": [],
+      "betas": [],
+      "answered": [],
+      "probeTools": [],
+      "system": [],
+      "tools": [],
+      "messages": [],
+      "last": [],
+      "fresh": []
+    },
+    "ownedRoot": [
+      "f .claude.json",
+      "d .claude.json.lock",
+      "d backups",
+      "f backups/.claude.json.backup.1794184854636",
+      "d projects",
+      "d projects/-tmp-tc-config-spike-2026-11-09T00-40-51-767Z-box-C2a-work",
+      "f projects/-tmp-tc-config-spike-2026-11-09T00-40-51-767Z-box-C2a-work/33c3b7c0-84ae-4290-8264-8869e6714568.jsonl",
+      "d sessions",
+      "f sessions/1082006.ed3519ccb33dc1aeadb095cf63bacacf4433f6569b5a4623c645da4f001c5a0d.key",
+      "f sessions/1082006.json"
+    ],
+    "credentialsFileInRoot": false,
+    "credentialItems": null,
+    "personalDirs": {
+      ".claude": {
+        "added": [],
+        "removed": [],
+        "changed": []
+      },
+      ".claude.json": {
+        "added": [],
+        "removed": [],
+        "changed": []
+      },
+      ".codex": {
+        "added": [],
+        "removed": [],
+        "changed": []
+      },
+      ".config/muse": {
+        "added": [],
+        "removed": [],
+        "changed": []
+      }
+    },
+    "checks": {
+      "turnAttempted": false,
+      "realCredentialResolved": null
+    },
+    "ms": 576
+  },
+  "status": "fail",
+  "verdict": "turnAttempted no, realCredentialResolved -; apiKeySource none"
+}

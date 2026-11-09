@@ -1,0 +1,114 @@
+{
+  "id": "C2e",
+  "harness": "claude",
+  "host": "mac",
+  "title": "owned root linking into a home",
+  "at": "2026-11-09T00:23:47.696Z",
+  "cli": {
+    "path": "/Users/landon/.local/bin/claude",
+    "version": "2.1.312 (Claude Code)"
+  },
+  "env": {
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C2e/home",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CONFIG_DIR": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C2e/config",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:51418",
+    "ANTHROPIC_AUTH_TOKEN": "tc-placeholder"
+  },
+  "unset": [],
+  "argv": null,
+  "commands": [],
+  "observed": {
+    "turn": {
+      "requests": 3,
+      "main": 3,
+      "paths": [
+        "POST /v1/messages"
+      ],
+      "credentialsSent": [
+        "bearer:placeholder"
+      ],
+      "betas": [
+        "advanced-tool-use-2025-11-20",
+        "claude-code-20250219",
+        "context-management-2025-06-27",
+        "effort-2025-11-24",
+        "interleaved-thinking-2025-05-14",
+        "mid-conversation-tool-changes-2026-07-01",
+        "per-turn-control-2026-07-01",
+        "thinking-display-updates-2026-08-18",
+        "thinking-token-count-2026-05-13"
+      ],
+      "answered": [
+        "tool:Bash",
+        "text",
+        "text"
+      ],
+      "probeTools": [
+        "Agent",
+        "Skill"
+      ],
+      "system": [],
+      "tools": [],
+      "messages": [
+        "claudeMd",
+        "envMarker",
+        "memory",
+        "ownSkill"
+      ],
+      "last": [
+        "ownSkill"
+      ],
+      "fresh": [
+        "claudeMd",
+        "envMarker",
+        "memory",
+        "ownSkill"
+      ]
+    },
+    "results": [
+      {
+        "subtype": "success",
+        "is_error": false,
+        "text": "ok",
+        "num_turns": 2
+      },
+      {
+        "subtype": "success",
+        "is_error": false,
+        "text": "ok",
+        "num_turns": 1
+      }
+    ],
+    "transcriptsUnderLinkedProjects": [
+      "-private-var-folders-5x-1mkrv6rj06j5m57nmzgm97n80000gn-T-tc-config-spike-2026-11-09T00-23-30-361Z-mac-C2e-work/6b006bc9-5eaf-41f8-9974-6cf2dec75504.jsonl"
+    ],
+    "transcriptRealDir": "/private/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C2e/fakehome/.claude/projects",
+    "links": {
+      "projects": "link",
+      "CLAUDE.md": "link",
+      "settings.json": "link",
+      "plugins": "link",
+      ".claude.json": "link"
+    },
+    "createdInRoot": [
+      "d backups",
+      "d session-env",
+      "d sessions",
+      "d shell-snapshots"
+    ],
+    "leaks": [],
+    "checks": {
+      "memory": true,
+      "claudeMd": true,
+      "settingsEnv": true,
+      "ownSkill": true,
+      "transcriptInFakeHome": true,
+      "linksSurvived": true
+    },
+    "ms": 547
+  },
+  "status": "ok",
+  "verdict": "memory yes, claudeMd yes, settingsEnv yes, ownSkill yes, transcriptInFakeHome yes, linksSurvived yes"
+}

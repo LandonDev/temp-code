@@ -1,0 +1,56 @@
+{
+  "id": "C2g",
+  "harness": "claude",
+  "host": "box",
+  "title": "resume across roots",
+  "at": "2026-11-09T00:16:35.441Z",
+  "cli": {
+    "path": "/srv/agents/home/.local/bin/claude",
+    "version": "2.1.303 (Claude Code)"
+  },
+  "env": {
+    "HOME": "/tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C2g/home",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CONFIG_DIR": "/tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C2g/rootB2",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:45807",
+    "ANTHROPIC_AUTH_TOKEN": "tc-placeholder"
+  },
+  "unset": [],
+  "argv": null,
+  "commands": [],
+  "observed": {
+    "sessionId": "41e51fa8-62b5-4af4-9ac5-130c11340af7",
+    "underEmptyRoot": {
+      "error": "Claude Code returned an error result: No conversation found with session ID: 41e51fa8-62b5-4af4-9ac5-130c11340af7",
+      "stderr": [
+        "No conversation found with session ID: 41e51fa8-62b5-4af4-9ac5-130c11340af7"
+      ]
+    },
+    "underLinkedProjects": {
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "text": "ok",
+        "num_turns": 1
+      },
+      "historyInRequest": true,
+      "sameSession": true
+    },
+    "rootA": [
+      "f .claude.json",
+      "d backups",
+      "f backups/.claude.json.backup.1794183395540",
+      "d projects",
+      "d projects/-tmp-tc-config-spike-2026-11-09T00-16-21-589Z-box-C2g-work",
+      "d sessions"
+    ],
+    "checks": {
+      "resumesUnderEmptyRoot": false,
+      "resumesWithLinkedProjects": true
+    },
+    "ms": 1692
+  },
+  "status": "partial",
+  "verdict": "resumesUnderEmptyRoot no, resumesWithLinkedProjects yes"
+}

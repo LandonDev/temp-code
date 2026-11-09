@@ -1,0 +1,163 @@
+{
+  "id": "X2c",
+  "harness": "codex",
+  "host": "mac",
+  "title": "placeholder login, fake and real",
+  "at": "2026-11-09T00:47:56.307Z",
+  "cli": {
+    "path": "/opt/homebrew/bin/codex",
+    "version": null
+  },
+  "env": {
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/X2c-real/home",
+    "CODEX_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/X2c-real/codex-home",
+    "CODEX_CA_CERTIFICATE": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-47-42-841Z-mac/tls/ca.pem"
+  },
+  "unset": [],
+  "argv": [
+    "app-server",
+    "-c",
+    "chatgpt_base_url=\"https://127.0.0.1:54264/backend-api/\""
+  ],
+  "commands": [],
+  "observed": {
+    "fake": {
+      "completed": true,
+      "status": "completed",
+      "error": "{\"error\":{\"message\":\"Reconnecting... 2/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":null}},\"additionalDetails\":\"stream disconnected before completion: WebSocket protocol error: Handshake not finished\",\"misalignment\":null},\"willRetry\":true,\"threadId\":\"01a1bdc6-ac19-7322-af91-8c",
+      "text": "ok",
+      "requests": 8,
+      "paths": [
+        "GET /backend-api/ps/plugins/suggested/codex",
+        "POST /backend-api/ps/mcp",
+        "POST /backend-api/codex/analytics-events/events",
+        "GET /backend-api/wham/settings/user",
+        "POST /backend-api/codex/responses"
+      ],
+      "bearer": [
+        "placeholder",
+        "none"
+      ],
+      "accountId": [
+        "placeholder",
+        "none"
+      ],
+      "answered": [
+        "text"
+      ],
+      "bodies": [
+        {
+          "encoding": "zstd",
+          "bytes": 16160,
+          "parsed": true,
+          "fields": [
+            "client_metadata",
+            "include",
+            "input",
+            "model",
+            "parallel_tool_calls",
+            "prompt_cache_key",
+            "reasoning",
+            "store",
+            "stream",
+            "text",
+            "tool_choice",
+            "tools"
+          ],
+          "tools": 13,
+          "main": true
+        }
+      ],
+      "all": [],
+      "last": [],
+      "serverRequests": []
+    },
+    "real": {
+      "model": "gpt-5.5",
+      "ok": false,
+      "status": "failed",
+      "error": "{\"error\":{\"message\":\"Reconnecting... 2/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":null}},\"additionalDetails\":\"stream disconnected before completion: WebSocket protocol error: Handshake not finished\",\"misalignment\":null},\"willRetry\":true,\"threadId\":\"01a1bdc6-d90b-76a1-a153-2f",
+      "text": "",
+      "paths": [
+        "POST /backend-api/ps/mcp",
+        "POST /backend-api/codex/analytics-events/events",
+        "GET /backend-api/ps/plugins/list",
+        "GET /backend-api/wham/settings/user",
+        "POST /backend-api/codex/responses"
+      ],
+      "answered": [
+        "POST /backend-api/ps/mcp forwarded 200",
+        "POST /backend-api/codex/analytics-events/events forwarded 200",
+        "POST /backend-api/ps/mcp forwarded 204",
+        "GET /backend-api/ps/plugins/list forwarded 200",
+        "POST /backend-api/ps/mcp forwarded 200",
+        "GET /backend-api/ps/plugins/list forwarded 200",
+        "GET /backend-api/wham/settings/user forwarded 200",
+        "GET /backend-api/ps/plugins/list forwarded 200",
+        "GET /backend-api/ps/plugins/list forwarded 200",
+        "GET /backend-api/ps/plugins/list forwarded 200",
+        "GET /backend-api/ps/plugins/list forwarded 200",
+        "GET /backend-api/ps/plugins/list forwarded 200",
+        "GET /backend-api/ps/plugins/list forwarded 200",
+        "GET /backend-api/ps/plugins/list forwarded 200",
+        "POST /backend-api/codex/responses forwarded 400",
+        "GET /backend-api/ps/plugins/list forwarded",
+        "POST /backend-api/codex/analytics-events/events forwarded"
+      ],
+      "routingLog": [],
+      "leaks": [],
+      "home": [
+        "f .sandbox_migration",
+        "f auth.json",
+        "d cache",
+        "d cache/codex_apps_server_info",
+        "d cache/codex_apps_tools",
+        "f config.toml",
+        "f goals_1.sqlite",
+        "f goals_1.sqlite-shm",
+        "f goals_1.sqlite-wal",
+        "f installation_id",
+        "f logs_2.sqlite",
+        "f logs_2.sqlite-shm",
+        "f logs_2.sqlite-wal",
+        "d mcp-oauth-locks",
+        "f mcp-oauth-locks/file-store.lock",
+        "f memories_1.sqlite",
+        "f memories_1.sqlite-shm",
+        "f memories_1.sqlite-wal",
+        "d plugins",
+        "d plugins/.remote-plugin-install-staging",
+        "d plugins/cache",
+        "f queue_1.sqlite",
+        "f queue_1.sqlite-shm",
+        "f queue_1.sqlite-wal",
+        "d sessions",
+        "d sessions/2026",
+        "d shell_snapshots",
+        "f shell_snapshots/01a1bdc6-d90b-76a1-a153-2f8c36a388fe.1794185288411288000.sh",
+        "d skills",
+        "d skills/.system",
+        "f state_5.sqlite",
+        "f state_5.sqlite-shm",
+        "f state_5.sqlite-wal",
+        "d thread-writer-locks",
+        "f thread-writer-locks/.coordination.lock",
+        "f thread-writer-locks/01a1bdc6-d90b-76a1-a153-2f8c36a388fe.lock",
+        "f thread_history_1.sqlite",
+        "f thread_history_1.sqlite-shm",
+        "f thread_history_1.sqlite-wal",
+        "d tmp",
+        "d tmp/arg0-macos"
+      ]
+    },
+    "checks": {
+      "placeholderBearer": true,
+      "placeholderAccount": true,
+      "fakeTurn": true,
+      "realTurn": false
+    },
+    "ms": 24740
+  },
+  "status": "partial",
+  "verdict": "placeholderBearer yes, placeholderAccount yes, fakeTurn yes, realTurn no"
+}

@@ -1,0 +1,64 @@
+{
+  "id": "X4",
+  "harness": "codex",
+  "host": "box",
+  "title": "hooks.json under an owned home",
+  "at": "2026-11-09T00:41:01.977Z",
+  "cli": {
+    "path": "/srv/agents/home/.npm-global/bin/codex",
+    "version": null
+  },
+  "env": {
+    "HOME": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X4/home",
+    "CODEX_HOME": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X4/codex-home",
+    "CODEX_CA_CERTIFICATE": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/tls/ca.pem"
+  },
+  "unset": [],
+  "argv": [
+    "app-server",
+    "-c",
+    "chatgpt_base_url=\"https://127.0.0.1:44133/backend-api/\""
+  ],
+  "commands": [],
+  "observed": {
+    "untrusted": {
+      "hooks": [
+        {
+          "hookId": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X4/codex-home/hooks.json:user_prompt_submit:0:0",
+          "eventName": "userPromptSubmit",
+          "sourcePath": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X4/codex-home/hooks.json",
+          "source": "user",
+          "enabled": true,
+          "currentHash": "sha256:fbf35ffeb0abc032e2eb288c6aafd56daf5113262f25ffbbf0072ec989b7e74f",
+          "trustStatus": "untrusted"
+        }
+      ],
+      "fired": false,
+      "completed": true
+    },
+    "trustRow": "[hooks.state.\"/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X4/codex-home/hooks.json:user_prompt_submit:0:0\"]\ntrusted_hash = \"sha256:fbf35ffeb0abc032e2eb288c6aafd56daf5113262f25ffbbf0072ec989b7e74f\"\n",
+    "trusted": {
+      "hooks": [
+        {
+          "hookId": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X4/codex-home/hooks.json:user_prompt_submit:0:0",
+          "eventName": "userPromptSubmit",
+          "sourcePath": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X4/codex-home/hooks.json",
+          "source": "user",
+          "enabled": true,
+          "currentHash": "sha256:fbf35ffeb0abc032e2eb288c6aafd56daf5113262f25ffbbf0072ec989b7e74f",
+          "trustStatus": "trusted"
+        }
+      ],
+      "fired": true,
+      "completed": true
+    },
+    "checks": {
+      "listed": true,
+      "firesUntrusted": false,
+      "firesTrusted": true
+    },
+    "ms": 1595
+  },
+  "status": "partial",
+  "verdict": "listed yes, firesUntrusted no, firesTrusted yes"
+}

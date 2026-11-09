@@ -1,0 +1,77 @@
+{
+  "id": "C3c",
+  "harness": "claude",
+  "host": "box",
+  "title": "freshness: a warm process spawned before the change",
+  "at": "2026-11-09T00:16:43.440Z",
+  "cli": {
+    "path": "/srv/agents/home/.local/bin/claude",
+    "version": "2.1.303 (Claude Code)"
+  },
+  "env": {
+    "HOME": "/tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C3c-initialize/home",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CONFIG_DIR": "/tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C3c-initialize/config",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:45807",
+    "ANTHROPIC_AUTH_TOKEN": "tc-placeholder"
+  },
+  "unset": [],
+  "argv": null,
+  "commands": [],
+  "observed": {
+    "poolLog": [
+      "[warm] probe: w1d31059b315c warm in /tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C3c-initialize/work (1 warm)",
+      "[warm] probe: adopted w1d31059b315c (4004 ms old)",
+      "[warm] probe: wf7272d532173 warm in /tmp/tc-config-spike/2026-11-09T00-16-21-589Z-box/C3c-initialize/work (1 warm)",
+      "[warm] probe: closed wf7272d532173"
+    ],
+    "argv": {
+      "adopted": true,
+      "keysEqual": true,
+      "latencyMs": 7,
+      "step": "adopted after the change",
+      "commands": [
+        "tc-store:tc-probe-cmd",
+        "tc-store:tc-gone-skill",
+        "tc-store:tc-probe-skill"
+      ],
+      "late": false,
+      "gone": false,
+      "edited": false,
+      "original": true,
+      "listingHits": [
+        "goneDesc",
+        "skillDesc"
+      ]
+    },
+    "initialize": {
+      "adopted": true,
+      "keysEqual": true,
+      "latencyMs": 76,
+      "step": "adopted after the change",
+      "commands": [
+        "tc-store:tc-probe-cmd",
+        "tc-store:tc-late-skill",
+        "tc-store:tc-probe-skill"
+      ],
+      "late": true,
+      "gone": true,
+      "edited": true,
+      "original": false,
+      "listingHits": [
+        "editedDesc",
+        "lateDesc"
+      ]
+    },
+    "checks": {
+      "argv.adopted": true,
+      "argv.servesChange": false,
+      "initialize.adopted": true,
+      "initialize.servesChange": true
+    },
+    "ms": 9859
+  },
+  "status": "partial",
+  "verdict": "argv.adopted yes, argv.servesChange no, initialize.adopted yes, initialize.servesChange yes"
+}

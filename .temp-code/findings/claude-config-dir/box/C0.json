@@ -1,0 +1,33 @@
+{
+  "id": "C0",
+  "harness": "claude",
+  "host": "box",
+  "title": "CLI versions",
+  "at": "2026-11-09T00:16:21.630Z",
+  "cli": {
+    "path": "/srv/agents/home/.local/bin/claude",
+    "version": "2.1.303 (Claude Code)"
+  },
+  "env": {},
+  "unset": [],
+  "argv": null,
+  "commands": [],
+  "observed": {
+    "login": {
+      "path": "/srv/agents/home/.local/bin/claude",
+      "version": "2.1.303 (Claude Code)"
+    },
+    "bundled": {
+      "path": "/srv/agents/work/temp-code/.claude/worktrees/claude-code-config-dir-spike/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/claude",
+      "version": "2.1.280"
+    },
+    "runs": "login PATH",
+    "rule": "the newer of the login-PATH claude and the SDK bundled CLI (binaries.ts resolveClaude)",
+    "ms": 0,
+    "atEnd": {
+      "login": "2.1.303 (Claude Code)"
+    }
+  },
+  "status": "ok",
+  "verdict": "runs 2.1.303 (Claude Code) (login PATH); login 2.1.303 (Claude Code), bundled 2.1.280"
+}

@@ -1,0 +1,80 @@
+{
+  "id": "X5",
+  "harness": "codex",
+  "host": "mac",
+  "title": "custom prompts",
+  "at": "2026-11-09T00:27:00.136Z",
+  "cli": {
+    "path": "/opt/homebrew/bin/codex",
+    "version": null
+  },
+  "env": {
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/X5/home",
+    "CODEX_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/X5/codex-home",
+    "CODEX_CA_CERTIFICATE": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/tls/ca.pem"
+  },
+  "unset": [],
+  "argv": [
+    "app-server",
+    "-c",
+    "chatgpt_base_url=\"https://127.0.0.1:51419/backend-api/\""
+  ],
+  "commands": [],
+  "observed": {
+    "skillsList": [],
+    "turn": {
+      "requests": 8,
+      "paths": [
+        "GET /backend-api/ps/plugins/suggested/codex",
+        "POST /backend-api/ps/mcp",
+        "POST /backend-api/codex/analytics-events/events",
+        "GET /backend-api/wham/settings/user",
+        "POST /backend-api/codex/responses"
+      ],
+      "bearer": [
+        "placeholder",
+        "none"
+      ],
+      "accountId": [
+        "placeholder",
+        "none"
+      ],
+      "answered": [
+        "text"
+      ],
+      "bodies": [
+        {
+          "encoding": "zstd",
+          "bytes": 16171,
+          "parsed": true,
+          "fields": [
+            "client_metadata",
+            "include",
+            "input",
+            "model",
+            "parallel_tool_calls",
+            "prompt_cache_key",
+            "reasoning",
+            "store",
+            "stream",
+            "text",
+            "tool_choice",
+            "tools"
+          ],
+          "tools": 13,
+          "main": true
+        }
+      ],
+      "all": [],
+      "last": []
+    },
+    "completed": true,
+    "checks": {
+      "listedAsSkill": false,
+      "expandedInTurn": false
+    },
+    "ms": 7759
+  },
+  "status": "fail",
+  "verdict": "listedAsSkill no, expandedInTurn no; the method list names no prompts method (X0)"
+}

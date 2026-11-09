@@ -1,0 +1,59 @@
+{
+  "id": "X2a",
+  "harness": "codex",
+  "host": "mac",
+  "title": "empty CODEX_HOME, no login",
+  "at": "2026-11-09T00:24:46.283Z",
+  "cli": {
+    "path": "/opt/homebrew/bin/codex",
+    "version": null
+  },
+  "env": {
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/X2a/home",
+    "CODEX_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/X2a/codex-home",
+    "CODEX_CA_CERTIFICATE": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/tls/ca.pem"
+  },
+  "unset": [],
+  "argv": null,
+  "commands": [],
+  "observed": {
+    "initialize": "ok",
+    "account": "{\"account\":null,\"requiresOpenaiAuth\":true,\"workspaceRouting\":null}",
+    "threadStart": "ok",
+    "turn": {
+      "completed": true,
+      "status": "failed",
+      "error": "{\"error\":{\"message\":\"Reconnecting... 2/5\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":401}},\"additionalDetails\":\"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: wss://api.openai.com/v1/responses, cf-ray: a578ad2f3a8d5efc-BNA\",\"misalignm",
+      "text": "",
+      "requests": 1,
+      "paths": [
+        "GET /backend-api/plugins/featured"
+      ],
+      "bearer": [
+        "none"
+      ],
+      "accountId": [
+        "none"
+      ],
+      "answered": [],
+      "bodies": [],
+      "all": [],
+      "last": []
+    },
+    "stderr": [
+      "\u001b[2m2026-11-09T00:24:47.252718Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses",
+      "\u001b[2m2026-11-09T00:24:47.807194Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses",
+      "\u001b[2m2026-11-09T00:24:48.827862Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses",
+      "\u001b[2m2026-11-09T00:24:50.562523Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses",
+      "\u001b[2m2026-11-09T00:24:54.078733Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_api::endpoint::responses_websocket\u001b[0m\u001b[2m:\u001b[0m failed to connect to websocket: HTTP error: 401 Unauthorized, url: wss://api.openai.com/v1/responses"
+    ],
+    "checks": {
+      "initializes": true,
+      "threadStarts": true,
+      "turnCompletes": false
+    },
+    "ms": 15812
+  },
+  "status": "partial",
+  "verdict": "initializes yes, threadStarts yes, turnCompletes no"
+}

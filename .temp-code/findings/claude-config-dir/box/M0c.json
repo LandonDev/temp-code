@@ -1,0 +1,113 @@
+{
+  "id": "M0c",
+  "harness": "muse",
+  "host": "box",
+  "title": "the fake Responses front accepted",
+  "at": "2026-11-09T00:46:23.608Z",
+  "cli": {
+    "path": "/srv/agents/home/.local/bin/muse",
+    "version": null
+  },
+  "env": {
+    "HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M0c/home",
+    "XDG_CONFIG_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M0c/config",
+    "XDG_DATA_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M0c/data",
+    "XDG_STATE_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M0c/state",
+    "XDG_CACHE_HOME": "/tmp/tc-config-spike/2026-11-09T00-46-23-088Z-box/M0c/cache",
+    "MUSE_CONTRIBUTOR_MODE": "0",
+    "TBH_CREDENTIAL_BACKEND": "file"
+  },
+  "unset": [],
+  "argv": [
+    "serve",
+    "-c",
+    "endpoint_transport.base_url=\"http://127.0.0.1:38281\"",
+    "--disable-sandbox"
+  ],
+  "commands": [],
+  "observed": {
+    "models": [
+      "muse-wonder-1.0",
+      "muse-wonder-full-1.0",
+      "muse-spark-1.3",
+      "muse-spark-1.2"
+    ],
+    "model": "muse-wonder-1.0",
+    "textTurn": {
+      "completed": true,
+      "terminal": "completed",
+      "paths": [
+        "POST /responses"
+      ]
+    },
+    "shellTurn": {
+      "completed": true,
+      "answered": [
+        "text",
+        "call:bash",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text",
+        "text"
+      ],
+      "roles": [
+        "reminder:skill-reminder",
+        "main",
+        "reminder:goal-reminder",
+        "reminder:verify-reminder"
+      ],
+      "tools": [
+        "muse[namespace]",
+        "muse.workflow[function](args: [\"array\",\"boolean\",\"null\",\"number\",\"object\",\"string\"], description: \"string\", expectedScriptHash: \"string\", name: \"string\", resumeFromRunId: \"string\", script: \"string\", scriptPath: \"string\", title: \"string\")",
+        "muse.read_file[function](limit: \"integer\", offset: \"integer\", path: \"string\")",
+        "muse.search[function](binary: \"string\", case_sensitive: \"boolean\", context_after: \"integer\", context_before: \"integer\", follow_symlinks: \"boolean\", glob: \"array\", hidden: \"boolean\", max_matches: \"integer\", mode: \"string\", no_ignore: \"boolean\", output_mode: \"string\", paths: \"array\", pattern: \"string\", smart_case: \"boolean\", whole_line: \"boolean\", word: \"boolean\")",
+        "muse.write_file[function](content: \"string\", path: \"string\")",
+        "muse.edit_file[function](find: \"string\", path: \"string\", replace: \"string\")",
+        "muse.read_memory[function](limit: \"integer\", offset: \"integer\", path: \"string\", scope: \"string\")",
+        "muse.add_memory[function](content: \"string\", description: \"string\", path: \"string\", scope: \"string\", type: \"string\")",
+        "muse.edit_memory[function](new_str: \"string\", old_str: \"string\", path: \"string\", scope: \"string\")",
+        "muse.work_stop[function](work_id: \"string\")",
+        "muse.work_list[function](after_work_id: [\"null\",\"string\"])",
+        "muse.web_fetch[function](url: \"string\")",
+        "muse.web_search[function](query: \"string\")",
+        "muse.bash[function](command: \"string\", description: \"string\", login: \"boolean\", max_output_tokens: \"integer\", sandbox_permissions: \"string\", shell: \"string\", timeout_ms: \"integer\", tty: \"boolean\", workdir: \"string\", yield_time_ms: \"integer\")",
+        "muse.bash_input[function](chars: \"string\", max_output_tokens: \"integer\", session_id: \"integer\", terminate: \"boolean\", yield_time_ms: \"integer\")",
+        "muse.monitor[function](command: \"string\", description: \"string\", persistent: \"boolean\", show_lines: \"boolean\", timeout_ms: \"integer\", wake_delay_ms: \"integer\", ws: \"string\", ws_subprotocols: \"array\")",
+        "muse.cron_create[function](cron: \"string\", fire_immediately: \"boolean\", fire_when_active_run: \"boolean\", permanent: \"boolean\", prompt: \"string\", recurring: \"boolean\")",
+        "muse.cron_delete[function](id: \"string\")",
+        "muse.cron_list[function]()",
+        "muse.get_goal[function]()",
+        "muse.create_goal[function](objective: \"string\", token_budget: \"integer\")",
+        "muse.update_goal[function](status: \"string\")",
+        "muse.report_progress[function](current_work: \"string\", next_work: \"string\", percent_complete: \"integer\", snooze_minutes: \"integer\")",
+        "muse.request_user_input[function](auto_resolution_ms: \"integer\", questions: \"array\")",
+        "muse.read_skill[function](name: \"string\")",
+        "muse.snooze_reminder[function](duration_steps: \"integer\", reminder_kind: \"string\", subject_key: \"string\")",
+        "muse.write_todos[function](todos: \"array\")"
+      ],
+      "ran": true
+    },
+    "serverRequests": [],
+    "stderr": [],
+    "checks": {
+      "modelsListed": true,
+      "textTurn": true,
+      "functionCallRan": true
+    },
+    "ms": 1485
+  },
+  "status": "ok",
+  "verdict": "modelsListed yes, textTurn yes, functionCallRan yes; the fake is accepted"
+}

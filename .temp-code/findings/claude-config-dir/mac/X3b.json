@@ -1,0 +1,148 @@
+{
+  "id": "X3b",
+  "harness": "codex",
+  "host": "mac",
+  "title": "freshness of skills in an extra root",
+  "at": "2026-11-09T00:42:58.423Z",
+  "cli": {
+    "path": "/opt/homebrew/bin/codex",
+    "version": null
+  },
+  "env": {
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/X3b/home",
+    "CODEX_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/X3b/codex-home",
+    "CODEX_CA_CERTIFICATE": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/tls/ca.pem"
+  },
+  "unset": [],
+  "argv": [
+    "app-server",
+    "-c",
+    "chatgpt_base_url=\"https://127.0.0.1:53439/backend-api/\""
+  ],
+  "commands": [],
+  "observed": {
+    "extraRootsSet": "ok",
+    "turn1": {
+      "requests": 8,
+      "paths": [
+        "GET /backend-api/ps/plugins/suggested/codex",
+        "POST /backend-api/ps/mcp",
+        "POST /backend-api/codex/analytics-events/events",
+        "GET /backend-api/wham/settings/user",
+        "POST /backend-api/codex/responses"
+      ],
+      "bearer": [
+        "placeholder",
+        "none"
+      ],
+      "accountId": [
+        "placeholder",
+        "none"
+      ],
+      "answered": [
+        "text"
+      ],
+      "bodies": [
+        {
+          "encoding": "zstd",
+          "bytes": 16265,
+          "parsed": true,
+          "fields": [
+            "client_metadata",
+            "include",
+            "input",
+            "model",
+            "parallel_tool_calls",
+            "prompt_cache_key",
+            "reasoning",
+            "store",
+            "stream",
+            "text",
+            "tool_choice",
+            "tools"
+          ],
+          "tools": 13,
+          "main": true
+        }
+      ],
+      "all": [
+        "goneDesc",
+        "skillDesc"
+      ],
+      "last": []
+    },
+    "skillsChanged": true,
+    "steps": [
+      {
+        "step": "running thread",
+        "cached": [
+          "tc-late-skill",
+          "tc-probe-skill"
+        ],
+        "reloaded": [
+          "tc-late-skill",
+          "tc-probe-skill"
+        ],
+        "late": true,
+        "gone": true,
+        "lateInPrompt": true,
+        "goneInPrompt": true,
+        "edited": true,
+        "editedBody": false,
+        "editedDesc": true,
+        "original": false,
+        "pathSent": false
+      },
+      {
+        "step": "warm app-server",
+        "cached": [
+          "tc-late-skill",
+          "tc-probe-skill"
+        ],
+        "reloaded": [
+          "tc-late-skill",
+          "tc-probe-skill"
+        ],
+        "late": true,
+        "gone": true,
+        "lateInPrompt": true,
+        "goneInPrompt": false,
+        "edited": true,
+        "editedBody": false,
+        "editedDesc": true,
+        "original": false,
+        "pathSent": false
+      },
+      {
+        "step": "fresh app-server",
+        "cached": [
+          "tc-late-skill",
+          "tc-probe-skill"
+        ],
+        "reloaded": [
+          "tc-late-skill",
+          "tc-probe-skill"
+        ],
+        "late": true,
+        "gone": true,
+        "lateInPrompt": true,
+        "goneInPrompt": false,
+        "edited": true,
+        "editedBody": false,
+        "editedDesc": true,
+        "original": false,
+        "pathSent": false
+      }
+    ],
+    "checks": {
+      "skillsChangedNotified": true,
+      "runningServesEdit": true,
+      "runningListsAdd": true,
+      "warmServesAll": true,
+      "freshServesAll": true
+    },
+    "ms": 25107
+  },
+  "status": "ok",
+  "verdict": "skillsChangedNotified yes, runningServesEdit yes, runningListsAdd yes, warmServesAll yes, freshServesAll yes"
+}

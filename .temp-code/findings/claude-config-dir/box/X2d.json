@@ -1,0 +1,102 @@
+{
+  "id": "X2d",
+  "harness": "codex",
+  "host": "box",
+  "title": "resume across homes",
+  "at": "2026-11-09T00:15:48.635Z",
+  "cli": {
+    "path": "/srv/agents/home/.npm-global/bin/codex",
+    "version": null
+  },
+  "env": {
+    "HOME": "/tmp/tc-config-spike/2026-11-09T00-14-57-253Z-box/X2d/home",
+    "CODEX_HOME": "/tmp/tc-config-spike/2026-11-09T00-14-57-253Z-box/X2d/homeB2",
+    "CODEX_CA_CERTIFICATE": "/tmp/tc-config-spike/2026-11-09T00-14-57-253Z-box/tls/ca.pem"
+  },
+  "unset": [],
+  "argv": [
+    "app-server",
+    "-c",
+    "chatgpt_base_url=\"https://127.0.0.1:37823/backend-api/\""
+  ],
+  "commands": [],
+  "observed": {
+    "thread": "01a1bda9-4212-72f3-9256-7134bbad4f3a",
+    "underEmptyHome": {
+      "resume": "no rollout found for thread id 01a1bda9-4212-72f3-9256-7134bbad4f3a"
+    },
+    "linked": [
+      "state_5.sqlite",
+      "memories_1.sqlite-wal",
+      "memories_1.sqlite-shm",
+      "goals_1.sqlite",
+      "thread_history_1.sqlite-wal",
+      "thread_history_1.sqlite-shm",
+      "sessions",
+      "goals_1.sqlite-wal",
+      "queue_1.sqlite-shm",
+      "thread_history_1.sqlite",
+      "logs_2.sqlite-wal",
+      "memories_1.sqlite",
+      "logs_2.sqlite",
+      "queue_1.sqlite-wal",
+      "goals_1.sqlite-shm",
+      "state_5.sqlite-wal",
+      "logs_2.sqlite-shm",
+      "queue_1.sqlite",
+      "state_5.sqlite-shm"
+    ],
+    "withLinkedSessions": {
+      "resume": "ok",
+      "historyInRequest": true,
+      "completed": true
+    },
+    "homeA": [
+      "f .sandbox_migration",
+      "f auth.json",
+      "f config.toml",
+      "f goals_1.sqlite",
+      "f goals_1.sqlite-shm",
+      "f goals_1.sqlite-wal",
+      "f installation_id",
+      "f logs_2.sqlite",
+      "f logs_2.sqlite-shm",
+      "f logs_2.sqlite-wal",
+      "d mcp-oauth-locks",
+      "f mcp-oauth-locks/file-store.lock",
+      "f memories_1.sqlite",
+      "f memories_1.sqlite-shm",
+      "f memories_1.sqlite-wal",
+      "f queue_1.sqlite",
+      "f queue_1.sqlite-shm",
+      "f queue_1.sqlite-wal",
+      "d sessions",
+      "d sessions/2026",
+      "d sessions/2026/11",
+      "d shell_snapshots",
+      "d skills",
+      "d skills/.system",
+      "f skills/.system/.codex-system-skills.marker",
+      "d skills/.system/imagegen",
+      "d skills/.system/openai-docs",
+      "d skills/.system/review-agent",
+      "d skills/.system/skill-creator",
+      "d skills/.system/skill-installer",
+      "f state_5.sqlite",
+      "f state_5.sqlite-shm",
+      "f state_5.sqlite-wal",
+      "d thread-writer-locks",
+      "f thread-writer-locks/.coordination.lock",
+      "f thread_history_1.sqlite",
+      "f thread_history_1.sqlite-shm",
+      "f thread_history_1.sqlite-wal"
+    ],
+    "checks": {
+      "resumesUnderEmptyHome": false,
+      "resumesWithLinks": true
+    },
+    "ms": 1365
+  },
+  "status": "partial",
+  "verdict": "resumesUnderEmptyHome no, resumesWithLinks yes"
+}

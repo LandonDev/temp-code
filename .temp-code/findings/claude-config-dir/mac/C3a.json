@@ -1,0 +1,178 @@
+{
+  "id": "C3a",
+  "harness": "claude",
+  "host": "mac",
+  "title": "freshness: plugin skills in a live session",
+  "at": "2026-11-09T00:23:59.940Z",
+  "cli": {
+    "path": "/Users/landon/.local/bin/claude",
+    "version": "2.1.312 (Claude Code)"
+  },
+  "env": {
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C3a/home",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CONFIG_DIR": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C3a/config",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:51418",
+    "ANTHROPIC_AUTH_TOKEN": "tc-placeholder"
+  },
+  "unset": [],
+  "argv": null,
+  "commands": [],
+  "observed": {
+    "turn1": {
+      "requests": 1,
+      "main": 1,
+      "paths": [
+        "POST /v1/messages"
+      ],
+      "credentialsSent": [
+        "bearer:placeholder"
+      ],
+      "betas": [
+        "advanced-tool-use-2025-11-20",
+        "claude-code-20250219",
+        "context-management-2025-06-27",
+        "effort-2025-11-24",
+        "interleaved-thinking-2025-05-14",
+        "mid-conversation-tool-changes-2026-07-01",
+        "per-turn-control-2026-07-01",
+        "thinking-display-updates-2026-08-18",
+        "thinking-token-count-2026-05-13"
+      ],
+      "answered": [
+        "text"
+      ],
+      "probeTools": [
+        "Agent",
+        "Skill"
+      ],
+      "system": [],
+      "tools": [],
+      "messages": [
+        "agent",
+        "cmd",
+        "goneDesc",
+        "name:tc-gone-skill",
+        "name:tc-probe-agent",
+        "name:tc-probe-cmd",
+        "name:tc-probe-skill",
+        "name:tc_probe_echo",
+        "skillBody",
+        "skillDesc"
+      ],
+      "last": [
+        "agent",
+        "cmd",
+        "goneDesc",
+        "name:tc-gone-skill",
+        "name:tc-probe-agent",
+        "name:tc-probe-cmd",
+        "name:tc-probe-skill",
+        "name:tc_probe_echo",
+        "skillDesc"
+      ],
+      "fresh": [
+        "agent",
+        "cmd",
+        "goneDesc",
+        "name:tc-gone-skill",
+        "name:tc-probe-agent",
+        "name:tc-probe-cmd",
+        "name:tc-probe-skill",
+        "name:tc_probe_echo",
+        "skillBody",
+        "skillDesc"
+      ]
+    },
+    "reloadSkills": [
+      "tc-store:tc-probe-cmd",
+      "tc-store:tc-late-skill",
+      "tc-store:tc-probe-skill"
+    ],
+    "reloadPluginsHold": {
+      "held": false,
+      "cache_impact": null,
+      "commands": [
+        "tc-store:tc-probe-cmd",
+        "tc-store:tc-late-skill",
+        "tc-store:tc-probe-skill"
+      ],
+      "error_count": 0
+    },
+    "steps": [
+      {
+        "step": "nothing",
+        "commands": [
+          "tc-store:tc-probe-cmd",
+          "tc-store:tc-gone-skill",
+          "tc-store:tc-probe-skill"
+        ],
+        "late": false,
+        "gone": false,
+        "edited": false,
+        "original": true,
+        "listingHits": []
+      },
+      {
+        "step": "reloadSkills",
+        "commands": [
+          "tc-store:tc-probe-cmd",
+          "tc-store:tc-late-skill",
+          "tc-store:tc-probe-skill"
+        ],
+        "late": true,
+        "gone": true,
+        "edited": true,
+        "original": false,
+        "listingHits": [
+          "editedDesc",
+          "lateDesc"
+        ]
+      },
+      {
+        "step": "reloadPlugins(hold)",
+        "commands": [
+          "tc-store:tc-probe-cmd",
+          "tc-store:tc-late-skill",
+          "tc-store:tc-probe-skill"
+        ],
+        "late": true,
+        "gone": true,
+        "edited": true,
+        "original": false,
+        "listingHits": []
+      },
+      {
+        "step": "next spawn",
+        "commands": [
+          "tc-store:tc-probe-cmd",
+          "tc-store:tc-late-skill",
+          "tc-store:tc-probe-skill"
+        ],
+        "late": true,
+        "gone": true,
+        "edited": true,
+        "original": false,
+        "listingHits": [
+          "editedDesc",
+          "lateDesc"
+        ]
+      }
+    ],
+    "firstShownAt": {
+      "add": "reloadSkills",
+      "edit": "reloadSkills",
+      "remove": "reloadSkills"
+    },
+    "checks": {
+      "liveAdd": true,
+      "liveEdit": true,
+      "liveRemove": true,
+      "nextSpawnAll": true
+    },
+    "ms": 3113
+  },
+  "status": "ok",
+  "verdict": "liveAdd yes, liveEdit yes, liveRemove yes, nextSpawnAll yes; first at {\"add\":\"reloadSkills\",\"edit\":\"reloadSkills\",\"remove\":\"reloadSkills\"}"
+}

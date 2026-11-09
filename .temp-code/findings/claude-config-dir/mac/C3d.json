@@ -1,0 +1,68 @@
+{
+  "id": "C3d",
+  "harness": "claude",
+  "host": "mac",
+  "title": "one warm process, another plugin set",
+  "at": "2026-11-09T00:24:15.914Z",
+  "cli": {
+    "path": "/Users/landon/.local/bin/claude",
+    "version": "2.1.312 (Claude Code)"
+  },
+  "env": {
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C3d/home",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CONFIG_DIR": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C3d/config",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:51418",
+    "ANTHROPIC_AUTH_TOKEN": "tc-placeholder"
+  },
+  "unset": [],
+  "argv": null,
+  "commands": [],
+  "observed": {
+    "poolLog": [
+      "[warm] probe: w634b996ac5f3 warm in /var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C3d/work (1 warm)",
+      "[warm] probe: adopted w634b996ac5f3 (3002 ms old)",
+      "[warm] probe: w4d8c030fd82a warm in /var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C3d/work (1 warm)",
+      "[warm] probe: closed w4d8c030fd82a"
+    ],
+    "adopted": true,
+    "keysEqual": true,
+    "plugins_applied": true,
+    "commands": [
+      "tc-store-two:tc-probe-cmd",
+      "tc-store-two:tc-gone-skill",
+      "tc-store-two:tc-probe-skill"
+    ],
+    "plugins": [
+      {
+        "name": "tc-store-two",
+        "path": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C3d/p2"
+      },
+      {
+        "name": "cc-plugin-agents-md",
+        "path": "builtin"
+      },
+      {
+        "name": "cc-plugin-plugin-authoring",
+        "path": "builtin"
+      }
+    ],
+    "hits": {
+      "system": [],
+      "fresh": [
+        "p2Body",
+        "p2Desc"
+      ]
+    },
+    "checks": {
+      "adopted": true,
+      "p2Applied": true,
+      "servesP2": true,
+      "servesP1": false
+    },
+    "ms": 3932
+  },
+  "status": "partial",
+  "verdict": "adopted yes, p2Applied yes, servesP2 yes, servesP1 no"
+}

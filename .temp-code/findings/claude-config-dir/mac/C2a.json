@@ -1,0 +1,119 @@
+{
+  "id": "C2a",
+  "harness": "claude",
+  "host": "mac",
+  "title": "owned root, no credential, real HOME",
+  "at": "2026-11-09T00:42:05.011Z",
+  "cli": {
+    "path": "/Users/landon/.local/bin/claude",
+    "version": "2.1.312 (Claude Code)"
+  },
+  "env": {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CONFIG_DIR": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/C2a/config",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:53438"
+  },
+  "unset": [
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_OAUTH_REFRESH_TOKEN",
+    "CLAUDE_CODE_OAUTH_TOKEN"
+  ],
+  "argv": null,
+  "commands": [],
+  "observed": {
+    "guard": {
+      "result": "pass",
+      "items": 1,
+      "reason": "no item holds a refresh grant"
+    },
+    "account": {
+      "email": null,
+      "organization": null,
+      "subscriptionType": null,
+      "tokenSource": "none",
+      "apiKeySource": null
+    },
+    "apiKeySource": "none",
+    "turn": {
+      "result": {
+        "subtype": "success",
+        "is_error": true,
+        "text": "Not logged in · Please run /login",
+        "num_turns": 1
+      },
+      "requests": 0,
+      "main": 0,
+      "paths": [],
+      "credentialsSent": [],
+      "betas": [],
+      "answered": [],
+      "probeTools": [],
+      "system": [],
+      "tools": [],
+      "messages": [],
+      "last": [],
+      "fresh": []
+    },
+    "ownedRoot": [
+      "f .claude.json",
+      "d .claude.json.lock",
+      "d backups",
+      "f backups/.claude.json.backup.1794184925208",
+      "d plugins",
+      "d plugins/store",
+      "f plugins/store/cc-plugin-agents-md_builtin-b049b47b3618.json",
+      "d projects",
+      "d projects/-private-var-folders-5x-1mkrv6rj06j5m57nmzgm97n80000gn-T-tc-config-spike-2026-11-09T00-41-59-408Z-mac-C2a-work",
+      "f projects/-private-var-folders-5x-1mkrv6rj06j5m57nmzgm97n80000gn-T-tc-config-spike-2026-11-09T00-41-59-408Z-mac-C2a-work/a9f683d7-c8d8-42da-a89e-0f953e83893e.jsonl",
+      "d sessions",
+      "f sessions/3156.af3e62b9db093ce53a3734a331df5db3175407728af6fe9e83b03d1a368da769.key",
+      "f sessions/3156.json"
+    ],
+    "credentialsFileInRoot": false,
+    "credentialItems": {
+      "before": [
+        "Claude Code-credentials"
+      ],
+      "after": [
+        "Claude Code-credentials"
+      ]
+    },
+    "personalDirs": {
+      ".claude": {
+        "added": [
+          "backups/.claude.json.backup.1794184925173"
+        ],
+        "removed": [
+          "backups/.claude.json.backup.1794183509014"
+        ],
+        "changed": []
+      },
+      ".claude.json": {
+        "added": [],
+        "removed": [],
+        "changed": [
+          "."
+        ]
+      },
+      ".codex": {
+        "added": [],
+        "removed": [],
+        "changed": []
+      },
+      ".config/muse": {
+        "added": [],
+        "removed": [],
+        "changed": []
+      }
+    },
+    "checks": {
+      "turnAttempted": false,
+      "realCredentialResolved": null
+    },
+    "ms": 707
+  },
+  "status": "fail",
+  "verdict": "turnAttempted no, realCredentialResolved -; apiKeySource none"
+}

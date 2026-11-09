@@ -1,0 +1,74 @@
+{
+  "id": "M0b",
+  "harness": "muse",
+  "host": "mac",
+  "title": "record Meta's model list (Mac)",
+  "at": "2026-11-09T00:43:40.535Z",
+  "cli": {
+    "path": "/Users/landon/.local/bin/muse",
+    "version": null
+  },
+  "env": {
+    "XDG_DATA_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/M0b/data",
+    "XDG_STATE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/M0b/state",
+    "XDG_CACHE_HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/M0b/cache",
+    "MUSE_CONTRIBUTOR_MODE": "0"
+  },
+  "unset": [],
+  "argv": [
+    "serve",
+    "-c",
+    "endpoint_transport.base_url=\"http://127.0.0.1:53878\""
+  ],
+  "commands": [],
+  "observed": {
+    "attempts": [
+      {
+        "backend": "default",
+        "models": 4,
+        "recorded": true
+      }
+    ],
+    "tried": [
+      {
+        "origin": "https://api.meta.ai",
+        "status": 200
+      }
+    ],
+    "refused": [],
+    "models": 4,
+    "answeredBy": "https://api.meta.ai",
+    "personalDirs": {
+      ".claude": {
+        "added": [],
+        "removed": [],
+        "changed": []
+      },
+      ".claude.json": {
+        "added": [],
+        "removed": [],
+        "changed": []
+      },
+      ".codex": {
+        "added": [],
+        "removed": [],
+        "changed": [
+          "logs_2.sqlite-wal"
+        ]
+      },
+      ".config/muse": {
+        "added": [],
+        "removed": [],
+        "changed": []
+      }
+    },
+    "fixture": "/private/tmp/tc-config-spike/tree/scripts/lib/fixtures/muse-models.json",
+    "checks": {
+      "recorded": true,
+      "modelListServed": true
+    },
+    "ms": 2349
+  },
+  "status": "ok",
+  "verdict": "recorded yes, modelListServed yes"
+}

@@ -1,0 +1,698 @@
+{
+  "id": "C1g",
+  "harness": "claude",
+  "host": "mac",
+  "title": "C1a and C1b on the SDK's bundled CLI",
+  "at": "2026-11-09T00:42:01.589Z",
+  "cli": {
+    "path": "/private/tmp/tc-config-spike/tree/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude",
+    "version": "2.1.280"
+  },
+  "env": {
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/C1g-initialize/home",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CONFIG_DIR": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/C1g-initialize/config",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:53438",
+    "ANTHROPIC_AUTH_TOKEN": "tc-placeholder"
+  },
+  "unset": [],
+  "argv": null,
+  "commands": [],
+  "observed": {
+    "argv": {
+      "argv": [
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--model",
+        "claude-haiku-5-5",
+        "--permission-mode",
+        "bypassPermissions",
+        "--allow-dangerously-skip-permissions",
+        "--plugin-dir",
+        "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/C1g-argv/plugin"
+      ],
+      "initialize": {
+        "commands": [
+          "tc-store:tc-probe-cmd",
+          "tc-store:tc-gone-skill",
+          "tc-store:tc-probe-skill"
+        ],
+        "agents": [
+          "tc-store:tc-probe-agent"
+        ],
+        "plugins_applied": null,
+        "argvHasPluginPath": true,
+        "awaitInitialize": false
+      },
+      "initMessage": {
+        "claude_code_version": "2.1.280",
+        "apiKeySource": "none",
+        "model": "claude-haiku-5-5",
+        "betas": null,
+        "fast_mode_state": "off",
+        "skills": [
+          "tc-store:tc-gone-skill",
+          "tc-store:tc-probe-skill"
+        ],
+        "skillsTotal": 17,
+        "slash_commands": [
+          "tc-store:tc-probe-cmd",
+          "tc-store:tc-gone-skill",
+          "tc-store:tc-probe-skill"
+        ],
+        "agents": [
+          "tc-store:tc-probe-agent"
+        ],
+        "plugins": [
+          {
+            "name": "tc-store",
+            "path": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/C1g-argv/plugin"
+          }
+        ],
+        "mcp_servers": [
+          {
+            "name": "plugin:tc-store:tc-probe",
+            "status": "connected",
+            "source": "plugin"
+          }
+        ],
+        "tools": [
+          "Task",
+          "Skill",
+          "mcp__plugin_tc-store_tc-probe__tc_probe_echo"
+        ]
+      },
+      "mcpStatus": [
+        {
+          "name": "plugin:tc-store:tc-probe",
+          "status": "connected"
+        }
+      ],
+      "mcpDeferred": false,
+      "turns": {
+        "slashSkill": {
+          "requests": 1,
+          "main": 1,
+          "paths": [
+            "POST /v1/messages"
+          ],
+          "credentialsSent": [
+            "bearer:placeholder"
+          ],
+          "betas": [
+            "claude-code-20250219",
+            "context-management-2025-06-27",
+            "effort-2025-11-24",
+            "interleaved-thinking-2025-05-14",
+            "mid-conversation-system-2026-04-07",
+            "mid-conversation-tool-changes-2026-07-01",
+            "prompt-caching-scope-2026-01-05",
+            "thinking-token-count-2026-05-13"
+          ],
+          "answered": [
+            "text"
+          ],
+          "probeTools": [
+            "Agent",
+            "Skill",
+            "mcp__plugin_tc-store_tc-probe__tc_probe_echo"
+          ],
+          "system": [],
+          "tools": [
+            "name:tc_probe_echo"
+          ],
+          "messages": [
+            "agent",
+            "cmd",
+            "goneDesc",
+            "name:tc-gone-skill",
+            "name:tc-probe-agent",
+            "name:tc-probe-cmd",
+            "name:tc-probe-skill",
+            "skillBody",
+            "skillDesc"
+          ],
+          "last": [
+            "agent",
+            "cmd",
+            "goneDesc",
+            "name:tc-gone-skill",
+            "name:tc-probe-agent",
+            "name:tc-probe-cmd",
+            "name:tc-probe-skill",
+            "skillDesc"
+          ],
+          "fresh": [
+            "agent",
+            "cmd",
+            "goneDesc",
+            "name:tc-gone-skill",
+            "name:tc-probe-agent",
+            "name:tc-probe-cmd",
+            "name:tc-probe-skill",
+            "skillBody",
+            "skillDesc"
+          ]
+        },
+        "skillTool": {
+          "requests": 2,
+          "main": 2,
+          "paths": [
+            "POST /v1/messages"
+          ],
+          "credentialsSent": [
+            "bearer:placeholder"
+          ],
+          "betas": [
+            "claude-code-20250219",
+            "context-management-2025-06-27",
+            "effort-2025-11-24",
+            "interleaved-thinking-2025-05-14",
+            "mid-conversation-system-2026-04-07",
+            "mid-conversation-tool-changes-2026-07-01",
+            "prompt-caching-scope-2026-01-05",
+            "thinking-token-count-2026-05-13"
+          ],
+          "answered": [
+            "tool:Skill",
+            "text"
+          ],
+          "probeTools": [
+            "Agent",
+            "Skill",
+            "mcp__plugin_tc-store_tc-probe__tc_probe_echo"
+          ],
+          "system": [],
+          "tools": [
+            "name:tc_probe_echo"
+          ],
+          "messages": [
+            "agent",
+            "cmd",
+            "goneBody",
+            "goneDesc",
+            "name:tc-gone-skill",
+            "name:tc-probe-agent",
+            "name:tc-probe-cmd",
+            "name:tc-probe-skill",
+            "skillBody",
+            "skillDesc"
+          ],
+          "last": [],
+          "fresh": [
+            "goneBody",
+            "name:tc-gone-skill"
+          ]
+        },
+        "slashCommand": {
+          "requests": 1,
+          "main": 1,
+          "paths": [
+            "POST /v1/messages"
+          ],
+          "credentialsSent": [
+            "bearer:placeholder"
+          ],
+          "betas": [
+            "claude-code-20250219",
+            "context-management-2025-06-27",
+            "effort-2025-11-24",
+            "interleaved-thinking-2025-05-14",
+            "mid-conversation-system-2026-04-07",
+            "mid-conversation-tool-changes-2026-07-01",
+            "prompt-caching-scope-2026-01-05",
+            "thinking-token-count-2026-05-13"
+          ],
+          "answered": [
+            "text"
+          ],
+          "probeTools": [
+            "Agent",
+            "Skill",
+            "mcp__plugin_tc-store_tc-probe__tc_probe_echo"
+          ],
+          "system": [],
+          "tools": [
+            "name:tc_probe_echo"
+          ],
+          "messages": [
+            "agent",
+            "cmd",
+            "goneBody",
+            "goneDesc",
+            "name:tc-gone-skill",
+            "name:tc-probe-agent",
+            "name:tc-probe-cmd",
+            "name:tc-probe-skill",
+            "skillBody",
+            "skillDesc"
+          ],
+          "last": [
+            "cmd",
+            "name:tc-probe-cmd"
+          ],
+          "fresh": [
+            "cmd",
+            "name:tc-probe-cmd"
+          ]
+        },
+        "mcpTool": {
+          "requests": 2,
+          "main": 2,
+          "paths": [
+            "POST /v1/messages"
+          ],
+          "credentialsSent": [
+            "bearer:placeholder"
+          ],
+          "betas": [
+            "claude-code-20250219",
+            "context-management-2025-06-27",
+            "effort-2025-11-24",
+            "interleaved-thinking-2025-05-14",
+            "mid-conversation-system-2026-04-07",
+            "mid-conversation-tool-changes-2026-07-01",
+            "prompt-caching-scope-2026-01-05",
+            "thinking-token-count-2026-05-13"
+          ],
+          "answered": [
+            "tool:mcp__plugin_tc-store_tc-probe__tc_probe_echo",
+            "text"
+          ],
+          "probeTools": [
+            "Agent",
+            "Skill",
+            "mcp__plugin_tc-store_tc-probe__tc_probe_echo"
+          ],
+          "system": [],
+          "tools": [
+            "name:tc_probe_echo"
+          ],
+          "messages": [
+            "agent",
+            "cmd",
+            "goneBody",
+            "goneDesc",
+            "mcp",
+            "name:tc-gone-skill",
+            "name:tc-probe-agent",
+            "name:tc-probe-cmd",
+            "name:tc-probe-skill",
+            "name:tc_probe_echo",
+            "skillBody",
+            "skillDesc"
+          ],
+          "last": [],
+          "fresh": [
+            "mcp",
+            "name:tc_probe_echo"
+          ]
+        }
+      },
+      "results": [
+        {
+          "subtype": "success",
+          "is_error": false,
+          "text": "ok",
+          "num_turns": 1
+        },
+        {
+          "subtype": "success",
+          "is_error": false,
+          "text": "ok",
+          "num_turns": 3
+        },
+        {
+          "subtype": "success",
+          "is_error": false,
+          "text": "ok",
+          "num_turns": 1
+        },
+        {
+          "subtype": "success",
+          "is_error": false,
+          "text": "ok",
+          "num_turns": 2
+        }
+      ],
+      "hookFired": true,
+      "skillNames": {
+        "slash": "tc-store:tc-probe-skill",
+        "tool": "tc-store:tc-gone-skill"
+      },
+      "stderr": [
+        "[claude-code:unrecognized_model] {\"model\":\"claude-haiku-5-5\",\"query_source\":\"sdk\"}"
+      ]
+    },
+    "initialize": {
+      "argv": [
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--model",
+        "claude-haiku-5-5",
+        "--permission-mode",
+        "bypassPermissions",
+        "--allow-dangerously-skip-permissions",
+        "--await-initialize"
+      ],
+      "initialize": {
+        "commands": [
+          "tc-store:tc-probe-cmd",
+          "tc-store:tc-gone-skill",
+          "tc-store:tc-probe-skill"
+        ],
+        "agents": [
+          "tc-store:tc-probe-agent"
+        ],
+        "plugins_applied": true,
+        "argvHasPluginPath": false,
+        "awaitInitialize": true
+      },
+      "initMessage": {
+        "claude_code_version": "2.1.280",
+        "apiKeySource": "none",
+        "model": "claude-haiku-5-5",
+        "betas": null,
+        "fast_mode_state": "off",
+        "skills": [
+          "tc-store:tc-gone-skill",
+          "tc-store:tc-probe-skill"
+        ],
+        "skillsTotal": 17,
+        "slash_commands": [
+          "tc-store:tc-probe-cmd",
+          "tc-store:tc-gone-skill",
+          "tc-store:tc-probe-skill"
+        ],
+        "agents": [
+          "tc-store:tc-probe-agent"
+        ],
+        "plugins": [
+          {
+            "name": "tc-store",
+            "path": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-41-59-408Z-mac/C1g-initialize/plugin"
+          }
+        ],
+        "mcp_servers": [
+          {
+            "name": "plugin:tc-store:tc-probe",
+            "status": "connected",
+            "source": "plugin"
+          }
+        ],
+        "tools": [
+          "Task",
+          "Skill",
+          "mcp__plugin_tc-store_tc-probe__tc_probe_echo"
+        ]
+      },
+      "mcpStatus": [
+        {
+          "name": "plugin:tc-store:tc-probe",
+          "status": "connected"
+        }
+      ],
+      "mcpDeferred": false,
+      "turns": {
+        "slashSkill": {
+          "requests": 1,
+          "main": 1,
+          "paths": [
+            "POST /v1/messages"
+          ],
+          "credentialsSent": [
+            "bearer:placeholder"
+          ],
+          "betas": [
+            "claude-code-20250219",
+            "context-management-2025-06-27",
+            "effort-2025-11-24",
+            "interleaved-thinking-2025-05-14",
+            "mid-conversation-system-2026-04-07",
+            "mid-conversation-tool-changes-2026-07-01",
+            "prompt-caching-scope-2026-01-05",
+            "thinking-token-count-2026-05-13"
+          ],
+          "answered": [
+            "text"
+          ],
+          "probeTools": [
+            "Agent",
+            "Skill",
+            "mcp__plugin_tc-store_tc-probe__tc_probe_echo"
+          ],
+          "system": [],
+          "tools": [
+            "name:tc_probe_echo"
+          ],
+          "messages": [
+            "agent",
+            "cmd",
+            "goneDesc",
+            "name:tc-gone-skill",
+            "name:tc-probe-agent",
+            "name:tc-probe-cmd",
+            "name:tc-probe-skill",
+            "skillBody",
+            "skillDesc"
+          ],
+          "last": [
+            "agent",
+            "cmd",
+            "goneDesc",
+            "name:tc-gone-skill",
+            "name:tc-probe-agent",
+            "name:tc-probe-cmd",
+            "name:tc-probe-skill",
+            "skillDesc"
+          ],
+          "fresh": [
+            "agent",
+            "cmd",
+            "goneDesc",
+            "name:tc-gone-skill",
+            "name:tc-probe-agent",
+            "name:tc-probe-cmd",
+            "name:tc-probe-skill",
+            "skillBody",
+            "skillDesc"
+          ]
+        },
+        "skillTool": {
+          "requests": 2,
+          "main": 2,
+          "paths": [
+            "POST /v1/messages"
+          ],
+          "credentialsSent": [
+            "bearer:placeholder"
+          ],
+          "betas": [
+            "claude-code-20250219",
+            "context-management-2025-06-27",
+            "effort-2025-11-24",
+            "interleaved-thinking-2025-05-14",
+            "mid-conversation-system-2026-04-07",
+            "mid-conversation-tool-changes-2026-07-01",
+            "prompt-caching-scope-2026-01-05",
+            "thinking-token-count-2026-05-13"
+          ],
+          "answered": [
+            "tool:Skill",
+            "text"
+          ],
+          "probeTools": [
+            "Agent",
+            "Skill",
+            "mcp__plugin_tc-store_tc-probe__tc_probe_echo"
+          ],
+          "system": [],
+          "tools": [
+            "name:tc_probe_echo"
+          ],
+          "messages": [
+            "agent",
+            "cmd",
+            "goneBody",
+            "goneDesc",
+            "name:tc-gone-skill",
+            "name:tc-probe-agent",
+            "name:tc-probe-cmd",
+            "name:tc-probe-skill",
+            "skillBody",
+            "skillDesc"
+          ],
+          "last": [],
+          "fresh": [
+            "goneBody",
+            "name:tc-gone-skill"
+          ]
+        },
+        "slashCommand": {
+          "requests": 1,
+          "main": 1,
+          "paths": [
+            "POST /v1/messages"
+          ],
+          "credentialsSent": [
+            "bearer:placeholder"
+          ],
+          "betas": [
+            "claude-code-20250219",
+            "context-management-2025-06-27",
+            "effort-2025-11-24",
+            "interleaved-thinking-2025-05-14",
+            "mid-conversation-system-2026-04-07",
+            "mid-conversation-tool-changes-2026-07-01",
+            "prompt-caching-scope-2026-01-05",
+            "thinking-token-count-2026-05-13"
+          ],
+          "answered": [
+            "text"
+          ],
+          "probeTools": [
+            "Agent",
+            "Skill",
+            "mcp__plugin_tc-store_tc-probe__tc_probe_echo"
+          ],
+          "system": [],
+          "tools": [
+            "name:tc_probe_echo"
+          ],
+          "messages": [
+            "agent",
+            "cmd",
+            "goneBody",
+            "goneDesc",
+            "name:tc-gone-skill",
+            "name:tc-probe-agent",
+            "name:tc-probe-cmd",
+            "name:tc-probe-skill",
+            "skillBody",
+            "skillDesc"
+          ],
+          "last": [
+            "cmd",
+            "name:tc-probe-cmd"
+          ],
+          "fresh": [
+            "cmd",
+            "name:tc-probe-cmd"
+          ]
+        },
+        "mcpTool": {
+          "requests": 2,
+          "main": 2,
+          "paths": [
+            "POST /v1/messages"
+          ],
+          "credentialsSent": [
+            "bearer:placeholder"
+          ],
+          "betas": [
+            "claude-code-20250219",
+            "context-management-2025-06-27",
+            "effort-2025-11-24",
+            "interleaved-thinking-2025-05-14",
+            "mid-conversation-system-2026-04-07",
+            "mid-conversation-tool-changes-2026-07-01",
+            "prompt-caching-scope-2026-01-05",
+            "thinking-token-count-2026-05-13"
+          ],
+          "answered": [
+            "tool:mcp__plugin_tc-store_tc-probe__tc_probe_echo",
+            "text"
+          ],
+          "probeTools": [
+            "Agent",
+            "Skill",
+            "mcp__plugin_tc-store_tc-probe__tc_probe_echo"
+          ],
+          "system": [],
+          "tools": [
+            "name:tc_probe_echo"
+          ],
+          "messages": [
+            "agent",
+            "cmd",
+            "goneBody",
+            "goneDesc",
+            "mcp",
+            "name:tc-gone-skill",
+            "name:tc-probe-agent",
+            "name:tc-probe-cmd",
+            "name:tc-probe-skill",
+            "name:tc_probe_echo",
+            "skillBody",
+            "skillDesc"
+          ],
+          "last": [],
+          "fresh": [
+            "mcp",
+            "name:tc_probe_echo"
+          ]
+        }
+      },
+      "results": [
+        {
+          "subtype": "success",
+          "is_error": false,
+          "text": "ok",
+          "num_turns": 1
+        },
+        {
+          "subtype": "success",
+          "is_error": false,
+          "text": "ok",
+          "num_turns": 3
+        },
+        {
+          "subtype": "success",
+          "is_error": false,
+          "text": "ok",
+          "num_turns": 1
+        },
+        {
+          "subtype": "success",
+          "is_error": false,
+          "text": "ok",
+          "num_turns": 2
+        }
+      ],
+      "hookFired": true,
+      "skillNames": {
+        "slash": "tc-store:tc-probe-skill",
+        "tool": "tc-store:tc-gone-skill"
+      },
+      "stderr": [
+        "[claude-code:unrecognized_model] {\"model\":\"claude-haiku-5-5\",\"query_source\":\"sdk\"}"
+      ]
+    },
+    "checks": {
+      "argv.skillListed": true,
+      "argv.skillBySlash": true,
+      "argv.skillByTool": true,
+      "argv.command": true,
+      "argv.agent": true,
+      "argv.mcp": true,
+      "argv.hook": true,
+      "initialize.skillListed": true,
+      "initialize.skillBySlash": true,
+      "initialize.skillByTool": true,
+      "initialize.command": true,
+      "initialize.agent": true,
+      "initialize.mcp": true,
+      "initialize.hook": true
+    },
+    "ms": 3421
+  },
+  "status": "ok",
+  "verdict": "argv.skillListed yes, argv.skillBySlash yes, argv.skillByTool yes, argv.command yes, argv.agent yes, argv.mcp yes, argv.hook yes, initialize.skillListed yes, initialize.skillBySlash yes, initialize.skillByTool yes, initialize.command yes, initialize.agent yes, initialize.mcp yes, initialize.hook yes; bundled 2.1.280"
+}

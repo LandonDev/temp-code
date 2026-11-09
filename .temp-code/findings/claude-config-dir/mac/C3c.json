@@ -1,0 +1,77 @@
+{
+  "id": "C3c",
+  "harness": "claude",
+  "host": "mac",
+  "title": "freshness: a warm process spawned before the change",
+  "at": "2026-11-09T00:24:06.069Z",
+  "cli": {
+    "path": "/Users/landon/.local/bin/claude",
+    "version": "2.1.312 (Claude Code)"
+  },
+  "env": {
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C3c-initialize/home",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CONFIG_DIR": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C3c-initialize/config",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:51418",
+    "ANTHROPIC_AUTH_TOKEN": "tc-placeholder"
+  },
+  "unset": [],
+  "argv": null,
+  "commands": [],
+  "observed": {
+    "poolLog": [
+      "[warm] probe: wd2624e19fb38 warm in /var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C3c-initialize/work (1 warm)",
+      "[warm] probe: adopted wd2624e19fb38 (4008 ms old)",
+      "[warm] probe: wc2df0f54a750 warm in /var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C3c-initialize/work (1 warm)",
+      "[warm] probe: closed wc2df0f54a750"
+    ],
+    "argv": {
+      "adopted": true,
+      "keysEqual": true,
+      "latencyMs": 8,
+      "step": "adopted after the change",
+      "commands": [
+        "tc-store:tc-probe-cmd",
+        "tc-store:tc-gone-skill",
+        "tc-store:tc-probe-skill"
+      ],
+      "late": false,
+      "gone": false,
+      "edited": false,
+      "original": true,
+      "listingHits": [
+        "goneDesc",
+        "skillDesc"
+      ]
+    },
+    "initialize": {
+      "adopted": true,
+      "keysEqual": true,
+      "latencyMs": 73,
+      "step": "adopted after the change",
+      "commands": [
+        "tc-store:tc-probe-cmd",
+        "tc-store:tc-late-skill",
+        "tc-store:tc-probe-skill"
+      ],
+      "late": true,
+      "gone": true,
+      "edited": true,
+      "original": false,
+      "listingHits": [
+        "editedDesc",
+        "lateDesc"
+      ]
+    },
+    "checks": {
+      "argv.adopted": true,
+      "argv.servesChange": false,
+      "initialize.adopted": true,
+      "initialize.servesChange": true
+    },
+    "ms": 9743
+  },
+  "status": "partial",
+  "verdict": "argv.adopted yes, argv.servesChange no, initialize.adopted yes, initialize.servesChange yes"
+}

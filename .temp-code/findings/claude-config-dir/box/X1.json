@@ -1,0 +1,152 @@
+{
+  "id": "X1",
+  "harness": "codex",
+  "host": "box",
+  "title": "skill roots outside CODEX_HOME",
+  "at": "2026-11-09T00:40:55.107Z",
+  "cli": {
+    "path": "/srv/agents/home/.npm-global/bin/codex",
+    "version": null
+  },
+  "env": {
+    "HOME": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X1/home",
+    "CODEX_HOME": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/X1/codex-home",
+    "CODEX_CA_CERTIFICATE": "/tmp/tc-config-spike/2026-11-09T00-40-51-767Z-box/tls/ca.pem"
+  },
+  "unset": [],
+  "argv": [
+    "app-server",
+    "-c",
+    "chatgpt_base_url=\"https://127.0.0.1:44133/backend-api/\""
+  ],
+  "commands": [],
+  "observed": {
+    "extraRootsSet": "ok",
+    "skillsList": [
+      "tc-xroot-skill",
+      "tc-xroot2-skill"
+    ],
+    "configSkillFields": [
+      "skills"
+    ],
+    "listingTurn": {
+      "requests": 9,
+      "paths": [
+        "POST /backend-api/ps/mcp",
+        "POST /backend-api/codex/analytics-events/events",
+        "GET /backend-api/ps/plugins/suggested/codex",
+        "GET /backend-api/wham/settings/user",
+        "POST /backend-api/codex/responses"
+      ],
+      "bearer": [
+        "none",
+        "placeholder"
+      ],
+      "accountId": [
+        "none",
+        "placeholder"
+      ],
+      "answered": [
+        "text"
+      ],
+      "bodies": [
+        {
+          "encoding": "zstd",
+          "bytes": 16246,
+          "parsed": true,
+          "fields": [
+            "client_metadata",
+            "include",
+            "input",
+            "model",
+            "parallel_tool_calls",
+            "prompt_cache_key",
+            "reasoning",
+            "store",
+            "stream",
+            "text",
+            "tool_choice",
+            "tools"
+          ],
+          "tools": 13,
+          "main": true
+        }
+      ],
+      "all": [
+        "flatDesc",
+        "nestedDesc"
+      ],
+      "last": []
+    },
+    "skillPartTurn": {
+      "requests": 4,
+      "paths": [
+        "GET /backend-api/ps/plugins/suggested/codex",
+        "POST /backend-api/codex/analytics-events/events",
+        "POST /backend-api/codex/responses"
+      ],
+      "bearer": [
+        "placeholder"
+      ],
+      "accountId": [
+        "placeholder"
+      ],
+      "answered": [
+        "text"
+      ],
+      "bodies": [
+        {
+          "encoding": "zstd",
+          "bytes": 16559,
+          "parsed": true,
+          "fields": [
+            "client_metadata",
+            "include",
+            "input",
+            "model",
+            "parallel_tool_calls",
+            "prompt_cache_key",
+            "reasoning",
+            "store",
+            "stream",
+            "text",
+            "tool_choice",
+            "tools"
+          ],
+          "tools": 13,
+          "main": true
+        }
+      ],
+      "all": [
+        "flatBody",
+        "flatDesc",
+        "flatPath",
+        "nestedDesc"
+      ],
+      "last": [
+        "flatBody",
+        "flatDesc",
+        "flatPath"
+      ]
+    },
+    "completed": [
+      true,
+      true
+    ],
+    "errors": [
+      null,
+      null
+    ],
+    "checks": {
+      "extraRootsAccepted": true,
+      "flatListed": true,
+      "nestedListed": true,
+      "flatInPrompt": true,
+      "bodyBySkillPart": true,
+      "pathBySkillPart": true
+    },
+    "ms": 620
+  },
+  "status": "ok",
+  "verdict": "extraRootsAccepted yes, flatListed yes, nestedListed yes, flatInPrompt yes, bodyBySkillPart yes, pathBySkillPart yes"
+}

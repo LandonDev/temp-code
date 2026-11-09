@@ -1,0 +1,131 @@
+{
+  "id": "C1e",
+  "harness": "claude",
+  "host": "mac",
+  "title": "--add-dir with .claude/skills",
+  "at": "2026-11-09T00:23:33.209Z",
+  "cli": {
+    "path": "/Users/landon/.local/bin/claude",
+    "version": "2.1.312 (Claude Code)"
+  },
+  "env": {
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C1e/home",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CONFIG_DIR": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C1e/config",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:51418",
+    "ANTHROPIC_AUTH_TOKEN": "tc-placeholder"
+  },
+  "unset": [],
+  "argv": [
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--input-format",
+    "stream-json",
+    "--model",
+    "claude-haiku-5-5",
+    "--permission-mode",
+    "bypassPermissions",
+    "--allow-dangerously-skip-permissions",
+    "--add-dir",
+    "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C1e/added"
+  ],
+  "commands": [],
+  "observed": {
+    "commands": [
+      "tc-adddir-skill"
+    ],
+    "turn": {
+      "requests": 1,
+      "main": 1,
+      "paths": [
+        "POST /v1/messages"
+      ],
+      "credentialsSent": [
+        "bearer:placeholder"
+      ],
+      "betas": [
+        "advanced-tool-use-2025-11-20",
+        "claude-code-20250219",
+        "context-management-2025-06-27",
+        "effort-2025-11-24",
+        "interleaved-thinking-2025-05-14",
+        "mid-conversation-tool-changes-2026-07-01",
+        "per-turn-control-2026-07-01",
+        "thinking-display-updates-2026-08-18",
+        "thinking-token-count-2026-05-13"
+      ],
+      "answered": [
+        "text"
+      ],
+      "probeTools": [
+        "Agent",
+        "Skill"
+      ],
+      "system": [],
+      "tools": [],
+      "messages": [
+        "name:tc-adddir-skill",
+        "skillBody",
+        "skillDesc"
+      ],
+      "last": [
+        "name:tc-adddir-skill",
+        "skillDesc"
+      ],
+      "fresh": [
+        "name:tc-adddir-skill",
+        "skillBody",
+        "skillDesc"
+      ]
+    },
+    "result": {
+      "subtype": "success",
+      "is_error": false,
+      "text": "ok",
+      "num_turns": 1
+    },
+    "initMessage": {
+      "claude_code_version": "2.1.312",
+      "apiKeySource": "none",
+      "model": "claude-haiku-5-5",
+      "betas": null,
+      "fast_mode_state": "off",
+      "skills": [
+        "tc-adddir-skill"
+      ],
+      "skillsTotal": 17,
+      "slash_commands": [
+        "tc-adddir-skill"
+      ],
+      "agents": [],
+      "plugins": [
+        {
+          "name": "cc-plugin-agents-md",
+          "path": "builtin"
+        },
+        {
+          "name": "cc-plugin-plugin-authoring",
+          "path": "builtin"
+        }
+      ],
+      "mcp_servers": [],
+      "tools": [
+        "Task",
+        "Skill"
+      ]
+    },
+    "argvAddDir": [
+      "--add-dir",
+      "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C1e/added"
+    ],
+    "checks": {
+      "listed": true,
+      "expanded": true
+    },
+    "ms": 483
+  },
+  "status": "ok",
+  "verdict": "listed yes, expanded yes; write access under --add-dir is not observable under bypassPermissions; the SDK documents it as a working-directory root"
+}

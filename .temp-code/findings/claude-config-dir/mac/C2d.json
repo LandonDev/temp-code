@@ -1,0 +1,161 @@
+{
+  "id": "C2d",
+  "harness": "claude",
+  "host": "mac",
+  "title": "owned root, .credentials.json",
+  "at": "2026-11-09T00:23:45.014Z",
+  "cli": {
+    "path": "/Users/landon/.local/bin/claude",
+    "version": "2.1.312 (Claude Code)"
+  },
+  "env": {
+    "HOME": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C2d-real-claudehaiku55/home",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CONFIG_DIR": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-config-spike/2026-11-09T00-23-30-361Z-mac/C2d-real-claudehaiku55/config",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:51377/claude/~t=tc-spike-C2d-2026-11-09T00-23-30-361Z-mac;a=<account>;m=claude-haiku-5-5"
+  },
+  "unset": [
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_OAUTH_REFRESH_TOKEN",
+    "CLAUDE_CODE_OAUTH_TOKEN"
+  ],
+  "argv": [
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--input-format",
+    "stream-json",
+    "--model",
+    "claude-haiku-5-5",
+    "--permission-mode",
+    "bypassPermissions",
+    "--allow-dangerously-skip-permissions"
+  ],
+  "commands": [],
+  "observed": {
+    "summary": "a .credentials.json in the owned root",
+    "fake": {
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "text": "ok",
+        "num_turns": 1
+      },
+      "requests": 1,
+      "main": 1,
+      "paths": [
+        "POST /v1/messages"
+      ],
+      "credentialsSent": [
+        "bearer:placeholder"
+      ],
+      "betas": [
+        "advanced-tool-use-2025-11-20",
+        "claude-code-20250219",
+        "context-management-2025-06-27",
+        "effort-2025-11-24",
+        "extended-cache-ttl-2025-04-11",
+        "interleaved-thinking-2025-05-14",
+        "mid-conversation-tool-changes-2026-07-01",
+        "oauth-2025-04-20",
+        "per-turn-control-2026-07-01",
+        "thinking-display-updates-2026-08-18",
+        "thinking-token-count-2026-05-13"
+      ],
+      "answered": [
+        "text"
+      ],
+      "probeTools": [
+        "Agent",
+        "Skill"
+      ],
+      "system": [],
+      "tools": [],
+      "messages": [],
+      "last": [],
+      "fresh": [],
+      "apiKeySource": "none",
+      "account": {
+        "email": null,
+        "organization": null,
+        "subscriptionType": "Claude Max",
+        "tokenSource": null,
+        "apiKeySource": null
+      },
+      "oauthBeta": true,
+      "fastModeOffered": true,
+      "fast_mode_state": "off",
+      "leaks": [],
+      "ownedRoot": [
+        "f .claude.json",
+        "d .claude.json.lock",
+        "f .claude.json.tmp.54330.c76d1a43c2d5",
+        "f .credentials.json",
+        "d backups",
+        "f backups/.claude.json.backup.1794183825089",
+        "d plugins",
+        "d plugins/store",
+        "d projects",
+        "d projects/-private-var-folders-5x-1mkrv6rj06j5m57nmzgm97n80000gn-T-tc-config-spike-2026-11-09T00-23-30-361Z-mac-C2d-work",
+        "d sessions",
+        "f sessions/54330.580829c28296010d683587ce1bb4d9c79f3e81813e53752b3eb2ee83470114fd.key",
+        "f sessions/54330.json"
+      ]
+    },
+    "real": {
+      "model": "claude-haiku-5-5",
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "text": "ok",
+        "num_turns": 1
+      },
+      "ok": true,
+      "apiKeySource": "none",
+      "account": {
+        "email": null,
+        "organization": null,
+        "subscriptionType": "Claude Max",
+        "tokenSource": null,
+        "apiKeySource": null
+      },
+      "fastMode": [
+        "default",
+        "opus"
+      ],
+      "models": 5,
+      "contextUsage": {
+        "totalTokens": 15027,
+        "maxTokens": 1000000,
+        "rawMaxTokens": 1000000,
+        "percentage": 2,
+        "autoCompactThreshold": 967000
+      },
+      "leaks": [],
+      "ownedRoot": [
+        "f .claude.json",
+        "d .claude.json.lock",
+        "f .credentials.json",
+        "d backups",
+        "f backups/.claude.json.backup.1794183825585",
+        "d plugins",
+        "d plugins/store",
+        "d projects",
+        "d projects/-private-var-folders-5x-1mkrv6rj06j5m57nmzgm97n80000gn-T-tc-config-spike-2026-11-09T00-23-30-361Z-mac-C2d-real-claudehaiku55-work",
+        "d sessions",
+        "f sessions/54344.8dd3f72f81370b4c2b1f574f837bc39c1d2d0ddd9059931f1688f4e45575e1c1.key",
+        "f sessions/54344.json"
+      ]
+    },
+    "checks": {
+      "placeholderSent": true,
+      "subscriptionBeta": true,
+      "realTurn": true
+    },
+    "ms": 2682
+  },
+  "status": "ok",
+  "verdict": "placeholderSent yes, subscriptionBeta yes, realTurn yes; apiKeySource none"
+}
