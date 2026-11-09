@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { accounts as coreAccounts, configure, vault } from 'aliax-core'
+import { accounts as coreAccounts, acquire, configure, vault } from 'aliax-core'
 import { ADDON_SERVICE, AddonGrantBlobSchema, type AddonGrantBlob } from '@shared/addonGrant'
 import { GRANT_NO_FIELD, GRANT_OFFLINE, GRANT_ON_MAC, GRANT_PROBE_REFUSED, SIGNIN_BUSY, SIGNIN_NEEDS_BROWSER } from '@shared/addonGrantWords'
 import type { AddonGrantView } from '@shared/contract-addonGrants'
@@ -119,6 +119,7 @@ interface HostOpts {
   links?: Record<string, ReturnType<typeof fakeLink>>
   signIn?: AddonSignIn | null
   probe?: AddonGrantsDeps['probe']
+  resync?: AddonGrantsDeps['resync']
   askOwner?: (service: string, name: string, owner: string) => Promise<string | null>
 }
 function host(opts: HostOpts = {}) {
@@ -158,6 +159,7 @@ function host(opts: HostOpts = {}) {
     grantsChanged,
     signIn: opts.signIn === undefined ? null : opts.signIn,
     probe,
+    resync: opts.resync,
     log: () => {},
     pushMs: 20
   })
@@ -380,6 +382,24 @@ describe('AddonGrants: writes on one host', () => {
     await expect(onBox.grants.setFields('ad_o', { 'X-Team': 'x' })).rejects.toThrow(GRANT_ON_MAC('o'))
   })
 
+  it('a write that waited out a handoff goes to the new owner, and leaves this vault alone', async () => {
+    const box = fakeLink()
+    box.request.mockImplementation(async (method: string) => (method === 'addons.grant.clear' ? { cleared: true } : { grant: { addonId: 'ad_a' } }))
+    const { grants } = host({ env: 'env_mac', rows: [rowOf('ad_a', oauthSpec, 'ws1')], scopeHome: () => 'env_box', links: { env_box: box } })
+    ownHere('ad_a', oauth(), { 'X-Team': 'old' })
+    // A handoff holds the profile lock; it commits while the write waits.
+    const release = await acquire(ADDON_SERVICE, 'ad_a')
+    const writing = grants.setFields('ad_a', { 'X-Team': 'new' })
+    const clearing = grants.clear('ad_a')
+    vault.upsertProfile(ADDON_SERVICE, { ...vault.profiles(ADDON_SERVICE)[0], owner: 'env_box' })
+    vault.saveSecret(ADDON_SERVICE, 'ad_a', blobOf('ad_a', { 'X-Team': 'old' }, oauth({ refreshToken: undefined })), 'sync')
+    release()
+    await writing
+    expect(await clearing).toBe(true)
+    expect(box.request.mock.calls.map((c) => c[0])).toEqual(['addons.grant.setFields', 'addons.grant.clear'])
+    expect(stored('ad_a')?.fields).toEqual({ 'X-Team': 'old' })
+  })
+
   it('setFields checks names, clears on null or empty, probes only a whole grant that gains a value, keeps the oauth section', async () => {
     const { grants, probe } = host({ rows: [rowOf('ad_k', twoKeySpec), rowOf('ad_o', oauthSpec)] })
     await expect(grants.setFields('ad_k', { Other: 'x' })).rejects.toThrow(GRANT_NO_FIELD('k', 'Other'))
@@ -409,6 +429,31 @@ describe('AddonGrants: writes on one host', () => {
     // Clearing that value keeps the profile: its sign-in stands.
     await grants.setFields('ad_o', { 'X-Team': null })
     expect(stored('ad_o')).toMatchObject({ fields: {}, oauth: { accessToken: 'AT0' } })
+  })
+
+  it("a clear forwarded to the box, or the owner's removal arriving, cancels a sign-in in flight here", async () => {
+    const aborts: string[] = []
+    const signIn: AddonSignIn = {
+      run: (input, signal, hooks) =>
+        new Promise((_, reject) => {
+          hooks.step({ step: 'waiting', port: 50_004 })
+          signal.addEventListener('abort', () => {
+            aborts.push(input.addon.id)
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+          })
+        })
+    }
+    const box = fakeLink()
+    box.request.mockResolvedValue({ cleared: true })
+    const { grants } = host({ env: 'env_mac', rows: [rowOf('ad_a', oauthSpec, 'ws1'), rowOf('ad_b', oauthSpec, 'ws1')], scopeHome: () => 'env_box', links: { env_box: box }, signIn })
+    copyOf('ad_a', 'env_box')
+    copyOf('ad_b', 'env_box')
+    await grants.startSignIn('ad_a')
+    expect(await grants.clear('ad_a')).toBe(true)
+    expect(box.request).toHaveBeenCalledWith('addons.grant.clear', { id: 'ad_a' })
+    await grants.startSignIn('ad_b')
+    grants.onRemoved('ad_b')
+    expect(aborts).toEqual(['ad_a', 'ad_b'])
   })
 
   it('clear on the owner leaves a tombstone and cancels a sign-in in flight', async () => {
@@ -459,6 +504,19 @@ describe('AddonGrants: the sweep', () => {
     expect(sync.tombstones()).toEqual([])
     // Nothing sends it back: the row is gone, so it has no home.
     expect(grants.homeOf('ad_o')).toBeNull()
+  })
+
+  it('a row that arrives with no grant here asks its home again; one with a grant, or of this host, does not', () => {
+    const resync = vi.fn()
+    const { grants, store } = host({ env: 'env_mac', rows: [], scopeHome: (ws) => (ws === 'ws1' ? 'env_box' : null), resync })
+    grants.start()
+    coreAccounts.saveAddonGrant({ addonId: 'ad_held', nickname: 'held', blob: blobOf('ad_held', { 'X-Api-Key': 'v' }) })
+    store.add(rowOf('ad_held', keySpec, 'ws1'))
+    store.add(rowOf('ad_local', keySpec, 'ws_mac'))
+    expect(resync).not.toHaveBeenCalled()
+    store.add(rowOf('ad_new', keySpec, 'ws1'))
+    expect(resync).toHaveBeenCalledWith('env_box')
+    expect(resync).toHaveBeenCalledTimes(1)
   })
 
   it("a Mac-only workspace's grant leaves with a tombstone when its row goes", async () => {

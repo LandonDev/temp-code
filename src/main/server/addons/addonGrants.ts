@@ -70,6 +70,8 @@ export interface AddonGrantsDeps {
   /** The sign-in, on a host that can open a browser; null elsewhere (the box). */
   signIn: AddonSignIn | null
   probe: (spec: AddonSpec, fields: Record<string, string>) => Promise<ProbeAnswer>
+  /** A row arrived whose grant may have been refused before it (accountSync.resyncWith): ask its home again. */
+  resync?: (environmentId: string) => void
   now?: () => number
   log?: (line: string) => void
   /** Test seams. */
@@ -134,7 +136,11 @@ export class AddonGrants implements AddonGrantSource {
   start(): void {
     this.noteHomes()
     this.offChange = this.deps.addons.onChange(() => {
+      const fresh = this.deps.addons.list().filter((row) => !this.lastHome.has(row.id))
       this.noteHomes()
+      // On link-up the account sync may have pulled a grant before its row came: ask again.
+      const homes = new Set(fresh.flatMap((row) => (this.deps.scopeHome(row.workspaceId) && !profileOf(ADDON_SERVICE, row.id) ? [this.deps.scopeHome(row.workspaceId)!] : [])))
+      for (const home of homes) this.deps.resync?.(home)
       this.changed()
       this.sweepSoon()
     })
@@ -292,6 +298,7 @@ export class AddonGrants implements AddonGrantSource {
 
   /** accountSync's onRemoved for ADDON_SERVICE: forget the keeper, push, tell the add-on host. */
   onRemoved(addonId: string): void {
+    this.cancelSignIn(addonId)
     this.stopKeeper(addonId)
     this.refused.delete(addonId)
     this.changed()
@@ -381,9 +388,18 @@ export class AddonGrants implements AddonGrantSource {
   }
 
   async setFields(addonId: string, fields: Record<string, string | null>): Promise<AddonGrantView> {
-    const writer = this.writerOf(addonId)
-    if (writer) return (await this.forward<{ grant: AddonGrantView }>(writer, addonId, 'addons.grant.setFields', { id: addonId, fields })).grant
+    for (let attempt = 0; ; attempt++) {
+      const writer = this.writerOf(addonId)
+      if (writer) return (await this.forward<{ grant: AddonGrantView }>(writer, addonId, 'addons.grant.setFields', { id: addonId, fields })).grant
+      const view = await this.writeFields(addonId, fields, attempt === 0)
+      if (view) return view
+    }
+  }
+
+  /** setFields here, under the lock; null when a handoff that finished meanwhile moved the writer (`recheck`). */
+  private writeFields(addonId: string, fields: Record<string, string | null>, recheck: boolean): Promise<AddonGrantView | null> {
     return withLock(ADDON_SERVICE, addonId, async () => {
+      if (recheck && this.writerOf(addonId)) return null
       const row = this.deps.addons.get(addonId)
       if (!row) throw new Error(GRANT_NO_ADDON(addonId))
       const names = grantFieldNames(row.spec)
@@ -415,14 +431,18 @@ export class AddonGrants implements AddonGrantSource {
   }
 
   async clear(addonId: string): Promise<boolean> {
-    const writer = this.writerOf(addonId)
-    if (writer) return (await this.forward<{ cleared: boolean }>(writer, addonId, 'addons.grant.clear', { id: addonId })).cleared
     this.cancelSignIn(addonId)
-    return withLock(ADDON_SERVICE, addonId, async () => {
-      if (!profileOf(ADDON_SERVICE, addonId)) return false
-      const out = await this.deps.accountSync.deleteProfile(ADDON_SERVICE, addonId)
-      return out.ok
-    })
+    for (let attempt = 0; ; attempt++) {
+      const writer = this.writerOf(addonId)
+      if (writer) return (await this.forward<{ cleared: boolean }>(writer, addonId, 'addons.grant.clear', { id: addonId })).cleared
+      const cleared = await withLock(ADDON_SERVICE, addonId, async () => {
+        // A handoff that finished while this waited moved the grant: the new writer clears it.
+        if (attempt === 0 && this.writerOf(addonId)) return null
+        if (!profileOf(ADDON_SERVICE, addonId)) return false
+        return (await this.deps.accountSync.deleteProfile(ADDON_SERVICE, addonId)).ok
+      })
+      if (cleared !== null) return cleared
+    }
   }
 
   // ── the sign-in ────────────────────────────────────────────────────────

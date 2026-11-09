@@ -185,6 +185,30 @@ describe('add-on grants across hosts', () => {
     expect(vault.profiles('addon')[0].owner).toBeUndefined()
   })
 
+  it('resyncWith syncs now, or once more after the run in flight', async () => {
+    const box = fakeLink('env_box', 'box')
+    let release!: () => void
+    const held = new Promise<void>((r) => (release = r))
+    let pulls = 0
+    box.request.mockImplementation(async (method: string) => {
+      if (method !== 'accounts.pull') throw new Error(`unexpected ${method}`)
+      pulls++
+      if (pulls === 1) await held
+      return { transfers: [], listed: [], tombstones: [] }
+    })
+    const mac = host('env_mac', [box])
+    const first = mac.sync.syncWith('env_box')
+    mac.sync.resyncWith('env_box')
+    mac.sync.resyncWith('env_box')
+    release()
+    await first
+    await vi.waitFor(() => expect(pulls).toBe(2))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(pulls).toBe(2)
+    mac.sync.resyncWith('env_box')
+    await vi.waitFor(() => expect(pulls).toBe(3))
+  })
+
   it('no CLI holds a grant, so liveLineage is false', async () => {
     const mac = host('env_mac', [])
     expect(await mac.sync.liveLineage('addon', grant('ad_a'))).toBe(false)

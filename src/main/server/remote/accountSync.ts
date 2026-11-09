@@ -159,6 +159,7 @@ export class AccountSync {
   private readonly subscribers = new Set<(push: ServerPush) => void>()
   private readonly timers = new Map<string, NodeJS.Timeout>()
   private readonly syncing = new Map<string, Promise<void>>()
+  private readonly resyncs = new Set<string>()
   /** Grants handed out on a takeOver pull, by `service:accountId`, until the taker confirms or the timeout. */
   private readonly pending = new Map<string, PendingRelease>()
   private headroomTimer: NodeJS.Timeout | null = null
@@ -524,6 +525,18 @@ export class AccountSync {
 
   async syncAll(): Promise<void> {
     await Promise.all(this.deps.peers.all().map((l) => this.syncWith(l.id)))
+  }
+
+  /** Sync with the peer now, or once more after the run in flight (a pull that started before what it needed arrived). */
+  resyncWith(environmentId: string): void {
+    const running = this.syncing.get(environmentId)
+    if (!running) return void this.syncWith(environmentId)
+    if (this.resyncs.has(environmentId)) return
+    this.resyncs.add(environmentId)
+    void running.finally(() => {
+      this.resyncs.delete(environmentId)
+      void this.syncWith(environmentId)
+    })
   }
 
   syncWith(environmentId: string): Promise<void> {

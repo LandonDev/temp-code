@@ -36,7 +36,7 @@
         "@tanstack/react-virtual": "^3.14.9",
         "@vtsls/language-server": "^0.3.0",
         "@xterm/xterm": "^6.0.0",
-        "aliax-core": "github:LandonDev/aliax-core#135ff5664f79b812c62d7defa1ff4894afd2d00c",
+        "aliax-core": "github:LandonDev/aliax-core#80345ae9e6f5c3413e7701a6bfa3477be30b60a3",
         "chokidar": "^5.0.0",
         "class-variance-authority": "0.7.1",
         "clsx": "^2.1.1",
@@ -710,7 +710,7 @@
 
     "ajv-formats": ["ajv-formats@3.0.1", "", { "dependencies": { "ajv": "^8.0.0" } }, "sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ=="],
 
-    "aliax-core": ["aliax-core@github:LandonDev/aliax-core#135ff56", {}, "LandonDev-aliax-core-135ff56", "sha512-BjLuLbfA/s2EOffv2ROgXcl/6Frh5L5g2qlEXuQTt50+y7XbqvvgzNY1a/CsFSOl7aFkPUmLzPBWkde4wgzHAQ=="],
+    "aliax-core": ["aliax-core@github:LandonDev/aliax-core#80345ae", {}, "LandonDev-aliax-core-80345ae", "sha512-IimTJRduv/gYFm5m9jecuqbsFRHe8RRKlzGijqhvYXv7Yo+XiHa1XxVZ7BOSCSX4eX0hTwaPJdt0vufNMtQ6zA=="],
 
     "ansi-regex": ["ansi-regex@5.0.1", "", {}, "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ=="],
 

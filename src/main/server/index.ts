@@ -823,7 +823,8 @@ export async function startServer(
       (!isHeadless() || browserSeam) && openSignIn
         ? oauthFlow({ fetch: grantFetch, open: openSignIn, trace: process.env.TEMP_CODE_ADDON_TRACE === '1' ? (line) => console.log(line) : undefined })
         : null,
-    probe: (spec, fields) => probeFields(spec, fields, grantFetch)
+    probe: (spec, fields) => probeFields(spec, fields, grantFetch),
+    resync: (home) => accountSync.resyncWith(home)
   })
   addonGrantsRef = addonGrants
   addonGrantsHook.current = addonGrants
