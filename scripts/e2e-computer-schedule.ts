@@ -532,13 +532,14 @@ leg = '4 the clipboard'
 console.log(`\n[${leg}]`)
 {
   const t = thread('t4')
+  await run(t, 'computer_observe', { app: 'TextEdit', window: A.title, full: true })
   const pasted = `tier proof ${NONCE} 0123456789`.slice(0, 30)
   probe('pasteboard', 'copy', `the person's copy ${NONCE}`)
   const copied = probe<{ digest: string }>('pasteboard', 'digest').digest
   const since = Date.now()
   let saidClipboard = false
   const sampler = setInterval(() => (saidClipboard ||= registry.get(t)?.statusDetail === 'Waiting for the clipboard'), 100)
-  const o = await run(t, 'computer_batch', { app: 'TextEdit', window: A.title, actions: [{ action: 'left_click', element: areaA }, { action: 'paste', text: pasted }] })
+  const o = await run(t, 'computer_batch', { app: 'TextEdit', window: A.title, actions: [{ action: 'left_click', element: areaA }, { action: 'paste', text: pasted, element: areaA }] })
   clearInterval(sampler)
   const batches = wire.filter((w) => w.method === 'action.batch' && w.at >= since)
   const refused = batches[0]?.steps?.[1]
@@ -572,7 +573,7 @@ console.log(`\n[${leg}]`)
   const stopped = run(s, 'computer_act', { app: 'TextEdit', window: A.title, action: 'left_click', element: areaA })
   for (let i = 0; i < 40 && registry.get(s)?.statusDetail !== 'Waiting for the Mac to be free'; i++) await sleep(100)
   await sessions.stop(s)
-  check('Stop while held answers stopped by the person', (await stopped).body === 'stopped by the person')
+  check('Stop while held answers stopped by the person', ((await stopped).body ?? '').startsWith('stopped by the person'))
   stopTypist()
   await typing
   check('the Mac reads free again', await untilIdle(IDLE_MS))

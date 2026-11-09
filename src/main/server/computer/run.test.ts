@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { COMPUTER_WAIT, type Observation } from '@shared/computer/protocol'
 import { tierVerdictSetting } from '@shared/computer/tools'
+import { hostErrorLine } from '@shared/computer/hostErrors'
 import { PERMISSION_SWITCH, remember, type ThreadComputer } from './run'
 import { computerHarness, type ComputerHarness } from './runHarness'
 import { IDLE_CLOSE_MS } from './sessions'
@@ -527,7 +528,7 @@ describe('tier scheduling', () => {
     expect(done).toBe(false)
     expect(last(s.h, 'input.restoreSession').params).toEqual({ afterInterrupt: true })
     const o = await call
-    expect(o.steps[0]).toMatch(/^key a · failed: The person took over the Mac during this step\.$/)
+    expect(o.steps[0]).toMatch(/^key a · failed: the person used the Mac, so this step stopped/)
     expect(count(s.h, 'input.restoreSession')).toBe(1)
   })
 
@@ -562,7 +563,7 @@ describe('tier scheduling', () => {
     const stopped = s.h.run('computer_act', { app: 'Sessiony', action: 'hold_key', text: 'shift', duration: 1 })
     await until(() => s.lines.filter((l) => l !== null).length === 2, 'held again')
     await s.h.sessions.stop('t1')
-    expect((await stopped).body).toBe('stopped by the person')
+    expect((await stopped).body).toBe(hostErrorLine('stopped'))
     expect(count(s.h, 'action.run')).toBe(2)
   })
 
@@ -572,7 +573,7 @@ describe('tier scheduling', () => {
     await until(() => count(s.h, 'action.run') === 2, 'the session step')
     expect(last(s.h, 'action.run').params.tiers).toContain('session')
     await s.h.sessions.stop('t1')
-    expect((await call).body).toBe('stopped by the person')
+    expect((await call).body).toBe(hostErrorLine('stopped'))
     expect(count(s.h, 'input.restoreSession')).toBe(1)
   })
 
@@ -587,7 +588,8 @@ describe('tier scheduling', () => {
 
   it("a paste the service held off for the person's copy waits for a quiet clipboard and runs again from the paste alone", async () => {
     const s = scheduled({ FAKE_CLIPBOARD_COPY_AT_MS: '0' })
-    const o = await s.h.run('computer_batch', { app: 'TextEdit', actions: [{ action: 'left_click', coordinate: [5, 5] }, { action: 'paste', text: 'from the thread' }] })
+    await s.h.run('computer_observe', { app: 'TextEdit' })
+    const o = await s.h.run('computer_batch', { app: 'TextEdit', actions: [{ action: 'left_click', coordinate: [5, 5] }, { action: 'paste', text: 'from the thread', element: 3 }] })
     const batches = s.h.requests().filter((r) => r.method === 'action.batch')
     expect(batches.map((b) => (b.params.actions as { action: string }[]).map((a) => a.action))).toEqual([['left_click', 'paste'], ['paste']])
     expect(count(s.h, 'clipboard.state')).toBeGreaterThan(0)
@@ -598,7 +600,8 @@ describe('tier scheduling', () => {
 
   it('a person who keeps copying ends the paste with clipboard_recent', async () => {
     const s = scheduled({ FAKE_CLIPBOARD_COPY_EVERY_MS: '100' }, { pollMs: 50, recentCopyMs: 400, pasteWaitMaxMs: 1_000, clipboardPollMs: 50 })
-    const o = await s.h.run('computer_act', { app: 'TextEdit', action: 'paste', text: 'x' })
+    await s.h.run('computer_observe', { app: 'TextEdit' })
+    const o = await s.h.run('computer_act', { app: 'TextEdit', action: 'paste', text: 'x', element: 3 })
     expect(o.steps[0]).toMatch(/· failed: the person copied something just now and a paste would swap their clipboard; try again in a minute$/)
     expect(count(s.h, 'action.run')).toBeGreaterThanOrEqual(1)
   })
