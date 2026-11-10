@@ -94,6 +94,14 @@ import Testing
         #expect(body(s) == ["[1] window \"Plain\" minimized", "  [2] button \"close\""])
     }
 
+    @Test func theWalkAddsOnlyTheButtonsAXLeftOutEachOnce() {
+        let same = { (a: Int, b: Int) in a == b }
+        // under a capture AXChildren hold content 1 and the badge 9; zoom and full screen are one element, 4
+        #expect(TitleBar.missing([1, 9], answered: [2, 3, 4, 4], same: same) == [2, 3, 4])
+        #expect(TitleBar.missing([2, 1, 3, 4], answered: [2, 3, 4, 4], same: same) == [])
+        #expect(TitleBar.missing([1], answered: [nil, nil, nil, nil], same: same) == [])
+    }
+
     @Test func theSignatureReadsTheWindowWithoutItsChrome() {
         struct Kid { var id: UInt64; var child: TitleBar.Child }
         let content = Kid(id: 1, child: TitleBar.Child(role: "AXGroup", subrole: nil, frame: r(100)))

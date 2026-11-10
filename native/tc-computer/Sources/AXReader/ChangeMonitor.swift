@@ -47,7 +47,8 @@ final class ChangeMonitor: ChangeSignal, @unchecked Sendable {
         kAXValueChangedNotification, kAXTitleChangedNotification, kAXCreatedNotification, kAXUIElementDestroyedNotification,
         kAXLayoutChangedNotification, kAXFocusedUIElementChangedNotification, kAXSelectedTextChangedNotification,
         kAXSelectedChildrenChangedNotification, kAXMenuOpenedNotification, kAXMenuClosedNotification, kAXWindowCreatedNotification,
-        kAXWindowMovedNotification, kAXWindowResizedNotification, "AXElementBusyChanged", "AXLoadComplete"
+        kAXWindowMovedNotification, kAXWindowResizedNotification, kAXWindowMiniaturizedNotification, kAXWindowDeminiaturizedNotification,
+        "AXElementBusyChanged", "AXLoadComplete"
     ]
     /// The ones that name an element that may be a new busy candidate.
     static let candidateNotifications: Set<String> = [kAXCreatedNotification, "AXElementBusyChanged", "AXLoadComplete"]
@@ -69,6 +70,11 @@ final class ChangeMonitor: ChangeSignal, @unchecked Sendable {
     private var scannedAt: UInt64 = 0
     /// notifications the app element refused, registered on the window instead
     private var onWindow: [String] = []
+    /// the window's direct children read once each: true for its title-bar buttons and the sharing
+    /// badge, which the signature and the clock never count (§22.8); forgotten with the window
+    private var chrome: [ElementKey: Bool] = [:]
+    /// the window's frame and its buttons' frames when last read, for the badge rule of a created element
+    private var chromeFrames: (window: ComputerProtocol.Rect?, buttons: [ComputerProtocol.Rect]) = (nil, [])
 
     init(pid: pid_t, app: AXUIElement) {
         self.app = app
@@ -90,7 +96,9 @@ final class ChangeMonitor: ChangeSignal, @unchecked Sendable {
     var lastChange: UInt64 { last.withLock { $0 } }
 
     /// A notification: the clock moves, and an element that may be a busy indicator joins the candidates.
+    /// One whose element is the window's title-bar chrome (a button, the capture's badge) moves nothing (§22.8).
     func heard(_ element: AXUIElement, _ notification: String) {
+        if isChrome(element, created: notification == kAXCreatedNotification) { return }
         let t = mach_absolute_time()
         last.withLock { $0 = t }
         guard Self.candidateNotifications.contains(notification), let role = AX.string(AX.copy(element, "AXRole").value) else { return }
@@ -125,6 +133,7 @@ final class ChangeMonitor: ChangeSignal, @unchecked Sendable {
                 AXObserverAddNotification(observer, w, n as CFString, me)
             }
         }
+        if window.map({ !CFEqual($0, w) }) ?? true { chrome = [:] }
         window = w
         scrollAreas = notes.scrollAreas
         candidates = notes.busy.map { Candidate(element: $0.element, kind: $0.kind, containers: $0.containers) }
@@ -155,18 +164,76 @@ final class ChangeMonitor: ChangeSignal, @unchecked Sendable {
             }
         }
         var title: String?
+        var minimized: Bool?
         var children: [UInt64] = []
         var counts: [Int] = []
         if let w {
-            let b = AX.batch(w, ["AXTitle", "AXChildren"])
+            let b = AX.batch(w, ["AXTitle", "AXChildren", "AXMinimized"] + TitleBar.attributes)
             title = AX.string(b["AXTitle"]?.value)
-            let kids = AX.elements(b["AXChildren"]?.value)
+            minimized = AX.bool(b["AXMinimized"]?.value)
+            // the children without the title-bar buttons and the sharing badge, so a capture starting is no change (§22.8)
+            let kids = content(AX.elements(b["AXChildren"]?.value), buttons: TitleBar.attributes.compactMap { AX.element(b[$0]?.value) }, window: w)
             children = kids.map { UInt64(CFHash($0)) }
             counts.append(kids.count)
         }
         counts += areas.prefix(Signature.maxScrollAreas).map { AX.count($0, "AXChildren") ?? -1 }
         return Signature(focused: focused.map { UInt64(CFHash($0)) }, value: value, valueLength: length, selection: selection,
-                         title: title, windowChildren: children, counts: counts).hash
+                         title: title, minimized: minimized, windowChildren: children, counts: counts).hash
+    }
+
+    /// One child as the badge rule reads it.
+    private static func child(_ el: AXUIElement) -> TitleBar.Child {
+        let b = AX.batch(el, ["AXRole", "AXSubrole", "AXPosition", "AXSize"])
+        return TitleBar.Child(role: AX.string(b["AXRole"]?.value) ?? "", subrole: AX.string(b["AXSubrole"]?.value), frame: AX.frame(b["AXPosition"]?.value, b["AXSize"]?.value))
+    }
+
+    private static func frame(_ el: AXUIElement) -> ComputerProtocol.Rect? {
+        let b = AX.batch(el, ["AXPosition", "AXSize"])
+        return AX.frame(b["AXPosition"]?.value, b["AXSize"]?.value)
+    }
+
+    /// The window's children less its chrome: a button the window's attributes name is chrome; any
+    /// other child not seen at an earlier sample is read once and remembered as the badge or not.
+    private func content(_ kids: [AXUIElement], buttons: [AXUIElement], window w: AXUIElement) -> [AXUIElement] {
+        lock.lock()
+        for b in buttons { chrome[ElementKey(element: b)] = true }
+        let unread = kids.filter { chrome[ElementKey(element: $0)] == nil }
+        lock.unlock()
+        if !unread.isEmpty {
+            // read outside the lock: the observer thread takes it for every notification
+            let frames = (window: Self.frame(w), buttons: buttons.compactMap(Self.frame))
+            let read = unread.map { (ElementKey(element: $0), TitleBar.isSharingBadge(Self.child($0), window: frames.window, buttons: frames.buttons)) }
+            lock.lock()
+            chromeFrames = frames
+            for (key, badge) in read { chrome[key] = badge }
+            // a window whose children churn (Electron) stays bounded: past 512, only what this sample holds is kept
+            if chrome.count > 512 {
+                let now = Set((kids + buttons).map(ElementKey.init))
+                chrome = chrome.filter { now.contains($0.key) }
+            }
+            lock.unlock()
+        }
+        lock.lock()
+        defer { lock.unlock() }
+        return kids.filter { chrome[ElementKey(element: $0)] != true }
+    }
+
+    /// Whether a notification's element is the window's chrome: one remembered, or, for a created
+    /// element, a direct child of the window the rule names a title-bar button or the badge (read once).
+    private func isChrome(_ element: AXUIElement, created: Bool) -> Bool {
+        lock.lock()
+        let known = chrome[ElementKey(element: element)]
+        let w = window
+        let frames = chromeFrames
+        lock.unlock()
+        if let known { return known }
+        guard created, let w, let parent = AX.element(AX.copy(element, "AXParent").value), CFEqual(parent, w) else { return false }
+        let c = Self.child(element)
+        let isChrome = TitleBar.isButton(subrole: c.subrole) || TitleBar.isSharingBadge(c, window: frames.window, buttons: frames.buttons)
+        lock.lock()
+        chrome[ElementKey(element: element)] = isChrome
+        lock.unlock()
+        return isChrome
     }
 
     /// A busy indicator, an indeterminate progress or a busy web area that shows now

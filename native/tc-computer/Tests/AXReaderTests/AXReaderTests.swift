@@ -99,6 +99,34 @@ import Testing
     }
 }
 
+/// §22: the window's title-bar buttons come back from its attributes when a capture hid them.
+@Suite struct TitleBarWalkTests {
+    @Test func aWindowAsksForItsButtonsAndAXMinimizedInStageB() {
+        let window = Attributes.stageB("AXWindow")
+        for a in ["AXMinimized", "AXCloseButton", "AXMinimizeButton", "AXZoomButton", "AXFullScreenButton"] { #expect(window.contains(a), "\(a)") }
+        #expect(!Attributes.stageB("AXSheet").contains("AXCloseButton"))
+        #expect(!Attributes.stageB("AXButton").contains("AXMinimized"))
+    }
+
+    @Test func onlyTheButtonsMissingFromTheChildrenAreAppendedEachOnce() {
+        // application elements of distinct pids stand in for the buttons: CFEqual is what the walk compares
+        let close = AXUIElementCreateApplication(101), minimize = AXUIElementCreateApplication(102), zoom = AXUIElementCreateApplication(103)
+        let content = AXUIElementCreateApplication(104)
+        let same = { (a: AXUIElement, b: AXUIElement) in CFEqual(a, b) }
+        // under a capture: none listed, zoom and full screen one element
+        let added = TitleBar.missing([content], answered: [close, minimize, zoom, AXUIElementCreateApplication(103)], same: same)
+        #expect(added.count == 3 && CFEqual(added[0], close) && CFEqual(added[1], minimize) && CFEqual(added[2], zoom))
+        // with no capture: every one already a child, nothing added; a window with none answers nothing
+        #expect(TitleBar.missing([close, content, minimize, zoom], answered: [AXUIElementCreateApplication(101), minimize, zoom, zoom], same: same).isEmpty)
+        #expect(TitleBar.missing([content], answered: [nil, nil, nil, nil], same: same).isEmpty)
+    }
+
+    @Test func theMonitorWatchesMiniaturizing() {
+        #expect(ChangeMonitor.notifications.contains(kAXWindowMiniaturizedNotification))
+        #expect(ChangeMonitor.notifications.contains(kAXWindowDeminiaturizedNotification))
+    }
+}
+
 extension Slot {
     var isAbsent: Bool { if case .absent = self { true } else { false } }
     var isGone: Bool { if case .gone = self { true } else { false } }

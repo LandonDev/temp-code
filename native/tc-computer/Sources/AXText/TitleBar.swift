@@ -69,6 +69,19 @@ public enum TitleBar {
         return rest + chrome.sorted { ($0.rank, $0.at) < ($1.rank, $1.at) }.map(\.node)
     }
 
+    /// The window's title-bar attributes, in the order the walk reads them: zoom and full screen are often one element.
+    public static let attributes = ["AXCloseButton", "AXMinimizeButton", "AXZoomButton", "AXFullScreenButton"]
+
+    /// §22.1: the buttons the window's attributes answered that are not among its children (a
+    /// capture took them out), each once, in the attributes' order.
+    public static func missing<E>(_ children: [E], answered: [E?], same: (E, E) -> Bool) -> [E] {
+        var out: [E] = []
+        for case let b? in answered where !children.contains(where: { same($0, b) }) && !out.contains(where: { same($0, b) }) {
+            out.append(b)
+        }
+        return out
+    }
+
     /// The children of a snapshot root, when the root is a window (a dialog subrole included; never a sheet).
     public static func order(_ window: AXNode) -> [AXNode] {
         guard window.role == "AXWindow" else { return window.children }

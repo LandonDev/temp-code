@@ -130,7 +130,7 @@ final class Walker {
             identifier: AX.string(s("AXIdentifier")), domIdentifier: AX.string(s("AXDOMIdentifier")),
             flags: AXFlags(enabled: AX.bool(s("AXEnabled")), focused: AX.bool(s("AXFocused")), selected: AX.bool(s("AXSelected")),
                            expanded: AX.bool(s("AXExpanded")), required: AX.bool(s("AXRequired")), invalid: AX.bool(s("AXInvalid")),
-                           modal: AX.bool(s("AXModal")), busy: AX.bool(s("AXElementBusy")), loaded: AX.bool(s("AXLoaded"))),
+                           modal: AX.bool(s("AXModal")), minimized: AX.bool(s("AXMinimized")), busy: AX.bool(s("AXElementBusy")), loaded: AX.bool(s("AXLoaded"))),
             frame: frame, selectedTextRange: AX.range(s("AXSelectedTextRange"))
         )
 
@@ -164,8 +164,12 @@ final class Walker {
         let busyKind: BusyRule.Kind? = role == "AXBusyIndicator" ? .busy : role == "AXProgressIndicator" ? .progress : role == "AXWebArea" ? .webArea : nil
         if let busyKind { notes.busy.append((el, busyKind, Array(containers.suffix(8)))) }
 
-        // children: the visible ones only, the rest counted by position
-        let children = descend ? AX.elements(a["AXChildren"]?.value) : []
+        // children: the visible ones only, the rest counted by position; a window's title-bar buttons
+        // a capture took out of AXChildren come back from its attributes, after the rest (§22.1)
+        var children = descend ? AX.elements(a["AXChildren"]?.value) : []
+        if descend, root, role == "AXWindow" {
+            children += TitleBar.missing(children, answered: TitleBar.attributes.map { AX.element(s($0)) }, same: { CFEqual($0, $1) })
+        }
         let inner = cut ? Viewport.childClip(role: role, frame: frame, clip: floats ? frame : clip) : nil
         let below = isContainer ? containers + [el] : containers
         var visible: Set<ElementKey>?

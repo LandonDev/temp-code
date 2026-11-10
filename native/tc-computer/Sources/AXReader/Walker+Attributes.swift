@@ -1,4 +1,5 @@
 #if canImport(ApplicationServices)
+import AXText
 import Foundation
 
 /// What each stage asks of a node (plan §5.2): the cost of a read is per
@@ -26,6 +27,8 @@ enum Attributes {
         if lists.contains(role) { out += listExtra }
         if role == "AXWebArea" { out += ["AXElementBusy", "AXLoaded"] }
         if windows.contains(role) { out.append("AXModal") }
+        // §22.1, §22.4: a window's buttons answer here whether or not a capture hid them from AXChildren
+        if role == "AXWindow" { out += ["AXMinimized"] + TitleBar.attributes }
         if formControls.contains(role) { out.append("AXTitleUIElement") }
         return out
     }
