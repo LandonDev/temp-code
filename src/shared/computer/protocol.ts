@@ -47,6 +47,16 @@ export const SERVICE = {
   serviceLockWaitMs: 3_000,
   /** how long a launch waits for the app's first window */
   launchWindowMs: 10_000,
+  /** the front guard watches an app it launched, opened into or acted on this long after the call (§22.3) */
+  frontWatchMs: 30_000,
+  /** an activation this soon after the person's click on the app, or their ⌘-Tab, is their choice */
+  frontChoiceMs: 500,
+  /** a steal is undone within this, polled every 20 ms, or it stands as `failed` */
+  frontRestoreMs: 400,
+  /** the steal that hides the app (the third in one watch) */
+  frontStealsMax: 3,
+  /** items one `apps.launch { open }` may name (§22.2) */
+  openItemsMax: 8,
   /** how often a grant that is on is read again, so a revoked one is noticed */
   permissionPollGrantedMs: 30_000,
   /** how often the pasteboard's change count is read (`clipboard.state`) */
@@ -545,7 +555,8 @@ export const COMPUTER_ERROR_KINDS = [
   'text_not_found',
   'key_window_unavailable',
   'session_unavailable',
-  'already_running'
+  'already_running',
+  'open_refused'
 ] as const
 export const ComputerErrorKindSchema = z.enum(COMPUTER_ERROR_KINDS)
 export type ComputerErrorKind = z.infer<typeof ComputerErrorKindSchema>
@@ -563,8 +574,23 @@ export const STEP_ONLY_ERROR_KINDS: readonly ComputerErrorKind[] = [
 ]
 
 export const InterruptedBySchema = z.enum(['person'])
-/** `stale_element`: gone, service-restarted. `session_unavailable`: locked, secure-input, activation-refused, in-use. `clipboard_busy`: recent-copy. */
-export const ErrorReasonSchema = z.enum(['gone', 'service-restarted', 'locked', 'secure-input', 'activation-refused', 'in-use', 'recent-copy'])
+/**
+ * `stale_element`: gone, service-restarted. `session_unavailable`: locked, secure-input, activation-refused, in-use.
+ * `clipboard_busy`: recent-copy. `open_refused`: missing, executable, scheme, app (§22.2).
+ */
+export const ErrorReasonSchema = z.enum([
+  'gone',
+  'service-restarted',
+  'locked',
+  'secure-input',
+  'activation-refused',
+  'in-use',
+  'recent-copy',
+  'missing',
+  'executable',
+  'scheme',
+  'app'
+])
 export type ErrorReason = z.infer<typeof ErrorReasonSchema>
 
 /** An app as a session step or a restore names it. */
@@ -687,12 +713,31 @@ export const StepNotRunSchema = z.object({
 export const StepResultSchema = z.discriminatedUnion('status', [StepOkSchema, StepFailedSchema, StepNotRunSchema])
 export type StepResult = z.infer<typeof StepResultSchema>
 
+/** How the front guard (§22.3) ended a steal: put back, the person's own pick, could not, or the app hidden. */
+export const FrontRestoreSchema = z.enum(['restored', 'person-chose', 'failed', 'hid-app'])
+export type FrontRestore = z.infer<typeof FrontRestoreSchema>
+
+/** Whether the app came above the person's front app or window, and what the guard did; absent reads as not raised. */
+export const FrontReportSchema = z.object({
+  raised: z.boolean(),
+  restored: FrontRestoreSchema.optional(),
+  /** from the steal to the person's front back */
+  ms: int().nonnegative().optional()
+})
+export type FrontReport = z.infer<typeof FrontReportSchema>
+
+/** A window a launch or an open made, or one that changed title during it (§22.5). */
+export const LaunchedWindowSchema = z.object({ id: int(), title: z.string() })
+export type LaunchedWindow = z.infer<typeof LaunchedWindowSchema>
+
 export const ActionResultSchema = z.object({
   step: StepResultSchema,
   /** absent with observe.mode 'none', or when observationError says why */
   observation: ObservationSchema.optional(),
   /** the closing observation failed; the step stands */
-  observationError: ComputerErrorSchema.optional()
+  observationError: ComputerErrorSchema.optional(),
+  /** the app came forward during the call (§22.4) */
+  front: FrontReportSchema.optional()
 })
 export type ActionResult = z.infer<typeof ActionResultSchema>
 
@@ -700,7 +745,9 @@ export const BatchResultSchema = z.object({
   steps: z.array(StepResultSchema),
   observation: ObservationSchema.optional(),
   observationError: ComputerErrorSchema.optional(),
-  waited: WaitReportSchema
+  waited: WaitReportSchema,
+  /** the app came forward during the call (§22.4) */
+  front: FrontReportSchema.optional()
 })
 export type BatchResult = z.infer<typeof BatchResultSchema>
 
@@ -864,8 +911,24 @@ export const COMPUTER_METHODS = {
     result: z.object({ apps: z.array(AppInfoSchema) })
   },
   'apps.launch': {
-    params: z.object({ app: z.string().min(1), open: z.array(z.string()).optional() }),
-    result: z.object({ pid: int(), launched: z.boolean() })
+    params: z.object({
+      app: z.string().min(1),
+      /** urls or absolute paths, opened into `app` (§22.2); the cap lives in the tool and the service's refusal */
+      open: z.array(z.string()).optional(),
+      /** the session a late steal's `apps/frontRestored` names */
+      session: z.string().min(1).optional(),
+      /** bundle ids no call may touch: the resolved app is checked before anything starts */
+      refuse: z.array(z.string()).optional()
+    }),
+    result: z.object({
+      pid: int(),
+      launched: z.boolean(),
+      front: FrontReportSchema.optional(),
+      /** the app's first window that was not there before the call */
+      window: LaunchedWindowSchema.optional(),
+      /** the app's other windows that appeared or changed title meanwhile */
+      others: z.array(LaunchedWindowSchema).optional()
+    })
   },
   'session.open': { params: SessionRefSchema, result: EmptySchema },
   'session.close': { params: SessionRefSchema, result: EmptySchema },
@@ -930,6 +993,11 @@ export const ComputerNotificationSchema = z.discriminatedUnion('method', [
   notify('capture/click', z.object({ stream: z.string(), at: PointSchema, width: int().positive(), height: int().positive() })),
   /** P1: the person pressed Escape while the watch was on; epoch ms */
   notify('escape/pressed', z.object({ at: z.number() })),
+  /** §22.3: a steal undone after the call that armed the watch answered */
+  notify(
+    'apps/frontRestored',
+    z.object({ session: z.string().optional(), pid: int(), name: z.string(), front: FrontReportSchema, afterMs: int().nonnegative() })
+  ),
   notify('log', z.object({ level: LogLevelSchema, message: z.string() }))
 ])
 export type ComputerNotification = z.infer<typeof ComputerNotificationSchema>

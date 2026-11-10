@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "method": "apps/frontRestored",
+  "params": {
+    "session": "thread-7",
+    "pid": 16800,
+    "name": "TextEdit",
+    "front": {
+      "raised": true,
+      "restored": "restored",
+      "ms": 140
+    },
+    "afterMs": 12400
+  }
+}

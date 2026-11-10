@@ -9,9 +9,13 @@ import {
   COMPUTER_ERROR_KINDS,
   COMPUTER_METHODS,
   COMPUTER_WAIT,
+  ActionResultSchema,
+  BatchResultSchema,
   ComputerActionSchema,
   ComputerErrorSchema,
   IgnoredRoutesSchema,
+  ComputerNotificationSchema,
+  FrontReportSchema,
   InputProbeParamsSchema,
   InputViaSchema,
   LEARNED_VIAS,
@@ -335,5 +339,52 @@ describe('the background fallbacks (§24)', () => {
     const e = { kind: 'needs_tier', message: 'File › Close is disabled while TextEdit is in the background.', needed: 'session', menu: ['File', 'Close'] }
     expect(ComputerErrorSchema.parse(e)).toEqual(e)
     expect(ComputerErrorSchema.safeParse({ ...e, menu: Array(9).fill('a') }).success).toBe(false)
+describe('the front guard\'s additions (§22)', () => {
+  const launch = COMPUTER_METHODS['apps.launch']
+
+  it('takes a launch with items, a session and the refused bundles, and the old shape alike', () => {
+    expect(launch.params.safeParse({ app: 'TextEdit' }).success).toBe(true)
+    expect(launch.params.safeParse({ app: 'Preview', open: ['/tmp/a.pdf'], session: 's', refuse: ['dev.landon.tempcode'] }).success).toBe(true)
+    expect(launch.params.safeParse({ app: 'Preview', session: '' }).success).toBe(false)
+  })
+
+  it('answers a launch with the front report, the new window and the others, each optional', () => {
+    expect(launch.result.parse({ pid: 1, launched: false })).toEqual({ pid: 1, launched: false })
+    const full = {
+      pid: 1,
+      launched: true,
+      front: { raised: true, restored: 'restored', ms: 180 },
+      window: { id: 9, title: 'report.pdf' },
+      others: [{ id: 8, title: 'Untitled — iCloud' }]
+    }
+    expect(launch.result.parse(full)).toEqual(full)
+    expect(FrontReportSchema.safeParse({ raised: true, restored: 'gone' }).success).toBe(false)
+    expect(FrontReportSchema.safeParse({ raised: false }).success).toBe(true)
+  })
+
+  it('carries front on an action result and a batch result', () => {
+    const step = { index: 0, action: 'left_click', status: 'ok', tier: 'ax', effect: 'changed' }
+    const front = { raised: true, restored: 'hid-app' }
+    expect(ActionResultSchema.parse({ step, front }).front).toEqual(front)
+    const waited = { waitedMs: 1, settled: true, busy: false, reason: 'quiet' }
+    expect(BatchResultSchema.parse({ steps: [step], waited, front }).front).toEqual(front)
+    expect(BatchResultSchema.parse({ steps: [step], waited }).front).toBeUndefined()
+  })
+
+  it('tells a late steal as apps/frontRestored', () => {
+    const note = { method: 'apps/frontRestored', params: { pid: 3, name: 'IntelliJ IDEA', front: { raised: true, restored: 'restored', ms: 90 }, afterMs: 14_000 } }
+    expect(ComputerNotificationSchema.safeParse(note).success).toBe(true)
+    expect(ComputerNotificationSchema.safeParse({ ...note, params: { ...note.params, afterMs: -1 } }).success).toBe(false)
+  })
+
+  it('refuses an open as open_refused with its reason, a request error', () => {
+    expect(COMPUTER_ERROR_KINDS).toContain('open_refused')
+    expect(STEP_ONLY_ERROR_KINDS).not.toContain('open_refused')
+    for (const reason of ['missing', 'executable', 'scheme', 'app'])
+      expect(ComputerErrorSchema.safeParse({ kind: 'open_refused', message: 'x', reason }).success, reason).toBe(true)
+  })
+
+  it('keeps its numbers in SERVICE', () => {
+    expect(SERVICE).toMatchObject({ frontWatchMs: 30_000, frontChoiceMs: 500, frontRestoreMs: 400, frontStealsMax: 3, openItemsMax: 8 })
   })
 })

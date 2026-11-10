@@ -20,6 +20,11 @@ public enum ComputerDefaults {
         public static let outboxBudgetBytes = 67108864
         public static let serviceLockWaitMs = 3000
         public static let launchWindowMs = 10000
+        public static let frontWatchMs = 30000
+        public static let frontChoiceMs = 500
+        public static let frontRestoreMs = 400
+        public static let frontStealsMax = 3
+        public static let openItemsMax = 8
         public static let permissionPollGrantedMs = 30000
         public static let clipboardPollMs = 250
     }

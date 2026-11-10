@@ -548,6 +548,7 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
     case keyWindowUnavailable
     case sessionUnavailable
     case alreadyRunning
+    case openRefused
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -576,6 +577,7 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
         case "key_window_unavailable": self = .keyWindowUnavailable
         case "session_unavailable": self = .sessionUnavailable
         case "already_running": self = .alreadyRunning
+        case "open_refused": self = .openRefused
         default: self = .unknown(rawValue)
         }
     }
@@ -605,6 +607,7 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
         case .keyWindowUnavailable: "key_window_unavailable"
         case .sessionUnavailable: "session_unavailable"
         case .alreadyRunning: "already_running"
+        case .openRefused: "open_refused"
         case .unknown(let value): value
         }
     }
@@ -638,6 +641,10 @@ public enum ErrorReason: RawRepresentable, Codable, Hashable, Sendable {
     case activationRefused
     case inUse
     case recentCopy
+    case missing
+    case executable
+    case scheme
+    case app
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -650,6 +657,10 @@ public enum ErrorReason: RawRepresentable, Codable, Hashable, Sendable {
         case "activation-refused": self = .activationRefused
         case "in-use": self = .inUse
         case "recent-copy": self = .recentCopy
+        case "missing": self = .missing
+        case "executable": self = .executable
+        case "scheme": self = .scheme
+        case "app": self = .app
         default: self = .unknown(rawValue)
         }
     }
@@ -663,6 +674,10 @@ public enum ErrorReason: RawRepresentable, Codable, Hashable, Sendable {
         case .activationRefused: "activation-refused"
         case .inUse: "in-use"
         case .recentCopy: "recent-copy"
+        case .missing: "missing"
+        case .executable: "executable"
+        case .scheme: "scheme"
+        case .app: "app"
         case .unknown(let value): value
         }
     }
@@ -744,6 +759,35 @@ public enum RestoreOutcome: RawRepresentable, Codable, Hashable, Sendable {
         case .personMoved: "person-moved"
         case .appGone: "app-gone"
         case .nothing: "nothing"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum FrontRestore: RawRepresentable, Codable, Hashable, Sendable {
+    case restored
+    case personChose
+    case failed
+    case hidApp
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "restored": self = .restored
+        case "person-chose": self = .personChose
+        case "failed": self = .failed
+        case "hid-app": self = .hidApp
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .restored: "restored"
+        case .personChose: "person-chose"
+        case .failed: "failed"
+        case .hidApp: "hid-app"
         case .unknown(let value): value
         }
     }

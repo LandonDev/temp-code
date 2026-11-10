@@ -6,6 +6,11 @@
     "app": "TextEdit",
     "open": [
       "/Users/me/Desktop/probe.txt"
+    ],
+    "session": "thread-7",
+    "refuse": [
+      "dev.landon.tempcode",
+      "com.apple.SecurityAgent"
     ]
   }
 }

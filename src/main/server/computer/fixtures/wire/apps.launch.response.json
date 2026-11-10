@@ -3,6 +3,21 @@
   "id": 6,
   "result": {
     "pid": 16800,
-    "launched": true
+    "launched": true,
+    "front": {
+      "raised": true,
+      "restored": "restored",
+      "ms": 180
+    },
+    "window": {
+      "id": 4211,
+      "title": "probe.txt"
+    },
+    "others": [
+      {
+        "id": 4198,
+        "title": "Untitled — iCloud"
+      }
+    ]
   }
 }

@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": 45,
+  "error": {
+    "code": -32000,
+    "message": "deploy.command is a program; open only opens documents, folders and web pages.",
+    "data": {
+      "kind": "open_refused",
+      "message": "deploy.command is a program; open only opens documents, folders and web pages.",
+      "reason": "executable"
+    }
+  }
+}

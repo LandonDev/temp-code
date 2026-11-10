@@ -293,6 +293,30 @@ public struct EscapePressedNotification: Codable, Hashable, Sendable {
     }
 }
 
+public struct AppsFrontRestoredNotification: Codable, Hashable, Sendable {
+    public struct Params: Codable, Hashable, Sendable {
+        public let session: String?
+        public let pid: Int
+        public let name: String
+        public let front: FrontReport
+        public let afterMs: Int
+
+        public init(session: String? = nil, pid: Int, name: String, front: FrontReport, afterMs: Int) {
+            self.session = session
+            self.pid = pid
+            self.name = name
+            self.front = front
+            self.afterMs = afterMs
+        }
+    }
+
+    public let params: Params
+
+    public init(params: Params) {
+        self.params = params
+    }
+}
+
 public struct LogNotification: Codable, Hashable, Sendable {
     public struct Params: Codable, Hashable, Sendable {
         public enum Level: RawRepresentable, Codable, Hashable, Sendable {
@@ -349,6 +373,7 @@ public enum ComputerNotification: Codable, Hashable, Sendable {
     case captureStreamEnded(CaptureStreamEndedNotification)
     case captureClick(CaptureClickNotification)
     case escapePressed(EscapePressedNotification)
+    case appsFrontRestored(AppsFrontRestoredNotification)
     case log(LogNotification)
     /// A `method` this build does not know: the whole object, untouched.
     case unknown(JSONValue)
@@ -368,6 +393,7 @@ public enum ComputerNotification: Codable, Hashable, Sendable {
         case "capture/streamEnded": self = .captureStreamEnded(try CaptureStreamEndedNotification(from: decoder))
         case "capture/click": self = .captureClick(try CaptureClickNotification(from: decoder))
         case "escape/pressed": self = .escapePressed(try EscapePressedNotification(from: decoder))
+        case "apps/frontRestored": self = .appsFrontRestored(try AppsFrontRestoredNotification(from: decoder))
         case "log": self = .log(try LogNotification(from: decoder))
         default: self = .unknown(try JSONValue(from: decoder))
         }
@@ -383,6 +409,7 @@ public enum ComputerNotification: Codable, Hashable, Sendable {
         case .captureStreamEnded(let value): try Self.encode(tag: "capture/streamEnded", value, to: encoder)
         case .captureClick(let value): try Self.encode(tag: "capture/click", value, to: encoder)
         case .escapePressed(let value): try Self.encode(tag: "escape/pressed", value, to: encoder)
+        case .appsFrontRestored(let value): try Self.encode(tag: "apps/frontRestored", value, to: encoder)
         case .log(let value): try Self.encode(tag: "log", value, to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }

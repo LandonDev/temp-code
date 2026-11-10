@@ -493,15 +493,39 @@ public struct ComputerError: Codable, Hashable, Sendable {
     }
 }
 
+public struct FrontReport: Codable, Hashable, Sendable {
+    public let raised: Bool
+    public let restored: FrontRestore?
+    public let ms: Int?
+
+    public init(raised: Bool, restored: FrontRestore? = nil, ms: Int? = nil) {
+        self.raised = raised
+        self.restored = restored
+        self.ms = ms
+    }
+}
+
+public struct LaunchedWindow: Codable, Hashable, Sendable {
+    public let id: Int
+    public let title: String
+
+    public init(id: Int, title: String) {
+        self.id = id
+        self.title = title
+    }
+}
+
 public struct ActionResult: Codable, Hashable, Sendable {
     public let step: StepResult
     public let observation: Observation?
     public let observationError: ComputerError?
+    public let front: FrontReport?
 
-    public init(step: StepResult, observation: Observation? = nil, observationError: ComputerError? = nil) {
+    public init(step: StepResult, observation: Observation? = nil, observationError: ComputerError? = nil, front: FrontReport? = nil) {
         self.step = step
         self.observation = observation
         self.observationError = observationError
+        self.front = front
     }
 }
 
@@ -510,12 +534,14 @@ public struct BatchResult: Codable, Hashable, Sendable {
     public let observation: Observation?
     public let observationError: ComputerError?
     public let waited: WaitReport
+    public let front: FrontReport?
 
-    public init(steps: [StepResult], observation: Observation? = nil, observationError: ComputerError? = nil, waited: WaitReport) {
+    public init(steps: [StepResult], observation: Observation? = nil, observationError: ComputerError? = nil, waited: WaitReport, front: FrontReport? = nil) {
         self.steps = steps
         self.observation = observation
         self.observationError = observationError
         self.waited = waited
+        self.front = front
     }
 }
 

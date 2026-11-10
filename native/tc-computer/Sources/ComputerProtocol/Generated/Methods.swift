@@ -122,20 +122,30 @@ public enum Methods {
         public struct Params: Codable, Hashable, Sendable {
             public let app: String
             public let open: [String]?
+            public let session: String?
+            public let refuse: [String]?
 
-            public init(app: String, open: [String]? = nil) {
+            public init(app: String, open: [String]? = nil, session: String? = nil, refuse: [String]? = nil) {
                 self.app = app
                 self.open = open
+                self.session = session
+                self.refuse = refuse
             }
         }
 
         public struct Output: Codable, Hashable, Sendable {
             public let pid: Int
             public let launched: Bool
+            public let front: FrontReport?
+            public let window: LaunchedWindow?
+            public let others: [LaunchedWindow]?
 
-            public init(pid: Int, launched: Bool) {
+            public init(pid: Int, launched: Bool, front: FrontReport? = nil, window: LaunchedWindow? = nil, others: [LaunchedWindow]? = nil) {
                 self.pid = pid
                 self.launched = launched
+                self.front = front
+                self.window = window
+                self.others = others
             }
         }
     }
