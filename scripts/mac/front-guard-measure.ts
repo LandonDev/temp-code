@@ -1,5 +1,5 @@
 /**
- * The front guard against the real apps (docs/computer-protocol.md §22.9), a hand run on the Mac:
+ * The front guard against the real apps (docs/computer-protocol.md §23.9), a hand run on the Mac:
  * `bun run script:measure-front-guard`. For TextEdit (launch; open a scratch .txt; File › New over
  * AX), Chrome on a scratch profile (open a local file: page), Finder (open a scratch folder),
  * Calculator (launch) and IntelliJ (launch; open a scratch project folder) it records the time to

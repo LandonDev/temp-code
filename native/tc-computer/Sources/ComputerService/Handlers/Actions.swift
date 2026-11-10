@@ -48,7 +48,7 @@ extension ComputerService {
     /// One or more actions on one app (shell §9.1): the steps in order, the `step` wait between those that can
     /// change the screen, a stop at the first failure, the `action` wait once after the last step that ran,
     /// one observation. `pasteQuietMs` goes to Input with every step: a paste refuses a copy that recent.
-    /// The whole call runs under the front guard (§22.4), its report on the result.
+    /// The whole call runs under the front guard (§23.4), its report on the result.
     func runActions(
         session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, actions: [ComputerAction],
         tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int? = nil, ignored: IgnoredRoutes? = nil, ctx: RequestContext

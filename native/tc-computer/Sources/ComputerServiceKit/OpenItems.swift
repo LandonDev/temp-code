@@ -1,7 +1,7 @@
 import ComputerProtocol
 import Foundation
 
-/// What the live side reads of a path on the Mac before `apps.launch` opens it (docs/computer-protocol.md §22.2).
+/// What the live side reads of a path on the Mac before `apps.launch` opens it (docs/computer-protocol.md §23.2).
 public struct FileFacts: Equatable, Sendable {
     public var exists: Bool
     public var isDirectory: Bool

@@ -32,7 +32,7 @@ export const TEMPCODE_BUNDLE_ID = 'dev.landon.tempcode'
  */
 export const REFUSED_ACT_BUNDLES: readonly string[] = ['com.apple.SecurityAgent', 'com.apple.LocalAuthentication.UIAgent']
 
-/** Every `apps.launch` names these as `refuse`: the service checks the resolved app before it launches or opens anything (§22.2). */
+/** Every `apps.launch` names these as `refuse`: the service checks the resolved app before it launches or opens anything (§23.2). */
 export const REFUSED_LAUNCH_BUNDLES: readonly string[] = [TEMPCODE_BUNDLE_ID, ...REFUSED_ACT_BUNDLES]
 
 export interface PinnedApp {
@@ -55,7 +55,7 @@ export interface AppsSource {
 export const LAUNCH_REGISTER_MS = 2000
 const REGISTER_POLL_MS = 100
 
-/** The app pinned, and when the resolver launched it and it came forward, the guard's report (§22.5). */
+/** The app pinned, and when the resolver launched it and it came forward, the guard's report (§23.5). */
 export type Resolved = { app: PinnedApp; front?: FrontReport } | { line: string }
 
 const pinned = (a: AppInfo): PinnedApp => ({ pid: a.pid, bundleId: a.bundleId, name: a.name })
@@ -123,7 +123,7 @@ export function refusedLaunch(query: string): string | null {
   return null
 }
 
-/** Only these open, never the system's default handler for anything else (§22.2). */
+/** Only these open, never the system's default handler for anything else (§23.2). */
 const OPEN_SCHEMES = /^(https?|file):/i
 
 /** computer_apps { open }: an item that is not a web page, a file URL or an absolute path is refused before the card. */

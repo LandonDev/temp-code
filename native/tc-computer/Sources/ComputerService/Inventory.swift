@@ -8,7 +8,7 @@ import Foundation
 final class Inventory: @unchecked Sendable {
     private let workspace: any Workspace
     private let timing: ServiceTiming
-    /// every launch and open runs under its guard (§22.3)
+    /// every launch and open runs under its guard (§23.3)
     private let front: FrontWatch
     private let windows: any WindowSource
     /// the host, which no call may launch or open into
@@ -111,7 +111,7 @@ final class Inventory: @unchecked Sendable {
         return LaunchTarget(pid: nil, bundleId: bundleId, name: candidate?.name ?? URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent, path: path)
     }
 
-    /// `apps.launch` (docs/computer-protocol.md §22.2): every item checked and the app resolved without
+    /// `apps.launch` (docs/computer-protocol.md §23.2): every item checked and the app resolved without
     /// launching it, refused when its bundle id is in `refuse` or it is the host; then ONE open call with the
     /// items under the front guard, a wait for the window it opened, and the report.
     func launch(_ app: String, open: [String], session: String?, refuse: [String]) async throws -> Methods.AppsLaunch.Output {

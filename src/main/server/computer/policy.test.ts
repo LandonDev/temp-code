@@ -168,7 +168,7 @@ describe('textTargetProblem', () => {
   })
 })
 
-describe('the front guard at the resolver (§22)', () => {
+describe('the front guard at the resolver (§23)', () => {
   it("keeps a launch's front report beside the app when it came forward, and drops one that did not", async () => {
     const front = { raised: true, restored: 'restored' as const, ms: 140 }
     const withFront = (raised: boolean): AppsSource => ({

@@ -40,7 +40,7 @@ public struct FrontRecord: Equatable, Sendable {
 }
 
 /// What the listen-only monitor kept of the person's own input, unmarked events only; times in the
-/// guard's milliseconds (docs/computer-protocol.md §22.3).
+/// guard's milliseconds (docs/computer-protocol.md §23.3).
 public struct PersonSignals: Equatable, Sendable {
     /// One mouse down and what was under it.
     public struct Down: Equatable, Sendable {
@@ -150,7 +150,7 @@ public enum FrontDecision: Equatable, Sendable {
     case end
 }
 
-/// The front guard of one launch, open or act (docs/computer-protocol.md §22.3): a value with no clock
+/// The front guard of one launch, open or act (docs/computer-protocol.md §23.3): a value with no clock
 /// and no AppKit, fed events with their times. It records the person's front, takes an activation of
 /// the watched app that the person did not choose for a steal and undoes it, gives way to the person's
 /// own pick, hides the app at its third steal and pauses for session-tier work.

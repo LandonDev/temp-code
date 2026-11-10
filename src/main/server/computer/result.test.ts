@@ -35,7 +35,7 @@ describe('formatAppsList', () => {
   })
 })
 
-describe('the front line (§22.5)', () => {
+describe('the front line (§23.5)', () => {
   it('says nothing when the app stayed behind', () => {
     expect(frontLine('TextEdit', undefined)).toBeNull()
     expect(frontLine('TextEdit', { raised: false })).toBeNull()

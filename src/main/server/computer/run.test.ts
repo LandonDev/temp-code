@@ -715,7 +715,7 @@ describe('tier scheduling', () => {
   })
 })
 
-describe('launch and open without taking the screen (§22)', () => {
+describe('launch and open without taking the screen (§23)', () => {
   const refuseList = ['dev.landon.tempcode', 'com.apple.SecurityAgent', 'com.apple.LocalAuthentication.UIAgent']
 
   for (const mode of ['safe', 'edits'] as const) {

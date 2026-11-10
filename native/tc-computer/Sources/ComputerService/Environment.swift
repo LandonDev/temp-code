@@ -31,7 +31,7 @@ public protocol Workspace: Sendable {
     func appPath(bundleId: String) -> String?
     /// Launches in the background (never activates, adds no recent item, never prompts) and waits for
     /// `isFinishedLaunching` up to `timeout`; `open` items go to it in the same call. An app already
-    /// running is reused (docs/computer-protocol.md §22.1).
+    /// running is reused (docs/computer-protocol.md §23.1).
     func launch(path: String, open: [OpenItem], timeout: Duration) async throws -> (pid: Int32, launched: Bool)
     func isRunning(_ pid: Int32) -> Bool
 }
@@ -84,7 +84,7 @@ public protocol AppEventSource: Sendable {
     func stop()
 }
 
-/// What the front guard reads and moves (docs/computer-protocol.md §22.3). Every call may block on AX; the
+/// What the front guard reads and moves (docs/computer-protocol.md §23.3). Every call may block on AX; the
 /// guard calls it from its own queue. The binary's is `LiveFrontSource`.
 public protocol FrontSource: Sendable {
     /// the guard's clock in milliseconds: the system's uptime, which NSEvent stamps the person's input with
@@ -173,7 +173,7 @@ public struct ServiceTiming: Sendable {
     /// an activation is handed to the guard this long after NSWorkspace tells it, so the person's click
     /// or ⌘-Tab that caused it, which the monitor hears on the main thread, is heard first
     public var frontChoiceGrace: Duration = .milliseconds(30)
-    /// an action's watch runs on this long after its closing wait (§22.4)
+    /// an action's watch runs on this long after its closing wait (§23.4)
     public var frontActionTail: Duration = .seconds(1)
     /// an open's wait for the new window: polled this often, and an existing window's new title must
     /// hold this long before it ends the wait (the URL went into a tab)
@@ -200,7 +200,7 @@ public struct ServiceEnvironment: Sendable {
     public var timing: ServiceTiming
     /// this process
     public var pid: Int32
-    /// the host: an app it resolves to is never launched or opened into (§22.2)
+    /// the host: an app it resolves to is never launched or opened into (§23.2)
     public var parentPid: Int32
 
     public init(workspace: any Workspace, permissions: any PermissionSource, system: any SystemFacts, appEvents: any AppEventSource,

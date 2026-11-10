@@ -16,7 +16,7 @@ import type { SessionMeta } from '@shared/events'
 export const MECHANICS_FACTS = ['what', 'search', 'prefer', 'sideEffects', 'tiers', 'confirm', 'handoff', 'content', 'provenance', 'away', 'offLimits'] as const
 export type MechanicsFact = (typeof MECHANICS_FACTS)[number]
 
-/** The rendered section, any shape, at most this long (about 760 tokens; 3,050 since the side-effects fact, §22.6). */
+/** The rendered section, any shape, at most this long (about 760 tokens; 3,050 since the side-effects fact, §23.6). */
 export const MECHANICS_MAX = 3050
 
 /**

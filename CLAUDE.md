@@ -2138,7 +2138,7 @@ why and the measured headline.
   native/tc-computer/README.md lists the targets, the one private symbol
   and what the service refuses. A launch, an open and every `ax` or
   `process` step run under the front guard (docs/computer-protocol.md
-  §22): an app that takes the front anyway is put back within 400 ms
+  §23): an app that takes the front anyway is put back within 400 ms
   unless the person chose it, a third steal hides it, and every result
   says `raised`; a steal after the call answered is `apps/frontRestored`,
   said once in that thread's next result.
@@ -2265,7 +2265,7 @@ why and the measured headline.
   and `script:measure-front-guard` (scripts/mac/front-guard-measure.ts:
   the front guard against TextEdit, Chrome on a scratch profile, Finder,
   Calculator and IntelliJ, after 5 idle minutes, aborting at the person's
-  first input; §22.9). The gate's tc-computer row also launches "TC Probe
+  first input; §23.9). The gate's tc-computer row also launches "TC Probe
   Steal", the probe built to activate itself, and checks the guard put the
   front back. docs/release-gate.md "Hand runs" has each one's host, needs
   and last time.

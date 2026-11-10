@@ -8,7 +8,7 @@ import Foundation
 import Input
 import UniformTypeIdentifiers
 
-/// The front guard's live half (docs/computer-protocol.md §22.3): one `FrontGuard` per watched launch, open
+/// The front guard's live half (docs/computer-protocol.md §23.3): one `FrontGuard` per watched launch, open
 /// or act, fed from the app events `apps/changed` already reads, the window events' focus changes, the
 /// person's clicks and keys, a 100 ms tick and a 20 ms poll while a restore runs. It applies the guards'
 /// decisions holding `session.lock`, taken without waiting, and tells a steal after its call's result went
@@ -369,7 +369,7 @@ final class FrontWatch: Stoppable, @unchecked Sendable {
     }
 }
 
-/// One `action.run` or `action.batch` under the front guard (§22.4): watched on its target from after the
+/// One `action.run` or `action.batch` under the front guard (§23.4): watched on its target from after the
 /// target resolves until `frontActionTail` after its closing wait, unless an action raises by design; a call
 /// whose `tiers` include `session` pauses every guard from its start (decision 11).
 final class FrontRun: @unchecked Sendable {

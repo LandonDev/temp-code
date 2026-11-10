@@ -327,7 +327,7 @@ function handle({ id, method, params = {} }) {
       .sort((a, b) => a.name === 'TextEdit' ? -1 : b.name === 'TextEdit' ? 1 : a.name.localeCompare(b.name))
       .map((app) => ({ ...brief(app), active: app.name === 'TextEdit', hidden: app.name === 'Finder', ...(params.windows ? { windows: app.windows } : {}) })) })
     case 'apps.launch': {
-      // §22.2: the items and the app are checked before anything opens
+      // §23.2: the items and the app are checked before anything opens
       const open = params.open ?? []
       if (open.some((item) => item.endsWith('.command')))
         return refuse(id, failure('open_refused', 'That item is a program; open only opens documents, folders and web pages.', { reason: 'executable' }))
@@ -385,7 +385,7 @@ function handle({ id, method, params = {} }) {
       if (method === 'state.get') return reply(id, observation(ctx, params))
       if (method.startsWith('action.')) {
         const result = actionResult(ctx, params, method)
-        // FAKE_ACT_STEAL=1: the app came forward during the call (§22.4), unless a step raises it by design
+        // FAKE_ACT_STEAL=1: the app came forward during the call (§23.4), unless a step raises it by design
         const raises = (params.actions ?? [params.action]).some((a) => a.action === 'perform' && a.name === 'raise')
         if (process.env.FAKE_ACT_STEAL === '1' && !raises) result.front = { raised: true, restored: 'restored', ms: 60 }
         // the service says the person took over the moment its watch trips, before the call's closing wait

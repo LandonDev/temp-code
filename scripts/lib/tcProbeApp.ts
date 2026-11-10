@@ -24,7 +24,7 @@ export function buildProbeApp(root: string, dir: string, bundleId: string): Prob
 }
 
 /**
- * "TC Probe Steal" (the front guard's leg, docs/computer-protocol.md §22): the same source with
+ * "TC Probe Steal" (the front guard's leg, docs/computer-protocol.md §23): the same source with
  * `TCProbeSteal` set, so it takes the front at launch, per opened document and on Ping, and the
  * `tcprobe` document type, so an open of a `.tcprobe` file goes to it. Its windows stay inert; its main
  * window is still titled "TC Probe".

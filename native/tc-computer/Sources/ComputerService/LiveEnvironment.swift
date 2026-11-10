@@ -66,7 +66,7 @@ final class LiveWorkspace: Workspace, @unchecked Sendable {
     }
 
     /// One call: `openApplication` alone, or `open(_:withApplicationAt:)` with the items, so the app is told
-    /// once; the configuration never activates (§22.1). `hides` and `createsNewApplicationInstance` stay off:
+    /// once; the configuration never activates (§23.1). `hides` and `createsNewApplicationInstance` stay off:
     /// a hidden app cannot be captured, and a second instance of one bundle id breaks pinning by name.
     func launch(path: String, open: [OpenItem], timeout: Duration) async throws -> (pid: Int32, launched: Bool) {
         let url = URL(fileURLWithPath: path)

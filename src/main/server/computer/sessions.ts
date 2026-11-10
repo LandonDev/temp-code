@@ -129,7 +129,7 @@ export class ComputerSessions {
   }
 
   /**
-   * A steal the guard undid after its call answered (§22.5): the thread whose
+   * A steal the guard undid after its call answered (§23.5): the thread whose
    * session armed the watch reads it once, in its next result. A notice that
    * names no session, or one this host no longer knows, is dropped.
    */

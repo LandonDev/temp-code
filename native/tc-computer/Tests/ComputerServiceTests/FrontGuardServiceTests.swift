@@ -10,7 +10,7 @@ private let settle = #"{"minMs":250,"quietMs":10,"maxMs":400,"busyMaxMs":400}"#
 
 private let session = SessionChange(frontmost: .init(), pointer: .init(before: [0, 0], after: [0, 0]), restorable: true)
 
-/// `apps.launch` and the actions under the front guard (docs/computer-protocol.md §22). The person works in
+/// `apps.launch` and the actions under the front guard (docs/computer-protocol.md §23). The person works in
 /// pid 100; Doc (500) runs; Notes is installed and launches as 600.
 @Suite struct FrontGuardLaunchTests {
     @Test func aBareLaunchReportsItsFirstWindowAndNoSteal() async throws {

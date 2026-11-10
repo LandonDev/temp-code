@@ -18,7 +18,7 @@ public final class ComputerService: @unchecked Sendable {
     let workers = Workers()
     let slots = AppSlots()
     let inventory: Inventory
-    /// the front guard of every launch, open and act (§22)
+    /// the front guard of every launch, open and act (§23)
     let front: FrontWatch
     let locks: MacLocks
     let clipboardLock: ClipboardMacLock

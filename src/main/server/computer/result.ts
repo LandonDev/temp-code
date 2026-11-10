@@ -38,12 +38,12 @@ export interface StepsResult {
   steps: StepResult[]
   observation?: Observation
   observationError?: ComputerError
-  /** the app came forward during the call (§22.4) */
+  /** the app came forward during the call (§23.4) */
   front?: FrontReport
 }
 
 /**
- * What the front guard did when `name` came forward (§22.5), or null when it
+ * What the front guard did when `name` came forward (§23.5), or null when it
  * did not: `TextEdit came to the front; Safari was put back in 180 ms`.
  * `person` is the person's app when the host knows it; `afterMs` marks a steal
  * told after its call answered.

@@ -1,5 +1,5 @@
 /**
- * The pure half of scripts/mac/front-guard-measure.ts (docs/computer-protocol.md §22.9): what the
+ * The pure half of scripts/mac/front-guard-measure.ts (docs/computer-protocol.md §23.9): what the
  * independent frontmost samples say about one case, and the report's table. The live half
  * launches the real apps; this half is tested in vitest on any host.
  */

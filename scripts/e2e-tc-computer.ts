@@ -32,7 +32,7 @@
  *    A background TextEdit ignores a left click and Command-V at the process
  *    tier (§14.8): the click and the paste record that as a finding, and the
  *    paste step still holds the lock and the clipboard's restore.
- *  - the front guard (docs/computer-protocol.md §22.9), in the gate too: "TC
+ *  - the front guard (docs/computer-protocol.md §23.9), in the gate too: "TC
  *    Probe Steal", the probe built to activate itself, is launched, opened
  *    into with a scratch .tcprobe and pressed at ax; each time the result (or
  *    a late apps/frontRestored) must say the guard put the front back within
@@ -1890,7 +1890,7 @@ async function appSections(
 
 }
 
-// ── the front guard (docs/computer-protocol.md §22.9) ──────────────────
+// ── the front guard (docs/computer-protocol.md §23.9) ──────────────────
 
 interface FrontWindow {
   pid: number
