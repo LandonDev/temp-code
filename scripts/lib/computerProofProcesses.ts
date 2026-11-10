@@ -26,7 +26,7 @@ export function staleComputerProofPids(ps: string, self: number): number[] {
   const byId = new Map(rows.map((row) => [row.pid, row]))
   return rows.filter((row) => {
     if (row.pid === self) return false
-    const probe = /^\/(?:private\/)?(?:tmp|var\/folders)\/[^\n]*\/TC Probe\.app\/Contents\/MacOS\/TC Probe(?:\s|$)/.test(row.command)
+    const probe = /^\/(?:private\/)?(?:tmp|var\/folders)\/[^\n]*\/TC Probe( Steal)?\.app\/Contents\/MacOS\/TC Probe\1(?:\s|$)/.test(row.command)
     const service = /^\/(?:Users|srv|private|tmp|var)\/[^\n]*\/resources\/native\/tc-computer (?:serve|hold-lock)(?:\s|$)/.test(row.command)
     if (!probe && !service) return false
     if (/^\/.*\/TempCode\.app\/Contents\//.test(row.command)) return false

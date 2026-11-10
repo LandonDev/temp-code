@@ -83,7 +83,7 @@ extension ComputerService {
             }
         }
         try requireAccessibility()
-        let (pid, launched) = try await inventory.resolve(app, launch: launch)
+        let (pid, launched) = try await inventory.resolve(app, launch: launch, session: session)
         let worker = workers.worker(session, pid)
         let source = modules.windows
         let readers = self.readers

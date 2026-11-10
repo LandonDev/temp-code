@@ -14,6 +14,7 @@ extension ServiceEnvironment {
             system: LiveSystem(),
             appEvents: LiveAppEvents(),
             windowEvents: LiveWindowEvents(windows: windows),
+            front: LiveFrontSource(windows: windows),
             exit: { code in Foundation.exit(code) },
             parentGone: { getppid() == 1 }
         )
@@ -64,14 +65,22 @@ final class LiveWorkspace: Workspace, @unchecked Sendable {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId)?.path
     }
 
-    func launch(path: String, open: [String], timeout: Duration) async throws -> (pid: Int32, launched: Bool) {
+    /// One call: `openApplication` alone, or `open(_:withApplicationAt:)` with the items, so the app is told
+    /// once; the configuration never activates (§22.1). `hides` and `createsNewApplicationInstance` stay off:
+    /// a hidden app cannot be captured, and a second instance of one bundle id breaks pinning by name.
+    func launch(path: String, open: [OpenItem], timeout: Duration) async throws -> (pid: Int32, launched: Bool) {
         let url = URL(fileURLWithPath: path)
         let running = NSWorkspace.shared.runningApplications.contains { $0.bundleURL?.standardizedFileURL == url.standardizedFileURL && !$0.isTerminated }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = false
         configuration.addsToRecentItems = false
         configuration.promptsUserIfNeeded = false
-        let items = open.map { $0.hasPrefix("/") ? URL(fileURLWithPath: $0) : (URL(string: $0) ?? URL(fileURLWithPath: $0)) }
+        let items = open.compactMap { item -> URL? in
+            switch item.kind {
+            case .web(let url): URL(string: url)
+            case .file(let path): URL(fileURLWithPath: path)
+            }
+        }
         let pid: Int32 = try await withCheckedThrowingContinuation { continuation in
             let done: @Sendable (NSRunningApplication?, (any Error)?) -> Void = { app, error in
                 if let app { continuation.resume(returning: app.processIdentifier) } else {
@@ -198,7 +207,7 @@ final class LiveAppEvents: AppEventSource, @unchecked Sendable {
         let made = names.map { name, change in
             center.addObserver(forName: name, object: nil, queue: queue) { note in
                 guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication, app.activationPolicy == .regular else { return }
-                handler(AppEvent(pid: app.processIdentifier, bundleId: app.bundleIdentifier, name: app.localizedName ?? "", change: change))
+                handler(AppEvent(pid: app.processIdentifier, bundleId: app.bundleIdentifier, name: app.localizedName ?? "", change: change, path: app.bundleURL?.path))
             }
         }
         lock.withLock { tokens = made }

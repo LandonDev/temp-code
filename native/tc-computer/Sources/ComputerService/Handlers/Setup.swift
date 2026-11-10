@@ -143,6 +143,7 @@ extension ComputerService {
     }
 
     func appChanged(_ event: AppEvent) {
+        front.appEvent(event)
         notify("apps/changed", AppsChangedNotification.Params(pid: Int(event.pid), bundleId: event.bundleId, name: event.name, change: .init(rawValue: event.change.rawValue)))
         if event.change == .terminated {
             env.windowEvents.unwatch(pid: event.pid)
@@ -151,6 +152,7 @@ extension ComputerService {
     }
 
     func windowChanged(_ event: WindowEvent) {
+        front.windowEvent(event)
         capture.invalidate()
         notify(
             "window/changed",

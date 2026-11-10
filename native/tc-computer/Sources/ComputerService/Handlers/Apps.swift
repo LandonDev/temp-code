@@ -6,9 +6,9 @@ import Foundation
 extension ComputerService {
     func registerApps() {
         router.on("apps.list") { [self] (p: Methods.AppsList.Params, _) in try await appsList(windows: p.windows ?? false) }
+        // items checked and the app refused or resolved before anything opens, then one open under the front guard (§22)
         router.on("apps.launch") { [self] (p: Methods.AppsLaunch.Params, _) -> Methods.AppsLaunch.Output in
-            let (pid, launched) = try await inventory.launch(p.app, open: p.open ?? [])
-            return Methods.AppsLaunch.Output(pid: Int(pid), launched: launched)
+            try await inventory.launch(p.app, open: p.open ?? [], session: p.session, refuse: p.refuse ?? [])
         }
     }
 

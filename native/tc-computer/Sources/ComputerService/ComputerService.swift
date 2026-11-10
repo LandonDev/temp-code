@@ -18,6 +18,8 @@ public final class ComputerService: @unchecked Sendable {
     let workers = Workers()
     let slots = AppSlots()
     let inventory: Inventory
+    /// the front guard of every launch, open and act (§22)
+    let front: FrontWatch
     let locks: MacLocks
     let clipboardLock: ClipboardMacLock
     let sessionLock: SessionMacLock
@@ -54,7 +56,12 @@ public final class ComputerService: @unchecked Sendable {
         self.outbox = Outbox(sink: sink, trace: trace, onClosed: { reason in relay.service?.outboxClosed(reason) })
         self.router = Router(outbox: outbox, trace: trace, mapError: ComputerService.computerError)
         self.lifecycle = Lifecycle(env: environment, trace: trace)
-        self.inventory = Inventory(workspace: environment.workspace, timing: environment.timing)
+        self.front = FrontWatch(
+            source: environment.front, locks: MacLocks(directory: environment.lockDirectory), windows: modules.windows,
+            windowEvents: environment.windowEvents, timing: environment.timing,
+            notify: { relay.service?.notify("apps/frontRestored", $0) }
+        )
+        self.inventory = Inventory(workspace: environment.workspace, timing: environment.timing, front: front, windows: modules.windows, parent: environment.parentPid)
         self.locks = MacLocks(directory: environment.lockDirectory)
         self.clipboardLock = ClipboardMacLock(locks: locks, trace: trace, warn: { relay.service?.log(.warn, $0) }, look: { own in relay.service?.lookAtPasteboard(own: own) })
         self.sessionLock = SessionMacLock(locks: locks, trace: trace)
@@ -197,6 +204,7 @@ public final class ComputerService: @unchecked Sendable {
     func windDown() async {
         lock.withLock { reading = false }
         escape.stop()
+        front.stop()
         router.cancelAll()
         let box = InputBox(input: input)
         for (pid, _) in held.all { _ = try? await blocking { box.input.releaseHeld(pid: pid) } }

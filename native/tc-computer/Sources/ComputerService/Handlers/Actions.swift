@@ -35,7 +35,7 @@ extension ComputerService {
                 session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch,
                 actions: [p.action], tiers: p.tiers, stepWait: nil, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, ignored: p.ignored, ctx: ctx
             )
-            return ActionResult(step: result.steps[0], observation: result.observation, observationError: result.observationError)
+            return ActionResult(step: result.steps[0], observation: result.observation, observationError: result.observationError, front: result.front)
         }
         router.on("action.batch", keepsResult: true) { [self] (p: Methods.ActionBatch.Params, ctx) in
             try await runActions(
@@ -48,9 +48,27 @@ extension ComputerService {
     /// One or more actions on one app (shell §9.1): the steps in order, the `step` wait between those that can
     /// change the screen, a stop at the first failure, the `action` wait once after the last step that ran,
     /// one observation. `pasteQuietMs` goes to Input with every step: a paste refuses a copy that recent.
+    /// The whole call runs under the front guard (§22.4), its report on the result.
     func runActions(
         session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, actions: [ComputerAction],
         tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int? = nil, ignored: IgnoredRoutes? = nil, ctx: RequestContext
+    ) async throws -> BatchResult {
+        let guarded = FrontRun(front, actions: actions, tiers: tiers, tail: env.timing.frontActionTail)
+        do {
+            let result = try await runActions(
+                session: session, app: app, window: window, launch: launch, epoch: callEpoch, actions: actions, tiers: tiers,
+                stepWait: stepWait, wait: wait, observe: observe, pasteQuietMs: pasteQuietMs, ctx: ctx, front: guarded
+            )
+            return result.with(front: guarded.answered(result, cancelled: ctx.cancel.isSet))
+        } catch {
+            _ = guarded.answered(nil, cancelled: ctx.cancel.isSet)
+            throw error
+        }
+    }
+
+    private func runActions(
+        session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, actions: [ComputerAction],
+        tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int?, ctx: RequestContext, front: FrontRun
     ) async throws -> BatchResult {
         for action in actions {
             for element in [action.element, action.start_element].compactMap({ $0 }) {
@@ -58,6 +76,7 @@ extension ComputerService {
             }
         }
         let target = try await resolveTarget(session: session, app: app, window: window, launch: launch, ctx: ctx)
+        front.watch(target)
         // a click this call makes is carried for a stream that starts until clickCarryMs after its answer
         ctx.afterAnswer { [self] in clickCallAnswered(ctx.id) }
 
@@ -109,6 +128,7 @@ extension ComputerService {
                 steps[at] = .ok(ok.with(effect: waited.effect(thin: book.lastThin(session, pid: target.pid), windowGone: windowGone), waited: waited.report))
             }
         }
+        front.closing()
 
         // a cancel takes no observation; a step already done keeps its result
         if ctx.cancel.isSet || waited.report.reason == .cancelled {

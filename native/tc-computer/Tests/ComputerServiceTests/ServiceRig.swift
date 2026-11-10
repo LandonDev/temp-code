@@ -42,6 +42,7 @@ final class ServiceRig: @unchecked Sendable {
     let appEvents = FakeAppEvents()
     let windowEvents = FakeWindowEvents()
     let windows = FakeWindows()
+    let front = FakeFrontSource()
     let readers: FakeReaders
     let capture: FakeCapture
     let exits = ExitRecorder()
@@ -67,9 +68,14 @@ final class ServiceRig: @unchecked Sendable {
         timing?(&t)
         let exits = self.exits
         let env = ServiceEnvironment(
-            workspace: workspace, permissions: permissions, system: system, appEvents: appEvents, windowEvents: windowEvents,
-            lockDirectory: self.dataDir.appendingPathComponent("locks"), exit: { exits.record($0) }, parentGone: { false }, timing: t
+            workspace: workspace, permissions: permissions, system: system, appEvents: appEvents, windowEvents: windowEvents, front: front,
+            lockDirectory: self.dataDir.appendingPathComponent("locks"), exit: { exits.record($0) }, parentGone: { false }, timing: t,
+            parentPid: ServiceRig.hostPid
         )
+        // a move the guard makes comes back as NSWorkspace and AX tell it
+        let appEvents = self.appEvents, windowEvents = self.windowEvents
+        front.onActivate = { pid in appEvents.send(AppEvent(pid: pid, bundleId: nil, name: "", change: .activated)) }
+        front.onFocus = { pid, window in windowEvents.send(WindowEvent(pid: pid, windowID: window, change: .focused)) }
         let log = self.log, readers = self.readers, capture = self.capture, windows = self.windows, inputBox = self.inputBox, escapeTap = self.escapeTap
         let modules = Modules(
             readers: { readers },
@@ -87,6 +93,15 @@ final class ServiceRig: @unchecked Sendable {
     }
 
     var input: FakeInput { inputBox.value! }
+
+    /// The pid the service takes for its host (TempCode).
+    static let hostPid: Int32 = 450
+
+    /// An app comes to the front on its own: NSWorkspace's notice, and the front moved.
+    func activate(_ pid: Int32, bundleId: String? = nil) {
+        front.set(front: pid)
+        appEvents.send(AppEvent(pid: pid, bundleId: bundleId, name: "", change: .activated))
+    }
 
     func reader(_ session: String = "s1", pid: pid_t = 500) -> FakeReader { readers.fake(session, pid) }
 

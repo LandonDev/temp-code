@@ -32,6 +32,12 @@
  *    A background TextEdit ignores a left click and Command-V at the process
  *    tier (§14.8): the click and the paste record that as a finding, and the
  *    paste step still holds the lock and the clipboard's restore.
+ *  - the front guard (docs/computer-protocol.md §22.9), in the gate too: "TC
+ *    Probe Steal", the probe built to activate itself, is launched, opened
+ *    into with a scratch .tcprobe and pressed at ax; each time the result (or
+ *    a late apps/frontRestored) must say the guard put the front back within
+ *    400 ms, and the person's front app and window must be the ones before.
+ *    A program in `open` is refused before anything opens.
  *
  * Nothing here activates an app or takes the session tier: every action
  * runs with the `ax` and `process` tiers alone. A launched app may still come
@@ -91,6 +97,7 @@ import {
   LOCKS,
   NotificationFrameSchema,
   RpcErrorResponseSchema,
+  SERVICE,
   SHOT,
   requestFrameSchema,
   resultFrameSchema,
@@ -101,6 +108,7 @@ import {
   type ComputerParams,
   type ComputerResult,
   type CoordinateSpace,
+  type FrontReport,
   type Observation,
   type Permissions,
   type RpcError,
@@ -110,7 +118,7 @@ import {
 } from '../src/shared/computer/protocol'
 import { waitForGateBuild } from './lib/gateBuild'
 import { intPoint } from './lib/computerPoint'
-import { cleanupProbeApp, launchProbe } from './lib/tcProbeApp'
+import { STEAL_PROBE_APP_NAME, buildStealProbeApp, cleanupProbeApp, launchProbe } from './lib/tcProbeApp'
 import { COMPUTER_PROOF_ENV, sweepComputerProofProcesses } from './lib/computerProofProcesses'
 import { computerInitializeMs, computerProofMode, computerProofPolicy, LOST_TRY_LINE, lostTry, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
 import { OwnInput, personSince } from './lib/proofGate'
@@ -455,7 +463,7 @@ function swiftEnv(): NodeJS.ProcessEnv {
 // ── what the Mac looks like from outside the service ────────────────────
 
 function probe<T>(
-  command: 'pointer' | 'frontmost' | 'pasteboard' | 'hide',
+  command: 'pointer' | 'frontmost' | 'frontwindow' | 'pasteboard' | 'hide',
   args: string[] = [],
   timeoutMs = 10_000
 ): T {
@@ -826,6 +834,7 @@ const shotNumber = (path: string): number => Number(/^(\d+)-/.exec(basename(path
 // ── the run ─────────────────────────────────────────────────────────────
 
 let probePid = 0
+let stealPid = 0
 let textEditPid = 0
 /** Set when the person came back during a try: every step and launch of that try stops. */
 let tryAborted = false
@@ -961,12 +970,18 @@ function ownedPids(): number[] {
     }
   }
   // `ps` names /tmp as /private/tmp, so the probe app is matched below the directory's own name
-  return [...new Set([...find('tc-computer-proof/TC Probe.app/Contents/MacOS/'), ...find(RUN_MARK)])]
+  return [
+    ...new Set([
+      ...find('tc-computer-proof/TC Probe.app/Contents/MacOS/'),
+      ...find(`tc-computer-proof/${STEAL_PROBE_APP_NAME}.app/Contents/MacOS/`),
+      ...find(RUN_MARK)
+    ])
+  ]
 }
 
 /** Hides then kills every scratch app the run started; the first half of an abort, and the last of the cleanup. */
 function hideThenKillApps(): number[] {
-  const pids = [...new Set([probePid, textEditPid, ...ownedPids()])].filter((p) => p && alive(p))
+  const pids = [...new Set([probePid, stealPid, textEditPid, ...ownedPids()])].filter((p) => p && alive(p))
   for (const pid of pids)
     try {
       probe('hide', [String(pid)])
@@ -1464,6 +1479,8 @@ async function appSections(
     probePid = 0
   })
 
+  await stealerSection(a, mayLaunch)
+
   if (GATE) {
     if (!a.done) { a.closeStdin(); await within(a.exit, 2_000, 'gate service EOF') }
     return
@@ -1871,6 +1888,109 @@ async function appSections(
     check(exit.code === 0, 'the service exits 0', exit)
   })
 
+}
+
+// ── the front guard (docs/computer-protocol.md §22.9) ──────────────────
+
+interface FrontWindow {
+  pid: number
+  window: number
+}
+const frontWindow = (): FrontWindow => probe<FrontWindow>('frontwindow')
+
+/**
+ * The guard's word on a steal: the result's own `front`, or, for a steal after the result went
+ * out, the `apps/frontRestored` notice for that pid. Null when the app never came forward.
+ */
+async function guardWord(svc: Service, front: FrontReport | undefined, pid: number, since: number): Promise<FrontReport | null> {
+  if (front?.raised) return front
+  const late = await svc.noteMatching((n) => n.method === 'apps/frontRestored' && n.params.pid === pid && svc.notes.indexOf(n) >= since, 3_000)
+  return late?.method === 'apps/frontRestored' ? late.params.front : null
+}
+
+/**
+ * A steal the guard undid leaves the person's front app and its front window as they were; the
+ * person using the Mac meanwhile makes the step void, not failed. A stealer macOS would not let
+ * come forward proves nothing about the guard, and the step says so.
+ */
+function judgeGuard(data: Record<string, unknown>, word: FrontReport | null, before: FrontWindow, at: number): void {
+  data.front = word ?? { raised: false }
+  if (personIdleSeconds() * 1_000 < Date.now() - at) throw skip('void: the person used the Mac during the step')
+  const after = frontWindow()
+  data.frontWindow = { before, after }
+  if (!word) {
+    data.note = 'the stealer did not come forward on this Mac; the guard had nothing to undo'
+    check(after.pid === before.pid, 'nothing came forward, and the front app stayed', data.frontWindow)
+    return
+  }
+  check(word.restored === 'restored', "the guard put the person's front back", word)
+  check(word.ms !== undefined && word.ms <= SERVICE.frontRestoreMs, `within ${SERVICE.frontRestoreMs} ms`, word)
+  check(after.pid === before.pid && after.window === before.window, 'the front app and its front window are the ones before', data.frontWindow)
+}
+
+/**
+ * "TC Probe Steal", the probe built to activate itself when its window shows, when a document
+ * opens and on Ping: launched, opened into and pressed in the background, each time the guard
+ * must put the front back. Its windows are inert like the probe's, so a steal takes no keystroke.
+ */
+async function stealerSection(a: Service, mayLaunch: () => void): Promise<void> {
+  const chain = new Chain()
+  const built: { app?: string } = {}
+  stealPid = 0
+  await chain.step('build TC Probe Steal', async () => {
+    built.app = buildStealProbeApp(ROOT, WORK).app
+  })
+  if (!built.app) return
+  await chain.step('apps.launch TC Probe Steal: the guard puts the front back', async (data) => {
+    const before = frontWindow()
+    const at = Date.now()
+    const since = a.notes.length
+    mayLaunch()
+    const r = await a.call('apps.launch', { app: built.app!, session: SESSION }, 20_000)
+    check(r.launched === true && r.pid > 0, 'apps.launch launches it', r)
+    stealPid = data.pid = r.pid
+    await sleep(1_000)
+    judgeGuard(data, await guardWord(a, r.front, r.pid, since), before, at)
+  })
+  await chain.step('a program is refused before anything opens', async () => {
+    const e = await a.refused('apps.launch', { app: built.app!, open: ['/bin/ls'], session: SESSION }, 'open_refused')
+    check(e.data?.reason === 'executable', 'refused as a program', e.data)
+  })
+  await chain.step('open a .tcprobe into it: its window, and the front back', async (data) => {
+    const doc = join(WORK, `probe-${process.pid}.tcprobe`)
+    writeFileSync(doc, RUN_MARK)
+    const before = frontWindow()
+    const at = Date.now()
+    const since = a.notes.length
+    const r = await a.call('apps.launch', { app: built.app!, open: [doc], session: SESSION }, 20_000)
+    check(r.pid === stealPid && r.launched === false, 'the running copy gets the item', r)
+    check(r.window?.title === basename(doc), 'the result names the window the item opened in', r.window)
+    await sleep(1_000)
+    judgeGuard(data, await guardWord(a, r.front, r.pid, since), before, at)
+  })
+  await chain.step('an ax press of Ping in the stealer: the call carries front', async (data) => {
+    const target = { session: SESSION, app: { pid: stealPid }, window: { title: 'TC Probe' } }
+    const read = await a.call('state.get', { ...target, mode: 'full', screenshot: 'never', wait: COMPUTER_WAIT.observe })
+    const ping = findElement(read, 'Ping', (e) => e.role === 'button' && e.name === 'Ping')
+    const before = frontWindow()
+    const at = Date.now()
+    const since = a.notes.length
+    const r = await a.call('action.run', {
+      ...target,
+      epoch: read.epoch,
+      action: { action: 'left_click', element: ping.index },
+      tiers: ['ax'],
+      wait: COMPUTER_WAIT.action
+    })
+    check(okStep(r.step).tier === 'ax', 'the press ran at ax', r.step)
+    judgeGuard(data, await guardWord(a, r.front, stealPid, since), before, at)
+  })
+  await chain.step('quit TC Probe Steal', async () => {
+    if (!stealPid) return
+    process.kill(stealPid, 'SIGTERM')
+    await until(() => (alive(stealPid) ? null : true), 5_000, 'the stealer exiting')
+    stealPid = 0
+  })
 }
 
 function probeInfoPlist(): string {

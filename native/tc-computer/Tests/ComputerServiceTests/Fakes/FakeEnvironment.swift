@@ -10,18 +10,26 @@ final class FakeWorkspace: Workspace, @unchecked Sendable {
     var launches: [(path: String, open: [String])] = []
     /// the pid a launch gives
     var launchPid: Int32 = 600
+    /// runs inside each launch once the pid is known, before it returns (an app that steals the front)
+    var onLaunch: (@Sendable (Int32) -> Void)?
+    /// how long a launch takes after `onLaunch`
+    var launchDelay: Duration = .zero
 
     func runningApps() -> [RunningApp] { lock.withLock { apps } }
     func installedApps() -> [AppCandidate] { lock.withLock { installed } }
     func appPath(bundleId: String) -> String? { nil }
 
-    func launch(path: String, open: [String], timeout: Duration) async throws -> (pid: Int32, launched: Bool) {
-        lock.withLock {
-            launches.append((path, open))
+    func launch(path: String, open: [OpenItem], timeout: Duration) async throws -> (pid: Int32, launched: Bool) {
+        let answer: (pid: Int32, launched: Bool) = lock.withLock {
+            launches.append((path, open.map(\.target)))
             if let running = apps.first(where: { $0.path == path }) { return (running.pid, false) }
             apps.append(RunningApp(pid: launchPid, bundleId: nil, name: URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent, path: path, active: false, hidden: false))
             return (launchPid, true)
         }
+        lock.withLock { onLaunch }?(answer.pid)
+        let delay = lock.withLock { launchDelay }
+        if delay > .zero { try await Task.sleep(for: delay) }
+        return answer
     }
 
     func isRunning(_ pid: Int32) -> Bool { lock.withLock { apps.contains { $0.pid == pid } } }

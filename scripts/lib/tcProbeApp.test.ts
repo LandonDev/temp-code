@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { binarySpellings } from './tcProbeApp'
+import { STEAL_PLIST_KEYS, STEAL_PROBE_BUNDLE_ID, binarySpellings, probePlist } from './tcProbeApp'
 
 describe('binarySpellings', () => {
   const dir = mkdtempSync(join(tmpdir(), 'tc-probe-spell-'))
@@ -28,5 +28,36 @@ describe('binarySpellings', () => {
 
   it('leaves any other path as it is', () => {
     expect(binarySpellings('/Users/me/probe/TC Probe')).toEqual(['/Users/me/probe/TC Probe'])
+  })
+})
+
+describe('probePlist', () => {
+  it('writes the plain probe as it always did', () => {
+    expect(probePlist('TC Probe', 'dev.landon.tempcode.computer-probe', '')).toBe(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>dev.landon.tempcode.computer-probe</string>
+  <key>CFBundleName</key><string>TC Probe</string>
+  <key>CFBundleExecutable</key><string>TC Probe</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>
+`)
+  })
+
+  it('gives the stealer its key and the tcprobe document type it owns', () => {
+    const plist = probePlist('TC Probe Steal', STEAL_PROBE_BUNDLE_ID, STEAL_PLIST_KEYS)
+    expect(plist).toContain('<key>CFBundleIdentifier</key><string>dev.landon.tempcode.computer-probe-steal</string>')
+    expect(plist).toContain('<key>CFBundleExecutable</key><string>TC Probe Steal</string>')
+    expect(plist).toContain('<key>TCProbeSteal</key><true/>')
+    expect(plist).toContain('<key>LSHandlerRank</key><string>Owner</string>')
+    expect(plist).toContain('<key>CFBundleTypeRole</key><string>Viewer</string>')
+    expect(plist).toContain('<array><string>tcprobe</string></array>')
+    expect(plist.trimEnd().endsWith('</dict>\n</plist>')).toBe(true)
   })
 })

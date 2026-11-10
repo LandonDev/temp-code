@@ -17,6 +17,12 @@
 // `--windows` (opt-in, for the window actions leg; docs/computer-protocol.md §22): see ProbeWindows below.
 //
 // `--fallbacks <dir>` (opt-in, for the background fallbacks leg; §24): see ProbeFallbacks below.
+//
+// `TCProbeSteal` (an Info.plist key, set only in "TC Probe Steal.app", bundle id
+// dev.landon.tempcode.computer-probe-steal, for the front guard's leg): the app takes the front the way a
+// misbehaving app does, `NSApp.activate(ignoringOtherApps: true)`, once its window shows, once per opened
+// document and each time Ping is pressed. It opens `.tcprobe` documents into a second inert window titled
+// with the file's name. Its windows stay inert all the same, so a steal takes none of the person's keys.
 import AppKit
 
 /// A window the person can neither click nor bring forward.
@@ -34,6 +40,9 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
     private var pauseSignal: DispatchSourceSignal?
     private let windows = ProbeWindows()
     private let fallbacks = ProbeFallbacks()
+    private var documents: [NSWindow] = []
+    /// the stealer's Info.plist says so
+    private let steals = Bundle.main.object(forInfoDictionaryKey: "TCProbeSteal") as? Bool ?? false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let ticking = CommandLine.arguments.contains("--tick")
@@ -71,6 +80,7 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
         window.ignoresMouseEvents = true
         window.orderBack(nil)
         self.window = window
+        steal()
 
         if CommandLine.arguments.contains("--windows") { windows.open() }
         if let at = CommandLine.arguments.firstIndex(of: "--fallbacks"), at + 1 < CommandLine.arguments.count {
@@ -95,6 +105,33 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func ping(_ sender: Any?) {
         result.stringValue = "pong"
+        steal()
+    }
+
+    /// A `.tcprobe` document: a second inert window, titled with the file's name.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where url.pathExtension == "tcprobe" {
+            let document = InertWindow(
+                contentRect: NSRect(x: 200, y: 200, width: 320, height: 120),
+                styleMask: [.titled, .closable],
+                backing: .buffered,
+                defer: false
+            )
+            document.title = url.lastPathComponent
+            document.isReleasedWhenClosed = false
+            document.isRestorable = false
+            document.contentView = NSTextField(labelWithString: url.lastPathComponent)
+            document.ignoresMouseEvents = true
+            document.orderBack(nil)
+            documents.append(document)
+            steal()
+        }
+    }
+
+    /// The stealer's activation, which the front guard puts back; the plain probe never activates.
+    private func steal() {
+        guard steals else { return }
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { false }

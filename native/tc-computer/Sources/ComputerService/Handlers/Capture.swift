@@ -130,6 +130,7 @@ extension ComputerService {
         router.on("input.restoreSession") { [self] (p: Methods.InputRestoreSession.Params, _) -> SessionRestore in
             let box = InputBox(input: input)
             let afterInterrupt = p.afterInterrupt ?? false
+            defer { front.restoreAnswered() }
             return try await blocking { try box.input.restoreSession(afterInterrupt: afterInterrupt) }
         }
     }

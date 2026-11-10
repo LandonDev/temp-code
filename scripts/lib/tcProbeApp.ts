@@ -1,7 +1,7 @@
 import { execFile, execFileSync } from 'node:child_process'
 import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { probeAppPids, stopProofPids } from './computerProofProcesses'
 
 /**
@@ -20,28 +20,71 @@ export interface ProbeAppBuild {
 }
 
 export function buildProbeApp(root: string, dir: string, bundleId: string): ProbeAppBuild {
-  const app = join(dir, `${PROBE_APP_NAME}.app`)
-  const binary = join(app, 'Contents/MacOS', PROBE_APP_NAME)
-  mkdirSync(join(app, 'Contents/MacOS'), { recursive: true })
-  execFileSync('xcrun', ['swiftc', '-O', '-o', binary, join(root, 'scripts/mac/computer-probe-app.swift')], { stdio: 'pipe' })
-  writeFileSync(
-    join(app, 'Contents/Info.plist'),
-    `<?xml version="1.0" encoding="UTF-8"?>
+  return buildApp(root, dir, PROBE_APP_NAME, bundleId, '')
+}
+
+/**
+ * "TC Probe Steal" (the front guard's leg, docs/computer-protocol.md §22): the same source with
+ * `TCProbeSteal` set, so it takes the front at launch, per opened document and on Ping, and the
+ * `tcprobe` document type, so an open of a `.tcprobe` file goes to it. Its windows stay inert; its main
+ * window is still titled "TC Probe".
+ */
+export const STEAL_PROBE_APP_NAME = 'TC Probe Steal'
+export const STEAL_PROBE_BUNDLE_ID = 'dev.landon.tempcode.computer-probe-steal'
+
+export function buildStealProbeApp(root: string, dir: string): ProbeAppBuild {
+  return buildApp(root, dir, STEAL_PROBE_APP_NAME, STEAL_PROBE_BUNDLE_ID, STEAL_PLIST_KEYS)
+}
+
+/** The stealer's own Info.plist keys. */
+export const STEAL_PLIST_KEYS = `  <key>TCProbeSteal</key><true/>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key><string>TC Probe document</string>
+      <key>CFBundleTypeRole</key><string>Viewer</string>
+      <key>LSHandlerRank</key><string>Owner</string>
+      <key>CFBundleTypeExtensions</key><array><string>tcprobe</string></array>
+      <key>LSItemContentTypes</key><array><string>dev.landon.tempcode.tcprobe</string></array>
+    </dict>
+  </array>
+  <key>UTExportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key><string>dev.landon.tempcode.tcprobe</string>
+      <key>UTTypeDescription</key><string>TC Probe document</string>
+      <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+      <key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>tcprobe</string></array></dict>
+    </dict>
+  </array>
+`
+
+/** The Info.plist of a probe build; `extra` goes in before the dict closes. */
+export function probePlist(name: string, bundleId: string, extra: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>${bundleId}</string>
-  <key>CFBundleName</key><string>${PROBE_APP_NAME}</string>
-  <key>CFBundleExecutable</key><string>${PROBE_APP_NAME}</string>
+  <key>CFBundleName</key><string>${name}</string>
+  <key>CFBundleExecutable</key><string>${name}</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
-</dict>
+${extra}</dict>
 </plist>
 `
-  )
+}
+
+/** scripts/mac/computer-probe-app.swift compiled into `<dir>/<name>.app`, signed ad hoc. */
+function buildApp(root: string, dir: string, name: string, bundleId: string, extra: string): ProbeAppBuild {
+  const app = join(dir, `${name}.app`)
+  const binary = join(app, 'Contents/MacOS', name)
+  mkdirSync(join(app, 'Contents/MacOS'), { recursive: true })
+  execFileSync('xcrun', ['swiftc', '-O', '-o', binary, join(root, 'scripts/mac/computer-probe-app.swift')], { stdio: 'pipe' })
+  writeFileSync(join(app, 'Contents/Info.plist'), probePlist(name, bundleId, extra))
   execFileSync('codesign', ['-s', '-', '--force', app], { stdio: 'pipe' })
   return { app, binary, bundleId }
 }
@@ -146,11 +189,12 @@ export function cleanupProbeApp(build: ProbeAppBuild | null, pid: number): strin
       done.push('could not list probe processes; ending the recorded pid')
     }
   }
-  for (const ended of stopProofPids([...pids])) done.push(`ended TC Probe ${ended}`)
+  const name = build ? basename(build.binary) : PROBE_APP_NAME
+  for (const ended of stopProofPids([...pids])) done.push(`ended ${name} ${ended}`)
   if (build) {
     try {
       execFileSync(LSREGISTER, ['-u', build.app], { stdio: 'ignore' })
-      done.push('unregistered TC Probe from Launch Services')
+      done.push(`unregistered ${name} from Launch Services`)
     } catch {
       // nothing registered
     }

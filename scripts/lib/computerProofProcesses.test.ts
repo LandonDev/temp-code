@@ -15,7 +15,8 @@ describe('staleComputerProofPids', () => {
       11 1 /private${probe} --tick
       12 1 /private/var/folders/xx/yy/T/tc-preview-proof/TC Probe.app/Contents/MacOS/TC Probe --tick
       13 1 /tmp/tc-computer-bridge/TC Probe.app/Contents/MacOS/TC Probe
-    `, 99)).toEqual([10, 11, 12, 13])
+      14 1 /private/tmp/tc-computer-proof/TC Probe Steal.app/Contents/MacOS/TC Probe Steal
+    `, 99)).toEqual([10, 11, 12, 13, 14])
   })
 
   it('finds orphaned proof services and lock holders with the new marker or legacy gate environment', () => {
@@ -38,6 +39,7 @@ describe('staleComputerProofPids', () => {
       35 1 /bin/sh -c ${bin} serve TEMP_CODE_COMPUTER_PROOF=1
       36 1 /usr/bin/pgrep -f ${probe}
       37 1 /tmp/tc-computer-proof/TC Probe.app/Contents/MacOS/TC Probe-other
+      39 1 /tmp/tc-computer-proof/TC Probe Steal.app/Contents/MacOS/TC Probe
       38 1 ${bin} permissions TEMP_CODE_COMPUTER_PROOF=1
     `, 99)).toEqual([])
   })
