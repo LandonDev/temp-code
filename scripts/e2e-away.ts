@@ -7,8 +7,12 @@
  *      away notice says so, the thread never waits, the turn finishes with
  *      the file written, and its final message holds "Decisions made while
  *      you were away".
- *   2. Turning away off mid-turn whispers `<away state="off">` into the
- *      running turn of a second thread.
+ *   2. With away on, a safe-mode thread told to write a file through Bash
+ *      never shows an approval card: the host allows it, one `allowed`
+ *      away notice says so, the thread never waits, the file is written and
+ *      the tally counts it.
+ *   3. Turning away off mid-turn whispers `<away state="off">` into the
+ *      running turn of a third thread.
  * Run: bun run script:e2e-away
  */
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
@@ -73,13 +77,13 @@ const wsPath = mkdtempSync(join(tmpdir(), 'tc-away-ws-'))
 const ws = await registry.createWorkspace(wsPath, 'away-ws')
 const project = await registry.createProject(ws.id, 'Away', 'local')
 const MODEL = 'claude-haiku-5-5'
-const thread = (title: string) =>
+const thread = (title: string, permission: 'auto' | 'safe' = 'auto') =>
   registry.create({
     provider: 'claude',
     model: MODEL,
     reasoning: 'low',
     agentType: 'implementer',
-    permission: 'auto',
+    permission,
     projectId: project.id,
     threadType: 'implementation',
     parentId: null,
@@ -114,8 +118,33 @@ const report = finalText(asker.id)
 check('the final message has the decisions section', /Decisions made while you were away/i.test(report), report.slice(-300).replace(/\s+/g, ' '))
 check('the tally counted the thread', away.get().decided.threads.some((t) => t.sessionId === asker.id && t.count >= 1), JSON.stringify(away.get().decided))
 
-// ── 2. off mid-turn ─────────────────────────────────────────────────────
-console.log('\n[2] turning away off whispers into a running turn')
+// ── 2. an approval while away ──────────────────────────────────────────
+console.log('\n[2] an approval while away is allowed, with no card')
+const writer = await thread('Away writer', 'safe')
+const writerStatuses: string[] = []
+const offWriter = registry.onMeta((m) => {
+  if (m.id === writer.id) writerStatuses.push(m.status)
+})
+await registry.send(
+  writer.id,
+  'This is a test of the app. Use the Bash tool exactly once to run: printf allowed > allowed.txt   (in the project root). Do not use any other tool to write it. Then give a one-line final report.'
+)
+await waitFor(writer.id, isSettle)
+offWriter()
+const writerRows = rows(writer.id)
+const allowedNotices = writerRows.filter(
+  (e): e is Extract<AgentEvent, { type: 'notice' }> => e.type === 'notice' && e.kind === 'away' && e.away?.kind === 'allowed'
+)
+check('no approval card was written', !writerRows.some((e) => e.type === 'approval-request'))
+check('an allowed away notice for the Bash call', allowedNotices.length >= 1, allowedNotices.map((n) => n.message).join(' | '))
+check('no approval was skipped', !writerRows.some((e) => e.type === 'notice' && e.kind === 'away' && e.away?.kind === 'approval'))
+check('the writer never read waiting', !writerStatuses.includes('waiting'), writerStatuses.join(','))
+const allowedFile = join(wsPath, 'allowed.txt')
+check('the file was written', existsSync(allowedFile) && readFileSync(allowedFile, 'utf8').trim() === 'allowed', existsSync(allowedFile) ? readFileSync(allowedFile, 'utf8') : 'missing')
+check('the tally counted the writer', away.get().decided.threads.some((t) => t.sessionId === writer.id && t.count >= 1), JSON.stringify(away.get().decided))
+
+// ── 3. off mid-turn ─────────────────────────────────────────────────────
+console.log('\n[3] turning away off whispers into a running turn')
 const worker = await thread('Away worker')
 await registry.send(worker.id, 'This is a test of the app. Run the shell command `sleep 25` with the Bash tool, then reply with one short sentence.')
 await waitFor(worker.id, (e) => e.type === 'tool-call')
