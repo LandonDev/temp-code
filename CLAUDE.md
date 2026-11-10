@@ -2136,7 +2136,12 @@ why and the measured headline.
   release-publish.sh sets, makes a failure stop the publish, and the
   publish checks the signed copy with `codesign --verify --strict`).
   native/tc-computer/README.md lists the targets, the one private symbol
-  and what the service refuses.
+  and what the service refuses. A launch, an open and every `ax` or
+  `process` step run under the front guard (docs/computer-protocol.md
+  §22): an app that takes the front anyway is put back within 400 ms
+  unless the person chose it, a third steal hides it, and every result
+  says `raised`; a steal after the call answered is `apps/frontRestored`,
+  said once in that thread's next result.
 - **The contract.** The zod in src/shared/computer/ (protocol.ts,
   observation.ts, tools.ts) is the one source; `bun run gen:swift-computer`
   writes the Swift under each target's Generated/, and
@@ -2173,7 +2178,11 @@ why and the measured headline.
   `computerMechanicsFor` (apptools.ts) decide who gets them and
   COMPUTER_MECHANICS (computer/prompts.ts); a cursor thread gets neither.
   The words come in two shapes by the model's maker
-  (src/shared/computer/descriptions.ts, §19).
+  (src/shared/computer/descriptions.ts, §19). `computer_apps` takes
+  `open`: files, folders and web pages into the named app, never programs
+  (http, https, file URLs and absolute paths, at most 8; the service
+  refuses a missing or executable item and a refused app before anything
+  opens); it asks a card in safe and edits and takes `confirm`.
 - **Confirmations** (§19, src/shared/computer/policy.ts). In safe and
   edits every act that sends input asks one card naming the app, the
   window and each action; reads never ask. Full access asks only for an
@@ -2252,9 +2261,14 @@ why and the measured headline.
   (Screen Recording), `script:e2e-computer-schedule` (the session tier),
   `script:e2e-computer-preview` whole (it takes Escape for two seconds),
   `script:e2e-computer-images` and `script:e2e-computer-ui` (real model
-  turns) and `script:compare-computer-words` (48 model runs, about 25 minutes).
-  docs/release-gate.md "Hand runs" has each one's host, needs and last
-  time.
+  turns), `script:compare-computer-words` (48 model runs, about 25 minutes)
+  and `script:measure-front-guard` (scripts/mac/front-guard-measure.ts:
+  the front guard against TextEdit, Chrome on a scratch profile, Finder,
+  Calculator and IntelliJ, after 5 idle minutes, aborting at the person's
+  first input; §22.9). The gate's tc-computer row also launches "TC Probe
+  Steal", the probe built to activate itself, and checks the guard put the
+  front back. docs/release-gate.md "Hand runs" has each one's host, needs
+  and last time.
 - **The bench** (§21). `bun run script:e2e-computer-bench` runs seven real
   desktop tasks on Opus 5.5, GPT-6.1 Sol and Muse Wonder 1.0 side by side
   in the background tiers, each end state read through the AX tree, the
