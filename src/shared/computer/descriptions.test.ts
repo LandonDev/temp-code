@@ -190,3 +190,19 @@ describe('the background routes in the words (§24)', () => {
     }
   })
 })
+
+describe("computer_apps' open", () => {
+  it('says in both shapes that launch and open stay in the background, never programs, and to prefer a file you made', () => {
+    for (const shape of WORDS_SHAPES) {
+      const text = toolDescription(shape, 'act', 'computer_apps')
+      expect(text, shape).toContain('open')
+      expect(text, shape).toContain('never programs')
+      expect(text, shape).toContain('the result says so')
+      expect(text, shape).toContain('prefer')
+      expect(text, shape).toContain('File › New')
+      const fields = fieldWords(shape)
+      expect(fields.open, shape).toContain('Never programs')
+      expect(fields['apps.confirm'], shape).toContain('confirm')
+    }
+  })
+})

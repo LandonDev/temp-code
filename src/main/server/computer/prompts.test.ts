@@ -50,6 +50,16 @@ describe('COMPUTER_MECHANICS', () => {
     }
   })
 
+  it("puts the side-effects fact in the rendered text of every shape, after when to use the tools", () => {
+    for (const o of every) {
+      const text = renderComputerMechanics(o)
+      const f = mechanicsFacts(o.shape)
+      expect(text, JSON.stringify(o)).toContain(f.sideEffects)
+      expect(text.indexOf(f.sideEffects)).toBeGreaterThan(text.indexOf(f.prefer))
+      expect(f.sideEffects).toContain("which of the person's windows changed")
+    }
+  })
+
   it('tells only claude to load the tools with tool search', () => {
     expect(renderComputerMechanics({ shape: 'anthropic', tools: 'act', search: true, provenance: 'person' })).toContain('tool search (query "computer")')
     expect(renderComputerMechanics({ shape: 'anthropic', tools: 'act', search: false, provenance: 'person' })).not.toContain('tool search')

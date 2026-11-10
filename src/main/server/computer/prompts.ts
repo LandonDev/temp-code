@@ -13,11 +13,11 @@ import type { SessionMeta } from '@shared/events'
  * is policy and reads the same to every model.
  */
 
-export const MECHANICS_FACTS = ['what', 'search', 'prefer', 'tiers', 'confirm', 'handoff', 'content', 'provenance', 'away', 'offLimits'] as const
+export const MECHANICS_FACTS = ['what', 'search', 'prefer', 'sideEffects', 'tiers', 'confirm', 'handoff', 'content', 'provenance', 'away', 'offLimits'] as const
 export type MechanicsFact = (typeof MECHANICS_FACTS)[number]
 
-/** The rendered section, any shape, at most this long (about 720 tokens). */
-export const MECHANICS_MAX = 2900
+/** The rendered section, any shape, at most this long (about 760 tokens; 3,050 since the side-effects fact, §22.6). */
+export const MECHANICS_MAX = 3050
 
 /**
  * The tier scheduling plan's paragraph (its §13), cut to the budget with
@@ -42,6 +42,8 @@ const POLICY: Omit<Facts, 'what'> = {
   search: 'Load them with tool search (query "computer") before the first call.',
   prefer:
     'Use them only when the work needs an app\'s own screen. A command, an API or a file is faster and leaves the screen alone: CDP drives Chrome and a TempCode dev instance, `xcrun simctl` drives simulators, `defaults` and config files change settings.',
+  sideEffects:
+    "Opening a file can change an app's other documents (TextEdit may save Untitled to iCloud); say which of the person's windows changed.",
   tiers: COMPUTER_TIERS,
   confirm:
     "Before an act the person would want to approve, set `confirm` on that call. The app then shows them a card naming the app, the action and its kind, in every mode, and acts only on Allow. Always flag deleting (Don't Save too), sending or posting, paying, subscribing, changes to an account, to who has access or to security settings, installing, CAPTCHAs and medical acts. Flag signing in, site permissions, warnings, uploads, file moves and personal data unless the person's own words asked for that act, with that party and that data. Flag the step that has the effect, once. An act without the flag runs at once, so a missed flag is your error. A denied card means stop, not another way round.",
@@ -86,7 +88,7 @@ export interface MechanicsOptions {
 export function renderComputerMechanics(o: MechanicsOptions): string {
   const f = WORDS[o.shape]
   const policy = [f.handoff, f.content, f.provenance[o.provenance], f.away, f.offLimits].join(' ')
-  return ['## Computer use', `${f.what[o.tools]}${o.search ? ` ${f.search}` : ''}`, f.prefer, f.tiers, f.confirm, policy].join('\n\n')
+  return ['## Computer use', `${f.what[o.tools]}${o.search ? ` ${f.search}` : ''}`, `${f.prefer} ${f.sideEffects}`, f.tiers, f.confirm, policy].join('\n\n')
 }
 
 /** Every word shape says every fact (the test reads it). */
