@@ -64,6 +64,7 @@
     "script:e2e-session-move": "bun scripts/e2e-session-move.ts",
     "script:e2e-mac-bridge": "bun scripts/e2e-mac-bridge.ts",
     "script:e2e-tc-computer": "bun scripts/e2e-tc-computer.ts",
+    "script:measure-front-guard": "bun --preload ./scripts/lib/electron-stub.ts scripts/mac/front-guard-measure.ts",
     "script:e2e-cross-host-threads": "bun scripts/e2e-cross-host-threads.ts",
     "script:e2e-linked-projects": "bun scripts/e2e-linked-projects.ts",
     "script:e2e-addons": "bun scripts/e2e-addons.ts",

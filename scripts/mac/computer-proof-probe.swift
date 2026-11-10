@@ -6,6 +6,11 @@
 //
 //   pointer     {"x":..,"y":..}  the real pointer, global points, top-left origin
 //   frontmost   {"pid":..,"bundleId":..}  the active app's pid (0 when there is none) and bundle id
+//   frontwindow {"pid":..,"window":..}  the active app's pid and its frontmost on-screen window's
+//               CGWindowID (0 when it shows none), read from the window list with no grant
+//   frontwatch --every <ms>
+//               the active app's pid sampled every tick, one line {"pid":..,"at":..} per change
+//               (the first sample too) until killed: the front guard measurement's own record
 //   idle        {"seconds":..}   since the last keyboard or pointer event of anyone's: a check of the
 //               person's app and pointer is void when they touched the Mac during it
 //   idle --every <ms>
@@ -65,6 +70,25 @@ case "pointer":
 case "frontmost":
     let app = NSWorkspace.shared.frontmostApplication
     emit(["pid": Int(app?.processIdentifier ?? 0), "bundleId": app?.bundleIdentifier ?? NSNull()])
+
+case "frontwindow":
+    let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
+    // the list runs front to back; layer 0 is the ordinary window layer
+    let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    let top = list.first { ($0[kCGWindowOwnerPID as String] as? Int) == Int(pid) && ($0[kCGWindowLayer as String] as? Int) == 0 }
+    emit(["pid": Int(pid), "window": top?[kCGWindowNumber as String] as? Int ?? 0])
+
+case "frontwatch":
+    let every = millis("--every")
+    var last: pid_t = -1
+    Timer.scheduledTimer(withTimeInterval: Double(every) / 1000, repeats: true) { _ in
+        let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
+        if pid != last {
+            last = pid
+            emit(["pid": Int(pid), "at": nowMs()], exitAfter: false)
+        }
+    }
+    RunLoop.main.run()
 
 case "idle" where args.count == 1:
     emit(["seconds": CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: anyInput)])
