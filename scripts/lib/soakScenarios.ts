@@ -84,7 +84,20 @@ export function scenarioTimeline(): ScenarioStep[] {
   steps.push({ at: at(300), label: 'turn 3: a long command', events: [call('t3-b1', 'Bash', { command: 'bun test convex' })] })
   steps.push({ at: at(5_000), label: 'turn 3: the command ends, a burst follows', events: [result('t3-b1', '42 pass\n'), call('t3-r1', 'Read', { file_path: 'convex/inbox.ts' }), result('t3-r1', 'ok'), call('t3-r2', 'Read', { file_path: 'convex/search.ts' }), result('t3-r2', 'ok'), call('t3-r3', 'Read', { file_path: 'convex/board.ts' })] })
   steps.push({ at: at(600), label: 'turn 3: the burst settles', events: [result('t3-r3', 'ok')] })
-  steps.push(...sentences(at(300), 100, 't3-think', ['Fast one.', 'Then another.', 'And a third.', 'Then a fourth.', 'A fifth one now.']))
+  // Eight sentences, the last three long: the reasoning column under the
+  // working line passes its 192px cap and scrolls to its newest line.
+  steps.push(
+    ...sentences(at(300), 100, 't3-think', [
+      'Fast one.',
+      'Then another.',
+      'And a third.',
+      'Then a fourth.',
+      'A fifth one now.',
+      'The board test reads the same table as the inbox, so the index serves it too, and its fixture seeds the rows in the order the index sorts by.',
+      'The search test is the odd one: it orders by created time, which the index does not cover, so that query keeps its scan and the test stays as it is.',
+      'So the failing test is the inbox one, and the fix is the index alone.',
+    ]),
+  )
 
   // 4. A steer mid-turn, a compaction starting and ending, a pause and resume, a Stop.
   steps.push({ at: at(1_000), label: 'turn 3: the person steers', events: [{ type: 'user-text', text: 'Skip the board tests.', steerId: 'steer-1' }, { type: 'steer', steerId: 'steer-1', state: 'sent' }] })

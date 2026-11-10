@@ -7,14 +7,15 @@ import type { TitleOf } from "../../lib/threadMentions";
 import { isProseBlock, isThinkingBlock, toldByWorkingLine } from "../transcriptActivity";
 import { computerCallOf } from "../computerShots";
 import { actionOf } from "./actionModel";
-import { latestLine, latestLineKey } from "./thinking";
+import { thoughtHasWords } from "./thinking";
 
 /**
  * One phase of the working line. `key` decides when the words morph: a
  * change of key morphs them (and is held at least 300 ms), new words under
- * the same key (a count, a seconds figure, a sentence growing) are drawn at
- * once. A thought's sentences are each a key of their own, so one morphs
- * into the next.
+ * the same key (a count, a seconds figure) are drawn at once. A thought with
+ * words is one key for its whole block (`thought:<id>`): the line says
+ * Thinking and the block's seconds, and its sentences arrive in the column
+ * under it, so nothing on the line is replaced while it streams.
  */
 export type WorkingPhase = {
   key: string;
@@ -27,8 +28,10 @@ export type WorkingPhase = {
   call?: { block: Block; verb: string; object: string };
   /** The wait on agents, drawn like a call: "Waiting on" muted, what it waits on in foreground. */
   wait?: { verb: string; object: string };
-  /** A thought streaming: its newest sentence and that sentence's ordinal. */
-  thought?: { line: string; key: number };
+  /** A thought with words streaming: its block, whose `startedAt` the
+   *  seconds count from and whose text the column under the line draws
+   *  (`thoughtLines`). A thought with no words yet is the plain `thinking`. */
+  thought?: { block: Block };
 };
 
 /** The wait's verb, as `waitLine` (shared/watch.ts) words it. */
@@ -67,9 +70,10 @@ function started(turn: Block[]): boolean {
  * an agent's title or "2 subagents"), said as "Waiting on" and its object;
  * the running calls (`toldByWorkingLine`), one by its verb and object
  * ("Reading format.ts"), several by the group's present-tense phrase; a
- * thought streaming, as its newest sentence in place of the word (Thinking
- * until its first sentence); prose streaming, as the mark alone; else
- * Thinking.
+ * thought streaming with words, as Thinking with its block's seconds and its
+ * sentences in the column under the line (one key for the whole block;
+ * Thinking alone until its first words); prose streaming, as the mark alone;
+ * else Thinking.
  */
 export function workingPhase(
   turn: Block[],
@@ -89,10 +93,8 @@ export function workingPhase(
   if (calls.length > 1) return { key: "calls", words: groupPhrase(calls, cwd, true, titleOf) };
   const thought = turn.findLast((b) => isThinkingBlock(b) && b.streaming);
   if (thought) {
-    const line = latestLine(thought.text);
-    if (!line) return { key: "thinking", words: "Thinking" };
-    const key = latestLineKey(thought.text);
-    return { key: `thought:${key}`, words: line, spoken: "Thinking", thought: { line, key } };
+    if (!thoughtHasWords(thought.text)) return { key: "thinking", words: "Thinking" };
+    return { key: `thought:${thought.id}`, words: "Thinking", spoken: "Thinking", thought: { block: thought } };
   }
   if (last && isProseBlock(last) && last.streaming) return { key: "writing", words: "" };
   return { key: "thinking", words: "Thinking" };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { latestLine, latestLineKey, spanWords } from "./thinking";
+import { spanWords, thoughtHasWords, thoughtLines } from "./thinking";
 
 describe("spanWords", () => {
   it("is never shorter than a second, and counts minutes past one", () => {
@@ -10,50 +10,37 @@ describe("spanWords", () => {
   });
 });
 
-describe("latestLine", () => {
-  it("is the newest finished sentence, leaving a partial one out", () => {
-    expect(latestLine("First I read the file. Then I check the tests. Now the")).toBe("Then I check the tests.");
-    expect(latestLine("First I read the file. Then I check the tests.")).toBe("Then I check the tests.");
+describe("thoughtLines", () => {
+  it("is every finished sentence, by paragraph, leaving the one being written out", () => {
+    expect(thoughtLines("First I read the file. Then I check the tests. Now the")).toEqual([["First I read the file.", "Then I check the tests."]]);
+    expect(thoughtLines("First I read the file. Then I check the tests.")).toEqual([["First I read the file.", "Then I check the tests."]]);
+    expect(thoughtLines("One paragraph.\n\nA second one. Still going")).toEqual([["One paragraph."], ["A second one."]]);
   });
 
-  it("takes a partial sentence when it is all there is", () => {
-    expect(latestLine("Looking at the")).toBe("Looking at the");
+  it("gives nothing while the only sentence is unfinished, and drops an empty last paragraph", () => {
+    expect(thoughtLines("Looking at the")).toEqual([]);
+    expect(thoughtLines("Done.\n\nLooking at the")).toEqual([["Done."]]);
+    expect(thoughtLines("")).toEqual([]);
+    expect(thoughtLines("   \n\n")).toEqual([]);
   });
 
   it("drops code fences, open or closed, and markdown markers", () => {
-    expect(latestLine("Check **this** file.\n```ts\nconst a = 1;\n```")).toBe("Check this file.");
-    expect(latestLine("Read `a.ts` first.\n```ts\nconst a")).toBe("Read a.ts first.");
-    expect(latestLine("- Look at [the docs](https://x.dev).")).toBe("Look at the docs.");
+    expect(thoughtLines("Check **this** file.\n```ts\nconst a = 1;\n```")).toEqual([["Check this file."]]);
+    expect(thoughtLines("Read `a.ts` first.\n```ts\nconst a")).toEqual([["Read a.ts first."]]);
+    expect(thoughtLines("- Look at [the docs](https://x.dev).")).toEqual([["Look at the docs."]]);
   });
 
-  it("is empty for an empty thought and cut at 160 characters", () => {
-    expect(latestLine("")).toBe("");
-    expect(latestLine("   \n\n")).toBe("");
-    const long = latestLine(`${"word ".repeat(60)}end.`);
-    expect(long.length).toBe(160);
-    expect(long.endsWith("…")).toBe(true);
+  it("keeps a colon as a sentence's end, as a list's lead-in ends", () => {
+    expect(thoughtLines("Two things:\n- one.\n- two")).toEqual([["Two things:"], ["one."]]);
   });
 });
 
-describe("latestLineKey", () => {
-  it("keeps its key while a lone sentence grows", () => {
-    expect(latestLineKey("Looking")).toBe(0);
-    expect(latestLineKey("Looking at the")).toBe(0);
-    expect(latestLineKey("Looking at the file.")).toBe(0);
-  });
-
-  it("keeps the shown sentence's key while the next one is being written", () => {
-    expect(latestLineKey("Looking at the file. Then")).toBe(0);
-    expect(latestLine("Looking at the file. Then")).toBe("Looking at the file.");
-  });
-
-  it("changes when a later sentence finishes", () => {
-    expect(latestLineKey("Looking at the file. Then the tests.")).toBe(1);
-    expect(latestLineKey("Looking at the file. Then the tests. Now")).toBe(1);
-    expect(latestLineKey("Looking at the file. Then the tests. Now the build.")).toBe(2);
-  });
-
-  it("is -1 for an empty thought", () => {
-    expect(latestLineKey("")).toBe(-1);
+describe("thoughtHasWords", () => {
+  it("is true from the first word, finished or not, and false for markers alone", () => {
+    expect(thoughtHasWords("")).toBe(false);
+    expect(thoughtHasWords("  \n")).toBe(false);
+    expect(thoughtHasWords("```ts\n")).toBe(false);
+    expect(thoughtHasWords("Looking")).toBe(true);
+    expect(thoughtHasWords("Looking at the file.")).toBe(true);
   });
 });

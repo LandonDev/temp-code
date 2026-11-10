@@ -440,6 +440,10 @@ export function foldEvent(
             text: e.text,
             streaming: e.delta,
             ...(persisted && role === "assistant" ? { seq: row.seq } : {}),
+            // A thought counts its seconds from its first delta, which is
+            // ephemeral and so never reaches stampTail's `ts`; its end is its
+            // final row, so a settled one reads "Thought for 12s".
+            ...(role === "reasoning" ? { startedAt: row.ts, ...(e.delta ? {} : { doneTs: row.ts }) } : {}),
           },
         ];
         break;
@@ -448,7 +452,12 @@ export function foldEvent(
       const text = e.delta ? cur.text + e.text : e.text;
       if (text === cur.text && cur.streaming === e.delta) break;
       blocks = blocks.slice();
-      blocks[idx] = { ...cur, text, streaming: e.delta };
+      blocks[idx] = {
+        ...cur,
+        text,
+        streaming: e.delta,
+        ...(role === "reasoning" && !e.delta && cur.doneTs === undefined ? { doneTs: row.ts } : {}),
+      };
       break;
     }
     case "tool-call": {

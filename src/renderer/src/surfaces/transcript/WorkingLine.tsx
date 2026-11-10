@@ -4,6 +4,7 @@ import { type ReactNode, useLayoutEffect, useMemo, useRef, useState } from "reac
 import { ChevronRight } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Collapsible, CollapsibleContent } from "../../components/ui/collapsible";
+import { ReasoningColumn, ThoughtSeconds } from "../../components/ui/reasoning-steps";
 import { WorkingMark } from "../../components/ui/working-mark";
 import { WorkingText } from "../../components/ui/working-text";
 import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
@@ -40,8 +41,7 @@ const samePhase = (a: WorkingPhase, b: WorkingPhase) =>
   a.key === b.key &&
   a.words === b.words &&
   a.call?.block === b.call?.block &&
-  a.thought?.line === b.thought?.line &&
-  a.thought?.key === b.thought?.key;
+  a.thought?.block === b.thought?.block;
 
 /** The settled turn's closing line, as TurnEnd hands it over. `pending`: the
  *  turn is over but its duration has not landed ("Worked"): drawn only by a
@@ -53,9 +53,10 @@ export type Closing = { words: ReactNode; actions: ReactNode; intent?: Record<st
  * A turn's last line, one element from Send to the turn's end. While the
  * turn is live (`live`): the working mark in the glyph slot, then words that
  * morph with the work (`workingPhase`, each phase held 300 ms): Sending, the
- * host's words for the wait, Thinking and then the thought's newest sentence
- * in its place (each sentence its own phase, so one morphs into the next and
- * a long one ends in an ellipsis at the row's edge), the running
+ * host's words for the wait, Thinking (with the thought's seconds once it
+ * has words, counting from its block's start, and its finished sentences
+ * arriving in the reasoning column under the line, which folds away when
+ * the thought ends), the running
  * call ("Reading format.ts", its live counts for an edit, a chevron that
  * opens a command's or a tool's body under the line), the mark alone while
  * prose streams. When the turn settles in front of the person the mark
@@ -125,6 +126,12 @@ export function TurnLine({
   const saying = phased || ending;
 
   const call = live || ending ? phase.call : undefined;
+  // The thought under the line: its column stays mounted with the last
+  // thought's text while it folds away, so the close is a fold, not a cut.
+  const thought = live ? phase.thought?.block : undefined;
+  const [keptThought, setKeptThought] = useState<Block | null>(null);
+  if (thought && thought !== keptThought) setKeptThought(thought);
+  const thoughtOpen = !held && !!thought;
   const action = call ? actionOf(call.block, cwd, null, true) : undefined;
   // A command or a tool opens its body under the line; an edit ticks its counts instead.
   const hasBody = action?.opens === "command" || action?.opens === "details";
@@ -197,7 +204,7 @@ export function TurnLine({
           <MorphText state={saying ? phase.key : "closed"} className="min-w-0">
             {saying ? (
               <span className="flex min-w-0 items-center gap-1">
-                <PhaseWords phase={phase} />
+                <PhaseWords phase={phase} live={live} />
                 {edit && (adds || dels) ? <Counts added={adds} removed={dels} /> : null}
                 {hasBody ? (
                   <ChevronRight
@@ -218,6 +225,15 @@ export function TurnLine({
         </div>
       </div>
       </CollapsibleContent>
+      {keptThought ? (
+        <Collapsible open={thoughtOpen}>
+          <CollapsibleContent keepMounted className="collapsible-auto">
+            <div data-slot="turn-thought" className="pt-1 pb-2 pl-5.5">
+              <ReasoningColumn text={keptThought.text} live={thoughtOpen} />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      ) : null}
       {hasBody && call && action ? (
         <Collapsible open={bodyOpen}>
           <CollapsibleContent>
@@ -233,9 +249,20 @@ export function TurnLine({
   );
 }
 
-/** The phase's words in the shimmer: one call's (or the wait's) verb muted and object in foreground. */
-function PhaseWords({ phase }: { phase: WorkingPhase }) {
+/** The phase's words in the shimmer: one call's (or the wait's) verb muted
+ *  and object in foreground; a thought's Thinking with its block's seconds
+ *  after it, outside the shimmer, so the tick re-runs nothing. */
+function PhaseWords({ phase, live }: { phase: WorkingPhase; live: boolean }) {
   if (!phase.words) return null;
+  if (phase.thought) {
+    const { block } = phase.thought;
+    return (
+      <>
+        <WorkingText>{phase.words}</WorkingText>
+        <ThoughtSeconds startedAt={block.startedAt ?? block.ts} live={live} />
+      </>
+    );
+  }
   const told = phase.call ?? phase.wait;
   if (told) {
     return (

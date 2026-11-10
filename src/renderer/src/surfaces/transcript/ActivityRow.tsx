@@ -29,13 +29,13 @@ import type { ApprovalHandler } from "./types";
 export function ActivityRow({
   block,
   cwd,
-  expanded = false,
   onApproval,
   onOpenFile,
   onOpenDiff,
 }: {
   block: Block;
   cwd?: string;
+  /** The group is open by hand (a thought's entry draws the same either way, since it shows only then). */
   expanded?: boolean;
   /** The turn is live; a row speaks in its own call's tense either way. */
   live?: boolean;
@@ -58,7 +58,7 @@ export function ActivityRow({
   }
   if (isThinkingBlock(block)) {
     return (
-      <ActivityThinkingRow block={block} cwd={cwd} expandable={expanded} onOpenFile={onOpenFile} />
+      <ActivityThinkingRow block={block} cwd={cwd} onOpenFile={onOpenFile} />
     );
   }
   // An edit, waiting or not, is one row per file; one approval card under them all.

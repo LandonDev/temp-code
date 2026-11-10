@@ -137,13 +137,28 @@ foreground, the same words the group line uses); the components only draw it.
 
 ## Thinking, closing lines and notices
 
-- **A thought** is no row. While it streams the working line says
-  its newest finished sentence in Thinking's place (`latestLine` in
-  `transcript/thinking.ts`); once it ends it leaves nothing in the run,
-  short or long, and shows only in a group a person opened by hand, as
-  "Thought ›" with no duration (`transcript/ThinkingRow.tsx`), opening the
-  text on a `Collapsible` whose trigger lies over the row it names. The
-  implementation board's running task draws no thoughts either.
+- **A thought** is no row. While it streams with words the working line
+  says Thinking with the block's seconds after it ("Thinking 4s", "Thinking
+  1m 12s": `ThoughtSeconds` on the shared second hand, counted from the
+  block's `startedAt`, which the fold stamps from its first delta), and its
+  finished sentences arrive in the reasoning column under the line
+  (`ReasoningColumn` in components/ui/reasoning-steps.tsx, Kobra's Reasoning
+  Steps adapted: `thoughtLines` in `transcript/thinking.ts` gives the
+  sentences by paragraph, an unfinished one waiting; each fades in once on
+  `.stream-step` and stays put; 192px at most, then it scrolls to its newest
+  line unless the person scrolled up, its cut edges fading 32px). The line
+  keeps one phase key for the whole block (`thought:<id>`), so nothing on it
+  morphs while the thought streams, and a later block starts its own
+  seconds at zero. When the thought ends the column folds away on
+  `.collapsible-auto` with its text kept, and the line moves on. A thought
+  with no words yet (or a model that streams none) is "Thinking" alone, no
+  seconds and no column. Once it ends it leaves nothing in the run, short
+  or long, and shows only in a group a person opened by hand, as its whole
+  text in the entry's place (`transcript/ThinkingRow.tsx`: the thought
+  glyph in the step grid's glyph slot, the markdown in the reasoning
+  column's type, 14px on 22px lines, muted, on the text column; no "Thought"
+  word, no chevron, no duration, uncapped). The implementation board's
+  running task draws no thoughts either.
 - **The working line** (`transcript/WorkingLine.tsx` `TurnLine`, drawn by
   TurnEnd): each live turn ends in one 28px line at the prose edge, from
   Send to the turn's end: `WorkingMark` (three dots that gather and part)
@@ -156,11 +171,12 @@ foreground, the same words the group line uses); the components only draw it.
   (UI-15's `openWaitOf`, `waitIds` and `waitSubject`), drawn like a call,
   the verb muted and the title in foreground; the running calls, one
   by its verb and object ("Reading format.ts"), several by the group's
-  present-tense phrase; while a thought streams, its newest sentence in the
-  word's place (Thinking until the first), each sentence its own phase
-  (`thought:<n>`), so one morphs into the next and a long one ends in an
-  ellipsis at the row's edge, said once to a screen reader as Thinking
-  (`spoken`); the mark alone while prose streams; else Thinking.
+  present-tense phrase; while a thought with words streams, Thinking with
+  the block's seconds 4px after it, one phase for the whole block
+  (`thought:<id>`, the block on `thought`), its sentences in the column
+  under the line, said once to a screen reader as Thinking (`spoken`; the
+  column is no live region); the mark alone while prose streams; else
+  Thinking.
   `useHeldPhase` (lib/heldWord.ts) holds a phase 300 ms by its key, so one
   that lasted 40 ms never paints. A call the line tells (`toldByWorkingLine`
   in transcriptActivity.ts: pending, not waiting on the person, not agent
@@ -309,7 +325,7 @@ foreground, the same words the group line uses); the components only draw it.
   margins of its own, and the column ends 16px under its last row
   (`pb-4` outside the measured container).
 - **Estimates follow the metrics.** `estimateRowHeight` is the row's gap
-  plus its body: 28px a line (a closed group, an action, a thought, a
+  plus its body: 28px a line (a closed group, an action, a
   notice, the closing line), a working group 28px plus 32px (`TABLE_ROW`)
   for each of its newest five rows and 1px for each rule between two, prose 22px a line at about 100 characters plus 40px a
   fence, a bubble 16px plus 22px a line, a failure card 88px, a closing row
@@ -538,11 +554,12 @@ settled content; nothing asks for frames it does not paint; no long task
 over 200 ms.
 
 - **The scenarios.** A turn from the composer (Sending, the host's words,
-  the thought, calls, prose, the group opening at two calls, the closing
-  line); a fast turn (every phase that paints holds 300 ms, the closing
+  the thought with its column, calls, prose, the group opening at two
+  calls, the closing line); a fast turn (every phase that paints holds 300 ms, the closing
   line included: a turn that ends inside the hold waits for it,
   `useHeldWord` on "closed" in TurnLine); a long call, then a burst;
-  thinking sentences every 100 ms and every 2 s; a steer, a pause and
+  thinking sentences every 100 ms (eight, the last three long, so the
+  reasoning column passes its cap and scrolls) and every 2 s; a steer, a pause and
   resume, a compaction starting and ending, a Stop; a subagent spawned,
   waited on and finished, then the thread watching; the reader scrolled up
   while it all streams; a resync replaying the rows and the pane remounted;

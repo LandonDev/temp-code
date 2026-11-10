@@ -147,6 +147,7 @@ const agents = (prefix: string): Block[] => [
 
 // The harness renders with no session, so the opened state is keyed ":a:<first id>".
 setEditOpen(":a:open1", true);
+setEditOpen(":a:thought-open1", true);
 setEditOpen(":a:orchOpen1", true);
 setEditOpen(":a:wakeOpen1", true);
 setEditOpen(":a:mixed1", true);
@@ -186,6 +187,23 @@ export const fixtures: { name: string; props: { blocks: Block[]; cwd: string; li
   },
   { name: "Settled run", props: { blocks: run("settled"), cwd: CWD } },
   { name: "Settled run, opened", props: { blocks: run("open"), cwd: CWD } },
+  {
+    name: "A long thought in an opened group",
+    props: {
+      blocks: [
+        call("thought-open1", "Read", "read", { file_path: `${CWD}/convex/schema.ts` }),
+        {
+          id: "thought-open2",
+          role: "reasoning",
+          text: "The inbox query filters by owner and sorts by updated time, so a full scan runs on every open. An index on owner and updated time would let Convex seek straight to the owner's rows.\n\nThe search and the board read the same table, so the one index serves all three. The schema has no index on the table yet, and the migration is only the schema change: Convex builds the index on deploy.\n\nI should check whether any query orders by created time instead, which the index would not cover.",
+          ts: 1,
+          doneTs: 12_001,
+        },
+        call("thought-open3", "Bash", "execute", { command: "npm test" }),
+      ],
+      cwd: CWD,
+    },
+  },
   {
     name: "A thought, then a read (the read alone)",
     props: {

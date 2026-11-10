@@ -932,9 +932,13 @@ routed to (aliax-core's `forward`). Two listeners:
   still `pending` (not yet echoed), the meta's activity while the turn has
   nothing of its own, then the open wait on agents, the running call
   ("Reading format.ts", told by the line alone: `toldByWorkingLine`, no row
-  until it settles), Thinking and then a streaming thought's newest sentence
-  in its place (each sentence a phase of its own, `thought:<n>`, spoken as
-  Thinking),
+  until it settles), Thinking, and once a streaming thought has words
+  "Thinking" with the block's seconds after it ("Thinking 4s", counted from
+  the block's `startedAt` on the shared second hand) and its finished
+  sentences in the reasoning column under the line (`ReasoningColumn`,
+  components/ui/reasoning-steps.tsx, Kobra's Reasoning Steps; one phase key
+  for the whole block, `thought:<id>`, spoken as Thinking; the column folds
+  away when the thought ends),
   the mark alone under streaming prose; a phase stays at least 300 ms once
   painted and one that came and went inside the hold is skipped
   (`useHeldPhase`, lib/heldWord.ts); a change of phase morphs the words
@@ -953,7 +957,7 @@ routed to (aliax-core's `forward`). Two listeners:
   loaded rows start past that seq, last otherwise. Before it the refold
   appended the pending row under the whole stream and the line read Sending
   for the rest of the turn (a box master on 2026-11-08, after a resume that
-  reset to a tail behind the echo). A thought is no transcript row (a group opened by hand shows "Thought").
+  reset to a tail behind the echo). A thought is no transcript row (a group opened by hand shows its whole text in the entry's place, ThinkingRow.tsx).
   The timer above the composer counts from the click: `appendOptimisticUser`
   stamps `sentAt` when no turn is open, `turnStartOf` prefers it over the
   host's later `busySince`, the settle clears it, and the slot shows at once

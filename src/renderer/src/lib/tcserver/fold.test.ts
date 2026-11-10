@@ -178,7 +178,18 @@ describe("foldEvent", () => {
 
   it("thinking becomes a reasoning block", () => {
     const s = foldAll(rows([{ type: "thinking", text: "hmm", delta: false, msgId: "m", blockIndex: 0 }]), CWD);
-    expect(s.blocks[0]).toMatchObject({ role: "reasoning", text: "hmm" });
+    expect(s.blocks[0]).toMatchObject({ role: "reasoning", text: "hmm", startedAt: 1_000, doneTs: 1_000 });
+  });
+
+  it("a streaming thought counts from its first ephemeral delta and ends at its final row", () => {
+    let s = foldEvent(emptyFold(), ephemeral({ type: "thinking", text: "I read", delta: true, msgId: "m", blockIndex: 0 }, 5_000), CWD);
+    expect(s.blocks[0]).toMatchObject({ role: "reasoning", streaming: true, startedAt: 5_000 });
+    expect(s.blocks[0].doneTs).toBeUndefined();
+    s = foldEvent(s, ephemeral({ type: "thinking", text: " the file.", delta: true, msgId: "m", blockIndex: 0 }, 7_000), CWD);
+    expect(s.blocks[0]).toMatchObject({ text: "I read the file.", startedAt: 5_000 });
+    expect(s.blocks[0].doneTs).toBeUndefined();
+    s = foldEvent(s, rows([[{ type: "thinking", text: "I read the file.", delta: false, msgId: "m", blockIndex: 0 }, { ts: 9_000 }]])[0], CWD);
+    expect(s.blocks[0]).toMatchObject({ streaming: false, startedAt: 5_000, doneTs: 9_000 });
   });
 
   it("tool call then result: running → completed with output detail", () => {

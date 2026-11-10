@@ -156,24 +156,31 @@ describe("no jerk in any scenario", () => {
     expect(before).toEqual([]);
   });
 
-  it("thinking sentences every 100 ms, then every 2 s: one sentence at a time, the line kept", async () => {
+  it("thinking sentences every 100 ms, then every 2 s: the line keeps Thinking, each sentence joins the column once", async () => {
     const view = scene("s", [echoed(), thought("t", "")], true);
     const line = view.line();
+    const column = () => line!.querySelector('[data-slot="reasoning-column"]');
     let text = "";
+    let first: Element | null = null;
     for (let i = 0; i < 8; i++) {
       text += `Sentence ${i}. `;
       view.show([echoed(), thought("t", text)], true);
       await settle(100);
       expect(view.line()).toBe(line);
+      first ??= column()?.querySelector("p span") ?? null;
     }
     await settle(400);
+    // One phase for the whole block: the words never morphed, every sentence is in the column, the first still the same element.
     expect(line!.querySelectorAll("[data-morph-key]")).toHaveLength(1);
-    expect(line!.textContent).toBe("Sentence 7.");
-    text += "And one long sentence that runs on and on past the edge of the column, so the row cuts it with an ellipsis rather than wrapping. ";
+    expect(line!.querySelector('[data-slot="working-text"]')?.textContent).toBe("Thinking");
+    expect(column()?.querySelectorAll("p span")).toHaveLength(8);
+    expect(column()?.querySelector("p span")).toBe(first);
+    text += "And one long sentence that runs on and on past the edge of the column, so the column wraps it onto its next line rather than cutting it. ";
     view.show([echoed(), thought("t", text)], true);
     await settle(2_000);
     expect(line!.querySelectorAll("[data-morph-key]")).toHaveLength(1);
-    expect(line!.querySelector('[data-slot="working-text"]')?.className).toContain("truncate");
+    expect(column()?.querySelectorAll("p span")).toHaveLength(9);
+    expect(column()?.className).toContain("max-h-48");
   });
 
   it("a steer, a pause and resume, a compaction mid-turn, a Stop: each changes in place", async () => {

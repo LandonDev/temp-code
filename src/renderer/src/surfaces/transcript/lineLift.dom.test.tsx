@@ -67,12 +67,12 @@ describe("a transcript line lifts at once", () => {
     expect(chevronOf(container)).toContain("group-has-focus-visible/notice:text-foreground");
   });
 
-  it("ThinkingRow: the Thought chevron is the one disclosure", () => {
+  it("ThinkingRow: a settled thought is its text, with no disclosure of its own", () => {
     const block: Block = { id: "r1", role: "reasoning", text: "Weighing it.", ts: 1, doneTs: 2 };
-    const { container } = render(<ActivityThinkingRow block={block} expandable />);
-    noOwnTiming(chevronOf(container));
-    fireEvent.click(screen.getByRole("button", { name: "Thought" }));
-    expect(chevronOf(container)).toContain("rotate-90");
+    const { container } = render(<ActivityThinkingRow block={block} />);
+    expect(() => chevronOf(container)).toThrow("no disclosure chevron");
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(container.textContent).toBe("Weighing it.");
   });
 
   it("ActionGroup: the group line's words step at once (no Button colour fade); its chevron is the one disclosure", () => {

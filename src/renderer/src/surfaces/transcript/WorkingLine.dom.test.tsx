@@ -17,6 +17,7 @@ import { ActionGroup } from "./ActionGroup";
 import { TurnEnd } from "./TurnEnd";
 import { openedLive, setOpenedLive } from "./workingOpen";
 import { revealDrainForTest } from "../revealDrain";
+import { clockForTest } from "../../lib/turnClock";
 
 beforeAll(() => setEditorConfigForTest(null));
 beforeEach(() => {
@@ -73,7 +74,7 @@ const flush = () => wait(400);
 const hold = () => wait(400);
 
 describe("the working line", () => {
-  it("says each phase in turn: Sending, the host's words, Thinking with its sentence, the call, the mark alone under prose", async () => {
+  it("says each phase in turn: Sending, the host's words, Thinking with its seconds, the call, the mark alone under prose", async () => {
     const view = render(end([pending], "Starting the CLI"));
     expect(label(view.container)).toBe("Sending");
     expect(mark(view.container)).not.toBeNull();
@@ -82,10 +83,11 @@ describe("the working line", () => {
     await hold();
     expect(label(view.container)).toBe("Starting the CLI");
 
-    view.rerender(end([user, { id: "r", role: "reasoning", text: "I read it. Now the tests.", streaming: true }]));
+    view.rerender(end([user, { id: "r", role: "reasoning", text: "I read it. Now the tests.", streaming: true, startedAt: Date.now() - 4_000 }]));
     await hold();
     expect(label(view.container)).toBe("Thinking");
-    expect(status(view.container)?.textContent).toContain("Now the tests.");
+    expect(status(view.container)?.textContent).toBe("Thinking4s");
+    expect(view.container.querySelector("[data-slot=turn-thought] [data-slot=reasoning-column]")?.textContent).toBe("I read it. Now the tests.");
 
     view.rerender(end([user, read("c1")]));
     await hold();
@@ -189,47 +191,79 @@ describe("the working line", () => {
 });
 
 describe("the thinking line", () => {
-  const thought = (text: string): Block => ({ id: "r", role: "reasoning", text, streaming: true });
-  const words = (c: HTMLElement) => status(c)?.querySelector('[data-turn-words]')?.textContent;
+  const thought = (text: string, over: Partial<Block> = {}): Block => ({ id: "r", role: "reasoning", text, streaming: true, startedAt: 5_000, ...over });
+  const words = (c: HTMLElement) => status(c)?.querySelector("[data-turn-words]")?.textContent;
   const morphs = (c: HTMLElement) => c.querySelectorAll('[data-slot="turn-line"] [data-morph-key]').length;
+  const column = (c: HTMLElement) => c.querySelector<HTMLElement>("[data-slot=turn-thought] [data-slot=reasoning-column]");
+  const fold = (c: HTMLElement) => column(c)?.closest<HTMLElement>("[data-slot=collapsible-content]");
+  const seconds = (c: HTMLElement) => status(c)?.querySelector("[data-slot=thought-seconds]");
 
-  it("draws the thought's sentence in place of Thinking, in the same line, said as Thinking throughout", async () => {
+  it("says Thinking alone before the thought's first words, no seconds and no column", () => {
+    const view = render(end([user, thought("")]));
+    expect(words(view.container)).toBe("Thinking");
+    expect(label(view.container)).toBe("Thinking");
+    expect(seconds(view.container)).toBeNull();
+    expect(column(view.container)).toBeNull();
+  });
+
+  it("with words: Thinking in the shimmer, the block's seconds after it, its finished sentences in the column under the line, said as Thinking", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(9_000);
     const view = render(end([user, thought("")]));
     const line = view.container.querySelector('[data-slot="turn-line"]');
-    expect(words(view.container)).toBe("Thinking");
-    expect(label(view.container)).toBe("Thinking");
-
     view.rerender(end([user, thought("I read the schema.")]));
-    await hold();
-    await flush();
-    expect(words(view.container)).toBe("I read the schema.");
-    expect(status(view.container)?.textContent).not.toContain("Thinking");
+    await act(() => vi.advanceTimersByTimeAsync(400));
+    expect(view.container.querySelector('[data-slot="working-text"]')?.textContent).toBe("Thinking");
+    expect(seconds(view.container)?.textContent).toBe("4s");
+    expect(words(view.container)).toBe("Thinking4s");
     expect(label(view.container)).toBe("Thinking");
     expect(view.container.querySelector('[data-slot="turn-line"]')).toBe(line);
-    // The sentence shimmers as the words do.
-    expect(view.container.querySelector('[data-slot="working-text"]')?.textContent).toBe("I read the schema.");
+    expect(column(view.container)?.textContent).toBe("I read the schema.");
+    expect(fold(view.container)?.className).toContain("collapsible-auto");
+    // The figure ticks on the shared clock, under the same phase key: no morph, the shimmer's words unchanged.
+    const morph = view.container.querySelector('[data-slot="turn-line"] [data-morph-key]');
+    vi.setSystemTime(14_000);
+    act(() => clockForTest.tick());
+    expect(seconds(view.container)?.textContent).toBe("9s");
+    expect(view.container.querySelector('[data-slot="turn-line"] [data-morph-key]')).toBe(morph);
+    expect(view.container.querySelector('[data-slot="working-text"]')?.textContent).toBe("Thinking");
   });
 
-  it("skips a sentence that came and went inside the hold, and never draws two at once", async () => {
-    const view = render(end([user, thought("")]));
-    view.rerender(end([user, thought("First one.")]));
-    await wait(100);
-    view.rerender(end([user, thought("First one. Second one.")]));
-    expect(words(view.container)).toBe("Thinking");
+  it("appends a sentence to the column as it finishes under one phase key, replacing nothing on the line", async () => {
+    const view = render(end([user, thought("First one.")]));
     await hold();
-    await flush();
-    expect(words(view.container)).toBe("Second one.");
+    const morph = view.container.querySelector('[data-slot="turn-line"] [data-morph-key]');
+    const first = column(view.container)?.querySelector("p span");
+    view.rerender(end([user, thought("First one. Second")]));
+    expect(column(view.container)?.textContent).toBe("First one.");
+    view.rerender(end([user, thought("First one. Second one.")]));
+    expect(column(view.container)?.textContent).toBe("First one. Second one.");
+    expect(column(view.container)?.querySelector("p span")).toBe(first);
+    expect(words(view.container)).toMatch(/^Thinking/);
     expect(morphs(view.container)).toBe(1);
-    expect(label(view.container)).toBe("Thinking");
+    expect(view.container.querySelector('[data-slot="turn-line"] [data-morph-key]')).toBe(morph);
   });
 
-  it("redraws a sentence growing under its key in place, with no morph", async () => {
-    const view = render(end([user, thought("I read")]));
-    expect(words(view.container)).toBe("I read");
-    const span = view.container.querySelector('[data-slot="turn-line"] [data-morph-key]');
-    view.rerender(end([user, thought("I read the file")]));
-    expect(words(view.container)).toBe("I read the file");
-    expect(view.container.querySelector('[data-slot="turn-line"] [data-morph-key]')).toBe(span);
+  it("folds the column away when the thought ends and the line moves on, and a new thought block counts from zero in a fresh column", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(9_000);
+    const done = thought("I read the schema.", { streaming: false, doneTs: 8_000 });
+    const view = render(end([user, thought("I read the schema.")]));
+    await act(() => vi.advanceTimersByTimeAsync(400));
+    expect(fold(view.container)?.hasAttribute("hidden")).toBe(false);
+    view.rerender(end([user, done, read("c1")]));
+    await act(() => vi.advanceTimersByTimeAsync(400));
+    expect(label(view.container)).toBe("Reading format.ts");
+    expect(seconds(view.container)).toBeNull();
+    // Kept mounted with its text under the fold, so the close is a fold, not a cut.
+    expect(column(view.container)?.textContent).toBe("I read the schema.");
+    expect(fold(view.container)?.closest("[data-slot=collapsible]")?.getAttribute("data-closed")).not.toBeNull();
+    // A later thought is its own block: its seconds start again, its column is its own text.
+    view.rerender(end([user, done, read("c1", "completed"), thought("Then the tests.", { id: "r2", startedAt: 14_000 })]));
+    vi.setSystemTime(16_000);
+    await act(() => vi.advanceTimersByTimeAsync(400));
+    expect(seconds(view.container)?.textContent).toBe("2s");
+    expect(column(view.container)?.textContent).toBe("Then the tests.");
   });
 });
 

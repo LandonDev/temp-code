@@ -153,14 +153,15 @@ describe("ActionGroup", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("shows a thought only in a group opened by hand, as Thought with no duration", () => {
+  it("shows a thought only in a group opened by hand, its whole text in the row's place with no Thought word", () => {
     const { container } = mount([read("a", "a.ts"), thought("t"), bash("b", "ls")]);
     act(() => {
       fireEvent.click(trigger(container)!);
     });
     expect(container.querySelectorAll("[data-step]")).toHaveLength(3);
-    expect(container.querySelector("[data-step=t]")?.textContent).toBe("Thought");
-    expect(container.textContent).not.toMatch(/Thought for/);
+    expect(container.querySelector("[data-step=t]")?.textContent).toBe("Weighing the index.");
+    expect(container.querySelector("[data-step=t] button")).toBeNull();
+    expect(container.textContent).not.toContain("Thought");
   });
 
   it("leads the line with the same glyph the run's first read draws on its row", () => {

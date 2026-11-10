@@ -1,4 +1,4 @@
-// A9 (thinking): a span's words and a thought's newest sentence, pure.
+// A9 (thinking): a span's words and a streaming thought's finished sentences, pure.
 
 /** "4s", "1m 12s", "2m": a span never shorter than one second. */
 export function spanWords(ms: number): string {
@@ -9,11 +9,11 @@ export function spanWords(ms: number): string {
   return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
-const MAX_LINE = 160;
-
-/** The sentences of a thought as plain text: code and markdown markers go. */
-function sentencesOf(text: string): string[] {
-  const body = text
+/** A thought's paragraphs as plain text: code fences go whole, and each
+ *  line loses its markdown markers (headings, bullets, quotes, emphasis,
+ *  code spans, links). Blank lines are no paragraph. */
+function paragraphsOf(text: string): string[] {
+  return text
     .replace(/```[\s\S]*?(?:```|$)/g, "\n")
     .split("\n")
     .map((line) =>
@@ -26,34 +26,29 @@ function sentencesOf(text: string): string[] {
         .trim(),
     )
     .filter(Boolean);
-  return body.flatMap((line) => line.split(/(?<=[.!?:])\s+/)).filter(Boolean);
 }
 
-/** Which sentence the working line shows: the newest finished one, or the one
- *  being written when it is all there is. -1 for an empty thought. */
-function latestIndex(sentences: string[]): number {
-  if (!sentences.length) return -1;
-  const last = sentences.length - 1;
-  return /[.!?:]$/.test(sentences[last]) || last === 0 ? last : last - 1;
-}
+const ENDS = /[.!?:]$/;
 
 /**
- * The newest finished sentence of a thought, as plain text, for the
- * working line. A sentence still being written is left out until it ends (a line
- * that changes word by word reads as noise), unless it is all there is.
- * Code and markdown markers go; the line is cut at 160 characters.
+ * The sentences of a streaming thought that have finished, paragraph by
+ * paragraph, for the reasoning column under the working line: every
+ * paragraph but the last is whole, and the last one's sentence still being
+ * written is left out until it ends (a line that changes word by word reads
+ * as noise). A thought whose only sentence is unfinished gives no paragraph
+ * yet; `thoughtHasWords` says it has text all the same.
  */
-export function latestLine(text: string): string {
-  const sentences = sentencesOf(text);
-  const line = sentences[latestIndex(sentences)];
-  if (line === undefined) return "";
-  return line.length > MAX_LINE ? `${line.slice(0, MAX_LINE - 1).trimEnd()}…` : line;
+export function thoughtLines(text: string): string[][] {
+  const paragraphs = paragraphsOf(text).map((p) => p.split(/(?<=[.!?:])\s+/).filter(Boolean));
+  const last = paragraphs[paragraphs.length - 1];
+  if (last && !ENDS.test(last[last.length - 1])) {
+    last.pop();
+    if (!last.length) paragraphs.pop();
+  }
+  return paragraphs;
 }
 
-/** The ordinal of the sentence `latestLine` shows: the same while that
- *  sentence grows, new once a later one finishes. The working line keys its
- *  phase by it (`thought:<n>`), so a new sentence morphs in and a growing one
- *  is redrawn in place. */
-export function latestLineKey(text: string): number {
-  return latestIndex(sentencesOf(text));
+/** The thought has words (past its markers), finished or not. */
+export function thoughtHasWords(text: string): boolean {
+  return paragraphsOf(text).length > 0;
 }

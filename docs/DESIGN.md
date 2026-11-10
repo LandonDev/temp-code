@@ -391,7 +391,9 @@ so once. A first response is said in the transcript's working line, never
 above the composer: Sending from the click until the host echoes the
 message, then the host's word for the wait (Starting the CLI, Initializing,
 Waiting for the provider, a retry, "Waiting for the provider, 25 s"), then
-Thinking, then the summary's newest sentence in its place once the thought streams, then
+Thinking (with the thought block's seconds after it, "Thinking 4s", and its
+finished sentences in the reasoning column under the line once the thought
+streams with words), then
 the running call ("Reading format.ts", "Running the tests", "Waiting on
 Review the perf pass"), and the mark alone while prose streams
 (`workingPhase`). A phase stays at least 300 ms once it paints and one that
@@ -715,8 +717,8 @@ being produced shimmers (`WorkingText`); nothing else does.
 | The working line held (a card waits, the turn is paused) | folds closed on `.collapsible-auto` with its words kept; a resume reopens the same element | the same fold | opacity, `--dur-fast` |
 | The Watching line, the fleet detail's live state | each in a kept fold under the turn: opens and closes on `.collapsible-auto`, mounted once it first opens, never unmounted while on screen | the same fold | opacity, `--dur-fast` |
 | A status glyph changing state (`StatusMark`) | in the box that stays: the new glyph grows from 0.25 on the layout spring (`glyph-in`) while the old shrinks out over `--dur-fast` (`glyph-out`); never at mount | — | both fade, `--dur-fast` |
-| The thought on the working line | each sentence is a phase: it morphs into the next (`MorphText`), held 300ms, a long one cut with an ellipsis | — | the morph's fades |
-| Streaming text | the prose: the jitter buffer (surfaces/smoothText) steps whole words every 100ms (`REVEAL.stepMs`) a lead behind the live end (100ms here, 250ms for another host's thread, grown by an underrun, never slower than the stream, every character within 1.5s), draining at the stream's end instead of snapping and revealing a row born live from its first word, holding a bare block marker, a table's header row and a table row with only its pipes until they have content; each step is one span fading in over `--dur-reveal` on `--ease-reveal` (lib/streamReveal.ts, `.stream-step`), and the settle waits for the last fade. Code is not prose: inside an open fence a line shows once its newline arrives (a line held `REVEAL.lineHoldMs`, 600ms, steps by words) and fades in as one element. A list item, a table row, a heading, a quote's line or a fence born mid-stream rises 4px over `--dur-base` `--ease-out` as it fades (`.stream-rise`), a paragraph never; a table's card fades in with its header row. The working line's newest sentence of a thought is no stream but a phase of its own, morphing in (`MorphText`) | — | whole-word and whole-line steps, no fade or rise |
+| The thought on the working line (`ReasoningColumn`, components/ui/reasoning-steps.tsx) | one phase for the whole block: "Thinking" shimmers once, the block's seconds tick 4px after it on the shared second hand (the figure alone re-renders, nothing morphs); each finished sentence fades in once in the column under the line on `.stream-step` (`--dur-reveal`, opacity alone) and stays put; the column grows to its newest line on `useHeightGlide` (`--dur-base` `--ease-out`), scrolls past 192px (smooth, following the newest line unless the person scrolled up; 32px of mask at a cut edge) and folds away on `.collapsible-auto` when the thought ends | the fold | the fades and the fold's opacity; the scroll snaps |
+| Streaming text | the prose: the jitter buffer (surfaces/smoothText) steps whole words every 100ms (`REVEAL.stepMs`) a lead behind the live end (100ms here, 250ms for another host's thread, grown by an underrun, never slower than the stream, every character within 1.5s), draining at the stream's end instead of snapping and revealing a row born live from its first word, holding a bare block marker, a table's header row and a table row with only its pipes until they have content; each step is one span fading in over `--dur-reveal` on `--ease-reveal` (lib/streamReveal.ts, `.stream-step`), and the settle waits for the last fade. Code is not prose: inside an open fence a line shows once its newline arrives (a line held `REVEAL.lineHoldMs`, 600ms, steps by words) and fades in as one element. A list item, a table row, a heading, a quote's line or a fence born mid-stream rises 4px over `--dur-base` `--ease-out` as it fades (`.stream-rise`), a paragraph never; a table's card fades in with its header row. A thought's sentences are no stream: each lands whole in the reasoning column under the working line | — | whole-word and whole-line steps, no fade or rise |
 | A streaming code block growing | its body glides to the new line's height, `--dur-base` `--ease-out` (`useHeightGlide`), while its row's reveal is armed; settled blocks never move | — | the height steps |
 | Composer send | the bubble rides with the content as the prompt parks, rising 16px and fading in, `--dur-slow` `--ease-drawer`; in follow mode it flies from the field only when it lands within 240px of it | — | fade, `--dur-fast` |
 | Composer field height | snaps on a keystroke and on the clear after a send; a change of more than one line the person did not type (a paste, a restore, a quote) eases over `--dur-base` | — | snaps |
@@ -781,7 +783,7 @@ one class chain.
 | Element | Size / line |
 | --- | --- |
 | The prose, the person's bubble, a question's prompt, the composer's field | 14px / 22px |
-| A line: a group's line, an action, a thought, a notice, an approval, the closing line | 13px / 20px in a 28px row, 32px in an open group's table (12px in); the glyph in a 14px slot, 8px to the words, so words start at 22px; each word, detail, count or time 4px from the next; a chevron or the hover actions 8px after the last |
+| A line: a group's line, an action, a notice, an approval, the closing line | 13px / 20px in a 28px row, 32px in an open group's table (12px in); the glyph in a 14px slot, 8px to the words, so words start at 22px; each word, detail, count or time 4px from the next; a chevron or the hover actions 8px after the last |
 | Counts (`+46 −3`, a failed tally) | the text's size (13px in a row and on the group line) `tabular-nums`; the failed mark 4px from its number |
 | Code in a row's body: a command, its output, a diff | 12px / 20px mono |
 | A code block in the prose | 13px / 20px mono |
@@ -869,10 +871,15 @@ Activity section.
 An approval card carries the amber glyph and its two buttons, not the
 word; the call's row above it keeps its tool icon, so the mark shows once.
 In an open table the waiting approval is a 40px row, 6px round its raised
-buttons, so their drop clears the table's clipped frame. A thought is no row: while it streams the working line says its
-newest sentence in place of Thinking (Thinking until the first, a long one
-cut with an ellipsis at the row's edge), and once it ends it shows only in a group opened
-by hand, as "Thought ▸" with no duration, which opens the text. Each live
+buttons, so their drop clears the table's clipped frame. A thought is no row: while it streams with words the working
+line says "Thinking" with the block's seconds 4px after it, tabular and
+muted, and its finished sentences arrive in the reasoning column under the
+line (14px on 22px lines, muted, 8px between paragraphs, 192px at most
+then scrolling, the cut edge fading 32px; Thinking alone until the first
+words); once it ends the column folds away, and the thought shows only in a
+group opened by hand, as its whole text in the entry's place (the thought
+glyph in the glyph slot, the markdown in the column's type on the text
+column; no word, no chevron, no duration). Each live
 turn ends in one working line, from Send to the turn's end: the working
 mark, then the phase's words in the shimmer (one running call by its verb,
 muted, and its object in foreground, with an edit's live counts, or a

@@ -3,6 +3,8 @@
 import type { Block } from "../../lib/session";
 
 const CWD = "/Users/me/shop";
+/** The thought's start: four seconds before the harness renders. */
+const STARTED = Date.now() - 4_000;
 const user: Block = { id: "u", role: "user", text: "Add the index" };
 const call = (id: string, name: string, kind: string, input: unknown, status = "running"): Block => ({
   id,
@@ -17,22 +19,38 @@ export default [
   { name: "The host's wait", props: live([user], "Waiting for the provider, 25 s") },
   { name: "Thinking, before its first words", props: live([user, { id: "r", role: "reasoning", text: "", streaming: true }]) },
   {
-    name: "A thought: its sentence in place of Thinking",
-    props: live([user, { id: "r", role: "reasoning", text: "The schema has no index yet.", streaming: true }]),
+    name: "A thought: Thinking with its seconds, its first sentence in the column",
+    props: live([user, { id: "r", role: "reasoning", text: "The schema has no index yet. I should", streaming: true, startedAt: STARTED }]),
   },
   {
-    name: "A thought's second sentence",
-    props: live([user, { id: "r", role: "reasoning", text: "The schema has no index yet. I should add one on the table.", streaming: true }]),
-  },
-  {
-    name: "A long sentence, cut at the row's edge",
+    name: "A thought past a minute, several sentences",
     props: live([
       user,
       {
         id: "r",
         role: "reasoning",
-        text: "The table is read by every query in the inbox, the search and the board, so an index on its owner and its updated time would let each of them skip the full scan they do today.",
+        text: "The schema has no index yet. I should add one on the table.\n\nThe table is read by every query in the inbox, the search and the board, so an index on its owner and its updated time would let each of them skip the full scan they do today. Still weighing the",
         streaming: true,
+        startedAt: STARTED - 68_000,
+      },
+    ]),
+  },
+  {
+    name: "A long thought: the column at its cap, scrolled to its newest line",
+    props: live([
+      user,
+      {
+        id: "r",
+        role: "reasoning",
+        text: [
+          "The inbox query filters by owner and sorts by updated time, so a full scan runs on every open.",
+          "An index on owner and updated time would let Convex seek straight to the owner's rows.",
+          "The search and the board read the same table, so the one index serves all three.\n\nThe schema has no index on the table yet, and the migration is only the schema change: Convex builds the index on deploy.",
+          "I should check whether any query orders by created time instead, which the index would not cover.",
+          "Then the tests: the inbox test seeds twenty rows and asserts the order, so it will catch a wrong index field.",
+        ].join(" "),
+        streaming: true,
+        startedAt: STARTED - 23_000,
       },
     ]),
   },

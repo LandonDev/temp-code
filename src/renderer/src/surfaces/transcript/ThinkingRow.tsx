@@ -1,81 +1,38 @@
 // A9 (thinking): a settled thought, in a group opened by hand.
-import { useState } from "react";
-import { ChevronRight, Sparkles } from "../../chrome/icons";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
-import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
+import { Sparkles } from "../../chrome/icons";
 import { cn } from "../../lib/cn";
 import { type Block } from "../../lib/session";
 import type { OpenFileFn } from "../../lib/search";
 import { AgentMarkdown } from "../AgentMarkdown";
-import { STEP_LINE, TABLE_BODY } from "./stepLine";
-
-/** One row of the action list on the step grid: the 14px glyph slot, then the words. */
-const ROW = STEP_LINE;
+import { GLYPH_SLOT } from "./stepLine";
 
 /**
- * A thought that settled, as one row of a group a person opened: "Thought ›",
- * which opens the whole text. It carries no duration: how long the model
- * thought is noise. A thought streaming is the turn's working line, never a
- * row (WorkingLine.tsx), and a group the person did not open shows no
- * thought at all (ActionGroup.tsx).
+ * A thought that settled, as one entry of a group a person opened: the
+ * whole thought, readable at once, in the reasoning column's type (14px on
+ * 22px lines, muted: `.agent-reasoning`) on the step grid's text column,
+ * the thought glyph on its first line where a step's glyph sits. No word
+ * to click, no chevron and no duration: the live seconds were the working
+ * line's, and a span beside a paragraph is noise. It mounts settled (no
+ * fade per sentence, no shimmer); the group's own fold carries it. A thought
+ * streaming is the turn's working line, never a row (WorkingLine.tsx), and a
+ * group the person did not open shows no thought at all (ActionGroup.tsx).
+ * Uncapped: the group is already the person's own open.
  */
-export function ActivityThinkingRow({
-  block,
-  cwd,
-  expandable = false,
-  onOpenFile,
-}: {
-  block: Block;
-  cwd?: string;
-  /** False: a line that does not open. */
-  expandable?: boolean;
-  onOpenFile?: OpenFileFn;
-}) {
-  const [open, setOpen] = useState(false);
-  // The text mounts on first open and stays mounted.
-  const [opened, setOpened] = useState(false);
+export function ActivityThinkingRow({ block, cwd, onOpenFile }: { block: Block; cwd?: string; onOpenFile?: OpenFileFn }) {
   return (
-    <Collapsible
-      open={expandable && open}
-      onOpenChange={(next) => {
-        if (next) setOpened(true);
-        setOpen(next);
-      }}
-      className="min-w-0"
+    <div
+      data-slot="thought-row"
+      className={cn(
+        "flex min-h-7 min-w-0 items-start gap-1 py-1 font-sans in-data-[table]:min-h-8 in-data-[table]:px-3 in-data-[table]:py-1.5",
+      )}
     >
-      <div
-        data-slot="thought-row"
-        className="relative w-fit max-w-full text-muted-foreground has-[>button:focus-visible]:text-foreground has-[>button:hover]:text-foreground"
-      >
-        <div aria-hidden={expandable || undefined} className={ROW}>
-          <Sparkles className="me-1 size-3.5 shrink-0" />
-          <span className="truncate">Thought</span>
-          {expandable ? (
-            <ChevronRight
-              className={cn(
-                "ms-1 size-3 shrink-0",
-                DISCLOSURE_CHEVRON,
-                open && "rotate-90",
-              )}
-            />
-          ) : null}
-        </div>
-        {expandable ? (
-          <CollapsibleTrigger
-            aria-label="Thought"
-            className="absolute inset-0 rounded-md"
-          />
-        ) : null}
+      {/* The 14px glyph centred on the first 22px line. */}
+      <span className={cn(GLYPH_SLOT, "mt-1")}>
+        <Sparkles aria-hidden className="size-3.5" />
+      </span>
+      <div data-thought-text className="min-w-0 flex-1">
+        <AgentMarkdown className="agent-reasoning" size="prose" text={block.text} cwd={cwd} onOpenFile={onOpenFile} />
       </div>
-      {expandable ? (
-        <CollapsibleContent keepMounted={opened}>
-          <div className={cn("min-w-0 pb-2 pl-5.5", TABLE_BODY)}>
-            {opened ? (
-              <AgentMarkdown className="agent-reasoning" size="prose" text={block.text} cwd={cwd} onOpenFile={onOpenFile} />
-            ) : null}
-          </div>
-        </CollapsibleContent>
-      ) : null}
-    </Collapsible>
+    </div>
   );
 }

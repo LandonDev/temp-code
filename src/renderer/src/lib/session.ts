@@ -144,7 +144,10 @@ export type Block = {
   text: string;
   attachments?: Attachment[];
   streaming?: boolean;
-  /** Epoch ms when this user turn started. */
+  /** Epoch ms when this user turn started, or when this thought's first
+   *  words came (the fold stamps a reasoning block's; its `doneTs` is its
+   *  final row, so the working line counts "Thinking 4s" from here and a
+   *  settled thought reads "Thought for 12s"). */
   startedAt?: number;
   /** How long the agent worked on this user turn, in ms. */
   durationMs?: number;
