@@ -18,7 +18,7 @@ describe('host error kinds', () => {
     expect(hostErrorLine('stopped')).toBe('stopped by the person; no more computer use this turn')
     expect(hostErrorLine('paused')).toBe('refused: the thread is paused')
     expect(hostErrorLine('denied')).toBe('denied: the person did not allow it; do not reach the same effect another way')
-    expect(hostErrorLine('away')).toBe('denied: the person is away; finish around this act and name it in your report')
+    expect(hostErrorLine('away')).toBe('denied: the person is away and this act spends money; finish around it and name it in your report')
     expect(hostErrorLine('cancelled', 'the thread was paused')).toBe('cancelled: the thread was paused')
     expect(hostErrorLine('invalid_args', 'actions: too big')).toBe("invalid arguments: actions: too big; see the tool's description")
     expect(hostErrorLine('no_observation', noObservationLine(12, 'TextEdit'))).toBe('[12] comes from no read of TextEdit in this thread; read the window first')

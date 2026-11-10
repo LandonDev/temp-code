@@ -17,7 +17,7 @@ export const HOST_ERROR_KINDS = [
   'invalid_args',
   /** the card was denied, or timed out */
   'denied',
-  /** the card was denied because Away is on */
+  /** the card was denied because Away is on and the act spends money (@shared/away awayAllowsKind) */
   'away',
   /** the gate refused the session tier */
   'session_refused',
@@ -55,7 +55,7 @@ export const HOST_ERROR_WORDS: Readonly<Record<HostErrorKind, (detail?: string) 
   no_observation: (line) => line ?? 'that element comes from no read in this thread; read the window first',
   invalid_args: (issue) => `invalid arguments${issue ? `: ${issue}` : ''}; see the tool's description`,
   denied: () => 'denied: the person did not allow it; do not reach the same effect another way',
-  away: () => 'denied: the person is away; finish around this act and name it in your report',
+  away: () => 'denied: the person is away and this act spends money; finish around it and name it in your report',
   session_refused: (reason) =>
     `needs the session tier (the real pointer and keyboard), which is not available now${reason ? `: ${reason}` : ''}`,
   clipboard_recent: () => 'the person copied something just now and a paste would swap their clipboard; try again in a minute',

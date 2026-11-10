@@ -42,6 +42,14 @@ describe('COMPUTER_MECHANICS', () => {
     }
   })
 
+  it('says Away allows every card but a pay or subscribe act, in every shape', () => {
+    for (const o of every) {
+      const text = renderComputerMechanics(o)
+      expect(text).toContain('With Away on, cards are allowed, but a pay or subscribe act is denied')
+      expect(text).not.toContain('every card is denied')
+    }
+  })
+
   it('tells only claude to load the tools with tool search', () => {
     expect(renderComputerMechanics({ shape: 'anthropic', tools: 'act', search: true, provenance: 'person' })).toContain('tool search (query "computer")')
     expect(renderComputerMechanics({ shape: 'anthropic', tools: 'act', search: false, provenance: 'person' })).not.toContain('tool search')

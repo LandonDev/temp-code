@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { requiredCapability } from '@shared/capabilities'
 import { AWAY_DECIDED_SETTING, AWAY_SETTING, AWAY_TALLY_MS, AwayService } from './away'
+import { AWAY_APPROVAL_REPLY, AWAY_ON, MAC_AWAY_REFUSAL, MAC_AWAY_REFUSAL_LEGACY, isMacAwayRefusal } from './awayPrompts'
 
 const settingsStore = () => {
   const rows = new Map<string, string>()
@@ -129,5 +130,20 @@ describe('away capabilities', () => {
     expect(requiredCapability({ method: 'away.get' })).toBe('read')
     expect(requiredCapability({ method: 'away.set', params: { enabled: true } })).toBe('approve')
     expect(requiredCapability({ method: 'away.apply', params: { state: { enabled: true, at: 1, by: 'x' } } })).toBe('admin')
+  })
+})
+
+describe('what the thread hears', () => {
+  it('says approvals are allowed while away and names pay and subscribe as the one denial', () => {
+    expect(AWAY_ON).toContain('is allowed, and each one is recorded')
+    expect(AWAY_ON).toContain('a computer act flagged pay or subscribe is denied')
+    expect(AWAY_ON).not.toContain('are denied while they are away')
+    expect(AWAY_APPROVAL_REPLY).toContain('spends money')
+  })
+
+  it('knows a Mac refusal of either build', () => {
+    expect(isMacAwayRefusal(MAC_AWAY_REFUSAL)).toBe(true)
+    expect(isMacAwayRefusal(`mac.run: ${MAC_AWAY_REFUSAL_LEGACY}`)).toBe(true)
+    expect(isMacAwayRefusal('refused: the thread is paused')).toBe(false)
   })
 })
