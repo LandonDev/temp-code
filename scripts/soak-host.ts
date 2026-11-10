@@ -16,6 +16,7 @@ import type { SoakDriver } from './lib/soakLoad'
 // `--scene send --history <rows>`: the batch with the master's history grown long;
 // `--scene scroll --history <rows>`: the same, with the rail and the column grown past a screen;
 // `--burst <ms>`: its deltas leave in bursts (soakLoad.ts BurstCadence).
+// `--thought`: the chat scene's focused stream is one long thought (thinking deltas, no calls).
 // `--scene scenarios`: one quiet chat that plays the no-jerk timeline when a
 // line "go" arrives on stdin, writing `{"step": label, "at": ms, "clicks"?}` per
 // step (the clicks are the soak's to perform in the window).
@@ -23,7 +24,7 @@ import type { SoakDriver } from './lib/soakLoad'
 // answered `{"paused": true}` or `{"resumed": true}` once it holds.
 const argAfter = (name: string): string | undefined => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined)
 const named = argAfter('--scene')
-const host = await startSoakHost(named === 'chat' || named === 'typing' || named === 'switch' || named === 'send' || named === 'scroll' || named === 'scenarios' ? named : 'board', { history: Number(argAfter('--history') ?? 5_000) })
+const host = await startSoakHost(named === 'chat' || named === 'typing' || named === 'switch' || named === 'send' || named === 'scroll' || named === 'scenarios' ? named : 'board', { history: Number(argAfter('--history') ?? 5_000), thought: process.argv.includes('--thought') })
 const started = Date.now()
 let driver: SoakDriver | null = null
 if (host.scene !== 'scenarios') {

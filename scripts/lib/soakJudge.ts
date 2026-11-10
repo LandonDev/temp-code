@@ -59,6 +59,8 @@ export interface SoakArgs {
   evalJs: string | null
   /** --burst <ms>: the chat scene's deltas leave in bursts about this far apart (soakLoad.ts BurstCadence) */
   burstMs: number | null
+  /** --thought: the chat scene's focused stream is one long thought (thinking deltas, no calls), a hand measurement of the reasoning column */
+  thought: boolean
   /** --reveal-report: the streaming reveal's steps over the window (scripts/lib/revealReport.ts) */
   revealReport: boolean
   /** --screencast <dir>: every frame the window paints while the scenarios play, as <ms>.png with an index.json */
@@ -160,6 +162,9 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   if (burstMs !== null && !(burstMs >= 10 && burstMs <= 5000)) throw new Error('--burst takes ms between bursts, 10 to 5000')
   if (burstMs !== null && scene !== 'chat') throw new Error('--burst shapes the chat scene\'s stream: add --scene chat')
   if (burstMs !== null && gate) throw new Error('--burst is a hand run, never the gate\'s load')
+  const thought = argv.includes('--thought')
+  if (thought && scene !== 'chat') throw new Error('--thought shapes the chat scene\'s stream: add --scene chat')
+  if (thought && gate && !argv.includes('--cpu-report-only')) throw new Error('--thought is a hand run: with --gate add --cpu-report-only')
   if (traceS && screencast) throw new Error('--trace and --screencast run separately: ending a trace stops the screencast')
   const port = Number(flag('--port') ?? '9251')
   if (!Number.isInteger(port) || port < 1024) throw new Error('--port takes a debug port number')
@@ -181,6 +186,7 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
     traceS,
     evalJs: flag('--eval') ?? null,
     burstMs,
+    thought,
     revealReport: argv.includes('--reveal-report'),
     screencast,
     reducedMotion: argv.includes('--reduced-motion'),

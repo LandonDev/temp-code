@@ -41,6 +41,9 @@
  *   report as <label>.trace.json. --eval <js>: an experiment evaluated in the
  *   page once the view is open, before the warm-up (docs/box.md has the ones
  *   that sized the bounds).
+ * --thought (chat scene, a hand run): the focused stream is one long thought,
+ *   thinking deltas at the chat scene's rate with no calls, so the working
+ *   line's reasoning column is what the window measures.
  * --burst <ms> (chat scene): the stream's deltas leave together about every
  *   <ms> ± 30%, with a 1 s stall every 10 s (soakLoad.ts BurstCadence).
  *   --reveal-report: the streaming reveal's steps over the window, their gaps
@@ -422,8 +425,9 @@ type Shown = { environmentId: string; masterId: string; threadId: string }
  *  node:sqlite (scripts/ios-client-test.ts runs its server the same way). */
 function hostCommand(): [string, string[]] {
   const burst = args.burstMs ? ['--burst', String(args.burstMs)] : []
+  const thought = args.thought ? ['--thought'] : []
   const history = args.scene === 'send' || args.scene === 'scroll' ? ['--history', String(args.history)] : []
-  if (!mac) return [process.execPath, ['--preload', 'scripts/lib/electron-stub.ts', 'scripts/soak-host.ts', '--scene', args.scene, ...burst, ...history]]
+  if (!mac) return [process.execPath, ['--preload', 'scripts/lib/electron-stub.ts', 'scripts/soak-host.ts', '--scene', args.scene, ...burst, ...thought, ...history]]
   const out = join(REPO, 'scripts', '.out', 'soak-host.mjs')
   execFileSync(
     join(REPO, 'node_modules', '.bin', 'esbuild'),
@@ -441,7 +445,7 @@ function hostCommand(): [string, string[]] {
     ],
     { cwd: REPO, stdio: ['ignore', 'ignore', 'inherit'] }
   )
-  return ['node', [out, '--scene', args.scene, ...burst, ...history]]
+  return ['node', [out, '--scene', args.scene, ...burst, ...thought, ...history]]
 }
 
 async function startSynthetic(c: Cdp): Promise<Shown> {

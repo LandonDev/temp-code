@@ -102,6 +102,14 @@ const TITLES = [
   'Write the soak numbers into the docs'
 ]
 
+/** A long thought's text, for `--thought`: sentences a few at a time, as summarized thinking arrives. */
+const THOUGHT =
+  'The inbox reads the table by owner and sorts by updated time, so every open runs a full scan. ' +
+  'An index on owner and updated time would let the query seek straight to the rows it wants. ' +
+  'The search and the board read the same table, so the one index serves all three. ' +
+  'The migration is only the schema change, since Convex builds the index on deploy. ' +
+  'I should check whether any query orders by created time instead, which the index would not cover. ' +
+  'The inbox test seeds twenty rows and asserts the order, so it will catch a wrong index field. '
 const PROSE =
   'The listener keeps one pool per account, so a turn reuses the socket the last one opened. ' +
   'When the provider answers slowly the wait says so in the working line, and the timer above the composer keeps counting from the click. ' +
@@ -135,7 +143,7 @@ export interface SoakHost {
   close(): Promise<void>
 }
 
-export async function startSoakHost(scene: SoakScene = 'board', opts: { history?: number } = {}): Promise<SoakHost> {
+export async function startSoakHost(scene: SoakScene = 'board', opts: { history?: number; thought?: boolean } = {}): Promise<SoakHost> {
   const profile = profileOf(scene)
   const root = mkdtempSync(join(tmpdir(), 'tc-soak-host-'))
   process.env.TEMP_CODE_WARM_HARNESS = '0'
@@ -282,7 +290,7 @@ export async function startSoakHost(scene: SoakScene = 'board', opts: { history?
   const append = (id: string, event: AgentEvent): void => registry.append(id, event)
   const endMessage = (id: string, s: Stream): void => {
     if (!s.text) return
-    append(id, { type: 'assistant-text', text: s.text, delta: false, msgId: `${id}-m${s.msg}`, blockIndex: 0 })
+    append(id, { type: opts.thought ? 'thinking' : 'assistant-text', text: s.text, delta: false, msgId: `${id}-m${s.msg}`, blockIndex: 0 })
     s.msg++
     s.text = ''
     s.deltas = 0
@@ -325,12 +333,17 @@ export async function startSoakHost(scene: SoakScene = 'board', opts: { history?
       s.tokens += 1_337
       append(id, { type: 'context', tokens: s.tokens, window: 1_000_000 })
     } else if (emit.kind === 'delta') {
-      const at = (emit.n * 7) % PROSE.length
-      const chunk = PROSE.slice(at, at + 4 + (emit.n % 9))
+      // A thought (`--thought`): the same cadence from the thought's pool, as
+      // thinking deltas, one block of 600 (30 s, some seventy sentences).
+      const pool = opts.thought ? THOUGHT : PROSE
+      const at = (emit.n * 7) % pool.length
+      const chunk = pool.slice(at, at + 4 + (emit.n % 9))
       s.text += chunk
       s.deltas++
-      append(id, { type: 'assistant-text', text: chunk, delta: true, msgId: `${id}-m${s.msg}`, blockIndex: 0 })
-      if (s.deltas >= 100) endMessage(id, s)
+      append(id, { type: opts.thought ? 'thinking' : 'assistant-text', text: chunk, delta: true, msgId: `${id}-m${s.msg}`, blockIndex: 0 })
+      if (s.deltas >= (opts.thought ? 600 : 100)) endMessage(id, s)
+    } else if (opts.thought) {
+      // No calls: the thought runs on unbroken.
     } else {
       endMessage(id, s)
       const callId = `${id}-read-${emit.n}`
