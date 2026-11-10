@@ -1149,7 +1149,6 @@ async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
   const act = (o: Observation, action: Record<string, unknown>, tiers: ('ax' | 'process')[]) =>
     a.call('action.run', { session: SESSION, app: { pid }, window: { id: o.window.id }, epoch: o.epoch, action, tiers, wait: COMPUTER_WAIT.action } as never)
   const frontmost = () => ({ pid: probe<{ pid: number }>('frontmost').pid, bundleId: null })
-  const centre = (e: ElementLine) => intPoint(e.frame!.x + e.frame!.w / 2, e.frame!.y + e.frame!.h / 2)
   const via = (step: OkStep): string | undefined => step.input?.via
   let o: Observation | null = null
 
@@ -1182,9 +1181,12 @@ async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
     o = now
   })
   await leg.step('fallbacks 3: a click on the label presses Hit Target through the hit route', async (data) => {
-    const label = findElement(o!, 'the Hit Target label', (e) => e.role === 'text' && e.name === 'Hit Target' && !!e.frame)
+    // the reader folds the label into its button's line, so the label's spot is read off the button's frame:
+    // the label spans 8 to 148 of the view's 160 points, so a quarter of the way across is on it
+    const button = findElement(o!, 'button "Hit Target"', (e) => e.role === 'button' && e.name === 'Hit Target' && !!e.frame)
+    const at = intPoint(button.frame!.x + button.frame!.w / 4, button.frame!.y + button.frame!.h / 2)
     const before = personState()
-    const r = await act(o!, { action: 'left_click', coordinate: centre(label) }, ['ax', 'process'])
+    const r = await act(o!, { action: 'left_click', coordinate: at }, ['ax', 'process'])
     data.person = assertPersonUntouched(before, 'after the click')
     const step = okStep(r.step)
     check(step.tier === 'ax' && via(step) === 'hit' && step.input?.on === 'button "Hit Target"', 'the hit pressed the button', step)
