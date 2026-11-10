@@ -15,6 +15,16 @@ struct WaitWatch: Sendable {
     let change: ChangeBox?
     /// capture's watch on the window; nil without Screen Recording or when it never went live
     let pixel: (any PixelChangeSignal)?
+    /// a copy or cut step's wait: the pasteboard's last foreign change, ms since t0 (§24.10)
+    var pasteboardChange: (@Sendable () -> Int?)?
+
+    init(worker: Worker, pid: pid_t, change: ChangeBox?, pixel: (any PixelChangeSignal)?, pasteboardChange: (@Sendable () -> Int?)? = nil) {
+        self.worker = worker
+        self.pid = pid
+        self.change = change
+        self.pixel = pixel
+        self.pasteboardChange = pasteboardChange
+    }
 }
 
 /// The smart wait's runner (shell §5.3): it feeds `WaitRule` until the rule is done. Every 25 ms it reads
@@ -26,7 +36,7 @@ enum SmartWait {
 
     static func run(_ options: WaitOptions, from t0: UInt64, signature0: UInt64, thin: Bool, watch: WaitWatch,
                     cancel: CancelFlag, isRunning: @Sendable (pid_t) -> Bool, tick: Duration, trace: Trace?) async -> WaitOutcome {
-        var rule = WaitRule(options: options, signature0: signature0, thin: thin, pixels: watch.pixel?.live ?? false)
+        var rule = WaitRule(options: options, signature0: signature0, thin: thin, pixels: watch.pixel?.live ?? false, pasteboard: watch.pasteboardChange != nil)
         var lastSignature = Int.min / 2
         var lastBusy = Int.min / 2
         while true {
@@ -36,6 +46,7 @@ enum SmartWait {
             var sample = WaitSample(at: at)
             if let stamp = watch.change?.signal.lastChange, stamp > t0 { sample.axLastChange = MachTime.ms(from: t0, to: stamp) }
             if let pixel = watch.pixel, pixel.live, pixel.lastChange > t0 { sample.pixelLastChange = MachTime.ms(from: t0, to: pixel.lastChange) }
+            if let pb = watch.pasteboardChange?() { sample.pasteboardLastChange = pb }
             if at - lastSignature >= signatureEveryMs, let change = watch.change {
                 lastSignature = at
                 sample.signature = try? await watch.worker.run { _ in change.signal.signature() }

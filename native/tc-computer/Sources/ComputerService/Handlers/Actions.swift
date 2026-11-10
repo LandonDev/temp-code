@@ -33,14 +33,14 @@ extension ComputerService {
         router.on("action.run", keepsResult: true) { [self] (p: Methods.ActionRun.Params, ctx) -> ActionResult in
             let result = try await runActions(
                 session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch,
-                actions: [p.action], tiers: p.tiers, stepWait: nil, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, ctx: ctx
+                actions: [p.action], tiers: p.tiers, stepWait: nil, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, ignored: p.ignored, ctx: ctx
             )
             return ActionResult(step: result.steps[0], observation: result.observation, observationError: result.observationError)
         }
         router.on("action.batch", keepsResult: true) { [self] (p: Methods.ActionBatch.Params, ctx) in
             try await runActions(
                 session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch,
-                actions: p.actions, tiers: p.tiers, stepWait: p.stepWait, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, ctx: ctx
+                actions: p.actions, tiers: p.tiers, stepWait: p.stepWait, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, ignored: p.ignored, ctx: ctx
             )
         }
     }
@@ -50,7 +50,7 @@ extension ComputerService {
     /// one observation. `pasteQuietMs` goes to Input with every step: a paste refuses a copy that recent.
     func runActions(
         session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, actions: [ComputerAction],
-        tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int? = nil, ctx: RequestContext
+        tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int? = nil, ignored: IgnoredRoutes? = nil, ctx: RequestContext
     ) async throws -> BatchResult {
         for action in actions {
             for element in [action.element, action.start_element].compactMap({ $0 }) {
@@ -75,19 +75,21 @@ extension ComputerService {
 
         var steps: [StepResult] = []
         var last: StepRun?
+        var lastAction: ComputerAction?
         for (index, action) in actions.enumerated() {
             if ctx.cancel.isSet {
                 steps += notRun(actions, from: index + 1, first: .failed(FailedStep(index: index, action: action.action, error: Router.cancelledError)))
                 break
             }
-            var run = await step(index, action, target: target, tiers: tiers, maxEdge: observe?.maxEdge, pasteQuietMs: pasteQuietMs, ctx: ctx)
+            var run = await step(index, action, target: target, tiers: tiers, maxEdge: observe?.maxEdge, pasteQuietMs: pasteQuietMs, ignored: ignored, ctx: ctx)
             let isLast = index == actions.count - 1
             if !run.stops && !isLast, let t0 = run.t0, case .ok(let ok) = run.step {
-                let waited = await waitAfter(target, options: stepWait ?? ComputerDefaults.Wait.step, t0: t0, signature0: run.signature0, cancel: ctx.cancel)
+                let waited = await waitAfter(target, options: stepWait ?? ComputerDefaults.Wait.step, t0: t0, signature0: run.signature0, pasteboard: WaitRule.readsPasteboard(action), cancel: ctx.cancel)
                 run.step = .ok(ok.with(effect: waited.effect(thin: book.lastThin(session, pid: target.pid)), waited: waited.report))
             }
             steps.append(run.step)
             last = run
+            lastAction = action
             if run.stops {
                 steps += notRun(actions, from: index + 1)
                 break
@@ -98,7 +100,7 @@ extension ComputerService {
         var waited = WaitRule.skipped()
         var windowGone = false
         if let last, let t0 = last.t0, !ctx.cancel.isSet {
-            waited = await waitAfter(target, options: wait ?? ComputerDefaults.Wait.action, t0: t0, signature0: last.signature0, cancel: ctx.cancel)
+            waited = await waitAfter(target, options: wait ?? ComputerDefaults.Wait.action, t0: t0, signature0: last.signature0, pasteboard: lastAction.map(WaitRule.readsPasteboard) ?? false, cancel: ctx.cancel)
             if waited.report.reason != .cancelled, !waited.appLeft {
                 // an app that quit just after the wait ended counts as one that quit during it
                 windowGone = inventory.isRunning(target.pid) ? await windowClosed(target) : true
@@ -134,7 +136,7 @@ extension ComputerService {
     }
 
     /// One step: the shell's own pictures and wait, or Input.
-    private func step(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], maxEdge: Int?, pasteQuietMs: Int?, ctx: RequestContext) async -> StepRun {
+    private func step(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], maxEdge: Int?, pasteQuietMs: Int?, ignored: IgnoredRoutes?, ctx: RequestContext) async -> StepRun {
         let thin = book.lastThin(target.session, pid: target.pid)
         switch action.action {
         case .screenshot, .zoom:
@@ -167,12 +169,12 @@ extension ComputerService {
                 return StepRun(step: failed(index, action, error, or: .windowNotFound))
             }
         default:
-            return await perform(index, action, target: target, tiers: tiers, pasteQuietMs: pasteQuietMs, ctx: ctx)
+            return await perform(index, action, target: target, tiers: tiers, pasteQuietMs: pasteQuietMs, ignored: ignored, ctx: ctx)
         }
     }
 
     /// Everything else, `cursor_position` included, goes to Input (shell §9.1 step 4).
-    private func perform(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], pasteQuietMs: Int?, ctx: RequestContext) async -> StepRun {
+    private func perform(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], pasteQuietMs: Int?, ignored: IgnoredRoutes?, ctx: RequestContext) async -> StepRun {
         let pixel = await pixelWatch(target)
         let keepAlive = keepWatchAlive(target, while: pixel != nil)
         defer { keepAlive?.cancel() }
@@ -194,7 +196,7 @@ extension ComputerService {
                 let start = try action.start_element.map { try reader.resolve($0) }
                 let inputTarget = InputTarget(
                     pid: pid, windowID: windowID, windowFrame: info.frame, window: window, space: space,
-                    element: element, startElement: start, cursor: cursor, cancelled: { flag.isSet }, pasteQuietMs: pasteQuietMs
+                    element: element, startElement: start, cursor: cursor, cancelled: { flag.isSet }, pasteQuietMs: pasteQuietMs, ignored: ignored
                 )
                 let sig0 = reader.changes.signature()
                 let outcome = try box.input.perform(action, on: inputTarget, tiers: tiers)
@@ -211,7 +213,7 @@ extension ComputerService {
             let ok = OkStep(
                 index: index, action: action.action, tier: isCursor ? nil : outcome.tier,
                 effect: WaitRule.skipped().effect(thin: false), element: done.element,
-                input: outcome.via.map { OkStep.Input(via: $0, clipboard: outcome.clipboard) },
+                input: outcome.via.map { OkStep.Input(via: $0, clipboard: outcome.clipboard, on: outcome.on) },
                 cursor: outcome.cursor, text: isCursor ? outcome.cursor.map { "X=\($0[0]), Y=\($0[1])" } : nil,
                 session: outcome.session
             )
@@ -249,13 +251,20 @@ extension ComputerService {
         return Resolved(session: target.session, pid: pid, app: target.app, worker: target.worker, info: info, launched: false)
     }
 
-    /// The wait after a step, from its last input.
-    private func waitAfter(_ target: Resolved, options: WaitOptions, t0: UInt64, signature0: UInt64, cancel: CancelFlag) async -> WaitOutcome {
+    /// The wait after a step, from its last input. A copy or cut (`pasteboard`) also watches the
+    /// pasteboard's foreign changes (§24.10), as milliseconds since t0.
+    private func waitAfter(_ target: Resolved, options: WaitOptions, t0: UInt64, signature0: UInt64, pasteboard: Bool = false, cancel: CancelFlag) async -> WaitOutcome {
         let pixel = await pixelWatch(target)
         let keepAlive = keepWatchAlive(target, while: pixel != nil)
         defer { keepAlive?.cancel() }
-        guard let watch = try? await waitWatch(target, pixel: pixel) else {
+        guard var watch = try? await waitWatch(target, pixel: pixel) else {
             return WaitRule(options: options, signature0: signature0, thin: false, pixels: false).appGone(at: MachTime.ms(from: t0, to: MachTime.now()))
+        }
+        if pasteboard {
+            let t0Epoch = env.system.now() - Double(MachTime.ms(from: t0, to: MachTime.now()))
+            watch.pasteboardChange = { [self] in
+                lock.withLock { clipboard?.foreignChangeAt }.flatMap { $0 > t0Epoch ? Int($0 - t0Epoch) : nil }
+            }
         }
         return await SmartWait.run(
             options, from: t0, signature0: signature0, thin: book.lastThin(target.session, pid: target.pid), watch: watch, cancel: cancel,
