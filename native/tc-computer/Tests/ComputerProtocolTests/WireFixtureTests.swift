@@ -65,7 +65,7 @@ func check<M: ContractMethod>(_ method: M.Type) throws {
 
     @Test func everyErrorKindHasAFixtureThatDecodes() throws {
         let kinds = try WireFixtures.names().filter { $0.hasPrefix("error-") }
-        #expect(kinds.count == 23) // every ComputerErrorKind but `unknown`
+        #expect(kinds.count == 24) // every ComputerErrorKind but `unknown`
         for name in kinds {
             let kind = String(name.dropFirst("error-".count).dropLast(".json".count))
             switch try WireFixtures.frame(name) {
@@ -87,7 +87,7 @@ func check<M: ContractMethod>(_ method: M.Type) throws {
 
     @Test func everyNotificationDecodesToAKnownCase() throws {
         let names = try WireFixtures.names().filter { $0.hasPrefix("notify-") }
-        #expect(names.count == 11)
+        #expect(names.count == 12)
         for name in names {
             let data = try Data(contentsOf: WireFixtures.dir.appendingPathComponent(name))
             guard case .notification(let method, _) = try WireFixtures.frame(name) else {
@@ -110,6 +110,15 @@ func check<M: ContractMethod>(_ method: M.Type) throws {
         #expect(point == [500, 300])
         #expect(action.action == .leftClick)
         #expect(AppRef(app: "TextEdit").pid == nil)
+    }
+
+    @Test func aLaunchResultFromBeforeTheFrontGuardStillDecodes() throws {
+        let old = try JSONDecoder().decode(Methods.AppsLaunch.Output.self, from: Data(#"{"pid":16800,"launched":true}"#.utf8))
+        #expect(old.front == nil && old.window == nil && old.others == nil)
+        let now = try JSONDecoder().decode(
+            Methods.AppsLaunch.Output.self,
+            from: Data(#"{"pid":1,"launched":false,"front":{"raised":true,"restored":"hid-app"}}"#.utf8))
+        #expect(now.front == FrontReport(raised: true, restored: .hidApp))
     }
 
     @Test func anUnknownEnumValueIsKept() throws {
