@@ -213,10 +213,12 @@ export const NoticeKindSchema = z.enum(['review', 'gate', 'batch', 'account-gone
 export type NoticeKind = z.infer<typeof NoticeKindSchema>
 
 /** A notice of kind `away` (src/main/server/away.ts): a decision the thread
- *  noted (`note_decision`), a question the host answered for the person, or
- *  an approval it denied, while the person was away. */
+ *  noted (`note_decision`), a question the host answered for the person, an
+ *  approval it allowed for them (`allowed`), or one it denied (`approval`:
+ *  since 2026-11-10 only a computer act that spends money; older rows are
+ *  every denial of the old rule), while the person was away. */
 export const AwayNoticeSchema = z.object({
-  kind: z.enum(['decision', 'question', 'approval']),
+  kind: z.enum(['decision', 'question', 'approval', 'allowed']),
   text: z.string()
 })
 export type AwayNotice = z.infer<typeof AwayNoticeSchema>

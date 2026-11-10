@@ -397,6 +397,7 @@ public struct AwayNotice: Codable, Hashable, Sendable {
         case decision
         case question
         case approval
+        case allowed
         /// A value this build does not know; `rawValue` keeps it.
         case unknown(String)
 
@@ -405,6 +406,7 @@ public struct AwayNotice: Codable, Hashable, Sendable {
             case "decision": self = .decision
             case "question": self = .question
             case "approval": self = .approval
+            case "allowed": self = .allowed
             default: self = .unknown(rawValue)
             }
         }
@@ -414,6 +416,7 @@ public struct AwayNotice: Codable, Hashable, Sendable {
             case .decision: "decision"
             case .question: "question"
             case .approval: "approval"
+            case .allowed: "allowed"
             case .unknown(let value): value
             }
         }

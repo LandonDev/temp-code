@@ -237,7 +237,8 @@ describe('the notice kinds', () => {
       { type: 'notice', kind: 'batch', message: 'Merged by the batch' },
       { type: 'notice', kind: 'account-gone', message: 'Account gone', account: 'ws@example.com' },
       { type: 'notice', kind: 'plan-build', message: 'The build did not start: refused' },
-      { type: 'notice', kind: 'away', message: 'Decided without you', away: { kind: 'decision', text: 'Kept the old width' } }
+      { type: 'notice', kind: 'away', message: 'Decided without you', away: { kind: 'decision', text: 'Kept the old width' } },
+      { type: 'notice', kind: 'away', message: 'Allowed while away: Run bun test?', away: { kind: 'allowed', text: 'Run bun test?' } }
     ]
     for (const row of kinds) expect(W.WireAgentEventSchema.parse(row)).toEqual(row)
     expect(() => W.WireAgentEventSchema.parse({ type: 'notice', kind: 'weather', message: 'Rain' })).toThrow()

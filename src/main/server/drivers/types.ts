@@ -29,6 +29,8 @@ export interface ApprovalRequest {
   choices?: ApprovalChoices
   /** the harness gave up waiting (turn interrupted) */
   signal?: AbortSignal
+  /** Away denies this card instead of allowing it: a computer act the model flagged as spending money (computer/run.ts, @shared/away awayAllowsKind) */
+  awayDenies?: true
 }
 
 export interface DriverCtx {

@@ -37,3 +37,10 @@ export const NOTE_DECISION_MAX_CHARS = 500
 /** How many decisions a tally holds. */
 export const decidedTotal = (decided: AwayDecided): number =>
   decided.threads.reduce((sum, t) => sum + t.count, 0)
+
+/** Flagged computer acts Away still denies: they spend money. Everything else that would ask the person is allowed while away. */
+export const AWAY_DENIED_KINDS = ['pay', 'subscribe'] as const
+
+/** Whether Away allows a computer call by the model's own flag (`args.confirm?.kind`), never a card's input. */
+export const awayAllowsKind = (kind: string | null | undefined): boolean =>
+  !(AWAY_DENIED_KINDS as readonly string[]).includes(kind ?? '')
