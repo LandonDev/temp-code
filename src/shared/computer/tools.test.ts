@@ -17,6 +17,7 @@ import {
   computerToolJsonSchema,
   formatShotLine,
   formatStepLine,
+  mayRunAtAx,
   parseShotLine,
   parseStepLine,
   perVerbTools,
@@ -225,5 +226,51 @@ describe('the line parsers', () => {
   it('refuse every other line', () => {
     for (const junk of [NOT_EXECUTED_LINE, '', 'screenshot 1 (observation): /a (1×1)', 'app "TextEdit" · window "Untitled" · 1280×800', 'click [14] · ax · changed', 'key a · ax · sort of', 'stopped by the person'])
       expect(parseStepLine(junk), junk).toBeNull()
+  })
+})
+
+describe('the background routes (§24)', () => {
+  const ok = (action: ComputerAction['action'], extra: object): StepResult => ({ index: 0, action, status: 'ok', tier: 'ax', effect: 'changed', ...extra }) as StepResult
+
+  it('names each route and what it acted on in the step line', () => {
+    expect(formatStepLine(ok('key', { input: { via: 'menu', on: 'File › Close' } }), { action: 'key', text: 'super+w' })).toBe('key super+w · menu File › Close · changed')
+    expect(formatStepLine(ok('left_click', { input: { via: 'hit', on: 'button "Save"' } }), { action: 'left_click', coordinate: [412, 230] })).toBe(
+      'left_click 412,230 · hit button "Save" · changed'
+    )
+    expect(formatStepLine(ok('left_click', { input: { via: 'caret', on: 'input "Name"' } }), { action: 'left_click', coordinate: [9, 9] })).toBe('left_click 9,9 · caret input "Name" · changed')
+    expect(formatStepLine(ok('scroll', { effect: 'none', input: { via: 'scroll-bar' } }), { action: 'scroll', element: 4, scroll_direction: 'down', scroll_amount: 5 })).toBe(
+      'scroll down 5 on [4] · scroll-bar · no change seen'
+    )
+    expect(formatStepLine(ok('scroll', { input: { via: 'scroll-page' } }), { action: 'scroll', coordinate: [1, 1], scroll_direction: 'down', scroll_amount: 5 })).toMatch(/ · scroll-page · changed$/)
+    // what it acted on never holds the separator, so the line reads back
+    expect(formatStepLine(ok('left_click', { input: { via: 'hit', on: 'button "A · B"' } }), { action: 'left_click', coordinate: [1, 1] })).toBe('left_click 1,1 · hit button "A B" · changed')
+  })
+
+  it('a paste names ax-insert when it went in without the clipboard, else its tier', () => {
+    expect(formatStepLine(ok('paste', { input: { via: 'ax-insert' } }), { action: 'paste', element: 9, text: 'hi' })).toMatch(/ · ax-insert · changed$/)
+    expect(formatStepLine(ok('paste', { tier: 'process', input: { via: 'paste', clipboard: 'restored' } }), { action: 'paste', element: 9, text: 'hi' })).toMatch(/ · process · changed$/)
+  })
+
+  it('knows which steps may have a route at ax', () => {
+    expect(mayRunAtAx({ action: 'key', text: 'super+w' })).toBe(true)
+    expect(mayRunAtAx({ action: 'key', text: 'ctrl+a' })).toBe(true)
+    expect(mayRunAtAx({ action: 'key', text: 'alt+e' })).toBe(false)
+    expect(mayRunAtAx({ action: 'key', text: 'Return' })).toBe(false)
+    expect(mayRunAtAx({ action: 'key', text: 'not a combo+' })).toBe(false)
+    for (const action of ['left_click', 'right_click', 'double_click'] as const) {
+      expect(mayRunAtAx({ action, coordinate: [1, 1] })).toBe(true)
+      expect(mayRunAtAx({ action, coordinate: [1, 1], text: 'shift' })).toBe(false)
+    }
+    expect(mayRunAtAx({ action: 'left_click', coordinate: [1, 1], duration: 1 })).toBe(false)
+    expect(mayRunAtAx({ action: 'scroll', coordinate: [1, 1], scroll_direction: 'down' })).toBe(true)
+    expect(mayRunAtAx({ action: 'scroll', coordinate: [1, 1], scroll_direction: 'down', text: 'shift' })).toBe(false)
+    expect(mayRunAtAx({ action: 'paste', text: 'x' })).toBe(true)
+    expect(mayRunAtAx({ action: 'type', text: 'x' })).toBe(true)
+    for (const action of ['middle_click', 'triple_click', 'left_click_drag', 'mouse_move', 'hold_key'] as const) expect(mayRunAtAx({ action } as ComputerAction)).toBe(false)
+  })
+
+  it("parses a verdict's route misses", () => {
+    expect(TierVerdictSchema.safeParse({ bundleId: 'x', classes: {}, misses: {}, viaMisses: { hit: 2, 'scroll-page': 1 }, updatedAt: 1 }).success).toBe(true)
+    expect(TierVerdictSchema.safeParse({ bundleId: 'x', classes: {}, misses: {}, viaMisses: { hit: -1 }, updatedAt: 1 }).success).toBe(false)
   })
 })

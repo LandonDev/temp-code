@@ -39,6 +39,12 @@ describe('host error kinds', () => {
       'needs the session tier (the real pointer and keyboard), which is not available now: the person did not choose Run now for TextEdit earlier in this turn'
     )
   })
+  it('a refusal for a disabled menu item names the item first (§24.2)', () => {
+    expect(sessionRefusedLine('no-scheduler', 'TextEdit', { menu: ['File', 'Close'] })).toBe(
+      'File › Close is disabled while TextEdit is in the background; needs the session tier (the real pointer and keyboard), which is not available now: nothing schedules it yet'
+    )
+    expect(sessionRefusedLine('no-scheduler', 'TextEdit', { menu: [] })).toBe(sessionRefusedLine('no-scheduler'))
+  })
   it("a paste that waited out the person's copies too long says to try again", () => {
     expect(hostErrorLine('clipboard_recent')).toBe(
       'the person copied something just now and a paste would swap their clipboard; try again in a minute'

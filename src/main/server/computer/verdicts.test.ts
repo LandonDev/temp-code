@@ -120,3 +120,41 @@ describe('the probe', () => {
     expect(v.needsProbe(B)).toBe(false)
   })
 })
+
+describe('the background routes (§24.1)', () => {
+  const route = (via: 'hit' | 'caret' | 'scroll-page' | 'menu' | 'scroll-bar', effect: 'changed' | 'none' | 'unknown'): StepResult => ({
+    index: 0,
+    action: 'left_click',
+    status: 'ok',
+    tier: 'ax',
+    effect,
+    input: { via }
+  })
+
+  it('counts a learned route up on none, leaves it on unknown and clears it on changed', () => {
+    const once = nextVerdict(null, 'click', route('hit', 'none'), 1, B)!
+    expect(once.viaMisses).toEqual({ hit: 1 })
+    expect(nextVerdict(once, 'click', route('hit', 'unknown'), 2, B)).toBeNull()
+    const twice = nextVerdict(once, 'click', route('hit', 'none'), 3, B)!
+    expect(twice.viaMisses).toEqual({ hit: 2 })
+    const cleared = nextVerdict(twice, 'click', route('hit', 'changed'), 4, B)!
+    expect(cleared.viaMisses).toBeUndefined()
+    expect(TierVerdictSchema.parse(cleared)).toEqual(cleared)
+    // a change on a route with no misses learns nothing
+    expect(nextVerdict(null, 'click', route('caret', 'changed'), 5, B)).toBeNull()
+  })
+
+  it('never learns menu or scroll-bar: their no-ops are honest', () => {
+    expect(nextVerdict(null, 'key', route('menu', 'none'), 1, B)).toBeNull()
+    expect(nextVerdict(null, 'scroll', route('scroll-bar', 'none'), 1, B)).toBeNull()
+  })
+
+  it('names the routes and the process classes the app ignored', () => {
+    const store = memoryStore()
+    const v = new TierVerdicts(store, { now: () => 10 })
+    expect(v.ignoredFor(B)).toBeUndefined()
+    store.setSetting(tierVerdictSetting(B), JSON.stringify({ bundleId: B, classes: {}, misses: { scroll: 2, key: 1 }, viaMisses: { hit: 2, caret: 1 }, updatedAt: 10 }))
+    expect(v.ignoredFor(B)).toEqual({ via: ['hit'], process: ['scroll'] })
+    expect(v.ignoredFor(null)).toBeUndefined()
+  })
+})

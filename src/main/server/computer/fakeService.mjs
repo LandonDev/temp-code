@@ -21,7 +21,7 @@ const windowInfo = (id, title = 'Untitled', minimized = false) => ({
 })
 const apps = [
   { name: 'TextEdit', pid: 16800, bundleId: 'com.apple.TextEdit', windows: [windowInfo(1581), windowInfo(1582, 'Notes.rtf', true)] },
-  ...['Thin', 'KeyWin', 'Sessiony', 'Stubborn', 'Slow', 'Crashy', 'NoAX', 'NoShot', 'Touchy'].map((name, i) => ({
+  ...['Thin', 'KeyWin', 'Sessiony', 'Stubborn', 'Slow', 'Crashy', 'NoAX', 'NoShot', 'Touchy', 'Menuey', 'Hitty'].map((name, i) => ({
     name, pid: 16801 + i, bundleId: `dev.fake.${name.toLowerCase()}`, windows: [windowInfo((16801 + i) * 10)]
   })),
   // Closey: a click on button "close" closes the window it targets (§22.6)
@@ -184,7 +184,9 @@ function elementLine(index, ctx) {
   }
   return 'group "Part"'
 }
-function step(ctx, action, tiers, index, pasteQuietMs) {
+// Hitty's coordinate clicks pressed through the hit route: the first two change nothing (§24.3)
+let hits = 0
+function step(ctx, action, tiers, index, pasteQuietMs, ignored) {
   const fail = (error) => ({ index, action: action.action, status: 'failed', error })
   for (const element of elements(action)) {
     if (element > ctx.state.maxIndex) return fail(failure('no_such_element', 'Read the app before using this element.', { element }))
@@ -200,6 +202,34 @@ function step(ctx, action, tiers, index, pasteQuietMs) {
     if (verb === 'cursor_position') result.text = 'X=0, Y=0'
     if (verb === 'wait') result.waited = waited
     return result
+  }
+  // Menuey (§24.2): ⌘⇧P runs its menu item at ax; ⌘W's item is disabled while the app is in the background
+  if (ctx.app.name === 'Menuey' && verb === 'key') {
+    const combo = (action.text ?? '').toLowerCase()
+    if (combo === 'super+shift+p' && tiers.includes('ax')) {
+      ctx.state.dirty = true
+      return { ...result, tier: 'ax', effect: 'changed', input: { via: 'menu', on: 'Probe › Ping App' } }
+    }
+    if (combo === 'super+w' && !tiers.includes('session')) {
+      return fail(failure('needs_tier', 'File › Close is disabled while Menuey is in the background.', { needed: 'session', menu: ['File', 'Close'] }))
+    }
+  }
+  // Hitty (§24.1, §24.3, §24.5): a plain coordinate click presses the button under it, a scroll moves the bar;
+  // a route the call names as ignored runs after the event tiers, or not at all with skip
+  if (ctx.app.name === 'Hitty' && verb === 'left_click' && action.element === undefined && !action.text) {
+    const named = (ignored?.via ?? []).includes('hit')
+    const events = tiers.filter((t) => t === 'process' || t === 'session')
+    if (tiers.includes('ax') && !(named && (ignored?.skip || events.length))) {
+      hits++
+      ctx.state.dirty = true
+      recordClick(ctx, action)
+      return { ...result, tier: 'ax', effect: hits <= 2 ? 'none' : 'changed', input: { via: 'hit', on: 'button "Save"' } }
+    }
+    if (!events.length) return fail(failure('needs_tier', 'Allow the tier this action needs.', { needed: 'process' }))
+  }
+  if (ctx.app.name === 'Hitty' && verb === 'scroll' && tiers.includes('ax')) {
+    ctx.state.dirty = true
+    return { ...result, tier: 'ax', effect: 'changed', input: { via: 'scroll-bar' } }
   }
   let supported = ['process', 'session']
   if (['set_value', 'perform', 'select_text'].includes(verb)) supported = ['ax']
@@ -237,7 +267,7 @@ function actionResult(ctx, params, method, wasCancelled = false) {
   let stopped = false
   const steps = actions.map((action, index) => {
     if (stopped) return { index, action: action.action, status: 'not-run' }
-    const result = wasCancelled ? { index, action: action.action, status: 'failed', error: cancelled() } : step(ctx, action, params.tiers, index, params.pasteQuietMs)
+    const result = wasCancelled ? { index, action: action.action, status: 'failed', error: cancelled() } : step(ctx, action, params.tiers, index, params.pasteQuietMs, params.ignored)
     stopped = result.status === 'failed'
     return result
   })

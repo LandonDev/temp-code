@@ -1,3 +1,4 @@
+import { LEARNED_VIAS, type IgnoredRoutes, type LearnedVia } from '@shared/computer/protocol'
 import {
   COMPUTER_ACTIONS,
   TierVerdictSchema,
@@ -25,11 +26,34 @@ export interface SettingsStore {
 export const VERDICT_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
 const empty = (bundleId: string, now: number): TierVerdict => ({ bundleId, classes: {}, misses: {}, updatedAt: now })
+const isLearned = (via: string | undefined): via is LearnedVia => (LEARNED_VIAS as readonly string[]).includes(via ?? '')
+
+/**
+ * A learned fallback route's misses (§24.1): `none` counts one up, `changed` clears it, `unknown`
+ * leaves it. Only `hit`, `caret` and `scroll-page`: a bar at its end and a menu item that changes
+ * nothing in the window are honest no-ops, and learning from them would demote the route.
+ */
+function learnVia(v: TierVerdict, step: StepResult): boolean {
+  if (step.status !== 'ok' || step.effect === 'unknown' || !isLearned(step.input?.via)) return false
+  const via = step.input.via
+  const misses = { ...v.viaMisses }
+  if (step.effect === 'none') misses[via] = (misses[via] ?? 0) + 1
+  else if (misses[via] === undefined) return false
+  else delete misses[via]
+  if (Object.keys(misses).length) v.viaMisses = misses
+  else delete v.viaMisses
+  return true
+}
 const classOf = (action: Pick<ComputerAction, 'action'>): ActionClass | null => COMPUTER_ACTIONS[action.action].class
 
 /** Pure: the next verdict after one step, or null when it learns nothing. */
 export function nextVerdict(prev: TierVerdict | null, cls: ActionClass, step: StepResult, now: number, bundleId: string): TierVerdict | null {
   const v: TierVerdict = prev ? { ...prev, classes: { ...prev.classes }, misses: { ...prev.misses } } : empty(bundleId, now)
+  // a fallback route is learned before the ax step's early return below
+  if (learnVia(v, step) && step.status === 'ok' && step.tier === 'ax') {
+    v.updatedAt = now
+    return v
+  }
   if (step.status === 'failed') {
     if (step.error.kind !== 'key_window_unavailable' || v.needsKeyWindow) return null
     v.needsKeyWindow = true
@@ -91,6 +115,19 @@ export class TierVerdicts {
   needsSession(bundleId: string | null, action: Pick<ComputerAction, 'action'>): boolean {
     const cls = classOf(action)
     return cls !== null && this.get(bundleId)?.classes[cls] === 'session'
+  }
+
+  /**
+   * What the service runs last for this app (§24.1): each learned route and each process class
+   * that missed `VERDICT_MISSES_TO_RAISE` times in a row; undefined when there is none.
+   */
+  ignoredFor(bundleId: string | null): IgnoredRoutes | undefined {
+    const v = this.get(bundleId)
+    if (!v) return undefined
+    const via = LEARNED_VIAS.filter((r) => (v.viaMisses?.[r] ?? 0) >= VERDICT_MISSES_TO_RAISE)
+    const process = (Object.keys(v.misses) as ActionClass[]).filter((c) => (v.misses[c] ?? 0) >= VERDICT_MISSES_TO_RAISE)
+    if (!via.length && !process.length) return undefined
+    return { ...(via.length ? { via } : {}), ...(process.length ? { process } : {}) }
   }
 
   learn(bundleId: string | null, action: Pick<ComputerAction, 'action'>, step: StepResult): void {

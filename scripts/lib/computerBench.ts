@@ -16,7 +16,7 @@ import {
   type StepEffect,
   type Tier
 } from '../../src/shared/computer/protocol'
-import { EFFECT_WORDS, NOT_EXECUTED_LINE, STEP_SEPARATOR } from '../../src/shared/computer/tools'
+import { EFFECT_WORDS, FALLBACK_VIAS, NOT_EXECUTED_LINE, STEP_SEPARATOR } from '../../src/shared/computer/tools'
 import type { Verdict } from './soakJudge'
 
 // ── what a run records ──────────────────────────────────────────────────
@@ -180,6 +180,9 @@ export function parseStepLine(line: string): BenchStep | null {
   if (!effect) return null
   if (TIERS.includes(how)) return { action, tier: how as Tier, effect, ok: true }
   if (VIAS.includes(how)) return { action, tier: how.startsWith('ax-') ? 'ax' : null, via: how as InputVia, effect, ok: true }
+  // a background route names what it acted on after its word (§24.8): `menu File › Close`
+  const route = how.split(' ', 1)[0]
+  if ((FALLBACK_VIAS as readonly string[]).includes(route)) return { action, tier: 'ax', via: route as InputVia, effect, ok: true }
   if (how === 'no tier') return { action, tier: null, effect, ok: true }
   return null
 }

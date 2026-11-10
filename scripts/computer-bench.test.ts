@@ -158,6 +158,13 @@ describe('parseStepLine', () => {
     }
   })
 
+  it('reads a background route as an ax step with its via (§24.8)', () => {
+    const key = formatStepLine(ok(SAMPLE.key, { tier: 'ax', input: { via: 'menu', on: 'File › Close' } }), SAMPLE.key)
+    expect(parseStepLine(key)).toEqual({ action: 'key', tier: 'ax', via: 'menu', effect: 'changed', ok: true })
+    const click = formatStepLine(ok(SAMPLE.left_click, { tier: 'ax', effect: 'none', input: { via: 'hit', on: 'button "Save"' } }), SAMPLE.left_click)
+    expect(parseStepLine(click)).toEqual({ action: 'left_click', tier: 'ax', via: 'hit', effect: 'none', ok: true })
+  })
+
   it('reads a step with no tier', () => {
     const line = formatStepLine(ok(SAMPLE.left_click, { tier: null }), SAMPLE.left_click)
     expect(parseStepLine(line)).toEqual({ action: 'left_click', tier: null, effect: 'changed', ok: true })

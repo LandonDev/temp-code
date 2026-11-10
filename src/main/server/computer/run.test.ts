@@ -216,14 +216,11 @@ describe('tiers', () => {
     ])
   })
 
-  it('a key-window retry of a key that the gate admits leaves process out', async () => {
+  it('a key-window retry of a key that the gate admits leaves ax and process out (§24.2: the menu route refuses it too)', async () => {
     const gate: SessionTierGate = { admitted: () => false, request: async () => ({ admit: true }), run: (c, send) => send(c.tiers) }
     const h = make({ gate })
     const o = await h.run('computer_act', { app: 'KeyWin', action: 'key', text: 'a' })
-    expect(h.requests().filter((r) => r.method === 'action.run').map((r) => r.params.tiers)).toEqual([
-      ['ax', 'process'],
-      ['ax', 'session']
-    ])
+    expect(h.requests().filter((r) => r.method === 'action.run').map((r) => r.params.tiers)).toEqual([['ax', 'process'], ['session']])
     expect(o.steps).toEqual(['key a · session · changed'])
   })
 
@@ -246,7 +243,7 @@ describe('tiers', () => {
     expect(seen[1].approve).not.toBe(approve)
   })
 
-  it("a close button's click runs at ax under a session click verdict; another element click still asks the gate (§22.3)", async () => {
+  it("a close button's click runs at ax under a session click verdict, as every plain click does (§22.3, §24.1)", async () => {
     const asked: number[] = []
     const gate: SessionTierGate = {
       admitted: () => false,
@@ -256,13 +253,8 @@ describe('tiers', () => {
     const h = make({ gate })
     h.rows.set(tierVerdictSetting('dev.fake.closey'), JSON.stringify({ bundleId: 'dev.fake.closey', classes: { click: 'session' }, misses: {}, updatedAt: Date.now() }))
     await h.run('computer_observe', { app: 'Closey' })
-    const bold = await h.run('computer_act', { app: 'Closey', action: 'left_click', element: 21 })
-    expect(asked).toEqual([0])
-    expect(bold.steps[0]).toMatch(/^left_click \[21\] · failed: needs the session tier/)
-    const runs = count(h, 'action.run')
     const close = await h.run('computer_act', { app: 'Closey', action: 'left_click', element: 37 })
-    expect(asked).toEqual([0])
-    expect(count(h, 'action.run')).toBe(runs + 1)
+    expect(asked).toEqual([])
     expect(last(h, 'action.run').params.tiers).toEqual(['ax'])
     expect(close.steps[0]).toBe('left_click [37] button "close" · ax · changed')
   })
@@ -303,6 +295,84 @@ describe('tiers', () => {
     expect(methods.indexOf('input.probe')).toBeLessThan(methods.lastIndexOf('action.run'))
     expect(last(h, 'input.probe').params).toMatchObject({ app: { pid: 16800 }, window: { id: 1581 } })
     expect(JSON.parse(h.rows.get(tierVerdictSetting('com.apple.TextEdit'))!).probedAt).toBeGreaterThan(0)
+  })
+})
+
+describe('background fallbacks (§24)', () => {
+  const refusing = (asked: number[]): SessionTierGate => ({
+    admitted: () => false,
+    request: async (c) => (asked.push(c.step), { admit: false, reason: 'skipped', message: 'no' }),
+    run: (c, send) => send(c.tiers)
+  })
+  const verdict = (h: ComputerHarness, bundleId: string, extra: Record<string, unknown> = {}): void =>
+    h.rows.set(tierVerdictSetting(bundleId), JSON.stringify({ bundleId, classes: { click: 'session' }, misses: {}, updatedAt: Date.now(), ...extra }))
+
+  it('under a session click verdict a coordinate click runs at ax alone through the hit, the gate never asked', async () => {
+    const asked: number[] = []
+    const h = make({ gate: refusing(asked) })
+    verdict(h, 'dev.fake.hitty')
+    await h.run('computer_observe', { app: 'Hitty' })
+    const o = await h.run('computer_act', { app: 'Hitty', action: 'left_click', coordinate: [5, 5] })
+    expect(asked).toEqual([])
+    expect(last(h, 'action.run').params).toMatchObject({ tiers: ['ax'], ignored: { skip: true } })
+    expect(o.steps[0]).toBe('left_click 5,5 · hit button "Save" · no change seen')
+  })
+
+  it('a step with no ax route still goes to the gate first', async () => {
+    const asked: number[] = []
+    const h = make({ gate: refusing(asked) })
+    verdict(h, 'dev.fake.hitty')
+    await h.run('computer_observe', { app: 'Hitty' })
+    const runs = count(h, 'action.run')
+    const o = await h.run('computer_act', { app: 'Hitty', action: 'middle_click', coordinate: [5, 5] })
+    expect(asked).toEqual([0])
+    expect(count(h, 'action.run')).toBe(runs)
+    expect(o.steps[0]).toMatch(/^middle_click 5,5 · failed: needs the session tier/)
+  })
+
+  it("a shortcut runs its menu item at ax; a disabled item asks the gate, whose refusal names it", async () => {
+    const asked: number[] = []
+    const h = make({ gate: refusing(asked) })
+    await h.run('computer_observe', { app: 'Menuey' })
+    const ping = await h.run('computer_act', { app: 'Menuey', action: 'key', text: 'super+shift+p' })
+    expect(ping.steps[0]).toBe('key super+shift+p · menu Probe › Ping App · changed')
+    const close = await h.run('computer_act', { app: 'Menuey', action: 'key', text: 'super+w' })
+    expect(asked).toEqual([0])
+    expect(close.steps[0]).toBe(
+      'key super+w · failed: File › Close is disabled while Menuey is in the background; needs the session tier (the real pointer and keyboard), which is not available now: the person did not choose Run now'
+    )
+  })
+
+  it('after two hits that changed nothing the app is sent its ignored route, which runs after the process click', async () => {
+    const h = make()
+    await h.run('computer_observe', { app: 'Hitty' })
+    for (let i = 0; i < 2; i++) await h.run('computer_act', { app: 'Hitty', action: 'left_click', coordinate: [5, 5] })
+    expect(last(h, 'action.run').params.ignored).toBeUndefined()
+    expect(JSON.parse(h.rows.get(tierVerdictSetting('dev.fake.hitty'))!).viaMisses).toEqual({ hit: 2 })
+    const third = await h.run('computer_act', { app: 'Hitty', action: 'left_click', coordinate: [5, 5] })
+    expect(last(h, 'action.run').params.ignored).toEqual({ via: ['hit'] })
+    expect(third.steps[0]).toBe('left_click 5,5 · process · changed')
+  })
+
+  it('an ignored hit under a saved session verdict is skipped at ax and reaches the gate', async () => {
+    const asked: number[] = []
+    const h = make({ gate: refusing(asked) })
+    verdict(h, 'dev.fake.hitty', { viaMisses: { hit: 2 } })
+    await h.run('computer_observe', { app: 'Hitty' })
+    const o = await h.run('computer_act', { app: 'Hitty', action: 'left_click', coordinate: [5, 5] })
+    expect(last(h, 'action.run').params).toMatchObject({ tiers: ['ax'], ignored: { via: ['hit'], skip: true } })
+    expect(asked).toEqual([0])
+    expect(o.steps[0]).toMatch(/^left_click 5,5 · failed: needs the session tier/)
+  })
+
+  it('a scroll under a session verdict moves the bar at ax', async () => {
+    const asked: number[] = []
+    const h = make({ gate: refusing(asked) })
+    h.rows.set(tierVerdictSetting('dev.fake.hitty'), JSON.stringify({ bundleId: 'dev.fake.hitty', classes: { scroll: 'session' }, misses: {}, updatedAt: Date.now() }))
+    await h.run('computer_observe', { app: 'Hitty' })
+    const o = await h.run('computer_act', { app: 'Hitty', action: 'scroll', coordinate: [5, 5], scroll_direction: 'down', scroll_amount: 3 })
+    expect(asked).toEqual([])
+    expect(o.steps[0]).toMatch(/ · scroll-bar · changed$/)
   })
 })
 

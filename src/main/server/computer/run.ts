@@ -10,16 +10,16 @@ import {
   type ComputerMethod,
   type ComputerParams,
   type ComputerResult,
+  type IgnoredRoutes,
   type Observation,
   type PermissionName,
   type StepResult,
   type Tier
 } from '@shared/computer/protocol'
-import { COMPUTER_ACTIONS, COMPUTER_TOOLS, formatStepLine, type ActionClass, type ComputerToolName } from '@shared/computer/tools'
+import { COMPUTER_ACTIONS, COMPUTER_TOOLS, formatStepLine, mayRunAtAx, type ActionClass, type ComputerToolName } from '@shared/computer/tools'
 import { actionWords, asFourTool, computerActivity, computerApprovalInput, computerApprovalTitle, needsApproval, type TitleContext } from '@shared/computer/words'
 import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
 import { hostErrorLine, noObservationLine, noReadForTextLine, sessionRefusedLine } from '@shared/computer/hostErrors'
-import { SUBROLE_NAMES } from '@shared/computer/observation'
 import { formatHeldLine } from '@shared/computer/scheduleRules'
 import { awayAllowsKind } from '@shared/away'
 import type { PermissionPolicy, SessionMeta } from '@shared/events'
@@ -62,19 +62,6 @@ export interface ComputerRegistry {
   get(sessionId: string): SessionMeta | null
   requestApproval(sessionId: string, req: ApprovalRequest): Promise<boolean>
   awayOn(): boolean
-}
-
-const TITLE_BAR_LINE = new RegExp(`^button "(${Object.values(SUBROLE_NAMES).join('|')})"( |$)`)
-
-/**
- * A plain click on a window's title-bar button (docs/computer-protocol.md §22.3): it always carries
- * AXPress, so `ax` expresses it whatever the app's click verdict says, and it needs no session tier
- * up front. Any other element click keeps the verdict's path: one `ax` cannot express would come
- * back `needs_tier: process` under a `session` verdict, which no path gates.
- */
-export function titleBarClick(action: ComputerAction, book: ElementBook | undefined): boolean {
-  if (action.action !== 'left_click' || action.element === undefined || action.text || action.duration !== undefined) return false
-  return TITLE_BAR_LINE.test(book?.brief(action.element)?.line ?? '')
 }
 
 export interface AppState {
@@ -297,7 +284,8 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     // a step expected to take the session tier says so on the card, and its Allow covers that tier too
     const bundleId = app()?.bundleId ?? null
     const session = steps.some(
-      (a) => sendsInput(a) && ((host.verdicts.needsSession(bundleId, a) && !titleBarClick(a, app()?.book)) || (a.action === 'perform' && a.name === 'raise'))
+      // a step with an ax route tries it first (§24.1): the card claims the session tier only for one without
+      (a) => sendsInput(a) && ((host.verdicts.needsSession(bundleId, a) && !mayRunAtAx(a)) || (a.action === 'perform' && a.name === 'raise'))
     )
     const words = titleCtx()
     // Away allows every card but a money act, read off the model's own flag: the card's confirm may be the host's `password`
@@ -560,10 +548,14 @@ let callSeq = 0
 /**
  * The actions in segments of equal tier lists. A step the service says needs
  * the session tier, one the verdict says needs it, and a key-window retry of a
- * key go to the gate; an admit re-runs from that step with `session` allowed,
- * a refusal fails it. A `type` that met a window that is not key retries once
- * at `ax`. A retry drops the first run's closing observation, so that app's
- * next read is full.
+ * key or paste go to the gate; an admit re-runs from that step with `session`
+ * allowed, a refusal fails it. A step the verdict sends to the session tier
+ * that may have an `ax` route (`mayRunAtAx`, §24.1) tries `ax` alone first,
+ * the routes the app ignored left out, and goes to the gate only when that
+ * answers `needs_tier`. A `type` that met a window that is not key retries once
+ * at `ax`. Every acting call names the routes the app was seen to ignore. A
+ * retry drops the first run's closing observation, so that app's next read is
+ * full.
  */
 async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult & { hostLines: Map<number, string> }> {
   const { actions, signal, gateCtx } = run
@@ -584,20 +576,24 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
     steps[i] = { index: i, action: actions[i].action, status: 'failed', error }
     hostLines.set(i, formatStepLine(steps[i], actions[i]))
   }
-  const refuse = (i: number, decision: Extract<TierDecision, { admit: false }>): void => {
+  /** steps trying `ax` alone before the gate, under a `session` verdict */
+  const axFirst = new Set<number>()
+  const refuse = (i: number, decision: Extract<TierDecision, { admit: false }>, menu?: string[]): void => {
     const message =
-      decision.reason === 'cancelled' ? (abortedLine(signal) ?? sessionRefusedLine('cancelled')) : sessionRefusedLine(decision.reason, run.appOf()?.name ?? run.args.app)
-    fail(i, { kind: 'needs_tier', message, needed: 'session' })
+      decision.reason === 'cancelled'
+        ? (abortedLine(signal) ?? sessionRefusedLine('cancelled'))
+        : sessionRefusedLine(decision.reason, run.appOf()?.name ?? run.args.app, { menu })
+    fail(i, { kind: 'needs_tier', message, needed: 'session', ...(menu ? { menu } : {}) })
   }
   const stepCtx = (i: number) => {
     const a = actions[i]
     const cls = classOf(a)
     return { ...gateCtx(cls ? [cls] : []), step: i, action: a, words: run.wordsOf(a), call: run.callKey, signal }
   }
-  const askGate = async (i: number): Promise<Tier[] | null> => {
+  const askGate = async (i: number, menu?: string[]): Promise<Tier[] | null> => {
     const decision = await gate.request(stepCtx(i))
     if (!decision.admit) {
-      refuse(i, decision)
+      refuse(i, decision, menu)
       return null
     }
     const line = decision.via && decision.waitedMs !== undefined ? formatHeldLine({ waitedMs: decision.waitedMs, via: decision.via }) : null
@@ -621,7 +617,12 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
   let stopAt = actions.length
   if (!admitted) {
     for (const [i, a] of actions.entries()) {
-      if (!sendsInput(a) || !host.verdicts.needsSession(bundleOf(), a) || titleBarClick(a, run.appOf()?.book)) continue
+      if (!sendsInput(a) || !host.verdicts.needsSession(bundleOf(), a)) continue
+      if (mayRunAtAx(a)) {
+        override.set(i, ['ax'])
+        axFirst.add(i)
+        continue
+      }
       const tiers = await askGate(i)
       if (!tiers) {
         stopAt = i
@@ -642,7 +643,10 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
     let failedAt: number | null = null
     for (const seg of segments) {
       const at = from + seg.from
-      const r = await runSegment(run, gate, classes, seg.actions, seg.tiers, seg.last)
+      // an ax-first try leaves the ignored routes out, so it never ends ok/none short of the gate
+      const skip = seg.actions.some((_, k) => axFirst.has(at + k))
+      const ignored = host.verdicts.ignoredFor(bundleOf())
+      const r = await runSegment(run, gate, classes, seg.actions, seg.tiers, seg.last, skip ? { ...ignored, skip: true } : ignored)
       ranAny = true
       r.steps.forEach((s, k) => (steps[at + k] = { ...s, index: at + k }))
       for (const [k, s] of r.steps.entries()) host.verdicts.learn(r.observation?.app.bundleId ?? bundleOf(), seg.actions[k], s)
@@ -665,11 +669,14 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
     // the clipboard's wait has its own deadline (schedule.ts), so a paste refused again may wait again
     const recentCopy = failed.error.kind === 'clipboard_busy' && failed.error.reason === 'recent-copy'
     if (!recentCopy && retried.has(failedAt)) break
+    const wasAxFirst = axFirst.delete(failedAt)
     if (recentCopy) retry = await askClipboard(failedAt, tiersOf(a, failedAt))
-    else if (failed.error.kind === 'needs_tier' && failed.error.needed === 'session') retry = await askGate(failedAt)
-    else if (failed.error.kind === 'key_window_unavailable')
-      retry = a.action === 'type' ? ['ax'] : ((await askGate(failedAt))?.filter((tier) => tier !== 'process') ?? null)
-    else break
+    else if (failed.error.kind === 'needs_tier' && (failed.error.needed === 'session' || wasAxFirst)) retry = await askGate(failedAt, failed.error.menu)
+    else if (failed.error.kind === 'key_window_unavailable') {
+      // a key or paste: the menu route refuses a window that is not key as the process keys do (§24.2)
+      const drop: Tier[] = a.action === 'key' || a.action === 'paste' ? ['ax', 'process'] : ['process']
+      retry = a.action === 'type' ? ['ax'] : ((await askGate(failedAt))?.filter((tier) => !drop.includes(tier)) ?? null)
+    } else break
     if (!retry) break
     if (!recentCopy) retried.add(failedAt)
     override.set(failedAt, retry)
@@ -699,10 +706,21 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
 }
 
 /** One acting request, through the gate: it may take `session` out of the tiers, holds the Mac for it and puts it back after. */
-async function runSegment(run: ActionsRun, gate: SessionTierGate, classes: ActionClass[], actions: ComputerAction[], tiers: Tier[], last: boolean): Promise<StepsResult> {
+async function runSegment(
+  run: ActionsRun,
+  gate: SessionTierGate,
+  classes: ActionClass[],
+  actions: ComputerAction[],
+  tiers: Tier[],
+  last: boolean,
+  ignored?: IgnoredRoutes
+): Promise<StepsResult> {
   const observe = last ? { mode: run.appOf()?.needsFull ? ('full' as const) : ('auto' as const), screenshot: shotPolicy(run.args.screenshot) } : { mode: 'none' as const }
   const wait = last ? COMPUTER_WAIT.action : COMPUTER_WAIT.step
-  const quiet = gate.pasteQuietMs !== undefined ? { pasteQuietMs: gate.pasteQuietMs } : {}
+  const extras = {
+    ...(gate.pasteQuietMs !== undefined ? { pasteQuietMs: gate.pasteQuietMs } : {}),
+    ...(ignored ? { ignored } : {})
+  }
   const ctx = { ...run.gateCtx(classes), tiers, actions, signal: run.signal }
   if (run.single) {
     const action = actions[0]
@@ -713,12 +731,12 @@ async function runSegment(run: ActionsRun, gate: SessionTierGate, classes: Actio
         tiers: allowed,
         wait: action.action === 'wait' && action.duration ? waitActionWait(action.duration) : wait,
         observe,
-        ...quiet
+        ...extras
       }))
     )
     return { steps: [r.step], observation: r.observation, observationError: r.observationError }
   }
-  return await gate.run(ctx, (allowed) => run.targeted('action.batch', (tg) => ({ ...tg, actions, tiers: allowed, stepWait: COMPUTER_WAIT.step, wait, observe, ...quiet })))
+  return await gate.run(ctx, (allowed) => run.targeted('action.batch', (tg) => ({ ...tg, actions, tiers: allowed, stepWait: COMPUTER_WAIT.step, wait, observe, ...extras })))
 }
 
 async function probeOnce(host: RunHost, run: ActionsRun, actions: ComputerAction[]): Promise<void> {

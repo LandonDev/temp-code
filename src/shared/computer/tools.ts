@@ -9,7 +9,7 @@
 import { z } from 'zod'
 import { PermissionPolicySchema } from '../events'
 import { fieldWords, perVerbDescription, toolDescription, type FieldKey, type ToolShape, type WordsShape } from './descriptions'
-import { parseElementLine } from './observation'
+import { parseElementLine, parseKeyCombo } from './observation'
 import { ConfirmSchema } from './policy'
 import {
   ACTION_PARAMS,
@@ -25,6 +25,7 @@ import {
   type ComputerAction,
   type ComputerActionName,
   type ElementBrief,
+  type InputVia,
   type StepEffect,
   type StepResult,
   type Tier,
@@ -66,6 +67,35 @@ const CLASS_OF: Partial<Record<ComputerActionName, ActionClass>> = {
   paste: 'type'
 }
 const AX_ONLY: readonly ComputerActionName[] = ['set_value', 'perform', 'select_text']
+
+/**
+ * Whether a step may have a route at `ax` (docs/computer-protocol.md §24.1): a `key` holding
+ * Command or Control (its menu item), a plain `left_click`, `right_click` or `double_click`
+ * (the element or the hit under it), a plain `scroll` (the bar or the page), a `paste` and a
+ * `type` (the AX insert). Under a `session` verdict the host tries these at `ax` before the gate.
+ */
+export function mayRunAtAx(a: ComputerAction): boolean {
+  switch (a.action) {
+    case 'key':
+      try {
+        const { modifiers } = parseKeyCombo(a.text ?? '')
+        return modifiers.includes('super') || modifiers.includes('ctrl')
+      } catch {
+        return false
+      }
+    case 'left_click':
+    case 'right_click':
+    case 'double_click':
+      return !a.text && a.duration === undefined
+    case 'scroll':
+      return !a.text
+    case 'paste':
+    case 'type':
+      return true
+    default:
+      return false
+  }
+}
 
 /** Every action with its parameters and its class; `computer_act` and the per-verb set are both built from it. */
 export const COMPUTER_ACTIONS: Readonly<Record<ComputerActionName, ComputerActionSpec>> = Object.fromEntries(
@@ -413,11 +443,25 @@ export function formatStepLine(step: StepResult, action: ComputerAction): string
     const w = waitWords(step.waited)
     if (w) parts.push(w)
   } else if (!NO_INPUT_ACTIONS.includes(action.action)) {
-    // a paste always goes in by paste: its line names the tier instead
-    parts.push((action.action === 'paste' ? null : step.input?.via) ?? step.tier ?? 'no tier')
+    parts.push(howWords(action, step))
     parts.push(EFFECT_WORDS[step.effect])
   }
   return parts.join(STEP_SEPARATOR)
+}
+
+/** The background routes (§24.8): the line names them with what they acted on, `menu File › Close`. */
+export const FALLBACK_VIAS: readonly InputVia[] = ['menu', 'hit', 'caret', 'scroll-bar', 'scroll-page']
+
+/** How a step went in: a fallback route and what it acted on, `type`'s way, else the tier. A paste that went by the clipboard names its tier. */
+function howWords(action: ComputerAction, step: Extract<StepResult, { status: 'ok' }>): string {
+  const via = step.input?.via
+  if (via && FALLBACK_VIAS.includes(via)) {
+    // the separator never appears inside the part, so the line reads back
+    const on = step.input?.on?.split(STEP_SEPARATOR).join(' ')
+    return on ? `${via} ${on}` : via
+  }
+  if (action.action === 'paste') return via === 'ax-insert' ? via : (step.tier ?? 'no tier')
+  return via ?? step.tier ?? 'no tier'
 }
 
 /** `screenshot 1 (step 2): <path> (1280×800)`, or `(observation)`; ` (not attached)` past MAX_IMAGE_PARTS. */
