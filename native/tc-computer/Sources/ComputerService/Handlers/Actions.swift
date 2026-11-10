@@ -57,7 +57,7 @@ extension ComputerService {
         do {
             let result = try await runActions(
                 session: session, app: app, window: window, launch: launch, epoch: callEpoch, actions: actions, tiers: tiers,
-                stepWait: stepWait, wait: wait, observe: observe, pasteQuietMs: pasteQuietMs, ctx: ctx, front: guarded
+                stepWait: stepWait, wait: wait, observe: observe, pasteQuietMs: pasteQuietMs, ignored: ignored, ctx: ctx, front: guarded
             )
             return result.with(front: guarded.answered(result, cancelled: ctx.cancel.isSet))
         } catch {
@@ -68,7 +68,7 @@ extension ComputerService {
 
     private func runActions(
         session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, actions: [ComputerAction],
-        tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int?, ctx: RequestContext, front: FrontRun
+        tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int?, ignored: IgnoredRoutes?, ctx: RequestContext, front: FrontRun
     ) async throws -> BatchResult {
         for action in actions {
             for element in [action.element, action.start_element].compactMap({ $0 }) {
