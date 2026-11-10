@@ -53,7 +53,7 @@ import {
 } from '@shared/session-lifecycle'
 import { isAccountProvider, pickedProviderOf, routedProviderOf, type AccountPins, type AccountProvider, type AccountRoute } from '@shared/accounts'
 import { resolvePin, type ResolvedPin, type RouteOptions } from './accountRouting'
-import type { LimitWindow, PreambleStamp } from '@shared/events'
+import type { AwayNotice, LimitWindow, PreambleStamp } from '@shared/events'
 import type { UsageWindow } from 'aliax-core'
 import { foldEvent, foldLog, newFoldState, reviveTodo, serializeTodo, toFoldRow } from './folds'
 import { FOLD_VERSION, type FoldRow, type ResumeAfterBootRow } from './db'
@@ -508,8 +508,16 @@ const EMPTY_THREAD_AGE_MS = 24 * 60 * 60 * 1000
 const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000
 /** How far back the flip to away looks for cards still waiting (Store.unresolvedRequests). */
 const AWAY_SWEEP_ROWS = 400
-/** A declined request's mark outlives its answer at most this long (interceptAway). */
-const AWAY_DECLINE_GRACE_MS = 5_000
+/** A request's mark outlives the host's answer at most this long (interceptAway). */
+const AWAY_DECIDE_GRACE_MS = 5_000
+
+/** Each away notice's lead before its text: what the host did for the person. */
+const AWAY_LEADS: Readonly<Record<AwayNotice['kind'], string>> = {
+  decision: '',
+  question: 'Decided without asking: ',
+  allowed: 'Allowed while away: ',
+  approval: 'Skipped while away: '
+}
 
 /** A question as an away row names it: the first question's first line. */
 const questionLine = (questions: { question: string }[]): string =>
@@ -644,6 +652,8 @@ export class SessionRegistry {
   private pendingApprovals = new Map<string, Map<string, (allow: boolean, auto?: boolean) => void>>()
   /** The tool each of those approvals guards, by `<sessionId>\0<requestId>`: an add-on's card is allowed only by a person with admin (addons.ts mayAllow). */
   private pendingApprovalTools = new Map<string, string>()
+  /** Those approvals Away denies rather than allows (ApprovalRequest.awayDenies), by the same key: the flip to away reads it (answerWaitingCards). */
+  private pendingAwayDenies = new Set<string>()
   private starting = new Map<string, Promise<DriverHandle>>()
   private subscribers = new Map<string, Set<SessionListener>>()
   private metaListeners = new Set<MetaListener>()
@@ -690,7 +700,7 @@ export class SessionRegistry {
   private readonly awayToldAs = new Map<string, boolean>()
   /** Requests the host answers for an away person, per thread: their rows,
    *  their `waiting` and their resolved rows are never written. */
-  private readonly declining = new Map<string, Set<string>>()
+  private readonly deciding = new Map<string, Set<string>>()
   /** Boot-resume threads past the cap, queued with their nudge (the restart's time) until a slot frees. */
   private readonly queuedResumes = new Map<string, number>()
   /** Queued threads whose start is in flight: Start now and the scheduler never start one twice. */
@@ -3660,10 +3670,12 @@ export class SessionRegistry {
    */
   requestApproval(sessionId: string, req: ApprovalRequest): Promise<boolean> {
     if (this.closed) return Promise.resolve(false)
-    // Nobody is there to answer: denied at once, one quiet row says what was skipped.
+    // Nobody is there to answer: allowed at once (denied for a computer act
+    // that spends money), one quiet row says what was decided. No card.
     if (this.awayOn()) {
-      this.awayNotice(sessionId, 'approval', approvalLine(req.toolName, req.input, req.title))
-      return Promise.resolve(false)
+      const allow = !req.awayDenies
+      this.awayNotice(sessionId, allow ? 'allowed' : 'approval', approvalLine(req.toolName, req.input, req.title))
+      return Promise.resolve(allow)
     }
     const requestId = req.requestId ?? `a-${nanoid(8)}`
     let pending = this.pendingApprovals.get(sessionId)
@@ -3674,6 +3686,7 @@ export class SessionRegistry {
     const map = pending
     const toolKey = `${sessionId}\0${requestId}`
     this.pendingApprovalTools.set(toolKey, req.toolName)
+    if (req.awayDenies) this.pendingAwayDenies.add(toolKey)
     this.append(sessionId, {
       type: 'approval-request',
       requestId,
@@ -3688,6 +3701,7 @@ export class SessionRegistry {
       const finish = (allow: boolean, auto = false): void => {
         if (!map.delete(requestId)) return
         this.pendingApprovalTools.delete(toolKey)
+        this.pendingAwayDenies.delete(toolKey)
         clearTimeout(timer)
         this.append(sessionId, { type: 'approval-resolved', requestId, allow, auto })
         this.append(sessionId, { type: 'status', status: 'running' })
@@ -5458,35 +5472,36 @@ export class SessionRegistry {
 
   /**
    * While the person is away, a question or an approval never becomes a
-   * card: the host answers each question with AWAY_QUESTION_REPLY and denies
-   * each approval with AWAY_APPROVAL_REPLY, one quiet away notice per
-   * request, and the turn goes on. The request's own row, the `waiting`
+   * card: the host answers each question with AWAY_QUESTION_REPLY and allows
+   * each approval (a driver's own card is never a money act, which only
+   * computer/run.ts raises, through requestApproval), one quiet away notice
+   * per request, and the turn goes on. The request's own row, the `waiting`
    * the driver emits after it and its resolved row are dropped, so the
    * thread never reads Needs you and the notifier never fires. Returns
    * whether the event was taken here.
    */
   private interceptAway(sessionId: string, event: AgentEvent): boolean {
-    const declining = this.declining.get(sessionId)
-    if (declining?.size) {
+    const deciding = this.deciding.get(sessionId)
+    if (deciding?.size) {
       if (event.type === 'status' && event.status === 'waiting') return true
-      if ((event.type === 'question-resolved' || event.type === 'approval-resolved') && declining.has(event.requestId)) {
-        declining.delete(event.requestId)
-        if (!declining.size) this.declining.delete(sessionId)
+      if ((event.type === 'question-resolved' || event.type === 'approval-resolved') && deciding.has(event.requestId)) {
+        deciding.delete(event.requestId)
+        if (!deciding.size) this.deciding.delete(sessionId)
         return true
       }
     }
     if (!this.awayOn()) return false
     if (event.type !== 'question-request' && event.type !== 'approval-request') return false
-    const marks = this.declining.get(sessionId) ?? new Set<string>()
+    const marks = this.deciding.get(sessionId) ?? new Set<string>()
     marks.add(event.requestId)
-    this.declining.set(sessionId, marks)
+    this.deciding.set(sessionId, marks)
     if (event.type === 'question-request') {
       this.awayNotice(sessionId, 'question', questionLine(event.questions))
       const replies = event.questions.map(() => [AWAY_QUESTION_REPLY])
-      this.declineAway(sessionId, event, (handle) => handle.answer?.(event.requestId, replies) ?? false)
+      this.decideAway(sessionId, event, (handle) => handle.answer?.(event.requestId, replies) ?? false)
     } else {
-      this.awayNotice(sessionId, 'approval', approvalLine(event.toolName, event.input, event.title))
-      this.declineAway(sessionId, event, (handle) => handle.approve?.(event.requestId, false, AWAY_APPROVAL_REPLY) ?? false)
+      this.awayNotice(sessionId, 'allowed', approvalLine(event.toolName, event.input, event.title))
+      this.decideAway(sessionId, event, (handle) => handle.approve?.(event.requestId, true) ?? false)
     }
     return true
   }
@@ -5494,22 +5509,22 @@ export class SessionRegistry {
   /** The drivers register a request's resolver right after its emit: answer
    *  on a microtask, once more on the next tick, then write the card as
    *  usual so the turn never hangs on an answer nobody can give. */
-  private declineAway(
+  private decideAway(
     sessionId: string,
     event: Extract<AgentEvent, { type: 'question-request' | 'approval-request' }>,
     decide: (handle: DriverHandle) => boolean
   ): void {
     const unmark = (): void => {
-      const marks = this.declining.get(sessionId)
+      const marks = this.deciding.get(sessionId)
       marks?.delete(event.requestId)
-      if (marks && !marks.size) this.declining.delete(sessionId)
+      if (marks && !marks.size) this.deciding.delete(sessionId)
     }
     const tryOnce = (): boolean => {
       const handle = this.handles.get(sessionId)
       if (!handle || !decide(handle)) return false
       // Every driver emits the resolved row that clears the mark; one that
       // never came must not hold the thread's later cards back.
-      setTimeout(unmark, AWAY_DECLINE_GRACE_MS).unref?.()
+      setTimeout(unmark, AWAY_DECIDE_GRACE_MS).unref?.()
       return true
     }
     queueMicrotask(() => {
@@ -5526,14 +5541,16 @@ export class SessionRegistry {
   }
 
   /** One quiet row for something decided while the person was away; it counts toward the return toast. */
-  awayNotice(sessionId: string, kind: 'decision' | 'question' | 'approval', text: string): void {
-    const lead = kind === 'question' ? 'Decided without asking: ' : kind === 'approval' ? 'Skipped while away: ' : ''
+  awayNotice(sessionId: string, kind: AwayNotice['kind'], text: string): void {
+    const lead = AWAY_LEADS[kind]
     this.append(sessionId, { type: 'notice', kind: 'away', message: `${lead}${text}`, away: { kind, text } })
     this.away?.count(sessionId)
   }
 
-  /** The flip to away: every card already waiting is answered the same way.
-   *  Their rows were written, so they resolve where they stand. */
+  /** The flip to away: every card already waiting is answered the same way
+   *  (allowed, unless it is a money act raised with awayDenies). Their rows
+   *  were written, so they resolve where they stand. A `run-skip` card
+   *  allowed is Run now. */
   private answerWaitingCards(): void {
     for (const sessionId of this.handles.keys()) {
       if (this.store.getSession(sessionId)?.status !== 'waiting') continue
@@ -5542,8 +5559,9 @@ export class SessionRegistry {
           this.awayNotice(sessionId, 'question', questionLine(req.questions))
           void this.answer(sessionId, req.requestId, req.questions.map(() => [AWAY_QUESTION_REPLY]))
         } else {
-          this.awayNotice(sessionId, 'approval', approvalLine(req.toolName, req.input, req.title))
-          void this.approve(sessionId, req.requestId, false, AWAY_APPROVAL_REPLY)
+          const allow = !this.pendingAwayDenies.has(`${sessionId}\0${req.requestId}`)
+          this.awayNotice(sessionId, allow ? 'allowed' : 'approval', approvalLine(req.toolName, req.input, req.title))
+          void this.approve(sessionId, req.requestId, allow, allow ? undefined : AWAY_APPROVAL_REPLY)
         }
       }
     }

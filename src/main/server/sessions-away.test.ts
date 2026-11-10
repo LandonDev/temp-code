@@ -4,8 +4,9 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent, SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
+import type { ApprovalRequest } from './drivers/types'
 import { SessionRegistry } from './sessions'
-import { AWAY_APPROVAL_REPLY, AWAY_MECHANICS, AWAY_OFF, AWAY_ON, AWAY_QUESTION_REPLY } from './awayPrompts'
+import { AWAY_MECHANICS, AWAY_OFF, AWAY_ON, AWAY_QUESTION_REPLY } from './awayPrompts'
 import { implementerSpawnPrompt, MASTER_MECHANICS, setOrchestrationRegistry } from './orchestration'
 import { setAppBridge } from './apptools'
 import { cancelMirrors } from './mirror'
@@ -18,7 +19,7 @@ import { cancelMirrors } from './mirror'
 interface Captured {
   emit: (e: AgentEvent) => void
   session: SessionMeta
-  requestApproval: (req: { requestId?: string; toolName: string; input: unknown; title?: string }) => Promise<boolean>
+  requestApproval: (req: ApprovalRequest) => Promise<boolean>
 }
 const sends = new Map<string, string[]>()
 const ctxs = new Map<string, Captured>()
@@ -276,31 +277,68 @@ describe('the host answers for an away person', () => {
     expect(away.count).toHaveBeenCalledWith(id)
   })
 
-  it('denies an approval with the reason and says what was skipped', async () => {
+  for (const provider of ['claude', 'codex'] as const) {
+    it(`allows a ${provider} approval and says what was allowed, with no card and no waiting`, async () => {
+      const id = await startThread(provider)
+      running(id)
+      const seen = statuses()
+      away.enabled = true
+      ctx(id).emit(approval('a1'))
+      ctx(id).emit({ type: 'status', status: 'waiting', detail: 'awaiting approval' })
+      await flush()
+      expect(approvals).toEqual([{ sessionId: id, requestId: 'a1', allow: true, reason: undefined }])
+      ctx(id).emit({ type: 'approval-resolved', requestId: 'a1', allow: true })
+      const written = rows(id)
+      expect(written.some((e) => e.type === 'approval-request' || e.type === 'approval-resolved')).toBe(false)
+      expect(written.filter((e) => e.type === 'notice')).toEqual([
+        { type: 'notice', kind: 'away', message: 'Allowed while away: Run rm -rf build?', away: { kind: 'allowed', text: 'Run rm -rf build?' } }
+      ])
+      expect(seen.get(id) ?? []).not.toContain('waiting')
+      expect(store.getSession(id)!.status).toBe('running')
+      expect(away.count).toHaveBeenCalledWith(id)
+    })
+  }
+
+  it('allows a requestApproval card at once, with no card (the Muse and in-process path)', async () => {
+    const id = await startThread()
+    running(id)
+    const seen = statuses()
+    away.enabled = true
+    await expect(ctx(id).requestApproval({ toolName: 'mcp__linear__save', input: {} })).resolves.toBe(true)
+    const written = rows(id)
+    expect(written.some((e) => e.type === 'approval-request')).toBe(false)
+    expect(written.filter((e) => e.type === 'notice').map((e) => (e as { message: string }).message)).toEqual(['Allowed while away: Use linear?'])
+    expect(seen.get(id) ?? []).not.toContain('waiting')
+    expect(away.count).toHaveBeenCalledWith(id)
+  })
+
+  it('denies a card raised with awayDenies (a money act), with the skipped row', async () => {
     const id = await startThread()
     running(id)
     away.enabled = true
+    await expect(ctx(id).requestApproval({ toolName: 'mcp__app__computer_act', input: {}, title: 'Pay in Safari', awayDenies: true })).resolves.toBe(false)
+    expect(rows(id).some((e) => e.type === 'approval-request')).toBe(false)
+    expect(rows(id).filter((e) => e.type === 'notice').map((e) => (e as { away?: { kind: string } }).away?.kind)).toEqual(['approval'])
+    expect(away.count).toHaveBeenCalledWith(id)
+  })
+
+  it("allows an add-on card whose own arguments carry a pay flag: only the raiser's awayDenies counts", async () => {
+    const id = await startThread()
+    running(id)
+    away.enabled = true
+    await expect(ctx(id).requestApproval({ toolName: 'mcp__app__shop__buy', input: { confirm: { kind: 'pay', what: 'x' } } })).resolves.toBe(true)
+  })
+
+  it('allows an approval whose driver has no resolver yet by writing the card as usual', async () => {
+    const id = await startThread()
+    running(id)
+    away.enabled = true
+    knobs.resolves = false
     ctx(id).emit(approval('a1'))
     ctx(id).emit({ type: 'status', status: 'waiting', detail: 'awaiting approval' })
     await flush()
-    expect(approvals).toEqual([{ sessionId: id, requestId: 'a1', allow: false, reason: AWAY_APPROVAL_REPLY }])
-    ctx(id).emit({ type: 'approval-resolved', requestId: 'a1', allow: false })
-    const written = rows(id)
-    expect(written.some((e) => e.type === 'approval-request' || e.type === 'approval-resolved')).toBe(false)
-    expect(written.filter((e) => e.type === 'notice').map((e) => (e as { message: string }).message)).toEqual([
-      'Skipped while away: Run rm -rf build?'
-    ])
-    expect(store.getSession(id)!.status).toBe('running')
-  })
-
-  it("denies a requestApproval card at once, with no card", async () => {
-    const id = await startThread()
-    running(id)
-    away.enabled = true
-    await expect(ctx(id).requestApproval({ toolName: 'mcp__linear__save', input: {} })).resolves.toBe(false)
-    const written = rows(id)
-    expect(written.some((e) => e.type === 'approval-request')).toBe(false)
-    expect(written.filter((e) => e.type === 'notice').map((e) => (e as { message: string }).message)).toEqual(['Skipped while away: Use linear?'])
+    expect(rows(id).some((e) => e.type === 'approval-request')).toBe(true)
+    expect(store.getSession(id)!.status).toBe('waiting')
   })
 
   it('intercepts nothing while the person is here', async () => {
@@ -339,9 +377,27 @@ describe('the host answers for an away person', () => {
     registry.awayChanged(true)
     await flush()
     expect(answers).toEqual([{ sessionId: q, requestId: 'q1', answers: [[AWAY_QUESTION_REPLY], [AWAY_QUESTION_REPLY]] }])
-    expect(approvals).toEqual([{ sessionId: a, requestId: 'a1', allow: false, reason: AWAY_APPROVAL_REPLY }])
+    expect(approvals).toEqual([{ sessionId: a, requestId: 'a1', allow: true, reason: undefined }])
     expect(rows(q).filter((e) => e.type === 'notice')).toHaveLength(1)
-    expect(rows(a).filter((e) => e.type === 'notice')).toHaveLength(1)
+    expect(rows(a).filter((e) => e.type === 'notice').map((e) => (e as { away?: { kind: string } }).away?.kind)).toEqual(['allowed'])
+  })
+
+  it('at the flip, allows a waiting run-skip card (Run now) and denies a waiting money card', async () => {
+    const run = await startThread()
+    const pay = await startThread()
+    running(run)
+    running(pay)
+    const runNow = ctx(run).requestApproval({ requestId: 'r1', toolName: 'mcp__app__computer_act', input: {}, title: 'Use the pointer?', choices: 'run-skip' })
+    const paid = ctx(pay).requestApproval({ requestId: 'p1', toolName: 'mcp__app__computer_act', input: {}, title: 'Pay in Safari', awayDenies: true })
+    await flush()
+    expect(store.getSession(run)!.status).toBe('waiting')
+    away.enabled = true
+    registry.awayChanged(true)
+    await expect(runNow).resolves.toBe(true)
+    await expect(paid).resolves.toBe(false)
+    expect(rows(run).filter((e) => e.type === 'notice').map((e) => (e as { away?: { kind: string } }).away?.kind)).toEqual(['allowed'])
+    expect(rows(pay).filter((e) => e.type === 'notice').map((e) => (e as { away?: { kind: string } }).away?.kind)).toEqual(['approval'])
+    expect(away.count).toHaveBeenCalledWith(pay)
   })
 })
 
