@@ -144,7 +144,8 @@ private let session = SessionChange(frontmost: .init(), pointer: .init(before: [
             DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(10)) { rig.activate(500) }
             return InputOutcome(tier: .ax, via: nil, clipboard: nil, cursor: nil, lastInputAt: mach_absolute_time())
         }
-        let result = try #require(await rig.call("action.batch", "{\(docTarget),\"actions\":[{\"action\":\"left_click\",\"element\":1}],\"tiers\":[\"ax\"],\"wait\":\(settle),\"observe\":{\"mode\":\"none\"}}").result)
+        _ = await rig.call("state.get", "{\(docTarget),\"wait\":\(quick)}")
+        let result = try #require(await rig.call("action.batch", "{\(docTarget),\"actions\":[{\"action\":\"left_click\",\"element\":2}],\"epoch\":\"\(rig.service.epoch)\",\"tiers\":[\"ax\"],\"wait\":\(settle),\"observe\":{\"mode\":\"none\"}}").result)
         #expect(result["front"]?["raised"]?.boolValue == true)
         #expect(result["front"]?["restored"]?.stringValue == "restored")
         #expect(rig.front.calls == ["frontmost 100"])
@@ -153,7 +154,8 @@ private let session = SessionChange(frontmost: .init(), pointer: .init(before: [
     @Test func aCallWhoseAppStaysBackCarriesNoFront() async throws {
         let rig = ServiceRig()
         await rig.ready()
-        let result = try #require(await rig.call("action.run", "{\(docTarget),\"action\":{\"action\":\"left_click\",\"element\":1},\"tiers\":[\"ax\"],\"wait\":\(quick)}").result)
+        _ = await rig.call("state.get", "{\(docTarget),\"wait\":\(quick)}")
+        let result = try #require(await rig.call("action.run", "{\(docTarget),\"action\":{\"action\":\"left_click\",\"element\":2},\"epoch\":\"\(rig.service.epoch)\",\"tiers\":[\"ax\"],\"wait\":\(quick)}").result)
         #expect(result["front"] == nil)
     }
 
@@ -164,7 +166,8 @@ private let session = SessionChange(frontmost: .init(), pointer: .init(before: [
             rig.activate(500)
             return InputOutcome(tier: .ax, via: nil, clipboard: nil, cursor: nil, lastInputAt: mach_absolute_time())
         }
-        let result = try #require(await rig.call("action.run", "{\(docTarget),\"action\":{\"action\":\"perform\",\"element\":1,\"name\":\"raise\"},\"tiers\":[\"ax\"],\"wait\":\(settle)}").result)
+        _ = await rig.call("state.get", "{\(docTarget),\"wait\":\(quick)}")
+        let result = try #require(await rig.call("action.run", "{\(docTarget),\"action\":{\"action\":\"perform\",\"element\":2,\"name\":\"raise\"},\"epoch\":\"\(rig.service.epoch)\",\"tiers\":[\"ax\"],\"wait\":\(settle)}").result)
         #expect(result["front"] == nil)
         try await Task.sleep(for: .milliseconds(200))
         #expect(rig.front.calls.isEmpty)
@@ -180,7 +183,8 @@ private let session = SessionChange(frontmost: .init(), pointer: .init(before: [
             usleep(150_000)
             return InputOutcome(tier: .ax, via: nil, clipboard: nil, cursor: nil, lastInputAt: mach_absolute_time())
         }
-        let id = rig.send("action.run", "{\(docTarget),\"action\":{\"action\":\"left_click\",\"element\":1},\"tiers\":[\"ax\",\"session\"],\"wait\":\(quick)}")
+        _ = await rig.call("state.get", "{\(docTarget),\"wait\":\(quick)}")
+        let id = rig.send("action.run", "{\(docTarget),\"action\":{\"action\":\"left_click\",\"element\":2},\"epoch\":\"\(rig.service.epoch)\",\"tiers\":[\"ax\",\"session\"],\"wait\":\(quick)}")
         try await Task.sleep(for: .milliseconds(120))
         #expect(rig.front.calls.isEmpty, "paused from the request's start")
         let answer = await rig.answer(id)
