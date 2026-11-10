@@ -142,6 +142,27 @@ describe('the muse driver over the fake host', () => {
     expect(of(t.events, 'assistant-text').filter((e) => !e.delta).at(-1)?.text).toBe('dismissed ')
   })
 
+  it('an allow from the host (Away) sends approved once through approval/decide', async () => {
+    const commands = vi.spyOn(Connection.prototype, 'command')
+    try {
+      const t = ctxFor()
+      const requests = vi.spyOn(t.ctx, 'requestApproval')
+      const h = await museDriver.start(t.ctx)
+      handles.push(h)
+      await h.send('approve')
+      await waitFor(() => requests.mock.calls.length === 1, 'the approval')
+      const approvalId = requests.mock.calls[0][0].requestId!
+      t.decide(true)
+      await waitFor(() => settled(t.events) === 1, 'the allowed turn')
+      expect(commands.mock.calls.filter(([method]) => method === 'approval/decide')).toEqual([
+        ['approval/decide', { sessionId: 'sess-1', approvalId, choiceId: 'c-once', requirementId: { approvalId, sourceIndex: 0 } }, undefined]
+      ])
+      expect(of(t.events, 'assistant-text').filter((e) => !e.delta).at(-1)?.text).toBe('removed build ')
+    } finally {
+      commands.mockRestore()
+    }
+  })
+
   it.each([
     ['approve', 'c-deny'],
     ['approve abort', 'c-abort']

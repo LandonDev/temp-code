@@ -413,6 +413,25 @@ describe('codex approval and question replies', () => {
     }
   })
 
+  it.each([
+    ['item/commandExecution/requestApproval', { decision: 'accept' }],
+    ['item/fileChange/requestApproval', { decision: 'accept' }],
+    ['execCommandApproval', { decision: 'approved' }],
+    ['applyPatchApproval', { decision: 'approved' }],
+    ['mcpServer/elicitation/request', { action: 'accept' }]
+  ])('an allow from the host (Away) accepts %s on its wire', async (method, result) => {
+    const { handle, responses, request } = await boot()
+    try {
+      request(method, { itemId: 'call-1', serverName: 'external' })
+      await vi.waitFor(() => expect(events.some((event) => event.type === 'approval-request')).toBe(true))
+      const approval = events.find((event) => event.type === 'approval-request')!
+      expect(handle.approve!(approval.requestId, true)).toBe(true)
+      await vi.waitFor(() => expect(responses).toEqual([{ jsonrpc: '2.0', id: 900, result }]))
+    } finally {
+      await handle.dispose()
+    }
+  })
+
   it('sends free text in the question answers wire', async () => {
     const { handle, responses, request } = await boot()
     try {

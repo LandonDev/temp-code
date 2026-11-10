@@ -170,6 +170,15 @@ it.each([
   expect(handle.approve!('approval-1', false, reason)).toBe(false)
 })
 
+it("an allow from the host (Away answering for the person) runs the tool", async () => {
+  const { handle, options } = await startDriver()
+  const pending = options.canUseTool!('Bash', { command: 'rm -rf build' }, {
+    requestId: 'approval-1', toolUseID: 'call-1', signal: new AbortController().signal
+  })
+  expect(handle.approve!('approval-1', true)).toBe(true)
+  await expect(pending).resolves.toMatchObject({ behavior: 'allow' })
+})
+
 it('a question sends free text to Claude through updatedInput.answers', async () => {
   const { handle, options } = await startDriver()
   const hook = options.hooks!.PreToolUse!.find((entry) => entry.matcher === 'AskUserQuestion')!.hooks[0]
