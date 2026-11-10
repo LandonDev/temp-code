@@ -32,7 +32,7 @@ public enum RawTree {
         var nodes = 0
         let window = node(tree.root, clip: tree.root.frame ?? tree.window.frame, ids: ids, focused: &focused, nodes: &nodes)
         let extra = (tree.attached ?? []).map { node($0, clip: $0.frame, ids: ids, focused: &focused, nodes: &nodes) }
-        let info = WindowInfo(id: windowID, title: tree.window.title, frame: tree.window.frame, main: true, focused: true, minimized: false, onScreen: true, space: .current)
+        let info = WindowInfo(id: windowID, title: tree.window.title, frame: tree.window.frame, main: true, focused: true, minimized: tree.root.minimized ?? false, onScreen: true, space: .current)
         return AXSnapshot(
             app: AppFacts(pid: 0, bundleId: tree.app.bundleId, name: tree.app.name),
             window: info,
@@ -74,7 +74,7 @@ public enum RawTree {
             titleElementValue: raw.titleElementValue, placeholder: raw.placeholder, value: value, valueLength: length,
             identifier: raw.identifier, domIdentifier: raw.domIdentifier,
             flags: AXFlags(enabled: raw.enabled, focused: raw.focused, selected: raw.selected, expanded: raw.expanded, required: raw.required,
-                           invalid: raw.invalid, modal: raw.modal, busy: raw.busy, loaded: raw.loaded),
+                           invalid: raw.invalid, modal: raw.modal, minimized: raw.minimized, busy: raw.busy, loaded: raw.loaded),
             frame: raw.frame, actions: raw.actions ?? [],
             // the recorder checks every node and leaves the list out when nothing is settable
             settable: Set(raw.settable ?? []),

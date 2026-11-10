@@ -1,20 +1,20 @@
 app "TextEdit" · window "Untitled" · 1206×1010 · changes since your last read
-- [38] button "full screen" actions: zoom window, show menu
+- [41] button "full screen" actions: zoom window, show menu
 ~ [3] text area = "Hello from the probe\nSecond line!" actions: show menu
-~ [37] button "close" disabled
+~ [39] button "close" disabled
 + in [1]:
-  [42] button "zoom" actions: show menu
+  [42] sheet "save"
+    [43] splitter = "-1" disabled
+    [44] pop up "Where:" = "Documents"
+    [45] disclosure "show more options" collapsed
+    [46] text = "Do you want to keep this new document “Untitled”?" actions: show menu
+    [47] text = "You can choose to save your changes, or delete this document immediately. You can’t undo this action." actions: show menu
+    [48] input "Save As:" = "Untitled.rtf" actions: show menu, confirm
+    [49] text = "Tags:"
+    [50] input "tag editor" actions: show menu, confirm
+    [51] pop up "File Format:" = "Rich Text Document"
+    [52] button "Delete"
+    [53] button "Cancel"
+    [54] button "Save"
 + in [1]:
-  [43] sheet "save"
-    [44] splitter = "-1" disabled
-    [45] pop up "Where:" = "Documents"
-    [46] disclosure "show more options" collapsed
-    [47] text = "Do you want to keep this new document “Untitled”?" actions: show menu
-    [48] text = "You can choose to save your changes, or delete this document immediately. You can’t undo this action." actions: show menu
-    [49] input "Save As:" = "Untitled.rtf" actions: show menu, confirm
-    [50] text = "Tags:"
-    [51] input "tag editor" actions: show menu, confirm
-    [52] pop up "File Format:" = "Rich Text Document"
-    [53] button "Delete"
-    [54] button "Cancel"
-    [55] button "Save"
+  [55] button "zoom" actions: show menu

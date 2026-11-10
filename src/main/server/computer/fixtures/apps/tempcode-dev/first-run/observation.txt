@@ -41,5 +41,5 @@ app "Electron" · window "New thread" · 1280×800 · focused [3]
         [40] checkbox "Master thread" unchecked
         [41] input "Thread name" actions: press
   [42] button "close"
-  [43] button "full screen" actions: zoom window, show menu
-  [44] button "minimize"
+  [43] button "minimize"
+  [44] button "full screen" actions: zoom window, show menu

@@ -54,5 +54,5 @@ app "IntelliJ IDEA" · window "" · 1280×914
       … 14 more below
     … 5 more above
   [50] button "close" disabled
-  [51] button "full screen" disabled actions: zoom window, show menu
-  [52] button "minimize" disabled
+  [51] button "minimize" disabled
+  [52] button "full screen" disabled actions: zoom window, show menu

@@ -76,7 +76,8 @@ public enum Keep {
             var hidden = n.hidden ?? Hidden()
             var children: [KeptNode] = []
             let next = kept ? (f.rawName, f.rawValue) : ancestor
-            for child in n.children {
+            // a window's title-bar buttons last, the sharing badge dropped (§22)
+            for child in root ? TitleBar.order(n) : n.children {
                 let (k, h) = visit(child, inWeb: web, ancestor: next, root: false, inMenuBar: inMenuBar)
                 children += k
                 hidden = hidden + h

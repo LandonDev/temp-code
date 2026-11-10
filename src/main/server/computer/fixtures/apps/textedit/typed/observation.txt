@@ -35,8 +35,8 @@ app "TextEdit" · window "Untitled" · 1206×1010 · focused [3]
     [34] checkbox "fully justify" unchecked
     [35] menu button "list style"
     [36] pop up "line spacing" = "1.0"
-  [37] button "close"
-  [38] button "full screen" actions: zoom window, show menu
-  [39] button "minimize"
-  [40] menu button "Edited" disabled
-  [41] text = "—" disabled
+  [37] menu button "Edited" disabled
+  [38] text = "—" disabled
+  [39] button "close"
+  [40] button "minimize"
+  [41] button "full screen" actions: zoom window, show menu

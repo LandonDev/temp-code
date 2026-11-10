@@ -35,21 +35,21 @@ app "TextEdit" · window "Untitled" · 1206×1010
     [34] checkbox "fully justify" unchecked
     [35] menu button "list style"
     [36] pop up "line spacing" = "1.0"
-  [37] button "close" disabled
-  [38] button "zoom" actions: show menu
-  [39] button "minimize"
-  [40] menu button "Edited" disabled
-  [41] text = "—" disabled
-  [42] sheet "save"
-    [43] splitter = "-1" disabled
-    [44] pop up "Where:" = "Documents"
-    [45] disclosure "show more options" collapsed
-    [46] text = "Do you want to keep this new document “Untitled”?" actions: show menu
-    [47] text = "You can choose to save your changes, or delete this document immediately. You can’t undo this action." actions: show menu
-    [48] input "Save As:" = "Untitled.rtf" actions: show menu, confirm
-    [49] text = "Tags:"
-    [50] input "tag editor" actions: show menu, confirm
-    [51] pop up "File Format:" = "Rich Text Document"
-    [52] button "Delete"
-    [53] button "Cancel"
-    [54] button "Save"
+  [37] menu button "Edited" disabled
+  [38] text = "—" disabled
+  [39] sheet "save"
+    [40] splitter = "-1" disabled
+    [41] pop up "Where:" = "Documents"
+    [42] disclosure "show more options" collapsed
+    [43] text = "Do you want to keep this new document “Untitled”?" actions: show menu
+    [44] text = "You can choose to save your changes, or delete this document immediately. You can’t undo this action." actions: show menu
+    [45] input "Save As:" = "Untitled.rtf" actions: show menu, confirm
+    [46] text = "Tags:"
+    [47] input "tag editor" actions: show menu, confirm
+    [48] pop up "File Format:" = "Rich Text Document"
+    [49] button "Delete"
+    [50] button "Cancel"
+    [51] button "Save"
+  [52] button "close" disabled
+  [53] button "minimize"
+  [54] button "zoom" actions: show menu

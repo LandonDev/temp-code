@@ -169,15 +169,20 @@ public struct Signature: Sendable {
     public var valueLength: Int?
     public var selection: [Int]?
     public var title: String?
+    /// the window's AXMinimized (§22.8)
+    public var minimized: Bool?
+    /// the window's children by identity, without its title-bar buttons and the sharing badge (§22.8)
     public var windowChildren: [UInt64]
+    /// the window's child count (of that same filtered list), then the scroll areas'
     public var counts: [Int]
 
-    public init(focused: UInt64?, value: String?, valueLength: Int?, selection: [Int]?, title: String?, windowChildren: [UInt64], counts: [Int]) {
+    public init(focused: UInt64?, value: String?, valueLength: Int?, selection: [Int]?, title: String?, minimized: Bool? = nil, windowChildren: [UInt64], counts: [Int]) {
         self.focused = focused
         self.value = value
         self.valueLength = valueLength
         self.selection = selection
         self.title = title
+        self.minimized = minimized
         self.windowChildren = windowChildren
         self.counts = counts
     }
@@ -193,6 +198,7 @@ public struct Signature: Sendable {
         }
         for s in selection ?? [-1, -1] { h.add(s) }
         h.add(title ?? "\u{0}")
+        h.add(minimized.map { $0 ? 1 : 0 } ?? -1)
         h.add(windowChildren.count)
         for c in windowChildren { h.add(Int(truncatingIfNeeded: c)) }
         for c in counts.prefix(Self.maxScrollAreas + 1) { h.add(c) }

@@ -36,6 +36,6 @@ app "Google Chrome" · window "Computer fixture form - Google Chrome" · 930×12
         [44] button "Close"
       [45] button "New Tab" actions: show menu
   [46] button "close"
-  [47] button "full screen" actions: zoom window, show menu
-  [48] button "minimize"
+  [47] button "minimize"
+  [48] button "full screen" actions: zoom window, show menu
 (truncated: 9 elements left out; observe with element: 14 to see one part whole)

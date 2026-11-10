@@ -25,12 +25,14 @@ public struct AXFlags: Sendable, Equatable {
     public var required: Bool?
     public var invalid: Bool?
     public var modal: Bool?
+    /// AXMinimized, read on windows
+    public var minimized: Bool?
     /// AXElementBusy
     public var busy: Bool?
     /// AXLoaded
     public var loaded: Bool?
 
-    public init(enabled: Bool? = nil, focused: Bool? = nil, selected: Bool? = nil, expanded: Bool? = nil, required: Bool? = nil, invalid: Bool? = nil, modal: Bool? = nil, busy: Bool? = nil, loaded: Bool? = nil) {
+    public init(enabled: Bool? = nil, focused: Bool? = nil, selected: Bool? = nil, expanded: Bool? = nil, required: Bool? = nil, invalid: Bool? = nil, modal: Bool? = nil, minimized: Bool? = nil, busy: Bool? = nil, loaded: Bool? = nil) {
         self.enabled = enabled
         self.focused = focused
         self.selected = selected
@@ -38,6 +40,7 @@ public struct AXFlags: Sendable, Equatable {
         self.required = required
         self.invalid = invalid
         self.modal = modal
+        self.minimized = minimized
         self.busy = busy
         self.loaded = loaded
     }

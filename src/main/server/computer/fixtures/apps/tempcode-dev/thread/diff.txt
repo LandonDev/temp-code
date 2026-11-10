@@ -49,5 +49,5 @@ app "Electron" · window "Scratch thread" · 1280×800 · focused [84]
           [91] text = "No repo"
         [92] combo box "Thread type" = "Chat" actions: press
   [42] button "close"
-  [43] button "full screen" actions: zoom window, show menu
-  [44] button "minimize"
+  [43] button "minimize"
+  [44] button "full screen" actions: zoom window, show menu

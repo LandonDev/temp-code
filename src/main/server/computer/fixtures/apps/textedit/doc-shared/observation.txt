@@ -1,0 +1,41 @@
+app "TextEdit" · window "Untitled" · 1206×1010 · focused [3]
+[1] window "Untitled"
+  [2] scroll area
+    [3] text area = "Hello from the probe\nSecond line" focused caret 0 actions: show menu
+    [4] ruler actions: press
+      [5] ruler marker = "0" actions: delete
+      [6] ruler marker = "8" actions: delete
+      [7] ruler marker = "0" actions: delete
+      [8] ruler marker = "0.5" actions: delete
+      [9] ruler marker = "1" actions: delete
+      [10] ruler marker = "1.5" actions: delete
+      [11] ruler marker = "2" actions: delete
+      [12] ruler marker = "2.5" actions: delete
+      [13] ruler marker = "3" actions: delete
+      [14] ruler marker = "3.5" actions: delete
+      [15] ruler marker = "4" actions: delete
+      [16] ruler marker = "4.5" actions: delete
+      [17] ruler marker = "5" actions: delete
+      [18] ruler marker = "5.5" actions: delete
+      [19] ruler marker = "6" actions: delete
+  [20] group "Formatting"
+    [21] checkbox "bold" unchecked
+    [22] checkbox "italic" unchecked
+    [23] checkbox "underline" unchecked
+    [24] checkbox "strikethrough" unchecked
+    [25] button "text color" = "Clear" actions: show color panel
+    [26] button "text background color" = "Clear" actions: show color panel
+    [27] pop up "typeface" = "Helvetica"
+    [28] pop up "style" = "Regular"
+    [29] combo box "font size" = "12" actions: confirm
+      [30] button "font size"
+    [31] checkbox "align left" checked
+    [32] checkbox "align center" unchecked
+    [33] checkbox "align right" unchecked
+    [34] checkbox "fully justify" unchecked
+    [35] menu button "list style"
+    [36] pop up "line spacing" = "1.0"
+  [37] menu button "document actions" disabled
+  [38] button "close"
+  [39] button "minimize"
+  [40] button "full screen" actions: zoom window, show menu

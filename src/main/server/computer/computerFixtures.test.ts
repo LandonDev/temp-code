@@ -152,6 +152,7 @@ function jpegSize(bytes: Buffer): { width: number; height: number } {
 describe('recorded app fixtures', () => {
   const states = [
     'textedit/doc',
+    'textedit/doc-shared',
     'textedit/typed',
     'textedit/save-sheet',
     'chrome/form',

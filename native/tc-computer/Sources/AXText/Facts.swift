@@ -214,6 +214,7 @@ public enum Facts {
         if node.flags.invalid == true { states.append("invalid") }
         if node.flags.modal == true { states.append("modal") }
         if readOnlyRoles.contains(role), let settable = node.settable, !settable.contains("AXValue") { states.append("read-only") }
+        if node.flags.minimized == true { states.append("minimized") }
 
         var caret: Int?
         var selection: [Int]?

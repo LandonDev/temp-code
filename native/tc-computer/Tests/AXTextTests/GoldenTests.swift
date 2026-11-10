@@ -86,6 +86,13 @@ enum Goldens {
         try Goldens.check(state, "diff.txt", built.text)
     }
 
+    /// docs/computer-protocol.md §22: the doc as the walk gives it under a capture (the buttons out of
+    /// AXChildren, the sharing badge in their place, the buttons appended after it) reads as the doc.
+    @Test func theDocUnderACaptureReadsAsTheDoc() throws {
+        let read = { (state: String) in Reader().read(try Goldens.snapshot(state, ids: NodeIDSource()), space: try Goldens.space(state)).text }
+        #expect(try read("textedit/doc-shared") == read("textedit/doc"))
+    }
+
     /// At the 2,000-byte minimum: once Chrome's scrolled-away rows are counted, the whole form is 2,220 bytes.
     @Test func theFormUnderTheSmallestBudgetReadsAsItsTruncation() throws {
         let state = "chrome/form"

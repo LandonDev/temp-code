@@ -21,7 +21,8 @@ func r(_ y: Double) -> Rect { Rect(x: 10, y: y, w: 100, h: 20) }
         #expect(lines.contains("    [3] text area = \"Hello from the probe\\nSecond line\" focused caret 0 actions: show menu"))
         #expect(lines.contains("    [9] button \"text color\" = \"Clear\" actions: show color panel"))
         #expect(lines.contains("    [13] combo box \"font size\" = \"12\" actions: confirm"))
-        #expect(lines.contains("  [22] button \"full screen\" actions: zoom window"))
+        // the title-bar buttons close the window's children in one order (§22.1)
+        #expect(lines.suffix(3) == ["  [22] button \"close\"", "  [23] button \"minimize\"", "  [24] button \"full screen\" actions: zoom window"])
         // the scroll bar, the unnamed title-bar group and its text repeating the window's name are gone
         #expect(!lines.contains { $0.contains("scroll bar") || $0.contains("text \"Untitled\"") || $0.contains("= \"Untitled\"") })
     }
