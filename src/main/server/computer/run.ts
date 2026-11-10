@@ -19,6 +19,7 @@ import { COMPUTER_ACTIONS, COMPUTER_TOOLS, formatStepLine, type ActionClass, typ
 import { actionWords, asFourTool, computerActivity, computerApprovalInput, computerApprovalTitle, needsApproval, type TitleContext } from '@shared/computer/words'
 import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
 import { hostErrorLine, noObservationLine, noReadForTextLine, sessionRefusedLine } from '@shared/computer/hostErrors'
+import { SUBROLE_NAMES } from '@shared/computer/observation'
 import { formatHeldLine } from '@shared/computer/scheduleRules'
 import type { PermissionPolicy, SessionMeta } from '@shared/events'
 import type { ApprovalRequest } from '../drivers/types'
@@ -60,6 +61,19 @@ export interface ComputerRegistry {
   get(sessionId: string): SessionMeta | null
   requestApproval(sessionId: string, req: ApprovalRequest): Promise<boolean>
   awayOn(): boolean
+}
+
+const TITLE_BAR_LINE = new RegExp(`^button "(${Object.values(SUBROLE_NAMES).join('|')})"( |$)`)
+
+/**
+ * A plain click on a window's title-bar button (docs/computer-protocol.md §22.3): it always carries
+ * AXPress, so `ax` expresses it whatever the app's click verdict says, and it needs no session tier
+ * up front. Any other element click keeps the verdict's path: one `ax` cannot express would come
+ * back `needs_tier: process` under a `session` verdict, which no path gates.
+ */
+export function titleBarClick(action: ComputerAction, book: ElementBook | undefined): boolean {
+  if (action.action !== 'left_click' || action.element === undefined || action.text || action.duration !== undefined) return false
+  return TITLE_BAR_LINE.test(book?.brief(action.element)?.line ?? '')
 }
 
 export interface AppState {
@@ -281,7 +295,9 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
   if (need.ask) {
     // a step expected to take the session tier says so on the card, and its Allow covers that tier too
     const bundleId = app()?.bundleId ?? null
-    const session = steps.some((a) => sendsInput(a) && (host.verdicts.needsSession(bundleId, a) || (a.action === 'perform' && a.name === 'raise')))
+    const session = steps.some(
+      (a) => sendsInput(a) && ((host.verdicts.needsSession(bundleId, a) && !titleBarClick(a, app()?.book)) || (a.action === 'perform' && a.name === 'raise'))
+    )
     const words = titleCtx()
     const allowed = await approve({
       toolName: `mcp__app__${tool}`,
@@ -434,6 +450,11 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     for (const s of result.steps) if (s.status === 'failed') noteMissing(s.error)
     for (const [i, s] of result.steps.entries()) if (s.status === 'ok' && s.shot) await land(s.shot, `step ${i + 1}`, i + 1)
     await take(result.observation)
+    // the window the thread used closed, or the app quit (§22.6): its next call targets the app's main window
+    if (result.observationError?.kind === 'window_not_found') {
+      const st = app()
+      if (st) st.window = null
+    }
     const lastTier = [...result.steps].reverse().find((s) => s.status === 'ok' && s.tier !== null)
     if (t.live && lastTier?.status === 'ok') t.live.tier = lastTier.tier
     const out = outcomeOf(actions, result, shots, result.hostLines, errCtx)
@@ -596,7 +617,7 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
   let stopAt = actions.length
   if (!admitted) {
     for (const [i, a] of actions.entries()) {
-      if (!sendsInput(a) || !host.verdicts.needsSession(bundleOf(), a)) continue
+      if (!sendsInput(a) || !host.verdicts.needsSession(bundleOf(), a) || titleBarClick(a, run.appOf()?.book)) continue
       const tiers = await askGate(i)
       if (!tiers) {
         stopAt = i

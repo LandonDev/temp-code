@@ -119,7 +119,7 @@ extension ComputerService {
         }
         do {
             guard inventory.isRunning(target.pid) else {
-                throw ComputerError(kind: .windowNotFound, message: "\(target.app.name) quit.")
+                throw ComputerError(kind: .windowNotFound, message: "\(target.app.name) quit.", reason: .gone)
             }
             // the target closed: the app's window as §2.1 picks it with none named, read whole (§22.6)
             var knobs = ObserveKnobs(observe)
@@ -241,7 +241,7 @@ extension ComputerService {
         let pid = target.pid
         let name = target.app.name.isEmpty ? "The app" : target.app.name
         let info = try await target.worker.run { state -> WindowInfo in
-            if try source.list(pid: pid).isEmpty { throw ComputerError(kind: .windowNotFound, message: "\(name) has no window open.", candidates: []) }
+            if try source.list(pid: pid).isEmpty { throw ComputerError(kind: .windowNotFound, message: "\(name) has no window open.", candidates: [], reason: .gone) }
             let (element, info) = try source.resolve(pid: pid, ref: nil)
             state.windows[UInt32(truncatingIfNeeded: info.id)] = element
             return info

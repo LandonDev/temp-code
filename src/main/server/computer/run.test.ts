@@ -246,6 +246,41 @@ describe('tiers', () => {
     expect(seen[1].approve).not.toBe(approve)
   })
 
+  it("a close button's click runs at ax under a session click verdict; another element click still asks the gate (§22.3)", async () => {
+    const asked: number[] = []
+    const gate: SessionTierGate = {
+      admitted: () => false,
+      request: async (c) => (asked.push(c.step), { admit: false, reason: 'skipped', message: 'no' }),
+      run: (c, send) => send(c.tiers)
+    }
+    const h = make({ gate })
+    h.rows.set(tierVerdictSetting('dev.fake.closey'), JSON.stringify({ bundleId: 'dev.fake.closey', classes: { click: 'session' }, misses: {}, updatedAt: Date.now() }))
+    await h.run('computer_observe', { app: 'Closey' })
+    const bold = await h.run('computer_act', { app: 'Closey', action: 'left_click', element: 21 })
+    expect(asked).toEqual([0])
+    expect(bold.steps[0]).toMatch(/^left_click \[21\] · failed: needs the session tier/)
+    const runs = count(h, 'action.run')
+    const close = await h.run('computer_act', { app: 'Closey', action: 'left_click', element: 37 })
+    expect(asked).toEqual([0])
+    expect(count(h, 'action.run')).toBe(runs + 1)
+    expect(last(h, 'action.run').params.tiers).toEqual(['ax'])
+    expect(close.steps[0]).toBe('left_click [37] button "close" · ax · changed')
+  })
+
+  it("a closed window's observation binds the next window, and window_not_found forgets the bound one (§22.6)", async () => {
+    const h = make()
+    await h.run('computer_observe', { app: 'Closey' })
+    expect(last(h, 'state.get').params.window).toBeUndefined()
+    const first = await h.run('computer_act', { app: 'Closey', action: 'left_click', element: 37 })
+    expect(last(h, 'action.run').params.window).toEqual({ id: 169000 })
+    expect(h.text(first)).toMatch(/^app "Closey" · window "Closey Plain"/m)
+    const second = await h.run('computer_act', { app: 'Closey', action: 'left_click', element: 37 })
+    expect(last(h, 'action.run').params.window).toEqual({ id: 169001 })
+    expect(h.text(second)).toContain('Closey has no window open.')
+    await h.run('computer_observe', { app: 'Closey' })
+    expect(last(h, 'state.get').params.window).toBeUndefined()
+  })
+
   it('Stubborn raises its click verdict to session through a gate that admits', async () => {
     const gate: SessionTierGate = { admitted: () => true, request: async () => ({ admit: true }), run: (c, send) => send(c.tiers) }
     const h = make({ gate })

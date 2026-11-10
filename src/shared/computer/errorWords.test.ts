@@ -68,6 +68,11 @@ describe('the error words', () => {
     expect(errorLine(err('window_not_found', SAMPLES.window_not_found), { app: 'Mail', window: 'Draft' })).toBe(
       'no window of Mail matches "Draft"; its windows: "Inbox", "New Message"'
     )
+    // a window that closed, or an app that quit, says so in the service's own words (§22.6)
+    expect(errorLine({ kind: 'window_not_found', message: 'TC Probe quit.', reason: 'gone' }, { app: 'TC Probe' })).toBe('TC Probe quit.')
+    expect(errorLine({ kind: 'window_not_found', message: 'TextEdit has no window open.', candidates: [], reason: 'gone' }, { app: 'TextEdit' })).toBe(
+      'TextEdit has no window open.'
+    )
     expect(errorLine(err('invalid_key'), { action: { action: 'key', text: 'Enter2' } })).toBe(
       'no key named "Enter2"; use xdotool names such as Return, Tab, Escape, super+c'
     )

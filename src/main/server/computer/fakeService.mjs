@@ -24,6 +24,8 @@ const apps = [
   ...['Thin', 'KeyWin', 'Sessiony', 'Stubborn', 'Slow', 'Crashy', 'NoAX', 'NoShot', 'Touchy'].map((name, i) => ({
     name, pid: 16801 + i, bundleId: `dev.fake.${name.toLowerCase()}`, windows: [windowInfo((16801 + i) * 10)]
   })),
+  // Closey: a click on button "close" closes the window it targets (§22.6)
+  { name: 'Closey', pid: 16900, bundleId: 'dev.fake.closey', windows: [windowInfo(169000, 'Closey Doc'), windowInfo(169001, 'Closey Plain')] },
   { name: 'Preview', pid: 17000, bundleId: 'com.apple.Preview', windows: [windowInfo(170000, 'Preview')] },
   { name: 'Finder', pid: 400, bundleId: 'com.apple.finder', windows: [] }
 ]
@@ -240,7 +242,12 @@ function actionResult(ctx, params, method, wasCancelled = false) {
     return result
   })
   const result = method === 'action.run' ? { step: steps[0] } : { steps, waited: wasCancelled ? { waitedMs: 0, settled: false, busy: false, reason: 'cancelled' } : waited }
+  // Closey's close button closes the target: the observation reads the next window whole, or says none is left
+  const closed = ctx.app.name === 'Closey' && steps.some((s, i) => s.status === 'ok' && actions[i].action === 'left_click' && s.element?.line === 'button "close"')
+  if (closed) ctx.app.windows = ctx.app.windows.filter((w) => w.id !== ctx.window.id)
   if (wasCancelled) result.observationError = cancelled()
+  else if (closed && !ctx.app.windows.length) result.observationError = failure('window_not_found', 'Closey has no window open.', { reason: 'gone' })
+  else if (closed) result.observation = observation({ ...ctx, window: ctx.app.windows[0] }, { ...params.observe, mode: 'full' }, 'action')
   else if (params.observe?.mode !== 'none') result.observation = observation(ctx, params.observe, 'action')
   return result
 }

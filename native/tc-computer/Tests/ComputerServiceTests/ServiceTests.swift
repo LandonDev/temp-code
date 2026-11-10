@@ -672,6 +672,7 @@ private func held(_ pid: Int32, kind: HeldRecord.Kind = .button) -> HeldRecord {
         #expect(result["step"]?["effect"]?.stringValue == "changed")
         #expect(result["observationError"]?["kind"]?.stringValue == "window_not_found")
         #expect(result["observationError"]?["message"]?.stringValue == "Doc has no window open.")
+        #expect(result["observationError"]?["reason"]?.stringValue == "gone")
     }
 
     @Test func anAppThatQuitOnItsLastCloseSaysSo() async throws {

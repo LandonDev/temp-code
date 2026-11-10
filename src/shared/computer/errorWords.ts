@@ -65,6 +65,8 @@ export const COMPUTER_ERROR_WORDS: Readonly<Record<ComputerErrorKind, Words>> = 
     return `${lead}${fitList(e.candidates, ERROR_LINE_MAX - lead.length - tail.length)}${tail}`
   },
   window_not_found: (e, ctx) => {
+    // the target closed or its app quit (§22.6): the service names which, "<App> has no window open." or "<App> quit."
+    if (e.reason === 'gone') return null
     const head = `no window of ${ctx.app ?? 'the app'} matches ${ctx.window ? quote(ctx.window) : 'that title'}`
     if (!e.candidates?.length) return `${head}; computer_apps lists its windows`
     const lead = `${head}; its windows: `
