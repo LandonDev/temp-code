@@ -91,6 +91,15 @@ export const SUBROLE_NAMES: Readonly<Record<string, string>> = {
   AXZoomButton: 'zoom'
 }
 
+/**
+ * A window's title-bar buttons, in the order they close its children whatever AX lists
+ * (docs/computer-protocol.md §22.1): a capture hides them from AXChildren and the walk adds them back.
+ */
+export const TITLE_BAR_SUBROLES = ['AXCloseButton', 'AXMinimizeButton', 'AXFullScreenButton', 'AXZoomButton'] as const
+
+/** Points from a window's top-left where the system's sharing badge sits for a window with no title-bar buttons (§22.2), and the pixel watch looks away (§22.8). */
+export const TITLE_BAR_CORNER = { w: 96, h: 32 } as const
+
 /** Kept with no name, value, action or state: they give the tree its shape. */
 export const STRUCTURAL_ROLES: ReadonlySet<string> = new Set([
   'window',
@@ -119,7 +128,8 @@ export const STATE_WORDS = [
   'required',
   'invalid',
   'modal',
-  'read-only'
+  'read-only',
+  'minimized'
 ] as const
 export type StateWord = (typeof STATE_WORDS)[number]
 const STATE_SET: ReadonlySet<string> = new Set(STATE_WORDS)

@@ -59,10 +59,15 @@ public enum ObservationTables {
         "AXFullScreenButton": "full screen",
         "AXZoomButton": "zoom"
     ]
+    /// A window's title-bar buttons, in the order they close its children (§22.1).
+    public static let titleBarSubroles: [String] = ["AXCloseButton", "AXMinimizeButton", "AXFullScreenButton", "AXZoomButton"]
+    /// Points from a window's top-left: the sharing badge's place on a window with no buttons, and where the pixel watch looks away (§22.2, §22.8).
+    public static let titleBarCornerWidth: Double = 96
+    public static let titleBarCornerHeight: Double = 32
     /// Kept with no name, value, action or state: they give the tree its shape.
     public static let structuralRoles: Set<String> = ["window", "sheet", "dialog", "menu", "list", "outline", "table", "scroll area", "web area"]
     /// In the order a line prints them.
-    public static let stateWords: [String] = ["focused", "selected", "disabled", "checked", "unchecked", "mixed", "expanded", "collapsed", "required", "invalid", "modal", "read-only"]
+    public static let stateWords: [String] = ["focused", "selected", "disabled", "checked", "unchecked", "mixed", "expanded", "collapsed", "required", "invalid", "modal", "read-only", "minimized"]
     /// Checkbox, switch and radio always print one of checked, unchecked, mixed.
     public static let toggleRoles: Set<String> = ["checkbox", "switch", "radio"]
     /// Raw AX action → its word.

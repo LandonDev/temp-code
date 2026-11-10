@@ -6,6 +6,9 @@ import {
   ROLE_DEFAULTS,
   ROLE_WORDS,
   STATE_WORDS,
+  SUBROLE_NAMES,
+  TITLE_BAR_CORNER,
+  TITLE_BAR_SUBROLES,
   actionWord,
   axWords,
   cutName,
@@ -53,7 +56,8 @@ describe('element lines', () => {
     '~ [3] text area = "x" caret 33',
     '[7] row selected',
     '[9] input "Name" required invalid read-only',
-    '[5] ruler marker'
+    '[5] ruler marker',
+    '~ [1] window "Notes" minimized'
   ]
   it('format back to the same text', () => {
     for (const line of lines) expect(formatElementLine(parseElementLine(line))).toBe(line)
@@ -182,6 +186,19 @@ describe('roles, states and actions', () => {
 
   it('sorts states into the printed order', () => {
     expect(sortStates(['read-only', 'focused', 'checked', 'focused'])).toEqual(['focused', 'checked', 'read-only'])
+  })
+
+  it('prints minimized last on a window line (§22.4)', () => {
+    expect(STATE_WORDS.at(-1)).toBe('minimized')
+    expect(sortStates(['minimized', 'focused'])).toEqual(['focused', 'minimized'])
+    expect(parseElementLine('[1] window "Notes" minimized')).toMatchObject({ role: 'window', name: 'Notes', states: ['minimized'] })
+    expect(() => parseElementLine('[1] window "Notes" minimized focused')).toThrow(/out of order/)
+  })
+
+  it('orders the title-bar buttons by subrole, each one named (§22.1)', () => {
+    expect(TITLE_BAR_SUBROLES).toEqual(['AXCloseButton', 'AXMinimizeButton', 'AXFullScreenButton', 'AXZoomButton'])
+    for (const subrole of TITLE_BAR_SUBROLES) expect(SUBROLE_NAMES[subrole]).toBeTruthy()
+    expect(TITLE_BAR_CORNER).toEqual({ w: 96, h: 32 })
   })
 })
 

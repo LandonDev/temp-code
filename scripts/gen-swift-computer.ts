@@ -107,6 +107,8 @@ import {
   STRUCTURAL_ROLES,
   STUB_SUFFIX,
   SUBROLE_NAMES,
+  TITLE_BAR_CORNER,
+  TITLE_BAR_SUBROLES,
   TOGGLE_ROLES,
   TYPING_ROLES
 } from '../src/shared/computer/observation'
@@ -317,6 +319,11 @@ export function emitObservationTables(): string {
     'public enum ObservationTables {',
     ...swiftMap('roleTags', 'AX role, or `role:subrole`, → the word an element line prints. A subrole entry wins.', ROLE_TAGS),
     ...swiftMap('subroleNames', 'The window buttons carry no title or description; their subrole names them.', SUBROLE_NAMES),
+    '    /// A window\'s title-bar buttons, in the order they close its children (§22.1).',
+    `    public static let titleBarSubroles: [String] = ${swiftList(TITLE_BAR_SUBROLES)}`,
+    '    /// Points from a window\'s top-left: the sharing badge\'s place on a window with no buttons, and where the pixel watch looks away (§22.2, §22.8).',
+    `    public static let titleBarCornerWidth: Double = ${TITLE_BAR_CORNER.w}`,
+    `    public static let titleBarCornerHeight: Double = ${TITLE_BAR_CORNER.h}`,
     ...swiftSet('structuralRoles', 'Kept with no name, value, action or state: they give the tree its shape.', STRUCTURAL_ROLES),
     '    /// In the order a line prints them.',
     `    public static let stateWords: [String] = ${swiftList(STATE_WORDS)}`,

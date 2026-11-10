@@ -13,6 +13,7 @@ import {
   ComputerErrorSchema,
   InputProbeParamsSchema,
   ProbeReportSchema,
+  RawAXNodeSchema,
   RegionSchema,
   SERVICE,
   STEP_ONLY_ERROR_KINDS,
@@ -292,5 +293,13 @@ describe("the tier scheduling's additions", () => {
 
   it('names recent-copy as the reason a paste was held off', () => {
     expect(ComputerErrorSchema.safeParse({ kind: 'clipboard_busy', message: 'The person copied just now.', reason: 'recent-copy' }).success).toBe(true)
+  })
+})
+
+describe('the window actions (§22)', () => {
+  it('carries a recorded window\'s AXMinimized on its raw node', () => {
+    const node = RawAXNodeSchema.parse({ role: 'AXWindow', subrole: 'AXStandardWindow', title: 'Notes', minimized: true, children: [] })
+    expect(node.minimized).toBe(true)
+    expect(RawAXNodeSchema.safeParse({ role: 'AXWindow', minimized: 'yes', children: [] }).success).toBe(false)
   })
 })
