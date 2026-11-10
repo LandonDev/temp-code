@@ -2147,7 +2147,11 @@ why and the measured headline.
   points from bounds or zoom. The parts:
   Capture (§6, §7: one window, never the desktop; screenshots, the preview
   stream, the pixel signal), Input (§14: the `ax`, `process` and `session`
-  tiers, the paste under the clipboard lock), the AX reader (§15: pure
+  tiers, the paste under the clipboard lock; in the background a step first
+  tries the AX route that does the same thing, §24: a shortcut's menu item,
+  the element under a click, the caret, the scroll bar, an AX insert for a
+  text paste; a disabled menu item in an inactive app waits for the session
+  tier, and the host runs the routes an app ignored last), the AX reader (§15: pure
   `AXText`, tested on the box with `sh scripts/computer-text-test.sh`, and
   the Mac's walk), the service shell (§16: the router, the locks, the
   held-input ledger, the exit codes). `bun run computer:test` builds and

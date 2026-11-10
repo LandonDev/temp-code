@@ -11,14 +11,14 @@ TempCode's computer-use service on the Mac: one Swift process per app instance t
 | `ComputerCore` | the seams between the modules (`Seams.swift`), `CoordinateMapping`, `PrivateSymbol`. | Linux and Mac |
 | `AXText` | the AX reader's rules that need no live element: keep, index, fold, budget, render, diff; the title-bar rule (`TitleBar`: a window's buttons last, the capture's sharing badge dropped, docs/computer-protocol.md §22) the text and the change monitor share; the observation tables generated from `observation.ts`. | Linux and Mac |
 | `AXReader` | the walk over `AXUIElement`, handles, windows, `AXManualAccessibility`, the change monitor, `AppReader`, `AXReaders`. | Mac (its files sit under `canImport(ApplicationServices)`) |
-| `Input`, `Capture` | the input tiers and the clipboard paste; screenshots, the preview stream, the pixel watch. | Mac |
+| `Input`, `Capture` | the input tiers, the background fallbacks (docs/computer-protocol.md §24) and the clipboard paste; screenshots, the preview stream, the pixel watch. Input's Foundation-only files (the key table, `TierPlan`'s route order, `MenuShortcut`, `MenuSearch`, `HitPlan`, `ScrollPlan`, `PasteFlow` and their neighbours, the list in `scripts/computer-text-test.sh`) build on Linux too, as the scratch target `InputPure`. | Mac |
 | `ComputerService` | the shell: handlers, inventory, launcher, workers and app slots, the smart wait, watchers, TCC, lifecycle, `Modules.live()`. | Mac |
 | `tc-computer` | `main`: `serve`, `permissions [--prompt]`, `version`, `hold-lock clipboard\|session <ms>`. | Mac |
 | `tc-ax`, `capture-proof`, `tc-input-proof` | the modules' live-proof tools; never shipped. | Mac |
 
 Only the `tc-computer` product ships: `scripts/lib/tcComputerBuild.ts` builds `--product tc-computer` into `resources/native/tc-computer`.
 
-Tests: `bun run computer:test` on the Mac (every target). The whole package builds only on the Mac, so on the box the Linux toolchain under `~/toolchains` runs `sh scripts/computer-text-test.sh`: `ComputerProtocolTests`, `ComputerServiceKitTests` and `AXTextTests` from a scratch package linked back into the checkout, the goldens of `src/main/server/computer/fixtures/apps` included (`TC_AX_GOLDEN=update` rewrites them in place; read each before committing).
+Tests: `bun run computer:test` on the Mac (every target). The whole package builds only on the Mac, so on the box the Linux toolchain under `~/toolchains` runs `sh scripts/computer-text-test.sh`: `InputPureTests` (Input's FallbackTests.swift), `ComputerProtocolTests`, `ComputerServiceKitTests` and `AXTextTests` from a scratch package linked back into the checkout, the goldens of `src/main/server/computer/fixtures/apps` included (`TC_AX_GOLDEN=update` rewrites them in place; read each before committing).
 
 ## stdout
 
