@@ -18,6 +18,7 @@ import {
   COMPUTER_ACTION_SHAPE,
   ElementIndexSchema,
   NO_INPUT_ACTIONS,
+  SERVICE,
   TierSchema,
   refineAction,
   type ActionClass,
@@ -128,6 +129,12 @@ function describedActionShape(w: FieldText): typeof COMPUTER_ACTION_SHAPE {
   ) as typeof COMPUTER_ACTION_SHAPE
 }
 
+/** `open` goes into the app `launch` names; `confirm` flags an open, never a bare launch. */
+function refineApps(v: { launch?: string; open?: string[]; confirm?: unknown }, ctx: z.RefinementCtx): void {
+  if (v.open && !v.launch) ctx.addIssue({ code: 'custom', path: ['open'], message: 'open needs launch, the app to open it in' })
+  if (v.confirm && !v.open) ctx.addIssue({ code: 'custom', path: ['confirm'], message: 'confirm goes with open' })
+}
+
 /** The four tools' inputs with one word shape's field descriptions; the rules are the same in every shape. */
 function toolInputs(w: FieldText) {
   const target = {
@@ -142,7 +149,17 @@ function toolInputs(w: FieldText) {
       .optional()
       .describe(text)
   return {
-    apps: z.object({ launch: z.string().min(1).optional().describe(w.launch) }),
+    apps: z
+      .object({
+        launch: z.string().min(1).optional().describe(w.launch),
+        open: z.array(z.string().min(1)).min(1).max(SERVICE.openItemsMax).optional().describe(w.open),
+        // the kinds are explained on computer_act's confirm; the list pays for each copy on every turn
+        confirm: z
+          .object({ kind: ConfirmSchema.shape.kind.describe(w['apps.confirm.kind']), what: ConfirmSchema.shape.what.describe(w['confirm.what']) })
+          .optional()
+          .describe(w['apps.confirm'])
+      })
+      .superRefine(refineApps),
     observe: z.object({
       app: target.app,
       window: target.window,

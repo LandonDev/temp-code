@@ -7,12 +7,15 @@
  * text.
  */
 import type { ComputerAction, ComputerError, ComputerErrorKind, ErrorReason } from './protocol'
+import { openItemName } from './words'
 
 /** What the model asked for: its `app` and `window` strings and the step that failed. */
 export interface ErrorContext {
   app?: string
   window?: string
   action?: ComputerAction
+  /** computer_apps: the items the call opens; one names itself in the line */
+  open?: string[]
 }
 
 /** A line, or null for the service's own `message`. */
@@ -54,6 +57,25 @@ const SESSION_WHY: Partial<Record<ErrorReason, string>> = {
   'secure-input': 'secure input is on (a password field has the keyboard)',
   'activation-refused': 'the app would not come to the front',
   'in-use': 'another app holds it'
+}
+
+/** The one item a refusal is about by name, when the call named one; else a plain noun. */
+const oneItem = (ctx: ErrorContext): string | null => (ctx.open?.length === 1 ? openItemName(ctx.open[0]) : null)
+
+const OPEN_REFUSED: Words = (e, ctx) => {
+  const item = oneItem(ctx)
+  switch (e.reason) {
+    case 'scheme':
+      return 'only http, https and file items open; give a web page, a file or a folder'
+    case 'executable':
+      return `${item ?? 'an item'} is a program; open only opens documents, folders and web pages`
+    case 'missing':
+      return `${item && ctx.open ? `no file at ${quote(ctx.open[0], 80)}` : 'an item is not'} on the Mac; check the path`
+    case 'app':
+      return "that app is one computer use may not touch; open the items in another app"
+    default:
+      return 'open refused an item; give documents, folders or web pages'
+  }
 }
 
 const NOT_READY: Words = () => 'the computer service is not ready; try the call again'
@@ -123,6 +145,7 @@ export const COMPUTER_ERROR_WORDS: Readonly<Record<ComputerErrorKind, Words>> = 
     return `no ${text}${near} in ${index(e, ctx)}; read its text with computer_observe element ${i ?? '<index>'}`
   },
   key_window_unavailable: () => "the window isn't its app's key window, so keys and paste can't reach it; use set_value, or type with element",
+  open_refused: OPEN_REFUSED,
   session_unavailable: (e) =>
     `the session tier can't run now${e.reason && SESSION_WHY[e.reason] ? `: ${SESSION_WHY[e.reason]}` : ''}; stay in the background tiers`
 }

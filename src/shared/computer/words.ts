@@ -31,7 +31,33 @@ export function asFourTool(name: string, args: unknown): { tool: ComputerToolNam
 
 const sendsInput = (a: { action: ComputerActionName }): boolean => !NO_INPUT_ACTIONS.includes(a.action)
 
-type ToolArgs = { action?: ComputerActionName; actions?: { action: ComputerActionName }[]; confirm?: Confirm }
+type ToolArgs = { action?: ComputerActionName; actions?: { action: ComputerActionName }[]; confirm?: Confirm; launch?: string; open?: string[] }
+
+/** What a card or a line calls an item `computer_apps` opens: a path's or a file URL's last part, a web page's host and path. */
+export function openItemName(item: string): string {
+  if (/^https?:/i.test(item)) {
+    try {
+      const u = new URL(item)
+      return (u.host + (u.pathname === '/' ? '' : u.pathname)) || item
+    } catch {
+      return item
+    }
+  }
+  let path = item
+  if (/^file:/i.test(item)) {
+    try {
+      path = decodeURIComponent(new URL(item).pathname)
+    } catch {
+      path = item.replace(/^file:\/*/i, '/')
+    }
+  }
+  return path.replace(/\/+$/, '').split('/').pop() || path
+}
+
+/** `report.pdf`, or `3 items`. */
+export function openItemsWords(open: readonly string[]): string {
+  return open.length === 1 ? openItemName(open[0]) : `${open.length} items`
+}
 
 export interface ApprovalNeed {
   /** a card before the call */
@@ -45,12 +71,19 @@ export interface ApprovalNeed {
  * and edits; a flagged one (`confirm`) asks in every mode, full access
  * included; so does the host's own need (`password`), which takes the card
  * whole: the model's words may hold the very text, so they never show.
- * apps and observe never ask.
+ * apps with `open` changes what an app holds, so it asks as an act does and
+ * takes the flag; a bare launch and observe never ask.
  */
 export function needsApproval(tool: ComputerToolName, args: ToolArgs, permission: PermissionPolicy = 'safe', hostNeed: ConfirmNeed | null = null): ApprovalNeed {
+  const opens = tool === 'computer_apps' && (args.open?.length ?? 0) > 0
   const acts =
-    tool === 'computer_act' ? args.action !== undefined && sendsInput({ action: args.action }) : tool === 'computer_batch' ? (args.actions ?? []).some(sendsInput) : false
-  const flag = (tool === 'computer_act' || tool === 'computer_batch') && args.confirm ? { kind: args.confirm.kind as HostConfirmKind, what: args.confirm.what } : null
+    tool === 'computer_act'
+      ? args.action !== undefined && sendsInput({ action: args.action })
+      : tool === 'computer_batch'
+        ? (args.actions ?? []).some(sendsInput)
+        : opens
+  const flagged = tool === 'computer_act' || tool === 'computer_batch' || opens
+  const flag = flagged && args.confirm ? { kind: args.confirm.kind as HostConfirmKind, what: args.confirm.what } : null
   const confirm = hostNeed ?? flag
   return { ask: confirm !== null || (acts && permission !== 'auto'), confirm }
 }
@@ -190,6 +223,11 @@ export function computerApprovalTitle(
   confirm: ConfirmNeed | null = null,
   opts: { session?: boolean } = {}
 ): string {
+  if (tool === 'computer_apps') {
+    const app = args.launch ?? ctx.appName
+    const what = `open ${openItemsWords(args.open ?? [])}`
+    return confirm ? confirmTitle(confirm, app, what) : `${capital(what)} in ${app}`
+  }
   const steps = actingSteps(tool, args).map((a) => actionWords(a, ctx))
   const using = opts.session ? USING_SESSION_WORDS : ''
   if (confirm) return confirmTitle(confirm, ctx.appName, steps.join(', ') || undefined) + using
@@ -210,10 +248,20 @@ export interface ComputerApprovalInput {
   window: string | null
   actions: string[]
   confirm?: { kind: HostConfirmKind; label: string; what: string }
+  /** computer_apps: the items it opens, as the model gave them */
+  open?: string[]
 }
 
 /** The card's input, for the preview thread's card: the app, the window, each acting step in words, and the flag with its label. */
 export function computerApprovalInput(tool: ComputerToolName, args: ToolArgs, ctx: TitleContext, confirm: ConfirmNeed | null = null): ComputerApprovalInput {
+  if (tool === 'computer_apps')
+    return {
+      app: args.launch ?? ctx.appName,
+      window: null,
+      actions: (args.open ?? []).map((item) => `open ${openItemName(item)}`),
+      open: args.open ?? [],
+      ...(confirm ? { confirm: confirmInput(confirm) } : {})
+    }
   return {
     app: ctx.appName,
     window: ctx.window,

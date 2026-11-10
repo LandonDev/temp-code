@@ -12,6 +12,7 @@ import {
   computerSessionAskTitle,
   computerToolOf,
   needsApproval,
+  openItemName,
   type TitleContext
 } from './words'
 
@@ -306,3 +307,42 @@ describe('a flagged card', () => {
   })
 })
 
+
+describe('an open through computer_apps', () => {
+  const flag = { kind: 'personal_data' as const, what: 'Sends the form with the person\'s address' }
+
+  it('asks in safe and edits, not in full access unflagged, and a bare launch never asks', () => {
+    const args = { launch: 'Preview', open: ['/tmp/report.pdf'] }
+    expect(needsApproval('computer_apps', args).ask).toBe(true)
+    expect(needsApproval('computer_apps', args, 'edits').ask).toBe(true)
+    expect(needsApproval('computer_apps', args, 'auto')).toEqual({ ask: false, confirm: null })
+    expect(needsApproval('computer_apps', { launch: 'Preview' }, 'safe').ask).toBe(false)
+  })
+
+  it('takes confirm in every mode', () => {
+    const need = needsApproval('computer_apps', { launch: 'Safari', open: ['https://example.com/form'], confirm: flag }, 'auto')
+    expect(need).toEqual({ ask: true, confirm: { kind: 'personal_data', what: flag.what } })
+  })
+
+  it('titles the card with the item or the count, and the flag first', () => {
+    const c = ctx({ appName: 'an app', window: null })
+    expect(computerApprovalTitle('computer_apps', { launch: 'Preview', open: ['/Users/me/report.pdf'] }, c)).toBe('Open report.pdf in Preview')
+    expect(computerApprovalTitle('computer_apps', { launch: 'Preview', open: ['/a.pdf', '/b.pdf', '/c.pdf'] }, c)).toBe('Open 3 items in Preview')
+    expect(computerApprovalTitle('computer_apps', { launch: 'Safari', open: ['https://example.com/form'] }, c, flag)).toBe(
+      `Share personal data in Safari: ${flag.what} (open example.com/form)`
+    )
+    expect(computerApprovalInput('computer_apps', { launch: 'Preview', open: ['/a.pdf'] }, c)).toEqual({
+      app: 'Preview',
+      window: null,
+      actions: ['open a.pdf'],
+      open: ['/a.pdf']
+    })
+  })
+
+  it('names an item by its last part, a page by its host and path', () => {
+    expect(openItemName('/Users/me/Documents/')).toBe('Documents')
+    expect(openItemName('file:///Users/me/My%20Notes.txt')).toBe('My Notes.txt')
+    expect(openItemName('https://example.com/')).toBe('example.com')
+    expect(openItemName('https://example.com/a/b?q=1')).toBe('example.com/a/b')
+  })
+})

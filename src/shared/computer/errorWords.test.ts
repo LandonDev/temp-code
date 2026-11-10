@@ -8,6 +8,7 @@ const err = (kind: ComputerErrorKind, data: Partial<ComputerError> = {}): Comput
 /** The richest data each kind carries on the wire. */
 const SAMPLES: Record<ComputerErrorKind, Partial<ComputerError>> = {
   not_initialized: {},
+  open_refused: { reason: 'executable' },
   protocol_mismatch: {},
   permission_missing: { which: 'accessibility' },
   unknown_session: {},
@@ -100,5 +101,16 @@ describe('a disabled menu item (§24.2)', () => {
     // long titles stay inside a line
     const long = err('needs_tier', { needed: 'session', menu: ['x'.repeat(100), 'y'.repeat(100), 'z'.repeat(100)] })
     expect(errorLine(long, { app: 'a'.repeat(30) }).length).toBeLessThanOrEqual(ERROR_LINE_MAX)
+  })
+})
+
+describe('open_refused', () => {
+  it('names the one item the call opened, and words a refusal of several without one', () => {
+    const open = (reason: ComputerError['reason'], items: string[]): string => errorLine(err('open_refused', { reason }), { open: items })
+    expect(open('executable', ['/Users/me/deploy.command'])).toBe('deploy.command is a program; open only opens documents, folders and web pages')
+    expect(open('executable', ['/a.txt', '/b.command'])).toBe('an item is a program; open only opens documents, folders and web pages')
+    expect(open('missing', ['/tmp/gone.pdf'])).toBe('no file at "/tmp/gone.pdf" on the Mac; check the path')
+    expect(open('missing', [])).toBe('an item is not on the Mac; check the path')
+    expect(open('scheme', ['ftp://x'])).toBe('only http, https and file items open; give a web page, a file or a folder')
   })
 })

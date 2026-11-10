@@ -7,6 +7,7 @@ import {
   COMPUTER_ACTIONS,
   COMPUTER_TOOLS,
   ComputerActInputSchema,
+  ComputerAppsInputSchema,
   ComputerBatchInputSchema,
   ComputerObserveInputSchema,
   ComputerToolCallSchema,
@@ -272,5 +273,20 @@ describe('the background routes (§24)', () => {
   it("parses a verdict's route misses", () => {
     expect(TierVerdictSchema.safeParse({ bundleId: 'x', classes: {}, misses: {}, viaMisses: { hit: 2, 'scroll-page': 1 }, updatedAt: 1 }).success).toBe(true)
     expect(TierVerdictSchema.safeParse({ bundleId: 'x', classes: {}, misses: {}, viaMisses: { hit: -1 }, updatedAt: 1 }).success).toBe(false)
+  })
+})
+
+describe('computer_apps open', () => {
+  const ok = (v: unknown): boolean => ComputerAppsInputSchema.safeParse(v).success
+  it('opens up to 8 items into the app launch names, and confirm only beside open', () => {
+    expect(ok({})).toBe(true)
+    expect(ok({ launch: 'Preview', open: ['/tmp/a.pdf'] })).toBe(true)
+    expect(ok({ launch: 'Preview', open: Array.from({ length: 8 }, (_, i) => `/tmp/${i}.pdf`) })).toBe(true)
+    expect(ok({ launch: 'Preview', open: Array.from({ length: 9 }, (_, i) => `/tmp/${i}.pdf`) })).toBe(false)
+    expect(ok({ launch: 'Preview', open: [] })).toBe(false)
+    expect(ComputerAppsInputSchema.safeParse({ open: ['/tmp/a.pdf'] }).error?.issues[0].message).toBe('open needs launch, the app to open it in')
+    const confirm = { kind: 'upload', what: 'Uploads a.pdf to the form' }
+    expect(ok({ launch: 'Safari', open: ['https://x.test'], confirm })).toBe(true)
+    expect(ComputerAppsInputSchema.safeParse({ launch: 'Safari', confirm }).error?.issues[0].message).toBe('confirm goes with open')
   })
 })

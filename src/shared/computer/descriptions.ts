@@ -28,8 +28,11 @@ export const SEARCH_HINT_MAX = 120
 export const TOOL_DESCRIPTION_MAX = 1800
 export const FIELD_DESCRIPTION_MAX = 200
 export const PER_VERB_DESCRIPTION_MAX = 400
-/** The four tools' `tools/list` JSON, descriptions and schemas, as the bridge lists them. */
-export const TOOLS_LIST_MAX = 14_000
+/**
+ * The four tools' `tools/list` JSON, descriptions and schemas, as the bridge lists them.
+ * 15,000 since computer_apps took `open` and its `confirm` (§23): about 800 characters in the cua shape.
+ */
+export const TOOLS_LIST_MAX = 15_000
 
 // ── the four tools ──────────────────────────────────────────────────────
 
@@ -40,7 +43,7 @@ const ACTION_LIST =
 
 const ANTHROPIC: Record<ToolKey, string> = {
   computer_apps:
-    "Lists the Mac's running apps with their windows: name and bundle id, the active app first, each window's title, and whether it is minimized or on another Space. launch starts an installed app in the background first; it does not come to the front. You seldom need this: the other computer tools take an app by name or bundle id and launch it if needed. Use it when you do not know which app or window holds the work, or a name did not match.",
+    "Lists the Mac's running apps, the active one first: name, bundle id, and each window's title, minimized or on another Space. launch starts an installed app in the background; open opens files, folders or web pages in it, never programs. An app that comes forward anyway is sent back, and the result says so. Opening into an app that holds the person's documents can change them: prefer a file you made over File › New there. Use this when you do not know which app or window holds the work; the other tools launch an app by name.",
   computer_observe:
     'Reads one window of an app as text: its accessibility tree, one element a line, each with an [index], its role, name, value, state and any actions beyond a click ("actions: show menu"). Start here, then act by [index]. The first read of an app in this thread is the whole tree; later reads are a diff against your last one: "-" removed, "~" changed, "+ in [n]:" added, or "no changes". It waits for the window to settle, so never sleep first, and never read again with no action between: the tools that act already return the fresh tree. full gives the whole tree again; element gives one element\'s subtree whole (a long document\'s text); screenshot attaches a picture of the window. You get one anyway when the header says "thin tree": then aim with coordinates in that picture\'s pixels. menus adds the menu bar. Title-bar buttons are elements: click close or minimize by [index]; a whole read with no close line means the window cannot close. "minimized" on the window line means it is in the Dock.',
   computer_act:
@@ -51,7 +54,7 @@ const ANTHROPIC: Record<ToolKey, string> = {
 
 const CUA: Record<ToolKey, string> = {
   computer_apps:
-    "Lists the Mac's running apps and their windows, the active app first: each app's name and bundle id, each window's title, and whether it is minimized or on another Space. launch opens an installed app in the background without bringing it forward. Most calls skip this: the other computer tools take an app by name or bundle id and launch it themselves. Call it when you do not know which app or window holds the work, or a name did not match.",
+    "Lists the Mac's running apps and their windows, the active app first: names, bundle ids, window titles, minimized or on another Space. launch opens an installed app in the background; open hands it files, folders or web pages, never programs. If the app comes forward anyway, the person's app is put back and the result says so. Opening into an app holding the person's documents can change them: prefer a file you made over File › New there. Call it when you do not know which app or window holds the work.",
   computer_observe:
     'This is getAXState: one window\'s accessibility tree as text, an [index] on each element with its role, name, value, state and any actions beyond a click ("actions: show menu"). Call it first, then act on elements by [index]. Your first read of an app in this thread is the whole tree; after that you get a diff against your last read ("-" removed, "~" changed, "+ in [n]:" added, or "no changes"), and full is disableDiffing. It waits for the window to settle, so do not sleep before it, and do not call it again with no action between: the tools that act already end with the fresh state. element returns one element\'s subtree in full (a long document\'s text); screenshot adds a picture of the window, which also comes on its own when the header says "thin tree": then use coordinates in that picture\'s pixels. menus adds the menu bar. Title-bar buttons are elements: click(index) close or minimize; a whole read with no close line means the window cannot close. "minimized" on the window line: it is in the Dock.',
   computer_act:
@@ -82,6 +85,9 @@ export type FieldKey =
   | 'observe.element'
   | 'menus'
   | 'launch'
+  | 'open'
+  | 'apps.confirm'
+  | 'apps.confirm.kind'
   | 'actions'
   | 'action'
   | 'confirm'
@@ -98,6 +104,9 @@ const ANTHROPIC_FIELDS: Record<FieldKey, string> = {
   'observe.element': "One element's subtree in full, values uncut: a long document's text.",
   menus: 'Include the menu bar.',
   launch: 'Start this app in the background before listing.',
+  open: 'Absolute paths, file or http(s) URLs to open in the launch app. Never programs.',
+  'apps.confirm': "As computer_act's confirm: set when an item sends, uploads or shares the person's data.",
+  'apps.confirm.kind': "As on computer_act's confirm.",
   actions: 'The steps, in order, each an object with action and its parameters.',
   action: 'Which action, by its name in the tool description.',
   element: 'The [index] to act on, from your latest read.',
