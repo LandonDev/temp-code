@@ -629,7 +629,9 @@ export const MacBridgeRequestSchemas = [
       result: z.unknown().optional(),
       error: z.string().max(4_000).optional(),
       /** The result arrived as this many `peer.chunk` frames (its JSON, split). */
-      chunks: z.number().int().min(1).max(PEER_MAX_CHUNKS).optional()
+      chunks: z.number().int().min(1).max(PEER_MAX_CHUNKS).optional(),
+      /** The Mac allowed this call because the person is away (macBridge.ts): the box writes the thread's allowed row, ok or error alike. */
+      away: z.literal(true).optional()
     })
   ),
   request(

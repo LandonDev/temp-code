@@ -1300,7 +1300,7 @@ export async function startServer(
     heldChanged: (sessionId, held) => {
       for (const l of heldListeners) l({ push: 'macBridge.held', sessionId, held })
     },
-    awayRefused: (sessionId, what) => registry.awayNotice(sessionId, 'approval', what)
+    awayNoticed: (sessionId, kind, what) => registry.awayNotice(sessionId, kind, what)
   })
   macToolsHooks.current = macTools
   macToolsHooks.tokens = macTokens

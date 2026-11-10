@@ -22,7 +22,7 @@ import {
   MAC_TOOLS,
   macCallLine
 } from './macTools'
-import { MAC_AWAY_REFUSAL } from './awayPrompts'
+import { MAC_AWAY_REFUSAL, MAC_AWAY_REFUSAL_LEGACY } from './awayPrompts'
 import { MAC_JOB_TOOLS, type MacToolsDeps } from './macTools'
 import { MAC_JOB_TOOL_PARAMS } from '@shared/contract-macjobs'
 import { macBridgeLandingDir } from './macBridgeLanding'
@@ -50,7 +50,7 @@ const meta = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta =>
 
 function setup(
   handler: PeerCallHandler = async () => 'ok',
-  opts: { register?: boolean; home?: string; resources?: MacToolsDeps['resources']; awayRefused?: MacToolsDeps['awayRefused'] } = {}
+  opts: { register?: boolean; home?: string; resources?: MacToolsDeps['resources']; awayNoticed?: MacToolsDeps['awayNoticed'] } = {}
 ) {
   const settings = new Map<string, string>()
   const sessions = new Map<string, SessionMeta>([
@@ -106,7 +106,7 @@ function setup(
     reboot: (id) => reboots.push(id),
     log: () => {},
     ...(opts.resources ? { resources: opts.resources } : {}),
-    ...(opts.awayRefused ? { awayRefused: opts.awayRefused } : {})
+    ...(opts.awayNoticed ? { awayNoticed: opts.awayNoticed } : {})
   })
   return { tools, tokens, settings, reboots, pushes, calls, sessions }
 }
@@ -177,27 +177,50 @@ describe('MacTools gate', () => {
     ).resolves.toBe('ok')
   })
 
-  it("writes one away row when the Mac refuses because its person is away", async () => {
-    const awayRefused = vi.fn()
+  it.each([MAC_AWAY_REFUSAL, MAC_AWAY_REFUSAL_LEGACY])('writes one skipped row when the Mac refuses for its away person (%s)', async (words) => {
+    const awayNoticed = vi.fn()
     const { tools, tokens } = setup(async () => {
-      throw new Error(MAC_AWAY_REFUSAL)
-    }, { awayRefused })
+      throw new Error(words)
+    }, { awayNoticed })
     tools.setThread('root', 'env_mac')
-    await expect(tools.call('root', tokens.tokenFor('root'), 'mac.run', { argv: ['bun', 'test'] })).rejects.toThrow(MAC_AWAY_REFUSAL)
-    expect(awayRefused).toHaveBeenCalledTimes(1)
-    expect(awayRefused).toHaveBeenCalledWith('root', 'Run bun test?')
+    await expect(tools.call('root', tokens.tokenFor('root'), 'mac.run', { argv: ['bun', 'test'] })).rejects.toThrow(words)
+    expect(awayNoticed).toHaveBeenCalledTimes(1)
+    expect(awayNoticed).toHaveBeenCalledWith('root', 'approval', 'Run bun test?')
     expect(macCallLine('mac.readFile', { path: '/Users/me/notes.md' })).toBe('Read notes.md?')
     expect(macCallLine('mac.writeFile', { path: '/Users/me/out.txt' })).toBe('Create out.txt?')
   })
 
+  it('writes one allowed row when the reply carries the away mark, and the caller still gets the bare result', async () => {
+    const awayNoticed = vi.fn()
+    const { tools, tokens } = setup(async (_method, _params, ctx) => {
+      ctx.markAway?.()
+      ctx.markAway?.()
+      return { stdout: 'ok\n' }
+    }, { awayNoticed })
+    tools.setThread('root', 'env_mac')
+    await expect(tools.call('root', tokens.tokenFor('root'), 'mac.readFile', { path: '/Users/me/notes.md' })).resolves.toEqual({ stdout: 'ok\n' })
+    expect(awayNoticed.mock.calls).toEqual([['root', 'allowed', 'Read notes.md?']])
+  })
+
+  it('writes the allowed row on an error reply that carries the mark (an allowed read of a missing file)', async () => {
+    const awayNoticed = vi.fn()
+    const { tools, tokens } = setup(async (_method, _params, ctx) => {
+      ctx.markAway?.()
+      throw new Error('ENOENT: no such file')
+    }, { awayNoticed })
+    tools.setThread('root', 'env_mac')
+    await expect(tools.call('root', tokens.tokenFor('root'), 'mac.readFile', { path: '/Users/me/gone.md' })).rejects.toThrow('ENOENT')
+    expect(awayNoticed.mock.calls).toEqual([['root', 'allowed', 'Read gone.md?']])
+  })
+
   it('writes no away row for any other refusal', async () => {
-    const awayRefused = vi.fn()
+    const awayNoticed = vi.fn()
     const { tools, tokens } = setup(async () => {
       throw new Error('denied at the Mac')
-    }, { awayRefused })
+    }, { awayNoticed })
     tools.setThread('root', 'env_mac')
     await expect(tools.call('root', tokens.tokenFor('root'), 'mac.listDir', { path: '/x' })).rejects.toThrow('denied')
-    expect(awayRefused).not.toHaveBeenCalled()
+    expect(awayNoticed).not.toHaveBeenCalled()
   })
 
   it('a toggle reboots the thread only when it changes', () => {

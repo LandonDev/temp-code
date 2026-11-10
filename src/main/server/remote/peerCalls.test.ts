@@ -183,6 +183,30 @@ describe('PeerCalls', () => {
     await expect(pending).resolves.toEqual(value)
   })
 
+  it('the away mark rides the reply, ok, error and chunked alike, and the call still returns the bare result', async () => {
+    const big = 'x'.repeat(PEER_CHUNK_CHARS + 10)
+    const { calls, requests } = link(async (method, _p, ctx) => {
+      ctx.markAway?.()
+      if (method === 'mac.run') throw new Error('ENOENT')
+      return method === 'mac.fetchFile' ? { content: big } : { ok: 1 }
+    })
+    const heard: string[] = []
+    await expect(calls.call('env_mac', 'mac.readFile', params, 5_000, { onAway: () => heard.push('read') })).resolves.toEqual({ ok: 1 })
+    await expect(calls.call('env_mac', 'mac.run', params, 5_000, { onAway: () => heard.push('run') })).rejects.toThrow('ENOENT')
+    const fetched = await calls.call<{ content: string }>('env_mac', 'mac.fetchFile', params, 10_000, { onAway: () => heard.push('fetch') })
+    expect(fetched.content).toBe(big)
+    expect(heard).toEqual(['read', 'run', 'fetch'])
+    expect(requests.filter((r) => r.method === 'peer.reply').every((r) => (r.params as { away?: boolean }).away === true)).toBe(true)
+  })
+
+  it('a reply without the mark carries none', async () => {
+    const { calls, requests } = link(async () => ({ ok: 1 }))
+    const onAway = vi.fn()
+    await calls.call('env_mac', 'mac.readFile', params, 5_000, { onAway })
+    expect(onAway).not.toHaveBeenCalled()
+    expect(requests.find((r) => r.method === 'peer.reply')?.params).not.toHaveProperty('away')
+  })
+
   it('a reply with a chunk missing fails the call instead of parsing half', async () => {
     const { calls, frames, request } = link(async () => null, { serve: false })
     const pending = calls.call('env_mac', 'mac.readFile', params, 5_000)

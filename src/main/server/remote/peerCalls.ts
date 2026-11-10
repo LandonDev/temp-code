@@ -15,7 +15,7 @@ import { ProgressOrder, progressSender, type ProgressFrame } from './peerStreams
  *   box → Mac  { push: 'peer.call', callId, method, params, deadlineMs }
  *   Mac → box  peer.progress { callId, seq, chunk }  × n, while it runs (mac.run; peerStreams.ts)
  *   Mac → box  peer.chunk { callId, index, data }    × n, when the reply is long
- *   Mac → box  peer.reply { callId, ok, result | error, chunks? }
+ *   Mac → box  peer.reply { callId, ok, result | error, chunks?, away? }
  *
  * A reply is taken only from the socket the call went out on. Every call has
  * its own deadline (a command may run for minutes), and a socket that closes
@@ -75,6 +75,8 @@ interface PendingCall {
   chunks: (string | undefined)[]
   /** peer.progress frames, handed on in seq order (absent: the caller did not ask for them). */
   progress?: ProgressOrder
+  /** The reply said the Mac allowed the call because the person is away. */
+  onAway?: () => void
   resolve: (value: unknown) => void
   reject: (err: Error) => void
   timer: NodeJS.Timeout
@@ -222,13 +224,13 @@ export class PeerCalls {
     return `c${randomBytes(9).toString('base64url')}`
   }
 
-  /** Ask a registered peer; rejects with PeerOfflineError when none, or on the deadline. */
+  /** Ask a registered peer; rejects with PeerOfflineError when none, or on the deadline. `onAway` hears a reply's away mark, before the call settles. */
   call<T = unknown>(
     envId: string,
     method: MacPeerMethod,
     params: Extract<MacBridgePush, { push: 'peer.call' }>['params'],
     deadlineMs: number,
-    opts: { onProgress?: (frame: ProgressFrame) => void; callId?: string } = {}
+    opts: { onProgress?: (frame: ProgressFrame) => void; callId?: string; onAway?: () => void } = {}
   ): Promise<T> {
     const reg = this.registered.get(envId)
     if (!reg) return Promise.reject(new PeerOfflineError(envId))
@@ -251,6 +253,7 @@ export class PeerCalls {
         connection: reg.socket.connection,
         chunks: [],
         ...(opts.onProgress ? { progress: new ProgressOrder(opts.onProgress) } : {}),
+        ...(opts.onAway ? { onAway: opts.onAway } : {}),
         resolve: resolve as (value: unknown) => void,
         reject,
         timer
@@ -295,10 +298,11 @@ export class PeerCalls {
 
   reply(
     connection: number,
-    params: { callId: string; ok: boolean; result?: unknown; error?: string; chunks?: number }
+    params: { callId: string; ok: boolean; result?: unknown; error?: string; chunks?: number; away?: true }
   ): { ok: true } {
     this.touch(connection)
     const call = this.own(connection, params.callId)
+    if (params.away) call.onAway?.()
     if (!params.ok) {
       this.settle(
         params.callId,
@@ -395,7 +399,7 @@ export function handlePeerRequest(
     | { method: 'peer.register'; params: PeerRegisterParams }
     | {
         method: 'peer.reply'
-        params: { callId: string; ok: boolean; result?: unknown; error?: string; chunks?: number }
+        params: { callId: string; ok: boolean; result?: unknown; error?: string; chunks?: number; away?: true }
       }
     | { method: 'peer.chunk'; params: { callId: string; index: number; data: string } }
     | {
@@ -428,16 +432,17 @@ export type LinkRequest = (
 export async function replyOverLink(
   request: LinkRequest,
   callId: string,
-  outcome: { ok: true; result: unknown } | { ok: false; error: string },
+  outcome: ({ ok: true; result: unknown } | { ok: false; error: string }) & { away?: boolean },
   chunkChars: number = PEER_CHUNK_CHARS
 ): Promise<void> {
+  const away = outcome.away ? { away: true as const } : {}
   if (!outcome.ok) {
-    await request('peer.reply', { callId, ok: false, error: outcome.error.slice(0, 4_000) })
+    await request('peer.reply', { callId, ok: false, error: outcome.error.slice(0, 4_000), ...away })
     return
   }
   const json = JSON.stringify(outcome.result ?? null)
   if (json.length <= chunkChars) {
-    await request('peer.reply', { callId, ok: true, result: outcome.result ?? null })
+    await request('peer.reply', { callId, ok: true, result: outcome.result ?? null, ...away })
     return
   }
   const chunks = Math.ceil(json.length / chunkChars)
@@ -456,7 +461,7 @@ export async function replyOverLink(
       { callId, index: i, data: json.slice(i * chunkChars, (i + 1) * chunkChars) },
       { timeoutMs: 120_000 }
     )
-  await request('peer.reply', { callId, ok: true, chunks })
+  await request('peer.reply', { callId, ok: true, chunks, ...away })
 }
 
 export type PeerCallHandler = (
@@ -468,6 +473,8 @@ export type PeerCallHandler = (
     deadlineAt: number
     /** Send output so far as a peer.progress frame (peerStreams.ts progressSender). */
     progress?: (chunk: string, skipped?: number) => void
+    /** The call was allowed because the person is away: the reply carries `away: true`. */
+    markAway?: () => void
   }
 ) => Promise<unknown>
 
@@ -481,6 +488,7 @@ export async function servePeerCall(
 ): Promise<void> {
   const deadlineAt = Date.now() + Math.max(0, push.deadlineMs)
   let outcome: { ok: true; result: unknown } | { ok: false; error: string }
+  let away = false
   try {
     outcome = {
       ok: true,
@@ -488,14 +496,15 @@ export async function servePeerCall(
         from,
         callId: push.callId,
         deadlineAt,
-        progress: progressSender(request, push.callId, log)
+        progress: progressSender(request, push.callId, log),
+        markAway: () => void (away = true)
       })
     }
   } catch (err) {
     outcome = { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
   try {
-    await replyOverLink(request, push.callId, outcome)
+    await replyOverLink(request, push.callId, { ...outcome, away })
   } catch (err) {
     log(
       `${push.method} reply to ${from} not taken: ${err instanceof Error ? err.message : String(err)}`

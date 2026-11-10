@@ -124,7 +124,9 @@ export async function callMacWrite(
   thread: MacCallThread,
   args: Record<string, unknown>,
   /** The peer call's id, named ahead so a pause can cancel it on the Mac (macPause.ts). */
-  callId?: string
+  callId?: string,
+  /** The Mac's reply said it allowed this write because the person is away. */
+  onAway?: () => void
 ): Promise<MacWriteFileResult> {
   const { wire, release } = prepareMacWrite(args, calls.connectionOf(macPeer), stages)
   try {
@@ -133,7 +135,7 @@ export async function callMacWrite(
       'mac.writeFile',
       { thread, args: wire },
       MAC_APPROVAL_WAIT_MS + MAC_WRITE_PULL_MS + DEADLINE_SLACK_MS,
-      callId ? { callId } : {}
+      { ...(callId ? { callId } : {}), ...(onAway ? { onAway } : {}) }
     )
   } finally {
     release()
