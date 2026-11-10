@@ -14,11 +14,11 @@ public struct HitFacts: Equatable, Sendable {
     /// a text element the caret route can place a caret in
     public var isText: Bool
     /// screen points
-    public var frame: Rect?
+    public var frame: ComputerProtocol.Rect?
     /// its AXWindow is the target window, or it sits in a sheet of it
     public var inTargetWindow: Bool
 
-    public init(role: String, actions: Set<String> = [], isIncrementor: Bool = false, selectableRow: Bool = false, isText: Bool = false, frame: Rect? = nil, inTargetWindow: Bool = true) {
+    public init(role: String, actions: Set<String> = [], isIncrementor: Bool = false, selectableRow: Bool = false, isText: Bool = false, frame: ComputerProtocol.Rect? = nil, inTargetWindow: Bool = true) {
         self.role = role
         self.actions = actions
         self.isIncrementor = isIncrementor
