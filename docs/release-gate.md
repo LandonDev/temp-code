@@ -283,7 +283,7 @@ otherwise.
 | `script:e2e-computer-preview` (whole) | Mac | it takes Escape for about two seconds | 3 s | inconclusive: the Mac locked before its live legs (2026-11-09) |
 | `script:e2e-computer-ui` | Mac | a real Sonnet thread, 5 idle minutes | — | not run: the Mac was locked, the person away (2026-11-09) |
 | `script:compare-computer-words` | Mac | real model runs; the scratch windows come forward | 23 min for the 48 runs, then the policy check (the instructions build's run, 13:35 to 13:58 UTC, not repeated) | Opus 5.5 and Muse Wonder 1.0 passed every task on both words, GPT-6.1 Sol two of three; the cua words ship for Anthropic and OpenAI, the anthropic words for Meta (docs/computer-protocol.md §19.6) |
-| `script:measure-front-guard` | Mac | 5 idle minutes, aborting at the person's first input; TextEdit, Chrome (scratch profile), Finder, Calculator and IntelliJ come forward | — | not run yet: the person was using the Mac live when the front guard landed (2026-11-10) |
+| `script:measure-front-guard` | Mac | 5 idle minutes, aborting at the person's first input; TextEdit, Chrome (scratch profile), Finder, Calculator and IntelliJ come forward | about 2 min after the idle wait | 2026-11-10, ungated, the person away: Finder and Calculator ran and never raised; TextEdit, Chrome and IntelliJ skipped because the person's own copies were running (docs/computer-protocol.md §23.9) |
 | `script:e2e-computer-bench` | Mac | "The bench's hand run" below | | |
 
 ## The computer bench
