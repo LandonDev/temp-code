@@ -1370,7 +1370,7 @@ export async function startServer(
       macName: (id) => hostNameOf(id) ?? id,
       resources,
       reboot: (id) => void registry.rebootAtNextTurn(id),
-      awayRefused: (id, what) => registry.awayNotice(id, 'approval', what),
+      awayNoticed: (id, kind, what) => registry.awayNotice(id, kind, what),
       held: (id, line) => registry.setToolHold(id, line)
     })
     peerCalls.onOffers((id, offers) => bridge.offersChanged(id, offers))

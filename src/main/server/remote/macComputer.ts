@@ -31,6 +31,7 @@ import {
 import { hostErrorLine } from '@shared/computer/hostErrors'
 import type { ComputerToolCall } from '@shared/computer/tools'
 import { needsApproval } from '@shared/computer/words'
+import { awayAllowsKind } from '@shared/away'
 import { MAC_AWAY_REFUSAL } from '../awayPrompts'
 import type { ComputerToolOutcome } from '../computer/result'
 import { abortedLine, type ComputerToolContext } from '../computer/run'
@@ -47,8 +48,10 @@ import type { ApprovalRequest } from '../drivers/types'
  *  - The host's policy must be above Off and its switch
  *    (`macBridge.computer.<envId>`) on, and this Mac able to serve computer
  *    use at all; each refusal is one line the model can act on.
- *  - The person away refuses an acting call that would ask, before anything
- *    waits; a card made later (the tier gate's too) is refused as it is made.
+ *  - The person away: every card (the tier gate's too) is allowed as it is
+ *    made and the answer says `away`, except a call the model flagged pay or
+ *    subscribe, refused before anything waits (MAC_AWAY_REFUSAL), or at its
+ *    card when Away turned on while it waited.
  *  - A live session is a running request of kind `computer` on the load
  *    guard: it takes a slot under the host's commands cap and its computer
  *    cap, waits in line with its standing when either is full, and gives
@@ -89,8 +92,10 @@ export interface MacComputerBridge {
   askComputer(
     shape: ComputerRequestShape,
     until: number,
-    callId?: string
-  ): { id: string; answer: Promise<{ allow: boolean; outcome: MacBridgeOutcome }> }
+    callId?: string,
+    /** Away denies this card at the flip instead of allowing it (MacBridge.awayChanged): a money act */
+    opts?: { awayDenies?: boolean }
+  ): { id: string; answer: Promise<{ allow: boolean; outcome: MacBridgeOutcome; byAway?: true }> }
   /** Finish a card (allowed, denied, expired): MacBridge.ask leaves an allowed request pending for its caller to finish. */
   finishCard(id: string, outcome: MacBridgeOutcome): void
   /** A running request of kind computer, with Stop; its id. */
@@ -131,8 +136,12 @@ export function bridgedLanding(dataDir: string, key: string): string {
 
 interface CallState {
   controller: AbortController
-  /** a card was refused because the person is away */
+  /** a card was allowed because the person is away: the answer says `away` and the box writes the allowed row */
   away: boolean
+  /** the model flagged the call pay or subscribe (@shared/away awayAllowsKind): Away denies its cards */
+  awayDenies: boolean
+  /** a card was denied because the person is away: the call ends in MAC_AWAY_REFUSAL */
+  awayDenied: boolean
   /** the call's own progress sender */
   progress: RowSender | null
 }
@@ -291,15 +300,16 @@ export class MacComputer {
       line(`refused (unavailable: ${why})`)
       throw new Error(computerUnavailableOnMac(why ?? 'the computer host is not running'))
     }
-    // nobody would answer the card: refused before anything waits; reads and an unflagged act in full access go on
-    if (needsApproval(call.tool, call.args as Parameters<typeof needsApproval>[1], call.permission).ask && this.deps.bridge.away()) {
-      line('refused (away)')
+    // Away allows every card but a money act's: that one is refused before anything waits
+    const awayDenies = !awayAllowsKind((call.args as { confirm?: { kind?: string } }).confirm?.kind)
+    if (awayDenies && this.deps.bridge.away() && needsApproval(call.tool, call.args as Parameters<typeof needsApproval>[1], call.permission).ask) {
+      line('refused (away, spends money)')
       throw new Error(MAC_AWAY_REFUSAL)
     }
 
     const st = this.stateOf(key, env.id, thread.id)
     const callId = ctx.callId ?? `local_${++localCalls}`
-    const own: CallState = { controller: new AbortController(), away: false, progress: null }
+    const own: CallState = { controller: new AbortController(), away: false, awayDenies, awayDenied: false, progress: null }
     const signal = own.controller.signal
     st.calls.set(callId, own)
     this.disarmIdle(st)
@@ -325,6 +335,8 @@ export class MacComputer {
         call.tool,
         call.args
       )
+      // a money card Away denied: the box writes the skipped row from this refusal (computer/bridge.ts)
+      if (own.awayDenied) throw new Error(MAC_AWAY_REFUSAL)
       const images = await this.readShots(outcome)
       const row = host.sessions.rowOf(key)
       const first = row?.apps[0]
@@ -396,7 +408,7 @@ export class MacComputer {
     }
   }
 
-  /** A card on the Mac (the call's own, or the tier gate's): Allow or Deny, nothing remembered; Away refuses it as it is made. */
+  /** A card on the Mac (the call's own, or the tier gate's): Allow or Deny, nothing remembered; Away answers it as it is made (allowed, or denied for a money act), checked again at every card. */
   private async ask(
     env: { id: string; name: string },
     thread: MacCallThread,
@@ -408,9 +420,14 @@ export class MacComputer {
     line: (decision: string) => void
   ): Promise<boolean> {
     if (this.deps.bridge.away()) {
+      if (own.awayDenies) {
+        own.awayDenied = true
+        line('card denied (away, spends money)')
+        return false
+      }
       own.away = true
-      line('card refused (away)')
-      return false
+      line('card allowed (away)')
+      return true
     }
     const signal = req.signal ?? own.controller.signal
     if (signal.aborted) return false
@@ -427,7 +444,8 @@ export class MacComputer {
         computer: input
       },
       until,
-      callId
+      callId,
+      own.awayDenies ? { awayDenies: true } : {}
     )
     st.asking = approvalLine('computer', input, req.title)
     own.progress?.poke()
@@ -440,7 +458,12 @@ export class MacComputer {
     try {
       const decision = await Promise.race([answer, aborted])
       outcome = decision.outcome
-      line(`card ${decision.outcome}`)
+      // decided by Away turning on while it waited (MacBridge.awayChanged)
+      if ('byAway' in decision && decision.byAway) {
+        if (decision.allow) own.away = true
+        else own.awayDenied = true
+      }
+      line(`card ${decision.outcome}${'byAway' in decision && decision.byAway ? ' (away turned on)' : ''}`)
       return decision.allow
     } finally {
       if (onAbort) signal.removeEventListener('abort', onAbort)

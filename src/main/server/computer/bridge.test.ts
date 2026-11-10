@@ -12,7 +12,7 @@ import {
   type ComputerPeerAnswer
 } from '@shared/contract-maccomputer'
 import type { SessionMeta, SessionStatus } from '@shared/events'
-import { MAC_AWAY_REFUSAL } from '../awayPrompts'
+import { MAC_AWAY_REFUSAL, MAC_AWAY_REFUSAL_LEGACY } from '../awayPrompts'
 import { CANCELLED_PAUSED, MacPause } from '../macPause'
 import { PeerCalls, handlePeerRequest } from '../remote/peerCalls'
 import { ComputerBridge, STOP_REPLY_MS } from './bridge'
@@ -74,7 +74,7 @@ function box(opts: { bridged?: string[]; offers?: string[] } = {}) {
   const landingRoot = mkdtempSync(join(tmpdir(), 'tc-bridge-'))
   const clock = new ManualClock()
   const reboots: string[] = []
-  const away: [string, string][] = []
+  const away: [string, string, string][] = []
   const ledger: string[] = []
   const pushed: ComputerSessionRow[][] = []
   const holds: [string, string | null][] = []
@@ -94,7 +94,7 @@ function box(opts: { bridged?: string[]; offers?: string[] } = {}) {
       computerEnded: (id, mac, note) => void ledger.push(`ended ${id} ${mac} ${note}`)
     },
     reboot: (id) => void reboots.push(id),
-    awayRefused: (id, what) => void away.push([id, what]),
+    awayNoticed: (id, kind, what) => void away.push([id, kind, what]),
     held: (id, line) => void holds.push([id, line]),
     clock,
     log: () => {}
@@ -365,18 +365,22 @@ describe('ComputerBridge: pause, Stop, Away, offline', () => {
     expect((await p).body).toBe('stopped by the person; no more computer use this turn')
   })
 
-  it('an answer that says away writes the away row; a refusal for Away answers away and writes it too', async () => {
+  it('an answer that says away writes the allowed row; a refusal for Away (either build) writes the skipped row', async () => {
     const b = box()
     const p = b.run('computer_act', click)
     await b.until(() => b.out.length === 1, 'out')
-    b.reply(b.out[0].callId, answer({ body: 'denied: the person is away', isError: true, away: true }))
-    expect((await p).body).toBe('denied: the person is away')
-    expect(b.away).toEqual([['t1', 'Click at 5,5 in TextEdit?']])
+    b.reply(b.out[0].callId, answer({ away: true }))
+    expect((await p).isError).toBe(false)
+    expect(b.away).toEqual([['t1', 'allowed', 'Click at 5,5 in TextEdit?']])
     const q = b.run('computer_act', click)
     await b.until(() => b.out.length === 2, 'out')
     b.fail(b.out[1].callId, MAC_AWAY_REFUSAL)
-    expect((await q).body).toBe('denied: the person is away; finish around this act and name it in your report')
-    expect(b.away).toHaveLength(2)
+    expect((await q).body).toBe('denied: the person is away and this act spends money; finish around it and name it in your report')
+    const r = b.run('computer_act', click)
+    await b.until(() => b.out.length === 3, 'out')
+    b.fail(b.out[2].callId, MAC_AWAY_REFUSAL_LEGACY)
+    expect((await r).body).toBe(MAC_AWAY_REFUSAL_LEGACY)
+    expect(b.away.map(([, kind]) => kind)).toEqual(['allowed', 'approval', 'approval'])
   })
 
   it("a Mac refusal is the Mac's line as written", async () => {

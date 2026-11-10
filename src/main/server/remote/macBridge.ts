@@ -1279,7 +1279,7 @@ export class MacBridge {
         policyOf: (envId) => this.policyOf(envId),
         computerOf: (envId) => this.computerOf(envId),
         away: () => this.deps.away?.() ?? false,
-        askComputer: (shape, until, callId) => this.ask(shape, until, false, callId),
+        askComputer: (shape, until, callId, opts) => this.ask(shape, until, false, callId, opts),
         finishCard: (id, outcome) => this.finish(id, outcome),
         openLive: (shape, stop) => this.openLive(shape, stop),
         holdLive: (envId, id, until, opts) => this.holdLive(envId, id, until, opts),

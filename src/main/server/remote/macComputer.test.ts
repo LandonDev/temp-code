@@ -212,14 +212,20 @@ describe('MacComputer: what refuses a call', () => {
     expect(await s.settle(wrong)).toEqual({ ok: false, error: 'refused: the call names another thread' })
   })
 
-  it('Away refuses an acting call that would ask, before anything waits; an observe and a full-access act go through', async () => {
+  it('Away refuses a call flagged pay or subscribe before anything waits; every other call goes through', async () => {
     const s = setup({ away: { on: true } })
     const click = { tool: 'computer_act' as const, args: { app: 'TextEdit', action: 'left_click', coordinate: [5, 5] }, permission: 'safe' as const }
-    expect(await s.settle(s.call(click))).toEqual({ ok: false, error: MAC_AWAY_REFUSAL })
+    for (const kind of ['pay', 'subscribe']) {
+      const flagged = { ...click, permission: 'auto' as const, args: { ...click.args, confirm: { kind, what: 'Buy the plan' } } }
+      expect(await s.settle(s.call(flagged))).toEqual({ ok: false, error: MAC_AWAY_REFUSAL })
+    }
     expect(s.requests()).toHaveLength(0)
+    expect(s.fake.runs).toHaveLength(0)
     expect((await s.call({ permission: 'safe' })).isError).toBe(false)
-    expect((await s.call({ ...click, permission: 'auto' })).isError).toBe(false)
-    expect(s.fake.runs).toHaveLength(2)
+    expect(await s.call(click)).toMatchObject({ isError: false, away: true })
+    expect((await s.call({ ...click, permission: 'auto', args: { ...click.args, confirm: { kind: 'delete', what: 'Delete the draft' } } })).away).toBe(true)
+    expect(s.cards()).toHaveLength(0)
+    expect(s.lines.some((l) => l.includes('card allowed (away)'))).toBe(true)
   })
 })
 
@@ -270,18 +276,55 @@ describe('MacComputer: the card', () => {
     expect(s.cards()).toHaveLength(0)
   })
 
-  it('Away turning on while a call waits in line refuses its card, and the answer says away', async () => {
+  it('Away turning on while a call waits in line allows its card, and the answer says away', async () => {
     const s = setup({ maxComputer: 1 })
-    const first = s.call({ thread: 's0' })
-    await first
-    const away = s.away
+    await s.call({ thread: 's0' })
     const p = s.call({ ...click, thread: 's1' })
     await until(() => s.lives().some((r) => r.sessionId === 's1' && r.status === 'held'), 'in line')
-    away.on = true
-    s.fake.setAway(true)
+    s.away.on = true
     await s.end('settled', 's0')
-    expect(await p).toMatchObject({ isError: true, body: 'denied: the person is away', away: true })
+    expect(await p).toMatchObject({ isError: false, away: true })
     expect(s.cards()).toHaveLength(0)
+  })
+
+  it('a pay call that passed with Away off is refused at its card when Away turned on while it waited in line', async () => {
+    const s = setup({ maxComputer: 1 })
+    await s.call({ thread: 's0' })
+    const p = s.settle(s.call({ ...click, permission: 'auto', thread: 's1', args: { ...click.args, confirm: { kind: 'pay', what: 'Buy' } } }))
+    await until(() => s.lives().some((r) => r.sessionId === 's1' && r.status === 'held'), 'in line')
+    s.away.on = true
+    await s.end('settled', 's0')
+    expect(await p).toEqual({ ok: false, error: MAC_AWAY_REFUSAL })
+    expect(s.cards()).toHaveLength(0)
+  })
+
+  it('Away turning on decides a card already waiting: allowed and marked, or denied for a pay act', async () => {
+    const s = setup()
+    const p = s.call(click)
+    const paid = s.settle(s.call({ ...click, permission: 'auto', thread: 's2', args: { ...click.args, confirm: { kind: 'pay', what: 'Buy' } } }))
+    await until(() => s.cards().length === 2, 'both cards')
+    s.away.on = true
+    s.mb.awayChanged(true)
+    expect(await p).toMatchObject({ isError: false, away: true })
+    expect(await paid).toEqual({ ok: false, error: MAC_AWAY_REFUSAL })
+    expect(s.cards()).toHaveLength(0)
+  })
+
+  it("the session tier's card is Run now while away, and denied in a pay call", async () => {
+    for (const confirm of [undefined, { kind: 'pay', what: 'Buy' }]) {
+      const s = setup()
+      s.fake.behave(async (r) => {
+        s.away.on = true
+        const ok = await r.ctx.approve!({ toolName: 'computer_session', input: {}, title: 'Use the pointer?', choices: 'run-skip', signal: r.ctx.signal })
+        return { steps: [], shots: [], body: ok ? 'ran' : 'skipped', isError: !ok }
+      })
+      const p = s.settle(s.call({ ...click, args: { ...click.args, ...(confirm ? { confirm } : {}) } }))
+      await until(() => s.cards().length === 1, 'the call card')
+      s.mb.decide(s.cards()[0].id, true)
+      const out = await p
+      if (confirm) expect(out).toEqual({ ok: false, error: MAC_AWAY_REFUSAL })
+      else expect(out).toMatchObject({ ok: true, value: { body: 'ran', away: true } })
+    }
   })
 })
 

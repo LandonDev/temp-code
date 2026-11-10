@@ -21,7 +21,7 @@ import { hostErrorLine } from '@shared/computer/hostErrors'
 import type { ComputerToolCall, ComputerToolName } from '@shared/computer/tools'
 import { computerActivity, computerApprovalInput, computerApprovalTitle } from '@shared/computer/words'
 import type { SessionMeta, SessionStatus } from '@shared/events'
-import { MAC_AWAY_REFUSAL } from '../awayPrompts'
+import { MAC_AWAY_REFUSAL, MAC_AWAY_REFUSAL_LEGACY } from '../awayPrompts'
 import { CANCELLED_PAUSED, CANCELLED_STOPPED, type MacPause } from '../macPause'
 import { PeerOfflineError, type PeerCalls } from '../remote/peerCalls'
 import type { MacThreadTokens } from '../macTools'
@@ -79,8 +79,8 @@ export interface ComputerBridgeDeps {
   resources?: { recordComputer(sessionId: string, macPeer: string, label: string): void; computerEnded(sessionId: string, macPeer: string, note: string): void }
   /** The thread's tool set changed: its harness comes back with (or without) the tools at its next turn. */
   reboot?: (sessionId: string) => void
-  /** A card was refused on the Mac because its person is away: the thread's away row. */
-  awayRefused?: (sessionId: string, what: string) => void
+  /** The Mac decided a card for its away person: allowed (the answer says `away`) or denied (a money act; a Mac on an older build refused every one): the thread's away row. */
+  awayNoticed?: (sessionId: string, kind: 'allowed' | 'approval', what: string) => void
   /** The call is held on the Mac (its line), or no longer (null): registry.setToolHold, so the thread's status says it. */
   held?: (sessionId: string, line: string | null) => void
   clock?: BridgeClock
@@ -294,7 +294,7 @@ export class ComputerBridge {
     // read after the pictures landed: a Stop or the thread's end may have come while they were written
     const closed = inflight.closed
     if (a.row && !closed) this.mirror(t, a.row)
-    if (a.away) this.awayNotice(t.id, call)
+    if (a.away) this.awayNotice(t.id, call, 'allowed')
     const mac = t.macPeer
     if (mac && !closed && !t.ledgered && this.deps.resources) {
       this.deps.resources.recordComputer(t.id, mac, a.row?.apps[0]?.name ?? ('app' in call.args ? String(call.args.app ?? '') : ''))
@@ -305,20 +305,21 @@ export class ComputerBridge {
 
   private failure(t: ThreadBridge, call: ComputerToolCall, err: unknown): ComputerToolOutcome {
     const message = err instanceof Error ? err.message : String(err)
-    if (message === MAC_AWAY_REFUSAL) {
-      this.awayNotice(t.id, call)
-      return refusal(hostErrorLine('away'))
+    // a money act Away denied on the Mac; a Mac on the older build refused every asking call with its own words
+    if (message === MAC_AWAY_REFUSAL || message === MAC_AWAY_REFUSAL_LEGACY) {
+      this.awayNotice(t.id, call, 'approval')
+      return refusal(message === MAC_AWAY_REFUSAL ? hostErrorLine('away') : message)
     }
     if (err instanceof PeerOfflineError) return refusal(COMPUTER_MAC_WENT_OFFLINE)
     if (message === CANCELLED_PAUSED || message === CANCELLED_STOPPED) return refusal(message)
     return refusal(message)
   }
 
-  private awayNotice(id: string, call: ComputerToolCall): void {
+  private awayNotice(id: string, call: ComputerToolCall, kind: 'allowed' | 'approval'): void {
     const args = call.args as Parameters<typeof computerApprovalTitle>[1] & { app?: string; window?: string }
     const titleCtx = { appName: args.app ?? 'an app', window: args.window ?? null, element: () => null }
     const title = computerApprovalTitle(call.tool, args, titleCtx)
-    this.deps.awayRefused?.(id, approvalLine('computer', computerApprovalInput(call.tool, args, titleCtx), title))
+    this.deps.awayNoticed?.(id, kind, approvalLine('computer', computerApprovalInput(call.tool, args, titleCtx), title))
   }
 
   /** A row from the Mac for the call in flight; one for a call that answered, was Stopped or ended is dropped, so it cannot set a hold again. */
