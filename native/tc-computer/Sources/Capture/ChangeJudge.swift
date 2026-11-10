@@ -66,15 +66,35 @@ public struct WatchFrame: Sendable {
 /// rects and luma keeps only the dirty cells whose luma moved more than `lumaDelta`, each with
 /// the dirty area inside it: ScreenCaptureKit reports a covered window's every frame as dirty,
 /// whole, so the rects alone would count a still window as changing.
+///
+/// `ignore` (frame pixels) is the title-bar corner, where macOS draws its sharing badge while any
+/// capture runs, this watch's own included: a cell meeting it never counts (§22.8).
 public struct ChangeJudge: Sendable {
     private let rule: ChangeRule
+    private let ignore: CGRect?
     private var sawBaseline = false
     private var lastLuma: LumaGrid?
     /// Small frames' hit times per cell (row-major index), each within `windowMs`.
     private var hits: [Int: [Double]] = [:]
 
-    public init(rule: ChangeRule = CaptureTuning.changeRule) {
+    public init(rule: ChangeRule = CaptureTuning.changeRule, ignore: CGRect? = nil) {
         self.rule = rule
+        self.ignore = ignore.flatMap { $0.isEmpty ? nil : $0.standardized }
+    }
+
+    /// The cells of a `columns`-wide grid that meet `ignore`.
+    private func ignored(columns: Int, rows: Int) -> Set<Int> {
+        guard let ignore else { return [] }
+        let size = Double(rule.cell)
+        let lastColumn = min(columns - 1, Int((Double(ignore.maxX) / size).rounded(.up)) - 1)
+        let lastRow = min(rows - 1, Int((Double(ignore.maxY) / size).rounded(.up)) - 1)
+        let firstColumn = max(0, Int(Double(ignore.minX) / size)), firstRow = max(0, Int(Double(ignore.minY) / size))
+        guard firstColumn <= lastColumn, firstRow <= lastRow else { return [] }
+        var out = Set<Int>()
+        for row in firstRow...lastRow {
+            for column in firstColumn...lastColumn { out.insert(row * columns + column) }
+        }
+        return out
     }
 
     public mutating func observe(_ frame: WatchFrame) -> Bool {
@@ -105,13 +125,24 @@ public struct ChangeJudge: Sendable {
         return fresh >= rule.minCells
     }
 
-    /// The frame's dirty cells and dirty area in pixels; nil when the frame says nothing either way.
+    /// The frame's dirty cells and dirty area in pixels, the ignored corner's left out; nil when the frame says nothing either way.
     private func dirtyCells(_ frame: WatchFrame, previousLuma: LumaGrid?) -> (Set<Int>, Double)? {
         let columns = (frame.width + rule.cell - 1) / rule.cell
         let rows = (frame.height + rule.cell - 1) / rule.cell
+        guard let (cells, area) = allDirtyCells(frame, previousLuma: previousLuma, columns: columns, rows: rows) else { return nil }
+        let corner = ignored(columns: columns, rows: rows)
+        guard !corner.isEmpty, !cells.isDisjoint(with: corner) else { return (cells, area) }
+        let kept = cells.subtracting(corner)
+        // what the corner's cells held leaves the area too, at most a whole cell each
+        let dropped = Double(cells.count - kept.count) * Double(rule.cell * rule.cell)
+        return (kept, max(0, area - dropped))
+    }
+
+    private func allDirtyCells(_ frame: WatchFrame, previousLuma: LumaGrid?, columns: Int, rows: Int) -> (Set<Int>, Double)? {
         if let dirty = frame.dirty {
             let bounds = CGRect(x: 0, y: 0, width: frame.width, height: frame.height)
-            let clipped = dirty.map { $0.standardized.intersection(bounds) }.filter { !$0.isNull && $0.width > 0 && $0.height > 0 }
+            // a rect wholly inside the ignored corner says nothing
+            let clipped = dirty.map { $0.standardized.intersection(bounds) }.filter { !$0.isNull && $0.width > 0 && $0.height > 0 && !(ignore?.contains($0) ?? false) }
             var cells = Set<Int>()
             let size = Double(rule.cell)
             for rect in clipped {

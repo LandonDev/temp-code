@@ -247,3 +247,49 @@ private func judge(rule: ChangeRule = .standard) -> ChangeJudge {
         }
     }
 }
+
+/// §22.8: the sharing badge macOS draws over the title bar while this watch runs never counts.
+@Suite struct TitleBarCornerTests {
+    /// 96×32 pt at 0.32 px a point.
+    let corner = CGRect(x: 0, y: 0, width: 96 * pixelsPerPoint, height: 32 * pixelsPerPoint)
+
+    func cornered() -> ChangeJudge {
+        var judge = ChangeJudge(ignore: corner)
+        _ = judge.observe(frame([], at: 0))
+        return judge
+    }
+
+    @Test func theBadgeComingAndGoingNeverCounts() {
+        var judge = cornered()
+        // the 68×22 pt badge over the traffic lights, at 4,4 pt
+        for step in 1...10 { #expect(judge.observe(frame([rect(points: 4, 4, 68, 22)], at: Double(step) * 100)) == false) }
+        // a repaint of the whole title-bar corner, reported as one rect over it
+        #expect(judge.observe(frame([rect(points: 0, 0, 96, 32)], at: 1_200)) == false)
+    }
+
+    @Test func theSameRepaintElsewhereCountsAndOneCrossingTheCornerCountsByItsCellsOutside() {
+        var watched = cornered()
+        #expect(watched.observe(frame([rect(points: 300, 200, 68, 22)], at: 100)) == true)
+        // a title change: the badge's place and the title's text beside it
+        #expect(watched.observe(frame([rect(points: 4, 4, 300, 22)], at: 200)) == true)
+        var plain = judge()
+        #expect(plain.observe(frame([rect(points: 4, 4, 68, 22)], at: 100)) == true, "with no corner the badge counts")
+    }
+
+    @Test func lumaAloneInTheCornerNeverCounts() {
+        var judge = ChangeJudge(ignore: corner)
+        let columns = 32, rows = 24
+        let still = LumaGrid(columns: columns, rows: rows, values: Array(repeating: 100, count: columns * rows))
+        var badge = still
+        // the badge's cells (1–23 px across, 1–9 px down): rows 0–1 and columns 0–2 of 8 px cells
+        for row in 0..<2 { for column in 0..<3 { badge.values[row * columns + column] = 200 } }
+        let luma = { (grid: LumaGrid, at: Double) in WatchFrame(status: .complete, width: frameWidth, height: frameHeight, dirty: nil, luma: grid, atMs: at) }
+        _ = judge.observe(luma(still, 0))
+        #expect(judge.observe(luma(badge, 100)) == false)
+        #expect(judge.observe(luma(still, 200)) == false)
+    }
+
+    @Test func theWatchMapsTheCornerFromPoints() {
+        #expect(CaptureTuning.titleBarCorner == CGSize(width: 96, height: 32))
+    }
+}

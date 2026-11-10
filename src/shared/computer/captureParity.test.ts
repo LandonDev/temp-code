@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { TITLE_BAR_CORNER } from './observation'
 import { PREVIEW_STREAM, SHOT } from './protocol'
 
 // Capture's numbers (native/tc-computer/Sources/Capture/CaptureTuning.swift) against the wire's.
@@ -51,6 +52,10 @@ describe('Capture tuning and the wire', () => {
     for (const [name, wire] of Object.entries(PREVIEW_STREAM)) {
       expect(generated('PreviewStream', name), `PREVIEW_STREAM.${name}`).toBe(wire)
     }
+  })
+
+  it('ignores the same title-bar corner the text names (§22.8)', () => {
+    expect(value('titleBarCorner')).toBe(`CGSize(width: ${TITLE_BAR_CORNER.w}, height: ${TITLE_BAR_CORNER.h})`)
   })
 
   it("keeps a frame's base64 line under the wire's frame cap", () => {

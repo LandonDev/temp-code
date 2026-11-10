@@ -19,7 +19,7 @@ final class WatchStream: NSObject, PixelChangeSignal, SCStreamOutput, SCStreamDe
     private typealias Waiter = CheckedContinuation<Bool, Never>
 
     private struct State {
-        var judge = ChangeJudge()
+        var judge: ChangeJudge
         var gate = BaselineGate<Waiter>()
         var linger: Linger
         var lastChange: UInt64 = 0
@@ -44,7 +44,13 @@ final class WatchStream: NSObject, PixelChangeSignal, SCStreamOutput, SCStreamDe
         self.onStop = onStop
         size = ShotGeometry.output(points: points, pointPixelScale: Double(filter.pointPixelScale), maxEdge: CaptureTuning.watchEdge)
         queue = DispatchQueue(label: "tc.capture.watch.\(windowID)")
-        state = OSAllocatedUnfairLock(uncheckedState: State(linger: Linger(startMs: monotonicMs())))
+        // the title-bar corner in the frame's pixels: the sharing badge this watch itself makes appear there (§22.8)
+        let corner = CGRect(
+            x: 0, y: 0,
+            width: Double(CaptureTuning.titleBarCorner.width) * Double(size.width) / max(1, Double(points.width)),
+            height: Double(CaptureTuning.titleBarCorner.height) * Double(size.height) / max(1, Double(points.height))
+        )
+        state = OSAllocatedUnfairLock(uncheckedState: State(judge: ChangeJudge(ignore: corner), linger: Linger(startMs: monotonicMs())))
         super.init()
     }
 

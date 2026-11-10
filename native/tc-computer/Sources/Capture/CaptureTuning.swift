@@ -42,6 +42,9 @@ public enum CaptureTuning {
     public static let baselineWait: Duration = .milliseconds(300)
 
     public static let changeRule = ChangeRule.standard
+    /// Points from the window's top-left the watch never counts: macOS draws its sharing badge
+    /// there while a capture runs (docs/computer-protocol.md §22.8, `TITLE_BAR_CORNER` in observation.ts).
+    public static let titleBarCorner = CGSize(width: 96, height: 32)
 }
 
 extension Duration {
