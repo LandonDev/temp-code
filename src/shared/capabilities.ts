@@ -224,7 +224,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   // Admission control (contract-admission.ts): read the cap and its sizing; only an admin pins it.
   'admission.get': 'read',
   'admission.set': 'admin',
-  // Away from computer (contract-away.ts): anyone may look; the switch denies every thread's approvals, so it needs approve; the peer leg is admin.
+  // Away from computer (contract-away.ts): anyone may look; the switch answers every thread's approvals (allowed, a money act denied), so it needs approve; the peer leg is admin.
   'away.get': 'read',
   'away.set': 'approve',
   'away.apply': 'admin',
