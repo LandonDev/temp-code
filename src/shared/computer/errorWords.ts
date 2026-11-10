@@ -20,6 +20,16 @@ type Words = (e: ComputerError, ctx: ErrorContext) => string | null
 
 export const ERROR_LINE_MAX = 200
 
+/** A menu item's title path, `File › Close`, then `tail`: each title at most 40 characters, the line at most ERROR_LINE_MAX. */
+const menuLine = (path: readonly string[], tail: string): string => {
+  const whole = path.map((t) => (t.length > 40 ? `${t.slice(0, 39)}…` : t)).join(' › ')
+  const room = ERROR_LINE_MAX - tail.length
+  return `${whole.length > room ? `${whole.slice(0, Math.max(1, room - 1))}…` : whole}${tail}`
+}
+
+/** The app as a line names it, cut so a long name leaves the line room. */
+const quoteApp = (app: string | undefined): string => (!app ? 'the app' : app.length > 40 ? `${app.slice(0, 39)}…` : app)
+
 const index = (e: ComputerError, ctx: ErrorContext): string => {
   const i = e.element ?? ctx.action?.element
   return i === undefined ? 'that element' : `[${i}]`
@@ -79,13 +89,17 @@ export const COMPUTER_ERROR_WORDS: Readonly<Record<ComputerErrorKind, Words>> = 
       : `${index(e, ctx)} is gone from the window; read it again and use the new index`,
   no_such_element: (e, ctx) => `${index(e, ctx)} was never in this window's tree; read it again`,
   action_unsupported: (e, ctx) => {
+    // a shortcut whose menu item is disabled with the app in front (§24.2)
+    if (e.menu?.length) return menuLine(e.menu, ' is disabled now; try another way')
     if (!e.available) return null
     const what = ctx.action?.action === 'perform' && ctx.action.name ? quote(ctx.action.name) : ctx.action?.action ?? 'that action'
     const lead = `${index(e, ctx)} can't do ${what}; `
     return e.available.length ? `${lead}it lists: ${fitList(e.available, ERROR_LINE_MAX - lead.length - 10)}` : `${lead}it lists no actions`
   },
-  needs_tier: (e) =>
-    !e.needed || e.needed === 'session'
+  needs_tier: (e, ctx) =>
+    e.menu?.length
+      ? menuLine(e.menu, ` is disabled while ${quoteApp(ctx.app)} is in the background; it runs when the Mac is free`)
+      : !e.needed || e.needed === 'session'
       ? "this needs the session tier (the real pointer and keyboard); see the step's tier line"
       : `this needs the ${e.needed} tier, which this step may not use now; see the step's tier line`,
   out_of_bounds: (e) => {

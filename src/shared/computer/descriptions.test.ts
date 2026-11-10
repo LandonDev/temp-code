@@ -171,3 +171,22 @@ describe('the window actions (§22)', () => {
     }
   })
 })
+
+describe('the background routes in the words (§24)', () => {
+  it('computer_act says what a step does in the background, in both shapes, within the caps', () => {
+    const act = toolDescription('anthropic', 'act', 'computer_act')
+    expect(act).toContain('In the background a shortcut runs its menu item, a click presses the element under it and text goes straight into the field')
+    expect(act).toContain('a disabled menu item waits for the Mac to be free')
+    const cua = toolDescription('cua', 'act', 'computer_act')
+    expect(cua).toContain("In the background pressKey runs the combo's menu item, click presses the element under it")
+    for (const shape of WORDS_SHAPES) for (const name of ['computer_act', 'computer_batch'] as const) expect(toolDescription(shape, 'act', name).length).toBeLessThanOrEqual(TOOL_DESCRIPTION_MAX)
+  })
+
+  it('the key and scroll tools say their background way', () => {
+    for (const shape of WORDS_SHAPES) {
+      expect(perVerbDescription(shape, 'key')).toContain("In the background it runs the app's menu item for the combo.")
+      expect(perVerbDescription(shape, 'scroll')).toContain('In the background it moves the scroll bar.')
+      for (const verb of ['key', 'scroll'] as const) expect(perVerbDescription(shape, verb).length).toBeLessThanOrEqual(PER_VERB_DESCRIPTION_MAX)
+    }
+  })
+})

@@ -91,3 +91,14 @@ describe('the error words', () => {
     expect(line).toMatch(/\(computer_apps lists them all\)$/)
   })
 })
+
+describe('a disabled menu item (§24.2)', () => {
+  it('in the background waits for the Mac; with the app in front it says to try another way', () => {
+    const background = err('needs_tier', { needed: 'session', menu: ['File', 'Close'] })
+    expect(errorLine(background, { app: 'TextEdit' })).toBe('File › Close is disabled while TextEdit is in the background; it runs when the Mac is free')
+    expect(errorLine(err('action_unsupported', { menu: ['Edit', 'Select All'] }))).toBe('Edit › Select All is disabled now; try another way')
+    // long titles stay inside a line
+    const long = err('needs_tier', { needed: 'session', menu: ['x'.repeat(100), 'y'.repeat(100), 'z'.repeat(100)] })
+    expect(errorLine(long, { app: 'a'.repeat(30) }).length).toBeLessThanOrEqual(ERROR_LINE_MAX)
+  })
+})
