@@ -252,7 +252,9 @@ export interface MacJobsDeps {
     until: number,
     remembered: boolean,
     /** The box's `peer.call` id the start serves (a `mac.cancel` names it). */
-    callId?: string
+    callId?: string,
+    /** The start was allowed because the person is away: its reply is marked. */
+    markAway?: () => void
   ) => {
     id: string
     answer: Promise<{ allow: boolean; remember: MacDecideRemember; outcome: MacBridgeOutcome }>
@@ -316,7 +318,7 @@ export class MacJobs {
     thread: MacCallThread,
     method: MacJobPeerMethod,
     raw: unknown,
-    ctx: { policy: string; deadlineAt: number; line: (decision: string) => void; callId?: string }
+    ctx: { policy: string; deadlineAt: number; line: (decision: string) => void; callId?: string; markAway?: () => void }
   ): Promise<unknown> {
     switch (method) {
       case 'mac.jobStart':
@@ -326,7 +328,7 @@ export class MacJobs {
             "this host may read on the Mac but not run commands (the Mac's Settings → Hosts)"
           )
         }
-        return this.start(env, thread, raw, ctx.deadlineAt, ctx.line, ctx.callId)
+        return this.start(env, thread, raw, ctx.deadlineAt, ctx.line, ctx.callId, ctx.markAway)
       case 'mac.jobsEnd':
         return this.endThread(env.id, thread.id, 'thread-ended', ctx.line)
       case 'mac.jobWrite': {
@@ -366,7 +368,8 @@ export class MacJobs {
     raw: unknown,
     deadlineAt: number,
     line: (decision: string) => void,
-    callId?: string
+    callId?: string,
+    markAway?: () => void
   ): Promise<MacJobStartResult> {
     const args = MacRunArgsSchema.parse(raw)
     if (!args.argv === !args.command) throw new Error('mac.run takes argv or command, one of them')
@@ -402,7 +405,8 @@ export class MacJobs {
       },
       until,
       remembered,
-      callId
+      callId,
+      markAway
     )
     const decision = await answer
     if (!decision.allow) {

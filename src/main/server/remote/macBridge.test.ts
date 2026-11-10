@@ -2,7 +2,6 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { MAC_AWAY_REFUSAL } from '../awayPrompts'
 import type {
   MacBridgePush,
   MacBridgeRequest,
@@ -16,6 +15,7 @@ import {
   FULL_DENY_DIRS,
   FULL_DENY_FILES,
   MacBridge,
+  REFUSED_PAUSED,
   asText,
   handleMacBridge,
   commandKey,
@@ -765,14 +765,68 @@ describe('MacBridge commands', () => {
 })
 
 describe('MacBridge while the person is away', () => {
-  it('refuses at once a call that would ask, and shows no card', async () => {
-    const away = { on: true }
+  /** One call as a box sends it, with the reply's away mark caught. */
+  const marked = async <T>(b: ReturnType<typeof bridge>, method: Parameters<MacBridge['handle']>[0], args: MacCallParams['args'], thread: Record<string, unknown> = { id: 's1', title: 'thread s1' }) => {
+    let away = false
+    const result = (await b.mb.handle(method, { thread, args } as never, {
+      from: 'env_box',
+      deadlineAt: Date.now() + 15 * 60_000,
+      markAway: () => (away = true)
+    })) as T
+    return { result, away }
+  }
+
+  for (const showRunning of [true, false]) {
+    it(`allows what would ask at once, quiet, marked and remembered nowhere (show running ${showRunning ? 'on' : 'off'})`, async () => {
+      const b = bridge({ away: { on: true } })
+      b.mb.setPolicy('env_box', 'read+run')
+      b.mb.setShowRunning('env_box', showRunning)
+      const read = await marked<MacReadFileResult>(b, 'mac.readFile', { path: join(elsewhere, 'secret.txt') })
+      expect(read).toMatchObject({ away: true, result: { content: 'private' } })
+      const ran = await marked<MacRunResult>(b, 'mac.run', { argv: ['/bin/echo', 'hi'], cwd: shared })
+      expect(ran).toMatchObject({ away: true, result: { stdout: 'hi\n' } })
+      // the run is listed (with Stop) but never a card
+      expect(b.requests().every((r) => r.quiet === true)).toBe(true)
+      expect(b.requests().some((r) => r.status === 'pending' && !r.quiet)).toBe(false)
+      expect(b.mb.rules.list()).toEqual([])
+      expect(b.lines.some((l) => l.includes('mac.readFile → allowed (away)'))).toBe(true)
+      expect(b.lines.some((l) => l.includes('mac.run → allowed (away, quiet)'))).toBe(true)
+    })
+  }
+
+  it('allows a secret path under the full policy once, and remembers no folder', async () => {
+    const b = bridge({ away: { on: true } })
+    b.mb.setPolicy('env_box', 'full')
+    expect(await marked<MacReadFileResult>(b, 'mac.readFile', { path: join(home, '.ssh', 'inside') })).toMatchObject({ away: true })
+    expect(b.mb.rules.list()).toEqual([])
+    expect(b.requests()).toEqual([])
+  })
+
+  it("a paused thread's read outside the folders is still refused", async () => {
+    const b = bridge({ away: { on: true } })
+    b.mb.setPolicy('env_box', 'read+run')
+    await expect(marked(b, 'mac.readFile', { path: join(elsewhere, 'secret.txt') }, { id: 's1', title: 't', paused: true })).rejects.toThrow(REFUSED_PAUSED)
+  })
+
+  it('the bridge off, and the read policy for a command, still refuse', async () => {
+    const b = bridge({ away: { on: true } })
+    await expect(marked(b, 'mac.readFile', { path: join(elsewhere, 'secret.txt') })).rejects.toThrow(/off/)
+    b.mb.setPolicy('env_box', 'read')
+    await expect(marked(b, 'mac.run', { argv: ['/bin/echo', 'hi'], cwd: shared })).rejects.toThrow(/not run commands/)
+  })
+
+  it('Away turning on allows the prompts already waiting, marks their calls and remembers nothing', async () => {
+    const away = { on: false }
     const b = bridge({ away })
     b.mb.setPolicy('env_box', 'read+run')
-    await expect(b.call('mac.run', { argv: ['/bin/echo', 'hi'], cwd: shared })).rejects.toThrow(MAC_AWAY_REFUSAL)
-    await expect(b.call('mac.listDir', { path: elsewhere })).rejects.toThrow(MAC_AWAY_REFUSAL)
-    expect(b.requests()).toEqual([])
-    expect(b.lines.some((l) => l.includes('refused (away)'))).toBe(true)
+    const run = marked<MacRunResult>(b, 'mac.run', { argv: ['/bin/echo', 'later'], cwd: shared })
+    const read = marked<MacReadFileResult>(b, 'mac.readFile', { path: join(elsewhere, 'secret.txt') }, { id: 's2', title: 't2' })
+    await b.nextRequest(1)
+    away.on = true
+    b.mb.awayChanged(true)
+    expect(await run).toMatchObject({ away: true, result: { stdout: 'later\n' } })
+    expect(await read).toMatchObject({ away: true, result: { content: 'private' } })
+    expect(b.mb.rules.list()).toEqual([])
   })
 
   it('runs what needs no prompt: a remembered command, a read inside the shared roots, a full-access thread', async () => {

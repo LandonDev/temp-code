@@ -111,7 +111,7 @@ class FakeProc implements JobProcess {
 
 // ── the Mac side, called as a box would ──────────────────────────────
 
-function mac(spawner?: JobSpawner, opts: { policy?: 'read' | 'read+run' } = {}) {
+function mac(spawner?: JobSpawner, opts: { policy?: 'read' | 'read+run'; away?: () => boolean } = {}) {
   const settings = new Map<string, string>()
   const pushes: MacBridgePush[] = []
   const lines: string[] = []
@@ -129,7 +129,8 @@ function mac(spawner?: JobSpawner, opts: { policy?: 'read' | 'read+run' } = {}) 
     log: (l) => lines.push(l),
     // A calm Mac with a wide host cap: the per-thread job limit is what these tests watch.
     load: { sample: () => ({ load: 0, cores: 8 }), intervalMs: 0 },
-    ...(spawner ? { jobSpawner: spawner } : {})
+    ...(spawner ? { jobSpawner: spawner } : {}),
+    ...(opts.away ? { away: opts.away } : {})
   })
   mb.setPolicy('env_box', opts.policy ?? 'read+run')
   mb.setLimits('env_box', { maxRunning: 16 })
@@ -669,6 +670,31 @@ describe('a quiet job', () => {
     const end = await readUntil(m.call, second.jobId, (r) => !r.running)
     expect(end.last.running).toBe(false)
     expect(m.mb.pending()).toEqual([])
+  })
+
+  it('while away a job starts at once, quiet even with "show running commands" on, marked and remembered nowhere', async () => {
+    const away = { on: true }
+    const m = mac(pipeSpawner, { away: () => away.on })
+    m.mb.setShowRunning('env_box', true)
+    let marked = false
+    const ctx = { from: 'env_box', deadlineAt: Date.now() + 15 * 60_000, markAway: () => (marked = true) }
+    const thread = { id: 's1', title: 'T s1' }
+    const job = (await m.mb.handle('mac.jobStart', { thread, args: { argv: ['cat'], cwd: root } } as never, ctx)) as MacJobStartResult
+    expect(marked).toBe(true)
+    expect(m.requests().every((r) => r.quiet === true)).toBe(true)
+    expect(m.lines.some((l) => l.includes('mac.jobStart allowed (away)'))).toBe(true)
+    await m.call('mac.jobSignal', { jobId: job.jobId, signal: 'KILL' })
+    await readUntil(m.call, job.jobId, (r) => !r.running)
+    // nothing remembered: with Away off the same job asks again
+    away.on = false
+    const before = m.requests().length
+    const again = m.call<MacJobStartResult>('mac.jobStart', { argv: ['cat'], cwd: root })
+    for (let i = 0; i < 200 && m.requests().length === before; i++) await Promise.resolve()
+    const card = m.requests()[before]
+    expect(card).toMatchObject({ status: 'pending' })
+    expect(card.quiet).toBeUndefined()
+    m.mb.decide(card.id, false)
+    await expect(again).rejects.toThrow(/denied/)
   })
 
   it('a full-access thread\'s job is quiet under full access and shows when the host shows running commands', async () => {

@@ -1,5 +1,4 @@
 import { randomBytes } from 'node:crypto'
-import { MAC_AWAY_REFUSAL } from '../awayPrompts'
 import { leadDetail } from '@shared/statusWords'
 import { existsSync, statSync } from 'node:fs'
 import { lstat, open, readdir, readFile, stat } from 'node:fs/promises'
@@ -169,7 +168,7 @@ export interface MacBridgeDeps {
   load?: { sample?: () => LoadSample; intervalMs?: number }
   /** Mac-local threads a host started here that are live now (crossHostThreads.ts); counts toward `macBridge.maxThreads.<envId>`. */
   liveThreads?: (envId: string) => number
-  /** The person is away from the computer (away.ts): a call that would ask them is refused at once. */
+  /** The person is away from the computer (away.ts): a call that would ask them is allowed at once, quiet and remembered nowhere, and its reply marked (`ctx.markAway`). */
   away?: () => boolean
   /** What peer.register says of this host besides its offers: its hostname, build and presence (remote/relayServe.ts registration). */
   registration?: () => { name: string; presence: import('@shared/contract-relay').MacPresence; build?: import('@shared/deployDrift').BuildFacts }
@@ -339,9 +338,19 @@ export function asText(buf: Buffer): string | null {
 
 // ── the bridge ───────────────────────────────────────────────────────
 
+/** A card's answer; `byAway` when the flip to Away decided it (awayChanged), so the owning call marks itself. */
+export interface MacAnswer {
+  allow: boolean
+  remember: Remember
+  outcome: MacBridgeOutcome
+  byAway?: true
+}
+
 interface Pending {
   request: MacBridgeRequest
-  decide: (allow: boolean, remember: Remember) => void
+  decide: (allow: boolean, remember: Remember, byAway?: boolean) => void
+  /** Away denies this card instead of allowing it at the flip: a computer act the model flagged as spending money (macComputer.ts). */
+  awayDenies?: boolean
   stop?: () => void
   timer: NodeJS.Timeout
   /** The box's `peer.call` id this request serves: what a `mac.cancel` names. */
@@ -811,11 +820,22 @@ export class MacBridge {
     this.standingListeners.get(id)?.(held)
   }
 
-  /** Nobody is at the Mac to answer while the person is away: a call that would ask is refused at once. */
-  private refuseWhileAway(line: (decision: string) => void): void {
-    if (!this.deps.away?.()) return
-    line('refused (away)')
-    throw new Error(MAC_AWAY_REFUSAL)
+  private awayOn(): boolean {
+    return this.deps.away?.() ?? false
+  }
+
+  /**
+   * Away turned on: every card still waiting here is decided as the person
+   * would no longer be asked, allowed (denied for a money act, `awayDenies`),
+   * with nothing remembered. Its call reads `byAway` and marks its reply.
+   */
+  awayChanged(enabled: boolean): void {
+    if (!enabled) return
+    for (const p of [...this.pendingById.values()]) {
+      if (p.request.status !== 'pending' || p.request.quiet) continue
+      this.log(`${p.request.hostName}: ${p.request.method} ${p.awayDenies ? 'denied' : 'allowed'} (away turned on)`)
+      p.decide(!p.awayDenies, false, true)
+    }
   }
 
   /**
@@ -827,10 +847,11 @@ export class MacBridge {
     shape: Omit<MacBridgeRequest, 'id' | 'createdAt' | 'expiresAt' | 'status' | 'quiet'>,
     until: number,
     quiet = false,
-    callId?: string
+    callId?: string,
+    opts: { awayDenies?: boolean } = {}
   ): {
     id: string
-    answer: Promise<{ allow: boolean; remember: Remember; outcome: MacBridgeOutcome }>
+    answer: Promise<MacAnswer>
   } {
     const id = `mb_${randomBytes(9).toString('base64url')}`
     const now = Date.now()
@@ -842,7 +863,7 @@ export class MacBridge {
       status: 'pending',
       ...(quiet ? { quiet: true } : {})
     }
-    const answer = new Promise<{ allow: boolean; remember: Remember; outcome: MacBridgeOutcome }>(
+    const answer = new Promise<MacAnswer>(
       (resolve) => {
         let settled = false
         const timer = setTimeout(
@@ -859,12 +880,13 @@ export class MacBridge {
           request,
           timer,
           ...(callId ? { callId } : {}),
-          decide: (allow, remember) => {
+          ...(opts.awayDenies ? { awayDenies: true } : {}),
+          decide: (allow, remember, byAway) => {
             if (settled) return
             settled = true
             clearTimeout(timer)
             if (!allow) this.finish(id, 'denied')
-            resolve({ allow, remember, outcome: allow ? 'allowed' : 'denied' })
+            resolve({ allow, remember, outcome: allow ? 'allowed' : 'denied', ...(byAway ? { byAway: true as const } : {}) })
           }
         })
       }
@@ -973,6 +995,8 @@ export class MacBridge {
       /** The box's `peer.call` id (a `mac.cancel` names it); absent from a test's direct call. */
       callId?: string
       progress?: (chunk: string, skipped?: number) => void
+      /** This call was allowed because the person is away: its reply carries `away: true` (peerCalls.ts), and the box writes the allowed row. */
+      markAway?: () => void
     }
   ): Promise<unknown> {
     // Other offers route before the bridge. Refuse them here if their handler is absent.
@@ -985,6 +1009,7 @@ export class MacBridge {
     if (!thread || typeof thread.id !== 'string') throw new Error('the call names no thread')
     const line = (decision: string): void =>
       this.log(`${env.name} (${env.id}) thread=${thread.id} ${method} → ${decision}`)
+    const markAway = ctx.markAway ?? (() => {})
     if (isMacPausePeerMethod(method))
       return method === 'mac.cancel'
         ? this.cancel(env, thread, params.args as MacCancelArgs, line)
@@ -1002,7 +1027,7 @@ export class MacBridge {
       throw new Error(REFUSED_PAUSED)
     }
     if (method === 'mac.writeFile')
-      return this.writeFile(env, thread, params.args, ctx.deadlineAt, ctx.callId)
+      return this.writeFile(env, thread, params.args, ctx.deadlineAt, ctx.callId, markAway)
     const policy = this.policyOf(env.id)
     const unattended = threadRunsUnattended(thread)
     if (policy === 'off') {
@@ -1014,7 +1039,8 @@ export class MacBridge {
         policy,
         deadlineAt: ctx.deadlineAt,
         line,
-        callId: ctx.callId
+        callId: ctx.callId,
+        markAway
       })
     if (method === 'mac.run') {
       if (policy !== 'read+run' && policy !== 'full') {
@@ -1023,7 +1049,7 @@ export class MacBridge {
           "this host may read on the Mac but not run commands (the Mac's Settings → Hosts)"
         )
       }
-      return this.run(env, thread, params.args, ctx.deadlineAt, line, ctx.progress, ctx.callId)
+      return this.run(env, thread, params.args, ctx.deadlineAt, line, markAway, ctx.progress, ctx.callId)
     }
     const schema =
       method === 'mac.readFile'
@@ -1050,8 +1076,11 @@ export class MacBridge {
       // A paused thread's read goes only where it needs no prompt: nobody asks the person for a thread that is not running.
       line('refused (paused)')
       throw new Error(REFUSED_PAUSED)
+    } else if (this.awayOn()) {
+      // Nobody is at the Mac to ask: allowed once, secrets too, and never remembered as a folder.
+      line('allowed (away)')
+      markAway()
     } else {
-      this.refuseWhileAway(line)
       // Under full only keys, credentials and the dirs above home ask: each
       // time, never remembered as a folder (that would admit the secret too).
       const folder = full ? null : rememberFolder(real, isDir, this.home)
@@ -1079,9 +1108,10 @@ export class MacBridge {
             : 'denied at the Mac'
         )
       }
+      if (decision.byAway) markAway()
       const keep = readRemembers(decision.remember) && !!folder
       if (keep) this.rules.addRead(ruleThread(env, thread), folder)
-      line(`allowed (asked${keep ? ', folder remembered' : ''})`)
+      line(`allowed (${decision.byAway ? 'away turned on' : 'asked'}${keep ? ', folder remembered' : ''})`)
       this.finish(id, 'allowed')
     }
     if (method === 'mac.listDir') return listDir(real)
@@ -1095,6 +1125,7 @@ export class MacBridge {
     raw: unknown,
     deadlineAt: number,
     line: (decision: string) => void,
+    markAway: () => void,
     progress?: (chunk: string, skipped?: number) => void,
     callId?: string
   ): Promise<MacRunResult> {
@@ -1113,12 +1144,14 @@ export class MacBridge {
     const rule = this.rules.runAllowed(env.id, thread.id, spec)
     // Full access on the box: decided at once, as a remembered command is.
     const unattended = threadRunsUnattended(thread)
+    // Away: what would prompt is admitted the same way, always quiet, and never remembered.
+    const away = !rule && !unattended && this.awayOn()
     const shown = runPresentation({
       remembered: !!rule,
-      unattended,
+      unattended: unattended || away,
       showRunning: this.showRunningOf(env.id)
     })
-    if (shown.prompt) this.refuseWhileAway(line)
+    if (away) markAway()
     // Every command is listed on the Mac, remembered or not: a remembered one
     // starts at once, as running, and is quiet (no card) unless the host shows them.
     const { id, answer } = this.ask(
@@ -1134,7 +1167,7 @@ export class MacBridge {
         ...runOffer(spec, this.home)
       },
       askUntil,
-      !shown.prompt && shown.quiet,
+      !shown.prompt && (shown.quiet || away),
       callId
     )
     const remembered = !shown.prompt
@@ -1148,10 +1181,11 @@ export class MacBridge {
         decision.outcome === 'expired' ? 'nobody at the Mac answered in time' : 'denied at the Mac'
       )
     }
+    if ('byAway' in decision && decision.byAway) markAway()
     const kind = runRememberKind(decision.remember)
     const made = kind ? this.rules.addRun(ruleThread(env, thread), kind, spec) : null
     line(
-      `allowed (${rule ? `remembered${rule.kind === 'exact' ? '' : `: ${rule.kind}`}` : unattended ? 'full access' : made ? `asked, ${made.kind === 'exact' ? 'command' : made.kind} remembered` : 'asked'}${!shown.prompt && shown.quiet ? ', quiet' : ''}) argv0=${basename(args.argv?.[0] ?? args.command?.split(/\s/)[0] ?? '')}`
+      `allowed (${rule ? `remembered${rule.kind === 'exact' ? '' : `: ${rule.kind}`}` : unattended ? 'full access' : away ? 'away' : made ? `asked, ${made.kind === 'exact' ? 'command' : made.kind} remembered` : 'byAway' in decision && decision.byAway ? 'away turned on' : 'asked'}${!shown.prompt && (shown.quiet || away) ? ', quiet' : ''}) argv0=${basename(args.argv?.[0] ?? args.command?.split(/\s/)[0] ?? '')}`
     )
     // The load guard: at the host's cap, or with the Mac over its load limit,
     // the command waits its turn here, within the time the call left for the
@@ -1191,18 +1225,29 @@ export class MacBridge {
   /** mac.run background: true and the calls on its job; the card is mac.run's, marked interactive. */
   get jobs(): MacJobs {
     this.jobsInstance ??= new MacJobs({
-      ask: (shape, until, remembered, callId) => {
-        if (!remembered) this.refuseWhileAway((decision) => this.log(`${shape.hostName}: mac.jobStart ${decision}`))
+      ask: (shape, until, remembered, callId, markAway) => {
+        // Away admits what would prompt as a remembered job is, always quiet, remembering nothing.
+        const away = !remembered && this.awayOn()
+        if (away) {
+          this.log(`${shape.hostName}: mac.jobStart allowed (away)`)
+          markAway?.()
+        }
         // A remembered job starts at once, as running; it is quiet (no card)
         // unless the host shows running commands (runPresentation).
         const asked = this.ask(
           shape,
           until,
-          remembered && !this.showRunningOf(shape.environmentId),
+          away || (remembered && !this.showRunningOf(shape.environmentId)),
           callId
         )
-        if (remembered) this.pendingById.get(asked.id)?.decide(true, false)
-        return asked
+        if (remembered || away) this.pendingById.get(asked.id)?.decide(true, false)
+        return {
+          id: asked.id,
+          answer: asked.answer.then((d) => {
+            if (d.byAway && d.allow) markAway?.()
+            return d
+          })
+        }
       },
       hold: (envId, id, until, line) => this.hold(envId, id, until, line),
       running: (id, stop) => {
@@ -1315,7 +1360,8 @@ export class MacBridge {
     thread: { id: string; title: string },
     args: unknown,
     deadlineAt: number,
-    callId?: string
+    callId: string | undefined,
+    markAway: () => void
   ): Promise<MacWriteFileResult> {
     return serveMacWrite(
       {
@@ -1327,8 +1373,21 @@ export class MacBridge {
         shared: this.sharedOf(env.id),
         remembered: writeFoldersOf(this, env.id, thread.id),
         ask: (shape, until) => {
-          this.refuseWhileAway((decision) => this.log(`${env.name}: mac.writeFile ${decision}`))
-          return this.ask(shape, until, false, callId)
+          // Away: a quiet request, allowed at once, remembering nothing.
+          if (this.awayOn()) {
+            markAway()
+            const asked = this.ask(shape, until, true, callId)
+            this.pendingById.get(asked.id)?.decide(true, false, true)
+            return asked
+          }
+          const asked = this.ask(shape, until, false, callId)
+          return {
+            id: asked.id,
+            answer: asked.answer.then((d) => {
+              if (d.byAway && d.allow) markAway()
+              return d
+            })
+          }
         },
         finish: (id, outcome) => this.finish(id, outcome),
         link: this.deps.link(env.id),

@@ -208,7 +208,7 @@ describe('writeMacFile', () => {
   })
 })
 
-function bridge(link: ((method: string, params?: unknown) => Promise<unknown>) | null = null) {
+function bridge(link: ((method: string, params?: unknown) => Promise<unknown>) | null = null, away?: { on: boolean }) {
   const settings = new Map<string, string>()
   const pushes: MacBridgePush[] = []
   const lines: string[] = []
@@ -225,7 +225,8 @@ function bridge(link: ((method: string, params?: unknown) => Promise<unknown>) |
     shell: '/bin/sh',
     log: (l) => lines.push(l),
     // A calm Mac: the load guard never holds these (the box running the suite may be busy).
-    load: { sample: () => ({ load: 0, cores: 8 }), intervalMs: 0 }
+    load: { sample: () => ({ load: 0, cores: 8 }), intervalMs: 0 },
+    ...(away ? { away: () => away.on } : {})
   })
   mb.subscribe((p) => pushes.push(p))
   const requests = (): MacBridgeRequest[] =>
@@ -242,13 +243,14 @@ function bridge(link: ((method: string, params?: unknown) => Promise<unknown>) |
     }
     throw new Error('no request')
   }
+  const marks: string[] = []
   const write = (args: MacWriteFileWire, thread = 's1') =>
     mb.handle(
       'mac.writeFile',
       { thread: { id: thread, title: `thread ${thread}` }, args },
-      { from: 'env_box', deadlineAt: Date.now() + 15 * 60_000 }
+      { from: 'env_box', deadlineAt: Date.now() + 15 * 60_000, markAway: () => void marks.push(thread) }
     ) as Promise<MacWriteFileResult>
-  return { mb, settings, lines, requests, nextRequest, write }
+  return { mb, settings, lines, requests, nextRequest, write, marks }
 }
 
 describe('MacBridge mac.writeFile', () => {
@@ -328,6 +330,23 @@ describe('MacBridge mac.writeFile', () => {
     const r3 = await b.nextRequest(2)
     b.mb.decide(r3.id, false)
     await expect(other).rejects.toThrow(/denied/)
+  })
+
+  it('while away: a write outside lands at once, quiet, marked, and remembers no folder', async () => {
+    const away = { on: true }
+    const b = bridge(null, away)
+    b.mb.setPolicy('env_box', 'read+run')
+    const target = join(elsewhere, 'away', 'a.txt')
+    await expect(b.write(wire(target, 'x'))).resolves.toMatchObject({ path: target, created: true })
+    expect(b.marks).toEqual(['s1'])
+    expect(b.requests().map((r) => r.quiet)).toEqual([true])
+    expect(b.lines.some((l) => l.endsWith('→ written (away)'))).toBe(true)
+    away.on = false
+    const next = b.write(wire(join(elsewhere, 'away', 'b.txt'), 'y'))
+    const asked = await b.nextRequest(1)
+    expect(asked.quiet).toBeUndefined()
+    b.mb.decide(asked.id, false)
+    await expect(next).rejects.toThrow(/denied/)
   })
 
   it('a folder remembered for reads never admits a write: the memories are apart', async () => {

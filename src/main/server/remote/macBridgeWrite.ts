@@ -251,7 +251,8 @@ export interface MacWriteHost {
     until: number
   ) => {
     id: string
-    answer: Promise<{ allow: boolean; remember: MacDecideRemember; outcome: MacBridgeOutcome }>
+    /** `byAway`: Away allowed it (macBridge.ts), so nothing is remembered and the log says so */
+    answer: Promise<{ allow: boolean; remember: MacDecideRemember; outcome: MacBridgeOutcome; byAway?: true }>
   }
   finish: (id: string, outcome: MacBridgeOutcome) => void
   link: LinkRequest | null
@@ -329,7 +330,8 @@ export async function serveMacWrite(
         decision.outcome === 'expired' ? 'nobody at the Mac answered in time' : 'denied at the Mac'
       )
     }
-    if (readRemembers(decision.remember) && verdict.folder) {
+    if (decision.byAway) how = 'away'
+    else if (readRemembers(decision.remember) && verdict.folder) {
       host.remembered.add(verdict.folder)
       how = 'asked, folder remembered'
     }
