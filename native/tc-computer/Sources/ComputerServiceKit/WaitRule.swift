@@ -12,13 +12,16 @@ public struct WaitSample: Sendable, Equatable {
     public var busy: Bool?
     /// the last counted pixel change; nil = none, or no live watch
     public var pixelLastChange: Int?
+    /// the general pasteboard's last change that was not the service's own (§24.10); nil = none after t0
+    public var pasteboardLastChange: Int?
 
-    public init(at: Int, axLastChange: Int? = nil, signature: UInt64? = nil, busy: Bool? = nil, pixelLastChange: Int? = nil) {
+    public init(at: Int, axLastChange: Int? = nil, signature: UInt64? = nil, busy: Bool? = nil, pixelLastChange: Int? = nil, pasteboardLastChange: Int? = nil) {
         self.at = at
         self.axLastChange = axLastChange
         self.signature = signature
         self.busy = busy
         self.pixelLastChange = pixelLastChange
+        self.pasteboardLastChange = pasteboardLastChange
     }
 }
 
@@ -28,6 +31,8 @@ public struct WaitOutcome: Sendable, Equatable {
     public var axChanged: Bool
     /// a pixel change that counted came after t0
     public var pixelChanged: Bool
+    /// a copy or cut step saw the pasteboard change (§24.10)
+    public var pasteboardChanged: Bool
     /// what moved the quiet clock, for the trace
     public var counts: Counts
     /// the app quit during the wait (§22.6)
@@ -37,26 +42,29 @@ public struct WaitOutcome: Sendable, Equatable {
         public var ax = 0
         public var sig = 0
         public var px = 0
+        public var pb = 0
 
-        public init(ax: Int = 0, sig: Int = 0, px: Int = 0) {
+        public init(ax: Int = 0, sig: Int = 0, px: Int = 0, pb: Int = 0) {
             self.ax = ax
             self.sig = sig
             self.px = px
+            self.pb = pb
         }
     }
 
-    public init(report: WaitReport, axChanged: Bool, pixelChanged: Bool, counts: Counts = Counts(), appLeft: Bool = false) {
+    public init(report: WaitReport, axChanged: Bool, pixelChanged: Bool, pasteboardChanged: Bool = false, counts: Counts = Counts(), appLeft: Bool = false) {
         self.report = report
         self.axChanged = axChanged
         self.pixelChanged = pixelChanged
+        self.pasteboardChanged = pasteboardChanged
         self.counts = counts
         self.appLeft = appLeft
     }
 
-    /// The step's `effect`: changed when anything counted moved, the app quit or the target window
-    /// closed (§22.6); else unknown on a thin tree; else none.
+    /// The step's `effect`: changed when anything counted moved (a copy or cut's pasteboard among them,
+    /// §24.10), the app quit or the target window closed (§22.6); else unknown on a thin tree; else none.
     public func effect(thin: Bool, windowGone: Bool = false) -> StepEffect {
-        if axChanged || pixelChanged || appLeft || windowGone { return .changed }
+        if axChanged || pixelChanged || pasteboardChanged || appLeft || windowGone { return .changed }
         return thin ? .unknown : .none
     }
 }
@@ -78,11 +86,16 @@ public enum WaitDecision: Sendable, Equatable {
 /// 4. While a busy indicator shows, quiet does not end the wait. Once one has shown, the cap is
 ///    `busyMaxMs`: the wait ends there, or once the indicator is gone and the window is quiet.
 /// 5. Else the wait ends `quiet` when the clock reaches `quietMs`, `max` at `maxMs`.
+/// 6. On a copy or cut step (`pasteboard`), a pasteboard change that is not the service's own counts
+///    and restarts the clock (§24.10); no other step reads the pasteboard, so the person copying
+///    meanwhile never makes another step read `changed`.
 public struct WaitRule: Sendable {
     public let options: WaitOptions
     public let thin: Bool
     /// a live pixel watch feeds the samples
     public let pixels: Bool
+    /// the step is a copy or cut: the pasteboard counts (`readsPasteboard`)
+    public let pasteboard: Bool
 
     private var lastSignature: UInt64
     private var lastChangeAt = 0
@@ -92,14 +105,26 @@ public struct WaitRule: Sendable {
     private var busyNow = false
     private var everBusy = false
     private var pixelChanged = false
+    private var lastPasteboard: Int?
+    private var pasteboardChanged = false
     private var counts = WaitOutcome.Counts()
     private var done: WaitOutcome?
 
-    public init(options: WaitOptions, signature0: UInt64, thin: Bool, pixels: Bool) {
+    public init(options: WaitOptions, signature0: UInt64, thin: Bool, pixels: Bool, pasteboard: Bool = false) {
         self.options = options
         self.lastSignature = signature0
         self.thin = thin
         self.pixels = pixels
+        self.pasteboard = pasteboard
+    }
+
+    /// The steps whose wait reads the pasteboard (§24.10): `key super+c` and `key super+x`, posted or
+    /// through the menu route, which presses the item the same key would.
+    public static func readsPasteboard(_ action: ComputerAction) -> Bool {
+        guard action.action == .key, let text = action.text?.lowercased() else { return false }
+        let parts = text.split(separator: "+", omittingEmptySubsequences: false).map(String.init)
+        guard let key = parts.last, key == "c" || key == "x", parts.count == 2 else { return false }
+        return ["super", "cmd", "command"].contains(parts[0])
     }
 
     public mutating func take(_ sample: WaitSample) -> WaitDecision {
@@ -130,6 +155,13 @@ public struct WaitRule: Sendable {
                 counts.px += 1
                 lastChangeAt = max(lastChangeAt, px)
             }
+        }
+
+        if pasteboard, let pb = sample.pasteboardLastChange, pb >= 0, pb != lastPasteboard {
+            lastPasteboard = pb
+            pasteboardChanged = true
+            counts.pb += 1
+            lastChangeAt = max(lastChangeAt, pb)
         }
 
         let quietFrom = max(options.minMs, lastChangeAt)
@@ -172,6 +204,7 @@ public struct WaitRule: Sendable {
             report: WaitReport(waitedMs: max(0, at), settled: settled, busy: busyNow, reason: reason),
             axChanged: firstAxChangeAt != nil,
             pixelChanged: pixelChanged,
+            pasteboardChanged: pasteboardChanged,
             counts: counts
         )
     }

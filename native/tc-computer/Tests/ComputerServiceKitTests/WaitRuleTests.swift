@@ -150,3 +150,47 @@ private func run(
         #expect(rule.take(WaitSample(at: 400, axLastChange: 300)) == .done(first))
     }
 }
+
+/// §24.10: a copy or cut reads the pasteboard; nothing else does.
+@Suite struct PasteboardWaitTests {
+    private func run(pasteboard: Bool, pb: [Int]) -> WaitOutcome {
+        var rule = WaitRule(options: ComputerDefaults.Wait.action, signature0: 0, thin: false, pixels: false, pasteboard: pasteboard)
+        var at = 0
+        while at <= 10_000 {
+            let sample = WaitSample(at: at, signature: at % 100 == 0 ? 0 : nil, pasteboardLastChange: pb.filter { $0 <= at }.max())
+            if case .done(let outcome) = rule.take(sample) { return outcome }
+            at += 25
+        }
+        Issue.record("the wait never ended")
+        return WaitRule.skipped()
+    }
+
+    @Test func aForeignChangeOnACopyIsChangedAndRestartsTheQuietClock() {
+        let out = run(pasteboard: true, pb: [600])
+        #expect(out.pasteboardChanged)
+        #expect(out.effect(thin: false) == .changed)
+        #expect(out.report.waitedMs == 600 + ComputerDefaults.Wait.action.quietMs)
+        #expect(out.counts.pb == 1)
+    }
+
+    @Test func noChangeIsNone() {
+        // the service's own write never reaches the sample: SmartWait feeds foreign changes only
+        #expect(run(pasteboard: true, pb: []).effect(thin: false) == StepEffect.none)
+    }
+
+    @Test func anotherStepIgnoresThePasteboard() {
+        let out = run(pasteboard: false, pb: [600])
+        #expect(!out.pasteboardChanged)
+        #expect(out.effect(thin: false) == StepEffect.none)
+        #expect(out.report.waitedMs == 750)
+    }
+
+    @Test func onlyCopyAndCutReadIt() {
+        #expect(WaitRule.readsPasteboard(ComputerAction(action: .key, text: "super+c")))
+        #expect(WaitRule.readsPasteboard(ComputerAction(action: .key, text: "cmd+X")))
+        #expect(!WaitRule.readsPasteboard(ComputerAction(action: .key, text: "super+a")))
+        #expect(!WaitRule.readsPasteboard(ComputerAction(action: .key, text: "super+shift+c")))
+        #expect(!WaitRule.readsPasteboard(ComputerAction(action: .key, text: "ctrl+c")))
+        #expect(!WaitRule.readsPasteboard(ComputerAction(action: .scroll, scroll_direction: .down)))
+    }
+}
