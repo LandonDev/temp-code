@@ -641,3 +641,54 @@ private func held(_ pid: Int32, kind: HeldRecord.Kind = .button) -> HeldRecord {
         #expect(windows.windowID(of: AXUIElementCreateApplication(gone), pid: gone) == nil)
     }
 }
+
+/// §22.6: a step after which its target window closed, or its app quit.
+@Suite struct WindowCloseTests {
+    func clicking(_ rig: ServiceRig, then: @escaping @Sendable () -> Void) async throws -> JSONValue {
+        await rig.ready()
+        rig.input.onPerform = { _, _ in
+            then()
+            return InputOutcome(tier: .ax, via: nil, clipboard: nil, cursor: nil, lastInputAt: mach_absolute_time())
+        }
+        _ = await rig.call("state.get", "{\(docTarget),\"wait\":\(quick)}")
+        return try #require(await rig.call("action.run", "{\(docTarget),\"action\":{\"action\":\"left_click\",\"element\":2},\"epoch\":\"\(rig.service.epoch)\",\"tiers\":[\"ax\"],\"wait\":\(quick)}").result)
+    }
+
+    @Test func aCloseIsAChangeAndTheObservationReadsTheNextWindowWhole() async throws {
+        let rig = ServiceRig()
+        let windows = rig.windows
+        let result = try await clicking(rig) { windows.set(500, [window(8, "Other")]) }
+        #expect(result["step"]?["effect"]?.stringValue == "changed")
+        #expect(result["observation"]?["kind"]?.stringValue == "full")
+        let last = try #require(rig.reader().observed.last)
+        #expect(last.window?.id == 8)
+        #expect(last.mode == .full)
+    }
+
+    @Test func theLastWindowClosingSaysTheAppHasNone() async throws {
+        let rig = ServiceRig()
+        let windows = rig.windows
+        let result = try await clicking(rig) { windows.set(500, []) }
+        #expect(result["step"]?["effect"]?.stringValue == "changed")
+        #expect(result["observationError"]?["kind"]?.stringValue == "window_not_found")
+        #expect(result["observationError"]?["message"]?.stringValue == "Doc has no window open.")
+    }
+
+    @Test func anAppThatQuitOnItsLastCloseSaysSo() async throws {
+        let rig = ServiceRig()
+        let workspace = rig.workspace, windows = rig.windows
+        let result = try await clicking(rig) {
+            windows.set(500, [])
+            workspace.quit(500)
+        }
+        #expect(result["step"]?["effect"]?.stringValue == "changed")
+        #expect(result["observationError"]?["message"]?.stringValue == "Doc quit.")
+    }
+
+    @Test func aWindowThatStaysIsReadAsBefore() async throws {
+        let rig = ServiceRig()
+        let result = try await clicking(rig) {}
+        #expect(result["step"]?["effect"]?.stringValue == "none")
+        #expect(rig.reader().observed.last?.window?.id == 7)
+    }
+}

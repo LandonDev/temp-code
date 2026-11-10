@@ -94,12 +94,17 @@ extension ComputerService {
             }
         }
 
-        // the action wait, once, after the last step that ran
+        // the action wait, once, after the last step that ran; a target window the step closed is a change (§22.6)
         var waited = WaitRule.skipped()
+        var windowGone = false
         if let last, let t0 = last.t0, !ctx.cancel.isSet {
             waited = await waitAfter(target, options: wait ?? ComputerDefaults.Wait.action, t0: t0, signature0: last.signature0, cancel: ctx.cancel)
+            if waited.report.reason != .cancelled, !waited.appLeft {
+                // an app that quit just after the wait ended counts as one that quit during it
+                windowGone = inventory.isRunning(target.pid) ? await windowClosed(target) : true
+            }
             if let at = steps.indices.last, case .ok(let ok) = steps[at] {
-                steps[at] = .ok(ok.with(effect: waited.effect(thin: book.lastThin(session, pid: target.pid)), waited: waited.report))
+                steps[at] = .ok(ok.with(effect: waited.effect(thin: book.lastThin(session, pid: target.pid), windowGone: windowGone), waited: waited.report))
             }
         }
 
@@ -116,7 +121,11 @@ extension ComputerService {
             guard inventory.isRunning(target.pid) else {
                 throw ComputerError(kind: .windowNotFound, message: "\(target.app.name) quit.")
             }
-            let observation = try await self.observe(target, ObserveKnobs(observe), loading: waited.report.busy, waited: waited.report, cancel: ctx.cancel)
+            // the target closed: the app's window as §2.1 picks it with none named, read whole (§22.6)
+            var knobs = ObserveKnobs(observe)
+            if windowGone { knobs.mode = .full }
+            let shown = windowGone ? try await windowAfterClose(target) : target
+            let observation = try await self.observe(shown, knobs, loading: waited.report.busy, waited: waited.report, cancel: ctx.cancel)
             return BatchResult(steps: steps, observation: observation, waited: waited.report)
         } catch {
             if ctx.cancel.isSet { await releaseHeld(session: session) }
@@ -213,6 +222,31 @@ extension ComputerService {
             if failure.kind == .permissionMissing { pokePermissions() }
             return StepRun(step: .failed(FailedStep(index: index, action: action.action, error: failure)))
         }
+    }
+
+    /// Whether the target window has left the app's AXWindows (a close; its CG entry may stay a while).
+    private func windowClosed(_ target: Resolved) async -> Bool {
+        let source = modules.windows
+        let pid = target.pid
+        let id = target.info.id
+        guard let list = try? await target.worker.run({ _ in try source.list(pid: pid) }) else { return false }
+        return !list.contains { $0.id == id }
+    }
+
+    /// §22.6: after the target closed, the app's window as §2.1 resolves it with no `window`; an app
+    /// left with none is `window_not_found` "<App> has no window open.", one whose remaining windows
+    /// §2.1 will not pick is the resolver's own refusal with their titles.
+    private func windowAfterClose(_ target: Resolved) async throws -> Resolved {
+        let source = modules.windows
+        let pid = target.pid
+        let name = target.app.name.isEmpty ? "The app" : target.app.name
+        let info = try await target.worker.run { state -> WindowInfo in
+            if try source.list(pid: pid).isEmpty { throw ComputerError(kind: .windowNotFound, message: "\(name) has no window open.", candidates: []) }
+            let (element, info) = try source.resolve(pid: pid, ref: nil)
+            state.windows[UInt32(truncatingIfNeeded: info.id)] = element
+            return info
+        }
+        return Resolved(session: target.session, pid: pid, app: target.app, worker: target.worker, info: info, launched: false)
     }
 
     /// The wait after a step, from its last input.
