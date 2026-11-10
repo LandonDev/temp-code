@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ACTION_WORDS, KEY_NAMES, MODIFIER_NAMES, ROLE_DEFAULTS, ROLE_TAGS, STATE_WORDS } from '../src/shared/computer/observation'
-import { COMPUTER_METHODS, COMPUTER_PROTOCOL, COMPUTER_WAIT } from '../src/shared/computer/protocol'
+import { COMPUTER_METHODS, COMPUTER_PROTOCOL, COMPUTER_WAIT, SCROLL_POINTS_PER_CLICK } from '../src/shared/computer/protocol'
 import { GENERATED_DIR, generate, pascal } from './gen-swift-contract'
 import { COMPUTER_GENERATED_DIR, INPUT_GENERATED_DIR, OBSERVATION_TABLES_DIR, emitInputTables, emitObservationTables, generateComputer } from './gen-swift-computer'
 import { QUOTE_VECTORS_PATH, quoteVectors } from './quote-vectors'
@@ -87,6 +87,16 @@ describe('the computer Swift', () => {
     expect(contract).not.toMatch(/\$\{/)
   })
 
+  it('carries the background fallbacks: the new vias, what a step acted on, the ignored routes, a disabled item', () => {
+    const via = declaration(files['Enums.swift'], 'public enum InputVia')
+    for (const c of ['case menu', 'case hit', 'case caret', 'case "scroll-bar": self = .scrollBar', 'case "scroll-page": self = .scrollPage']) expect(via).toContain(c)
+    // appended: the typing routes keep their places
+    expect(via.indexOf('axInsert')).toBeLessThan(via.indexOf('case menu'))
+    const ignored = declaration(files['Types.swift'], 'public struct IgnoredRoutes:')
+    for (const field of ['via: [InputVia]?', 'process: [ActionClass]?', 'skip: Bool?']) expect(ignored).toContain(`public let ${field}`)
+    expect(declaration(files['Types.swift'], 'public struct ComputerError:')).toContain('public let menu: [String]?')
+  })
+
   it('carries the new methods, the paste verb and a session change on the error', () => {
     const methods = files['Methods.swift']
     expect(methods).toContain('public enum InputProbe: ContractMethod')
@@ -115,5 +125,9 @@ describe('the Input tables', () => {
     expect(Object.keys(ROLE_DEFAULTS).every((r) => text.includes(`        ${JSON.stringify(r)}: [`))).toBe(true)
     expect(text).toContain('public static let modifiers: [String] = ["shift", "ctrl", "alt", "super"]')
     expect(text).not.toMatch(/\\u[0-9a-fA-F]{4}/)
+  })
+
+  it('carry the scroll bar distance per wheel click', () => {
+    expect(tables['InputTables.swift']).toContain(`public static let scrollPointsPerClick = ${SCROLL_POINTS_PER_CLICK}`)
   })
 })

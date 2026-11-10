@@ -436,6 +436,11 @@ public enum InputVia: RawRepresentable, Codable, Hashable, Sendable {
     case axValue
     case keys
     case paste
+    case menu
+    case hit
+    case caret
+    case scrollBar
+    case scrollPage
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -445,6 +450,11 @@ public enum InputVia: RawRepresentable, Codable, Hashable, Sendable {
         case "ax-value": self = .axValue
         case "keys": self = .keys
         case "paste": self = .paste
+        case "menu": self = .menu
+        case "hit": self = .hit
+        case "caret": self = .caret
+        case "scroll-bar": self = .scrollBar
+        case "scroll-page": self = .scrollPage
         default: self = .unknown(rawValue)
         }
     }
@@ -455,6 +465,11 @@ public enum InputVia: RawRepresentable, Codable, Hashable, Sendable {
         case .axValue: "ax-value"
         case .keys: "keys"
         case .paste: "paste"
+        case .menu: "menu"
+        case .hit: "hit"
+        case .caret: "caret"
+        case .scrollBar: "scroll-bar"
+        case .scrollPage: "scroll-page"
         case .unknown(let value): value
         }
     }

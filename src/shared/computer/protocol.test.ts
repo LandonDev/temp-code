@@ -11,10 +11,14 @@ import {
   COMPUTER_WAIT,
   ComputerActionSchema,
   ComputerErrorSchema,
+  IgnoredRoutesSchema,
   InputProbeParamsSchema,
+  InputViaSchema,
+  LEARNED_VIAS,
   ProbeReportSchema,
   RawAXNodeSchema,
   RegionSchema,
+  SCROLL_POINTS_PER_CLICK,
   SERVICE,
   STEP_ONLY_ERROR_KINDS,
   SessionRestoreSchema,
@@ -301,5 +305,35 @@ describe('the window actions (§22)', () => {
     const node = RawAXNodeSchema.parse({ role: 'AXWindow', subrole: 'AXStandardWindow', title: 'Notes', minimized: true, children: [] })
     expect(node.minimized).toBe(true)
     expect(RawAXNodeSchema.safeParse({ role: 'AXWindow', minimized: 'yes', children: [] }).success).toBe(false)
+  })
+})
+
+describe('the background fallbacks (§24)', () => {
+  const target = { session: 's', app: { app: 'TextEdit' } }
+  const step = { index: 0, action: 'key', status: 'ok', tier: 'ax', effect: 'changed' }
+
+  it('names each fallback route on a step, with what it acted on', () => {
+    for (const via of ['menu', 'hit', 'caret', 'scroll-bar', 'scroll-page']) expect(InputViaSchema.safeParse(via).success).toBe(true)
+    // appended after the typing routes, so the Swift enum keeps its old order
+    expect(InputViaSchema.options.slice(0, 4)).toEqual(['ax-insert', 'ax-value', 'keys', 'paste'])
+    const menu = { ...step, input: { via: 'menu', on: 'File › Close' } }
+    expect(StepResultSchema.parse(menu)).toEqual(menu)
+    expect(StepResultSchema.safeParse({ ...step, input: { via: 'hit', on: 'x'.repeat(201) } }).success).toBe(false)
+    expect(LEARNED_VIAS).toEqual(['hit', 'caret', 'scroll-page'])
+    expect(SCROLL_POINTS_PER_CLICK).toBe(40)
+  })
+
+  it('carries the ignored routes on action.run and action.batch', () => {
+    const ignored = { via: ['hit', 'scroll-page'], process: ['click'], skip: true }
+    expect(ActionRunParamsSchema.safeParse({ ...target, action: { action: 'left_click', coordinate: [1, 2] }, tiers: ['ax'], ignored }).success).toBe(true)
+    expect(ActionBatchParamsSchema.safeParse({ ...target, actions: [{ action: 'key', text: 'a' }], tiers: ['ax'], ignored: {} }).success).toBe(true)
+    expect(IgnoredRoutesSchema.safeParse({ via: ['nope'] }).success).toBe(false)
+    expect(IgnoredRoutesSchema.safeParse({ process: ['tap'] }).success).toBe(false)
+  })
+
+  it("names a disabled menu item's path on the error", () => {
+    const e = { kind: 'needs_tier', message: 'File › Close is disabled while TextEdit is in the background.', needed: 'session', menu: ['File', 'Close'] }
+    expect(ComputerErrorSchema.parse(e)).toEqual(e)
+    expect(ComputerErrorSchema.safeParse({ ...e, menu: Array(9).fill('a') }).success).toBe(false)
   })
 })

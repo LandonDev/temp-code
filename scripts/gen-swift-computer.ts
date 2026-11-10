@@ -27,6 +27,7 @@ import {
   COMPUTER_METHODS,
   COMPUTER_PROTOCOL,
   COMPUTER_WAIT,
+  SCROLL_POINTS_PER_CLICK,
   ComputerActionNameSchema,
   ComputerActionSchema,
   ComputerErrorKindSchema,
@@ -38,6 +39,7 @@ import {
   EmptySchema,
   ESCAPE_WATCH,
   HostNotificationSchema,
+  IgnoredRoutesSchema,
   InputViaSchema,
   InterruptedBySchema,
   KeyWindowStateSchema,
@@ -158,6 +160,7 @@ export const COMPUTER_SUBSET: SubsetEntry[] = [
   type('AppBrief', AppBriefSchema),
   type('SessionChange', SessionChangeSchema),
   type('ComputerAction', ComputerActionSchema),
+  type('IgnoredRoutes', IgnoredRoutesSchema),
   type('Budget', BudgetSchema),
   type('ObserveOptions', ObserveOptionsSchema),
   type('ObservationStats', ObservationStatsSchema),
@@ -296,6 +299,8 @@ export function emitInputTables(): Record<string, string> {
     '    ]',
     '    /// Roles that take typing and `set_value` by default (unless read-only).',
     `    public static let typingRoles: Set<String> = ${array([...TYPING_ROLES].sort())}`,
+    '    /// The wheel distance a `scroll-bar` step moves its bar by, per click, in points (protocol.ts SCROLL_POINTS_PER_CLICK, §24.5).',
+    `    public static let scrollPointsPerClick = ${SCROLL_POINTS_PER_CLICK}`,
     '}',
     ''
   ]

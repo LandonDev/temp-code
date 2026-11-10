@@ -288,6 +288,17 @@ export const TierVerdictSchema = z.object({
    * a step at the next tier.
    */
   needsKeyWindow: z.boolean().optional(),
+  /**
+   * Steps in a row with effect 'none' on a learned fallback route (LEARNED_VIAS, §24.1); at
+   * VERDICT_MISSES_TO_RAISE the host names the route in `ignored`, so the service runs it last.
+   */
+  viaMisses: z
+    .object({
+      hit: z.number().int().nonnegative().optional(),
+      caret: z.number().int().nonnegative().optional(),
+      'scroll-page': z.number().int().nonnegative().optional()
+    })
+    .optional(),
   /** when the host last ran `input.probe` on this app, epoch ms: a probe runs once per app */
   probedAt: z.number().int().optional(),
   /** epoch ms */

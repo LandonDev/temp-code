@@ -192,4 +192,6 @@ public enum InputTables {
     ]
     /// Roles that take typing and `set_value` by default (unless read-only).
     public static let typingRoles: Set<String> = ["combo box", "date", "input", "password", "search", "text area"]
+    /// The wheel distance a `scroll-bar` step moves its bar by, per click, in points (protocol.ts SCROLL_POINTS_PER_CLICK, §24.5).
+    public static let scrollPointsPerClick = 40
 }

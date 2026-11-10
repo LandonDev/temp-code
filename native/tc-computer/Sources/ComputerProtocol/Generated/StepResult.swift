@@ -7,10 +7,12 @@ public struct OkStep: Codable, Hashable, Sendable {
     public struct Input: Codable, Hashable, Sendable {
         public let via: InputVia
         public let clipboard: ClipboardOutcome?
+        public let on: String?
 
-        public init(via: InputVia, clipboard: ClipboardOutcome? = nil) {
+        public init(via: InputVia, clipboard: ClipboardOutcome? = nil, on: String? = nil) {
             self.via = via
             self.clipboard = clipboard
+            self.on = on
         }
     }
 

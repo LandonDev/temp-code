@@ -285,6 +285,9 @@ export const COMPUTER_WAIT = {
   observe: { minMs: 0, quietMs: 300, maxMs: 1_000, busyMaxMs: 5_000 }
 } as const satisfies Record<string, WaitOptions>
 
+/** The wheel's distance a `scroll-bar` step moves its bar by, per click (§24.5); the Task benchmark tunes it. */
+export const SCROLL_POINTS_PER_CLICK = 40
+
 /** The `wait` action's row: the smart wait capped at `duration` seconds. */
 export function waitActionWait(durationSeconds: number): WaitOptions {
   const capMs = Math.round(durationSeconds * 1000)
@@ -606,7 +609,9 @@ export const ComputerErrorSchema = z.object({
   /** `key_window_unavailable`: the window that is key in the app, when there is one */
   keyWindow: z.object({ id: int(), title: z.string() }).optional(),
   /** a session-tier step that failed after it began to change the Mac says what it changed */
-  session: SessionChangeSchema.optional()
+  session: SessionChangeSchema.optional(),
+  /** a shortcut whose menu item is disabled (§24.2): the item's title path, `["File", "Close"]` */
+  menu: z.array(z.string()).max(8).optional()
 })
 export type ComputerError = z.infer<typeof ComputerErrorSchema>
 
@@ -634,8 +639,16 @@ export type Observation = z.infer<typeof ObservationSchema>
 
 // ── step results (§3) ───────────────────────────────────────────────────
 
-export const InputViaSchema = z.enum(['ax-insert', 'ax-value', 'keys', 'paste'])
+/**
+ * How a step's input went in: the four typing routes, then the background fallbacks of §24 (appended, so the
+ * Swift enum keeps its old cases' order): a shortcut's menu item, the element under a click, the caret, the
+ * scroll bar, the page scroll a wheel became.
+ */
+export const InputViaSchema = z.enum(['ax-insert', 'ax-value', 'keys', 'paste', 'menu', 'hit', 'caret', 'scroll-bar', 'scroll-page'])
 export type InputVia = z.infer<typeof InputViaSchema>
+/** The fallback routes whose misses the host learns (§24.1, §17.3); `menu`, `scroll-bar` and the typing routes are not learned. */
+export const LEARNED_VIAS = ['hit', 'caret', 'scroll-page'] as const satisfies readonly InputVia[]
+export type LearnedVia = (typeof LEARNED_VIAS)[number]
 export const ClipboardOutcomeSchema = z.enum(['restored', 'kept-person-copy'])
 export type ClipboardOutcome = z.infer<typeof ClipboardOutcomeSchema>
 export const StepEffectSchema = z.enum(['changed', 'none', 'unknown'])
@@ -649,7 +662,8 @@ export const StepOkSchema = z.object({
   tier: TierSchema.nullable(),
   effect: StepEffectSchema,
   element: ElementBriefSchema.optional(),
-  input: z.object({ via: InputViaSchema, clipboard: ClipboardOutcomeSchema.optional() }).optional(),
+  /** present on every step a typing or fallback route ran (§24.8): the route, the clipboard's outcome, what it acted on (`File › Close`, `button "Save"`) */
+  input: z.object({ via: InputViaSchema, clipboard: ClipboardOutcomeSchema.optional(), on: z.string().max(200).optional() }).optional(),
   cursor: PointSchema.optional(),
   /** `cursor_position`'s answer: `X=512, Y=384` */
   text: z.string().optional(),
@@ -720,13 +734,25 @@ export const StateGetParamsSchema = TargetSchema.extend({
 /** A paste waits out the person's copy: one within this many ms fails the step `clipboard_busy { reason: 'recent-copy' }` with the pasteboard untouched. */
 const PasteQuietSchema = int().nonnegative()
 
+/**
+ * The routes and process classes this app was seen to ignore (§24.1): the service runs them last, or with
+ * `skip` not at all, answering `needs_tier` as if they did not exist.
+ */
+export const IgnoredRoutesSchema = z.object({
+  via: z.array(InputViaSchema).optional(),
+  process: z.array(ActionClassSchema).optional(),
+  skip: z.boolean().optional()
+})
+export type IgnoredRoutes = z.infer<typeof IgnoredRoutesSchema>
+
 export const ActionRunParamsSchema = TargetSchema.extend({
   action: ComputerActionSchema,
   /** the tiers the host allows, in order */
   tiers: z.array(TierSchema).min(1),
   wait: WaitOptionsSchema.optional(),
   observe: ObserveOptionsSchema.optional(),
-  pasteQuietMs: PasteQuietSchema.optional()
+  pasteQuietMs: PasteQuietSchema.optional(),
+  ignored: IgnoredRoutesSchema.optional()
 }).superRefine((p, ctx) => needsEpoch(actionElements(p.action), p.epoch, ctx))
 
 export const ActionBatchParamsSchema = TargetSchema.extend({
@@ -735,7 +761,8 @@ export const ActionBatchParamsSchema = TargetSchema.extend({
   stepWait: WaitOptionsSchema.optional(),
   wait: WaitOptionsSchema.optional(),
   observe: ObserveOptionsSchema.optional(),
-  pasteQuietMs: PasteQuietSchema.optional()
+  pasteQuietMs: PasteQuietSchema.optional(),
+  ignored: IgnoredRoutesSchema.optional()
 }).superRefine((p, ctx) => needsEpoch(p.actions.flatMap(actionElements), p.epoch, ctx))
 
 export const CaptureScreenshotParamsSchema = TargetSchema.extend({

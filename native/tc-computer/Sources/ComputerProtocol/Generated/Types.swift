@@ -325,6 +325,18 @@ public struct ComputerAction: Codable, Hashable, Sendable {
     }
 }
 
+public struct IgnoredRoutes: Codable, Hashable, Sendable {
+    public let via: [InputVia]?
+    public let process: [ActionClass]?
+    public let skip: Bool?
+
+    public init(via: [InputVia]? = nil, process: [ActionClass]? = nil, skip: Bool? = nil) {
+        self.via = via
+        self.process = process
+        self.skip = skip
+    }
+}
+
 public struct Budget: Codable, Hashable, Sendable {
     public let bytes: Int
 
@@ -461,8 +473,9 @@ public struct ComputerError: Codable, Hashable, Sendable {
     public let by: InterruptedBy?
     public let keyWindow: KeyWindow?
     public let session: SessionChange?
+    public let menu: [String]?
 
-    public init(kind: ComputerErrorKind, message: String, which: PermissionName? = nil, candidates: [String]? = nil, element: Int? = nil, reason: ErrorReason? = nil, available: [String]? = nil, needed: Tier? = nil, coordinate: Point? = nil, space: CoordinateSpace? = nil, by: InterruptedBy? = nil, keyWindow: KeyWindow? = nil, session: SessionChange? = nil) {
+    public init(kind: ComputerErrorKind, message: String, which: PermissionName? = nil, candidates: [String]? = nil, element: Int? = nil, reason: ErrorReason? = nil, available: [String]? = nil, needed: Tier? = nil, coordinate: Point? = nil, space: CoordinateSpace? = nil, by: InterruptedBy? = nil, keyWindow: KeyWindow? = nil, session: SessionChange? = nil, menu: [String]? = nil) {
         self.kind = kind
         self.message = message
         self.which = which
@@ -476,6 +489,7 @@ public struct ComputerError: Codable, Hashable, Sendable {
         self.by = by
         self.keyWindow = keyWindow
         self.session = session
+        self.menu = menu
     }
 }
 
