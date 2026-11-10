@@ -45,7 +45,7 @@ describe('COMPUTER_MECHANICS', () => {
   it('says Away allows every card but a pay or subscribe act, in every shape', () => {
     for (const o of every) {
       const text = renderComputerMechanics(o)
-      expect(text).toContain('With Away on, cards are allowed, but a pay or subscribe act is denied')
+      expect(text).toContain("Away allows every card but a pay or subscribe act's")
       expect(text).not.toContain('every card is denied')
     }
   })
