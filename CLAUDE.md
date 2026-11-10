@@ -1908,7 +1908,7 @@ names the far child).
 - The state is the person's, one copy per host: `{ enabled, at, by }` and
   the stretch's tally of decisions per thread in the settings table
   (`away`, `away:decided`; src/main/server/away.ts `AwayService`,
-  src/shared/away.ts). `away.get` (read), `away.set` (approve: it denies
+  src/shared/away.ts). `away.get` (read), `away.set` (approve: it answers
   every thread's approvals), `away.apply` (admin, the peer leg) and the
   `away` push (src/shared/contract-away.ts). No home host: the Mac sends a
   flip to every link, applies the box's push when newer and never sends it
@@ -1924,21 +1924,37 @@ names the far child).
   thread catches up ahead of its next turn (`takeNotices`: a send, the turn
   pass, a reports wake), so on and off again while idle tells it nothing.
   A master's report gathers its batch's decisions.
-- The host backs the prompt up (sessions.ts `interceptAway`, in the emit
-  path): while away, a question is answered with `AWAY_QUESTION_REPLY` as
-  each question's typed answer and an approval is denied with
-  `AWAY_APPROVAL_REPLY` (`DriverHandle.approve(…, reason)`; claude sends
-  the reason, the other wires carry no text); the request's row, its
+- The host backs the prompt up (sessions.ts `interceptAway`,
+  `requestApproval`, in the emit path): while away, a question is answered
+  with `AWAY_QUESTION_REPLY` as each question's typed answer and every
+  approval is ALLOWED (since 2026-11-10; before, every one was denied):
+  tool cards in safe and edits, the add-on and skill cards (`addon_add`
+  too: the host stands in for the admin), every computer card and the
+  session step's card (Run now). One kind is still denied: a computer act
+  the model flagged `pay` or `subscribe` (`awayAllowsKind`,
+  `AWAY_DENIED_KINDS` in src/shared/away.ts, read off the call's own
+  `confirm`, never a card's input; computer/run.ts raises that card with
+  `ApprovalRequest.awayDenies`), with `AWAY_APPROVAL_REPLY`. An allow
+  remembers nothing (no bridge rule, no Skip). The request's row, its
   `waiting` and its resolved row are never written, so nothing reads Needs
   you and the notifier stays quiet; a driver with no resolver yet gets the
   card as usual after one retry. Turning away on answers the cards already
-  waiting (`Store.unresolvedRequests`, the newest rows only). The Mac
-  bridge refuses a call that would ask its away person
-  (`MAC_AWAY_REFUSAL`) and the box writes the row. Each of these, and each
+  waiting the same way (`Store.unresolvedRequests`, the newest rows only;
+  the registry keeps each pending card's `awayDenies`). The Mac decides
+  its own calls by its own Away state: a bridge read (secret paths too),
+  command, job or write that would ask is allowed at once, quiet, and
+  marked on its reply (`ctx.markAway` → `peer.reply { away: true }`,
+  `PeerCalls.call`'s `onAway`), its prompts waiting at the flip decided by
+  `MacBridge.awayChanged`; a box thread's computer call is allowed and
+  says `away` in its answer, or refused with `MAC_AWAY_REFUSAL` when it
+  spends money. The box writes the row (macTools.ts `awayAware`,
+  computer/bridge.ts), and words a Mac on the older build's refusal
+  (`MAC_AWAY_REFUSAL_LEGACY`) as a skipped row. Each of these, and each
   `note_decision` call (an app tool on every thread, `app.noteDecision`
   over the codex bridge), is one `notice` of kind `away`
-  (`away: { kind: decision | question | approval, text }`) that counts
-  toward the tally.
+  (`away: { kind: decision | question | allowed | approval, text }`;
+  `approval` is a denial, "Skipped while away", `allowed` "Allowed while
+  away", drawn with the open lock) that counts toward the tally.
 - The app: the rail foot's Away row above Settings (chrome/AwayRow.tsx, a
   switch on lib/away.ts, its track from components/ui/switch-track.ts),
   Threads → Away from Computer (a checkbox row, `MenuState.checked`), the
@@ -1946,9 +1962,11 @@ names the far child).
   "Decided without you in N threads" with Review (chrome/AwayReturn.tsx,
   AwayReviewDialog in the dialogs chunk). The phone only decodes the rows.
 - Proof: `bun run script:e2e-away` (a haiku thread asks a question while
-  away and finishes without a card; a flip off reaches a running turn);
-  unit tests away, awaySync, sessions-away, macBridge, macTools, the
-  drivers' answers and denials, AwayRow.dom, AwayReturn.dom.
+  away and finishes without a card; a safe-mode haiku thread's Bash write
+  is allowed with no card; a flip off reaches a running turn); unit tests
+  away, awaySync, sessions-away, macBridge, macBridgeWrite, macJobs,
+  macTools, peerCalls, macComputer, computer/bridge, approval, schedule,
+  the drivers' allows and denials, AwayRow.dom, AwayReturn.dom.
 
 ## Add-ons: one registry, every harness
 docs/box.md "Add-ons and skills: one copy, on the box", "Add-ons: the
@@ -1996,7 +2014,8 @@ plan-8YMm3ynnFZYs.md (grants) and plan-vJP8mPAPorvc.md (pages).
   `addon_add`, `addon_remove` (deferred on Claude, always on the bridge),
   `addon_find`, `addon_call`. `addon_add` always asks, and only a person
   with an admin key may allow it (`assertMayAnswer`: "forbidden: approving
-  an add-on needs a person with an admin key"; a deny always passes).
+  an add-on needs a person with an admin key"; a deny always passes), or
+  the host itself while Away is on; a model never may.
   `addon_remove` asks only over an add-on a person wrote last; `addon_call`
   follows the permission (auto runs, edits runs a read-only tool, safe
   asks), its card `Use <tool> from <addon>?`.
@@ -2063,7 +2082,7 @@ and .temp-code/plan-JBpcLz-eGMhp.md (the drivers).
 - **The app tools** (skills/tools.ts): `skill_list`, `skill_write`,
   `skill_remove`, deferred on Claude and listed by the bridge on every
   codex and Muse thread. A change to a skill a person or an import wrote
-  last asks a card; a denial or Away writes nothing; a skill that moved
+  last asks a card (Away allows it); a denial writes nothing; a skill that moved
   since it was read is refused; the answer waits for the write-out.
 - **What each CLI reads.** Claude: `CLAUDE_CONFIG_DIR` is an owned dir per
   scope, `<userData>/harness/claude-config/<scope>/` (skills/claudeRoots.ts),
@@ -2155,7 +2174,8 @@ why and the measured headline.
   edits every act that sends input asks one card naming the app, the
   window and each action; reads never ask. Full access asks only for an
   act the model flagged (`confirm: { kind, what }`) and before text goes
-  into a password field. Away denies. Every call's app is pinned to a pid
+  into a password field. Away allows every card but a `pay` or
+  `subscribe` act's, which it denies. Every call's app is pinned to a pid
   first (`TargetResolver`), and TempCode itself and the system's password
   and Touch ID prompts are refused (`refused_app`). Service errors read
   through `errorLine` (src/shared/computer/errorWords.ts).
@@ -2165,7 +2185,7 @@ why and the measured headline.
   (120 s), or the Away switch and 10 s of quiet; locked or asleep refuses.
   A held step says "Waiting for the Mac to be free" and asks one card with
   Run now and Skip (at once in safe and edits, after 3 minutes in full
-  access). One session call at a time per host; the person's app and
+  access; answered Run now while Away is on). One session call at a time per host; the person's app and
   pointer go back after it. A paste waits out the person's copy
   (`RECENT_COPY_MS`). main feeds it `PersonIdle` (src/main/personIdle.ts).
 - **What the person sees** (§8 "What the person sees"). A Computer row per

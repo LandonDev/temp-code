@@ -1019,9 +1019,28 @@ The Mac drives it over the links it holds (`src/main/server/remote/awaySync.ts`)
   the newer state. A flip made while the box was down reaches it here.
 
 Wall clocks decide, so a skew of seconds matters only for flips seconds
-apart; the next link-up settles it. `away.set` needs approve, since it denies
-approvals for every thread. Proof: `remote/awaySync.test.ts` (a flip with the
-box down then up, the box's flip reaching two Macs, no echo).
+apart; the next link-up settles it. `away.set` needs approve, since it
+answers approvals for every thread. Proof: `remote/awaySync.test.ts` (a flip
+with the box down then up, the box's flip reaching two Macs, no echo).
+
+What Away does to a card. Since 2026-11-10 the host allows, where it used to
+deny, everything that would have asked the person: tool cards in safe and
+edits, the add-on and skill cards (`addon_add` too), every computer card and
+the session step's card (Run now), and on the Mac every bridge read (secrets
+too), command, job and write that would prompt. One kind is still denied: a
+computer act the model flagged `pay` or `subscribe`
+(`awayAllowsKind` in src/shared/away.ts). Questions are still answered for
+the person. Each allow is a quiet "Allowed while away" row on its thread that
+counts toward the tally, and remembers nothing: no bridge folder or command
+rule, no Skip, no lease past what Run now grants. Whichever host decides a
+card decides by its own copy of the state: the box for its threads' cards,
+the Mac for its bridge prompts and a box thread's computer cards. The Mac
+marks an allowed bridge call on its reply (`peer.reply { away: true }`), and
+the box writes the row; a Mac on the older build still refuses
+(`MAC_AWAY_REFUSAL_LEGACY`), which the box writes as a skipped row. Refusals
+that never become cards stay refusals: the bridge off, the read policy for a
+command, the computer switch off, TempCode's own window, a locked or asleep
+Mac. Proof: `bun run script:e2e-away`.
 
 ### Integrations and API keys: placed by hand
 
@@ -1814,9 +1833,11 @@ the call runs, answers, is stopped, or the Mac's link drops.
 Pause, Stop, Away. A paused box thread's computer calls are refused at the
 box; a pause or the composer's Stop cancels the call out on the Mac. Stop on
 the Activity row ends computer use for the turn on both hosts: the call in
-flight answers what it did and "stopped by the person". With Away on, an
-acting call that would ask is refused at once and the box writes its away
-row.
+flight answers what it did and "stopped by the person". With Away on, every
+card the call raises is allowed on the Mac and the box writes an allowed row,
+except a call flagged pay or subscribe, which is refused (before it waits,
+or at its card when Away turned on while it waited) and the box writes the
+skipped row.
 
 Where things land. The pictures are files under the box thread's own
 attachment dir, numbered by the thread; none stays on the Mac. The session is
@@ -4733,7 +4754,7 @@ on 2026-11-09 and reported by every run of it until a host fix lands.
   change to a skill a person or an import wrote last asks on the schema's
   card plus a `changes` line (`skillChanges`), on the call's own row for
   Claude (its tool_use id) and on an id no row has for a bridge call; a
-  denial or Away writes nothing. The checked row's `updatedAt` rides as
+  denial writes nothing, and Away allows the card. The checked row's `updatedAt` rides as
   `expectUpdatedAt`, so a skill that moved is refused with "call skill_write
   again". The answer waits for the write-out (`whenSettled`). The bridge
   calls write and remove with no client deadline.
