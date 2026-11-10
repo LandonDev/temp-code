@@ -532,7 +532,8 @@ export class MacComputer {
     const base = this.deps.host()?.sessions.rowOf(st.key) ?? st.provisional
     if (!base) return null
     const row: ComputerSessionRow = { ...base }
-    if (st.held) row.running = { tool: st.held.tool, words: heldLine(st.held.held), startedAt: base.running?.startedAt ?? st.held.startedAt }
+    if (st.held)
+      row.running = { tool: st.held.tool, words: heldLine(st.held.held), startedAt: base.running?.startedAt ?? st.held.startedAt, held: true }
     if (st.asking) row.asking = { line: st.asking }
     return row
   }

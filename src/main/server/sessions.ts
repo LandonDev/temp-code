@@ -5408,6 +5408,12 @@ export class SessionRegistry {
     if (meta) this.notifyMeta(meta)
   }
 
+  /** The thread's tool hold line while its turn is live (orchestration.ts: check_agent and list_agents say it), else null. */
+  toolHoldOf(sessionId: string): string | null {
+    const status = this.row(sessionId)?.status
+    return status === 'running' || status === 'starting' ? (this.toolHolds.get(sessionId) ?? null) : null
+  }
+
   /** The next steer into a thread's turn (orchestration.ts: a wait_for_agent
    *  there returns on it). `cancel` drops the waiter. */
   nextSteer(sessionId: string): { promise: Promise<string>; cancel: () => void } {

@@ -2183,8 +2183,10 @@ why and the measured headline.
   `mac.computer` call, run on the Mac by remote/macComputer.ts and queued
   per thread by computer/bridge.ts on the box, while the host's switch
   `macBridge.computer.<envId>` is on (off by default), under
-  `macBridge.maxComputer.<envId>` (2) live sessions. §18 and docs/box.md
-  "Computer use from a box thread".
+  `macBridge.maxComputer.<envId>` (2) live sessions. A call the Mac holds
+  (`running.held` on its row) is the box thread's tool hold, so its status
+  says the Mac's line ("Waiting for the Mac, load 12.3 of 8, 3rd in line").
+  §18 and docs/box.md "Computer use from a box thread".
 - **Seams.** `TEMP_CODE_COMPUTER=0` (off; `=1` serves a headless Mac
   instance), `TEMP_CODE_COMPUTER_BIN` (the binary),
   `TEMP_CODE_COMPUTER_TRACE=1` (every frame), `TEMP_CODE_COMPUTER_PIN`

@@ -1805,7 +1805,11 @@ sessions at once" (default 2, in the host's Settings… dialog while the switch
 is on). A call at either cap waits in line, "Waiting for the Mac, 2 of 2
 computer sessions, 1st in line", on the Mac's running list and the box row,
 within its deadline. The slot goes back at the box turn's settle, a Stop, the
-link dropping or three idle minutes.
+link dropping or three idle minutes. While the Mac holds a call (either cap,
+the load, or the session tier's "Waiting for the Mac to be free"), the box
+thread's own status says the Mac's line: the rail, the board, the phone and
+`check_agent` ("running: Waiting for the Mac, …") read it, and it clears when
+the call runs, answers, is stopped, or the Mac's link drops.
 
 Pause, Stop, Away. A paused box thread's computer calls are refused at the
 box; a pause or the composer's Stop cancels the call out on the Mac. Stop on

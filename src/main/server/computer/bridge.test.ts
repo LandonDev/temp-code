@@ -77,6 +77,7 @@ function box(opts: { bridged?: string[]; offers?: string[] } = {}) {
   const away: [string, string][] = []
   const ledger: string[] = []
   const pushed: ComputerSessionRow[][] = []
+  const holds: [string, string | null][] = []
   const bridge = new ComputerBridge({
     calls,
     macPeerOf: (id) => {
@@ -94,6 +95,7 @@ function box(opts: { bridged?: string[]; offers?: string[] } = {}) {
     },
     reboot: (id) => void reboots.push(id),
     awayRefused: (id, what) => void away.push([id, what]),
+    held: (id, line) => void holds.push([id, line]),
     clock,
     log: () => {}
   })
@@ -114,7 +116,7 @@ function box(opts: { bridged?: string[]; offers?: string[] } = {}) {
     }
     throw new Error(`timed out: ${label}`)
   }
-  return { sessions, bridged, settings, calls, out, register, reply, fail, progress, pause, landingRoot, clock, reboots, away, ledger, pushed, bridge, ofMethod, status, run, until }
+  return { sessions, bridged, settings, calls, out, register, reply, fail, progress, pause, landingRoot, clock, reboots, away, ledger, pushed, holds, bridge, ofMethod, status, run, until }
 }
 
 const observe = { app: 'TextEdit' }
@@ -475,5 +477,105 @@ describe('ComputerBridge: rows, turns and the ledger', () => {
     b.bridge.linkDown(MAC)
     expect(b.bridge.rows()).toEqual([])
     expect(existsSync(b.landingRoot)).toBe(true)
+  })
+})
+
+describe("ComputerBridge: the Mac's hold is the thread's status", () => {
+  const LOAD = (place: string) => `Waiting for the Mac, load 12.3 of 8, ${place} in line`
+  const heldRow = (words: string) => row({ running: { tool: 'computer_act', words, startedAt: 5, held: true } })
+
+  /** One call out on t1 with the Mac holding it at `LOAD('3rd')`. */
+  async function heldCall() {
+    const b = box()
+    const p = b.run('computer_act', click)
+    await b.until(() => b.out.length === 1, 'out')
+    const callId = b.out[0].callId
+    b.progress(callId, heldRow(LOAD('3rd')))
+    expect(b.holds).toEqual([['t1', LOAD('3rd')]])
+    return { b, p, callId }
+  }
+
+  it("a held row sets the hold with the Mac's words, a moved standing updates it, the running row clears it, once per change", async () => {
+    const { b, p, callId } = await heldCall()
+    b.progress(callId, heldRow(LOAD('3rd')))
+    b.progress(callId, heldRow(LOAD('2nd')))
+    b.progress(callId, row({ running: { tool: 'computer_act', words: 'Clicking in TextEdit', startedAt: 5 } }))
+    b.progress(callId, row({ running: { tool: 'computer_act', words: 'Clicking in TextEdit', startedAt: 5 } }))
+    expect(b.holds).toEqual([
+      ['t1', LOAD('3rd')],
+      ['t1', LOAD('2nd')],
+      ['t1', null]
+    ])
+    // the guard's words without the mark are an action's, never a hold
+    b.progress(callId, row({ running: { tool: 'computer_act', words: LOAD('1st'), startedAt: 5 } }))
+    expect(b.holds).toHaveLength(3)
+    b.reply(callId, answer())
+    await p
+    expect(b.holds).toHaveLength(3)
+  })
+
+  it('a card that replaces a hold clears it', async () => {
+    const { b, p, callId } = await heldCall()
+    b.progress(callId, row({ running: { tool: 'computer_act', words: 'Waiting for the Mac to be free', startedAt: 5, held: true }, asking: { line: 'Run now?' } }))
+    expect(b.holds.at(-1)).toEqual(['t1', null])
+    b.reply(callId, answer())
+    await p
+  })
+
+  it('the answer clears it, and a row after the answer sets nothing', async () => {
+    const { b, p, callId } = await heldCall()
+    b.reply(callId, answer())
+    await p
+    expect(b.holds).toEqual([
+      ['t1', LOAD('3rd')],
+      ['t1', null]
+    ])
+    b.progress(callId, heldRow(LOAD('1st')))
+    expect(b.holds).toHaveLength(2)
+  })
+
+  it('a failure clears it', async () => {
+    const { b, p, callId } = await heldCall()
+    b.fail(callId, 'refused: the Mac said no')
+    expect((await p).isError).toBe(true)
+    expect(b.holds.at(-1)).toEqual(['t1', null])
+  })
+
+  it('Stop clears it at once, and a row after the Stop sets nothing', async () => {
+    const { b, p, callId } = await heldCall()
+    await b.bridge.stop('t1')
+    expect(b.holds.at(-1)).toEqual(['t1', null])
+    b.progress(callId, heldRow(LOAD('1st')))
+    expect(b.holds).toHaveLength(2)
+    b.reply(callId, answer({ body: 'stopped by the person', isError: true }))
+    await p
+    expect(b.holds).toHaveLength(2)
+  })
+
+  it("the Mac's link going down clears it before the call fails", async () => {
+    const { b, p } = await heldCall()
+    b.bridge.linkDown(MAC)
+    expect(b.holds.at(-1)).toEqual(['t1', null])
+    b.calls.drop(1)
+    expect((await p).body).toBe(COMPUTER_MAC_WENT_OFFLINE)
+    expect(b.holds).toHaveLength(2)
+  })
+
+  it("the thread's end clears it, and a row after it sets nothing", async () => {
+    const { b, p, callId } = await heldCall()
+    b.bridge.threadsEnded(['t1'])
+    expect(b.holds.at(-1)).toEqual(['t1', null])
+    b.progress(callId, heldRow(LOAD('1st')))
+    b.reply(callId, answer())
+    await p
+    expect(b.holds).toHaveLength(2)
+  })
+
+  it('close clears it, and a row after close sets nothing', async () => {
+    const { b, callId } = await heldCall()
+    b.bridge.close()
+    expect(b.holds.at(-1)).toEqual(['t1', null])
+    b.progress(callId, heldRow(LOAD('1st')))
+    expect(b.holds).toHaveLength(2)
   })
 })

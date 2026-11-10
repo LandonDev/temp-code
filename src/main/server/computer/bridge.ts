@@ -81,6 +81,8 @@ export interface ComputerBridgeDeps {
   reboot?: (sessionId: string) => void
   /** A card was refused on the Mac because its person is away: the thread's away row. */
   awayRefused?: (sessionId: string, what: string) => void
+  /** The call is held on the Mac (its line), or no longer (null): registry.setToolHold, so the thread's status says it. */
+  held?: (sessionId: string, line: string | null) => void
   clock?: BridgeClock
   log?: (line: string) => void
 }
@@ -115,6 +117,8 @@ interface ThreadBridge {
   ledgered: boolean
   idleTimer: unknown
   nextShot: number | null
+  /** the Mac's hold line last told to `deps.held` */
+  holdLine: string | null
 }
 
 export class ComputerBridge {
@@ -253,7 +257,7 @@ export class ComputerBridge {
           'mac.computer',
           { thread: { id, title: meta?.title ?? '', permission }, args: { call, turn: `${this.boot}:${t.turn}`, rootId: this.deps.pause.rootOf(id) } } as never,
           bridgedDeadlineMs(call),
-          { callId, onProgress: (frame) => !inflight.closed && this.progress(t, frame.chunk) }
+          { callId, onProgress: (frame) => this.progress(t, inflight, frame.chunk) }
         )
       })
       return await this.answer(t, meta, call, raw, inflight)
@@ -263,6 +267,7 @@ export class ComputerBridge {
       ctx.signal?.removeEventListener('abort', onAbort)
       if (inflight.giveUp !== null) this.clock.clearTimeout(inflight.giveUp)
       if (t.inflight === inflight) t.inflight = null
+      this.hold(t, null)
       if (t.row) {
         t.row = { ...t.row, running: null, lastCallAt: this.clock.now() }
         delete t.row.asking
@@ -316,7 +321,9 @@ export class ComputerBridge {
     this.deps.awayRefused?.(id, approvalLine('computer', computerApprovalInput(call.tool, args, titleCtx), title))
   }
 
-  private progress(t: ThreadBridge, chunk: string): void {
+  /** A row from the Mac for the call in flight; one for a call that answered, was Stopped or ended is dropped, so it cannot set a hold again. */
+  private progress(t: ThreadBridge, inflight: Inflight, chunk: string): void {
+    if (inflight.closed || t.inflight !== inflight) return
     let json: unknown
     try {
       json = JSON.parse(chunk)
@@ -336,6 +343,15 @@ export class ComputerBridge {
     if (next.asking) next.running = { tool: next.running?.tool ?? 'computer_act', words: askingWords(macName), startedAt: next.running?.startedAt ?? this.clock.now() }
     t.row = next
     this.touched()
+    // a card that replaces a hold is not a hold
+    this.hold(t, next.running?.held && !next.asking ? next.running.words : null)
+  }
+
+  /** The thread's status says the Mac's hold line while the call waits there; told once per change. */
+  private hold(t: ThreadBridge, line: string | null): void {
+    if (t.holdLine === line) return
+    t.holdLine = line
+    this.deps.held?.(t.id, line)
   }
 
   // ── rows ───────────────────────────────────────────────────────────
@@ -383,6 +399,7 @@ export class ComputerBridge {
       inflight.giveUp = this.clock.setTimeout(() => {
         if (inflight.callId) this.deps.calls.cancel(inflight.callId, hostErrorLine('stopped'))
       }, STOP_REPLY_MS)
+    this.hold(t, null)
     this.endRow(t)
     return wasLive
   }
@@ -419,6 +436,7 @@ export class ComputerBridge {
       if (!t) continue
       this.threads.delete(id)
       if (t.inflight) t.inflight.closed = true
+      this.hold(t, null)
       for (const q of [...t.queued]) q.settle(refusal(hostErrorLine('cancelled', 'the thread ended')))
       this.disarmIdle(t)
       if (t.macPeer) this.finish(t, t.macPeer, 'ended with the thread')
@@ -449,12 +467,18 @@ export class ComputerBridge {
 
   /** A Mac's link dropped: its rows end; calls out on it fail through PeerCalls.drop. */
   linkDown(envId: string): void {
-    for (const t of this.threads.values()) if (t.macPeer === envId) this.endRow(t)
+    for (const t of this.threads.values())
+      if (t.macPeer === envId) {
+        this.hold(t, null)
+        this.endRow(t)
+      }
   }
 
   close(): void {
     for (const t of this.threads.values()) {
       this.disarmIdle(t)
+      if (t.inflight) t.inflight.closed = true
+      this.hold(t, null)
       for (const q of [...t.queued]) q.settle(refusal(hostErrorLine('cancelled', 'the thread ended')))
     }
     if (this.rowTimer !== null) this.clock.clearTimeout(this.rowTimer)
@@ -467,7 +491,7 @@ export class ComputerBridge {
   private thread(id: string): ThreadBridge {
     let t = this.threads.get(id)
     if (!t) {
-      t = { id, turn: 1, status: undefined, stopped: false, queue: Promise.resolve(), queued: new Set(), inflight: null, row: null, macPeer: null, ledgered: false, idleTimer: null, nextShot: null }
+      t = { id, turn: 1, status: undefined, stopped: false, queue: Promise.resolve(), queued: new Set(), inflight: null, row: null, macPeer: null, ledgered: false, idleTimer: null, nextShot: null, holdLine: null }
       this.threads.set(id, t)
     }
     return t

@@ -402,3 +402,15 @@ it('a settle clears a tool hold, and a hold on a row at rest says nothing', asyn
   registry.setToolHold('nobody', 'Waiting for the clipboard')
   expect(registry.get('nobody')).toBeNull()
 })
+
+it('a pause drops a tool hold: the paused row says nothing of it, nor does the turn that resumes', async () => {
+  const id = await live()
+  registry.setToolHold(id, 'Waiting for the Mac, load 12.3 of 8, 3rd in line')
+  expect(registry.toolHoldOf(id)).toBe('Waiting for the Mac, load 12.3 of 8, 3rd in line')
+  emit(id, { type: 'status', status: 'paused' })
+  expect(registry.toolHoldOf(id)).toBeNull()
+  expect(registry.get(id)?.statusDetail ?? null).not.toBe('Waiting for the Mac, load 12.3 of 8, 3rd in line')
+  emit(id, { type: 'status', status: 'running' })
+  expect(registry.toolHoldOf(id)).toBeNull()
+  expect(registry.get(id)?.statusDetail ?? '').not.toMatch(/^Waiting for the Mac/)
+})

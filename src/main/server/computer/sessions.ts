@@ -62,7 +62,7 @@ function rowFor(t: ThreadComputer): ComputerSessionRow | null {
       const a = t.apps.get(key)
       return a ? [{ name: a.name, bundleId: a.bundleId, window: a.window?.title ?? null }] : []
     }),
-    running: t.live.running && t.live.held ? { ...t.live.running, words: t.live.held } : t.live.running,
+    running: t.live.running && t.live.held ? { ...t.live.running, words: t.live.held, held: true } : t.live.running,
     tier: t.live.tier
   }
 }

@@ -528,6 +528,11 @@ async function orchestrator(): Promise<void> {
   const tools = (sid: string): Promise<{ tools: { name: string; description: string }[] }> => boxCall('app.computerTools', { sessionId: sid, token: token(sid) })
   const sessionsOnBox = async (): Promise<{ threadId: string; macPeer?: string; macName?: string; apps: { name: string }[]; running: { words: string } | null; asking?: { line: string } }[]> =>
     (await boxCall<{ sessions: never[] }>('computer.sessions', {})).sessions
+  /** The box thread's own status line, as the rail, the board and the phone read it. */
+  const detailOnBox = async (sid: string): Promise<string | null> => {
+    const page = await boxCall<{ sessions?: { id: string; statusDetail?: string | null }[] } | { id: string; statusDetail?: string | null }[]>('session.list', {})
+    return (Array.isArray(page) ? page : (page.sessions ?? [])).find((m) => m.id === sid)?.statusDetail ?? null
+  }
 
   // ── the Mac instance, headless, computer use on, TC Probe pinned to its pid ──
   launch(mac, {
@@ -626,15 +631,21 @@ async function orchestrator(): Promise<void> {
     // 6. the cap
     await awaitScreen()
     await rpc(mac, 'macBridge.limits.set', { environmentId: boxId, maxComputer: 1 })
+    // t2's turn runs before its call, so the box thread's status can say the Mac's hold
+    await boxCall('session.markStatus', { sessionId: t2, status: 'running' })
     const second = computer(t2, 'computer_observe', { app: APP, window: APP })
     const held = await until(30_000, async () => (await macActivity()).calls.some((c) => c.sessionId === t2 && c.status === 'held' && c.held?.reason === 'computer' && c.held.position === 1))
     check("cap: the Mac holds the second thread's session, reason computer, 1st in line", held)
     const heldRow = (await sessionsOnBox()).find((r) => r.threadId === t2)
     check("cap: the second thread's box row says its place", heldRow?.running?.words === 'Waiting for the Mac, 1 of 1 computer sessions, 1st in line', JSON.stringify(heldRow))
+    const heldLine = 'Waiting for the Mac, 1 of 1 computer sessions, 1st in line'
+    const saidHeld = await until(10_000, async () => (await detailOnBox(t2)) === heldLine)
+    check("cap: the second box thread's own status says the Mac's hold", saidHeld, String(await detailOnBox(t2)))
     await boxCall('session.markStatus', { sessionId: t1, status: 'idle' })
     const secondOut = await second
     check("cap: the first thread's settle frees the slot and the second runs", !secondOut.isError, secondOut.text.slice(0, 200))
-    await boxCall('session.markStatus', { sessionId: t2, status: 'running' })
+    const detailAfter = await detailOnBox(t2)
+    check("cap: once the second runs, its status no longer says the hold", detailAfter !== heldLine, String(detailAfter))
     await boxCall('session.markStatus', { sessionId: t2, status: 'idle' })
     await rpc(mac, 'macBridge.limits.set', { environmentId: boxId, maxComputer: null })
 

@@ -83,6 +83,7 @@ const stub = {
   reportsRootFor: () => '/tmp/ws',
   queuedLine: (_id: string): string | null => null,
   queuedDetail: (_id: string): string | null => null,
+  toolHoldOf: (_id: string): string | null => null,
   create: async (params: Record<string, unknown>) => {
     created.push(params)
     return { id: String(params.id ?? `child-${created.length}`), title: String(params.title ?? '') }
@@ -380,6 +381,18 @@ it('a spawn_agent child past the host running cap is created queued and says so 
   expect(JSON.parse(await orchCheckAgent(parent, 'child-1')).status).toBe('queued: 120 of 120 running')
   // A running child reads its plain status.
   sessions[child.id] = { ...child, status: 'running' } as SessionMeta
+  expect(JSON.parse(await orchCheckAgent(parent, 'child-1')).status).toBe('running')
+})
+
+it('a running child whose tool call is held says the hold in list_agents and check_agent', async () => {
+  const hold = vi.spyOn(stub, 'toolHoldOf').mockImplementation((id) => (id === 'child-1' ? 'Waiting for the Mac, load 12.3 of 8, 3rd in line' : null))
+  const child = { id: 'child-1', title: 'click save', status: 'running', parentId: parent.id } as unknown as SessionMeta
+  sessions[child.id] = child
+  children = [child]
+  const said = 'running: Waiting for the Mac, load 12.3 of 8, 3rd in line'
+  expect(JSON.parse(await orchListAgents(parent))).toMatchObject([{ agentId: 'child-1', status: said }])
+  expect(JSON.parse(await orchCheckAgent(parent, 'child-1')).status).toBe(said)
+  hold.mockReturnValue(null)
   expect(JSON.parse(await orchCheckAgent(parent, 'child-1')).status).toBe('running')
 })
 

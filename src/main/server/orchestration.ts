@@ -38,6 +38,7 @@ import {
   type OrchestrationRules
 } from '@shared/rules'
 import type { EventRow, SessionMeta } from '@shared/events'
+import { plainStatus } from '@shared/statusWords'
 import { watchPhrase } from '@shared/watch'
 import type { SessionRegistry } from './sessions'
 import type { CrossHostAgents } from './crossHostAgents'
@@ -257,8 +258,9 @@ function tokensOf(
 const unsettled = (status: SessionMeta['status']): boolean =>
   status === 'running' || status === 'queued' || status === 'starting'
 
-/** The status an agent reads as; a queued one says why ("queued: 120 of 120 running"). */
+/** The status an agent reads as; a queued one says why ("queued: 120 of 120 running"), a running one held before its tool call runs says the hold ("running: Waiting for the Mac, load 12.3 of 8, 3rd in line"). */
 function statusOf(s: Pick<SessionMeta, 'id' | 'status'>): string {
+  if (s.status === 'running') return plainStatus('running', registry?.toolHoldOf(s.id))
   if (s.status !== 'queued') return s.status
   const detail = registry?.queuedDetail(s.id)
   return detail ? `queued: ${detail}` : 'queued'

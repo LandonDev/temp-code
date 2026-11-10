@@ -310,11 +310,18 @@ describe('MacComputer: the live session and the guard', () => {
     const p = s.call({ thread: 's1', args: { app: 'Notes' } })
     await until(() => s.progress.some((x) => x.thread === 's1'), 'the held row')
     const held = s.progress.find((x) => x.thread === 's1')!.row
-    expect(held).toMatchObject({ threadId: KEY('s1'), apps: [{ name: 'Notes', bundleId: null }], running: { tool: 'computer_observe', words: 'Waiting for the Mac, 1 of 1 computer sessions, 1st in line' } })
+    expect(held).toMatchObject({ threadId: KEY('s1'), apps: [{ name: 'Notes', bundleId: null }], running: { tool: 'computer_observe', words: 'Waiting for the Mac, 1 of 1 computer sessions, 1st in line', held: true } })
     expect(s.fake.runs.filter((r) => r.ctx.threadId === KEY('s1'))).toHaveLength(0)
+    // Once admitted the row names the action, with no hold mark.
+    const ran = () => s.progress.filter((x) => x.thread === 's1' && x.row.running?.words === 'Using Notes')
+    s.fake.behave(async () => {
+      await until(() => ran().length > 0, 'the running row')
+      return { steps: [], shots: [], body: 'Notes', isError: false }
+    })
     await s.end('settled', 's0')
     expect((await p).isError).toBe(false)
     expect(s.fake.runs.filter((r) => r.ctx.threadId === KEY('s1'))).toHaveLength(1)
+    expect(ran().every((x) => x.row.running?.held === undefined)).toBe(true)
   })
 
   it('a call cancelled while held leaves the line and never runs when a slot opens', async () => {

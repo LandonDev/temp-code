@@ -510,6 +510,7 @@ describe('tier scheduling', () => {
     const call = s.h.run('computer_act', { app: 'Sessiony', action: 'hold_key', text: 'shift', duration: 1 })
     await until(() => s.lines.includes('Waiting for the Mac to be free'), 'the held line')
     expect(s.h.sessions.rows()[0].running?.words).toBe('Waiting for the Mac to be free')
+    expect(s.h.sessions.rows()[0].running?.held).toBe(true)
     await new Promise((r) => setTimeout(r, 1_100))
     s.setPresent(false)
     const o = await call
