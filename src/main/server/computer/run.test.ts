@@ -304,8 +304,9 @@ describe('background fallbacks (§24)', () => {
     request: async (c) => (asked.push(c.step), { admit: false, reason: 'skipped', message: 'no' }),
     run: (c, send) => send(c.tiers)
   })
-  const verdict = (h: ComputerHarness, bundleId: string, extra: Record<string, unknown> = {}): void =>
+  const verdict = (h: ComputerHarness, bundleId: string, extra: Record<string, unknown> = {}): void => {
     h.rows.set(tierVerdictSetting(bundleId), JSON.stringify({ bundleId, classes: { click: 'session' }, misses: {}, updatedAt: Date.now(), ...extra }))
+  }
 
   it('under a session click verdict a coordinate click runs at ax alone through the hit, the gate never asked', async () => {
     const asked: number[] = []

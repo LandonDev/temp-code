@@ -16,6 +16,14 @@
  *    save sheet (Cancel, then Don't Save) and the next window read whole,
  *    minimize at ax and raise refused without the session tier, a window with
  *    no buttons; then a third instance's last window closed, which quits it.
+ *  - the background fallbacks (§24) on a TC Probe launched with
+ *    `--fallbacks <scratch>`, its window key and the app never active, at
+ *    `ax` and `process` alone: a shortcut through its menu item, a disabled
+ *    first-responder item answering needs_tier with its path, a click on a
+ *    label pressing the button around it, the caret at a clicked character,
+ *    a background click with no ax route, a stepper's upper half, the scroll
+ *    bar and its end, a text paste by AX with the pasteboard untouched, and a
+ *    save sheet driven by AX into the scratch folder.
  *  - a scratch TextEdit, its own process opened with `open -n -g` and
  *    targeted by that pid alone: a full read, set_value, a process-tier
  *    click, the clipboard lock and a 2,500-character paste, a screenshot,
@@ -1111,6 +1119,156 @@ async function windowLeg(a: Service, mayLaunch: () => void): Promise<void> {
   if (pid && alive(pid)) process.kill(pid, 'SIGKILL')
 }
 
+/**
+ * The background fallbacks leg (§24), on a TC Probe launched with `--fallbacks <scratch>` and targeted by
+ * pid: its window key in the app, the app never active, the tiers `ax` and `process` alone (a step that
+ * could reach the clipboard runs at `ax` alone), the person's app and pointer checked after every act.
+ */
+async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
+  const leg = new Chain()
+  let pid = 0
+  const title = 'TC Probe Fallbacks'
+  const scratch = join(WORK, `fallbacks-${process.pid}`)
+  const read = (): Promise<Observation> =>
+    a.call('state.get', { session: SESSION, app: { pid }, window: { title }, mode: 'full', geometry: true, wait: COMPUTER_WAIT.observe })
+  const act = (o: Observation, action: Record<string, unknown>, tiers: ('ax' | 'process')[]) =>
+    a.call('action.run', { session: SESSION, app: { pid }, window: { id: o.window.id }, epoch: o.epoch, action, tiers, wait: COMPUTER_WAIT.action } as never)
+  const frontmost = () => ({ pid: probe<{ pid: number }>('frontmost').pid, bundleId: null })
+  const centre = (e: ElementLine) => intPoint(e.frame!.x + e.frame!.w / 2, e.frame!.y + e.frame!.h / 2)
+  const via = (step: OkStep): string | undefined => step.input?.via
+  let o: Observation | null = null
+
+  await leg.step('fallbacks: launch a TC Probe with --fallbacks in the background', async (data) => {
+    mkdirSync(scratch, { recursive: true })
+    const before = personState()
+    mayLaunch()
+    pid = (await launchProbe(PROBE_BUILD, ['--fallbacks', scratch], frontmost)).pid
+    data.pid = pid
+    o = await until(async () => ((await a.call('apps.list', { windows: true })).apps.find((x) => x.pid === pid)?.windows?.some((w) => w.title === title) ? read() : null), 10_000, 'the fallbacks window')
+    data.person = assertPersonUntouched(before, 'after the launch', pid)
+  })
+  await leg.step('fallbacks 1: ⌘⇧P runs Probe › Ping App through the menu', async (data) => {
+    const before = personState()
+    const r = await act(o!, { action: 'key', text: 'super+shift+p' }, ['ax', 'process'])
+    data.person = assertPersonUntouched(before, 'after the shortcut')
+    const step = okStep(r.step)
+    check(step.tier === 'ax' && via(step) === 'menu' && step.input?.on === 'Probe › Ping App' && step.effect === 'changed', 'the menu route ran and changed the window', step)
+    check(r.observation?.text.includes('"app 1 window 0"'), 'the app delegate counted the ping', r.observation?.text)
+    o = r.observation!
+  })
+  await leg.step("fallbacks 2: ⌘⇧K's first-responder item is disabled in the background", async (data) => {
+    const r = await act(o!, { action: 'key', text: 'super+shift+k' }, ['ax', 'process'])
+    const failed = r.step.status === 'failed' ? r.step.error : null
+    data.answer = r.step
+    // AppKit's rule on our own app (§24.2): if the first free run finds the item enabled, §24.2 is corrected
+    check(failed?.kind === 'needs_tier' && failed.needed === 'session' && JSON.stringify(failed.menu) === '["Probe","Ping Window"]', 'needs the session tier, naming the item', r.step)
+    const now = await read()
+    check(now.text.includes('"app 1 window 0"'), 'nothing changed', now.text)
+    o = now
+  })
+  await leg.step('fallbacks 3: a click on the label presses Hit Target through the hit route', async (data) => {
+    const label = findElement(o!, 'the Hit Target label', (e) => e.role === 'text' && e.name === 'Hit Target' && !!e.frame)
+    const before = personState()
+    const r = await act(o!, { action: 'left_click', coordinate: centre(label) }, ['ax', 'process'])
+    data.person = assertPersonUntouched(before, 'after the click')
+    const step = okStep(r.step)
+    check(step.tier === 'ax' && via(step) === 'hit' && step.input?.on === 'button "Hit Target"', 'the hit pressed the button', step)
+    check(r.observation?.text.includes('"hits 1"'), 'the button counted the press', r.observation?.text)
+    o = r.observation!
+  })
+  await leg.step("fallbacks 4: a click at the field's fifth character puts the caret there", async (data) => {
+    const field = findElement(o!, 'the Digits field', (e) => e.role === 'input' && !!e.frame && (e.name === 'Digits' || e.value === '0123456789'))
+    // 13 pt monospaced digits, the text 2 pt in: the middle of the fifth, in the picture's pixels
+    const k = o!.space.width / o!.window.frame.w
+    const at = intPoint(field.frame!.x + (2 + 4.5 * 7.83) * k, field.frame!.y + field.frame!.h / 2)
+    const before = personState()
+    const r = await act(o!, { action: 'left_click', coordinate: at }, ['ax', 'process'])
+    data.person = assertPersonUntouched(before, 'after the click')
+    const step = okStep(r.step)
+    check(step.tier === 'ax' && via(step) === 'caret', 'the caret route ran', step)
+    const now = await read()
+    const after = findElement(now, 'the Digits field', (e) => e.index === field.index)
+    data.caret = after.caret
+    check(after.states.includes('focused') && after.caret === 4, 'the field is focused with its caret at 4', after)
+    o = now
+  })
+  await leg.step("fallbacks 5: a click on the window's background has no ax route", async () => {
+    const root = elementLines(o!)[0]
+    const at = intPoint(root.frame!.x + root.frame!.w - 8, root.frame!.y + root.frame!.h - 8)
+    const r = await act(o!, { action: 'left_click', coordinate: at }, ['ax'])
+    check(r.step.status === 'failed' && r.step.error.kind === 'needs_tier' && r.step.error.needed === 'process', 'needs the process tier', r.step)
+  })
+  await leg.step("fallbacks 6: a click above the stepper's middle steps it up", async (data) => {
+    const stepper = findElement(o!, 'the stepper', (e) => e.role === 'stepper' && !!e.frame)
+    const at = intPoint(stepper.frame!.x + stepper.frame!.w / 2, stepper.frame!.y + stepper.frame!.h / 4)
+    const before = personState()
+    const r = await act(o!, { action: 'left_click', coordinate: at }, ['ax', 'process'])
+    data.person = assertPersonUntouched(before, 'after the click')
+    const step = okStep(r.step)
+    check(step.tier === 'ax' && via(step) === 'hit', 'the hit ran', step)
+    check(r.observation?.text.includes('"value 6"'), 'the value went up one', r.observation?.text)
+    o = r.observation!
+  })
+  await leg.step('fallbacks 7: a scroll moves the bar; at the top it changes nothing', async (data) => {
+    const area = findElement(o!, 'the Lines scroll area', (e) => e.role === 'scroll area' && !!e.frame)
+    const scroll = async (dir: 'up' | 'down', n: number) => {
+      const before = personState()
+      const r = await act(o!, { action: 'scroll', element: area.index, scroll_direction: dir, scroll_amount: n }, ['ax', 'process'])
+      data.person = assertPersonUntouched(before, `after scroll ${dir} ${n}`)
+      o = r.observation ?? (await read())
+      return okStep(r.step)
+    }
+    const down = await scroll('down', 5)
+    check(down.tier === 'ax' && via(down) === 'scroll-bar' && down.effect === 'changed', 'the bar moved', down)
+    await scroll('up', 50)
+    const top = await scroll('up', 1)
+    check(via(top) === 'scroll-bar' && top.effect === 'none', 'a bar at its end changes nothing', top)
+  })
+  await leg.step("fallbacks 8: a text paste goes in by AX and never touches the pasteboard", async (data) => {
+    const field = findElement(o!, 'the Digits field', (e) => e.role === 'input' && (e.name === 'Digits' || (e.value ?? '').startsWith('0123')))
+    const before = (await a.call('clipboard.state', {})).changeCount
+    // ax alone: a paste that fell to the clipboard would write the person's pasteboard
+    const r = await act(o!, { action: 'paste', element: field.index, text: 'AX' }, ['ax'])
+    const step = okStep(r.step)
+    check(via(step) === 'ax-insert' && step.input?.clipboard === undefined, 'the AX insert, no clipboard', step)
+    data.changeCount = { before, after: (await a.call('clipboard.state', {})).changeCount }
+    check((data.changeCount as { after: number }).after === before, "the pasteboard's change count stayed", data.changeCount)
+    o = r.observation ?? (await read())
+  })
+  await leg.step('fallbacks 9: Save… opens the save sheet, its name set and Save pressed by AX', async (data) => {
+    const name = `tc-fallback-${process.pid}.txt`
+    const press = async (now: Observation, what: string, test: (e: ElementLine) => boolean) => {
+      const before = personState()
+      const r = await act(now, { action: 'left_click', element: findElement(now, what, test).index }, ['ax', 'process'])
+      data.person = assertPersonUntouched(before, `after ${what}`)
+      check(okStep(r.step).tier === 'ax', `${what} ran at ax`, r.step)
+      return r.observation ?? (await read())
+    }
+    let now = await press(o!, 'the Save… button', (e) => e.role === 'button' && e.name === 'Save…')
+    now = await until(async () => {
+      const x = /\bsheet\b/.test(now.text) ? now : await read()
+      return /\bsheet\b/.test(x.text) ? x : null
+    }, 5_000, 'the save sheet')
+    const nameField = findElement(now, 'the sheet name field', (e) => e.role === 'input' && (e.value ?? '').startsWith('Untitled'))
+    const set = await act(now, { action: 'set_value', element: nameField.index, value: name }, ['ax'])
+    okStep(set.step)
+    now = set.observation ?? (await read())
+    await press(now, 'the sheet Save button', (e) => e.role === 'button' && e.name === 'Save')
+    const file = join(scratch, name)
+    await until(() => (existsSync(file) ? true : null), 5_000, 'the saved file')
+    const after = await read()
+    check(!/\bsheet\b/.test(after.text), 'the sheet is gone', after.text)
+    rmSync(file, { force: true })
+  })
+  await leg.step('fallbacks 10: end the --fallbacks instance', async () => {
+    process.kill(pid, 'SIGKILL')
+    await until(() => (alive(pid) ? null : true), 5_000, 'the --fallbacks probe exit')
+    pid = 0
+  })
+  if (pid && alive(pid)) process.kill(pid, 'SIGKILL')
+  rmSync(scratch, { recursive: true, force: true })
+}
+
 /** One try at the probe app and the scratch TextEdit, on a service of its own. */
 async function appSections(
   attempt: number,
@@ -1250,6 +1408,7 @@ async function appSections(
     check(exit.code === 0, 'the private-miss service exits 0', exit)
   })
   await windowLeg(a, mayLaunch)
+  await fallbackLeg(a, mayLaunch)
   if (GATE) {
     for (const name of [
       'open a scratch TextEdit', 'TextEdit full read with geometry',

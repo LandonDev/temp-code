@@ -101,7 +101,8 @@ export function launchTickingProbe(
 
 /**
  * `open -g -n <app> --args <flags>`: one more instance of the probe in the background (`--tick`,
- * `--windows`, or none), its pid the newest running the build's binary, and the bounce as above.
+ * `--windows`, `--fallbacks <scratch dir>`, or none), its pid the newest running the build's binary,
+ * and the bounce as above.
  */
 export async function launchProbe(
   build: ProbeAppBuild,

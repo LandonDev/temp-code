@@ -7,17 +7,19 @@ import Input
 // tc-input-proof: Input's live proof on scratch windows, never shipped (scripts/mac/input-proof.sh
 // sets the windows up and cleans up).
 //
-//   tc-input-proof run --pids textedit=<pid>,chrome=<pid>[,tempcode=<pid>] [--tiers ax,process] [--session] --report <path>
+//   tc-input-proof run --pids textedit=<pid>,chrome=<pid>[,tempcode=<pid>][,finder=<pid>][,intellij=<pid>] [--tiers ax,process] [--session] --report <path>
 //
 // The scratch apps are named by pid, never by bundle id: the person may have their own
 // TextEdit or Electron windows open, and the proof never touches those.
 //
 // Tier 1 and 2 legs run any time and must leave the frontmost app and the pointer where they
 // were. The session leg runs only after 2 minutes with no input from the person, checked again
-// before every step, and otherwise reports "skipped: the person is active".
+// before every step, and otherwise reports "skipped: the person is active". The background
+// fallbacks' legs (§24, FallbackLegs.swift) run last, at `ax` alone, on every scratch window:
+// TextEdit's ⌘W among them closes its document.
 
 func usage() -> Never {
-    FileHandle.standardError.write(Data("usage: tc-input-proof run --pids textedit=<pid>,chrome=<pid>[,tempcode=<pid>] [--tiers ax,process] [--session] --report <path>\n".utf8))
+    FileHandle.standardError.write(Data("usage: tc-input-proof run --pids textedit=<pid>,chrome=<pid>[,tempcode=<pid>][,finder=<pid>][,intellij=<pid>] [--tiers ax,process] [--session] --report <path>\n".utf8))
     exit(2)
 }
 
@@ -35,7 +37,7 @@ let tiers = (value("--tiers") ?? "ax,process").split(separator: ",").map { Tier(
 let wantSession = args.contains("--session")
 guard let reportPath = value("--report") else { usage() }
 
-let titles: [String: String] = ["textedit": "Untitled", "chrome": "Computer fixture form"]
+let titles: [String: String] = ["textedit": "Untitled", "chrome": "Computer fixture form", "finder": "tc-input-finder"]
 if pids.isEmpty { usage() }
 
 NSApplication.shared.setActivationPolicy(.prohibited)
@@ -49,9 +51,11 @@ DispatchQueue.global(qos: .userInitiated).async { [pids, tiers, wantSession, rep
             switch app {
             case "textedit": proof.textEdit(&s, tiers: tiers)
             case "chrome": proof.chrome(&s, tiers: tiers)
-            default: proof.tempcode(&s, tiers: tiers)
+            case "tempcode": proof.tempcode(&s, tiers: tiers)
+            // Finder and IntelliJ have the fallback legs alone
+            default: break
             }
-            if tiers.contains(.process) { proof.probe(app, &s) }
+            if tiers.contains(.process), ["textedit", "chrome", "tempcode"].contains(app) { proof.probe(app, &s) }
             scratch[app] = s
         } else {
             proof.missing(app, "setup", "scratch window")
@@ -61,6 +65,9 @@ DispatchQueue.global(qos: .userInitiated).async { [pids, tiers, wantSession, rep
     if wantSession, var te = scratch["textedit"] {
         var ch = scratch["chrome"]
         proof.session(textEdit: &te, chrome: &ch)
+    }
+    if tiers.contains(.ax) {
+        for (app, _) in pids { if var s = scratch[app] { proof.fallbacks(app, &s) } }
     }
     do { try proof.report.write(to: reportPath) } catch { FileHandle.standardError.write(Data("report: \(error)\n".utf8)) }
     let pass = proof.report.pass

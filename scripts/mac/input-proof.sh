@@ -1,7 +1,7 @@
 #!/bin/bash
 # Input's live proof on this Mac (docs/computer-protocol.md "Input tiers measured").
 #
-#   scripts/mac/input-proof.sh [--session] [--tempcode]
+#   scripts/mac/input-proof.sh [--session] [--tempcode] [--finder]
 #
 # Builds tc-input-proof, opens scratch windows, runs the legs, cleans up, and writes
 # /tmp/tc-input-proof/report.json, report.md and run.log:
@@ -10,7 +10,14 @@
 #   - Chrome: its own profile under /tmp, the fixture form page;
 #   - with --tempcode, a TempCode dev instance of this clone (bun install and
 #     electron-vite build first), its own userData under /tmp, a scratch workspace on an
-#     empty folder with one thread, so its composer exists.
+#     empty folder with one thread, so its composer exists;
+#   - with --finder, a Finder window on a scratch folder of three files;
+#   - with TC_INPUT_INTELLIJ=1 and no IntelliJ running, the IDE on a scratch project
+#     (its project windows have no title to tell them from the person's, so it is never
+#     opened beside theirs), quit afterwards.
+# The background fallbacks' legs (docs/computer-protocol.md §24) run last on every
+# scratch window, at ax alone, and the report records each route, whether the window
+# changed and whether the app stayed in the background (§14.8's table, §24.9).
 # Nothing of the person's is opened, and the scratch apps are named to the proof by pid.
 #
 # The person's rules: a launch may still bring a window in front, so nothing is launched
@@ -28,11 +35,13 @@ OUT=/tmp/tc-input-proof
 WORK=$OUT/work
 SESSION=''
 TEMPCODE=0
+FINDER=0
 for a in "$@"; do
   case $a in
     --session) SESSION=--session ;;
     --tempcode) TEMPCODE=1 ;;
-    *) echo "usage: $0 [--session] [--tempcode]" >&2; exit 2 ;;
+    --finder) FINDER=1 ;;
+    *) echo "usage: $0 [--session] [--tempcode] [--finder]" >&2; exit 2 ;;
   esac
 done
 rm -rf "$OUT"
@@ -188,6 +197,44 @@ TS
     bun "$WORK/cdp.ts" "$port" /tmp/tc-input-workspace && sleep 2 && PIDS="$PIDS,tempcode=$TC"
   else
     echo 'the TempCode dev instance did not start; its legs are left out' | tee -a "$OUT/run.log"
+  fi
+fi
+
+if (( FINDER )); then
+  say Finder on a scratch folder
+  still_idle
+  folder=/tmp/tc-input-finder
+  rm -rf "$folder" && mkdir -p "$folder" && touch "$folder/one.txt" "$folder/two.txt" "$folder/three.txt"
+  CLEANUP+=("osascript -e 'tell application \"Finder\" to close (every window whose name is \"tc-input-finder\")' 2>/dev/null; rm -rf $folder")
+  open -g "$folder"
+  sleep 2
+  give_front_back
+  PIDS="$PIDS,finder=$(pgrep -x Finder | head -1)"
+fi
+
+if [[ ${TC_INPUT_INTELLIJ:-} == 1 ]]; then
+  say IntelliJ on a scratch project
+  exe='IntelliJ IDEA.app/Contents/MacOS/idea'
+  if pgrep -f "$exe" >/dev/null; then
+    echo 'IntelliJ is running: its legs are left out (a scratch project window cannot be told from the person'"'"'s)' | tee -a "$OUT/run.log"
+  else
+    still_idle
+    project=/tmp/tc-input-idea/Hello
+    rm -rf /tmp/tc-input-idea && mkdir -p "$project/src"
+    printf 'public class Hello {\n    public static void main(String[] args) {}\n}\n' >"$project/src/Hello.java"
+    CLEANUP+=("rm -rf /tmp/tc-input-idea")
+    open -g -a 'IntelliJ IDEA' "$project"
+    IJ=''
+    for _ in $(seq 120); do IJ=$(pgrep -f "$exe" | head -1); [[ -n $IJ ]] && break; sleep 0.5; done
+    if [[ -n $IJ ]]; then
+      CLEANUP+=("kill $IJ 2>/dev/null")
+      SCRATCH_PIDS="$SCRATCH_PIDS $IJ"
+      sleep 20
+      give_front_back
+      PIDS="$PIDS,intellij=$IJ"
+    else
+      echo 'IntelliJ did not start; its legs are left out' | tee -a "$OUT/run.log"
+    fi
   fi
 fi
 
