@@ -221,6 +221,7 @@ import TempCodeContract
         #expect(sayAll([notice(.away, away: AwayNotice(kind: .decision, text: "x"))]) == "Decided without asking")
         #expect(sayAll([notice(.away, away: AwayNotice(kind: .question, text: "x"))]) == "Answered for you")
         #expect(sayAll([notice(.away, away: AwayNotice(kind: .approval, text: "x"))]) == "Skipped an approval")
+        #expect(sayAll([notice(.away, away: AwayNotice(kind: .allowed, text: "x"))]) == "Allowed for you")
     }
 
     @Test func `a wake: two reports, a task, then calls`() {

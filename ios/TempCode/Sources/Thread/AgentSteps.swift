@@ -429,7 +429,7 @@ struct ReviewStep: View {
     }
 }
 
-/// What the host decided, answered or skipped while the person was away, in its words.
+/// What the host decided, answered, allowed or skipped while the person was away, in its words.
 struct AwayLine: View {
     let notice: NoticeEvent
     var inTable = false
@@ -437,6 +437,7 @@ struct AwayLine: View {
     var body: some View {
         let symbol: String? = switch notice.away?.kind {
         case .question?: "questionmark.circle"
+        case .allowed?: "lock.open"
         case .approval?: "lock"
         default: nil
         }

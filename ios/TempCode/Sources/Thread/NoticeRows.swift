@@ -31,7 +31,7 @@ struct NoticeRow: View {
             case .planBuild:
                 PlanBuildLine(message: notice.message)
             case .away:
-                // Decided, answered or skipped while the person was away: the message says which.
+                // Decided, answered, allowed or skipped while the person was away: the message says which.
                 AwayLine(notice: notice)
             case .unknown:
                 NoticeLine(symbol: "info.circle", lead: notice.message, wrap: true)

@@ -224,6 +224,7 @@ public enum GroupPhrase {
         case .away:
             switch notice.away?.kind {
             case .question?: return "answered for you"
+            case .allowed?: return "allowed for you"
             case .approval?: return "skipped an approval"
             default: return "decided without asking"
             }
