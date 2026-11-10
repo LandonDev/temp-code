@@ -6,6 +6,9 @@ import Foundation
 /// The `ax` tier: AX actions, values, selections and page scrolls on an element. No focus
 /// change the person sees, no pointer, no events. The one AX call that can reorder windows,
 /// `raise`, runs only where the session tier is allowed (A12).
+/// A route that did nothing it could tell: the engine tries the plan's next one (§24.1).
+struct RouteFellThrough: Error {}
+
 enum AXTier {
     /// The word for each raw action, and its inverse.
     static let rawForWord: [String: String] = Dictionary(InputTables.actionWords.map { ($0.value, $0.key) }, uniquingKeysWith: { a, _ in a })
@@ -39,13 +42,18 @@ enum AXTier {
             return
         }
         guard facts.selectableRow else { throw AX.failure(.actionUnsupported, element: e.index, what: "be pressed") }
-        if let table = AX.ancestor(e.element, role: "AXTable") ?? AX.ancestor(e.element, role: "AXOutline"), AX.settable(table, "AXSelectedRows") {
-            let row = AX.string(e.element, "AXRole") == "AXCell" ? (AX.element(e.element, "AXParent") ?? e.element) : e.element
+        try selectRow(e.element, index: e.index)
+    }
+
+    /// A row or cell selected through its table's AXSelectedRows, else its own AXSelected.
+    static func selectRow(_ e: AXUIElement, index: Int?) throws {
+        if let table = AX.ancestor(e, role: "AXTable") ?? AX.ancestor(e, role: "AXOutline"), AX.settable(table, "AXSelectedRows") {
+            let row = AX.string(e, "AXRole") == "AXCell" ? (AX.element(e, "AXParent") ?? e) : e
             let err = AX.set(table, "AXSelectedRows", [row] as CFArray)
             if err == .success { return }
         }
-        let err = AX.set(e.element, "AXSelected", kCFBooleanTrue)
-        if err != .success { throw AX.failure(err, element: e.index, what: "be selected") }
+        let err = AX.set(e, "AXSelected", kCFBooleanTrue)
+        if err != .success { throw AX.failure(err, element: index, what: "be selected") }
     }
 
     /// `right_click` (AXShowMenu) and `double_click` (AXOpen) on AX.
@@ -103,23 +111,106 @@ enum AXTier {
     }
 
     /// `scroll` on AX, approximately: page scrolls on the element or its nearest scroll area that has them.
-    static func scrollPages(_ e: ResolvedElement, direction: ScrollDirection, pages: Int) throws {
-        guard let raw = pageScrollAction(direction) else { throw AX.failure(.actionUnsupported, element: e.index, what: "scroll") }
-        let target = AX.actions(e.element).contains(raw) ? e.element : (AX.ancestor(e.element, role: "AXScrollArea").flatMap { AX.actions($0).contains(raw) ? $0 : nil })
-        guard let target else { throw AX.failure(.actionUnsupported, element: e.index, what: "scroll \(direction.rawValue) by page") }
-        for _ in 0 ..< max(1, pages) {
+    /// A page action refused as unsupported on its first call moved nothing: the route falls through
+    /// (§24.5, TextEdit lists them and answers -25205); a refusal after a page moved, or a timeout, fails.
+    static func scrollPages(_ e: AXUIElement, index: Int?, direction: ScrollDirection, pages: Int) throws {
+        guard let raw = pageScrollAction(direction) else { throw AX.failure(.actionUnsupported, element: index, what: "scroll") }
+        let target = AX.actions(e).contains(raw) ? e : (AX.ancestor(e, role: "AXScrollArea").flatMap { AX.actions($0).contains(raw) ? $0 : nil })
+        guard let target else { throw AX.failure(.actionUnsupported, element: index, what: "scroll \(direction.rawValue) by page") }
+        for page in 0 ..< max(1, pages) {
             let err = AX.perform(target, raw)
-            if err != .success { throw AX.failure(err, element: e.index, what: "scroll") }
+            if err == .actionUnsupported, page == 0 { throw RouteFellThrough() }
+            if err != .success { throw AX.failure(err, element: index, what: "scroll") }
         }
+    }
+
+    // MARK: the background fallbacks (§24)
+
+    /// The role word a line prints for an element: from AX's role and subrole, as the reader prints it.
+    static func roleWord(_ e: AXUIElement, fallback: String?) -> String {
+        let axRole = AX.string(e, "AXRole") ?? ""
+        let subrole = AX.string(e, "AXSubrole")
+        return subrole.flatMap { InputTables.roleTags["\(axRole):\($0)"] } ?? InputTables.roleTags[axRole] ?? fallback ?? axRole
+    }
+
+    /// `menu`: the item read again where the lookup found it, pressed `count` times while it stays enabled.
+    static func pressMenu(_ item: AXUIElement, match: MenuMatch, count: Int) throws {
+        AX.setTimeout(item, seconds: InputTiming.axTimeoutS)
+        for i in 0 ..< max(1, count) {
+            if i > 0, AX.bool(item, "AXEnabled") == false { return }
+            let err = AX.perform(item, "AXPress")
+            if err != .success { throw AX.failure(err, element: nil, what: "run \(match.line)") }
+        }
+    }
+
+    /// `hit`: the chosen action on the chosen element.
+    static func pressHit(_ e: AXUIElement, action: HitAction) throws {
+        switch action {
+        case .selectRow:
+            try selectRow(e, index: nil)
+        case .caret:
+            throw AX.failure(.actionUnsupported, element: nil, what: "be pressed")
+        default:
+            let err = AX.perform(e, action.raw ?? "AXPress")
+            if err != .success { throw AX.failure(err, element: nil, what: "be clicked") }
+        }
+    }
+
+    /// `caret`: AXFocused, then the caret at the character under the point. The evidence is the focus and
+    /// the range read back for up to `caretEvidenceMs`: `none` when the app accepted the writes and moved neither.
+    static func placeCaret(_ e: AXUIElement, at p: ScreenPoint, clock: InputClock) throws -> StepEffect {
+        let before = (AX.bool(e, "AXFocused"), AX.range(e))
+        let location = AXHit.characterIndex(e, at: p)
+        AX.set(e, "AXFocused", kCFBooleanTrue)
+        if let location {
+            let err = AX.set(e, "AXSelectedTextRange", AX.rangeValue(TextRange(location: location, length: 0)))
+            if err != .success, err != .cannotComplete { throw AX.failure(err, element: nil, what: "take the caret") }
+        }
+        let deadline = clock.seconds() + Double(InputTiming.caretEvidenceMs) / 1000
+        repeat {
+            let focused = AX.bool(e, "AXFocused")
+            let range = AX.range(e)
+            if focused == true, before.0 != true { return .changed }
+            if let range, range != before.1 { return .changed }
+            clock.sleep(ms: 10)
+        } while clock.seconds() < deadline
+        // already focused with the caret there is a click that changed nothing
+        return before.0 == nil && before.1 == nil ? .unknown : .none
+    }
+
+    /// `scroll-bar`: the area's bar for the direction, moved by the wheel's distance (§24.5).
+    /// Nil when it has no such bar that takes a value.
+    static func moveScrollBar(_ area: AXUIElement, direction: ScrollDirection, clicks: Int) throws -> ScrollBarMove? {
+        guard let (axis, _) = scrollBar(for: direction), let bar = AX.element(area, axis.attribute), AX.settable(bar, "AXValue"),
+              let value = AX.number(bar, "AXValue"), let visible = AX.frame(area),
+              let contents = AX.elements(area, "AXContents").first.flatMap(AX.frame) else { return nil }
+        let content = axis == .vertical ? contents.h : contents.w
+        let view = axis == .vertical ? visible.h : visible.w
+        let move = scrollBarMove(value: value, direction: direction, clicks: clicks, content: content, visible: view)
+        if case .set(let next) = move {
+            let err = AX.set(bar, "AXValue", NSNumber(value: next))
+            if err != .success { throw AX.failure(err, element: nil, what: "scroll") }
+        }
+        return move
+    }
+
+    /// Whether a scroll area has a bar for the direction that takes a value.
+    static func hasScrollBar(_ area: AXUIElement, direction: ScrollDirection) -> Bool {
+        guard let (axis, _) = scrollBar(for: direction), let bar = AX.element(area, axis.attribute) else { return false }
+        return AX.settable(bar, "AXValue")
+    }
+
+    /// Plain text set as AXSelectedText at the caret, the clipboard untouched: `paste`'s `ax-insert`
+    /// route and `type`'s first rung. False when the element takes no insert.
+    static func insertPlain(_ e: AXUIElement, _ text: String) -> Bool {
+        guard AX.settable(e, "AXSelectedText") else { return false }
+        return AX.set(e, "AXSelectedText", text as CFString) == .success
     }
 
     /// `type`'s AX rungs on the element: AXSelectedText (insert) when settable, else AXValue when it is empty or wholly selected.
     /// Nil when neither applies; throws when the write itself failed.
     static func insert(_ e: AXUIElement, _ text: String, index: Int?) throws -> InputVia? {
-        if AX.settable(e, "AXSelectedText") {
-            let err = AX.set(e, "AXSelectedText", text as CFString)
-            if err == .success { return .axInsert }
-        }
+        if insertPlain(e, text) { return .axInsert }
         if AX.settable(e, "AXValue"), valueEmptyOrAllSelected(e) {
             let err = AX.set(e, "AXValue", text as CFString)
             if err == .success { return .axValue }
@@ -138,9 +229,7 @@ enum AXTier {
     /// The tier choice's facts of an element, read from AX.
     static func facts(_ e: AXUIElement, role: String?, actions: [String]) -> ElementFacts {
         let axRole = AX.string(e, "AXRole") ?? ""
-        let subrole = AX.string(e, "AXSubrole")
-        // the role word: from AX's role and subrole, as the reader prints it
-        let word = subrole.flatMap { InputTables.roleTags["\(axRole):\($0)"] } ?? InputTables.roleTags[axRole] ?? role ?? axRole
+        let word = roleWord(e, fallback: role)
         var settable: Set<String> = []
         for a in ["AXValue", "AXSelectedText", "AXSelectedTextRange", "AXFocused", "AXSelected"] where AX.settable(e, a) { settable.insert(a) }
         let expandable = AX.settable(e, "AXExpanded") || AX.settable(e, "AXDisclosing")

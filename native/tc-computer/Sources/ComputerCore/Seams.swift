@@ -87,8 +87,10 @@ public struct InputOutcome: Sendable {
     /// a click-class action (the five clicks, `left_mouse_down`, `perform`): the point it acted at,
     /// session space; at `ax` the centre of the element's visible frame, never a pointer it moved (P2)
     public var clickAt: [Int]?
+    /// what a fallback route acted on (§24.8): `File › Close`, `button "Save"`; the shell puts it on the step's `input.on`
+    public var on: String?
 
-    public init(tier: Tier?, via: InputVia?, clipboard: ClipboardOutcome?, cursor: [Int]?, session: SessionChange? = nil, lastInputAt: UInt64? = nil, clickAt: [Int]? = nil) {
+    public init(tier: Tier?, via: InputVia?, clipboard: ClipboardOutcome?, cursor: [Int]?, session: SessionChange? = nil, lastInputAt: UInt64? = nil, clickAt: [Int]? = nil, on: String? = nil) {
         self.tier = tier
         self.via = via
         self.clipboard = clipboard
@@ -96,6 +98,7 @@ public struct InputOutcome: Sendable {
         self.session = session
         self.lastInputAt = lastInputAt
         self.clickAt = clickAt
+        self.on = on
     }
 }
 
@@ -273,8 +276,10 @@ public struct InputTarget {
     public let cancelled: @Sendable () -> Bool
     /// the call's `pasteQuietMs`: a paste refuses `recent-copy` when a foreign copy came within it
     public let pasteQuietMs: Int?
+    /// the call's `ignored`: routes and process classes this app was seen to ignore, run last (§24.1)
+    public let ignored: IgnoredRoutes?
 
-    public init(pid: pid_t, windowID: UInt32, windowFrame: ComputerProtocol.Rect, window: AXUIElement, space: CoordinateSpace, element: ResolvedElement?, startElement: ResolvedElement?, cursor: [Int]?, cancelled: @escaping @Sendable () -> Bool = { false }, pasteQuietMs: Int? = nil) {
+    public init(pid: pid_t, windowID: UInt32, windowFrame: ComputerProtocol.Rect, window: AXUIElement, space: CoordinateSpace, element: ResolvedElement?, startElement: ResolvedElement?, cursor: [Int]?, cancelled: @escaping @Sendable () -> Bool = { false }, pasteQuietMs: Int? = nil, ignored: IgnoredRoutes? = nil) {
         self.pid = pid
         self.windowID = windowID
         self.windowFrame = windowFrame
@@ -285,6 +290,7 @@ public struct InputTarget {
         self.cursor = cursor
         self.cancelled = cancelled
         self.pasteQuietMs = pasteQuietMs
+        self.ignored = ignored
     }
 }
 

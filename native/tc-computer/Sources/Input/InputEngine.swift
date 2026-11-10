@@ -1,3 +1,4 @@
+import AppKit
 import ApplicationServices
 import ComputerCore
 import ComputerProtocol
@@ -16,6 +17,8 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
     let sink: EventSink
     let clock: InputClock
     let layout: KeyLayoutSource
+    /// each pid's index of menu key equivalents (§24.2)
+    let menuCache = MenuIndexCache()
     /// the shell's pasteboard watch, asked right before a paste with the call's `pasteQuietMs`
     let recentForeignCopy: @Sendable (_ withinMs: Int) -> Bool
     private let sweeper: DispatchSourceTimer
@@ -69,15 +72,35 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         if target.cancelled() { throw cancelledFailure() }
         let facts = elementFacts(action, target)
         let held = core.held.heldTier(pid: target.pid)
-        switch chooseTier(action, element: facts, tiers: tiers, held: held) {
-        case .needs(let t):
-            throw ComputerFailure(ComputerError(kind: .needsTier, message: "\(action.action.rawValue) needs the \(t.rawValue) tier, which is not allowed now.", needed: t))
+        let live = LiveRoutes(engine: self, action: action, target: target)
+        switch planRoutes(action, element: facts, facts: live.facts, tiers: tiers, held: held, ignored: target.ignored) {
+        case .needs(let t, let menu):
+            throw needsTier(action, t, menu: menu, pid: target.pid)
+        case .disabledMenu(let path):
+            throw ComputerFailure(ComputerError(kind: .actionUnsupported, message: "\(path.joined(separator: " › ")) is disabled.", menu: path))
         case .noInput:
             return InputOutcome(tier: nil, via: nil, clipboard: nil, cursor: target.cursor)
-        case .run(let tier, _):
-            if tier != .ax || action.action == .type { try requirePosting() }
-            return try run(action, tier: tier, target: target, tiers: tiers, facts: facts, held: held)
+        case .runs(let steps, let needed, let menu):
+            // §24.1: the next try only when one did nothing it could tell
+            for (i, step) in steps.enumerated() {
+                if step.tier != .ax || action.action == .type { try requirePosting() }
+                do {
+                    return try run(action, step: step, rest: Array(steps.dropFirst(i + 1)), target: target, tiers: tiers, facts: facts, held: held, live: live)
+                } catch is RouteFellThrough {
+                    continue
+                }
+            }
+            throw needsTier(action, needed ?? .session, menu: menu, pid: target.pid)
         }
+    }
+
+    /// `needs_tier`; a disabled menu item names itself and why (§24.2).
+    private func needsTier(_ action: ComputerAction, _ t: Tier, menu: [String]?, pid: pid_t) -> ComputerFailure {
+        if let menu {
+            let app = NSRunningApplication(processIdentifier: pid)?.localizedName ?? "the app"
+            return ComputerFailure(ComputerError(kind: .needsTier, message: "\(menu.joined(separator: " › ")) is disabled while \(app) is in the background.", needed: t, menu: menu))
+        }
+        return ComputerFailure(ComputerError(kind: .needsTier, message: "\(action.action.rawValue) needs the \(t.rawValue) tier, which is not allowed now.", needed: t))
     }
 
     public func probe(_ target: InputTarget, classes: [ActionClass]) throws -> ProbeReport {
@@ -123,13 +146,13 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         return target.cursor
     }
 
-    /// What the tier choice reads: the named element, or for `type` and `paste` without one, the app's focused element.
+    /// What the route choice reads: the named element, or for `type` and `paste` without one, the app's focused element.
     private func elementFacts(_ action: ComputerAction, _ target: InputTarget) -> ElementFacts? {
         if let e = target.element {
             AX.setTimeout(e.element, seconds: InputTiming.axTimeoutS)
             return AXTier.facts(e.element, role: e.role, actions: e.actions)
         }
-        if action.action == .type, let focused = AX.element(AX.app(target.pid), "AXFocusedUIElement") {
+        if action.action == .type || action.action == .paste, let focused = AX.element(AX.app(target.pid), "AXFocusedUIElement") {
             AX.setTimeout(focused, seconds: InputTiming.axTimeoutS)
             return AXTier.facts(focused, role: nil, actions: AX.actions(focused))
         }
@@ -145,50 +168,94 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
 
     // MARK: dispatch
 
-    private func run(_ action: ComputerAction, tier: Tier, target: InputTarget, tiers: [Tier], facts: ElementFacts?, held: Tier?) throws -> InputOutcome {
+    private func run(_ action: ComputerAction, step: RouteStep, rest: [RouteStep], target: InputTarget, tiers: [Tier], facts: ElementFacts?, held: Tier?, live: LiveRoutes) throws -> InputOutcome {
+        let tier = step.tier
         let axDone = { (clickAt: [Int]?) in
             InputOutcome(tier: .ax, via: nil, clipboard: nil, cursor: target.cursor, lastInputAt: self.clock.ticks(), clickAt: clickAt)
         }
-        switch action.action {
-        case .setValue:
+        switch (step.route, action.action) {
+        case (.element, .setValue):
             try AXTier.setValue(element(target, action), action.value ?? "")
             return axDone(nil)
-        case .selectText:
+        case (.element, .selectText):
             try AXTier.selectText(element(target, action), text: action.text, range: action.range, prefix: action.prefix, suffix: action.suffix, place: action.place)
             return axDone(nil)
-        case .perform where isRaise(action):
+        case (.element, .perform) where isRaise(action):
             return try raise(action, target: target)
-        case .perform:
+        case (.element, .perform):
             let e = try element(target, action)
             let at = axClickAt(e, target)
             try AXTier.perform(e, word: action.name ?? "", facts: facts ?? ElementFacts(role: e.role))
             return axDone(at)
-        case .leftClick where tier == .ax:
+        case (.element, .leftClick):
             let e = try element(target, action)
             let at = axClickAt(e, target)
             try AXTier.press(e, facts: facts ?? ElementFacts(role: e.role))
             return axDone(at)
-        case .rightClick where tier == .ax:
+        case (.element, .rightClick):
             let e = try element(target, action)
             let at = axClickAt(e, target)
             try AXTier.action(e, raw: "AXShowMenu", what: "show a menu")
             return axDone(at)
-        case .doubleClick where tier == .ax:
+        case (.element, .doubleClick):
             let e = try element(target, action)
             let at = axClickAt(e, target)
             try AXTier.action(e, raw: "AXOpen", what: "open")
             return axDone(at)
-        case .scroll where tier == .ax:
-            try AXTier.scrollPages(element(target, action), direction: action.scroll_direction ?? .down, pages: pagesFor(amount: action.scroll_amount ?? 1))
-            return axDone(nil)
-        case .type:
+        case (.element, .type), (.events, .type):
             return try type(action, target: target, tiers: tiers, chosen: tier, held: held)
-        case .paste:
+        case (.menu, _):
+            return try menu(action, target: target, live: live)
+        case (.hit, _), (.caret, _):
+            return try hit(action, route: step.route, target: target, live: live)
+        case (.scrollBar, _):
+            guard let area = live.area, let move = try AXTier.moveScrollBar(area, direction: action.scroll_direction ?? .down, clicks: action.scroll_amount ?? 1) else { throw RouteFellThrough() }
+            // a bar already at the end changes nothing: the step reads `none`, no other route tried
+            return InputOutcome(tier: .ax, via: .scrollBar, clipboard: nil, cursor: target.cursor, lastInputAt: move == .atEnd ? nil : clock.ticks())
+        case (.scrollPage, _):
+            guard let e = target.element?.element ?? live.area else { throw RouteFellThrough() }
+            try AXTier.scrollPages(e, index: target.element?.index, direction: action.scroll_direction ?? .down, pages: pagesFor(amount: action.scroll_amount ?? 1))
+            return InputOutcome(tier: .ax, via: .scrollPage, clipboard: nil, cursor: target.cursor, lastInputAt: clock.ticks())
+        case (.insert, _):
+            let content = PasteContent.make(action.text ?? "", format: action.format)
+            // with an event tier after it, the insert is the paste flow's first rung; alone, it is the step
+            if let next = rest.first(where: { $0.route == .events }) {
+                try requirePosting()
+                return try paste(content, tier: next.tier, target: target, insertFirst: true)
+            }
+            guard let effect = try insertOnly(content.plain, target: target), effect != .none else { throw RouteFellThrough() }
+            return InputOutcome(tier: .ax, via: .axInsert, clipboard: nil, cursor: target.cursor, lastInputAt: clock.ticks())
+        case (.events, .paste):
             let content = PasteContent.make(action.text ?? "", format: action.format)
             return try paste(content, tier: tier, target: target)
         default:
             return try events(action, tier: tier, target: target)
         }
+    }
+
+    /// `menu`: the combo's item, enabled, pressed through AX on the app's focused window (§24.2).
+    private func menu(_ action: ComputerAction, target: InputTarget, live: LiveRoutes) throws -> InputOutcome {
+        guard let (item, match) = live.menuItem, match.enabled else { throw RouteFellThrough() }
+        // a menu item acts on the app's focused window: the key-window rule holds
+        try ProcessTier.requireKeyWindow(pid: target.pid, window: target.window)
+        try AXTier.pressMenu(item, match: match, count: action.repeat ?? 1)
+        return InputOutcome(tier: .ax, via: .menu, clipboard: nil, cursor: target.cursor, lastInputAt: clock.ticks(), on: match.line)
+    }
+
+    /// `hit` and `caret`: the element under the click given its action, or the caret at the clicked character (§24.3, §24.4).
+    private func hit(_ action: ComputerAction, route: Route, target: InputTarget, live: LiveRoutes) throws -> InputOutcome {
+        guard let choice = live.hitChoice, let chain = live.chain, chain.elements.indices.contains(choice.level) else { throw RouteFellThrough() }
+        let e = chain.elements[choice.level]
+        let on = AXHit.line(e)
+        let clickAt = live.point.map { toSpace($0, frame: target.windowFrame, space: target.space) }
+            ?? AX.frame(e).flatMap { ClickMark.axPoint(frame: $0, visible: AX.ancestor(e, role: "AXScrollArea").flatMap(AX.frame), window: target.windowFrame, space: target.space) }
+        let cursor = action.coordinate ?? target.cursor
+        if route == .caret {
+            guard let point = live.point, try AXTier.placeCaret(e, at: point, clock: clock) != .none else { throw RouteFellThrough() }
+            return InputOutcome(tier: .ax, via: .caret, clipboard: nil, cursor: cursor, lastInputAt: clock.ticks(), clickAt: clickAt, on: on)
+        }
+        try AXTier.pressHit(e, action: choice.action)
+        return InputOutcome(tier: .ax, via: .hit, clipboard: nil, cursor: cursor, lastInputAt: clock.ticks(), clickAt: clickAt, on: on)
     }
 
     /// `perform raise`: the AX call, as a session step with no activation of its own (A12); out of the Dock first (§22.5).
