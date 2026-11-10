@@ -65,6 +65,15 @@ export function binarySpellings(binary: string): string[] {
   return [...new Set(all)]
 }
 
+/** Every pid running the build's binary now. */
+function probeAppPidsNow(build: ProbeAppBuild): number[] {
+  try {
+    return probeAppPids(execFileSync('ps', ['-Ao', 'pid=,command='], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }), binarySpellings(build.binary))
+  } catch {
+    return []
+  }
+}
+
 /** The pid of the newest process running this binary, under any of its spellings, or 0. */
 function pidOf(binary: string): number {
   for (const spelling of binarySpellings(binary)) {
@@ -83,15 +92,29 @@ function pidOf(binary: string): number {
  * tick on. Answers the pid and whether the app came to the front anyway (`bounced`; the caller's
  * `frontmost` reads the Mac, and the person's app is put back).
  */
-export async function launchTickingProbe(
+export function launchTickingProbe(
   build: ProbeAppBuild,
   frontmost: () => { pid: number; bundleId: string | null }
 ): Promise<{ pid: number; bounced: string | null }> {
+  return launchProbe(build, ['--tick'], frontmost)
+}
+
+/**
+ * `open -g -n <app> --args <flags>`: one more instance of the probe in the background (`--tick`,
+ * `--windows`, or none), its pid the newest running the build's binary, and the bounce as above.
+ */
+export async function launchProbe(
+  build: ProbeAppBuild,
+  flags: string[],
+  frontmost: () => { pid: number; bundleId: string | null }
+): Promise<{ pid: number; bounced: string | null }> {
   const before = frontmost()
-  execFileSync('open', ['-g', '-n', build.app, '--args', '--tick'], { stdio: 'pipe' })
+  const already = new Set(probeAppPidsNow(build))
+  execFileSync('open', ['-g', '-n', build.app, ...(flags.length ? ['--args', ...flags] : [])], { stdio: 'pipe' })
   let pid = 0
   for (const until = Date.now() + 10_000; !pid && Date.now() < until; ) {
-    pid = pidOf(build.binary)
+    const newest = pidOf(build.binary)
+    pid = already.has(newest) ? 0 : newest
     if (!pid) await new Promise((r) => setTimeout(r, 100))
   }
   if (!pid) throw new Error('TC Probe did not start within 10 s')

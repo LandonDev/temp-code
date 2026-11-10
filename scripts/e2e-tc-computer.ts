@@ -10,6 +10,12 @@
  *    prefix, its "Ping" pressed at the ax tier; the person's frontmost app
  *    and pointer never move. A second service with every private symbol
  *    forced to miss lists the same window id.
+ *  - the window actions (docs/computer-protocol.md §22) on a second TC Probe
+ *    launched with `--windows`: the title-bar buttons last in every read with
+ *    no sharing badge, an ignored process scroll reading none, close with its
+ *    save sheet (Cancel, then Don't Save) and the next window read whole,
+ *    minimize at ax and raise refused without the session tier, a window with
+ *    no buttons; then a third instance's last window closed, which quits it.
  *  - a scratch TextEdit, its own process opened with `open -n -g` and
  *    targeted by that pid alone: a full read, set_value, a process-tier
  *    click, the clipboard lock and a 2,500-character paste, a screenshot,
@@ -66,7 +72,8 @@ import { fileURLToPath } from 'node:url'
 import {
   type ElementLine,
   type LineFrame,
-  parseObservation
+  parseObservation,
+  SUBROLE_NAMES
 } from '../src/shared/computer/observation'
 import {
   COMPUTER_PROTOCOL,
@@ -95,7 +102,7 @@ import {
 } from '../src/shared/computer/protocol'
 import { waitForGateBuild } from './lib/gateBuild'
 import { intPoint } from './lib/computerPoint'
-import { cleanupProbeApp } from './lib/tcProbeApp'
+import { cleanupProbeApp, launchProbe } from './lib/tcProbeApp'
 import { COMPUTER_PROOF_ENV, sweepComputerProofProcesses } from './lib/computerProofProcesses'
 import { computerInitializeMs, computerProofMode, computerProofPolicy, LOST_TRY_LINE, lostTry, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
 import { OwnInput, personSince } from './lib/proofGate'
@@ -969,6 +976,141 @@ function abortApps(servicesFrom: number): void {
   for (const svc of services.slice(servicesFrom)) if (!svc.done) svc.proc.kill('SIGKILL')
 }
 
+const TITLE_BAR_NAMES = Object.values(SUBROLE_NAMES)
+const PROBE_BUILD = { app: PROBE_APP, binary: join(PROBE_APP, 'Contents/MacOS/TC Probe'), bundleId: PROBE_BUNDLE_ID }
+
+/** The window root's direct children in a whole read. */
+function windowChildren(o: Observation): ElementLine[] {
+  return elementLines(o).filter((e) => e.depth === 1)
+}
+
+/** §22.1: the title-bar buttons close the window's children, in one order, and no sharing badge is a line. */
+function titleBarLast(o: Observation): ElementLine[] {
+  const kids = windowChildren(o)
+  const bar = kids.filter((e) => e.role === 'button' && TITLE_BAR_NAMES.includes(e.name ?? ''))
+  check(bar.length && kids.slice(-bar.length).every((e, i) => e === bar[i]), 'the title-bar buttons are the window\'s last children', o.text)
+  const order = bar.map((e) => TITLE_BAR_NAMES.indexOf(e.name!))
+  check(order.every((n, i) => i === 0 || n > order[i - 1]), 'the title-bar buttons read close, minimize, full screen, zoom', bar)
+  check(!o.text.includes('"Window sharing"'), 'no sharing badge line', o.text)
+  return bar
+}
+
+/**
+ * The window actions leg (§22), on a TC Probe launched with `--windows` and targeted by pid: its
+ * windows never key, never active, the person's app and pointer checked after every act.
+ */
+async function windowLeg(a: Service, mayLaunch: () => void): Promise<void> {
+  const leg = new Chain()
+  let pid = 0
+  const titles = { doc: 'TC Probe Doc', plain: 'TC Probe Plain', fixed: 'TC Probe Fixed' }
+  const read = (title: string): Promise<Observation> =>
+    a.call('state.get', { session: SESSION, app: { pid }, window: { title }, mode: 'full', wait: COMPUTER_WAIT.observe })
+  const act = (o: Observation, action: Record<string, unknown>, tiers: ('ax' | 'process' | 'session')[]) =>
+    a.call('action.run', { session: SESSION, app: { pid }, window: { id: o.window.id }, epoch: o.epoch, action, tiers, wait: COMPUTER_WAIT.action } as never)
+  const frontmost = () => ({ pid: probe<{ pid: number }>('frontmost').pid, bundleId: null })
+
+  await leg.step('windows: launch a TC Probe with --windows in the background', async (data) => {
+    const before = personState()
+    mayLaunch()
+    pid = (await launchProbe(PROBE_BUILD, ['--windows'], frontmost)).pid
+    data.pid = pid
+    await until(async () => ((await a.call('apps.list', { windows: true })).apps.find((x) => x.pid === pid)?.windows?.length ?? 0) >= 4 || null, 10_000, 'four probe windows')
+    data.person = assertPersonUntouched(before, 'after the launch', pid)
+  })
+  let doc: Observation | null = null
+  await leg.step('windows 1: Doc read twice keeps its title-bar buttons last, the same numbers, no badge', async (data) => {
+    const first = await read(titles.doc)
+    const bar = titleBarLast(first)
+    check(bar.some((e) => e.name === 'close') && bar.some((e) => e.name === 'minimize'), 'Doc has close and minimize', bar)
+    await sleep(1_500)
+    doc = await read(titles.doc)
+    const again = titleBarLast(doc)
+    check(JSON.stringify(again.map((e) => [e.index, e.name])) === JSON.stringify(bar.map((e) => [e.index, e.name])), 'the second read, under the watch, numbers them the same', { bar, again })
+    data.buttons = again.map((e) => `[${e.index}] ${e.name}`)
+  })
+  await leg.step('windows 2: a process scroll Doc ignores reads none', async (data) => {
+    const before = personState()
+    const r = await act(doc!, { action: 'scroll', coordinate: intPoint(doc!.space.width / 2, doc!.space.height / 2), scroll_direction: 'down', scroll_amount: 1 }, ['process'])
+    data.person = assertPersonUntouched(before, 'after the scroll')
+    check(okStep(r.step).effect === 'none', 'the ignored scroll reads none, the watch\'s own badge no change', r.step)
+  })
+  await leg.step("windows 3: close Doc, Cancel its sheet, close again, Don't Save", async (data) => {
+    const press = async (o: Observation, name: string, test: (e: ElementLine) => boolean) => {
+      const e = findElement(o, name, test)
+      const before = personState()
+      const r = await act(o, { action: 'left_click', element: e.index }, ['ax'])
+      data.person = assertPersonUntouched(before, `after ${name}`)
+      check(okStep(r.step).tier === 'ax', `${name} ran at ax`, r.step)
+      return r
+    }
+    const isClose = (e: ElementLine) => e.role === 'button' && e.name === 'close'
+    let r = await press(doc!, 'the close button', isClose)
+    check(r.observation, 'the close answers an observation', r.observationError)
+    let now = r.observation!
+    check(/\bsheet\b/.test(now.text) && now.text.includes('button "Don\'t Save"') && now.text.includes('button "Cancel"'), 'the close shows the save sheet', now.text)
+    check(/button "close" disabled/.test(now.text), 'the close button reads disabled under the sheet', now.text)
+    r = await press(now, 'Cancel', (e) => e.role === 'button' && e.name === 'Cancel')
+    now = r.observation!
+    check(now && !now.text.includes('"Don\'t Save"'), 'Cancel takes the sheet away', now?.text)
+    now = await read(titles.doc)
+    r = await press(now, 'the close button again', isClose)
+    r = await press(r.observation!, "Don't Save", (e) => e.role === 'button' && e.name === "Don't Save")
+    check(okStep(r.step).effect === 'changed', "Don't Save changed something", r.step)
+    const listed = (await a.call('apps.list', { windows: true })).apps.find((x) => x.pid === pid)
+    check(!listed?.windows?.some((w) => w.title === titles.doc), 'Doc is gone from apps.list', listed)
+    check(r.observation, 'the closing observation reads the next window', r.observationError)
+    check(r.observation.kind === 'full', 'the next window is read whole', r.observation.kind)
+    check([titles.plain, titles.fixed].includes(r.observation.window.title), 'it is a standard window that survived', r.observation.window)
+    check(r.observation.text.startsWith(`app "TC Probe" · window ${JSON.stringify(r.observation.window.title)}`), 'its header names it', r.observation.text)
+    data.next = r.observation.window.title
+  })
+  await leg.step('windows 4: minimize Plain at ax; raise without the session tier is refused', async (data) => {
+    const plain = await read(titles.plain)
+    const root = elementLines(plain)[0]
+    check(root?.role === 'window', 'Plain reads as a window', plain.text)
+    const min = findElement(plain, 'the minimize button', (e) => e.role === 'button' && e.name === 'minimize')
+    const before = personState()
+    const r = await act(plain, { action: 'left_click', element: min.index }, ['ax'])
+    data.person = assertPersonUntouched(before, 'after the minimize')
+    const step = okStep(r.step)
+    check(step.tier === 'ax' && step.effect === 'changed', 'minimize ran at ax and changed', step)
+    check(r.observation?.text.includes(`~ [${root.index}] window "${titles.plain}" minimized`), 'the diff says the window is minimized', r.observation?.text)
+    const raised = await act(r.observation!, { action: 'perform', element: root.index, name: 'raise' }, ['ax', 'process'])
+    check(raised.step.status === 'failed' && raised.step.error.kind === 'needs_tier' && raised.step.error.needed === 'session', 'raise needs the session tier', raised.step)
+    const listed = (await a.call('apps.list', { windows: true })).apps.find((x) => x.pid === pid)
+    check(listed?.windows?.find((w) => w.title === titles.plain)?.minimized === true, 'Plain stays minimized', listed)
+  })
+  await leg.step('windows 5: Fixed has no close and no minimize', async () => {
+    const fixed = await read(titles.fixed)
+    check(!fixed.stats.partial && fixed.stats.omitted === 0, 'a whole read', fixed.stats)
+    check(!windowChildren(fixed).some((e) => e.role === 'button' && (e.name === 'close' || e.name === 'minimize')), 'no close and no minimize line', fixed.text)
+  })
+  await leg.step('windows 6: end the --windows instance', async () => {
+    process.kill(pid, 'SIGKILL')
+    await until(() => (alive(pid) ? null : true), 5_000, 'the --windows probe exit')
+    pid = 0
+  })
+  await leg.step('windows 7: a last window closed quits its app', async (data) => {
+    const before = personState()
+    mayLaunch()
+    pid = (await launchProbe(PROBE_BUILD, [], frontmost)).pid
+    data.launch = assertPersonUntouched(before, 'after the launch', pid)
+    const o = await until(async () => (await a.call('apps.list', { windows: true })).apps.find((x) => x.pid === pid)?.windows?.length ? read('TC Probe') : null, 10_000, 'the third probe window')
+    const close = findElement(o, 'the close button', (e) => e.role === 'button' && e.name === 'close')
+    const r = await act(o, { action: 'left_click', element: close.index }, ['ax'])
+    data.person = assertPersonUntouched(before, 'after the close')
+    const step = okStep(r.step)
+    check(step.tier === 'ax' && step.effect === 'changed', 'the close ran at ax and changed', step)
+    check(r.observationError?.kind === 'window_not_found' && r.observationError.reason === 'gone', 'the closing observation says the window is gone', r.observationError)
+    // the app may still be quitting when the wait ends: §22.6 names that "has no window open"
+    check(/^TC Probe (quit|has no window open)\.$/.test(r.observationError.message), 'it says the app quit', r.observationError)
+    data.said = r.observationError.message
+    await until(() => (alive(pid) ? null : true), 5_000, 'the probe quitting on its last window')
+    pid = 0
+  })
+  if (pid && alive(pid)) process.kill(pid, 'SIGKILL')
+}
+
 /** One try at the probe app and the scratch TextEdit, on a service of its own. */
 async function appSections(
   attempt: number,
@@ -1107,6 +1249,7 @@ async function appSections(
     const exit = await within(miss.exit, 2_000, 'the private-miss service exiting')
     check(exit.code === 0, 'the private-miss service exits 0', exit)
   })
+  await windowLeg(a, mayLaunch)
   if (GATE) {
     for (const name of [
       'open a scratch TextEdit', 'TextEdit full read with geometry',

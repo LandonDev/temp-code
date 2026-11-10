@@ -13,6 +13,8 @@
 // `--tick` (opt-in, for the preview proof): a label under the button counts about ten times a second, so
 // the window's pixels change and a capture stream, which sends a frame only when they do, keeps sending.
 // SIGUSR1 pauses the count and the next one resumes it, for a check that needs the window still.
+//
+// `--windows` (opt-in, for the window actions leg; docs/computer-protocol.md §22): see ProbeWindows below.
 import AppKit
 
 /// A window the person can neither click nor bring forward.
@@ -28,6 +30,7 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
     private var ticks = 0
     private var tickPaused = false
     private var pauseSignal: DispatchSourceSignal?
+    private let windows = ProbeWindows()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let ticking = CommandLine.arguments.contains("--tick")
@@ -66,6 +69,8 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
         window.orderBack(nil)
         self.window = window
 
+        if CommandLine.arguments.contains("--windows") { windows.open() }
+
         if ticking {
             tick.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
             tick.stringValue = "tick 0"
@@ -88,6 +93,70 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { false }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+}
+
+// MARK: --windows
+
+/// A window the person can neither click nor make key, which may still become main, so AppKit gives it
+/// the standard-window subrole and §2.1 may pick it as the app's default.
+final class SideWindow: NSWindow {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { true }
+}
+
+/// Three windows beside "TC Probe" for the window actions leg: "TC Probe Doc" (close, minimize, an
+/// edited document whose close asks "Don't Save" or "Cancel" in a sheet; a field, Ping and a checkbox so
+/// its tree is not thin), "TC Probe Plain" (close and minimize) and "TC Probe Fixed" (neither). All
+/// ordered back, mouse-inert and never activated, like the probe window.
+final class ProbeWindows: NSObject, NSWindowDelegate {
+    private var all: [NSWindow] = []
+    private let pong = NSTextField(labelWithString: "waiting")
+
+    func open() {
+        let doc = make("TC Probe Doc", [.titled, .closable, .miniaturizable], at: 560, rows: [
+            NSTextField(string: ""), NSButton(title: "Ping", target: self, action: #selector(ping(_:))),
+            NSButton(checkboxWithTitle: "Keep", target: nil, action: nil), pong
+        ])
+        doc.isDocumentEdited = true
+        doc.delegate = self
+        make("TC Probe Plain", [.titled, .closable, .miniaturizable], at: 960, rows: [NSTextField(labelWithString: "Plain")])
+        make("TC Probe Fixed", [.titled], at: 1_360, rows: [NSTextField(labelWithString: "Fixed")])
+    }
+
+    @discardableResult
+    private func make(_ title: String, _ style: NSWindow.StyleMask, at x: CGFloat, rows: [NSView]) -> NSWindow {
+        let window = SideWindow(contentRect: NSRect(x: x, y: 160, width: 360, height: 170), styleMask: style, backing: .buffered, defer: false)
+        window.title = title
+        window.isReleasedWhenClosed = false
+        window.isRestorable = false
+        let stack = NSStackView(views: rows)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        window.contentView = stack
+        window.ignoresMouseEvents = true
+        window.orderBack(nil)
+        all.append(window)
+        return window
+    }
+
+    @objc private func ping(_ sender: Any?) { pong.stringValue = "pong" }
+
+    /// An edited document asks before it closes, in a sheet on its window, as TextEdit's does.
+    func windowShouldClose(_ window: NSWindow) -> Bool {
+        guard window.isDocumentEdited else { return true }
+        let alert = NSAlert()
+        alert.messageText = "Close \(window.title) without saving?"
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Don't Save")
+        alert.beginSheetModal(for: window) { response in
+            guard response == .alertSecondButtonReturn else { return }
+            window.isDocumentEdited = false
+            window.close()
+        }
+        return false
+    }
 }
 
 UserDefaults.standard.register(defaults: ["ApplePersistenceIgnoreState": true])
