@@ -1479,7 +1479,7 @@ async function appSections(
     probePid = 0
   })
 
-  await stealerSection(a, mayLaunch)
+  await stealerSection(mayLaunch)
 
   if (GATE) {
     if (!a.done) { a.closeStdin(); await within(a.exit, 2_000, 'gate service EOF') }
@@ -1933,14 +1933,19 @@ function judgeGuard(data: Record<string, unknown>, word: FrontReport | null, bef
  * opens and on Ping: launched, opened into and pressed in the background, each time the guard
  * must put the front back. Its windows are inert like the probe's, so a steal takes no keystroke.
  */
-async function stealerSection(a: Service, mayLaunch: () => void): Promise<void> {
+async function stealerSection(mayLaunch: () => void): Promise<void> {
   const chain = new Chain()
-  const built: { app?: string } = {}
+  const built: { app?: string; svc?: Service } = {}
   stealPid = 0
-  await chain.step('build TC Probe Steal', async () => {
+  // a service of its own: the gate's crash step before this one kills the probe's on purpose
+  await chain.step('build TC Probe Steal and a service for it', async () => {
     built.app = buildStealProbeApp(ROOT, WORK).app
+    const svc = (built.svc = new Service('front guard'))
+    await initialize(svc, DATA)
+    await svc.call('session.open', { session: SESSION })
   })
-  if (!built.app) return
+  const a = built.svc
+  if (!built.app || !a || a.done) return
   await chain.step('apps.launch TC Probe Steal: the guard puts the front back', async (data) => {
     const before = frontWindow()
     const at = Date.now()
@@ -1986,10 +1991,13 @@ async function stealerSection(a: Service, mayLaunch: () => void): Promise<void> 
     judgeGuard(data, await guardWord(a, r.front, stealPid, since), before, at)
   })
   await chain.step('quit TC Probe Steal', async () => {
-    if (!stealPid) return
-    process.kill(stealPid, 'SIGTERM')
-    await until(() => (alive(stealPid) ? null : true), 5_000, 'the stealer exiting')
-    stealPid = 0
+    if (stealPid) {
+      process.kill(stealPid, 'SIGTERM')
+      await until(() => (alive(stealPid) ? null : true), 5_000, 'the stealer exiting')
+      stealPid = 0
+    }
+    a.closeStdin()
+    await within(a.exit, 2_000, 'the front guard service exiting')
   })
 }
 
