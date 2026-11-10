@@ -2132,7 +2132,10 @@ why and the measured headline.
   `AXText`, tested on the box with `sh scripts/computer-text-test.sh`, and
   the Mac's walk), the service shell (§16: the router, the locks, the
   held-input ledger, the exit codes). `bun run computer:test` builds and
-  tests the package on the Mac.
+  tests the package on the Mac. The window's title-bar buttons are always in
+  the tree, the capture badge never (docs/computer-protocol.md §22): closing
+  and minimizing are clicks at `ax`; restoring is `perform raise`, at the
+  session tier.
 - **The host** (src/main/server/computer/, §17). On a Mac with a screen,
   one `ComputerService` (binary.ts; respawned with backoff, down five
   minutes after five crashes in two, shut down after ten idle minutes).

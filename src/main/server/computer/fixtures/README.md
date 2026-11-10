@@ -89,7 +89,11 @@ Real accessibility trees and screenshots, recorded on the Mac:
 
 The states are `textedit/{doc,typed,save-sheet}`,
 `chrome/{form,menu-open,loading}`, `tempcode-dev/{first-run,thread}` and
-`intellij/project`.
+`intellij/project`. `textedit/doc-shared` is no recording: `textedit/doc`'s
+tree as the walk gives it while a capture runs (docs/computer-protocol.md
+§22: the title-bar buttons out of AXChildren, the "Window sharing" badge in
+their place, the buttons appended after it), its screenshot `doc`'s, and its
+observation equal to `doc`'s.
 
 ### Recording them again
 

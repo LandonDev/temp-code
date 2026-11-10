@@ -9,7 +9,7 @@ TempCode's computer-use service on the Mac: one Swift process per app instance t
 | `ComputerProtocol` | the wire: `Generated/` from `src/shared/computer/protocol.ts`, the framing, `JSONValue`. Foundation only. | Linux and Mac |
 | `ComputerServiceKit` | the shell's pure rules: router, outbox, wait rule, Mac-wide locks, app matcher, session book, held ledger, clipboard rule, trace. Foundation only. | Linux and Mac |
 | `ComputerCore` | the seams between the modules (`Seams.swift`), `CoordinateMapping`, `PrivateSymbol`. | Linux and Mac |
-| `AXText` | the AX reader's rules that need no live element: keep, index, fold, budget, render, diff; the observation tables generated from `observation.ts`. | Linux and Mac |
+| `AXText` | the AX reader's rules that need no live element: keep, index, fold, budget, render, diff; the title-bar rule (`TitleBar`: a window's buttons last, the capture's sharing badge dropped, docs/computer-protocol.md §22) the text and the change monitor share; the observation tables generated from `observation.ts`. | Linux and Mac |
 | `AXReader` | the walk over `AXUIElement`, handles, windows, `AXManualAccessibility`, the change monitor, `AppReader`, `AXReaders`. | Mac (its files sit under `canImport(ApplicationServices)`) |
 | `Input`, `Capture` | the input tiers and the clipboard paste; screenshots, the preview stream, the pixel watch. | Mac |
 | `ComputerService` | the shell: handlers, inventory, launcher, workers and app slots, the smart wait, watchers, TCC, lifecycle, `Modules.live()`. | Mac |
