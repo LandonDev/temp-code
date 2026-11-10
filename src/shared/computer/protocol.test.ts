@@ -339,6 +339,9 @@ describe('the background fallbacks (§24)', () => {
     const e = { kind: 'needs_tier', message: 'File › Close is disabled while TextEdit is in the background.', needed: 'session', menu: ['File', 'Close'] }
     expect(ComputerErrorSchema.parse(e)).toEqual(e)
     expect(ComputerErrorSchema.safeParse({ ...e, menu: Array(9).fill('a') }).success).toBe(false)
+  })
+})
+
 describe('the front guard\'s additions (§23)', () => {
   const launch = COMPUTER_METHODS['apps.launch']
 
