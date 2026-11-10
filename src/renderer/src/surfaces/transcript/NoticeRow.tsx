@@ -11,7 +11,7 @@ import { reviewChunk } from "../chunks";
 import { Skeleton } from "../../components/ui/skeleton";
 import { useTurnState } from "../turnState";
 import { useTranscriptSession } from "../transcriptSession";
-import { CircleHelp, GitMerge, Lock, Users } from "../../chrome/icons";
+import { CircleHelp, GitMerge, Lock, LockOpen, Users } from "../../chrome/icons";
 import { StatusMark } from "../../components/ui/status";
 import { NoticeLine } from "./NoticeLine";
 import { PlanHandoffRow } from "./PlanHandoffRow";
@@ -84,15 +84,15 @@ export function ErrorRowView({ block }: { block: Block }) {
   return <ErrorChip sessionId={sessionId} row={row} busy={session?.busy} />;
 }
 
-/** A question's and an approval's still glyph; a decision has none. */
-const AWAY_GLYPH = { question: CircleHelp, approval: Lock } as const;
+/** A question's, an allowed and a skipped approval's still glyph; a decision has none. */
+const AWAY_GLYPH = { question: CircleHelp, allowed: LockOpen, approval: Lock } as const;
 
 /** What happened while the person was away: a decision the thread noted, a
- *  question the host answered for them, an approval it skipped; the host's
- *  words, muted like every notice. */
+ *  question the host answered for them, an approval it allowed or skipped;
+ *  the host's words, muted like every notice. */
 export function AwayNoticeLine({ block }: { block: Block }) {
   const kind = block.notice?.away?.kind;
-  const Glyph = kind === "question" || kind === "approval" ? AWAY_GLYPH[kind] : null;
+  const Glyph = kind && kind !== "decision" ? AWAY_GLYPH[kind] : null;
   return <NoticeLine data-away={kind ?? "decision"} glyph={Glyph ? <Glyph /> : undefined} lead={block.text} wrap />;
 }
 

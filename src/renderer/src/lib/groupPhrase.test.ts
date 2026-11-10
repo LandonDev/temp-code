@@ -227,10 +227,11 @@ describe("groupPhrase: agent work and the host's steps", () => {
     expect(say([sys("c", "Checking background tasks", { backgroundCheck: true })])).toBe("Checked background tasks");
     expect(say([sys("h", "Implementation started: T", { planHandoff: { id: "x", title: "T", how: "auto" } })])).toBe("Started the build");
     expect(say([sys("m", "Merged by the batch: ui-3", { notice: { kind: "batch" } })])).toBe("Merged by the batch");
-    const away = (kind: "decision" | "question" | "approval") => sys(kind, "x", { notice: { kind: "away", away: { kind, text: "x" } } });
+    const away = (kind: "decision" | "question" | "approval" | "allowed") => sys(kind, "x", { notice: { kind: "away", away: { kind, text: "x" } } });
     expect(say([away("decision")])).toBe("Decided without asking");
     expect(say([away("question")])).toBe("Answered for you");
     expect(say([away("approval")])).toBe("Skipped an approval");
+    expect(say([away("allowed")])).toBe("Allowed for you");
   });
 
   it("a wake: two reports, a task, then calls", () => {

@@ -170,6 +170,7 @@ const REVIEW_WORDS: Record<string, string> = {
 const AWAY_PHRASE = {
   decision: "decided without asking",
   question: "answered for you",
+  allowed: "allowed for you",
   approval: "skipped an approval",
 } as const;
 

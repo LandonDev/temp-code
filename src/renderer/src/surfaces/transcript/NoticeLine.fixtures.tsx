@@ -1,6 +1,6 @@
 // The one notice line's shapes for `bun run ui:preview src/renderer/src/surfaces/transcript/NoticeLine.tsx#NoticeLine`.
 // A line that folds needs its Collapsible: GateCard.fixtures.tsx and ReviewCard.fixtures.tsx show those.
-import { FoldVertical, GitMerge } from "../../chrome/icons";
+import { FoldVertical, GitMerge, Lock, LockOpen } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { StatusMark } from "../../components/ui/status";
 
@@ -28,6 +28,8 @@ export const fixtures = [
       ),
     },
   },
+  { name: "Away: an approval the host allowed", props: { glyph: <LockOpen />, lead: "Allowed while away: Run bun test?", wrap: true } },
+  { name: "Away: a money act the host skipped", props: { glyph: <Lock />, lead: "Skipped while away: Pay in Safari: Buy the Pro plan?", wrap: true } },
   {
     name: "A long detail truncates; the lead never does",
     props: { glyph: <StatusMark state="done" word={false} />, lead: "Reviewed by GPT-6.1 Sol", details: ["no blocking findings", "a detail long enough to run past the edge of a narrow column and truncate there"] },

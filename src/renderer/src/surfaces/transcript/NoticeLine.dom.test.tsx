@@ -202,8 +202,8 @@ describe("NoticeRow", () => {
     expect(container.textContent).toBe(text);
     expect(container.querySelectorAll('[data-slot="notice-line"]').length).toBe(1);
   });
-  it("an away notice is one line of the host's words; a question and an approval lead with their still glyph, a decision with none", () => {
-    const line = (kind: "decision" | "question" | "approval", text: string) => {
+  it("an away notice is one line of the host's words; a question, an allowed and a skipped approval lead with their still glyph, a decision with none", () => {
+    const line = (kind: "decision" | "question" | "approval" | "allowed", text: string) => {
       const { container } = render(<NoticeRow block={system({ text, notice: { kind: "away", away: { kind, text } } })} />);
       const notice = container.querySelector<HTMLElement>('[data-slot="notice-line"]')!;
       expect(container.querySelectorAll('[data-slot="notice-line"]').length).toBe(1);
@@ -216,7 +216,10 @@ describe("NoticeRow", () => {
     const approval = line("approval", "Skipped while away: Run bun test");
     expect(question).not.toBeNull();
     expect(approval).not.toBeNull();
-    expect(question!.outerHTML).not.toBe(approval!.outerHTML);
+    const allowed = line("allowed", "Allowed while away: Run bun test?");
+    expect(allowed).not.toBeNull();
+    expect(new Set([question!.outerHTML, approval!.outerHTML, allowed!.outerHTML]).size).toBe(3);
+    expect(allowed!.getAttribute("class") ?? "").not.toMatch(/text-(warning|destructive|success)/);
     // Still and muted: the glyph slot's tone, no status colour, no spinner.
     expect(question!.closest("span")!.className).toContain("text-muted-foreground");
     expect(question!.getAttribute("class") ?? "").not.toMatch(/text-(warning|destructive)/);

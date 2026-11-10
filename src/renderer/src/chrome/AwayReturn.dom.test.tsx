@@ -94,6 +94,17 @@ describe("AwayReturn", () => {
     expect(options.action.label).toBe("Review");
   });
 
+  it("a stretch the host decided only by allowing (each allow counted on its thread) still toasts with Review", async () => {
+    render(<AwayReturn onOpen={() => {}} />);
+    const push = host("local", snap(true, 1));
+    await act(async () => {});
+    push(snap(false, 2, [{ sessionId: "allowed-only", count: 2 }]));
+    await waitFor(() => expect(toast.call).toHaveBeenCalled());
+    const [line, options] = toast.call.mock.calls.at(-1)!;
+    expect(line).toBe("Decided without you in 1 thread");
+    expect(options.action.label).toBe("Review");
+  });
+
   it("says one thread in the singular", async () => {
     render(<AwayReturn onOpen={() => {}} />);
     const push = host("local", snap(true, 1));

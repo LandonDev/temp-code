@@ -1189,6 +1189,14 @@ describe("merge review rows", () => {
     expect(new Set(shown.map((b) => b.id)).size).toBe(2);
   });
 
+  it("an allowed away notice folds like the others, its payload kept", () => {
+    const away = { kind: "allowed" as const, text: "Run bun test?" };
+    const state = foldAll(rows([{ type: "notice", kind: "away", message: "Allowed while away: Run bun test?", away } as AgentEvent]), CWD);
+    expect(state.blocks.filter((b) => b.notice?.kind === "away")).toEqual([
+      expect.objectContaining({ role: "system", text: "Allowed while away: Run bun test?", notice: { kind: "away", away } }),
+    ]);
+  });
+
   it("a batch notice keeps its kind", () => {
     const state = foldAll(rows([{ type: "notice", kind: "batch", message: "Batch done: 3 landed" } as AgentEvent]), CWD);
     const last = state.blocks[state.blocks.length - 1];
