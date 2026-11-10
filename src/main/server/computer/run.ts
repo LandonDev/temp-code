@@ -10,6 +10,7 @@ import {
   type ComputerMethod,
   type ComputerParams,
   type ComputerResult,
+  type FrontReport,
   type IgnoredRoutes,
   type Observation,
   type PermissionName,
@@ -27,8 +28,27 @@ import type { ApprovalRequest } from '../drivers/types'
 import { planBatch } from './batchPlan'
 import { ComputerHostError, ComputerRpcError } from './connection'
 import { ElementBook } from './elements'
-import { passwordTarget, refusedLaunch, refusedTarget, textTargetProblem, type PinnedApp, type TargetResolver } from './policy'
-import { formatAppsList, outcomeOf, refusal, type ComputerToolOutcome, type LandedShot, type StepsResult } from './result'
+import {
+  REFUSED_LAUNCH_BUNDLES,
+  passwordTarget,
+  refusedLaunch,
+  refusedOpenItem,
+  refusedTarget,
+  textTargetProblem,
+  type Resolved,
+  type TargetResolver
+} from './policy'
+import {
+  formatAppsList,
+  frontLine,
+  mergeFront,
+  outcomeOf,
+  refusal,
+  type ComputerToolOutcome,
+  type LandedShot,
+  type LaunchReport,
+  type StepsResult
+} from './result'
 import type { ComputerService } from './service'
 import { landShot, nextShotNumber } from './shots'
 import type { SessionTierGate, TierDecision, TierGateContext } from './tierGate'
@@ -107,6 +127,8 @@ export interface ThreadComputer {
   ended: boolean
   idleTimer: unknown
   nextShot: number | null
+  /** steals the front guard undid after their call answered (apps/frontRestored): said once, in the thread's next result */
+  pendingFront: string[]
 }
 
 export interface RunHost {
@@ -225,7 +247,10 @@ export async function runComputerTool(host: RunHost, t: ThreadComputer, ctx: Com
   t.live.running = { tool, words: words ?? 'Using the computer', startedAt: now }
   host.touched(t)
   try {
-    return await runChecked(host, t, ctx, tool, args, signal)
+    const out = await runChecked(host, t, ctx, tool, args, signal)
+    if (!t.pendingFront.length) return out
+    const late = t.pendingFront.splice(0)
+    return { ...out, steps: [...out.steps, ...late] }
   } finally {
     if (t.live) {
       t.live.running = null
@@ -251,6 +276,13 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
   const readWindow = app()?.window?.title
   if (blindText && args.window && !(readWindow ?? '').includes(args.window))
     return refusal(hostErrorLine('no_observation', noReadForTextLine(args.app!, args.window)))
+
+  // an app no call may touch, or an item that is no page, file or folder: refused before the card
+  if (tool === 'computer_apps') {
+    const refused =
+      (typeof args.launch === 'string' ? refusedLaunch(args.launch) : null) ?? (openOf(args).map(refusedOpenItem).find((l) => l !== null) ?? null)
+    if (refused) return refusal(refused)
+  }
 
   // 3. the card, the permission read now: safe and edits ask for every act, every mode for a flag or a password field
   const permission = ctx.permission?.() ?? host.registry.get(threadId)?.permission ?? 'safe'
@@ -333,18 +365,23 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     }
   }
 
-  const errCtx: ErrorContext = { app: args.app, window: args.window, ...(tool === 'computer_act' ? { action: steps[0] } : {}) }
+  const errCtx: ErrorContext = {
+    app: args.app ?? (typeof args.launch === 'string' ? args.launch : undefined),
+    window: args.window,
+    ...(tool === 'computer_act' ? { action: steps[0] } : {}),
+    ...(tool === 'computer_apps' && openOf(args).length ? { open: openOf(args) } : {})
+  }
   try {
     if (tool === 'computer_apps') {
-      const refused = typeof args.launch === 'string' ? refusedLaunch(args.launch) : null
-      if (refused) return refusal(refused)
-      const apps = await runApps(call, args)
+      const apps = await runApps(call, args, t.serviceSession)
       return abortedLine(signal) ? refusal(abortedLine(signal)!) : apps
     }
 
     // 5. the target: the app pinned to a pid before any request, and checked
-    const pin = await pinApp(host, args.app!, call)
+    const pin = await pinApp(host, args.app!, call, t.serviceSession)
     if ('line' in pin) return refusal(pin.line)
+    /** the person's app as the list cached before the act reads it, for the front line */
+    const person = host.targets.activeName(pin.app.pid)
     const refused = refusedTarget(pin.app, steps.some(sendsInput) ? 'act' : 'read')
     if (refused) return refusal(refused)
     const a = app()
@@ -371,6 +408,8 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
 
     const shots: LandedShot[] = []
     const notes: string[] = []
+    const pinFront = pin.front ? frontLine(pin.app.name, pin.front, person) : null
+    if (pinFront) notes.push(pinFront)
     const land = async (shot: NonNullable<Observation['shot']>, label: string, where: LandedShot['where']): Promise<void> => {
       const dir = host.landing(threadId)
       t.nextShot ??= await nextShotNumber(dir)
@@ -449,7 +488,7 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     }
     const lastTier = [...result.steps].reverse().find((s) => s.status === 'ok' && s.tier !== null)
     if (t.live && lastTier?.status === 'ok') t.live.tier = lastTier.tier
-    const out = outcomeOf(actions, result, shots, result.hostLines, errCtx)
+    const out = outcomeOf(actions, result, shots, result.hostLines, errCtx, person)
     const stoppedLine = abortedLine(signal)
     if (stoppedLine && result.observation) discarded()
     return { ...out, steps: [...out.steps, ...notes], ...(stoppedLine ? { body: stoppedLine, isError: true } : {}) }
@@ -460,6 +499,8 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     if (e instanceof ComputerRpcError) {
       // the line says where the switch is; the system asks once per install
       if (e.data?.kind === 'permission_missing' && e.data.which) askOnce(e.data.which)
+      // the service caught an app no call may touch (a path to TempCode.app): the host's own words for it
+      if (e.data?.kind === 'open_refused' && e.data.reason === 'app') return refusal(hostErrorLine('refused_app', 'tempcode'))
       return refusal(e.data ? errorLine(e.data, errCtx) : e.message)
     }
     host.log(`computer call failed in ${threadId}: ${(e as Error).stack ?? e}`)
@@ -467,10 +508,35 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
   }
 }
 
-async function runApps(call: <M extends ComputerMethod>(m: M, p: ComputerParams<M>) => Promise<ComputerResult<M>>, args: Args): Promise<ComputerToolOutcome> {
+/** computer_apps' items, as the model gave them. */
+const openOf = (args: Args): string[] => (Array.isArray(args.open) ? (args.open as string[]) : [])
+
+/**
+ * computer_apps: one apps.launch with the items, the session a late steal
+ * names and the refused bundles, then the list. The app it answered is
+ * checked against the refused ones as a pinned target is.
+ */
+async function runApps(call: <M extends ComputerMethod>(m: M, p: ComputerParams<M>) => Promise<ComputerResult<M>>, args: Args, session: string): Promise<ComputerToolOutcome> {
   const launch = typeof args.launch === 'string' ? args.launch : null
-  const launched = launch ? { name: launch, launched: (await call('apps.launch', { app: launch })).launched } : undefined
+  const open = openOf(args)
+  const r = launch ? await call('apps.launch', { app: launch, ...(open.length ? { open } : {}), session, refuse: [...REFUSED_LAUNCH_BUNDLES] }) : null
   const { apps } = await call('apps.list', { windows: true })
+  const app = r ? apps.find((a) => a.pid === r.pid) : undefined
+  const refused = r ? refusedTarget(app ?? { pid: r.pid, bundleId: null }, open.length ? 'act' : 'read') : null
+  if (refused) return refusal(refused)
+  const launched: LaunchReport | undefined =
+    r && launch
+      ? {
+          name: app?.name ?? launch,
+          launched: r.launched,
+          ...(open.length ? { open } : {}),
+          ...(r.front ? { front: r.front } : {}),
+          ...(r.window ? { window: r.window } : {}),
+          ...(r.others?.length ? { others: r.others } : {}),
+          // put back, the person's app is in front again as the list reads it
+          person: apps.find((a) => a.active && a.pid !== r.pid)?.name ?? null
+        }
+      : undefined
   return { steps: [], shots: [], body: formatAppsList(apps, launched), isError: false }
 }
 
@@ -485,14 +551,19 @@ function actionsOf(tool: ComputerToolName, args: Args): ComputerAction[] {
 }
 
 /** The proof's pin (resolveApp with a pid) wins; else the resolver, on the service's own app methods. */
-async function pinApp(host: RunHost, query: string, call: <M extends ComputerMethod>(m: M, p: ComputerParams<M>) => Promise<ComputerResult<M>>): Promise<{ app: PinnedApp } | { line: string }> {
+async function pinApp(
+  host: RunHost,
+  query: string,
+  call: <M extends ComputerMethod>(m: M, p: ComputerParams<M>) => Promise<ComputerResult<M>>,
+  session: string
+): Promise<Resolved> {
   const proof = host.resolveApp?.(query)
   if (proof?.pid !== undefined) return { app: { pid: proof.pid, bundleId: null, name: query } }
   return host.targets.resolve(
     proof?.app ?? query,
     {
       list: async () => (await call('apps.list', {})).apps,
-      launch: (app) => call('apps.launch', { app }),
+      launch: (app) => call('apps.launch', { app, session, refuse: [...REFUSED_LAUNCH_BUNDLES] }),
       sleep: (ms) => new Promise((r) => setTimeout(r, ms))
     },
     (e) => (e instanceof ComputerRpcError ? (e.data ?? null) : null)
@@ -571,6 +642,7 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
   const heldLines = new Map<number, string>()
   let observation: Observation | undefined
   let observationError: ComputerError | undefined
+  let front: FrontReport | undefined
   /** A step that will not run: its error's words, its line the host's. */
   const fail = (i: number, error: ComputerError): void => {
     steps[i] = { index: i, action: actions[i].action, status: 'failed', error }
@@ -648,6 +720,7 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
       const ignored = host.verdicts.ignoredFor(bundleOf())
       const r = await runSegment(run, gate, classes, seg.actions, seg.tiers, seg.last, skip ? { ...ignored, skip: true } : ignored)
       ranAny = true
+      front = mergeFront(front, r.front)
       r.steps.forEach((s, k) => (steps[at + k] = { ...s, index: at + k }))
       for (const [k, s] of r.steps.entries()) host.verdicts.learn(r.observation?.app.bundleId ?? bundleOf(), seg.actions[k], s)
       for (const s of r.steps) if (s.status === 'ok' && s.tier === 'session') gate.ran?.(gateCtx(classes), s.session)
@@ -702,7 +775,7 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
     }
   }
   for (const [i, line] of heldLines) if (steps[i].status !== 'not-run') hostLines.set(i, `${line}\n${hostLines.get(i) ?? formatStepLine(steps[i], actions[i])}`)
-  return { steps, observation, observationError, hostLines }
+  return { steps, observation, observationError, hostLines, ...(front ? { front } : {}) }
 }
 
 /** One acting request, through the gate: it may take `session` out of the tiers, holds the Mac for it and puts it back after. */
@@ -734,7 +807,7 @@ async function runSegment(
         ...extras
       }))
     )
-    return { steps: [r.step], observation: r.observation, observationError: r.observationError }
+    return { steps: [r.step], observation: r.observation, observationError: r.observationError, ...(r.front ? { front: r.front } : {}) }
   }
   return await gate.run(ctx, (allowed) => run.targeted('action.batch', (tg) => ({ ...tg, actions, tiers: allowed, stepWait: COMPUTER_WAIT.step, wait, observe, ...extras })))
 }

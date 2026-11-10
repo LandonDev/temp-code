@@ -1,7 +1,14 @@
 import { errorLine } from '@shared/computer/errorWords'
 import { hostErrorLine } from '@shared/computer/hostErrors'
 import type { ConfirmNeed } from '@shared/computer/policy'
-import { NO_INPUT_ACTIONS, type AppInfo, type ComputerAction, type ComputerError } from '@shared/computer/protocol'
+import {
+  NO_INPUT_ACTIONS,
+  type AppInfo,
+  type ComputerAction,
+  type ComputerError,
+  type ComputerResult,
+  type FrontReport
+} from '@shared/computer/protocol'
 import type { ElementBook } from './elements'
 
 /**
@@ -25,17 +32,22 @@ export const TEMPCODE_BUNDLE_ID = 'dev.landon.tempcode'
  */
 export const REFUSED_ACT_BUNDLES: readonly string[] = ['com.apple.SecurityAgent', 'com.apple.LocalAuthentication.UIAgent']
 
+/** Every `apps.launch` names these as `refuse`: the service checks the resolved app before it launches or opens anything (§22.2). */
+export const REFUSED_LAUNCH_BUNDLES: readonly string[] = [TEMPCODE_BUNDLE_ID, ...REFUSED_ACT_BUNDLES]
+
 export interface PinnedApp {
   pid: number
   bundleId: string | null
   name: string
 }
 
+export type LaunchResult = ComputerResult<'apps.launch'>
+
 /** The service's two app methods, as the resolver needs them. */
 export interface AppsSource {
   list(): Promise<AppInfo[]>
-  /** answers the pid, or throws with the service's error data */
-  launch(app: string): Promise<{ pid: number; launched: boolean }>
+  /** answers the pid and what the front guard saw, or throws with the service's error data */
+  launch(app: string): Promise<LaunchResult>
   sleep(ms: number): Promise<void>
 }
 
@@ -43,7 +55,8 @@ export interface AppsSource {
 export const LAUNCH_REGISTER_MS = 2000
 const REGISTER_POLL_MS = 100
 
-export type Resolved = { app: PinnedApp } | { line: string }
+/** The app pinned, and when the resolver launched it and it came forward, the guard's report (§22.5). */
+export type Resolved = { app: PinnedApp; front?: FrontReport } | { line: string }
 
 const pinned = (a: AppInfo): PinnedApp => ({ pid: a.pid, bundleId: a.bundleId, name: a.name })
 const lower = (s: string): string => s.toLowerCase()
@@ -62,6 +75,11 @@ export class TargetResolver {
     this.cached = null
   }
 
+  /** The app in front as the cached list last said, other than `besides`; null when nothing is cached. */
+  activeName(besides?: number): string | null {
+    return this.cached?.find((a) => a.active && a.pid !== besides)?.name ?? null
+  }
+
   async resolve(query: string, src: AppsSource, errorData: (e: unknown) => ComputerError | null): Promise<Resolved> {
     const q = lower(query)
     const running = (this.cached ??= await src.list())
@@ -70,11 +88,11 @@ export class TargetResolver {
 
     let launchError: ComputerError | null = null
     try {
-      const { pid } = await src.launch(query)
+      const { pid, front } = await src.launch(query)
       for (let waited = 0; ; waited += REGISTER_POLL_MS) {
         this.cached = await src.list()
         const found = this.cached.find((a) => a.pid === pid)
-        if (found) return { app: pinned(found) }
+        if (found) return front?.raised ? { app: pinned(found), front } : { app: pinned(found) }
         if (waited >= LAUNCH_REGISTER_MS) return { line: hostErrorLine('refused_app', 'unchecked') }
         await src.sleep(REGISTER_POLL_MS)
       }
@@ -103,6 +121,15 @@ export function refusedLaunch(query: string): string | null {
   if (q === TEMPCODE_BUNDLE_ID || q === 'tempcode') return hostErrorLine('refused_app', 'tempcode')
   if (REFUSED_ACT_BUNDLES.some((b) => lower(b) === q)) return hostErrorLine('refused_app', 'prompts')
   return null
+}
+
+/** Only these open, never the system's default handler for anything else (§22.2). */
+const OPEN_SCHEMES = /^(https?|file):/i
+
+/** computer_apps { open }: an item that is not a web page, a file URL or an absolute path is refused before the card. */
+export function refusedOpenItem(item: string): string | null {
+  if (OPEN_SCHEMES.test(item) || item.startsWith('/')) return null
+  return errorLine({ kind: 'open_refused', message: '', reason: 'scheme' }, { open: [item] })
 }
 
 const TEXT_STEPS: readonly ComputerAction['action'][] = ['type', 'paste']

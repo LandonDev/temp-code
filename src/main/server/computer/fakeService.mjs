@@ -327,11 +327,29 @@ function handle({ id, method, params = {} }) {
       .sort((a, b) => a.name === 'TextEdit' ? -1 : b.name === 'TextEdit' ? 1 : a.name.localeCompare(b.name))
       .map((app) => ({ ...brief(app), active: app.name === 'TextEdit', hidden: app.name === 'Finder', ...(params.windows ? { windows: app.windows } : {}) })) })
     case 'apps.launch': {
+      // §22.2: the items and the app are checked before anything opens
+      const open = params.open ?? []
+      if (open.some((item) => item.endsWith('.command')))
+        return refuse(id, failure('open_refused', 'That item is a program; open only opens documents, folders and web pages.', { reason: 'executable' }))
+      if (open.some((item) => item.includes('/missing/')))
+        return refuse(id, failure('open_refused', 'No file at that path.', { reason: 'missing' }))
+      // FAKE_LAUNCH_REFUSE_APP=1 stands for a path to TempCode.app, which only the service can resolve
+      if (process.env.FAKE_LAUNCH_REFUSE_APP === '1') return refuse(id, failure('open_refused', 'That app may not be opened into.', { reason: 'app' }))
       const app = resolveApp({ app: params.app })
       if (!app) return refuse(id, missingApp())
+      if (app.bundleId && (params.refuse ?? []).includes(app.bundleId))
+        return refuse(id, failure('open_refused', 'That app may not be opened into.', { reason: 'app' }))
       const launched = app.name === 'Preview' && !previewRunning
       if (app.name === 'Preview') previewRunning = true
-      return reply(id, { pid: app.pid, launched })
+      // FAKE_LAUNCH_STEAL=1: the app came forward and the guard put the person's back
+      const front = process.env.FAKE_LAUNCH_STEAL === '1' ? { front: { raised: true, restored: process.env.FAKE_LAUNCH_RESTORED ?? 'restored', ms: 120 } } : {}
+      const window = open.length ? { window: { id: 9001, title: open[0].split('/').pop() } } : {}
+      const others = open.length && process.env.FAKE_LAUNCH_OTHERS === '1' ? { others: [{ id: 9000, title: 'Untitled — iCloud' }] } : {}
+      reply(id, { pid: app.pid, launched, ...front, ...window, ...others })
+      // FAKE_LATE_STEAL_MS: a steal after the result, told as apps/frontRestored naming the call's session
+      if (process.env.FAKE_LATE_STEAL_MS)
+        setTimeout(() => notify('apps/frontRestored', { ...(params.session ? { session: params.session } : {}), pid: app.pid, name: app.name, front: { raised: true, restored: 'restored', ms: 90 }, afterMs: 12_000 }), Number(process.env.FAKE_LATE_STEAL_MS))
+      return
     }
     case 'session.open': sessions.add(params.session); return reply(id, {})
     case 'session.close': for (const key of lastClicks.keys()) if (key.startsWith(params.session + ':')) lastClicks.delete(key); for (const stream of streams.values()) if (stream.session === params.session) stopStream(stream.id); sessions.delete(params.session); states.delete(params.session); shots.delete(params.session); return reply(id, {})
@@ -367,6 +385,9 @@ function handle({ id, method, params = {} }) {
       if (method === 'state.get') return reply(id, observation(ctx, params))
       if (method.startsWith('action.')) {
         const result = actionResult(ctx, params, method)
+        // FAKE_ACT_STEAL=1: the app came forward during the call (§22.4), unless a step raises it by design
+        const raises = (params.actions ?? [params.action]).some((a) => a.action === 'perform' && a.name === 'raise')
+        if (process.env.FAKE_ACT_STEAL === '1' && !raises) result.front = { raised: true, restored: 'restored', ms: 60 }
         // the service says the person took over the moment its watch trips, before the call's closing wait
         if (ctx.touched) notify('session/interrupted', { session: ctx.session, by: 'person', at: Date.now() })
         const steps = result.steps ?? [result.step]

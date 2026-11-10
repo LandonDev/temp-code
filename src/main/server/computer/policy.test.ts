@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import type { AppInfo, ComputerAction, ComputerError } from '@shared/computer/protocol'
 import { ElementBook } from './elements'
-import { LAUNCH_REGISTER_MS, TEMPCODE_BUNDLE_ID, TargetResolver, passwordTarget, refusedLaunch, refusedTarget, textTargetProblem, type AppsSource } from './policy'
+import {
+  LAUNCH_REGISTER_MS,
+  REFUSED_LAUNCH_BUNDLES,
+  TEMPCODE_BUNDLE_ID,
+  TargetResolver,
+  passwordTarget,
+  refusedLaunch,
+  refusedOpenItem,
+  refusedTarget,
+  textTargetProblem,
+  type AppsSource
+} from './policy'
 
 const app = (name: string, pid: number, bundleId: string | null = `com.example.${name.toLowerCase().replace(/ /g, '')}`): AppInfo => ({
   name,
@@ -154,5 +165,39 @@ describe('textTargetProblem', () => {
     expect(textTargetProblem([{ action: 'type', text: 'x' } as ComputerAction, click])).toBeNull()
     expect(textTargetProblem([{ action: 'screenshot' } as ComputerAction, { action: 'type', text: 'x' } as ComputerAction])).toBeNull()
     expect(textTargetProblem([click, { action: 'type', text: 'x', element: 3 } as ComputerAction])).toBeNull()
+  })
+})
+
+describe('the front guard at the resolver (§22)', () => {
+  it("keeps a launch's front report beside the app when it came forward, and drops one that did not", async () => {
+    const front = { raised: true, restored: 'restored' as const, ms: 140 }
+    const withFront = (raised: boolean): AppsSource => ({
+      list: async () => [app('Preview', 30, 'com.apple.Preview')],
+      launch: async () => ({ pid: 30, launched: true, front: raised ? front : { raised: false } }),
+      sleep: async () => undefined
+    })
+    const pinned = { pid: 30, bundleId: 'com.apple.Preview', name: 'Preview' }
+    expect(await new TargetResolver().resolve('Prev', withFront(true), dataOf)).toEqual({ app: pinned, front })
+    expect(await new TargetResolver().resolve('Prev', withFront(false), dataOf)).toEqual({ app: pinned })
+  })
+
+  it('names the app in front from the cached list, or nothing when none is cached', async () => {
+    const r = new TargetResolver()
+    expect(r.activeName()).toBeNull()
+    await r.resolve('Mail', { list: async () => [app('Mail', 10), { ...app('Safari', 12), active: true }], launch: async () => ({ pid: 0, launched: false }), sleep: async () => undefined }, dataOf)
+    expect(r.activeName()).toBe('Safari')
+    r.invalidate()
+    expect(r.activeName()).toBeNull()
+  })
+
+  it('sends TempCode and the prompts as the bundles no launch may touch', () => {
+    expect(REFUSED_LAUNCH_BUNDLES).toEqual([TEMPCODE_BUNDLE_ID, 'com.apple.SecurityAgent', 'com.apple.LocalAuthentication.UIAgent'])
+  })
+
+  it('opens web pages, file URLs and absolute paths, and refuses every other scheme before the card', () => {
+    for (const ok of ['https://example.com', 'http://localhost:5173/a', 'file:///tmp/a.txt', '/Users/me/report.pdf', '/tmp/folder/'])
+      expect(refusedOpenItem(ok), ok).toBeNull()
+    for (const bad of ['ftp://x.test/a', 'javascript:alert(1)', 'mailto:a@b.c', 'ssh://box', 'report.pdf', '~/a.txt'])
+      expect(refusedOpenItem(bad), bad).toBe('only http, https and file items open; give a web page, a file or a folder')
   })
 })

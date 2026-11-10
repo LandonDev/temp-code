@@ -543,7 +543,8 @@ describe('needsFull', () => {
     inflight: null,
     idleTimer: null,
     nextShot: null,
-    ended: false
+    ended: false,
+    pendingFront: []
   })
   const obs = (kind: Observation['kind'], text: string): Observation =>
     ({
@@ -711,5 +712,105 @@ describe('tier scheduling', () => {
     const o = await s.h.run('computer_act', { app: 'TextEdit', action: 'paste', text: 'x', element: 3 })
     expect(o.steps[0]).toMatch(/· failed: the person copied something just now and a paste would swap their clipboard; try again in a minute$/)
     expect(count(s.h, 'action.run')).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('launch and open without taking the screen (§22)', () => {
+  const refuseList = ['dev.landon.tempcode', 'com.apple.SecurityAgent', 'com.apple.LocalAuthentication.UIAgent']
+
+  for (const mode of ['safe', 'edits'] as const) {
+    it(`${mode}: an open asks one card naming the item and the app; a bare launch asks none`, async () => {
+      const h = make()
+      h.set('t1', { permission: mode })
+      await h.run('computer_apps', { launch: 'Preview' })
+      expect(h.cards).toHaveLength(0)
+      const o = h.run('computer_apps', { launch: 'Preview', open: ['/tmp/report.pdf'] }, 't1', { callId: 'toolu_9' })
+      await until(() => h.cards.length === 1, 'the card')
+      expect(h.cards[0].req).toMatchObject({
+        toolName: 'mcp__app__computer_apps',
+        title: 'Open report.pdf in Preview',
+        callId: 'toolu_9',
+        input: { app: 'Preview', window: null, actions: ['open report.pdf'], open: ['/tmp/report.pdf'] }
+      })
+      expect(count(h, 'apps.launch')).toBe(1)
+      h.cards[0].decide(true)
+      expect((await o).body).toContain('Opened report.pdf in window "report.pdf"')
+      expect(last(h, 'apps.launch').params).toEqual({ app: 'Preview', open: ['/tmp/report.pdf'], session: 't1', refuse: refuseList })
+    })
+  }
+
+  it('full access opens with no card; a flagged open asks there too, and a denial sends nothing', async () => {
+    const h = make()
+    await h.run('computer_apps', { launch: 'Preview', open: ['/tmp/a.pdf'] })
+    expect(h.cards).toHaveLength(0)
+    expect(count(h, 'apps.launch')).toBe(1)
+    const confirm = { kind: 'personal_data', what: 'Opens the form with the person\'s address filled in' }
+    const o = h.run('computer_apps', { launch: 'Preview', open: ['https://forms.test/a'], confirm })
+    await until(() => h.cards.length === 1, 'the flagged card')
+    expect(h.cards[0].req.title).toBe(`Share personal data in Preview: ${confirm.what} (open forms.test/a)`)
+    h.cards[0].decide(false)
+    expect((await o).isError).toBe(true)
+    expect(count(h, 'apps.launch')).toBe(1)
+  })
+
+  it('refuses another scheme before the card or the service', async () => {
+    const h = make()
+    h.set('t1', { permission: 'safe' })
+    const o = await h.run('computer_apps', { launch: 'Preview', open: ['ftp://files.test/a.pdf'] })
+    expect(o).toMatchObject({ isError: true, body: 'only http, https and file items open; give a web page, a file or a folder' })
+    expect(h.cards).toHaveLength(0)
+    expect(count(h, 'apps.launch')).toBe(0)
+  })
+
+  it("words the service's refusals: a program, a missing file, an app no call may touch", async () => {
+    const h = make()
+    expect((await h.run('computer_apps', { launch: 'Preview', open: ['/Users/me/deploy.command'] })).body).toBe(
+      'deploy.command is a program; open only opens documents, folders and web pages'
+    )
+    expect((await h.run('computer_apps', { launch: 'Preview', open: ['/missing/a.pdf'] })).body).toBe('no file at "/missing/a.pdf" on the Mac; check the path')
+    const refused = make({ env: { FAKE_LAUNCH_REFUSE_APP: '1' } })
+    expect((await refused.run('computer_apps', { launch: '/Applications/TempCode.app', open: ['/tmp/a.txt'] })).body).toBe(
+      "TempCode's own window is off limits to computer use"
+    )
+  })
+
+  it("says when a launch came forward and the person's app went back", async () => {
+    const h = make({ env: { FAKE_LAUNCH_STEAL: '1', FAKE_LAUNCH_OTHERS: '1' } })
+    const o = await h.run('computer_apps', { launch: 'Preview', open: ['/tmp/report.pdf'] })
+    expect(o.body!.split('\n').slice(0, 4)).toEqual([
+      'Launched Preview',
+      'Opened report.pdf in window "report.pdf"',
+      'Its other windows changed: "Untitled — iCloud"',
+      'Preview came to the front; TextEdit was put back in 120 ms'
+    ])
+  })
+
+  it('an implicit launch carries the session and the refused bundles, and its front line is a note', async () => {
+    const h = make({ env: { FAKE_LAUNCH_STEAL: '1' } })
+    const o = await h.run('computer_observe', { app: 'Preview' })
+    expect(last(h, 'apps.launch').params).toEqual({ app: 'Preview', session: 't1', refuse: refuseList })
+    expect(o.steps).toContain('Preview came to the front; TextEdit was put back in 120 ms')
+  })
+
+  it("closes an action call with the guard's line, and leaves it out of a perform raise", async () => {
+    const h = make({ env: { FAKE_ACT_STEAL: '1' } })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    const o = await h.run('computer_act', { app: 'TextEdit', action: 'left_click', element: 21 })
+    expect(o.steps.at(-1)).toBe("TextEdit came to the front; the person's app was put back in 60 ms")
+    const raised = await h.run('computer_act', { app: 'TextEdit', action: 'perform', element: 21, name: 'raise' })
+    expect(raised.steps.some((l) => l.includes('came to the front'))).toBe(false)
+  })
+
+  it("tells a late steal once, in the next result of the thread whose session armed the watch", async () => {
+    const h = make({ env: { FAKE_LATE_STEAL_MS: '20' } })
+    await h.run('computer_apps', { launch: 'Preview' }, 't1')
+    await h.run('computer_observe', { app: 'TextEdit' }, 't2')
+    await new Promise((r) => setTimeout(r, 120))
+    const other = await h.run('computer_observe', { app: 'TextEdit' }, 't2')
+    expect(other.steps.some((l) => l.includes('after the call'))).toBe(false)
+    const next = await h.run('computer_observe', { app: 'TextEdit' }, 't1')
+    expect(next.steps).toContain('Preview came to the front 12 s after the call; TextEdit was put back in 90 ms')
+    const again = await h.run('computer_observe', { app: 'TextEdit' }, 't1')
+    expect(again.steps.some((l) => l.includes('after the call'))).toBe(false)
   })
 })

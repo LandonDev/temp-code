@@ -2,11 +2,11 @@ import type { PreviewTarget } from './preview'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import type { ComputerSessionRow } from '@shared/contract-computer'
-import type { AppRef } from '@shared/computer/protocol'
+import type { AppRef, FrontReport } from '@shared/computer/protocol'
 import type { SessionMeta, SessionStatus } from '@shared/events'
 import { attachmentDir } from '../attachmentDir'
 import { hostErrorLine } from '@shared/computer/hostErrors'
-import { refusal, type ComputerToolOutcome } from './result'
+import { frontLine, refusal, type ComputerToolOutcome } from './result'
 import { runComputerTool, type ComputerRegistry, type ComputerToolContext, type RunHost, type ThreadComputer } from './run'
 import type { Clock, ComputerService } from './service'
 import { TargetResolver } from './policy'
@@ -89,6 +89,7 @@ export class ComputerSessions {
     })
     opts.service.onNotification((n) => {
       if (n.method === 'apps/changed') targets.invalidate()
+      if (n.method === 'apps/frontRestored') this.frontRestored(n.params, targets.activeName())
     })
     this.host = {
       service: opts.service,
@@ -125,6 +126,18 @@ export class ComputerSessions {
     })
     t.queue = job.catch(() => undefined)
     return job
+  }
+
+  /**
+   * A steal the guard undid after its call answered (§22.5): the thread whose
+   * session armed the watch reads it once, in its next result. A notice that
+   * names no session, or one this host no longer knows, is dropped.
+   */
+  private frontRestored(p: { session?: string; name: string; front: FrontReport; afterMs: number }, person: string | null): void {
+    const threadId = p.session ? this.threadOfServiceSession(p.session) : null
+    const t = threadId ? this.threads.get(threadId) : undefined
+    const line = frontLine(p.name, p.front, person, p.afterMs)
+    if (t && line) t.pendingFront.push(line)
   }
 
   /** The thread's row, for the words its bridge lists. */
@@ -297,6 +310,7 @@ export class ComputerSessions {
         inflight: null,
         idleTimer: null,
         nextShot: null,
+        pendingFront: [],
         ended: false
       }
       this.threads.set(threadId, t)
