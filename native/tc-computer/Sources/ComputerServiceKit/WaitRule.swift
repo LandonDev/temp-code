@@ -30,6 +30,8 @@ public struct WaitOutcome: Sendable, Equatable {
     public var pixelChanged: Bool
     /// what moved the quiet clock, for the trace
     public var counts: Counts
+    /// the app quit during the wait (§22.6)
+    public var appLeft: Bool
 
     public struct Counts: Sendable, Equatable {
         public var ax = 0
@@ -43,16 +45,18 @@ public struct WaitOutcome: Sendable, Equatable {
         }
     }
 
-    public init(report: WaitReport, axChanged: Bool, pixelChanged: Bool, counts: Counts = Counts()) {
+    public init(report: WaitReport, axChanged: Bool, pixelChanged: Bool, counts: Counts = Counts(), appLeft: Bool = false) {
         self.report = report
         self.axChanged = axChanged
         self.pixelChanged = pixelChanged
         self.counts = counts
+        self.appLeft = appLeft
     }
 
-    /// The step's `effect`: changed when anything counted moved; else unknown on a thin tree; else none.
-    public func effect(thin: Bool) -> StepEffect {
-        if axChanged || pixelChanged { return .changed }
+    /// The step's `effect`: changed when anything counted moved, the app quit or the target window
+    /// closed (§22.6); else unknown on a thin tree; else none.
+    public func effect(thin: Bool, windowGone: Bool = false) -> StepEffect {
+        if axChanged || pixelChanged || appLeft || windowGone { return .changed }
         return thin ? .unknown : .none
     }
 }
@@ -145,9 +149,11 @@ public struct WaitRule: Sendable {
         outcome(at: at, reason: .cancelled, settled: false)
     }
 
-    /// The app quit during the wait: it ends quiet at once.
+    /// The app quit during the wait: it ends quiet at once, and the step changed something (§22.6).
     public func appGone(at: Int) -> WaitOutcome {
-        outcome(at: at, reason: .quiet, settled: true)
+        var gone = outcome(at: at, reason: .quiet, settled: true)
+        gone.appLeft = true
+        return gone
     }
 
     /// Actions that post no input skip the wait.

@@ -113,6 +113,18 @@ private func run(
         #expect(rule.appGone(at: 40).report.reason == .quiet)
     }
 
+    /// §22.6: a close the app answered by quitting, or a window that left, changed something
+    /// though no notification or pixel came; a quiet step is still none.
+    @Test func anAppThatQuitOrAWindowThatClosedIsAChange() {
+        let rule = WaitRule(options: ComputerDefaults.Wait.action, signature0: 0, thin: false, pixels: false)
+        #expect(rule.appGone(at: 40).effect(thin: false) == .changed)
+        #expect(rule.appGone(at: 40).effect(thin: true) == .changed)
+        let quiet = run()
+        #expect(quiet.effect(thin: false, windowGone: true) == .changed)
+        #expect(quiet.effect(thin: true, windowGone: true) == .changed)
+        #expect(quiet.effect(thin: false, windowGone: false) == .none)
+    }
+
     @Test func skippedIsZeroAndSettled() {
         #expect(WaitRule.skipped().report == WaitReport(waitedMs: 0, settled: true, busy: false, reason: .skipped))
     }
