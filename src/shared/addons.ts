@@ -176,7 +176,7 @@ export function exposedNames(addon: string, tools: readonly { name: string }[]):
 
 // ── the approval cards ──────────────────────────────────────────────────
 
-/** Cards only a person with an admin key may allow. */
+/** Cards only a person with an admin key may allow, or the host itself while the person is away (sessions.ts requestApproval allows without passing through mayAllow); a model or a lesser key never may. */
 export const ADMIN_APPROVALS = ['addon_add'] as const
 /** What the card shows in Allow's place on a socket without admin. */
 export const ADDON_ADMIN_LINE = 'Needs an admin key'

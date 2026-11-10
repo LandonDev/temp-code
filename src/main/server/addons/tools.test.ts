@@ -20,7 +20,7 @@ const tool = (addon: string, name: string, description: string, readOnly?: boole
   ...(readOnly !== undefined ? { readOnly } : {})
 })
 
-function setup(opts: { allow?: boolean; permission?: SessionMeta['permission']; onSet?: (store: AddonStore, id: string) => void } = {}) {
+function setup(opts: { allow?: boolean; away?: boolean; permission?: SessionMeta['permission']; onSet?: (store: AddonStore, id: string) => void } = {}) {
   const db = new DatabaseSync(':memory:')
   const store = new AddonStore(db)
   const rpc = storeRpc({ addons: store, skills: new SkillStore(db), sync: null })
@@ -37,7 +37,9 @@ function setup(opts: { allow?: boolean; permission?: SessionMeta['permission']; 
     sessions: {
       get: (id) => sessions.get(id) ?? null,
       getProject: (id) => (id === 'p1' ? ({ id: 'p1', workspaceId: 'ws1' } as never) : null),
+      // As SessionRegistry.requestApproval: away allows at once with no card, unless the card is a money act.
       requestApproval: async (_id, req) => {
+        if (opts.away) return !req.awayDenies
         cards.push(req)
         return opts.allow ?? true
       }
@@ -75,7 +77,7 @@ describe('addon_add', () => {
     expect(s.cards).toEqual([])
   })
 
-  it('asks with the card, and a deny (the person\'s, or Away\'s) adds nothing', async () => {
+  it('asks with the card, and the person\'s deny adds nothing', async () => {
     const s = setup({ allow: false })
     expect(await appAddonAdd(s.deps, s.child, { name: 'fake', transport: 'stdio', command: 'npx', args: ['-y', 'fake'], env: ['FAKE_TOKEN'] }, 'claude')).toBe('refused: the person did not allow it; nothing was added')
     expect(s.cards).toEqual([
@@ -103,6 +105,18 @@ describe('addon_add', () => {
     expect(answer.note).toMatch(/once it is ready/)
     const t = setup({ onSet: (store, id) => ((store.setTools(id, [tool('fake', 'echo', 'Echo')]), store.setStatus(id, { state: 'ready', tools: 1, at: 1 }))) })
     expect(JSON.parse(await appAddonAdd(t.deps, t.root, { name: 'fake', transport: 'stdio', command: 'npx', env: ['FAKE_TOKEN'] }, 'bridge')).note).toBe('addon_find lists them from your next turn.')
+  })
+})
+
+describe('while the person is away', () => {
+  it('addon_add, addon_remove over a person\'s add-on and addon_call in safe mode go through with no card', async () => {
+    const s = setup({ away: true, permission: 'safe', onSet: (store, id) => ((store.setTools(id, [tool('fake', 'echo', 'Echo')]), store.setStatus(id, { state: 'ready', tools: 1, at: 1 }))) })
+    expect(JSON.parse(await appAddonAdd(s.deps, s.root, { name: 'fake', transport: 'stdio', command: 'npx', args: ['-y', 'fake'] }, 'claude'))).toMatchObject({ name: 'fake', state: 'ready' })
+    expect(await appAddonCall(s.deps, s.root, { tool: 'fake__echo', arguments: { text: 'hi' } })).toEqual({ content: [{ type: 'text', text: 'done' }], structuredContent: { ok: true } })
+    s.store.set({ name: 'theirs', workspaceId: null, spec: stdio }, person)
+    expect(JSON.parse(await appAddonRemove(s.deps, s.root, { name: 'theirs' }))).toEqual({ removed: 'theirs', where: 'Every workspace' })
+    expect(s.cards).toEqual([])
+    expect(s.hostCalls).toHaveLength(1)
   })
 })
 

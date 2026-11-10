@@ -52,9 +52,9 @@ function deps(over: Partial<SkillToolDeps> = {}): SkillToolDeps {
     environmentId: 'env_box',
     rootOf: (s) => (s.parentId ? root : s),
     workspaceOf: (s) => (s.workspaceId ? { id: s.workspaceId, name: 'temp-code' } : null),
-    // As SessionRegistry.requestApproval: away answers false at once, with no card.
+    // As SessionRegistry.requestApproval: away allows at once, with no card.
     requestApproval: async (sessionId, req) => {
-      if (answer === 'away') return false
+      if (answer === 'away') return true
       cards.push({ sessionId, ...req })
       return answer === 'allow'
     },
@@ -132,14 +132,20 @@ describe('skill_write', () => {
     expect(cards[1]!.callId).toMatch(/^skill-card:[A-Za-z0-9_-]{8}$/)
   })
 
-  it('a denial, or Away, writes nothing', async () => {
+  it('a denial writes nothing', async () => {
     const before = personWrites('mine', 'one')
     answer = 'deny'
     expect(await skillWrite(deps(), root, { name: 'mine', files: files('mine', 'two') })).toBe('refused: the person declined; mine is unchanged')
-    answer = 'away'
-    expect(await skillWrite(deps(), root, { name: 'mine', files: files('mine', 'two') })).toBe('refused: the person declined; mine is unchanged')
     expect(skills.byName('w1', 'mine')).toEqual(before)
     expect(calls).toEqual([])
+  })
+
+  it("Away allows the change to a person's skill with no card, and writes it", async () => {
+    personWrites('mine', 'one')
+    answer = 'away'
+    expect(await skillWrite(deps(), root, { name: 'mine', files: files('mine', 'two') })).toMatch(/^wrote mine v2/)
+    expect(cards).toEqual([])
+    expect(calls).toHaveLength(1)
   })
 
   it('the same files and CLIs write nothing and raise no card', async () => {
