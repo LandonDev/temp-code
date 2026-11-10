@@ -37,12 +37,13 @@ private let button = ElementFacts(role: "button", actions: ["AXPress", "AXShowMe
         #expect(chooseTier(drag, element: nil, tiers: [.session], held: nil) == .run(.session, exact: true))
     }
 
-    @Test func pageScrollsAreTakenOnlyWhenNoExactTierIs() {
+    @Test func pageScrollsComeAfterTheExactTiersBelowSession() {
         let area = ElementFacts(role: "scroll area", pageScrolls: ["AXScrollDownByPage"])
         let down = ComputerAction(action: .scroll, element: 2, scroll_direction: .down, scroll_amount: 10)
         #expect(chooseTier(down, element: area, tiers: all, held: nil) == .run(.process, exact: true))
         #expect(chooseTier(down, element: area, tiers: [.ax], held: nil) == .run(.ax, exact: false))
-        #expect(chooseTier(down, element: area, tiers: [.ax, .session], held: nil) == .run(.session, exact: true))
+        // §24.1: an approximate ax route runs before taking the Mac
+        #expect(chooseTier(down, element: area, tiers: [.ax, .session], held: nil) == .run(.ax, exact: false))
         let up = ComputerAction(action: .scroll, element: 2, scroll_direction: .up, scroll_amount: 1)
         #expect(chooseTier(up, element: area, tiers: [.ax], held: nil) == .needs(.process))
         #expect(pagesFor(amount: 1) == 1)

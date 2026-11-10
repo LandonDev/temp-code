@@ -301,7 +301,8 @@ private final class HandedLock: MacLock, @unchecked Sendable {
         }
 
         func paste(_ text: String = "pasted", quietMs: Int? = 5_000) throws -> (ClipboardOutcome, SessionChange?, UInt64?) {
-            try rig.core.paste(PasteContent(plain: text), flow: flow, quietMs: quietMs, tier: .process, pid: 7, windowID: 70, window: 70, cancelled: { false }, checks: {}, recheck: {}, evidence: { nil })
+            let (result, change, last) = try rig.core.paste(PasteContent(plain: text), flow: flow, quietMs: quietMs, tier: .process, pid: 7, windowID: 70, window: 70, cancelled: { false }, checks: {}, recheck: {}, evidence: { nil })
+            return (result.clipboard ?? .restored, change, last)
         }
 
         /// `type` past its AX rungs: keys that post Unicode events and show `effect`, then the paste.

@@ -58,7 +58,21 @@ public func recentCopyRefusal() -> ComputerFailure {
     ComputerFailure(ComputerError(kind: .clipboardBusy, message: "The clipboard changed just now (someone copied); nothing was pasted.", reason: .recentCopy))
 }
 
-/// The paste flow under the Mac-wide clipboard lock: check, snapshot, write, check again,
+/// What a paste did: how it went in, what became of the clipboard (nil when it never touched it), what changed.
+public struct PasteResult: Equatable, Sendable {
+    public var via: InputVia
+    public var clipboard: ClipboardOutcome?
+    public var effect: StepEffect
+
+    public init(via: InputVia, clipboard: ClipboardOutcome?, effect: StepEffect) {
+        self.via = via
+        self.clipboard = clipboard
+        self.effect = effect
+    }
+}
+
+/// The paste flow: first, when given, the AX insert of the plain text (§24.6), which needs no
+/// clipboard; then under the Mac-wide clipboard lock: check, snapshot, write, check again,
 /// Command-V, wait for the destination, and on every exit put the person's clipboard back
 /// unless they copied meanwhile.
 public struct PasteFlow {
@@ -77,11 +91,17 @@ public struct PasteFlow {
 
     /// - checks: the destination and the key window, before the clipboard is touched
     /// - recheck: the same, after the write and before the keys
-    /// - post: Command-V
+    /// - insert: the AX insert rung: the destination's effect, nil when it takes no insert; on `changed`
+    ///   or `unknown` the paste is done with the clipboard untouched, on `none` it goes on to the clipboard
+    /// - checks: also find how Command-V will go in (§24.6): a disabled Paste refuses here, before the write
+    /// - deliver: Command-V, as §24.2 delivers it (the Paste item pressed when enabled, else the posted key)
     /// - evidence: the destination's evidence now, nil when unreadable
     /// - quietMs: the call's `pasteQuietMs`; with it, a foreign copy that recent refuses the paste
     ///   `recent-copy` once the lock is held, before the pasteboard is read or written
-    public func run(_ content: PasteContent, quietMs: Int? = nil, cancelled: () -> Bool, checks: () throws -> Void, recheck: () throws -> Void, post: () throws -> Void, evidence: () -> Evidence?) throws -> (ClipboardOutcome, StepEffect) {
+    public func run(_ content: PasteContent, quietMs: Int? = nil, cancelled: () -> Bool, insert: (() throws -> StepEffect?)? = nil, checks: () throws -> Void, recheck: () throws -> Void, deliver: () throws -> Void, evidence: () -> Evidence?) throws -> PasteResult {
+        if let insert, let effect = try insert(), effect != .none {
+            return PasteResult(via: .axInsert, clipboard: nil, effect: effect)
+        }
         guard let hold = lock.acquire(within: InputTiming.clipboardWaitS) else {
             throw clipboardBusy("Another paste is using the clipboard; try again.")
         }
@@ -105,7 +125,7 @@ public struct PasteFlow {
             try recheck()
             if cancelled() { throw cancelledFailure() }
             if clock.seconds() >= cap { throw clipboardBusy("The paste ran past its time; nothing was pasted.") }
-            try post()
+            try deliver()
             let until = min(clock.seconds() + Double(InputTiming.pasteWaitMs) / 1000, cap)
             var after = evidence() ?? Evidence()
             while Evidence.compare(before: before, after: after) != .changed, clock.seconds() < until {
@@ -125,6 +145,6 @@ public struct PasteFlow {
             outcome = .keptPersonCopy
         }
         if let failure { throw failure }
-        return (outcome, effect)
+        return PasteResult(via: .paste, clipboard: outcome, effect: effect)
     }
 }

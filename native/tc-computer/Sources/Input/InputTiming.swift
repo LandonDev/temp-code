@@ -69,4 +69,14 @@ public enum InputTiming {
     public static let probeCallTimeoutS = 0.25
     /// nodes the probe's candidate search reads at most
     public static let probeMaxNodes = 500
+
+    /// the menu route's walk of the bar (§24.2): items read at most, and its time cap
+    public static let menuMaxItems = 3_000
+    public static let menuMaxMs = 250
+    /// a pid's index of key equivalents is read again past this
+    public static let menuIndexMaxAgeS = 30.0
+    /// the hit route looks at the element under the point and at most this many ancestors (§24.3)
+    public static let hitAncestors = 3
+    /// the caret route reads its element's focus and range back for at most this long (§24.4)
+    public static let caretEvidenceMs = 300
 }

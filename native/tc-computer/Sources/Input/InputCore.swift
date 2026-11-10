@@ -257,14 +257,19 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
         return .paste(outcome, spanAcrossFallback(keysChange, change), last)
     }
 
-    /// The paste flow inside one step at `tier`, Command-V posted by the step. With `quietMs` the
-    /// flow first refuses a recent foreign copy, once it holds the clipboard lock.
-    func paste(_ content: PasteContent, flow: PasteFlow, quietMs: Int?, tier: Tier, pid: Int32, windowID: UInt32, window: Host.Window, cancelled: @escaping @Sendable () -> Bool, checks: () throws -> Void, recheck: () throws -> Void, evidence: () -> Evidence?) throws -> (ClipboardOutcome, SessionChange?, UInt64?) {
-        var outcome: ClipboardOutcome = .restored
+    /// The paste flow inside one step at `tier`, Command-V delivered by the step. With `quietMs` the
+    /// flow first refuses a recent foreign copy, once it holds the clipboard lock. `insert` is the
+    /// AX insert rung (§24.6); `pressPaste` delivers Command-V as the app's Paste item when it
+    /// answers true (§24.2), else the step posts the key.
+    func paste(_ content: PasteContent, flow: PasteFlow, quietMs: Int?, tier: Tier, pid: Int32, windowID: UInt32, window: Host.Window, cancelled: @escaping @Sendable () -> Bool, insert: (() throws -> StepEffect?)? = nil, pressPaste: (() throws -> Bool)? = nil, checks: () throws -> Void, recheck: () throws -> Void, evidence: () -> Evidence?) throws -> (PasteResult, SessionChange?, UInt64?) {
+        var result = PasteResult(via: .paste, clipboard: .restored, effect: .unknown)
         let (_, change, last) = try step(tier: tier, pid: pid, windowID: windowID, window: window, keys: true, cancelled: cancelled) { ctx in
-            (outcome, _) = try flow.run(content, quietMs: quietMs, cancelled: cancelled, checks: checks, recheck: recheck, post: { try commandV(&ctx) }, evidence: evidence)
+            result = try flow.run(content, quietMs: quietMs, cancelled: cancelled, insert: insert, checks: checks, recheck: recheck, deliver: {
+                if let pressPaste, try pressPaste() { return }
+                try commandV(&ctx)
+            }, evidence: evidence)
         }
-        return (outcome, change, last)
+        return (result, change, last)
     }
 
     // MARK: release and restore

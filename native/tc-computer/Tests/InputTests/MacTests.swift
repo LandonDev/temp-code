@@ -104,14 +104,14 @@ import Testing
         pb.setString("theirs", forType: .string)
         let store = SystemPasteboard(pb)
         let clock = FakeClock()
-        let (outcome, _) = try PasteFlow(store: store, lock: FakeLock(clock: clock), clock: clock).run(
+        let outcome = try PasteFlow(store: store, lock: FakeLock(clock: clock), clock: clock).run(
             PasteContent(plain: "ours"), cancelled: { false }, checks: {}, recheck: {},
-            post: {
+            deliver: {
                 pb.clearContents()
                 pb.setString("copied meanwhile", forType: .string)
             },
             evidence: { nil }
-        )
+        ).clipboard
         #expect(outcome == .keptPersonCopy)
         #expect(pb.string(forType: .string) == "copied meanwhile")
     }

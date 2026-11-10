@@ -182,7 +182,8 @@ final class FakeStore: PasteboardStore {
     ]
 
     private func run(_ store: FakeStore, lock: FakeLock? = nil, clock: FakeClock = FakeClock(), cancelled: Bool = false, checks: () throws -> Void = {}, recheck: () throws -> Void = {}, post: () throws -> Void = {}, evidence: () -> Evidence? = { nil }) throws -> (ClipboardOutcome, StepEffect) {
-        try PasteFlow(store: store, lock: lock ?? FakeLock(clock: clock), clock: clock).run(PasteContent(plain: "pasted"), cancelled: { cancelled }, checks: checks, recheck: recheck, post: post, evidence: evidence)
+        let r = try PasteFlow(store: store, lock: lock ?? FakeLock(clock: clock), clock: clock).run(PasteContent(plain: "pasted"), cancelled: { cancelled }, checks: checks, recheck: recheck, deliver: post, evidence: evidence)
+        return (r.clipboard ?? .restored, r.effect)
     }
 
     @Test func restoresTwoItemsOfThreeTypesByteForByte() throws {
