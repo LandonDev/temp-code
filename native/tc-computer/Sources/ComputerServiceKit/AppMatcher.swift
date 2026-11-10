@@ -86,9 +86,14 @@ public enum AppMatcher {
         return previous[b.count]
     }
 
+    /// A path as one bundle reads under every spelling: `.` and `..` folded, links resolved, and macOS's
+    /// `/private` before /tmp, /var and /etc dropped (Launch Services names a bundle under /tmp as /private/tmp).
     static func standardPath(_ path: String) -> String {
-        var p = path
+        var p = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
         while p.count > 1 && p.hasSuffix("/") { p.removeLast() }
+        for dir in ["/tmp", "/var", "/etc"] where p.hasPrefix("/private" + dir + "/") || p == "/private" + dir {
+            p.removeFirst("/private".count)
+        }
         return p
     }
 }

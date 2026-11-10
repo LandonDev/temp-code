@@ -42,6 +42,20 @@ private let session = SessionChange(frontmost: .init(), pointer: .init(before: [
         #expect(result["others"]?.arrayValue?.map { $0["title"]?.stringValue } == ["Other — Edited"])
     }
 
+    @Test func anOpenIntoARunningAppNamedByItsPathNamesOnlyTheNewWindow() async throws {
+        // the gate's stealer is named by its bundle path; Launch Services may spell that path otherwise
+        let rig = ServiceRig()
+        rig.front.set("/tmp/report.pdf", FileFacts(exists: true))
+        let windows = rig.windows
+        rig.workspace.onLaunch = { _ in windows.set(500, [window(7, "Doc"), window(8, "Other"), window(10, "report.pdf")]) }
+        await rig.ready()
+        let result = try #require(await rig.call("apps.launch", #"{"app":"/Applications/./Doc.app","open":["/tmp/report.pdf"],"session":"s1"}"#).result)
+        #expect(result["pid"]?.intValue == 500)
+        #expect(result["launched"]?.boolValue == false)
+        #expect(result["window"]?["title"]?.stringValue == "report.pdf")
+        #expect(result["others"] == nil)
+    }
+
     @Test func aStealBeforeTheResultIsUndoneAndReported() async throws {
         let rig = ServiceRig()
         rig.workspace.launchDelay = .milliseconds(250)

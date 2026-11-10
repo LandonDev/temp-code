@@ -79,6 +79,15 @@ import Testing
         #expect(AppMatcher.match("/tmp/TC Probe.app", running: running, installed: [], launch: false) == .notFound(candidates: [], launchable: true))
     }
 
+    @Test func aPathMatchesTheRunningAppHoweverItIsSpelled() {
+        // Launch Services names a bundle under /tmp as /private/tmp; a call may also carry `.` or `..`
+        let scratch = [AppCandidate(pid: 20, bundleId: "dev.example.probe", name: "TC Probe", path: "/private/tmp/proof/TC Probe.app")]
+        #expect(AppMatcher.match("/tmp/proof/TC Probe.app", running: scratch, installed: [], launch: true) == .running(pid: 20))
+        #expect(AppMatcher.match("/tmp/proof/./x/../TC Probe.app", running: scratch, installed: [], launch: true) == .running(pid: 20))
+        #expect(AppMatcher.standardPath("/private/var/folders/a.app") == "/var/folders/a.app")
+        #expect(AppMatcher.standardPath("/private/stuff/a.app") == "/private/stuff/a.app")
+    }
+
     @Test func anAmbiguousPrefixIsNotFoundWithTheMatchesFirst() {
         guard case .notFound(let names, let launchable) = AppMatcher.match("te", running: running, installed: installed, launch: false) else {
             Issue.record("two apps start with te")
