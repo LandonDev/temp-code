@@ -194,6 +194,25 @@ private let textEdit = AppBrief(pid: 7, bundleId: "com.apple.TextEdit", name: "T
     }
 }
 
+/// §22.5: `perform raise` takes a window out of the Dock first, in the same session step, and brings nothing forward.
+@Suite struct RaiseTests {
+    @Test func aMinimizedWindowComesOutOfTheDockBeforeItsRaise() throws {
+        let rig = Rig()
+        rig.host.minimizedWindows = [71]
+        let change = try rig.core.raiseWindow(pid: 7, windowID: 70, window: 70, element: 71, cancelled: { false }) { rig.host.log.append("AXRaise 71") }
+        #expect(rig.host.log == ["unminimize 71", "AXRaise 71"])
+        #expect(rig.host.minimizedWindows.isEmpty)
+        #expect(change != nil)
+        #expect(!rig.lock.isTaken)
+    }
+
+    @Test func aWindowOnScreenIsOnlyRaised() throws {
+        let rig = Rig()
+        _ = try rig.core.raiseWindow(pid: 7, windowID: 70, window: 70, element: 71, cancelled: { false }) { rig.host.log.append("AXRaise 71") }
+        #expect(rig.host.log == ["AXRaise 71"])
+    }
+}
+
 @Suite struct HeldTests {
     @Test func downThenUp() throws {
         let rig = Rig()

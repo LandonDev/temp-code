@@ -191,11 +191,11 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         }
     }
 
-    /// `perform raise`: the AX call, as a session step with no activation of its own (A12).
+    /// `perform raise`: the AX call, as a session step with no activation of its own (A12); out of the Dock first (§22.5).
     private func raise(_ action: ComputerAction, target: InputTarget) throws -> InputOutcome {
         let e = try element(target, action)
         let at = axClickAt(e, target)
-        let (_, change, _) = try core.step(tier: .session, pid: target.pid, windowID: target.windowID, window: target.window, keys: false, activate: false, cancelled: target.cancelled) { _ in
+        let change = try core.raiseWindow(pid: target.pid, windowID: target.windowID, window: target.window, element: e.element, cancelled: target.cancelled) {
             let err = AX.perform(e.element, "AXRaise")
             if err != .success { throw AX.failure(err, element: e.index, what: "be raised") }
         }

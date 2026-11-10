@@ -90,6 +90,17 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
         }
     }
 
+    /// `perform raise` (§5.2, §22.5): one session step with no activation of its own; a window in
+    /// the Dock comes out first (`AXMinimized` false orders it over the person's front window, the
+    /// reason this is the session tier's), then `raise` makes the AX call.
+    func raiseWindow(pid: Int32, windowID: UInt32, window: Host.Window, element: Host.Window, cancelled: @escaping @Sendable () -> Bool, raise: () throws -> Void) throws -> SessionChange? {
+        let (_, change, _) = try step(tier: .session, pid: pid, windowID: windowID, window: window, keys: false, activate: false, cancelled: cancelled) { _ in
+            if driver.host.minimized(element) { try driver.host.unminimize(element) }
+            try raise()
+        }
+        return change
+    }
+
     // MARK: the verbs
 
     /// A pointer verb at the session tier moves the real pointer there first.
