@@ -8,6 +8,8 @@ import {
   TOOLS_LIST_MAX,
   TOOL_SHAPES,
   WORDS_SHAPES,
+  fieldWords,
+  perVerbDescription,
   toolDescription
 } from './descriptions'
 import { CONFIRM_KINDS } from './policy'
@@ -144,5 +146,28 @@ describe('the confirm flag on the inputs', () => {
     const click = perVerbTools().find((t) => t.name === 'computer_left_click')!
     expect(click.input.safeParse({ app: 'Mail', element: 4, confirm: { kind: 'delete', what: 'Delete the draft' } }).success).toBe(true)
     expect(click.input.safeParse({ app: 'Mail', element: 4, coordinate: [1, 1] }).success).toBe(false)
+  })
+})
+
+describe('the window actions (§22)', () => {
+  it('tell the model the title-bar buttons are elements and what minimized means, in both shapes', () => {
+    for (const shape of WORDS_SHAPES) {
+      const observe = toolDescription(shape, 'act', 'computer_observe')
+      expect(observe).toContain('Title-bar buttons are elements')
+      expect(observe).toContain('a whole read with no close line means the window cannot close')
+      expect(observe).toContain('"minimized" on the window line')
+      expect(observe.length).toBeLessThanOrEqual(TOOL_DESCRIPTION_MAX)
+    }
+  })
+
+  it('name raise among perform\'s role defaults, out of the Dock too, within the caps', () => {
+    for (const shape of WORDS_SHAPES) {
+      const perform = perVerbDescription(shape, 'perform')
+      expect(perform).toContain('raise on a window, out of the Dock too, when the Mac is free')
+      expect(perform.length).toBeLessThanOrEqual(PER_VERB_DESCRIPTION_MAX)
+      const name = fieldWords(shape).name
+      expect(name).toContain('raise (a window, from the Dock too)')
+      expect(name.length).toBeLessThanOrEqual(FIELD_DESCRIPTION_MAX)
+    }
   })
 })

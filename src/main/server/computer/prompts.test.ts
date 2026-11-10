@@ -62,6 +62,10 @@ describe('COMPUTER_MECHANICS', () => {
     for (const shape of WORDS_SHAPES) for (const word of CONFIRM_WORDS) expect(mechanicsFacts(shape).confirm, word).toContain(word)
   })
 
+  it("counts a save sheet's Don't Save as deleting (§22.3)", () => {
+    for (const shape of WORDS_SHAPES) expect(mechanicsFacts(shape).confirm).toContain("deleting (Don't Save too)")
+  })
+
   it('differs between the shapes only in what the tools are', () => {
     const a = mechanicsFacts('anthropic')
     const c = mechanicsFacts('cua')
