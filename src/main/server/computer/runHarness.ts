@@ -44,7 +44,8 @@ export function computerHarness(
     get: (id: string) => ({ id, status: 'running', permission: 'auto', archived: false, ...metas.get(id) }) as unknown as SessionMeta,
     requestApproval: (threadId: string, req: ApprovalRequest) =>
       new Promise<boolean>((resolve) => {
-        if (away) return resolve(false)
+        // the registry's Away rule (sessions.ts requestApproval): allowed, unless the card is a money act
+        if (away) return resolve(!req.awayDenies)
         cards.push({ threadId, req, decide: resolve })
         req.signal?.addEventListener('abort', () => resolve(false), { once: true })
       }),

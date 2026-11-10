@@ -124,8 +124,6 @@ export const SESSION_REFUSALS = [
   'skipped',
   /** Skip or a timeout on this app earlier in the turn */
   'skipped-earlier',
-  /** the card was denied because the Away switch is on */
-  'away',
   /** the call's signal aborted while held: run.ts words it from the abort's cause */
   'cancelled'
 ] as const
@@ -144,8 +142,6 @@ export function sessionRefusalWords(reason: SessionTierRefusal, app?: string): s
       return 'the person did not choose Run now'
     case 'skipped-earlier':
       return `the person did not choose Run now${app ? ` for ${app}` : ''} earlier in this turn`
-    case 'away':
-      return 'the person is set to away, so nobody could choose Run now'
     case 'cancelled':
       return 'the call was given up'
   }

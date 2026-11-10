@@ -21,6 +21,7 @@ import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
 import { hostErrorLine, noObservationLine, noReadForTextLine, sessionRefusedLine } from '@shared/computer/hostErrors'
 import { SUBROLE_NAMES } from '@shared/computer/observation'
 import { formatHeldLine } from '@shared/computer/scheduleRules'
+import { awayAllowsKind } from '@shared/away'
 import type { PermissionPolicy, SessionMeta } from '@shared/events'
 import type { ApprovalRequest } from '../drivers/types'
 import { planBatch } from './batchPlan'
@@ -299,14 +300,17 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
       (a) => sendsInput(a) && ((host.verdicts.needsSession(bundleId, a) && !titleBarClick(a, app()?.book)) || (a.action === 'perform' && a.name === 'raise'))
     )
     const words = titleCtx()
+    // Away allows every card but a money act, read off the model's own flag: the card's confirm may be the host's `password`
+    const awayDenies = !awayAllowsKind((args.confirm as { kind?: string } | undefined)?.kind)
     const allowed = await approve({
       toolName: `mcp__app__${tool}`,
       input: computerApprovalInput(tool, args, words, need.confirm),
       title: computerApprovalTitle(tool, args, words, need.confirm, { session }),
       callId: ctx.callId,
-      signal
+      signal,
+      ...(awayDenies ? { awayDenies: true as const } : {})
     })
-    if (!allowed) return refusal(abortedLine(signal) ?? hostErrorLine(host.registry.awayOn() ? 'away' : 'denied'))
+    if (!allowed) return refusal(abortedLine(signal) ?? hostErrorLine(awayDenies && host.registry.awayOn() ? 'away' : 'denied'))
     const after = abortedLine(signal)
     if (after) return refusal(after)
     if (session) host.gate().cardAllowed?.(gateCtx([]), host.now())

@@ -92,7 +92,8 @@ function world() {
   const cards: { req: ApprovalRequest; decide: (allow: boolean) => void }[] = []
   const approve = (req: ApprovalRequest): Promise<boolean> =>
     new Promise((resolve) => {
-      if (away) return resolve(false)
+      // the registry allows a card while away (sessions.ts requestApproval): Run now
+      if (away) return resolve(true)
       cards.push({ req, decide: resolve })
       req.signal?.addEventListener('abort', () => resolve(false), { once: true })
     })
@@ -333,14 +334,21 @@ describe('the card', () => {
     await again
   })
 
-  it('a card denied because Away is on, or cancelled by a pause, is not remembered as a Skip', async () => {
+  it('a card while Away is on is answered Run now and leases the tier, at the moment it would ask', async () => {
     const { w, s } = setup()
     w.input()
     w.setAway(true)
     const first = s.request(reqOf(w))
     await typing(w, 180_000)
-    expect(await first).toMatchObject({ admit: false, reason: 'away', message: 'the person is set to away, so nobody could choose Run now' })
+    expect(await first).toMatchObject({ admit: true, via: 'allowed' })
     w.setAway(false)
+    expect(await s.request(reqOf(w))).toMatchObject({ admit: true, via: 'allowed', waitedMs: 0 })
+    expect(w.cards).toHaveLength(0)
+  })
+
+  it('a card cancelled by a pause is not remembered as a Skip', async () => {
+    const { w, s } = setup()
+    w.input()
     const abort = new AbortController()
     const second = s.request(reqOf(w, 't1', { signal: abort.signal }))
     await typing(w, 180_000)

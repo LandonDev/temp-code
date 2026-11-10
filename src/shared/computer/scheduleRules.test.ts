@@ -150,7 +150,6 @@ describe('refusal words', () => {
       asleep: 'the Mac is asleep',
       skipped: 'the person did not choose Run now',
       'skipped-earlier': 'the person did not choose Run now for TextEdit earlier in this turn',
-      away: 'the person is set to away, so nobody could choose Run now',
       cancelled: 'the call was given up'
     })
     expect(sessionRefusalWords('skipped-earlier')).toBe('the person did not choose Run now earlier in this turn')

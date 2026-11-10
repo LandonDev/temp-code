@@ -91,13 +91,12 @@ describe('the card', () => {
     expect(count(h, 'action.run')).toBe(0)
   })
 
-  it('Away answers away', async () => {
+  it('Away allows an acting call in safe mode, with no card', async () => {
     const h = make('safe')
     h.setAway(true)
-    expect(await h.run('computer_act', { app: 'TextEdit', action: 'key', text: 'a' })).toMatchObject({
-      isError: true,
-      body: 'denied: the person is away; finish around this act and name it in your report'
-    })
+    expect((await h.run('computer_act', { app: 'TextEdit', action: 'key', text: 'a' })).isError).toBe(false)
+    expect(h.cards).toHaveLength(0)
+    expect(count(h, 'action.run')).toBe(1)
   })
 
   it("Stop denies a waiting card through its signal", async () => {
@@ -143,14 +142,50 @@ describe("the confirm flag and the host's own rules", () => {
     expect(h.cards).toHaveLength(1)
   })
 
-  it('Away denies a flagged act in full access', async () => {
+  it('Away allows a flagged act in full access unless it spends money', async () => {
     const h = make('auto')
     await h.run('computer_observe', { app: 'TextEdit' })
     h.setAway(true)
-    expect((await h.run('computer_act', { app: 'TextEdit', action: 'left_click', element: 37, confirm: send })).body).toBe(
-      'denied: the person is away; finish around this act and name it in your report'
-    )
-    expect(count(h, 'action.run')).toBe(0)
+    for (const kind of ['send', 'delete'] as const) {
+      expect((await h.run('computer_act', { app: 'TextEdit', action: 'left_click', element: 37, confirm: { kind, what: 'x' } })).isError).toBe(false)
+    }
+    expect(count(h, 'action.run')).toBe(2)
+    for (const kind of ['pay', 'subscribe'] as const) {
+      expect((await h.run('computer_act', { app: 'TextEdit', action: 'left_click', element: 37, confirm: { kind, what: 'Buy the plan' } })).body).toBe(
+        'denied: the person is away and this act spends money; finish around it and name it in your report'
+      )
+    }
+    expect(count(h, 'action.run')).toBe(2)
+    expect(h.cards).toHaveLength(0)
+  })
+
+  it('Away allows typing into a password field, unless the same call is flagged pay', async () => {
+    const h = computerHarness({ env: { FAKE_PASSWORD: '1' } })
+    harnesses.push(h)
+    h.set('t1', { permission: 'auto' })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    h.setAway(true)
+    expect((await h.run('computer_act', { app: 'TextEdit', action: 'type', text: 'hunter2' })).isError).toBe(false)
+    const paid = await h.run('computer_act', { app: 'TextEdit', action: 'type', text: 'hunter2', element: 3, confirm: { kind: 'pay', what: 'Pay with the saved card' } })
+    expect(paid.body).toBe('denied: the person is away and this act spends money; finish around it and name it in your report')
+    expect(h.cards).toHaveLength(0)
+  })
+
+  it('the card carries awayDenies only for a money flag, whatever the card shows', async () => {
+    const h = computerHarness({ env: { FAKE_PASSWORD: '1' } })
+    harnesses.push(h)
+    h.set('t1', { permission: 'auto' })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    const plain = h.run('computer_act', { app: 'TextEdit', action: 'type', text: 'hunter2' })
+    await until(() => h.cards.length === 1)
+    expect(h.cards[0].req.awayDenies).toBeUndefined()
+    h.cards[0].decide(true)
+    await plain
+    const paid = h.run('computer_act', { app: 'TextEdit', action: 'type', text: 'hunter2', element: 3, confirm: { kind: 'pay', what: 'Pay' } })
+    await until(() => h.cards.length === 2)
+    expect(h.cards[1].req.awayDenies).toBe(true)
+    h.cards[1].decide(false)
+    expect((await paid).body).toMatch(/^denied: the person did not allow it/)
   })
 
   it('typing into a password field asks in full access, and the card never shows the text', async () => {

@@ -328,7 +328,6 @@ export class SessionScheduler implements SessionTierGate {
       return { admit: true, via: 'allowed', waitedMs: this.clock.now() - started }
     }
     if (ctx.signal.aborted) return this.refuse('cancelled', ctx)
-    if (this.opts.awayOn()) return this.refuse('away', ctx)
     st.skipped.add(app)
     return this.refuse('skipped', ctx)
   }
