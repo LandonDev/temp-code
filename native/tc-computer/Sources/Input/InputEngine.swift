@@ -155,6 +155,14 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         return try core.restoreSession(afterInterrupt: afterInterrupt)
     }
 
+    public func closeFrontHold(pid: pid_t) {
+        frontTier.closeOpen(pid: pid)
+    }
+
+    public func takeFrontReport(pid: pid_t) -> FrontHold? {
+        frontTier.takeReport(pid: pid)
+    }
+
     public func releaseHeld(pid: pid_t) {
         core.releaseHeld(pid: pid)
     }
@@ -224,6 +232,14 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
             // the panel flow keeps its own holds, one per part that needs the app in front
             return try saveAs(action, target: target, tiers: tiers, at: step.tier)
         }
+        // decision 4: a hold left open for this step is joined only by a `front` step; anything else runs after the restore
+        // (any app's hold before a session step, which needs the session lock the hold keeps)
+        if step.tier == .session { frontTier.closeOpen() } else if step.tier != .front { frontTier.closeOpen(pid: target.pid) }
+        if step.tier == .front, step.route == .events, action.action == .paste {
+            // decision 3: the paste's pasteboard work stays outside the hold, which it enters for the press alone
+            let content = PasteContent.make(action.text ?? "", format: action.format)
+            return try paste(content, tier: .front, target: target)
+        }
         if step.tier == .front {
             return try runFront(action, step: step, rest: rest, target: target, tiers: tiers, facts: facts, live: live)
         }
@@ -236,7 +252,7 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
     /// One `front` step: its route inside a hold (§26.2, §26.3), `step.front` on the outcome.
     private func runFront(_ action: ComputerAction, step: RouteStep, rest: [RouteStep], target: InputTarget, tiers: [Tier], facts: ElementFacts?, live: LiveRoutes) throws -> InputOutcome {
         let app = NSRunningApplication(processIdentifier: target.pid)?.localizedName ?? "The app"
-        let (out, report) = try frontTier.hold(pid: target.pid, window: target.window, app: app, cancelled: target.cancelled, changedSince: target.changedSince) { ctx in
+        let (out, report) = try frontTier.hold(pid: target.pid, window: target.window, app: app, cancelled: target.cancelled, changedSince: target.changedSince, keepOpen: target.keepFrontOpen) { ctx in
             let inner = target.within(cancelled: ctx.cancelled)
             var out: InputOutcome
             switch (step.route, action.action) {

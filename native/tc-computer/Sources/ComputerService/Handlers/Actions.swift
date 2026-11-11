@@ -150,6 +150,7 @@ extension ComputerService {
         }
 
         var steps: [StepResult] = []
+        var openHold: Int?
         var last: StepRun?
         var lastAction: ComputerAction?
         for (index, action) in actions.enumerated() {
@@ -167,12 +168,21 @@ extension ComputerService {
                 run.step = .ok(judged)
             }
             steps.append(run.step)
+            // decision 4: a step that left its hold open, and a hold closed since, reported on the step that last used it
+            await takeFrontReport(target, into: &steps, at: &openHold)
+            if case .ok(let ok) = run.step, ok.tier == .front, ok.front == nil { openHold = index }
             last = run
             lastAction = action
             if run.stops {
                 steps += notRun(actions, from: index + 1)
                 break
             }
+        }
+
+        // a hold still open (the batch stopped early) closes before the action wait, which runs in the background
+        if openHold != nil {
+            await closeFrontHold(target)
+            await takeFrontReport(target, into: &steps, at: &openHold)
         }
 
         // the action wait, once, after the last step that ran; a target window the step closed is a change (§22.6)
@@ -306,6 +316,8 @@ extension ComputerService {
                     callToken: call.token, personIdleMs: call.personIdleMs,
                     chromium: call.chromium, expectFocus: expectFocus, briefOf: { [reader] in reader.brief(of: $0) }
                 )
+                // decision 4: another step follows, so a `front` step may leave its hold open for it
+                inputTarget.keepFrontOpen = next != nil
                 // a front hold's settle: the app's tree changed after its last input (§26.2)
                 let changes = ChangeBox(signal: reader.changes)
                 inputTarget.changedSince = { changes.signal.lastChange > $0 }
@@ -417,6 +429,22 @@ extension ComputerService {
         for (pid, holder) in held.all where holder == session {
             _ = try? await blocking { box.input.releaseHeld(pid: pid) }
         }
+    }
+
+    /// Closes a `front` hold the call left open (decision 4), on the app's worker.
+    private func closeFrontHold(_ target: Resolved) async {
+        let box = InputBox(input: input)
+        let pid = target.pid
+        _ = try? await target.worker.run { _ in box.input.closeFrontHold(pid: pid) }
+    }
+
+    /// A hold closed since the step that last used it returned: its report goes on that step.
+    private func takeFrontReport(_ target: Resolved, into steps: inout [StepResult], at index: inout Int?) async {
+        guard let at = index, let report = input.takeFrontReport(pid: target.pid) else { return }
+        index = nil
+        guard steps.indices.contains(at), case .ok(let ok) = steps[at] else { return }
+        steps[at] = .ok(OkStep(index: ok.index, action: ok.action, tier: ok.tier, effect: ok.effect, element: ok.element, input: ok.input, cursor: ok.cursor, text: ok.text,
+                               shot: ok.shot, waited: ok.waited, session: ok.session, front: report, disk: ok.disk))
     }
 
     /// The commit check's second read, after the step's wait (§26.8): a step expected to commit with
