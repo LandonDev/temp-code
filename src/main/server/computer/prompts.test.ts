@@ -37,7 +37,7 @@ describe('COMPUTER_MECHANICS', () => {
       expect(text).toMatch(/^## Computer use\n/)
       for (const name of ['computer_apps', 'computer_observe', 'computer_batch']) expect(text).toContain(name)
       if (o.tools === 'act') expect(text).toContain('computer_act')
-      else expect(text).toContain('computer_left_click to computer_paste')
+      else expect(text).toContain('computer_left_click to computer_save_as')
       expect(text).toContain(COMPUTER_TIERS)
     }
   })
