@@ -205,7 +205,7 @@ final class FrontTier: @unchecked Sendable {
 
     /// §25.5: wait until the person's last key down is `frontQuietMs` old and nothing is held, at most
     /// `frontQuietMaxMs`; past that the hold goes anyway.
-    private func quiet(cancelled: () -> Bool) throws {
+    func quiet(cancelled: () -> Bool) throws {
         let start = nowMs()
         while true {
             if cancelled() { throw cancelledFailure() }
@@ -219,7 +219,7 @@ final class FrontTier: @unchecked Sendable {
     }
 
     /// The Mac-wide session lock: one app comes forward at a time, never during a session step.
-    private func takeLock(cancelled: () -> Bool) throws -> MacLockHold {
+    func takeLock(cancelled: () -> Bool) throws -> MacLockHold {
         let deadline = clock.seconds() + InputTiming.sessionLockWaitS
         while true {
             if cancelled() { throw cancelledFailure() }

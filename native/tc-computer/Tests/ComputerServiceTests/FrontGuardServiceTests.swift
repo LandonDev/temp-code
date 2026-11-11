@@ -207,6 +207,23 @@ private let session = SessionChange(frontmost: .init(), pointer: .init(before: [
         #expect(await eventually { !rig.lines.notifications("apps/frontRestored").isEmpty })
     }
 
+    @Test func aRequestWhoseTiersIncludeFrontPausesTheGuardAsSessionDoes() async throws {
+        let rig = ServiceRig()
+        await rig.ready(features: ["front", "commit", "save_as"])
+        rig.input.onPerform = { [rig] _, _ in
+            // the hold's own activation, which the guard must not undo
+            rig.activate(500)
+            usleep(150_000)
+            return InputOutcome(tier: .front, via: .menu, clipboard: nil, cursor: nil, lastInputAt: mach_absolute_time(), on: "File › Save")
+        }
+        _ = await rig.call("state.get", "{\(docTarget),\"wait\":\(quick)}")
+        let id = rig.send("action.run", "{\(docTarget),\"action\":{\"action\":\"key\",\"text\":\"super+s\"},\"tiers\":[\"ax\",\"process\",\"front\"],\"wait\":\(quick)}")
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(rig.front.calls.isEmpty, "paused from the request's start")
+        let answer = await rig.answer(id)
+        #expect(answer.result?["step"]?["tier"]?.stringValue == "front")
+    }
+
     @Test func afterAStepAtSessionTheGuardWaitsForTheRestoreAndReadsTheFrontAgain() async throws {
         let rig = ServiceRig()
         await rig.ready()
