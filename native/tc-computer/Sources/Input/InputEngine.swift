@@ -85,6 +85,8 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
            let refusal = nameFieldRefusal(identifier: AX.string(e, "AXIdentifier"), text: action.value ?? action.text ?? "") {
             throw ComputerFailure(refusal)
         }
+        // §26.9: a row's name the app commits only in its own editor (Finder's list view)
+        if let renamed = try renameInEditor(action, target: target, tiers: tiers) { return renamed }
         let facts = elementFacts(action, target)
         let held = core.held.heldTier(pid: target.pid)
         let live = LiveRoutes(engine: self, action: action, target: target)
