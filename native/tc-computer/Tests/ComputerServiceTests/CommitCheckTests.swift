@@ -1,3 +1,4 @@
+import ApplicationServices
 import ComputerCore
 import ComputerProtocol
 @testable import ComputerService
@@ -162,5 +163,31 @@ private func FileFacts_tilde(_ path: String) -> String { tildeRelative(path, hom
         await older.ready()
         _ = try #require(await older.call("state.get", "{\(docTarget),\"wait\":\(quick)}").result)
         #expect(older.reader().observed.last?.document == false)
+    }
+}
+
+/// The menus a call left open (§25.11): its closing read notes them, then the call closes them.
+@Suite struct MenuCloseServiceTests {
+    @Test func anActionsClosingReadAsksForTheNoteAndTheCallClosesWhatItWalked() async throws {
+        let rig = ServiceRig()
+        await rig.ready(features: ["front", "commit", "save_as"])
+        // a context menu read as a root, of a pid that is gone: the cancel leaves nothing to read
+        rig.reader().menus = [OpenMenu(menu: AXUIElementCreateApplication(999_999), opener: nil, kind: .context, title: "context menu", items: ["Copy"])]
+        rig.input.onPerform = { _, _ in InputOutcome(tier: .ax, via: nil, clipboard: nil, cursor: nil, lastInputAt: 1) }
+        let result = try #require(await rig.call("action.run", "{\(docTarget),\"action\":{\"action\":\"left_click\",\"coordinate\":[10,10]},\"tiers\":[\"ax\",\"process\"],\"wait\":\(quick)}").result)
+        #expect(rig.reader().observed.last?.closingMenus == true)
+        #expect(rig.reader().menusAsked == 1)
+        #expect(result["menusLeftOpen"] == nil)
+    }
+
+    @Test func aReadOfItsOwnClosesNothingAndAnOlderHostGetsNoNote() async throws {
+        let rig = ServiceRig()
+        await rig.ready()
+        _ = try #require(await rig.call("state.get", "{\(docTarget),\"wait\":\(quick)}").result)
+        #expect(rig.reader().observed.last?.closingMenus == false)
+        #expect(rig.reader().menusAsked == 0)
+        rig.input.onPerform = { _, _ in InputOutcome(tier: .ax, via: nil, clipboard: nil, cursor: nil, lastInputAt: 1) }
+        _ = try #require(await rig.call("action.run", "{\(docTarget),\"action\":{\"action\":\"left_click\",\"coordinate\":[10,10]},\"tiers\":[\"ax\"],\"wait\":\(quick)}").result)
+        #expect(rig.reader().observed.last?.closingMenus == false)
     }
 }

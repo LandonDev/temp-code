@@ -21,6 +21,8 @@ struct WalkNotes {
     var busy: [(element: AXUIElement, kind: BusyRule.Kind, containers: [AXUIElement])] = []
     /// the target window's document (§26.8): its `AXDocument` and its close button's `AXEdited`
     var document = WindowDocument()
+    /// every open menu the walk read (§25.11), with what opened it when the walk came through it
+    var menus: [OpenMenu] = []
 }
 
 /// What the target window says of its file (docs/computer-protocol.md §26.8, E5): the `AXDocument` URL as
@@ -219,12 +221,41 @@ final class Walker {
             }
         }
         let marks = ViewportCut.marks(children.map(ElementKey.init), lists: lists, scope: scope)
+        let opener = n
         let (kept, hidden) = try ViewportCut.children(children, marks: marks, stop: { stopped }) { _, child in
-            try node(child, clip: inner, scope: inside, depth: depth + 1, menuBar: menuBar, containers: below, root: false, isWindow: false, sliver: isContainer)
+            let out = try node(child, clip: inner, scope: inside, depth: depth + 1, menuBar: menuBar, containers: below, root: false, isWindow: false, sliver: isContainer)
+            // an open menu, with what opened it (§26.11)
+            if case .node(let c) = out, c.role == "AXMenu" { notes.menus.append(OpenMenu.of(c, element: child, opener: el, openerNode: opener)) }
+            return out
         }
         n.children = kept
         if !hidden.isEmpty { n.hidden = hidden }
         return .node(n)
+    }
+}
+#endif
+
+#if canImport(ApplicationServices)
+extension OpenMenu {
+    /// A menu the walk reached through its opener's children: a pop-up's, a menu button's, an open
+    /// menu bar item's.
+    static func of(_ node: AXNode, element: AXUIElement, opener: AXUIElement, openerNode: AXNode) -> OpenMenu {
+        let kind: Opener = openerNode.role == "AXMenuBarItem" ? .menuBar : .popUp
+        let title = [openerNode.title, openerNode.description, openerNode.value.flatMap { if case .string(let s) = $0 { s } else { nil } }]
+            .compactMap { $0 }.first { !$0.isEmpty } ?? "menu"
+        return OpenMenu(menu: element, opener: opener, kind: kind, title: title, items: items(node))
+    }
+
+    /// A menu read as a root of its own: a context menu, or a selected menu bar item's menu.
+    static func ofRoot(_ node: AXNode, element: AXUIElement) -> OpenMenu {
+        if let parent = AX.element(AX.copy(element, "AXParent").value), AX.string(AX.copy(parent, "AXRole").value) == "AXMenuBarItem" {
+            return OpenMenu(menu: element, opener: parent, kind: .menuBar, title: AX.string(AX.copy(parent, "AXTitle").value) ?? "menu", items: items(node))
+        }
+        return OpenMenu(menu: element, opener: nil, kind: .context, title: "context menu", items: items(node))
+    }
+
+    private static func items(_ node: AXNode) -> [String] {
+        node.children.filter { $0.role == "AXMenuItem" }.compactMap(\.title).filter { !$0.isEmpty }
     }
 }
 #endif

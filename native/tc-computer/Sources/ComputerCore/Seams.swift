@@ -43,6 +43,8 @@ public struct ObserveRequest: Sendable {
     public var noteThin: Bool
     /// the document line (§25.10): only for a host that listed `commit`, whose parser reads it
     public var document: Bool = false
+    /// every menu the read walks is one the call closes after it: its lines carry the closed-menu note (§25.11)
+    public var closingMenus: Bool = false
 
     public init(window: ComputerProtocol.WindowRef?, mode: ObservationMode, element: Int?, budgetBytes: Int, geometry: Bool, menus: Bool, space: CoordinateSpace, loading: Bool = false, noteThin: Bool = true) {
         self.window = window
@@ -335,6 +337,26 @@ public struct InputTarget {
     }
 }
 
+/// An open menu the last whole-window read walked (docs/computer-protocol.md §25.11): the AXMenu, the
+/// element that opened it (a pop-up, a menu button, a menu bar item; nil for a context menu read as a
+/// root), the opener's name and the items' titles.
+public struct OpenMenu: @unchecked Sendable {
+    public enum Opener: Sendable { case menuBar, popUp, context }
+    public let menu: AXUIElement
+    public let opener: AXUIElement?
+    public let kind: Opener
+    public let title: String
+    public let items: [String]
+
+    public init(menu: AXUIElement, opener: AXUIElement?, kind: Opener, title: String, items: [String]) {
+        self.menu = menu
+        self.opener = opener
+        self.kind = kind
+        self.title = title
+        self.items = items
+    }
+}
+
 /// The AX reader: one per session × pid.
 public protocol AppReading: AnyObject {
     func observe(_ request: ObserveRequest) throws -> ObservationText
@@ -352,12 +374,15 @@ public protocol AppReading: AnyObject {
     func brief(of element: AXUIElement) -> ElementBrief?
     /// §25.2: after a tab switch, the window's page holds the smart wait until it is there and loaded
     func watchPage(window: AXUIElement)
+    /// the menus the last whole-window read walked, open then (§26.11)
+    var openMenus: [OpenMenu] { get }
 }
 
 extension AppReading {
     public var lastPage: Page? { nil }
     public func brief(of element: AXUIElement) -> ElementBrief? { nil }
     public func watchPage(window: AXUIElement) {}
+    public var openMenus: [OpenMenu] { [] }
 }
 
 /// Input. Every call is synchronous and runs off the main thread; every failure is a `ComputerFailure`.

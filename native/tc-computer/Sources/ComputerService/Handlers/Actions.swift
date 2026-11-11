@@ -209,10 +209,20 @@ extension ComputerService {
             // the target closed: the app's window as §2.1 picks it with none named, read whole (§22.6)
             var knobs = ObserveKnobs(observe)
             if windowGone { knobs.mode = .full }
+            knobs.closingMenus = true
             let shown = windowGone ? try await windowAfterClose(target) : target
             let switched = selection.flatMap { TabPlan.selectedTab(switched: $0.switched, title: $0.title) }
-            let observation = try await self.observe(shown, knobs, loading: waited.report.busy, waited: waited.report, selectedTab: windowGone ? nil : switched, cancel: ctx.cancel)
-            return BatchResult(steps: steps, observation: observation, waited: waited.report)
+            let frontAllowed = tiers.contains(.front)
+            let observation: Observation
+            do {
+                observation = try await self.observe(shown, knobs, loading: waited.report.busy, waited: waited.report, selectedTab: windowGone ? nil : switched, cancel: ctx.cancel)
+            } catch let error where ComputerService.failure(error, or: .windowNotFound).kind == .timeout {
+                // an app that stopped answering may sit in a menu of its own: close it, read once more (§26.11)
+                guard await closeStuckMenu(shown, frontAllowed: frontAllowed) else { throw error }
+                observation = try await self.observe(shown, knobs, loading: waited.report.busy, waited: waited.report, selectedTab: windowGone ? nil : switched, cancel: ctx.cancel)
+            }
+            let leftOpen = await closeMenus(shown, frontAllowed: frontAllowed)
+            return BatchResult(steps: steps, observation: observation, waited: waited.report, menusLeftOpen: leftOpen)
         } catch {
             if ctx.cancel.isSet { await releaseHeld(session: session) }
             return BatchResult(steps: steps, observationError: ComputerService.failure(error, or: .windowNotFound), waited: waited.report)

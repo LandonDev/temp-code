@@ -62,6 +62,11 @@ public final class AppReader: AppReading, @unchecked Sendable {
     /// read leaves it. The commit check and the document line read it.
     public private(set) var lastDocument = WindowDocument()
 
+    /// The menus the last whole-window read walked (§25.11): the shell closes the ones its call opened.
+    public var openMenus: [OpenMenu] { lock.withLock { lastMenus } }
+    private var lastMenus: [OpenMenu] = []
+    private var extraMenus: [OpenMenu] = []
+
     private static func ms() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000 }
 
     public func observe(_ request: ObserveRequest) throws -> ObservationText {
@@ -133,10 +138,15 @@ public final class AppReader: AppReading, @unchecked Sendable {
                 throw ComputerFailure(ComputerError(kind: .windowNotFound, message: "The window is gone", candidates: resolver.titles(app)))
             }
             roots = [root]
+            var rootMenus: [OpenMenu] = []
             for extra in attached(to: target.element, menus: request.menus) {
                 let frame = AX.frame(AX.copy(extra, "AXPosition").value, AX.copy(extra, "AXSize").value)
-                if let n = try walker.walk(root: extra, clip: frame, menuBar: false, isWindow: false) { roots.append(n) }
+                if let n = try walker.walk(root: extra, clip: frame, menuBar: false, isWindow: false) {
+                    roots.append(n)
+                    if n.role == "AXMenu" { rootMenus.append(OpenMenu.ofRoot(n, element: extra)) }
+                }
             }
+            extraMenus = rootMenus
             if request.menus, let bar = AX.element(AX.copy(app, "AXMenuBar").value) {
                 menuBar = try walker.walk(root: bar, clip: nil, menuBar: true, isWindow: false)
             }
@@ -151,12 +161,16 @@ public final class AppReader: AppReading, @unchecked Sendable {
             return OtherWindow(title: AX.string(a["AXTitle"]?.value) ?? "", minimized: minimized, otherSpace: !minimized && !shown)
         }
         lastCounts = walker.counts
+        let menus = request.element == nil ? walker.notes.menus + extraMenus : []
+        let menuNodes = menus.map { handles.intern($0.menu) }
+        if request.element == nil { lastMenus = menus }
         let snapshot = AXSnapshot(
             app: AppFacts(pid: pid, bundleId: running?.bundleIdentifier, name: running?.localizedName ?? "pid \(pid)"),
             window: target.info, otherWindows: request.element == nil ? others : [], roots: roots, menuBar: menuBar, focusedID: focused,
             ambientActions: ObservationTables.ambientActions, visited: walker.counts.nodes, partial: walker.partial,
             walkMs: Int((Self.ms() - start).rounded()),
-            document: request.document && request.element == nil ? Self.documentLine(walker.notes.document) : nil
+            document: request.document && request.element == nil ? Self.documentLine(walker.notes.document) : nil,
+            closingMenus: request.closingMenus && request.element == nil ? Set(menuNodes) : []
         )
         return (snapshot, walker.notes, target.element)
     }
