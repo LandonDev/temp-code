@@ -150,6 +150,8 @@ final class FakeHost: SessionHost {
     var minimizedWindows: Set<Int> = []
     var focused: [Int32: Int] = [:]
     var refuseActivation = false
+    /// how many `activate` calls miss before one takes: an app that ignored the first AXFrontmost
+    var activationMisses = 0
     /// each app's focused element: Terminal's field is 11
     var focusedElements: [Int32: Int] = [1: 11]
     var apps: [Int32: AppBrief] = [7: AppBrief(pid: 7, bundleId: "com.apple.TextEdit", name: "TextEdit"), 1: AppBrief(pid: 1, bundleId: "com.apple.Terminal", name: "Terminal")]
@@ -178,6 +180,10 @@ final class FakeHost: SessionHost {
     func activate(_ app: AppBrief) -> Bool {
         log.append("activate \(app.pid)")
         guard running.contains(app.pid) else { return false }
+        if activationMisses > 0 {
+            activationMisses -= 1
+            return false
+        }
         front = app
         return true
     }

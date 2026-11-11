@@ -175,6 +175,25 @@ private let textEdit = AppBrief(pid: 7, bundleId: "com.apple.TextEdit", name: "T
         #expect(try rig.core.restoreSession() == SessionRestore(frontmost: .nothing, pointer: .nothing, held: nil))
     }
 
+    @Test func aPutBackThatMissesIsTriedOnceMoreAndOnlyThenTold() throws {
+        // the person's app ignored the first activation (active 9's put-back left the scratch app in front, 2026-11-11)
+        let rig = Rig()
+        _ = try rig.step(.session) { _ in rig.host.pointerAt = pt(400, 300) }
+        rig.clock.advance(5)
+        rig.host.activationMisses = 1
+        let r = try rig.core.restoreSession()
+        #expect(r.frontmost == .restored && r.held == terminal)
+        #expect(rig.host.front == terminal)
+        #expect(rig.host.log.filter { $0 == "activate 1" }.count == 2)
+
+        let twice = Rig()
+        _ = try twice.step(.session) { _ in twice.host.pointerAt = pt(400, 300) }
+        twice.clock.advance(5)
+        twice.host.activationMisses = 2
+        // two misses: the restore says the app is not back, rather than claiming it
+        #expect(try twice.core.restoreSession().frontmost == .appGone)
+    }
+
     @Test func restoreReleasesItsOwnHoldBeforeTakingTheLock() throws {
         let rig = Rig()
         _ = try rig.step(.session) { ctx in try rig.core.mouseDown(&ctx, at: pt(400, 300)) }

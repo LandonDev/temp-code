@@ -436,7 +436,8 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
         }
         var put: AppBrief?
         if let app = plan.activate {
-            if host.activate(app) { put = app } else { plan.frontmost = .appGone }
+            // `activate` checks the front for `activationMs`; a miss is tried once more, then told, never left silent
+            if host.activate(app) || (host.isRunning(pid: app.pid) && host.activate(app)) { put = app } else { plan.frontmost = .appGone }
         }
         if let p = plan.movePointer { host.warpPointer(to: p) }
         state.withLock { ledger.clear() }
