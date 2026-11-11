@@ -1064,6 +1064,33 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
         await rig.client.stop()
     }
 
+    @Test func `a resume that fails leaves an empty thread loading, and the next page ends it`() async throws {
+        let rig = try ClientRig()
+        await rig.client.start()
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        await rig.answerShell(fake, sessions: [clientSession("s1")])
+        #expect(await rig.wait { rig.client.status.fresh })
+        // Opened with the socket up and nothing cached: the open asks for its own page.
+        await rig.client.openThread("s1")
+        #expect(rig.client.threads["s1"]?.isLoading == true)
+        let subscribe = try #require(await rig.waitForRequest(fake, "session.subscribe"))
+        fake.answer(id: subscribe.id, result: "null")
+        let events = try #require(await rig.waitForRequest(fake, "session.events"))
+        fake.refuse(id: events.id, error: "replay failed")
+        try await Task.sleep(for: .milliseconds(60))
+        // No page came: the thread holds nothing and still says so, where it once read as loaded and empty.
+        #expect(rig.client.threads["s1"]?.rows.isEmpty == true)
+        #expect(rig.client.threads["s1"]?.isLoading == true)
+        let retry = rig.client.subscriptions.resume("s1", tail: 300)
+        let replay = try #require(await rig.waitForRequest(fake, "session.events", count: 2))
+        fake.answer(id: replay.id, result: json(EventsPage(rows: (1...5).map { textRow("s1", seq: $0) }, moreBefore: false, moreAfter: false, reset: false)))
+        _ = try await retry.value
+        #expect(rig.client.threads["s1"]?.isLoading == false)
+        #expect(seqs(rig.client.threads["s1"]!.rows) == Array(1...5))
+        await rig.client.stop()
+    }
+
     @Test func `a reset page and the rows pushed after it reach the cache in that order`() async throws {
         let cache = try SessionCache.inMemory()
         try await cache.store("env_test", sessionId: "s1", rows: (1...20).map { textRow("s1", seq: $0) }, moreBefore: false)

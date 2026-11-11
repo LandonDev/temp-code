@@ -243,9 +243,11 @@ struct TranscriptView: View {
                 } else { pinTail(proxy: proxy) }
                 openFirstGroupForProof(proxy: proxy)
             }
-            // Keyed by the target too: a new row named to an open transcript lands again.
-            .task(id: "\(flags.isLoading)|\(targetSeq ?? -1)") {
-                guard !flags.isLoading else { return }
+            // Keyed by the target too: a new row named to an open transcript lands again. And by
+            // whether rows are held: a row named before the thread's first page has landed is looked
+            // for when the page arrives, not in an empty thread.
+            .task(id: "\(flags.isLoading)|\(flags.hasRows)|\(flags.isLive)|\(targetSeq ?? -1)") {
+                guard !flags.isLoading, flags.hasRows || flags.isLive else { return }
                 await land(proxy: proxy)
             }
             .task(id: flags.isLoading) {

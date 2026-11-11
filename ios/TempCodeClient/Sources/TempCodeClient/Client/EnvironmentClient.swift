@@ -863,8 +863,11 @@ public final class EnvironmentClient {
             // that waited here would be a screen that cannot paint its cache.
             let resume = subscriptions.resume(id, tail: coldOpenTail)
             Task { [weak self] in
-                _ = try? await resume.value
-                self?.write(id) { $0.isLoading = false }
+                let page = try? await resume.value
+                // A resume that failed, or that another replaced, leaves an empty thread loading:
+                // the next resume's page ends it, or the host's refusal (`gone`). Ended here, an
+                // empty thread read as loaded, and a tap that named a row looked for it in no rows.
+                self?.write(id) { if page != nil || !$0.rows.isEmpty { $0.isLoading = false } }
             }
         }
     }
