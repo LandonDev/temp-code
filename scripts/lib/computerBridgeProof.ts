@@ -1,3 +1,16 @@
+import { CALL_MARK, INSTANCE_MARK, THREAD_MARK } from '../../src/shared/bashMarks'
+
+/**
+ * Launch Services gives the scratch app to launchd (ppid 1). It belongs to
+ * the proof's explicit PID cleanup, not the agent call's orphan sweep.
+ * Keep these marks on the runner; remove them only from the GUI launch.
+ */
+export function bridgeProbeEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const probe = { ...env }
+  for (const key of [CALL_MARK, INSTANCE_MARK, THREAD_MARK, 'TEMP_CODE_ADDON', 'CLAUDE_PID', 'ANTHROPIC_BASE_URL']) delete probe[key]
+  return probe
+}
+
 /** Read the button from a full observation; a delta may omit an unchanged Ping. */
 export function bridgeProbePing(text: string): number {
   const index = text.match(/\[(\d+)\] button "Ping"/)?.[1]

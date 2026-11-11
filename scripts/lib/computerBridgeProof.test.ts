@@ -1,9 +1,25 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { bridgeCancelledProbeRead, bridgeHeldId, bridgeProbePing, waitForBridgeProofCall } from './computerBridgeProof'
+import { bridgeCancelledProbeRead, bridgeHeldId, bridgeProbeEnvironment, bridgeProbePing, waitForBridgeProofCall } from './computerBridgeProof'
 import { ComputerActInputSchema, ComputerResultInputSchema } from '../../src/shared/computer/tools'
 import { heldAnswerLine } from '../../src/shared/computer/heldCalls'
+import { markersOf } from '../../src/main/server/processGuard'
 
 afterEach(() => vi.useRealTimers())
+
+it('keeps the launchd-owned probe out of the agent orphan sweep without unmarking its runner', () => {
+  const runner = {
+    PATH: '/usr/bin', HOME: '/tmp/proof-home', TC_PROOF_UNGATED: '1', TEMP_CODE_COMPUTER_PROOF: '1',
+    TEMP_CODE_THREAD: 't1', TEMP_CODE_CALL: 'c1', TEMP_CODE_INSTANCE: 'instance1', TEMP_CODE_ADDON: 'addon1',
+    CLAUDE_PID: '77', ANTHROPIC_BASE_URL: 'http://127.0.0.1/claude/~t=t1'
+  }
+  const environ = (env: NodeJS.ProcessEnv): string => Object.entries(env).map(([k, v]) => `${k}=${v}`).join('\0')
+  expect(markersOf(environ(runner))).toMatchObject({ threadId: 't1', callId: 'c1', instanceId: 'instance1', claudePid: 77 })
+  const probe = bridgeProbeEnvironment(runner)
+  expect(markersOf(environ(probe))).toEqual({ threadId: null, callId: null, instanceId: null, claudePid: null })
+  expect(probe).toEqual({ PATH: '/usr/bin', HOME: '/tmp/proof-home', TC_PROOF_UNGATED: '1', TEMP_CODE_COMPUTER_PROOF: '1' })
+  expect(runner.TEMP_CODE_THREAD).toBe('t1')
+  expect(runner.TEMP_CODE_CALL).toBe('c1')
+})
 
 it('sends the full observation’s Ping index and the held answer’s id in valid tool inputs', () => {
   const element = bridgeProbePing('app "TC Probe"\n[3] button "Ping"\n[4] button "Ping Window"')

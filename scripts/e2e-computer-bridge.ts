@@ -53,7 +53,7 @@ import { createInterface } from 'node:readline'
 import { proofDescendants } from './lib/proofProcesses'
 import { cleanupProbeApp } from './lib/tcProbeApp'
 import { COMPUTER_PROOF_ENV, sweepComputerProofProcesses } from './lib/computerProofProcesses'
-import { bridgeCancelledProbeRead, bridgeHeldId, bridgeProbePing, waitForBridgeProofCall } from './lib/computerBridgeProof'
+import { bridgeCancelledProbeRead, bridgeHeldId, bridgeProbeEnvironment, bridgeProbePing, waitForBridgeProofCall } from './lib/computerBridgeProof'
 import { shortHostName } from '../src/shared/hostNames'
 import { BRIDGE_TIMING_RULE, judgeBridgeTiming, median, timingTable, type TimingKind, type TimingSample } from './lib/computerBridgeTiming'
 import { parseTimingLine } from '../src/shared/computer/bridgeTiming'
@@ -573,7 +573,7 @@ async function orchestrator(): Promise<void> {
     }
   }
   const personBefore = frontmost()
-  execFileSync('open', ['-n', '-g', PROBE_APP])
+  execFileSync('open', ['-n', '-g', PROBE_APP], { env: bridgeProbeEnvironment() })
   for (let i = 0; i < 40 && !scratchPid; i++) {
     await sleep(250)
     scratchPid = probePids()[0] ?? 0
