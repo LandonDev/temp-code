@@ -72,6 +72,7 @@
  *
  * Run on the Mac: bun run script:e2e-tc-computer
  */
+import { touchedSession } from '../src/shared/computer/scheduleRules'
 import { flakeLine, legRerunVerdict, needsLegRerun, type Flake } from './lib/legRerun'
 import { gateScreenSkip, parseMacScreen, readyMacScreen } from './lib/macScreen'
 import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process'
@@ -338,6 +339,17 @@ async function legOnceMore(leg: string, run: () => Promise<void>): Promise<void>
   // red with no failed step of its own: the rerun skipped or never reached what the first run failed
   if (verdict.red && !second.some((s) => s.outcome === 'failed'))
     record({ name: `${leg} leg, run again`, outcome: 'failed', ms: 0, why: `the first run failed ${failedFirst.map((s) => `${s.name} (${s.why ?? ''})`).join('; ')}, and the rerun did not pass it` })
+}
+
+/**
+ * An act as the host makes it: a call whose step touched the session tier is followed by `input.restoreSession`,
+ * which puts the person's front app and pointer back (schedule.ts `afterCall`, `touchedSession`). Without it a
+ * save_as whose Go to Folder confirm ran at `session` left TC Probe in front (active 9, 2026-11-11).
+ */
+async function actAsHost(a: Service, params: Record<string, unknown>) {
+  const r = await a.call('action.run', params as never)
+  if (touchedSession(r.steps ?? (r.step ? [r.step] : []))) await a.call('input.restoreSession', {})
+  return r
 }
 
 function record(step: StepRecord): void {
@@ -1790,7 +1802,7 @@ async function activeLeg(a: Service, mayLaunch: () => void): Promise<void> {
   const read = (title: string): Promise<Observation> =>
     a.call('state.get', { session: SESSION, app: { pid }, window: { title }, mode: 'full', wait: COMPUTER_WAIT.observe })
   const act = (o: Observation, action: Record<string, unknown>, tiers: ('ax' | 'process' | 'front' | 'session')[]) =>
-    a.call('action.run', { session: SESSION, app: { pid }, window: { id: o.window.id }, epoch: o.epoch, action, tiers, wait: COMPUTER_WAIT.action } as never)
+    actAsHost(a, { session: SESSION, app: { pid }, window: { id: o.window.id }, epoch: o.epoch, action, tiers, wait: COMPUTER_WAIT.action })
   // a hand run brings TC Probe forward only after FRONT_QUIET_S of quiet; the unattended run after FRONT_IDLE_S
   const awayLongEnough = async (): Promise<void> => {
     if (UNGATED ? !(await awaitQuiet()) : personIdleSeconds() < FRONT_IDLE_S) throw skip(PERSON_ACTIVE)
@@ -1970,7 +1982,7 @@ async function activeAppsSteps(a: Service, leg: Chain, scratch: string, awayLong
   const note = join(te, 'note.txt')
   const fd = join(scratch, `fd-${process.pid}`)
   const act = (pid: number, o: Observation, action: Record<string, unknown>, tiers: ('ax' | 'process' | 'front' | 'session')[]) =>
-    a.call('action.run', { session: SESSION, app: { pid }, window: { id: o.window.id }, epoch: o.epoch, action, tiers, wait: COMPUTER_WAIT.action } as never)
+    actAsHost(a, { session: SESSION, app: { pid }, window: { id: o.window.id }, epoch: o.epoch, action, tiers, wait: COMPUTER_WAIT.action })
   const read = (pid: number, title: string): Promise<Observation> =>
     a.call('state.get', { session: SESSION, app: { pid }, window: { title }, mode: 'full', wait: COMPUTER_WAIT.observe })
   /** the person's front app and window after a step that took the front: as before, or moved by the person */

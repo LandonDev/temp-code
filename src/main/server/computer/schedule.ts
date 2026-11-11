@@ -10,6 +10,7 @@ import {
   frontFreedom,
   sessionIdleMs,
   sessionRefusalWords,
+  touchedSession,
   type Freedom,
   type SessionTierRefusal
 } from '@shared/computer/scheduleRules'
@@ -410,7 +411,7 @@ export class SessionScheduler implements SessionTierGate {
     const steps = stepsOf(result)
     const interrupted = st.interruptedInCall || steps.some((s) => s.status === 'failed' && s.error.kind === 'interrupted')
     // a call that ended without its answer (a Stop, the service gone) may have changed the Mac before it did
-    let touched = steps.some((s) => (s.status === 'ok' && s.tier === 'session') || (s.status === 'failed' && s.error.session !== undefined))
+    let touched = touchedSession(steps)
     if (session && (!result || ctx.signal.aborted)) touched = true
     for (const s of steps) {
       const action = ctx.actions[s.index]?.action

@@ -11,6 +11,7 @@ import {
   frontFreedom,
   sessionIdleMs,
   sessionRefusalWords,
+  touchedSession,
   waitedWords,
   type FreedomInput
 } from './scheduleRules'
@@ -173,5 +174,23 @@ describe('the front tier\'s setting (§26.6)', () => {
     expect(frontFreedom({ ...input, mode: 'away', awaySwitch: true })).toEqual({ free: true, via: 'switch' })
     expect(frontFreedom({ ...input, presence: { screen: 'locked', power: 'awake' } })).toEqual({ free: false, why: 'locked' })
     expect(frontFreedom({ ...input, presence: { screen: 'unlocked', power: 'asleep' } })).toEqual({ free: false, why: 'asleep' })
+  })
+})
+
+describe('touchedSession', () => {
+  const ok = (tier: string) => ({ index: 0, action: 'save_as', status: 'ok', tier, effect: 'changed' }) as never
+  const failed = (session?: unknown) => ({ index: 0, action: 'save_as', status: 'failed', error: { kind: 'interrupted', message: 'x', ...(session ? { session } : {}) } }) as never
+
+  it('is true for an ok step at session, or a failed one that carries what the session tier changed', () => {
+    // save_as whose Go to Folder confirm ran at session (active 9, 2026-11-11)
+    expect(touchedSession([ok('session')])).toBe(true)
+    expect(touchedSession([ok('ax'), ok('session')])).toBe(true)
+    expect(touchedSession([failed({ restorable: true })])).toBe(true)
+  })
+
+  it('is false for steps at the background and front tiers, and for a failure the session tier never touched', () => {
+    expect(touchedSession([ok('ax'), ok('process'), ok('front')])).toBe(false)
+    expect(touchedSession([failed()])).toBe(false)
+    expect(touchedSession([])).toBe(false)
   })
 })

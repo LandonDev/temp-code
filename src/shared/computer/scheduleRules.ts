@@ -9,6 +9,16 @@
  * the person just made, at any tier.
  */
 import type { PermissionPolicy } from '../events'
+import type { StepResult } from './protocol'
+
+/**
+ * Whether a call's steps touched the session tier, so the host puts the person's front app and pointer back with
+ * `input.restoreSession` (§20.3): an ok step that ran at `session`, or a failed one that carries what it changed.
+ * The scheduler's rule and the gate proof's, which plays the host (e2e-tc-computer's active leg: save_as's Go to
+ * Folder confirm at `session` left TC Probe in front of the person's app, 2026-11-11).
+ */
+export const touchedSession = (steps: readonly StepResult[]): boolean =>
+  steps.some((s) => (s.status === 'ok' && s.tier === 'session') || (s.status === 'failed' && s.error.session !== undefined))
 
 export const SCHEDULE = {
   /** `computer.sessionIdleMs` when unset: attention.ts's away threshold */
