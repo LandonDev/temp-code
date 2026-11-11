@@ -390,7 +390,8 @@ export function settledSteps(s: SettleInput): ComputerHistoryStep[] {
     const resolved = r?.status === 'ok' && r.element ? r.element : undefined
     const brief = (i: number): ElementBrief | null => (resolved?.index === i ? resolved : (s.ctx.book?.brief(i) ?? null))
     const words = actionStep(a, s.ctx, false, brief)
-    const target = (resolved ? stepTargetWords(actions, k, s.ctx.book, resolved) : undefined) ?? s.planned?.[k]?.target ?? stepTargetWords(actions, k, s.ctx.book)
+    // the planned target was read before the call's closing read moved the book; a `named` step has one only now
+    const target = s.planned?.[k]?.target ?? (resolved ? stepTargetWords(actions, k, s.ctx.book, resolved) : undefined) ?? stepTargetWords(actions, k, s.ctx.book)
     const element = a.element ?? (r?.status === 'ok' ? r.resolved : undefined)
     const base = { ...words, ...(target ? { target } : {}), ...(element !== undefined ? { element } : {}) }
     if (r?.status === 'ok') {

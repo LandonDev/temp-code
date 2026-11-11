@@ -21,9 +21,12 @@ import {
 } from '@shared/computer/protocol'
 import { buildPrior, lastInputEffect } from '@shared/computer/batchStop'
 import { COMPUTER_ACTIONS, COMPUTER_TOOLS, formatStepLine, mayRunAtAx, type ActionClass, type ComputerToolName } from '@shared/computer/tools'
-import { actionWords, asFourTool, computerActivity, computerApprovalInput, computerApprovalTitle, needsApproval, type TitleContext } from '@shared/computer/words'
+import { actionWords, asFourTool, computerActivity, computerApprovalInput, computerApprovalTitle, needsApproval, type AppsOutcome, type TitleContext } from '@shared/computer/words'
 import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
 import { hostErrorLine, noObservationLine, noReadForTextLine, sessionRefusedLine } from '@shared/computer/hostErrors'
+import { planWords, plannedSteps, readSummary, settledSteps } from '@shared/computer/historyWords'
+import { approvalLine } from '@shared/approvalLine'
+import type { ComputerHistoryStep } from '@shared/contract-computer'
 import { formatHeldLine } from '@shared/computer/scheduleRules'
 import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/computer/heldCalls'
 import { awayAllowsKind } from '@shared/away'
@@ -47,12 +50,15 @@ import {
   mergeFront,
   outcomeOf,
   refusal,
+  refusalOf,
+  refused,
   type ComputerToolOutcome,
   type LandedShot,
   type LaunchReport,
   type StepsResult
 } from './result'
 import type { ComputerService } from './service'
+import type { ComputerHistory, HistoryEntry, PictureTarget } from './history'
 import type { CallReader } from './pending'
 import { landShot, nextShotNumber } from './shots'
 import type { SessionTierGate, TierDecision, TierGateContext } from './tierGate'
@@ -88,6 +94,8 @@ export interface ComputerToolContext {
   reader?: Pick<CallReader, 'present' | 'whenPresent' | 'request'>
   /** the call's tally (shared/computer/bridgeTiming.ts): each service request's round trip, each observation's wait */
   timing?: CallTiming
+  /** a bridged call's turn, as its box named it: the journal groups the thread's calls by it (computer/history.ts) */
+  turn?: string
 }
 
 export interface ComputerRegistry {
@@ -132,6 +140,8 @@ export interface ThreadComputer {
     tier: Tier | null
     /** the running call is held for the session tier or the clipboard (schedule.ts): the row says this instead */
     held?: string | null
+    /** a card of this host's own thread waits: its title as a question (the row's `asking`) */
+    asking?: string | null
   } | null
   /** Stop this turn */
   stopped: boolean
@@ -160,7 +170,28 @@ export interface RunHost {
   log(line: string): void
   /** the thread's live row moved */
   touched(t: ThreadComputer): void
+  /** the thread's journal (history.ts); without it nothing is journaled, as in every script and test that builds its own sessions */
+  history?: ComputerHistory
 }
+
+/** What a call's journal entry needs of how it went: runChecked and runApps fill it as they go, runComputerTool writes it. */
+interface CallNote {
+  /** the service's results, one per action that got one */
+  results?: StepResult[]
+  /** the call's closing read, whether or not the model got it: the picture is of the window it names */
+  observation?: Observation
+  front?: FrontReport
+  /** the person's app, for the front fact */
+  person?: string | null
+  menusLeftOpen?: string[]
+  /** a request failed whole */
+  error?: ComputerError
+  /** computer_apps: what the launch did */
+  launched?: AppsOutcome
+}
+
+/** A finished call's journal entry and the window to picture, handed to the thread's queue (sessions.ts). */
+export type JournalDone = (entry: HistoryEntry, target: PictureTarget | null) => void
 
 /** Where a person turns a grant on, said once per install with the first refusal. */
 export const PERMISSION_SWITCH: Readonly<Record<PermissionName, string>> = {
@@ -250,48 +281,133 @@ export function checkComputerCall(toolName: string, rawArgs: unknown): { ok: tru
   return { ok: true, tool: four.tool, args: parsed.data as Args }
 }
 
-export async function runComputerTool(host: RunHost, t: ThreadComputer, ctx: ComputerToolContext, toolName: string, rawArgs: unknown, signal: AbortSignal): Promise<ComputerToolOutcome> {
+export async function runComputerTool(
+  host: RunHost,
+  t: ThreadComputer,
+  ctx: ComputerToolContext,
+  toolName: string,
+  rawArgs: unknown,
+  signal: AbortSignal,
+  journaled?: JournalDone
+): Promise<ComputerToolOutcome> {
   // 1. normalize and check
   const checked = checkComputerCall(toolName, rawArgs)
   if (!checked.ok) return refusal(checked.line)
   const tool = checked.tool
   const args = checked.args as Args
+  const known = args.app ? lookupApp(t, args.app) : undefined
+
+  // the journal's start, with the steps as planned: their targets are read from the book now, before the call's
+  // closing read replaces it. A call refused below is journaled too, as a start and its end at once.
+  const note: CallNote = {}
+  const words = { app: known?.name ?? args.app ?? '', ...(known ? { book: known.book } : {}) }
+  let planned: ComputerHistoryStep[] = []
+  let entry: HistoryEntry | null = null
+  if (host.history) {
+    try {
+      planned = plannedSteps(tool, args, words)
+      const plan = planWords(tool, args, words)
+      entry = host.history.begin(t.threadId, {
+        app: words.app,
+        window: args.window ?? known?.window?.title ?? null,
+        steps: planned,
+        ...(plan ? { plan } : {}),
+        ...(ctx.turn !== undefined ? { token: ctx.turn } : {})
+      })
+    } catch (e) {
+      host.log(`computer history: the start of a call was not written: ${(e as Error).message}`)
+    }
+  }
+  /** The entry's end, from the note and the outcome; nothing it does reaches the answer. */
+  const settle = (out: ComputerToolOutcome | undefined): void => {
+    if (!entry) return
+    const obs = note.observation
+    try {
+      const after = args.app ? lookupApp(t, args.app) : undefined
+      const abort = signal.aborted ? (typeof signal.reason === 'string' ? signal.reason : 'cancel') : undefined
+      // the model reads the closing observation only when it is the answer's body
+      const read = obs && out?.body === obs.text ? readSummary(obs.text) : null
+      const app = obs?.app.name ?? after?.name ?? words.app
+      void entry.end({
+        app,
+        window: obs?.window.title ?? after?.window?.title ?? args.window ?? null,
+        steps: settledSteps({
+          tool,
+          args,
+          ctx: { app, ...(after ? { book: after.book } : {}) },
+          planned,
+          ...(note.results ? { results: note.results } : {}),
+          ...(obs?.waited ? { waited: obs.waited } : {}),
+          ...(note.front ? { front: note.front } : {}),
+          person: note.person ?? null,
+          ...(note.menusLeftOpen ? { menusLeftOpen: note.menusLeftOpen } : {}),
+          ...(!out || (out.isError && !note.results?.length && !note.error) ? { refused: { ...(out?.refused ? { kind: out.refused } : {}), line: out?.body ?? '' } } : {}),
+          ...(note.error ? { error: note.error } : {}),
+          ...(abort ? { abort } : {}),
+          ...(note.launched ? { launched: note.launched } : {})
+        }),
+        ...(read ? { read: read.words } : {}),
+        ...(read?.more ? { text: obs!.text } : {})
+      })
+    } catch (e) {
+      host.log(`computer history: the end of a call was not written: ${(e as Error).message}`)
+    }
+    journaled?.(entry, obs ? { session: t.serviceSession, pid: obs.app.pid, windowId: obs.window.id, width: obs.space.width, height: obs.space.height, epoch: obs.epoch } : null)
+  }
 
   // 2. refusals before anything
   const meta = host.registry.get(ctx.threadId)
-  const early =
-    abortedLine(signal) ??
-    (t.stopped ? hostErrorLine('stopped') : null) ??
-    (meta?.status === 'paused' ? hostErrorLine('paused') : null) ??
-    (() => {
-      const why = host.service.unavailableReason()
-      return why ? hostErrorLine('service_unavailable', why) : null
-    })()
-  if (early) return refusal(early)
+  const aborted = abortedLine(signal)
+  const unavailable = aborted || t.stopped || meta?.status === 'paused' ? null : host.service.unavailableReason()
+  const early = aborted
+    ? refusal(aborted)
+    : t.stopped
+      ? refused('stopped')
+      : meta?.status === 'paused'
+        ? refused('paused')
+        : unavailable
+          ? refused('service_unavailable', unavailable)
+          : null
+  if (early) {
+    settle(early)
+    return early
+  }
 
   const now = host.now()
   t.live = t.live ?? { since: now, lastCallAt: now, running: null, tier: null }
   // the words name the element from the thread's book: "Clicking Save in TextEdit"
-  const known = args.app ? lookupApp(t, args.app) : undefined
-  const words = computerActivity(tool, args, (i) => known?.book.brief(i) ?? null, known?.name)?.text
-  t.live.running = { tool, words: words ?? 'Using the computer', startedAt: now }
+  const activity = computerActivity(tool, args, (i) => known?.book.brief(i) ?? null, known?.name)?.text
+  t.live.running = { tool, words: activity ?? 'Using the computer', startedAt: now }
   host.touched(t)
+  let out: ComputerToolOutcome | undefined
   try {
-    const out = await runChecked(host, t, ctx, tool, args, signal)
-    if (!t.pendingFront.length) return out
-    const late = t.pendingFront.splice(0)
-    return { ...out, steps: [...out.steps, ...late] }
+    out = await runChecked(host, t, ctx, tool, args, signal, note)
+    if (t.pendingFront.length) {
+      const late = t.pendingFront.splice(0)
+      out = { ...out, steps: [...out.steps, ...late] }
+    }
+    return out
   } finally {
     if (t.live) {
       t.live.running = null
       t.live.held = null
+      t.live.asking = null
       t.live.lastCallAt = host.now()
     }
     host.touched(t)
+    settle(out)
   }
 }
 
-async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolContext, tool: ComputerToolName, args: Args, signal: AbortSignal): Promise<ComputerToolOutcome> {
+async function runChecked(
+  host: RunHost,
+  t: ThreadComputer,
+  ctx: ComputerToolContext,
+  tool: ComputerToolName,
+  args: Args,
+  signal: AbortSignal,
+  note: CallNote
+): Promise<ComputerToolOutcome> {
   const threadId = ctx.threadId
   const app = (): AppState | undefined => (args.app ? lookupApp(t, args.app) : undefined)
   const steps = actionsOf(tool, args)
@@ -300,18 +416,18 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
   // read first: an element, or text, needs a read of the app in this thread
   const named =
     tool === 'computer_observe' ? (args.element !== undefined ? [args.element as number] : []) : steps.flatMap(actionElements)
-  if (named.length && !app()) return refusal(noObservationLine(named[0], args.app!))
-  if (steps.some((s) => s.action === 'type' || s.action === 'paste') && !app()) return refusal(hostErrorLine('no_observation', noReadForTextLine(args.app!)))
+  if (named.length && !app()) return refused('no_observation', noObservationLine(named[0], args.app!))
+  if (steps.some((s) => s.action === 'type' || s.action === 'paste') && !app()) return refused('no_observation', noReadForTextLine(args.app!))
   // text with no target goes to the window the thread read: the service judges a named window by its live titles (§27.6)
   const blindText = steps.some((s) => (s.action === 'type' || s.action === 'paste') && s.element === undefined && s.named === undefined)
   // with no window read (it closed), the service has no id to hold text into a named window to: refused as before
-  if (args.window && blindText && !app()?.window) return refusal(hostErrorLine('no_observation', noReadForTextLine(args.app!, args.window)))
+  if (args.window && blindText && !app()?.window) return refused('no_observation', noReadForTextLine(args.app!, args.window))
 
   // an app no call may touch, or an item that is no page, file or folder: refused before the card
   if (tool === 'computer_apps') {
-    const refused =
+    const line =
       (typeof args.launch === 'string' ? refusedLaunch(args.launch) : null) ?? (openOf(args).map(refusedOpenItem).find((l) => l !== null) ?? null)
-    if (refused) return refusal(refused)
+    if (line) return refusalOf(line)
   }
 
   // 3. the card, the permission read now: safe and edits ask for every act, every mode for a flag or a password field
@@ -334,8 +450,25 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
       }
     }
   }
-  // a card is a hold: the row says so, and a bridged call held on it answers in time (pending.ts)
-  const approve = (req: ApprovalRequest): Promise<boolean> => holding(LOCAL_CARD_WORDS, () => ask(req))
+  // a card is a hold: the row says so, and a bridged call held on it answers in time (pending.ts). A card of this
+  // host's own thread is also the row's `asking`, its title as a question; a box thread's is the bridge's to say
+  const approve = (req: ApprovalRequest): Promise<boolean> =>
+    holding(LOCAL_CARD_WORDS, async () => {
+      const live = ctx.approve ? null : t.live
+      const line = live ? approvalLine('computer', req.input, req.title) : null
+      if (live) {
+        live.asking = line
+        host.touched(t)
+      }
+      try {
+        return await ask(req)
+      } finally {
+        if (live && live.asking === line) {
+          live.asking = null
+          host.touched(t)
+        }
+      }
+    })
   const hostNeed = passwordTarget(steps, app()?.book)
   let resolvedApp: { pid: number; bundleId: string | null; name: string } | undefined
   const titleCtx = (): TitleContext => {
@@ -391,7 +524,10 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
       signal,
       ...(awayDenies ? { awayDenies: true as const } : {})
     })
-    if (!allowed) return refusal(abortedLine(signal) ?? hostErrorLine(awayDenies && host.registry.awayOn() ? 'away' : 'denied'))
+    if (!allowed) {
+      const stopped = abortedLine(signal)
+      return stopped ? refusal(stopped) : refused(awayDenies && host.registry.awayOn() ? 'away' : 'denied')
+    }
     const after = abortedLine(signal)
     if (after) return refusal(after)
     if (session) host.gate().cardAllowed?.(gateCtx([]), host.now())
@@ -454,18 +590,19 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
   }
   try {
     if (tool === 'computer_apps') {
-      const apps = await runApps(call, args, t)
+      const apps = await runApps(call, args, t, note)
       return abortedLine(signal) ? refusal(abortedLine(signal)!) : apps
     }
 
     // 5. the target: the app pinned to a pid before any request, and checked
     const pin = await pinApp(host, args.app!, call, t.serviceSession)
-    if ('line' in pin) return refusal(pin.line)
+    if ('line' in pin) return refusalOf(pin.line)
     resolvedApp = pin.app
     /** the person's app as the list cached before the act reads it, for the front line */
     const person = host.targets.activeName(pin.app.pid)
-    const refused = refusedTarget(pin.app, steps.some(sendsInput) ? 'act' : 'read')
-    if (refused) return refusal(refused)
+    note.person = person
+    const offLimits = refusedTarget(pin.app, steps.some(sendsInput) ? 'act' : 'read')
+    if (offLimits) return refusalOf(offLimits)
     const a = app()
     const bound = !args.window && a?.window ? { id: a.window.id } : undefined
     // text with no target in a call that names no window is pinned to the window the thread read, by id; a named
@@ -538,6 +675,7 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     }
     const take = async (obs: Observation | undefined): Promise<void> => {
       if (!obs) return
+      note.observation = obs
       remember(t, args.app!, obs)
       noteMissing(obs.shotError)
       if (obs.shot) await land(obs.shot, 'observation', 'observation')
@@ -598,6 +736,9 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
       wordsOf: (a) => actionWords(a, titleCtx()),
       callKey: `${threadId}:${++callSeq}`
     })
+    note.results = result.steps
+    if (result.front) note.front = result.front
+    if (result.menusLeftOpen?.length) note.menusLeftOpen = result.menusLeftOpen
     for (const s of result.steps) if (s.status === 'failed') noteMissing(s.error)
     for (const [i, s] of result.steps.entries()) if (s.status === 'ok' && s.shot) await land(s.shot, `step ${i + 1}`, i + 1)
     await take(result.observation)
@@ -624,12 +765,13 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
   } catch (e) {
     const stoppedLine = abortedLine(signal)
     if (stoppedLine) return refusal(stoppedLine)
-    if (e instanceof ComputerHostError) return refusal(e.message)
+    if (e instanceof ComputerHostError) return { ...refusal(e.message), refused: e.kind }
     if (e instanceof ComputerRpcError) {
       // the line says where the switch is; the system asks once per install
       if (e.data?.kind === 'permission_missing' && e.data.which) askOnce(e.data.which)
       // the service caught an app no call may touch (a path to TempCode.app): the host's own words for it
-      if (e.data?.kind === 'open_refused' && e.data.reason === 'app') return refusal(hostErrorLine('refused_app', 'tempcode'))
+      if (e.data?.kind === 'open_refused' && e.data.reason === 'app') return refused('refused_app', 'tempcode')
+      if (e.data) note.error = e.data
       return refusal(e.data ? errorLine(e.data, errCtx) : e.message)
     }
     host.log(`computer call failed in ${threadId}: ${(e as Error).stack ?? e}`)
@@ -645,7 +787,12 @@ const openOf = (args: Args): string[] => (Array.isArray(args.open) ? (args.open 
  * names and the refused bundles, then the list. The app it answered is
  * checked against the refused ones as a pinned target is.
  */
-async function runApps(call: <M extends ComputerMethod>(m: M, p: ComputerParams<M>) => Promise<ComputerResult<M>>, args: Args, t: ThreadComputer): Promise<ComputerToolOutcome> {
+async function runApps(
+  call: <M extends ComputerMethod>(m: M, p: ComputerParams<M>) => Promise<ComputerResult<M>>,
+  args: Args,
+  t: ThreadComputer,
+  note: CallNote
+): Promise<ComputerToolOutcome> {
   const session = t.serviceSession
   const launch = typeof args.launch === 'string' ? args.launch : null
   const open = openOf(args)
@@ -653,8 +800,9 @@ async function runApps(call: <M extends ComputerMethod>(m: M, p: ComputerParams<
   const { apps } = await call('apps.list', { windows: true })
   t.listedApps = apps
   const app = r ? apps.find((a) => a.pid === r.pid) : undefined
-  const refused = r ? refusedTarget(app ?? { pid: r.pid, bundleId: null }, open.length ? 'act' : 'read') : null
-  if (refused) return refusal(refused)
+  const offLimits = r ? refusedTarget(app ?? { pid: r.pid, bundleId: null }, open.length ? 'act' : 'read') : null
+  if (offLimits) return refusalOf(offLimits)
+  if (r) note.launched = { launched: r.launched, opened: open.length > 0 }
   const launched: LaunchReport | undefined =
     r && launch
       ? {

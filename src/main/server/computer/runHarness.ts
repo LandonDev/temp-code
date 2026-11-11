@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { AppRef } from '@shared/computer/protocol'
 import type { PermissionPolicy, SessionMeta, SessionStatus } from '@shared/events'
 import type { ApprovalRequest } from '../drivers/types'
+import { ComputerHistory, historyRoot } from './history'
 import { renderText, type ComputerToolOutcome } from './result'
 import { ComputerService } from './service'
 import { ComputerSessions } from './sessions'
@@ -34,6 +35,8 @@ export function computerHarness(
     /** the sessions' trace, its lines into `log` */
     trace?: boolean
     log?: (line: string) => void
+    /** journal the calls (history.ts) under the data dir; `pictures` is its switch, on when left out */
+    history?: boolean | { pictures: () => boolean }
   } = {}
 ) {
   const dataDir = mkdtempSync(join(tmpdir(), 'tc-computer-run-'))
@@ -61,6 +64,9 @@ export function computerHarness(
   }
   const service = new ComputerService({ dataDir, env: { ...process.env, FAKE_LOG: log, ...opts.env }, bin: () => fakeServiceBin(), log: () => undefined })
   let gate: SessionTierGate | undefined = opts.gate
+  const history = opts.history
+    ? new ComputerHistory({ root: historyRoot(dataDir), now: () => opts.clock?.now() ?? Date.now(), ...(typeof opts.history === 'object' ? { pictures: opts.history.pictures } : {}) })
+    : null
   const sessions = new ComputerSessions({
     service,
     registry,
@@ -71,7 +77,8 @@ export function computerHarness(
     resolveApp: opts.resolveApp,
     clock: opts.clock,
     log: opts.log ?? (() => undefined),
-    trace: opts.trace
+    trace: opts.trace,
+    ...(history ? { history } : {})
   })
   if (opts.makeGate) gate = opts.makeGate({ service, sessions })
   const set = (threadId: string, meta: Partial<{ status: SessionStatus; permission: PermissionPolicy; provider: string; model: string }>): void => {
@@ -86,6 +93,8 @@ export function computerHarness(
     rows,
     service,
     sessions,
+    /** the journal, when the harness was made with one */
+    history,
     cards,
     set,
     setAway: (on: boolean) => (away = on),
@@ -101,7 +110,10 @@ export function computerHarness(
             .map((l) => JSON.parse(l))
         : [],
     text: (o: ComputerToolOutcome): string => renderText(o),
-    close: () => service.close()
+    close: async () => {
+      await history?.close()
+      await service.close()
+    }
   }
 }
 export type ComputerHarness = ReturnType<typeof computerHarness>

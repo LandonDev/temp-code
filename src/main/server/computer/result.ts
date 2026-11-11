@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
 import { MAX_IMAGE_PARTS, OBSERVATION_FAILED_PREFIX, formatShotLine, formatStepLine, type ComputerToolResult } from '@shared/computer/tools'
 import type { AppInfo, ComputerAction, ComputerError, FrontReport, LaunchedWindow, Observation, StepResult, WindowInfo } from '@shared/computer/protocol'
+import { hostErrorLine, type HostErrorKind, type RefusedApp } from '@shared/computer/hostErrors'
 import { openItemsWords } from '@shared/computer/words'
 
 /**
@@ -32,6 +33,8 @@ export interface ComputerToolOutcome {
   body: string | null
   /** nothing ran: refused, denied, a JSON-RPC error, the service gone, a stop */
   isError: boolean
+  /** the host's own refusal, by kind: the thread's journal words it for the person (computer/history.ts); never part of the answer */
+  refused?: HostErrorKind
 }
 
 export interface StepsResult {
@@ -113,6 +116,18 @@ export function outcomeOf(
 /** Nothing ran, or the call ended before its result: one line, after any step lines that did run. */
 export function refusal(line: string, steps: string[] = []): ComputerToolOutcome {
   return { steps, shots: [], body: line, isError: true }
+}
+
+/** A refusal the host says itself: `refusal(hostErrorLine(kind, detail))`, with its kind kept for the journal. */
+export function refused(kind: HostErrorKind, detail?: string): ComputerToolOutcome {
+  return { ...refusal(hostErrorLine(kind, detail)), refused: kind }
+}
+
+const REFUSED_APP_LINES: ReadonlySet<string> = new Set((['tempcode', 'prompts', 'unchecked'] satisfies RefusedApp[]).map((why) => hostErrorLine('refused_app', why)))
+
+/** A refusal that reaches the run as a finished line (policy.ts): one of the off-limits lines keeps its kind, any other is the line alone. */
+export function refusalOf(line: string): ComputerToolOutcome {
+  return REFUSED_APP_LINES.has(line) ? { ...refusal(line), refused: 'refused_app' } : refusal(line)
 }
 
 /** The final text: step lines, the shot lines (` (not attached)` past MAX_IMAGE_PARTS), a blank line, the body. */

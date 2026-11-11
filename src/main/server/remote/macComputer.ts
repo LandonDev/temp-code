@@ -410,7 +410,9 @@ export class MacComputer {
           signal,
           approve: (req) => this.ask(env, thread, st, own, req, ctx.deadlineAt - budget, callId, line),
           reader: readerOf(own),
-          timing: tally
+          timing: tally,
+          // the journal groups the box thread's calls by its own turn, whatever this Mac's session saw of it
+          turn
         },
         call.tool,
         call.args

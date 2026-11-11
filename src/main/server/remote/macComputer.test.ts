@@ -542,6 +542,24 @@ describe('MacComputer: the answer', () => {
     await s.end('ended')
   })
 
+  it("the journal's part leaves the answer as it was: the run gets the box's turn under the bridge's key, and a refusal's kind stays on the Mac", async () => {
+    const s = setup()
+    // the host's outcome may carry the refusal's kind for the journal (computer/result.ts `refused`)
+    s.fake.behave(async (r) => {
+      r.ctx.timing?.addService(7)
+      return { steps: ['left_click [3] · failed: gone'], shots: [], body: 'denied: the person did not allow it', isError: true, refused: 'denied' }
+    })
+    const answer = await s.call({ turn: 'boot:7', thread: 's4' })
+    // the journal's key is the session's, and its turn the box's own token (computer/history.ts)
+    expect(s.fake.runs[0].ctx).toMatchObject({ threadId: KEY('s4'), turn: 'boot:7' })
+    // what crosses the bridge has exactly the fields it had: the kind, a journal's word, is not one
+    expect(Object.keys(answer).sort()).toEqual(['body', 'images', 'isError', 'row', 'steps', 'timing'])
+    expect(answer).toMatchObject({ steps: ['left_click [3] · failed: gone'], body: 'denied: the person did not allow it', isError: true, images: [] })
+    expect(Object.keys(answer.timing!).sort()).toEqual(['checksMs', 'guardMs', 'macMs', 'runMs', 'serviceMs', 'shotChars', 'shotsMs', 'waitedMs'])
+    expect(answer.timing).toMatchObject({ serviceMs: 7, waitedMs: 0, shotChars: 0 })
+    await s.end('ended', 's4')
+  })
+
   it('a refusal before the run sends no answer, so no timing', async () => {
     const s = setup({ computer: false })
     expect(await s.settle(s.call())).toEqual({ ok: false, error: COMPUTER_SWITCH_OFF })

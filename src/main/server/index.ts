@@ -89,6 +89,7 @@ import { ComputerRpc } from './computer/rpc'
 import { ComputerSettingsRpc } from './computer/settingsRpc'
 import { ComputerService } from './computer/service'
 import { ComputerSessions } from './computer/sessions'
+import { ComputerHistory, KEEP_PICTURES_SETTING, historyPicturesFromEnv, historyRoot } from './computer/history'
 import { SessionScheduler } from './computer/schedule'
 import { setSessionTierGate } from './computer/tierGate'
 import { pruneStaleShots } from './computer/shots'
@@ -1325,8 +1326,19 @@ export async function startServer(
   const computerWhy = computerUnavailable({ exists: () => true })
   let computer: ComputerHost | null = null
   let scheduler: SessionScheduler | null = null
+  // The threads' computer journal (computer/history.ts): what the right panel's Computer section lists.
+  let computerHistory: ComputerHistory | null = null
   if (!computerWhy) {
     const computerData = join(options.dataDir ?? dirname(dbPath), 'computer')
+    const picturesFromEnv = historyPicturesFromEnv()
+    const history = new ComputerHistory({
+      root: historyRoot(computerData),
+      log: (line) => console.log(`[computer] ${line}`),
+      // the seam first (a proof's instance takes none), then Settings → Computer use's switch, on by default
+      pictures: () => picturesFromEnv && store.getSetting(KEEP_PICTURES_SETTING) !== '0'
+    })
+    computerHistory = history
+    history.start()
     const service = new ComputerService({
       dataDir: computerData,
       env: { ...process.env, ...guardInstanceEnv() },
@@ -1343,11 +1355,17 @@ export async function startServer(
       landing: (id) => (parseMacComputerKey(id) ? bridgedLanding(computerData, id) : join(attachmentDir(id), 'computer')),
       ...(pin ? { resolveApp: pin } : {}),
       rootOf: (id) => registry.rootSessionOf(id),
-      trace: process.env.TEMP_CODE_COMPUTER_TRACE === '1'
+      trace: process.env.TEMP_CODE_COMPUTER_TRACE === '1',
+      history
     })
     computer = { available: () => computerUnavailable() === null, sessions, service, tokens: MacThreadTokens.fromEnv(process.env, 'computer') }
     registry.onMeta((m) => sessions.onMeta(m))
     registry.onRemoved((ids) => void sessions.end(ids))
+    // A removed thread's history goes at once, wired on its own: sessions.end also runs for an archive and an idle
+    // close, which keep it. A box thread's history on this Mac goes by its 30 days alone.
+    registry.onRemoved((ids) => {
+      for (const id of ids) void history.remove(id)
+    })
     setTimeout(() => void pruneStaleShots(computerData), 30_000).unref()
     // The session tier (computer/schedule.ts): only where there is a person's idle time to read; without it the tier stays refused.
     if (options.personIdle) {
@@ -3698,6 +3716,7 @@ export async function startServer(
       scheduler?.dispose()
       if (scheduler) setSessionTierGate(null)
       void computer?.service.close()
+      void computerHistory?.close()
       awaySync.close()
       uploads.close()
       sessionMover.close()

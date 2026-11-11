@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { COMPUTER_WAIT, type Observation } from '@shared/computer/protocol'
@@ -1494,5 +1494,228 @@ describe('fewer calls (§27)', () => {
       expect(o.steps[1]).toBe('type "New name" · failed: [9] text field "Other" has the focus, which no step of this batch aimed at; name the element the text is for')
       expect(batches(h)).toHaveLength(2)
     })
+  })
+})
+
+describe('the journal (history.ts): one start and one end per call', () => {
+  /** every record of a thread's log, once everything queued is written */
+  const records = async (h: ComputerHarness, key = 't1'): Promise<{ r: string; n: number; [k: string]: unknown }[]> => {
+    const file = join(h.dataDir, 'history', key, 'log.jsonl')
+    // the queue's tail takes the picture; a read then waits out the key's write chain
+    await h.sessions.drained(key)
+    await h.history!.read([key])
+    return existsSync(file)
+      ? readFileSync(file, 'utf8')
+          .split('\n')
+          .filter(Boolean)
+          .map((l) => JSON.parse(l))
+      : []
+  }
+  const calls = async (h: ComputerHarness, key = 't1') => {
+    await h.sessions.drained(key)
+    return (await h.history!.read([key]))[0].calls
+  }
+  const kinds = (rs: { r: string; n: number }[]): string[] => rs.filter((r) => r.r !== 'picture').map((r) => `${r.r} ${r.n}`)
+
+  it('a read, an act, a batch and the apps call each write a start and an end, in order', async () => {
+    const h = make({ history: { pictures: () => false } })
+    await h.run('computer_apps', {})
+    await h.run('computer_observe', { app: 'TextEdit' })
+    await h.run('computer_batch', { app: 'TextEdit', actions: [{ action: 'left_click', element: 21 }, { action: 'key', text: 'super+s' }] })
+    await h.run('computer_act', { app: 'TextEdit', action: 'left_click', element: 3 })
+    expect(kinds(await records(h))).toEqual(['start 1', 'end 1', 'start 2', 'end 2', 'start 3', 'end 3', 'start 4', 'end 4'])
+    const got = await calls(h)
+    expect(got.map((c) => [c.state, c.app, c.window, c.steps.map((s) => `${s.verb} ${s.object}`.trim())])).toEqual([
+      ['done', '', null, ['Listed apps']],
+      ['done', 'TextEdit', 'Untitled', ['Read']],
+      ['done', 'TextEdit', 'Untitled', ['Clicked bold', 'Pressed super+s']],
+      ['done', 'TextEdit', 'Untitled', ['Clicked a text area']]
+    ])
+    // the read's summary and text are kept
+    expect(got[1]).toMatchObject({ read: 'Read 40 elements', text: true, turn: 1 })
+    expect((await h.history!.step('t1', 2)).text).toContain('[21] checkbox "bold"')
+    // a step's target was read from the book before the call's closing read moved it, its tier is the step's own
+    expect(got[2].steps[0]).toMatchObject({ kind: 'click', state: 'ok', tier: 'ax', target: 'a checkbox in the "Formatting" group', element: 21, inApp: 'bold in TextEdit' })
+    // while it ran, the batch's start held its plan in the card's words
+    const starts = (await records(h)).filter((r) => r.r === 'start')
+    expect(starts[2].plan).toEqual(['click checkbox "bold"', 'press super+s'])
+    expect(starts[0].plan).toBeUndefined()
+    expect(starts[3].plan).toBeUndefined()
+    // no picture is asked with the switch off, and each call says so
+    expect(count(h, 'capture.screenshot')).toBe(0)
+    expect(got.map((c) => c.picture)).toEqual([{ none: 'no-read' }, { none: 'off' }, { none: 'off' }, { none: 'off' }])
+  })
+
+  it('without a journal nothing is written and every answer is what it was', async () => {
+    const plain = make()
+    const journaled = make({ history: { pictures: () => false } })
+    for (const h of [plain, journaled]) {
+      await h.run('computer_observe', { app: 'TextEdit' })
+      await h.run('computer_act', { app: 'TextEdit', action: 'left_click', element: 21 })
+    }
+    expect(plain.history).toBeNull()
+    expect(existsSync(join(plain.dataDir, 'history'))).toBe(false)
+    // the same requests in the same order, each with the same params but for the process's own epoch and data dir
+    const strip = (h: ComputerHarness) => h.requests().map((r) => ({ method: r.method, params: r.method === 'initialize' ? {} : { ...r.params, epoch: undefined } }))
+    expect(strip(journaled)).toEqual(strip(plain))
+  })
+
+  it('a denied call keeps its text and says the kind; its record reads You didn’t allow it', async () => {
+    const h = make({ history: { pictures: () => false } })
+    h.set('t1', { permission: 'safe' })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    const o = h.run('computer_batch', { app: 'TextEdit', actions: [{ action: 'left_click', element: 21 }, { action: 'key', text: 'super+s' }] })
+    await until(() => h.cards.length === 1, 'the card')
+    h.cards[0].decide(false)
+    const out = await o
+    expect(out).toMatchObject({ isError: true, body: hostErrorLine('denied'), refused: 'denied' })
+    expect(h.text(out)).toBe(hostErrorLine('denied'))
+    const call = (await calls(h))[1]
+    expect(call.steps.map((s) => [s.verb, s.state, s.reason])).toEqual([['Clicked', 'failed', "You didn't allow it"], ['Pressed', 'not-run', undefined]])
+    expect(call.picture).toEqual({ none: 'no-read' })
+  })
+
+  it('each refusal before the call starts is journaled with its kind, the text unchanged', async () => {
+    const h = make({ history: { pictures: () => false } })
+    // paused
+    h.set('t1', { status: 'paused' })
+    const paused = await h.run('computer_observe', { app: 'TextEdit' })
+    expect(paused).toMatchObject({ body: 'refused: the thread is paused', refused: 'paused' })
+    h.set('t1', { status: 'running' })
+    // an element of an app the thread has not read
+    const unread = await h.run('computer_act', { app: 'TextEdit', action: 'left_click', element: 21 })
+    expect(unread).toMatchObject({ body: '[21] comes from no read of TextEdit in this thread; read the window first', refused: 'no_observation' })
+    // TempCode itself
+    const own = await h.run('computer_apps', { launch: 'TempCode' })
+    expect(own).toMatchObject({ body: hostErrorLine('refused_app', 'tempcode'), refused: 'refused_app' })
+    // a line with no kind of the host's
+    const scheme = await h.run('computer_apps', { launch: 'Preview', open: ['ftp://files.test/a.pdf'] })
+    expect(scheme.refused).toBeUndefined()
+    // arguments the schema refuses are no call at all
+    await h.run('computer_act', { app: 'TextEdit', action: 'left_click', element: -1 })
+    expect((await calls(h)).map((c) => [c.steps[0].verb, c.steps[0].state, c.steps[0].reason])).toEqual([
+      ['Read', 'failed', 'The thread was paused'],
+      ['Clicked', 'failed', 'The window had not been read'],
+      ['Listed', 'failed', 'That app is off limits'],
+      ['Listed', 'failed', 'Only http, https and file items open']
+    ])
+    expect(count(h, 'state.get') + count(h, 'action.run') + count(h, 'apps.launch')).toBe(0)
+  })
+
+  it('a stopped call and the refusals after it are stopped; a failed step says why', async () => {
+    const h = make({ history: { pictures: () => false } })
+    const slow = h.run('computer_batch', { app: 'Slow', actions: [{ action: 'key', text: 'super+a' }, { action: 'key', text: 'super+b' }] })
+    await until(() => count(h, 'action.batch') === 1, 'the batch')
+    await h.sessions.stop('t1')
+    expect((await slow).body).toBe('stopped by the person; no more computer use this turn')
+    const refused = await h.run('computer_observe', { app: 'TextEdit' })
+    expect(refused).toMatchObject({ body: 'stopped by the person; no more computer use this turn', refused: 'stopped' })
+    const got = await calls(h)
+    expect(got[0].steps.map((s) => [s.verb, s.state, s.reason])).toEqual([['Pressed', 'stopped', 'Stopped'], ['Pressed', 'not-run', undefined]])
+    expect(got[1].steps.map((s) => [s.state, s.reason])).toEqual([['stopped', 'Stopped']])
+    expect(got.map((c) => c.state)).toEqual(['done', 'done'])
+    // a step the service fails keeps the service's kind
+    h.set('t1', { status: 'watching' })
+    h.set('t1', { status: 'running' })
+    await h.run('computer_batch', { app: 'Sessiony', actions: [{ action: 'hold_key', text: 'shift', duration: 1 }, { action: 'key', text: 'super+s' }] })
+    const failed = (await calls(h)).at(-1)!
+    expect(failed.turn).toBe(2)
+    expect(failed.steps.map((s) => [s.verb, s.state, s.reason])).toEqual([['Held', 'failed', 'It needed your pointer and keyboard'], ['Pressed', 'not-run', undefined]])
+  })
+
+  it('a request the service refuses whole is the call’s failure', async () => {
+    const h = make({ history: { pictures: () => false } })
+    const o = await h.run('computer_observe', { app: 'TextEdit', window: 'No such window' })
+    expect(o.isError).toBe(true)
+    expect((await calls(h))[0].steps[0]).toMatchObject({ verb: 'Read', state: 'failed', reason: 'The window was gone' })
+  })
+
+  it('no text a password field could hold reaches the log or the text files', async () => {
+    const h = make({ history: { pictures: () => false } })
+    const secret = 'hunter2-correct-horse'
+    await h.run('computer_observe', { app: 'Secret' })
+    // by name, with no target after a click, by set_value on a named field, and a bare key
+    await h.run('computer_act', { app: 'Secret', action: 'type', text: secret, named: 'Password' })
+    await h.run('computer_batch', { app: 'Secret', actions: [{ action: 'left_click', element: 13 }, { action: 'type', text: secret }, { action: 'key', text: 'x' }] })
+    await h.run('computer_act', { app: 'Secret', action: 'set_value', value: secret, named: 'User' })
+    await h.run('computer_act', { app: 'Secret', action: 'paste', text: secret })
+    // a denied call: its plan and steps were written before the card
+    h.set('t1', { permission: 'safe' })
+    const denied = h.run('computer_act', { app: 'Secret', action: 'type', text: secret, element: 12 })
+    await until(() => h.cards.length === 1, 'the card')
+    h.cards[0].decide(false)
+    await denied
+    await records(h)
+    const dir = join(h.dataDir, 'history', 't1')
+    const written = [readFileSync(join(dir, 'log.jsonl'), 'utf8'), ...readdirSync(join(dir, 'steps')).map((f) => readFileSync(join(dir, 'steps', f), 'utf8'))].join('\n')
+    expect(written).not.toContain(secret)
+    expect(written).not.toContain('hunter2')
+    expect(written).toContain(`${secret.length} characters`)
+    expect(written).toContain('a key')
+  })
+
+  it('a field named by index that is no password field keeps its text, until the book says otherwise', async () => {
+    const h = make({ history: { pictures: () => false } })
+    await h.run('computer_observe', { app: 'Secret' })
+    await h.run('computer_act', { app: 'Secret', action: 'type', text: 'ana', element: 11 })
+    expect((await calls(h))[1].steps[0]).toMatchObject({ verb: 'Typed', object: 'into User', target: '"ana"', state: 'ok' })
+  })
+
+  it('the apps call says what the launch did', async () => {
+    const h = make({ history: { pictures: () => false } })
+    await h.run('computer_apps', { launch: 'Preview' })
+    await h.run('computer_apps', { launch: 'Preview' })
+    await h.run('computer_apps', { launch: 'Preview', open: ['/tmp/report.pdf'] })
+    expect((await calls(h)).map((c) => `${c.steps[0].verb} ${c.steps[0].object}`)).toEqual(['Launched Preview', 'Listed apps', 'Opened report.pdf in Preview'])
+  })
+
+  it("the row carries asking while this host's card waits, and not after", async () => {
+    const h = make({ history: { pictures: () => false } })
+    h.set('t1', { permission: 'safe' })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    expect(h.sessions.rowOf('t1')?.asking).toBeUndefined()
+    const o = h.run('computer_act', { app: 'TextEdit', action: 'left_click', element: 21 })
+    await until(() => h.cards.length === 1, 'the card')
+    const row = h.sessions.rowOf('t1')!
+    expect(row.asking).toEqual({ line: 'Click checkbox "bold" in TextEdit, window "Untitled"?' })
+    expect(row.running).toMatchObject({ words: LOCAL_CARD_WORDS, held: true })
+    // the journal shows the call running meanwhile
+    expect((await h.history!.read(['t1']))[0].calls.at(-1)).toMatchObject({ state: 'running', steps: [{ verb: 'Clicking', object: 'bold' }] })
+    h.cards[0].decide(true)
+    await o
+    expect(h.sessions.rowOf('t1')?.asking).toBeUndefined()
+    // a card the caller asks itself (a box thread's, through the bridge) is the bridge's to say
+    const bridged = h.sessions.run({ threadId: 't1', approve: () => new Promise<boolean>((r) => setTimeout(() => r(true), 30)) }, 'computer_act', { app: 'TextEdit', action: 'left_click', element: 21 })
+    await until(() => h.sessions.rowOf('t1')?.running?.held === true, 'the bridged card')
+    expect(h.sessions.rowOf('t1')?.asking).toBeUndefined()
+    await bridged
+  })
+
+  it('a bridged call’s turn token groups its calls; this host’s own follow beginTurn', async () => {
+    const h = make({ history: { pictures: () => false } })
+    const run = (turn: string) => h.sessions.run({ threadId: 'mac:env_1:t9', turn }, 'computer_observe', { app: 'TextEdit' })
+    await run('a')
+    h.sessions.beginTurn('mac:env_1:t9')
+    await run('a')
+    await run('b')
+    const key = 'mac:env_1:t9'
+    expect((await h.history!.read([key]))[0].calls.map((c) => c.turn)).toEqual([1, 1, 2])
+    await h.run('computer_observe', { app: 'TextEdit' })
+    h.set('t1', { status: 'watching' })
+    h.set('t1', { status: 'running' })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    expect((await calls(h)).map((c) => c.turn)).toEqual([1, 2])
+  })
+
+  it("an idle close and the thread's end keep the history", async () => {
+    const clock = new ManualClock()
+    const h = make({ clock, history: { pictures: () => false } })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    await clock.advance(IDLE_CLOSE_MS + 1)
+    await until(() => count(h, 'session.close') === 1, 'the idle close')
+    expect(await calls(h)).toHaveLength(1)
+    await h.sessions.end(['t1'])
+    expect(await calls(h)).toHaveLength(1)
+    expect(existsSync(join(h.dataDir, 'history', 't1', 'log.jsonl'))).toBe(true)
   })
 })

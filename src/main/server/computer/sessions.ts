@@ -5,6 +5,7 @@ import type { AppRef, FrontReport } from '@shared/computer/protocol'
 import type { SessionMeta, SessionStatus } from '@shared/events'
 import { attachmentDir } from '../attachmentDir'
 import { hostErrorLine } from '@shared/computer/hostErrors'
+import { capturePicture, type ComputerHistory, type HistoryEntry, type HistoryPicture, type PictureTarget } from './history'
 import { frontLine, refusal, type ComputerToolOutcome } from './result'
 import { runComputerTool, type ComputerRegistry, type ComputerToolContext, type RunHost, type ThreadComputer } from './run'
 import { CallTiming, timingLine } from '@shared/computer/bridgeTiming'
@@ -42,6 +43,8 @@ export interface ComputerSessionsOptions {
   log?: (line: string) => void
   /** TEMP_CODE_COMPUTER_TRACE=1: one `[computer] timing` line per call this host's own thread makes */
   trace?: boolean
+  /** the threads' journal (history.ts): every call's entry and one picture of the window after it. Without it nothing is journaled. */
+  history?: ComputerHistory
 }
 
 /** The settings row a thread's first computer call writes: its next harness loads the tools without a search (§27.11). */
@@ -66,7 +69,8 @@ function rowFor(t: ThreadComputer): ComputerSessionRow | null {
       return a ? [{ name: a.name, bundleId: a.bundleId, window: a.window?.title ?? null }] : []
     }),
     running: t.live.running && t.live.held ? { ...t.live.running, words: t.live.held, held: true } : t.live.running,
-    tier: t.live.tier
+    tier: t.live.tier,
+    ...(t.live.running && t.live.asking ? { asking: { line: t.live.asking } } : {})
   }
 }
 
@@ -108,7 +112,8 @@ export class ComputerSessions {
       rootOf: opts.rootOf ?? ((id) => id),
       now: () => this.clock.now(),
       log: (line) => (opts.log ?? console.log)(`[computer] ${line}`),
-      touched: () => this.touched()
+      touched: () => this.touched(),
+      ...(opts.history ? { history: opts.history } : {})
     }
   }
 
@@ -117,6 +122,7 @@ export class ComputerSessions {
     this.markUsed(ctx.threadId)
     const t = this.thread(ctx.threadId)
     const startedAt = this.clock.now()
+    let journaled: { entry: HistoryEntry; target: PictureTarget | null } | null = null
     const job = t.queue.then(async () => {
       const own = new AbortController()
       t.inflight = own
@@ -126,7 +132,7 @@ export class ComputerSessions {
       const runFrom = this.clock.now()
       try {
         if (t.ended) return refusal(hostErrorLine('cancelled', 'the thread ended'))
-        return await runComputerTool(this.host, t, timing ? { ...ctx, timing } : ctx, tool, args, signal)
+        return await runComputerTool(this.host, t, timing ? { ...ctx, timing } : ctx, tool, args, signal, (entry, target) => (journaled = { entry, target }))
       } finally {
         if (timing && !ctx.timing) {
           const now = this.clock.now()
@@ -140,8 +146,36 @@ export class ComputerSessions {
         this.updateBusy()
       }
     })
-    t.queue = job.catch(() => undefined)
+    // The picture of the window as the call left it is the queue's tail: the caller has its answer by then, so the
+    // model never waits for it, and the thread's next call, a Stop, its end and the idle close all do.
+    t.queue = job.catch(() => undefined).then(() => (journaled ? this.picture(t, journaled.entry, journaled.target) : undefined))
     return job
+  }
+
+  /**
+   * One picture for the journal, or why there is none: never for a call with no closing read, with the switch off,
+   * or once the thread was stopped or ended. Nothing it does can fail the queue.
+   */
+  private async picture(t: ThreadComputer, entry: HistoryEntry, target: PictureTarget | null): Promise<void> {
+    const history = this.opts.history
+    if (!history) return
+    try {
+      const picture: HistoryPicture = !target
+        ? { none: 'no-read' }
+        : !history.pictures()
+          ? { none: 'off' }
+          : t.stopped || t.ended
+            ? { none: 'failed' }
+            : await capturePicture(this.opts.service, target, { clock: this.clock })
+      await entry.picture(picture)
+    } catch (e) {
+      this.host.log(`computer history: a picture was not kept: ${(e as Error).message}`)
+    }
+  }
+
+  /** Everything the thread queued so far has run, the picture after its last call included. */
+  async drained(threadId: string): Promise<void> {
+    await this.threads.get(threadId)?.queue
   }
 
   /**
@@ -196,6 +230,7 @@ export class ComputerSessions {
   beginTurn(threadId: string): void {
     const t = this.threads.get(threadId)
     if (t) t.stopped = false
+    this.opts.history?.beginTurn(threadId)
   }
 
   /** A turn settled: the thread's session is no longer live (its row goes; the service may idle). */
