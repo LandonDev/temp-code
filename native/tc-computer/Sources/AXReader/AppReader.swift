@@ -155,9 +155,17 @@ public final class AppReader: AppReading, @unchecked Sendable {
             app: AppFacts(pid: pid, bundleId: running?.bundleIdentifier, name: running?.localizedName ?? "pid \(pid)"),
             window: target.info, otherWindows: request.element == nil ? others : [], roots: roots, menuBar: menuBar, focusedID: focused,
             ambientActions: ObservationTables.ambientActions, visited: walker.counts.nodes, partial: walker.partial,
-            walkMs: Int((Self.ms() - start).rounded())
+            walkMs: Int((Self.ms() - start).rounded()),
+            document: request.document && request.element == nil ? Self.documentLine(walker.notes.document) : nil
         )
         return (snapshot, walker.notes, target.element)
+    }
+
+    /// The document line (§25.10) from the window's AXDocument and edited flag, with the file's mtime.
+    static func documentLine(_ d: WindowDocument, home: String = NSHomeDirectory()) -> DocumentLine? {
+        let mtime = d.url.flatMap { URL(string: $0) }.flatMap { $0.isFileURL ? $0.path : nil }
+            .flatMap { try? FileManager.default.attributesOfItem(atPath: $0)[.modificationDate] as? Date }?.timeIntervalSince1970
+        return DocumentLine.from(url: d.url, mtime: mtime, edited: d.edited ?? false, home: home, timeZone: .current)
     }
 
     /// Spec §2.1's focus window beyond the window itself: a context menu, an

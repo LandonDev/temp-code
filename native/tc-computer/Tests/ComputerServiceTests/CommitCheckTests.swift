@@ -150,3 +150,17 @@ private func key(_ text: String) -> ComputerAction { ComputerAction(action: .key
 
 /// `~`-relative as the service writes it.
 private func FileFacts_tilde(_ path: String) -> String { tildeRelative(path, home: NSHomeDirectory()) }
+
+/// The document line (§25.10) is asked for only from a host whose parser reads it.
+@Suite struct DocumentLineGateTests {
+    @Test func aHostThatListedCommitGetsTheLineAndAnOlderOneDoesNot() async throws {
+        let newer = ServiceRig()
+        await newer.ready(features: ["front", "commit", "save_as"])
+        _ = try #require(await newer.call("state.get", "{\(docTarget),\"wait\":\(quick)}").result)
+        #expect(newer.reader().observed.last?.document == true)
+        let older = ServiceRig()
+        await older.ready()
+        _ = try #require(await older.call("state.get", "{\(docTarget),\"wait\":\(quick)}").result)
+        #expect(older.reader().observed.last?.document == false)
+    }
+}

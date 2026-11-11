@@ -171,6 +171,7 @@ extension ComputerService {
             geometry: knobs.geometry ?? (knobs.screenshot == .always), menus: knobs.menus ?? false, space: space,
             loading: loading, noteThin: knobs.screenshot != .never && screenRecording
         )
+        request.document = features.documentLine
         var text = try await read(target, request)
         if cancel.isSet { return try await dropped(target) }
 

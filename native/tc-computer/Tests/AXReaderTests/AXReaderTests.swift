@@ -113,6 +113,20 @@ import Testing
         #expect(Attributes.resolve("AXWindow").contains("AXDocument"))
     }
 
+    @Test func theDocumentLineReadsTheFilesTimeAndTheFlag() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("tc-docline-\(UUID().uuidString).txt")
+        try "x".write(to: url, atomically: false, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let written = Date(timeIntervalSince1970: 1_800_000_000)
+        try FileManager.default.setAttributes([.modificationDate: written], ofItemAtPath: url.path)
+        let line = try #require(AppReader.documentLine(WindowDocument(url: url.absoluteString, edited: true), home: "/nowhere"))
+        #expect(line.kind == .file && line.edited && line.path == url.path)
+        #expect(line.written == DocumentLine.clock(written.timeIntervalSince1970, timeZone: .current))
+        #expect(AppReader.documentLine(WindowDocument(url: nil, edited: true))?.kind == .unsaved)
+        #expect(AppReader.documentLine(WindowDocument(url: nil, edited: false)) == nil)
+        #expect(AppReader.documentLine(WindowDocument(url: "file:///tmp/run/", edited: nil), home: "/nowhere")?.kind == .folder)
+    }
+
     @Test func aWalkStartsWithNoDocumentAndAnEmptyReaderSaysNone() {
         let walker = Walker(handles: HandleTable(capacity: 16))
         walker.begin()

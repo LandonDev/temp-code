@@ -41,6 +41,8 @@ public struct ObserveRequest: Sendable {
     public var loading: Bool
     /// false when the call's screenshot policy is `never`: a thin tree is then not told to look at one
     public var noteThin: Bool
+    /// the document line (§25.10): only for a host that listed `commit`, whose parser reads it
+    public var document: Bool = false
 
     public init(window: ComputerProtocol.WindowRef?, mode: ObservationMode, element: Int?, budgetBytes: Int, geometry: Bool, menus: Bool, space: CoordinateSpace, loading: Bool = false, noteThin: Bool = true) {
         self.window = window
