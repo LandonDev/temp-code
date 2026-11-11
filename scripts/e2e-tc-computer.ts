@@ -1475,38 +1475,57 @@ async function webLeg(): Promise<void> {
   let svc: Service | undefined
   let o: Observation | null = null
   let savedFront: FrontWindow | null = null
-  const checkFront = async (word?: FrontReport): Promise<void> => {
+  /** Calls after which the person had moved the front themselves: their choice stands and becomes the one to keep. */
+  let personMoved = 0
+  /**
+   * The front app and its front window after a call are the ones before it (`since`, the call's start):
+   * the scratch browser never keeps the front, and anything else that changed without the person's
+   * input comes back within the restore bound. A change the person made during the call is theirs.
+   */
+  const checkFront = async (word?: FrontReport, since = Date.now()): Promise<void> => {
     if (!savedFront) return
     if (word?.raised) check(word.restored === 'restored', 'web: the service restored a steal', word)
-    await until(() => {
-      const after = frontWindow()
-      return after.pid === savedFront!.pid && after.window === savedFront!.window ? true : null
-    }, SERVICE.frontRestoreMs + 500, 'web: the original front app and window')
+    const want = savedFront
+    const same = (w: FrontWindow) => w.pid === want.pid && w.window === want.window
+    const end = Date.now() + SERVICE.frontRestoreMs + 500
+    let after = frontWindow()
+    while (!same(after) && Date.now() < end) {
+      await sleep(50)
+      after = frontWindow()
+    }
+    if (same(after)) return
+    check(after.pid !== pid, 'web: the scratch browser kept the front', { before: want, after })
+    check(personIdleSeconds() * 1_000 < Date.now() - since, 'web: the front app and window are the ones before the call', { before: want, after })
+    personMoved++
+    savedFront = after
   }
   const read = async (title?: string, element?: number): Promise<Observation> => {
+    const since = Date.now()
     const next = await svc!.call('state.get', {
       session, app: { pid }, window: title ? { title } : { id: o!.window.id },
       mode: 'full', geometry: true, screenshot: 'never', wait: COMPUTER_WAIT.observe,
       ...(element === undefined ? {} : { element, epoch: o!.epoch, geometry: false, budget: { bytes: OBSERVATION_BUDGET.maxBytes } })
     })
-    await checkFront()
+    await checkFront(undefined, since)
     o = next
     return next
   }
   const act = async (action: ComputerParams<'action.run'>['action'], tiers: ('ax' | 'process')[] = ['ax', 'process']) => {
+    const since = Date.now()
     const r = await svc!.call('action.run', {
       session, app: { pid }, window: { id: o!.window.id }, epoch: o!.epoch,
       action, tiers, wait: COMPUTER_WAIT.action, observe: { mode: 'full', screenshot: 'never', geometry: true }
     })
-    await checkFront(r.front)
+    await checkFront(r.front, since)
     if (r.observation) o = r.observation
     return r
   }
   const field = (name: string) => findElement(o!, name, (e) => e.name === name)
   const noMenu = async () => {
+    const since = Date.now()
     const focused = await svc!.call('state.get', { session, app: { pid }, mode: 'full', screenshot: 'never' })
     check(focused.window.id === o!.window.id && !elementLines(focused).some((e) => e.role === 'menu'), 'web: no menu remains open', focused.text)
-    await checkFront()
+    await checkFront(undefined, since)
   }
   try {
     await leg.step('web: launch after 5 quiet seconds and restore the front app and window', async (data) => {
@@ -1633,7 +1652,10 @@ async function webLeg(): Promise<void> {
       check(field('Locked plan').value === 'Starter', 'web: the refused value stayed Starter', o!.text)
       await noMenu()
     })
-    await leg.step('web: the original front app and window remain', async () => { await checkFront() })
+    await leg.step('web: the original front app and window remain', async (data) => {
+      await checkFront()
+      data.personMoved = personMoved
+    })
   } finally {
     // Cleanup must run even when the global abort flag makes Chain skip every step.
     const name = 'web: stop only this profile’s recorded browser and children'
@@ -2480,19 +2502,17 @@ async function guardWord(svc: Service, front: FrontReport | undefined, pid: numb
 
 /**
  * A steal the guard undid leaves the person's front app and its front window as they were; the
- * person using the Mac meanwhile makes the step void, not failed. A stealer macOS would not let
- * come forward proves nothing about the guard, and the step says so.
+ * person using the Mac meanwhile makes the step void, not failed. A stealer that never came forward
+ * proves nothing about the guard, and the step fails.
  */
 function judgeGuard(data: Record<string, unknown>, word: FrontReport | null, before: FrontWindow, at: number): void {
   data.front = word ?? { raised: false }
   if (personIdleSeconds() * 1_000 < Date.now() - at) throw skip('void: the person used the Mac during the step')
   const after = frontWindow()
   data.frontWindow = { before, after }
-  if (!word) {
-    data.note = 'the stealer did not come forward on this Mac; the guard had nothing to undo'
-    check(after.pid === before.pid, 'nothing came forward, and the front app stayed', data.frontWindow)
-    return
-  }
+  // TC Probe Steal opens its own bundle with `activates`, which macOS 27.2 honours from the background;
+  // a stealer that never came forward leaves the guard unproven, so the step fails rather than passing
+  check(word, 'the stealer came forward and the guard said what it undid', { front: data.front, ...(data.frontWindow as object) })
   check(word.restored === 'restored', "the guard put the person's front back", word)
   check(word.ms !== undefined && word.ms <= SERVICE.frontRestoreMs, `within ${SERVICE.frontRestoreMs} ms`, word)
   check(after.pid === before.pid && after.window === before.window, 'the front app and its front window are the ones before', data.frontWindow)
