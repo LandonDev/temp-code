@@ -359,6 +359,9 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'attachment.readRange': 'read',
   'attachment.settings': 'read',
   'attachment.settings.set': 'admin',
+  // Keep awake (contract-power.ts): This Mac's row on Settings → Hosts.
+  'power.status': 'read',
+  'power.settings.set': 'admin',
   // Moving a thread between hosts (contract-session-move.ts): the desktop starts it; peers answer as admin.
   'session.move': 'local',
   'session.import.begin': 'admin',

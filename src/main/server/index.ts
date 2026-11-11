@@ -223,6 +223,7 @@ import { LocalPublish, MacPublish, macPublishOffers } from './remote/macPublish'
 import { PeerDeploy } from './remote/peerDeploy'
 import { PeerPublish } from './remote/peerPublish'
 import { ReleaseAnnouncer } from './releaseAnnounce'
+import { KeepAwake, KEEP_AWAKE_ENV, type AwakeBlocker, type PowerSourceLike } from './keepAwake'
 import { DEFAULT_RULES, withProbedDefaults } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS } from '@shared/defaults'
 import { DEFAULT_PLAN_SETTINGS, type PlanScope } from '@shared/plans'
@@ -441,6 +442,8 @@ export async function startServer(
     computerResolveApp?: (query: string) => AppRef | null
     /** The person's idle time without computer use's own session input (src/main/personIdle.ts); absent (headless) leaves the session tier refused. */
     personIdle?: PersonIdleSource
+    /** The display-sleep assertion and the power source (keepAwake.ts), from main on a Mac with a desktop; absent, this host only tells its peers. */
+    keepAwake?: { blocker: AwakeBlocker; power: PowerSourceLike }
   } = {}
 ): Promise<RunningServer> {
   bootMark('server-start')
@@ -666,6 +669,7 @@ export async function startServer(
         relayServer.linkDown(id)
         macBridge.linkDown(id)
         macPorts.linkDown(id)
+        keepAwake.peerDown(id)
         accounts.nudge()
       },
       onPush: (from, push) => {
@@ -685,6 +689,7 @@ export async function startServer(
         if (macPublish.onPeerPush(from, push)) return
         if (memorySync.onPeerPush(from, push)) return
         if (releaseAnnouncer.onPeerPush(from, push)) return
+        if (keepAwake.onPeerPush(from, push)) return
         if (peerDeploy.onPeerPush(from, push)) return
         if (!macBridge.onPeerPush(from, push)) accountSync.onPeerPush(from, push)
       }
@@ -1450,6 +1455,20 @@ export async function startServer(
     selfUpdate: options.selfUpdate,
     log: (line) => console.log(line)
   })
+  // The Mac's display stays awake while a thread here or on a linked host is live (keepAwake.ts); a host with peers tells them its own word.
+  const keepAwake = new KeepAwake({
+    environmentId,
+    liveCount: () => registry.runningCount(),
+    getSetting: (key) => store.getSetting(key),
+    setSetting: (key, value) => store.setSetting(key, value),
+    blocker: options.keepAwake?.blocker,
+    power: options.keepAwake?.power,
+    env: (mode) => void (process.env[KEEP_AWAKE_ENV] = mode),
+    notify: (frame) => peerCalls.notify(frame),
+    log: (line) => console.log(line)
+  })
+  peerCalls.onRegister(() => keepAwake.peerUp())
+  keepAwake.start()
   const onMac = isMacHost() && !isHeadless()
   const batchRuns = new Batches({
     environmentId,
@@ -3357,6 +3376,12 @@ export async function startServer(
           case 'computer.stop':
             sendFrame({ id: req.id, ok: true, result: await computerRpc.stop(req.params.sessionId) })
             break
+          case 'power.status':
+            sendFrame({ id: req.id, ok: true, result: keepAwake.status() })
+            break
+          case 'power.settings.set':
+            sendFrame({ id: req.id, ok: true, result: keepAwake.setMode(req.params.keepAwake) })
+            break
           case 'computer.settings.get':
             sendFrame({ id: req.id, ok: true, result: computerSettings.get() })
             break
@@ -3621,6 +3646,7 @@ export async function startServer(
     close: async () => {
       await stopMirrors(registry)
       masterRelease.stop()
+      keepAwake.stop()
       notifier.stop()
       activityFeed.stop()
       apns?.close()

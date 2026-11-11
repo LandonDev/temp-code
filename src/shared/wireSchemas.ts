@@ -1139,7 +1139,7 @@ export const ComputerPreviewPushSchema = push('computer-preview', {
  * Every push a remote connection can receive. Out by rule: the singular
  * `event`, `session`, `live-edit` and `build` frames (local sockets), the
  * peer-link pushes (`account`, `accounts-removed`, `memory.nudge`,
- * `release-available`, `peer.call`), the Mac's own renderer's
+ * `release-available`, `live-work`, `peer.call`), the Mac's own renderer's
  * (`macBridge.request`, `macBridge.resolved`), `deploy-master`,
  * `file-event` and `sync`; a client that meets one keeps it as unknown.
  */

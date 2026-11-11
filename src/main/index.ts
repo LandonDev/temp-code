@@ -1,6 +1,6 @@
 import { createComputerBanner } from './computerBanner'
 import { computerBannerHooks } from './server/computer/hold'
-import { app, shell, dialog, net, BrowserWindow, ipcMain, powerMonitor } from 'electron'
+import { app, shell, dialog, net, BrowserWindow, ipcMain, powerMonitor, powerSaveBlocker } from 'electron'
 import { homedir } from 'os'
 import { join } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
@@ -207,7 +207,24 @@ app.whenReady().then(async () => {
     // A release this app published, or the box's word that one landed, is fetched at once (update.ts).
     selfUpdate: headless ? undefined : (version) => selfUpdate(version),
     presence,
-    personIdle: personIdle ?? undefined
+    personIdle: personIdle ?? undefined,
+    // The display stays awake while threads work (server/keepAwake.ts): a Mac with a desktop only.
+    keepAwake:
+      process.platform === 'darwin' && !headless
+        ? {
+            blocker: {
+              start: () => powerSaveBlocker.start('prevent-display-sleep'),
+              stop: (id) => powerSaveBlocker.stop(id)
+            },
+            power: {
+              onBattery: () => powerMonitor.isOnBatteryPower(),
+              onChange: (listener) => {
+                powerMonitor.on('on-ac', listener)
+                powerMonitor.on('on-battery', listener)
+              }
+            }
+          }
+        : undefined
   })
   if (!headless) {
     registerUpdates()
