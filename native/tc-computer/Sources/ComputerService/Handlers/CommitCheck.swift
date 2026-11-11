@@ -100,16 +100,18 @@ struct CommitCheck: Sendable {
 }
 
 extension CommitElement {
-    /// What the rule reads of the element a step names: its role word, a row above it, and whether it is
-    /// its panel's default button.
+    /// What the rule reads of the element a step names: its role word, a file row above it, and whether it
+    /// is its panel's default button. A file row is a list's or outline's AXRow or AXCell, or an element
+    /// that names its file by AXURL or AXFilename: Finder's icon view has no rows, and its name field sits
+    /// in the item (the field suite's rename on macOS 27.2 answered `changed` for that reason).
     static func of(_ e: ResolvedElement) -> CommitElement {
-        var inRow = false
+        var inRow = namesFile(e.element)
         var node = parent(e.element)
         var sheetOrWindow: AXUIElement?
         for _ in 0 ..< 12 {
             guard let n = node else { break }
             let role = string(n, "AXRole") ?? ""
-            if role == "AXRow" || role == "AXCell" { inRow = true }
+            if role == "AXRow" || role == "AXCell" || (role != "AXWindow" && role != "AXSheet" && namesFile(n)) { inRow = true }
             if role == "AXSheet" || role == "AXWindow" {
                 sheetOrWindow = n
                 break
@@ -124,6 +126,12 @@ extension CommitElement {
             }
         }
         return CommitElement(role: e.role, inRow: inRow, isPanelDefault: isDefault)
+    }
+
+    private static func namesFile(_ e: AXUIElement) -> Bool {
+        var v: CFTypeRef?
+        if AXUIElementCopyAttributeValue(e, "AXURL" as CFString, &v) == .success, v != nil { return true }
+        return AXUIElementCopyAttributeValue(e, "AXFilename" as CFString, &v) == .success && (v as? String).map { !$0.isEmpty } == true
     }
 
     private static func parent(_ e: AXUIElement) -> AXUIElement? {

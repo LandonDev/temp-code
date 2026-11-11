@@ -68,7 +68,8 @@ public enum DocumentKind: Equatable, Sendable {
 public struct CommitElement: Equatable, Sendable {
     /// the observation's role word: `input`, `button`, `menu item`, …
     public var role: String
-    /// it sits inside a `row` or `cell` of a list or outline
+    /// it sits inside a `row` or `cell` of a list or outline, or in an item that names its file (AXURL,
+    /// AXFilename: Finder's icon view)
     public var inRow: Bool
     /// a file panel's default button (AXDefaultButton of a save or open panel)
     public var isPanelDefault: Bool
@@ -143,6 +144,9 @@ public enum CommitRule {
         switch c.action.action {
         case .key:
             return menuKind(c) != nil || (isCommitKey(c.action) && renameField(c))
+        case .perform where c.action.name == "confirm":
+            // AXConfirm on a rename's field in a background app does nothing (Finder, the field suite): it runs at front
+            return renameField(c)
         case .perform, .leftClick:
             return c.element?.role == "menu item" && menuKind(c) != nil
         default:

@@ -72,6 +72,9 @@ private func key(_ text: String) -> ComputerAction { ComputerAction(action: .key
         #expect(CommitRule.expectsBefore(CommitContext(action: ComputerAction(action: .perform, element: 4, name: "pick"), element: CommitElement(role: "menu item"), menuPath: ["File", "New Folder"])))
         // set_value acts at ax; a panel's button and save_as have their own routes
         #expect(!CommitRule.expectsBefore(CommitContext(action: ComputerAction(action: .setValue, element: 3, value: "b"), element: renameField, document: run)))
+        // Finder's rename: a background AXConfirm on the name field did nothing, so the confirm goes to front
+        #expect(CommitRule.expectsBefore(CommitContext(action: ComputerAction(action: .perform, element: 6, name: "confirm"), element: renameField, document: run)))
+        #expect(!CommitRule.expectsBefore(CommitContext(action: ComputerAction(action: .perform, element: 6, name: "confirm"), element: renameField, document: doc)))
         #expect(!CommitRule.expectsBefore(CommitContext(action: ComputerAction(action: .saveAs, path: "~/a"))))
         #expect(!CommitRule.expectsBefore(CommitContext(action: key("Return"), element: renameField, document: doc)))
         #expect(!CommitRule.expectsBefore(CommitContext(action: key("a"), document: doc)))
