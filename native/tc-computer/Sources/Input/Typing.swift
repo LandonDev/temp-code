@@ -73,10 +73,11 @@ extension InputEngine {
         }
         var effect: StepEffect = .unknown
         let (_, change, last) = try core.step(tier: tier, pid: pid, windowID: target.windowID, window: target.window, keys: true, call: target.sessionCall, cancelled: target.cancelled) { ctx in
-            if tier == .session, let e = target.element { try ProcessTier.confirmFocus(e, pid: pid, clock: clock) }
-            if tier == .session, target.element == nil { try recheck() }
+            let activated = tier == .session || tier == .front
+            if activated, let e = target.element { try ProcessTier.confirmFocus(e, pid: pid, clock: clock) }
+            if activated, target.element == nil { try recheck() }
             // activation may move focus: the evidence is read where the keys go, the app's focused element now
-            let into = tier == .session && target.element == nil ? AX.element(AX.app(pid), "AXFocusedUIElement") : dest
+            let into = activated && target.element == nil ? AX.element(AX.app(pid), "AXFocusedUIElement") : dest
             let before = evidence(into)
             try core.typeKeys(&ctx, text)
             effect = self.effect(of: into, since: before, within: InputTiming.keysEffectMs, cancelled: target.cancelled)
