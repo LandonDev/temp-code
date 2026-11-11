@@ -23,6 +23,8 @@ import type { SessionMeta, AgentEvent } from '../../shared/events'
  */
 const emits = new Map<string, (e: AgentEvent) => void>()
 const sends = new Map<string, string[]>()
+/** Host lines the registry put into a live turn (DriverHandle.whisper). */
+const whispers = new Map<string, string[]>()
 const interrupts: string[] = []
 /** The session each spawn was handed: the harness boots eagerly at create, before the pin. */
 const spawnedWith = new Map<string, SessionMeta>()
@@ -51,6 +53,10 @@ vi.mock('./drivers', () => ({
         knobs.dead.delete(id)
         return {
           confirmsSteers: knobs.confirms,
+          whisper: async (text: string) => {
+            whispers.set(id, [...(whispers.get(id) ?? []), text])
+            return true
+          },
           send: async (text: string, _attachments?: unknown, opts?: SendOpts) => {
             if (knobs.sendError) throw new Error(knobs.sendError)
             sends.set(id, [...(sends.get(id) ?? []), text])
@@ -82,6 +88,7 @@ beforeEach(async () => {
   setBatches(batches)
   emits.clear()
   sends.clear()
+  whispers.clear()
   spawns.clear()
   sendOpts.clear()
   marks.clear()
@@ -466,11 +473,13 @@ describe('the batch follows the starter', () => {
     registry.setMaster(t.id, true)
     await settle()
     expect(spawns.get(t.id)).toBe(1)
-    expect(sends.get(t.id)?.at(-1)).toContain('<master-pinned>')
-    expect(sends.get(t.id)?.at(-1)).toContain('## You are a master thread')
+    // Into the live turn as a host line, never a message of its own.
+    expect(sends.get(t.id)).toEqual(['go'])
+    expect(whispers.get(t.id)?.at(-1)).toContain('<master-pinned>')
+    expect(whispers.get(t.id)?.at(-1)).toContain('## You are a master thread')
     registry.setMaster(t.id, false)
     await settle()
-    expect(sends.get(t.id)?.at(-1)).toContain('<master-unpinned>')
+    expect(whispers.get(t.id)?.at(-1)).toContain('<master-unpinned>')
     // Idle with its harness up: the pin drops the handle, and the next send spawns one that knows the pin.
     idle(t.id)
     await settle()

@@ -64,6 +64,10 @@ ${text.trim()}
 export const NOTES_REMINDER_FRACTION = 0.7
 /** Below this the window counts as fresh again (a manual compaction, a resume). */
 export const NOTES_REMINDER_RESET_FRACTION = 0.5
+/** A reminder re-arms only this long after the last one and after the
+ *  thread's last update_notes: a window that refills to the compaction
+ *  point within minutes is the same cause, and once kept a thread looping. */
+export const NOTES_REARM_MS = 15 * 60_000
 
 const COMMIT_RE = /\bgit\s+(?:-C\s+\S+\s+)?(?:commit|merge|rebase\s+--continue|cherry-pick)\b|\bgh\s+pr\s+merge\b|\bgit\s+push\b/
 
