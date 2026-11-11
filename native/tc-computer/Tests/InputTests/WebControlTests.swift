@@ -87,6 +87,11 @@ import Testing
         #expect(IntoViewPlan.choose(cells, in: band) == 2)
     }
 
+    @Test func aScrollThatMovedItsElementIsAChange() {
+        #expect(IntoViewPlan.effect(moved: "row \"City 027\"") == .changed)
+        #expect(IntoViewPlan.effect(moved: nil) == nil)
+    }
+
     @Test func theScanSkipsSubtreesWhollyBeforeOrPastTheBand() {
         let band = IntoViewPlan.band(visible: visible, direction: .down, clicks: 5)!
         #expect(!IntoViewPlan.mayHold(Rect(x: 0, y: 100, w: 800, h: 500), in: band))

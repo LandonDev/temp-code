@@ -376,7 +376,7 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         case (.scrollIntoView, _):
             guard let (root, visible) = live.intoViewRoot(),
                   let on = AXTier.scrollIntoView(root: root, visible: visible, direction: action.scroll_direction ?? .down, clicks: action.scroll_amount ?? 1, clock: clock) else { throw RouteFellThrough() }
-            return InputOutcome(tier: .ax, via: .scrollIntoView, clipboard: nil, cursor: target.cursor, lastInputAt: clock.ticks(), on: on)
+            return InputOutcome(tier: .ax, via: .scrollIntoView, clipboard: nil, cursor: target.cursor, lastInputAt: clock.ticks(), on: on, effect: IntoViewPlan.effect(moved: on))
         case (.element, .selectText):
             try AXTier.selectText(element(target, action), text: action.text, range: action.range, prefix: action.prefix, suffix: action.suffix, place: action.place)
             return axDone(nil)

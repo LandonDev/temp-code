@@ -136,6 +136,7 @@ import { macReady } from './lib/benchRun'
 import { webProofFixtures, WEB_NONCE, WEB_TITLES } from './lib/webProofFixtures'
 import { FIELD_FORM, fieldFormCode } from './lib/fieldTasks'
 import { intPoint } from './lib/computerPoint'
+import { settleFront } from './lib/settleFront'
 import { STEAL_PROBE_APP_NAME, buildStealProbeApp, stealDocName, cleanupProbeApp, guiLaunchEnvironment, launchProbe } from './lib/tcProbeApp'
 import { chainSkip, isSetupStep, isVoid, judgeFront, judgePointer, keepGoing, retriesVoid } from './lib/proofSteps'
 import { COMPUTER_PROOF_ENV, sweepComputerProofProcesses } from './lib/computerProofProcesses'
@@ -1615,6 +1616,10 @@ async function webLeg(): Promise<void> {
         // open -g can still activate Chrome. Restore by pid and the saved window, never by a shared bundle id.
         if (pid && frontWindow().pid === pid) data.restored = restoreFront(before)
       }
+      // Chrome brings its first window forward by itself some seconds after an `open -g`, outside any service
+      // call, so no guard sees it (the gate's run on 2026-11-11): the launch watches the front a while and puts
+      // the person's back each time the browser takes it
+      if (pid) data.lateSteals = await settleFront(pid, { frontPid: () => frontWindow().pid, restore: () => restoreFront(before), sleep })
       data.pid = pid
       data.before = before
       const after = (data.after = frontWindow())

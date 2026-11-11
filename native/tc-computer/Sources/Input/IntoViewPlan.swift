@@ -54,6 +54,13 @@ public enum IntoViewPlan {
         }
     }
 
+    /// The step's effect: the route returns its element's line only once that element's frame was read back
+    /// moved, which it does before the wait's clock starts (the page has often finished scrolling by then), so a
+    /// moved element is a change whatever the wait saw (2026-11-11: the gate's web leg read `none` once).
+    public static func effect(moved line: String?) -> StepEffect? {
+        line == nil ? nil : .changed
+    }
+
     /// Whether a subtree under this frame can hold a target: an unknown frame may; a known one must
     /// reach into the band along the axis. The live scan skips the rest, so the 400 nodes go to the edge.
     public static func mayHold(_ frame: ComputerProtocol.Rect?, in band: IntoViewBand) -> Bool {
