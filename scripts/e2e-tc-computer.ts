@@ -401,8 +401,26 @@ async function launchProbeBack(flags: string[]): Promise<{ pid: number; raised: 
   const before = frontWindow()
   const { pid } = await launchProbe(PROBE_BUILD, flags, () => ({ pid: frontWindow().pid, bundleId: null }))
   const raised = frontWindow().pid === pid
-  if (raised) probe('restore-front', [String(before.pid), String(before.window)])
+  if (raised) restoreFront(before)
   return { pid, raised }
+}
+
+/**
+ * Puts the person's front app and window back after a scratch app took it: by pid and the saved window, else,
+ * once the person closed or changed that window meanwhile, their app alone. What it did, for the step's data.
+ */
+function restoreFront(before: FrontWindow): 'window' | 'app' | 'gone' {
+  try {
+    probe('restore-front', [String(before.pid), String(before.window)])
+    return 'window'
+  } catch {
+    try {
+      probe('restore-front', [String(before.pid), '0'])
+      return 'app'
+    } catch {
+      return 'gone'
+    }
+  }
 }
 
 /** A step that may bring an app forward over the person's (a `front` hold, the stealer) waits for this much quiet in a hand run. */
@@ -1482,7 +1500,10 @@ async function fewerLeg(a: Service, mayLaunch: () => void): Promise<void> {
   }
 }
 
-/** §25, on an unmodified Chrome for Testing and a private scratch profile. */
+/** Chrome's switches that keep a covered window drawing and its page's tree built (§25.10 C1, M2). */
+const WEB_DRAW_COVERED = ['--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--force-renderer-accessibility']
+
+/** §25, on Chrome for Testing and a private scratch profile, drawing while the person's windows cover it. */
 async function webLeg(): Promise<void> {
   const browser = chromiumForTests()
   if (!browser) {
@@ -1569,12 +1590,17 @@ async function webLeg(): Promise<void> {
       for (const [name, html] of Object.entries(webProofFixtures())) writeFileSync(join(scratch, name), html)
       const before = frontWindow()
       const frame = SCRATCH_CHROME_FRAME
+      // the person's windows cover the browser: Chrome draws no page in a covered window (§25.3), and Chrome
+      // 156 builds no page tree for an outside reader (§25.10 M2 measured again); the leg proves the
+      // service's web routes on a page, so its browser draws while covered and builds its tree
       const args = ['-n', '-g', '-a', browser, '--args', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
+        ...WEB_DRAW_COVERED,
         `--window-position=${frame.x},${frame.y}`, `--window-size=${frame.w},${frame.h}`,
         ...['front.html', 'report.html', 'form.html'].map((name) => pathToFileURL(join(scratch, name)).href)]
-      // Recheck after disk work, immediately before open; no forced AX or throttling flags.
+      // Recheck after disk work, immediately before open.
       if ((!PRESENT && personIdleSeconds() < 5) || !(await screenAwake())) throw skip('skipped: no quiet, unlocked launch gap')
       webCleanups.add(stopBrowser)
+      const launchedAt = Date.now()
       try {
         execFileSync('open', args, { stdio: 'pipe', timeout: 10_000, env: guiLaunchEnvironment() })
         pid = await until(() => scan.processes().find((p) => hasChromeProfile(p.command, profile) && p.command.startsWith(join(browser, 'Contents/MacOS/Google Chrome for Testing')))?.pid ?? null, 15_000, 'the scratch Chrome pid')
@@ -1583,13 +1609,14 @@ async function webLeg(): Promise<void> {
       } finally {
         pid ||= scan.processes().find((p) => hasChromeProfile(p.command, profile) && p.command.startsWith(join(browser, 'Contents/MacOS/Google Chrome for Testing')))?.pid ?? 0
         // open -g can still activate Chrome. Restore by pid and the saved window, never by a shared bundle id.
-        if (pid && frontWindow().pid === pid) probe('restore-front', [String(before.pid), String(before.window)])
+        if (pid && frontWindow().pid === pid) data.restored = restoreFront(before)
       }
       data.pid = pid
       data.before = before
-      data.after = frontWindow()
-      check(frontWindow().pid === before.pid && frontWindow().window === before.window, 'web: launch left the front app and window as before', data)
-      savedFront = before
+      const after = (data.after = frontWindow())
+      const front = judgeFront({ before, after, scratch: [pid, ...scratchPids()], personInput: personIdleSeconds() * 1_000 < Date.now() - launchedAt })
+      check(front.verdict !== 'failed', `web: the launch left the person's front: ${front.verdict === 'failed' ? front.why : ''}`, data)
+      savedFront = after
       svc = new Service('web', { TEMP_CODE_COMPUTER_PIN: `Google Chrome for Testing=${pid},${TEST_CHROMIUM_BUNDLE}=${pid}` })
       await initialize(svc, join(scratch, 'service'))
       await svc.call('session.open', { session })

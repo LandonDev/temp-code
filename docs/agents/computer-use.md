@@ -50,7 +50,10 @@ why and the measured headline.
   `element`, and keys never go into the browser's own fields
   (`focus_moved`, with the host's `expectFocus` from the model's last read);
   a page scrolls by `scroll-into-view`. The gate's `webLeg` runs it on Chrome
-  for Testing; field hand runs use plain Chrome with `--cover`.
+  for Testing; field hand runs use plain Chrome with `--cover`. Chrome 156 cuts a
+  page table's frame and its off-screen texts to the visible page, which the
+  read-ahead and `scroll-into-view` look past, and names a select's items by
+  AXValue (§25.5, §25.6).
 - **Steps that need the app active** (docs/computer-protocol.md §26, plan
   .temp-code/plan-CAMMKRiJRhhu.md). The `front` tier sits between `process`
   and `session` (`TIER_ORDER`): one bounded hold brings the app forward,
@@ -215,8 +218,10 @@ why and the measured headline.
   and bridge rows start through scripts/proof-bun.ts, which picks a Bun with
   `node:sqlite` whatever `bun` an ancestor node_modules/.bin offers;
   `TC_PROOF_LEGS=<leg>` runs some of e2e-tc-computer's legs by hand. Where
-  they stand on 2026-11-11: base steps and fallbacks 1 to 3 passed on the
-  Mac, every later step not run (locked). Each proof's
+  they stand on 2026-11-11, with the person at the Mac: the base steps and
+  the window, fallbacks, fewer and web legs passed whole, and the bridge row
+  60/60 (§18). The web leg's browser draws and builds its page while covered
+  (§25.11); a person's own covered Chrome may read as no page (§25.10 M2). Each proof's
   startup sweep (scripts/lib/computerProofProcesses.ts) ends leftover TC Probe
   copies and proof-owned services after taking its turn. Services carry
   `TEMP_CODE_COMPUTER_PROOF=1`; the sweep also recognises older gate services
