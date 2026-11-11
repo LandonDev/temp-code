@@ -10,15 +10,16 @@ import { dirname, join } from 'node:path'
 import { z } from 'zod'
 import type { CoverageNote } from './windowCover'
 import {
-  COMPUTER_ACTION_NAMES,
   NO_INPUT_ACTIONS,
   type ComputerActionName,
   type InputVia,
   type StepEffect,
+  type WaitReport,
   type Tier
 } from '../../src/shared/computer/protocol'
-import { EFFECT_WORDS, FALLBACK_VIAS, NOT_EXECUTED_LINE, STEP_SEPARATOR } from '../../src/shared/computer/tools'
+import { FALLBACK_VIAS, NOT_EXECUTED_LINE, parseStoppedLine, parseStepLine as readStepLine } from '../../src/shared/computer/tools'
 import type { Verdict } from './soakJudge'
+import { renderFieldWaste } from './fieldWaste'
 
 // ── what a run records ──────────────────────────────────────────────────
 
@@ -36,11 +37,18 @@ export interface BenchStep {
   effect?: StepEffect
   ok: boolean
   error?: string
+  wait?: Pick<WaitReport, 'waitedMs' | 'reason' | 'firstChangeMs' | 'gapCounts'>
 }
 
 export interface BenchCall {
   /** computer_act, computer_left_click, … */
   tool: string
+  /** Original model arguments; absent in reports saved before §27. */
+  args?: unknown
+  /** Position among all top-level tool calls, including allowed tools. */
+  order?: number
+  /** First line of an error answer, at most 200 characters. */
+  answerHead?: string
   /** the rig's wrapper: entering ComputerSessions.run to its outcome, the thread's queue wait inside; null for a call refused before it reached the host */
   hostMs: number | null
   /** tool-call row to tool-result row: the harness's path included */
@@ -91,6 +99,8 @@ export interface BenchRun {
   calls: BenchCall[]
   /** tool calls that are no computer tool and none of ALLOWED_TOOLS */
   otherTools: string[]
+  /** ToolSearch calls with their original arguments, in tool-call order. */
+  toolSearches?: { tool: string; args: unknown; order?: number }[]
   cards: { kind: string | null; title: string }[]
   tokens?: { input: number; output: number }
   /** the front app before and after; `benchInFront` when one of the bench's scratch apps was left in front */
@@ -106,6 +116,8 @@ export interface BenchReport {
   mode: BenchMode
   /** the field set's runs (scripts/lib/fieldTasks.ts); absent: the gate's tasks */
   set?: 'field'
+  /** The dated target table available when this field report ran. */
+  fieldTargetsVersion?: string
   /** where the model threads ran: this Mac (absent), or a box instance whose calls came over the Mac bridge */
   hostKind?: 'mac' | 'box'
   /** names the round (`--round`), so saved field reports compare across fix rounds */
@@ -177,15 +189,8 @@ const runPassed = (run: BenchRun): boolean => run.outcome === 'passed' && runFau
 
 const TIERS: readonly string[] = ['ax', 'process', 'session']
 const VIAS: readonly string[] = ['ax-insert', 'ax-value', 'keys', 'paste']
-const EFFECTS = new Map(Object.entries(EFFECT_WORDS).map(([effect, words]) => [words, effect as StepEffect]))
-const FAILED = `${STEP_SEPARATOR}failed: `
 /** The host's line for a step the session tier's gate refused (hostErrors.ts `session_refused`). */
 export const SESSION_REFUSED_PREFIX = 'needs the session tier'
-
-const actionOf = (head: string): ComputerActionName | null => {
-  const word = head.split(' ', 1)[0]
-  return (COMPUTER_ACTION_NAMES as readonly string[]).includes(word) ? (word as ComputerActionName) : null
-}
 
 /**
  * One step line back into its facts: the inverse of formatStepLine in
@@ -194,21 +199,14 @@ const actionOf = (head: string): ComputerActionName | null => {
  * executed" line). Null for a line in no shape it knows.
  */
 export function parseStepLine(line: string): BenchStep | null {
-  if (line === NOT_EXECUTED_LINE) return { action: null, tier: null, ok: false, error: 'not run' }
-  const failedAt = line.indexOf(FAILED)
-  if (failedAt > 0) {
-    const action = actionOf(line.slice(0, failedAt))
-    return action ? { action, tier: null, ok: false, error: line.slice(failedAt + FAILED.length) } : null
-  }
-  const action = actionOf(line)
-  if (!action) return null
+  if (line === NOT_EXECUTED_LINE || parseStoppedLine(line) !== null)
+    return { action: null, tier: null, ok: false, error: 'not run' }
+  const parsed = readStepLine(line)
+  if (!parsed) return null
+  const { action, effect, tier: how, failed } = parsed
+  if (failed !== undefined) return { action, tier: null, ok: false, error: failed }
   if (NO_INPUT_ACTIONS.includes(action)) return { action, tier: null, ok: true }
-  // The target may hold the separator inside its quotes: read from the end.
-  const parts = line.split(STEP_SEPARATOR)
-  if (parts.length < 3) return null
-  const effect = EFFECTS.get(parts[parts.length - 1])
-  const how = parts[parts.length - 2]
-  if (!effect) return null
+  if (!effect || !how) return null
   if (TIERS.includes(how)) return { action, tier: how as Tier, effect, ok: true }
   if (VIAS.includes(how)) return { action, tier: how.startsWith('ax-') ? 'ax' : null, via: how as InputVia, effect, ok: true }
   // a background route names what it acted on after its word (§24.8): `menu File › Close`
@@ -221,8 +219,13 @@ export function parseStepLine(line: string): BenchStep | null {
 const UNPARSED = 'unparsed: '
 
 /** A call's step lines as the report keeps them; a line in no known shape is kept as an unparsed failure. */
-export const stepsOf = (lines: readonly string[]): BenchStep[] =>
-  lines.map((line) => parseStepLine(line) ?? { action: null, tier: null, ok: false, error: UNPARSED + line })
+export const stepsOf = (lines: readonly string[], waits: readonly (BenchStep['wait'] | null | undefined)[] = []): BenchStep[] =>
+  lines.map((line, i) => ({
+    ...(parseStepLine(line) ?? { action: null, tier: null, ok: false, error: UNPARSED + line }),
+    ...(waits[i] ? { wait: waits[i]! } : {})
+  }))
+
+export const answerHeadOf = (text: string): string => text.split(/\r?\n/, 1)[0].slice(0, 200)
 
 export const isSessionRefusal = (s: BenchStep): boolean => !s.ok && (s.error ?? '').startsWith(SESSION_REFUSED_PREFIX)
 
@@ -541,6 +544,7 @@ export function renderBenchTable(report: BenchReport, judged: BenchJudgement): s
   out.push('', '## Verdicts', '', '| what | got | limit | |', '|---|---|---|---|')
   for (const v of judged.verdicts) out.push(`| ${v.what} | ${v.got} | ${v.limit} | ${v.ok ? 'pass' : v.reportOnly ? 'over, reported' : 'FAIL'} |`)
   if (judged.skipped.length) out.push('', '## Skipped', '', ...judged.skipped.map((s) => `- ${s}`))
+  out.push('', renderFieldWaste(report))
   out.push('', judged.ok ? 'computer bench passed' : `computer bench failed: ${judged.verdicts.filter((v) => !v.ok && !v.reportOnly).map((v) => v.what).join('; ')}`)
   return out.join('\n') + '\n'
 }

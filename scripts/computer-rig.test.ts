@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { computerHarness, type ComputerHarness } from '../src/main/server/computer/runHarness'
 import { stepsOf } from './lib/computerBench'
-import { DEFAULT_LANE, LanePins, RIG_QUERIES, recordCalls, scratchArgs, taskReader } from './lib/computerRig'
+import { DEFAULT_LANE, LanePins, RIG_QUERIES, recordCalls, recordStepWaits, scratchArgs, taskReader } from './lib/computerRig'
+import type { ComputerSessions } from '../src/main/server/computer/sessions'
 import { StateGetParamsSchema } from '../src/shared/computer/protocol'
 
 const harnesses: ComputerHarness[] = []
@@ -61,6 +62,47 @@ describe('plain scratch Chrome', () => {
 })
 
 describe('recordCalls', () => {
+  it('keeps host-provided waits, including a wait with no counted change', async () => {
+    const wait = { waitedMs: 750, reason: 'max' as const, gapCounts: Array(11).fill(0) }
+    const sessions = { run: async () => ({
+      steps: ['left_click [2] · ax · no change seen'], waits: [wait], shots: [], isError: false, body: null
+    }) } as unknown as ComputerSessions
+    const rec = recordCalls(sessions, new LanePins())
+    await sessions.run({ threadId: 't' }, 'computer_act', { action: 'left_click', element: 2 })
+    expect(stepsOf(rec.calls('t')[0].steps, rec.calls('t')[0].waits)[0].wait).toEqual(wait)
+    expect(rec.calls('t')[0].answerHead).toBeUndefined()
+  })
+
+  it('records the first line of a thrown error', async () => {
+    const sessions = { run: async () => { throw new Error('invalid arguments: bad target\nmore detail') } } as unknown as ComputerSessions
+    const rec = recordCalls(sessions, new LanePins())
+    await expect(sessions.run({ threadId: 't' }, 'computer_act', {})).rejects.toThrow('bad target')
+    expect(rec.calls('t')[0]).toMatchObject({ isError: true, answerHead: 'invalid arguments: bad target' })
+  })
+
+  it('keeps wait reports across segments in each call’s async scope and bounds error heads', async () => {
+    const wait = { waitedMs: 75, reason: 'quiet' as const, firstChangeMs: 25, gapCounts: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], settled: true, busy: false }
+    const sessions = { run: async (ctx: { threadId: string }) => {
+      recordStepWaits([{ index: 0, action: 'left_click', status: 'failed', error: { kind: 'needs_tier', message: 'needs process' } },
+        { index: 1, action: 'key', status: 'not-run' }])
+      recordStepWaits([{ index: 0, action: 'left_click', status: 'ok', tier: 'ax', effect: 'changed', waited: wait }])
+      await Promise.resolve()
+      recordStepWaits([{ index: 0, action: 'key', status: 'ok', tier: 'process', effect: 'none' }])
+      return { steps: ['left_click "Team" [52] menu item · ax · changed', 'key Return · process · no change seen'], shots: [], isError: true, body: `no window of ${ctx.threadId} matches ` + 'x'.repeat(250) + '\nmore' }
+    } } as unknown as ComputerSessions
+    const rec = recordCalls(sessions, new LanePins())
+    await Promise.all(['one', 'two'].map((threadId) => sessions.run({ threadId, callId: `call-${threadId}` }, 'computer_batch', { app: threadId })))
+    for (const threadId of ['one', 'two']) {
+      const saved = JSON.parse(JSON.stringify(rec.calls(threadId)))[0]
+      expect(saved.args).toEqual({ app: threadId })
+      expect(saved.callId).toBe(`call-${threadId}`)
+      expect(saved.waits).toEqual([{ waitedMs: 75, reason: 'quiet', firstChangeMs: 25, gapCounts: wait.gapCounts }, null])
+      expect(saved.answerHead).toHaveLength(200)
+      expect(saved.answerHead).toMatch(new RegExp(`^no window of ${threadId}`))
+      expect(stepsOf(saved.steps, saved.waits)[0].wait?.firstChangeMs).toBe(25)
+    }
+  })
+
   it('records each call’s host time, step lines and shots under its thread, in its lane', async () => {
     const pins = new LanePins()
     const h = computerHarness({ resolveApp: (q) => pins.resolve(q) })

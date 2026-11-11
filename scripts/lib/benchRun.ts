@@ -6,9 +6,10 @@
  */
 import { mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 import type { AgentEvent, EventRow } from '../../src/shared/events'
 import type { CoverageNote } from './windowCover'
-import { bareToolName, stepsOf, toolKind, type BenchCall, type BenchProvider } from './computerBench'
+import { answerHeadOf, bareToolName, stepsOf, toolKind, type BenchCall, type BenchProvider, type BenchRun, type BenchStep } from './computerBench'
 
 // ── flags ───────────────────────────────────────────────────────────────
 
@@ -186,10 +187,13 @@ export function scanRun(rows: readonly EventRow[], afterSeq: number): RunScan {
 /** One computer call as the rig's wrapper saw it. */
 export interface HostCall {
   tool: string
+  callId?: string
   args: unknown
   startedAt: number
   hostMs: number
   steps: string[]
+  waits?: (BenchStep['wait'] | null)[]
+  answerHead?: string
   shots: number
   isError: boolean
   coverage?: CoverageNote | null
@@ -198,6 +202,7 @@ export interface HostCall {
 export interface RowFacts {
   calls: BenchCall[]
   otherTools: string[]
+  toolSearches: NonNullable<BenchRun['toolSearches']>
   /** wall time less the time any tool call was open */
   thinkMs: number
   wallMs: number
@@ -250,33 +255,50 @@ export function readRun(
   // A call's row may come twice (a partial preview, then the whole input): the last whole one is the call.
   const callRows = new Map<string, EventRow & { event: { type: 'tool-call' } }>()
   const resultTs = new Map<string, number>()
+  const results = new Map<string, Extract<AgentEvent, { type: 'tool-result' }>>()
   for (const r of inWindow) {
     if (r.event.type === 'tool-call' && !r.event.partial && !r.event.parentCallId) callRows.set(r.event.callId, r as EventRow & { event: { type: 'tool-call' } })
-    else if (r.event.type === 'tool-result' && !r.event.parentCallId && !resultTs.has(r.event.callId)) resultTs.set(r.event.callId, r.ts)
+    else if (r.event.type === 'tool-result' && !r.event.parentCallId && !resultTs.has(r.event.callId)) {
+      resultTs.set(r.event.callId, r.ts)
+      results.set(r.event.callId, r.event)
+    }
   }
   const ordered = [...callRows.values()].sort((a, b) => a.seq - b.seq)
   const unused = [...host]
   const calls: BenchCall[] = []
   const otherTools: string[] = []
+  const toolSearches: RowFacts['toolSearches'] = []
   const spans: [number, number][] = []
-  for (const row of ordered) {
+  for (const [order, row] of ordered.entries()) {
     const { name, callId, input } = row.event
     const done = resultTs.get(callId)
     spans.push([row.ts, done ?? to])
     if (!isComputer(name)) {
+      if (bareToolName(name) === 'ToolSearch') toolSearches.push({ tool: bareToolName(name), args: input, order })
       if (toolKind(name) !== 'allowed') otherTools.push(name)
       continue
     }
-    const at = unused.findIndex((h) => bareToolName(h.tool) === bareToolName(name))
+    const result = results.get(callId)
+    const sameTool = (h: HostCall): boolean => bareToolName(h.tool) === bareToolName(name)
+    // A refusal before dispatch must not consume the next call's host record.
+    // Match arguments first: box rows and Mac host records use different clocks.
+    let at = unused.findIndex((h) => sameTool(h) && h.callId === callId)
+    if (at < 0) at = unused.findIndex((h) => !h.callId && sameTool(h) && isDeepStrictEqual(h.args, input))
+    if (at < 0 && !result?.isError) at = unused.findIndex((h) => !h.callId && sameTool(h))
     const h = at >= 0 ? unused.splice(at, 1)[0] : null
+    const isError = (h?.isError ?? false) || (result?.isError ?? false)
+    const answerHead = h?.answerHead ?? (result?.isError ? answerHeadOf(result.output) : undefined)
     calls.push({
       tool: bareToolName(name),
+      args: input === undefined ? h?.args : input,
+      order,
       hostMs: h ? h.hostMs : null,
       rowMs: done === undefined ? null : done - row.ts,
-      steps: h ? stepsOf(h.steps) : [],
+      steps: h ? stepsOf(h.steps, h.waits) : [],
       screenshotAsked: askedShot(name, input),
       shots: h?.shots ?? 0,
-      isError: h?.isError ?? false,
+      isError,
+      ...(answerHead !== undefined ? { answerHead } : {}),
       ...(h?.coverage !== undefined ? { coverage: h.coverage } : {})
     })
   }
@@ -286,7 +308,7 @@ export function readRun(
       : []
   )
   const wallMs = Math.max(0, to - from)
-  return { calls, otherTools, thinkMs: Math.max(0, wallMs - unionMs(spans)), wallMs, cards, ...tokensOf(inWindow) }
+  return { calls, otherTools, toolSearches, thinkMs: Math.max(0, wallMs - unionMs(spans)), wallMs, cards, ...tokensOf(inWindow) }
 }
 
 /** The turns' own totals where the harness reports them, else the last running snapshot. */

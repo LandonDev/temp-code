@@ -62,6 +62,14 @@ macOS 26.1, Apple M4 Max, load 4.6
 - gpt-6.1-sol settings-toggle: System Settings is open
 - gpt-6.1-sol save-dialog: not reached, the scheduler held the runs
 
+## Waste
+
+| model | re-read | window miss | refused argument | screenshot call | tool search |
+|---|---:|---:|---:|---:|---:|
+| claude-opus-5-5 | 0 | 0 | 0 | 0 | 0 |
+| gpt-6.1-sol | 0 | 0 | 0 | 0 | 0 |
+| muse-wonder-1.0 | 0 | 0 | 0 | 0 | 0 |
+
 computer bench passed
 "
 `;
@@ -147,6 +155,14 @@ macOS 27.2, Apple M4 Max, load 8.5, no idle wait (TC_BENCH_UNGATED)
 ## Skipped
 
 - claude-opus-5-5 settings-toggle: System Settings is open
+
+## Waste
+
+| model | re-read | window miss | refused argument | screenshot call | tool search |
+|---|---:|---:|---:|---:|---:|
+| claude-opus-5-5 | 0 | 0 | 0 | 1 | 0 |
+| gpt-6.1-sol | 0 | 0 | 0 | 0 | 0 |
+| muse-wonder-1.0 | 0 | 0 | 0 | 0 | 0 |
 
 computer bench failed: claude-opus-5-5 chrome-read: end state, runs passed; claude-opus-5-5 chrome-read: runs that took the front; claude-opus-5-5 chrome-form: end state, runs passed; claude-opus-5-5 chrome-form: runs that took the front; claude-opus-5-5 chrome-delete: end state, runs passed; claude-opus-5-5 chrome-delete: runs that took the front; gpt-6.1-sol chrome-form: end state, runs passed; gpt-6.1-sol chrome-form: runs that took the front; gpt-6.1-sol chrome-delete: end state, runs passed; gpt-6.1-sol chrome-delete: runs that took the front; muse-wonder-1.0 devapp-form: end state, runs passed; gpt-6.1-sol devapp-form: end state, runs passed; muse-wonder-1.0 settings-toggle: end state, runs passed; gpt-6.1-sol settings-toggle: end state, runs passed; gpt-6.1-sol save-dialog: end state, runs passed; claude-opus-5-5 save-dialog: end state, runs passed; gpt-6.1-sol textedit-write: end state, runs passed; gpt-6.1-sol chrome-read: end state, runs passed; muse-wonder-1.0 save-dialog: end state, runs passed; muse-wonder-1.0 save-dialog: runs that took the front; muse-wonder-1.0 textedit-write: end state, runs passed; muse-wonder-1.0 chrome-read: end state, runs passed; gpt-6.1-sol textedit-write: not reached before the bench's budget ran out; gpt-6.1-sol chrome-read: not reached before the bench's budget ran out; muse-wonder-1.0 chrome-form: not reached before the bench's budget ran out; muse-wonder-1.0 chrome-delete: not reached before the bench's budget ran out; muse-wonder-1.0 devapp-form: not reached before the bench's budget ran out; muse-wonder-1.0 settings-toggle: not reached before the bench's budget ran out; muse-wonder-1.0 save-dialog: not reached before the bench's budget ran out; muse-wonder-1.0 textedit-write: not reached before the bench's budget ran out; muse-wonder-1.0 chrome-read: not reached before the bench's budget ran out
 "

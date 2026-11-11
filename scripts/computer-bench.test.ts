@@ -10,7 +10,7 @@ import {
   type ComputerActionName,
   type StepResult
 } from '../src/shared/computer/protocol'
-import { EFFECT_WORDS, NOT_EXECUTED_LINE, formatStepLine } from '../src/shared/computer/tools'
+import { EFFECT_WORDS, NOT_EXECUTED_LINE, formatStepLine, stoppedLine } from '../src/shared/computer/tools'
 import {
   BENCH_RULE,
   BENCH_TIMING,
@@ -134,6 +134,23 @@ const ok = (action: ComputerAction, extra: Record<string, unknown>): StepResult 
   ({ index: 0, action: action.action, status: 'ok', tier: null, effect: 'changed', ...extra }) as StepResult
 
 describe('parseStepLine', () => {
+  it('reads named and menu heads, an opened window after the effect, and stopped keys', () => {
+    for (const head of ['left_click "Team" [52] menu item', 'left_click menu File › Save…', 'perform pick menu File › Save…']) {
+      expect(parseStepLine(`${head} · ax · changed`)).toEqual({ action: head.split(' ')[0], tier: 'ax', effect: 'changed', ok: true })
+      expect(parseStepLine(`${head} · ax · changed · opened window "New · Note"`)).toEqual({ action: head.split(' ')[0], tier: 'ax', effect: 'changed', ok: true })
+    }
+    const action: ComputerAction = { action: 'left_click', named: 'Team' }
+    const line = formatStepLine(ok(action, { tier: 'ax', resolved: 52, element: { index: 52, role: 'menu item', name: 'Team' }, opened: { id: 10, title: 'New "Note"' } }), action)
+    expect(parseStepLine(line)).toEqual({ action: 'left_click', tier: 'ax', effect: 'changed', ok: true })
+    expect(parseStepLine(stoppedLine(2))).toEqual({ action: null, tier: null, ok: false, error: 'not run' })
+    expect(parseStepLine('left_click menu File › Save… · menu · changed')).toEqual({ action: 'left_click', tier: 'ax', via: 'menu', effect: 'changed', ok: true })
+    expect(parseStepLine('left_click "A · failed: fake" [52] menu item · ax · changed')).toEqual({ action: 'left_click', tier: 'ax', effect: 'changed', ok: true })
+  })
+
+  it('keeps wait reports beside their step facts after JSON round trip', () => {
+    const wait = { waitedMs: 75, reason: 'quiet' as const, firstChangeMs: 25, gapCounts: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
+    expect(JSON.parse(JSON.stringify(stepsOf(['left_click "Team" [52] menu item · ax · changed'], [wait])))[0]).toMatchObject({ action: 'left_click', wait })
+  })
   it('has a sample for every action, so a new verb fails here first', () => {
     for (const name of COMPUTER_ACTION_NAMES) expect(SAMPLE[name], name).toBeDefined()
   })

@@ -55,6 +55,57 @@ describe('fieldBar', () => {
   const codexRuns = [run(CODEX, 't1', { wallMs: 26_000, calls: calls(8) }), run(CODEX, 't2', { outcome: 'failed', reason: 'no save panel' })]
   const codexReport = report({ mode: 'reference', round: 'r1' }, codexRuns)
 
+  it('judges Mac medians against the dated targets for each model and only their task ids', () => {
+    const mac = report({}, [
+      run(MODEL, 'field-calc', { taskVersion: 2, wallMs: 24_000, calls: calls(4) }),
+      run('sonnet', 'field-calc', { taskVersion: 2, wallMs: 25_000, calls: calls(5) }),
+      run(MODEL, 'untargeted', { wallMs: 1_000_000, calls: calls(20) }),
+      run('sonnet', 'untargeted', { wallMs: 1_000_000, calls: calls(20) })
+    ])
+    const judged = fieldBar([mac], { models: [MODEL, 'sonnet'], tasks: ['field-calc', 'untargeted'] })
+    expect(judged.misses.map((m) => [m.kind, m.model, m.task])).toEqual([
+      ['slower', 'sonnet', 'field-calc'], ['more-calls', 'sonnet', 'field-calc']
+    ])
+    expect(judged.table).toContain('Targets 2026-11-10')
+    expect(judged.table).toContain('no Codex target for untargeted')
+    expect(judged.table).toContain('## mac report waste')
+  })
+
+  it('sums the three Finder task medians against one seconds and calls target', () => {
+    const tasks = ['field-finder-rename', 'field-finder-trash', 'field-finder-new-folder']
+    const runs = tasks.map((task, i) => run(MODEL, task, { taskVersion: 2, wallMs: [10_000, 12_000, 14_000][i], calls: calls([2, 2, 3][i]) }))
+    const expectTasks = { models: [MODEL], tasks }
+    const met = fieldBar([report({}, runs)], expectTasks)
+    expect(met.misses).toEqual([])
+    expect(met.ok).toBe(false)
+    expect(met.complete).toBe(false)
+    expect(met.table).not.toContain('field bar met')
+    runs[2] = { ...runs[2], wallMs: 15_000, calls: calls(4) }
+    const missed = fieldBar([report({}, runs)], expectTasks)
+    expect(missed.misses.map((m) => [m.kind, m.task])).toEqual([
+      ['slower', tasks.join(' + ')], ['more-calls', tasks.join(' + ')]
+    ])
+    expect(missed.table).toContain('| 37.0 | 36 | 8 | 7 |')
+    const partial = fieldBar([report({}, runs.slice(0, 2))], { models: [MODEL], tasks: tasks.slice(0, 2) })
+    expect(partial.misses).toEqual([])
+    expect(partial.skipped.join(' ')).toContain('group or task has no complete run')
+  })
+
+  it('ignores a mismatched target version with a line, and a fresh reference takes precedence', () => {
+    const calc = run(MODEL, 'field-calc', { taskVersion: 2, wallMs: 25_000, calls: calls(5) })
+    const expected = { models: [MODEL], tasks: ['field-calc'] }
+    const dated = fieldBar([report({ fieldTargetsVersion: '2026-11-09' }, [calc])], expected)
+    expect(dated.misses).toEqual([])
+    expect(dated.table).toContain('target version 2026-11-09 differs from 2026-11-10: targets ignored')
+    const edited = fieldBar([report({}, [{ ...calc, taskVersion: 99 }])], expected)
+    expect(edited.misses).toEqual([])
+    expect(edited.table).toContain('target task version mismatch')
+    const reference = report({ mode: 'reference' }, [run(CODEX, 'field-calc', { taskVersion: 2, wallMs: 30_000, calls: calls(6) })])
+    const judged = fieldBar([report({}, [calc]), reference], expected)
+    expect(judged.misses.map((m) => m.kind)).toEqual(['no-win'])
+    expect(judged.table).not.toContain('## Targets')
+  })
+
   it('met: our model matches Codex, wins a task it failed, and the box stays within 15%', () => {
     const mac = report({ round: 'r1' }, [run(MODEL, 't1', { wallMs: 20_000, calls: calls(6) }), run(MODEL, 't2', { wallMs: 30_000 })])
     const box = report({ hostKind: 'box', round: 'r1' }, [run(MODEL, 't1', { wallMs: 22_000 }), run(MODEL, 't2', { wallMs: 33_000 })])
@@ -93,7 +144,8 @@ describe('fieldBar', () => {
     expect(judged.misses).toEqual([expect.objectContaining({ kind: 'box-total', model: MODEL })])
     expect(BOX_TOTAL_RATIO).toBe(1.15)
     const fine = report({ hostKind: 'box' }, [run(MODEL, 't1', { wallMs: 23_000 }), run(MODEL, 't2', { wallMs: 22_000 })])
-    expect(fieldBar([mac, fine], EXPECT).ok).toBe(true)
+    expect(fieldBar([mac, fine], EXPECT).ok).toBe(false)
+    expect(fieldBar([mac, fine], EXPECT).misses).toEqual([])
   })
 
   it('a hole in a GIVEN report is a named miss: "bar met" is impossible with it (C5)', () => {
@@ -120,7 +172,9 @@ describe('fieldBar', () => {
     expect(judged.skipped.join(' ')).toContain('no Codex reference report')
     expect(judged.skipped.join(' ')).toContain('no box report')
     expect(judged.misses).toEqual([])
-    expect(judged.ok).toBe(true)
+    expect(judged.ok).toBe(false)
+    expect(judged.complete).toBe(false)
+    expect(judged.table).toContain('field bar incomplete')
   })
 
   it('notes a model in the box report alone, and a task compared across versions', () => {

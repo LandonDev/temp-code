@@ -28,6 +28,7 @@ import { exec } from './benchChecks'
 import type { TaskApp, TaskReader } from './computerTasks'
 import { SCRATCH_CHROME_FRAME } from './chromiumForTests'
 import { windowCoverage, type CoverWindow, type CoverageNote } from './windowCover'
+import { answerHeadOf, parseStepLine, type BenchStep } from './computerBench'
 import { buildProbeApp, cleanupProbeApp, launchProbe, type ProbeAppBuild } from './tcProbeApp'
 
 /**
@@ -170,12 +171,32 @@ export class LanePins {
   }
 }
 
-/**
- * Wraps `sessions.run` so each call is recorded under its thread: its start,
- * its host time (entering run to its outcome, the thread's queue wait
- * inside), its step lines, its shots, isError. Claude's in-process tools and
- * the bridge's app.computer both reach this one `run`.
- */
+const callSteps = new AsyncLocalStorage<StepResult[]>()
+
+/** Service reports stay in the async scope of the model call, across host segments. */
+export function recordStepWaits(steps: readonly StepResult[]): void {
+  callSteps.getStore()?.push(...steps.filter((step) => step.status !== 'not-run'))
+}
+
+function waitsForLines(lines: readonly string[], reports: readonly StepResult[]): (BenchStep['wait'] | null)[] {
+  let next = 0
+  return lines.map((line) => {
+    const parsed = parseStepLine(line)
+    if (!parsed?.action) return null
+    // A host retry replaces a failed route attempt in the final step lines.
+    const at = reports.findIndex((step, i) => i >= next && step.action === parsed.action &&
+      (step.status === 'ok') === parsed.ok &&
+      (step.status !== 'ok' || parsed.effect === undefined || step.effect === parsed.effect))
+    if (at < 0) return null
+    next = at + 1
+    const step = reports[at]
+    if (!('waited' in step) || !step.waited) return null
+    const { waitedMs, reason, firstChangeMs, gapCounts } = step.waited
+    return { waitedMs, reason, ...(firstChangeMs !== undefined ? { firstChangeMs } : {}), gapCounts }
+  })
+}
+
+/** Records calls from both in-process tools and the bridge under their thread. */
 export function recordCalls(sessions: ComputerSessions, pins: LanePins, now: () => number = Date.now, coverage?: (threadId: string, args: unknown, tool: string) => CoverageNote | null): { calls(threadId: string): HostCall[]; clear(threadId: string): void } {
   const byThread = new Map<string, HostCall[]>()
   const run = sessions.run.bind(sessions)
@@ -184,16 +205,24 @@ export function recordCalls(sessions: ComputerSessions, pins: LanePins, now: () 
     const covered = coverage ? coverage(ctx.threadId, args, tool) : undefined
     const note = (call: Omit<HostCall, 'tool' | 'args' | 'startedAt' | 'hostMs'>): void => {
       const list = byThread.get(ctx.threadId) ?? []
-      list.push({ tool, args, startedAt, hostMs: now() - startedAt, ...(covered !== undefined ? { coverage: covered } : {}), ...call })
+      list.push({ tool, ...(ctx.callId ? { callId: ctx.callId } : {}), args, startedAt, hostMs: now() - startedAt, ...(covered !== undefined ? { coverage: covered } : {}), ...call })
       byThread.set(ctx.threadId, list)
     }
-    return pins.within(ctx.threadId, () => run(ctx, tool, args)).then(
+    const reports: StepResult[] = []
+    return callSteps.run(reports, () => pins.within(ctx.threadId, () => run(ctx, tool, args))).then(
       (outcome) => {
-        note({ steps: outcome.steps, shots: outcome.shots.length, isError: outcome.isError })
+        const fromHost = outcome as typeof outcome & { waits?: (BenchStep['wait'] | null)[] }
+        note({
+          steps: outcome.steps,
+          waits: fromHost.waits ?? waitsForLines(outcome.steps, reports),
+          shots: outcome.shots.length,
+          isError: outcome.isError,
+          ...(outcome.isError && outcome.body !== null ? { answerHead: answerHeadOf(outcome.body) } : {})
+        })
         return outcome
       },
       (err: unknown) => {
-        note({ steps: [], shots: 0, isError: true })
+        note({ steps: [], shots: 0, isError: true, answerHead: answerHeadOf(err instanceof Error ? err.message : String(err)) })
         throw err
       }
     )
@@ -286,6 +315,7 @@ export interface Rig {
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
 const pidsOf = (name: string): Set<number> => {
   try {
     return new Set(execFileSync('pgrep', ['-x', name], { encoding: 'utf8' }).split('\n').filter(Boolean).map(Number))
@@ -360,6 +390,7 @@ export async function startRig(opts: {
     try {
       const result = await request(method, params, o)
       const steps: StepResult[] = method === 'action.run' ? [(result as { step: StepResult }).step] : method === 'action.batch' ? (result as { steps: StepResult[] }).steps : []
+      recordStepWaits(steps)
       if ((params as { session?: string }).session !== opts.proofSession)
         for (const s of steps) {
           if (s.status === 'not-run') continue

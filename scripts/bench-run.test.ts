@@ -148,14 +148,31 @@ describe('readRun', () => {
     ]
     const facts = readRun(rows, [host('computer_observe', 310), host('computer_act', 150, ['set_value [3] · ax · changed'])], 1000, 6500)
     expect(facts.calls).toEqual([
-      { tool: 'computer_observe', hostMs: 310, rowMs: 400, steps: [], screenshotAsked: true, shots: 0, isError: false },
-      { tool: 'computer_act', hostMs: 150, rowMs: 200, steps: [{ action: 'set_value', tier: 'ax', effect: 'changed', ok: true }], screenshotAsked: false, shots: 0, isError: false }
+      { tool: 'computer_observe', args: { app: 'TextEdit', screenshot: true }, order: 1, hostMs: 310, rowMs: 400, steps: [], screenshotAsked: true, shots: 0, isError: false },
+      { tool: 'computer_act', args: { app: 'TextEdit', action: 'set_value', element: 3, value: 'x' }, order: 2, hostMs: 150, rowMs: 200, steps: [{ action: 'set_value', tier: 'ax', effect: 'changed', ok: true }], screenshotAsked: false, shots: 0, isError: false }
     ])
     expect(facts.otherTools).toEqual(['Bash'])
+    expect(facts.toolSearches).toEqual([{ tool: 'ToolSearch', args: {}, order: 0 }])
     expect(facts.wallMs).toBe(5500)
     // 5500 less the 100 + 400 + 200 + 100 ms some tool was open
     expect(facts.thinkMs).toBe(4700)
     expect(facts.tokens).toEqual({ input: 1200, output: 80 })
+  })
+
+  it('keeps search arguments, wait reports and both host and pre-dispatch error heads', () => {
+    const wait = { waitedMs: 50, reason: 'quiet' as const, firstChangeMs: 25, gapCounts: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
+    const refused = 'invalid arguments: ' + 'x'.repeat(250)
+    const rows = [
+      call(10, 'search', 'ToolSearch', { query: 'computer' }), result(20, 'search'),
+      call(30, 'bad', 'computer_act', { app: 'Chrome', action: 'oops' }),
+      row(40, { type: 'tool-result', callId: 'bad', output: refused + '\nnext line', isError: true }),
+      call(50, 'act', 'computer_act', { app: 'Chrome', action: 'left_click', named: 'Team' }), result(100, 'act')
+    ]
+    const facts = readRun(rows, [{ ...host('computer_act', 40, ['left_click "Team" [52] menu item · ax · changed']), startedAt: 51, waits: [wait], isError: true, answerHead: 'no window of Chrome matches "Tab"' }], 0, 110)
+    const saved = JSON.parse(JSON.stringify(facts))
+    expect(saved.toolSearches).toEqual([{ tool: 'ToolSearch', args: { query: 'computer' }, order: 0 }])
+    expect(saved.calls[0]).toMatchObject({ args: { action: 'oops' }, hostMs: null, isError: true, answerHead: refused.slice(0, 200) })
+    expect(saved.calls[1]).toMatchObject({ args: { named: 'Team' }, hostMs: 40, answerHead: 'no window of Chrome matches "Tab"', steps: [{ wait }] })
   })
 
   it('carries the call-entry coverage note into saved call records', () => {
@@ -163,6 +180,15 @@ describe('readRun', () => {
     const rows = [call(100, 'c1', 'computer_observe'), result(200, 'c1'), call(300, 'c2', 'computer_act'), result(400, 'c2')]
     const facts = readRun(rows, [{ ...host('computer_observe', 50), coverage }, { ...host('computer_act', 50), coverage: null }], 0, 500)
     expect(facts.calls.map((c) => c.coverage)).toEqual([coverage, null])
+  })
+
+  it('uses call ids when present so identical arguments after a refusal keep their own host record', () => {
+    const args = { app: 'TextEdit', action: 'left_click', element: 1 }
+    const rows = [call(10, 'refused', 'computer_act', args),
+      row(20, { type: 'tool-result', callId: 'refused', isError: true, output: 'invalid arguments: refused before dispatch' }),
+      call(30, 'ran', 'computer_act', args), result(50, 'ran')]
+    const facts = readRun(rows, [{ ...host('computer_act', 15), args, callId: 'ran' }], 0, 60)
+    expect(facts.calls.map((c) => c.hostMs)).toEqual([null, 15])
   })
 
   it('counts a call refused before the host, with no host time', () => {
@@ -189,7 +215,7 @@ describe('readRun', () => {
   it('takes Codex’s own computer tool as the computer tool for the reference pass', () => {
     const rows = [call(100, 'x1', 'cua_repl', { code: 'click(1)' }), result(900, 'x1')]
     const facts = readRun(rows, [], 0, 1000, (name) => name === 'cua_repl')
-    expect(facts.calls).toEqual([{ tool: 'cua_repl', hostMs: null, rowMs: 800, steps: [], screenshotAsked: false, shots: 0, isError: false }])
+    expect(facts.calls).toEqual([{ tool: 'cua_repl', args: { code: 'click(1)' }, order: 0, hostMs: null, rowMs: 800, steps: [], screenshotAsked: false, shots: 0, isError: false }])
     expect(facts.otherTools).toEqual([])
     expect(readRun(rows, [], 0, 1000).otherTools).toEqual(['cua_repl'])
   })
@@ -349,8 +375,8 @@ describe('the box mode merge: box rows beside the Mac host times', () => {
       row(6000, { type: 'status', status: 'idle' })
     ]
     const host: HostCall[] = [
-      { tool: 'computer_observe', args: {}, startedAt: 0, hostMs: 700, steps: [], shots: 0, isError: false },
-      { tool: 'computer_act', args: {}, startedAt: 0, hostMs: 300, steps: ['left_click [2] · ax · changed'], shots: 0, isError: false }
+      { tool: 'computer_observe', args: { app: 'Finder' }, startedAt: 52_000, hostMs: 700, steps: [], shots: 0, isError: false },
+      { tool: 'computer_act', args: { app: 'Finder', action: 'left_click', element: 2 }, startedAt: 54_000, hostMs: 300, steps: ['left_click [2] · ax · changed'], shots: 0, isError: false }
     ]
     const facts = readRun(rows, host, 1000, 6000)
     expect(facts.calls.map((c) => [c.tool, c.hostMs, c.rowMs])).toEqual([

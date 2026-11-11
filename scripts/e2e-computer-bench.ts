@@ -83,6 +83,7 @@ import { killGroup, startDevInstance } from './lib/devInstance'
 import { COMPUTER_ONLY_LINE, COMPUTER_TASKS, gateTasks, taskById, type CallRecord, type CheckResult, type ComputerTask, type DevInstance, type TaskContext, type TaskStart } from './lib/computerTasks'
 import { FIELD_TASKS } from './lib/fieldTasks'
 import { fieldBar } from './lib/fieldBar'
+import { FIELD_TARGETS } from './lib/fieldTargets'
 import { buildIsCurrent, type BuildStamp } from './lib/soakJudge'
 
 const ROOT = repoRoot()
@@ -174,7 +175,7 @@ const report: BenchReport = {
   commit: git('rev-parse', 'HEAD'),
   clean: git('status', '--porcelain', '--untracked-files=no') === '',
   mode: args.mode,
-  ...(FIELD ? { set: 'field' as const } : {}),
+  ...(FIELD ? { set: 'field' as const, fieldTargetsVersion: FIELD_TARGETS.version } : {}),
   ...(BOX ? { hostKind: 'box' as const } : {}),
   ...(args.round ? { round: args.round } : {}),
   ...(UNGATED ? { ungated: true } : {}),
@@ -736,6 +737,7 @@ async function drive(lane: Lane, task: ComputerTask, start: TaskStart, run: Benc
       heldMs: held.take(),
       calls: facts.calls,
       otherTools: facts.otherTools,
+      toolSearches: facts.toolSearches,
       cards: facts.cards,
       ...(facts.tokens ? { tokens: facts.tokens } : {}),
       front: {
@@ -846,8 +848,8 @@ async function driveBox(lane: Lane, task: ComputerTask, start: TaskStart, run: B
     rows = await rowsOf()
     scan = scanRun(rows, after)
   }
-  const settleTs = scan.question && scan.settledAt === null ? (scan.questionAt ?? Date.now()) : (scan.settledAt ?? rows.at(-1)?.ts ?? scan.firstRunningTs)
-  const facts = readRun(rows, R.calls(key), scan.firstRunningTs, settleTs)
+  const settleTs = scan.question && scan.settledAt === null ? (scan.questionAt ?? Date.now()) : (scan.settledAt ?? rows.at(-1)?.ts ?? firstRunningTs)
+  const facts = readRun(rows, R.calls(key), firstRunningTs, settleTs)
   let check: CheckResult
   if (scan.question) check = { ok: false, detail: 'asked the person a question' }
   else if (timedOut) check = { ok: false, detail: 'timed out' }
@@ -873,6 +875,7 @@ async function driveBox(lane: Lane, task: ComputerTask, start: TaskStart, run: B
     heldMs: held.take(),
     calls: facts.calls,
     otherTools: facts.otherTools,
+    toolSearches: facts.toolSearches,
     cards: facts.cards,
     ...(facts.tokens ? { tokens: facts.tokens } : {}),
     front: {

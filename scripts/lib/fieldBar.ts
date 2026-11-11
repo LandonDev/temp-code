@@ -12,8 +12,13 @@
  * a (model, task) a given report lacks is a 'missing' miss, so "bar met" is
  * impossible with a hole; only a whole report may be absent, which skips its
  * bar with a note.
+ * Without a Codex report, dated targets judge Mac time and calls for their
+ * task ids. Finder counts as one group. Targets cannot prove parity, so
+ * that result stays incomplete. Every report prints its waste counts.
  */
 import { passNeed, summarize, type BenchReport, type TaskSummary } from './computerBench'
+import { FIELD_TARGETS } from './fieldTargets'
+import { renderFieldWaste } from './fieldWaste'
 
 export type FieldKind = 'mac' | 'box' | 'codex'
 
@@ -35,6 +40,8 @@ export interface FieldMiss {
 
 export interface FieldJudgement {
   ok: boolean
+  /** Targets measure time and calls only; parity still needs a reference. */
+  complete: boolean
   misses: FieldMiss[]
   /** what could not be judged: a report absent, a task skipped */
   skipped: string[]
@@ -96,7 +103,7 @@ export function fieldBar(reports: readonly BenchReport[], expect: FieldExpectati
   const misses: FieldMiss[] = []
   const skipped: string[] = []
   if (!mac) skipped.push('no Mac report: the parity and speed bars not judged')
-  if (!codex) skipped.push('no Codex reference report: the parity and speed bars not judged')
+  if (!codex) skipped.push('no Codex reference report: parity not judged; targets measure seconds and calls only')
   if (!box) skipped.push('no box report: the box-total bar not judged')
 
   // C5: a hole in a GIVEN report is a named miss, never a silent pass.
@@ -106,14 +113,14 @@ export function fieldBar(reports: readonly BenchReport[], expect: FieldExpectati
     for (const model of expect.models) {
       for (const task of expect.tasks) {
         const s = cells.byModel.get(model)?.get(task)
-        if (!ran(s)) misses.push({ kind: 'missing', model, task, detail: `no ${kind} run${s?.skipped ? ` (${s.skipped})` : ''}` })
+        if (!s || !s.runs) misses.push({ kind: 'missing', model, task, detail: `no ${kind} run${s?.skipped ? ` (${s.skipped})` : ''}` })
       }
     }
   }
   if (codex)
     for (const task of expect.tasks) {
       const s = codexByTask.get(task)
-      if (!ran(s)) misses.push({ kind: 'missing', model: codexModel, task, detail: `no codex run${s?.skipped ? ` (${s.skipped})` : ''}` })
+      if (!s || !s.runs) misses.push({ kind: 'missing', model: codexModel, task, detail: `no codex run${s?.skipped ? ` (${s.skipped})` : ''}` })
     }
 
   // (a) parity and a win, (b) medians, per model on the Mac.
@@ -147,6 +154,41 @@ export function fieldBar(reports: readonly BenchReport[], expect: FieldExpectati
           model,
           detail: codexFailedAny ? 'passed none of the tasks Codex failed' : 'Codex failed no task, so no task shows our tools ahead'
         })
+    }
+  }
+
+  const targetLines: string[] = []
+  if (mac && !codex) {
+    const version = mac.fieldTargetsVersion
+    if (version !== undefined && version !== FIELD_TARGETS.version)
+      skipped.push(`target version ${version} differs from ${FIELD_TARGETS.version}: targets ignored`)
+    else {
+      targetLines.push(`Targets ${FIELD_TARGETS.version}: Codex seconds and calls; parity needs a reference report.`, '',
+        '| model | task or group | seconds | target s | calls | target calls |', '|---|---|---:|---:|---:|---:|')
+      for (const [model, byTask] of macCells.byModel) {
+        for (const target of FIELD_TARGETS.targets) {
+          if (!target.tasks.some((t) => expect.tasks.includes(t.id))) continue
+          const task = target.tasks.map((t) => t.id).join(' + ')
+          const summaries = target.tasks.map((t) => byTask.get(t.id))
+          const mismatch = target.tasks.filter((t, i) => summaries[i] && summaries[i]!.taskVersion !== t.version)
+          if (mismatch.length) {
+            skipped.push(`${model} · ${task}: target task version mismatch (${mismatch.map((t) => `${t.id}: report ${byTask.get(t.id)!.taskVersion}, target ${t.version}`).join('; ')}); target ignored`)
+            continue
+          }
+          if (!summaries.every(ran)) {
+            // A partial Finder group cannot be compared with the whole group's target.
+            skipped.push(`${model} · ${task}: target not judged; group or task has no complete run`)
+            continue
+          }
+          const wall = summaries.reduce((sum, s) => sum + (s.wallMsMedian ?? 0), 0)
+          const calls = summaries.reduce((sum, s) => sum + (s.callsMedian ?? 0), 0)
+          targetLines.push(`| ${model} | ${task} | ${seconds(wall)} | ${target.seconds} | ${calls} | ${target.calls} |`)
+          if (wall > target.seconds * 1000) misses.push({ kind: 'slower', model, task, detail: `${seconds(wall)} s against target ${target.seconds} s` })
+          if (calls > target.calls) misses.push({ kind: 'more-calls', model, task, detail: `${calls} calls against target ${target.calls}` })
+        }
+      }
+      const untargeted = expect.tasks.filter((id) => !FIELD_TARGETS.targets.some((t) => t.tasks.some((task) => task.id === id)))
+      if (untargeted.length) skipped.push(`no Codex target for ${untargeted.join(', ')}: seconds and calls not judged`)
     }
   }
 
@@ -197,10 +239,13 @@ export function fieldBar(reports: readonly BenchReport[], expect: FieldExpectati
     for (const task of tasks)
       out.push(`| ${task} | ${cellOf(macCells.byModel.get(model)?.get(task))} | ${cellOf(boxCells.byModel.get(model)?.get(task))} | ${cellOf(codexByTask.get(task))} |`)
   }
+  if (targetLines.length) out.push('', '## Targets', '', ...targetLines)
+  for (const [kind, report] of byKind) out.push('', renderFieldWaste(report, `${kind} report waste`))
   out.push('', '## The bar', '')
   if (misses.length) for (const m of misses) out.push(`- MISS ${m.kind} · ${m.model}${m.task ? ` · ${m.task}` : ''}: ${m.detail}`)
   else out.push('- no misses')
   if (skipped.length) out.push('', '## Not judged', '', ...skipped.map((s) => `- ${s}`))
-  out.push('', misses.length ? `field bar missed: ${misses.length} miss(es)` : 'field bar met')
-  return { ok: misses.length === 0, misses, skipped, table: out.join('\n') + '\n' }
+  const complete = !!mac && !!codex
+  out.push('', misses.length ? `field bar missed: ${misses.length} miss(es)` : complete ? 'field bar met' : 'field bar incomplete: no measured misses; parity needs Mac and Codex reference reports')
+  return { ok: misses.length === 0 && complete, complete, misses, skipped, table: out.join('\n') + '\n' }
 }
