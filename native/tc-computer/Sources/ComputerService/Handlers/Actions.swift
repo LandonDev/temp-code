@@ -170,7 +170,8 @@ extension ComputerService {
             steps.append(run.step)
             // decision 4: a step that left its hold open, and a hold closed since, reported on the step that last used it
             await takeFrontReport(target, into: &steps, at: &openHold)
-            if case .ok(let ok) = run.step, ok.tier == .front, ok.front == nil { openHold = index }
+            // a front step with no report left its hold open; one with a report closed it (a joined hold included)
+            if case .ok(let ok) = run.step, ok.tier == .front { openHold = ok.front == nil ? index : nil }
             last = run
             lastAction = action
             if run.stops {
@@ -301,6 +302,18 @@ extension ComputerService {
             return StepRun(step: .failed(FailedStep(index: index, action: .saveAs, error: error)))
         }
         let readDocument = documentReader
+        // §26.11: an item of a pop-up, menu button or context menu this session's last call closed
+        if let index = action.element, MenuCloser.pressesItem(action) {
+            do {
+                if let on = try await reachClosedItem(target, index: index) {
+                    let ok = OkStep(index: index, action: action.action, tier: .ax, effect: WaitRule.skipped().effect(thin: false),
+                                    input: OkStep.Input(via: .menu, on: on))
+                    return StepRun(step: .ok(ok), t0: MachTime.now(), signature0: (try? await signature(target)) ?? 0)
+                }
+            } catch {
+                return StepRun(step: failed(index, action, error, or: .staleElement))
+            }
+        }
         do {
             let done = try await target.worker.run { state -> Performed in
                 guard let reader = state.reader, let window = state.windows[windowID] else {

@@ -258,3 +258,101 @@ final class FakeStore: PasteboardStore {
         #expect(store.calls.isEmpty)
     }
 }
+
+/// Decision 3: a paste at `front` keeps the pasteboard work outside the hold.
+@Suite struct PasteOutsideTheHoldTests {
+    let original = [PasteboardItemData(types: ["a"], data: ["a": Data([1])])]
+
+    @Test func theSnapshotAndWriteComeBeforeTheHoldAndTheRestoreAfterIt() throws {
+        let store = FakeStore(items: original)
+        let clock = FakeClock()
+        let order = Box<[String]>([])
+        let changing = Box(0)
+        _ = try PasteFlow(store: store, lock: FakeLock(clock: clock), clock: clock).run(
+            PasteContent(plain: "pasted"), cancelled: { false }, checks: {}, recheck: { order.value.append("recheck") },
+            deliver: { order.value.append("deliver") },
+            evidence: {
+                changing.value += 1
+                return Evidence(value: changing.value > 1 ? "after" : "before", range: nil, count: nil)
+            },
+            inside: { part in
+                order.value.append("hold " + store.calls.joined(separator: ","))
+                try part { false }
+                order.value.append("restore the app")
+            }
+        )
+        #expect(order.value == ["hold snapshot,clear,write", "recheck", "deliver", "restore the app"])
+        // the person's pasteboard went back only after the hold returned
+        #expect(store.calls.last == "restore")
+        #expect(store.items == original)
+    }
+
+    @Test func theValueWaitEndsAtTheHoldsStop() throws {
+        let store = FakeStore(items: original)
+        let clock = FakeClock()
+        let t0 = clock.seconds()
+        let result = try PasteFlow(store: store, lock: FakeLock(clock: clock), clock: clock).run(
+            PasteContent(plain: "pasted"), cancelled: { false }, checks: {}, recheck: {}, deliver: {},
+            evidence: { Evidence(value: "same", range: nil, count: nil) },
+            inside: { part in try part { clock.seconds() - t0 > 0.05 } }
+        )
+        // nothing changed and the hold stopped it within its cap, long before the paste's own wait ends
+        #expect(clock.seconds() - t0 < Double(InputTiming.pasteWaitMs) / 1000)
+        #expect(result.effect == .none)
+        #expect(store.items == original)
+    }
+
+    @Test func aHoldThatFailsStillPutsThePasteboardBack() {
+        let store = FakeStore(items: original)
+        let clock = FakeClock()
+        #expect(throws: ComputerFailure.self) {
+            _ = try PasteFlow(store: store, lock: FakeLock(clock: clock), clock: clock).run(
+                PasteContent(plain: "pasted"), cancelled: { false }, checks: {}, recheck: {}, deliver: {}, evidence: { nil },
+                inside: { _ in throw ComputerFailure(FrontFailure.activationRefused(app: "TC Probe")) }
+            )
+        }
+        #expect(store.items == original)
+        #expect(store.calls.last == "restore")
+    }
+}
+
+/// §26.5: the listen-only monitor's state.
+@Suite struct KeyQuietStateTests {
+    @Test func thePersonsKeysCountAndTheServicesNever() {
+        var s = KeyQuietState()
+        #expect(!s.anyHeld && s.lastKeyDownAt == nil)
+        s.event(.keyDown, keyCode: 0, flags: 0, mark: TC_EVENT_MARK, at: 1)
+        #expect(!s.anyHeld && s.lastKeyDownAt == nil, "a marked key is ours")
+        s.event(.keyDown, keyCode: 0, flags: 0, mark: 0, at: 2)
+        #expect(s.anyHeld && s.lastKeyDownAt == 2)
+        s.event(.keyUp, keyCode: 0, flags: 0, mark: 0, at: 2.1)
+        #expect(!s.anyHeld && s.lastKeyDownAt == 2)
+        #expect(s.secondsSinceKeyDown(now: 3) == 1)
+    }
+
+    @Test func aHeldModifierCountsAndCapsLockDoesNot() {
+        var s = KeyQuietState()
+        s.event(.flagsChanged, keyCode: 56, flags: GuardFlags.shift, mark: 0, at: 1)
+        #expect(s.anyHeld)
+        s.event(.flagsChanged, keyCode: 56, flags: 0, mark: 0, at: 1.1)
+        #expect(!s.anyHeld)
+        s.event(.flagsChanged, keyCode: 57, flags: GuardFlags.capsLock, mark: 0, at: 1.2)
+        #expect(!s.anyHeld)
+    }
+
+    @Test func theSeedHoldsWhatWasDownAtTheStart() {
+        let s = KeyQuietState(heldKeys: [12], flags: GuardFlags.command | GuardFlags.capsLock, lastKeyDownAt: 5)
+        #expect(s.anyHeld && s.keys == [12] && s.modifiers == GuardFlags.command && s.lastKeyDownAt == 5)
+        #expect(KeyQuietState().secondsSinceKeyDown(now: 10) >= 3_600, "no key since the start reads as quiet")
+    }
+
+    @Test func theQuietWaitReadsTheMonitor() {
+        // QuietWait over the monitor's state: a key 300 ms ago waits 500 ms more
+        var s = KeyQuietState()
+        s.event(.keyDown, keyCode: 0, flags: 0, mark: 0, at: 10)
+        s.event(.keyUp, keyCode: 0, flags: 0, mark: 0, at: 10.05)
+        let now = 10.3
+        let decision = QuietWait.decide(now: Int(now * 1000), startedAt: Int(now * 1000), lastKeyDownAt: Int((now - s.secondsSinceKeyDown(now: now)) * 1000), held: s.anyHeld)
+        #expect(decision == .wait(ms: InputTiming.frontQuietMs - 300))
+    }
+}

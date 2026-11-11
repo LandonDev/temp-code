@@ -23,6 +23,8 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
     let recentForeignCopy: @Sendable (_ withinMs: Int) -> Bool
     /// the `front` tier's hold (§26.2)
     let frontTier: FrontTier
+    /// the listen-only key monitor its quiet wait reads (§26.5), on while any computer session is open
+    let keys = KeyMonitor()
     private let sweeper: DispatchSourceTimer
 
     public init(clipboardLock: MacLock, sessionLock: MacLock,
@@ -46,7 +48,7 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         let core = InputCore(host: host, watch: watch, sessionLock: sessionLock, sink: sink, clock: clock, layout: layout, onPersonInput: onPersonInput, onHeld: onHeld)
         self.core = core
         core.driver.trace = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
-        frontTier = FrontTier(host: host, sessionLock: sessionLock, clock: clock, tap: frontTap)
+        frontTier = FrontTier(host: host, sessionLock: sessionLock, clock: clock, keyboard: keys, tap: frontTap)
         host.onActivation = { [weak core] pid in core?.driver.noteActivation(pid: pid) }
         host.observeActivations()
         // the 30 s auto-release of a held button, and the person guard's end (§14.9.2)
@@ -153,6 +155,10 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
     public func restoreSession(afterInterrupt: Bool) throws -> SessionRestore {
         dispatchPrecondition(condition: .notOnQueue(.main))
         return try core.restoreSession(afterInterrupt: afterInterrupt)
+    }
+
+    public func watchKeys(_ on: Bool) {
+        if on { keys.start() } else { keys.stop() }
     }
 
     public func closeFrontHold(pid: pid_t) {

@@ -18,6 +18,7 @@ extension ComputerService {
                 throw RPCFailure.invalidParams("session: an id of 1 to 64 letters, digits, _ or -")
             }
             book.open(p.session)
+            input.watchKeys(true)
             return Empty()
         }
         router.on("session.close") { [self] (p: SessionRef, _) -> Empty in
@@ -67,6 +68,7 @@ extension ComputerService {
     /// its readers and drops its workers.
     func closeSession(_ session: String) async {
         book.close(session)
+        if book.openCount == 0 { input.watchKeys(false) }
         // the router's cancel sets each flag and cancels each task, which wakes one waiting for its app's slot
         let ids = lock.withLock { sessionRequests[session].map { Array($0.keys) } ?? [] }
         for id in ids { router.cancel(id) }

@@ -349,13 +349,19 @@ public struct OpenMenu: @unchecked Sendable {
     public let kind: Opener
     public let title: String
     public let items: [String]
+    /// the walk's node of each item, beside `items` (AXText's NodeID)
+    public let itemIDs: [UInt64]
+    /// each item's index in the read that walked it, by its title: what a later step names it by (§26.11)
+    public var itemIndices: [Int: String] = [:]
 
-    public init(menu: AXUIElement, opener: AXUIElement?, kind: Opener, title: String, items: [String]) {
+    public init(menu: AXUIElement, opener: AXUIElement?, kind: Opener, title: String, items: [String], itemIDs: [UInt64] = [], itemIndices: [Int: String] = [:]) {
         self.menu = menu
         self.opener = opener
         self.kind = kind
         self.title = title
         self.items = items
+        self.itemIDs = itemIDs
+        self.itemIndices = itemIndices
     }
 }
 
@@ -397,6 +403,8 @@ public protocol InputPerforming {
     /// `afterInterrupt`, within 2 s of the person's trip, skips that check and keeps each half's own;
     /// throws `session_unavailable` when another holder keeps the session lock
     func restoreSession(afterInterrupt: Bool) throws -> SessionRestore
+    /// §26.5: the listen-only key monitor the `front` hold's quiet wait reads runs while any session is open
+    func watchKeys(_ on: Bool)
     /// decision 4: closes a `front` hold a batch's step left open for the next one (the call is over, or
     /// failed, or was cancelled), restoring the person's app
     func closeFrontHold(pid: pid_t)
@@ -415,6 +423,7 @@ public protocol InputPerforming {
 }
 
 extension InputPerforming {
+    public func watchKeys(_ on: Bool) {}
     public func closeFrontHold(pid: pid_t) {}
     public func takeFrontReport(pid: pid_t) -> FrontHold? { nil }
 }

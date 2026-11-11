@@ -405,13 +405,36 @@ final class FakeInput: InputPerforming, @unchecked Sendable {
     /// §25.9 as each step saw it: the process is Chromium, the expected focus's index, the brief of the window
     private(set) var webFacts: [(chromium: Bool, expect: Int?, brief: ElementBrief?)] = []
     private var nextToken = 0
+    /// decision 4: what each step's target said of the next step, the reports a closed hold leaves, the closes asked
+    private(set) var keepOpens: [Bool] = []
+    var frontReports: [FrontHold] = []
+    private(set) var frontCloses = 0
+    /// §26.5: the shell's key monitor switch, in order
+    private(set) var keyWatches: [Bool] = []
 
     init(wiring: InputWiring, log: CallLog) {
         self.wiring = wiring
         self.log = log
     }
 
+    /// the report a close leaves for `takeFrontReport`
+    var closeReport: FrontHold?
+
+    func closeFrontHold(pid: pid_t) {
+        lock.withLock {
+            frontCloses += 1
+            if let r = closeReport { frontReports.append(r) }
+        }
+    }
+
+    func takeFrontReport(pid: pid_t) -> FrontHold? {
+        lock.withLock { frontReports.isEmpty ? nil : frontReports.removeFirst() }
+    }
+
+    func watchKeys(_ on: Bool) { lock.withLock { keyWatches.append(on) } }
+
     func perform(_ action: ComputerAction, on target: InputTarget, tiers: [Tier]) throws -> InputOutcome {
+        lock.withLock { keepOpens.append(target.keepFrontOpen) }
         log.add("perform \(action.action.rawValue)")
         lock.withLock {
             cursors.append(target.cursor)
