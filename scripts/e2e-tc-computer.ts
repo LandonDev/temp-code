@@ -1218,6 +1218,8 @@ async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
   const act = (o: Observation, action: Record<string, unknown>, tiers: ('ax' | 'process')[]) =>
     a.call('action.run', { session: SESSION, app: { pid }, window: { id: o.window.id }, epoch: o.epoch, action, tiers, wait: COMPUTER_WAIT.action } as never)
   const via = (step: OkStep): string | undefined => step.input?.via
+  /** The next step finds its elements in a full read: an act's closing observation is often a diff, which lists only what changed. */
+  const full = async (next: Observation | undefined): Promise<Observation> => (next?.kind === 'full' ? next : read())
   let o: Observation | null = null
 
   await leg.step('fallbacks: launch a TC Probe with --fallbacks in the background', async (data) => {
@@ -1236,7 +1238,7 @@ async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
     const step = okStep(r.step)
     check(step.tier === 'ax' && via(step) === 'menu' && step.input?.on === 'Probe › Ping App' && step.effect === 'changed', 'the menu route ran and changed the window', step)
     check(r.observation?.text.includes('"app 1 window 0"'), 'the app delegate counted the ping', r.observation?.text)
-    o = r.observation!
+    o = await full(r.observation)
   })
   await leg.step("fallbacks 2: ⌘⇧K's first-responder item is disabled in the background", async (data) => {
     const r = await act(o!, { action: 'key', text: 'super+shift+k' }, ['ax', 'process'])
@@ -1259,7 +1261,7 @@ async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
     const step = okStep(r.step)
     check(step.tier === 'ax' && via(step) === 'hit' && step.input?.on === 'button "Hit Target"', 'the hit pressed the button', step)
     check(r.observation?.text.includes('"hits 1"'), 'the button counted the press', r.observation?.text)
-    o = r.observation!
+    o = await full(r.observation)
   })
   await leg.step("fallbacks 4: a click at the field's fifth character puts the caret there", async (data) => {
     const field = findElement(o!, 'the Digits field', (e) => e.role === 'input' && !!e.frame && (e.name === 'Digits' || e.value === '0123456789'))
@@ -1292,7 +1294,7 @@ async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
     const step = okStep(r.step)
     check(step.tier === 'ax' && via(step) === 'hit', 'the hit ran', step)
     check(r.observation?.text.includes('"value 6"'), 'the value went up one', r.observation?.text)
-    o = r.observation!
+    o = await full(r.observation)
   })
   await leg.step('fallbacks 7: a scroll moves the bar; at the top it changes nothing', async (data) => {
     const area = findElement(o!, 'the Lines scroll area', (e) => e.role === 'scroll area' && !!e.frame)
@@ -1300,7 +1302,7 @@ async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
       const before = personState()
       const r = await act(o!, { action: 'scroll', element: area.index, scroll_direction: dir, scroll_amount: n }, ['ax', 'process'])
       data.person = assertPersonUntouched(before, `after scroll ${dir} ${n}`)
-      o = r.observation ?? (await read())
+      o = await full(r.observation)
       return okStep(r.step)
     }
     const down = await scroll('down', 5)
@@ -1318,7 +1320,7 @@ async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
     check(via(step) === 'ax-insert' && step.input?.clipboard === undefined, 'the AX insert, no clipboard', step)
     data.changeCount = { before, after: (await a.call('clipboard.state', {})).changeCount }
     check((data.changeCount as { after: number }).after === before, "the pasteboard's change count stayed", data.changeCount)
-    o = r.observation ?? (await read())
+    o = await full(r.observation)
   })
   await leg.step('fallbacks 9: Save… opens the save sheet, its name set and Save pressed by AX', async (data) => {
     const name = `tc-fallback-${process.pid}.txt`
@@ -1387,7 +1389,7 @@ async function fewerLeg(a: Service, mayLaunch: () => void): Promise<void> {
     data.person = assertPersonUntouched(before, 'after the fewer calls batch')
     const errors = judge(r)
     check(errors.length === 0, errors.join('; '), r)
-    o = r.observation!
+    o = await full(r.observation)
   }
 
   try {
