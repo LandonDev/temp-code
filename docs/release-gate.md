@@ -82,7 +82,10 @@ active leg alone then passed three times in a row at e2ea05ac plus the fixes
 (37 checks each, active 9 at `session` with the person untouched, TextEdit's
 save_as and ⌘S and Finder's rename and New Folder at the front and session
 tiers each putting the person's app back), with the person at the Mac between
-runs and Aside, Chrome for Testing and Finder in front at their ends.
+runs and Aside, Chrome for Testing and Finder in front at their ends. No
+such rerun has run yet, and as written it cannot pass: the first save_as of
+active 9 (and of TextEdit 1) goes again to the file the first try wrote,
+without `replace`, so it refuses with `file_exists` and the check fails red.
 
 The rows `e2e-tc-computer` and `e2e-computer-bridge` start through
 `scripts/proof-bun.ts`: `bun run` puts every ancestor's node_modules/.bin on
