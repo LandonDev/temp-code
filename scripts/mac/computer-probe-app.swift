@@ -18,6 +18,10 @@
 //
 // `--fallbacks <dir>` (opt-in, for the background fallbacks leg; §24): see ProbeFallbacks below.
 //
+// `--active <dir>` (opt-in, for the steps that need the app active; §25): see ProbeActive below. Its
+// document and file list keep the app's rules: their File commands go down the responder chain, so they
+// read disabled while the app is in the background, as TextEdit's and Finder's do.
+//
 // `TCProbeSteal` (an Info.plist key, set only in "TC Probe Steal.app", bundle id
 // dev.landon.tempcode.computer-probe-steal, for the front guard's leg): the app takes the front the way a
 // misbehaving app does, `NSApp.activate(ignoringOtherApps: true)`, once its window shows, once per opened
@@ -40,6 +44,7 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
     private var pauseSignal: DispatchSourceSignal?
     private let windows = ProbeWindows()
     private let fallbacks = ProbeFallbacks()
+    private let active = ProbeActive()
     private var documents: [NSWindow] = []
     /// the stealer's Info.plist says so
     private let steals = Bundle.main.object(forInfoDictionaryKey: "TCProbeSteal") as? Bool ?? false
@@ -85,6 +90,9 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--windows") { windows.open() }
         if let at = CommandLine.arguments.firstIndex(of: "--fallbacks"), at + 1 < CommandLine.arguments.count {
             fallbacks.open(scratch: CommandLine.arguments[at + 1])
+        }
+        if let at = CommandLine.arguments.firstIndex(of: "--active"), at + 1 < CommandLine.arguments.count {
+            active.open(scratch: CommandLine.arguments[at + 1])
         }
 
         if ticking {
@@ -318,13 +326,6 @@ final class ProbeFallbacks: NSObject {
     }
 
     private func installMenu() {
-        let main = NSMenu()
-        let appItem = NSMenuItem()
-        let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "Quit TC Probe", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        appItem.submenu = appMenu
-        main.addItem(appItem)
-        let probeItem = NSMenuItem()
         let probe = NSMenu(title: "Probe")
         let app = NSMenuItem(title: "Ping App", action: #selector(pingApp(_:)), keyEquivalent: "p")
         app.keyEquivalentModifierMask = [.command, .shift]
@@ -333,9 +334,7 @@ final class ProbeFallbacks: NSObject {
         window.keyEquivalentModifierMask = [.command, .shift]
         probe.addItem(app)
         probe.addItem(window)
-        probeItem.submenu = probe
-        main.addItem(probeItem)
-        NSApp.mainMenu = main
+        MenuBar.add(probe)
     }
 
     private func hit() {
@@ -365,7 +364,318 @@ final class ProbeFallbacks: NSObject {
     }
 }
 
+// MARK: the menu bar
+
+/// The menu bar the modes share: an app menu with Quit, then each mode's menus in the order they open.
+/// The plain probe opens none and has no menu bar of its own.
+enum MenuBar {
+    static func add(_ menu: NSMenu) {
+        let bar = NSApp.mainMenu ?? {
+            let bar = NSMenu()
+            let appMenu = NSMenu()
+            appMenu.addItem(withTitle: "Quit TC Probe", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+            let appItem = NSMenuItem()
+            appItem.submenu = appMenu
+            bar.addItem(appItem)
+            NSApp.mainMenu = bar
+            return bar
+        }()
+        let item = NSMenuItem(title: menu.title, action: nil, keyEquivalent: "")
+        item.submenu = menu
+        bar.addItem(item)
+    }
+
+    /// An item with no target: AppKit sends it down the responder chain from the key window, so it reads
+    /// disabled while the app is in the background (§25.1).
+    static func chain(_ title: String, _ action: Selector, _ key: String, _ modifiers: NSEvent.ModifierFlags = [.command]) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        item.keyEquivalentModifierMask = modifiers
+        return item
+    }
+}
+
+// MARK: --active
+
+/// The probe keeps no recent documents. It must be made before anything reads `NSDocumentController.shared`.
+final class ProbeDocumentController: NSDocumentController {
+    override func noteNewRecentDocumentURL(_ url: URL) {}
+    override var maximumRecentDocumentCount: Int { 0 }
+}
+
+/// A plain-text document that saves in place, as TextEdit's does. Save, Save As…, the edited flag (the
+/// close button's AXEdited), the window's AXDocument and the save panel are all AppKit's own.
+final class ProbeTextDocument: NSDocument, NSTextViewDelegate {
+    static let type = "public.plain-text"
+    private var text = ""
+    private var view: NSTextView?
+
+    override class var autosavesInPlace: Bool { true }
+    override class var readableTypes: [String] { [type] }
+    override class var writableTypes: [String] { [type] }
+    override class func isNativeType(_ name: String) -> Bool { name == type }
+    override func writableTypes(for saveOperation: NSDocument.SaveOperationType) -> [String] { [Self.type] }
+    override func fileNameExtension(forType typeName: String, saveOperation: NSDocument.SaveOperationType) -> String? { "txt" }
+
+    override func makeWindowControllers() {
+        let window = KeyableWindow(
+            contentRect: NSRect(x: 560, y: 420, width: 420, height: 240),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isRestorable = false
+        window.ignoresMouseEvents = true
+        let scroll = NSTextView.scrollableTextView()
+        if let view = scroll.documentView as? NSTextView {
+            view.string = text
+            view.isRichText = false
+            view.delegate = self
+            view.setAccessibilityLabel("Text")
+            self.view = view
+        }
+        window.contentView = scroll
+        addWindowController(NSWindowController(window: window))
+    }
+
+    override func data(ofType typeName: String) throws -> Data { Data((view?.string ?? text).utf8) }
+
+    override func read(from data: Data, ofType typeName: String) throws {
+        text = String(decoding: data, as: UTF8.self)
+        view?.string = text
+    }
+
+    var textView: NSTextView? { view }
+
+    func textDidChange(_ notification: Notification) { updateChangeCount(.changeDone) }
+}
+
+/// A file or folder under `<scratch>/files`.
+final class FileRow: NSObject {
+    let url: URL
+    init(url: URL) { self.url = url }
+    var name: String { url.lastPathComponent }
+}
+
+/// A row's name, edited in place as Finder's is. An accessibility write puts the name on screen and opens
+/// the field editor on it; the file keeps its old name until the editor ends (Return or Tab) while the app
+/// is active. In the background Return goes nowhere, so a write alone is on screen only (finding 1).
+final class RenameField: NSTextField {
+    var row: FileRow?
+
+    override func setAccessibilityValue(_ value: Any?) {
+        guard let name = value as? String else { return super.setAccessibilityValue(value) }
+        stringValue = name
+        if currentEditor() == nil { window?.makeFirstResponder(self) }
+    }
+}
+
+/// The file list, in the responder chain of its window: File › New Folder and File › Move to Trash land
+/// here only while the window is key, which an inactive app's never is.
+final class FileOutline: NSOutlineView {
+    var onNewFolder: () -> Void = {}
+    var onTrash: () -> Void = {}
+
+    @objc func newFolder(_ sender: Any?) { onNewFolder() }
+    @objc func moveToTrash(_ sender: Any?) { onTrash() }
+
+    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(moveToTrash(_:)) { return selectedRow >= 0 }
+        if item.action == #selector(newFolder(_:)) { return true }
+        return super.validateUserInterfaceItem(item)
+    }
+}
+
+/// `--active <scratch>`: the document window on `<scratch>/doc.txt` and the file list "files" over
+/// `<scratch>/files`, whose rows carry AXURL and whose window's AXDocument is the folder. The File menu
+/// holds the document's commands (Save ⌘S, Save As… ⇧⌘S, Rename…, Move To…, Revert To Saved, Close ⌘W)
+/// and the list's (New Folder ⇧⌘N, Move to Trash ⌘⌫, into `<scratch>/Trash`, never the real Trash), all
+/// with no target. Both windows are ordered back and mouse-inert; the app never activates itself.
+final class ProbeActive: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate, NSTextFieldDelegate {
+    private var scratch = URL(fileURLWithPath: "/")
+    private var files: URL { scratch.appendingPathComponent("files", isDirectory: true) }
+    private var trash: URL { scratch.appendingPathComponent("Trash", isDirectory: true) }
+    private var rows: [FileRow] = []
+    private var list: FileOutline?
+    private var document: ProbeTextDocument?
+
+    func open(scratch path: String) {
+        scratch = URL(fileURLWithPath: path, isDirectory: true)
+        let fm = FileManager.default
+        try? fm.createDirectory(at: files, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: trash, withIntermediateDirectories: true)
+        let doc = scratch.appendingPathComponent("doc.txt")
+        if !fm.fileExists(atPath: doc.path) { try? "TC Probe document\n".write(to: doc, atomically: true, encoding: .utf8) }
+        if (try? fm.contentsOfDirectory(atPath: files.path))?.isEmpty ?? true {
+            for name in ["alpha.txt", "beta.txt"] {
+                try? "\(name)\n".write(to: files.appendingPathComponent(name), atomically: true, encoding: .utf8)
+            }
+        }
+        installMenus()
+        openList()
+        openDocument(doc)
+    }
+
+    private func installMenus() {
+        let file = NSMenu(title: "File")
+        file.addItem(MenuBar.chain("New Folder", #selector(FileOutline.newFolder(_:)), "n", [.command, .shift]))
+        file.addItem(.separator())
+        file.addItem(MenuBar.chain("Close", #selector(NSWindow.performClose(_:)), "w"))
+        file.addItem(MenuBar.chain("Save", #selector(NSDocument.save(_:)), "s"))
+        file.addItem(MenuBar.chain("Save As…", #selector(NSDocument.saveAs(_:)), "s", [.command, .shift]))
+        file.addItem(MenuBar.chain("Rename…", #selector(NSDocument.rename(_:)), ""))
+        file.addItem(MenuBar.chain("Move To…", #selector(NSDocument.move(_:)), ""))
+        file.addItem(MenuBar.chain("Revert To Saved", #selector(NSDocument.revertToSaved(_:)), ""))
+        file.addItem(.separator())
+        file.addItem(MenuBar.chain("Move to Trash", #selector(FileOutline.moveToTrash(_:)), "\u{8}"))
+        MenuBar.add(file)
+        let edit = NSMenu(title: "Edit")
+        edit.addItem(MenuBar.chain("Cut", #selector(NSText.cut(_:)), "x"))
+        edit.addItem(MenuBar.chain("Copy", #selector(NSText.copy(_:)), "c"))
+        edit.addItem(MenuBar.chain("Paste", #selector(NSText.paste(_:)), "v"))
+        edit.addItem(MenuBar.chain("Select All", #selector(NSText.selectAll(_:)), "a"))
+        MenuBar.add(edit)
+    }
+
+    private func openDocument(_ url: URL) {
+        guard let doc = try? ProbeTextDocument(contentsOf: url, ofType: ProbeTextDocument.type) else { return }
+        NSDocumentController.shared.addDocument(doc)
+        doc.makeWindowControllers()
+        guard let window = doc.windowControllers.first?.window else { return }
+        // ordered back and key in its app, the app still in the background: no activate, no showWindows
+        window.orderBack(nil)
+        window.makeKey()
+        if let view = doc.textView { window.makeFirstResponder(view) }
+        document = doc
+    }
+
+    private func openList() {
+        let window = KeyableWindow(contentRect: NSRect(x: 1_000, y: 420, width: 360, height: 240), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
+        window.title = "files"
+        window.representedURL = files
+        window.isReleasedWhenClosed = false
+        window.isRestorable = false
+        let outline = FileOutline()
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
+        column.title = "Name"
+        outline.addTableColumn(column)
+        outline.outlineTableColumn = column
+        outline.headerView = nil
+        outline.dataSource = self
+        outline.delegate = self
+        outline.setAccessibilityLabel("Files")
+        outline.onNewFolder = { [weak self] in self?.newFolder() }
+        outline.onTrash = { [weak self] in self?.moveSelectedToTrash() }
+        let scroll = NSScrollView()
+        scroll.documentView = outline
+        scroll.hasVerticalScroller = true
+        window.contentView = scroll
+        window.ignoresMouseEvents = true
+        list = outline
+        reload()
+        window.orderBack(nil)
+        window.makeFirstResponder(outline)
+    }
+
+    private func reload(select name: String? = nil) {
+        let names = ((try? FileManager.default.contentsOfDirectory(atPath: files.path)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
+        rows = names.map { FileRow(url: files.appendingPathComponent($0)) }
+        list?.reloadData()
+        if let name, let at = rows.firstIndex(where: { $0.name == name }) {
+            list?.selectRowIndexes(IndexSet(integer: at), byExtendingSelection: false)
+        }
+    }
+
+    /// Finder's New Folder: "untitled folder" on disk at once, selected, its name open for editing.
+    private func newFolder() {
+        var name = "untitled folder"
+        var n = 2
+        while FileManager.default.fileExists(atPath: files.appendingPathComponent(name).path) {
+            name = "untitled folder \(n)"
+            n += 1
+        }
+        guard (try? FileManager.default.createDirectory(at: files.appendingPathComponent(name), withIntermediateDirectories: false)) != nil else { return }
+        reload(select: name)
+        if let list, let at = rows.firstIndex(where: { $0.name == name }) { list.editColumn(0, row: at, with: nil, select: true) }
+    }
+
+    /// Move to Trash: the selected rows into `<scratch>/Trash`, a number added where the name is taken.
+    private func moveSelectedToTrash() {
+        guard let list else { return }
+        for at in list.selectedRowIndexes where at < rows.count {
+            let from = rows[at].url
+            var to = trash.appendingPathComponent(from.lastPathComponent)
+            var n = 2
+            while FileManager.default.fileExists(atPath: to.path) {
+                to = trash.appendingPathComponent("\(from.deletingPathExtension().lastPathComponent) \(n)" + (from.pathExtension.isEmpty ? "" : ".\(from.pathExtension)"))
+                n += 1
+            }
+            try? FileManager.default.moveItem(at: from, to: to)
+        }
+        reload()
+    }
+
+    // MARK: the outline
+
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int { item == nil ? rows.count : 0 }
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any { rows[index] }
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { false }
+
+    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+        guard let row = item as? FileRow else { return nil }
+        let cell = NSTableCellView()
+        let field = RenameField(string: row.name)
+        field.row = row
+        field.isBordered = false
+        field.drawsBackground = false
+        field.isEditable = true
+        field.delegate = self
+        field.translatesAutoresizingMaskIntoConstraints = false
+        cell.addSubview(field)
+        cell.textField = field
+        NSLayoutConstraint.activate([
+            field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+            field.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+            field.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+        ])
+        cell.setAccessibilityURL(row.url)
+        return cell
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+        let view = NSTableRowView()
+        if let row = item as? FileRow { view.setAccessibilityURL(row.url) }
+        return view
+    }
+
+    // MARK: the inline name
+
+    /// Return and Tab end the edit only in the active app; in the background they go nowhere.
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) || commandSelector == #selector(NSResponder.insertTab(_:)) {
+            return !NSApp.isActive
+        }
+        return false
+    }
+
+    /// The edit's end commits the name to disk (the inode kept), unless it was cancelled, the app is in the
+    /// background, or the name is empty, holds a slash or is taken; then the row shows the name on disk again.
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard let field = notification.object as? RenameField, let row = field.row else { return }
+        let movement = (notification.userInfo?["NSTextMovement"] as? Int).flatMap(NSTextMovement.init(rawValue:))
+        let name = field.stringValue
+        let to = files.appendingPathComponent(name)
+        let commit = NSApp.isActive && movement != .cancel && !name.isEmpty && !name.contains("/") && name != row.name
+            && !FileManager.default.fileExists(atPath: to.path)
+        if commit, (try? FileManager.default.moveItem(at: row.url, to: to)) != nil {
+            DispatchQueue.main.async { self.reload(select: name) }
+        } else {
+            field.stringValue = row.name
+        }
+    }
+}
+
 UserDefaults.standard.register(defaults: ["ApplePersistenceIgnoreState": true])
+if CommandLine.arguments.contains("--active") { _ = ProbeDocumentController() }
 let app = NSApplication.shared
 app.setActivationPolicy(.regular)
 let delegate = ProbeDelegate()
