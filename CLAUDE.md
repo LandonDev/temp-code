@@ -2225,6 +2225,13 @@ why and the measured headline.
   first (`TargetResolver`), and TempCode itself and the system's password
   and Touch ID prompts are refused (`refused_app`). Service errors read
   through `errorLine` (src/shared/computer/errorWords.ts).
+- **The page.** Settings → Computer use (surfaces/settings/Computer.tsx;
+  Mac desktop only, `macOnly` in lib/settings.ts): the service with Try
+  again while down, Take the screen after (`computer.sessionIdleMs`, in
+  minutes), the two grants with Grant…, the learned apps (`verdictWords`)
+  with Forget; `computer.settings.get/set`, `computer.verdicts.forget`,
+  `computer.permissions`, `computer.service.retry`, all `local`
+  (computer/settingsRpc.ts); the `computer-settings` push.
 - **The session tier** (§20, computer/schedule.ts,
   src/shared/computer/scheduleRules.ts) takes the person's pointer and
   keyboard only while they are away: no input for `computer.sessionIdleMs`
