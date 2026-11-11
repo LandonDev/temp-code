@@ -18,7 +18,8 @@ import {
 } from './notesPrompts'
 import { MASTER_MECHANICS, implementerSpawnPrompt, orchestratorPrompt } from './orchestration'
 import { threadPreamble } from './threads'
-import { appUpdateNotes, setAppBridge } from './apptools'
+import { appNoteDecision, appUpdateNotes, setAppBridge } from './apptools'
+import { NOTES_STREAK_STOP } from '@shared/notes'
 import { cancelMirrors, threadDigest, writeThreadDigest } from './mirror'
 import { readFile } from 'node:fs/promises'
 
@@ -335,6 +336,47 @@ describe('a host line never starts a turn', () => {
     await flush()
     expect(whispers).toEqual([])
     expect(registry.heldNotices(id)).toEqual(['later'])
+  })
+})
+
+describe('the notes streak', () => {
+  const update = (id: string, n: number): string => appUpdateNotes(registry, registry.get(id)!, { section: 'State', content: `pass ${n}` })
+
+  it('five updates in a row pass, the sixth is refused and writes nothing', async () => {
+    const id = await startThread()
+    running()
+    for (let i = 1; i <= 5; i++) expect(update(id, i)).toMatch(/^notes updated/)
+    const before = registry.notes.read(id).text
+    expect(update(id, 6)).toBe(NOTES_STREAK_STOP)
+    expect(registry.notes.read(id).text).toBe(before)
+  })
+
+  it('another tool call resets it; a note_decision or a host line does not; a send does', async () => {
+    const id = await startThread()
+    running()
+    for (let i = 1; i <= 5; i++) update(id, i)
+    emit!({ type: 'tool-call', callId: 'b1', name: 'Bash', input: { command: 'ls' } })
+    for (let i = 1; i <= 5; i++) expect(update(id, i)).toMatch(/^notes updated/)
+    emit!({ type: 'tool-call', callId: 'd1', name: 'mcp__app__note_decision', input: {} })
+    emit!({ type: 'tool-call', callId: 'u1', name: 'mcp__app__update_notes', input: {} })
+    registry.whisper(id, 'a host line')
+    await flush()
+    expect(update(id, 6)).toBe(NOTES_STREAK_STOP)
+    settle()
+    await flush()
+    await registry.send(id, 'next')
+    await flush()
+    expect(update(id, 7)).toMatch(/^notes updated/)
+  })
+
+  it('the same decision twice is one row; distinct decisions each land', async () => {
+    const id = await startThread()
+    const caller = registry.get(id)!
+    expect(appNoteDecision(registry, caller, { decision: 'Used tabs.' })).toBe('noted')
+    expect(appNoteDecision(registry, caller, { decision: 'Used tabs.' })).toBe('already noted')
+    for (let i = 0; i < 6; i++) expect(appNoteDecision(registry, caller, { decision: `Decision ${i}.` })).toBe('noted')
+    const rows = registry.eventsAfter(id, 0).map((r) => r.event).filter((e) => e.type === 'notice' && e.kind === 'away')
+    expect(rows).toHaveLength(7)
   })
 })
 

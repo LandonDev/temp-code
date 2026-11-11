@@ -499,7 +499,7 @@ it('an unknown projectId is refused for a local start and admitted with environm
 })
 
 it('note_decision writes one away row on the caller, one line', () => {
-  const awayNotice = vi.fn()
+  const awayNotice = vi.fn(() => true)
   const caller = { id: 's1' } as SessionMeta
   expect(appNoteDecision({ awayNotice }, caller, { decision: 'Used tabs,\n  the repo\'s style.' })).toBe('noted')
   expect(awayNotice).toHaveBeenCalledWith('s1', 'decision', "Used tabs, the repo's style.")
@@ -507,6 +507,8 @@ it('note_decision writes one away row on the caller, one line', () => {
   expect(appNoteDecision({ awayNotice }, caller, { decision: 'x'.repeat(501) })).toMatch(/^refused/)
   expect(awayNotice).toHaveBeenCalledTimes(1)
   expect(APP_TOOLS).toContain('mcp__app__note_decision')
+  // A decision the registry already rowed this stretch is answered as such.
+  expect(appNoteDecision({ awayNotice: () => false }, caller, { decision: 'Used tabs.' })).toBe('already noted')
 })
 
 // ── app_start_thread on another host checks that host's catalog ──

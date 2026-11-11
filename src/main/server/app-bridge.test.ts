@@ -10,7 +10,7 @@ import {
   HTML_TOOL_PARAMS
 } from '@shared/htmlRender'
 import { CITE_TOOL_DESCRIPTION, CITE_TOOL_PARAMS } from '@shared/research'
-import { UPDATE_NOTES_DESCRIPTION, UPDATE_NOTES_PARAMS, UPDATE_NOTES_TOOL_NAME } from '@shared/notes'
+import { NOTES_STREAK_STOP, UPDATE_NOTES_DESCRIPTION, UPDATE_NOTES_PARAMS, UPDATE_NOTES_TOOL_NAME } from '@shared/notes'
 import { ThreadTypeSchema } from '@shared/domain'
 import { NOTE_DECISION_DESCRIPTION, NOTE_DECISION_PARAMS, NOTE_DECISION_TOOL_NAME } from '@shared/away'
 import {
@@ -167,6 +167,13 @@ describe('app-mcp-bridge computer tools over stdio', () => {
     ws.send(JSON.stringify({ id: request.id, ok: true, result }))
   const computerNames = (response: McpReply) => response.result.tools.filter((t) => t.name.startsWith('computer_'))
   const tokenEnv = { TEMP_CODE_COMPUTER_TOKEN: 'thread-token' }
+
+  it("returns update_notes' streak refusal verbatim", async () => {
+    const app = await startBridge((request, ws) => reply(ws, request, NOTES_STREAK_STOP))
+    const answer = await app.request(1, 'tools/call', { name: 'update_notes', arguments: { section: 'State', content: 'x' } })
+    expect(app.requests.map((r) => r.method)).toEqual(['app.updateNotes'])
+    expect(answer.result.content).toEqual([{ type: 'text', text: NOTES_STREAK_STOP }])
+  })
 
   it('neither lists nor calls computer tools without the token', async () => {
     const app = await startBridge((request, ws) => reply(ws, request, 'threads'))

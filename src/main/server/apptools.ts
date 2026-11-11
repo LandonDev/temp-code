@@ -44,6 +44,7 @@ import {
 import {
   canonicalSection,
   NOTE_SECTIONS,
+  NOTES_STREAK_STOP,
   sectionBody,
   UPDATE_NOTES_DESCRIPTION,
   UPDATE_NOTES_PARAMS,
@@ -496,6 +497,7 @@ export function appUpdateNotes(reg: SessionRegistry, caller: SessionMeta, args: 
   const section = canonicalSection(args.section)
   if (!section) return 'refused: section must name a heading.'
   if (args.content.length > NOTES_MAX_CHARS) return `refused: content over ${NOTES_MAX_CHARS} characters — notes are a brief, not a transcript.`
+  if (reg.notesStreak(caller.id) === 'stop') return NOTES_STREAK_STOP
   const mode = args.mode ?? 'replace'
   const doc = reg.notes.update(caller.id, { section, mode, content: args.content })
   const body = sectionBody(doc.text, section)
@@ -509,8 +511,7 @@ export function appNoteDecision(reg: Pick<SessionRegistry, 'awayNotice'>, caller
   const decision = args.decision.replace(/\s+/g, ' ').trim()
   if (!decision) return 'refused: say what you decided.'
   if (decision.length > NOTE_DECISION_MAX_CHARS) return `refused: one line of at most ${NOTE_DECISION_MAX_CHARS} characters.`
-  reg.awayNotice(caller.id, 'decision', decision)
-  return 'noted'
+  return reg.awayNotice(caller.id, 'decision', decision) ? 'noted' : 'already noted'
 }
 
 export const NOTE_DECISION_SHAPE = {
