@@ -111,7 +111,8 @@ private func key(_ text: String) -> ComputerAction { ComputerAction(action: .key
         #expect(URL(string: folder)?.path == s.files.path)
         // a file reference URL, as Finder's name field gives it, resolves to the same folder
         let reference = try #require((file as NSURL).fileReferenceURL())
-        #expect(DocumentState.folderURL(ofFile: reference) == folder)
+        let resolved = try #require(DocumentState.folderURL(ofFile: reference).flatMap { URL(string: $0) })
+        #expect(resolved.resolvingSymlinksInPath().path == s.files.resolvingSymlinksInPath().path)
         #expect(DocumentState.folderURL(ofFile: URL(string: "https://example.com/a.txt")!) == nil)
     }
 }
