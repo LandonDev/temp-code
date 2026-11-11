@@ -198,14 +198,25 @@ describe("computer rows", () => {
     tier: "ax",
     ...over,
   });
-  const entry = (r: ComputerSessionRow, previewable = true): ComputerEntry => ({ host: "local", row: r, previewable, ...(previewable ? { previewHost: "local", previewKey: r.threadId } : {}) });
+  /** A session this desktop cannot draw (the browser, a Linux desktop, another Mac): Activity keeps its row. */
+  const entry = (r: ComputerSessionRow, previewable = false): ComputerEntry => ({ host: "local", row: r, previewable, ...(previewable ? { previewHost: "local", previewKey: r.threadId } : {}) });
   const rows = (computer: ComputerEntry[], macCalls: MacBridgeRequest[] = []) =>
     activityRows({ meta: { id: "s1", status: "running", background: bg({}) }, devServers: [], macCalls, computer });
 
-  it("is one row per session: the window in its last app, the tier in a person's words, its age, Stop and the preview", () => {
+  it("a session this desktop can draw is the Computer section's: no row here", () => {
+    expect(rows([entry(row(), true)])).toEqual([]);
+    // held or waiting on a card, it is still the section's
+    expect(rows([entry(row({ running: { tool: "computer_act", words: "Waiting for the Mac to be free", startedAt: 1, held: true } }), true)])).toEqual([]);
+    expect(rows([entry(row({ asking: { line: "Click Save in TextEdit?" } }), true)])).toEqual([]);
+    // the rest stay: one drawable and one not, beside a Mac call
+    const sub = entry(row({ threadId: "sub1", since: 100 }));
+    expect(rows([entry(row(), true), sub], [mac("running")]).map((r) => r.key)).toEqual(["computer:local:sub1", "mac:m-running"]);
+  });
+
+  it("is one row per session it cannot draw: the window in its last app, the tier in a person's words, its age and Stop", () => {
     const e = entry(row());
     const [r] = rows([e]);
-    expect(r).toMatchObject({ key: "computer:local:s1", kind: "computer", label: "Untitled in TextEdit", tierWords: "in the background", since: 500, open: "preview", stop: { type: "computer", entry: e } });
+    expect(r).toMatchObject({ key: "computer:local:s1", kind: "computer", label: "Untitled in TextEdit", tierWords: "in the background", since: 500, stop: { type: "computer", entry: e } });
     expect(rows([entry(row({ tier: "process" }))])[0].tierWords).toBe("to the app");
     expect(rows([entry(row({ tier: "session" }))])[0].tierWords).toBe("on the screen");
     expect(rows([entry(row({ tier: "front" }))])[0].tierWords).toBe("in front");
@@ -218,10 +229,10 @@ describe("computer rows", () => {
     expect(first).not.toHaveProperty("tierWords");
   });
 
-  it("opens only when this desktop can preview it, or for what it waits on", () => {
-    expect(rows([entry(row(), false)])[0]).not.toHaveProperty("open");
-    expect(rows([entry(row({ running: { tool: "computer_act", words: "Waiting for the Mac to be free", startedAt: 1, held: true } }), false)])[0].open).toBe("preview");
-    expect(rows([entry(row({ asking: { line: "Click Save in TextEdit?" } }), false)])[0].open).toBe("preview");
+  it("opens only for what it waits on: a held step, or a card on its Mac", () => {
+    expect(rows([entry(row())])[0]).not.toHaveProperty("open");
+    expect(rows([entry(row({ running: { tool: "computer_act", words: "Waiting for the Mac to be free", startedAt: 1, held: true } }))])[0].open).toBe("lines");
+    expect(rows([entry(row({ asking: { line: "Click Save in TextEdit?" } }))])[0].open).toBe("lines");
   });
 
   it("sorts with the other rows by age, a subagent's session among them, and drops a bridged computer call's Mac row", () => {

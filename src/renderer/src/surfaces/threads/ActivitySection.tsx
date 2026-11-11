@@ -17,9 +17,7 @@ import { taskLog } from "../../lib/tcserver/commands";
 import type { SessionMeta } from "../../lib/tcserver/types";
 import { minuteAge } from "../../lib/duration";
 import { useSlowClock } from "../../lib/turnClock";
-import { computerPreviewChunk } from "../chunks";
-
-const ComputerPreview = computerPreviewChunk.surface("ComputerPreview");
+import { ComputerLines } from "./ComputerLines";
 
 /**
  * The right panel's Activity section: what a thread has running in the
@@ -28,10 +26,11 @@ const ComputerPreview = computerPreviewChunk.surface("ComputerPreview");
  * model's words, its age, and Stop. A shell row opens under it onto its
  * command and its live output (session.taskLog, every 1.5 s while open and
  * on screen; a read that fails says so and keeps what it had); a dev server
- * opens the dev servers pane; a computer session says its window and app and
- * the tier of its last action, and opens in place, with no height animation,
- * onto the window's live preview (ComputerPreview, lazy). Subagents are the
- * Agents section's alone.
+ * opens the dev servers pane; a computer session this desktop cannot draw
+ * says its window and app and the tier of its last action, and opens in
+ * place, with no height animation, onto what it waits on (ComputerLines: a
+ * card on its Mac, a held step). A session it can draw is the Computer
+ * section's and has no row here; subagents are the Agents section's alone.
  * Rows have no enter or leave motion: a row leaves when its push says the
  * work ended, and an open log closes with it.
  */
@@ -84,7 +83,7 @@ export const ActivityRows = memo(function ActivityRows({
   const open = rows.some((r) => r.key === openKey) ? openKey : null;
 
   const activate = (row: ActivityRow): void => {
-    if (row.open === "log" || row.open === "preview") setOpenKey(open === row.key ? null : row.key);
+    if (row.open === "log" || row.open === "lines") setOpenKey(open === row.key ? null : row.key);
     else if (row.open === "dev") devPane.open(row.devKey);
   };
 
@@ -163,10 +162,9 @@ function Row({
               <ItemButton
                 data-row-open
                 aria-label={row.tierWords ? `${row.label}, ${row.tierWords}` : row.label}
-                aria-expanded={row.open === "log" || row.open === "preview" ? expanded : undefined}
+                aria-expanded={row.open === "log" || row.open === "lines" ? expanded : undefined}
                 onClick={onActivate}
                 className={ROW_OPEN}
-                {...(row.open === "preview" ? computerPreviewChunk.intent : {})}
               />
             }
           />
@@ -208,12 +206,12 @@ function Row({
       </ItemActions>
     </Item>
   );
-  if (row.open === "preview" && row.computer) {
-    // In place, no fold animation: the box fades in on its own (ComputerPreview).
+  if (row.open === "lines" && row.computer) {
+    // In place, no fold animation: one status line.
     return (
       <div data-slot="computer-row">
         {item}
-        {expanded ? <ComputerPreview entry={row.computer} open={expanded && live} /> : null}
+        {expanded ? <ComputerLines row={row.computer.row} /> : null}
       </div>
     );
   }

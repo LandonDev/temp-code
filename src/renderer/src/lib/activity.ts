@@ -16,8 +16,10 @@ import type { SessionMeta } from "./tcserver/types";
  * watching strip read it: the meta's `background` (CLAUDE.md "Background
  * work and watching") joined with the thread's dev servers, its running
  * Mac calls and its live computer sessions. One row per task, one for a
- * master's batch and one per computer session; subagents are the Agents
- * section's, never a row here.
+ * master's batch and one per computer session this desktop cannot draw; a
+ * session it can draw is the Computer section's (lib/computerSection.ts) and
+ * subagents are the Agents section's, never a row here: each thing is shown
+ * once.
  */
 
 export type ActivityKind = BackgroundTaskKind | "batch" | "dev" | "mac" | "computer";
@@ -38,13 +40,13 @@ export interface ActivityRow {
   stop?: StopTarget;
   /** A computer row's tier in a person's words, drawn muted after the label ("in the background"). */
   tierWords?: string;
-  /** What a click opens: the task's output, the dev servers pane, a computer session's preview. */
-  open?: "log" | "dev" | "preview";
+  /** What a click opens: the task's output, the dev servers pane, a computer session's lines (a card on its Mac, a held step). */
+  open?: "log" | "dev" | "lines";
   /** `log` rows: the task whose output session.taskLog reads. */
   taskId?: string;
   /** `dev` rows: the dev servers pane's key for the server. */
   devKey?: string;
-  /** `computer` rows: the session, for its preview and its lines. */
+  /** `computer` rows: the session, for its lines and its Stop. */
   computer?: ComputerEntry;
 }
 
@@ -116,7 +118,8 @@ export function activityRows(src: ActivitySources): ActivityRow[] {
       stop: { type: "mac", request },
     });
   }
-  for (const entry of src.computer ?? []) rest.push(computerRow(entry));
+  // A session this desktop can draw is the Computer section's: its window, its steps and its Stop are there.
+  for (const entry of src.computer ?? []) if (!entry.previewable) rest.push(computerRow(entry));
   rest.sort((a, b) => a.since - b.since);
   return [...head, ...rest];
 }
@@ -130,7 +133,7 @@ export function computerLabel(entry: ComputerEntry): string {
 
 function computerRow(entry: ComputerEntry): ActivityRow {
   const { row } = entry;
-  const opens = entry.previewable || row.running?.held === true || !!row.asking;
+  const opens = row.running?.held === true || !!row.asking;
   return {
     key: `computer:${entry.host}:${row.threadId}`,
     kind: "computer",
@@ -138,7 +141,7 @@ function computerRow(entry: ComputerEntry): ActivityRow {
     ...(row.tier ? { tierWords: COMPUTER_TIER_WORDS[row.tier] } : {}),
     since: row.since,
     stop: { type: "computer", entry },
-    ...(opens ? { open: "preview" as const } : {}),
+    ...(opens ? { open: "lines" as const } : {}),
     computer: entry,
   };
 }

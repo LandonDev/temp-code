@@ -6,9 +6,6 @@ import type { ComputerEntry } from "../../lib/computerSessions";
 
 const { stopComputer, toastError } = vi.hoisted(() => ({ stopComputer: vi.fn(() => Promise.resolve()), toastError: vi.fn() }));
 vi.mock("../../lib/computerSessions", () => ({ stopComputer, useComputerEntries: () => [] }));
-vi.mock("../../lib/computerPreview", () => ({
-  useComputerPreview: () => ({ state: { status: "starting", width: 960, height: 600 }, retry: vi.fn() }),
-}));
 vi.mock("../../lib/tcserver/commands", () => ({ stopTask: vi.fn(), taskLog: vi.fn(), killBackground: vi.fn() }));
 vi.mock("../../lib/devServers", () => ({ stopLiveServer: vi.fn(), useLiveDevServers: () => [] }));
 vi.mock("../../lib/macBridge", () => ({ stopMacBridgeAll: vi.fn(), useMacBridgeRunning: () => [] }));
@@ -35,7 +32,8 @@ const row = (over: Partial<ComputerSessionRow> = {}): ComputerSessionRow => ({
   tier: "process",
   ...over,
 });
-const entry = (over: Partial<ComputerSessionRow> = {}, previewable = true, host = "local"): ComputerEntry => ({
+/** By default a session this desktop cannot draw (a box thread seen from the browser, or one driving another Mac): Activity's own row. */
+const entry = (over: Partial<ComputerSessionRow> = {}, previewable = false, host = "env_box"): ComputerEntry => ({
   host,
   row: row(over),
   previewable,
@@ -67,11 +65,12 @@ describe("the Computer row", () => {
   });
 
   it("says in front for a step that brought the app forward for a moment (§26), never the tier's own name", () => {
-    mount(entry({ tier: "front" }));
+    // a row that opens (a step held in line) names its window and tier on its open control
+    mount(entry({ tier: "front", running: { tool: "computer_act", words: "Waiting for the Mac to be free", startedAt: now, held: true } }));
     const r = computerRow();
     expect(r.querySelector('[data-slot="activity-tier"]')!.textContent).toBe("in front");
     expect(r.textContent).not.toMatch(/\bfront\b.*\bfront\b/);
-    expect(r.querySelector("[aria-label]")?.getAttribute("aria-label")).toContain("Untitled in TextEdit, in front");
+    expect(openControl()!.getAttribute("aria-label")).toBe("Untitled in TextEdit, in front");
   });
 
   it("Stop is computer.stop on the session's own host, and a failure says so", async () => {
@@ -86,31 +85,33 @@ describe("the Computer row", () => {
     await vi.waitFor(() => expect(toastError).toHaveBeenCalledWith("Couldn't stop it", { description: "Untitled in TextEdit" }));
   });
 
-  it("opens in place onto the preview, with no fold to animate its height", async () => {
-    mount(entry());
-    const open = openControl()!;
-    expect(open.getAttribute("aria-expanded")).toBe("false");
-    expect(open.getAttribute("aria-label")).toBe("Untitled in TextEdit, to the app");
-    fireEvent.click(open);
-    expect(openControl()!.getAttribute("aria-expanded")).toBe("true");
-    expect(await screen.findByRole("img", { name: "Preview of Untitled in TextEdit" })).toBeTruthy();
-    const holder = computerRow().closest('[data-slot="computer-row"]')!;
-    expect(holder.querySelector('[data-slot="collapsible-content"]')).toBeNull();
-    fireEvent.click(openControl()!);
-    expect(screen.queryByRole("img")).toBeNull();
+  it("a session this desktop can draw has no row here: it is the Computer section's", () => {
+    mount(entry({}, true, "local"));
+    expect(document.querySelector('[data-kind="computer"]')).toBeNull();
+    cleanup();
+    // one it can draw beside one it cannot: only the second is listed
+    mount(entry({}, true, "local"), entry({ threadId: "sub1", apps: [{ name: "Mail", bundleId: "com.apple.mail", window: "Inbox" }] }));
+    expect(document.querySelectorAll('[data-kind="computer"]')).toHaveLength(1);
+    expect(computerRow().textContent).toContain("Inbox in Mail");
   });
 
-  it("does not open when this desktop cannot preview it and nothing waits", () => {
+  it("does not open when nothing waits", () => {
     mount(entry({}, false, "env_box"));
     expect(openControl()).toBeNull();
   });
 
-  it("opens onto the held line, or the card waiting on the Mac, where it cannot preview", async () => {
+  it("opens in place onto the held line, or the card waiting on the Mac, with no picture and no fold to animate", async () => {
     mount(entry({ running: { tool: "computer_act", words: "Waiting for the Mac to be free", startedAt: now, held: true } }, false, "env_box"));
     fireEvent.click(openControl()!);
+    expect(openControl()!.getAttribute("aria-expanded")).toBe("true");
     const held = await vi.waitFor(() => document.querySelector('[data-slot="computer-held"]')!);
     expect(held.textContent).toContain("Waiting for the Mac to be free");
+    expect(held.getAttribute("data-state")).toBe("queued");
     expect(screen.queryByRole("img")).toBeNull();
+    const holder = computerRow().closest('[data-slot="computer-row"]')!;
+    expect(holder.querySelector('[data-slot="collapsible-content"]')).toBeNull();
+    fireEvent.click(openControl()!);
+    expect(document.querySelector('[data-slot="computer-held"]')).toBeNull();
     cleanup();
     mount(entry({ asking: { line: "Click Save in TextEdit?" } }, false, "env_box"));
     fireEvent.click(openControl()!);
