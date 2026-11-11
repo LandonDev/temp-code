@@ -50,6 +50,14 @@ export function buildStealProbeApp(root: string, dir: string): ProbeAppBuild {
   return buildApp(root, dir, STEAL_PROBE_APP_NAME, STEAL_PROBE_BUNDLE_ID, STEAL_PLIST_KEYS)
 }
 
+/**
+ * The scratch document a try at the stealer's open step opens: one of its own per try, since a document the
+ * stealer already has open opens no window, and a voided try runs again (docs/computer-protocol.md §23.9).
+ */
+export function stealDocName(run: number, attempt: number): string {
+  return `probe-${run}-${attempt}.tcprobe`
+}
+
 /** The stealer's own Info.plist keys. */
 export const STEAL_PLIST_KEYS = `  <key>TCProbeSteal</key><true/>
   <key>CFBundleDocumentTypes</key>

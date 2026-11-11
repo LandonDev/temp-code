@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { STEAL_PLIST_KEYS, STEAL_PROBE_BUNDLE_ID, binarySpellings, guiLaunchEnvironment, probePlist } from './tcProbeApp'
+import { STEAL_PLIST_KEYS, STEAL_PROBE_BUNDLE_ID, binarySpellings, guiLaunchEnvironment, probePlist, stealDocName } from './tcProbeApp'
 
 describe('binarySpellings', () => {
   const dir = mkdtempSync(join(tmpdir(), 'tc-probe-spell-'))
@@ -28,6 +28,13 @@ describe('binarySpellings', () => {
 
   it('leaves any other path as it is', () => {
     expect(binarySpellings('/Users/me/probe/TC Probe')).toEqual(['/Users/me/probe/TC Probe'])
+  })
+})
+
+describe('stealDocName', () => {
+  it('names a tcprobe document of its own for every try', () => {
+    expect(stealDocName(42, 0)).toBe('probe-42-0.tcprobe')
+    expect(new Set([0, 1, 2, 3].map((n) => stealDocName(42, n))).size).toBe(4)
   })
 })
 

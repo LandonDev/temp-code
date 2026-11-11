@@ -135,7 +135,7 @@ import { macReady } from './lib/benchRun'
 import { webProofFixtures, WEB_NONCE, WEB_TITLES } from './lib/webProofFixtures'
 import { FIELD_FORM, fieldFormCode } from './lib/fieldTasks'
 import { intPoint } from './lib/computerPoint'
-import { STEAL_PROBE_APP_NAME, buildStealProbeApp, cleanupProbeApp, guiLaunchEnvironment, launchProbe } from './lib/tcProbeApp'
+import { STEAL_PROBE_APP_NAME, buildStealProbeApp, stealDocName, cleanupProbeApp, guiLaunchEnvironment, launchProbe } from './lib/tcProbeApp'
 import { chainSkip, isSetupStep, isVoid, judgeFront, judgePointer, keepGoing, retriesVoid } from './lib/proofSteps'
 import { COMPUTER_PROOF_ENV, sweepComputerProofProcesses } from './lib/computerProofProcesses'
 import { computerInitializeMs, computerProofMode, computerProofPolicy, LOST_TRY_LINE, lostTry, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
@@ -2762,7 +2762,15 @@ async function stealerSection(mayLaunch: () => void): Promise<void> {
   const quiet = async (): Promise<void> => {
     if (UNGATED && !(await awaitQuiet())) throw skip(PERSON_ACTIVE)
   }
+  const quitStealer = async (): Promise<void> => {
+    if (!stealPid) return
+    process.kill(stealPid, 'SIGTERM')
+    await until(() => (alive(stealPid) ? null : true), 5_000, 'the stealer exiting')
+    stealPid = 0
+  }
   await chain.step('apps.launch TC Probe Steal: the guard puts the front back', async (data) => {
+    // a voided try runs again (the chain's retry): the copy it launched goes first, so this one launches
+    await quitStealer()
     await quiet()
     const before = frontWindow()
     const at = Date.now()
@@ -2778,8 +2786,10 @@ async function stealerSection(mayLaunch: () => void): Promise<void> {
     const e = await a.refused('apps.launch', { app: built.app!, open: ['/bin/ls'], session: SESSION }, 'open_refused')
     check(e.data?.reason === 'executable', 'refused as a program', e.data)
   })
+  let opened = 0
   await chain.step('open a .tcprobe into it: its window, and the front back', async (data) => {
-    const doc = join(WORK, `probe-${process.pid}.tcprobe`)
+    // a document of its own per try: one the stealer already has open makes no window
+    const doc = join(WORK, stealDocName(process.pid, opened++))
     writeFileSync(doc, RUN_MARK)
     await quiet()
     const before = frontWindow()
@@ -2810,11 +2820,7 @@ async function stealerSection(mayLaunch: () => void): Promise<void> {
     judgeGuard(data, await guardWord(a, r.front, stealPid, since), before, at)
   })
   await chain.step('quit TC Probe Steal', async () => {
-    if (stealPid) {
-      process.kill(stealPid, 'SIGTERM')
-      await until(() => (alive(stealPid) ? null : true), 5_000, 'the stealer exiting')
-      stealPid = 0
-    }
+    await quitStealer()
     a.closeStdin()
     await within(a.exit, 2_000, 'the front guard service exiting')
   })
