@@ -8,13 +8,12 @@ import {
   useAppshotSettings,
   useAppshotSettingsStatus,
 } from "../lib/appshots";
-import { openUrl } from "../lib/native";
 import { ChoiceSelect, type Choice } from "../components/choice-select";
 import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
 import { SettingSwitch } from "../components/setting-switch";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
-import { Skeleton } from "../components/ui/skeleton";
+import { PermissionRow } from "./settings/PermissionRow";
 
 const DESTINATIONS: Choice<AppshotDestination>[] = [
   { value: "automatic", label: "Automatic" },
@@ -22,7 +21,6 @@ const DESTINATIONS: Choice<AppshotDestination>[] = [
   { value: "new-chat", label: "New chat" },
 ];
 
-const PANE_URL = "x-apple.systempreferences:com.apple.preference.security?";
 const POLL_MS = 5000;
 
 /** Settings › Appshots: the capture switch, where a shot lands, and the two macOS grants it needs. */
@@ -117,35 +115,5 @@ export function AppshotsPage() {
           />
       </PageSection>
     </>
-  );
-}
-
-function PermissionRow({
-  label,
-  description,
-  granted,
-  pane,
-}: {
-  label: string;
-  description: string;
-  granted: boolean | null;
-  pane: string;
-}) {
-  return (
-    <PageRow title={label} description={description}>
-      {granted === null ? (
-        <Skeleton data-testid="permission-skeleton" className="h-3 w-16" />
-      ) : granted ? (
-        <span className="text-xs text-muted-foreground">Granted</span>
-      ) : (
-        <>
-          <span className="text-xs text-warning">Not granted</span>
-          {/* macOS prompts once; after a denial only System Settings can grant it. */}
-          <Button variant="secondary" size="sm" aria-label={`Grant ${label} in System Settings`} onClick={() => void openUrl(PANE_URL + pane)}>
-            Grant…
-          </Button>
-        </>
-      )}
-    </PageRow>
   );
 }

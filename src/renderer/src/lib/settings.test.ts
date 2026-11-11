@@ -7,6 +7,7 @@ import {
   loadSettingsSection,
   SETTINGS_GROUPS,
   SETTINGS_SECTIONS,
+  visibleSettingsSections,
   settingsSectionLabel,
   loadMidTurnDefault,
   MID_TURN_DEFAULT,
@@ -58,6 +59,19 @@ describe("settings sections", () => {
     expect(settingsSectionLabel("addons")).toBe("Add-ons");
     expect(settingsSectionLabel("skills")).toBe("Skills");
     for (const id of ["addons", "skills"]) expect(SETTINGS_SECTIONS.find((section) => section.id === id)?.desktopOnly).toBeUndefined();
+  });
+
+  it("lists Computer use after Appshots, only in the desktop app on a Mac", () => {
+    const ids = (web: boolean, mac: boolean) => visibleSettingsSections(web, mac).map((section) => section.id);
+    const mac = ids(false, true);
+    expect(mac.slice(mac.indexOf("appshots"), mac.indexOf("appshots") + 3)).toEqual(["appshots", "computer", "archive"]);
+    expect(settingsSectionLabel("computer")).toBe("Computer use");
+    expect(ids(false, false)).not.toContain("computer");
+    expect(ids(false, false)).toContain("appshots");
+    expect(ids(true, true)).not.toContain("computer");
+    expect(ids(true, true)).not.toContain("appshots");
+    expect(ids(true, false)).not.toContain("computer");
+    expect(ids(true, true)).toContain("skills");
   });
 
   it("names the remote page Hosts", () => {

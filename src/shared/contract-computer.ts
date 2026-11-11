@@ -14,6 +14,9 @@ import { ComputerToolResultSchema, TierVerdictSchema } from './computer/tools'
 const request = <M extends string, P extends z.ZodType>(method: M, params: P) =>
   z.object({ id: z.string(), method: z.literal(method), params })
 
+/** Crashes in two minutes that put the service down for five (computer/service.ts). */
+export const COMPUTER_CRASHES_TO_DOWN = 5
+
 /** This host's service: never started, starting, up, shut down after idling, down after crashes, or unavailable here. */
 export const ComputerServiceStateSchema = z.object({
   state: z.enum(['off', 'starting', 'up', 'idle', 'down', 'unavailable']),

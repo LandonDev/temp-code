@@ -1,5 +1,6 @@
 import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import type { SessionStatus } from "@shared/events";
+import { COMPUTER_CRASHES_TO_DOWN, type ComputerServiceState } from "@shared/contract-computer";
 import { Check, Circle, CircleAlert, CircleDashed, CircleDot, FileText, Pause, Square } from "@renderer/chrome/icons";
 import { cn } from "@renderer/lib/cn";
 import { clockTime } from "@renderer/lib/duration";
@@ -123,6 +124,28 @@ export function linkMarkOf(
       return opts.unreachableSince
         ? { state: "waiting", word: `Unreachable since ${clockTime(opts.unreachableSince)}` }
         : { state: "stopped", word: "Offline" };
+  }
+}
+
+/**
+ * This Mac's computer service as a mark (Settings → Computer use): Running
+ * (a check, muted), Idle (off or shut down after idling; drawn without a
+ * glyph, as idle is at rest), Starting (the spinner), and Down after crashes
+ * or Unavailable here (red), with what to know in the detail.
+ */
+export function computerServiceMarkOf(service: Pick<ComputerServiceState, "state" | "reason">): { state: ThreadState; word: string; detail?: string } {
+  switch (service.state) {
+    case "up":
+      return { state: "done", word: "Running" };
+    case "off":
+    case "idle":
+      return { state: "idle", word: "Idle" };
+    case "starting":
+      return { state: "working", word: "Starting" };
+    case "down":
+      return { state: "failed", word: "Down", detail: `Crashed ${COMPUTER_CRASHES_TO_DOWN} times` };
+    case "unavailable":
+      return { state: "failed", word: "Unavailable", ...(service.reason ? { detail: service.reason } : {}) };
   }
 }
 
