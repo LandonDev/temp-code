@@ -6,13 +6,19 @@
  */
 import { mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { EventRow } from '../../src/shared/events'
+import type { AgentEvent, EventRow } from '../../src/shared/events'
 import { bareToolName, stepsOf, toolKind, type BenchCall, type BenchProvider } from './computerBench'
 
 // ── flags ───────────────────────────────────────────────────────────────
 
 export interface BenchArgs {
   mode: 'gate' | 'report-only' | 'hand' | 'reference'
+  /** the gate's tasks, or the field set (scripts/lib/fieldTasks.ts, hand run only) */
+  set: 'gate' | 'field'
+  /** where the model threads run: this Mac, or an isolated box instance over the Mac bridge (field only) */
+  host: 'mac' | 'box'
+  /** the field report's round label, so saved reports compare across fix rounds */
+  round: string | null
   models: string[] | null
   tasks: string[] | null
   /** exactly n runs per task, no rerun rule */
@@ -22,13 +28,27 @@ export interface BenchArgs {
   rebaseline: boolean
   /** re-judge a saved report; runs nothing */
   judge: string | null
+  /** judge saved field reports against the bar (fieldBar.ts); runs nothing, any host */
+  judgeField: string[] | null
 }
 
 export const BENCH_USAGE =
-  'usage: bun run script:e2e-computer-bench -- [--gate | --report-only | --reference codex | --judge <report.json>] [--models a,b] [--tasks a,b] [--runs n] [--session] [--rebaseline]'
+  'usage: bun run script:e2e-computer-bench -- [--gate | --report-only | --reference codex | --judge <report.json> | --judge-field <report.json>…] [--set gate|field] [--host mac|box] [--round <label>] [--models a,b] [--tasks a,b] [--runs n] [--session] [--rebaseline]'
 
 export function parseBenchArgs(argv: readonly string[]): BenchArgs {
-  const out: BenchArgs = { mode: 'hand', models: null, tasks: null, runs: null, session: false, rebaseline: false, judge: null }
+  const out: BenchArgs = {
+    mode: 'hand',
+    set: 'gate',
+    host: 'mac',
+    round: null,
+    models: null,
+    tasks: null,
+    runs: null,
+    session: false,
+    rebaseline: false,
+    judge: null,
+    judgeField: null
+  }
   const modes = new Set<string>()
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
@@ -47,6 +67,18 @@ export function parseBenchArgs(argv: readonly string[]): BenchArgs {
       if (what !== 'codex') throw new Error(`--reference takes codex (got ${what})`)
       modes.add((out.mode = 'reference'))
     } else if (a === '--judge') out.judge = value()
+    else if (a === '--judge-field') {
+      out.judgeField = [value()]
+      while (argv[i + 1] !== undefined && !argv[i + 1].startsWith('--')) out.judgeField.push(argv[++i])
+    } else if (a === '--set') {
+      const what = value()
+      if (what !== 'gate' && what !== 'field') throw new Error(`--set takes gate or field (got ${what})`)
+      out.set = what
+    } else if (a === '--host') {
+      const what = value()
+      if (what !== 'mac' && what !== 'box') throw new Error(`--host takes mac or box (got ${what})`)
+      out.host = what
+    } else if (a === '--round') out.round = value()
     else if (a === '--models') out.models = list()
     else if (a === '--tasks') out.tasks = list()
     else if (a === '--runs') {
@@ -59,6 +91,17 @@ export function parseBenchArgs(argv: readonly string[]): BenchArgs {
   }
   if (modes.size > 1) throw new Error(`--gate, --report-only and --reference go alone (got ${[...modes].join(', ')})`)
   if (out.mode === 'gate' && out.runs !== null) throw new Error('--runs is for a hand run; --gate runs each task once and reruns a breach')
+  if (out.set === 'field') {
+    if (out.mode === 'gate' || out.mode === 'report-only') throw new Error('--set field is a hand run (or --reference codex); the gate’s run and tasks stay as they are')
+    if (out.rebaseline) throw new Error('--set field never writes the gate’s baseline')
+    // The field set runs whatever tier the host's scheduler grants: every task runs, session-tier ones included.
+    out.session = true
+  }
+  if (out.host === 'box') {
+    if (out.set !== 'field') throw new Error('--host box runs the field set: pass --set field')
+    if (out.mode === 'reference') throw new Error('--reference runs on the Mac: Codex’s own computer use lives in the Mac thread’s plugin')
+  }
+  if (out.round && out.set !== 'field') throw new Error('--round labels a field report: pass --set field')
   if ((out.mode === 'gate' || out.mode === 'report-only') && out.session) throw new Error('--session never runs in the gate: the session tier takes the person’s Mac')
   if (out.mode === 'reference' && out.rebaseline) throw new Error('--reference never writes the baseline')
   if (out.mode === 'report-only' && out.rebaseline) throw new Error('--report-only never writes the baseline')
@@ -80,6 +123,13 @@ export const BENCH_MODELS: readonly BenchModel[] = [
   { model: 'muse-wonder-1.0', provider: 'muse', effort: 'medium' }
 ]
 
+/** The field set's models (the field test's three); the gate's BENCH_MODELS stay as they are. */
+export const FIELD_MODELS: readonly BenchModel[] = [
+  { model: 'claude-opus-5-5', provider: 'claude', effort: 'medium' },
+  { model: 'claude-sonnet-5-5', provider: 'claude', effort: 'medium' },
+  { model: 'gpt-6.1-sol', provider: 'codex', effort: 'medium' }
+]
+
 /** A lane's task order: the list turned by twice its index, so the lanes rarely reach a shared task at once. */
 export function laneOrder<T>(tasks: readonly T[], laneIndex: number): T[] {
   if (!tasks.length) return []
@@ -88,6 +138,42 @@ export function laneOrder<T>(tasks: readonly T[], laneIndex: number): T[] {
 }
 
 // ── what a run's rows say ───────────────────────────────────────────────
+
+/** A row that settles a turn: its completion, or a status that ends the thread's work. */
+export const isSettleEvent = (e: AgentEvent): boolean => e.type === 'turn-complete' || (e.type === 'status' && (e.status === 'idle' || e.status === 'error' || e.status === 'stopped'))
+
+export interface RunScan {
+  /** the ts of the first `running` (or an earlier settle); null while the scheduler still holds it */
+  firstRunningTs: number | null
+  /** how long the thread sat `queued` before it ran */
+  queuedMs: number
+  /** the ts of the first settle after the run began; null while the turn is open */
+  settledAt: number | null
+  /** the thread asked the person a question before settling */
+  question: boolean
+}
+
+/**
+ * What a turn's rows past `afterSeq` say about the run, for a thread read
+ * over the wire (the box half): when it began, how long it queued, when it
+ * settled, whether it asked a question. The in-process path reads the same
+ * facts through the registry.
+ */
+export function scanRun(rows: readonly EventRow[], afterSeq: number): RunScan {
+  const entries = rows.filter((r) => r.seq > afterSeq)
+  const began = entries.find((r) => (r.event.type === 'status' && r.event.status === 'running') || isSettleEvent(r.event))
+  const statuses = entries.filter((r) => r.event.type === 'status')
+  const queued = statuses.find((r) => r.event.type === 'status' && r.event.status === 'queued')
+  const left = queued && statuses.find((r) => r.seq > queued.seq && r.event.type === 'status' && r.event.status !== 'queued')
+  const settled = began && entries.find((r) => r.seq >= began.seq && isSettleEvent(r.event))
+  const question = entries.some((r) => r.event.type === 'question-request' && (!settled || r.seq <= settled.seq))
+  return {
+    firstRunningTs: began?.ts ?? null,
+    queuedMs: queued && left ? left.ts - queued.ts : 0,
+    settledAt: settled?.ts ?? null,
+    question
+  }
+}
 
 /** One computer call as the rig's wrapper saw it. */
 export interface HostCall {

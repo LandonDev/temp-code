@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ComputerSessionRow } from '@server/shared/contract-computer'
+import type { ComputerServiceState, ComputerSessionRow } from '@server/shared/contract-computer'
 
 type Listener = (link: FakeLink, event: 'added' | 'removed') => void
 interface FakeLink {
   environmentId: string
   connected: boolean
   request: (method: string, params: unknown) => Promise<unknown>
-  onPush: (fn: (push: { push: string; sessions?: ComputerSessionRow[] }) => void) => void
+  onPush: (fn: (push: { push: string; sessions?: ComputerSessionRow[]; service?: ComputerServiceState }) => void) => void
   onOpen: (fn: () => void) => void
-  push?: (p: { push: string; sessions?: ComputerSessionRow[] }) => void
+  push?: (p: { push: string; sessions?: ComputerSessionRow[]; service?: ComputerServiceState }) => void
   open?: () => void
 }
 const linkListeners = vi.hoisted(() => new Set<(link: unknown, event: string) => void>())
@@ -63,12 +63,15 @@ describe('the computer sessions store', () => {
     await settle()
     expect(computerSessionsStore.getState().byHost.env_box?.map((r) => r.threadId)).toEqual(['b1'])
     expect(computerSessionsStore.getState().byHost.env_old).toBeUndefined()
-    box.push!({ push: 'computer', sessions: [row('b2')] })
+    expect(computerSessionsStore.getState().serviceByHost.env_box).toMatchObject({ state: 'unavailable' })
+    box.push!({ push: 'computer', sessions: [row('b2')], service: { state: 'up', restarts: 0, permissions: null } })
     expect(computerSessionsStore.getState().byHost.env_box?.map((r) => r.threadId)).toEqual(['b2'])
+    expect(computerSessionsStore.getState().serviceByHost.env_box).toMatchObject({ state: 'up' })
     box.push!({ push: 'resources' })
     expect(computerSessionsStore.getState().byHost.env_box).toHaveLength(1)
     for (const l of linkListeners) (l as Listener)(box, 'removed')
     expect(computerSessionsStore.getState().byHost.env_box).toBeUndefined()
+    expect(computerSessionsStore.getState().serviceByHost.env_box).toBeUndefined()
   })
 
   it('asks are the bridged rows with a card waiting, with the host that mirrors them', () => {

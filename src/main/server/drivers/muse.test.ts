@@ -229,6 +229,20 @@ describe('the muse driver over the fake host', () => {
     expect(of(t.events, 'error')).toEqual([])
   })
 
+  it('a host whisper goes into the live turn by turn/steer and stamps no steer; with no turn it answers false', async () => {
+    const t = ctxFor()
+    const h = await museDriver.start(t.ctx)
+    handles.push(h)
+    expect(await h.whisper!('notes line')).toBe(false)
+    await h.send('steer')
+    await waitFor(() => of(t.events, 'phase').some((e) => e.phase === 'waiting-provider'), 'the open turn')
+    expect(await h.whisper!('notes line')).toBe(true)
+    await waitFor(() => settled(t.events) === 1, 'the whispered turn')
+    expect(of(t.events, 'assistant-text').filter((e) => !e.delta).at(-1)?.text).toBe('heard notes line ')
+    expect(of(t.events, 'steer')).toEqual([])
+    expect(await h.whisper!('after the turn')).toBe(false)
+  })
+
   it('a quota stop errors the row as a resetting limit and tells the host; usage and context reach their hooks', async () => {
     const windows: unknown[] = []
     const limits: unknown[] = []

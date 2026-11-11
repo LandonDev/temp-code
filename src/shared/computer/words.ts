@@ -9,7 +9,7 @@ import { COMPUTER_RESULT_TOOL } from './heldCalls'
 import { parseElementLine } from './observation'
 import { confirmInput, confirmTitle, type Confirm, type ConfirmNeed, type HostConfirmKind } from './policy'
 import { COMPUTER_ACTION_NAMES, NO_INPUT_ACTIONS, type ComputerAction, type ComputerActionName, type ElementBrief } from './protocol'
-import { parseStepLine, type ComputerToolName } from './tools'
+import { parseStepLine, type ComputerToolName, type TierVerdict } from './tools'
 
 /**
  * A tool's own name: `mcp__app__computer_act` and `computer_act` alike, a
@@ -468,4 +468,29 @@ export function computerActivity(
   const steps: unknown[] = of.tool === 'computer_batch' ? (Array.isArray(i.actions) ? i.actions : []) : of.tool === 'computer_act' ? [{ ...i, action: of.action ?? i.action }] : []
   const acts = steps.length === 0 ? of.tool === 'computer_act' : steps.some((a) => !isAction(a) || sendsInput(a))
   return { text: `${phrase.verb} ${phrase.object}`, kind: acts ? 'edit' : 'investigate' }
+}
+
+// ── what Settings → Computer use says an app's verdict learned ──
+
+/** The classes in the order a person reads them, each as its verb. */
+const CLASS_VERBS: readonly (readonly [keyof TierVerdict['classes'], string])[] = [
+  ['click', 'click'],
+  ['drag', 'drag'],
+  ['hover', 'hover'],
+  ['scroll', 'scroll'],
+  ['key', 'press keys'],
+  ['type', 'type']
+]
+
+/**
+ * What an app's verdict learned, in a person's words: "May take the screen to
+ * click and type" for the classes at `session`, null when none is. A class
+ * absent from the verdict was never tested, and one at `session` still tries
+ * the background routes first (§24), so nothing else is said and no tier is named.
+ */
+export function verdictWords(classes: TierVerdict['classes']): string | null {
+  const verbs = CLASS_VERBS.filter(([c]) => classes[c] === 'session').map(([, verb]) => verb)
+  if (!verbs.length) return null
+  const list = verbs.length === 1 ? verbs[0] : `${verbs.slice(0, -1).join(', ')} and ${verbs[verbs.length - 1]}`
+  return `May take the screen to ${list}`
 }

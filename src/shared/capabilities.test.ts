@@ -64,7 +64,13 @@ describe('METHOD_CAPABILITY', () => {
         'computer.preview.start',
         'computer.preview.ack',
         'computer.preview.stop',
-        'computer.proofHold'
+        'computer.proofHold',
+        // Settings → Computer use: this Mac's own values.
+        'computer.settings.get',
+        'computer.settings.set',
+        'computer.verdicts.forget',
+        'computer.permissions',
+        'computer.service.retry'
       ].sort()
     )
   })
@@ -202,5 +208,7 @@ describe('computer use (contract-computer.ts)', () => {
     expect(METHOD_CAPABILITY['computer.stop']).toBe('operate')
     for (const m of ['app.computer', 'app.computerCancel', 'app.computerTools'] as const) expect(METHOD_CAPABILITY[m]).toBe('local')
     for (const m of ['computer.preview.start', 'computer.preview.ack', 'computer.preview.stop', 'computer.proofHold'] as const) expect(METHOD_CAPABILITY[m]).toBe('local')
+    for (const m of ['computer.settings.get', 'computer.settings.set', 'computer.verdicts.forget', 'computer.permissions', 'computer.service.retry'] as const)
+      expect(METHOD_CAPABILITY[m]).toBe('local')
   })
 })

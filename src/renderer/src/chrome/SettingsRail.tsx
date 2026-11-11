@@ -13,11 +13,13 @@ import {
   Plug,
   MessageSquarePlus,
   SlidersHorizontal,
+  SquareMousePointer,
   Users,
   type IconComponent,
 } from "./icons";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { isWebMode } from "../lib/nativeWeb";
+import { nativePlatform } from "../lib/native";
 import {
   SETTINGS_GROUPS,
   visibleSettingsSections,
@@ -44,6 +46,7 @@ const SECTION_ICONS: Record<StaticSettingsSectionId, IconComponent> = {
   orchestration: Users,
   reviews: GitCompare,
   appshots: Camera,
+  computer: SquareMousePointer,
   remote: Globe,
   archive: Archive,
 };
@@ -88,7 +91,7 @@ export function SettingsNav({ section, onSelect, onClose }: Props) {
             className={`flex flex-col ${index === 0 ? "" : "pt-4"}`}
           >
             <RailHeading id={`settings-group-${group.id}`}>{group.label}</RailHeading>
-            {visibleSettingsSections(isWebMode()).filter((item) => item.group === group.id).map((item) => (
+            {visibleSettingsSections(isWebMode(), nativePlatform() === "darwin").filter((item) => item.group === group.id).map((item) => (
               <RailRow
                 key={item.id}
                 label={item.label}

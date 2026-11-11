@@ -341,6 +341,31 @@ describe('a steer into a codex turn', () => {
     }
   })
 
+  it('a host whisper goes into the running turn by turn/steer with no client id', async () => {
+    const requests: Frame[] = []
+    const { handle } = await boot(steering((proc, frame) => proc.reply(frame.id!, { turnId: 'turn-1' }), requests))
+    expect(await handle.whisper!('<notes-reminder reason="context">x</notes-reminder>')).toBe(true)
+    const steer = requests.find((r) => r.method === 'turn/steer')
+    expect(steer?.params).toMatchObject({ threadId: 't1', expectedTurnId: 'turn-1', input: [{ type: 'text', text: '<notes-reminder reason="context">x</notes-reminder>' }] })
+    expect(steer?.params).not.toHaveProperty('clientUserMessageId')
+    expect(steerRows()).toEqual([])
+    await handle.dispose()
+  })
+
+  it('a whisper the turn refused, or one after turn/completed, answers false and never starts a turn', async () => {
+    const requests: Frame[] = []
+    const { handle, notify } = await boot(steering((proc, frame) => proc.fail(frame.id!, 'no active turn to steer'), requests))
+    expect(await handle.whisper!('late line')).toBe(false)
+    expect(requests.filter((r) => r.method === 'turn/steer')).toHaveLength(1)
+    notify('turn/completed', { turn: { id: 'turn-1', status: 'completed' } })
+    await vi.waitFor(() => expect(events.some((e) => e.type === 'turn-complete')).toBe(true))
+    expect(await handle.whisper!('later line')).toBe(false)
+    expect(requests.filter((r) => r.method === 'turn/steer')).toHaveLength(1)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(requests.some((r) => r.method === 'turn/start')).toBe(false)
+    await handle.dispose()
+  })
+
   it('a plain send and an unknown clientId never stamp', async () => {
     const requests: Frame[] = []
     const { handle, notify } = await boot(steering((proc, frame) => proc.reply(frame.id!, {}), requests))

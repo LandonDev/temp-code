@@ -5,7 +5,7 @@ import { Button } from "./button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle, AlertDialogTrigger, Dialog, DialogContent, DialogTitle } from "./dialog";
 import { Sheet, SheetContent, SheetTitle } from "./sheet";
 import { Switch } from "./switch";
-import { linkMarkOf, STATUS_TONE, STATUS_WORD, StatusMark, statusNeedsYou, threadStateOf, type ThreadState } from "./status";
+import { computerServiceMarkOf, linkMarkOf, STATUS_TONE, STATUS_WORD, StatusMark, statusNeedsYou, threadStateOf, type ThreadState } from "./status";
 import { Kbd } from "./kbd";
 import { Skeleton } from "./skeleton";
 import { GroupInput, InputGroup } from "./input";
@@ -247,6 +247,16 @@ describe("StatusMark", () => {
     const unreachable = linkMarkOf("offline", { unreachableSince: since });
     expect(unreachable.state).toBe("waiting");
     expect(unreachable.word).toMatch(/^Unreachable since \d{1,2}:\d{2}/);
+  });
+
+  it("gives the computer service one word per state, the down and unavailable ones with their detail", () => {
+    expect(computerServiceMarkOf({ state: "up" })).toEqual({ state: "done", word: "Running" });
+    expect(computerServiceMarkOf({ state: "off" })).toEqual({ state: "idle", word: "Idle" });
+    expect(computerServiceMarkOf({ state: "idle", reason: "fake crash" })).toEqual({ state: "idle", word: "Idle" });
+    expect(computerServiceMarkOf({ state: "starting" })).toEqual({ state: "working", word: "Starting" });
+    expect(computerServiceMarkOf({ state: "down", reason: "tc-computer crashed 5 times in two minutes: x" })).toEqual({ state: "failed", word: "Down", detail: "Crashed 5 times" });
+    expect(computerServiceMarkOf({ state: "unavailable", reason: "turned off" })).toEqual({ state: "failed", word: "Unavailable", detail: "turned off" });
+    expect(computerServiceMarkOf({ state: "unavailable" })).toEqual({ state: "failed", word: "Unavailable" });
   });
 
   it("renders the word, the glyph alone with a label, or a given word", () => {

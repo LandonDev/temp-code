@@ -125,6 +125,42 @@ describe('ComputerService', () => {
     await expect(up).resolves.toMatchObject({ accessibility: true })
   })
 
+  it('Try again on a service down starts it at once: down, starting, up', async () => {
+    const { service, clock, states, spawns } = make()
+    for (let i = 0; i < CRASHES_TO_DOWN; i++) {
+      const pending = crash(service)
+      await clock.advance(SPAWN_BACKOFF_MS[Math.max(0, i - 1)] ?? 0)
+      await pending
+      await until(() => service.state().restarts === i + 1, `crash ${i + 1}`)
+    }
+    expect(service.state().state).toBe('down')
+    const before = spawns()
+    states.length = 0
+    const answer = await service.retry()
+    expect(answer).toMatchObject({ state: 'up' })
+    expect(states.map((s) => s.state)).toEqual(['starting', 'up'])
+    expect(spawns()).toBe(before + 1)
+    await expect(service.request('permissions.get', {})).resolves.toMatchObject({ accessibility: true })
+  })
+
+  it('Try again leaves a permanent reason, and is a no-op that answers the state when not down', async () => {
+    const { service, spawns } = make()
+    await expect(service.retry()).resolves.toMatchObject({ state: 'off' })
+    expect(spawns()).toBe(0)
+    await service.request('permissions.get', {})
+    await expect(service.retry()).resolves.toMatchObject({ state: 'up' })
+    expect(spawns()).toBe(1)
+
+    const dir = mkdtempSync(join(tmpdir(), 'tc-computer-bad-'))
+    const bin = join(dir, 'tc-computer')
+    writeFileSync(bin, '#!/bin/sh\necho "unknown flag" >&2\nexit 64\n')
+    chmodSync(bin, 0o755)
+    const bad = make({}, { bin: () => bin })
+    await bad.service.request('permissions.get', {}).catch(() => undefined)
+    await expect(bad.service.retry()).resolves.toMatchObject({ state: 'unavailable' })
+    expect(bad.spawns()).toBe(1)
+  })
+
   it('exit 75 respawns with no wait', async () => {
     const { service, spawns } = make({ FAKE_EXIT_75_AFTER: '2' })
     await service.request('permissions.get', {})

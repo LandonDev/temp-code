@@ -3,12 +3,41 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent, EventRow } from '../src/shared/events'
-import { BENCH_MODELS, DARK_SCREEN, NEVER_QUIET, keepFront, keepReport, laneOrder, macReady, parseBenchArgs, readRun, runStamp, unionMs, waitForQuiet, type HostCall, type MacProbe } from './lib/benchRun'
+import {
+  BENCH_MODELS,
+  DARK_SCREEN,
+  FIELD_MODELS,
+  NEVER_QUIET,
+  keepFront,
+  keepReport,
+  laneOrder,
+  macReady,
+  parseBenchArgs,
+  readRun,
+  runStamp,
+  scanRun,
+  unionMs,
+  waitForQuiet,
+  type HostCall,
+  type MacProbe
+} from './lib/benchRun'
 import { runHostMs, summarize, type BenchRun } from './lib/computerBench'
 
 describe('parseBenchArgs', () => {
   it('reads every flag', () => {
-    expect(parseBenchArgs([])).toEqual({ mode: 'hand', models: null, tasks: null, runs: null, session: false, rebaseline: false, judge: null })
+    expect(parseBenchArgs([])).toEqual({
+      mode: 'hand',
+      set: 'gate',
+      host: 'mac',
+      round: null,
+      models: null,
+      tasks: null,
+      runs: null,
+      session: false,
+      rebaseline: false,
+      judge: null,
+      judgeField: null
+    })
     expect(parseBenchArgs(['--gate'])).toMatchObject({ mode: 'gate' })
     expect(parseBenchArgs(['--', '--gate'])).toMatchObject({ mode: 'gate' })
     expect(parseBenchArgs(['--report-only', '--models', 'gpt-6.1-sol, claude-opus-5-5', '--tasks', 'chrome-read'])).toMatchObject({
@@ -34,6 +63,36 @@ describe('parseBenchArgs', () => {
     expect(() => parseBenchArgs(['--runs', '0'])).toThrow(/1 to 10/)
     expect(() => parseBenchArgs(['--models'])).toThrow(/needs a value/)
     expect(() => parseBenchArgs(['--fast'])).toThrow(/unknown argument --fast/)
+  })
+
+  it('reads the field suite’s flags: a hand run of every task, whatever its tier', () => {
+    expect(parseBenchArgs(['--set', 'field'])).toMatchObject({ mode: 'hand', set: 'field', host: 'mac', session: true })
+    expect(parseBenchArgs(['--set', 'field', '--host', 'box', '--round', 'r2'])).toMatchObject({ set: 'field', host: 'box', round: 'r2', session: true })
+    expect(parseBenchArgs(['--set', 'field', '--reference', 'codex'])).toMatchObject({ mode: 'reference', set: 'field' })
+    expect(parseBenchArgs(['--judge-field', 'mac.json', 'box.json', 'codex.json'])).toMatchObject({ judgeField: ['mac.json', 'box.json', 'codex.json'] })
+    expect(() => parseBenchArgs(['--judge-field'])).toThrow(/needs a value/)
+  })
+
+  it('refuses the field suite where it never runs', () => {
+    expect(() => parseBenchArgs(['--set', 'field', '--gate'])).toThrow(/hand run/)
+    expect(() => parseBenchArgs(['--set', 'field', '--report-only'])).toThrow(/hand run/)
+    expect(() => parseBenchArgs(['--set', 'field', '--rebaseline'])).toThrow(/never writes/)
+    expect(() => parseBenchArgs(['--host', 'box'])).toThrow(/--set field/)
+    expect(() => parseBenchArgs(['--set', 'field', '--host', 'box', '--reference', 'codex'])).toThrow(/on the Mac/)
+    expect(() => parseBenchArgs(['--round', 'r1'])).toThrow(/--set field/)
+    expect(() => parseBenchArgs(['--set', 'wide'])).toThrow(/gate or field/)
+    expect(() => parseBenchArgs(['--host', 'phone'])).toThrow(/mac or box/)
+  })
+})
+
+describe('FIELD_MODELS', () => {
+  it('runs Opus, Sonnet and GPT-6.1 Sol at medium; the gate’s models stay as they are', () => {
+    expect(FIELD_MODELS.map((m) => [m.model, m.provider, m.effort])).toEqual([
+      ['claude-opus-5-5', 'claude', 'medium'],
+      ['claude-sonnet-5-5', 'claude', 'medium'],
+      ['gpt-6.1-sol', 'codex', 'medium']
+    ])
+    expect(BENCH_MODELS.some((m) => m.model === 'claude-sonnet-5-5')).toBe(false)
   })
 })
 
@@ -222,5 +281,66 @@ describe('the dev instance', () => {
       TEMP_CODE_REMOTE_PORT: '0',
       TEMP_CODE_DEBUG_PORT: '9333'
     })
+  })
+})
+
+describe('scanRun: a box thread read over the wire', () => {
+  let seq = 0
+  const row = (ts: number, event: AgentEvent): EventRow => ({ sessionId: 'b', seq: ++seq, ts, event })
+
+  it('reads when the run began, its queue wait, its settle and a question', () => {
+    seq = 0
+    const rows = [
+      row(100, { type: 'status', status: 'queued' }),
+      row(900, { type: 'status', status: 'starting' }),
+      row(1000, { type: 'status', status: 'running' }),
+      row(5000, { type: 'turn-complete' }),
+      row(5100, { type: 'status', status: 'idle' })
+    ]
+    expect(scanRun(rows, 0)).toEqual({ firstRunningTs: 1000, queuedMs: 800, settledAt: 5000, question: false })
+  })
+
+  it('answers nothing settled while the turn is open, and only rows past afterSeq count', () => {
+    seq = 0
+    const rows = [row(50, { type: 'status', status: 'idle' }), row(1000, { type: 'status', status: 'running' })]
+    expect(scanRun(rows, 1)).toEqual({ firstRunningTs: 1000, queuedMs: 0, settledAt: null, question: false })
+    expect(scanRun([], 0)).toEqual({ firstRunningTs: null, queuedMs: 0, settledAt: null, question: false })
+  })
+
+  it('marks a question asked before the settle', () => {
+    seq = 0
+    const rows = [
+      row(1000, { type: 'status', status: 'running' }),
+      row(2000, { type: 'question-request', requestId: 'q1', question: 'Tabs or spaces?' } as unknown as AgentEvent),
+      row(3000, { type: 'status', status: 'idle' })
+    ]
+    expect(scanRun(rows, 0)).toMatchObject({ question: true, settledAt: 3000 })
+  })
+})
+
+describe('the box mode merge: box rows beside the Mac host times', () => {
+  it('gives each bridged call both clocks, so the bridge latency (rowMs − hostMs) is visible', () => {
+    let seq = 0
+    const row = (ts: number, event: AgentEvent): EventRow => ({ sessionId: 'b', seq: ++seq, ts, event })
+    const rows = [
+      row(1000, { type: 'status', status: 'running' }),
+      row(2000, { type: 'tool-call', callId: 'c1', name: 'mcp__app__computer_observe', input: { app: 'Finder' } } as AgentEvent),
+      row(3200, { type: 'tool-result', callId: 'c1', output: 'ok', isError: false }),
+      row(4000, { type: 'tool-call', callId: 'c2', name: 'app.computer_act', input: { app: 'Finder', action: 'left_click', element: 2 } } as AgentEvent),
+      row(4900, { type: 'tool-result', callId: 'c2', output: 'ok', isError: false }),
+      row(6000, { type: 'status', status: 'idle' })
+    ]
+    const host: HostCall[] = [
+      { tool: 'computer_observe', args: {}, startedAt: 0, hostMs: 700, steps: [], shots: 0, isError: false },
+      { tool: 'computer_act', args: {}, startedAt: 0, hostMs: 300, steps: ['left_click [2] · ax · changed'], shots: 0, isError: false }
+    ]
+    const facts = readRun(rows, host, 1000, 6000)
+    expect(facts.calls.map((c) => [c.tool, c.hostMs, c.rowMs])).toEqual([
+      ['computer_observe', 700, 1200],
+      ['computer_act', 300, 900]
+    ])
+    // the bridge's share of each call
+    expect(facts.calls.map((c) => c.rowMs! - c.hostMs!)).toEqual([500, 600])
+    expect(facts.wallMs).toBe(5000)
   })
 })

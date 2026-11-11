@@ -782,7 +782,8 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
       front = mergeFront(front, r.front)
       for (const m of r.menusLeftOpen ?? []) if (!menusLeftOpen.includes(m)) menusLeftOpen.push(m)
       r.steps.forEach((s, k) => (steps[at + k] = { ...s, index: at + k }))
-      for (const [k, s] of r.steps.entries()) host.verdicts.learn(r.observation?.app.bundleId ?? bundleOf(), seg.actions[k], s)
+      const appName = r.observation?.app.name ?? run.appOf()?.name
+      for (const [k, s] of r.steps.entries()) host.verdicts.learn(r.observation?.app.bundleId ?? bundleOf(), seg.actions[k], s, appName)
       for (const s of r.steps) if (s.status === 'ok' && s.tier === 'session') gate.ran?.(gateCtx(classes), s.session)
       if (seg.last) {
         observation = r.observation
@@ -919,9 +920,9 @@ async function probeOnce(host: RunHost, run: ActionsRun, actions: ComputerAction
   if (host.service.permissions()?.accessibility === false) return
   try {
     const report = await run.call('input.probe', { session: run.session, app: { pid: a.pid }, ...(a.window ? { window: { id: a.window.id } } : {}) })
-    host.verdicts.learnProbe(a.bundleId, report)
+    host.verdicts.learnProbe(a.bundleId, report, a.name)
   } catch (e) {
-    host.verdicts.stampProbe(a.bundleId)
+    host.verdicts.stampProbe(a.bundleId, a.name)
     host.log(`the probe of ${a.name} failed: ${(e as Error).message}`)
   }
 }

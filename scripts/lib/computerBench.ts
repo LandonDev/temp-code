@@ -87,6 +87,12 @@ export interface BenchReport {
   commit: string
   clean: boolean
   mode: BenchMode
+  /** the field set's runs (scripts/lib/fieldTasks.ts); absent: the gate's tasks */
+  set?: 'field'
+  /** where the model threads ran: this Mac (absent), or a box instance whose calls came over the Mac bridge */
+  hostKind?: 'mac' | 'box'
+  /** names the round (`--round`), so saved field reports compare across fix rounds */
+  round?: string
   /** run with TC_BENCH_UNGATED=1: no idle wait, by the person's leave */
   ungated?: boolean
   host: { macos: string; chip: string; load1: number }

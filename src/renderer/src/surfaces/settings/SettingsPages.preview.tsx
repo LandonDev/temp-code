@@ -26,6 +26,9 @@ import { WorkspacePage } from "./Workspace";
 import { AppearancePage } from "./Appearance";
 import { AddonsPage } from "./addons/AddonsPage";
 import { SkillsPage } from "./skills/SkillsPage";
+import { ComputerPage } from "./Computer";
+import { computerSessionsStore } from "../../lib/computerSessions";
+import type { ComputerServiceState, ComputerSettings } from "@shared/contract-computer";
 import type { AddonGrantView } from "@shared/contract-addonGrants";
 import type { AddonRow, AddonStatus } from "@shared/contract-addons";
 import type { SkillMeta } from "@shared/contract-skills";
@@ -159,6 +162,30 @@ const STORE_ANSWERS = {
   "skills.list": { skills: SKILLS, home: { name: "box", online: true } },
 };
 Object.assign(ANSWERS, STORE_ANSWERS);
+
+// Settings → Computer use: five learned apps (two may take the screen, one saved before names were kept), Screen Recording off.
+const COMPUTER_SETTINGS: ComputerSettings = {
+  sessionIdleMs: 120_000,
+  apps: [
+    { bundleId: "com.apple.TextEdit", name: "TextEdit", classes: { click: "process", type: "process" }, updatedAt: 1 },
+    { bundleId: "com.google.Chrome", name: "Google Chrome", classes: { click: "session", scroll: "session", type: "session" }, updatedAt: 1 },
+    { bundleId: "com.apple.calculator", name: "Calculator", classes: { key: "session" }, updatedAt: 1 },
+    { bundleId: "com.apple.finder", name: "Finder", classes: { click: "process" }, updatedAt: 1 },
+    { bundleId: "com.example.Legacy", name: null, classes: {}, updatedAt: 1 },
+  ],
+};
+Object.assign(ANSWERS, {
+  "computer.settings.get": COMPUTER_SETTINGS,
+  "computer.permissions": { accessibility: true, screenRecording: false },
+});
+const COMPUTER_UP: ComputerServiceState = { state: "up", pid: 4242, epoch: "e1", restarts: 0, permissions: { accessibility: true, screenRecording: false } };
+const COMPUTER_DOWN: ComputerServiceState = {
+  state: "down",
+  reason: "tc-computer crashed 5 times in two minutes: fatal error",
+  until: 1,
+  restarts: 5,
+  permissions: null,
+};
 const OFFLINE = { name: "box", online: false };
 
 let mode: HostMode = "answers";
@@ -192,9 +219,11 @@ registerBuiltinHarnesses();
 bindServer({ linkOf: () => link });
 
 /** A fresh host for each fixture: the stores forget what an earlier fixture loaded. */
-function prepare(next: HostMode, answers: Record<string, unknown> = {}): void {
+function prepare(next: HostMode, answers: Record<string, unknown> = {}, service: ComputerServiceState = COMPUTER_UP): void {
   mode = next;
   overrides = answers;
+  // The service state rides the host's `computer` push; a silent host has sent none.
+  computerSessionsStore.setState({ serviceByHost: next === "silent" ? {} : { local: service } });
   resetPlanSettingsForTests();
   resetCatalogProbes();
   dropHarnessAvailability("local");
@@ -204,7 +233,10 @@ function prepare(next: HostMode, answers: Record<string, unknown> = {}): void {
   workspaceStore.attach(link);
 }
 
-const PAGES: Record<string, { title: string; description?: string; body: () => ReactNode; answers?: Record<string, unknown> }> = {
+const PAGES: Record<
+  string,
+  { title: string; description?: string; body: () => ReactNode; answers?: Record<string, unknown>; service?: ComputerServiceState }
+> = {
   general: { title: "General", body: () => <GeneralPage onOpenWhatsNew={() => {}} /> },
   defaults: { title: "Thread defaults", body: () => <ThreadDefaultsPage /> },
   appearance: { title: "Appearance", body: () => <AppearancePage /> },
@@ -217,6 +249,21 @@ const PAGES: Record<string, { title: string; description?: string; body: () => R
   workspace: { title: "temp-code", description: "/srv/agents/work/temp-code", body: () => <WorkspacePage workspaceId="w1" /> },
   addons: { title: "Add-ons", description: "MCP servers every thread can use.", body: () => <AddonsPage /> },
   skills: { title: "Skills", description: settingsSectionDescription("skills"), body: () => <SkillsPage /> },
+  computer: { title: "Computer use", description: settingsSectionDescription("computer"), body: () => <ComputerPage /> },
+  "computer-empty": {
+    title: "Computer use",
+    description: settingsSectionDescription("computer"),
+    body: () => <ComputerPage />,
+    answers: { "computer.settings.get": { ...COMPUTER_SETTINGS, apps: [] }, "computer.permissions": { accessibility: true, screenRecording: true } },
+    service: { ...COMPUTER_UP, state: "idle", permissions: null },
+  },
+  "computer-down": {
+    title: "Computer use",
+    description: settingsSectionDescription("computer"),
+    body: () => <ComputerPage />,
+    answers: { "computer.settings.get": { ...COMPUTER_SETTINGS, apps: COMPUTER_SETTINGS.apps.slice(1, 2) } },
+    service: COMPUTER_DOWN,
+  },
   "addons-empty": {
     title: "Add-ons",
     description: "MCP servers every thread can use.",
@@ -248,7 +295,7 @@ const ownEnvironments = registry.environmentsSnapshot.bind(registry);
 export function SettingsPagePreview({ page, host }: { page: keyof typeof PAGES; host: HostMode }) {
   useState(() => {
     Object.assign(registry, { environmentsSnapshot: page === "defaults" ? () => TWO_HOSTS : ownEnvironments });
-    prepare(host, PAGES[page].answers);
+    prepare(host, PAGES[page].answers, PAGES[page].service);
   });
   const { title, description, body } = PAGES[page];
   return (

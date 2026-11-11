@@ -16,7 +16,8 @@ import {
 
 const every = WORDS_SHAPES.flatMap((shape) =>
   TOOL_SHAPES.flatMap((tools) =>
-    [true, false].flatMap((search) => (['person', 'thread'] as const).map((provenance) => ({ shape, tools, search, provenance })))
+    // claude searches for its four in-process tools; the bridge (Codex, Muse) lists computer_result as well
+    [true, false].flatMap((search) => (['person', 'thread'] as const).map((provenance) => ({ shape, tools, search, provenance, held: !search })))
   )
 )
 
@@ -39,6 +40,16 @@ describe('COMPUTER_MECHANICS', () => {
       if (o.tools === 'act') expect(text).toContain('computer_act')
       else expect(text).toContain('computer_left_click to computer_save_as')
       expect(text).toContain(COMPUTER_TIERS)
+    }
+  })
+
+  it('counts the tools the thread gets: four in process, five with computer_result on the bridge', () => {
+    for (const o of every) {
+      const text = renderComputerMechanics(o)
+      if (o.held) expect(text, JSON.stringify(o)).toContain('computer_result')
+      else expect(text, JSON.stringify(o)).not.toContain('computer_result')
+      if (o.tools !== 'act') continue
+      expect(text, JSON.stringify(o)).toContain(o.held ? 'Five app tools' : 'Four app tools')
     }
   })
 
@@ -87,8 +98,10 @@ describe('COMPUTER_MECHANICS', () => {
   it('differs between the shapes only in what the tools are', () => {
     const a = mechanicsFacts('anthropic')
     const c = mechanicsFacts('cua')
-    expect(c.what.act).toContain('getAXState')
-    expect(a.what.act).not.toContain('getAXState')
+    for (const held of [true, false]) {
+      expect(c.what.act(held)).toContain('getAXState')
+      expect(a.what.act(held)).not.toContain('getAXState')
+    }
     for (const fact of MECHANICS_FACTS.filter((f) => f !== 'what')) expect(c[fact]).toEqual(a[fact])
   })
 })

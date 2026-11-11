@@ -16,6 +16,7 @@ import {
   bridgedDeadlineMs,
   type ComputerPeerAnswer,
   type MacComputerEndArgs,
+  macLacksReader,
   type MacComputerReaderResult
 } from '@shared/contract-maccomputer'
 import { hostErrorLine } from '@shared/computer/hostErrors'
@@ -348,6 +349,11 @@ export class ComputerBridge {
         // the Mac may have set the flag and answered late: it reads again at once
         inflight.released = true
         void this.restore(t, inflight)
+        return false
+      }
+      // only a Mac that does not know the call is an older build; any other failure leaves it as it was
+      if (!macLacksReader(message)) {
+        this.log(`thread=${t.id}: mac.computerReader to ${mac} failed (${message}); the reader stays`)
         return false
       }
       this.readerless.add(mac)

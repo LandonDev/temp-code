@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { ServerFrame } from '@shared/contract'
 import type { ComputerSessionRow } from '@shared/contract-computer'
 import type { MacBridgePush } from '@shared/contract-macbridge'
+import { MacFetchFileArgsSchema } from '@shared/contract-macbridge'
 import {
   COMPUTER_BRIDGE_IDLE_CLOSE_MS,
   COMPUTER_MAC_WENT_OFFLINE,
@@ -766,6 +767,50 @@ describe('ComputerBridge: a held call and its reader', () => {
     expect(settled()).toBe(false)
     await b.clock.advance(STOP_REPLY_MS + 1)
     expect((await p).body).toBe(MAC_SILENT_CANCEL)
+  })
+
+  it("an older Mac's own refusal, its file read's parse error on path, marks it too", async () => {
+    const { b, s, p, callId } = await held()
+    const first = s.release()
+    await b.until(() => readers(b).length === 1, 'the notice')
+    // what a Mac with no route for the method answers: it reads the args as mac.fetchFile's
+    let refusal = ''
+    try {
+      MacFetchFileArgsSchema.parse(readers(b)[0].params.args)
+    } catch (err) {
+      refusal = (err as Error).message
+    }
+    b.fail(readers(b)[0].callId, refusal)
+    expect(await first).toBe(false)
+    b.progress(callId, runningRow())
+    b.progress(callId, heldRow())
+    expect(await s.release()).toBe(false)
+    expect(readers(b)).toHaveLength(1)
+    b.reply(callId, answer())
+    await p
+  })
+
+  it('any other failure keeps the reader and leaves the Mac as it was: the next hold asks again', async () => {
+    const { b, s, p, callId } = await held()
+    const first = s.release()
+    await b.until(() => readers(b).length === 1, 'the notice')
+    b.fail(readers(b)[0].callId, 'this Mac does not know that host')
+    expect(await first).toBe(false)
+    // a refusal of the call's own fields comes from a Mac that knows the call
+    b.progress(callId, runningRow())
+    b.progress(callId, heldRow())
+    const second = s.release()
+    await b.until(() => readers(b).length === 2, 'a second notice')
+    b.fail(readers(b)[1].callId, JSON.stringify([{ code: 'too_small', path: ['callIds'], message: 'Too small' }]))
+    expect(await second).toBe(false)
+    b.progress(callId, runningRow())
+    b.progress(callId, heldRow())
+    const third = s.release()
+    await b.until(() => readers(b).length === 3, 'a third notice')
+    b.reply(readers(b)[2].callId, { held: true })
+    expect(await third).toBe(true)
+    b.reply(callId, answer())
+    await p
   })
 
   it("an older Mac's refusal keeps the reader, and that Mac is told nothing more", async () => {

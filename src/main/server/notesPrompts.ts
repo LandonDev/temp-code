@@ -1,4 +1,5 @@
 import { NOTE_SECTIONS, UPDATE_NOTES_TOOL_NAME } from '@shared/notes'
+import { NOTE_DECISION_TOOL_NAME } from '@shared/away'
 
 /**
  * What the harness is told about its working notes (threadNotes.ts), and
@@ -17,7 +18,7 @@ This thread has a notes file the app keeps beside its attachments (notes.md) and
 - ${NOTE_SECTIONS[2]} — what is done, what is in flight, what is blocked. Its first line is the one-line status: the thread's row shows it while the thread waits on the person.
 - ${NOTE_SECTIONS[3]} — files, commands, ids, branches, URLs that matter.
 - ${NOTE_SECTIONS[4]} — what is unresolved, and for whom.
-When: once the task list exists (Goal, Pointers), after every decision, whenever State changes, before context runs low (the app reminds you once per window), and after a commit or merge (the app reminds you if you did not). Notes are a brief, not a transcript: short lines, concrete names, no narration. The person may edit the file between your calls and ${UPDATE_NOTES_TOOL_NAME} reads it first, so never rewrite the whole thing from memory — update the section that changed.`
+Update when something real changes: once the goal and plan are clear (Goal, Pointers), when you make a decision, when work lands or gets blocked (State), after a commit or merge. One call per section that changed. A task of a few steps needs no notes. Never update them in place of doing the task, and never only because the app showed them to you. Notes are a brief, not a transcript: short lines, concrete names, no narration. The person may edit the file between your calls and ${UPDATE_NOTES_TOOL_NAME} reads it first, so never rewrite the whole thing from memory — update the section that changed.`
 
 /** The rule every harness gets about a person's message into its turn,
  *  beside the notes mechanics (orchestration.ts for claude's system
@@ -33,7 +34,7 @@ export function wrapSteer(text: string): string {
 }
 
 export const NOTES_REMINDER_CONTEXT = `<notes-reminder reason="context">
-This window is close to compaction. Before anything else, bring the notes current with ${UPDATE_NOTES_TOOL_NAME}: State (done, in flight, blocked), Decisions since the last update, Pointers, Open questions. Then continue the work.
+This window is close to compaction. If the notes are behind what you know, bring the sections that changed current with ${UPDATE_NOTES_TOOL_NAME}, one call each, then carry on with the task. If they are current, carry on.
 </notes-reminder>`
 
 export const NOTES_REMINDER_COMMIT = `<notes-reminder reason="commit">
@@ -44,7 +45,7 @@ The turn that just ended committed or merged work but did not update the notes. 
  *  is lossy, the notes are what the thread itself chose to keep. */
 export function notesAfterCompaction(text: string): string {
   return `<thread-notes>
-The context was just compacted and the summary is all this window has of the earlier turns. These are the thread's own notes, kept by it before the compaction — trust them over the summary where they differ, and keep them current with ${UPDATE_NOTES_TOOL_NAME}.
+The context was just compacted and the summary is all this window has of the earlier turns. These are the thread's own notes, kept by it before the compaction — trust them over the summary where they differ. They are current: carry on with the task; update them only when something changes.
 
 ${text.trim()}
 </thread-notes>`
@@ -64,6 +65,10 @@ ${text.trim()}
 export const NOTES_REMINDER_FRACTION = 0.7
 /** Below this the window counts as fresh again (a manual compaction, a resume). */
 export const NOTES_REMINDER_RESET_FRACTION = 0.5
+/** A reminder re-arms only this long after the last one and after the
+ *  thread's last update_notes: a window that refills to the compaction
+ *  point within minutes is the same cause, and once kept a thread looping. */
+export const NOTES_REARM_MS = 15 * 60_000
 
 const COMMIT_RE = /\bgit\s+(?:-C\s+\S+\s+)?(?:commit|merge|rebase\s+--continue|cherry-pick)\b|\bgh\s+pr\s+merge\b|\bgit\s+push\b/
 
@@ -76,6 +81,11 @@ export function isCommitCall(name: string, input: unknown): boolean {
       : null
   const text = Array.isArray(command) ? command.join(' ') : typeof command === 'string' ? command : ''
   return COMMIT_RE.test(text)
+}
+
+/** The harness called note_decision (claude's `mcp__app__note_decision`, the bridge's `note_decision`). */
+export function isNoteDecisionCall(name: string): boolean {
+  return name === NOTE_DECISION_TOOL_NAME || name.endsWith(`__${NOTE_DECISION_TOOL_NAME}`) || name.endsWith(`.${NOTE_DECISION_TOOL_NAME}`)
 }
 
 /** The harness called update_notes (claude's `mcp__app__update_notes`, the bridge's `update_notes`). */

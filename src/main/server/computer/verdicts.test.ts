@@ -6,7 +6,12 @@ import { TierVerdicts, VERDICT_TTL_MS, nextVerdict } from './verdicts'
 const B = 'com.example.app'
 function memoryStore() {
   const rows = new Map<string, string>()
-  return { rows, getSetting: (k: string) => rows.get(k) ?? null, setSetting: (k: string, v: string | null) => (v === null ? rows.delete(k) : rows.set(k, v)) }
+  return {
+    rows,
+    getSetting: (k: string) => rows.get(k) ?? null,
+    setSetting: (k: string, v: string | null) => (v === null ? rows.delete(k) : rows.set(k, v)),
+    settingsWithPrefix: (p: string) => new Map([...rows].filter(([k]) => k.startsWith(p)))
+  }
 }
 const ok = (tier: Tier | null, effect: 'changed' | 'none' | 'unknown' | 'uncommitted'): StepResult => ({
   index: 0,
@@ -196,5 +201,82 @@ describe('the front tier in the verdict (§25, decision 11)', () => {
     expect(v.needsSession(B, click)).toBe(true)
     expect(v.tiersFor(B, click, { front: true, session: true })).toEqual(['ax', 'session'])
     expect(v.ignoredFor(B)).toEqual({ process: ['click'], front: ['click'] })
+  })
+})
+
+describe('Settings → Computer use: names, list, forget, onChange', () => {
+  const fixed = (now: number) => ({ now: () => now })
+
+  it('keeps the newest name from a learning step, a probe and a stamp', () => {
+    const store = memoryStore()
+    const v = new TierVerdicts(store)
+    v.learn(B, click, ok('process', 'changed'), 'Example')
+    expect(v.get(B)?.name).toBe('Example')
+    v.learn(B, click, ok('process', 'none'), 'Example 2')
+    expect(v.get(B)?.name).toBe('Example 2')
+    v.learnProbe(B, { pid: 1, bundleId: B, results: [], keyWindow: 'target' }, 'Example 3')
+    expect(v.get(B)?.name).toBe('Example 3')
+    v.stampProbe(B)
+    expect(v.get(B)?.name).toBe('Example 3')
+    v.stampProbe(B, 'Example 4')
+    expect(v.get(B)?.name).toBe('Example 4')
+  })
+
+  it('names a verdict saved before names were kept at its next call, even one that learns nothing', () => {
+    const store = memoryStore()
+    store.setSetting(tierVerdictSetting(B), JSON.stringify({ bundleId: B, classes: { click: 'process' }, misses: {}, updatedAt: Date.now() }))
+    const v = new TierVerdicts(store)
+    v.learn(B, click, ok('ax', 'changed'), 'Example')
+    expect(v.get(B)?.name).toBe('Example')
+    expect(v.get(B)?.classes).toEqual({ click: 'process' })
+  })
+
+  it('lists every kept verdict, leaving out past-TTL and unreadable rows', () => {
+    const now = 10 * VERDICT_TTL_MS
+    const store = memoryStore()
+    const put = (id: string, value: string) => store.setSetting(tierVerdictSetting(id), value)
+    put('a.fresh', JSON.stringify({ bundleId: 'a.fresh', name: 'Fresh', classes: { type: 'session' }, misses: {}, updatedAt: now - 1000 }))
+    put('b.old', JSON.stringify({ bundleId: 'b.old', classes: {}, misses: {}, updatedAt: now - VERDICT_TTL_MS - 1 }))
+    put('c.bad', '{not json')
+    put('d.wrong', JSON.stringify({ bundleId: 'd.wrong', classes: { click: 'screen' }, misses: {}, updatedAt: now }))
+    store.setSetting('computer.sessionIdleMs', '60000')
+    const list = new TierVerdicts(store, fixed(now)).list()
+    expect(list.map((x) => x.bundleId)).toEqual(['a.fresh'])
+    expect(list[0].name).toBe('Fresh')
+  })
+
+  it('forgets one app, then every app, and the next call probes again', () => {
+    const store = memoryStore()
+    const v = new TierVerdicts(store)
+    v.stampProbe('a.one', 'One')
+    v.learn('b.two', click, ok('process', 'changed'), 'Two')
+    store.setSetting('computer.sessionIdleMs', '60000')
+    v.forget('a.one')
+    expect(v.get('a.one')).toBeNull()
+    expect(v.needsProbe('a.one')).toBe(true)
+    expect(v.list().map((x) => x.bundleId)).toEqual(['b.two'])
+    v.forget(null)
+    expect(v.list()).toEqual([])
+    expect(store.getSetting('computer.sessionIdleMs')).toBe('60000')
+  })
+
+  it('tells its listeners on every save and forget, and not on a forget that changes nothing', () => {
+    const v = new TierVerdicts(memoryStore())
+    let calls = 0
+    const off = v.onChange(() => calls++)
+    v.learn(B, click, ok('process', 'changed'), 'Example')
+    expect(calls).toBe(1)
+    v.learn(B, click, ok('ax', 'changed'))
+    expect(calls).toBe(1)
+    v.forget(B)
+    expect(calls).toBe(2)
+    v.forget(B)
+    v.forget(null)
+    expect(calls).toBe(2)
+    v.stampProbe(B)
+    expect(calls).toBe(3)
+    off()
+    v.forget(null)
+    expect(calls).toBe(3)
   })
 })

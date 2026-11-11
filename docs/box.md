@@ -1177,7 +1177,7 @@ the landed path and refuses a Mac path, an idle upload expires with
 `src/renderer/src/lib/attachmentUpload.test.ts`.
 ### Working notes: what a thread keeps for its next window
 
-Every root thread keeps one markdown file, `notes.md`, beside its
+Every thread may keep one markdown file, `notes.md`, beside its
 attachments (`attachmentDir(session)/notes.md`, so the harness can read and
 write it with its own tools; `src/main/server/threadNotes.ts`, the text
 rules in `src/shared/notes.ts`), mirrored in the `session_notes` table for
@@ -1197,20 +1197,41 @@ harness.
 
 The app reminds the thread at the two moments that matter. When the
 context meter passes 0.7 of the window, a `<notes-reminder
-reason="context">` is whispered into the live turn (both drivers take
-mid-turn input), once per window, armed again below 0.5 or at a
-compaction. When a root thread's turn committed or merged (`git commit`,
-`git merge`, `gh pr merge`, `git push`) without an `update_notes` call, the
-app sends a `<notes-reminder reason="commit">` as its own short turn after
-the settle, marked on the transcript like a completed-turn pass ("Notes");
-with a queued message waiting it rides ahead of that message instead, and a
-reminder is never repeated before the next user message. A whisper that
-finds no live turn is held and goes ahead of the next message the harness
-gets (a user message or a turn pass).
+reason="context">` is whispered into the live turn, asking for an update
+only if the notes are behind. It fires once per cause: a fresh window
+(below 0.5, or a compaction) only clears its flag, and it arms again 15
+minutes after the last reminder and never within 15 minutes of an
+`update_notes` call (`NOTES_REARM_MS`). When a root thread's turn committed
+or merged (`git commit`, `git merge`, `gh pr merge`, `git push`) without an
+`update_notes` call, and none ran in the last 15 minutes, the app sends a
+`<notes-reminder reason="commit">` as its own short turn after the settle,
+marked on the transcript like a completed-turn pass ("Notes"); with a
+queued message waiting it rides ahead of that message instead, and a
+reminder is never repeated before the next user message.
+
+A line the app sends on its own (a notes reminder, the notes block, a
+`<dev-server>` line, a master pin notice) never starts a turn of its own.
+`SessionRegistry.whisper` hands it to `DriverHandle.whisper`, which puts it
+where the model reads it before the open turn ends: claude holds it for the
+next tool's PostToolUse `additionalContext` (a hook on every tool), codex
+and Muse send `turn/steer` on the live turn with no client id. A driver
+that cannot (no turn open, a refusal, a driver without the method) answers
+false, and claude hands back what a turn ended without reading
+(`returnWhispers`); either way the registry holds the line and it goes
+ahead of the next real message (a user message, a reports wake or a turn
+pass). Two threads once looped on `update_notes` (2026-11-10): each
+compacted on almost every request, every compaction re-armed the reminder
+and sent the notes block, and the block was pushed onto the claude SDK's
+input after the turn's last request, so it ran as a turn of its own, which
+compacted again. Beside those rules, `update_notes` refuses after 5 calls in
+a row with no other tool call or real input between (`NOTES_STREAK_STOP`,
+nothing written), and `note_decision` answers a decision already rowed this
+away stretch as "already noted".
 
 After a compaction (the `compaction` event's `done` phase) the thread's
 notes go to the harness as a `<thread-notes>` block, so the window that
-only has the summary starts from what the thread chose to keep. Successors
+only has the summary starts from what the thread chose to keep; the block
+asks for no write. Successors
 start the same way: a thread digest (`renderMirror`, hence
 `app_read_thread`, `seedThreadIds` and `@thread:` references) carries
 `## Notes` between the frontmatter and `## Outcome`, kept whole when the
@@ -1231,8 +1252,10 @@ successor's first message), the needs-you banner's State line, and the
 notes icon on a search hit.
 
 Proof: `threadNotes.test.ts` (sections, the file and mirror round trip),
-`sessions-notes.test.ts` (both reminders, the whisper, the compaction
-block, the digests, the plan hand-off), `session-search.test.ts`,
+`sessions-notes.test.ts` (both reminders and their re-arm gap, the
+whisper and the held line, the thrash reproduction, the streak, the
+compaction block, the digests, the plan hand-off), `claude-whisper.test.ts`,
+the whisper cases in `codex.test.ts` and `muse.test.ts`, `session-search.test.ts`,
 `app-bridge.test.ts`, and the renderer's `threadNotes.test.ts`,
 `NotesPanel.dom.test.tsx` and `ThreadBanners.dom.test.tsx`.
 

@@ -5,26 +5,48 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent } from '@shared/events'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
-import { NOTES_MECHANICS, STEER_MECHANICS, isCommitCall, isNotesCall, wrapSteer } from './notesPrompts'
+import {
+  NOTES_MECHANICS,
+  NOTES_REARM_MS,
+  NOTES_REMINDER_CONTEXT,
+  STEER_MECHANICS,
+  isCommitCall,
+  isNoteDecisionCall,
+  isNotesCall,
+  notesAfterCompaction,
+  wrapSteer
+} from './notesPrompts'
 import { MASTER_MECHANICS, implementerSpawnPrompt, orchestratorPrompt } from './orchestration'
 import { threadPreamble } from './threads'
-import { setAppBridge } from './apptools'
+import { appNoteDecision, appUpdateNotes, setAppBridge } from './apptools'
+import { NOTES_STREAK_STOP } from '@shared/notes'
 import { cancelMirrors, threadDigest, writeThreadDigest } from './mirror'
 import { readFile } from 'node:fs/promises'
 
 /** One controlled driver: every send is recorded, and the test drives
  *  the harness's events through the captured ctx. */
 const sends: string[] = []
+/** Host lines the registry put into a live turn (DriverHandle.whisper); the
+ *  driver takes them while `whisperTaken`, else answers false. */
+const whispers: string[] = []
+let whisperTaken = true
 let emit: ((e: AgentEvent) => void) | null = null
+let returnWhispers: ((texts: string[]) => void) | null = null
 vi.mock('./drivers', () => ({
   BUILT_IN_DRIVERS: {
     claude: {
       id: 'claude',
-      start: async (ctx: { emit: (e: AgentEvent) => void }) => {
+      start: async (ctx: { emit: (e: AgentEvent) => void; returnWhispers?: (texts: string[]) => void }) => {
         emit = ctx.emit
+        returnWhispers = ctx.returnWhispers ?? null
         return {
           send: async (text: string) => {
             sends.push(text)
+          },
+          whisper: async (text: string) => {
+            if (!whisperTaken) return false
+            whispers.push(text)
+            return true
           },
           interrupt: () => {},
           dispose: async () => {}
@@ -41,7 +63,10 @@ let registry: SessionRegistry
 
 beforeEach(async () => {
   sends.length = 0
+  whispers.length = 0
+  whisperTaken = true
   emit = null
+  returnWhispers = null
   root = await mkdtemp(join(tmpdir(), 'tc-notes-reg-'))
   db = openDb(join(root, 'test.db'))
   store = new Store(db)
@@ -141,24 +166,78 @@ describe('the reminder after a commit', () => {
 })
 
 describe('the reminder before a compaction', () => {
-  it('fires once per window into the live turn, and again after the window is squeezed', async () => {
-    await startThread()
-    running()
-    emit!({ type: 'context', tokens: 100_000, window: 200_000 })
-    await flush()
-    expect(sends.length).toBe(1)
-    emit!({ type: 'context', tokens: 141_000, window: 200_000 })
-    await flush()
-    expect(sends.length).toBe(2)
-    expect(sends[1]).toContain('<notes-reminder reason="context">')
-    emit!({ type: 'context', tokens: 150_000, window: 200_000 })
-    await flush()
-    expect(sends.length).toBe(2)
-    emit!({ type: 'compaction', phase: 'done', trigger: 'auto', preTokens: 150_000, postTokens: 20_000 })
-    emit!({ type: 'context', tokens: 20_000, window: 200_000 })
-    emit!({ type: 'context', tokens: 145_000, window: 200_000 })
-    await flush()
-    expect(sends.length).toBe(3)
+  it('fires once into the live turn; a squeezed window re-arms it only after 15 minutes', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      await startThread()
+      running()
+      emit!({ type: 'context', tokens: 100_000, window: 200_000 })
+      await flush()
+      expect(whispers).toHaveLength(0)
+      emit!({ type: 'context', tokens: 141_000, window: 200_000 })
+      await flush()
+      expect(whispers).toHaveLength(1)
+      expect(whispers[0]).toContain('<notes-reminder reason="context">')
+      emit!({ type: 'context', tokens: 150_000, window: 200_000 })
+      await flush()
+      expect(whispers).toHaveLength(1)
+      // Squeezed and refilled 5 minutes on: the same cause, no second reminder.
+      vi.setSystemTime(Date.now() + 5 * 60_000)
+      emit!({ type: 'compaction', phase: 'done', trigger: 'auto', preTokens: 150_000, postTokens: 20_000 })
+      emit!({ type: 'context', tokens: 20_000, window: 200_000 })
+      emit!({ type: 'context', tokens: 145_000, window: 200_000 })
+      await flush()
+      expect(whispers.filter((t) => t.includes('<notes-reminder'))).toHaveLength(1)
+      // 16 minutes after the first: armed again.
+      vi.setSystemTime(Date.now() + 11 * 60_000)
+      emit!({ type: 'context', tokens: 146_000, window: 200_000 })
+      await flush()
+      expect(whispers.filter((t) => t.includes('<notes-reminder'))).toHaveLength(2)
+      // None of it was a send: no turn of its own.
+      expect(sends).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('never fires within 15 minutes of an update_notes call', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const id = await startThread()
+      running()
+      appUpdateNotes(registry, registry.get(id)!, { section: 'State', content: 'current' })
+      vi.setSystemTime(Date.now() + 14 * 60_000)
+      emit!({ type: 'context', tokens: 160_000, window: 200_000 })
+      await flush()
+      expect(whispers).toHaveLength(0)
+      vi.setSystemTime(Date.now() + 2 * 60_000)
+      emit!({ type: 'context', tokens: 161_000, window: 200_000 })
+      await flush()
+      expect(whispers.filter((t) => t.includes('<notes-reminder reason="context">'))).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("a subagent's reminder follows the same rules", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const parent = await registry.create({ projectId: 'p1', threadType: 'implementation', provider: 'claude' })
+      const child = await registry.create({ projectId: 'p1', provider: 'claude', parentId: parent.id, agentType: 'implementer' })
+      await registry.send(child.id, 'do it')
+      await flush()
+      running()
+      emit!({ type: 'context', tokens: 190_000, window: 200_000 })
+      await flush()
+      expect(whispers).toHaveLength(1)
+      emit!({ type: 'compaction', phase: 'done', trigger: 'auto' })
+      emit!({ type: 'context', tokens: 10_000, window: 200_000 })
+      emit!({ type: 'context', tokens: 190_000, window: 200_000 })
+      await flush()
+      expect(whispers.filter((t) => t.includes('<notes-reminder'))).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('with no live turn the reminder waits for the next message', async () => {
@@ -186,9 +265,12 @@ describe('the notes after a compaction', () => {
     running()
     emit!({ type: 'compaction', phase: 'done', trigger: 'auto' })
     await flush()
-    expect(sends.length).toBe(2)
-    expect(sends[1]).toContain('<thread-notes>')
-    expect(sends[1]).toContain('## State\n\n- parser done\n- panel in flight')
+    // Into the turn as a host line, never a send that would run as a turn.
+    expect(sends.length).toBe(1)
+    expect(whispers).toHaveLength(1)
+    expect(whispers[0]).toContain('<thread-notes>')
+    expect(whispers[0]).toContain('## State\n\n- parser done\n- panel in flight')
+    expect(registry.heldNotices(id)).toEqual([])
   })
 
   it('an idle thread gets them ahead of its next message; empty notes send nothing', async () => {
@@ -206,6 +288,95 @@ describe('the notes after a compaction', () => {
     expect(sends[1].startsWith('<thread-notes>')).toBe(true)
     expect(sends[1]).toContain('## Goal\n\nKeep notes.')
     expect(sends[1].endsWith('resume')).toBe(true)
+  })
+})
+
+describe('a host line never starts a turn', () => {
+  it('a whisper the driver cannot place is held and rides the next send; the thread stays idle meanwhile', async () => {
+    const id = await startThread()
+    registry.notes.update(id, { section: 'State', content: 'in flight' })
+    running()
+    whisperTaken = false
+    emit!({ type: 'compaction', phase: 'done', trigger: 'auto' })
+    await flush()
+    expect(whispers).toEqual([])
+    expect(registry.heldNotices(id)).toHaveLength(1)
+    settle()
+    await flush()
+    expect(sends.length).toBe(1)
+    expect(registry.get(id)?.status).toBe('idle')
+    await registry.send(id, 'next')
+    await flush()
+    expect(sends[1].startsWith('<thread-notes>')).toBe(true)
+    expect(sends[1].endsWith('next')).toBe(true)
+  })
+
+  it("a dev-server line is held the same way, and so is what the driver hands back unread", async () => {
+    const id = await startThread()
+    running()
+    whisperTaken = false
+    registry.whisper(id, '<dev-server port="5173">\nlistening\n</dev-server>')
+    await flush()
+    expect(registry.heldNotices(id)).toEqual(['<dev-server port="5173">\nlistening\n</dev-server>'])
+    whisperTaken = true
+    registry.whisper(id, 'taken then returned')
+    await flush()
+    expect(whispers).toEqual(['taken then returned'])
+    returnWhispers!(['taken then returned'])
+    expect(registry.heldNotices(id)).toEqual(['<dev-server port="5173">\nlistening\n</dev-server>', 'taken then returned'])
+    expect(sends.length).toBe(1)
+  })
+
+  it('a thread with no live turn holds the line without asking the driver', async () => {
+    const id = await startThread()
+    running()
+    settle()
+    await flush()
+    registry.whisper(id, 'later')
+    await flush()
+    expect(whispers).toEqual([])
+    expect(registry.heldNotices(id)).toEqual(['later'])
+  })
+})
+
+describe('the notes streak', () => {
+  const update = (id: string, n: number): string => appUpdateNotes(registry, registry.get(id)!, { section: 'State', content: `pass ${n}` })
+
+  it('five updates in a row pass, the sixth is refused and writes nothing', async () => {
+    const id = await startThread()
+    running()
+    for (let i = 1; i <= 5; i++) expect(update(id, i)).toMatch(/^notes updated/)
+    const before = registry.notes.read(id).text
+    expect(update(id, 6)).toBe(NOTES_STREAK_STOP)
+    expect(registry.notes.read(id).text).toBe(before)
+  })
+
+  it('another tool call resets it; a note_decision or a host line does not; a send does', async () => {
+    const id = await startThread()
+    running()
+    for (let i = 1; i <= 5; i++) update(id, i)
+    emit!({ type: 'tool-call', callId: 'b1', name: 'Bash', input: { command: 'ls' } })
+    for (let i = 1; i <= 5; i++) expect(update(id, i)).toMatch(/^notes updated/)
+    emit!({ type: 'tool-call', callId: 'd1', name: 'mcp__app__note_decision', input: {} })
+    emit!({ type: 'tool-call', callId: 'u1', name: 'mcp__app__update_notes', input: {} })
+    registry.whisper(id, 'a host line')
+    await flush()
+    expect(update(id, 6)).toBe(NOTES_STREAK_STOP)
+    settle()
+    await flush()
+    await registry.send(id, 'next')
+    await flush()
+    expect(update(id, 7)).toMatch(/^notes updated/)
+  })
+
+  it('the same decision twice is one row; distinct decisions each land', async () => {
+    const id = await startThread()
+    const caller = registry.get(id)!
+    expect(appNoteDecision(registry, caller, { decision: 'Used tabs.' })).toBe('noted')
+    expect(appNoteDecision(registry, caller, { decision: 'Used tabs.' })).toBe('already noted')
+    for (let i = 0; i < 6; i++) expect(appNoteDecision(registry, caller, { decision: `Decision ${i}.` })).toBe('noted')
+    const rows = registry.eventsAfter(id, 0).map((r) => r.event).filter((e) => e.type === 'notice' && e.kind === 'away')
+    expect(rows).toHaveLength(7)
   })
 })
 
@@ -245,6 +416,18 @@ describe('the mechanics text', () => {
     expect(wrapped).toMatch(/answer it in one short line of your own words/)
   })
 
+  it('the reminder and the notes block ask for no write unconditionally, and the mechanics bound the habit', () => {
+    expect(NOTES_REMINDER_CONTEXT).not.toMatch(/Before anything else/)
+    expect(NOTES_REMINDER_CONTEXT).toMatch(/If the notes are behind what you know/)
+    expect(NOTES_REMINDER_CONTEXT).toMatch(/If they are current, carry on\./)
+    const block = notesAfterCompaction('## State\n\nin flight')
+    expect(block).not.toMatch(/keep them current with update_notes/)
+    expect(block).toMatch(/They are current: carry on with the task/)
+    expect(NOTES_MECHANICS).toMatch(/Never update them in place of doing the task/)
+    expect(NOTES_MECHANICS).not.toMatch(/after every decision/)
+    expect(NOTES_REARM_MS).toBe(15 * 60_000)
+  })
+
   it('tells a commit from any shell tool and the notes tool from any surface', () => {
     expect(isCommitCall('Bash', { command: 'git commit -m "x"' })).toBe(true)
     expect(isCommitCall('Bash', { command: 'git -C /repo merge main' })).toBe(true)
@@ -255,6 +438,9 @@ describe('the mechanics text', () => {
     expect(isNotesCall('update_notes')).toBe(true)
     expect(isNotesCall('app.update_notes')).toBe(true)
     expect(isNotesCall('mcp__app__app_read_thread')).toBe(false)
+    expect(isNoteDecisionCall('mcp__app__note_decision')).toBe(true)
+    expect(isNoteDecisionCall('app.note_decision')).toBe(true)
+    expect(isNoteDecisionCall('mcp__app__update_notes')).toBe(false)
   })
 })
 
@@ -310,5 +496,35 @@ describe('successors start from the notes', () => {
     await registry.send(build2.id, 'go')
     await flush()
     expect(sends[0]).not.toContain('<planning-notes')
+  })
+})
+
+describe('a thrashing window (the update_notes loop)', () => {
+  it('the context reminder stays bounded while the window refills and compacts on every request', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const id = await startThread()
+      running()
+      const window = 200_000
+      // Every line the host sends is answered with an update_notes call,
+      // as the looping models did.
+      const answered = (): number => [...sends, ...whispers].filter((t) => t.includes('<notes-reminder reason="context">')).length
+      for (let cycle = 0; cycle < 10; cycle++) {
+        emit!({ type: 'context', tokens: window * 0.95, window })
+        await flush()
+        appUpdateNotes(registry, registry.get(id)!, { section: 'State', content: `cycle ${cycle}` })
+        emit!({ type: 'tool-call', callId: `n${cycle}`, name: 'mcp__app__update_notes', input: {} })
+        emit!({ type: 'compaction', phase: 'done', trigger: 'auto', preTokens: window * 0.95, postTokens: window * 0.1 })
+        emit!({ type: 'context', tokens: window * 0.1, window })
+        await flush()
+        vi.setSystemTime(Date.now() + 60_000)
+      }
+      // On master this was one reminder per cycle (10 in 10); now one per
+      // 15 minutes at most, and never a send that starts a turn.
+      expect(answered()).toBeLessThanOrEqual(1)
+      expect(sends).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

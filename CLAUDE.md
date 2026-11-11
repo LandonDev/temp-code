@@ -1862,7 +1862,7 @@ names the far child).
   host's home. The phone always names a workspace when it creates a thread.
 
 ## Thread notes: the document that survives a compaction
-- Every root thread keeps `notes.md` at `attachmentDir(session)/notes.md`
+- Every thread may keep `notes.md` at `attachmentDir(session)/notes.md`
   (the project's `.temp-code/attachments/<sid>/`, so the harness can read
   and write it with its own tools), mirrored in the `session_notes` table
   for the renderer, search and archived threads (src/main/server/
@@ -1877,16 +1877,34 @@ names the far child).
   system prompt through `orchestratorMechanics` and, for other harnesses,
   the first-message preamble's app-tools note.
 - The app reminds the thread twice: a `<notes-reminder reason="context">`
-  whispered into the live turn once per window when the context meter
-  passes 0.7 of the window (reset below 0.5, or at a compaction), and a
+  whispered into the live turn when the context meter passes 0.7 of the
+  window, asking for an update only if the notes are behind; once per
+  cause: a fresh window (below 0.5, or a compaction) clears its flag, and
+  it re-arms only 15 minutes after the last reminder and never within 15
+  minutes of an `update_notes` (`NOTES_REARM_MS`, notesPrompts.ts); and a
   `<notes-reminder reason="commit">` as the app's own short turn (a
   `turn-pass` marker reading "Notes") when a root thread's turn committed
-  or merged (`isCommitCall`) without an `update_notes` call; with a queued
-  message the reminder rides ahead of it instead. `SessionRegistry.whisper`
-  sends into a running turn or holds the line ahead of the next message.
+  or merged (`isCommitCall`) without an `update_notes` call and none in the
+  last 15 minutes; with a queued message the reminder rides ahead of it
+  instead.
+- A host line (a notes reminder, the notes block, a `<dev-server>` line, a
+  master pin notice) never starts a turn of its own: `SessionRegistry.whisper`
+  hands it to `DriverHandle.whisper`, which adds it to the open turn only
+  where the model reads it before the turn ends (claude: the next tool's
+  PostToolUse `additionalContext`, a matcher-less hook; codex and Muse:
+  `turn/steer` with no client id), and holds it ahead of the next real
+  message when the driver answers false, throws, lacks the method or hands
+  it back unread (`DriverCtx.returnWhispers`: claude at the result, a dead
+  stream, the watchdogs, dispose). Two threads looped on `update_notes` on
+  2026-11-10 when a whisper pushed after a turn's last request ran as a
+  turn of its own (docs/box.md "Thread notes"). `update_notes` refuses
+  (`NOTES_STREAK_STOP`, src/shared/notes.ts, nothing written) after
+  `NOTES_STREAK_LIMIT` (5) calls in a row with no other tool call or real
+  input between (`notesStreak`; a send, a reports wake or a turn pass
+  resets it, a host line or `note_decision` does not).
 - After a compaction (`compaction` phase `done`) the thread's notes go to
   the harness as a `<thread-notes>` block, into the live turn or ahead of
-  the next message. Successors: a thread digest (`renderMirror`, so
+  the next message; it asks for no write. Successors: a thread digest (`renderMirror`, so
   `app_read_thread`, `seedThreadIds` and `@thread:` references) carries
   `## Notes` verbatim between the frontmatter and `## Outcome`, and a build
   thread's first message carries its planning thread's notes
@@ -1904,8 +1922,10 @@ names the far child).
   surfaces/threads/NotesPanel.tsx: live markdown, edit with a debounced
   save, "Copy as brief" via `notesAsBrief`), the needs-you banner's State
   line, and the search icon.
-- Proof: threadNotes.test.ts, sessions-notes.test.ts (reminders, whisper,
-  compaction block, digests, plan hand-off), session-search.test.ts,
+- Proof: threadNotes.test.ts, sessions-notes.test.ts (reminders and their
+  gap, the held whisper, the thrash reproduction, the streak, compaction
+  block, digests, plan hand-off), claude-whisper.test.ts, the whisper cases
+  in codex.test.ts and muse.test.ts, session-search.test.ts,
   app-bridge.test.ts, the renderer's threadNotes.test.ts,
   NotesPanel.dom.test.tsx and ThreadBanners.dom.test.tsx.
 ## Away from computer: threads finish without the person
@@ -1955,7 +1975,9 @@ names the far child).
   computer/bridge.ts), and words a Mac on the older build's refusal
   (`MAC_AWAY_REFUSAL_LEGACY`) as a skipped row. Each of these, and each
   `note_decision` call (an app tool on every thread, `app.noteDecision`
-  over the codex bridge), is one `notice` of kind `away`
+  over the codex bridge; the same decision again in one away stretch
+  answers "already noted" and writes no second row, `awayNotice`), is one
+  `notice` of kind `away`
   (`away: { kind: decision | question | allowed | approval, text }`;
   `approval` is a denial, "Skipped while away", `allowed` "Allowed while
   away", drawn with the open lock) that counts toward the tally.
@@ -2220,6 +2242,13 @@ why and the measured headline.
   first (`TargetResolver`), and TempCode itself and the system's password
   and Touch ID prompts are refused (`refused_app`). Service errors read
   through `errorLine` (src/shared/computer/errorWords.ts).
+- **The page.** Settings → Computer use (surfaces/settings/Computer.tsx;
+  Mac desktop only, `macOnly` in lib/settings.ts): the service with Try
+  again while down, Take the screen after (`computer.sessionIdleMs`, in
+  minutes), the two grants with Grant…, the learned apps (`verdictWords`)
+  with Forget; `computer.settings.get/set`, `computer.verdicts.forget`,
+  `computer.permissions`, `computer.service.retry`, all `local`
+  (computer/settingsRpc.ts); the `computer-settings` push.
 - **The session tier** (§20, computer/schedule.ts,
   src/shared/computer/scheduleRules.ts) takes the person's pointer and
   keyboard only while they are away: no input for `computer.sessionIdleMs`
@@ -2308,7 +2337,13 @@ why and the measured headline.
   in the background tiers, each end state read through the AX tree, the
   files or `defaults`; `BENCH_RULE` (scripts/lib/computerBench.ts) judges
   it against `<git-dir>/temp-code-gate/computer-bench/baseline.json`.
-  docs/release-gate.md "The computer bench".
+  docs/release-gate.md "The computer bench". `--set field` (§21.7, hand run
+  only; scripts/lib/fieldTasks.ts) is the 2026-11-10 field test as 14 tasks
+  on Opus, Sonnet and GPT-6.1 Sol, run three ways — `--host mac`, `--host
+  box` (threads on an isolated box instance over the Mac bridge, both
+  clocks recorded) and `--reference codex` — and judged across saved
+  reports by `--judge-field` (scripts/lib/fieldBar.ts: parity with Codex,
+  medians at or under its, the box within 15% of the Mac).
 - **Fixtures.** src/main/server/computer/fixtures/ (its README): wire
   frames, observation texts and app trees recorded from scratch content
   only (scripts/mac/record-computer-fixtures.sh), held to their schemas

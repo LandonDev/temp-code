@@ -1,4 +1,4 @@
-import type { ComputerServiceState } from '@shared/contract-computer'
+import { COMPUTER_CRASHES_TO_DOWN, type ComputerServiceState } from '@shared/contract-computer'
 import type {
   ComputerMethod,
   ComputerNotification,
@@ -42,7 +42,7 @@ export interface ComputerServiceOptions extends Omit<ComputerConnectionOptions, 
 /** The waits before a respawn after the nth crash in a row. */
 export const SPAWN_BACKOFF_MS = [500, 1_000, 2_000, 4_000, 8_000, 16_000, 30_000]
 export const CRASH_WINDOW_MS = 120_000
-export const CRASHES_TO_DOWN = 5
+export const CRASHES_TO_DOWN = COMPUTER_CRASHES_TO_DOWN
 export const DOWN_FOR_MS = 300_000
 export const IDLE_SHUTDOWN_MS = 600_000
 export const PING_EVERY_MS = 30_000
@@ -152,6 +152,22 @@ export class ComputerService {
     this.busy = busy
     if (busy) this.clearIdle()
     else this.armIdle()
+  }
+
+  /**
+   * Settings → Computer use's Try again on a service down after crashes: the
+   * crash window, the backoff and the five-minute wait are forgotten and it
+   * starts at once. Any other state, a permanent reason included, only
+   * answers the state.
+   */
+  async retry(): Promise<ComputerServiceState> {
+    if (this.status.state !== 'down' || this.permanent || this.closed) return this.state()
+    this.crashes = []
+    this.backoffStep = 0
+    this.downUntil = 0
+    this.nextSpawnAt = 0
+    await this.connection().catch((e: Error) => this.log(`Try again failed: ${e.message}`))
+    return this.state()
   }
 
   /** The server closing: shut down, never respawn. */

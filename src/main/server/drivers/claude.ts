@@ -238,6 +238,9 @@ interface StreamState {
   /** steers pushed and not yet read by the model, id → whether a result
    *  came since the push (it then runs as a turn of its own) */
   steers: Map<string, { afterResult: boolean }>
+  /** host lines (DriverHandle.whisper) waiting for the open turn's next
+   *  tool result, where the PostToolUse hook hands them to the model */
+  pendingWhispers: string[]
 }
 
 export function newStreamState(): StreamState {
@@ -269,8 +272,45 @@ export function newStreamState(): StreamState {
     contentSinceSend: false,
     noticeTurn: false,
     noticeResult: null,
-    steers: new Map()
+    steers: new Map(),
+    pendingWhispers: []
   }
+}
+
+/** A host line for the open turn: held for its next tool result, where the
+ *  PostToolUse hook gives it to the model. Never pushed on the input
+ *  stream: a message the CLI reads after its result runs as a turn of its
+ *  own, and that is how a whisper once kept a thread looping. False with
+ *  no turn open. */
+export function whisperInto(state: Pick<StreamState, 'working' | 'pendingWhispers'>, text: string): boolean {
+  if (!state.working) return false
+  state.pendingWhispers.push(text)
+  return true
+}
+
+/** The PostToolUse output that hands the waiting host lines to the model
+ *  (every tool, MCP tools too); nothing waiting adds nothing. */
+export function whisperHookOutput(state: Pick<StreamState, 'pendingWhispers'>): HookJSONOutput {
+  if (!state.pendingWhispers.length) return { continue: true }
+  const additionalContext = state.pendingWhispers.splice(0).join('\n\n')
+  return { continue: true, hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext } }
+}
+
+/** The turn ended (its result, a dead stream, a watchdog abort, a dispose)
+ *  with host lines the model never read: the registry holds them for the
+ *  next real message. */
+export function returnWhispers(ctx: Pick<DriverCtx, 'returnWhispers'>, state: Pick<StreamState, 'pendingWhispers'>): void {
+  if (!state.pendingWhispers.length) return
+  ctx.returnWhispers?.(state.pendingWhispers.splice(0))
+}
+
+/** PostToolUse: the dev-server tail on Bash alone, the host's whispers on
+ *  every tool. The SDK runs both on a Bash call and joins their contexts. */
+export function postToolUseHooks(
+  bashTail: (input: unknown) => Promise<HookJSONOutput>,
+  whisper: () => Promise<HookJSONOutput>
+): { matcher?: string; hooks: ((input: unknown) => Promise<HookJSONOutput>)[] }[] {
+  return [{ matcher: 'Bash', hooks: [bashTail] }, { hooks: [whisper] }]
 }
 
 /** A pushed steer the model has read: the CLI lists the client uuids a
@@ -579,6 +619,7 @@ function settleTurn(ctx: DriverCtx, state: StreamState): void {
  *  the next send boots fresh, and no row is written: the thread was between
  *  turns, and the words of a mid-turn death would be false. */
 export function settleStreamEnd(ctx: DriverCtx, state: StreamState, err?: unknown): void {
+  returnWhispers(ctx, state)
   const midTurn = state.working
   const watched = state.watching
   state.working = false
@@ -1172,6 +1213,7 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
       }
       state.pendingSend = false
       state.working = false
+      returnWhispers(ctx, state)
       if (msg.subtype === 'success') {
         emit({
           type: 'turn-complete',
@@ -1694,7 +1736,7 @@ export const claudeDriver: HarnessDriver = {
           { matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash', hooks: [baselineHook] },
           ...(session.permission === 'auto' ? [{ matcher: 'Bash', hooks: [guardHook] }] : [])
         ],
-        PostToolUse: [{ matcher: 'Bash', hooks: [bashTailHook] }],
+        PostToolUse: postToolUseHooks(bashTailHook, async () => whisperHookOutput(state)),
         // Session crons only surface here (see stopHookFor).
         Stop: [{ hooks: [stopHookFor(watchedCtx, state)] }]
       },
@@ -1827,6 +1869,7 @@ export const claudeDriver: HarnessDriver = {
       // CLI took the text and went silent. Settle, put the process down;
       // the registry re-queues the message once into a fresh harness.
       if (firstOutputOverdue(state, Date.now())) {
+        returnWhispers(ctx, state)
         state.working = false
         state.watching = false
         state.sentAt = null
@@ -1839,6 +1882,7 @@ export const claudeDriver: HarnessDriver = {
       if (!state.working || state.armedAt === null) return
       const quiet = Date.now() - state.armedAt
       if (quiet >= RECOVER_AFTER_MS) {
+        returnWhispers(ctx, state)
         state.working = false
         state.watching = false
         state.armedAt = null
@@ -1980,6 +2024,10 @@ export const claudeDriver: HarnessDriver = {
 
     return {
       confirmsSteers: true,
+      async whisper(text: string): Promise<boolean> {
+        if (dead || disposed) return false
+        return whisperInto(state, text)
+      },
       async send(text: string, attachments?: Attachment[], opts?: SendOpts): Promise<void> {
         if (dead) throw new Error('harness gone')
         // A steer into a CLI with no turn open runs as a turn of its own;
@@ -2079,6 +2127,7 @@ export const claudeDriver: HarnessDriver = {
         clearSettle(state)
         clearNoticeResult(state)
         state.steers.clear()
+        returnWhispers(ctx, state)
         for (const finish of [...pendingApprovals.values()]) finish(false, true)
         for (const finish of [...pendingQuestions.values()]) finish(null)
         input.close()

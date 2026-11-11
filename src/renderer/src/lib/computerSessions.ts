@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { useStore } from 'zustand'
 import { createStore } from 'zustand/vanilla'
-import type { ComputerSessionRow, ComputerSessionsAnswer } from '@server/shared/contract-computer'
+import type { ComputerServiceState, ComputerSessionRow, ComputerSessionsAnswer } from '@server/shared/contract-computer'
 import { macComputerKey } from '@server/shared/contract-maccomputer'
 import { LOCAL_ENVIRONMENT_ID, registry } from './connection/registry'
 import type { EnvLink } from './connection/link'
@@ -16,26 +16,34 @@ import { isWebMode } from './nativeWeb'
  * to the thread, with the Mac's id and name (`macPeer`, `macName`) and, while
  * a card waits there, `asking`. The Activity section reads a thread's tree's
  * rows as entries (`useComputerEntries`): only this Mac's desktop can preview
- * a session, and only one its own service runs.
+ * a session, and only one its own service runs. The same push carries the
+ * host's service state, kept beside the rows for Settings → Computer use
+ * (`useComputerService`).
  */
 
 interface ComputerSessionsState {
   byHost: Record<string, ComputerSessionRow[]>
+  serviceByHost: Record<string, ComputerServiceState>
 }
 
-const store = createStore<ComputerSessionsState>(() => ({ byHost: {} }))
+const store = createStore<ComputerSessionsState>(() => ({ byHost: {}, serviceByHost: {} }))
 export const computerSessionsStore = store
 
 const EMPTY: ComputerSessionRow[] = []
 
-function setRows(environmentId: string, rows: ComputerSessionRow[]): void {
-  store.setState((s) => ({ byHost: { ...s.byHost, [environmentId]: rows } }))
+function setRows(environmentId: string, rows: ComputerSessionRow[], service: ComputerServiceState): void {
+  store.setState((s) => ({ byHost: { ...s.byHost, [environmentId]: rows }, serviceByHost: { ...s.serviceByHost, [environmentId]: service } }))
+}
+
+/** A state this page made and the host answered (Try again), ahead of the push that follows it. */
+export function setComputerService(environmentId: string, service: ComputerServiceState): void {
+  store.setState((s) => ({ serviceByHost: { ...s.serviceByHost, [environmentId]: service } }))
 }
 
 async function load(link: EnvLink): Promise<void> {
   try {
     const answer = await link.request<ComputerSessionsAnswer>('computer.sessions', {})
-    setRows(link.environmentId, answer.sessions)
+    setRows(link.environmentId, answer.sessions, answer.service)
   } catch {
     /* an older host without computer use */
   }
@@ -48,7 +56,7 @@ export function startComputerSessions(): void {
   started = true
   const attach = (link: EnvLink): void => {
     link.onPush((push) => {
-      if (push.push === 'computer') setRows(link.environmentId, push.sessions)
+      if (push.push === 'computer') setRows(link.environmentId, push.sessions, push.service)
     })
     link.onOpen(() => void load(link))
     if (link.connected) void load(link)
@@ -56,12 +64,20 @@ export function startComputerSessions(): void {
   registry.onLink((link, event) => {
     if (event === 'added') attach(link)
     else store.setState((s) => {
-      if (!(link.environmentId in s.byHost)) return s
-      const next = { ...s.byHost }
-      delete next[link.environmentId]
-      return { byHost: next }
+      if (!(link.environmentId in s.byHost) && !(link.environmentId in s.serviceByHost)) return s
+      const byHost = { ...s.byHost }
+      const serviceByHost = { ...s.serviceByHost }
+      delete byHost[link.environmentId]
+      delete serviceByHost[link.environmentId]
+      return { byHost, serviceByHost }
     })
   })
+}
+
+/** A host's computer service as its last `computer` push or read said, or null before either. */
+export function useComputerService(environmentId: string): ComputerServiceState | null {
+  useEffect(startComputerSessions, [])
+  return useStore(store, (s) => s.serviceByHost[environmentId] ?? null)
 }
 
 /** One thread's live row on its host, or null. */

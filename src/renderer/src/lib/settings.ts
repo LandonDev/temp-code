@@ -16,6 +16,7 @@ export type StaticSettingsSectionId =
   | "orchestration"
   | "reviews"
   | "appshots"
+  | "computer"
   | "archive";
 
 /** A fixed page, or one workspace's own page (`ws:<workspace id>`). */
@@ -36,6 +37,8 @@ export const SETTINGS_SECTIONS: {
   description: string;
   /** Only the desktop app can show it: absent from the list at /ui. */
   desktopOnly?: true;
+  /** Only a window on a Mac can show it: absent from the list elsewhere. */
+  macOnly?: true;
 }[] = [
   { id: "general", group: "app", label: "General", description: "How the app behaves, and the release you run." },
   { id: "appearance", group: "app", label: "Appearance", description: "Theme and the editor's type size." },
@@ -72,6 +75,14 @@ export const SETTINGS_SECTIONS: {
     desktopOnly: true,
   },
   {
+    id: "computer",
+    group: "threads",
+    label: "Computer use",
+    description: "How threads use this Mac's apps.",
+    desktopOnly: true,
+    macOnly: true,
+  },
+  {
     id: "archive",
     group: "threads",
     label: "Archive",
@@ -86,10 +97,10 @@ export function normalizeSettingsSection(value: unknown): unknown {
   return value === "environments" ? "remote" : value;
 }
 
-/** The sections this window can show: every one in the desktop app, the
- *  desktop-only ones left out in web mode. */
-export function visibleSettingsSections(web: boolean) {
-  return web ? SETTINGS_SECTIONS.filter((section) => !section.desktopOnly) : SETTINGS_SECTIONS;
+/** The sections this window can show: the desktop-only ones left out in
+ *  web mode, the Mac-only ones in a window off macOS. */
+export function visibleSettingsSections(web: boolean, mac: boolean) {
+  return SETTINGS_SECTIONS.filter((section) => !(web && section.desktopOnly) && !(!mac && section.macOnly));
 }
 
 /** The keybinding groups this window handles: the terminal's only in the desktop app. */

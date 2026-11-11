@@ -25,6 +25,7 @@ import { OrchestrationPage } from "./settings/Orchestration";
 import { ArchivePage } from "./settings/Archive";
 import { AddonsPage } from "./settings/addons/AddonsPage";
 import { SkillsPage } from "./settings/skills/SkillsPage";
+import { ComputerPage } from "./settings/Computer";
 
 type Props = {
   cwd: string;
@@ -107,6 +108,15 @@ export function SettingsView({
               </Empty>
             ) : (
               <AppshotsPage />
+            )
+          ) : null}
+          {section === "computer" ? (
+            isWebMode() ? (
+              <Empty>
+                <EmptyTitle>{DESKTOP_ONLY_LINE}</EmptyTitle>
+              </Empty>
+            ) : (
+              <ComputerPage />
             )
           ) : null}
           {section === "remote" ? <HostsPage onOpenSession={onOpenSession} /> : null}

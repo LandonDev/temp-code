@@ -258,8 +258,10 @@ not yet answered (each section's rows in their shape) and refused (each
 section's red line with Retry at its heading); `SETTINGS_PREVIEW=editor,hosts`
 keeps those pages alone. `addons` and `skills` are drawn the same three ways,
 and `addons-empty`, `skills-empty`, `addons-offline` and `skills-offline` show
-the empty list and the home out of reach. The dialogs are portals the static
-render leaves out; their DOM tests hold them.
+the empty list and the home out of reach; `computer` is drawn the three
+ways, and `computer-empty` and `computer-down` show no learned apps and the
+service down with Try again. The dialogs are portals the static render leaves
+out; their DOM tests hold them.
 
 ### Settings → Hosts
 
@@ -286,6 +288,31 @@ Revoke under that client, a port under Port, Sync now under Sync); only the
 listener's own failure sits under Remote access. A refused field puts the
 value the host still holds back, as a refused switch slides back. Add host
 sits at the page's foot (desktop only).
+
+### Settings → Computer use
+
+This Mac's computer use (section id `computer`, in the Threads group after
+Appshots; surfaces/settings/Computer.tsx, read from this machine's host
+alone). Three sections. The first, untitled: Service, the `computer` push's
+state as a `StatusMark` from `computerServiceMarkOf` (Running with a muted
+check; Idle with no glyph; Starting; Down with "Crashed 5 times" and Try
+again; Unavailable with the host's reason; a mark with a detail takes a line
+of its own on a narrow page), then Take the screen after, a `CommitField` in
+whole minutes, 1 to 60, committed as `computer.sessionIdleMs`. Permissions:
+Accessibility and Screen Recording on the `PermissionRow` Appshots shares,
+muted Granted or amber Not granted with Grant… to the System Settings pane;
+the service's own while it is up, else `computer.permissions`, asked on
+mount, every 5 s while one is off and when the window comes back; a host that
+could not read them is one red line with Retry. Apps: one row per app the
+verdicts learned, those that may take the screen first, then by name, its
+name (the bundle id for a verdict saved before names were kept) and only
+"May take the screen to click and type" when a class is at the session
+tier, never a tier's name; a ghost Forget per row and Forget all on the
+heading with two or more, neither confirmed (the next call learns again);
+"No apps used yet" when there are none. Absent at /ui (a stored route there
+shows the desktop-only line) and in a window off macOS (`macOnly`). The box
+threads' switch stays in the host's Mac bridge settings; live sessions stay in
+each thread's Activity section.
 
 ### Settings → a workspace
 

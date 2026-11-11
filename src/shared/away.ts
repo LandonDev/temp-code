@@ -28,7 +28,7 @@ export const isNewerAway = (incoming: AwayState, current: AwayState): boolean =>
 /** note_decision (apptools.ts, the codex bridge's copy in scripts/app-mcp-bridge.mjs): one decision the thread made without the person. */
 export const NOTE_DECISION_TOOL_NAME = 'note_decision'
 export const NOTE_DECISION_DESCRIPTION =
-  "Record one decision you made without asking the person, while they are away from the computer: what you chose and why, in one line. It shows as a quiet row in the thread and counts toward what the person reviews when they come back."
+  "Record one decision you made without asking the person, while they are away from the computer: what you chose and why, in one line. It shows as a quiet row in the thread and counts toward what the person reviews when they come back. One call per decision, once."
 export const NOTE_DECISION_PARAMS = {
   decision: 'One line: what you chose and why.'
 } as const

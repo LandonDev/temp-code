@@ -596,8 +596,9 @@ mid-turn and not paused, `queueAdd` (what the composer calls for a running
 thread; its Enter steers by default, `MID_TURN_DEFAULT`, a stored
 preference winning) does not queue: the user row is kept on the transcript
 and the text is whispered into the live turn as
-`<user-steer>…</user-steer>` (the notes-reminder path; a message with
-attachments still queues), and `queue.add` answers `{ kind: 'steered', id }`
+`<user-steer>…</user-steer>` (a send with a `steerId`, never the host's
+`whisper`, which only adds to an open turn and holds a line it cannot place
+for the next message; a message with attachments still queues), and `queue.add` answers `{ kind: 'steered', id }`
 so the renderer never looks for its text in the pushed list. A whisper into
 a dead handle boots a fresh harness that gets the text as a plain message
 once; a provider that cannot take mid-turn input front-queues it. A

@@ -377,7 +377,7 @@ export const TOOLS = [
     // UPDATE_NOTES_PARAMS; app-bridge.test.ts keeps them equal.
     name: 'update_notes',
     description:
-      "Update this thread's working notes: the one document that survives a context compaction and seeds any successor thread. Replace or append ONE section (Goal, Decisions, State, Pointers, Open questions); the app writes notes.md beside the thread's attachments and shows it live in the Notes panel. Keep State current (what is done, in flight, blocked) and Pointers concrete (files, commands, ids). Update after every decision, before context runs low, and after a commit or merge.",
+      "Update this thread's working notes: the one document that survives a context compaction and seeds any successor thread. Replace or append ONE section (Goal, Decisions, State, Pointers, Open questions); the app writes notes.md beside the thread's attachments and shows it live in the Notes panel. Keep State current (what is done, in flight, blocked) and Pointers concrete (files, commands, ids). Update a section when it changes for real, not as a habit or in place of the task.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -401,7 +401,7 @@ export const TOOLS = [
     // NOTE_DECISION_PARAMS; app-bridge.test.ts keeps them equal.
     name: 'note_decision',
     description:
-      "Record one decision you made without asking the person, while they are away from the computer: what you chose and why, in one line. It shows as a quiet row in the thread and counts toward what the person reviews when they come back.",
+      "Record one decision you made without asking the person, while they are away from the computer: what you chose and why, in one line. It shows as a quiet row in the thread and counts toward what the person reviews when they come back. One call per decision, once.",
     inputSchema: {
       type: 'object',
       properties: {

@@ -47,16 +47,29 @@ export const RIG_QUERIES: Readonly<Record<TaskApp, readonly string[]>> = {
   TextEdit: ['textedit', 'com.apple.textedit'],
   'Google Chrome': ['google chrome', 'chrome', 'com.google.chrome'],
   Electron: ['electron', 'com.github.electron', 'tempcode', 'temp-code'],
-  'System Settings': ['system settings', 'system preferences', 'settings', 'com.apple.systempreferences']
+  'System Settings': ['system settings', 'system preferences', 'settings', 'com.apple.systempreferences'],
+  Calculator: ['calculator', 'com.apple.calculator'],
+  Finder: ['finder', 'com.apple.finder']
 }
 export const RIG_BUNDLES: Readonly<Record<TaskApp, string>> = {
   TextEdit: 'com.apple.TextEdit',
   'Google Chrome': 'com.google.Chrome',
   Electron: 'com.github.Electron',
-  'System Settings': 'com.apple.systempreferences'
+  'System Settings': 'com.apple.systempreferences',
+  Calculator: 'com.apple.calculator',
+  Finder: 'com.apple.finder'
 }
 /** The process name pgrep finds each by. */
-const PROCESS: Readonly<Record<TaskApp, string>> = { TextEdit: 'TextEdit', 'Google Chrome': 'Google Chrome', Electron: 'Electron', 'System Settings': 'System Settings' }
+const PROCESS: Readonly<Record<TaskApp, string>> = {
+  TextEdit: 'TextEdit',
+  'Google Chrome': 'Google Chrome',
+  Electron: 'Electron',
+  'System Settings': 'System Settings',
+  Calculator: 'Calculator',
+  Finder: 'Finder'
+}
+/** Apps the rig adopts rather than launches: one instance, the person's, never killed at closeLane. */
+const ADOPTED_APPS: readonly TaskApp[] = ['Finder']
 
 /**
  * The one launcher's arguments, the spec's fixture recording's (docs/computer-protocol.md
@@ -66,14 +79,35 @@ const PROCESS: Readonly<Record<TaskApp, string>> = { TextEdit: 'TextEdit', 'Goog
  * person's documents, never saves to iCloud and adds nothing to Open Recent;
  * System Settings in the background (it runs one instance).
  */
-export function scratchArgs(app: TaskApp, target: string, chromeProfile: string): string[] {
+export function scratchArgs(app: TaskApp, target: string, chromeProfile: string, extra: readonly string[] = []): string[] {
   switch (app) {
     case 'TextEdit':
-      return ['-n', '-g', '-a', 'TextEdit', target, '--args', '-ApplePersistenceIgnoreState', 'YES', '-NSShowAppCentricOpenPanelInsteadOfUntitledFile', 'NO', '-NSDocumentSaveNewDocumentsToCloud', 'NO']
+      return [
+        '-n',
+        '-g',
+        '-a',
+        'TextEdit',
+        target,
+        '--args',
+        '-ApplePersistenceIgnoreState',
+        'YES',
+        '-NSShowAppCentricOpenPanelInsteadOfUntitledFile',
+        'NO',
+        '-NSDocumentSaveNewDocumentsToCloud',
+        'NO',
+        ...extra
+      ]
     case 'Google Chrome':
-      return ['-n', '-g', '-a', 'Google Chrome', '--args', `--user-data-dir=${chromeProfile}`, '--no-first-run', '--no-default-browser-check', '--force-renderer-accessibility', target]
+      // extra: more URLs, opened as later tabs of the same window
+      return ['-n', '-g', '-a', 'Google Chrome', '--args', `--user-data-dir=${chromeProfile}`, '--no-first-run', '--no-default-browser-check', '--force-renderer-accessibility', target, ...extra]
     case 'System Settings':
       return ['-g', '-b', RIG_BUNDLES['System Settings'], ...(target ? [target] : [])]
+    case 'Calculator':
+      // one instance; a task opens it only when it is not running (its window is the person's otherwise)
+      return ['-g', '-a', 'Calculator']
+    case 'Finder':
+      // Finder always runs: `open -g <folder>` adds a window to the person's Finder, whose pid the rig adopts
+      return ['-g', target]
     case 'Electron':
       throw new Error('the dev instance is started by its task, not by open')
   }
@@ -236,7 +270,9 @@ export interface Rig {
   /** the end state through the rig's own session, at the lane's pins */
   reader(lane: string): TaskReader
   /** launch a scratch app for the lane, pin it, and keep the person's app in front */
-  launch(lane: string, app: TaskApp, target: string): Promise<{ pid: number; front: 'kept' | 'bounced' | 'took' }>
+  launch(lane: string, app: TaskApp, target: string, opts?: { args?: string[] }): Promise<{ pid: number; front: 'kept' | 'bounced' | 'took' }>
+  /** pids the rig adopted rather than launched (Finder): never killed, never judged as "took the front" */
+  adopted(): ReadonlySet<number>
   /** SIGKILL every scratch pid of the lane, drop its pins and its Chrome profile */
   closeLane(lane: string): void
   /** closeLane for every lane that launched */
@@ -352,13 +388,23 @@ export async function startRig(opts: {
   const reader = (lane: string): TaskReader => taskReader(proof, (app) => pidFor(lane, app), opts.proofSession, exec)
 
   const profileOf = (lane: string): string => join(opts.work, `chrome-${lane}`)
+  /** Pids the rig adopted rather than launched: never killed at closeLane, never sent back from the front. */
+  const adopted = new Set<number>()
   // One launch of an app at a time until its new pid is found: two lanes opening at once could each take the other's.
   const finding = new Map<TaskApp, Promise<unknown>>()
-  const newPid = (lane: string, app: TaskApp, target: string): Promise<number> => {
+  const newPid = (lane: string, app: TaskApp, target: string, extra: readonly string[]): Promise<number> => {
     const run = (finding.get(app) ?? Promise.resolve()).then(async () => {
       const name = PROCESS[app]
+      if (ADOPTED_APPS.includes(app)) {
+        // Finder always runs: open the window, adopt the running pid.
+        const pid = [...pidsOf(name)][0]
+        if (!pid) throw new Error(`${name} is not running`)
+        execFileSync('open', scratchArgs(app, target, profileOf(lane), extra))
+        adopted.add(pid)
+        return pid
+      }
       const before = pidsOf(name)
-      execFileSync('open', scratchArgs(app, target, profileOf(lane)))
+      execFileSync('open', scratchArgs(app, target, profileOf(lane), extra))
       for (let i = 0; i < 60; i++) {
         await sleep(250)
         const pid = [...pidsOf(name)].find((p) => !before.has(p))
@@ -369,15 +415,18 @@ export async function startRig(opts: {
     finding.set(app, run.catch(() => undefined))
     return run
   }
-  const launch = async (lane: string, app: TaskApp, target: string): Promise<{ pid: number; front: 'kept' | 'bounced' | 'took' }> => {
+  const launch = async (lane: string, app: TaskApp, target: string, o?: { args?: string[] }): Promise<{ pid: number; front: 'kept' | 'bounced' | 'took' }> => {
     const personFront = mac.frontmost()
-    const pid = await newPid(lane, app, target)
+    const pid = await newPid(lane, app, target, o?.args ?? [])
     pins.pin(lane, app, pid)
     await sleep(app === 'TextEdit' ? 1_000 : 3_000)
+    // An adopted app that was already in front is the person's own front, not a take.
+    if (adopted.has(pid) && personFront.pid === pid) return { pid, front: 'kept' }
     return { pid, front: await keepFront(asProbe(mac), pid, personFront) }
   }
   const closeLane = (lane: string): void => {
     for (const pid of pins.pids(lane)) {
+      if (adopted.has(pid)) continue
       try {
         process.kill(pid, 'SIGKILL')
       } catch {
@@ -407,10 +456,11 @@ export async function startRig(opts: {
     calls: (id) => recorded.calls(id),
     proof,
     reader,
-    launch: async (lane, app, target) => {
+    launch: async (lane, app, target, o) => {
       lanes.add(lane)
-      return launch(lane, app, target)
+      return launch(lane, app, target, o)
     },
+    adopted: () => adopted,
     closeLane,
     closeLanes,
     close: async () => {

@@ -2,13 +2,16 @@ import { nanoid } from 'nanoid'
 import { sweepThreadAttachments } from './attachmentUploads'
 import { attachmentDir } from './attachmentDir'
 import { ThreadNotes } from './threadNotes'
+import { NOTES_STREAK_LIMIT } from '@shared/notes'
 import {
   isCommitCall,
+  isNoteDecisionCall,
   isNotesCall,
   notesAfterCompaction,
   notesForPlanHandoff,
   NOTES_REMINDER_COMMIT,
   NOTES_REMINDER_CONTEXT,
+  NOTES_REARM_MS,
   NOTES_REMINDER_FRACTION,
   NOTES_REMINDER_RESET_FRACTION,
   wrapSteer
@@ -860,6 +863,18 @@ export class SessionRegistry {
   private notesDue = new Set<string>()
   /** One reminder turn per user turn: a model that ignores it is not nagged. */
   private notesReminderSent = new Set<string>()
+  /** When each thread last wrote its notes with update_notes, and when it was
+   *  last reminded to: a reminder re-arms only after NOTES_REARM_MS of both,
+   *  so a window that compacts on every request is reminded once, not once
+   *  per compaction (the update_notes loop). */
+  private lastNotesAt = new Map<string, number>()
+  private lastNotesReminderAt = new Map<string, number>()
+  /** update_notes calls in a row with no other tool call or real input
+   *  between (notesStreak): past NOTES_STREAK_LIMIT the tool refuses. */
+  private notesStreaks = new Map<string, number>()
+  /** note_decision texts already rowed this away stretch, per thread: the
+   *  same decision twice is one row. Cleared when away flips. */
+  private notedDecisions = new Map<string, Set<string>>()
 
   constructor(private store: Store) {
     this.notes = new ThreadNotes(store, (sessionId) => {
@@ -870,7 +885,9 @@ export class SessionRegistry {
       }
     })
     this.notes.onChange((sessionId, _doc, source) => {
-      if (source === 'tool') this.turnNoted.add(sessionId)
+      if (source !== 'tool') return
+      this.turnNoted.add(sessionId)
+      this.lastNotesAt.set(sessionId, Date.now())
     })
     for (const fold of store.listFolds()) this.folds.set(fold.sessionId, fold)
     // The index follows every row the store writes (sessionIndex.ts); a
@@ -3000,6 +3017,7 @@ export class SessionRegistry {
     // preambles ride along on the first message, provider-agnostic.
     const first = opts?.echoed ? opts.echoed.first : !this.store.hasUserText(sessionId)
     this.notesReminderSent.delete(sessionId)
+    this.notesStreaks.delete(sessionId)
     const attachments = opts?.attachments?.length ? opts.attachments : undefined
     // The project preamble (projectPreamble.ts) rides the FIRST message of
     // every thread started in a project, on every start path — all of them
@@ -4105,6 +4123,10 @@ export class SessionRegistry {
       this.turnNoted.delete(id)
       this.notesDue.delete(id)
       this.notesReminderSent.delete(id)
+      this.lastNotesAt.delete(id)
+      this.lastNotesReminderAt.delete(id)
+      this.notesStreaks.delete(id)
+      this.notedDecisions.delete(id)
       const meta = all.find((s) => s.id === id)
       if (meta) removeMirror(this, meta) // mirrors die with the thread
       if (meta) sweepThreadAttachments(meta) // and so do its uploaded attachments
@@ -4524,6 +4546,10 @@ export class SessionRegistry {
             if (phase === 'first-content') this.steerFallback(sessionId)
           },
           toolResultTail: (callId, output) => this.toolResultTail?.(sessionId, callId, output) ?? Promise.resolve(null),
+          returnWhispers: (texts) => {
+            if (this.closed) return
+            for (const text of texts) this.holdNotice(sessionId, text)
+          },
           setNativeId: (nativeId) => {
             if (this.closed) return
             const next = this.store.updateSession(sessionId, { nativeId })
@@ -4664,6 +4690,8 @@ export class SessionRegistry {
     if (event.type === 'tool-call') {
       if (isNotesCall(event.name)) this.turnNoted.add(sessionId)
       else if (isCommitCall(event.name, event.input)) this.turnCommitted.add(sessionId)
+      // Any other work ends a notes streak (the call's duplicate rows are harmless here).
+      if (!isNotesCall(event.name) && !isNoteDecisionCall(event.name)) this.notesStreaks.delete(sessionId)
     }
     // The thread already has its "needs sign-in" row: the harness's own
     // report of the same 401 adds nothing.
@@ -4862,7 +4890,7 @@ export class SessionRegistry {
           this.passPending.delete(sessionId)
           this.passActive.add(sessionId)
           void this.runTurnPass(sessionId, pass)
-        } else if (this.notesDue.delete(sessionId) && !this.notesReminderSent.has(sessionId)) {
+        } else if (this.notesDue.delete(sessionId) && !this.notesReminderSent.has(sessionId) && !this.notedRecently(sessionId)) {
           // A commit without a notes update: the reminder is its own short
           // turn when nothing else waits, else a line ahead of what does.
           this.notesReminderSent.add(sessionId)
@@ -5147,15 +5175,26 @@ export class SessionRegistry {
 
   // ── app lines to the harness (notes reminders, the post-compaction block) ──
 
-  /** A line from the app to the harness outside any user message: into
-   *  the live turn now when one runs (both drivers take mid-turn input),
-   *  else held ahead of the next message the harness gets. */
+  /** A line from the app to the harness outside any user message (a notes
+   *  reminder, the notes block, a dev-server line, a master pin notice):
+   *  into the live turn when the driver can put it where the model reads it
+   *  before the turn ends (DriverHandle.whisper), else held ahead of the
+   *  next real message. It never starts a turn of its own: a line sent as a
+   *  message raced the turn's end, ran as a turn, and kept a thread looping
+   *  on update_notes (docs/box.md "Thread notes"). */
   whisper(sessionId: string, text: string): void {
     const status = this.store.getSession(sessionId)?.status
     const handle = this.handles.get(sessionId)
-    if (handle && (status === 'running' || status === 'starting')) {
+    if (handle?.whisper && (status === 'running' || status === 'starting')) {
       this.lastActivity.set(sessionId, Date.now())
-      handle.send(text).catch(() => this.holdNotice(sessionId, text))
+      handle.whisper(text).then(
+        (taken) => {
+          if (!taken && !this.closed) this.holdNotice(sessionId, text)
+        },
+        () => {
+          if (!this.closed) this.holdNotice(sessionId, text)
+        }
+      )
       return
     }
     this.holdNotice(sessionId, text)
@@ -5541,11 +5580,30 @@ export class SessionRegistry {
     })
   }
 
-  /** One quiet row for something decided while the person was away; it counts toward the return toast. */
-  awayNotice(sessionId: string, kind: AwayNotice['kind'], text: string): void {
+  /** One quiet row for something decided while the person was away; it
+   *  counts toward the return toast. A decision already rowed this away
+   *  stretch writes nothing and answers false. */
+  awayNotice(sessionId: string, kind: AwayNotice['kind'], text: string): boolean {
+    if (kind === 'decision') {
+      const seen = this.notedDecisions.get(sessionId) ?? new Set<string>()
+      if (seen.has(text)) return false
+      seen.add(text)
+      this.notedDecisions.set(sessionId, seen)
+    }
     const lead = AWAY_LEADS[kind]
     this.append(sessionId, { type: 'notice', kind: 'away', message: `${lead}${text}`, away: { kind, text } })
     this.away?.count(sessionId)
+    return true
+  }
+
+  /** Counts one update_notes call: 'stop' once NOTES_STREAK_LIMIT calls
+   *  came in a row with no other tool call or real input between (the
+   *  tool then refuses and writes nothing). Host lines never reset it. */
+  notesStreak(sessionId: string): 'ok' | 'stop' {
+    const n = this.notesStreaks.get(sessionId) ?? 0
+    if (n >= NOTES_STREAK_LIMIT) return 'stop'
+    this.notesStreaks.set(sessionId, n + 1)
+    return 'ok'
   }
 
   /** The flip to away: every card already waiting is answered the same way
@@ -5583,6 +5641,7 @@ export class SessionRegistry {
    *  thread at its next turn (takeNotices) or its next spawn (mechanicsFor).
    *  Turning on also answers the cards already waiting. */
   awayChanged(enabled: boolean): void {
+    this.notedDecisions.clear()
     if (enabled) this.answerWaitingCards()
     for (const [sessionId, handle] of this.handles) {
       const status = this.store.getSession(sessionId)?.status
@@ -5610,8 +5669,19 @@ export class SessionRegistry {
       return
     }
     if (tokens < window * NOTES_REMINDER_FRACTION || this.notesReminded.has(sessionId)) return
+    // Once per cause: a fresh window clears the flag, but only time re-arms
+    // the reminder, and never shortly after the thread wrote its notes.
+    const now = Date.now()
+    if (now - (this.lastNotesReminderAt.get(sessionId) ?? -Infinity) < NOTES_REARM_MS) return
+    if (this.notedRecently(sessionId, now)) return
     this.notesReminded.add(sessionId)
+    this.lastNotesReminderAt.set(sessionId, now)
     this.whisper(sessionId, NOTES_REMINDER_CONTEXT)
+  }
+
+  /** The thread wrote its notes with update_notes inside NOTES_REARM_MS. */
+  private notedRecently(sessionId: string, now = Date.now()): boolean {
+    return now - (this.lastNotesAt.get(sessionId) ?? -Infinity) < NOTES_REARM_MS
   }
 
   /** The reminder turn after a commit without a notes update: the app's
@@ -5781,6 +5851,7 @@ export class SessionRegistry {
       await this.rebootIfStale(sessionId)
       const handle = await this.handleFor(sessionId)
       if (this.closed) return
+      this.notesStreaks.delete(sessionId)
       this.append(sessionId, { type: 'turn-pass', actions: passActions(pass) })
       this.lastActivity.set(sessionId, Date.now())
       const meta = this.store.getSession(sessionId)
@@ -5968,6 +6039,7 @@ export class SessionRegistry {
       if (this.closed) return
       const { items, text } = this.takeReports(sessionId)
       taken = items
+      this.notesStreaks.delete(sessionId)
       this.lastActivity.set(sessionId, Date.now())
       void this.armBaseline(sessionId)
       const notices = this.takeNotices(sessionId)

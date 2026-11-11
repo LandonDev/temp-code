@@ -455,6 +455,12 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'computer.preview.ack': 'local',
   'computer.preview.stop': 'local',
   'computer.proofHold': 'local',
+  // Settings → Computer use: this Mac's own values, read and set by its desktop alone.
+  'computer.settings.get': 'local',
+  'computer.settings.set': 'local',
+  'computer.verdicts.forget': 'local',
+  'computer.permissions': 'local',
+  'computer.service.retry': 'local',
   // The Mac's remembered approvals (contract-macbridge-rules.ts): only its own renderer.
   'macBridge.rules.list': 'local',
   'macBridge.rules.forget': 'local',
