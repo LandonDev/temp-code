@@ -237,20 +237,20 @@ one contract:
 | e2e-skills-store | `e2e` | both | two paired headless instances | nothing (no model) | 13 s, 15 s, 15 s | 13 s, 13 s, 13 s | 11 min |
 | e2e-skills-drivers | `e2e` | both | one headless instance, the real CLIs against scripts/lib/spikeFakes.ts | the real-model legs (`--host box\|mac`) | 10 s, 10 s, 10 s | 29 s, 28 s, 29 s | 12 min |
 | e2e-tc-computer | `computer` | Mac | the service, TC Probe (five instances: plain, `--windows`, `--fallbacks`, `--active`, `--fewer`) and scratch Chrome for Testing (`webLeg`) | the TextEdit legs and the paste | n/a | 19 s, 19 s, 19 s, measured before the fallbacks leg (docs/computer-protocol.md §24.11), the web leg (§25.11), the active leg (§26.15), the fewer leg (§27.15) and the stealer (§23.9). At d24b29c7b the whole row ran 91 s and failed fallbacks 3, the web page wait and active 1 (.temp-code/findings/computer-gate-proofs-2026-11-10.md). On 2026-11-11 the base steps and fallbacks 1 to 3 passed (fallbacks 3: 2026 to 2451 ms); fallbacks 4 to 10 and every web, active and stealer step: not run, the Mac was locked. By hand: `TC_PROOF_UNGATED=1 TC_PROOF_LEGS=<leg> bun run script:e2e-tc-computer -- --gate` ("The unattended proof modes") | 11 min |
-| e2e-computer-bridge | `computer` | Mac | two headless instances (the box half seamed linux), the service, TC Probe | the SSH pair | n/a | 95 s original timing run; 96 s for 60/60 before the schema rebase; 90 s for 59/60 after it (one stale note check, since corrected). Final commit: **not run: the Mac was locked** | 12 min |
+| e2e-computer-bridge | `computer` | Mac | two headless instances (the box half seamed linux), the service, TC Probe | the SSH pair | n/a | 95 s original timing run; 96 s for 60/60 before the schema rebase; 90 s for 59/60 after it (one stale note check, since corrected); 90 s for 60/60 at 652f9dac with the gate-r2 fixes (2026-11-11) | 12 min |
 | e2e-computer-preview | `computer` | Mac | the service and TC Probe | leg 4, the Escape tap, which takes the person's Escape | n/a | 24 s, 23 s, 23 s | 12 min |
 
 Bridge timing on loopback, added p50/p90 ms for observe, with a picture,
 and `set_value`, respectively: the original run measured 3/19, 9/24,
 10/42; the pre-schema 60/60 run measured 13/32, 14/29, 2/33; the
-post-schema 59/60 run measured 4/11, 2/28, 9/25. All three timing legs
+post-schema 59/60 run measured 4/11, 2/28, 9/25; the 2026-11-11 60/60
+run measured 1/21, 5/31, −13/29. All four timing legs
 passed the unchanged +40/+100 ms bound. The one stale check expected the
 remote note on every tool; the corrected proof requires it on
 `computer_apps` alone. Later attempts on that fix stopped after 45 passes
 in a load hold, then finished 56/60 under high load (timing and three cap
-checks failed). Those failures remain recorded. The final commit's Mac
-run is **not run: the Mac was locked**; the earlier 60/60 is not a final
-pass. The watcher is stopped, with no proof left waiting on the Mac.
+checks failed). Those failures remain recorded. On 2026-11-11 the row
+passed 60/60 in 90 s at 652f9dac with the gate-r2 fixes.
 [computer-protocol.md §18](computer-protocol.md#18-the-bridge) lists every
 run, timing table and evidence folder.
 
@@ -377,7 +377,7 @@ system, never the model's word.
 
 ## The web proof and covered field run
 
-`bun run script:e2e-tc-computer -- --gate` runs `webLeg` after the fallbacks leg. The `--fewer` leg (docs/computer-protocol.md §27.15) runs on TC Probe's `--fewer` window: a pop up's item picked by `named`, `menu: "Probe > New Note"` following the new window, a rename by Return, a no-change click stopping the keys after it, and the opened-menu block, one call each. Its time is to measure: on 2026-11-10 another thread's bench held the proof slot, and on 2026-11-11 the person was at the Mac. `scripts/lib/chromiumForTests.ts` uses `TEMP_CODE_TEST_CHROMIUM` (an app bundle path), else Chrome for Testing in `~/Library/Caches/ms-playwright`. If absent it records `skipped: Chrome for Testing is not installed (bunx playwright install chromium)`. It installs nothing.
+`bun run script:e2e-tc-computer -- --gate` runs `webLeg` after the fallbacks leg. The `--fewer` leg (docs/computer-protocol.md §27.15) runs on TC Probe's `--fewer` window: a pop up's item picked by `named`, `menu: "Probe > New Note"` following the new window, a rename by Return, a no-change click stopping the keys after it, and the opened-menu block, one call each. On 2026-11-11 it passed in 14.9 s (computer-protocol.md §27.15 has each step). `scripts/lib/chromiumForTests.ts` uses `TEMP_CODE_TEST_CHROMIUM` (an app bundle path), else Chrome for Testing in `~/Library/Caches/ms-playwright`. If absent it records `skipped: Chrome for Testing is not installed (bunx playwright install chromium)`. It installs nothing.
 
 The leg launches three local tabs on its own profile, without forced renderer accessibility or throttling flags, after five seconds without input (at most 60 seconds waiting). It puts the saved front app and window back if launch took them. Reads and actions target the recorded pid; actions use `ax` and `process` only. The checks cover page wait, background-tab selection, 40 rows in one read, a 300-row table subtree, AX scrolling, field values, select pick and menu closure, refused values, the checkbox, the page's confirmation, and key focus. Each call checks the saved front app and window. Cleanup checks the exact profile argument before each signal and leaves other Chrome instances alone.
 

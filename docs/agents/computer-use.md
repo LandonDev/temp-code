@@ -271,9 +271,9 @@ why and the measured headline.
 The bridge gate (`scripts/e2e-computer-bridge.ts --gate`) checks the Mac’s
 short hostname and the remote note on `computer_apps` alone (§27.12),
 uses a full TC Probe tree for held-click indices and rejects
-missing indices or held ids. Its scratch app launches without the agent’s
-process-guard marks: Launch Services gives it PID 1 as parent, and the
-proof owns its PID cleanup. A cancellation notice passes only when the
+missing indices or held ids. Every proof's scratch apps launch without the agent’s
+process-guard marks (`guiLaunchEnvironment`): Launch Services gives them PID 1 as
+parent and the caller's environment, and the proof owns their PID cleanup. A cancellation notice passes only when the
 observation that follows it also succeeds. Proof ordering counts real
 runners by executable/script operand, including Bun wrappers and preload
 flags; generic wrappers, trailing arguments and inline shell text do not
@@ -294,5 +294,7 @@ in its own runner’s cleanup. Evidence lives under
 After the schema rebase, 59/60 checks passed in 90 s; the one stale check
 expected the remote note on every tool and is now corrected. Added p50/p90
 was 4/11 ms observe, 2/28 ms with a picture and 9/25 ms `set_value`.
-Later high-load attempts remain failures. The final commit is **not run:
-the Mac was locked**. The watcher is stopped; §18 has the full record.
+Later high-load attempts remain failures. On 2026-11-11 the row passed
+60/60 in 90 s at 652f9dac with the gate-r2 fixes, added p50/p90 1/21 ms
+observe, 5/31 ms with a picture and −13/29 ms `set_value`; §18 has the
+full record.
