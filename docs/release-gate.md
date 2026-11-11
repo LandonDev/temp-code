@@ -66,6 +66,24 @@ green in its four tries: the last failed e2e-tc-computer's active 9 (save_as)
 on both tries, TC Probe keeping the front from the person's app, and that is
 not traced yet. The real v1.0.343 publish gate then passed whole on the Mac.
 
+Active 9 (save_as) failed twice in full publish gates on 2026-11-11 with "the
+scratch app kept the front" from the person's Aside. The trace: save_as's
+Go to Folder confirm runs at `session` (725 ms on the session lock), and its
+put-back, `restoreSession`, took the lock for 2 ms and activated nothing,
+since the person was at the Mac (a call) and the ledger gives the front app
+back only when nobody used the Mac since the step (§20.3, computer-protocol.md
+26.7). With nobody at the Mac the same put-back activates the person's app at
+once; runs that passed had also leaned on macOS handing the front back as the
+panel's service closed. The proof now follows a call that touched the session
+tier with `input.restoreSession` as the host does, voids and reruns at once a
+check whose put-back gave way to the person, and still fails a scratch app left
+in front with no input; the put-back tries a missed activation once more. The
+active leg alone then passed three times in a row at e2ea05ac plus the fixes
+(37 checks each, active 9 at `session` with the person untouched, TextEdit's
+save_as and ⌘S and Finder's rename and New Folder at the front and session
+tiers each putting the person's app back), with the person at the Mac between
+runs and Aside, Chrome for Testing and Finder in front at their ends.
+
 The rows `e2e-tc-computer` and `e2e-computer-bridge` start through
 `scripts/proof-bun.ts`: `bun run` puts every ancestor's node_modules/.bin on
 PATH, so the package script's `bun` can be any old copy (a 1.3.5 in
