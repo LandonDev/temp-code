@@ -632,4 +632,14 @@ private func stealAndRestore(_ g: inout FrontGuard, at: Double) {
         // an input ending after the steal settled changes nothing
         #expect(g.handle(.input(running: false, at: 700)) == .none)
     }
+
+    @Test func anAppStealDuringTheInputStillFailsInsideItsBound() {
+        // only a menu holds a window above; an app that takes the front during a long input is not the step's menu
+        var g = launch()
+        _ = g.handle(.input(running: true, at: 50))
+        #expect(g.handle(activated(stealer, at: 100)) == .restore(person))
+        _ = g.handle(.restoreStarted(at: 105))
+        #expect(g.handle(.sample(front: stealer, window: nil, above: false, at: 600)) == .none)
+        #expect(g.report == FrontReport(raised: true, restored: .failed))
+    }
 }

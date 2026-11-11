@@ -196,10 +196,17 @@ public struct FrontGuard: Equatable, Sendable {
     /// restore that brought the app back on another window raises it once
     private var windowRaised = false
     /// the call's own step is putting in its input: a menu it opened may hold the app's window above the person's until
-    /// it closes, which is the app's own doing, so no restore runs out meanwhile; once the input ends a restore still
-    /// running is undone again and checked inside its bound from then (v1.0.341, 2026-11-11: Chrome's select menu held
-    /// its window above the person's 426 ms into a pick, while the person's app stayed front)
+    /// it closes, which is the app's own doing, so an order restore does not run out meanwhile (`boundWaits`); once the
+    /// input ends a restore still running is undone again and checked inside its bound from then (v1.0.341, 2026-11-11:
+    /// Chrome's select menu held its window above the person's 426 ms into a pick, while the person's app stayed front)
     public private(set) var inputRunning = false
+
+    /// The 400 ms bound waits for the step's input only for an order undo: a menu holds a window above, never the
+    /// front, so an app or window steal during a long input still fails inside its bound.
+    private var boundWaits: Bool {
+        guard inputRunning, case .restoring(.order, _, _) = phase else { return false }
+        return true
+    }
 
     public init(recorded: FrontRecord?, watched: WatchedApp, at: Double, watchMs: Int = ComputerDefaults.Service.frontWatchMs) {
         self.recorded = recorded
@@ -449,14 +456,14 @@ public struct FrontGuard: Equatable, Sendable {
         }
         if back {
             settle(.restored, ms: at - stealAt)
-        } else if !inputRunning, at - startedAt > Double(ComputerDefaults.Service.frontRestoreMs) {
+        } else if !boundWaits, at - startedAt > Double(ComputerDefaults.Service.frontRestoreMs) {
             settle(.failed, ms: nil)
         }
         return .none
     }
 
     private mutating func tick(at: Double) -> FrontDecision {
-        if !inputRunning, case .restoring(_, _, let startedAt) = phase, at - startedAt > Double(ComputerDefaults.Service.frontRestoreMs) {
+        if !boundWaits, case .restoring(_, _, let startedAt) = phase, at - startedAt > Double(ComputerDefaults.Service.frontRestoreMs) {
             settle(.failed, ms: nil)
         }
         if at >= endsAt {
