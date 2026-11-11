@@ -365,6 +365,8 @@ export async function startRig(opts: {
     screen: () => probe('screen')
   }
   process.env.TEMP_CODE_COMPUTER_BIN = bin
+  // the journal takes no pictures here (computer/history.ts): the bench and the words run measure the calls alone
+  process.env.TEMP_CODE_COMPUTER_HISTORY = '0'
   const grants = JSON.parse(execFileSync(bin, ['permissions'], { encoding: 'utf8' })) as { accessibility: boolean }
   if (!grants.accessibility) throw new RigStop('Accessibility is off for TempCode: turn it on under System Settings → Privacy & Security → Accessibility')
 

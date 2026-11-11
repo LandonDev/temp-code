@@ -1,10 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, utimesSync, writeFileSync, appendFileSync, chmodSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ComputerHistoryStep } from '@shared/contract-computer'
-import { ComputerHistory, HISTORY_KEEP_CALLS, HISTORY_KEEP_MS, HISTORY_PAGE, historyPicturesFromEnv, type HistoryChange } from './history'
+import { ComputerHistory, HISTORY_KEEP_CALLS, HISTORY_KEEP_MS, HISTORY_PAGE, PICTURE_TIMEOUT_MS, capturePicture, historyPicturesFromEnv, type HistoryChange } from './history'
+import { computerHarness, type ComputerHarness } from './runHarness'
 import { serviceSessionId } from './sessionId'
+import { FAKE_APPS, ManualClock } from './testFake'
 
 const step = (verb: string, object = 'Save', extra: Partial<ComputerHistoryStep> = {}): ComputerHistoryStep => ({ kind: 'click', verb, object, inApp: `${object} in TextEdit`, ...extra })
 const start = (extra: object = {}) => ({ app: 'TextEdit', window: 'Untitled', steps: [step('Clicking')], ...extra })
@@ -347,6 +349,217 @@ describe('the picture seam', () => {
   })
 })
 
-// kept for the picture tests below, which need the fake service
-void symlinkSync
-void chmodSync
+// ── the picture: one capture.screenshot per call, on the thread's queue after the answer ──
+
+const harnesses: ComputerHarness[] = []
+const host = (opts: Parameters<typeof computerHarness>[0] = {}): ComputerHarness => {
+  const h = computerHarness({ history: true, ...opts })
+  harnesses.push(h)
+  return h
+}
+afterEach(async () => {
+  for (const h of harnesses.splice(0)) await h.close()
+})
+const shots = (h: ComputerHarness) => h.requests().filter((r) => r.method === 'capture.screenshot')
+const callsOf = async (h: ComputerHarness, key = 't1') => {
+  await h.sessions.drained(key)
+  return (await h.history!.read([key]))[0].calls
+}
+const waitFor = async (pred: () => boolean, label: string): Promise<void> => {
+  const end = Date.now() + 5_000
+  while (!pred()) {
+    if (Date.now() > end) throw new Error(`timed out waiting for ${label}`)
+    await new Promise((r) => setTimeout(r, 5))
+  }
+}
+
+describe('the kept picture', () => {
+  it("asks the window by its id over the read's whole space, 960 at most, as a JPEG, and never by a title", async () => {
+    const h = host()
+    await h.run('computer_observe', { app: 'TextEdit', window: 'Untitled' })
+    const [call] = await callsOf(h)
+    expect(shots(h)).toHaveLength(1)
+    expect(shots(h)[0].params).toEqual({
+      session: 't1',
+      app: { pid: FAKE_APPS.TextEdit.pid },
+      window: { id: FAKE_APPS.TextEdit.windowId },
+      region: [0, 0, 1280, 1072],
+      maxEdge: 960,
+      format: 'jpeg'
+    })
+    expect(call.picture).toMatchObject({ width: 1280, height: 1072 })
+    const kept = await h.history!.step('t1', 1)
+    expect(kept.picture?.mimeType).toBe('image/jpeg')
+    expect(Buffer.from(kept.picture!.data, 'base64').subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]))
+    // it is the journal's own: no picture landed in the thread's attachments, none is in the answer
+    expect(existsSync(join(h.landingRoot, 't1'))).toBe(false)
+  })
+
+  it('every call with a closing read gets one, an act and a batch too', async () => {
+    const h = host()
+    await h.run('computer_observe', { app: 'TextEdit' })
+    await h.run('computer_act', { app: 'TextEdit', action: 'left_click', element: 21 })
+    await h.run('computer_batch', { app: 'TextEdit', actions: [{ action: 'key', text: 'super+a' }, { action: 'key', text: 'super+c' }] })
+    await h.run('computer_apps', {})
+    const calls = await callsOf(h)
+    expect(shots(h)).toHaveLength(3)
+    expect(calls.map((c) => (c.picture && 'none' in c.picture ? c.picture.none : 'kept'))).toEqual(['kept', 'kept', 'kept', 'no-read'])
+  })
+
+  it("the caller has its answer before the picture is asked, and the thread's next call runs after it", async () => {
+    const h = host({ env: { FAKE_SHOT_MS: '80' } })
+    const order: string[] = []
+    const a = h.run('computer_observe', { app: 'TextEdit' }).then((o) => {
+      // A's answer is back: its picture has not been asked yet
+      order.push(`a answered, ${shots(h).length} picture(s) asked`)
+      return o
+    })
+    const b = h.run('computer_observe', { app: 'TextEdit', full: true }).then((o) => {
+      order.push(`b answered, ${shots(h).length} picture(s) asked`)
+      return o
+    })
+    await Promise.all([a, b])
+    expect(order).toEqual(['a answered, 0 picture(s) asked', 'b answered, 1 picture(s) asked'])
+    // B's read went to the service only after A's picture answered
+    const methods = h.requests().map((r) => r.method).filter((m) => m === 'state.get' || m === 'capture.screenshot')
+    expect(methods.slice(0, 3)).toEqual(['state.get', 'capture.screenshot', 'state.get'])
+    expect((await callsOf(h)).map((c) => c.picture && !('none' in c.picture))).toEqual([true, true])
+  })
+
+  it('is given up after two seconds: the request is cancelled and the queue moves on', async () => {
+    const clock = new ManualClock()
+    const h = host({ clock, env: { FAKE_SHOT_MS: '60000' } })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    await waitFor(() => shots(h).length === 1, 'the picture request')
+    const next = h.run('computer_observe', { app: 'TextEdit' })
+    let answered = false
+    void next.then(() => (answered = true))
+    await clock.advance(PICTURE_TIMEOUT_MS - 1)
+    expect(answered).toBe(false)
+    await clock.advance(2)
+    await next
+    await waitFor(() => h.requests().some((r) => r.method === '$/cancel'), 'the cancel')
+    // the second call's picture is as slow: give it up too, so the queue drains
+    await waitFor(() => shots(h).length === 2, 'the second picture request')
+    await clock.advance(PICTURE_TIMEOUT_MS + 1)
+    expect((await callsOf(h)).map((c) => c.picture)).toEqual([{ none: 'failed' }, { none: 'failed' }])
+  })
+
+  it('sends no request with Screen Recording off, and says why', async () => {
+    const h = host({ env: { FAKE_SCREEN_RECORDING: '0' } })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    expect((await callsOf(h))[0].picture).toEqual({ none: 'permission' })
+    expect(shots(h)).toHaveLength(0)
+    expect(h.requests().some((r) => r.method === 'permissions.request')).toBe(false)
+  })
+
+  it('sends no request with the switch off, in a stopped or an ended thread, or for a call with no read', async () => {
+    let on = false
+    const h = host({ history: { pictures: () => on } })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    expect((await callsOf(h))[0].picture).toEqual({ none: 'off' })
+    on = true
+    // stopped while the call was in flight: its closing read came back, its picture is not taken
+    const slow = h.run('computer_act', { app: 'Slow', action: 'key', text: 'super+a' })
+    await waitFor(() => h.requests().filter((r) => r.method === 'action.run').length === 1, 'the action')
+    await h.sessions.stop('t1')
+    await slow
+    // a refused call has no closing read
+    await h.run('computer_observe', { app: 'TextEdit' })
+    const calls = await callsOf(h)
+    expect(calls.map((c) => c.picture)).toEqual([{ none: 'off' }, { none: 'no-read' }, { none: 'no-read' }])
+    expect(shots(h)).toHaveLength(0)
+    // an ended thread: the call queued behind the end answers cancelled and journals nothing
+    const other = h.run('computer_observe', { app: 'TextEdit' }, 't2')
+    await h.sessions.end(['t2'])
+    await other
+    expect(shots(h)).toHaveLength(0)
+  })
+
+  it('a thread stopped between the answer and the picture takes none', async () => {
+    const h = host()
+    const o = h.run('computer_observe', { app: 'TextEdit' })
+    // Stop lands before the queue's tail runs: the flag is set, and the tail sees it
+    await o
+    const stopping = h.sessions.stop('t1')
+    await stopping
+    const [call] = await callsOf(h)
+    // either the picture was already asked before the Stop, or it was skipped: never a request after it
+    const asked = shots(h).length
+    expect(asked === 0 ? call.picture : { none: 'failed' }).toEqual({ none: 'failed' })
+  })
+
+  it("never starts a service or opens a session for a picture: a moved epoch is a reason and no request", async () => {
+    const h = host()
+    await h.run('computer_observe', { app: 'TextEdit' })
+    await h.sessions.drained('t1')
+    const before = h.requests().length
+    const up = h.service.state()
+    const target = { session: 't1', pid: FAKE_APPS.TextEdit.pid, windowId: FAKE_APPS.TextEdit.windowId, width: 1280, height: 1072, epoch: 'e-another' }
+    expect(await capturePicture(h.service, target)).toEqual({ none: 'failed' })
+    expect(await capturePicture(h.service, null)).toEqual({ none: 'no-read' })
+    // a service that is not up is never asked, so it is never spawned for a picture
+    const down = { state: () => ({ ...up, state: 'idle' as const }), permissions: () => up.permissions, request: () => Promise.reject(new Error('never asked')) }
+    expect(await capturePicture(down as never, { ...target, epoch: up.epoch! })).toEqual({ none: 'failed' })
+    expect(h.requests().length).toBe(before)
+  })
+
+  it('a minimized window, a blank shot and a refusal are each a reason and nothing else', async () => {
+    for (const [env, none] of [
+      [{ FAKE_SHOT_MINIMIZED: '1' }, 'minimized'],
+      [{ FAKE_SHOT_BLANK: '1' }, 'not-drawn'],
+      [{ FAKE_SHOT_REFUSE: '1' }, 'failed']
+    ] as const) {
+      const h = host({ env })
+      const o = await h.run('computer_observe', { app: 'TextEdit' })
+      expect(o.isError, none).toBe(false)
+      const [call] = await callsOf(h)
+      expect(call.picture, none).toEqual({ none })
+      expect(shots(h), none).toHaveLength(1)
+      expect(existsSync(join(h.dataDir, 'history', 't1', 'steps', '1.jpg')), none).toBe(false)
+    }
+    // an app the service cannot capture answers permission_missing
+    const h = host()
+    await h.run('computer_observe', { app: 'NoShot' })
+    expect((await callsOf(h))[0].picture).toEqual({ none: 'permission' })
+  })
+
+  it('a removal during a capture leaves nothing behind', async () => {
+    const h = host({ env: { FAKE_SHOT_MS: '60' } })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    await waitFor(() => shots(h).length === 1, 'the picture request')
+    await h.history!.remove('t1')
+    await h.sessions.drained('t1')
+    await h.history!.read(['t1'])
+    expect(existsSync(join(h.dataDir, 'history', 't1'))).toBe(false)
+  })
+
+  it('the switch going off during a capture keeps no picture', async () => {
+    let on = true
+    const h = host({ history: { pictures: () => on }, env: { FAKE_SHOT_MS: '60' } })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    await waitFor(() => shots(h).length === 1, 'the picture request')
+    on = false
+    await h.history!.dropPictures()
+    const [call] = await callsOf(h)
+    expect(call.picture).toEqual({ none: 'off' })
+    expect(readdirSync(join(h.dataDir, 'history', 't1', 'steps')).filter((f) => f.endsWith('.jpg'))).toEqual([])
+  })
+
+  it('the picture changes no answer: the same text with the journal and without', async () => {
+    const plain = computerHarness()
+    harnesses.push(plain)
+    const kept = host()
+    const texts = async (h: ComputerHarness): Promise<string[]> => {
+      const out: string[] = []
+      out.push(h.text(await h.run('computer_observe', { app: 'TextEdit' })))
+      out.push(h.text(await h.run('computer_act', { app: 'TextEdit', action: 'left_click', element: 21 })))
+      out.push(h.text(await h.run('computer_act', { app: 'TextEdit', action: 'left_click', coordinate: [10, 10] })))
+      return out
+    }
+    expect(await texts(kept)).toEqual(await texts(plain))
+    await kept.sessions.drained('t1')
+    expect(shots(kept)).toHaveLength(3)
+    expect(shots(plain)).toHaveLength(0)
+  })
+})
