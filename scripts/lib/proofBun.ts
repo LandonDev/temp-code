@@ -66,3 +66,26 @@ export function runProofBun(
     child.once('close', (code) => done(code ?? 1))
   })
 }
+
+/** Where a Bun may live besides the one running; the person's own install comes first. */
+export function proofBunCandidates(current: string, home: string): string[] {
+  return [join(home, '.bun/bin/bun'), current, '/opt/homebrew/bin/bun', '/usr/local/bin/bun']
+}
+
+/**
+ * The first candidate that runs and has `node:sqlite`, or null. `bun run` puts every ancestor's
+ * node_modules/.bin on PATH, so the `bun` a package script names can be any old copy (a 1.3.5 in
+ * ~/node_modules/.bin on the person's Mac has no `node:sqlite`); the proofs import it.
+ */
+export function sqliteProofBun(
+  candidates: string[],
+  ops: { executable: (path: string) => boolean; hasSqlite: (path: string) => boolean }
+): string | null {
+  const seen = new Set<string>()
+  for (const bun of candidates) {
+    if (seen.has(bun)) continue
+    seen.add(bun)
+    if (ops.executable(bun) && ops.hasSqlite(bun)) return bun
+  }
+  return null
+}
