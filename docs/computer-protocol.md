@@ -1508,7 +1508,7 @@ So `WORDS_BY_FAMILY` gives Anthropic and OpenAI models the cua words and Meta mo
 ### 20.1 When the Mac is free
 
 - **Away**: no input for `computer.sessionIdleMs` (one setting, default 120,000 ms, attention.ts's away threshold, clamped to 5 s – 1 h and read at every check, so a later Settings row can lower it), or the Away switch with no input for 10 s. A 30-second pause is reading, not absence.
-- **Locked or asleep** refuses at once (keys typed at a lock screen would reach the password field).
+- **Locked or asleep** refuses (keys typed at a lock screen would reach the password field), but only after one fresh read of the Mac's facts (`presence.refresh`), so a stale or misread picture never refuses for good. A **screen saver that needs no password** is not a lock (20.7): the step is admitted as on an unlocked screen, and every call dismisses the saver before it acts (`SessionScheduler.run`).
 - **Present**: the step waits, polling every second, and the thread says `Waiting for the Mac to be free` in its status detail (`SessionRegistry.setToolHold`, ahead of its other words, `…, then your message` while a steer is unread) and on its computer row, whose Stop ends it. In full access it asks after 3 minutes; in `safe` and `edits` at once, since the call already asks.
 - **The card**: one `approval-request` with `toolName: 'computer_session'` (no harness calls it), `choices: 'run-skip'` (the transcript's card and the toast draw Run now and Skip, its verdict lines Ran now, Skipped, Skipped automatically), and the title `Use your pointer and keyboard to click button "Save" in TextEdit, window "Untitled"`. It goes the call's own way (`ctx.approve`: the registry here, the Mac bridge's card for a box thread). **Run now** leases the tier to the thread until the person's next input (their click on Run now is not that input: 1.5 s slack); **Skip** or a timeout is remembered for that app until the turn ends; a card cancelled by a pause or Stop is not. While the Away switch is on the card is answered Run now at the moment it would show, so it leases the tier as Run now does. The phone draws the same card in the same words (its client package's `CardDecision`, keyed by `choices`; heading "Waiting for the Mac to be free" until decided), and its notification is the category `tc.run-skip` with Run now (asks for the unlock) and Skip under the approval's two action identifiers: the notifier carries `choices` on the notice, the hub, the box's own APNs and the relay pass it, and `notificationPayload` picks the category (docs/IOS-DESIGN.md "Push").
 - **The call's own card** (`safe`, `edits`): when a step is expected to need the session tier (its class's verdict says `session`, or `perform` with `raise`), the title ends `, using your pointer and keyboard`, and an Allow leases the tier as Run now does, so the step runs with no second card.
@@ -1541,6 +1541,16 @@ Only a paste touches it, and the host cannot tell which `type` will paste, so th
 Unit tests on the box: `scheduleRules.test.ts`, `personIdle.test.ts`, `attention.test.ts`, `schedule.test.ts` (a fake clock, idle source, presence, service, card and held-line sink: admission, the card, the slot, the restore, the touch, the held button's timer, the spans, the clipboard), and `run.test.ts`'s tier scheduling suite over the fake service (`Touchy` sends `session/interrupted` and answers the step interrupted after `FAKE_CLOSING_WAIT_MS`). The Mac proof is `bun run script:e2e-computer-schedule` (`scripts/e2e-computer-schedule.ts`): two scratch TextEdits, a typist (the probe's `type`, keys marked `tcpr`) standing for the person in B, the scheduler as the server wires it over the probe's idle stream with `computer.sessionIdleMs` at 8 s; a click held while someone types, a touch (the typist's key goes nowhere: neither A nor B gets it, and the restore's `personGuard` reads `active`, `dropped` at least 1, `replayed` 0), a process-tier click's effect on the idle time, a paste that waits out a copy, pause and Stop, and the card. It runs when asked, used Mac or not (the scratch windows come forward), never on a locked or dark screen and never beside another computer proof (it waits for one to end); a sentinel tap notes input that carries neither mark, and a leg the person touched turns its failed checks inconclusive, since their input moves the idle time the scheduler reads; a call that waits for the Mac to read free gives up after a minute. It keeps the person's pasteboard aside and puts it back (`pasteboard save` / `restore`).
 
 Status at landing (2026-11-09): the Swift amendment's tests passed on the Mac (`bun run computer:test`, 480 tests, twice) before the last review fix; on the final tree, Input's Foundation-only suites, the amendment's among them (36 tests), passed on the box's Linux toolchain from a scratch package of Input's files without MarkdownHTML.swift, beside `sh scripts/computer-text-test.sh` (195). The Mac proof and the Mac Swift test of the final tree were not run: the Mac was locked and the person away. To run them: `bun run computer:test`, then `bun run script:e2e-computer-schedule`, on the Mac.
+
+### 20.7 The screen saver is not a lock
+
+The session dictionary's `CGSSessionScreenIsLocked` is true while the screen saver or the lock screen is up, whether or not a password is needed: on 2026-11-11 it read true for hours on a Mac with `screenLock is off` (`sysadminctl -screenLock status`), `displaysleep 0` and `sleep 0`, and turned false at the person's first key. Every check read it as a lock. `src/shared/screenState.ts` now tells three states apart, and presence (src/main/presence.ts), the proofs' screen check (scripts/lib/macScreen.ts), the probe's `screen` and this tier all go through it:
+
+- **`locked`**: a password is needed: an explicit Lock Screen, the saver past `screenLock delay`, another user on the console, or anything that cannot be read. Refused; nothing is typed, nothing dismissed.
+- **`saver`**: the flag is set, a `ScreenSaverEngine` or `legacyScreenSaver` process runs, and the policy is `off` (or a delay that has not run out, timed from the `lock-screen` notice). Presence says `screen: 'unlocked'` with `saver: true`; attention reads the person away; a call dismisses it by declaring user activity (`caffeinate -u -t 1`, IOPMAssertionDeclareUserActivity) and reads again every 200 ms for up to 3 s (`dismissSaver`). The declaration counts as the app's own input (`PersonIdle.beginOwn`), so it never reads as the person coming back.
+- **`asleep`**: the main display sleeps (`power` in presence); the proofs wake it only under the Keep awake setting's While threads work.
+
+While the screen reads covered, presence reads the facts again every 30 s (`COVERED_RECHECK_MS`), so a missed `unlock-screen` never leaves it reading locked. A Mac whose threads are working holds its display awake (docs/box.md "Keep awake"), so the saver does not start in the first place.
 
 ## 21. The benchmark
 
@@ -1914,6 +1924,14 @@ bun run script:e2e-tc-computer -- --gate
 bun run script:e2e-computer-bridge -- --gate
 bun run script:e2e-computer-preview -- --gate
 ```
+
+Every screen check of these proofs goes through `readyMacScreen`
+(scripts/lib/macScreen.ts, §20.7): a passwordless screen saver is dismissed
+and the screen read again, a lock is left alone, and a dark display is woken
+only under Keep awake's While threads work. A waiter that polls the screen
+(the bridge proof's `awaitScreen`, e2e-tc-computer's idle gap, the probe
+app's `ScreenWatch`) dismisses a saver on each read, so it carries on when
+the person's Mac only shows its saver; it still waits out a real lock.
 
 Each gate mode waits for `scripts/lib/gateBuild.ts` before compiling scratch
 helpers or reading the shipped service. It checks the native source stamp

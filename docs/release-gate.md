@@ -26,11 +26,17 @@ name when none does.
 The four rows `e2e-tc-computer`, `e2e-computer-bridge`,
 `e2e-computer-preview` and `computer-bench` also have `screen: true`.
 When the selection includes a screen row, the gate checks the Mac's screen
-once before starting any lane. A locked, sleeping or unreadable screen skips those rows with
+once before starting any lane. A screen saver that needs no password is not a
+lock (src/shared/screenState.ts): the check dismisses it (`caffeinate -u`, as a
+key press) and reads again for up to 3 s (`readyMacScreen`,
+scripts/lib/macScreen.ts); a dark display is woken only when the app's Keep
+awake setting is While threads work (`TEMP_CODE_KEEP_AWAKE`). A locked,
+still-sleeping or unreadable screen skips those rows with
 `skipped  the Mac is locked or asleep; run it by hand when unlocked`;
 `computer-swift` still compiles and tests. The check uses the proof's
 CoreGraphics rule in a tiny Swift binary cached in the gate's log dir
-(1.8 s compile cap, at most 400 ms to read, sharing a 1.95 s budget).
+(1.8 s compile cap, at most 400 ms to read, sharing a 1.95 s budget), and on a
+covered session reads the saver's process and `sysadminctl -screenLock status`.
 It never checks off macOS or for a commit-only run. Direct `--gate` proof and bench runs make the same check
 before work and exit 0 with `skipped: the Mac is locked or asleep`.
 
@@ -215,7 +221,11 @@ one contract:
   leaves it running until the proof settles it. The normal liveness check
   still stops a real turn whose harness is gone.
 - **A locked or sleeping screen at entry** skips the four screen rows;
-  a read failure skips them too. A proof that loses the screen after it
+  a read failure skips them too. A passwordless screen saver does not: it is
+  dismissed and the rows run. Until 2026-11-11 every check read the session's
+  `CGSSessionScreenIsLocked` as a lock, and it is true while any saver is up:
+  a whole night of rows said "not run: the Mac was locked" on a Mac that needed
+  no password and never slept. A proof that loses the screen after it
   starts still fails as inconclusive: its checks did not run whole.
 - **Three greens.** A proof joined the gate only after three green `--gate`
   runs in a row on each host it runs on (the sweep of 2026-11-09, below).

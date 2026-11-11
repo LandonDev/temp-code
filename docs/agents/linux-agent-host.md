@@ -355,7 +355,10 @@
   its own `attach()` on a `RelaySocket` and sends its frames back as
   `relay.frames` (src/shared/contract-relay.ts; box side remote/relay.ts,
   Mac side remote/relayServe.ts). The Mac reports its screen and power
-  (src/main/presence.ts: powerMonitor, `ioreg` at boot) in `peer.register`,
+  (src/main/presence.ts: powerMonitor, and on `lock-screen`, at boot and
+  every 30 s while covered the facts behind it, classified by
+  src/shared/screenState.ts: a passwordless screen saver is `unlocked` with
+  `saver: true`, never a lock) in `peer.register`,
   on every change and every minute (`peer.presence`); the box keeps the rows
   (`relay.hosts`), lists them in the hello (`hosts`) and `/api/hello`, and
   pushes `presence` on a change. A state that forbids a call answers one line
@@ -368,6 +371,13 @@
   `TEMP_CODE_E2E_PRESENCE=1`, the iOS test server's four relayed hosts
   (remote/relayLoopback.ts, `POST /presence`). docs/box.md "The relay";
   proof `bun run script:e2e-mac-relay`.
+- Keep awake: the Mac holds its display awake (Electron's
+  `prevent-display-sleep`) while a thread on it or on the box is live, on AC
+  power, under `power.keepAwake` (`while-working`, the default, or `never`;
+  Settings → Hosts, This Mac's Keep awake row). The box says whether it has
+  live work with a `live-work` push down the Mac's link, on a change and
+  every minute; the Mac trusts it 150 s or until the link drops
+  (src/main/server/keepAwake.ts). docs/box.md "Keep awake".
 - Devices on the Mac: Settings → Hosts, a Devices group in the Mac's own
   section, lists this Mac's simulators and iPhones with their state words, the
   booted ones' CPU, the thread that holds each (the `thread_resources`

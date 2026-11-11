@@ -2605,10 +2605,16 @@ the same query). Nothing on the phone has to know the hop.
 | Mac | Reads and steering | Opening Xcode | Refusal |
 |---|---|---|---|
 | available | run | run | — |
+| screen saver, no password (`saver: true`) | run | run, the saver dismissed first | — |
 | locked | run | refused | `unavailable: the Mac is locked` |
 | asleep | refused | refused | `unavailable: the Mac is asleep` |
 | unreachable | refused | refused | `unavailable: the Mac is unreachable since 09:14` |
 
+- **A screen saver is not a lock.** The session's lock flag is set while any
+  screen saver is up; a saver that needs no password reads `screen:
+  'unlocked'` with `saver: true` (src/shared/screenState.ts,
+  docs/computer-protocol.md §20.7), the phone's row says "screen saver on",
+  and screen work dismisses it. Only a real lock refuses the screen method.
 - **Refusals.** A locked Mac keeps running: only what needs its screen or
   its person is refused. A request in flight when the link drops answers
   `linkDown: the Mac is unreachable since 09:14` and the lane closes with
@@ -2630,6 +2636,39 @@ the same query). Nothing on the phone has to know the hop.
   The Mac: `remote/relayServe.ts` (`RelayServer`, `RelaySocket`). The wire:
   `src/shared/contract-relay.ts`. Proof: `bun run script:e2e-mac-relay`
   (two headless instances of the built tree; build first).
+
+### Keep awake
+
+The Mac holds its display awake while a thread is working or watching on
+it or on the box, so the screen saver never starts and nothing reads the
+Mac as covered while the person is away (src/main/server/keepAwake.ts).
+
+- **What counts.** A thread in `starting`, `running`, `waiting` or
+  `watching` on the host (`SessionRegistry.runningCount`); a master watching
+  its batch and a running batch step are `watching`. The hold outlives the
+  last one by 30 s (`RELEASE_GRACE_MS`), so a thread between turns does not
+  drop it; the host re-reads every 15 s.
+- **The box.** A host with peers on its listener sends `live-work { from,
+  live }` down every registered link on a change, every minute and at once
+  to a peer that registers. The Mac counts a peer's word for 150 s after it
+  heard it (`PEER_LIVE_TTL_MS`) and drops it when the link closes, so a box
+  that goes away releases the hold within that. A headless host never holds.
+- **The hold.** Electron's `powerSaveBlocker.start('prevent-display-sleep')`,
+  IOKit's PreventUserIdleDisplaySleep, the assertion `caffeinate -d` takes;
+  IOKit releases it if the app exits.
+- **The setting.** `power.keepAwake`: `while-working` (unset) or `never`,
+  This Mac's Keep awake row on Settings → Hosts (While threads work, Never),
+  which says On now while the hold is taken; `power.status` and
+  `power.settings.set` (admin). The app hands the mode to its children as
+  `TEMP_CODE_KEEP_AWAKE`, and the proofs wake a dark display only under
+  `while-working` (scripts/lib/macScreen.ts).
+- **On battery** nothing is held, whatever the setting: a laptop away from
+  its charger sleeps as it would without the app (`powerMonitor`
+  `on-battery`, `on-ac`).
+- **Why.** On the night of 2026-11-10 the Mac never slept (`displaysleep 0`,
+  `sleep 0`, no password after the saver), yet its saver started after 20
+  idle minutes, the session read locked for hours, every Mac proof said "not
+  run: the Mac was locked", and nothing put it back.
 
 ### Search across hosts
 

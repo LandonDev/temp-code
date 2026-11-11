@@ -128,7 +128,9 @@ why and the measured headline.
 - **The session tier** (§20, computer/schedule.ts,
   src/shared/computer/scheduleRules.ts) takes the person's pointer and
   keyboard only while they are away: no input for `computer.sessionIdleMs`
-  (120 s), or the Away switch and 10 s of quiet; locked or asleep refuses.
+  (120 s), or the Away switch and 10 s of quiet; locked or asleep refuses
+  after one fresh read, and a passwordless screen saver is not a lock: each
+  call dismisses it first (§20.7, src/shared/screenState.ts).
   A held step says "Waiting for the Mac to be free" and asks one card with
   Run now and Skip (at once in safe and edits, after 3 minutes in full
   access; answered Run now while Away is on). One session call at a time per host; the person's app and
@@ -206,7 +208,9 @@ why and the measured headline.
   `computer-bench`. Their shared rule (no picture and no prompt without
   Screen Recording, a named failure without Accessibility) is
   scripts/lib/computerProofGate.ts; scripts/lib/macScreen.ts skips their
-  `--gate` runs at entry if the screen is locked, asleep or unreadable
+  `--gate` runs at entry if the screen is locked, asleep or unreadable, after
+  dismissing a passwordless screen saver (`readyMacScreen`), which the
+  proofs' waiters do on every read too
   (docs/computer-protocol.md "The unattended proof modes"). The tc-computer
   and bridge rows start through scripts/proof-bun.ts, which picks a Bun with
   `node:sqlite` whatever `bun` an ancestor node_modules/.bin offers;
