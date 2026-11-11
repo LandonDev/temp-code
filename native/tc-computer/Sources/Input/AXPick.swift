@@ -64,7 +64,7 @@ enum AXPick {
         guard let menu = opened else { throw AXTier.valueNotTaken(e, reads: before.any, note: "opened no menu") }
 
         let items = AX.elements(menu, "AXChildren").filter { AX.string($0, "AXRole") == "AXMenuItem" }
-        let titles = items.map { AX.string($0, "AXTitle") ?? "" }
+        let titles = items.map { PickPlan.itemName(title: AX.string($0, "AXTitle"), value: AX.string($0, "AXValue"), description: AX.string($0, "AXDescription")) }
         let i: Int
         switch PickPlan.match(value, titles: titles) {
         case .item(let at):
@@ -89,7 +89,7 @@ enum AXPick {
             let marked = AX.elements(menu, "AXChildren").first {
                 !(AX.string($0, "AXMenuItemMarkChar") ?? "").isEmpty || AX.bool($0, "AXSelected") == true
             }
-            selected = marked.flatMap { AX.string($0, "AXTitle") }
+            selected = marked.map { PickPlan.itemName(title: AX.string($0, "AXTitle"), value: AX.string($0, "AXValue"), description: AX.string($0, "AXDescription")) }.flatMap { $0.isEmpty ? nil : $0 }
         }
         return Shown(value: AX.valueText(popUp), selected: selected)
     }

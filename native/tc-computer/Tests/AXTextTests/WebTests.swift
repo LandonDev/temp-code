@@ -329,6 +329,58 @@ func rawRead(_ n: RawAXNode) -> TabScan.Read<RawAXNode> { TabScan.Read(role: n.r
         #expect(!text.contains("Far below"))
     }
 
+    /// The page as Chrome 156 gives it (measured 2026-11-11): the table's frame cut to the visible page, and each
+    /// off-screen row's text cut to 0 pt high at the visible page's bottom edge; the rows keep their layout frames.
+    static func clippedPage() -> RawAXTree {
+        let rows = (0..<120).map { i -> RawAXNode in
+            let top = 100 + Double(i) * 20
+            let onScreen = top + 20 <= 600
+            let text = RawAXNode(role: "AXStaticText", value: RawAXValue(type: .string, text: "City \(i)"),
+                                 frame: onScreen ? Rect(x: 0, y: top, w: 200, h: 20) : Rect(x: 0, y: 600, w: 200, h: 0), children: [])
+            return RawAXNode(role: "AXRow", frame: Rect(x: 0, y: top, w: 800, h: 20), children: [
+                RawAXNode(role: "AXCell", frame: Rect(x: 0, y: top, w: 200, h: 20), children: [text])
+            ])
+        }
+        let table = RawAXNode(role: "AXTable", title: "Revenue", frame: Rect(x: 0, y: 100, w: 800, h: 500), children: rows)
+        let page = RawAXNode(role: "AXWebArea", title: "Report", loaded: true, frame: pageFrame, children: [table])
+        let tab = RawAXNode(role: "AXRadioButton", subrole: "AXTabButton", title: "Report", selected: true, frame: Rect(x: 80, y: 0, w: 200, h: 40), children: [])
+        let root = RawAXNode(role: "AXWindow", subrole: "AXStandardWindow", title: "Report - Google Chrome", frame: window, children: [
+            RawAXNode(role: "AXGroup", frame: Rect(x: 0, y: 0, w: 800, h: 100), children: [RawAXNode(role: "AXTabGroup", frame: Rect(x: 80, y: 0, w: 400, h: 40), children: [tab])]),
+            RawAXNode(role: "AXScrollArea", frame: pageFrame, children: [page])
+        ])
+        return RawAXTree(recordedAt: "2026-11-11T00:00:00Z", recorder: "hand", app: .init(name: "Google Chrome for Testing", bundleId: "com.google.chrome.for.testing", version: "156"),
+                         os: "macOS 27.2.0", window: .init(title: "Report - Google Chrome", frame: window), scale: 2, manualAccessibility: .init(rawValue: "refused"),
+                         walk: .init(nodes: 0, depth: 7, ms: 1, capped: false), root: root)
+    }
+
+    @Test func aTableChromeCutToTheVisiblePageStillReadsAheadWithItsOffScreenText() throws {
+        let s = RawTree.snapshot(Self.clippedPage(), ids: NodeIDSource())
+        let t = try #require(table(s))
+        // the page's read-ahead ends at 2,100, past the table's cut frame (600): 100 rows read, 20 below
+        #expect(t.children.count == 100)
+        #expect(t.hidden == Hidden(above: 0, below: 20))
+        let text = Reader().read(s, budget: 96_000).text
+        // the zero-height texts of off-screen rows are kept in web content
+        #expect(text.contains("\"City 30\"") && text.contains("\"City 99\"") && !text.contains("\"City 100\""))
+        // a list or table inside an overflow box keeps its own clip, and a native window keeps the zero-size rule
+        #expect(Viewport.childClip(role: "AXTable", frame: Rect(x: 0, y: 100, w: 800, h: 500), clip: Rect(x: 0, y: -400, w: 800, h: 2_500),
+                                   scope: Viewport.Scope(page: true, inFlow: true)) == Rect(x: 0, y: -400, w: 800, h: 2_500))
+        #expect(Viewport.childClip(role: "AXTable", frame: Rect(x: 0, y: 100, w: 800, h: 500), clip: Rect(x: 0, y: -400, w: 800, h: 2_500),
+                                   scope: Viewport.Scope(page: true, inFlow: false)) == Rect(x: 0, y: 100, w: 800, h: 500))
+    }
+
+    @Test func anElementReadOfAPageTableReadsAsThePage() throws {
+        var s = RawTree.snapshot(Self.clippedPage(), ids: NodeIDSource())
+        let t = try #require(table(s))
+        s.roots = [t]
+        s.ambientActions = ["AXShowMenu"]
+        // not known as web content: the zero-height texts of the off-screen rows are walked through
+        #expect(!Reader().read(s, budget: 96_000).text.contains("\"City 99\""))
+        s.rootsInWeb = true
+        let text = Reader().read(s, budget: 96_000).text
+        #expect(text.contains("\"City 30\"") && text.contains("\"City 99\""))
+    }
+
     @Test func aScrollAreaInThePageKeepsItsOwnClipListAndSlivers() throws {
         let s = RawTree.snapshot(Self.longPage(), ids: NodeIDSource())
         func find(_ n: AXNode) -> AXNode? { n.role == "AXList" ? n : n.children.lazy.compactMap(find).first }

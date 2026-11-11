@@ -5,6 +5,12 @@ import Foundation
 /// title is the value, exact first, then case-blind, then the one item it is a prefix of. Titles
 /// and the value are compared trimmed; an empty value names nothing.
 public enum PickPlan {
+    /// An item's name: its AXTitle, else its AXValue, else its AXDescription. Chrome 156 leaves a select's menu items
+    /// untitled and gives each option's text as its value (2026-11-11).
+    public static func itemName(title: String?, value: String?, description: String?) -> String {
+        [title, value, description].lazy.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty } ?? ""
+    }
+
     public enum Match: Equatable, Sendable {
         /// the item at this index of the titles
         case item(Int)

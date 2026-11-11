@@ -45,7 +45,7 @@ public enum Keep {
         var walk = Walk(snapshot: s, options: options)
         var roots: [KeptNode] = []
         // a menu item read on its own (a compact menu bar's submenu, §27.13) keeps its closed menu's items as the bar does
-        for root in s.roots { roots += walk.visit(root, inWeb: false, ancestor: (nil, nil), root: true, inMenuBar: menuItemRoles.contains(root.role)).kept }
+        for root in s.roots { roots += walk.visit(root, inWeb: s.rootsInWeb, ancestor: (nil, nil), root: true, inMenuBar: menuItemRoles.contains(root.role)).kept }
         if let bar = s.menuBar { roots += walk.visit(bar, inWeb: false, ancestor: (nil, nil), root: true, inMenuBar: true).kept }
         return KeptTree(roots: roots, thin: thin(roots, window: s.window.frame))
     }
@@ -68,8 +68,11 @@ public enum Keep {
             if !root, n.role == "AXScrollBar", !isFocused(n) { return ([], Hidden()) }
             let f = facts(n, inWeb: web)
             let role = f.line.role
-            // a zero-size element is walked through, never kept; a closed menu's items have no usable frame
-            let zero = !root && !inMenuBar && (n.frame.map(Viewport.isZero) ?? false)
+            // a zero-size element is walked through, never kept; a closed menu's items have no usable frame. In web
+            // content a text with a value and no size is Chrome's clip of it to the visible page (an off-screen row's
+            // text reads 0 pt high at the viewport's edge, Chrome 156), so it is kept
+            let clippedText = web && n.role == "AXStaticText" && f.rawValue?.isEmpty == false
+            let zero = !root && !inMenuBar && !clippedText && (n.frame.map(Viewport.isZero) ?? false)
             if !zero, !root, Facts.listRoles.contains(role), !n.children.isEmpty, !subtreeHasText(n) {
                 return ([KeptNode(id: n.id, kind: .stub, facts: f, subrole: n.subrole, domIdentifier: n.domIdentifier, frame: n.frame, hidden: nil, children: [])], Hidden())
             }

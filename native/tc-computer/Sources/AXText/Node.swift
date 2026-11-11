@@ -156,8 +156,10 @@ public struct AXSnapshot: Sendable {
     public var document: DocumentLine?
     /// the AXMenu nodes the call will close after this read (§26.11): each takes the closed-menu note under its items
     public var closingMenus: Set<NodeID>
+    /// the roots sit inside a web area: an element read of web content, judged as the page's (§25)
+    public var rootsInWeb: Bool
 
-    public init(app: AppFacts, window: WindowInfo, otherWindows: [OtherWindow] = [], roots: [AXNode], menuBar: AXNode? = nil, focusedID: NodeID? = nil, ambientActions: Set<String> = [], visited: Int = 0, partial: Bool = false, walkMs: Int = 0, document: DocumentLine? = nil, closingMenus: Set<NodeID> = []) {
+    public init(app: AppFacts, window: WindowInfo, otherWindows: [OtherWindow] = [], roots: [AXNode], menuBar: AXNode? = nil, focusedID: NodeID? = nil, ambientActions: Set<String> = [], visited: Int = 0, partial: Bool = false, walkMs: Int = 0, document: DocumentLine? = nil, closingMenus: Set<NodeID> = [], rootsInWeb: Bool = false) {
         self.app = app
         self.window = window
         self.otherWindows = otherWindows
@@ -170,5 +172,6 @@ public struct AXSnapshot: Sendable {
         self.walkMs = walkMs
         self.document = document
         self.closingMenus = closingMenus
+        self.rootsInWeb = rootsInWeb
     }
 }

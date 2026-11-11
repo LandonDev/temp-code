@@ -14,6 +14,14 @@ import Testing
 @Suite struct PickPlanTests {
     let plans = ["Choose a plan", "Starter", "Team", "Team Plus", "Enterprise"]
 
+    @Test func anItemIsNamedByItsTitleElseItsValueElseItsDescription() {
+        #expect(PickPlan.itemName(title: "Team", value: "x", description: "y") == "Team")
+        // Chrome 156: a select's items have an empty title and the option's text as their value
+        #expect(PickPlan.itemName(title: "", value: "Team", description: nil) == "Team")
+        #expect(PickPlan.itemName(title: nil, value: " ", description: "Starter") == "Starter")
+        #expect(PickPlan.itemName(title: nil, value: nil, description: nil) == "")
+    }
+
     @Test func exactThenCaseBlindThenAUniquePrefix() {
         #expect(PickPlan.match("Team", titles: plans) == .item(2))
         #expect(PickPlan.match("team plus", titles: plans) == .item(3))
@@ -85,6 +93,9 @@ import Testing
         #expect(IntoViewPlan.mayHold(Rect(x: 0, y: 100, w: 800, h: 2000), in: band))
         #expect(!IntoViewPlan.mayHold(Rect(x: 0, y: 950, w: 800, h: 100), in: band))
         #expect(IntoViewPlan.mayHold(nil, in: band))
+        // a table Chrome cut at the visible page's bottom (700) is searched: its rows past the edge keep their frames
+        #expect(IntoViewPlan.mayHold(Rect(x: 0, y: 300, w: 800, h: 400), in: band))
+        #expect(!IntoViewPlan.mayHold(Rect(x: 0, y: 300, w: 800, h: 399), in: band))
     }
 
     @Test func movedIsTheFrameReadBackAlongTheAxis() {

@@ -140,12 +140,14 @@ public final class AppReader: AppReading, @unchecked Sendable {
         let start = Self.ms()
         var roots: [AXNode] = []
         var menuBar: AXNode?
+        var rootsInWeb = false
         if let index = request.element {
             walker.cut = false
             walker.valueUnits = max(request.budgetBytes, walker.valueUnits)
             guard let el = try element(index), let node = try walker.walk(root: el, clip: nil, menuBar: false, isWindow: false) else {
                 throw ComputerFailure(ComputerError(kind: .staleElement, message: "[\(index)] is gone; read the tree again", element: index, reason: .gone))
             }
+            rootsInWeb = Self.inWebArea(el)
             roots = [node]
         } else {
             guard let root = try walker.walk(root: target.element, clip: target.info.frame, menuBar: false, isWindow: true) else {
@@ -185,9 +187,24 @@ public final class AppReader: AppReading, @unchecked Sendable {
             ambientActions: ObservationTables.ambientActions, visited: walker.counts.nodes, partial: walker.partial,
             walkMs: Int((Self.ms() - start).rounded()),
             document: request.document && request.element == nil ? Self.documentLine(walker.notes.document) : nil,
-            closingMenus: request.closingMenus && request.element == nil ? Set(menuNodes) : []
+            closingMenus: request.closingMenus && request.element == nil ? Set(menuNodes) : [],
+            rootsInWeb: rootsInWeb
         )
         return (snapshot, walker.notes, target.element)
+    }
+
+    /// Whether an element sits inside a web area: its ancestors up to the window, 64 at most.
+    static func inWebArea(_ el: AXUIElement) -> Bool {
+        var up = AX.element(AX.copy(el, "AXParent").value)
+        for _ in 0 ..< 64 {
+            guard let p = up else { return false }
+            switch AX.string(AX.copy(p, "AXRole").value) {
+            case "AXWebArea": return true
+            case "AXWindow", "AXApplication", nil: return false
+            default: up = AX.element(AX.copy(p, "AXParent").value)
+            }
+        }
+        return false
     }
 
     /// The document line (§26.10) from the window's AXDocument and edited flag, with the file's mtime.

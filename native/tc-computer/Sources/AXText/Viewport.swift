@@ -63,6 +63,9 @@ public enum Viewport {
     /// (the busy scan, which looks for what shows).
     public static func childClip(role: String, frame: Rect?, clip: Rect?, scope: Scope? = nil) -> Rect? {
         guard clipRoles.contains(role), let f = frame, !isZero(f) else { return clip }
+        // a list or table in the page's own flow: Chrome 156 gives its frame cut to the visible page, so it
+        // would cut the read-ahead off at the screen's edge; its rows are judged by the page's clip (2026-11-11)
+        if let scope, scope.inFlow, role != "AXWebArea", role != "AXScrollArea" { return clip }
         let visible = intersect(clip, f)
         if role == "AXWebArea", let scope, !scope.page { return readAhead(visible) }
         return visible

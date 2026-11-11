@@ -60,7 +60,9 @@ public enum IntoViewPlan {
         guard let f = frame, f.w > 0 || f.h > 0 else { return true }
         let (from, to) = band.span
         let (lo, hi) = band.vertical ? (f.y, f.y + f.h) : (f.x, f.x + f.w)
-        return hi > from && lo <= to
+        // a frame that ends on the visible edge may be cut there: Chrome 156 gives a page's table its frame cut to
+        // the visible page, and its rows past the edge keep their own frames (2026-11-11)
+        return hi >= from && lo <= to
     }
 
     /// Of the kept elements' frames in reading order, the target's index: the one starting in the band
