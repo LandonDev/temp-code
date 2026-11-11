@@ -4,7 +4,7 @@
   "scale": false,
   "keystroke": false,
   "rest": false,
-  "load-only": false,
+  "load-only": true,
   "bodies-per-batch": false,
   "refolds": true,
   "rows-built": false,

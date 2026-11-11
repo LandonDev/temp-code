@@ -92,7 +92,7 @@ struct ProjectPlanChip: View {
     /// (a landed one ticks the file).
     private var settled: [String: SessionStatus] {
         var out: [String: SessionStatus] = [:]
-        for session in client.sessions where session.projectId == project.id && session.parentId == nil {
+        for session in client.listedSessions where session.projectId == project.id && session.parentId == nil {
             switch session.threadType {
             case .projectPlan?, .implementation?, .orchestration?: out[session.id] = session.status
             default: break

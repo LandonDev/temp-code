@@ -20,22 +20,26 @@ struct ProjectShell: View {
     let thread: String?
     let seq: Int?
     var slots = HomeSlots()
+    /// The scope and its strip, worked out off this body (`KeptScope`): the
+    /// shell reads that the scope exists and its name, so a meta from
+    /// another thread, on this host or any other, runs nothing here.
+    @State private var kept = KeptScope()
 
     var body: some View {
         let _ = PerfCounters.bump(.projectShellBody)
-        let hosts = HomeRows.inputs(model.registry.ordered)
-        let scope = ThreadStrip.scope(key: key, hosts: hosts)
+        let registry = model.registry
+        let summary = kept.summary(key: key, thread: thread, registry: registry)
         let shown = thread.flatMap(ShellPaths.split)
         VStack(spacing: 0) {
-            if let scope {
-                ThreadStripView(scope: scope, shown: shown)
+            if summary != nil {
+                ThreadStripView(kept: kept, key: key, thread: thread)
             }
-            if let shown, let client = model.registry.client(shown.environmentId) {
-                ThreadScreen(client: client, sessionId: shown.sessionId, targetSeq: seq, shellTitle: scope?.name)
+            if let shown, let client = registry.client(shown.environmentId) {
+                ThreadScreen(client: client, sessionId: shown.sessionId, targetSeq: seq, shellTitle: summary?.name)
                     .id(thread)
-            } else if let scope {
-                ShellDraftBody(scope: scope, slots: slots)
-            } else if model.registry.ordered.contains(where: { !$0.hasShell }) {
+            } else if summary != nil {
+                ShellDraftBody(kept: kept, key: key, thread: thread, slots: slots)
+            } else if registry.ordered.contains(where: { !$0.hasShell }) {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -44,12 +48,28 @@ struct ProjectShell: View {
         }
         .background(Surface.background)
         .onChange(of: thread, initial: true) { ShellLandingStore.shared.remember(.project(key: key, thread: thread)) }
+        .task(id: "\(key)|\(thread ?? "")") { await kept.follow(key: key, thread: thread, registry: registry) }
+    }
+}
+
+/// The draft shown while no thread is open, once the scope is known.
+private struct ShellDraftBody: View {
+    @Environment(AppModel.self) private var model
+    let kept: KeptScope
+    let key: String
+    let thread: String?
+    let slots: HomeSlots
+
+    var body: some View {
+        if let scope = kept.scope(key: key, thread: thread, registry: model.registry) {
+            ShellDraft(scope: scope, slots: slots)
+        }
     }
 }
 
 /// The shell with no thread open: the project's name in the bar with its
 /// plan chip and menu, an empty body, and the draft composer.
-private struct ShellDraftBody: View {
+private struct ShellDraft: View {
     @Environment(AppModel.self) private var model
     @Environment(\.shellPose) private var pose
     @Environment(NewThreadPresenter.self) private var presenter

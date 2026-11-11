@@ -395,17 +395,21 @@ extension EnvironmentClient {
     public func send(_ sessionId: String, text: String, model: TurnModel? = nil, attachments: [Attachment]? = nil, newPass: Bool? = nil) async throws {
         if let block = operateBlock { throw ActionError.blocked(block) }
         let sentAt = Int(Date().timeIntervalSince1970 * 1000)
-        let turn = threads[sessionId]?.addPending(text: text, sentAt: sentAt) ?? PendingTurn(text: text, sentAt: sentAt)
+        let turn = write(sessionId) { $0.addPending(text: text, sentAt: sentAt) } ?? PendingTurn(text: text, sentAt: sentAt)
         // Busy from the click; a send into a thread with no turn open starts the slot's clock there.
-        let opens = threads[sessionId]?.beginSend(status: sessions.first { $0.id == sessionId }?.status, at: sentAt) ?? false
+        // The status is the host's as it is now, never a list's copy of it.
+        let status = currentSession(sessionId)?.status
+        let opens = write(sessionId) { $0.beginSend(status: status, at: sentAt) } ?? false
         let named = attachments.flatMap { $0.isEmpty ? nil : $0 }
         do {
             try await request(Methods.SessionSend.self, .init(sessionId: sessionId, text: text, provider: model?.provider, model: model?.model, reasoning: model?.reasoning, attachments: named, newPass: newPass))
         } catch {
-            threads[sessionId]?.pending.removeAll { $0.id == turn.id }
-            if threads[sessionId]?.pending.isEmpty == true {
-                threads[sessionId]?.sending = false
-                if opens { threads[sessionId]?.sentAt = nil }
+            write(sessionId) { state in
+                state.pending.removeAll { $0.id == turn.id }
+                if state.pending.isEmpty {
+                    state.sending = false
+                    if opens { state.sentAt = nil }
+                }
             }
             throw ActionError.wrap(error)
         }
@@ -421,7 +425,7 @@ extension EnvironmentClient {
     public func steer(_ sessionId: String, text: String, model: TurnModel? = nil, attachments: [Attachment]? = nil) async throws {
         if let block = operateBlock { throw ActionError.blocked(block) }
         let sentAt = Int(Date().timeIntervalSince1970 * 1000)
-        let turn = threads[sessionId]?.addPending(text: text, sentAt: sentAt) ?? PendingTurn(text: text, sentAt: sentAt)
+        let turn = write(sessionId) { $0.addPending(text: text, sentAt: sentAt) } ?? PendingTurn(text: text, sentAt: sentAt)
         let named = attachments.flatMap { $0.isEmpty ? nil : $0 }
         do {
             let answer = try await request(Methods.QueueAdd.self, .init(sessionId: sessionId, text: text, provider: model?.provider, model: model?.model, reasoning: model?.reasoning, attachments: named, steer: true))
@@ -429,7 +433,7 @@ extension EnvironmentClient {
                 try await request(Methods.QueueSteer.self, .init(sessionId: sessionId, messageId: queued.item.id))
             }
         } catch {
-            threads[sessionId]?.pending.removeAll { $0.id == turn.id }
+            write(sessionId) { state in state.pending.removeAll { $0.id == turn.id } }
             throw ActionError.wrap(error)
         }
     }
@@ -482,17 +486,21 @@ extension EnvironmentClient {
     /// by the request's `choices`: "Not run" for a held computer step's Run now.
     public func approve(_ sessionId: String, requestId: String, allow: Bool, choices: ApprovalRequestEvent.Choices? = nil) async throws {
         if let block = approveBlock { throw ActionError.blocked(block) }
-        guard threads[sessionId]?.deciding.contains(requestId) != true, threads[sessionId]?.decisions[requestId] == nil else { return }
-        threads[sessionId]?.deciding.insert(requestId)
-        threads[sessionId]?.decisions[requestId] = allow
-        threads[sessionId]?.refusals[requestId] = nil
-        defer { threads[sessionId]?.deciding.remove(requestId) }
+        guard peek(sessionId)?.deciding.contains(requestId) != true, peek(sessionId)?.decisions[requestId] == nil else { return }
+        write(sessionId) { state in
+            state.deciding.insert(requestId)
+            state.decisions[requestId] = allow
+            state.refusals[requestId] = nil
+        }
+        defer { write(sessionId) { state in _ = state.deciding.remove(requestId) } }
         do {
             try await request(Methods.SessionApprove.self, .init(sessionId: sessionId, requestId: requestId, allow: allow))
         } catch {
             let wrapped = ActionError.wrap(error)
-            threads[sessionId]?.decisions[requestId] = nil
-            threads[sessionId]?.refusals[requestId] = CardDecision.refusalLine(allow: allow, reason: wrapped.message, choices: choices)
+            write(sessionId) { state in
+                state.decisions[requestId] = nil
+                state.refusals[requestId] = CardDecision.refusalLine(allow: allow, reason: wrapped.message, choices: choices)
+            }
             throw wrapped
         }
     }
@@ -500,11 +508,11 @@ extension EnvironmentClient {
     /// Answer a question: `answers[i]` is the chosen labels (or the typed text) for question `i`.
     public func answer(_ sessionId: String, requestId: String, answers: [[String]]) async throws {
         if let block = operateBlock { throw ActionError.blocked(block) }
-        threads[sessionId]?.answers[requestId] = answers
+        write(sessionId) { $0.answers[requestId] = answers }
         do {
             try await request(Methods.SessionAnswer.self, .init(sessionId: sessionId, requestId: requestId, answers: answers))
         } catch {
-            threads[sessionId]?.answers[requestId] = nil
+            write(sessionId) { $0.answers[requestId] = nil }
             throw ActionError.wrap(error)
         }
     }

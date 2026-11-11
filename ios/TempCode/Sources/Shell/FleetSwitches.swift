@@ -23,7 +23,7 @@ struct FleetSwitchRows: View {
 
     var body: some View {
         let block = client.operateBlock
-        let counts = ThreadBatch.counts(client.sessions, client.batchSelection(scope))
+        let counts = ThreadBatch.counts(client.listedSessions, client.batchSelection(scope))
         if let block, showsBlock {
             Text(block.text(now: Date().timeIntervalSince1970 * 1000))
         }
@@ -179,7 +179,7 @@ struct FleetConfirmSheet: View {
 
     private func body(now: Date) -> some View {
         let client = pending.client
-        let targets = ThreadBatch.targets(pending.action, client.sessions, client.batchSelection(pending.scope, now: now))
+        let targets = ThreadBatch.targets(pending.action, client.listedSessions, client.batchSelection(pending.scope, now: now))
         let queued = targets.count(where: ThreadBatch.isQueued)
         let resources: Int? = pending.action == .archiveDone ? client.resources.countHeld(by: targets.map(\.id)) : nil
         let copy = ThreadBatch.confirm(pending.action, count: targets.count, scope: pending.scope, resources: resources, queued: queued)

@@ -411,7 +411,7 @@ final class ActingRig {
         fake.answer(id: brief.id, result: "null")
         let meta = try await creating.value
         #expect(meta.id == "built")
-        #expect(rig.client.sessions.first?.id == "built", "newest first")
+        #expect(rig.client.currentSessions.first?.id == "built", "newest first")
         await rig.client.stop()
     }
 
@@ -457,7 +457,7 @@ final class ActingRig {
         fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: metas))))
         #expect(await rig.wait { rig.client.session("s3") != nil })
         let selection = BatchSelection(scope: .host(name: "box"), seen: [:], floor: now, now: now)
-        #expect(ThreadBatch.targets(.archiveDone, rig.client.sessions, selection).map(\.id).sorted() == ["s1", "s2"])
+        #expect(ThreadBatch.targets(.archiveDone, rig.client.currentSessions, selection).map(\.id).sorted() == ["s1", "s2"])
         let batching = Task { try await rig.client.batch(.archiveDone, selection: selection, cleanup: true) }
         let request = try #require(await rig.request(fake, "session.batch"))
         guard case .object(let params) = request.params else { throw TransportError.notConnected }
@@ -600,7 +600,7 @@ final class ActingRig {
         fake.answer(id: request.id, result: "null")
         try await sending.value
         fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: [sampleSession("s1", updatedAt: 3, status: .running, busySince: clicked + 400)]))))
-        #expect(await rig.wait { rig.client.sessions.first?.status == .running })
+        #expect(await rig.wait { rig.client.currentSessions.first?.status == .running })
         #expect(rig.client.threads["s1"]?.sentAt == clicked, "the host's later busySince never moves the clock")
         // A steer mid-turn is no new click: queue.add { steer: true }, as the desktop's composer.
         let steering = Task { try await rig.client.steer("s1", text: "and this") }
@@ -615,7 +615,7 @@ final class ActingRig {
         rig.push(fake, rows: [echo(2, "go"), echo(3, "and this")])
         #expect(await rig.wait { rig.client.threads["s1"]?.pending.isEmpty == true })
         fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: [sampleSession("s1", updatedAt: 4, status: .idle)]))))
-        #expect(await rig.wait { rig.client.sessions.first?.status == .idle })
+        #expect(await rig.wait { rig.client.currentSessions.first?.status == .idle })
         #expect(rig.client.threads["s1"]?.sentAt == nil)
         await rig.client.stop()
     }
@@ -666,7 +666,7 @@ final class ActingRig {
         #expect(await rig.wait { rig.client.threads["s1"]?.pending.isEmpty == true })
         // The user row's own meta push, still idle: no Send flash between Pause and Pause.
         fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: [sampleSession("s1", updatedAt: 3, status: .idle)]))))
-        #expect(await rig.wait { rig.client.sessions.first?.updatedAt == 3 })
+        #expect(await rig.wait { rig.client.currentSessions.first?.updatedAt == 3 })
         let held = try #require(rig.client.threads["s1"])
         #expect(held.sending == true)
         #expect(held.sentAt != nil)

@@ -166,7 +166,7 @@ struct SearchView: View {
                 name: client.environment.name,
                 open: client.status.transport == .open,
                 isMac: client.status.lastHello?.build?.platform == "darwin",
-                sessions: client.sessions.filter { $0.parentId == nil },
+                sessions: client.listedSessions.filter { $0.parentId == nil },
                 projects: client.projects.filter { !$0.archived },
                 workspaces: client.workspaces,
                 ask: SearchAsk(

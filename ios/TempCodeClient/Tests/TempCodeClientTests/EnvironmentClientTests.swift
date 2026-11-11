@@ -113,14 +113,14 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
         let fake = await rig.sockets.socket(0)
         fake.hello()
         await rig.answerShell(fake, sessions: [markedSession("s1", updatedAt: 10, readAt: 0), markedSession("s2", updatedAt: 10, readAt: 10)])
-        #expect(await rig.wait { rig.client.sessions.count == 2 })
+        #expect(await rig.wait { rig.client.currentSessions.count == 2 })
         // The host's marks decide: s1 is unread on the phone though it never looked.
-        #expect(ThreadGroups.isUnseen(rig.client.session("s1")!, seen: rig.client.seen, floor: 0))
-        #expect(!ThreadGroups.isUnseen(rig.client.session("s2")!, seen: rig.client.seen, floor: 0))
+        #expect(ThreadGroups.isUnseen(rig.client.session("s1")!, seen: rig.client.currentSeen, floor: 0))
+        #expect(!ThreadGroups.isUnseen(rig.client.session("s2")!, seen: rig.client.currentSeen, floor: 0))
 
         rig.client.markSeen("s1")
         // Read at once on the phone, sent once after the quiet beat.
-        #expect(!ThreadGroups.isUnseen(rig.client.session("s1")!, seen: rig.client.seen, floor: 0))
+        #expect(!ThreadGroups.isUnseen(rig.client.session("s1")!, seen: rig.client.currentSeen, floor: 0))
         let request = await rig.waitForRequest(fake, "session.markRead")
         #expect(request?.params == .object(["items": .array([.object(["sessionId": .string("s1"), "at": .number(10)])])]))
         rig.client.markSeen("s1")
@@ -129,7 +129,7 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
 
         // Another client marks s2 unread: the phone reads it unread.
         fake.deliver(#"{"push":"sessions","sessions":\#(json([markedSession("s2", updatedAt: 10, readAt: 0)]))}"#)
-        #expect(await rig.wait { ThreadGroups.isUnseen(rig.client.session("s2")!, seen: rig.client.seen, floor: 0) })
+        #expect(await rig.wait { ThreadGroups.isUnseen(rig.client.session("s2")!, seen: rig.client.currentSeen, floor: 0) })
     }
 
     @Test func `a read key keeps its marks on the phone`() async throws {
@@ -138,7 +138,7 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
         let fake = await rig.sockets.socket(0)
         fake.hello()
         await rig.answerShell(fake, sessions: [markedSession("s1", updatedAt: 10, readAt: 0)])
-        #expect(await rig.wait { rig.client.sessions.count == 1 })
+        #expect(await rig.wait { rig.client.currentSessions.count == 1 })
         rig.client.markSeen("s1")
         try? await Task.sleep(for: .milliseconds(1700))
         #expect(rig.sent(fake, "session.markRead").isEmpty)
@@ -151,7 +151,7 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
         try await cache.store("env_test", sessionId: "s1", rows: (1...50).map { textRow("s1", seq: $0) }, moreBefore: true)
         let rig = try ClientRig(cache: cache)
         await rig.client.start()
-        #expect(rig.client.sessions.map(\.id) == ["s1", "s2"])
+        #expect(rig.client.currentSessions.map(\.id) == ["s1", "s2"])
         #expect(rig.client.projects.map(\.id) == ["p1"])
         #expect(await rig.wait { rig.client.status.transport == .connecting })
         await rig.client.openThread("s1")
@@ -180,7 +180,7 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
         #expect(rig.client.threads["s1"]?.isLive == true)
         #expect(rig.client.threads["s1"]?.isLoading == false)
         #expect(await rig.wait { rig.client.status.fresh })
-        #expect(rig.client.sessions.map(\.id).sorted() == ["s1", "s3"])
+        #expect(rig.client.currentSessions.map(\.id).sorted() == ["s1", "s3"])
         #expect(rig.client.workspaces.map(\.id) == ["w1"])
         #expect(try await cache.cursor("env_test", sessionId: "s1") == 60)
     }
@@ -517,13 +517,13 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
         let fake = await rig.sockets.socket(0)
         fake.hello()
         await rig.answerShell(fake, sessions: [clientSession("s1", updatedAt: 1), clientSession("s2", updatedAt: 2)])
-        #expect(await rig.wait { rig.client.sessions.count == 2 })
-        #expect(rig.client.sessions.map(\.id) == ["s2", "s1"])
+        #expect(await rig.wait { rig.client.currentSessions.count == 2 })
+        #expect(rig.client.currentSessions.map(\.id) == ["s2", "s1"])
         fake.deliver(#"{"push":"sessions","sessions":\#(json([clientSession("s1", title: "Renamed", updatedAt: 9)]))}"#)
-        #expect(await rig.wait { rig.client.sessions.first?.title == "Renamed" })
+        #expect(await rig.wait { rig.client.currentSessions.first?.title == "Renamed" })
         await rig.client.openThread("s2")
         fake.deliver(#"{"push":"session-removed","sessionIds":["s2"]}"#)
-        #expect(await rig.wait { rig.client.sessions.count == 1 })
+        #expect(await rig.wait { rig.client.currentSessions.count == 1 })
         #expect(rig.client.threads["s2"] == nil)
         #expect(!rig.client.subscriptions.has("s2"))
     }
@@ -534,12 +534,12 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
         let fake = await rig.sockets.socket(0)
         fake.hello()
         await rig.answerShell(fake, sessions: [clientSession("root", updatedAt: 2), clientSession("child", updatedAt: 1), clientSession("other", updatedAt: 3)])
-        #expect(await rig.wait { rig.client.sessions.count == 3 })
+        #expect(await rig.wait { rig.client.currentSessions.count == 3 })
         await rig.client.openThread("root")
         let before = Int(Date().timeIntervalSince1970 * 1000)
         fake.deliver(#"{"push":"session-moved","id":"root","sessionIds":["root","child"],"to":"env_mac"}"#)
-        #expect(await rig.wait { rig.client.sessions.count == 1 })
-        #expect(rig.client.sessions.map(\.id) == ["other"])
+        #expect(await rig.wait { rig.client.currentSessions.count == 1 })
+        #expect(rig.client.currentSessions.map(\.id) == ["other"])
         #expect(rig.client.threads["root"] == nil)
         let record = try #require(rig.client.moved["root"])
         #expect(record.to == "env_mac")
@@ -550,7 +550,7 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
         #expect(rig.client.moved["other"] == nil)
         // Moved back: listed here again, the record goes.
         fake.deliver(#"{"push":"sessions","sessions":\#(json([clientSession("root", updatedAt: 9)]))}"#)
-        #expect(await rig.wait { rig.client.sessions.count == 2 })
+        #expect(await rig.wait { rig.client.currentSessions.count == 2 })
         #expect(rig.client.moved["root"] == nil)
         #expect(rig.client.moved["child"] == record)
     }
@@ -746,11 +746,11 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
         #expect(await rig.wait { rig.client.status.fresh })
         #expect(quiet == 0, "nothing changed, nothing moved")
         fake.deliver(#"{"push":"sessions","sessions":\#(json([clientSession("s1", updatedAt: 9)]))}"#)
-        #expect(await rig.wait { rig.client.sessions.first?.id == "s1" })
+        #expect(await rig.wait { rig.client.currentSessions.first?.id == "s1" })
         #expect(quiet == 1, "a list nobody is looking at changes quietly")
         rig.client.listVisible = true
         fake.deliver(#"{"push":"sessions","sessions":\#(json([clientSession("s3", updatedAt: 12)]))}"#)
-        #expect(await rig.wait { rig.client.sessions.first?.id == "s3" })
+        #expect(await rig.wait { rig.client.currentSessions.first?.id == "s3" })
         #expect(quiet == 1, "Home on screen animates its own rows")
     }
 
@@ -780,7 +780,7 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
         #expect(rig.client.shellSource == .changes)
         #expect(rig.client.hasShell)
         // The changed meta updated in place; the removed one took its thread and subscription with it.
-        #expect(rig.client.sessions.map(\.id) == ["s1"])
+        #expect(rig.client.currentSessions.map(\.id) == ["s1"])
         #expect(rig.client.session("s1")?.title == "Renamed")
         #expect(rig.client.threads["s2"] == nil)
         #expect(!rig.client.subscriptions.has("s2"))
@@ -808,7 +808,7 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
         await rig.answerShell(fake, sessions: [], changes: SessionChanges(reset: false, seq: 10, generation: "g1", sessions: [], removed: []))
         #expect(await rig.wait { rig.client.status.fresh })
         #expect(rig.client.shellSource == .changes)
-        #expect(rig.client.sessions.map(\.id) == ["s1", "s2"])
+        #expect(rig.client.currentSessions.map(\.id) == ["s1", "s2"])
         #expect(quiet == 0, "nothing changed, nothing moved")
     }
 
@@ -826,7 +826,7 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
         await rig.answerShell(fake, sessions: [clientSession("s1", updatedAt: 5), clientSession("s2", updatedAt: 7)], changes: SessionChanges(reset: true, seq: 30, generation: "g2"))
         #expect(await rig.wait { rig.client.status.fresh })
         #expect(rig.client.shellSource == .list)
-        #expect(rig.client.sessions.map(\.id) == ["s2", "s1"], "the whole walk replaced the list; s9 was not listed and is gone")
+        #expect(rig.client.currentSessions.map(\.id) == ["s2", "s1"], "the whole walk replaced the list; s9 was not listed and is gone")
         #expect(rig.client.listCursor == ListCursor(seq: 30, generation: "g2"))
         #expect(await rig.waitAsync { (try? await cache.cursor("env_test")) == ListCursor(seq: 30, generation: "g2") })
     }
@@ -844,7 +844,7 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
         await rig.answerShell(fake, sessions: [clientSession("s1")], changes: SessionChanges(reset: true, seq: 5, generation: "g1"))
         #expect(await rig.wait { rig.client.status.fresh })
         #expect(rig.client.shellSource == .list)
-        #expect(rig.client.sessions.map(\.id) == ["s1"])
+        #expect(rig.client.currentSessions.map(\.id) == ["s1"])
         #expect(rig.client.listCursor == ListCursor(seq: 5, generation: "g1"))
         #expect(await rig.waitAsync { (try? await rig.cache.cursor("env_test")) == ListCursor(seq: 5, generation: "g1") })
     }
@@ -861,7 +861,7 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
         await rig.answerShell(fake, sessions: [clientSession("s1")], changes: nil)
         #expect(await rig.wait { rig.client.status.fresh })
         #expect(rig.client.shellSource == .list)
-        #expect(rig.client.sessions.map(\.id) == ["s1"])
+        #expect(rig.client.currentSessions.map(\.id) == ["s1"])
         #expect(rig.client.listCursor == nil)
         #expect(await rig.waitAsync { (try? await cache.cursor("env_test")) == nil })
     }
@@ -883,16 +883,16 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
         fake.answer(id: events.id, result: json(EventsPage(rows: (6...8).map { textRow("s1", seq: $0) }, moreBefore: false, moreAfter: false, reset: false)))
         #expect(await rig.wait { rig.client.threads["s1"]?.rows.count == 8 })
         // The rows are on screen; the mark follows them, still against the old meta.
-        #expect(rig.client.seen["s1"] == SeenMark(at: 5, seq: 8))
+        #expect(rig.client.currentSeen["s1"] == SeenMark(at: 5, seq: 8))
         await rig.answerShell(fake, sessions: [clientSession("s1", updatedAt: 9)])
         #expect(await rig.wait { rig.client.status.fresh })
         // The fresh meta re-marks the thread the person is looking at.
-        #expect(rig.client.seen["s1"] == SeenMark(at: 9, seq: 8))
+        #expect(rig.client.currentSeen["s1"] == SeenMark(at: 9, seq: 8))
         #expect(await rig.waitAsync { (try? await cache.seen("env_test"))?["s1"] == SeenMark(at: 9, seq: 8) })
         // A thread nobody is looking at is left as it was.
         fake.deliver(#"{"push":"sessions","sessions":\#(json([clientSession("s2", updatedAt: 11)]))}"#)
         #expect(await rig.wait { rig.client.session("s2") != nil })
-        #expect(rig.client.seen["s2"] == nil)
+        #expect(rig.client.currentSeen["s2"] == nil)
     }
 
     @Test func `a reset page lands quietly even on the thread on screen`() async throws {
@@ -1000,15 +1000,18 @@ private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> Session
         try await cache.upsertSessions("env_test", [clientSession("s1", title: "Only in the cache", updatedAt: 5)])
         var observed: [[String]] = []
         rig.client.sessionObserver = { _, metas in observed.append(metas.map(\.id)) }
-        let listed = rig.client.sessions
+        // A list on screen, so a publish would land at once and not 250 ms later.
+        rig.client.listVisible = true
+        let listed = rig.client.listedSessions
         let listChanged = Mutex(false)
-        withObservationTracking { _ = rig.client.sessions } onChange: { listChanged.withLock { $0 = true } }
+        withObservationTracking { _ = rig.client.listedSessions } onChange: { listChanged.withLock { $0 = true } }
         fake.deliver(json(ServerPush.sessions(SessionsPush(sessions: [clientSession("s1", updatedAt: 5)]))))
         // A push behind it that touches no session: once it lands, the meta was handled.
         fake.deliver(json(ServerPush.workspaces(WorkspacesPush(workspaces: [sampleWorkspace("w1"), sampleWorkspace("w2")]))))
         #expect(await rig.wait { rig.client.workspaces.count == 2 })
         #expect(!listChanged.withLock { $0 })
-        #expect(rig.client.sessions == listed)
+        #expect(rig.client.listedSessions == listed)
+        #expect(rig.client.currentSessions == listed)
         #expect(observed.isEmpty)
         await rig.client.cacheWrites.drained()
         #expect(try await cache.shell("env_test").sessions.first { $0.id == "s1" }?.title == "Only in the cache")

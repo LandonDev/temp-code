@@ -120,7 +120,7 @@ struct WorkingStripView: View {
     /// Paused: the glyph in the warning tint, the frozen time, the batch
     /// on a master, then Stop and Continue.
     private var pausedRow: some View {
-        let batch = session?.isMaster == true ? ComposerSlot.batchPaused(of: sessionId, in: client.sessions) : 0
+        let batch = session?.isMaster == true ? client.pausedBatch(of: sessionId) : 0
         return row {
             words(.paused(batch: batch), symbol: "pause.fill", tint: Tint.warning, stamp: frozen)
         } actions: {

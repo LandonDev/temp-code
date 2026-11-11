@@ -10,7 +10,7 @@ struct ArchivedThreadsView: View {
 
     var body: some View {
         let project = client.projects.first { $0.id == projectId }
-        let threads = ThreadGroups.archivedThreads(client.sessions, projectId: projectId)
+        let threads = ThreadGroups.archivedThreads(client.listedSessions, projectId: projectId)
         List {
             Section {
                 ForEach(threads, id: \.id) { meta in
@@ -47,7 +47,7 @@ struct ArchivedProjectsView: View {
     let workspaceId: String
 
     var body: some View {
-        let groups = ThreadGroups.group(client.sessions, projects: client.projects, workspaces: client.workspaces, workspaceId: workspaceId, seen: client.seen, floor: Int(client.environment.addedAt)).archived
+        let groups = ThreadGroups.group(client.listedSessions, projects: client.projects, workspaces: client.workspaces, workspaceId: workspaceId, seen: client.seen, floor: Int(client.environment.addedAt)).archived
         List {
             ForEach(groups) { group in
                 Section {

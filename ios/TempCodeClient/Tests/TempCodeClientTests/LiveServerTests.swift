@@ -211,7 +211,7 @@ struct LiveServerTests {
         let client = EnvironmentClient(environment: LiveServer.environment(), keys: try LiveServer.keys(), cache: try SessionCache.inMemory())
         await client.start()
         #expect(await LiveServer.until { client.status.fresh })
-        #expect(Set(client.sessions.map(\.id)).isSuperset(of: [LiveServer.threadA, LiveServer.threadB]))
+        #expect(Set(client.currentSessions.map(\.id)).isSuperset(of: [LiveServer.threadA, LiveServer.threadB]))
         await client.openThread(LiveServer.threadA)
         #expect(await LiveServer.until { client.threads[LiveServer.threadA]?.isLive == true && (client.threads[LiveServer.threadA]?.rows.count ?? 0) >= 9 })
         let seeded = client.threads[LiveServer.threadA]!.rows
@@ -294,7 +294,7 @@ struct LiveServerTests {
         await first.openThread(LiveServer.threadB)
         #expect(await LiveServer.until { first.threads[LiveServer.threadB]?.isLive == true })
         let left = first.threads[LiveServer.threadB]!.rows
-        let listed = first.sessions
+        let listed = first.currentSessions
         await first.stop()
         _ = try await LiveServer.control("/append", ["sessionId": LiveServer.threadB, "count": 3])
 
@@ -305,7 +305,7 @@ struct LiveServerTests {
         #expect(next.threads[LiveServer.threadB]?.isLoading == false)
         #expect(next.threads[LiveServer.threadB]?.isLive == false)
         await next.start()
-        #expect(next.sessions == listed, "the shell is the one the last run saw")
+        #expect(next.currentSessions == listed, "the shell is the one the last run saw")
         #expect(await LiveServer.until(15) { next.threads[LiveServer.threadB]?.isLive == true && (next.threads[LiveServer.threadB]?.rows.count ?? 0) == left.count + 3 })
         let rows = next.threads[LiveServer.threadB]!.rows
         #expect(Array(rows.prefix(left.count)) == left)
@@ -335,7 +335,7 @@ struct LiveServerTests {
         #expect(next.shellSource == .changes, "the list reconciled from the cursor instead of listing whole")
         let reconciled = try #require(next.session(LiveServer.threadB))
         #expect(reconciled.updatedAt > listedB.updatedAt, "the thread that moved while away carries its new updatedAt")
-        #expect(Set(next.sessions.map(\.id)).isSuperset(of: [LiveServer.threadA, LiveServer.threadB]))
+        #expect(Set(next.currentSessions.map(\.id)).isSuperset(of: [LiveServer.threadA, LiveServer.threadB]))
         let cursor = try #require(next.listCursor)
         #expect(cursor.generation == head.generation)
         #expect(cursor.seq > head.seq, "the cursor moved past the append")
@@ -406,7 +406,7 @@ struct LiveServerTests {
         let paired: Set<String> = [primary.environment.id, second.environment.id]
 
         // The project's shell: one strip under the link's key, the second host's thread beside the primary's.
-        let inputs = [primary, second].map { HomeHostInput(environmentId: $0.environment.id, name: $0.environment.name, workspaces: $0.workspaces, projects: $0.projects, sessions: $0.sessions) }
+        let inputs = [primary, second].map { HomeHostInput(environmentId: $0.environment.id, name: $0.environment.name, workspaces: $0.workspaces, projects: $0.projects, sessions: $0.currentSessions) }
         let scope = try #require(ThreadStrip.scope(key: "link:\(LiveServer.projectLinkId)", hosts: inputs))
         guard case .project(let linked) = scope.kind else { Issue.record("not a project scope"); return }
         #expect(linked.isLinked)
@@ -436,8 +436,8 @@ struct LiveServerTests {
         #expect(child.remote && child.paired && child.environmentId == second.environment.id)
         let ghost = CrossHost.placement(childSessionId: "ios-ghost-child", environmentId: hosts["ios-ghost-child"], home: primary.environment.id, paired: paired)
         #expect(ghost.remote && !ghost.paired)
-        #expect(second.sessions.contains { $0.id == "ios-xhost-child" && $0.parentId == LiveServer.threadCrossHost })
-        #expect(!primary.sessions.contains { $0.id == "ios-xhost-child" })
+        #expect(second.currentSessions.contains { $0.id == "ios-xhost-child" && $0.parentId == LiveServer.threadCrossHost })
+        #expect(!primary.currentSessions.contains { $0.id == "ios-xhost-child" })
 
         // fs.media stamps the minting host on every URL.
         await primary.openThread(LiveServer.threadChat)
@@ -474,7 +474,7 @@ struct LiveServerTests {
             #expect(client.status.lastHello?.environmentId == host.environmentId)
             #expect(client.status.lastHello?.via == LiveServer.environmentId)
             #expect(client.status.lastHello?.presence?.environmentId == host.environmentId)
-            #expect(await LiveServer.until { client.sessions.contains { $0.id == LiveServer.threadA } })
+            #expect(await LiveServer.until { client.currentSessions.contains { $0.id == LiveServer.threadA } })
             await client.stop()
         }
 

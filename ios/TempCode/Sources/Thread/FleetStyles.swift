@@ -585,7 +585,7 @@ struct FleetGather {
     init(registry: ClientRegistry, root client: EnvironmentClient, rootId: String) {
         var ordered = registry.ordered
         if !ordered.contains(where: { $0 === client }) { ordered.insert(client, at: 0) }
-        let hosts = ordered.map { Fleet.Host(id: $0.environment.id, name: $0.environment.name, sessions: $0.sessions) }
+        let hosts = ordered.map { Fleet.Host(id: $0.environment.id, name: $0.environment.name, sessions: $0.listedSessions) }
         agents = Fleet.gather(rootId: rootId, rootHost: client.environment.id, hosts: hosts)
         clients = Dictionary(ordered.map { ($0.environment.id, $0) }, uniquingKeysWith: { first, _ in first })
         let now = Date().timeIntervalSince1970 * 1000

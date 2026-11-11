@@ -406,7 +406,7 @@ struct ApprovalCard: View {
 
     /// The host's decision, else this device's until the host confirms.
     private var decided: Bool? {
-        approval.allowed ?? client.threads[sessionId]?.decisions[approval.request.requestId]
+        approval.allowed ?? client.thread(sessionId)?.overlays.decisions[approval.request.requestId]
     }
 
     var body: some View {
@@ -528,7 +528,7 @@ struct QuestionCard: View {
 
     /// The host's answers, else this device's until the host confirms.
     private var answers: [[String]]? {
-        question.answers ?? client.threads[sessionId]?.answers[question.request.requestId]
+        question.answers ?? client.thread(sessionId)?.overlays.answers[question.request.requestId]
     }
 
     private var resolved: Bool { question.resolved || answers != nil }

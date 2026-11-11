@@ -15,7 +15,10 @@ struct MasterView: View {
     let client: EnvironmentClient
     let sessionId: String
     let session: SessionMeta?
-    let thread: ThreadState
+    /// The thread's model (nil until the client holds it), never its state:
+    /// a view that kept the state would share its arrays.
+    let held: ThreadModel?
+    private var thread: ThreadState { held?.state ?? ThreadState() }
     @Environment(AppModel.self) private var app
     /// The person's own fold of each row's task list, by row key.
     @State private var tasksOpen: [String: Bool] = [:]
@@ -32,9 +35,9 @@ struct MasterView: View {
         let hostNames = Dictionary(app.registry.ordered.map { ($0.environment.id, $0.environment.name) }, uniquingKeysWith: { first, _ in first })
         let paired = farMetas(state)
         let remote = MasterBoard.remoteChildren(state, localHost: client.environment.id) { env, id in paired["\(env):\(id)"] }
-        let rows = MasterBoard.foldRows(children: MasterBoard.children(of: sessionId, in: client.sessions), all: client.sessions, masterId: sessionId, remote: remote)
+        let rows = MasterBoard.foldRows(children: MasterBoard.children(of: sessionId, in: client.listedSessions), all: client.listedSessions, masterId: sessionId, remote: remote)
         let sections = MasterBoard.sections(rows)
-        let agents = MasterBoard.rowAgentLines(rows) { env in env.map { app.registry.client($0)?.sessions ?? [] } ?? client.sessions }
+        let agents = MasterBoard.rowAgentLines(rows) { env in env.map { app.registry.client($0)?.listedSessions ?? [] } ?? client.listedSessions }
         let landed = Set(state.landed)
         let steps = BatchSteps.liveSteps(state)
         let titleOf = { (id: String) -> String? in
@@ -45,7 +48,7 @@ struct MasterView: View {
             MasterBar(
                 block: client.operateBlock,
                 rows: rows,
-                candidates: session.map { BoardActions.adoptCandidates(client.sessions, master: $0) } ?? [],
+                candidates: session.map { BoardActions.adoptCandidates(client.listedSessions, master: $0) } ?? [],
                 onAdd: { sheet = .add },
                 onAdopt: { sheet = .adopt },
                 onPause: { pausing = true },

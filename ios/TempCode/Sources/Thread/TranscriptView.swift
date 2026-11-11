@@ -26,7 +26,11 @@ import TempCodeContract
 struct TranscriptView: View {
     let client: EnvironmentClient
     let sessionId: String
-    let thread: ThreadState
+    /// The thread's model, never its state: a view that held the state would
+    /// share its arrays, and every push would copy them. The body waits on
+    /// two of its projections: `content` (what the rows are built from
+    /// moved) and `flags` (loading, older rows, gone).
+    let thread: ThreadModel
     var targetSeq: Int?
     /// The reading measure applies: a chat, a subagent, the agent detail.
     var measured = false
@@ -62,7 +66,9 @@ struct TranscriptView: View {
 
     var body: some View {
         let _ = PerfCounters.bump(.transcriptBody)
-        let built = model.update(thread, waits: waitRead, statusOf: waitStatus)
+        let content = thread.content
+        let flags = thread.flags
+        let built = model.update(thread.value, waits: waitRead, statusOf: waitStatus)
         let _ = PerfCounters.bump(.rowBuilds, by: built ? 1 : 0)
         let _ = PerfCounters.bump(.rowsBuilt, by: model.built)
         #if DEBUG
@@ -76,10 +82,10 @@ struct TranscriptView: View {
         let waitIds = model.waitIds
         let start = model.windowStart(top: windowTop, count: window)
         let shown = Array(model.rows[start...])
-        let moreAbove = start > 0 || thread.moreBefore
+        let moreAbove = start > 0 || flags.moreBefore
         let gaps = model.gaps(from: start)
         let _ = listScroll.note(window: shown, lead: moreAbove || empty ? 1 : 0)
-        let _ = bornRows.open(thread: client.threads[sessionId])
+        let _ = bornRows.open(loading: flags.isLoading, live: flags.isLive, hasRows: flags.hasRows, lastSeq: content.lastSeq)
         #if DEBUG
         let _ = LayoutProbe.note("bornOpenedAt", bornRows.openedAt.map(String.init) ?? "waiting")
         #endif
@@ -88,14 +94,14 @@ struct TranscriptView: View {
             let _ = follow.resize = { change in handResize(proxy: proxy, change) }
             List {
                 if moreAbove {
-                    TopSentinel(loading: thread.isLoadingOlder) {
+                    TopSentinel(loading: flags.isLoadingOlder) {
                         await extend(proxy: proxy, shown: shown)
                     }
                     .listRowInsets(rowInsets)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                 } else if empty {
-                    EmptyTranscript(thread: thread)
+                    EmptyTranscript(loading: flags.isLoading, gone: flags.goneReason)
                         .listRowInsets(rowInsets)
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
@@ -155,7 +161,7 @@ struct TranscriptView: View {
                 client.keepRows(sessionId, from: shown.lazy.compactMap(\.anchorSeq).first { $0 > 0 })
             }
             // The window's settled replies parse off the main actor before their rows mount, newest first.
-            .onChange(of: "\(shown.first?.id.key ?? 0)|\(shown.count)|\(thread.fold.lastSeq)", initial: true) { prefetch(shown) }
+            .onChange(of: "\(shown.first?.id.key ?? 0)|\(shown.count)|\(content.lastSeq)", initial: true) { prefetch(shown) }
             // The measure: the inset past the 16 pt row inset that centres a column no wider than the cap.
             .contentMargins(.horizontal, measured ? ReadingMeasure.sideInset(width: listWidth) - ReadingMeasure.edge : 0, for: .scrollContent)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { was, now in
@@ -211,7 +217,7 @@ struct TranscriptView: View {
                         .accessibilityIdentifier("search-target-status")
                 }
             }
-            .onChange(of: thread.fold.lastSeq) {
+            .onChange(of: content.lastSeq) {
                 pinTail(proxy: proxy)
                 if hold != nil { noteHold(nil) }
             }
@@ -240,29 +246,29 @@ struct TranscriptView: View {
                 openFirstGroupForProof(proxy: proxy)
             }
             // Keyed by the target too: a new row named to an open transcript lands again.
-            .task(id: "\(thread.isLoading)|\(targetSeq ?? -1)") {
-                guard !thread.isLoading, client.threads[sessionId] != nil else { return }
+            .task(id: "\(flags.isLoading)|\(targetSeq ?? -1)") {
+                guard !flags.isLoading else { return }
                 await land(proxy: proxy)
             }
-            .task(id: thread.isLoading) {
-                guard TestHooks.scroll, !thread.isLoading, !empty, !scrollRan else { return }
+            .task(id: flags.isLoading) {
+                guard TestHooks.scroll, !flags.isLoading, !empty, !scrollRan else { return }
                 scrollRan = true
                 await scrollProof(proxy: proxy)
             }
             #if DEBUG
-            .task(id: TestHooks.groupGlide == nil ? "" : "\(thread.isLoading)|\(empty)") {
-                guard TestHooks.groupGlide != nil, !thread.isLoading, !empty, !scrollRan else { return }
+            .task(id: TestHooks.groupGlide == nil ? "" : "\(flags.isLoading)|\(empty)") {
+                guard TestHooks.groupGlide != nil, !flags.isLoading, !empty, !scrollRan else { return }
                 scrollRan = true
                 await groupGlideProof()
             }
             #endif
             // A performance run asked of this thread (the proof's launch, the Diagnostics screen).
-            .task(id: PerfSession.shared.taskKey(loading: thread.isLoading, empty: empty)) {
-                guard !thread.isLoading, !empty else { return }
+            .task(id: PerfSession.shared.taskKey(loading: flags.isLoading, empty: empty)) {
+                guard !flags.isLoading, !empty else { return }
                 await perfRun()
             }
-            .task(id: TestHooks.scrollUp || TestHooks.stream ? "\(thread.isLoading)|\(empty)" : "") {
-                guard TestHooks.scrollUp || TestHooks.stream, !thread.isLoading, !empty, !scrollRan else { return }
+            .task(id: TestHooks.scrollUp || TestHooks.stream ? "\(flags.isLoading)|\(empty)" : "") {
+                guard TestHooks.scrollUp || TestHooks.stream, !flags.isLoading, !empty, !scrollRan else { return }
                 scrollRan = true
                 if TestHooks.scrollUp { await scrollUpProof() } else { await streamProof() }
             }
@@ -388,7 +394,7 @@ struct TranscriptView: View {
     /// The rows as the thread stands now: the model brought up to the client's
     /// state, for a step that runs between two passes of the body.
     private func currentRows() -> [TranscriptRowModel] {
-        if let state = client.threads[sessionId] { model.update(state, waits: waitRead, statusOf: waitStatus) }
+        model.update(thread.value, waits: waitRead, statusOf: waitStatus)
         return model.rows
     }
 
@@ -426,7 +432,7 @@ struct TranscriptView: View {
     /// DEBUG only: `TC_TEST_OPEN=group` opens the first group and lands on it, once; `last-group` the last.
     private func openFirstGroupForProof(proxy: ScrollViewProxy) {
         let isGroup: (TranscriptRowModel) -> Bool = { if case .group = $0 { return true } else { return false } }
-        guard TestHooks.open == "group" || TestHooks.open == "last-group", !proofGroupOpened, !thread.isLoading else { return }
+        guard TestHooks.open == "group" || TestHooks.open == "last-group", !proofGroupOpened, !thread.value.isLoading else { return }
         let rows = model.rows
         guard let first = TestHooks.open == "group" ? rows.first(where: isGroup) : rows.last(where: isGroup) else { return }
         proofGroupOpened = true
@@ -446,16 +452,16 @@ struct TranscriptView: View {
         // Load the fixture before timing: hitting the top must not fetch a
         // page and refold while the display link measures the scroll.
         for _ in 0..<100 {
-            guard !Task.isCancelled, let state = client.threads[sessionId], state.moreBefore,
+            guard !Task.isCancelled, case let state = thread.value, state.moreBefore,
                   let first = state.rows.first?.seq else { break }
             if state.isLoadingOlder {
                 try? await Task.sleep(for: .milliseconds(20))
                 continue
             }
             await client.loadOlder(sessionId)
-            guard let now = client.threads[sessionId]?.rows.first?.seq, now < first else { break }
+            guard let now = thread.value.rows.first?.seq, now < first else { break }
         }
-        guard let state = client.threads[sessionId], !state.moreBefore, !state.entries.isEmpty else { return }
+        guard case let state = thread.value, !state.moreBefore, !state.entries.isEmpty else { return }
         let rows = currentRows()
         resize(rows.count)
         try? await Task.sleep(for: .seconds(2))
@@ -484,7 +490,8 @@ struct TranscriptView: View {
         guard built, !LayoutProbe.off else { return }
         shadow.builds += 1
         guard shadow.builds % 16 == 0 else { return }
-        let whole = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: model.memory.copy(), waits: thread.fold.waitOutcomes, statusOf: waitStatus)
+        let state = thread.value
+        let whole = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: model.memory.copy(), waits: state.fold.waitOutcomes, statusOf: waitStatus)
         guard whole != model.rows else { return }
         let at = zip(whole, model.rows).enumerated().first { $0.element.0 != $0.element.1 }?.offset ?? min(whole.count, model.rows.count)
         LayoutProbe.note("rowsMismatch", "row \(at) of \(model.rows.count) (a whole build has \(whole.count))")
@@ -523,7 +530,7 @@ struct TranscriptView: View {
         TestHooks.recordTranscript(sessionId: sessionId, state: scrollState)
         #endif
         hold = TestHooks.ScrollHold(startOffset: y, minOffset: y, maxOffset: y, samples: 0, rowsAtStart: rows, rows: rows,
-                                    seqAtStart: thread.fold.lastSeq, seq: thread.fold.lastSeq, atBottom: scrollState.atBottom)
+                                    seqAtStart: thread.value.fold.lastSeq, seq: thread.value.fold.lastSeq, atBottom: scrollState.atBottom)
         noteHold(nil)
     }
 
@@ -625,7 +632,7 @@ struct TranscriptView: View {
             next.maxOffset = max(next.maxOffset, Double(y))
         }
         next.rows = model.rows.count
-        next.seq = thread.fold.lastSeq
+        next.seq = thread.value.fold.lastSeq
         next.atBottom = scrollState.atBottom
         hold = next
         TestHooks.recordScrollHold(next)
@@ -642,11 +649,10 @@ struct TranscriptView: View {
         let recorder = FrameRecorder()
         self.recorder = recorder
         let state = scrollState
-        let client = client
-        let sessionId = sessionId
-        // ThreadState is a value: read the client's current one at each call. Rows, partials included, show the stream landing.
-        recorder.start(sourceRows: thread.rows.count, items: model.rows.count,
-                       scrollView: proofScrollView, driver: .stream(pinned: { state.atBottom }, seq: { client.threads[sessionId]?.rows.count ?? 0 }))
+        let thread = thread
+        // The model's state as it is at each call. Rows, partials included, show the stream landing.
+        recorder.start(sourceRows: thread.value.rows.count, items: model.rows.count,
+                       scrollView: proofScrollView, driver: .stream(pinned: { state.atBottom }, seq: { thread.value.rows.count }))
         if TestHooks.streamDrag {
             try? await Task.sleep(for: .seconds(4))
             await dragHoldProof(proofScrollView)
@@ -673,7 +679,7 @@ struct TranscriptView: View {
         let held = scroll.contentOffset.y
         let pinsBefore = pins.ran
         var low = held, high = held, samples = 0
-        let rowsBefore = client.threads[sessionId]?.rows.count ?? 0
+        let rowsBefore = thread.value.rows.count
         for _ in 0..<180 {
             try? await Task.sleep(for: .milliseconds(16))
             low = min(low, scroll.contentOffset.y)
@@ -682,7 +688,7 @@ struct TranscriptView: View {
         }
         let tenths = { (y: CGFloat) in Int((y * 10).rounded()) }
         TestHooks.recordDragHold(["held": tenths(held), "min": tenths(low), "max": tenths(high), "samples": samples,
-                                  "pins": pins.ran - pinsBefore, "rowsLanded": (client.threads[sessionId]?.rows.count ?? 0) - rowsBefore,
+                                  "pins": pins.ran - pinsBefore, "rowsLanded": thread.value.rows.count - rowsBefore,
                                   "atBottom": state.atBottom ? 1 : 0])
         // The finger lifts inside the slack: the reader is at the bottom again, and the next step pins.
         state.readerMoving = false
@@ -808,13 +814,13 @@ struct TranscriptView: View {
               let index = model.index(of: id) else {
             if !Task.isCancelled {
                 targetStatus = "Search result could not be found."
-                TestHooks.recordNavigation(target: targetSeq, item: nil, oldest: client.threads[sessionId]?.rows.first?.seq)
+                TestHooks.recordNavigation(target: targetSeq, item: nil, oldest: thread.value.rows.first?.seq)
             }
             return
         }
         guard !Task.isCancelled else { return }
         targetStatus = nil
-        TestHooks.recordNavigation(target: targetSeq, item: seq, oldest: client.threads[sessionId]?.rows.first?.seq)
+        TestHooks.recordNavigation(target: targetSeq, item: seq, oldest: thread.value.rows.first?.seq)
         resize(max(window, rows.count - index + 8))
         if case .group = rows[index] { Motion.withoutAnimation { openGroups.insert(id) } }
         try? await Task.sleep(for: .milliseconds(60))
@@ -980,14 +986,15 @@ private struct TopSentinel: View {
 }
 
 private struct EmptyTranscript: View {
-    let thread: ThreadState
+    let loading: Bool
+    let gone: String?
 
     var body: some View {
         HStack {
             Spacer()
-            if thread.isLoading {
+            if loading {
                 ProgressView()
-            } else if let gone = thread.goneReason {
+            } else if let gone {
                 Text(gone)
                     .font(.footnote)
                     .foregroundStyle(.secondary)

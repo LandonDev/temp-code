@@ -126,6 +126,25 @@ public struct StripModel: Sendable, Hashable {
     public var shelf: [StripChip]
 
     public var selected: StripChip? { (live + shelf).first(where: \.selected) }
+
+    /// What the strip draws of a chip: its place, its title, its look and
+    /// its flags, and nothing else of its meta. A meta that changes none of
+    /// these (its activity, its context level, its time) redraws no chip.
+    public struct Drawn: Sendable, Hashable {
+        public var id: String
+        public var title: String
+        public var look: StripChipLook
+        public var selected: Bool
+        public var live: Bool
+        public var outside: Bool
+        public var sending: Bool
+    }
+
+    /// The strip as drawn, live row then shelf.
+    public var drawn: [Drawn] {
+        live.map { Drawn(id: $0.id, title: $0.meta.title, look: $0.look(onShelf: false), selected: $0.selected, live: $0.live, outside: $0.outside, sending: $0.sending) }
+            + shelf.map { Drawn(id: $0.id, title: $0.meta.title, look: $0.look(onShelf: true), selected: $0.selected, live: $0.live, outside: $0.outside, sending: $0.sending) }
+    }
     /// What the order may keep: the live row less the outside chip.
     public var saveIds: [String] { live.filter { !$0.outside }.map(\.id) }
 

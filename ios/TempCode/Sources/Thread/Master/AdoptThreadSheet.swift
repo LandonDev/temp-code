@@ -18,7 +18,7 @@ struct AdoptThreadSheet: View {
     @State private var error: String?
 
     var body: some View {
-        let candidates = BoardActions.adoptCandidates(client.sessions, master: master)
+        let candidates = BoardActions.adoptCandidates(client.listedSessions, master: master)
         let block = client.operateBlock
         NavigationStack {
             List {

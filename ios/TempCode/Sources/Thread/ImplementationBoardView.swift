@@ -13,15 +13,18 @@ struct ImplementationBoardView: View {
     let client: EnvironmentClient
     let sessionId: String
     let session: SessionMeta?
-    let thread: ThreadState
+    /// The thread's model (nil until the client holds it), never its state:
+    /// a view that kept the state would share its arrays.
+    let held: ThreadModel?
+    private var thread: ThreadState { held?.state ?? ThreadState() }
     let document: String?
     @State private var choice: TodoChoice
 
-    init(client: EnvironmentClient, sessionId: String, session: SessionMeta?, thread: ThreadState, document: String?) {
+    init(client: EnvironmentClient, sessionId: String, session: SessionMeta?, held: ThreadModel?, document: String?) {
         self.client = client
         self.sessionId = sessionId
         self.session = session
-        self.thread = thread
+        self.held = held
         self.document = document
         // The proof's `TC_TEST_OPEN=todo` shoots a row with its trace open.
         _choice = State(initialValue: TestHooks.open == "todo" ? .firstTrace : .auto)
@@ -30,7 +33,7 @@ struct ImplementationBoardView: View {
     var body: some View {
         let running = session?.status == .running || session?.status == .starting
         let board = ImplementationBoard.build(thread.fold, running: running)
-        let agents = Fleet.children(of: sessionId, in: client.sessions)
+        let agents = client.children(of: sessionId)
         let empty = board.rounds.allSatisfy { !$0.hasRow && $0.outcomes.isEmpty } && board.closing == nil && agents.isEmpty
         let plan = session?.planThreadId.flatMap { client.session($0) }
         // The launch hook names a row by what the board holds now.

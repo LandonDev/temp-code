@@ -289,7 +289,7 @@ extension EnvironmentClient {
     /// target; a key that cannot act is refused before the wire.
     public func batch(_ action: BatchAction, selection: BatchSelection, cleanup: Bool = false) async throws -> BatchToast {
         if let block = operateBlock { throw ActionError.blocked(block) }
-        let targets = ThreadBatch.targets(action, sessions, selection)
+        let targets = ThreadBatch.targets(action, currentSessions, selection)
         guard !targets.isEmpty else { return ThreadBatch.toast(action, succeeded: 0, failed: []) }
         let titleOf = Dictionary(targets.map { ($0.id, $0.title) }, uniquingKeysWith: { first, _ in first })
         do {

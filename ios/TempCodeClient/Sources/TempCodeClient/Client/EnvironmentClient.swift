@@ -326,13 +326,27 @@ public final class EnvironmentClient {
     public private(set) var status: EnvironmentStatus = .idle
     public private(set) var workspaces: [WorkspaceMeta] = []
     public private(set) var projects: [ProjectMeta] = []
-    /// Newest first.
-    public private(set) var sessions: [SessionMeta] = []
-    /// The same metas by id, outside observation: `merge` compares an
-    /// incoming meta with the one held before it does any work, and the
-    /// client's own reads (a push's trim, the seen mark) cost no walk.
-    @ObservationIgnored private var metaById: [String: SessionMeta] = [:]
-    public internal(set) var threads: [String: ThreadState] = [:]
+    /// The sessions as they are now, outside observation (`SessionStore`):
+    /// `merge` compares an incoming meta with the one held before it does
+    /// any work, and everything in the client that must act on the meta as
+    /// it is reads here (the badge, the Live Activity, the seen mark, a
+    /// push's trim, a send's status, a bare thread's placing).
+    @ObservationIgnored let store = SessionStore()
+    /// The sessions the list screens read, newest first: the store's list,
+    /// caught up at once while Home's list is on screen and at most four
+    /// times a second while it is not (`publishListed`), so a busy host's
+    /// metas do not redraw lists nobody is looking at. `seen` goes with it.
+    public private(set) var listedSessions: [SessionMeta] = []
+    /// Moves whenever the store or the seen marks do: what a reader off the
+    /// body follows to work out its own answer from the current ones (the
+    /// project shell's strip). No view reads it in its body.
+    public private(set) var liveRevision = 0
+    /// Every held thread, each observed on its own (`ThreadModel`); the
+    /// dictionary itself is no part of what a view observes.
+    @ObservationIgnored private var models: [String: ThreadModel] = [:]
+    /// Moves when a thread is first held or leaves: a reader that asked for
+    /// a thread before it was held hears it arrive.
+    private var heldStamp = 0
     /// The oldest seq each open transcript's window shows; a trim never takes it (`ThreadState.append`).
     @ObservationIgnored private var windowFloors: [String: Int] = [:]
     /// The host's catalog once `loadCatalog` fetched it.
@@ -371,6 +385,8 @@ public final class EnvironmentClient {
     /// thread whose host keeps them (`SessionMeta.readAt`), this phone's own
     /// otherwise (`ReadMarks.merged`); `markSeen` writes both.
     public private(set) var seen: [String: SeenMark] = [:]
+    /// The same marks as they are now, outside observation; `seen` catches up with the list.
+    @ObservationIgnored public private(set) var currentSeen: [String: SeenMark] = [:]
     /// This phone's own marks, from the cache.
     @ObservationIgnored private var localSeen: [String: SeenMark] = [:]
     /// The host's marks this phone has to send or has not heard back.
@@ -427,7 +443,20 @@ public final class EnvironmentClient {
     /// What this socket last told the host it shows (`session.focus`).
     @ObservationIgnored var focusSignal = FocusSignal()
     /// Home's list of this host's threads is on screen.
-    public var listVisible = false
+    public var listVisible = false {
+        didSet {
+            // A list that shows is current at once.
+            if listVisible, !oldValue { catchUpListed() }
+        }
+    }
+    /// When the list screens' copy last caught up, and the catch-up waiting out its quarter second.
+    @ObservationIgnored private var listedAt = ContinuousClock.now - .seconds(1)
+    @ObservationIgnored private var listedLater: Task<Void, Never>?
+    /// How often the list screens' copy catches up while no list is on screen.
+    static let listedEveryMs = 250
+    @ObservationIgnored private var childrenOf: [String: SessionProjection<[SessionMeta]>] = [:]
+    @ObservationIgnored private var cueOf: [String: SessionProjection<AgentsCue?>] = [:]
+    @ObservationIgnored private var pausedBatchOf: [String: SessionProjection<Int>] = [:]
     /// How a change nobody is looking at is published. The app sets this to
     /// `withTransaction(Transaction(animation: nil))`, so rows that landed
     /// while the person was elsewhere are simply there when they come back,
@@ -483,8 +512,9 @@ public final class EnvironmentClient {
         if let shell = try? await cache.shell(environment.id) {
             workspaces = shell.workspaces
             projects = shell.projects
-            sessions = shell.sessions
-            metaById = Dictionary(shell.sessions.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            store.replace(shell.sessions)
+            listedSessions = shell.sessions
+            liveRevision += 1
             catalogStamp += 1
             reindexPlacing(shell.sessions, gone: [])
             if !shell.sessions.isEmpty { shellSource = .cache }
@@ -515,7 +545,7 @@ public final class EnvironmentClient {
         for loop in loops { loop.cancel() }
         loops = []
         await socket.stop()
-        for id in threads.keys { threads[id]?.isLive = false }
+        for model in models.values where model.value.isLive { model.mutate { $0.isLive = false } }
     }
 
     /// The environment was removed: stop and forget its cache.
@@ -527,10 +557,12 @@ public final class EnvironmentClient {
         await cacheWrites.drained()
         workspaces = []
         projects = []
-        sessions = []
-        metaById = [:]
+        store.replace([])
+        listedSessions = []
+        liveRevision += 1
         reindexPlacing([], gone: Set(placingIndex.keys))
-        threads = [:]
+        models = [:]
+        heldStamp += 1
         listCursor = nil
         shellSource = .none
     }
@@ -567,8 +599,106 @@ public final class EnvironmentClient {
 
     // MARK: - threads
 
+    /// The session's meta, observed on its own: a reader runs again when
+    /// this session's meta changes (or first arrives, or leaves), and for no
+    /// other session's.
     public func session(_ id: String) -> SessionMeta? {
-        sessions.first { $0.id == id }
+        store.slot(id).meta
+    }
+
+    /// The session's meta as it is now, with nothing tracked: for code that acts.
+    public func currentSession(_ id: String) -> SessionMeta? {
+        store.byId[id]
+    }
+
+    /// Every session as it is now, newest first, with nothing tracked.
+    public var currentSessions: [SessionMeta] {
+        store.sorted
+    }
+
+    /// The thread's direct children, observed on their own: a reader runs
+    /// again only when that list changed.
+    public func children(of id: String) -> [SessionMeta] {
+        if let held = childrenOf[id] { return held.value }
+        let made = store.project { Fleet.children(of: id, in: $0) }
+        childrenOf[id] = made
+        return made.value
+    }
+
+    /// The agents cue of a root (`AgentsCue.of`), observed on its own.
+    public func agentsCue(of rootId: String) -> AgentsCue? {
+        if let held = cueOf[rootId] { return held.value }
+        let made = store.project { metas in
+            AgentsCue.of(rootId: rootId, metas: metas, rootRunning: metas.first { $0.id == rootId }?.status == .running)
+        }
+        cueOf[rootId] = made
+        return made.value
+    }
+
+    /// How many of a master's batch threads are paused (`ComposerSlot.batchPaused`), observed on its own.
+    public func pausedBatch(of masterId: String) -> Int {
+        if let held = pausedBatchOf[masterId] { return held.value }
+        let made = store.project { ComposerSlot.batchPaused(of: masterId, in: $0) }
+        pausedBatchOf[masterId] = made
+        return made.value
+    }
+
+    /// The held thread, observed on its own; nil for one not held. A reader
+    /// that asked before the thread was held runs again when it is.
+    public func thread(_ id: String) -> ThreadModel? {
+        _ = heldStamp
+        return models[id]
+    }
+
+    /// The held threads by id, as values: `threads[id]` reads one thread's
+    /// whole state and tracks that thread alone. A view that draws rows
+    /// takes `thread(_:)` and its projections instead.
+    public var threads: Threads { Threads(client: self) }
+
+    @MainActor
+    public struct Threads {
+        fileprivate let client: EnvironmentClient
+
+        public subscript(id: String) -> ThreadState? {
+            get { client.thread(id)?.state }
+            nonmutating set {
+                if let newValue {
+                    client.hold(id, newValue)
+                } else {
+                    client.drop(id)
+                }
+            }
+        }
+
+        public var keys: [String] { Array(client.models.keys) }
+        public var count: Int { client.models.count }
+        public var isEmpty: Bool { client.models.isEmpty }
+    }
+
+    /// The held thread's state with nothing tracked.
+    func peek(_ id: String) -> ThreadState? {
+        models[id]?.value
+    }
+
+    /// One write to a held thread, in place; nothing for one not held.
+    @discardableResult
+    func write<T>(_ id: String, _ body: (inout ThreadState) -> T) -> T? {
+        models[id]?.mutate(body)
+    }
+
+    /// Holds `state` for the thread: a new model, or the held one written whole.
+    fileprivate func hold(_ id: String, _ state: ThreadState) {
+        if let model = models[id] {
+            model.mutate { $0 = state }
+        } else {
+            models[id] = ThreadModel(state)
+            heldStamp += 1
+        }
+    }
+
+    fileprivate func drop(_ id: String) {
+        guard models.removeValue(forKey: id) != nil else { return }
+        heldStamp += 1
     }
 
     /// The user is looking at the thread: its newest work counts as seen from
@@ -576,8 +706,8 @@ public final class EnvironmentClient {
     /// the app is in the foreground and the key may operate, coalesced
     /// (`scheduleReadFlush`), so the Mac and the box read it as read.
     public func markSeen(_ id: String) {
-        guard let meta = metaById[id] else { return }
-        let mark = SeenMark(at: meta.updatedAt, seq: threads[id]?.cursor ?? 0)
+        guard let meta = store.byId[id] else { return }
+        let mark = SeenMark(at: meta.updatedAt, seq: peek(id)?.cursor ?? 0)
         if foreground, environment.allows(.operate), readMarks.read(meta) { scheduleReadFlush() }
         guard localSeen[id] != mark else { return }
         localSeen[id] = mark
@@ -624,10 +754,46 @@ public final class EnvironmentClient {
         }
     }
 
-    /// The seen map every rule reads, republished only when it moved.
+    /// The seen marks every rule reads, worked out again; the list screens' copy follows with the list.
     private func refreshSeen() {
-        let next = readMarks.merged(local: localSeen, sessions: sessions, visible: visibleThread)
-        if next != seen { seen = next }
+        let next = readMarks.merged(local: localSeen, sessions: store.sorted, visible: visibleThread)
+        guard next != currentSeen else { return }
+        currentSeen = next
+        liveRevision += 1
+        publishListed()
+    }
+
+    /// The list screens' copy of the sessions and the seen marks catches up
+    /// with the store: at once while Home's list is on screen, else at most
+    /// once in `listedEveryMs`.
+    private func publishListed() {
+        if listVisible {
+            catchUpListed()
+            return
+        }
+        guard listedLater == nil else { return }
+        let wait = listedAt + .milliseconds(Self.listedEveryMs) - ContinuousClock.now
+        if wait <= .zero {
+            catchUpListed()
+            return
+        }
+        listedLater = Task { [weak self] in
+            try? await Task.sleep(for: wait)
+            self?.listedLater = nil
+            self?.catchUpListed()
+        }
+    }
+
+    private func catchUpListed() {
+        listedLater?.cancel()
+        listedLater = nil
+        listedAt = .now
+        let sessions = store.sorted
+        if sessions != listedSessions {
+            publishList { listedSessions = sessions }
+            PerfCounters.bump(.sessionPublishes)
+        }
+        if currentSeen != seen { seen = currentSeen }
     }
 
     /// The newest rows of a thread the screen has not opened (a needs-you line
@@ -638,8 +804,8 @@ public final class EnvironmentClient {
     /// second approval on a thread never opened replaces the first's cue
     /// instead of hiding behind it. With no socket the cache is the answer.
     public func peekTail(_ id: String, limit: Int = 24) async -> [EventRow] {
-        let updatedAt = session(id)?.updatedAt ?? 0
-        if let state = threads[id], !state.rows.isEmpty, state.isLive || peeked[id] == updatedAt {
+        let updatedAt = store.byId[id]?.updatedAt ?? 0
+        if let state = peek(id), !state.rows.isEmpty, state.isLive || peeked[id] == updatedAt {
             return state.rows.suffix(limit).map { $0 }
         }
         await cacheWrites.drained()
@@ -660,7 +826,7 @@ public final class EnvironmentClient {
     /// resume from the cache's cursor when the socket is up.
     public func openThread(_ id: String) async {
         opens[id, default: 0] += 1
-        if threads[id] == nil {
+        if models[id] == nil {
             var state = ThreadState()
             // What this client queued for the cache (a removal, rows pushed before a close) is on disk first.
             await cacheWrites.drained()
@@ -673,15 +839,18 @@ public final class EnvironmentClient {
             state.isLoading = state.rows.isEmpty
             // The screen opened at a cold launch or after a reopen: it is a fresh
             // paint, so it lands with no animation whatever the visibility says.
-            quietly { threads[id] = state }
+            // Another open of the same thread may have held it while the cache was read.
+            if models[id] == nil { quietly { hold(id, state) } }
         }
         guard !subscriptions.has(id) else { return }
         subscriptions.add(id, SubscriptionHandlers(
-            cursor: { [weak self] in self?.threads[id]?.cursor ?? 0 },
+            cursor: { [weak self] in self?.peek(id)?.cursor ?? 0 },
             page: { [weak self] page, tailFirst in self?.fold(id, page: page, tailFirst: tailFirst) },
             gone: { [weak self] reason in
-                self?.threads[id]?.goneReason = reason
-                self?.threads[id]?.isLoading = false
+                self?.write(id) {
+                    $0.goneReason = reason
+                    $0.isLoading = false
+                }
             }
         ))
         if await socket.isOpen {
@@ -690,7 +859,7 @@ public final class EnvironmentClient {
             let resume = subscriptions.resume(id, tail: coldOpenTail)
             Task { [weak self] in
                 _ = try? await resume.value
-                self?.threads[id]?.isLoading = false
+                self?.write(id) { $0.isLoading = false }
             }
         }
     }
@@ -705,15 +874,14 @@ public final class EnvironmentClient {
         subscriptions.remove(id)
         cancelHistory(id)
         windowFloors[id] = nil
-        threads[id]?.isLive = false
+        write(id) { $0.isLive = false }
     }
 
     /// Older rows: from the cache while it has them, then from the host.
     public func loadOlder(_ id: String) async {
-        guard var state = threads[id], !state.isLoadingOlder, state.moreBefore, let first = state.rows.first(where: { $0.ephemeral != true }) else { return }
-        state.isLoadingOlder = true
-        threads[id] = state
-        defer { threads[id]?.isLoadingOlder = false }
+        guard let state = peek(id), !state.isLoadingOlder, state.moreBefore, let first = state.rows.first(where: { $0.ephemeral != true }) else { return }
+        write(id) { $0.isLoadingOlder = true }
+        defer { write(id) { $0.isLoadingOlder = false } }
         await cacheWrites.drained()
         let cached = (try? await cache.rows(environment.id, sessionId: id, before: first.seq, limit: olderPage)) ?? []
         if !cached.isEmpty {
@@ -730,25 +898,25 @@ public final class EnvironmentClient {
     /// Fetches backwards until the exact search row is held. The bound and
     /// progress check keep a missing row or a broken host from looping.
     public func reveal(_ id: String, seq: Int, maxPages: Int = 100) async -> Int? {
-        while threads[id]?.isLoading == true || threads[id]?.isLoadingOlder == true {
+        while peek(id)?.isLoading == true || peek(id)?.isLoadingOlder == true {
             guard !Task.isCancelled else { return nil }
             try? await Task.sleep(for: .milliseconds(20))
         }
         for page in 0...max(0, maxPages) {
-            guard !Task.isCancelled, let state = threads[id] else { return nil }
+            guard !Task.isCancelled, let state = peek(id) else { return nil }
             if let row = state.rows.first(where: { $0.seq == seq && $0.ephemeral != true }) {
                 return state.fold.entryID(for: row)
             }
             guard page < maxPages, state.moreBefore,
                   let first = state.rows.first(where: { $0.ephemeral != true })?.seq, seq < first else { return nil }
             await loadOlder(id)
-            guard let now = threads[id]?.rows.first(where: { $0.ephemeral != true })?.seq, now < first else { return nil }
+            guard let now = peek(id)?.rows.first(where: { $0.ephemeral != true })?.seq, now < first else { return nil }
         }
         return nil
     }
 
     private func needsBoardHistory(_ id: String) -> Bool {
-        switch metaById[id]?.threadType {
+        switch store.byId[id]?.threadType {
         case .implementation?, .research?, .orchestration?, .planning?, .projectPlan?: true
         default: false
         }
@@ -758,32 +926,34 @@ public final class EnvironmentClient {
     /// thread keeps the history its fold needs, and a thread whose meta has
     /// not listed yet is not cut either: it may be a board.
     private func trims(_ id: String) -> Bool {
-        metaById[id] != nil && !needsBoardHistory(id)
+        store.byId[id] != nil && !needsBoardHistory(id)
     }
 
     private func cancelHistory(_ id: String) {
         historyTokens[id] = nil
         historyLoads.removeValue(forKey: id)?.cancel()
-        threads[id]?.isLoadingHistory = false
+        if peek(id)?.isLoadingHistory == true { write(id) { $0.isLoadingHistory = false } }
     }
 
     /// Fetch pages without publishing each intermediate fold. The transcript
     /// keeps painting its tail; the complete fold is built off the main actor.
     private func loadBoardHistory(_ id: String) {
         guard needsBoardHistory(id), historyLoads[id] == nil,
-              let state = threads[id], state.moreBefore,
+              let state = peek(id), state.moreBefore,
               let first = state.rows.first(where: { $0.ephemeral != true })?.seq else { return }
         let token = UUID()
         historyTokens[id] = token
-        threads[id]?.isLoadingHistory = true
-        threads[id]?.historyError = nil
+        write(id) {
+            $0.isLoadingHistory = true
+            $0.historyError = nil
+        }
         historyLoads[id] = Task { [weak self] in
             guard let self else { return }
             defer {
                 if self.historyTokens[id] == token {
                     self.historyLoads[id] = nil
                     self.historyTokens[id] = nil
-                    self.threads[id]?.isLoadingHistory = false
+                    self.write(id) { $0.isLoadingHistory = false }
                 }
             }
             var before = first
@@ -801,25 +971,26 @@ public final class EnvironmentClient {
                 }
                 // A live push or an older transcript page can land during the
                 // off-actor fold. Rebuild against that revision before publishing.
-                while let current = self.threads[id], self.historyTokens[id] == token {
+                while let current = self.peek(id), self.historyTokens[id] == token {
                     try Task.checkCancellation()
                     let revision = current.revision
                     let complete = await Self.foldHistory(older: older, current: current.rows)
-                    guard self.historyTokens[id] == token, var latest = self.threads[id] else { return }
-                    if latest.revision != revision { continue }
-                    latest.rows = complete.rows
-                    var fold = complete.fold
-                    fold.carryLiveEdits(from: latest.fold)
-                    fold.carryWaitOutcomes(from: latest.fold)
-                    latest.fold = fold
-                    latest.moreBefore = false
-                    latest.revision += 1
-                    self.threads[id] = latest
+                    guard self.historyTokens[id] == token, let held = self.peek(id) else { return }
+                    if held.revision != revision { continue }
+                    self.write(id) { latest in
+                        latest.rows = complete.rows
+                        var fold = complete.fold
+                        fold.carryLiveEdits(from: latest.fold)
+                        fold.carryWaitOutcomes(from: latest.fold)
+                        latest.fold = fold
+                        latest.moreBefore = false
+                        latest.revision += 1
+                    }
                     break
                 }
             } catch {
                 if self.historyTokens[id] == token, !Task.isCancelled {
-                    self.threads[id]?.historyError = "Earlier board history could not be loaded. Reconnect to try again."
+                    self.write(id) { $0.historyError = "Earlier board history could not be loaded. Reconnect to try again." }
                 }
             }
         }
@@ -914,9 +1085,12 @@ public final class EnvironmentClient {
                 guard let self else { return }
                 await self.resources.loadAll(self)
             }
-            for id in threads.keys where subscriptions.has(id) {
-                threads[id]?.isLoading = false
-                threads[id]?.isLive = subscriptions.isLive(id)
+            for (id, model) in models where subscriptions.has(id) {
+                let live = subscriptions.isLive(id)
+                model.mutate {
+                    $0.isLoading = false
+                    $0.isLive = live
+                }
             }
             await socket.markFresh(true)
             await push?.sync(self)
@@ -925,7 +1099,7 @@ public final class EnvironmentClient {
             subscriptions.sessionChanged()
             extras.connectionLost()
             for id in Array(historyLoads.keys) { cancelHistory(id) }
-            for id in threads.keys { threads[id]?.isLive = false }
+            for model in models.values where model.value.isLive { model.mutate { $0.isLive = false } }
         }
     }
 
@@ -978,7 +1152,7 @@ public final class EnvironmentClient {
             : try? await socket.request(Methods.SessionList.self, .init(archived: nil, projectId: nil, cursor: nil))
         let (listed, complete) = await walk(pages: page, archived: false, since: begun)
         if complete {
-            let gone = unheard(metaById.values.filter { !$0.archived && !listed.contains($0.id) }.map(\.id), since: begun)
+            let gone = unheard(store.sorted.filter { !$0.archived && !listed.contains($0.id) }.map(\.id), since: begun)
             if !gone.isEmpty { removeSessions(gone) }
             completeLists += 1
         } else {
@@ -1013,7 +1187,7 @@ public final class EnvironmentClient {
         let first = try? await socket.request(Methods.SessionList.self, .init(archived: true, projectId: nil, cursor: nil))
         let (listed, complete) = await walk(pages: first, archived: true, since: begun)
         if complete {
-            let gone = unheard(metaById.values.filter { $0.archived && !listed.contains($0.id) }.map(\.id), since: begun)
+            let gone = unheard(store.sorted.filter { $0.archived && !listed.contains($0.id) }.map(\.id), since: begun)
             if !gone.isEmpty { removeSessions(gone) }
         }
     }
@@ -1070,12 +1244,12 @@ public final class EnvironmentClient {
             heard(value.sessionIds)
             removeSessions(value.sessionIds)
         case .events(let value):
-            guard threads[value.sessionId] != nil else { return }
+            guard models[value.sessionId] != nil else { return }
             if subscriptions.hold(value.sessionId, rows: value.rows) { return }
             PerfCounters.mark(.batch)
             PerfCounters.bump(.pushedRows, by: value.rows.count)
             append(value.sessionId, rows: value.rows)
-            if threads[value.sessionId]?.isLive != true { threads[value.sessionId]?.isLive = true }
+            if peek(value.sessionId)?.isLive != true { write(value.sessionId) { $0.isLive = true } }
             // A frame of streaming previews alone holds nothing the cache keeps.
             if value.rows.contains(where: { $0.ephemeral != true }) {
                 let env = environment.id
@@ -1103,9 +1277,9 @@ public final class EnvironmentClient {
             // The host's live diff of a file a thread is changing: into that
             // thread's fold, onto its running edit row; memory only, as on the desktop.
             for item in value.items {
-                for sessionId in item.sessionIds where threads[sessionId] != nil {
+                for sessionId in item.sessionIds where models[sessionId] != nil {
                     PerfCounters.bump(.threadPublishes)
-                    threads[sessionId]!.fold.applyLiveEdit(item.edit)
+                    write(sessionId) { _ = $0.fold.applyLiveEdit(item.edit) }
                 }
             }
         case .hostDevices, .hostLog:
@@ -1156,23 +1330,21 @@ public final class EnvironmentClient {
     /// the observer and the cache get the metas that changed, in order.
     private func merge(_ metas: [SessionMeta]) {
         var changed: [SessionMeta] = []
-        var list = sessions
         var readMoved = false
         for meta in metas {
-            let held = metaById[meta.id]
+            let held = store.byId[meta.id]
             if held == meta { continue }
             if held?.readAt != meta.readAt || readMarks.pending[meta.id] != nil { readMoved = true }
             readMarks.heard(meta)
-            metaById[meta.id] = meta
-            if let held, let at = Self.position(of: held, in: list) { list.remove(at: at) }
-            list.insert(meta, at: Self.slot(for: meta, in: list))
+            store.put(meta)
             changed.append(meta)
             // The host's status moves the click's busy and clock (`ThreadState.observe`).
-            if let state = threads[meta.id], state.observes(meta) { threads[meta.id]!.observe(meta) }
+            if let model = models[meta.id], model.value.observes(meta) { model.mutate { $0.observe(meta) } }
         }
         guard !changed.isEmpty else { return }
-        publishList { sessions = list }
-        PerfCounters.bump(.sessionPublishes)
+        store.refresh()
+        liveRevision += 1
+        publishListed()
         if readMoved { refreshSeen() }
         reindexPlacing(changed, gone: [])
         // The thread on screen is seen as of this meta: on return its rows
@@ -1182,29 +1354,6 @@ public final class EnvironmentClient {
         sessionObserver?(self, changed)
         let env = environment.id
         cacheWrites.write { [changed] in try? await $0.upsertSessions(env, changed) }
-    }
-
-    /// The list's order: newest first, ids breaking ties (the cache reads it back the same way).
-    private static func precedes(_ a: SessionMeta, _ b: SessionMeta) -> Bool {
-        (a.updatedAt, a.id) > (b.updatedAt, b.id)
-    }
-
-    /// Where `meta` goes in a list held in that order.
-    private static func slot(for meta: SessionMeta, in list: [SessionMeta]) -> Int {
-        var low = 0
-        var high = list.count
-        while low < high {
-            let middle = (low + high) / 2
-            if precedes(list[middle], meta) { low = middle + 1 } else { high = middle }
-        }
-        return low
-    }
-
-    /// Where the held meta sits: its place by the order, else wherever a walk finds its id.
-    private static func position(of held: SessionMeta, in list: [SessionMeta]) -> Int? {
-        let at = slot(for: held, in: list)
-        if at < list.count, list[at].id == held.id { return at }
-        return list.firstIndex { $0.id == held.id }
     }
 
     /// A shell's bare thread: what its meta's placing fields read now (nil
@@ -1231,15 +1380,21 @@ public final class EnvironmentClient {
         if moved { placingStamp += 1 }
     }
 
+    /// The threads left this host (a test's seam for the `session-removed` push).
+    func forget(_ ids: [String]) {
+        removeSessions(ids)
+    }
+
     private func removeSessions(_ ids: [String]) {
         let gone = Set(ids)
-        publishList { sessions.removeAll { gone.contains($0.id) } }
-        PerfCounters.bump(.sessionPublishes)
+        store.remove(gone)
+        liveRevision += 1
+        // A thread that left leaves every list at once.
+        catchUpListed()
         reindexPlacing([], gone: gone)
         for id in ids {
-            metaById[id] = nil
             windowFloors[id] = nil
-            quietly { threads[id] = nil }
+            quietly { drop(id) }
             subscriptions.remove(id)
             cancelHistory(id)
             localSeen[id] = nil
@@ -1265,31 +1420,33 @@ public final class EnvironmentClient {
     }
 
     private func fold(_ id: String, page: EventsPage, tailFirst: Bool) {
-        guard var state = threads[id] else { return }
+        guard let model = models[id] else { return }
         PerfCounters.bump(.pages)
         if page.reset || tailFirst {
             cancelHistory(id)
-            state.revision += 1
-            state.isLoadingHistory = false
-            state.historyError = nil
-            state.rows = page.rows
-            state.moreBefore = page.moreBefore
-            state.refold()
-            PerfCounters.bump(.refolds)
-            Self.settle(&state, rows: page.rows)
-            state.isLoading = false
-            state.isLive = true
-            if page.reset {
-                // A replaced tail is a fresh paint, not rows arriving: no
-                // motion even on the thread on screen.
-                quietly { threads[id] = state }
-            } else {
-                publish(thread: id) { threads[id] = state }
+            let replace = {
+                model.mutate { state in
+                    state.revision += 1
+                    state.isLoadingHistory = false
+                    state.historyError = nil
+                    state.rows = page.rows
+                    state.moreBefore = page.moreBefore
+                    state.refold()
+                    state.settle(page.rows)
+                    state.isLoading = false
+                    state.isLive = true
+                }
             }
+            PerfCounters.bump(.refolds)
+            // A replaced tail is a fresh paint, not rows arriving: no motion
+            // even on the thread on screen.
+            if page.reset { quietly(replace) } else { publish(thread: id, replace) }
         } else {
             append(id, rows: page.rows)
-            threads[id]?.isLoading = false
-            threads[id]?.isLive = true
+            model.mutate {
+                $0.isLoading = false
+                $0.isLive = true
+            }
         }
         if visibleThread == id { markSeen(id) }
         let env = environment.id
@@ -1298,42 +1455,40 @@ public final class EnvironmentClient {
         loadBoardHistory(id)
     }
 
-    /// A batch of rows into one thread: one write to `threads[id]` through
-    /// the subscript's modify accessor (`ThreadState.append`), so the row
-    /// array and the fold's items stay unique and are mutated in place.
+    /// A batch of rows into one thread: one write to its model, in place
+    /// (`ThreadModel.mutate`, `ThreadState.append`), so the row array and
+    /// the fold's items stay unique and are never copied for a push.
     private func append(_ id: String, rows: [EventRow]) {
-        guard threads[id] != nil, !rows.isEmpty else { return }
+        guard let model = models[id], !rows.isEmpty else { return }
         let trim = trims(id)
         let floor = windowFloors[id]
         PerfCounters.bump(.batches)
-        let refolds = threads[id]!.refolds
+        let refolds = model.value.refolds
         publish(thread: id) {
-            threads[id]!.append(rows, trim: trim, keeping: floor)
-            Self.settle(&threads[id]!, rows: rows)
+            model.mutate { state in
+                state.append(rows, trim: trim, keeping: floor)
+                state.settle(rows)
+            }
         }
-        PerfCounters.bump(.refolds, by: threads[id]!.refolds - refolds)
-    }
-
-    /// What this device did optimistically, confirmed by the host's rows: the
-    /// echo of a sent text retires its pending turn (and Sending… once none
-    /// remain); a resolved approval or question retires its overlay.
-    private static func settle(_ state: inout ThreadState, rows: [EventRow]) {
-        state.settle(rows)
+        PerfCounters.bump(.refolds, by: model.value.refolds - refolds)
     }
 
     private func prepend(_ id: String, rows: [EventRow], moreBefore: Bool?) {
-        guard var state = threads[id] else { return }
-        state.revision += 1
-        let known = Set(state.rows.map(\.seq))
-        let fresh = rows.filter { !known.contains($0.seq) }
-        state.rows = (fresh + state.rows).sorted { ($0.ephemeral == true ? Int.max : $0.seq) < ($1.ephemeral == true ? Int.max : $1.seq) }
-        state.refold()
+        guard let model = models[id] else { return }
         PerfCounters.bump(.refolds)
-        if let moreBefore {
-            state.moreBefore = moreBefore
-        } else if fresh.isEmpty {
-            state.moreBefore = false
+        publish(thread: id) {
+            model.mutate { state in
+                state.revision += 1
+                let known = Set(state.rows.map(\.seq))
+                let fresh = rows.filter { !known.contains($0.seq) }
+                state.rows = (fresh + state.rows).sorted { ($0.ephemeral == true ? Int.max : $0.seq) < ($1.ephemeral == true ? Int.max : $1.seq) }
+                state.refold()
+                if let moreBefore {
+                    state.moreBefore = moreBefore
+                } else if fresh.isEmpty {
+                    state.moreBefore = false
+                }
+            }
         }
-        publish(thread: id) { threads[id] = state }
     }
 }

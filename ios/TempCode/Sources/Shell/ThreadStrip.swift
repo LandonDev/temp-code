@@ -23,44 +23,49 @@ struct ThreadStripView: View {
     @Environment(NewThreadPresenter.self) private var presenter
     @Environment(\.shellPose) private var pose
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let scope: StripScope
-    let shown: (environmentId: String, sessionId: String)?
+    /// The shell's kept scope: the strip reads its chips as drawn and the
+    /// scope's summary, never the hosts' sessions (`KeptScope`).
+    let kept: KeptScope
+    let key: String
+    /// The thread on screen, "<environment>:<session>".
+    let thread: String?
     @State private var width: CGFloat = 0
     @ScaledMetric(relativeTo: .footnote) private var rowHeight = StripMetrics.row
     @ScaledMetric(relativeTo: .caption) private var shelfHeight = StripMetrics.shelfRow
 
     var body: some View {
         let _ = PerfCounters.bump(.threadStripBody)
-        let hosts = HomeRows.inputs(model.registry.ordered)
-        let model = ThreadStrip.model(scope: scope, shown: shown, order: ThreadStripStore.shared.order(scope.key), hosts: hosts, sending: ProjectDraftStore.shared.sending[scope.key])
-        let strip = pose.isSplit ? model : model.compact
-        let shelfShown = pose.isSplit && !strip.shelf.isEmpty
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                if !strip.leadsWithNewThread {
-                    chipRow(strip.live, onShelf: false)
+        let registry = self.model.registry
+        if let summary = kept.summary(key: key, thread: thread, registry: registry), let model = kept.strip(key: key, thread: thread, registry: registry) {
+            let strip = pose.isSplit ? model : model.compact
+            let shelfShown = pose.isSplit && !strip.shelf.isEmpty
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    if !strip.leadsWithNewThread {
+                        chipRow(strip.live, onShelf: false, scopeKey: summary.key)
+                    }
+                    newThread(words: strip.leadsWithNewThread, lead: summary.lead)
+                    if !pose.isSplit, !strip.shelf.isEmpty || !summary.archived.isEmpty {
+                        RecentMenu(archived: summary.archived, shelf: strip.shelf) { open($0, scopeKey: summary.key) }
+                    }
                 }
-                newThread(words: strip.leadsWithNewThread)
-                if !pose.isSplit, !strip.shelf.isEmpty || !scope.archived.isEmpty {
-                    RecentMenu(scope: scope, shelf: strip.shelf, open: open)
+                .frame(height: rowHeight)
+                if shelfShown {
+                    chipRow(strip.shelf, onShelf: true, scopeKey: summary.key)
+                        .frame(height: shelfHeight)
+                        .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
                 }
             }
-            .frame(height: rowHeight)
-            if shelfShown {
-                chipRow(strip.shelf, onShelf: true)
-                    .frame(height: shelfHeight)
-                    .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
-            }
+            .clipped()
+            .animation(reduceMotion ? Motion.fast : Motion.layout, value: shelfShown)
+            .background(Surface.background)
+            .overlay(alignment: .bottom) { Hairline() }
+            // The drawn order is the order kept; the outside chip never is.
+            .onChange(of: model.saveIds, initial: true) { ThreadStripStore.shared.save(summary.key, model: model) }
         }
-        .clipped()
-        .animation(reduceMotion ? Motion.fast : Motion.layout, value: shelfShown)
-        .background(Surface.background)
-        .overlay(alignment: .bottom) { Hairline() }
-        // The drawn order is the order kept; the outside chip never is.
-        .onChange(of: model.saveIds, initial: true) { ThreadStripStore.shared.save(scope.key, model: model) }
     }
 
-    private func chipRow(_ chips: [StripChip], onShelf: Bool) -> some View {
+    private func chipRow(_ chips: [StripChip], onShelf: Bool, scopeKey: String) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal) {
                 HStack(spacing: StripMetrics.chipGap) {
@@ -71,7 +76,7 @@ struct ThreadStripView: View {
                                 .id(chip.id)
                                 .allowsHitTesting(false)
                         } else {
-                            StripChipView(chip: chip, onShelf: onShelf) { open(chip) }
+                            StripChipView(chip: chip, onShelf: onShelf) { open(chip, scopeKey: scopeKey) }
                                 .id(chip.id)
                                 // The thread's menu on a long press: the rows' own.
                                 .modifier(ChipActions(chip: chip))
@@ -96,8 +101,8 @@ struct ThreadStripView: View {
     /// New Thread after the live row, outside its scroll: the glyph, or the
     /// words while the row holds no chip.
     @ViewBuilder
-    private func newThread(words: Bool) -> some View {
-        if let lead = scope.lead, let client = model.registry.client(lead.environmentId),
+    private func newThread(words: Bool, lead: StripScope.Lead?) -> some View {
+        if let lead, let client = model.registry.client(lead.environmentId),
            let workspace = client.workspaces.first(where: { $0.id == lead.workspaceId }) {
             let project = lead.projectId.flatMap { id in client.projects.first { $0.id == id } }
             Button { presenter.compose(client, workspace, project) } label: {
@@ -123,8 +128,8 @@ struct ThreadStripView: View {
         }
     }
 
-    private func open(_ chip: StripChip) {
-        navigator.open(.project(key: scope.key, thread: chip.id))
+    private func open(_ chip: StripChip, scopeKey: String) {
+        navigator.open(.project(key: scopeKey, thread: chip.id))
     }
 
     private func scrollKey(_ chips: [StripChip]) -> String {
@@ -138,7 +143,7 @@ struct ThreadStripView: View {
 private struct RecentMenu: View {
     @Environment(AppModel.self) private var model
     @Environment(ShellNavigator.self) private var navigator
-    let scope: StripScope
+    let archived: [HomeSections.ArchivedThreads]
     let shelf: [StripChip]
     let open: (StripChip) -> Void
 
@@ -151,7 +156,6 @@ private struct RecentMenu: View {
                     }
                 }
             }
-            let archived = scope.archived
             ForEach(archived) { copy in
                 Button {
                     navigator.detailStack.append(Route.archivedThreads(environmentId: copy.environmentId, projectId: copy.projectId))

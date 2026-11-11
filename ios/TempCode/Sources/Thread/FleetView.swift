@@ -10,7 +10,10 @@ struct FleetView: View {
     let client: EnvironmentClient
     let sessionId: String
     let session: SessionMeta?
-    let thread: ThreadState
+    /// The thread's model (nil until the client holds it), never its state:
+    /// a view that kept the state would share its arrays.
+    let held: ThreadModel?
+    private var thread: ThreadState { held?.state ?? ThreadState() }
     @Environment(AppModel.self) private var app
     /// DEBUG proof: `TC_TEST_OPEN=agents` pushes the subagent list,
     /// `agent-detail` the first agent's detail, once the fleet is in.

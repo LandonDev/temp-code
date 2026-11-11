@@ -368,7 +368,7 @@ struct RelayedHostsTests {
         // Before any socket answers: the relayed client is up with its cached list and its last presence.
         await rig.registry.sync()
         #expect(rig.registry.ordered.map(\.environment.id) == [RelayRig.carrierId, RelayRig.macId])
-        #expect(rig.mac?.sessions.map(\.title) == ["On the Mac"])
+        #expect(rig.mac?.currentSessions.map(\.title) == ["On the Mac"])
         #expect(rig.mac?.relayState == .locked)
         #expect(rig.mac?.stateSince == 9)
         #expect(rig.mac?.environment.addedAt == 7)

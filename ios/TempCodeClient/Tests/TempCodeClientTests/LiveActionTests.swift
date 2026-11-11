@@ -63,7 +63,7 @@ struct ActionTests {
         // The test server's own project for this test: two running roots and a running subagent.
         let project = try #require(client.projects.first { $0.name == "ios-fleet-project" })
         let selection = client.batchSelection(.project(id: project.id, name: project.name, cwd: project.cwd))
-        let running = ThreadBatch.targets(.pause, client.sessions, selection).map(\.id)
+        let running = ThreadBatch.targets(.pause, client.currentSessions, selection).map(\.id)
         #expect(Set(running) == ["ios-batch-a-run", "ios-batch-b-run"], "a subagent follows its parent: \(running)")
         let toast = try await client.batch(.pause, selection: selection)
         #expect(toast.failed.isEmpty, "\(toast.summary)")

@@ -779,6 +779,12 @@ public final class BornRows {
         open(at: thread.fold.lastSeq)
     }
 
+    /// The same rule from a thread's projections (`ThreadModel.flags`, `content`), for a view that holds no state.
+    public func open(loading: Bool, live: Bool, hasRows: Bool, lastSeq: Int) {
+        guard !loading, live || hasRows else { return }
+        open(at: lastSeq)
+    }
+
     /// The first loaded paint fixes the line between history and live.
     public func open(at lastSeq: Int?) {
         if openedAt == nil, let lastSeq { openedAt = lastSeq }

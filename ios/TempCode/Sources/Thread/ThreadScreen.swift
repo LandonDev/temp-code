@@ -99,13 +99,12 @@ struct ThreadScreen: View {
     var body: some View {
         let _ = PerfCounters.bump(.threadScreenBody)
         let session = client.session(sessionId)
-        let thread = client.threads[sessionId] ?? ThreadState()
         let kind = ThreadKind(session)
         let segments = ThreadSegment.segments(for: kind)
         let phase = ThreadPhase(session: session, thread: thread, document: model.document)
         let segment = model.segment(in: segments, phase: phase)
-        let gone = goneReason(session: session, thread: client.threads[sessionId])
-        let children = Fleet.children(of: sessionId, in: client.sessions)
+        let gone = goneReason(session: session, flags: client.thread(sessionId)?.flags)
+        let children = client.children(of: sessionId)
         let hostName = app.registry.ordered.count > 1 ? client.environment.name : nil
         VStack(spacing: 0) {
             StatusLine(client: client)
@@ -124,7 +123,7 @@ struct ThreadScreen: View {
                     let columns = ThreadPose.columns(width: width, hairline: Hairline.thickness(scale: displayScale), division: division, fit: fit)
                     let barShown = ThreadPose.segmentBarShown(mode: mode, compactHeight: compactHeight, composerFocused: composerFocused)
                     posed(width: width, mode: mode, columns: columns, division: division, barShown: barShown,
-                          segments: segments, segment: segment, kind: kind, session: session, thread: thread, phase: phase)
+                          segments: segments, segment: segment, kind: kind, session: session, phase: phase)
                 }
                 .onDuoHingeChange { hingeMoves += 1 }
             }
@@ -235,7 +234,7 @@ struct ThreadScreen: View {
         .onChange(of: thread.fold.lastSeq) {
             client.markSeen(sessionId)
             // A card that lands on the segment in view is seen as it lands; the dot is for the other one.
-            model.saw(segment, thread: thread)
+            model.saw(segment, lastSeq: thread.fold.lastSeq)
         }
         // A running thread the person is watching gets the Live Activity.
         .onChange(of: session?.status, initial: true) {
@@ -245,7 +244,7 @@ struct ThreadScreen: View {
             TestHooks.recordHistory(thread)
         }
         .onChange(of: segment, initial: true) { _, now in
-            model.saw(now, thread: thread)
+            model.saw(now, lastSeq: thread.fold.lastSeq)
             #if DEBUG
             LayoutProbe.route(thread: sessionId, segment: now.rawValue)
             #endif
@@ -315,17 +314,26 @@ struct ThreadScreen: View {
     }
 
     private func agentsButton(_ session: SessionMeta) -> some View {
-        AgentsButton(cue: AgentsCue.of(rootId: session.id, metas: client.sessions, rootRunning: session.status == .running)) { showAgents = true }
+        AgentsButton(cue: client.agentsCue(of: session.id)) { showAgents = true }
     }
 
     /// The thread is no longer on this host: the subscription was refused,
     /// or a full listing came back without it. Nothing is shown until the
     /// first listing and the thread's first page, so a cold open never
     /// flashes the line.
-    private func goneReason(session: SessionMeta?, thread: ThreadState?) -> String? {
-        if thread?.goneReason != nil { return "This thread was moved or deleted" }
-        if session == nil, client.hasShell, let thread, !thread.isLoading { return "This thread was moved or deleted" }
+    private func goneReason(session: SessionMeta?, flags: ThreadModel.Flags?) -> String? {
+        if flags?.goneReason != nil { return "This thread was moved or deleted" }
+        if session == nil, client.hasShell, let flags, !flags.isLoading { return "This thread was moved or deleted" }
         return nil
+    }
+
+    /// The thread's state as it is at each read, tracked: this screen's
+    /// body runs again at a write to this thread, and to no other. Never
+    /// kept in a local a closure holds, nor handed to a view: a state that
+    /// outlives the pass shares the thread's arrays, and the next push
+    /// would copy every row. The views below take the model.
+    private var thread: ThreadState {
+        client.thread(sessionId)?.state ?? ThreadState()
     }
 
     /// A tap on the segment bar: the page moves with the drawer curve (a jump under reduced motion) and the pill rides with it.
@@ -421,10 +429,11 @@ struct ThreadScreen: View {
     /// pager; the dock hangs off this view in every mode, so a fold never
     /// re-creates the field.
     private func posed(width: CGFloat, mode: ThreadLayoutMode, columns: TwoPaneColumns, division: CGRect?, barShown: Bool,
-                       segments: [ThreadSegment], segment: ThreadSegment, kind: ThreadKind, session: SessionMeta?, thread: ThreadState, phase: ThreadPhase) -> some View {
-        VStack(spacing: 0) {
-            if thread.isLoadingHistory || thread.historyError != nil {
-                Text(thread.historyError ?? "Loading earlier board history…")
+                       segments: [ThreadSegment], segment: ThreadSegment, kind: ThreadKind, session: SessionMeta?, phase: ThreadPhase) -> some View {
+        let flags = client.thread(sessionId)?.flags
+        return VStack(spacing: 0) {
+            if flags?.isLoadingHistory == true || flags?.historyError != nil {
+                Text(flags?.historyError ?? "Loading earlier board history…")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, Layout.textEdge)
@@ -437,16 +446,16 @@ struct ThreadScreen: View {
                     .transition(Motion.appear(reduced: reduceMotion))
             }
             if mode == .single {
-                transcript(session: session, thread: thread, measured: true)
+                transcript(measured: true)
             } else {
-                pager(segments: segments, kind: kind, session: session, thread: thread, phase: phase, width: width, mode: mode, columns: columns)
+                pager(segments: segments, kind: kind, session: session, phase: phase, width: width, mode: mode, columns: columns)
             }
         }
         .animation(reduceMotion ? Motion.crossFade : Motion.collapse, value: barShown)
         // Measured inside the bar's inset: where the dock (and a keyboard under it) begins.
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { bodyBottom = $0 }
         .tcBottomBar(fade: false) {
-            dock(session: session, thread: thread, width: width, mode: mode, columns: columns)
+            dock(session: session, width: width, mode: mode, columns: columns)
         }
         // A paging scroll view's offset does not follow a container resize on its own: the page is re-asserted.
         .onChange(of: width) { settlePager(on: segment) }
@@ -456,10 +465,10 @@ struct ThreadScreen: View {
         // Both segments are on screen in two-pane: everything that lands is seen, and the dot has nothing to mark.
         .onChange(of: mode, initial: true) {
             twoPaneShown = mode == .twoPane
-            if mode == .twoPane { for each in segments { model.saw(each, thread: thread) } }
+            if mode == .twoPane { for each in segments { model.saw(each, lastSeq: thread.fold.lastSeq) } }
         }
         .onChange(of: thread.fold.lastSeq) {
-            if mode == .twoPane { for each in segments { model.saw(each, thread: thread) } }
+            if mode == .twoPane { for each in segments { model.saw(each, lastSeq: thread.fold.lastSeq) } }
         }
         #if DEBUG
         .onChange(of: poseRecord(width: width, mode: mode, columns: columns, division: division, barShown: barShown), initial: true) { _, record in
@@ -478,7 +487,7 @@ struct ThreadScreen: View {
     /// clear and untouchable), at most the measure's width and centred in
     /// single, the whole width in the pager; lifted by `barInset` when a
     /// system bar floats inside the window's bar region.
-    private func dock(session: SessionMeta?, thread: ThreadState, width: CGFloat, mode: ThreadLayoutMode, columns: TwoPaneColumns) -> some View {
+    private func dock(session: SessionMeta?, width: CGFloat, mode: ThreadLayoutMode, columns: TwoPaneColumns) -> some View {
         HStack(spacing: 0) {
             if mode == .twoPane {
                 // A fixed height: a flexible one would grow the bar to the whole screen and leave the body nothing.
@@ -486,7 +495,7 @@ struct ThreadScreen: View {
                     .frame(width: columns.hero + columns.gap, height: 1)
                     .allowsHitTesting(false)
             }
-            BottomDock(client: client, sessionId: sessionId, session: session, dock: DockState(thread), focused: $composerFocused, regularWidth: regularWidth, draft: draftSeed)
+            BottomDock(client: client, sessionId: sessionId, session: session, dock: client.thread(sessionId)?.dock ?? DockState(), focused: $composerFocused, regularWidth: regularWidth, draft: draftSeed)
                 .frame(maxWidth: mode == .single ? ReadingMeasure.columnFrame(width: width) : .infinity)
                 #if DEBUG
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { TestHooks.recordDock(height: $0, focused: TestHooks.open == "composer") }
@@ -560,7 +569,7 @@ struct ThreadScreen: View {
     /// keyboard it would have been inset by. Every one of these is a value
     /// that is zero in the pager, never a branch, so a fold changes no
     /// view's identity.
-    private func pager(segments: [ThreadSegment], kind: ThreadKind, session: SessionMeta?, thread: ThreadState, phase: ThreadPhase,
+    private func pager(segments: [ThreadSegment], kind: ThreadKind, session: SessionMeta?, phase: ThreadPhase,
                        width: CGFloat, mode: ThreadLayoutMode, columns: TwoPaneColumns) -> some View {
         let twoPane = mode == .twoPane
         let chatInset = twoPane ? max(0, pagerBottom - bodyBottom) : 0
@@ -572,7 +581,7 @@ struct ThreadScreen: View {
             HStack(alignment: .top, spacing: 0) {
                 ForEach(Array(segments.enumerated()), id: \.element) { index, segment in
                     let hero = index == 0
-                    body(for: segment, kind: kind, session: session, thread: thread, phase: phase)
+                    body(for: segment, kind: kind, session: session, phase: phase)
                         .contentMargins(.bottom, twoPane && hero ? windowSafeBottom : 0, for: .scrollContent)
                         .safeAreaPadding(.bottom, hero ? 0 : chatInset)
                         .frame(width: twoPane ? (hero ? columns.hero : columns.chat) : width)
@@ -615,15 +624,16 @@ struct ThreadScreen: View {
     }
 
     @ViewBuilder
-    private func body(for segment: ThreadSegment, kind: ThreadKind, session: SessionMeta?, thread: ThreadState, phase: ThreadPhase) -> some View {
+    private func body(for segment: ThreadSegment, kind: ThreadKind, session: SessionMeta?, phase: ThreadPhase) -> some View {
+        let held = client.thread(sessionId)
         switch segment {
         case .chat, .log:
-            transcript(session: session, thread: thread)
+            transcript()
         case .board:
             if kind == .master {
-                MasterView(client: client, sessionId: sessionId, session: session, thread: thread)
+                MasterView(client: client, sessionId: sessionId, session: session, held: held)
             } else {
-                ImplementationBoardView(client: client, sessionId: sessionId, session: session, thread: thread, document: model.document)
+                ImplementationBoardView(client: client, sessionId: sessionId, session: session, held: held, document: model.document)
             }
         case .plan:
             if kind == .projectPlan {
@@ -642,15 +652,23 @@ struct ThreadScreen: View {
                 }
             }
         case .fleet:
-            FleetView(client: client, sessionId: sessionId, session: session, thread: thread)
+            FleetView(client: client, sessionId: sessionId, session: session, held: held)
         case .sources:
-            SourcesView(client: client, sessionId: sessionId, session: session, thread: thread, document: model.document)
+            SourcesView(client: client, sessionId: sessionId, session: session, held: held, document: model.document)
         }
     }
 
-    private func transcript(session: SessionMeta?, thread: ThreadState, measured: Bool = false) -> some View {
-        TranscriptView(client: client, sessionId: sessionId, thread: thread, targetSeq: landingSeq, measured: measured)
-            .environment(\.openAgents, { showAgents = true })
+    /// The transcript once the client holds the thread (its cached tail is
+    /// read first); until then its room is kept and nothing is drawn.
+    @ViewBuilder
+    private func transcript(measured: Bool = false) -> some View {
+        if let held = client.thread(sessionId) {
+            TranscriptView(client: client, sessionId: sessionId, thread: held, targetSeq: landingSeq, measured: measured)
+                .environment(\.openAgents, { showAgents = true })
+        } else {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 }
 
@@ -702,8 +720,8 @@ final class ThreadScreenModel {
     }
 
     /// Everything on this segment so far is seen.
-    func saw(_ segment: ThreadSegment, thread: ThreadState) {
-        seenCard[segment] = thread.fold.lastSeq
+    func saw(_ segment: ThreadSegment, lastSeq: Int) {
+        seenCard[segment] = lastSeq
     }
 
     /// The inactive transcript segment holding an undecided card the user has not looked at; nil in two-pane.

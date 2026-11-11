@@ -24,7 +24,7 @@ struct ApprovalActions: View {
     @State private var decidedCount = 0
 
     /// The line a refused decision left (kept on the thread, so the buttons coming back keep it too).
-    private var failure: String? { client.threads[sessionId]?.refusals[approval.request.requestId] }
+    private var failure: String? { client.thread(sessionId)?.overlays.refusals[approval.request.requestId] }
 
     var body: some View {
         let block = client.approveBlock

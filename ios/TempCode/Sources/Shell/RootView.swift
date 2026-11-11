@@ -80,7 +80,7 @@ struct RootView: View {
         .onAppear {
             let registry = model.registry
             for navigator in navigators {
-                navigator.hosts = { HomeRows.inputs(registry.ordered) }
+                navigator.hosts = { HomeRows.inputs(registry.ordered, current: true) }
                 navigator.lists = { registry.client($0)?.completeLists ?? 0 }
                 navigator.catalog = { registry.client($0)?.catalogStamp ?? 0 }
                 navigator.placing = { registry.client($0)?.watchPlacing($1) }
@@ -89,7 +89,7 @@ struct RootView: View {
             newThread.openDraft = { [home] client, workspace, project, type in
                 let environmentId = client.environment.id
                 let key = project.map { ProjectPairs.key(environmentId, $0) }
-                    ?? ThreadStrip.scope(workspace: environmentId, workspaceId: workspace.id, hosts: HomeRows.inputs(registry.ordered))?.key
+                    ?? ThreadStrip.scope(workspace: environmentId, workspaceId: workspace.id, hosts: HomeRows.inputs(registry.ordered, current: true))?.key
                 guard let key else { return }
                 ProjectDraftStore.shared.focus(key, type: type)
                 tab = .home
@@ -259,7 +259,7 @@ struct RootView: View {
         guard let client = model.registry.ordered.first else { return }
         if route == "home" || route == "hosts-status" { return }
         for _ in 0..<600 {
-            if client.hasShell || !client.sessions.isEmpty { break }
+            if client.hasShell || !client.currentSessions.isEmpty { break }
             try? await Task.sleep(for: .milliseconds(100))
         }
         routed = true
@@ -276,7 +276,7 @@ struct RootView: View {
             home.detailStack.append(Route.hosts)
         case "archived":
             for workspace in client.workspaces {
-                let groups = ThreadGroups.group(client.sessions, projects: client.projects, workspaces: client.workspaces, workspaceId: workspace.id)
+                let groups = ThreadGroups.group(client.currentSessions, projects: client.projects, workspaces: client.workspaces, workspaceId: workspace.id)
                 if let group = groups.projects.first(where: { $0.archivedCount > 0 }) {
                     home.open(.archivedThreads(environmentId: environmentId, projectId: group.id))
                     return
@@ -284,14 +284,14 @@ struct RootView: View {
             }
         case "archived-projects":
             for workspace in client.workspaces {
-                let groups = ThreadGroups.group(client.sessions, projects: client.projects, workspaces: client.workspaces, workspaceId: workspace.id)
+                let groups = ThreadGroups.group(client.currentSessions, projects: client.projects, workspaces: client.workspaces, workspaceId: workspace.id)
                 if !groups.archived.isEmpty {
                     home.open(.archivedProjects(environmentId: environmentId, workspaceId: workspace.id))
                     return
                 }
             }
         case "thread":
-            let candidates = client.sessions.filter { $0.parentId == nil }
+            let candidates = client.currentSessions.filter { $0.parentId == nil }
             let wanted = model.launchThread.map { needle in candidates.filter { $0.title.localizedCaseInsensitiveContains(needle) } } ?? candidates
             if let session = wanted.first ?? candidates.first {
                 home.open(.thread(environmentId: environmentId, sessionId: session.id, seq: TestHooks.targetSeq))
@@ -308,7 +308,7 @@ struct RootView: View {
             }
         case "thread-in-project":
             // The thread in its shell with its workspace open in the sidebar: the split's selected card.
-            let candidates = client.sessions.filter { $0.parentId == nil && $0.projectId != nil }
+            let candidates = client.currentSessions.filter { $0.parentId == nil && $0.projectId != nil }
             let wanted = model.launchThread.map { needle in candidates.filter { $0.title.localizedCaseInsensitiveContains(needle) } } ?? candidates
             guard let session = wanted.first ?? candidates.first,
                   let project = client.projects.first(where: { $0.id == session.projectId }),
@@ -318,7 +318,7 @@ struct RootView: View {
         case "project":
             // A project card's tap: the workspace in the sidebar, the project's shell on its landing
             // (TC_TEST_THREAD names a thread whose project it is, else the first project).
-            let candidates = client.sessions.filter { $0.parentId == nil && $0.projectId != nil }
+            let candidates = client.currentSessions.filter { $0.parentId == nil && $0.projectId != nil }
             let session = model.launchThread.flatMap { needle in candidates.first { $0.title.localizedCaseInsensitiveContains(needle) } } ?? candidates.first
             guard let project = client.projects.first(where: { $0.id == session?.projectId }) ?? client.projects.first,
                   let workspace = client.workspaces.first(where: { $0.id == project.workspaceId }) else { return }
@@ -327,7 +327,7 @@ struct RootView: View {
         case "workspace":
             // The sidebar at the Workspace level with nothing open: the split's empty detail.
             // A workspace, not the Chats entry: the project cards are what the shot shows.
-            let entries = HomeSections.home(hosts: HomeRows.inputs([client])).entries
+            let entries = HomeSections.home(hosts: HomeRows.inputs([client], current: true)).entries
             let workspace = entries.first { if case .workspace = $0.kind { true } else { false } }
             if let entry = workspace ?? entries.first {
                 home.open(.workspace(key: entry.id))
@@ -336,7 +336,7 @@ struct RootView: View {
             // The proof's tap: a payload shaped like the hub's, through the delegate's one route.
             guard let hook = TestHooks.notification else { return }
             let parts = hook.split(separator: "|", maxSplits: 1).map(String.init)
-            let candidates = client.sessions.filter { $0.parentId == nil }
+            let candidates = client.currentSessions.filter { $0.parentId == nil }
             guard let session = candidates.first(where: { $0.title.localizedCaseInsensitiveContains(parts[0]) }) else { return }
             var tc: [AnyHashable: Any] = ["event": "needs_you", "hostId": "box", "environmentId": environmentId, "threadId": session.id, "ts": 0]
             if parts.count > 1, let seq = Int(parts[1]) { tc["seq"] = seq }

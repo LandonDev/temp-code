@@ -17,16 +17,26 @@ struct AgentDetailScreen: View {
     /// DEBUG proof: the launch action ran once on this screen.
     @State private var acted = false
 
+    /// The agent's thread as it is at each read, tracked; never kept past a pass (the views below take its model).
+    private var thread: ThreadState {
+        client.thread(agentId)?.state ?? ThreadState()
+    }
+
     var body: some View {
         let session = client.session(agentId)
-        let thread = client.threads[agentId] ?? ThreadState()
+        let held = client.thread(agentId)
         VStack(spacing: 0) {
             StatusLine(client: client)
             if let session {
-                AgentIdentity(agent: session, thread: thread, parentCwd: parentCwd, environmentId: client.environment.id)
+                AgentIdentity(agent: session, held: held, parentCwd: parentCwd, environmentId: client.environment.id)
             }
             // A lone transcript: the reading measure (640 pt, centred) at any width, and the reader's place kept through a size change.
-            TranscriptView(client: client, sessionId: agentId, thread: thread, measured: true)
+            if let held {
+                TranscriptView(client: client, sessionId: agentId, thread: held, measured: true)
+            } else {
+                Color.clear
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
         .background(Surface.background)
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -113,7 +123,10 @@ private struct AgentTitle: View {
 /// hairline closes it.
 private struct AgentIdentity: View {
     let agent: SessionMeta
-    let thread: ThreadState
+    /// The thread's model (nil until the client holds it), never its state:
+    /// a view that kept the state would share its arrays.
+    let held: ThreadModel?
+    private var thread: ThreadState { held?.state ?? ThreadState() }
     var parentCwd: String?
     let environmentId: String
 

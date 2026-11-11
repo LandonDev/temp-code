@@ -135,7 +135,7 @@ private let goal = ThreadNotesDoc(text: "## Goal\n\nShip.\n", updatedAt: 5, path
         #expect(await rig.wait { rig.client.notes["s1"]?.doc == goal })
         fake.deliver(json(ServerPush.sessionRemoved(SessionRemovedPush(sessionIds: ["s1"]))))
         #expect(await rig.wait { rig.client.notes["s1"] == nil })
-        #expect(rig.client.sessions.map(\.id) == ["s2"])
+        #expect(rig.client.currentSessions.map(\.id) == ["s2"])
         await rig.client.stop()
     }
 
@@ -153,7 +153,7 @@ private let goal = ThreadNotesDoc(text: "## Goal\n\nShip.\n", updatedAt: 5, path
         let again = Task { await rig.client.loadNotes("s2") }
         let request = try #require(await rig.request(fake, "session.notes.get", count: 2))
         fake.deliver(json(ServerPush.sessionRemoved(SessionRemovedPush(sessionIds: ["s2"]))))
-        #expect(await rig.wait { !rig.client.sessions.contains { $0.id == "s2" } })
+        #expect(await rig.wait { !rig.client.currentSessions.contains { $0.id == "s2" } })
         fake.answer(id: request.id, result: json(goal))
         _ = await again.value
         #expect(rig.client.notes["s2"] == nil)
