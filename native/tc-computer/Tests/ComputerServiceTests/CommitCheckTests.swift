@@ -197,6 +197,14 @@ private func FileFacts_tilde(_ path: String) -> String { tildeRelative(path, hom
         #expect(result["menusLeftOpen"] == nil)
     }
 
+    @Test func aMenuTheCallOpenedIsClosedEvenWhenAXCallsItsAppTheOneInFront() {
+        // a background app tracking its pop-up's menu is AX's focused application (TC Probe, macOS 27.2)
+        #expect(MenuCloser.closes(frontmost: 42, pid: 42, openedByCall: true))
+        #expect(!MenuCloser.closes(frontmost: 42, pid: 42, openedByCall: false))
+        #expect(MenuCloser.closes(frontmost: 7, pid: 42, openedByCall: false))
+        #expect(MenuCloser.closes(frontmost: nil, pid: 42, openedByCall: false))
+    }
+
     @Test func aReadOfItsOwnClosesNothingAndAnOlderHostGetsNoNote() async throws {
         let rig = ServiceRig()
         await rig.ready()

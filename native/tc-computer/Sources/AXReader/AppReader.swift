@@ -292,6 +292,9 @@ public final class AppReader: AppReading, @unchecked Sendable {
     public func recordStep(_ index: Int) { monitor.recordStep(index) }
     public func endCallRecord() { monitor.endCall() }
     public func opened(during index: Int) -> Bool { monitor.opened(during: index) }
+    public func openedByCall(_ menu: AXUIElement) -> Bool {
+        monitor.recorded().contains { $0.kind == .menu && CFEqual($0.element, menu) }
+    }
 
     public func focusedElement() -> AXUIElement? { AX.element(AX.copy(app, "AXFocusedUIElement").value) }
 

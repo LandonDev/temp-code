@@ -428,6 +428,8 @@ public protocol AppReading: AnyObject {
     func endCallRecord()
     /// whether a menu opened or a window or sheet was made during step `index` of the call (§27.4)
     func opened(during index: Int) -> Bool
+    /// whether the call's record saw this menu open, so a step of the call opened it (§26.11, §27.4)
+    func openedByCall(_ menu: AXUIElement) -> Bool
     /// the app's focused element now (AXFocusedUIElement), nil when none answers
     func focusedElement() -> AXUIElement?
     /// the app's focused window's id now (§27.5), nil when none answers
@@ -453,6 +455,7 @@ extension AppReading {
     public func recordStep(_ index: Int) {}
     public func endCallRecord() {}
     public func opened(during index: Int) -> Bool { false }
+    public func openedByCall(_ menu: AXUIElement) -> Bool { false }
     public func focusedElement() -> AXUIElement? { nil }
     public func focusedWindowID() -> Int? { nil }
     public func index(of element: AXUIElement) -> Int { 0 }

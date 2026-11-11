@@ -81,6 +81,9 @@ final class FakeReader: AppReading, @unchecked Sendable {
         menusAsked += 1
         return menus
     }
+    /// the menus the call's record saw open (§26.11)
+    var openedByCallMenus = false
+    func openedByCall(_ menu: AXUIElement) -> Bool { openedByCallMenus }
 
     init(pid: pid_t, log: CallLog, pageOf: (@Sendable () -> Page?)? = nil) {
         self.pid = pid

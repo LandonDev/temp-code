@@ -80,8 +80,10 @@ public final class LiveSessionHost: SessionHost, @unchecked Sendable {
         AX.set(w, "AXMain", kCFBooleanTrue)
     }
 
+    /// The app's focused window is `w`, or a sheet on it (`FocusedWindow`).
     public func isFocusedWindow(_ w: AXUIElement, pid: Int32) -> Bool {
-        AX.same(AX.element(AX.app(pid), "AXFocusedWindow"), w)
+        guard let focused = AX.element(AX.app(pid), "AXFocusedWindow") else { return false }
+        return FocusedWindow.isOrSheetOf(focused, w, same: { AX.same($0, $1) }, role: { AX.string($0, "AXRole") }, parent: { AX.element($0, "AXParent") })
     }
 
     public func activate(_ app: AppBrief) -> Bool {
@@ -109,5 +111,23 @@ public final class LiveSessionHost: SessionHost, @unchecked Sendable {
     public func warpPointer(to p: ScreenPoint) {
         CGWarpMouseCursorPosition(p.cg)
         CGAssociateMouseAndMouseCursorPosition(1)
+    }
+}
+
+/// Whether the app's focused window is the step's window: the window itself, or a sheet on it, however deep (a save
+/// panel and its Go to Folder sheet, §26.7). A sheet takes AX's focused window while the window it sits on stays the
+/// one the step acts in, so a hold that waited for the window alone was refused with the panel open (macOS 27.2).
+public enum FocusedWindow {
+    static let maxSheets = 4
+
+    public static func isOrSheetOf<E>(_ focused: E, _ window: E, same: (E, E) -> Bool, role: (E) -> String?, parent: (E) -> E?) -> Bool {
+        var node: E? = focused
+        for _ in 0 ... maxSheets {
+            guard let n = node else { return false }
+            if same(n, window) { return true }
+            guard role(n) == "AXSheet" else { return false }
+            node = parent(n)
+        }
+        return false
     }
 }

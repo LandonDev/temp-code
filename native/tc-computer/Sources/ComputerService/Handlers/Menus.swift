@@ -18,9 +18,11 @@ extension ComputerService {
         let key = MenuCloser.key(target)
         let done = try? await target.worker.run { state -> (ClosedMenus, [String: OpenMenu])? in
             guard let reader = state.reader else { return nil }
-            let menus = reader.openMenus
-            // a menu in the app the person is in is theirs to close
-            guard !menus.isEmpty, MenuCloser.frontmostPid() != pid else { return nil }
+            // a menu in the app the person is in is theirs to close, unless a step of this call opened it: an app
+            // tracking a pop-up's menu is AX's focused application, whatever app is in front
+            let front = MenuCloser.frontmostPid()
+            let menus = reader.openMenus.filter { MenuCloser.closes(frontmost: front, pid: pid, openedByCall: reader.openedByCall($0.menu)) }
+            guard !menus.isEmpty else { return nil }
             var book = ClosedMenus()
             var openers: [String: OpenMenu] = [:]
             for (i, m) in menus.enumerated() {
@@ -157,6 +159,10 @@ enum MenuCloser {
         guard AXUIElementCopyAttributeValue(e, "AXRole" as CFString, &v) == .success else { return nil }
         return v as? String
     }
+
+    /// Whether the call closes a menu its closing read walked: one a step of the call opened, or any menu of an app
+    /// that is not the one in front (§26.11).
+    static func closes(frontmost: pid_t?, pid: pid_t, openedByCall: Bool) -> Bool { openedByCall || frontmost != pid }
 
     /// The app in front, by AX.
     static func frontmostPid() -> pid_t? {
