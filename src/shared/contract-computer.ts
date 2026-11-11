@@ -89,6 +89,81 @@ export const ComputerSettingsPatchSchema = z.object({
 })
 export type ComputerSettingsPatch = z.infer<typeof ComputerSettingsPatchSchema>
 
+// ── the thread's computer history (computer/history.ts): what the Computer section lists ──
+
+/** What a step is, for its glyph: a pointer act, text put in, a key, a scroll, a read, a picture the model asked for, a wait, an app call. */
+export const COMPUTER_STEP_KINDS = ['click', 'type', 'key', 'scroll', 'read', 'look', 'wait', 'app'] as const
+export type ComputerStepKind = (typeof COMPUTER_STEP_KINDS)[number]
+
+/** How a step ended. A planned step (its call still runs, or never finished) has none. */
+export const COMPUTER_STEP_STATES = ['ok', 'failed', 'not-run', 'stopped'] as const
+export type ComputerStepState = (typeof COMPUTER_STEP_STATES)[number]
+
+/**
+ * One step of a call, in words the host made once (shared/computer/historyWords.ts):
+ * present tense while planned, past once settled. No typed text a password
+ * field could hold ever enters a step.
+ */
+export const ComputerHistoryStepSchema = z.object({
+  kind: z.enum(COMPUTER_STEP_KINDS),
+  /** drawn muted: "Clicked" */
+  verb: z.string(),
+  /** what the verb acts on, the app left out: "Save", "into Subject"; empty when the app is all there is */
+  object: z.string(),
+  /** the same with the app, as the transcript's row reads: "Save in TextEdit", "TextEdit" */
+  inApp: z.string(),
+  state: z.enum(COMPUTER_STEP_STATES).optional(),
+  /** the tier the step ran at; the reader words it (COMPUTER_TIER_WORDS) */
+  tier: TierSchema.optional(),
+  /** what it acted on, more exactly than the words: `a button in the "Save As" sheet`, `at 500, 300` */
+  target: z.string().optional(),
+  /** how it went, each a fact of one comma run */
+  facts: z.array(z.string()).optional(),
+  /** a failed, stopped or refused step: why, in a person's words */
+  reason: z.string().optional(),
+  /** the element it acted on, by its index in the read's text */
+  element: z.number().int().positive().optional()
+})
+export type ComputerHistoryStep = z.infer<typeof ComputerHistoryStepSchema>
+
+/** Why a call has no picture. `gone` is said by a read alone: the picture was kept once and is past the newest 400. */
+export const HISTORY_PICTURE_NONE = ['permission', 'minimized', 'not-drawn', 'off', 'no-read', 'failed', 'gone'] as const
+export type HistoryPictureNone = (typeof HISTORY_PICTURE_NONE)[number]
+
+export const ComputerHistoryPictureSchema = z.union([
+  z.object({ width: z.number().int().positive(), height: z.number().int().positive(), at: z.number().int() }),
+  z.object({ none: z.enum(HISTORY_PICTURE_NONE) })
+])
+export type ComputerHistoryPicture = z.infer<typeof ComputerHistoryPictureSchema>
+
+/** One computer call of a thread, folded from its journal records. */
+export const ComputerHistoryCallSchema = z.object({
+  /** counts up per thread */
+  n: z.number().int().positive(),
+  /** the turn it ran in, counting up per thread */
+  turn: z.number().int().positive(),
+  /** when it passed its checks, epoch ms */
+  at: z.number().int(),
+  endedAt: z.number().int().optional(),
+  /** `running` in this process, `done` once it answered, `unfinished` for a start whose end never came */
+  state: z.enum(['running', 'done', 'unfinished']),
+  /** the app and the window it used; empty and null for a call that named neither */
+  app: z.string(),
+  window: z.string().nullable(),
+  steps: z.array(ComputerHistoryStepSchema),
+  /** a batch's planned steps in the card's words, while it runs */
+  plan: z.array(z.string()).optional(),
+  /** what the model took in: "Read 46 elements" */
+  read: z.string().optional(),
+  /** the read's text is kept and says more than its header: `computer.history.step` returns it */
+  text: z.boolean(),
+  /** absent until the picture's record lands */
+  picture: ComputerHistoryPictureSchema.optional(),
+  /** the call's record count: a reader keeps the higher one */
+  rev: z.number().int().positive()
+})
+export type ComputerHistoryCall = z.infer<typeof ComputerHistoryCallSchema>
+
 /** What `app.computer` answers the bridge: the result text, its pictures (or none), and whether nothing ran. */
 export const AppComputerAnswerSchema = ComputerToolResultSchema.extend({ isError: z.boolean() })
 export type AppComputerAnswer = z.infer<typeof AppComputerAnswerSchema>

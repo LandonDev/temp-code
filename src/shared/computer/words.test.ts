@@ -177,6 +177,53 @@ describe('computerPhrase', () => {
     expect(words(settled('computer_observe', { app: 'com.apple.TextEdit' }, header('TextEdit')))).toBe('Read TextEdit')
   })
 
+  it('a launch that started the app reads Launched, an open reads Opened, and the rest list', () => {
+    const list = 'TextEdit (com.apple.TextEdit) · active · windows: "Untitled"'
+    // while it runs a bare launch lists: whether the app starts is the service's to find
+    expect(words(live('computer_apps', { launch: 'TextEdit' }))).toBe('Listing apps')
+    expect(words(settled('computer_apps', { launch: 'TextEdit' }, `Launched TextEdit\n${list}`))).toBe('Launched TextEdit')
+    expect(words(settled('computer_apps', { launch: 'TextEdit' }, `TextEdit was already running\n${list}`))).toBe('Listed apps')
+    expect(words(settled('computer_apps', { launch: 'com.apple.TextEdit' }, `Launched TextEdit\n${list}`))).toBe('Launched TextEdit')
+    expect(words(settled('computer_apps', { launch: '/Applications/TextEdit.app' }, `Launched TextEdit\n${list}`))).toBe('Launched TextEdit')
+    const open = { launch: 'Preview', open: ['/Users/me/report.pdf'] }
+    expect(words(live('computer_apps', open))).toBe('Opening report.pdf in Preview')
+    expect(words(settled('computer_apps', open, `Preview was already running\nOpened report.pdf in window "report.pdf"\n${list}`))).toBe('Opened report.pdf in Preview')
+    expect(words(settled('computer_apps', open, `Launched Preview\nOpened report.pdf; no new window appeared (it may be a tab or an existing window)\n${list}`))).toBe('Opened report.pdf in Preview')
+    // a refused open opened nothing
+    expect(words(settled('computer_apps', open, 'denied: the person did not allow it; do not reach the same effect another way'))).toBe('Listed apps')
+    // a URL never enters the words; several items are counted
+    expect(words(live('computer_apps', { launch: 'Safari', open: ['https://example.com/form?id=7'] }))).toBe('Opening a page in Safari')
+    expect(words(live('computer_apps', { launch: 'Preview', open: ['/a.pdf', '/b.pdf'] }))).toBe('Opening 2 items in Preview')
+    // a caller that knows what the launch did needs no result text
+    expect(words(computerPhrase('computer_apps', { launch: 'TextEdit' }, { live: false, launched: { launched: true, opened: false } }))).toBe('Launched TextEdit')
+    expect(words(computerPhrase('computer_apps', open, { live: false, launched: { launched: false, opened: true } }))).toBe('Opened report.pdf in Preview')
+  })
+
+  it('app: false leaves the app out of the object, empty when the app is all there is', () => {
+    const bare = (tool: string, input: object, liveNow = false) => {
+      const p = computerPhrase(tool, input, { live: liveNow, brief, app: false })
+      return p ? [p.verb, p.object] : null
+    }
+    expect(bare('computer_act', { app: 'TextEdit', action: 'left_click', element: 14 })).toEqual(['Clicked', 'Save'])
+    expect(bare('computer_act', { app: 'TextEdit', action: 'left_click', coordinate: [5, 6] })).toEqual(['Clicked', ''])
+    expect(bare('computer_act', { app: 'TextEdit', action: 'type', text: 'hi', element: 33 })).toEqual(['Typed', 'into Subject'])
+    expect(bare('computer_act', { app: 'TextEdit', action: 'type', text: 'hi' })).toEqual(['Typed', ''])
+    expect(bare('computer_act', { app: 'TextEdit', action: 'paste', text: 'hi', element: 33 })).toEqual(['Pasted', 'into Subject'])
+    expect(bare('computer_act', { app: 'TextEdit', action: 'key', text: 'super+s' })).toEqual(['Pressed', 'super+s'])
+    expect(bare('computer_act', { app: 'TextEdit', action: 'scroll', scroll_direction: 'down', scroll_amount: 3 })).toEqual(['Scrolled', 'down'])
+    expect(bare('computer_act', { app: 'TextEdit', action: 'left_click_drag', start_coordinate: [1, 2], coordinate: [3, 4] })).toEqual(['Dragged', ''])
+    expect(bare('computer_act', { app: 'TextEdit', action: 'screenshot' })).toEqual(['Looked at', ''])
+    expect(bare('computer_act', { app: 'TextEdit', action: 'wait', duration: 1 })).toEqual(['Waited on', ''])
+    expect(bare('computer_observe', { app: 'TextEdit' })).toEqual(['Read', ''])
+    expect(bare('computer_observe', { app: 'TextEdit' }, true)).toEqual(['Reading', ''])
+    expect(bare('computer_batch', { app: 'Mail', actions: [{ action: 'key', text: 'a' }, { action: 'key', text: 'b' }] }, true)).toEqual(['Working', ''])
+    // the apps list never named the call's app
+    expect(bare('computer_apps', {})).toEqual(['Listed', 'apps'])
+    // and the default still names it
+    expect(words(live('computer_act', { app: 'TextEdit', action: 'type', text: 'hi', element: 33 }))).toBe('Typing into Subject in TextEdit')
+    expect(words(live('computer_act', { app: 'TextEdit', action: 'left_click_drag', start_coordinate: [1, 2], coordinate: [3, 4] }))).toBe('Dragging in TextEdit')
+  })
+
   it('names a clicked element from the book while it runs, and by its role with no name', () => {
     expect(words(live('computer_act', { app: 'TextEdit', action: 'left_click', element: 14 }))).toBe('Clicking Save in TextEdit')
     expect(words(live('computer_act', { app: 'TextEdit', action: 'left_click', element: 5 }))).toBe('Clicking a scroll area in TextEdit')

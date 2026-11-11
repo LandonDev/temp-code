@@ -142,3 +142,104 @@ export function macFreeWords(place?: number): string {
 
 /** A paste held until the person's last copy is a few seconds old. */
 export const CLIPBOARD_WAIT_WORDS = 'Waiting for the clipboard'
+
+// ── a computer step as the Computer section reads it (shared/computer/historyWords.ts) ──
+// These are a person's words for a step that already ran; the model's own are
+// errorWords.ts and hostErrors.ts. Each is one fact of a comma run or one line.
+
+/**
+ * A background route a step took in place of its tier (§24.8), as an open
+ * step's fact; `on` is what the route acted on (`File › Save…`).
+ */
+export const COMPUTER_ROUTE_WORDS: Readonly<
+  Record<'menu' | 'hit' | 'caret' | 'scroll-bar' | 'scroll-page' | 'pick' | 'scroll-into-view' | 'panel', (on?: string) => string>
+> = {
+  menu: (on) => (on ? `through the menu ${on}` : 'through its menu item'),
+  hit: () => 'on the element under the point',
+  caret: () => 'at the caret',
+  'scroll-bar': () => 'by the scroll bar',
+  'scroll-page': () => 'a page at a time',
+  pick: () => 'picked from its menu',
+  'scroll-into-view': () => 'scrolled into view',
+  panel: () => 'through the save panel'
+}
+
+/** What a step that ran says of how it went; `changed` is the plain case and says nothing. */
+export const COMPUTER_EFFECT_FACTS: Readonly<Record<'none' | 'unknown' | 'uncommitted', string>> = {
+  none: 'nothing changed',
+  unknown: "can't tell if it changed",
+  uncommitted: 'on screen only, not on disk'
+}
+
+/** Why a step failed, by the service's error kind; a kind with no line here reads the service's own sentence (`failureWords`). */
+export const COMPUTER_FAILURE_WORDS: Readonly<Record<string, string>> = {
+  app_not_found: 'The app was not found',
+  window_not_found: 'The window was gone',
+  window_minimized: 'The window was minimized',
+  stale_element: 'The element was gone',
+  no_such_element: 'The element was not in the window',
+  action_unsupported: "The element can't do that",
+  needs_tier: 'It needed your pointer and keyboard',
+  out_of_bounds: 'The point was outside the window',
+  invalid_key: 'There is no such key',
+  interrupted: 'Stopped when you used the mouse or keyboard',
+  app_busy: 'Another thread was using the app',
+  cancelled: 'Cancelled before it finished',
+  clipboard_busy: 'The clipboard was busy',
+  capture_failed: 'The window could not be captured',
+  timeout: 'The app did not answer',
+  text_not_found: 'The text was not there',
+  key_window_unavailable: "The window couldn't take keys",
+  session_unavailable: 'The screen could not be used',
+  open_refused: 'The item could not be opened',
+  value_not_taken: 'The field did not take the value',
+  focus_moved: 'The focus had moved',
+  tab_in_use: 'You had another tab in front',
+  not_committed: 'Nothing reached the disk',
+  file_exists: 'The file already exists',
+  named_target: 'Nothing by that name was found'
+}
+
+/** Why a call never ran, by the host's refusal kind (shared/computer/hostErrors.ts). */
+export const COMPUTER_REFUSAL_WORDS: Readonly<
+  Record<
+    | 'service_unavailable'
+    | 'service_restarted'
+    | 'no_observation'
+    | 'invalid_args'
+    | 'denied'
+    | 'away'
+    | 'session_refused'
+    | 'clipboard_recent'
+    | 'stopped'
+    | 'paused'
+    | 'cancelled'
+    | 'refused_app',
+    string
+  >
+> = {
+  service_unavailable: 'Computer use was off',
+  service_restarted: 'The computer service restarted',
+  no_observation: 'The window had not been read',
+  invalid_args: 'The call was not valid',
+  denied: "You didn't allow it",
+  away: 'You were away and it spends money',
+  session_refused: 'The Mac was not free',
+  clipboard_recent: 'You had just copied something',
+  stopped: 'Stopped',
+  paused: 'The thread was paused',
+  cancelled: 'Cancelled',
+  refused_app: 'That app is off limits'
+}
+
+/** Why a call ended before its answer, by its abort reason (computer/run.ts `abortedLine`). */
+export const COMPUTER_ABORT_WORDS: Readonly<Record<string, string>> = {
+  stopped: 'Stopped',
+  interrupt: 'Stopped',
+  paused: 'The thread was paused',
+  ended: 'The thread ended',
+  settled: 'The turn ended',
+  unread: 'Its answer was never read',
+  superseded: 'A later call replaced it',
+  cancel: 'The model cancelled it'
+}

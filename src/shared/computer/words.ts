@@ -307,8 +307,16 @@ export interface PhraseOptions {
   brief?: (index: number) => ElementBrief | null
   /** the settled result's text: its step lines name each element and its header the app */
   result?: string
-  /** the app's own name when the host knows it, before the result says it */
-  app?: string
+  /** the app's own name when the host knows it, before the result says it; `false` leaves the app out of the object, which is then empty when the app is all there is (the Computer section names an app only where it changes) */
+  app?: string | false
+  /** computer_apps: what the launch did, when the caller knows it without the result's text */
+  launched?: AppsOutcome
+}
+
+/** What a `computer_apps { launch, open }` did: whether it started the app, and whether it opened its items. */
+export interface AppsOutcome {
+  launched: boolean
+  opened: boolean
 }
 
 type Named = { role: string; name: string | null } | null
@@ -357,20 +365,21 @@ function targetNamed(a: StepInput): Named {
   return null
 }
 
-/** One action in words, with the element it names (already resolved) in the app. */
-function stepPhrase(a: StepInput, element: Named, app: string, live: boolean): ComputerPhrase {
+/** One action in words, with the element it names (already resolved) in the app; a null app is left out. */
+function stepPhrase(a: StepInput, element: Named, appName: string | null, live: boolean): ComputerPhrase {
   const f = (forms: Forms): string => forms[live ? 0 : 1]
   const who = elementWords(element)
-  const inApp = `in ${app}`
-  const on = (thing: string | null): string => (thing ? `${thing} ${inApp}` : inApp)
+  const app = appName ?? ''
+  const inApp = appName === null ? '' : `in ${appName}`
+  const on = (thing: string | null): string => [thing, inApp].filter(Boolean).join(' ')
   const action = a.action as ComputerActionName
   const click = CLICK_FORMS[action]
   if (click) return { verb: f(click), object: on(who) }
   switch (action) {
     case 'type':
-      return { verb: f(['Typing', 'Typed']), object: who ? `into ${who} ${inApp}` : inApp }
+      return { verb: f(['Typing', 'Typed']), object: on(who && `into ${who}`) }
     case 'paste':
-      return { verb: f(['Pasting', 'Pasted']), object: who ? `into ${who} ${inApp}` : inApp }
+      return { verb: f(['Pasting', 'Pasted']), object: on(who && `into ${who}`) }
     case 'key':
       return { verb: f(['Pressing', 'Pressed']), object: on(keyWords(a.text) ?? 'a key') }
     case 'hold_key':
@@ -378,7 +387,7 @@ function stepPhrase(a: StepInput, element: Named, app: string, live: boolean): C
     case 'scroll':
       return { verb: f(['Scrolling', 'Scrolled']), object: on(typeof a.scroll_direction === 'string' ? a.scroll_direction : null) }
     case 'left_click_drag':
-      return { verb: f(['Dragging', 'Dragged']), object: inApp }
+      return { verb: f(['Dragging', 'Dragged']), object: on(null) }
     case 'mouse_move':
       return who ? { verb: f(['Pointing at', 'Pointed at']), object: on(who) } : { verb: f(['Moving', 'Moved']), object: on('the pointer') }
     case 'left_mouse_down':
@@ -422,6 +431,38 @@ function resultApp(result: string | undefined): string | null {
   return null
 }
 
+/** A web page reads as "a page" and a file by its name: a URL never enters a row's words. */
+const openWords = (open: readonly string[]): string => (open.length === 1 ? (/^https?:/i.test(open[0]) ? 'a page' : openItemName(open[0])) : `${open.length} items`)
+
+/** The app a launch names, as a row says it: a path's or a bundle id's last part, never the path. */
+function launchName(launch: string): string {
+  const name = launch.trim()
+  if (LOOKS_LIKE_PATH.test(name)) return openItemName(name).replace(/\.app$/i, '')
+  return /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+){2,}$/.test(name) ? name.split('.').pop()! : name
+}
+
+/** What the result's own lines say a launch did (result.ts `launchLines`). */
+function appsOutcomeOf(result: string | undefined): AppsOutcome {
+  const lines = result ? result.split('\n') : []
+  return { launched: lines[0]?.startsWith('Launched ') === true, opened: lines.some((l) => l.startsWith('Opened ')) }
+}
+
+/**
+ * computer_apps in words: an open says what it opens in which app, a launch
+ * that started the app says so once it settled, and every other call lists.
+ * While it runs a bare launch still reads Listing: whether the app starts is
+ * the service's to find.
+ */
+function appsPhrase(i: Record<string, unknown>, opts: PhraseOptions): ComputerPhrase {
+  const f = (forms: Forms): string => forms[opts.live ? 0 : 1]
+  const launch = typeof i.launch === 'string' && i.launch.trim() ? launchName(i.launch) : null
+  const open = Array.isArray(i.open) ? i.open.filter((o): o is string => typeof o === 'string') : []
+  const did = opts.live ? null : (opts.launched ?? appsOutcomeOf(opts.result))
+  if (launch && open.length && (opts.live || did?.opened)) return { verb: f(['Opening', 'Opened']), object: `${openWords(open)} in ${launch}` }
+  if (launch && did?.launched) return { verb: 'Launched', object: launch }
+  return { verb: f(['Listing', 'Listed']), object: 'apps' }
+}
+
 const isAction = (a: unknown): a is StepInput & { action: ComputerActionName } =>
   !!a && typeof a === 'object' && (COMPUTER_ACTION_NAMES as readonly unknown[]).includes((a as StepInput).action)
 
@@ -439,9 +480,11 @@ export function computerPhrase(tool: string, input: unknown, opts: PhraseOptions
     return { verb: i.cancel === true ? f(['Cancelling', 'Cancelled']) : f(['Waiting for', 'Waited for']), object: 'the held call' }
   const of = computerToolOf(tool)
   if (!of) return null
-  const app = (!live ? resultApp(opts.result) : null) ?? opts.app ?? (typeof i.app === 'string' && i.app.trim() ? i.app.trim() : 'an app')
-  if (of.tool === 'computer_apps') return { verb: f(['Listing', 'Listed']), object: 'apps' }
-  if (of.tool === 'computer_observe') return { verb: f(['Reading', 'Read']), object: app }
+  // null leaves the app out of every object (`app: false`)
+  const app = opts.app === false ? null : ((!live ? resultApp(opts.result) : null) ?? opts.app ?? (typeof i.app === 'string' && i.app.trim() ? i.app.trim() : 'an app'))
+  const inApp = app === null ? '' : `in ${app}`
+  if (of.tool === 'computer_apps') return appsPhrase(i, opts)
+  if (of.tool === 'computer_observe') return { verb: f(['Reading', 'Read']), object: app ?? '' }
 
   const actions: (StepInput & { action: ComputerActionName })[] =
     of.tool === 'computer_batch'
@@ -449,7 +492,7 @@ export function computerPhrase(tool: string, input: unknown, opts: PhraseOptions
       : isAction({ ...i, action: of.action ?? i.action })
         ? [{ ...i, action: (of.action ?? i.action) as ComputerActionName }]
         : []
-  if (!actions.length) return of.tool === 'computer_batch' ? { verb: f(['Working', 'Worked']), object: `in ${app}` } : { verb: f(['Using', 'Used']), object: app }
+  if (!actions.length) return of.tool === 'computer_batch' ? { verb: f(['Working', 'Worked']), object: inApp } : { verb: f(['Using', 'Used']), object: app ?? '' }
 
   // the settled result's first lines are the step lines, one per action, in order
   const lines = !live && opts.result ? opts.result.split('\n') : []
@@ -463,7 +506,7 @@ export function computerPhrase(tool: string, input: unknown, opts: PhraseOptions
   const acting = actions.flatMap((a, k) => (sendsInput(a) ? [k] : []))
   const one = acting.length === 1 ? acting[0] : actions.length === 1 ? 0 : null
   if (one !== null) return stepPhrase(actions[one], named(one), app, live)
-  return { verb: f(['Working', 'Worked']), object: `in ${app}`, tally: `${actions.length} steps` }
+  return { verb: f(['Working', 'Worked']), object: inApp, tally: `${actions.length} steps` }
 }
 
 /** The activity line the thread's row, Activity and the working line show while a computer call runs; null for any other tool. */
@@ -473,7 +516,7 @@ export function computerActivity(
   brief?: (index: number) => ElementBrief | null,
   app?: string
 ): { text: string; kind: 'investigate' | 'edit' } | null {
-  const phrase = computerPhrase(name, input, { live: true, brief, app })
+  const phrase = computerPhrase(name, input, { live: true, brief, ...(app !== undefined ? { app } : {}) })
   if (!phrase) return null
   const of = computerToolOf(name)
   // computer_result sends nothing itself: the call it reads already said what it does

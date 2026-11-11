@@ -26,6 +26,31 @@ describe('ElementBook', () => {
     expect(book.has(37)).toBe(true)
   })
 
+  it('path names an element\'s ancestors, the nearest first', () => {
+    const book = new ElementBook()
+    book.apply(fixture('full.txt'), 'full')
+    expect(book.path(21)).toEqual([
+      { index: 20, line: 'group "Formatting"' },
+      { index: 1, line: 'window "Untitled"' }
+    ])
+    // a range's members hang under the range's parent
+    expect(book.path(12).map((b) => b.index)).toEqual([4, 2, 1])
+    // the top, and an index the book lacks, have none
+    expect(book.path(1)).toEqual([])
+    expect(book.path(999)).toEqual([])
+    // an element a diff added keeps the parent its group named
+    book.apply(fixture('diff.txt'), 'diff')
+    expect(book.path(44).map((b) => b.line)).toEqual(['sheet "Save As"', 'window "Untitled"'])
+    // one the service named outside a read has none until a read places it
+    book.learn({ index: 70, line: 'menu item "Save"' })
+    expect(book.path(70)).toEqual([])
+    // a full read clears what was there
+    book.apply(fixture('unchanged.txt'), 'unchanged')
+    expect(book.path(44).length).toBe(2)
+    book.clear()
+    expect(book.path(44)).toEqual([])
+  })
+
   it('a removed parent added by a diff takes its new children with it', () => {
     const book = new ElementBook()
     book.apply(fixture('full.txt'), 'full')

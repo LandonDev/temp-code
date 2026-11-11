@@ -36,6 +36,19 @@ export class ElementBook {
     return e ? { index, line: e.line } : null
   }
 
+  /** An element's ancestors, the nearest first; empty for an index the book lacks or one at the top. A parent that names a missing entry ends the walk. */
+  path(index: number): ElementBrief[] {
+    const out: ElementBrief[] = []
+    const seen = new Set<number>([index])
+    for (let at = this.entries.get(index)?.parent ?? null; at !== null && !seen.has(at); at = this.entries.get(at)?.parent ?? null) {
+      const e = this.entries.get(at)
+      if (!e) break
+      seen.add(at)
+      out.push({ index: at, line: e.line })
+    }
+    return out
+  }
+
   clear(): void {
     this.entries.clear()
     this.focused = null
