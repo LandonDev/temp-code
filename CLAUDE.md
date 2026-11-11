@@ -2159,8 +2159,8 @@ why and the measured headline.
   tiers, the paste under the clipboard lock; in the background a step first
   tries the AX route that does the same thing, §24: a shortcut's menu item,
   the element under a click, the caret, the scroll bar, an AX insert for a
-  text paste; a disabled menu item in an inactive app waits for the session
-  tier, and the host runs the routes an app ignored last), the AX reader (§15: pure
+  text paste; a menu item the background disables runs at `front`, and the
+  host runs the routes an app ignored last), the AX reader (§15: pure
   `AXText`, tested on the box with `sh scripts/computer-text-test.sh`, and
   the Mac's walk), the service shell (§16: the router, the locks, the
   held-input ledger, the exit codes). `bun run computer:test` builds and
@@ -2168,6 +2168,23 @@ why and the measured headline.
   the tree, the capture badge never (docs/computer-protocol.md §22): closing
   and minimizing are clicks at `ax`; restoring is `perform raise`, at the
   session tier.
+- **Steps that need the app active** (docs/computer-protocol.md §25, plan
+  .temp-code/plan-CAMMKRiJRhhu.md). The `front` tier sits between `process`
+  and `session` (`TIER_ORDER`): one bounded hold brings the app forward,
+  acts through AX or events posted to its pid, never the pointer or the HID
+  tap, and gives the person's app and key window back (`FRONT` timings in
+  protocol.ts, `step.front`); it serves Save, Move to Trash, New Folder, an
+  inline rename's commit and the key-window retry. `save_as { path,
+  replace? }` saves through the save panel, its folder confirmed in front,
+  and proves the file. The commit check stats the file or folder behind the
+  window around each acting step (`step.disk`): a step expected to reach the
+  disk that changed only the screen reads `uncommitted`, "on screen only,
+  not on disk", with the step that commits it, and counts as a miss; the
+  observation's document line names the file, its write time and `edited`.
+  A menu a call opened is closed at its end, else named (`menu left open:`).
+  `initialize` carries `features` both ways, so an older peer never sees
+  what it cannot parse (`HostFeatures`, `ComputerService.serves`, the
+  bridge's `features: ['front']` and `rowForPeer`).
 - **The host** (src/main/server/computer/, §17). On a Mac with a screen,
   one `ComputerService` (binary.ts; respawned with backoff, down five
   minutes after five crashes in two, shut down after ten idle minutes).
@@ -2212,10 +2229,16 @@ why and the measured headline.
   access; answered Run now while Away is on). One session call at a time per host; the person's app and
   pointer go back after it. A paste waits out the person's copy
   (`RECENT_COPY_MS`). main feeds it `PersonIdle` (src/main/personIdle.ts).
+  The `front` tier runs at once by default, the person present or not
+  (`computer.activeApp` `brief`); `away` makes it wait as the session tier
+  does, with the card "Bring TextEdit forward for a moment to …"
+  (`frontFreedom`, `SessionScheduler.frontAdmitted`). A hold's span leaves
+  the person's idle time like a session step's.
 - **What the person sees** (§8 "What the person sees"). A Computer row per
   live session in the right panel's Activity section
   (src/renderer/src/lib/computerSessions.ts, the tier in
-  `COMPUTER_TIER_WORDS`), opening on the Mac's desktop onto the live
+  `COMPUTER_TIER_WORDS`: in the background, to the app, in front, on the
+  screen), opening on the Mac's desktop onto the live
   preview (computer/preview.ts at 4 fps, the `local` RPCs
   `computer.preview.start/ack/stop`;
   src/renderer/src/surfaces/threads/ComputerPreview.tsx); a picture the
