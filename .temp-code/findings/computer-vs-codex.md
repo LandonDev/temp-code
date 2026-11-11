@@ -56,6 +56,32 @@ Ran 2026-11-10 21:51–22:16 on the Mac, a scratch clone at master `d24b29c7b` (
 
 **Not run, six invocations:** Opus and GPT-6.1 Sol on the Mac, all three models from the box, and the Codex reference. The master stopped the round because the person was using the Mac. Opus had started (22:23) but sat held by `proofOrder` behind the other agent's `e2e-tc-computer --gate` wrapper, itself waiting on idle; `field-calc` and `field-app-launch` were skipped at the 30-minute cap ("another computer proof is running") and the process was gone at the stop, with no report. The box clone (`/srv/agents/work/tc-bench-r1`, `d24b29c7b`) was ready and never used.
 
+## Part 1 before round 2: the gate rows on the Mac (2026-11-11)
+
+The final runs, at `387f2be8e` with the web fixes (`3117e2933..3c352a91c`), run as the gate runs them:
+
+| row / leg | result | steps | time |
+|---|---|---|---|
+| computer:test | pass | 1,036 Swift tests | ~30 s |
+| e2e-tc-computer --gate | pass, twice in a row | 83 passed, 10 hand-run steps skipped | 201 s, 193 s |
+| – base | pass | 17 | 19.8 s |
+| – windows | pass | 8 | 17.0 s |
+| – fallbacks | pass | 11 | 26.7 s |
+| – web | pass | 14 | 33.3 s |
+| – active | pass | 20 | 69.8 s |
+| – fewer | pass | 7 | 14.3 s |
+| – stealer | pass | 6 | 8.7 s |
+| e2e-computer-bridge --gate | pass | 60/60 | 91 s |
+| e2e-computer-preview --gate | pass | 17/17 | 27 s |
+
+At `3c352a91c` (master after the `settleFront` move) the whole `e2e-tc-computer --gate` row passed again on the Mac: 83 passed, 0 failed, 10 hand-run steps skipped, 208 s, with no `TEMP_CODE_TEST_CHROMIUM` set.
+
+- **Fixes:** `217414ab7..35421baef` the caret route, a step that opens a menu counts as a change, a key after a table-row click reaches the table, and scratch apps launch without the thread's guard marks. `2643686d0..7e6d5588f` shared step rules and `TC_PROOF_KEEP_GOING`, Chrome 156 web reads, and the front guard puts back the person's window. `4bd0e1709..8ce0d58e3` the active leg: role words in the commit check, the edited flag from the title bar, menus the call opened get closed, and the Finder rename commit check. `557157397` the preview row's missing import. `be40c18d5..387f2be8e` save_as confirms Go to Folder at the session tier, the Finder rename editor route, and the front app read by AX. `3117e2933..3c352a91c` the web launch settle, a scroll seen moving counts as a change, and ScreenCaptureKit's list and stream start bounded at 3 s.
+- **Typecheck misses scripts/:** it sits outside tsconfig, so `bun run typecheck` never saw the preview row's missing import, and the row crashed at start.
+- **Not run:** the `e2e-person-guard` hand proof (it needs the person typing on cue), the preview's Escape leg, and `e2e-computer-ui`.
+- **Chrome for Testing 156** now sits in the Mac's default Playwright cache, so the web leg runs.
+- **Round 2:** not started; it waits for the release to ship.
+
 ## What is left to run: round 2
 
 - **Commit:** current `origin/master` once the two fix threads (Z1fF9Kpxy3hR, ypMfSDYrNA9E) land. It carries `614dbd142` (the suite fixes) and `0de7a9bc0` (fewer calls, §27).
