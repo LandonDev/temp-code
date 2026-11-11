@@ -47,6 +47,20 @@ public enum ThreadPose {
     /// Two panes only when the hero gets `minHero` and the chat `minChat`.
     public static let twoPaneMinWidth: CGFloat = minHero + minChat
 
+    /// What a settled pager's offset may be off a whole page by, in pages.
+    public static let pageHair = 0.02
+
+    /// A pager's page is in view: it is the one shown, or the pager's
+    /// offset, in pages, is within a page of it (a swipe has part of it on
+    /// screen). At rest the offset reads a whole number give or take a
+    /// hair, so the page beside the one shown is not in view. A hero that
+    /// is not in view reads nothing of its thread (`HeroGate`).
+    public static func pageInView(_ page: Int, shown: Int?, progress: Double?) -> Bool {
+        if shown == page { return true }
+        guard let progress else { return false }
+        return abs(progress - Double(page)) < 1 - pageHair
+    }
+
     /// The mode. `regularWidth` is the shell's split pose (the width size
     /// class at the root); `width` is the thread body's own measured width.
     /// Size class first (Apple's rule: a 678 pt folded-landscape column is

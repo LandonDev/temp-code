@@ -16,15 +16,21 @@ struct ImplementationBoardView: View {
     /// The thread's model (nil until the client holds it), never its state:
     /// a view that kept the state would share its arrays.
     let held: ThreadModel?
-    private var thread: ThreadState { held?.state ?? ThreadState() }
+    /// The page is in view. Off screen (the pager's other page) the board
+    /// draws the thread as it last read it and reads nothing (`HeroGate`):
+    /// building the board walks the whole thread, and it ran at every row.
+    let onScreen: Bool
+    @State private var gate = HeroGate()
+    private var thread: ThreadState { gate.state(held, onScreen: onScreen) }
     let document: String?
     @State private var choice: TodoChoice
 
-    init(client: EnvironmentClient, sessionId: String, session: SessionMeta?, held: ThreadModel?, document: String?) {
+    init(client: EnvironmentClient, sessionId: String, session: SessionMeta?, held: ThreadModel?, onScreen: Bool = true, document: String?) {
         self.client = client
         self.sessionId = sessionId
         self.session = session
         self.held = held
+        self.onScreen = onScreen
         self.document = document
         // The proof's `TC_TEST_OPEN=todo` shoots a row with its trace open.
         _choice = State(initialValue: TestHooks.open == "todo" ? .firstTrace : .auto)

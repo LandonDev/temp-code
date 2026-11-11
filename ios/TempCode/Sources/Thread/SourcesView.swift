@@ -14,7 +14,11 @@ struct SourcesView: View {
     /// The thread's model (nil until the client holds it), never its state:
     /// a view that kept the state would share its arrays.
     let held: ThreadModel?
-    private var thread: ThreadState { held?.state ?? ThreadState() }
+    /// The page is in view. Off screen (the pager's other page) the board
+    /// draws the thread as it last read it and reads nothing (`HeroGate`).
+    var onScreen = true
+    @State private var gate = HeroGate()
+    private var thread: ThreadState { gate.state(held, onScreen: onScreen) }
     let document: String?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

@@ -43,6 +43,28 @@ import Testing
     }
 }
 
+@Suite struct PageInViewTests {
+    @Test func `the page shown is in view, the one beside it only while a swipe has part of it on screen`() {
+        // At rest on the chat (page 1 of board, chat): the board is not in view.
+        #expect(ThreadPose.pageInView(1, shown: 1, progress: 1))
+        #expect(!ThreadPose.pageInView(0, shown: 1, progress: 1))
+        // A settled offset a hair off the whole page changes nothing.
+        #expect(!ThreadPose.pageInView(0, shown: 1, progress: 0.995))
+        #expect(!ThreadPose.pageInView(0, shown: 1, progress: 1.004))
+        // A swipe towards the board brings it into view before the page changes.
+        #expect(ThreadPose.pageInView(0, shown: 1, progress: 0.9))
+        #expect(ThreadPose.pageInView(0, shown: 1, progress: 0.2))
+        #expect(ThreadPose.pageInView(1, shown: 1, progress: 0.2))
+        // Arrived: the chat has left.
+        #expect(ThreadPose.pageInView(0, shown: 0, progress: 0))
+        #expect(!ThreadPose.pageInView(1, shown: 0, progress: 0))
+        // Before the pager has reported an offset, the page shown is the only one.
+        #expect(ThreadPose.pageInView(0, shown: 0, progress: nil))
+        #expect(!ThreadPose.pageInView(1, shown: 0, progress: nil))
+        #expect(!ThreadPose.pageInView(0, shown: nil, progress: nil))
+    }
+}
+
 @Suite struct TwoPaneColumnsTests {
     private let hairline: CGFloat = 1 / 3
 

@@ -73,6 +73,72 @@ public enum ThreadSegment: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// What the thread's frame reads of the thread itself: whether it has a
+/// board, agents or sources, the newest row that waits on the person, and
+/// the todo labels the two-pane fit measures. The thread's model keeps one
+/// (`ThreadModel.frame`) and assigns it only when it changes, so the thread
+/// screen runs again when one of these moves and not at every row.
+public struct FrameFacts: Sendable, Equatable {
+    public var hasAgents = false
+    public var hasBoard = false
+    /// The board holds a source.
+    public var hasSources = false
+    /// The newest undecided approval or question.
+    public var undecidedSeq: Int?
+    public var todoLabels: [String] = []
+
+    public init() {}
+
+    /// From a fold whose newest undecided row is already known (`UndecidedTracker`).
+    public init(_ fold: ThreadFold, undecidedSeq: Int?) {
+        let board = fold.board
+        hasAgents = !board.agents.isEmpty
+        hasBoard = !board.todos.isEmpty || board.rounds.contains { !$0.isEmpty } || hasAgents
+        hasSources = !board.sources.isEmpty
+        self.undecidedSeq = undecidedSeq
+        todoLabels = board.todos.map(\.content)
+    }
+
+    /// From the whole thread: its items are walked for the undecided row.
+    public init(_ thread: ThreadState) {
+        self.init(thread.fold, undecidedSeq: thread.fold.items.last { $0.item.needsUser }?.seq)
+    }
+}
+
+/// The newest item that waits on the person, kept from write to write. A
+/// long thread asked this of every item at every push; here only the items
+/// written since the last ask are read again (`FoldChanges`), and a fold
+/// made whole is read whole once.
+public struct UndecidedTracker: Sendable {
+    private var epoch = -1
+    private var generation = -1
+    private var index: Int?
+
+    public init() {}
+
+    public mutating func seq(in fold: ThreadFold) -> Int? {
+        let changes = fold.changes
+        let items = fold.items
+        if epoch != changes.epoch {
+            index = items.lastIndex { $0.item.needsUser }
+        } else if generation != changes.generation {
+            // Everything before the lowest item written is as it was.
+            let from = min(max(0, changes.dirtyFrom(since: generation) ?? 0), items.count)
+            if let found = items[from...].lastIndex(where: { $0.item.needsUser }) {
+                index = found
+            } else if let kept = index, kept < from {
+                index = kept
+            } else if index != nil {
+                // The newest undecided row was written and decided: an older one may wait still.
+                index = items[..<from].lastIndex { $0.item.needsUser }
+            }
+        }
+        epoch = changes.epoch
+        generation = changes.generation
+        return index.flatMap { $0 < items.count ? items[$0].seq : nil }
+    }
+}
+
 /// What the thread is up to, as the segment rules read it.
 public struct ThreadPhase: Equatable, Sendable {
     public let kind: ThreadKind
@@ -88,18 +154,23 @@ public struct ThreadPhase: Equatable, Sendable {
     /// The newest undecided approval or question.
     public let undecidedSeq: Int?
 
+    /// From the whole thread, read once (`FrameFacts.init(_:)` walks its items).
     public init(session: SessionMeta?, thread: ThreadState, document: String?) {
+        self.init(session: session, facts: FrameFacts(thread), document: document)
+    }
+
+    /// From what the thread's model keeps of it (`ThreadModel.frame`): no row is read.
+    public init(session: SessionMeta?, facts: FrameFacts, document: String?) {
         kind = ThreadKind(session)
         status = session?.status
         running = status == .running || status == .starting
-        let board = thread.fold.board
-        hasAgents = !board.agents.isEmpty
-        hasBoard = !board.todos.isEmpty || board.rounds.contains { !$0.isEmpty } || hasAgents
+        hasAgents = facts.hasAgents
+        hasBoard = facts.hasBoard
         let text = document?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         planHasContent = !text.isEmpty
         reportComplete = !text.isEmpty && PlanDoc.report(document ?? "").isComplete
-        hasSources = !board.sources.isEmpty || hasAgents || planHasContent
-        undecidedSeq = thread.fold.items.last { $0.item.needsUser }?.seq
+        hasSources = facts.hasSources || hasAgents || planHasContent
+        undecidedSeq = facts.undecidedSeq
     }
 
     /// A planning thread stopped on a question shows the question.

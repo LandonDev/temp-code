@@ -15,9 +15,10 @@ import Observation
 /// - `dock`: what the bottom dock draws of the thread;
 /// - `flags`: loading, older rows, live, gone;
 /// - `overlays`: this device's undecided approvals and answers;
+/// - `frame`: what the thread screen's frame reads (`FrameFacts`);
 /// - `state`: the whole state, at every write (a board, the frame).
 ///
-/// Each of the four is assigned only when its value changed. `value` is
+/// Each of the five is assigned only when its value changed. `value` is
 /// the state with nothing tracked, for code that acts and draws nothing.
 @MainActor @Observable
 public final class ThreadModel {
@@ -85,6 +86,8 @@ public final class ThreadModel {
     public private(set) var dock: DockState
     public private(set) var flags: Flags
     public private(set) var overlays: Overlays
+    public private(set) var frame: FrameFacts
+    @ObservationIgnored private var undecided = UndecidedTracker()
 
     init(_ state: ThreadState) {
         value = state
@@ -92,6 +95,7 @@ public final class ThreadModel {
         dock = DockState(state)
         flags = Flags(state)
         overlays = Overlays(state)
+        frame = FrameFacts(state.fold, undecidedSeq: undecided.seq(in: state.fold))
     }
 
     /// The whole state; its reader runs again at every write to this thread.
@@ -113,6 +117,8 @@ public final class ThreadModel {
         if flags != self.flags { self.flags = flags }
         let overlays = Overlays(value)
         if overlays != self.overlays { self.overlays = overlays }
+        let frame = FrameFacts(value.fold, undecidedSeq: undecided.seq(in: value.fold))
+        if frame != self.frame { self.frame = frame }
         return result
     }
 }

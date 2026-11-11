@@ -7,7 +7,7 @@
   "load-only": true,
   "bodies-per-batch": true,
   "refolds": true,
-  "rows-built": false,
+  "rows-built": true,
   "keystroke-bodies": true,
   "jumps": false,
   "jump-up": false,

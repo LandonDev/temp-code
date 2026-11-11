@@ -117,6 +117,65 @@ private let pendingApproval: [AgentEvent] = [
     }
 }
 
+@Suite struct FrameFactsTests {
+    @Test func `the tracker names the newest undecided row at every step, as a whole walk does`() {
+        let events: [AgentEvent] = [
+            user("go"),
+            call("a1", "Read"), result("a1"),
+            .approvalRequest(ApprovalRequestEvent(requestId: "p1", toolName: "Bash", title: "rm -rf build")),
+            answer("meanwhile", msgId: "m1"),
+            .approvalRequest(ApprovalRequestEvent(requestId: "p2", toolName: "Bash", title: "make")),
+            .approvalResolved(ApprovalResolvedEvent(requestId: "p2", allow: true, auto: nil)),
+            .error(ErrorEvent(message: "The turn failed")),
+            .errorsCleared(ErrorsClearedEvent()),
+            .approvalResolved(ApprovalResolvedEvent(requestId: "p1", allow: false, auto: nil)),
+            user("again"), answer("done", msgId: "m2"),
+        ]
+        var fold = ThreadFold()
+        var tracker = UndecidedTracker()
+        var seen: [Int?] = []
+        for row in rows(events) {
+            fold.apply(row)
+            let whole = fold.items.last { $0.item.needsUser }?.seq
+            #expect(tracker.seq(in: fold) == whole, "after seq \(row.seq)")
+            seen.append(whole)
+        }
+        // The second request is the newest while it waits; decided, the first is again; then none.
+        #expect(seen[3] == 4 && seen[5] == 6 && seen[6] == 4 && seen[9] == nil && seen[11] == nil)
+        // A fold made whole is another fold: it is read whole, once.
+        let again = ThreadFold.fold(rows(Array(events.prefix(6))))
+        #expect(tracker.seq(in: again) == 6)
+        #expect(tracker.seq(in: again) == 6)
+        // And one tracker asked only now and then still answers as the whole walk does.
+        var lazy = UndecidedTracker()
+        var grown = ThreadFold()
+        for (offset, row) in rows(events).enumerated() {
+            grown.apply(row)
+            if offset % 3 == 2 { #expect(lazy.seq(in: grown) == grown.items.last { $0.item.needsUser }?.seq, "after seq \(row.seq)") }
+        }
+    }
+
+    @Test func `the facts are the board's and move only with them`() {
+        var state = ThreadState()
+        state.fold = ThreadFold.fold(rows([user("go"), todoWrite("t1", [("Write it", "in_progress"), ("Test it", "pending")])]))
+        let facts = FrameFacts(state)
+        #expect(facts.hasBoard && !facts.hasAgents && !facts.hasSources && facts.undecidedSeq == nil)
+        #expect(facts.todoLabels == ["Write it", "Test it"])
+        #expect(FrameFacts(ThreadState()) == FrameFacts())
+        // A phase from the facts is the phase from the thread.
+        let session = meta("t", status: .running, threadType: .implementation)
+        #expect(ThreadPhase(session: session, facts: facts, document: nil) == ThreadPhase(session: session, thread: state, document: nil))
+        var waiting = ThreadState()
+        waiting.fold = ThreadFold.fold(rows(pendingApproval))
+        let planning = meta("t", status: .waiting, threadType: .planning)
+        #expect(ThreadPhase(session: planning, facts: FrameFacts(waiting), document: "# Plan") == ThreadPhase(session: planning, thread: waiting, document: "# Plan"))
+        // Prose landing changes none of them.
+        var more = state
+        more.fold.apply(EventRow(sessionId: "s", seq: 3, ts: 3_000, event: answer("Working on it")))
+        #expect(FrameFacts(more) == facts)
+    }
+}
+
 @Suite struct SegmentRulesTests {
     private func phase(_ type: ThreadType, status: SessionStatus = .idle, events: [AgentEvent] = [], document: String? = nil) -> ThreadPhase {
         ThreadPhase(session: meta("t", status: status, threadType: type), thread: thread(events), document: document)

@@ -65,8 +65,15 @@ private func hears(_ read: () -> Void, when change: () -> Void) -> Bool {
         #expect(hears({ _ = model.overlays }, when: { client.write("a") { $0.decisions["r1"] = nil } }))
         // A pending send is content: its row is drawn.
         #expect(hears({ _ = model.content }, when: { client.write("a") { _ = $0.addPending(text: "hello", sentAt: 20) } }))
-        // A write that changes nothing still wakes the whole state's reader, and none of the four.
-        #expect(!hears({ _ = model.content; _ = model.dock; _ = model.flags; _ = model.overlays }, when: { client.write("a") { $0.isLive = $0.isLive } }))
+        // The frame's facts: not prose, but a todo list and a row that waits on the person.
+        #expect(!hears({ _ = model.frame }, when: { client.write("a") { $0.append([textRow("a", seq: 4)], trim: false) } }))
+        #expect(hears({ _ = model.frame }, when: { client.write("a") { $0.append([EventRow(sessionId: "a", seq: 5, ts: 5, event: todoWrite("t1", [("Write it", "in_progress")]))], trim: false) } }))
+        #expect(model.frame.hasBoard && model.frame.todoLabels == ["Write it"])
+        #expect(hears({ _ = model.frame }, when: { client.write("a") { $0.append([EventRow(sessionId: "a", seq: 6, ts: 6, event: .approvalRequest(ApprovalRequestEvent(requestId: "p1", toolName: "Bash", title: "make")))], trim: false) } }))
+        #expect(model.frame.undecidedSeq == 6)
+        #expect(!hears({ _ = model.frame }, when: { client.write("a") { $0.append([textRow("a", seq: 7)], trim: false) } }))
+        // A write that changes nothing still wakes the whole state's reader, and none of the five.
+        #expect(!hears({ _ = model.content; _ = model.dock; _ = model.flags; _ = model.overlays; _ = model.frame }, when: { client.write("a") { $0.isLive = $0.isLive } }))
         #expect(hears({ _ = model.state }, when: { client.write("a") { $0.isLive = $0.isLive } }))
     }
 

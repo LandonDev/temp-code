@@ -101,9 +101,13 @@ struct ThreadScreen: View {
         let session = client.session(sessionId)
         let kind = ThreadKind(session)
         let segments = ThreadSegment.segments(for: kind)
-        let phase = ThreadPhase(session: session, thread: thread, document: model.document)
+        let held = client.thread(sessionId)
+        // The frame's facts and the flags, never the state: this body runs when one of them moves, not at every row.
+        let facts = held?.frame ?? FrameFacts()
+        let flags = held?.flags
+        let phase = ThreadPhase(session: session, facts: facts, document: model.document)
         let segment = model.segment(in: segments, phase: phase)
-        let gone = goneReason(session: session, flags: client.thread(sessionId)?.flags)
+        let gone = goneReason(session: session, flags: flags)
         let children = client.children(of: sessionId)
         let hostName = app.registry.ordered.count > 1 ? client.environment.name : nil
         VStack(spacing: 0) {
@@ -119,7 +123,7 @@ struct ThreadScreen: View {
                     let mode = ThreadPose.mode(segments: segments.count, regularWidth: regularWidth, width: width)
                     let division = mode == .twoPane ? Duo.divisionBand(proxy) : nil
                     // An implementation board asks for its widest task; other heroes start at half.
-                    let fit = kind == .implementation ? ThreadPose.boardFit(labels: thread.fold.board.todos.map(\.content)) : nil
+                    let fit = kind == .implementation ? ThreadPose.boardFit(labels: facts.todoLabels) : nil
                     let columns = ThreadPose.columns(width: width, hairline: Hairline.thickness(scale: displayScale), division: division, fit: fit)
                     let barShown = ThreadPose.segmentBarShown(mode: mode, compactHeight: compactHeight, composerFocused: composerFocused)
                     posed(width: width, mode: mode, columns: columns, division: division, barShown: barShown,
@@ -192,8 +196,9 @@ struct ThreadScreen: View {
             case .agent(let route): ThreadScreen(client: client, sessionId: route.sessionId, targetSeq: route.targetSeq)
             }
         }
-        .onChange(of: TestHooks.open == nil ? "" : "\(thread.fold.lastSeq)|\(thread.rows.count)|\(thread.isLoading)", initial: true) {
+        .onChange(of: TestHooks.open == nil ? "" : "\(watched.fold.lastSeq)|\(watched.rows.count)|\(watched.isLoading)", initial: true) {
             guard launchPush == nil, let open = TestHooks.open, targetSeq == nil else { return }
+            let thread = current
             if open == "diff", let edit = thread.fold.items.lazy.compactMap({ entry -> ChangeCard? in
                 guard case .tool(let tool) = entry.item, let path = Board.editPath(tool) else { return nil }
                 return Board.wholeChange(path: path, edits: [tool])
@@ -231,20 +236,24 @@ struct ThreadScreen: View {
             client.markSeen(sessionId)
             client.closeThread(sessionId)
         }
-        .onChange(of: thread.fold.lastSeq) {
-            client.markSeen(sessionId)
-            // A card that lands on the segment in view is seen as it lands; the dot is for the other one.
-            model.saw(segment, lastSeq: thread.fold.lastSeq)
+        // Rows landing: read by a view of its own, so this body does not run for them.
+        .background {
+            SeqWatch(thread: held) { lastSeq in
+                client.markSeen(sessionId)
+                // A card that lands on the segment in view is seen as it lands; the dot is for the other one.
+                model.saw(segment, lastSeq: lastSeq)
+            }
         }
         // A running thread the person is watching gets the Live Activity.
         .onChange(of: session?.status, initial: true) {
             if let session, session.parentId == nil { app.activities.watch(client, session, registry: app.registry) }
         }
-        .task(id: "\(thread.isLoading)|\(thread.isLoadingHistory)|\(thread.moreBefore)|\(thread.rows.count)") {
-            TestHooks.recordHistory(thread)
+        // The history proof's report (`TC_TEST_HISTORY`); no other run reads the rows here.
+        .task(id: TestHooks.history ? "\(watched.isLoading)|\(watched.isLoadingHistory)|\(watched.moreBefore)|\(watched.rows.count)" : "") {
+            TestHooks.recordHistory(current)
         }
         .onChange(of: segment, initial: true) { _, now in
-            model.saw(now, lastSeq: thread.fold.lastSeq)
+            model.saw(now, lastSeq: current.fold.lastSeq)
             #if DEBUG
             LayoutProbe.route(thread: sessionId, segment: now.rawValue)
             #endif
@@ -274,16 +283,17 @@ struct ThreadScreen: View {
         .task(id: "\(session?.planPath ?? "")|\(phase.running)") {
             await model.poll(client: client, path: session?.planPath, running: phase.running)
         }
-        .task(id: "\(thread.isLoading)|\(thread.isLive)") {
+        .task(id: "\(flags?.isLoading ?? false)|\(flags?.isLive ?? false)") {
             // DEBUG only: the proof asks for one action once the thread is loaded and live (a fresh thread has no rows yet).
+            let thread = current
             guard performsLaunchAction, let action = TestHooks.action, !thread.isLoading, thread.isLive, !acted, let session else { return }
             // With the agent detail pushed, the action is the agent's, not the root's.
             guard TestHooks.open != "agent" || session.parentId != nil else { return }
             acted = true
             await perform(action, session: session, thread: thread)
         }
-        .onChange(of: thread.isLoading, initial: true) {
-            if TestHooks.sheet == "start", session?.threadType == .planning, !thread.isLoading, !starting { starting = true }
+        .onChange(of: flags?.isLoading ?? false, initial: true) {
+            if TestHooks.sheet == "start", session?.threadType == .planning, !current.isLoading, !starting { starting = true }
         }
         // A typing check types into this thread's composer (`PerfSession`).
         .onChange(of: PerfSession.shared.focus == sessionId) { _, wanted in
@@ -327,12 +337,18 @@ struct ThreadScreen: View {
         return nil
     }
 
-    /// The thread's state as it is at each read, tracked: this screen's
-    /// body runs again at a write to this thread, and to no other. Never
-    /// kept in a local a closure holds, nor handed to a view: a state that
-    /// outlives the pass shares the thread's arrays, and the next push
-    /// would copy every row. The views below take the model.
-    private var thread: ThreadState {
+    /// The thread's state as it is now, with nothing tracked: for code that
+    /// acts (a tap, a task, a launch hook). The body reads the model's
+    /// `frame` and `flags` instead, so a row landing does not run it. Never
+    /// kept past the call, nor handed to a view: a state that outlives it
+    /// shares the thread's arrays, and the next push would copy every row.
+    private var current: ThreadState {
+        client.thread(sessionId)?.value ?? ThreadState()
+    }
+
+    /// The whole state, tracked: a body that reads it runs at every write
+    /// to this thread. Only a launch hook's proof reads it.
+    private var watched: ThreadState {
         client.thread(sessionId)?.state ?? ThreadState()
     }
 
@@ -388,13 +404,13 @@ struct ThreadScreen: View {
         case "resume":
             try? await client.resume(sessionId)
         case "approve", "deny":
-            if let approval = thread.fold.items.lazy.compactMap({ entry -> ApprovalItem? in
+            if let approval = current.fold.items.lazy.compactMap({ entry -> ApprovalItem? in
                 if case .approval(let a) = entry.item, a.allowed == nil { return a } else { return nil }
             }).last {
                 try? await client.approve(sessionId, requestId: approval.request.requestId, allow: parts[0] == "approve", choices: approval.request.choices)
             }
         case "answer":
-            if let question = thread.fold.items.lazy.compactMap({ entry -> QuestionItem? in
+            if let question = current.fold.items.lazy.compactMap({ entry -> QuestionItem? in
                 if case .question(let q) = entry.item, !q.resolved { return q } else { return nil }
             }).last {
                 try? await client.answer(sessionId, requestId: question.request.requestId, answers: question.request.questions.map { _ in [argument] })
@@ -448,7 +464,7 @@ struct ThreadScreen: View {
             if mode == .single {
                 transcript(measured: true)
             } else {
-                pager(segments: segments, kind: kind, session: session, phase: phase, width: width, mode: mode, columns: columns)
+                pager(segments: segments, shown: segment, kind: kind, session: session, phase: phase, width: width, mode: mode, columns: columns)
             }
         }
         .animation(reduceMotion ? Motion.crossFade : Motion.collapse, value: barShown)
@@ -465,10 +481,12 @@ struct ThreadScreen: View {
         // Both segments are on screen in two-pane: everything that lands is seen, and the dot has nothing to mark.
         .onChange(of: mode, initial: true) {
             twoPaneShown = mode == .twoPane
-            if mode == .twoPane { for each in segments { model.saw(each, lastSeq: thread.fold.lastSeq) } }
+            if mode == .twoPane { for each in segments { model.saw(each, lastSeq: current.fold.lastSeq) } }
         }
-        .onChange(of: thread.fold.lastSeq) {
-            if mode == .twoPane { for each in segments { model.saw(each, lastSeq: thread.fold.lastSeq) } }
+        .background {
+            SeqWatch(thread: client.thread(sessionId)) { lastSeq in
+                if mode == .twoPane { for each in segments { model.saw(each, lastSeq: lastSeq) } }
+            }
         }
         #if DEBUG
         .onChange(of: poseRecord(width: width, mode: mode, columns: columns, division: division, barShown: barShown), initial: true) { _, record in
@@ -571,7 +589,7 @@ struct ThreadScreen: View {
     /// keyboard it would have been inset by. Every one of these is a value
     /// that is zero in the pager, never a branch, so a fold changes no
     /// view's identity.
-    private func pager(segments: [ThreadSegment], kind: ThreadKind, session: SessionMeta?, phase: ThreadPhase,
+    private func pager(segments: [ThreadSegment], shown: ThreadSegment, kind: ThreadKind, session: SessionMeta?, phase: ThreadPhase,
                        width: CGFloat, mode: ThreadLayoutMode, columns: TwoPaneColumns) -> some View {
         let twoPane = mode == .twoPane
         let chatInset = twoPane ? max(0, pagerBottom - bodyBottom) : 0
@@ -583,7 +601,9 @@ struct ThreadScreen: View {
             HStack(alignment: .top, spacing: 0) {
                 ForEach(Array(segments.enumerated()), id: \.element) { index, segment in
                     let hero = index == 0
-                    body(for: segment, kind: kind, session: session, phase: phase)
+                    // A page shows in two-pane, at rest on it, and while a swipe has any of it in view.
+                    let onScreen = twoPane || ThreadPose.pageInView(index, shown: segments.firstIndex(of: shown), progress: pageProgress.map(Double.init))
+                    body(for: segment, kind: kind, session: session, phase: phase, onScreen: onScreen)
                         .contentMargins(.bottom, twoPane && hero ? windowSafeBottom : 0, for: .scrollContent)
                         .safeAreaPadding(.bottom, hero ? 0 : chatInset)
                         .frame(width: twoPane ? (hero ? columns.hero : columns.chat) : width)
@@ -627,16 +647,16 @@ struct ThreadScreen: View {
     }
 
     @ViewBuilder
-    private func body(for segment: ThreadSegment, kind: ThreadKind, session: SessionMeta?, phase: ThreadPhase) -> some View {
+    private func body(for segment: ThreadSegment, kind: ThreadKind, session: SessionMeta?, phase: ThreadPhase, onScreen: Bool) -> some View {
         let held = client.thread(sessionId)
         switch segment {
         case .chat, .log:
             transcript()
         case .board:
             if kind == .master {
-                MasterView(client: client, sessionId: sessionId, session: session, held: held)
+                MasterView(client: client, sessionId: sessionId, session: session, held: held, onScreen: onScreen)
             } else {
-                ImplementationBoardView(client: client, sessionId: sessionId, session: session, held: held, document: model.document)
+                ImplementationBoardView(client: client, sessionId: sessionId, session: session, held: held, onScreen: onScreen, document: model.document)
             }
         case .plan:
             if kind == .projectPlan {
@@ -655,9 +675,9 @@ struct ThreadScreen: View {
                 }
             }
         case .fleet:
-            FleetView(client: client, sessionId: sessionId, session: session, held: held)
+            FleetView(client: client, sessionId: sessionId, session: session, held: held, onScreen: onScreen)
         case .sources:
-            SourcesView(client: client, sessionId: sessionId, session: session, held: held, document: model.document)
+            SourcesView(client: client, sessionId: sessionId, session: session, held: held, onScreen: onScreen, document: model.document)
         }
     }
 
@@ -760,5 +780,40 @@ private nonisolated struct SideClip: Shape {
 
     func path(in rect: CGRect) -> Path {
         Path(rect.insetBy(dx: 0, dy: -Self.reach))
+    }
+}
+
+/// Watches the thread's newest seq from a view of its own: the body that
+/// reads it runs per row, and the screen that mounts it does not.
+private struct SeqWatch: View {
+    let thread: ThreadModel?
+    let landed: (Int) -> Void
+
+    var body: some View {
+        Color.clear
+            .onChange(of: thread?.content.lastSeq ?? 0) { _, now in landed(now) }
+    }
+}
+
+/// A hero's read of its thread (a board, the fleet, the sources). On screen
+/// it reads the model's state, so it runs again at every write. Off screen,
+/// on the pager's other page, it keeps the state it last read and reads
+/// nothing tracked: rows landing in the thread cost it nothing until its
+/// page shows again. The kept state shares the thread's arrays until the
+/// next write, which copies them once.
+@MainActor
+final class HeroGate {
+    private var kept: ThreadState?
+
+    func state(_ held: ThreadModel?, onScreen: Bool) -> ThreadState {
+        guard let held else { return ThreadState() }
+        if onScreen {
+            kept = nil
+            return held.state
+        }
+        if let kept { return kept }
+        let now = held.value
+        kept = now
+        return now
     }
 }
