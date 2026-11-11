@@ -81,7 +81,7 @@ import { RigStop, asProbe, repoRoot, startRig, type Rig } from './lib/computerRi
 import { otherProof } from './lib/proofOrder'
 import { killGroup, startDevInstance } from './lib/devInstance'
 import { COMPUTER_ONLY_LINE, COMPUTER_TASKS, gateTasks, taskById, type CallRecord, type CheckResult, type ComputerTask, type DevInstance, type TaskContext, type TaskStart } from './lib/computerTasks'
-import { FIELD_TASKS } from './lib/fieldTasks'
+import { FIELD_TASKS, benchTrashNames, finderDeleteTrashItems, finderTrashNames } from './lib/fieldTasks'
 import { fieldBar } from './lib/fieldBar'
 import { FIELD_TARGETS } from './lib/fieldTargets'
 import { buildIsCurrent, type BuildStamp } from './lib/soakJudge'
@@ -128,6 +128,14 @@ if (args.judge) {
 }
 if (process.platform !== 'darwin') {
   console.log('skipped: macOS only')
+  process.exit(0)
+}
+if (args.cleanTrash) {
+  // One-off cleanup of what a failed teardown left: only the bench's own name-shaped items, deleted through Finder item by item.
+  const names = await finderTrashNames(exec)
+  const matched = benchTrashNames(names, args.cleanTrash === 'all-bench' ? undefined : args.cleanTrash)
+  const removed = await finderDeleteTrashItems(exec, matched)
+  console.log(removed.length ? `removed from the Trash: ${removed.join(', ')}` : `nothing of the bench in the Trash (${names.length} items looked at)`)
   process.exit(0)
 }
 

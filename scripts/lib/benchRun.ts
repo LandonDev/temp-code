@@ -33,10 +33,12 @@ export interface BenchArgs {
   judge: string | null
   /** judge saved field reports against the bar (fieldBar.ts); runs nothing, any host */
   judgeField: string[] | null
+  /** remove the bench's own items from the Trash through Finder: a run's nonce (or its prefix), or 'all-bench' */
+  cleanTrash: string | null
 }
 
 export const BENCH_USAGE =
-  'usage: bun run script:e2e-computer-bench -- [--gate | --report-only | --reference codex | --judge <report.json> | --judge-field <report.json>…] [--set gate|field] [--host mac|box] [--round <label>] [--models a,b] [--tasks a,b] [--runs n] [--session] [--cover] [--rebaseline]'
+  'usage: bun run script:e2e-computer-bench -- [--gate | --report-only | --reference codex | --judge <report.json> | --judge-field <report.json>… | --clean-trash <nonce|all-bench>] [--set gate|field] [--host mac|box] [--round <label>] [--models a,b] [--tasks a,b] [--runs n] [--session] [--cover] [--rebaseline]'
 
 export function parseBenchArgs(argv: readonly string[]): BenchArgs {
   const out: BenchArgs = {
@@ -51,7 +53,8 @@ export function parseBenchArgs(argv: readonly string[]): BenchArgs {
     cover: false,
     rebaseline: false,
     judge: null,
-    judgeField: null
+    judgeField: null,
+    cleanTrash: null
   }
   const modes = new Set<string>()
   for (let i = 0; i < argv.length; i++) {
@@ -74,6 +77,10 @@ export function parseBenchArgs(argv: readonly string[]): BenchArgs {
     else if (a === '--judge-field') {
       out.judgeField = [value()]
       while (argv[i + 1] !== undefined && !argv[i + 1].startsWith('--')) out.judgeField.push(argv[++i])
+    } else if (a === '--clean-trash') {
+      const what = value()
+      if (what !== 'all-bench' && !/^[0-9a-f]{2,8}$/.test(what)) throw new Error(`--clean-trash takes a run's nonce (2 to 8 hex) or all-bench (got ${what})`)
+      out.cleanTrash = what
     } else if (a === '--set') {
       const what = value()
       if (what !== 'gate' && what !== 'field') throw new Error(`--set takes gate or field (got ${what})`)

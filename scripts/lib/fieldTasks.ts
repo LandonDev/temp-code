@@ -19,7 +19,7 @@
  * leave).
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { ParsedObservation } from '../../src/shared/computer/observation'
 import { isAppRunning, rtfText, straysUnder, type Exec } from './benchChecks'
@@ -28,6 +28,7 @@ import {
   TASK_WALL_MS,
   elements,
   mulberry32,
+  type CallRecord,
   type CheckResult,
   type ComputerTask,
   type TaskApp,
@@ -148,6 +149,13 @@ export const calcFactors = (seed: number): { a: number; b: number } => {
 export const finderDraft = (nonce: string): string => `draft of the plan ${nonce}\n`
 export const finderLog = (nonce: string): string => `old log line ${nonce}\n`
 export const finderKeep = (nonce: string): string => `# keep ${nonce}\n`
+/** The scratch Finder file NAMES carry the nonce too: a Trash item is identified by name through Finder (TCC bars the bench from ~/.Trash). */
+export const finderNames = (nonce: string): { draft: string; final: string; log: string; keep: string } => ({
+  draft: `draft-${nonce}.txt`,
+  final: `final-${nonce}.txt`,
+  log: `old-${nonce}.log`,
+  keep: `keep-${nonce}.md`
+})
 
 // ── reading the end state ───────────────────────────────────────────────
 
@@ -286,27 +294,49 @@ export function removeStrays(paths: readonly string[], marker: string): string[]
   return removed
 }
 
+// ── the Trash, through Finder ───────────────────────────────────────────
+// The bench process cannot read ~/.Trash itself: readdir there is EPERM
+// under TCC (round 1, 2026-11-10). Finder can, over AppleScript; the scratch
+// Finder files carry the run's nonce IN THEIR NAMES, so a trashed item is
+// proved by its unique name plus the bytes leaving the folder, and the
+// teardown deletes only name-matched items, one by one, never `empty trash`.
+
+/** A bench scratch name wherever it appears in a Trash item's name (Finder may suffix a duplicate: "old-ab12cd34 22.33.44.log"). */
+export const BENCH_TRASH_RE = /\b(?:old|draft|final|keep|files)-([0-9a-f]{8})\b/
+
+/** The Trash's item names, one per line, read through Finder; throws with Finder's own words when it cannot answer. */
+export async function finderTrashNames(run: Exec): Promise<string[]> {
+  const r = await run('osascript', [
+    '-e',
+    'set out to ""\nwith timeout of 8 seconds\ntell application "Finder"\nrepeat with i in (get every item of trash)\nset out to out & (name of i) & linefeed\nend repeat\nend tell\nend timeout\nout'
+  ])
+  if (r.code !== 0) throw new Error(`Finder could not list the Trash: ${r.stderr.trim() || `exit ${r.code}`}`)
+  return r.stdout.split('\n').filter(Boolean)
+}
+
+/** The names among `names` that are this run's: bench-shaped AND carrying the run's nonce. */
+export const trashNamesOf = (names: readonly string[], nonce: string): string[] =>
+  names.filter((n) => BENCH_TRASH_RE.test(n) && n.includes(`-${nonce}`))
+
+/** The bench's names among `names`, any run: every bench-shaped name, or only those whose nonce starts with `noncePrefix`. */
+export const benchTrashNames = (names: readonly string[], noncePrefix?: string): string[] =>
+  names.filter((n) => {
+    const m = BENCH_TRASH_RE.exec(n)
+    return !!m && (!noncePrefix || m[1].startsWith(noncePrefix))
+  })
+
 /**
- * Removes the run's scratch files from the Trash: small top-level entries
- * whose bytes carry the run's nonce (every scratch Finder file does), so a
- * model that trashed the wrong file is cleaned up too and nothing of the
- * person's is ever touched.
+ * Deletes the named items from the Trash through Finder, one `delete item
+ * "<name>" of trash` each (never `empty trash`, which would take the
+ * person's items). A name with a quote or backslash is never ours (the
+ * bench names are hex-shaped) and is left alone rather than escaped.
  */
-export function removeTrashedScratch(home: string, nonce: string): string[] {
-  const trash = join(home, '.Trash')
+export async function finderDeleteTrashItems(run: Exec, names: readonly string[]): Promise<string[]> {
   const removed: string[] = []
-  if (!existsSync(trash)) return removed
-  for (const name of readdirSync(trash)) {
-    const path = join(trash, name)
-    try {
-      const stat = statSync(path)
-      if (!stat.isFile() || stat.size > 4096) continue
-      if (!readFileSync(path, 'utf8').includes(nonce)) continue
-      rmSync(path, { force: true })
-      removed.push(name)
-    } catch {
-      /* not ours to touch */
-    }
+  for (const name of names) {
+    if (/["\\]/.test(name)) continue
+    const r = await run('osascript', ['-e', `with timeout of 8 seconds\ntell application "Finder" to delete item "${name}" of trash\nend timeout`])
+    if (r.code === 0) removed.push(name)
   }
   return removed
 }
@@ -334,20 +364,91 @@ export function bytesUnder(dir: string, bytes: string): string | null {
   return null
 }
 
-/** The trashed file by its exact bytes among the Trash's top-level entries (Finder renames duplicates, so never by name alone). */
-export function inTrash(home: string, bytes: string): string | null {
-  const trash = join(home, '.Trash')
-  if (!existsSync(trash)) return null
-  for (const name of readdirSync(trash)) {
-    const path = join(trash, name)
-    try {
-      const stat = statSync(path)
-      if (stat.isFile() && stat.size === Buffer.byteLength(bytes) && readFileSync(path, 'utf8') === bytes) return name
-    } catch {
-      /* unreadable: not a hit */
-    }
+// ── TextEdit's close-confirm pref and the sheet probe ───────────────────
+// `-NSCloseAlwaysConfirmsChanges YES` as a launch argument is dead on macOS
+// 27.2 TextEdit (sandboxed apps ignore the argument domain; round 1): the
+// close tasks set the pref with `defaults write` for the run, restore it
+// exactly in teardown, and PROVE the sheet in setup — a task whose premise
+// is absent is skipped, never a pass or a fail.
+
+export const CLOSE_CONFIRM_DOMAIN = 'com.apple.TextEdit'
+export const CLOSE_CONFIRM_KEY = 'NSCloseAlwaysConfirmsChanges'
+
+/** The pref's stored value as `defaults read` prints it, or null when the key is absent. */
+export async function readCloseConfirm(run: Exec): Promise<string | null> {
+  const r = await run('defaults', ['read', CLOSE_CONFIRM_DOMAIN, CLOSE_CONFIRM_KEY])
+  return r.code === 0 ? r.stdout.trim() : null
+}
+
+/** Puts the pref back exactly: a value written as the bool it was, an absent key deleted again. */
+export async function writeCloseConfirm(run: Exec, value: string | null): Promise<void> {
+  if (value === null) {
+    await run('defaults', ['delete', CLOSE_CONFIRM_DOMAIN, CLOSE_CONFIRM_KEY])
+    return
   }
-  return null
+  if (value === '1' || value === '0') await run('defaults', ['write', CLOSE_CONFIRM_DOMAIN, CLOSE_CONFIRM_KEY, '-bool', value === '1' ? 'true' : 'false'])
+  else await run('defaults', ['write', CLOSE_CONFIRM_DOMAIN, CLOSE_CONFIRM_KEY, value])
+}
+
+export interface SheetProbe {
+  sheet: boolean
+  detail: string
+}
+
+/**
+ * Proves the unsaved-changes sheet appears on a dirty close of a SAVED
+ * document (an untitled one always asks, pref or not, so it would prove
+ * nothing). The probe launches its own TextEdit instance (`open -n`, never
+ * the person's) on a sacrificial file, dirties the text over AX and presses
+ * the window's close button over AX — the route the model's ax tier takes —
+ * then watches that window for a sheet, answers it with a discard button and
+ * kills the instance. No sheet (the pref has no effect here) answers
+ * `sheet: false` with why, and the close task is skipped on it.
+ */
+export async function probeCloseSheet(
+  run: Exec,
+  opts: { file: string; nonce: string; tries?: number; wait?: (ms: number) => Promise<void> }
+): Promise<SheetProbe> {
+  const { file, nonce, tries = 20, wait = STRAY_WAIT.wait } = opts
+  const name = basename(file)
+  const pidsOf = async (): Promise<Set<string>> => new Set((await run('pgrep', ['-x', 'TextEdit'])).stdout.split('\n').map((p) => p.trim()).filter(Boolean))
+  const before = await pidsOf()
+  const opened = await run('open', ['-n', '-g', '-a', 'TextEdit', file, '--args', '-ApplePersistenceIgnoreState', 'YES'])
+  if (opened.code !== 0) return { sheet: false, detail: `the probe's TextEdit did not open: ${opened.stderr.trim() || `exit ${opened.code}`}` }
+  let pid = ''
+  for (let i = 0; i < tries && !pid; i++) {
+    await wait(250)
+    pid = [...(await pidsOf())].find((p) => !before.has(p)) ?? ''
+  }
+  if (!pid) return { sheet: false, detail: "the probe's TextEdit gave no new pid" }
+  const se = (body: string): Promise<{ code: number; stdout: string; stderr: string }> =>
+    run('osascript', ['-e', `with timeout of 5 seconds\ntell application "System Events" to tell (first process whose unix id is ${pid})\n${body}\nend tell\nend timeout`])
+  const win = `(first window whose name contains "${name}")`
+  try {
+    let shown = false
+    for (let i = 0; i < tries && !shown; i++) {
+      await wait(250)
+      shown = (await se(`exists ${win}`)).stdout.trim() === 'true'
+    }
+    if (!shown) return { sheet: false, detail: "the probe's window never appeared" }
+    const dirty = await se(`set value of text area 1 of scroll area 1 of ${win} to "Sheet probe ${nonce} edited"`)
+    if (dirty.code !== 0) return { sheet: false, detail: `the probe could not edit its document: ${dirty.stderr.trim()}` }
+    await wait(500)
+    const close = await se(`click (first button of ${win} whose subrole is "AXCloseButton")`)
+    if (close.code !== 0) return { sheet: false, detail: `the probe could not press the close button: ${close.stderr.trim()}` }
+    for (let i = 0; i < tries; i++) {
+      await wait(250)
+      if ((await se(`exists sheet 1 of ${win}`)).stdout.trim() === 'true') {
+        // the discard button by its names; a miss is harmless (the instance is killed below)
+        for (const button of ['Revert Changes', 'Don’t Save', "Don't Save", 'Delete']) await se(`click button "${button}" of sheet 1 of ${win}`)
+        return { sheet: true, detail: 'the unsaved-changes sheet appeared on a dirty close' }
+      }
+      if ((await se(`exists ${win}`)).stdout.trim() === 'false') return { sheet: false, detail: 'a dirty saved document closed with no sheet' }
+    }
+    return { sheet: false, detail: `no sheet within ${(tries * 250) / 1000} s of a dirty close` }
+  } finally {
+    await run('kill', ['-9', pid])
+  }
 }
 
 // ── the field data a run carries ────────────────────────────────────────
@@ -365,6 +466,8 @@ export interface FieldData {
   revenue?: number
   code?: string
   home?: string
+  /** the TextEdit close-confirm pref as it was at setup ('absent' when the key was not set), restored in teardown */
+  pref?: string
   /** pins the app the model launched into the run's lane, so the check can read it */
   pin?: (pid: number) => void
 }
@@ -404,19 +507,65 @@ const closeTextEditDocs = async (run: Exec, marker: string): Promise<void> => {
 
 const finderSetup = async (ctx: TaskContext): Promise<FieldStart> => {
   const dir = join(ctx.dir, `files-${ctx.nonce}`)
+  const names = finderNames(ctx.nonce)
   mkdirSync(dir, { recursive: true })
-  await ctx.writeFile(join(dir, 'draft.txt'), finderDraft(ctx.nonce))
-  await ctx.writeFile(join(dir, 'old.log'), finderLog(ctx.nonce))
-  await ctx.writeFile(join(dir, 'keep.md'), finderKeep(ctx.nonce))
+  await ctx.writeFile(join(dir, names.draft), finderDraft(ctx.nonce))
+  await ctx.writeFile(join(dir, names.log), finderLog(ctx.nonce))
+  await ctx.writeFile(join(dir, names.keep), finderKeep(ctx.nonce))
   await ctx.open('Finder', dir)
   return { app: 'Finder', window: `files-${ctx.nonce}`, nonce: ctx.nonce, seed: ctx.seed, field: { dir, home: ctx.home } }
 }
 
-/** Every Finder teardown: close the run's window, and sweep the run's files (by their nonce-carrying bytes) out of the Trash. */
+/** Every Finder teardown: close the run's window, and sweep the run's name-matched items out of the Trash through Finder. */
 const finderTeardown = async (s: TaskStart, run: Exec): Promise<void> => {
   await closeFinderWindows(run, s.window)
-  const home = fieldOf(s).home
-  if (home) removeTrashedScratch(home, s.nonce)
+  const names = await finderTrashNames(run).catch(() => [] as string[])
+  await finderDeleteTrashItems(run, trashNamesOf(names, s.nonce))
+}
+
+/** The run typed the line somewhere: a call input carried it (type/set_value/batch), or a result echoed it. */
+export const editedInRun = (calls: readonly CallRecord[], extra: string): boolean =>
+  calls.some((c) => JSON.stringify(c.input).includes(extra) || c.result.includes(extra))
+
+/**
+ * The close tasks' setup: the scratch document, the pref written for the run
+ * (the launch-argument domain is dead on macOS 27.2 TextEdit), and the sheet
+ * PROVED on a sacrificial saved document in the probe's own TextEdit — no
+ * sheet skips the task with the reason, the pref restored first.
+ */
+const closeSetup = async (ctx: TaskContext): Promise<FieldStart | { skip: string }> => {
+  const file = join(ctx.dir, `${ctx.nonce}.rtf`)
+  await ctx.writeFile(file, docRtf([`Field probe ${ctx.nonce}`, 'line two']))
+  const bytes = readFileSync(file).toString('base64')
+  const probeFile = join(ctx.dir, `probe-${ctx.nonce}.rtf`)
+  await ctx.writeFile(probeFile, docRtf([`Sheet probe ${ctx.nonce}`]))
+  const pref = await readCloseConfirm(ctx.run)
+  await writeCloseConfirm(ctx.run, '1')
+  try {
+    const probe = await probeCloseSheet(ctx.run, { file: probeFile, nonce: ctx.nonce })
+    if (!probe.sheet) {
+      await writeCloseConfirm(ctx.run, pref)
+      return { skip: `the unsaved-changes sheet does not appear (${probe.detail}): the task's premise is absent` }
+    }
+    await ctx.open('TextEdit', file)
+  } catch (e) {
+    await writeCloseConfirm(ctx.run, pref)
+    throw e
+  }
+  return {
+    app: 'TextEdit',
+    window: ctx.nonce,
+    nonce: ctx.nonce,
+    seed: ctx.seed,
+    field: { file, bytes, extra: `Added ${ctx.nonce}`, pref: pref ?? 'absent' }
+  } satisfies FieldStart
+}
+
+/** The close tasks' teardown: the scratch documents closed, the pref put back exactly (deleted when it was absent). */
+const closeTeardown = async (s: TaskStart, run: Exec): Promise<void> => {
+  await closeTextEditDocs(run, s.nonce)
+  const pref = fieldOf(s).pref
+  if (pref !== undefined) await writeCloseConfirm(run, pref === 'absent' ? null : pref)
 }
 
 const calcSetup = async (ctx: TaskContext, launchIt: boolean): Promise<FieldStart | { skip: string }> => {
@@ -642,53 +791,42 @@ export const FIELD_TASKS: ComputerTask[] = [
   {
     id: 'field-textedit-close-discard',
     app: 'TextEdit',
-    version: 2,
+    version: 3,
     tier: 'background',
     stepBudget: 10,
     wallMs: TASK_WALL_MS,
-    async setup(ctx) {
-      const file = join(ctx.dir, `${ctx.nonce}.rtf`)
-      await ctx.writeFile(file, docRtf([`Field probe ${ctx.nonce}`, 'line two']))
-      const bytes = readFileSync(file).toString('base64')
-      // "Ask to keep changes when closing": the close raises the sheet instead of keeping silently.
-      await ctx.open('TextEdit', file, { args: ['-NSCloseAlwaysConfirmsChanges', 'YES'] })
-      return { app: 'TextEdit', window: ctx.nonce, nonce: ctx.nonce, seed: ctx.seed, field: { file, bytes, extra: `Added ${ctx.nonce}` } } satisfies FieldStart
-    },
+    setup: (ctx) => closeSetup(ctx),
     prompt: (s) => rule(`In TextEdit's window "${s.window}", add the line "${fieldOf(s).extra}" at the end, then close the window. When it asks about the unsaved changes, choose to discard them.`),
     async check(s, read, _reply, calls) {
       const { file, bytes, extra } = fieldOf(s)
       // C6: the end state of "closed an untouched window" is identical; the run must show the edit happened (the typed line in a call).
-      if (!calls.some((c) => JSON.stringify(c.input).includes(extra!) || c.result.includes(extra!)))
-        return bad(`no call of the run carried the line ${JSON.stringify(extra)}: the window may have been closed unedited, with no sheet`)
+      if (!editedInRun(calls, extra!)) return bad(`no call of the run carried the line ${JSON.stringify(extra)}: the window may have been closed unedited, with no sheet`)
       const gone = await windowGone(read, 'TextEdit', s.window)
       if (gone.error) return bad(`the window could not be read: ${gone.error}`)
       if (!gone.gone) return bad('the window is still open')
       return readFileSync(file!).toString('base64') === bytes ? ok('edited, window closed, the file unchanged') : bad('the window closed but the file changed on disk')
     },
-    teardown: (s, run) => closeTextEditDocs(run, s.nonce)
+    teardown: closeTeardown
   },
   {
     id: 'field-textedit-close-keep',
     app: 'TextEdit',
-    version: 2,
+    version: 3,
     tier: 'background',
     stepBudget: 10,
     wallMs: TASK_WALL_MS,
-    async setup(ctx) {
-      const file = join(ctx.dir, `${ctx.nonce}.rtf`)
-      await ctx.writeFile(file, docRtf([`Field probe ${ctx.nonce}`, 'line two']))
-      await ctx.open('TextEdit', file, { args: ['-NSCloseAlwaysConfirmsChanges', 'YES'] })
-      return { app: 'TextEdit', window: ctx.nonce, nonce: ctx.nonce, seed: ctx.seed, field: { file, extra: `Added ${ctx.nonce}` } } satisfies FieldStart
-    },
+    setup: (ctx) => closeSetup(ctx),
     prompt: (s) => rule(`In TextEdit's window "${s.window}", add the line "${fieldOf(s).extra}" at the end, then close the window. When it asks about the unsaved changes, choose to keep them.`),
-    async check(s, read) {
+    async check(s, read, _reply, calls) {
       const { file, extra } = fieldOf(s)
+      // the same edited-before-close guard as close-discard: keeping a line the run never typed is autosave luck, not the task
+      if (!editedInRun(calls, extra!)) return bad(`no call of the run carried the line ${JSON.stringify(extra)}: the window may have been closed unedited, with no sheet`)
       const gone = await windowGone(read, 'TextEdit', s.window)
       if (gone.error) return bad(`the window could not be read: ${gone.error}`)
       if (!gone.gone) return bad('the window is still open')
-      return (await docText(read.exec, file!)).includes(extra!) ? ok('window closed, the line kept') : bad('the window closed but the file lacks the line')
+      return (await docText(read.exec, file!)).includes(extra!) ? ok('edited, window closed, the line kept') : bad('the window closed but the file lacks the line')
     },
-    teardown: (s, run) => closeTextEditDocs(run, s.nonce)
+    teardown: closeTeardown
   },
   {
     id: 'field-menu-shortcut',
@@ -717,49 +855,61 @@ export const FIELD_TASKS: ComputerTask[] = [
   {
     id: 'field-finder-rename',
     app: 'Finder',
-    version: 2,
+    version: 3,
     // Every field-test rename "committed" in the list but not on disk until the session tier typed it.
     tier: 'session',
     shared: 'finder',
     stepBudget: 12,
     wallMs: 420_000,
     setup: finderSetup,
-    prompt: (s) => rule(`In the Finder window "${s.window}", rename the file draft.txt to final.txt.`),
+    prompt: (s) => {
+      const names = finderNames(s.nonce)
+      return rule(`In the Finder window "${s.window}", rename the file ${names.draft} to ${names.final}.`)
+    },
     async check(s) {
       const dir = fieldOf(s).dir!
-      const final = join(dir, 'final.txt')
-      if (!existsSync(final)) return bad('final.txt is not on disk')
-      if (existsSync(join(dir, 'draft.txt'))) return bad('draft.txt is still on disk beside final.txt')
-      return readFileSync(final, 'utf8') === finderDraft(s.nonce) ? ok('renamed on disk') : bad('final.txt exists but its content changed')
+      const names = finderNames(s.nonce)
+      const final = join(dir, names.final)
+      if (!existsSync(final)) return bad(`${names.final} is not on disk`)
+      if (existsSync(join(dir, names.draft))) return bad(`${names.draft} is still on disk beside ${names.final}`)
+      return readFileSync(final, 'utf8') === finderDraft(s.nonce) ? ok('renamed on disk') : bad(`${names.final} exists but its content changed`)
     },
     teardown: finderTeardown
   },
   {
     id: 'field-finder-trash',
     app: 'Finder',
-    version: 2,
+    version: 3,
     tier: 'session',
     shared: 'finder',
     stepBudget: 12,
     wallMs: 420_000,
     setup: finderSetup,
-    prompt: (s) => rule(`In the Finder window "${s.window}", move old.log to the Trash.`),
-    async check(s) {
-      const { dir, home } = fieldOf(s)
+    prompt: (s) => rule(`In the Finder window "${s.window}", move ${finderNames(s.nonce).log} to the Trash.`),
+    async check(s, read) {
+      const { dir } = fieldOf(s)
+      const names = finderNames(s.nonce)
       const bytes = finderLog(s.nonce)
       // Renamed in place or moved into a subfolder is not a trash: the bytes must be gone from the whole folder…
       const inside = bytesUnder(dir!, bytes)
-      if (inside) return bad(`old.log is still under the folder, as ${inside.slice(dir!.length + 1)}`)
-      if (!existsSync(join(dir!, 'keep.md'))) return bad('old.log left, but keep.md went with it')
-      // …and IN the Trash, found by its exact bytes (Finder renames duplicates, so never by name).
-      return inTrash(home!, bytes) ? ok('old.log is in the Trash') : bad('old.log left the folder but is not in the Trash (deleted outright, or moved elsewhere)')
+      if (inside) return bad(`${names.log} is still under the folder, as ${inside.slice(dir!.length + 1)}`)
+      if (!existsSync(join(dir!, names.keep))) return bad(`${names.log} left, but ${names.keep} went with it`)
+      // …and IN the Trash: read through Finder (TCC bars the bench from ~/.Trash), the item proved by its unique nonce name.
+      let trash: string[]
+      try {
+        trash = await finderTrashNames(read.exec)
+      } catch (e) {
+        return bad(e instanceof Error ? e.message : String(e))
+      }
+      const mine = trashNamesOf(trash, s.nonce).filter((n) => n.includes(`old-${s.nonce}`))
+      return mine.length ? ok(`${mine[0]} is in the Trash`) : bad(`${names.log} left the folder but is not in the Trash (deleted outright, or moved elsewhere)`)
     },
     teardown: finderTeardown
   },
   {
     id: 'field-finder-new-folder',
     app: 'Finder',
-    version: 2,
+    version: 3,
     tier: 'session',
     shared: 'finder',
     stepBudget: 12,

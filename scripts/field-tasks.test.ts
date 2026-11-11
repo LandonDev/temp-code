@@ -20,19 +20,27 @@ import {
   fieldRows,
   fieldTaskById,
   fieldWindow,
+  BENCH_TRASH_RE,
+  benchTrashNames,
+  editedInRun,
+  finderDeleteTrashItems,
   finderDraft,
   finderKeep,
   finderLog,
+  finderNames,
+  finderTrashNames,
+  probeCloseSheet,
+  readCloseConfirm,
+  trashNamesOf,
+  writeCloseConfirm,
   foldRow,
   formHtml,
   holdsMarker,
-  inTrash,
   invoiceItems,
   invoiceRtf,
   nearRow,
   noteFiles,
   removeStrays,
-  removeTrashedScratch,
   replyCityToken,
   replyNumberToken,
   reportHtml,
@@ -73,7 +81,41 @@ interface FakeCtx extends TaskContext {
   pinned: [string, number][]
 }
 
-const fakeCtx = (dir: string, run: Exec = execWith({ 'is running': 'false' })): FakeCtx => {
+/**
+ * The probe's Mac: TextEdit's pids before and after the probe's own launch,
+ * its window listed, and the sheet seen (or not) after the close button.
+ */
+const probeMac = (opts: { sheet: boolean; log?: string[] }): Exec => {
+  let launched = false
+  return async (cmd, args) => {
+    const key = [cmd, ...args].join(' ')
+    opts.log?.push(key)
+    const said = (stdout: string) => ({ code: 0, stdout, stderr: '' })
+    if (cmd === 'pgrep') return said(launched ? '111\n4242\n' : '111\n')
+    if (cmd === 'open') {
+      launched = true
+      return said('')
+    }
+    if (key.includes('exists sheet')) return said(String(opts.sheet))
+    if (key.includes('exists (first window')) return said('true')
+    return said('')
+  }
+}
+
+/** The suite's Mac answered by a stub: Calculator not running, the probe seeing the sheet, the pref key absent. */
+const fieldExec = (over: Record<string, string> = {}): Exec => {
+  const base = execWith(over)
+  const mac = probeMac({ sheet: true })
+  return async (cmd, args) => {
+    const key = [cmd, ...args].join(' ')
+    if (Object.keys(over).some((needle) => key.includes(needle))) return base(cmd, args)
+    if (key.includes('is running')) return { code: 0, stdout: 'false', stderr: '' }
+    if (cmd === 'defaults' && args[0] === 'read') return { code: 1, stdout: '', stderr: 'does not exist' }
+    return mac(cmd, args)
+  }
+}
+
+const fakeCtx = (dir: string, run: Exec = fieldExec()): FakeCtx => {
   const ctx: FakeCtx = {
     nonce: 'n0f1',
     seed: 7,
@@ -394,32 +436,40 @@ describe('the checks', () => {
     expect(await task.check(s, reader(null), '', typed)).toMatchObject({ ok: false, detail: expect.stringContaining('changed') })
   })
 
-  it('field-textedit-close-keep wants the window gone and the line kept', async () => {
+  it('field-textedit-close-keep wants the edit typed, the window gone and the line kept', async () => {
     const task = fieldTaskById('field-textedit-close-keep')
     const dir = tmp()
     const file = join(dir, 'n.rtf')
     writeFileSync(file, docRtf(['Field probe n', 'Added n']))
     const s: FieldStart = { app: 'TextEdit', window: 'n', nonce: 'n', seed: 7, field: { file, extra: 'Added n' } }
-    expect((await task.check(s, reader(null), '', [])).ok).toBe(true)
-    expect((await task.check(s, reader(null, okExec, 'socket closed'), '', [])).ok).toBe(false)
+    const typed = [typedCall('Added n')]
+    expect((await task.check(s, reader(null), '', typed)).ok).toBe(true)
+    // the same guard as close-discard: a line kept by autosave luck, never typed in the run, is no pass
+    expect(await task.check(s, reader(null), '', [])).toMatchObject({ ok: false, detail: expect.stringContaining('unedited') })
+    expect((await task.check(s, reader(null, okExec, 'socket closed'), '', typed)).ok).toBe(false)
     writeFileSync(file, docRtf(['Field probe n']))
-    expect((await task.check(s, reader(null), '', [])).ok).toBe(false)
+    expect((await task.check(s, reader(null), '', typed)).ok).toBe(false)
+    expect(editedInRun(typed, 'Added n')).toBe(true)
+    expect(editedInRun([], 'Added n')).toBe(false)
   })
 
-  it('the Finder checks read the disk, never the list', async () => {
+  it('the Finder checks read the disk, never the list, on the nonce-named files', async () => {
+    const NONCE = 'abcd1234'
+    const names = finderNames(NONCE)
     const rename = fieldTaskById('field-finder-rename')
     const dir = tmp()
-    const files = join(dir, 'files-n')
+    const files = join(dir, `files-${NONCE}`)
     mkdirSync(files)
-    writeFileSync(join(files, 'draft.txt'), finderDraft('n'))
-    writeFileSync(join(files, 'old.log'), finderLog('n'))
-    writeFileSync(join(files, 'keep.md'), finderKeep('n'))
-    const s: FieldStart = { app: 'Finder', window: 'files-n', nonce: 'n', seed: 7, field: { dir: files, home: dir } }
-    // the field test's false success: the list showed final.txt, the disk still held draft.txt
+    writeFileSync(join(files, names.draft), finderDraft(NONCE))
+    writeFileSync(join(files, names.log), finderLog(NONCE))
+    writeFileSync(join(files, names.keep), finderKeep(NONCE))
+    const s: FieldStart = { app: 'Finder', window: `files-${NONCE}`, nonce: NONCE, seed: 7, field: { dir: files, home: dir } }
+    expect(rename.prompt(s)).toContain(names.draft)
+    // the field test's false success: the list showed the new name, the disk still held the old
     expect((await rename.check(s, reader(''), '', [])).ok).toBe(false)
-    writeFileSync(join(files, 'final.txt'), finderDraft('n'))
-    expect(await rename.check(s, reader(''), '', [])).toMatchObject({ ok: false, detail: expect.stringContaining('draft.txt') })
-    rmSync(join(files, 'draft.txt'))
+    writeFileSync(join(files, names.final), finderDraft(NONCE))
+    expect(await rename.check(s, reader(''), '', [])).toMatchObject({ ok: false, detail: expect.stringContaining(names.draft) })
+    rmSync(join(files, names.draft))
     expect((await rename.check(s, reader(''), '', [])).ok).toBe(true)
 
     const folder = fieldTaskById('field-finder-new-folder')
@@ -431,32 +481,38 @@ describe('the checks', () => {
     expect((await folder.check(s, reader(''), '', [])).ok).toBe(true)
   })
 
-  it('field-finder-trash wants the bytes out of the whole folder AND in the Trash: a rename, a move inside or a delete fails', async () => {
+  it('field-finder-trash wants the bytes out of the whole folder AND in the Trash, read through Finder (TCC)', async () => {
+    const NONCE = 'abcd1234'
+    const names = finderNames(NONCE)
     const trash = fieldTaskById('field-finder-trash')
     const home = tmp()
-    mkdirSync(join(home, '.Trash'))
-    const files = join(home, 'files-n')
+    const files = join(home, `files-${NONCE}`)
     mkdirSync(files)
-    writeFileSync(join(files, 'old.log'), finderLog('n'))
-    writeFileSync(join(files, 'keep.md'), finderKeep('n'))
-    const s: FieldStart = { app: 'Finder', window: 'files-n', nonce: 'n', seed: 7, field: { dir: files, home } }
+    writeFileSync(join(files, names.log), finderLog(NONCE))
+    writeFileSync(join(files, names.keep), finderKeep(NONCE))
+    const s: FieldStart = { app: 'Finder', window: `files-${NONCE}`, nonce: NONCE, seed: 7, field: { dir: files, home } }
+    const trashWith = (items: string): TaskReader => reader('', execWith({ 'every item of trash': items }))
     // still in the folder
-    expect((await trash.check(s, reader(''), '', [])).ok).toBe(false)
+    expect((await trash.check(s, trashWith(''), '', [])).ok).toBe(false)
     // renamed in place: the bytes are still under the folder
-    renameSync(join(files, 'old.log'), join(files, 'old 22.33.44.log'))
-    expect(await trash.check(s, reader(''), '', [])).toMatchObject({ ok: false, detail: expect.stringContaining('still under the folder') })
+    renameSync(join(files, names.log), join(files, `old-${NONCE} 22.33.44.log`))
+    expect(await trash.check(s, trashWith(''), '', [])).toMatchObject({ ok: false, detail: expect.stringContaining('still under the folder') })
     // moved into a subfolder: still not a trash
     mkdirSync(join(files, 'archive'))
-    renameSync(join(files, 'old 22.33.44.log'), join(files, 'archive', 'old.log'))
-    expect(await trash.check(s, reader(''), '', [])).toMatchObject({ ok: false, detail: expect.stringContaining('still under the folder') })
-    // deleted outright: gone from the folder but not in the Trash
-    rmSync(join(files, 'archive', 'old.log'))
-    expect(await trash.check(s, reader(''), '', [])).toMatchObject({ ok: false, detail: expect.stringContaining('not in the Trash') })
-    // really trashed, under Finder's duplicate rename: found by its bytes
-    writeFileSync(join(home, '.Trash', 'old 10.11.12.log'), finderLog('n'))
-    expect((await trash.check(s, reader(''), '', [])).ok).toBe(true)
-    expect(bytesUnder(files, finderLog('n'))).toBeNull()
-    expect(inTrash(home, finderLog('n'))).toBe('old 10.11.12.log')
+    renameSync(join(files, `old-${NONCE} 22.33.44.log`), join(files, 'archive', names.log))
+    expect(await trash.check(s, trashWith(''), '', [])).toMatchObject({ ok: false, detail: expect.stringContaining('still under the folder') })
+    // deleted outright: gone from the folder, Finder lists no bench item
+    rmSync(join(files, 'archive', names.log))
+    expect(await trash.check(s, trashWith('somebody-else.txt\n'), '', [])).toMatchObject({ ok: false, detail: expect.stringContaining('not in the Trash') })
+    // another run's item in the Trash proves nothing for this one
+    expect((await trash.check(s, trashWith('old-ffff0000.log\n'), '', [])).ok).toBe(false)
+    // really trashed, under Finder's duplicate rename: found by its unique nonce name
+    expect((await trash.check(s, trashWith(`keep-zzz.md\nold-${NONCE} 10.11.12.log\n`), '', [])).ok).toBe(true)
+    expect(bytesUnder(files, finderLog(NONCE))).toBeNull()
+    // Finder failing to answer fails the check with its words, never a pass
+    const broken: Exec = async (cmd, args) =>
+      [cmd, ...args].join(' ').includes('every item of trash') ? { code: 1, stdout: '', stderr: 'Finder got an error: AppleEvent timed out.' } : { code: 0, stdout: '', stderr: '' }
+    expect(await trash.check(s, reader('', broken), '', [])).toMatchObject({ ok: false, detail: expect.stringContaining('could not list the Trash') })
   })
 
   it('field-menu-shortcut wants the duplicated document’s window', async () => {
@@ -481,18 +537,125 @@ describe('the checks', () => {
     expect(await docText(okExec, file)).toContain('plain words n9')
   })
 
-  it('removeTrashedScratch takes every small Trash file carrying the run’s nonce, nothing else', () => {
-    const home = tmp()
-    const trash = join(home, '.Trash')
-    mkdirSync(trash)
-    writeFileSync(join(trash, 'old.log'), finderLog('n7'))
-    writeFileSync(join(trash, 'old 22.33.44.log'), finderLog('n7'))
-    writeFileSync(join(trash, 'draft.txt'), finderDraft('n7'))
-    writeFileSync(join(trash, 'old notes.log'), 'the person’s own file\n')
-    writeFileSync(join(trash, 'other-run.log'), finderLog('zz'))
-    expect(removeTrashedScratch(home, 'n7').sort()).toEqual(['draft.txt', 'old 22.33.44.log', 'old.log'])
-    expect(existsSync(join(trash, 'old notes.log'))).toBe(true)
-    expect(existsSync(join(trash, 'other-run.log'))).toBe(true)
+  it('the Trash helpers: names read through Finder, matched by the bench shape, deleted item by item', async () => {
+    const names = ['old-abcd1234 22.33.44.log', 'draft-abcd1234.txt', 'old-ffff0000.log', 'old notes.log', 'Computer Use Test.rtf']
+    expect(trashNamesOf(names, 'abcd1234')).toEqual(['old-abcd1234 22.33.44.log', 'draft-abcd1234.txt'])
+    expect(trashNamesOf(names, 'ffff0000')).toEqual(['old-ffff0000.log'])
+    expect(benchTrashNames(names)).toEqual(['old-abcd1234 22.33.44.log', 'draft-abcd1234.txt', 'old-ffff0000.log'])
+    expect(benchTrashNames(names, 'ab')).toEqual(['old-abcd1234 22.33.44.log', 'draft-abcd1234.txt'])
+    expect(BENCH_TRASH_RE.test('files-abcd1234')).toBe(true)
+    expect(BENCH_TRASH_RE.test('old-short.log')).toBe(false)
+
+    const listed = await finderTrashNames(execWith({ 'every item of trash': 'a.txt\nold-abcd1234.log\n' }))
+    expect(listed).toEqual(['a.txt', 'old-abcd1234.log'])
+    const down: Exec = async () => ({ code: 1, stdout: '', stderr: 'Finder got an error' })
+    await expect(finderTrashNames(down)).rejects.toThrow(/could not list the Trash/)
+
+    const scripts: string[] = []
+    const capturing: Exec = async (_cmd, args) => {
+      scripts.push(args[1] ?? '')
+      return { code: 0, stdout: '', stderr: '' }
+    }
+    const removed = await finderDeleteTrashItems(capturing, ['old-abcd1234.log', 'evil"name.txt'])
+    expect(removed).toEqual(['old-abcd1234.log'])
+    expect(scripts).toHaveLength(1)
+    expect(scripts[0]).toContain('delete item "old-abcd1234.log" of trash')
+    expect(scripts[0]).not.toContain('empty')
+  })
+
+  it('the Finder teardown deletes only this run’s name-matched Trash items, through Finder', async () => {
+    const NONCE = 'abcd1234'
+    const task = fieldTaskById('field-finder-trash')
+    const scripts: string[] = []
+    const run: Exec = async (_cmd, args) => {
+      const script = args[1] ?? ''
+      scripts.push(script)
+      if (script.includes('every item of trash')) return { code: 0, stdout: `old-${NONCE} 22.33.44.log\nold-ffff0000.log\nperson.txt\n`, stderr: '' }
+      return { code: 0, stdout: '', stderr: '' }
+    }
+    const s: FieldStart = { app: 'Finder', window: `files-${NONCE}`, nonce: NONCE, seed: 7, field: { dir: '/tmp/x', home: '/tmp/h' } }
+    await task.teardown!(s, run)
+    const deletes = scripts.filter((x) => x.includes('delete item'))
+    expect(deletes).toHaveLength(1)
+    expect(deletes[0]).toContain(`delete item "old-${NONCE} 22.33.44.log" of trash`)
+  })
+
+  it('the close tasks set the pref for the run, prove the sheet, and restore exactly (skip when the premise is absent)', async () => {
+    // probe: its own TextEdit (open -n, the new pid), a dirty saved document closed over AX, the sheet seen and answered, the instance killed
+    const log: string[] = []
+    const fast = { wait: async () => {} }
+    expect(await probeCloseSheet(probeMac({ sheet: true, log }), { file: '/tmp/d/probe-n.rtf', nonce: 'n', ...fast })).toMatchObject({ sheet: true })
+    expect(log.find((k) => k.startsWith('open '))).toMatch(/^open -n -g -a TextEdit \/tmp\/d\/probe-n\.rtf/)
+    expect(log.some((k) => k.includes('unix id is 4242') && k.includes('set value of text area 1'))).toBe(true)
+    expect(log.some((k) => k.includes('AXCloseButton'))).toBe(true)
+    expect(log.some((k) => k.includes('click button "Revert Changes" of sheet 1'))).toBe(true)
+    expect(log.at(-1)).toBe('kill -9 4242')
+    // never the person's TextEdit: no script addresses the app by name
+    expect(log.some((k) => k.includes('tell application "TextEdit"'))).toBe(false)
+    // a dirty close that runs through silently: the premise is absent, and the probe's instance is still killed
+    const silentLog: string[] = []
+    const silentMac = probeMac({ sheet: false, log: silentLog })
+    let closed = false
+    const silent: Exec = async (cmd, args) => {
+      const key = [cmd, ...args].join(' ')
+      if (key.includes('AXCloseButton')) closed = true
+      if (closed && key.includes('exists (first window')) return { code: 0, stdout: 'false', stderr: '' }
+      return silentMac(cmd, args)
+    }
+    expect(await probeCloseSheet(silent, { file: '/tmp/d/probe-n.rtf', nonce: 'n', ...fast })).toMatchObject({ sheet: false, detail: 'a dirty saved document closed with no sheet' })
+    expect(silentLog.at(-1)).toBe('kill -9 4242')
+
+    // the pref: read, write for the run, restore exactly
+    const calls: string[][] = []
+    const defaultsExec =
+      (readAnswer: { code: number; stdout: string }): Exec =>
+      async (cmd, args) => {
+        if (cmd === 'defaults') calls.push(args)
+        return cmd === 'defaults' && args[0] === 'read' ? { ...readAnswer, stderr: '' } : { code: 0, stdout: '', stderr: '' }
+      }
+    expect(await readCloseConfirm(defaultsExec({ code: 1, stdout: '' }))).toBeNull()
+    expect(await readCloseConfirm(defaultsExec({ code: 0, stdout: '0\n' }))).toBe('0')
+    calls.length = 0
+    await writeCloseConfirm(defaultsExec({ code: 0, stdout: '' }), '1')
+    await writeCloseConfirm(defaultsExec({ code: 0, stdout: '' }), '0')
+    await writeCloseConfirm(defaultsExec({ code: 0, stdout: '' }), null)
+    expect(calls).toEqual([
+      ['write', 'com.apple.TextEdit', 'NSCloseAlwaysConfirmsChanges', '-bool', 'true'],
+      ['write', 'com.apple.TextEdit', 'NSCloseAlwaysConfirmsChanges', '-bool', 'false'],
+      ['delete', 'com.apple.TextEdit', 'NSCloseAlwaysConfirmsChanges']
+    ])
+
+    // setup with no sheet: skipped with the reason, the pref restored first (the key was absent → deleted again)
+    const seen: string[][] = []
+    const noSheetMac = probeMac({ sheet: false })
+    const noSheet: Exec = async (cmd, args) => {
+      if (cmd === 'defaults') {
+        seen.push(args)
+        return args[0] === 'read' ? { code: 1, stdout: '', stderr: 'does not exist' } : { code: 0, stdout: '', stderr: '' }
+      }
+      return noSheetMac(cmd, args)
+    }
+    const noSheetCtx = fakeCtx(tmp(), noSheet)
+    const skipped = await fieldTaskById('field-textedit-close-discard').setup(noSheetCtx)
+    expect(skipped).toMatchObject({ skip: expect.stringContaining('premise is absent') })
+    // the task's window is never opened when its premise is absent
+    expect(noSheetCtx.opened).toEqual([])
+    expect(seen.at(-1)).toEqual(['delete', 'com.apple.TextEdit', 'NSCloseAlwaysConfirmsChanges'])
+
+    // a good setup carries the old pref, and the teardown puts it back as a bool write
+    const ctx = fakeCtx(tmp(), fieldExec({ 'defaults read': '' }))
+    const started = await fieldTaskById('field-textedit-close-keep').setup({ ...ctx, run: fieldExec() })
+    expect('skip' in started).toBe(false)
+    const restore: string[][] = []
+    const restoring: Exec = async (cmd, args) => {
+      if (cmd === 'defaults') restore.push(args)
+      if (cmd === 'pgrep') return { code: 0, stdout: '', stderr: '' }
+      return { code: 0, stdout: '', stderr: '' }
+    }
+    await fieldTaskById('field-textedit-close-keep').teardown!({ ...(started as FieldStart), field: { ...(started as FieldStart).field, pref: '1' } }, restoring)
+    expect(restore).toEqual([['write', 'com.apple.TextEdit', 'NSCloseAlwaysConfirmsChanges', '-bool', 'true']])
+    await fieldTaskById('field-textedit-close-keep').teardown!(started as FieldStart, restoring)
+    expect(restore.at(-1)).toEqual(['delete', 'com.apple.TextEdit', 'NSCloseAlwaysConfirmsChanges'])
   })
 
   it('fieldOf reads the start’s field bag, empty for a gate start', () => {

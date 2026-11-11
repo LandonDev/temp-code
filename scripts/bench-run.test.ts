@@ -37,7 +37,8 @@ describe('parseBenchArgs', () => {
       cover: false,
       rebaseline: false,
       judge: null,
-      judgeField: null
+      judgeField: null,
+      cleanTrash: null
     })
     expect(parseBenchArgs(['--gate'])).toMatchObject({ mode: 'gate' })
     expect(parseBenchArgs(['--', '--gate'])).toMatchObject({ mode: 'gate' })
@@ -71,6 +72,9 @@ describe('parseBenchArgs', () => {
     expect(parseBenchArgs(['--set', 'field', '--host', 'box', '--round', 'r2'])).toMatchObject({ set: 'field', host: 'box', round: 'r2', session: true })
     expect(parseBenchArgs(['--set', 'field', '--reference', 'codex'])).toMatchObject({ mode: 'reference', set: 'field' })
     expect(parseBenchArgs(['--judge-field', 'mac.json', 'box.json', 'codex.json'])).toMatchObject({ judgeField: ['mac.json', 'box.json', 'codex.json'] })
+    expect(parseBenchArgs(['--clean-trash', 'abcd1234'])).toMatchObject({ cleanTrash: 'abcd1234' })
+    expect(parseBenchArgs(['--clean-trash', 'all-bench'])).toMatchObject({ cleanTrash: 'all-bench' })
+    expect(() => parseBenchArgs(['--clean-trash', 'Everything'])).toThrow(/nonce.*or all-bench/)
     expect(() => parseBenchArgs(['--judge-field'])).toThrow(/needs a value/)
   })
 
