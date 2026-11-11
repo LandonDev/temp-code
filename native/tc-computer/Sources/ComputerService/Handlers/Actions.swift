@@ -487,7 +487,7 @@ extension ComputerService {
                 session: outcome.session, front: outcome.front, disk: outcome.disk, resolved: done.resolved
             )
             var run = StepRun(step: .ok(ok), t0: isCursor ? nil : (outcome.lastInputAt ?? done.returnedAt), signature0: done.signature0, inputEffect: outcome.effect, check: done.check)
-            run.inputFrom = run.t0 == nil ? nil : done.startedAt
+            run.inputFrom = run.t0 == nil ? nil : WaitRule.inputWindow(tier: outcome.tier, startedAt: done.startedAt)
             run.focusBefore = done.focusBefore
             run.windowsBefore = done.windowsBefore
             run.focusRead = true

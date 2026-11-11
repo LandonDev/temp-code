@@ -85,6 +85,13 @@ extension WaitRule {
         guard let inputFrom else { return false }
         return stamp > inputFrom
     }
+
+    /// The input window `duringInput` reads: an `ax` step's alone, whose input is the AX call the app answered. A `front`
+    /// or `session` step's input also activates the app and puts the person's back, whose own focus and layout
+    /// notifications would read a step that did nothing as `changed`; a `process` step's posted events are handled after t0.
+    public static func inputWindow(tier: Tier?, startedAt: UInt64?) -> UInt64? {
+        tier == .ax ? startedAt : nil
+    }
 }
 
 /// The buckets a wait counts the gaps between adjacent changes into (§27.2, protocol.ts `WAIT_GAP_EDGES_MS`): each edge

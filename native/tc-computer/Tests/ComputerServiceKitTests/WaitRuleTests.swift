@@ -315,6 +315,15 @@ private func run(
         #expect(!WaitRule.duringInput(stamp: 1_200, inputFrom: nil))
     }
 
+    @Test func onlyAnAxStepsInputCounts() {
+        // a front or session step activates the app and puts the person's back: its own notices are not the step's effect
+        #expect(WaitRule.inputWindow(tier: .ax, startedAt: 1_000) == 1_000)
+        #expect(WaitRule.inputWindow(tier: .front, startedAt: 1_000) == nil)
+        #expect(WaitRule.inputWindow(tier: .session, startedAt: 1_000) == nil)
+        #expect(WaitRule.inputWindow(tier: .process, startedAt: 1_000) == nil)
+        #expect(WaitRule.inputWindow(tier: nil, startedAt: 1_000) == nil)
+    }
+
     @Test func itCountsAsAChangeAtZeroThatMovesNoClock() {
         var rule = WaitRule(options: WaitOptions(minMs: 300, quietMs: 450, maxMs: 1_500, busyMaxMs: 5_000), signature0: 1, thin: false, pixels: false)
         _ = rule.take(WaitSample(at: 25, axLastChange: 0))
