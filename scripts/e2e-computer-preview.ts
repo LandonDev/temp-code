@@ -28,7 +28,8 @@
  */
 import { gateScreenSkip } from './lib/macScreen'
 import { coverWord, probeCover, type CoverWindow } from './lib/windowCover'
-import { execFileSync } from 'node:child_process'
+import { flakeLine, needsVoidRerun } from './lib/legRerun'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ComputerClickPush, ComputerFramePush, ComputerPreviewPush } from '../src/shared/contract-computer'
@@ -393,4 +394,12 @@ try {
 const failed = report.checks.filter((c) => c.outcome === 'failed').length
 const voided = report.checks.filter((c) => c.outcome === 'inconclusive').length
 console.log(`\n${report.checks.length - failed - voided} passed, ${failed} failed, ${voided} inconclusive; report ${REPORT}`)
+// --gate: a run that only voided checks runs once more at once, and names them as flakes when that passes (legRerun.ts)
+if (needsVoidRerun({ failed, voided, gate: GATE, rerun: process.env.TC_PREVIEW_RERUN === '1' })) {
+  const names = report.checks.filter((c) => c.outcome === 'inconclusive').map((c) => `${c.name}: ${c.detail ?? ''}`)
+  console.log(`rerun: the preview voided ${names.length} check${names.length === 1 ? '' : 's'}; running it once more`)
+  const again = spawnSync(process.execPath, process.argv.slice(1), { stdio: 'inherit', env: { ...process.env, TC_PREVIEW_RERUN: '1' } })
+  if (again.status === 0) for (const n of names) console.log(flakeLine({ leg: 'preview', step: n.split(': ')[0], why: n.slice(n.indexOf(': ') + 2) }))
+  process.exit(again.status ?? 1)
+}
 process.exit(failed ? 1 : voided ? 2 : 0)

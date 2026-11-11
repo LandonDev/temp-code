@@ -41,3 +41,13 @@ export const flakeLine = (f: Flake): string => `${FLAKE_PREFIX}${f.leg} leg, ${f
 /** The flake lines a step's log holds, for the gate's summary and last-run.json. */
 export const flakesInLog = (log: string): string[] =>
   log.split('\n').filter((l) => l.startsWith(FLAKE_PREFIX)).map((l) => l.slice(FLAKE_PREFIX.length))
+
+/**
+ * A proof run whose only shortfalls are checks it voided (the person's input moved the pointer or the front, the
+ * window never went still, the screen went away): under --gate it runs once more at once, and a rerun that passes
+ * names the voided checks as flakes. A failed check is never rerun; a rerun that voids again stays inconclusive,
+ * which the gate counts as red. The preview proof's rule (e2e-computer-preview, 2026-11-11: two VOIDs while the
+ * person moved the pointer during the full publish gate).
+ */
+export const needsVoidRerun = (o: { failed: number; voided: number; gate: boolean; rerun: boolean }): boolean =>
+  o.gate && !o.rerun && o.failed === 0 && o.voided > 0

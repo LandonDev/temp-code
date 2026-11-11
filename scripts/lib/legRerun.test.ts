@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { flakeLine, flakesInLog, legRerunVerdict, needsLegRerun, type LegStep } from './legRerun'
+import { flakeLine, flakesInLog, legRerunVerdict, needsLegRerun, needsVoidRerun, type LegStep } from './legRerun'
 
 const passed = (name: string): LegStep => ({ name, outcome: 'passed' })
 const failed = (name: string, why: string): LegStep => ({ name, outcome: 'failed', why })
@@ -37,5 +37,15 @@ describe('the leg rerun', () => {
     const log = ['✓ fallbacks 6 2436ms', 'flake: fallbacks leg, fallbacks 7: the bar moved', 'report: /tmp/x.json', 'flake: web leg, web: pick: restored failed'].join('\n')
     expect(flakesInLog(log)).toEqual(['fallbacks leg, fallbacks 7: the bar moved', 'web leg, web: pick: restored failed'])
     expect(flakesInLog('✓ all\n')).toEqual([])
+  })
+})
+
+describe('the void rerun', () => {
+  it('reruns a gate run once when it only voided checks, never a failure, never twice', () => {
+    expect(needsVoidRerun({ failed: 0, voided: 2, gate: true, rerun: false })).toBe(true)
+    expect(needsVoidRerun({ failed: 1, voided: 2, gate: true, rerun: false })).toBe(false)
+    expect(needsVoidRerun({ failed: 0, voided: 0, gate: true, rerun: false })).toBe(false)
+    expect(needsVoidRerun({ failed: 0, voided: 2, gate: false, rerun: false })).toBe(false)
+    expect(needsVoidRerun({ failed: 0, voided: 2, gate: true, rerun: true })).toBe(false)
   })
 })
