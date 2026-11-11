@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
-import { hostname } from 'node:os'
+import { hostLabel } from '../../hostLabel'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { remoteDeflateOptions } from '../wire'
 import { ZodError } from 'zod'
@@ -225,7 +225,7 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
         contract: CONTRACT_VERSION,
         ...(p
           ? {
-              name: hostname(),
+              name: hostLabel(),
               version: options.version,
               ...(options.build ? { build: options.build } : {}),
               key: { id: p.keyId, name: p.name, caps: p.caps, audience: p.audience },

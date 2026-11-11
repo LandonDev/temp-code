@@ -1394,6 +1394,8 @@ export type ServerPush =
   | {
       push: 'hello'
       environmentId: string
+      /** What the host calls itself, short (src/shared/hostNames.ts); absent on an older host. A client shows it unless the person renamed the host. */
+      name?: string
       contract: number
       caps: import('./capabilities').Capability[]
       key?: { id: string; name: string }

@@ -1,4 +1,5 @@
-import { hostname } from 'node:os'
+import { hostLabel } from '../../hostLabel'
+import { shortHostName } from '@shared/hostNames'
 import type { RouteKind, SavedEnvironment, SavedRoute } from '@shared/contract-remote'
 import { CONTRACT_VERSION, type Capability } from '@shared/capabilities'
 import type { Store } from '../db'
@@ -235,7 +236,7 @@ export async function addEnvironment(
   routes.push(route)
   const row: Row = {
     id: hello.environmentId,
-    name: input.name?.trim() || existing?.name || hello.name,
+    name: input.name?.trim() || existing?.name || shortHostName(hello.name),
     routes,
     addedAt: existing?.addedAt ?? Date.now(),
     caps: hello.key?.caps ?? [],
@@ -274,7 +275,7 @@ export async function pairEnvironment(
   const response = await hostFetch(ctx, `${parsed.origin}/api/pair`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify({ code: parsed.code, kind: 'key', name: hostname() })
+    body: JSON.stringify({ code: parsed.code, kind: 'key', name: hostLabel() })
   })
   if (response.status === 401 || response.status === 403 || response.status === 404) {
     await response.body?.cancel()

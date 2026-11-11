@@ -2525,6 +2525,25 @@ the same query). Nothing on the phone has to know the hop.
   pushes `presence` (the whole list) to every remote socket when a row's
   link, screen, power or name changes. `/api/hello` lists the rows for a key
   the box knows; a direct lane's hello carries them as `hosts`.
+- **One row per machine, named the way the person knows it.** A down row
+  leaves the list once a host of the same short name and platform registers
+  after it went down (the same Mac under a new environment id: on
+  2026-11-10 the box still listed the Mac's id from before its data dir
+  moved, and two old proof instances named tempcode-box), and any row down
+  past `RELAY_STALE_MS` (14 days) leaves too (`HostRelay.prune`). Every
+  host calls itself by its hostname without the network's domain
+  (`hostLabel()`, src/main/hostLabel.ts over src/shared/hostNames.ts:
+  "Mac.attlocal.net" is "Mac") in the hello, `/api/hello`, `peer.register`,
+  the hub and notices, and the socket's hello carries `name`, so a client
+  learns a host's own name on every connect. The phone's copy of the rule is
+  `HostNames` (ios/TempCodeClient, Environments/HostNames.swift): labels
+  short unless two hosts would read the same, a name the person gave in
+  Settings → Hosts never shortened, and a relayed row that is a machine
+  already listed (`HostNames.pastIdentities`) dropped on arrival. Until
+  2026-11-10 the phone's pairing sheet had a Name field whose text named the
+  host on the phone and the phone's key on the box: the person typed "Mac"
+  and the box read "Mac" beside the real Mac's "Mac.attlocal.net". The
+  field is gone; the key is named for the phone (its model).
 
 | Mac | Reads and steering | Opening Xcode | Refusal |
 |---|---|---|---|

@@ -6,7 +6,14 @@ import TempCodeContract
 /// `KeyStore` under that id and never in this value.
 public struct PairedEnvironment: Sendable, Hashable, Codable, Identifiable {
     public let id: String
+    /// What the host calls itself, from its last hello (or what an older
+    /// pairing stored). On a client the registry built, this is the label
+    /// the phone shows: `customName`, else this name shortened
+    /// (`HostNames.labels`).
     public var name: String
+    /// The name the person gave the host in Settings → Hosts; nil while they
+    /// have not. Optional, so an older `environments.json` reads unchanged.
+    public var customName: String?
     /// `https://tempcode.landonhale.com`, or `http://127.0.0.1:7677` for a dev instance.
     public var origin: URL
     public var caps: [Capability]
@@ -24,9 +31,10 @@ public struct PairedEnvironment: Sendable, Hashable, Codable, Identifiable {
     /// socket opens; nil until the first hello. Optional, so an older file reads unchanged.
     public var platform: String?
 
-    public init(id: String, name: String, origin: URL, caps: [Capability], keyId: String, keyName: String, addedAt: Double, via: String? = nil, platform: String? = nil) {
+    public init(id: String, name: String, origin: URL, caps: [Capability], keyId: String, keyName: String, addedAt: Double, via: String? = nil, platform: String? = nil, customName: String? = nil) {
         self.id = id
         self.name = name
+        self.customName = customName
         self.origin = origin
         self.caps = caps
         self.keyId = keyId
@@ -37,6 +45,14 @@ public struct PairedEnvironment: Sendable, Hashable, Codable, Identifiable {
     }
 
     public var isRelayed: Bool { via != nil }
+
+    /// The same socket: everything but the names, which a client relabels in place.
+    public func sameLane(as other: PairedEnvironment) -> Bool {
+        var a = self, b = other
+        a.name = ""; a.customName = nil
+        b.name = ""; b.customName = nil
+        return a == b
+    }
 
     /// The environment id the `KeyStore` holds the key under: the carrier's for a relayed host.
     public var keyOwner: String { via ?? id }

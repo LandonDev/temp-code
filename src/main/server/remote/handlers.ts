@@ -1,4 +1,4 @@
-import { hostname } from 'node:os'
+import { hostLabel } from '../../hostLabel'
 import type { ClientRequest } from '@shared/contract'
 import { CONTRACT_VERSION, type Capability } from '@shared/capabilities'
 import type { RemoteStatus } from '@shared/contract-remote'
@@ -85,7 +85,7 @@ export function remoteStatus(ctx: RemoteContext): RemoteStatus {
   const live = ctx.status()
   return {
     environmentId: ctx.environmentId,
-    name: hostname(),
+    name: hostLabel(),
     enabled: settings.enabled,
     port: live.running ? live.port : 0,
     configuredPort: settings.port,

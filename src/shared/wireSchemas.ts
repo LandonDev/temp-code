@@ -1016,6 +1016,7 @@ const push = <P extends string, S extends z.ZodRawShape>(
 
 export const HelloPushSchema = push('hello', {
   environmentId: z.string(),
+  name: z.string().optional(),
   contract: z.number().int(),
   caps: z.array(CapabilitySchema),
   key: z.object({ id: z.string(), name: z.string() }).optional(),

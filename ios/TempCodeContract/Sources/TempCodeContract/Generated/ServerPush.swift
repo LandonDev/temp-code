@@ -15,6 +15,7 @@ public struct HelloPush: Codable, Hashable, Sendable {
     }
 
     public let environmentId: String
+    public let name: String?
     public let contract: Int
     public let caps: [Capability]
     public let key: Key?
@@ -23,8 +24,9 @@ public struct HelloPush: Codable, Hashable, Sendable {
     public let via: String?
     public let presence: HostPresence?
 
-    public init(environmentId: String, contract: Int, caps: [Capability], key: Key? = nil, build: BuildFacts? = nil, hosts: [HostPresence]? = nil, via: String? = nil, presence: HostPresence? = nil) {
+    public init(environmentId: String, name: String? = nil, contract: Int, caps: [Capability], key: Key? = nil, build: BuildFacts? = nil, hosts: [HostPresence]? = nil, via: String? = nil, presence: HostPresence? = nil) {
         self.environmentId = environmentId
+        self.name = name
         self.contract = contract
         self.caps = caps
         self.key = key

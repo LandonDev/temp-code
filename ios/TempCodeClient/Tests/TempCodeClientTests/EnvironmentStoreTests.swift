@@ -39,8 +39,13 @@ import TempCodeContract
     }
 }
 
+/// The names the fake host was asked to give a key.
+private final class SentNames: @unchecked Sendable {
+    var names: [String?] = []
+}
+
 /// A fake host for the store: answers pair and hello from canned bodies.
-private func fakeHost(environmentId: String = "env_fake", refusePairing: Bool = false) -> RemoteAPI {
+private func fakeHost(environmentId: String = "env_fake", refusePairing: Bool = false, sent: SentNames? = nil) -> RemoteAPI {
     RemoteAPI { request in
         let url = request.url!
         func json(_ status: Int, _ body: String) -> (Data, HTTPURLResponse) {
@@ -48,6 +53,9 @@ private func fakeHost(environmentId: String = "env_fake", refusePairing: Bool = 
         }
         switch url.path {
         case "/api/pair":
+            if let sent, let body = request.httpBody, let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
+                sent.names.append(object["name"] as? String)
+            }
             if refusePairing { return json(401, #"{"error":"pairing code is not valid"}"#) }
             return json(200, #"{"key":"tc_K1.secret","keyId":"K1","name":"iphone","caps":["read"],"audience":"client","environmentId":"\#(environmentId)"}"#)
         case "/api/hello":
@@ -104,11 +112,36 @@ private func fakeHost(environmentId: String = "env_fake", refusePairing: Bool = 
     @Test func `adding by key asks hello who the host is`() async throws {
         let keys = InMemoryKeyStore()
         let store = EnvironmentStore(directory: directory, keys: keys, api: fakeHost())
-        let added = try await store.add(origin: URL(string: "https://box.example")!, key: " tc_K1.secret\n", name: "The box")
-        #expect(added.name == "The box")
+        let added = try await store.add(origin: URL(string: "https://box.example")!, key: " tc_K1.secret\n")
+        #expect(added.name == "box")
         #expect(added.keyId == "K1")
         let stored = try keys.key(for: added.id)
         #expect(stored == "tc_K1.secret")
+    }
+
+    @Test func `the key is named for the phone and the host keeps the name it gives itself`() async throws {
+        let sent = SentNames()
+        let store = EnvironmentStore(directory: directory, keys: InMemoryKeyStore(), api: fakeHost(sent: sent))
+        let added = try await store.add(pairingLink: "https://box.example/pair#AB1CD-EF2GH", clientName: "iPhone")
+        #expect(sent.names == ["iPhone"])
+        #expect(added.name == "box")
+        #expect(added.customName == nil)
+    }
+
+    @Test func `a rename is the person's, an empty one or the host's own name clears it, and a hello's name is remembered`() async throws {
+        let keys = InMemoryKeyStore()
+        let store = EnvironmentStore(directory: directory, keys: keys, api: fakeHost())
+        try await store.add(pairingLink: "https://box.example/pair#AB1CD-EF2GH")
+        store.rename("env_fake", to: " Studio box ")
+        #expect(store.environment("env_fake")?.customName == "Studio box")
+        store.rename("env_fake", to: "")
+        #expect(store.environment("env_fake")?.customName == nil)
+        store.rename("env_fake", to: "Studio box")
+        store.rename("env_fake", to: "box")
+        #expect(store.environment("env_fake")?.customName == nil)
+        store.setHostName("env_fake", "tempcode-box")
+        store.setHostName("env_fake", "  ")
+        #expect(EnvironmentStore(directory: directory, keys: keys, api: fakeHost()).environment("env_fake")?.name == "tempcode-box")
     }
 
     @Test func `a refused code stores nothing`() async throws {
@@ -126,9 +159,11 @@ private func fakeHost(environmentId: String = "env_fake", refusePairing: Bool = 
         let keys = InMemoryKeyStore()
         let store = EnvironmentStore(directory: directory, keys: keys, api: fakeHost())
         try await store.add(pairingLink: "https://box.example/pair#AB1CD-EF2GH")
-        try await store.add(pairingLink: "https://box.example/pair#ZZ1ZZ-ZZ2ZZ", name: "renamed")
+        store.rename("env_fake", to: "renamed")
+        try await store.add(pairingLink: "https://box.example/pair#ZZ1ZZ-ZZ2ZZ")
         #expect(store.environments.count == 1)
-        #expect(store.environments[0].name == "renamed")
+        #expect(store.environments[0].name == "box")
+        #expect(store.environments[0].customName == "renamed")
         store.remove("env_fake")
         #expect(store.environments.isEmpty)
         let gone = try keys.key(for: "env_fake")

@@ -218,6 +218,29 @@ struct RelayedHostsTests {
         _ = lane
     }
 
+    @Test @MainActor func `each machine shows once under its own short name, whatever the pairing called the carrier`() async throws {
+        let rig = try RelayRig()
+        // An older pairing stored the person's word for the box ("Mac"); the box's hello says what it is.
+        rig.store.setHostName(RelayRig.carrierId, "Mac")
+        await rig.registry.sync()
+        let fake = await rig.sockets.socket(0)
+        let hosts = [
+            presenceJSON(id: RelayRig.macId, name: "Mac.attlocal.net", since: 3_000),
+            presenceJSON(id: "env_mac_old", name: "Mac.attlocal.net", link: "down", since: 2_000),
+            presenceJSON(id: "env_box_old", name: "tempcode-box", platform: "linux", link: "down", since: 1_000)
+        ]
+        fake.deliver(#"{"push":"hello","environmentId":"\#(RelayRig.carrierId)","name":"tempcode-box","contract":\#(contractVersion),"caps":["read","operate"],"key":{"id":"K1","name":"iphone"},"build":{"release":340,"version":"1.0.340","sha":"abc","platform":"linux"},"hosts":[\#(hosts.joined(separator: ","))]}"#)
+        Task { await rig.answer(fake) }
+        #expect(await rig.wait { rig.registry.ordered.map(\.environment.name) == ["tempcode-box", "Mac"] })
+        #expect(rig.registry.ordered.map(\.environment.id) == [RelayRig.carrierId, RelayRig.macId])
+        #expect(rig.store.environment(RelayRig.carrierId)?.name == "tempcode-box")
+        // The person's name wins and is never shortened; clearing it gives the host's own back.
+        rig.registry.rename(RelayRig.carrierId, to: "Box")
+        #expect(rig.carrier?.environment.name == "Box")
+        rig.registry.rename(RelayRig.carrierId, to: "")
+        #expect(rig.carrier?.environment.name == "tempcode-box")
+    }
+
     @Test @MainActor func `a presence push moves the state and the socket follows`() async throws {
         let rig = try RelayRig()
         let carrier = await rig.openCarrier(hosts: [presenceJSON()])

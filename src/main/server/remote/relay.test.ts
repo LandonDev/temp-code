@@ -3,7 +3,7 @@ import type { Principal } from '@shared/capabilities'
 import type { ServerFrame, ServerPush } from '@shared/contract'
 import { RELAY_HOSTS_MAX, type HostPresence, type RelayFacadeResult, type RelayOpenResult, type RelayPrincipal } from '@shared/contract-relay'
 import { PeerOfflineError, type PeerInfo } from './peerCalls'
-import { HostRelay, type LaneSocket, type RelayTransport } from './relay'
+import { HostRelay, RELAY_STALE_MS, type LaneSocket, type RelayTransport } from './relay'
 
 const UTC = 'UTC'
 const T0 = Date.UTC(2026, 2, 4, 9, 14)
@@ -182,6 +182,37 @@ describe('HostRelay presence rows', () => {
     expect(relay.hosts()).toHaveLength(1)
   })
 
+  it('drops a down row once the same machine registers under a new id, and keeps a live namesake', () => {
+    const { relay, calls, now } = make()
+    calls.register('env_old', { name: 'Mac.attlocal.net', build })
+    // a second machine of the same name, live before the first went down: both rows stay
+    calls.register('env_twin', { name: 'Mac', build })
+    now.t = T0 + 60_000
+    calls.drop('env_old')
+    expect(relay.hosts().map((h) => h.environmentId)).toEqual(['env_twin', 'env_old'])
+    now.t = T0 + 120_000
+    // the same machine back under a new id, now announcing its short name
+    calls.register('env_new', { name: 'Mac', build })
+    expect(relay.hosts().map((h) => h.environmentId)).toEqual(['env_new', 'env_twin'])
+  })
+
+  it('keeps a down row of another name or an unknown platform, and drops any row down past RELAY_STALE_MS', () => {
+    const store = new Map<string, string>()
+    const old = T0 - RELAY_STALE_MS - 1
+    store.set(
+      'relay.hosts',
+      JSON.stringify([
+        { environmentId: 'env_gone', name: 'tempcode-box', platform: 'linux', link: 'down', since: old, screen: 'unknown', power: 'awake', lastSeenAt: old, build: null },
+        { environmentId: 'env_studio', name: 'Studio', platform: 'darwin', link: 'down', since: T0 - 1_000, screen: 'unknown', power: 'awake', lastSeenAt: null, build: null },
+        { environmentId: 'env_unknown', name: 'Mac', platform: 'unknown', link: 'down', since: T0 - 1_000, screen: 'unknown', power: 'awake', lastSeenAt: null, build: null }
+      ])
+    )
+    const { relay, calls } = make({ store })
+    expect(relay.hosts().map((h) => h.environmentId)).toEqual(['env_studio', 'env_unknown'])
+    calls.register('env_mac', { name: 'Mac.attlocal.net', build })
+    expect(relay.hosts().map((h) => h.environmentId)).toEqual(['env_mac', 'env_studio', 'env_unknown'])
+  })
+
   it('keeps the newest registration first and at most RELAY_HOSTS_MAX rows', () => {
     const { relay, calls } = make()
     for (let i = 0; i < RELAY_HOSTS_MAX + 3; i++) calls.register(`env_h${i}`)
@@ -241,6 +272,7 @@ describe('HostRelay lanes', () => {
     expect(ws.sent[0]).toEqual({
       push: 'hello',
       environmentId: 'env_mac',
+      name: 'Studio',
       contract: 1,
       caps: ['read', 'operate'],
       key: { id: 'k1', name: 'Phone' },

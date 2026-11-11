@@ -121,19 +121,22 @@ public final class RelayedHosts {
     }
 
     /// The whole list a carrier knows. A host of this carrier not in the list
-    /// is gone from the box (it forgot it): dropped here too. Rows of other
-    /// carriers are untouched, and a host another carrier already relays is
-    /// left to that carrier. Saves on any change; `onChange` fires only when
-    /// an id came, went, moved state or changed name (`lastSeenAt` alone
-    /// never counts).
-    public func apply(_ list: [HostPresence], via carrier: String) {
+    /// is gone from the box (it forgot it): dropped here too, and so is a row
+    /// that is a machine already listed under another id
+    /// (`HostNames.pastIdentities`: an old id of the Mac, or of the carrier
+    /// itself, given as `carrier`). Rows of other carriers are untouched, and
+    /// a host another carrier already relays is left to that carrier. Saves
+    /// on any change; `onChange` fires only when an id came, went, moved
+    /// state or changed name (`lastSeenAt` alone never counts).
+    public func apply(_ list: [HostPresence], via carrier: String, carrier environment: PairedEnvironment? = nil) {
         let stamp = now()
         var change = RelayedChange()
         var next = hosts.filter { $0.via != carrier }
         let elsewhere = Set(next.map(\.id))
         let known = Dictionary(hosts.filter { $0.via == carrier }.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let past = HostNames.pastIdentities(list, carrierName: environment?.name, carrierPlatform: environment?.platform)
         var listed: Set<String> = []
-        for presence in list where presence.environmentId != carrier && !elsewhere.contains(presence.environmentId) && !listed.contains(presence.environmentId) {
+        for presence in list where presence.environmentId != carrier && !past.contains(presence.environmentId) && !elsewhere.contains(presence.environmentId) && !listed.contains(presence.environmentId) {
             listed.insert(presence.environmentId)
             if var row = known[presence.environmentId] {
                 Self.take(presence, into: &row, change: &change, now: stamp)

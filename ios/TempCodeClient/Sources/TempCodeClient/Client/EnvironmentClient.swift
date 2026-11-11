@@ -255,7 +255,8 @@ public struct BootResumeNotice: Sendable, Hashable {
 /// launch starts where this one left off.
 @MainActor @Observable
 public final class EnvironmentClient {
-    public let environment: PairedEnvironment
+    /// The host; its `name` is the label the registry gave it (`relabel`).
+    public private(set) var environment: PairedEnvironment
     public private(set) var status: EnvironmentStatus = .idle
     public private(set) var workspaces: [WorkspaceMeta] = []
     public private(set) var projects: [ProjectMeta] = []
@@ -368,6 +369,14 @@ public final class EnvironmentClient {
     public var relayObserver: (@MainActor (EnvironmentClient, [HostPresence], _ whole: Bool) -> Void)?
     /// The registry's ear for the platform a hello names (`build.platform`), so the store remembers it.
     public var platformObserver: (@MainActor (EnvironmentClient, String) -> Void)?
+    /// The registry's ear for the name a hello says, so the store remembers what the host calls itself.
+    public var nameObserver: (@MainActor (EnvironmentClient, String) -> Void)?
+
+    /// The registry's label for this host (`HostNames.labels`): only the name moves, the socket is untouched.
+    public func relabel(_ name: String) {
+        guard environment.name != name else { return }
+        environment.name = name
+    }
     private let keys: any KeyStore
     private var loops: [Task<Void, Never>] = []
     private var started = false
@@ -777,8 +786,10 @@ public final class EnvironmentClient {
         case .opened(let hello):
             // The transport keeps the hello off the push stream: a carrier's hello lists the
             // hosts it relays, a relayed lane's carries its own row; the registry hears both here.
-            if let hosts = hello.hosts { relayObserver?(self, hosts, true) }
+            // The host's own name and platform first: the carrier's list is read against them.
             if let platform = hello.build?.platform { platformObserver?(self, platform) }
+            if let name = hello.name, !environment.isRelayed { nameObserver?(self, name) }
+            if let hosts = hello.hosts { relayObserver?(self, hosts, true) }
             if let presence = hello.presence {
                 // A relayed lane's hello carries its own row: the lane knows its
                 // state without a registry (the registry then stamps `since`).

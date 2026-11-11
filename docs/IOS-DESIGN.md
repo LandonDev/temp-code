@@ -338,6 +338,13 @@ with the connection dot, the name, a sibling's trailing mark (the deploy
 drift) and the menu. A host's one-off lines (the boot-resume note) are quiet
 rows under its header with the event motion and no action.
 
+**A host's name.** Every host shows once, under the name it gives itself
+without the network's domain ("Mac", not "Mac.attlocal.net"), whole only
+where two hosts would read the same, or under the name the person gave it in
+Settings → Hosts (`HostNames.labels`, applied by the registry to every
+client's `environment.name`; the desktop's rule is src/shared/hostNames.ts).
+Pairing asks for no name: the hello says what the host is.
+
 **Hosts through the box.** A host the box relays (the Mac, when the phone is
 away from the LAN and only the box has a tunnel) is a host like any other:
 its own `EnvironmentClient` in the registry on a second `/ws` lane to the

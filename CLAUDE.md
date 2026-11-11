@@ -3326,6 +3326,16 @@ proof and the sizing rules; the pieces, by name:
   `TC_TEST_SHEET=rename|notes|project-settings|preamble|milestone` (rename on
   the first thread row on screen, so launch with `TC_TEST_ROUTE=archived`).
   docs/IOS-DESIGN.md "iPhone Duo".
+- Host names: every host calls itself its hostname without the network's
+  domain (`hostLabel()`, src/main/hostLabel.ts; the rule src/shared/hostNames.ts,
+  the phone's `HostNames` in the client package) in both hellos (the socket's
+  carries `name` now), peer.register, notices and the hub; the phone labels
+  each client by it (short unless two would read the same; a Settings →
+  Hosts rename is `customName` and wins), its pairing sheet asks no name and
+  names the key for the phone; the box drops a relay row superseded by the
+  same machine under a new id or down 14 days (`HostRelay.prune`), the phone
+  a past identity on arrival (`HostNames.pastIdentities`). docs/box.md "The
+  relay".
 - Relayed hosts (thread 29, the phone side of the box's relay): a host the
   box relays is a client of its own in `ClientRegistry` on the box's
   `/ws?host=<id>` lane with the box's key (`PairedEnvironment.via`,

@@ -6,7 +6,7 @@ import TempCodeClient
 /// field, a refusal under the field in destructive (never an alert), and
 /// a successful pairing dismisses with the host already in the list.
 struct AddEnvironmentSheet: View {
-    /// Pairing again: the host whose key is replaced; the sheet keeps its name and address.
+    /// Pairing again: the host whose key is replaced; the sheet keeps its address, the host its name.
     var replacing: PairedEnvironment? = nil
 
     private enum Method: String, CaseIterable, Identifiable {
@@ -19,7 +19,6 @@ struct AddEnvironmentSheet: View {
         case link
         case origin
         case key
-        case name
     }
 
     @Environment(AppModel.self) private var model
@@ -29,7 +28,6 @@ struct AddEnvironmentSheet: View {
     @State private var link = ""
     @State private var origin = ""
     @State private var key = ""
-    @State private var name = ""
     @State private var error: String?
     @State private var busy = false
     /// Tick once per outcome for the haptic.
@@ -106,16 +104,6 @@ struct AddEnvironmentSheet: View {
                         .contentTransition(.opacity)
                         .animation(Motion.crossFade, value: hint)
                 }
-
-                Section {
-                    TextField("Name", text: $name)
-                        .submitLabel(.go)
-                        .focused($focus, equals: .name)
-                        .onSubmit { submit() }
-                        .accessibilityIdentifier("pair-name")
-                } footer: {
-                    Text(replacing == nil ? "Optional. The host's own name when left empty." : "Replaces the key for \u{201C}\(replacing?.name ?? "")\u{201D}; the name and address stay.")
-                }
             }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle(replacing == nil ? "Add a Host" : "Pair Again")
@@ -153,7 +141,6 @@ struct AddEnvironmentSheet: View {
         .sensoryFeedback(.error, trigger: refusals)
         .task {
             if let replacing {
-                name = replacing.name
                 origin = replacing.origin.absoluteString
             }
             #if DEBUG
@@ -208,14 +195,14 @@ struct AddEnvironmentSheet: View {
         busy = true
         withAnimation(Motion.rowLeave) { error = nil }
         defer { busy = false }
-        let displayName = name.trimmingCharacters(in: .whitespaces)
         do {
             switch method {
             case .link:
-                _ = try await model.registry.add(pairingLink: link, name: displayName.isEmpty ? nil : displayName)
+                // The key is named for this phone on the host; the host keeps its own name here.
+                _ = try await model.registry.add(pairingLink: link, clientName: UIDevice.current.model)
             case .key:
                 guard let url = URL(string: origin.trimmingCharacters(in: .whitespaces)) else { return }
-                _ = try await model.registry.add(origin: url, key: key, name: displayName.isEmpty ? nil : displayName)
+                _ = try await model.registry.add(origin: url, key: key)
             }
             successes += 1
             dismiss()

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { hostname } from 'node:os'
+import { hostLabel } from '../../hostLabel'
 import { ZodError } from 'zod'
 import type { WebSocket } from 'ws'
 import { CONTRACT_VERSION, type Principal } from '@shared/capabilities'
@@ -212,7 +212,7 @@ export class RelayServer {
   /** peer.register's extra fields for macBridge.linkUp. */
   registration(): RelayRegistration {
     return {
-      name: this.deps.hostname ?? hostname(),
+      name: this.deps.hostname ?? hostLabel(),
       presence: this.deps.presence.snapshot(),
       ...(this.deps.build ? { build: this.deps.build } : {})
     }

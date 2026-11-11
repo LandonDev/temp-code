@@ -36,6 +36,8 @@ import {
 import { loadEnvironmentId } from './remote/environment'
 import { handleRemote, type RemoteContext } from './remote/handlers'
 import { buildFacts, hostPlatform } from '../buildInfo'
+import { hostLabel } from '../hostLabel'
+import { shortHostName } from '@shared/hostNames'
 import type { BuildFacts } from '@shared/deployDrift'
 import type { MediaRange } from '@shared/contract-fsgit'
 import { MasterReleaseWatcher } from '../deployDrift'
@@ -936,7 +938,7 @@ export async function startServer(
   // that dialed it and registered (the Mac on the box), named by their key.
   const knownHosts = (): { id: string; name: string }[] => {
     const saved = listEnvironments(store).map((e) => ({ id: e.id, name: e.name }))
-    const registered = peerCalls.registeredIds().filter((id) => !saved.some((e) => e.id === id)).map((id) => ({ id, name: peerCalls.nameOf(id) ?? id }))
+    const registered = peerCalls.registeredIds().filter((id) => !saved.some((e) => e.id === id)).map((id) => ({ id, name: shortHostName(peerCalls.info(id)?.name ?? peerCalls.nameOf(id) ?? id) }))
     return [...saved, ...registered]
   }
   const hostNameOf = (id: string): string | null => knownHosts().find((e) => e.id === id)?.name ?? null
@@ -1054,7 +1056,7 @@ export async function startServer(
     environmentId,
     local: macDevices,
     peers: peerCalls,
-    hostName: (id) => listEnvironments(store).find((e) => e.id === id)?.name ?? null,
+    hostName: (id) => hostNameOf(id),
     ledgerFor: (id) => readSimulatorHolders(db, id),
     session: sessionLookup,
     localName: 'This Mac',
@@ -1762,7 +1764,7 @@ export async function startServer(
           version: appVersion,
           origin: () => pairingOrigin(readRemoteSettings(store), remote?.port ?? 0),
           environmentId,
-          hostName: hostname(),
+          hostName: hostLabel(),
           relay: hostRelay.facadeHosts()
         }),
         // The built renderer (electron-vite build); a dev tree without it answers 503.
@@ -1960,6 +1962,7 @@ export async function startServer(
       environmentId,
       contract: CONTRACT_VERSION,
       caps: principalCaps(principal),
+      name: hostLabel(),
       ...(principal.kind === 'remote' ? { key: { id: principal.keyId, name: principal.name } } : {}),
       build,
       // The hosts reachable through this one (remote/relay.ts), for a remote caller.
@@ -3501,7 +3504,7 @@ export async function startServer(
   }
 
   // The hub names this host by its environment id: what a phone's saved host is keyed by (thread L6).
-  const hub = hubFromEnv({ environmentId, name: hostname(), version: appVersion })
+  const hub = hubFromEnv({ environmentId, name: hostLabel(), version: appVersion })
   // Thread transitions → the hub, each key's own webhook, and in-process
   // listeners (remote/notifier.ts). The hub's host id names this host in
   // both payloads so a receiver sees one id whichever way a notice came.
@@ -3515,7 +3518,7 @@ export async function startServer(
       (meta.workspaceId ? registry.listWorkspaces().find((w) => w.id === meta.workspaceId)?.name : null) ??
       null,
     // The payload's tc.host: the phone adds it to the subtitle when several hosts are paired.
-    hostName: () => hostname(),
+    hostName: () => hostLabel(),
     // A thread a window shows its person right now: the phone hears nothing of it (attention.ts, FocusSignal).
     onScreen: (id) => focus.isNamed(id)
   })

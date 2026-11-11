@@ -55,12 +55,14 @@ public final class EnvironmentStore {
 
     /// Pairs with `<origin>/pair#<code>`: the code becomes a key, the key is
     /// kept, and the host's name and capabilities become the environment.
+    /// `clientName` names the key on the host (what the host calls this
+    /// phone); it is never the phone's name for the host.
     @discardableResult
-    public func add(pairingLink text: String, name: String? = nil) async throws(EnvironmentStoreError) -> PairedEnvironment {
+    public func add(pairingLink text: String, clientName: String? = nil) async throws(EnvironmentStoreError) -> PairedEnvironment {
         guard let link = PairingLink(text) else { throw .invalidPairingLink }
         let paired: PairKeyResponse
         do {
-            paired = try await api.pair(origin: link.origin, code: link.code, name: name)
+            paired = try await api.pair(origin: link.origin, code: link.code, name: clientName)
         } catch {
             throw .api(error)
         }
@@ -68,7 +70,7 @@ public final class EnvironmentStore {
         let hello = try? await api.hello(origin: link.origin, key: paired.key)
         let environment = PairedEnvironment(
             id: paired.environmentId,
-            name: name ?? hello?.name ?? link.origin.host ?? paired.environmentId,
+            name: hello?.name ?? link.origin.host ?? paired.environmentId,
             origin: link.origin,
             caps: paired.caps,
             keyId: paired.keyId,
@@ -83,7 +85,7 @@ public final class EnvironmentStore {
     /// Adds a host from a key made on the desktop: `/api/hello` with the key
     /// tells which environment it is and what it may do.
     @discardableResult
-    public func add(origin: URL, key rawKey: String, name: String? = nil) async throws(EnvironmentStoreError) -> PairedEnvironment {
+    public func add(origin: URL, key rawKey: String) async throws(EnvironmentStoreError) -> PairedEnvironment {
         let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard key.hasPrefix("tc_"), key.contains(".") else { throw .invalidKey }
         let hello: HelloResponse
@@ -96,7 +98,7 @@ public final class EnvironmentStore {
         guard known.audience == .client else { throw .notAClientKey }
         let environment = PairedEnvironment(
             id: hello.environmentId,
-            name: name ?? hello.name ?? hello.environmentId,
+            name: hello.name ?? hello.environmentId,
             origin: origin,
             caps: known.caps,
             keyId: known.id,
@@ -116,9 +118,22 @@ public final class EnvironmentStore {
         }
     }
 
+    /// The person's name for the host; an empty name, or the host's own,
+    /// clears it so the host's name shows again.
     public func rename(_ id: String, to name: String) {
         guard let index = environments.firstIndex(where: { $0.id == id }) else { return }
-        environments[index].name = name
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        let custom = trimmed.isEmpty || trimmed == environments[index].name ? nil : trimmed
+        guard environments[index].customName != custom else { return }
+        environments[index].customName = custom
+        save()
+    }
+
+    /// Remembers what the host called itself in its hello; nothing is written when it is already known.
+    public func setHostName(_ id: String, _ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, let index = environments.firstIndex(where: { $0.id == id }), environments[index].name != trimmed else { return }
+        environments[index].name = trimmed
         save()
     }
 
@@ -141,6 +156,7 @@ public final class EnvironmentStore {
             var kept = environment
             kept.addedAt = environments[index].addedAt
             kept.platform = kept.platform ?? environments[index].platform
+            kept.customName = kept.customName ?? environments[index].customName
             environments[index] = kept
         } else {
             environments.append(environment)
