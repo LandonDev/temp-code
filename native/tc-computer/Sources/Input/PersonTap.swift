@@ -104,9 +104,9 @@ public final class LivePersonTap: PersonTapping, @unchecked Sendable {
         // made disabled: a disabled tap is skipped by the system until a guard enables it
         CGEvent.tapEnable(tap: port, enable: false)
         state.lock.withLock { state.port = port }
-        let source = CFMachPortCreateRunLoopSource(nil, port, 0)
+        let source = RunLoopSourceBox(CFMachPortCreateRunLoopSource(nil, port, 0))
         let thread = Thread {
-            CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
+            CFRunLoopAddSource(CFRunLoopGetCurrent(), source.source, .commonModes)
             // the process's life: the tap goes with the process (§14.9.2)
             CFRunLoopRun()
         }
@@ -115,6 +115,15 @@ public final class LivePersonTap: PersonTapping, @unchecked Sendable {
         thread.start()
         made = true
         return port
+    }
+}
+
+/// Hands the tap's run-loop source to its thread, which alone uses it.
+private final class RunLoopSourceBox: @unchecked Sendable {
+    let source: CFRunLoopSource?
+
+    init(_ source: CFRunLoopSource?) {
+        self.source = source
     }
 }
 
