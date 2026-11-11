@@ -196,20 +196,19 @@ enum AXTier {
         return before.0 == nil && before.1 == nil ? .unknown : .none
     }
 
-    /// `scroll-bar`: the area's bar for the direction, moved by the wheel's distance (§24.5).
-    /// Nil when it has no such bar that takes a value.
-    static func moveScrollBar(_ area: AXUIElement, direction: ScrollDirection, clicks: Int) throws -> ScrollBarMove? {
+    /// `scroll-bar`: the area's bar for the direction, moved by the wheel's distance (§24.5), and the effect its
+    /// value read back says (`scrollBarEffect`). Nil when it has no such bar that takes a value.
+    static func moveScrollBar(_ area: AXUIElement, direction: ScrollDirection, clicks: Int) throws -> (move: ScrollBarMove, effect: StepEffect?)? {
         guard let (axis, _) = scrollBar(for: direction), let bar = AX.element(area, axis.attribute), AX.settable(bar, "AXValue"),
               let value = AX.number(bar, "AXValue"), let visible = AX.frame(area),
               let contents = AX.elements(area, "AXContents").first.flatMap(AX.frame) else { return nil }
         let content = axis == .vertical ? contents.h : contents.w
         let view = axis == .vertical ? visible.h : visible.w
         let move = scrollBarMove(value: value, direction: direction, clicks: clicks, content: content, visible: view)
-        if case .set(let next) = move {
-            let err = AX.set(bar, "AXValue", NSNumber(value: next))
-            if err != .success { throw AX.failure(err, element: nil, what: "scroll") }
-        }
-        return move
+        guard case .set(let next) = move else { return (move, nil) }
+        let err = AX.set(bar, "AXValue", NSNumber(value: next))
+        if err != .success { throw AX.failure(err, element: nil, what: "scroll") }
+        return (move, scrollBarEffect(move, before: value, after: AX.number(bar, "AXValue")))
     }
 
     /// Whether a scroll area has a bar for the direction that takes a value.

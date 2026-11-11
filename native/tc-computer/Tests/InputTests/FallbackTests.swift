@@ -309,6 +309,17 @@ private let win = Rect(x: 0, y: 0, w: 400, h: 300)
         #expect(scrollBarMove(value: 0.1, direction: .up, clicks: 50, content: 1200, visible: 400) == .set(0))
     }
 
+    @Test func aBarWhoseValueReadsBackMovedIsChangedWhateverTheWindowDraws() {
+        #expect(scrollBarEffect(.set(0.75), before: 0.5, after: 0.75) == .changed)
+        // the app clamped or rounded it, but it moved
+        #expect(scrollBarEffect(.set(0.75), before: 0.5, after: 0.74) == .changed)
+        // it did not take the value, or it reads nothing: the wait judges
+        #expect(scrollBarEffect(.set(0.75), before: 0.5, after: 0.5) == nil)
+        #expect(scrollBarEffect(.set(0.75), before: 0.5, after: nil) == nil)
+        #expect(scrollBarEffect(.atEnd, before: 1, after: 1) == nil)
+        #expect(scrollBarEffect(.none, before: 0, after: 0) == nil)
+    }
+
     @Test func aBarAtTheEndIsNoneAtOnce() {
         #expect(scrollBarMove(value: 1, direction: .down, clicks: 1, content: 1200, visible: 400) == .atEnd)
         #expect(scrollBarMove(value: 0, direction: .up, clicks: 1, content: 1200, visible: 400) == .atEnd)

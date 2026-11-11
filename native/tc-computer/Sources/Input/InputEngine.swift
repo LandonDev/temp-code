@@ -411,9 +411,9 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         case (.hit, _), (.caret, _):
             return try hit(action, route: step.route, target: target, live: live)
         case (.scrollBar, _):
-            guard let area = live.area, let move = try AXTier.moveScrollBar(area, direction: action.scroll_direction ?? .down, clicks: action.scroll_amount ?? 1) else { throw RouteFellThrough() }
-            // a bar already at the end changes nothing: the step reads `none`, no other route tried
-            return InputOutcome(tier: .ax, via: .scrollBar, clipboard: nil, cursor: target.cursor, lastInputAt: move == .atEnd ? nil : clock.ticks())
+            guard let area = live.area, let moved = try AXTier.moveScrollBar(area, direction: action.scroll_direction ?? .down, clicks: action.scroll_amount ?? 1) else { throw RouteFellThrough() }
+            // a bar already at the end changes nothing: the step reads `none`, no other route tried; a bar that moved says so itself
+            return InputOutcome(tier: .ax, via: .scrollBar, clipboard: nil, cursor: target.cursor, lastInputAt: moved.move == .atEnd ? nil : clock.ticks(), effect: moved.effect)
         case (.scrollPage, _):
             guard let e = target.element?.element ?? live.area else { throw RouteFellThrough() }
             try AXTier.scrollPages(e, index: target.element?.index, direction: action.scroll_direction ?? .down, pages: pagesFor(amount: action.scroll_amount ?? 1))

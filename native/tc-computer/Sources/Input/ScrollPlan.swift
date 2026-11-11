@@ -38,6 +38,15 @@ public enum ScrollBarMove: Equatable, Sendable {
     case none
 }
 
+/// A `scroll-bar` step's effect as Input reads it: a bar whose value read back moved is `changed`, whatever the
+/// window draws. A window the person's windows cover may not redraw, so the wait sees no pixels, and a scroll
+/// changes nothing the signature reads (v1.0.341's publish, 2026-11-11: fallbacks 7 read `none` while the bar
+/// moved). Nil leaves the step to the wait: a bar already at its end, or one whose value did not read back.
+public func scrollBarEffect(_ move: ScrollBarMove, before: Double, after: Double?) -> StepEffect? {
+    guard case .set = move, let after, after != before else { return nil }
+    return .changed
+}
+
 /// Where a scroll puts its bar: `value ± delta`, clamped to 0…1.
 public func scrollBarMove(value: Double, direction: ScrollDirection, clicks: Int, content: Double, visible: Double, pointsPerClick: Double = Double(InputTables.scrollPointsPerClick)) -> ScrollBarMove {
     guard let (_, sign) = scrollBar(for: direction), let delta = barDelta(clicks: clicks, content: content, visible: visible, pointsPerClick: pointsPerClick) else { return .none }
