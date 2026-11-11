@@ -471,10 +471,11 @@ struct ApprovalCard: View {
                         }
                     }
                 case nil:
+                    // Undecided, the title is what the person decides on: whole at every text size.
                     Text(approval.request.title ?? approval.request.toolName)
                         .font(.subheadline)
                         .foregroundStyle(decided == nil ? .primary : .secondary)
-                        .lineLimit(3)
+                        .lineLimit(decided == nil ? nil : 3)
                 }
                 if decided == nil {
                     ApprovalActions(approval: approval, client: client, sessionId: sessionId)
