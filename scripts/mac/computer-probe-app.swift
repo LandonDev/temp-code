@@ -507,7 +507,8 @@ final class FileOutline: NSOutlineView {
 }
 
 /// `--active <scratch>`: the document window on `<scratch>/doc.txt` and the file list "files" over
-/// `<scratch>/files`, whose rows carry AXURL and whose window's AXDocument is the folder. The File menu
+/// `<scratch>/files`, whose rows carry AXURL and whose window's AXDocument is the folder, with a "Sort"
+/// pop-up above it. The File menu
 /// holds the document's commands (Save ⌘S, Save As… ⇧⌘S, Rename…, Move To…, Revert To Saved, Close ⌘W)
 /// and the list's (New Folder ⇧⌘N, Move to Trash ⌘⌫, into `<scratch>/Trash`, never the real Trash), all
 /// with no target. Both windows are ordered back and mouse-inert; the app never activates itself.
@@ -589,7 +590,20 @@ final class ProbeActive: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegat
         let scroll = NSScrollView()
         scroll.documentView = outline
         scroll.hasVerticalScroller = true
-        window.contentView = scroll
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        // a pop-up whose menu AXPress opens in the background, unseen (E2'): the menu-closing leg's
+        let sort = NSPopUpButton(frame: .zero, pullsDown: false)
+        sort.addItems(withTitles: ["Name", "Date"])
+        sort.setAccessibilityLabel("Sort")
+        let stack = NSStackView(views: [sort, scroll])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+        NSLayoutConstraint.activate([
+            scroll.widthAnchor.constraint(equalToConstant: 340),
+            scroll.heightAnchor.constraint(equalToConstant: 180),
+        ])
+        window.contentView = stack
         window.ignoresMouseEvents = true
         list = outline
         reload()

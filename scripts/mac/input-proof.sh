@@ -1,7 +1,7 @@
 #!/bin/bash
 # Input's live proof on this Mac (docs/computer-protocol.md "Input tiers measured").
 #
-#   scripts/mac/input-proof.sh [--session] [--tempcode] [--finder]
+#   scripts/mac/input-proof.sh [--session] [--tempcode] [--finder] [--active]
 #
 # Builds tc-input-proof, opens scratch windows, runs the legs, cleans up, and writes
 # /tmp/tc-input-proof/report.json, report.md and run.log:
@@ -12,6 +12,12 @@
 #     electron-vite build first), its own userData under /tmp, a scratch workspace on an
 #     empty folder with one thread, so its composer exists;
 #   - with --finder, a Finder window on a scratch folder of three files;
+#   - with --active, the legs that need the app in front (docs/computer-protocol.md §25), each
+#     only after five minutes with no input, else "skipped: the person is active": TextEdit's
+#     save_as into the scratch folder (and where its untitled autosave lived), a typed line saved
+#     with ⌘S at front, and whether a click posted to its pid lands while it is active; with
+#     --finder, a rename by Return, New Folder and Move to Trash on the scratch folder, each put
+#     back; with TC_INPUT_INTELLIJ=1, IntelliJ's Save All; each leg records its hold;
 #   - with TC_INPUT_INTELLIJ=1 and no IntelliJ running, the IDE on a scratch project
 #     (its project windows have no title to tell them from the person's, so it is never
 #     opened beside theirs), quit afterwards.
@@ -34,6 +40,7 @@ ROOT=$(cd "$here/../.." && pwd)
 OUT=/tmp/tc-input-proof
 WORK=$OUT/work
 SESSION=''
+ACTIVE=''
 TEMPCODE=0
 FINDER=0
 for a in "$@"; do
@@ -41,7 +48,8 @@ for a in "$@"; do
     --session) SESSION=--session ;;
     --tempcode) TEMPCODE=1 ;;
     --finder) FINDER=1 ;;
-    *) echo "usage: $0 [--session] [--tempcode] [--finder]" >&2; exit 2 ;;
+    --active) ACTIVE=--active ;;
+    *) echo "usage: $0 [--session] [--tempcode] [--finder] [--active]" >&2; exit 2 ;;
   esac
 done
 rm -rf "$OUT"
@@ -239,7 +247,7 @@ if [[ ${TC_INPUT_INTELLIJ:-} == 1 ]]; then
 fi
 
 say "legs ($PIDS)"
-"$BIN" run --pids "$PIDS" --tiers ax,process $SESSION --report "$OUT/report.json" 2>&1 | tee -a "$OUT/run.log"
+"$BIN" run --pids "$PIDS" --tiers ax,process $SESSION $ACTIVE --work "$WORK" --report "$OUT/report.json" 2>&1 | tee -a "$OUT/run.log"
 status=${PIPESTATUS[0]}
 give_front_back
 exit "$status"
