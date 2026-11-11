@@ -157,7 +157,7 @@ public enum WaitSteps {
     /// need: each one a settled wait named that neither its head nor
     /// `memory` settled yet. Empty for a thread with no such wait, so the
     /// transcript reads no session at all (`WaitStatuses`).
-    public static func unsettledAgents(_ entries: [ThreadEntry], memory: WaitOutcomeMemory?) -> Set<String> {
+    public static func unsettledAgents(_ entries: some Sequence<ThreadEntry>, memory: WaitOutcomeMemory?) -> Set<String> {
         var out: Set<String> = []
         for entry in entries {
             guard case .tool(let tool) = entry.item, isWait(tool), tool.status != .running,

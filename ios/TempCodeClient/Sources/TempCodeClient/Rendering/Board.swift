@@ -188,9 +188,17 @@ public enum Board {
         if let preview = tool.preview, preview.additions != nil || preview.deletions != nil {
             return (Int(preview.additions ?? 0), Int(preview.deletions ?? 0))
         }
-        let lines = { (value: String?) in value.map { $0.isEmpty ? 0 : $0.split(separator: "\n", omittingEmptySubsequences: false).count } ?? 0 }
-        if let content = tool.input?["content"]?.stringValue { return (lines(content), 0) }
-        return (lines(tool.input?["new_string"]?.stringValue), lines(tool.input?["old_string"]?.stringValue))
+        if let content = tool.input?["content"]?.stringValue { return (lineCount(content), 0) }
+        return (lineCount(tool.input?["new_string"]?.stringValue), lineCount(tool.input?["old_string"]?.stringValue))
+    }
+
+    /// Lines as an editor counts them: one more than the text's newlines,
+    /// none for no text. A walk of its bytes: nothing is split or copied.
+    static func lineCount(_ text: String?) -> Int {
+        guard let text, !text.isEmpty else { return 0 }
+        var lines = 1
+        for byte in text.utf8 where byte == 0x0A { lines += 1 }
+        return lines
     }
 
     public static func actKind(_ tool: ToolItem) -> ActivityKind {

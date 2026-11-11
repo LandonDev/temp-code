@@ -5,7 +5,9 @@ import TempCodeContract
 /// transcriptScenario.testkit.ts) as a pure Swift runner: a scenario is a
 /// list of timed pushes (a send, the host's rows, the reader scrolling up,
 /// history joining above) played through `ThreadState`'s own append and
-/// settle, `ThreadFold` and `TranscriptRows` on an injected clock. After
+/// settle, `ThreadFold` and the view's `TranscriptModel` on an injected
+/// clock, the model's rows held equal to `TranscriptRows.rows` at every
+/// push. After
 /// every push, and once it is all in, it asserts what a reader would feel
 /// as a jerk:
 ///
@@ -173,7 +175,21 @@ public enum ScenarioRunner {
         var endKeys: [Int: TranscriptRowID] = [:]
         var endsShown: Set<TranscriptRowID> = []
         var steers: [Int: SteerEvent.State] = [:]
-        var rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: memory)
+        // The rows come from the model the view reads, and every push holds
+        // them to a whole build on a memory of its own: a row the model left
+        // stale is a jerk like any other.
+        let model = TranscriptModel(memory: memory)
+        let wholeMemory = RowKeyMemory()
+        func build(_ label: String) -> [TranscriptRowModel] {
+            model.update(state)
+            let whole = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: wholeMemory)
+            if model.rows != whole {
+                let at = zip(model.rows, whole).enumerated().first { $0.element.0 != $0.element.1 }?.offset ?? min(model.rows.count, whole.count)
+                report.violations.append("\(label): the model's rows differ from a whole build at row \(at) (\(model.rows.count) rows against \(whole.count))")
+            }
+            return model.rows
+        }
+        var rows = build("\(scenario.name) before the first push")
         remember(rows, into: &seenKeys)
         endsShown = Set(rows.map(\.id).filter(\.end))
         let reveals = RevealProbes(history: state.entries, reduced: scenario.reducedMotion)
@@ -210,7 +226,7 @@ public enum ScenarioRunner {
             case .paused(let paused):
                 lines.paused = paused
             }
-            let next = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: memory)
+            let next = build(at)
             if report.checked.contains(.keys) {
                 report.violations += keyJerks(from: rows, to: next, seen: seenKeys, at: at)
             }

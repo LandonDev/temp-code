@@ -1355,6 +1355,9 @@ for run in runs:
     jumps = [(e['t'], e['to']) for e in events if e.get('key') == 'jumpUp']
     summary[run]['jumps'] = jumps[:4]
     if run != 'scrolled-up' and jumps: failures.append(f'{run}: the offset jumped up {len(jumps)} times with the reader at the bottom: {jumps[:3]}')
+    # The row model is sampled against a whole build as the timeline plays (TranscriptView's shadowCheck): a row it left stale.
+    stale = [(e['t'], e['to']) for e in events if e.get('key') == 'rowsMismatch']
+    if stale: failures.append(f'{run}: the row model differed from a whole build {len(stale)} times: {stale[:3]}')
     if not stayed: failures.append(f'{run}: the list left the bottom on its own at {left[:3]} ms and stayed off it')
     if run == 'reduced' and fades: failures.append(f'reduced: {fades} fades drawn under reduced motion')
     # The fade is judged where its rows were on screen: a list that left the bottom streamed below the fold.

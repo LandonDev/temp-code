@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import TempCodeContract
 
 // MARK: - The board state (the desktop's todos.ts)
@@ -294,6 +295,8 @@ public struct ThreadFold: Sendable, Hashable {
     public private(set) var keys = RowKeys()
     /// What each omitted wait returned on, read once (`WaitSteps.resolved`), kept across a refold.
     public private(set) var waitOutcomes = WaitOutcomeMemory()
+    /// Which items were written, for a reader that builds on them.
+    public private(set) var changes = FoldChanges()
 
     public init() {}
 
@@ -317,7 +320,10 @@ public struct ThreadFold: Sendable, Hashable {
     /// the optimistic row was drawn under, now and in every refold.
     public mutating func rekeyEcho(seq: Int, key: Int) {
         keys.echoes[seq] = key
-        if let index = items.lastIndex(where: { $0.seq == seq }) { items[index].key = key }
+        if let index = items.lastIndex(where: { $0.seq == seq }) {
+            items[index].key = key
+            changes.touch(index)
+        }
     }
 
     /// How the fold holds a call: born from a streaming preview and still
@@ -368,7 +374,7 @@ public struct ThreadFold: Sendable, Hashable {
             // The last row per steer wins; one whose user row is not loaded changes nothing.
             if let index = steerIndex(event.steerId), case .user(var turn) = items[index].item {
                 turn.steer = SteerStamp(state: event.state, how: event.how, reason: event.reason, ts: row.ts)
-                items[index].item = .user(turn)
+                set(index, .user(turn))
             }
         case .assistantText(let event):
             mergeText(row: row, kind: "a", text: event.text, delta: event.delta, msgId: event.msgId, blockIndex: event.blockIndex, parentCallId: event.parentCallId) { .assistant($0) }
@@ -393,7 +399,7 @@ public struct ThreadFold: Sendable, Hashable {
                     tool.ts = row.ts
                 }
                 if tool.live == nil, let path = Board.editPath(tool) { tool.live = liveEdit(matching: path) }
-                items[index].item = .tool(tool)
+                set(index, .tool(tool))
                 // A streamed input names its file only once the path has arrived.
                 noteRunningEdit(tool, at: index)
             } else {
@@ -420,7 +426,7 @@ public struct ThreadFold: Sendable, Hashable {
                 tool.reauth = event.reauth
                 tool.partial = false
                 tool.doneTs = row.ts
-                items[index].item = .tool(tool)
+                set(index, .tool(tool))
                 runningEdits.removeAll { $0 == index }
             } else {
                 append(.tool(ToolItem(seq: row.seq, ts: row.ts, callId: event.callId, name: "result", display: nil, input: nil, partial: false, preview: nil, parentCallId: event.parentCallId, inputOmitted: false, output: output, status: event.isError ? .failed : .done, reauth: event.reauth, doneTs: row.ts)))
@@ -439,7 +445,7 @@ public struct ThreadFold: Sendable, Hashable {
             if let index = questionIndex[event.requestId], case .question(var question) = items[index].item {
                 question.answers = event.answers
                 question.resolved = true
-                items[index].item = .question(question)
+                set(index, .question(question))
             }
         case .approvalRequest(let event):
             append(.approval(ApprovalItem(seq: row.seq, ts: row.ts, request: event, allowed: nil, auto: false)))
@@ -448,7 +454,7 @@ public struct ThreadFold: Sendable, Hashable {
             if let index = approvalIndex[event.requestId], case .approval(var approval) = items[index].item {
                 approval.allowed = event.allow
                 approval.auto = event.auto ?? false
-                items[index].item = .approval(approval)
+                set(index, .approval(approval))
             }
         case .compaction(let event):
             // The CLI repeats its start every 30 s while it compacts: one
@@ -463,7 +469,7 @@ public struct ThreadFold: Sendable, Hashable {
                 compaction.preTokens = event.preTokens ?? compaction.preTokens
                 compaction.durationMs = event.durationMs ?? compaction.durationMs
                 compaction.error = event.error
-                items[index].item = .compaction(compaction)
+                set(index, .compaction(compaction))
                 openCompaction = nil
             }
             board.compacting = event.phase == .start
@@ -503,14 +509,18 @@ public struct ThreadFold: Sendable, Hashable {
             append(.system(SystemLine(seq: row.seq, ts: row.ts, kind: .error, text: event.message, detail: nil, stopped: event.stopped ?? false, failure: event.failure)))
             if event.stopped == true { board.stopped = true }
         case .errorsCleared:
-            items.removeAll { $0.item.isError }
+            // Every item after the first one gone moves down: the reader rebuilds from there.
+            if let first = items.firstIndex(where: { $0.item.isError }) {
+                items.removeAll { $0.item.isError }
+                changes.touch(first)
+            }
             rebuildIndexes()
             board.stopped = false
         case .status(let event):
             // A turn that ends or pauses with a compaction open: it stopped there.
             if ![.running, .starting, .waiting].contains(event.status), let index = openCompaction, case .compaction(var compaction) = items[index].item {
                 compaction.stoppedTs = row.ts
-                items[index].item = .compaction(compaction)
+                set(index, .compaction(compaction))
                 openCompaction = nil
                 board.compacting = false
             }
@@ -559,7 +569,7 @@ public struct ThreadFold: Sendable, Hashable {
                           line.notice?.review?.runId == review.runId,
                           line.notice?.review?.outcome == .held else { continue }
                     line.reviewResolved = true
-                    items[index].item = .system(line)
+                    set(index, .system(line))
                     break
                 }
             }
@@ -589,13 +599,23 @@ public struct ThreadFold: Sendable, Hashable {
         }
         guard let target, case .tool(var tool) = items[target].item else { return false }
         tool.spawned.append(id)
-        items[target].item = .tool(tool)
+        set(target, .tool(tool))
         return true
     }
 
     /// New items land stamped with the board as it stands now.
     private mutating func append(_ item: TranscriptItem) {
         items.append(ThreadEntry(item: item, round: board.round, todo: board.activeTodo, pass: board.inPass, key: key(for: item)))
+        changes.touch(items.count - 1)
+    }
+
+    /// The one road for a write to an item already folded: what reads the
+    /// items (`TranscriptModel`) rebuilds from the lowest one written, so a
+    /// write that went round this would leave a stale row on screen
+    /// (scripts/ios-fold-writes.test.ts holds the file to it).
+    private mutating func set(_ index: Int, _ item: TranscriptItem) {
+        items[index].item = item
+        changes.touch(index)
     }
 
     /// The key a new item is drawn under: a call's first key by its callId,
@@ -624,12 +644,12 @@ public struct ThreadFold: Sendable, Hashable {
             case .assistant(var block) where block.streaming:
                 block.streaming = false
                 block.doneTs = block.doneTs ?? ts
-                items[index].item = .assistant(block)
+                set(index, .assistant(block))
                 continue
             case .thinking(var block) where block.streaming:
                 block.streaming = false
                 block.doneTs = block.doneTs ?? ts
-                items[index].item = .thinking(block)
+                set(index, .thinking(block))
                 continue
             default: break
             }
@@ -637,12 +657,12 @@ public struct ThreadFold: Sendable, Hashable {
             lastUser = index
             if turn.completedTs == nil {
                 turn.completedTs = ts
-                items[index].item = .user(turn)
+                set(index, .user(turn))
             }
         }
         if let cost, let lastUser, case .user(var turn) = items[lastUser].item {
             turn.costUsd = cost
-            items[lastUser].item = .user(turn)
+            set(lastUser, .user(turn))
         }
     }
 
@@ -654,7 +674,7 @@ public struct ThreadFold: Sendable, Hashable {
             guard case .user(var turn) = items[index].item, turn.completedTs == closedAt else { continue }
             turn.completedTs = nil
             turn.downMs += max(0, ts - closedAt)
-            items[index].item = .user(turn)
+            set(index, .user(turn))
         }
     }
 
@@ -673,7 +693,7 @@ public struct ThreadFold: Sendable, Hashable {
                 block.streaming = false
                 block.doneTs = row.ts
             }
-            items[at].item = wrap(block)
+            set(at, wrap(block))
             return
         }
         let block = TextBlock(seq: row.seq, ts: row.ts, text: text, streaming: delta, parentCallId: parentCallId, doneTs: delta ? nil : row.ts)
@@ -695,7 +715,7 @@ public struct ThreadFold: Sendable, Hashable {
             guard case .tool(var tool) = items[index].item, tool.status == .running,
                   let path = Board.editPath(tool), LiveEdits.matches(state.path, path) else { continue }
             tool.live = state
-            items[index].item = .tool(tool)
+            set(index, .tool(tool))
             return true
         }
         return false
@@ -753,6 +773,57 @@ public struct ThreadFold: Sendable, Hashable {
             }
         }
     }
+}
+
+/// What was written to a fold's items, for a reader that builds on them
+/// and wants to rebuild only what moved (`TranscriptModel`): which fold this
+/// is (`epoch`: one per fold made, so a fold rebuilt from its rows is
+/// another), how many writes it has taken (`generation`), and the item each
+/// of the newest writes touched. A reader remembers the generation it read
+/// at and asks for the lowest item written since. It is no part of the
+/// fold's value: two folds of the same rows are equal whatever road they
+/// took, so it compares equal to every other and hashes to nothing.
+public struct FoldChanges: Sendable, Hashable {
+    public private(set) var epoch: Int
+    public private(set) var generation = 0
+    private var touches: [Touch] = []
+
+    private struct Touch: Sendable {
+        var generation: Int
+        var index: Int
+    }
+
+    /// Writes kept one by one; past this the older ones fold into their lowest item.
+    static let kept = 256
+    private static let epochs = Atomic<Int>(0)
+
+    init() {
+        epoch = Self.epochs.add(1, ordering: .relaxed).newValue
+    }
+
+    mutating func touch(_ index: Int) {
+        generation += 1
+        if touches.count >= Self.kept {
+            // A reader this far behind rebuilds from the lowest item of them all.
+            let lowest = touches.reduce(index) { min($0, $1.index) }
+            touches = [Touch(generation: generation, index: lowest)]
+        } else {
+            touches.append(Touch(generation: generation, index: index))
+        }
+    }
+
+    /// The lowest item written after `generation`; nil when none was.
+    public func dirtyFrom(since generation: Int) -> Int? {
+        var lowest: Int?
+        for touch in touches.reversed() {
+            guard touch.generation > generation else { break }
+            lowest = min(lowest ?? touch.index, touch.index)
+        }
+        return lowest
+    }
+
+    public static func == (lhs: FoldChanges, rhs: FoldChanges) -> Bool { true }
+    public func hash(into hasher: inout Hasher) {}
 }
 
 /// The keys rows were first drawn under (`ThreadEntry.key`): a call's by its

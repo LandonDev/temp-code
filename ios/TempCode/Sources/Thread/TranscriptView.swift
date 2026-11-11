@@ -7,7 +7,9 @@ import TempCodeContract
 /// The transcript: the newest 75 rows, one page more each time the top is
 /// reached, pinned to the bottom while the user is there, a "Jump to
 /// latest" pill once they scroll up. The rows are the row model's rows
-/// (`TranscriptRows`): an entry on its own, a fold of settled tool chips, a
+/// (`TranscriptModel`, the view's own: built once per change and only from
+/// the turn that changed; a pass that finds the thread as it was reads the
+/// rows it has): an entry on its own, a fold of settled tool chips, a
 /// settled turn's closing line. Rows keep their identity by the model's
 /// stable ids and compare by value, so a streaming row updates its own text
 /// and nothing above it is laid out again. Nothing animates on first paint:
@@ -39,9 +41,10 @@ struct TranscriptView: View {
     /// The thread's working directory, read once: phase lines read paths relative to it.
     @State private var cwd: String?
     @Environment(AppModel.self) private var app
-    /// The group key each step was drawn under, so history joining above
-    /// never renames a group (read and written outside observation).
-    @State private var keyMemory = RowKeyMemory()
+    /// The rows, kept between passes with the group key each step was drawn
+    /// under, so history joining above never renames a group (a plain
+    /// class, read and written outside observation).
+    @State private var model = TranscriptModel()
     /// Which rows were born live (read and written outside observation).
     @State private var bornRows = BornRows()
     @Environment(\.scenePhase) private var scenePhase
@@ -59,17 +62,23 @@ struct TranscriptView: View {
 
     var body: some View {
         let _ = PerfCounters.bump(.transcriptBody)
-        let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory, waits: thread.fold.waitOutcomes, statusOf: waitStatus)
-        let _ = PerfCounters.bump(.rowBuilds)
-        let _ = PerfCounters.bump(.rowsBuilt, by: rows.count)
+        let built = model.update(thread, waits: waitRead, statusOf: waitStatus)
+        let _ = PerfCounters.bump(.rowBuilds, by: built ? 1 : 0)
+        let _ = PerfCounters.bump(.rowsBuilt, by: model.built)
+        #if DEBUG
+        let _ = shadowCheck(built)
+        #endif
+        // Read here and never held by a closure below: a closure that kept the
+        // rows would make the model's next build copy every one of them.
+        let count = model.rows.count
+        let empty = count == 0
         // The agents whose status the omitted waits still need, after this pass kept what it read.
-        let waitIds = WaitSteps.unsettledAgents(thread.entries, memory: thread.fold.waitOutcomes)
-        let start = TranscriptRows.windowStart(rows, top: windowTop, count: window)
-        let shown = Array(rows[start...])
+        let waitIds = model.waitIds
+        let start = model.windowStart(top: windowTop, count: window)
+        let shown = Array(model.rows[start...])
         let moreAbove = start > 0 || thread.moreBefore
-        let turns = TranscriptRows.turnKeys(rows)
-        let gaps = TranscriptView.gaps(rows, from: start)
-        let _ = listScroll.note(window: shown, lead: moreAbove || rows.isEmpty ? 1 : 0)
+        let gaps = model.gaps(from: start)
+        let _ = listScroll.note(window: shown, lead: moreAbove || empty ? 1 : 0)
         let _ = bornRows.open(thread: client.threads[sessionId])
         #if DEBUG
         let _ = LayoutProbe.note("bornOpenedAt", bornRows.openedAt.map(String.init) ?? "waiting")
@@ -80,12 +89,12 @@ struct TranscriptView: View {
             List {
                 if moreAbove {
                     TopSentinel(loading: thread.isLoadingOlder) {
-                        await extend(proxy: proxy, rows: rows, shown: shown)
+                        await extend(proxy: proxy, shown: shown)
                     }
                     .listRowInsets(rowInsets)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
-                } else if rows.isEmpty {
+                } else if empty {
                     EmptyTranscript(thread: thread)
                         .listRowInsets(rowInsets)
                         .listRowSeparator(.hidden)
@@ -100,15 +109,15 @@ struct TranscriptView: View {
                     .id(row.id)
                     .onAppear {
                         bornRows.claim(row)
-                        noteOnScreen(row.id, true, order: shown)
+                        noteOnScreen(row.id, true, from: start)
                     }
-                    .onDisappear { noteOnScreen(row.id, false, order: shown) }
-                    .environment(\.revealTurn, turns[row.id])
+                    .onDisappear { noteOnScreen(row.id, false, from: start) }
+                    .environment(\.revealTurn, model.turnKey(of: row.id))
                     .rowInitProbe(row.id)
                     .accessibilityIdentifier("transcript-item")
                     // The gap above each row is the boundary's (`RowGap`); the end
                     // row carries its own inside its fold, so a folded line takes none.
-                    .listRowInsets(row.id.end ? endInsets : gapInsets(gaps[row.id] ?? TranscriptMetrics.Gap.block))
+                    .listRowInsets(row.id.end ? endInsets : gapInsets(gaps[row.id].map { CGFloat($0) } ?? TranscriptMetrics.Gap.block))
                 }
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
@@ -216,8 +225,8 @@ struct TranscriptView: View {
                 if phase == .active { TestHooks.recordTranscript(sessionId: sessionId, state: scrollState) }
                 #endif
             }
-            .onChange(of: rows.count, initial: true) {
-                if !rows.isEmpty, !initializedScroll, FollowRule.write(for: .opened, atBottom: true, landing: targetSeq != nil) == .snap {
+            .onChange(of: count, initial: true) {
+                if !empty, !initializedScroll, FollowRule.write(for: .opened, atBottom: true, landing: targetSeq != nil) == .snap {
                     initializedScroll = true
                     Task { @MainActor in
                         await Task.yield()
@@ -228,7 +237,7 @@ struct TranscriptView: View {
                         #endif
                     }
                 } else { pinTail(proxy: proxy) }
-                openFirstGroupForProof(rows: rows, proxy: proxy)
+                openFirstGroupForProof(proxy: proxy)
             }
             // Keyed by the target too: a new row named to an open transcript lands again.
             .task(id: "\(thread.isLoading)|\(targetSeq ?? -1)") {
@@ -236,24 +245,24 @@ struct TranscriptView: View {
                 await land(proxy: proxy)
             }
             .task(id: thread.isLoading) {
-                guard TestHooks.scroll, !thread.isLoading, !rows.isEmpty, !scrollRan else { return }
+                guard TestHooks.scroll, !thread.isLoading, !empty, !scrollRan else { return }
                 scrollRan = true
                 await scrollProof(proxy: proxy)
             }
             #if DEBUG
-            .task(id: TestHooks.groupGlide == nil ? "" : "\(thread.isLoading)|\(rows.isEmpty)") {
-                guard TestHooks.groupGlide != nil, !thread.isLoading, !rows.isEmpty, !scrollRan else { return }
+            .task(id: TestHooks.groupGlide == nil ? "" : "\(thread.isLoading)|\(empty)") {
+                guard TestHooks.groupGlide != nil, !thread.isLoading, !empty, !scrollRan else { return }
                 scrollRan = true
                 await groupGlideProof()
             }
             #endif
             // A performance run asked of this thread (the proof's launch, the Diagnostics screen).
-            .task(id: PerfSession.shared.taskKey(loading: thread.isLoading, empty: rows.isEmpty)) {
-                guard !thread.isLoading, !rows.isEmpty else { return }
+            .task(id: PerfSession.shared.taskKey(loading: thread.isLoading, empty: empty)) {
+                guard !thread.isLoading, !empty else { return }
                 await perfRun()
             }
-            .task(id: TestHooks.scrollUp || TestHooks.stream ? "\(thread.isLoading)|\(rows.isEmpty)" : "") {
-                guard TestHooks.scrollUp || TestHooks.stream, !thread.isLoading, !rows.isEmpty, !scrollRan else { return }
+            .task(id: TestHooks.scrollUp || TestHooks.stream ? "\(thread.isLoading)|\(empty)" : "") {
+                guard TestHooks.scrollUp || TestHooks.stream, !thread.isLoading, !empty, !scrollRan else { return }
                 scrollRan = true
                 if TestHooks.scrollUp { await scrollUpProof() } else { await streamProof() }
             }
@@ -264,18 +273,6 @@ struct TranscriptView: View {
     private var rowInsets: EdgeInsets { EdgeInsets(top: TranscriptMetrics.Gap.line, leading: ReadingMeasure.edge, bottom: TranscriptMetrics.Gap.line, trailing: ReadingMeasure.edge) }
     private var endInsets: EdgeInsets { gapInsets(0) }
     private func gapInsets(_ top: CGFloat) -> EdgeInsets { EdgeInsets(top: top, leading: ReadingMeasure.edge, bottom: 0, trailing: ReadingMeasure.edge) }
-
-    /// The gap above each shown row (`RowGap.above`), read from the row
-    /// before it in the whole list, so the window's first row keeps the gap
-    /// it had under the row above the window.
-    static func gaps(_ rows: [TranscriptRowModel], from start: Int) -> [TranscriptRowID: CGFloat] {
-        var gaps: [TranscriptRowID: CGFloat] = [:]
-        gaps.reserveCapacity(rows.count - start)
-        for index in rows.indices.dropFirst(start) {
-            gaps[rows[index].id] = CGFloat(RowGap.above(rows[index], after: index > 0 ? rows[index - 1] : nil))
-        }
-        return gaps
-    }
 
     @State private var initializedScroll = false
     /// The pin the turn's asks coalesce into (plain storage).
@@ -298,6 +295,10 @@ struct TranscriptView: View {
         nonmutating set { holdBox.hold = newValue }
     }
     @State private var proofGroupOpened = false
+    #if DEBUG
+    /// How many builds the shadow check has seen (plain storage).
+    @State private var shadow = ShadowCount()
+    #endif
     /// The list's own width, for the measure.
     @State private var listWidth: CGFloat = 0
     /// The reflow's restore run; a new width step cancels and restarts it.
@@ -308,10 +309,11 @@ struct TranscriptView: View {
     /// The rows on screen, by their appear and disappear (no geometry, nothing
     /// per frame); the earliest in list order is the top row, the reflow's
     /// anchor for a reader off the bottom. Never moved while a reflow is open.
-    private func noteOnScreen(_ id: TranscriptRowID, _ on: Bool, order: [TranscriptRowModel]) {
+    private func noteOnScreen(_ id: TranscriptRowID, _ on: Bool, from start: Int) {
         if on { onScreen.ids.insert(id) } else { onScreen.ids.remove(id) }
         guard !scrollState.reflowHeld else { return }
-        let top = TranscriptReflow.topRow(onScreen: onScreen.ids, order: order.map(\.id))
+        // The model knows each row's place: no list of the window's ids is made per row that appears.
+        let top = model.topRow(onScreen: onScreen.ids, from: start)
         guard scrollState.topRow != top else { return }
         scrollState.topRow = top
         #if DEBUG
@@ -383,19 +385,19 @@ struct TranscriptView: View {
         }
     }
 
-    /// The window as the list holds it now: its rows' ids, and the rows above them (the sentinel, the empty state).
-    private func currentWindow() -> (shown: [TranscriptRowID], lead: Int) {
-        guard let state = client.threads[sessionId] else { return ([], 0) }
-        let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory, waits: state.fold.waitOutcomes, statusOf: waitStatus)
-        let start = TranscriptRows.windowStart(rows, top: windowTop, count: window)
-        return (rows[start...].map(\.id), start > 0 || state.moreBefore || rows.isEmpty ? 1 : 0)
+    /// The rows as the thread stands now: the model brought up to the client's
+    /// state, for a step that runs between two passes of the body.
+    private func currentRows() -> [TranscriptRowModel] {
+        if let state = client.threads[sessionId] { model.update(state, waits: waitRead, statusOf: waitStatus) }
+        return model.rows
     }
 
-    /// The row's frame in the list's own layout: where its top sits against the top edge.
+    /// The row's frame in the list's own layout: where its top sits against
+    /// the top edge. The list's item comes from the window the last pass drew
+    /// (`ListScroll`), which is what the list holds.
     private func frame(of id: TranscriptRowID) -> (UICollectionView, CGRect)? {
-        guard let list = listScroll.scroll as? UICollectionView, list.numberOfSections == 1 else { return nil }
-        let (shown, lead) = currentWindow()
-        guard let item = TranscriptReflow.item(of: id, shown: shown, lead: lead, items: list.numberOfItems(inSection: 0)),
+        guard let list = listScroll.scroll as? UICollectionView, list.numberOfSections == 1,
+              let item = listScroll.item(of: id, items: list.numberOfItems(inSection: 0)),
               let frame = list.layoutAttributesForItem(at: IndexPath(item: item, section: 0))?.frame else { return nil }
         return (list, frame)
     }
@@ -422,10 +424,11 @@ struct TranscriptView: View {
     }
 
     /// DEBUG only: `TC_TEST_OPEN=group` opens the first group and lands on it, once; `last-group` the last.
-    private func openFirstGroupForProof(rows: [TranscriptRowModel], proxy: ScrollViewProxy) {
+    private func openFirstGroupForProof(proxy: ScrollViewProxy) {
         let isGroup: (TranscriptRowModel) -> Bool = { if case .group = $0 { return true } else { return false } }
-        guard TestHooks.open == "group" || TestHooks.open == "last-group", !proofGroupOpened, !thread.isLoading,
-              let first = TestHooks.open == "group" ? rows.first(where: isGroup) : rows.last(where: isGroup) else { return }
+        guard TestHooks.open == "group" || TestHooks.open == "last-group", !proofGroupOpened, !thread.isLoading else { return }
+        let rows = model.rows
+        guard let first = TestHooks.open == "group" ? rows.first(where: isGroup) : rows.last(where: isGroup) else { return }
         proofGroupOpened = true
         Motion.withoutAnimation { openGroups.insert(first.id) }
         resize(max(window, rows.count))
@@ -453,7 +456,7 @@ struct TranscriptView: View {
             guard let now = client.threads[sessionId]?.rows.first?.seq, now < first else { break }
         }
         guard let state = client.threads[sessionId], !state.moreBefore, !state.entries.isEmpty else { return }
-        let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, waits: state.fold.waitOutcomes, statusOf: waitStatus)
+        let rows = currentRows()
         resize(rows.count)
         try? await Task.sleep(for: .seconds(2))
         var setup = Transaction()
@@ -470,6 +473,23 @@ struct TranscriptView: View {
         _ = recorder.stop()
         self.recorder = nil
     }
+
+    #if DEBUG
+    /// The model's rows held to a whole build, once in sixteen builds (never
+    /// in a performance run): the whole build reads a copy of the keys the
+    /// model drew under, so the two can differ only where the model left a
+    /// row stale. A difference is a `rowsMismatch` note, which fails the
+    /// transcript proof.
+    private func shadowCheck(_ built: Bool) {
+        guard built, !LayoutProbe.off else { return }
+        shadow.builds += 1
+        guard shadow.builds % 16 == 0 else { return }
+        let whole = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: model.memory.copy(), waits: thread.fold.waitOutcomes, statusOf: waitStatus)
+        guard whole != model.rows else { return }
+        let at = zip(whole, model.rows).enumerated().first { $0.element.0 != $0.element.1 }?.offset ?? min(whole.count, model.rows.count)
+        LayoutProbe.note("rowsMismatch", "row \(at) of \(model.rows.count) (a whole build has \(whole.count))")
+    }
+    #endif
 
     /// A performance run on this transcript (`PerfSession`): the drivers, the
     /// recorder and the report are `PerfRunner`'s. The scroll driver stands
@@ -496,7 +516,7 @@ struct TranscriptView: View {
         proofScrollView.setContentOffset(CGPoint(x: proofScrollView.contentOffset.x, y: max(top, proofScrollView.contentOffset.y - 700)), animated: false)
         try? await Task.sleep(for: .milliseconds(500))
         let y = Double(proofScrollView.contentOffset.y)
-        let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory, waits: thread.fold.waitOutcomes, statusOf: waitStatus).count
+        let rows = currentRows().count
         #if DEBUG
         LayoutProbe.note("proof", "scrolled-up")
         // The reader's row once up: the fold run holds every later stop to it.
@@ -522,7 +542,7 @@ struct TranscriptView: View {
             scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: max(-scroll.adjustedContentInset.top, scroll.contentOffset.y - 700)), animated: false)
             try? await Task.sleep(for: .milliseconds(800))
         }
-        let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory, waits: thread.fold.waitOutcomes, statusOf: waitStatus)
+        let rows = currentRows()
         // At the bottom the lowest group, so the follow shows; up reading the
         // highest, so the rows sliding under it are on screen and not behind the dock.
         let multiStep = { (row: TranscriptRowModel) -> Bool in
@@ -604,7 +624,7 @@ struct TranscriptView: View {
             next.minOffset = min(next.minOffset, Double(y))
             next.maxOffset = max(next.maxOffset, Double(y))
         }
-        next.rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory, waits: thread.fold.waitOutcomes, statusOf: waitStatus).count
+        next.rows = model.rows.count
         next.seq = thread.fold.lastSeq
         next.atBottom = scrollState.atBottom
         hold = next
@@ -625,7 +645,7 @@ struct TranscriptView: View {
         let client = client
         let sessionId = sessionId
         // ThreadState is a value: read the client's current one at each call. Rows, partials included, show the stream landing.
-        recorder.start(sourceRows: thread.rows.count, items: TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, waits: thread.fold.waitOutcomes, statusOf: waitStatus).count,
+        recorder.start(sourceRows: thread.rows.count, items: model.rows.count,
                        scrollView: proofScrollView, driver: .stream(pinned: { state.atBottom }, seq: { client.threads[sessionId]?.rows.count ?? 0 }))
         if TestHooks.streamDrag {
             try? await Task.sleep(for: .seconds(4))
@@ -783,10 +803,9 @@ struct TranscriptView: View {
         guard let targetSeq else { return }
         targetStatus = "Loading search result…"
         guard let seq = await client.reveal(sessionId, seq: targetSeq),
-              let state = client.threads[sessionId],
-              case let rows = TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory, waits: state.fold.waitOutcomes, statusOf: waitStatus),
-              let id = TranscriptRows.rowID(containing: seq, in: rows),
-              let index = rows.firstIndex(where: { $0.id == id }) else {
+              case let rows = currentRows(),
+              let id = model.rowID(containing: seq),
+              let index = model.index(of: id) else {
             if !Task.isCancelled {
                 targetStatus = "Search result could not be found."
                 TestHooks.recordNavigation(target: targetSeq, item: nil, oldest: client.threads[sessionId]?.rows.first?.seq)
@@ -812,7 +831,7 @@ struct TranscriptView: View {
     /// the host. The row that was at the top stays where it is: it is found
     /// again by the seq it showed, since an older chip joining a group at
     /// the top changes that group's id.
-    private func extend(proxy: ScrollViewProxy, rows: [TranscriptRowModel], shown: [TranscriptRowModel]) async {
+    private func extend(proxy: ScrollViewProxy, shown: [TranscriptRowModel]) async {
         guard let top = shown.first else { return }
         let fills = listScroll.scroll.map { $0.contentSize.height > $0.bounds.height } ?? true
         let reach = SentinelReach.of(atBottom: scrollState.atBottom, readerMoving: scrollState.readerMoving, contentFills: fills)
@@ -828,15 +847,14 @@ struct TranscriptView: View {
         extending = true
         defer { extending = false }
         let anchorSeq = top.anchorSeq
-        if rows.count > shown.count {
+        if model.rows.count > shown.count {
             resize(shown.count + Self.page)
         } else {
             await client.loadOlder(sessionId)
             resize(shown.count + olderPage)
         }
         var anchor = top.id
-        if case .group = top, let anchorSeq, let state = client.threads[sessionId],
-           let found = TranscriptRows.rowID(containing: anchorSeq, in: TranscriptRows.rows(state.entries, turnOpen: state.fold.board.turnOpen, memory: keyMemory, waits: state.fold.waitOutcomes, statusOf: waitStatus)) {
+        if case .group = top, let anchorSeq, case _ = currentRows(), let found = model.rowID(containing: anchorSeq) {
             anchor = found
         }
         try? await Task.sleep(for: .milliseconds(16))
@@ -865,6 +883,12 @@ final class ListScroll {
     private var shown: [TranscriptRowModel] = []
     private var lead = 0
 
+    /// The list's item for a row of that window (`TranscriptReflow.item`): nil while the list holds another count.
+    func item(of id: TranscriptRowID, items: Int) -> Int? {
+        guard items == lead + shown.count + 1, let at = shown.firstIndex(where: { $0.id == id }) else { return nil }
+        return lead + at
+    }
+
     func note(window shown: [TranscriptRowModel], lead: Int) {
         self.shown = shown
         self.lead = lead
@@ -886,6 +910,12 @@ final class OnScreenRows {
 final class HoldBox {
     var hold: TestHooks.ScrollHold?
 }
+
+#if DEBUG
+final class ShadowCount {
+    var builds = 0
+}
+#endif
 
 /// Whether the reader is at the bottom. Only the jump pill reads it in a
 /// body; a group row reads it once, inside the change that settles it, to

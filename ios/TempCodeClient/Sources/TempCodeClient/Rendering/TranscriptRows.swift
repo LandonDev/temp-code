@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// A row's identity in the transcript list: one key space, the desktop's
 /// `rowKey`. An item, a group and the step it grew from share one key (the
@@ -25,7 +26,8 @@ public final class RowKeyMemory: @unchecked Sendable {
     /// Step key → the key of the group it was drawn in.
     public internal(set) var groups: [Int: Int] = [:]
     /// Each settled turn's rows from the last build, by its first entry's
-    /// key (the desktop's `settledRows`).
+    /// key (the desktop's `settledRows`): a turn is known by its opener,
+    /// never by its place, so history joining above moves none of them.
     var turns: [Int: SettledTurn] = [:]
 
     public init() {}
@@ -38,8 +40,6 @@ public final class RowKeyMemory: @unchecked Sendable {
         /// A copy, never a slice: a slice would keep the whole entries array
         /// of the build it came from alive.
         var entries: [ThreadEntry]
-        /// The turn's place among the turns.
-        var index: Int
         var above: Shape?
         var rows: [TranscriptRowModel]
         var groupKeys: [Int]
@@ -55,6 +55,14 @@ public final class RowKeyMemory: @unchecked Sendable {
 
     /// Settled turns the last build reused or kept (a test seam).
     var keptTurns: Int { turns.count }
+
+    /// The group keys alone, for a build that must draw under the same keys
+    /// and write none back (the view's DEBUG check of its model).
+    public func copy() -> RowKeyMemory {
+        let copy = RowKeyMemory()
+        copy.groups = groups
+        return copy
+    }
 }
 
 /// Everything the agent did between two paragraphs, the desktop's
@@ -77,7 +85,9 @@ public struct ActivityGroup: Hashable, Sendable {
     }
 
     /// In order; one or more. Thoughts and tool calls, edits among them.
-    public var entries: [ThreadEntry]
+    public var entries: [ThreadEntry] {
+        didSet { tallies = Tallies() }
+    }
     /// The key it is drawn under: its first step's, or the one an earlier
     /// build gave it (`RowKeyMemory`).
     public var key: Int
@@ -92,6 +102,9 @@ public struct ActivityGroup: Hashable, Sendable {
     public var settled: Bool
     /// The calls the open turn's working line tells: steps, but no rows.
     public var told: Set<String>
+    /// What the line reads off the steps, worked out at the first ask and
+    /// kept: a group's body asks for all of it at every pass.
+    private var tallies = Tallies()
 
     public init(entries: [ThreadEntry], live: Bool = false, working: Bool = false, settled: Bool = true, told: Set<String> = [], key: Int? = nil) {
         self.entries = entries
@@ -115,7 +128,7 @@ public struct ActivityGroup: Hashable, Sendable {
 
     /// The steps' rows, `stepRows`: a wait draws one per agent it returned
     /// on, a batch spawn one per child, anything else one.
-    public var stepRows: Int { calls.reduce(0) { $0 + FoldedStep.rows($1) } }
+    public var stepRows: Int { tallies.read(self).stepRows }
 
     /// At most one row of steps, thoughts aside: no line and no table, the step is its own row.
     public var lone: Bool { stepRows <= 1 }
@@ -134,7 +147,9 @@ public struct ActivityGroup: Hashable, Sendable {
 
     /// The run's main kind of work, `dominantWorkKind`: the most steps of
     /// one kind, ties to the earlier of edit, run, research, agents, other.
-    public var kind: Kind {
+    public var kind: Kind { tallies.read(self).kind }
+
+    fileprivate var countedKind: Kind {
         var counts: [Kind: Int] = [:]
         for entry in calls {
             switch entry.item {
@@ -167,11 +182,51 @@ public struct ActivityGroup: Hashable, Sendable {
     }
 
     /// Lines added and removed over every edit in the run.
-    public var adds: Int { tools.reduce(0) { $0 + (ActionRow.of($1).adds ?? 0) } }
-    public var dels: Int { tools.reduce(0) { $0 + (ActionRow.of($1).dels ?? 0) } }
+    public var adds: Int { tallies.read(self).adds }
+    public var dels: Int { tallies.read(self).dels }
     /// Steps that failed or were refused, each agent a wait found failed, a
     /// red gate, a failed report or task: the line's red count, never words.
-    public var failed: Int { calls.reduce(0) { $0 + FoldedStep.failures($1) } }
+    public var failed: Int { tallies.read(self).failed }
+
+    /// A group's counts, read off its steps once. It rides in a box the
+    /// group's copies share, since the counts follow from the entries alone
+    /// (a write to them starts another box), and it is no part of the
+    /// group's value: it compares equal to every other and hashes to nothing.
+    fileprivate struct Tallies: Hashable, Sendable {
+        struct Counts: Sendable {
+            var kind: Kind
+            var adds: Int
+            var dels: Int
+            var failed: Int
+            var stepRows: Int
+        }
+
+        private final class Box: Sendable {
+            let counts = Mutex<Counts?>(nil)
+        }
+
+        private let box = Box()
+
+        func read(_ group: ActivityGroup) -> Counts {
+            box.counts.withLock { held in
+                if let held { return held }
+                var adds = 0
+                var dels = 0
+                for tool in group.tools {
+                    let row = ActionRow.of(tool)
+                    adds += row.adds ?? 0
+                    dels += row.dels ?? 0
+                }
+                let calls = group.calls
+                let counts = Counts(kind: group.countedKind, adds: adds, dels: dels, failed: calls.reduce(0) { $0 + FoldedStep.failures($1) }, stepRows: calls.reduce(0) { $0 + FoldedStep.rows($1) })
+                held = counts
+                return counts
+            }
+        }
+
+        static func == (lhs: Tallies, rhs: Tallies) -> Bool { true }
+        func hash(into hasher: inout Hasher) {}
+    }
 }
 
 /// How a group opens and folds, the desktop's ActionGroup with
@@ -477,7 +532,9 @@ public enum TranscriptRows {
     /// it (`joins`). With `memory`, every turn but the last takes its rows
     /// from the last build when its entries, its place and the row above it
     /// are the same (the desktop's `settledRows`), so a delta builds the
-    /// live turn's rows alone. `statusOf` reads an agent's session status
+    /// live turn's rows alone. The view reads these rows through a
+    /// `TranscriptModel`, which builds the same rows only where the thread
+    /// changed; this is the whole build, what the model is held equal to. `statusOf` reads an agent's session status
     /// for a wait whose body the host left behind (`WaitSteps.resolved`),
     /// once per agent with `waits` (the fold's `waitOutcomes`).
     public static func rows(_ entries: [ThreadEntry], turnOpen: Bool, memory: RowKeyMemory? = nil, waits: WaitOutcomeMemory? = nil, statusOf: ((String) -> String?)? = nil) -> [TranscriptRowModel] {
@@ -502,7 +559,7 @@ public enum TranscriptRows {
             let turn = entries[start..<end]
             let above = rows.last.map(RowKeyMemory.SettledTurn.shape)
             let turnKey = turn.first?.key ?? 0
-            if !last, let memory, let cached = memory.turns[turnKey], cached.index == number, cached.above == above, cached.entries.count == turn.count, cached.entries.elementsEqual(turn) {
+            if !last, let memory, let cached = memory.turns[turnKey], cached.above == above, cached.entries.count == turn.count, cached.entries.elementsEqual(turn) {
                 rows.append(contentsOf: cached.rows)
                 drawn.formUnion(cached.groupKeys)
                 kept[turnKey] = cached
@@ -513,7 +570,7 @@ public enum TranscriptRows {
             let told: Set<String> = open ? Set(LinePhase.told(Array(turn)).map(\.callId)) : []
             let groupKeys = appendTurn(turn, open: open, turnOpen: turnOpen, told: told, memory: memory, drawn: &drawn, into: &rows)
             if !last, memory != nil {
-                kept[turnKey] = RowKeyMemory.SettledTurn(entries: Array(turn), index: number, above: above, rows: Array(rows[from...]), groupKeys: groupKeys)
+                kept[turnKey] = RowKeyMemory.SettledTurn(entries: Array(turn), above: above, rows: Array(rows[from...]), groupKeys: groupKeys)
             }
         }
         memory?.turns = kept
@@ -527,7 +584,7 @@ public enum TranscriptRows {
     /// One turn's rows (or the rows before any turn): its opener and every
     /// row up to the next opener, a steer's bubble among them, then its end
     /// row. Answers the group keys it drew.
-    private static func appendTurn(_ turn: ArraySlice<ThreadEntry>, open: Bool, turnOpen: Bool, told: Set<String>, memory: RowKeyMemory?, drawn: inout Set<Int>, into rows: inout [TranscriptRowModel]) -> [Int] {
+    static func appendTurn(_ turn: ArraySlice<ThreadEntry>, open: Bool, turnOpen: Bool, told: Set<String>, memory: RowKeyMemory?, drawn: inout Set<Int>, into rows: inout [TranscriptRowModel]) -> [Int] {
         var run: [ThreadEntry] = []
         var groupKeys: [Int] = []
         var opener: UserTurn?
