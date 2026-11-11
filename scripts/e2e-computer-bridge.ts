@@ -55,6 +55,9 @@ import { computerProofMode, computerProofPolicy, requireGateNative, waitForCompu
 const GATE = computerProofMode(process.argv).gate
 if (GATE) process.env.TC_PROOF_UNGATED = '1'
 const REPO = resolve(import.meta.dir, '..')
+/** TEMP_CODE_COMPUTER_HELD_MS for both instances: the held answer at 3 s, computer_result's wait 3 s, the unread cancel at 8 s. */
+const HELD_SEAM = '3000,3000,8000'
+const HELD = /^(Held after|Still held, )/
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 const arg = (name: string): string | undefined => {
   const i = process.argv.indexOf(name)
@@ -166,6 +169,43 @@ function kill(inst: Inst): void {
 
 // ── the box half ────────────────────────────────────────────────────────
 
+/**
+ * One socket to an instance for every app.computer call: a call that answered
+ * "Held" stays pending on its socket until computer_result reads it, and a
+ * closed socket cancels it (computer/pending.ts), so the calls cannot each
+ * open and close their own as rpc() does.
+ */
+function persistentRpc(inst: Inst): <T = unknown>(method: string, params: unknown) => Promise<T> {
+  let opening: Promise<WebSocket> | null = null
+  const waiting = new Map<string, (frame: { ok?: boolean; result?: unknown; error?: string }) => void>()
+  let n = 0
+  const open = (): Promise<WebSocket> =>
+    (opening ??= new Promise<WebSocket>((ok, fail) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${portOf(inst)}/`)
+      ws.addEventListener('open', () => ok(ws))
+      ws.addEventListener('error', () => fail(new Error(`${inst.name}: socket error`)))
+      ws.addEventListener('close', () => {
+        opening = null
+        for (const answer of waiting.values()) answer({ ok: false, error: `${inst.name}: the socket closed` })
+        waiting.clear()
+      })
+      ws.addEventListener('message', (ev) => {
+        const frame = JSON.parse(String(ev.data)) as { id?: string; ok?: boolean; result?: unknown; error?: string }
+        if (typeof frame.id !== 'string') return
+        waiting.get(frame.id)?.(frame)
+        waiting.delete(frame.id)
+      })
+    }))
+  return async <T,>(method: string, params: unknown): Promise<T> => {
+    const ws = await open()
+    const id = `p${++n}`
+    return await new Promise<T>((ok, fail) => {
+      waiting.set(id, (frame) => (frame.ok ? ok(frame.result as T) : fail(new Error(frame.error))))
+      ws.send(JSON.stringify({ id, method, params }))
+    })
+  }
+}
+
 async function boxHalf(): Promise<void> {
   const port = Number(arg('--port'))
   const seed = arg('--seed') ?? ''
@@ -185,7 +225,15 @@ async function boxHalf(): Promise<void> {
   // where Electron falls back to its setuid sandbox and aborts: this isolated test instance runs without either.
   const runtime = process.env.XDG_RUNTIME_DIR
   if (runtime && process.getuid && !runtime.endsWith(`/${process.getuid()}`)) delete process.env.XDG_RUNTIME_DIR
-  launch(box, { ...(arg('--pair') === 'local' ? { TEMP_CODE_BUILD_PLATFORM: 'linux' } : {}), TEMP_CODE_REMOTE_PORT: String(port), TEMP_CODE_MAC_TOKEN_SEED: seed, TEMP_CODE_E2E_STATUS: '1', ELECTRON_DISABLE_SANDBOX: '1' })
+  launch(box, {
+    ...(arg('--pair') === 'local' ? { TEMP_CODE_BUILD_PLATFORM: 'linux' } : {}),
+    TEMP_CODE_REMOTE_PORT: String(port),
+    TEMP_CODE_MAC_TOKEN_SEED: seed,
+    TEMP_CODE_E2E_STATUS: '1',
+    // a held call answers at 3 s, computer_result waits 3 s, a pending call nobody reads goes at 8 s (the held leg)
+    TEMP_CODE_COMPUTER_HELD_MS: HELD_SEAM,
+    ELECTRON_DISABLE_SANDBOX: '1'
+  })
   if (!(await until(120_000, () => existsSync(join(box.data, 'server.json'))))) {
     console.log(JSON.stringify({ ready: false, error: 'the box instance did not start', log: logOf(box).slice(-2_000) }))
     return quit()
@@ -198,6 +246,9 @@ async function boxHalf(): Promise<void> {
   for (const title of ['computer bridge e2e 1', 'computer bridge e2e 2'])
     threads.push((await rpc<{ id: string }>(box, 'session.create', { provider: 'claude', cwd, title, threadType: 'chat' })).id)
   console.log(JSON.stringify({ ready: true, envId: environmentId, key: key.token, threads, root }))
+  const persistent = persistentRpc(box)
+  const sessions = new Map<string, BridgeSession>()
+  let sessionSeq = 0
 
   // Each request runs on its own, answered by id: a call held on the Mac never holds up the pause or Stop that ends it.
   const handle = async (req: { id: number; method: string; params: Record<string, unknown> }): Promise<void> => {
@@ -210,6 +261,21 @@ async function boxHalf(): Promise<void> {
         answer({ result: { sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length } })
       } else if (req.method === 'bridge') {
         answer({ result: await stdioBridge(seed, String(req.params.sessionId), String(req.params.images), req.params.request as Record<string, unknown>, portOf(box)) })
+      } else if (req.method === 'bridge.open') {
+        // one bridge process kept for several requests, as codex keeps it for a thread
+        const key = `b${++sessionSeq}`
+        sessions.set(key, await BridgeSession.open(seed, String(req.params.sessionId), String(req.params.images), portOf(box)))
+        answer({ result: key })
+      } else if (req.method === 'bridge.ask') {
+        const session = sessions.get(String(req.params.key))
+        if (!session) throw new Error('no such bridge session')
+        answer({ result: await session.ask(String(req.params.method), req.params.params ?? {}) })
+      } else if (req.method === 'bridge.close') {
+        sessions.get(String(req.params.key))?.close()
+        sessions.delete(String(req.params.key))
+        answer({ result: null })
+      } else if (req.method.startsWith('app.computer')) {
+        answer({ result: await persistent(req.method, req.params) })
       } else if (req.method === 'log') {
         answer({ result: logOf(box) })
       } else {
@@ -235,40 +301,62 @@ async function boxHalf(): Promise<void> {
   quit()
 }
 
-/** scripts/app-mcp-bridge.mjs as codex spawns it for the thread: initialize, then one request. */
-async function stdioBridge(seed: string, sessionId: string, images: string, request: Record<string, unknown>, local: number): Promise<unknown> {
-  const child = spawn(process.execPath, [join(REPO, 'scripts', 'app-mcp-bridge.mjs')], {
-    env: {
-      PATH: process.env.PATH ?? '',
-      TEMP_CODE_PORT: String(local),
-      TEMP_CODE_SESSION: sessionId,
-      TEMP_CODE_MAC_TOKEN: tokenFor(seed, 'mac-bridge', sessionId),
-      TEMP_CODE_COMPUTER_TOKEN: tokenFor(seed, 'computer', sessionId),
-      TEMP_CODE_COMPUTER_IMAGES: images
-    },
-    stdio: ['pipe', 'pipe', 'inherit']
-  })
-  const answers = new Map<number, unknown>()
-  let buf = ''
-  child.stdout.on('data', (c: Buffer) => {
-    buf += c.toString()
-    for (let nl = buf.indexOf('\n'); nl >= 0; nl = buf.indexOf('\n')) {
-      const msg = JSON.parse(buf.slice(0, nl)) as { id: number; result?: unknown; error?: unknown }
-      buf = buf.slice(nl + 1)
-      answers.set(msg.id, msg.result ?? msg.error)
-    }
-  })
-  const ask = async (id: number, method: string, params: unknown): Promise<unknown> => {
-    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
-    const end = Date.now() + 300_000
-    while (!answers.has(id) && Date.now() < end) await sleep(50)
-    return answers.get(id)
+/** scripts/app-mcp-bridge.mjs as codex spawns it for the thread, initialized, kept for as many requests as the proof asks. */
+class BridgeSession {
+  private readonly answers = new Map<number, unknown>()
+  private next = 0
+
+  private constructor(private readonly child: ChildProcess) {
+    let buf = ''
+    child.stdout!.on('data', (c: Buffer) => {
+      buf += c.toString()
+      for (let nl = buf.indexOf('\n'); nl >= 0; nl = buf.indexOf('\n')) {
+        const msg = JSON.parse(buf.slice(0, nl)) as { id: number; result?: unknown; error?: unknown }
+        buf = buf.slice(nl + 1)
+        this.answers.set(msg.id, msg.result ?? msg.error)
+      }
+    })
   }
+
+  static async open(seed: string, sessionId: string, images: string, local: number): Promise<BridgeSession> {
+    const child = spawn(process.execPath, [join(REPO, 'scripts', 'app-mcp-bridge.mjs')], {
+      env: {
+        PATH: process.env.PATH ?? '',
+        TEMP_CODE_PORT: String(local),
+        TEMP_CODE_SESSION: sessionId,
+        TEMP_CODE_MAC_TOKEN: tokenFor(seed, 'mac-bridge', sessionId),
+        TEMP_CODE_COMPUTER_TOKEN: tokenFor(seed, 'computer', sessionId),
+        TEMP_CODE_COMPUTER_IMAGES: images
+      },
+      stdio: ['pipe', 'pipe', 'inherit']
+    })
+    const session = new BridgeSession(child)
+    await session.ask('initialize', { protocolVersion: '2025-03-26' })
+    return session
+  }
+
+  async ask(method: string, params: unknown): Promise<unknown> {
+    const id = ++this.next
+    this.child.stdin!.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
+    const end = Date.now() + 300_000
+    while (!this.answers.has(id) && Date.now() < end) await sleep(50)
+    const answer = this.answers.get(id)
+    this.answers.delete(id)
+    return answer
+  }
+
+  close(): void {
+    this.child.kill()
+  }
+}
+
+/** One request through a fresh bridge process: initialize, the request, the process gone. */
+async function stdioBridge(seed: string, sessionId: string, images: string, request: Record<string, unknown>, local: number): Promise<unknown> {
+  const session = await BridgeSession.open(seed, sessionId, images, local)
   try {
-    await ask(1, 'initialize', { protocolVersion: '2025-03-26' })
-    return await ask(2, String(request.method), request.params ?? {})
+    return await session.ask(String(request.method), request.params ?? {})
   } finally {
-    child.kill()
+    session.close()
   }
 }
 
@@ -508,11 +596,19 @@ async function orchestrator(): Promise<void> {
   const [t1, t2] = threads
   const token = (sid: string): string => tokenFor(SEED, 'computer', sid)
   let callSeq = 0
+  /** One call over the box's kept socket; a call held past the seam's 3 s is read on with computer_result until it answers. */
+  const callThrough = async (sid: string, tool: string, args: Record<string, unknown>, images: 'parts' | 'none'): Promise<AppComputerAnswer> => {
+    let answer = await boxCall<AppComputerAnswer>('app.computer', { sessionId: sid, token: token(sid), call: ++callSeq, tool, args, images })
+    const id = answer.text.match(/computer_result with id "(c\d+)"/)?.[1]
+    while (id && HELD.test(answer.text))
+      answer = await boxCall<AppComputerAnswer>('app.computer', { sessionId: sid, token: token(sid), call: ++callSeq, tool: 'computer_result', args: { id }, images })
+    return answer
+  }
   const computer = (sid: string, tool: string, args: Record<string, unknown>, images: 'parts' | 'none' = 'parts'): Promise<AppComputerAnswer> => {
     const safeArgs = policy.observeArgs(args)
     policy.assertRequest(tool, safeArgs)
     return waitForBridgeProofCall(
-      boxCall<AppComputerAnswer>('app.computer', { sessionId: sid, token: token(sid), call: ++callSeq, tool, args: safeArgs, images }),
+      callThrough(sid, tool, safeArgs, images),
       {
         standing: async () => {
           const call = (await macActivity()).calls.find((c) => c.environmentId === boxId && c.sessionId === sid && c.status === 'held')
@@ -540,7 +636,8 @@ async function orchestrator(): Promise<void> {
     TEMP_CODE_COMPUTER: '1',
     TEMP_CODE_COMPUTER_PIN: `${APP}=${scratchPid},${PROBE_BUNDLE_ID}=${scratchPid}`,
     TEMP_CODE_COMPUTER_TRACE: '1',
-    TEMP_CODE_COMPUTER_BIN: BIN
+    TEMP_CODE_COMPUTER_BIN: BIN,
+    TEMP_CODE_COMPUTER_HELD_MS: HELD_SEAM
   })
   if (!(await until(120_000, () => existsSync(join(mac.data, 'server.json'))))) await stop(`the Mac instance did not start; log ${mac.log}`)
   const macId = (await rpc<{ environmentId: string }>(mac, 'remote.status')).environmentId
@@ -565,8 +662,8 @@ async function orchestrator(): Promise<void> {
     // 2. on
     await awaitScreen()
     await rpc(mac, 'macBridge.computer.set', { environmentId: boxId, on: true })
-    const offered = await until(5_000, async () => (await tools(t1)).tools.length === 4)
-    check('on: within 5 s the box lists the four tools', offered)
+    const offered = await until(5_000, async () => (await tools(t1)).tools.length === 5)
+    check('on: within 5 s the box lists the four tools and computer_result', offered)
     const listed = await tools(t1)
     check("on: each description ends with the bridge note", listed.tools.every((t) => t.description.endsWith("this thread runs on another host.")))
     check("on: the box kept the Mac's offer", (await boxCall<string>('log')).includes(`${macId}: computer use offered`))
@@ -647,6 +744,60 @@ async function orchestrator(): Promise<void> {
     const detailAfter = await detailOnBox(t2)
     check("cap: once the second runs, its status no longer says the hold", detailAfter !== heldLine, String(detailAfter))
     await boxCall('session.markStatus', { sessionId: t2, status: 'idle' })
+
+    // 6b. a held call answers the model in time (computer/pending.ts), through the real stdio bridge
+    await awaitScreen()
+    const macRuns = (): number => logOf(mac).split('\n').filter((l) => l.includes('action.run')).length
+    type McpOut = { content?: { type: string; text?: string }[]; isError?: boolean }
+    const textOf = (out: McpOut): string => (out.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('\n')
+    // t2 reads TC Probe first, keeping its Ping index; its settle ends its live session
+    await boxCall('session.markStatus', { sessionId: t2, status: 'running' })
+    const t2Read = await computer(t2, 'computer_observe', { app: APP, window: APP })
+    const t2Ping = Number(t2Read.text.match(/\[(\d+)\] button "Ping"/)?.[1])
+    await boxCall('session.markStatus', { sessionId: t2, status: 'idle' })
+    // t1 holds the one live session
+    await boxCall('session.markStatus', { sessionId: t1, status: 'running' })
+    await computer(t1, 'computer_observe', { app: APP, window: APP })
+    await boxCall('session.markStatus', { sessionId: t2, status: 'running' })
+    const session = await boxCall<string>('bridge.open', { sessionId: t2, images: 'none' })
+    const ask = (name: string, args: Record<string, unknown>): Promise<McpOut> =>
+      boxCall<McpOut>('bridge.ask', { key: session, method: 'tools/call', params: { name, arguments: args } })
+    const runsBefore = macRuns()
+    const sentAt = Date.now()
+    const firstHeld = textOf(await ask('computer_act', { app: APP, window: APP, action: 'left_click', element: t2Ping }))
+    const heldId = firstHeld.match(/computer_result with id "(c\d+)"/)?.[1]
+    check('held: within 5 s the click answers held, the cap line and an id', Date.now() - sentAt < 5_000 && firstHeld.startsWith('Held after') && firstHeld.includes('computer sessions') && !!heldId, firstHeld)
+    const pendingRow = (await sessionsOnBox()).find((r) => r.threadId === t2)
+    check("held: the Activity row keeps the hold", /computer sessions/.test(pendingRow?.running?.words ?? ''), JSON.stringify(pendingRow))
+    const quiet = await until(5_000, async () => !/computer sessions/.test((await detailOnBox(t2)) ?? ''))
+    check("held: the thread's status no longer says the hold while nobody reads the call", quiet, String(await detailOnBox(t2)))
+    await boxCall('session.markStatus', { sessionId: t1, status: 'idle' })
+    const ready = await until(15_000, async () => (await sessionsOnBox()).find((r) => r.threadId === t2)?.running?.words === 'Ready, waiting for the thread')
+    check("held: once admitted the row says it waits for the thread", ready, JSON.stringify((await sessionsOnBox()).find((r) => r.threadId === t2)))
+    check('held: the click has not run unread', macRuns() === runsBefore)
+    let read = textOf(await ask('computer_result', { id: heldId }))
+    while (read.startsWith('Still held')) read = textOf(await ask('computer_result', { id: heldId }))
+    check("held: computer_result returns the click's step line", / · (ax|process) · changed/.test(read), read.slice(0, 300))
+    // a second held click left unread is cancelled on the Mac and never runs
+    await boxCall('session.markStatus', { sessionId: t2, status: 'idle' })
+    await boxCall('session.markStatus', { sessionId: t1, status: 'running' })
+    check('held: t1 takes the live session again', !(await computer(t1, 'computer_observe', { app: APP, window: APP })).isError)
+    await boxCall('session.markStatus', { sessionId: t2, status: 'running' })
+    const runsUnread = macRuns()
+    const secondAt = Date.now()
+    const secondHeld = textOf(await ask('computer_act', { app: APP, window: APP, action: 'left_click', element: t2Ping }))
+    check('held: the second click answers held', secondHeld.startsWith('Held after'), secondHeld)
+    const heldOnMac = async (): Promise<boolean> => (await macActivity()).calls.some((c) => c.sessionId === t2 && c.status === 'held')
+    check('held: the second click waits on the Mac', await until(5_000, heldOnMac))
+    const unreadAt = Date.now()
+    const cancelledOnMac = await until(20_000, async () => !(await heldOnMac()))
+    check('held: left unread, it is cancelled on the Mac after 8 s', cancelledOnMac && Date.now() - secondAt >= 8_000, `${Date.now() - unreadAt} ms after it was seen held`)
+    await boxCall('session.markStatus', { sessionId: t1, status: 'idle' })
+    check('held: the unread click never ran', macRuns() === runsUnread)
+    const opened = textOf(await ask('computer_observe', { app: APP, window: APP }))
+    check("held: t2's next answer opens with the cancelled line", /^Cancelled c\d+ \(left_click \[\d+\] in TC Probe\) before it ran\./.test(opened), opened.slice(0, 300))
+    await boxCall('bridge.close', { key: session })
+    await boxCall('session.markStatus', { sessionId: t2, status: 'idle' })
     await rpc(mac, 'macBridge.limits.set', { environmentId: boxId, maxComputer: null })
 
     // 7. pause
@@ -697,7 +848,7 @@ async function orchestrator(): Promise<void> {
     // 10. codex
     await awaitScreen()
     const codexTools = (await boxCall<{ tools: { name: string }[] }>('bridge', { sessionId: t2, images: 'none', request: { method: 'tools/list' } })).tools.map((t) => t.name)
-    check('codex: the stdio bridge lists the four tools', ['computer_apps', 'computer_observe', 'computer_act', 'computer_batch'].every((n) => codexTools.includes(n)), codexTools.join(','))
+    check('codex: the stdio bridge lists the four tools and computer_result', ['computer_apps', 'computer_observe', 'computer_act', 'computer_batch', 'computer_result'].every((n) => codexTools.includes(n)), codexTools.join(','))
     await boxCall('session.markStatus', { sessionId: t2, status: 'running' })
     const codexOut = await boxCall<{ content: { type: string; text?: string }[] }>('bridge', {
       sessionId: t2,
@@ -723,7 +874,7 @@ async function orchestrator(): Promise<void> {
     // 12. archive
     await awaitScreen()
     await rpc(mac, 'macBridge.computer.set', { environmentId: boxId, on: true })
-    await until(5_000, async () => (await tools(t1)).tools.length === 4)
+    await until(5_000, async () => (await tools(t1)).tools.length === 5)
     await computer(t1, 'computer_observe', { app: APP, window: APP })
     const ledger = await boxCall<{ resources: { kind: string; environmentId: string; id: string }[] }>('resources.list', { sessionId: t1 })
     check('archive: the box ledger has a computer row on the Mac', ledger.resources.some((r) => r.kind === 'computer' && r.environmentId === macId), JSON.stringify(ledger.resources))

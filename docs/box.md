@@ -1830,6 +1830,20 @@ thread's own status says the Mac's line: the rail, the board, the phone and
 `check_agent` ("running: Waiting for the Mac, …") read it, and it clears when
 the call runs, answers, is stopped, or the Mac's link drops.
 
+A held call answers Codex and Muse in time. A Codex or Muse thread's call held
+20 s answers anyway with an id ("Held after 20s: Waiting for the Mac, 1 of 1
+computer sessions, 1st in line. Nothing runs until you ask for it: call
+computer_result with id "c4". …"), and the model reads it later with
+`computer_result`. Nothing runs while nobody reads it: the box tells the Mac
+with `mac.computerReader`, and the Mac holds the call at its next request
+until a reader comes back. The early answer goes out only on the Mac's word
+that nothing can pass unread. A pending call nobody reads for 60 s, or one
+the thread's next computer call replaces, is cancelled on the Mac, and the
+next answer says so. While nobody reads it the thread's status drops the hold;
+the Activity row keeps it. A Mac on an older build refuses the notice and its
+held calls wait as they did. Claude threads are unchanged
+(docs/computer-protocol.md §17.8, §18).
+
 Pause, Stop, Away. A paused box thread's computer calls are refused at the
 box; a pause or the composer's Stop cancels the call out on the Mac. Stop on
 the Activity row ends computer use for the turn on both hosts: the call in

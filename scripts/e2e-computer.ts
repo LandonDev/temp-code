@@ -67,7 +67,7 @@ import { ComputerSessions } from '../src/main/server/computer/sessions'
 import { ComputerRpcError } from '../src/main/server/computer/connection'
 import { setSessionTierGate, REFUSE_SESSION_TIER } from '../src/main/server/computer/tierGate'
 import { parseObservation } from '../src/shared/computer/observation'
-import { COMPUTER_TOOLS, computerToolJsonSchema } from '../src/shared/computer/tools'
+import { computerToolJsonSchema, computerToolSpecs } from '../src/shared/computer/tools'
 import type { ComputerMethod, Tier } from '../src/shared/computer/protocol'
 import type { AgentEvent, EventRow } from '../src/shared/events'
 import { buildTcComputer } from './lib/tcComputerBuild'
@@ -568,8 +568,8 @@ async function run(): Promise<void> {
     const none = await bridge('none')
     const listed = (await none.listTools()).tools.filter((t) => t.name.startsWith('computer_'))
     check(
-      'the bridge lists the four tools with the schemas tools.ts gives',
-      JSON.stringify(listed.map((t) => [t.name, t.inputSchema])) === JSON.stringify(COMPUTER_TOOLS.map((t) => [t.name, computerToolJsonSchema(t.input)])),
+      'the bridge lists the four tools and computer_result with the schemas tools.ts gives',
+      JSON.stringify(listed.map((t) => [t.name, t.inputSchema])) === JSON.stringify(computerToolSpecs('anthropic', 'act', { result: true }).map((t) => [t.name, computerToolJsonSchema(t.input)])),
       listed.map((t) => t.name).join(', ')
     )
     if (!grants.screenRecording) check('screenshots over the bridge', 'inconclusive', 'Screen Recording is off for TempCode; the proof asks for nothing')

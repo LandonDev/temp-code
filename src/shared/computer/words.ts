@@ -5,12 +5,17 @@
  * Reads never ask; every action that sends input does, one card per call.
  */
 import type { PermissionPolicy } from '../events'
+import { COMPUTER_RESULT_TOOL } from './heldCalls'
 import { parseElementLine } from './observation'
 import { confirmInput, confirmTitle, type Confirm, type ConfirmNeed, type HostConfirmKind } from './policy'
 import { COMPUTER_ACTION_NAMES, NO_INPUT_ACTIONS, type ComputerAction, type ComputerActionName, type ElementBrief } from './protocol'
 import { parseStepLine, type ComputerToolName } from './tools'
 
-/** A tool's own name: `mcp__app__computer_act` and `computer_act` alike, a per-verb `computer_left_click` as its verb. */
+/**
+ * A tool's own name: `mcp__app__computer_act` and `computer_act` alike, a
+ * per-verb `computer_left_click` as its verb. Null for computer_result, which
+ * is none of the four (`isComputerResult`).
+ */
 export function computerToolOf(name: string): { tool: ComputerToolName; action?: ComputerActionName } | null {
   const bare = name.replace(/^mcp__app__/, '')
   if (bare === 'computer_apps' || bare === 'computer_observe' || bare === 'computer_act' || bare === 'computer_batch')
@@ -20,6 +25,9 @@ export function computerToolOf(name: string): { tool: ComputerToolName; action?:
     return { tool: 'computer_act', action: verb as ComputerActionName }
   return null
 }
+
+/** computer_result (heldCalls.ts), bare or as `mcp__app__computer_result`. */
+export const isComputerResult = (name: string): boolean => name.replace(/^mcp__app__/, '') === COMPUTER_RESULT_TOOL
 
 /** A call as one of the four tools: a per-verb call becomes computer_act with its action, every other field (confirm too) kept. */
 export function asFourTool(name: string, args: unknown): { tool: ComputerToolName; args: Record<string, unknown> } | null {
@@ -401,11 +409,13 @@ const isAction = (a: unknown): a is StepInput & { action: ComputerActionName } =
  * paths never enter the words. Null for any other tool.
  */
 export function computerPhrase(tool: string, input: unknown, opts: PhraseOptions): ComputerPhrase | null {
-  const of = computerToolOf(tool)
-  if (!of) return null
   const live = opts.live
   const f = (forms: Forms): string => forms[live ? 0 : 1]
   const i = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
+  if (isComputerResult(tool))
+    return { verb: i.cancel === true ? f(['Cancelling', 'Cancelled']) : f(['Waiting for', 'Waited for']), object: 'the held call' }
+  const of = computerToolOf(tool)
+  if (!of) return null
   const app = (!live ? resultApp(opts.result) : null) ?? opts.app ?? (typeof i.app === 'string' && i.app.trim() ? i.app.trim() : 'an app')
   if (of.tool === 'computer_apps') return { verb: f(['Listing', 'Listed']), object: 'apps' }
   if (of.tool === 'computer_observe') return { verb: f(['Reading', 'Read']), object: app }
@@ -441,7 +451,9 @@ export function computerActivity(
 ): { text: string; kind: 'investigate' | 'edit' } | null {
   const phrase = computerPhrase(name, input, { live: true, brief, app })
   if (!phrase) return null
-  const of = computerToolOf(name)!
+  const of = computerToolOf(name)
+  // computer_result sends nothing itself: the call it reads already said what it does
+  if (!of) return { text: `${phrase.verb} ${phrase.object}`, kind: 'investigate' }
   const i = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
   const steps: unknown[] = of.tool === 'computer_batch' ? (Array.isArray(i.actions) ? i.actions : []) : of.tool === 'computer_act' ? [{ ...i, action: of.action ?? i.action }] : []
   const acts = steps.length === 0 ? of.tool === 'computer_act' : steps.some((a) => !isAction(a) || sendsInput(a))

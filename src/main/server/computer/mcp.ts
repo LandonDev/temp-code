@@ -70,11 +70,19 @@ export async function computerAnswer(o: ComputerToolOutcome, images: 'parts' | '
   return { text: renderText(o), isError: o.isError, images: parts }
 }
 
-/** The thread's tools as the bridge lists them, in the thread's words: tools.ts is the one source of their schemas; `bridged` adds the Mac's note. */
-export function computerToolList(session: Pick<SessionMeta, 'provider' | 'model'>, opts: { bridged?: boolean } = {}): { name: string; description: string; inputSchema: Record<string, unknown> }[] {
+/**
+ * The thread's tools as the bridge lists them, in the thread's words: tools.ts
+ * is the one source of their schemas; `bridged` adds the Mac's note, `result`
+ * adds computer_result (heldCalls.ts), which the bridge lists and Claude's
+ * in-process tools never do.
+ */
+export function computerToolList(
+  session: Pick<SessionMeta, 'provider' | 'model'>,
+  opts: { bridged?: boolean; result?: boolean } = {}
+): { name: string; description: string; inputSchema: Record<string, unknown> }[] {
   const note = opts.bridged ? COMPUTER_BRIDGE_NOTE : ''
   const { shape, tools } = wordsFor(session)
-  return computerToolSpecs(shape, tools).map((t) => ({ name: t.name, description: t.description + note, inputSchema: computerToolJsonSchema(t.input) }))
+  return computerToolSpecs(shape, tools, { result: opts.result }).map((t) => ({ name: t.name, description: t.description + note, inputSchema: computerToolJsonSchema(t.input) }))
 }
 
 const shapeOf = (input: z.ZodType): z.ZodRawShape => (input as unknown as { shape: z.ZodRawShape }).shape

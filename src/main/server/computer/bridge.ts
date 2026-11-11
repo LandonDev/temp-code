@@ -15,9 +15,11 @@ import {
   askingWords,
   bridgedDeadlineMs,
   type ComputerPeerAnswer,
-  type MacComputerEndArgs
+  type MacComputerEndArgs,
+  type MacComputerReaderResult
 } from '@shared/contract-maccomputer'
 import { hostErrorLine } from '@shared/computer/hostErrors'
+import { READER_ACK_MS } from '@shared/computer/heldCalls'
 import type { ComputerToolCall, ComputerToolName } from '@shared/computer/tools'
 import { computerActivity, computerApprovalInput, computerApprovalTitle } from '@shared/computer/words'
 import type { SessionMeta, SessionStatus } from '@shared/events'
@@ -26,6 +28,7 @@ import { CANCELLED_PAUSED, CANCELLED_STOPPED, type MacPause } from '../macPause'
 import { PeerOfflineError, type PeerCalls } from '../remote/peerCalls'
 import type { MacThreadTokens } from '../macTools'
 import { OfflineError } from '../threadResources'
+import { isSoftCancel, type CallReader } from './pending'
 import { refusal, type ComputerToolOutcome, type LandedShot } from './result'
 import { abortedLine, checkComputerCall, type ComputerToolContext } from './run'
 import { landShotBytes, nextShotNumber } from './shots'
@@ -41,7 +44,17 @@ import { landShotBytes, nextShotNumber } from './shots'
  * out the Mac's row arrives as peer.progress and is mirrored here, re-keyed
  * to the thread, as its Activity row. The thread's turns, Stop, pause and
  * end reach the Mac as `mac.computerEnd` and `mac.cancel`.
+ *
+ * A held call that answers the model early (pending.ts) runs only while
+ * someone reads it. Before the Mac has the call this side waits for a reader;
+ * once the Mac has it, `mac.computerReader` sets the call's reading flag there,
+ * and the early answer goes out only on the Mac's word that nothing can pass
+ * its gate unread (`{ held: true }`). A cancel from the held-call rules is soft:
+ * `mac.cancel`, then the Mac's own reply with the steps that ran.
  */
+
+/** The given-up line of a soft cancel the Mac never answered. */
+export const MAC_SILENT_CANCEL = hostErrorLine('cancelled', 'the Mac did not say what ran')
 
 const SETTLED: readonly SessionStatus[] = ['idle', 'done', 'error', 'stopped', 'watching']
 /** How long a Stop waits for the call in flight to answer its own steps before it is given up here. */
@@ -98,7 +111,14 @@ interface Inflight {
   giveUp: unknown
   /** Stop or the thread's end came while it was out: its late rows and reply restore no row and record no ledger entry. */
   closed: boolean
+  /** the Mac set the call's reading flag false and holds it at its gate */
+  released: boolean
+  /** the hold the Mac last answered `{ held: false }` for: no notice again until another hold begins */
+  runningIn: number | null
 }
+
+/** A call the bridge serves: the pending store's reader rides along (rpc.ts). */
+export type BridgedCallContext = ComputerToolContext & { reader?: CallReader }
 
 interface ThreadBridge {
   id: string
@@ -119,6 +139,10 @@ interface ThreadBridge {
   nextShot: number | null
   /** the Mac's hold line last told to `deps.held` */
   holdLine: string | null
+  /** what holds the call now: the Mac's hold line, or the card's words while one waits there */
+  heldWords: string | null
+  /** counts each hold that begins */
+  holdEpoch: number
 }
 
 export class ComputerBridge {
@@ -128,6 +152,8 @@ export class ComputerBridge {
   private readonly log: (line: string) => void
   /** Turns are `<boot>:<n>`, so a Mac never takes a restarted box's turn 1 for the one it already saw. */
   private readonly boot = randomBytes(6).toString('base64url')
+  /** Macs on an older build that refused `mac.computerReader`: told nothing more until their link drops */
+  private readonly readerless = new Set<string>()
   private rowTimer: unknown = null
   private lastPush = 0
 
@@ -170,7 +196,7 @@ export class ComputerBridge {
   // ── one call ───────────────────────────────────────────────────────
 
   /** One call, as ComputerSessions.run serves a Mac thread; one at a time per thread, in arrival order. */
-  run(ctx: ComputerToolContext, tool: string, args: unknown): Promise<ComputerToolOutcome> {
+  run(ctx: BridgedCallContext, tool: string, args: unknown): Promise<ComputerToolOutcome> {
     const checked = checkComputerCall(tool, args)
     if (!checked.ok) return Promise.resolve(refusal(checked.line))
     const id = ctx.threadId
@@ -219,8 +245,16 @@ export class ComputerBridge {
     return null
   }
 
-  private async dispatch(t: ThreadBridge, ctx: ComputerToolContext, tool: ComputerToolName, args: Record<string, unknown>): Promise<ComputerToolOutcome> {
+  /** What holds the thread's call now (pending.ts asks): the Mac's hold line or its card's words, else null. */
+  holdWords(sessionId: string): string | null {
+    return this.threads.get(sessionId)?.heldWords ?? null
+  }
+
+  private async dispatch(t: ThreadBridge, ctx: BridgedCallContext, tool: ComputerToolName, args: Record<string, unknown>): Promise<ComputerToolOutcome> {
     const id = t.id
+    // nothing goes to the Mac unread: a call left pending waits here for someone to read it
+    const reader = ctx.reader
+    if (reader && !reader.present() && ctx.signal) await reader.whenPresent(ctx.signal)
     // the same refusals again: a call can be given up, Stopped or paused while it waits behind another
     const late = this.refusalFor(id, ctx.signal)
     if (late) return refusal(late)
@@ -238,16 +272,24 @@ export class ComputerBridge {
     }
     this.touched()
 
-    const inflight: Inflight = { callId: null, macPeer: mac, giveUp: null, closed: false }
+    const inflight: Inflight = { callId: null, macPeer: mac, giveUp: null, closed: false, released: false, runningIn: null }
     t.inflight = inflight
     let given = false
     const onAbort = (): void => {
       given = true
       if (!inflight.callId) return
+      if (isSoftCancel(ctx.signal?.reason)) return this.softCancel(t, inflight)
       this.deps.calls.cancel(inflight.callId, abortedLine(ctx.signal) ?? hostErrorLine('cancelled'))
       this.tell(mac, id, 'mac.cancel', { callIds: [inflight.callId], reason: 'stopped' })
     }
     ctx.signal?.addEventListener('abort', onAbort, { once: true })
+    let offReader: (() => void) | null = null
+    if (reader) {
+      reader.releaseBy(() => this.release(t, inflight))
+      offReader = reader.onChange((present) => {
+        if (present && inflight.released) void this.restore(t, inflight)
+      })
+    }
     try {
       const raw = await this.deps.pause.guard({ sessionId: id, macPeer: mac, method: 'mac.computer', waitMs: 0, whilePaused: 'refuse' }, (callId) => {
         inflight.callId = callId
@@ -265,15 +307,76 @@ export class ComputerBridge {
       return this.failure(t, call, err)
     } finally {
       ctx.signal?.removeEventListener('abort', onAbort)
+      offReader?.()
       if (inflight.giveUp !== null) this.clock.clearTimeout(inflight.giveUp)
       if (t.inflight === inflight) t.inflight = null
       this.hold(t, null)
+      this.heldNow(t, null)
       if (t.row) {
         t.row = { ...t.row, running: null, lastCallAt: this.clock.now() }
         delete t.row.asking
         this.touched()
       }
     }
+  }
+
+  /**
+   * May the call's last reader leave? Only on the Mac's word: `{ held: true }`
+   * means it set the call's reading flag while the call waits at a hold, so no
+   * gate passes unread from now. `{ held: false }` (a request is out there), no
+   * answer within READER_ACK_MS, or a Mac on an older build keep the reader.
+   */
+  private async release(t: ThreadBridge, inflight: Inflight): Promise<boolean> {
+    const mac = inflight.macPeer
+    const callId = inflight.callId
+    if (!callId || inflight.closed || this.readerless.has(mac) || inflight.runningIn === t.holdEpoch) return false
+    if (inflight.released) return true
+    try {
+      const res = await this.deps.calls.call<MacComputerReaderResult>(mac, 'mac.computerReader', this.readerParams(t, callId, false), READER_ACK_MS)
+      if (res?.held === true) {
+        inflight.released = true
+        return true
+      }
+      inflight.runningIn = t.holdEpoch
+      return false
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (err instanceof PeerOfflineError) return false
+      if (message.startsWith('the Mac did not answer')) {
+        // the Mac may have set the flag and answered late: it reads again at once
+        inflight.released = true
+        void this.restore(t, inflight)
+        return false
+      }
+      this.readerless.add(mac)
+      this.log(`${mac}: mac.computerReader refused (${message}); a held call there waits as it did`)
+      return false
+    }
+  }
+
+  /** A reader is back: the Mac reads the call again; a call that cannot be told so is cancelled rather than left gated with nobody to free it. */
+  private async restore(t: ThreadBridge, inflight: Inflight): Promise<void> {
+    const callId = inflight.callId
+    if (!callId || !inflight.released) return
+    inflight.released = false
+    try {
+      await this.deps.calls.call(inflight.macPeer, 'mac.computerReader', this.readerParams(t, callId, true), READER_ACK_MS)
+    } catch (err) {
+      this.log(`thread=${t.id}: mac.computerReader true failed (${err instanceof Error ? err.message : String(err)}); the call is cancelled`)
+      this.softCancel(t, inflight)
+    }
+  }
+
+  private readerParams(t: ThreadBridge, callId: string, reading: boolean): never {
+    return { thread: { id: t.id, title: this.deps.sessions.get(t.id)?.title ?? '' }, args: { callIds: [callId], reading } } as never
+  }
+
+  /** A cancel the held-call rules asked for: the Mac stops the call and answers with the steps that ran; one that never does is given up. */
+  private softCancel(t: ThreadBridge, inflight: Inflight): void {
+    const callId = inflight.callId
+    if (!callId || inflight.giveUp !== null) return
+    this.tell(inflight.macPeer, t.id, 'mac.cancel', { callIds: [callId], reason: 'stopped' })
+    inflight.giveUp = this.clock.setTimeout(() => this.deps.calls.cancel(callId, MAC_SILENT_CANCEL), STOP_REPLY_MS)
   }
 
   /** The Mac's answer as the outcome; one for a call Stop or the thread's end closed still answers, but moves neither the row nor the ledger. */
@@ -344,8 +447,14 @@ export class ComputerBridge {
     if (next.asking) next.running = { tool: next.running?.tool ?? 'computer_act', words: askingWords(macName), startedAt: next.running?.startedAt ?? this.clock.now() }
     t.row = next
     this.touched()
-    // a card that replaces a hold is not a hold
     this.hold(t, next.running?.held && !next.asking ? next.running.words : null)
+    // a card is what holds the call for the model's answer (pending.ts), but not a hold the status line says
+    this.heldNow(t, next.asking || next.running?.held ? (next.running?.words ?? null) : null)
+  }
+
+  private heldNow(t: ThreadBridge, words: string | null): void {
+    if (words !== null && t.heldWords === null) t.holdEpoch++
+    t.heldWords = words
   }
 
   /** The thread's status says the Mac's hold line while the call waits there; told once per change. */
@@ -468,6 +577,8 @@ export class ComputerBridge {
 
   /** A Mac's link dropped: its rows end; calls out on it fail through PeerCalls.drop. */
   linkDown(envId: string): void {
+    // it may come back on a newer build: it is asked again
+    this.readerless.delete(envId)
     for (const t of this.threads.values())
       if (t.macPeer === envId) {
         this.hold(t, null)
@@ -492,7 +603,23 @@ export class ComputerBridge {
   private thread(id: string): ThreadBridge {
     let t = this.threads.get(id)
     if (!t) {
-      t = { id, turn: 1, status: undefined, stopped: false, queue: Promise.resolve(), queued: new Set(), inflight: null, row: null, macPeer: null, ledgered: false, idleTimer: null, nextShot: null, holdLine: null }
+      t = {
+        id,
+        turn: 1,
+        status: undefined,
+        stopped: false,
+        queue: Promise.resolve(),
+        queued: new Set(),
+        inflight: null,
+        row: null,
+        macPeer: null,
+        ledgered: false,
+        idleTimer: null,
+        nextShot: null,
+        holdLine: null,
+        heldWords: null,
+        holdEpoch: 0
+      }
       this.threads.set(id, t)
     }
     return t

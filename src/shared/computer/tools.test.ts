@@ -10,6 +10,7 @@ import {
   ComputerAppsInputSchema,
   ComputerBatchInputSchema,
   ComputerObserveInputSchema,
+  ComputerResultInputSchema,
   ComputerToolCallSchema,
   ComputerToolResultSchema,
   NOT_EXECUTED_LINE,
@@ -46,6 +47,14 @@ describe('the four tools', () => {
     const actions = Array(TOOL_BATCH_MAX_ACTIONS + 1).fill({ action: 'screenshot' })
     expect(ComputerBatchInputSchema.safeParse({ app: 'x', actions }).success).toBe(false)
     expect(ComputerObserveInputSchema.safeParse({ app: 'Finder', full: true, element: 6, menus: true }).success).toBe(true)
+  })
+
+  it('hold computer_result to an id of 1 to 16 characters and an optional cancel, and keep it out of the four', () => {
+    expect(ComputerResultInputSchema.parse({ id: 'c4' })).toEqual({ id: 'c4' })
+    expect(ComputerResultInputSchema.parse({ id: 'c4', cancel: true })).toEqual({ id: 'c4', cancel: true })
+    for (const bad of [{}, { id: '' }, { id: 'c'.repeat(17) }, { id: 'c4', cancel: 'yes' }]) expect(ComputerResultInputSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false)
+    expect(COMPUTER_TOOLS.map((t) => t.name)).not.toContain('computer_result')
+    expect(ComputerToolCallSchema.safeParse({ tool: 'computer_result', args: { id: 'c4' }, threadId: 't', permission: 'auto' }).success).toBe(false)
   })
 
   it('have flat JSON Schemas, with no oneOf or anyOf at the top', () => {

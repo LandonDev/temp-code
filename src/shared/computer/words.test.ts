@@ -11,6 +11,7 @@ import {
   computerPhrase,
   computerSessionAskTitle,
   computerToolOf,
+  isComputerResult,
   needsApproval,
   openItemName,
   type TitleContext
@@ -74,6 +75,15 @@ describe('asFourTool', () => {
     })
     expect(asFourTool('computer_batch', { app: 'Mail' })).toEqual({ tool: 'computer_batch', args: { app: 'Mail' } })
     expect(asFourTool('Read', {})).toBeNull()
+  })
+
+  it('is no way into the four for computer_result, which the host routes before them', () => {
+    expect(computerToolOf('mcp__app__computer_result')).toBeNull()
+    expect(asFourTool('mcp__app__computer_result', { id: 'c4' })).toBeNull()
+    expect(asFourTool('computer_result', { id: 'c4', cancel: true })).toBeNull()
+    expect(isComputerResult('mcp__app__computer_result')).toBe(true)
+    expect(isComputerResult('computer_result')).toBe(true)
+    expect(isComputerResult('computer_wait')).toBe(false)
   })
 })
 
@@ -255,6 +265,10 @@ describe('computerPhrase', () => {
 
   it('ignores other tools and survives a call with no input yet', () => {
     expect(computerPhrase('mcp__app__update_notes', {}, { live: true })).toBeNull()
+    expect(live('mcp__app__computer_result', { id: 'c4' })).toEqual({ verb: 'Waiting for', object: 'the held call' })
+    expect(live('computer_result', { id: 'c4', cancel: true })).toEqual({ verb: 'Cancelling', object: 'the held call' })
+    expect(settled('computer_result', { id: 'c4', cancel: false }, 'left_click [14] button "Save" · ax · changed')).toEqual({ verb: 'Waited for', object: 'the held call' })
+    expect(settled('computer_result', { id: 'c4', cancel: true })).toEqual({ verb: 'Cancelled', object: 'the held call' })
     expect(words(live('mcp__app__computer_act', undefined as unknown as object))).toBe('Using an app')
   })
 })
@@ -282,6 +296,11 @@ describe('computerActivity', () => {
   it('survives a call with no input yet, and ignores other tools', () => {
     expect(computerActivity('mcp__app__computer_act', undefined)).toEqual({ text: 'Using an app', kind: 'edit' })
     expect(computerActivity('mcp__app__update_notes', {})).toBeNull()
+  })
+  it('words computer_result as waiting for or cancelling the held call, reading nothing new', () => {
+    expect(computerActivity('mcp__app__computer_result', { id: 'c4' })).toEqual({ text: 'Waiting for the held call', kind: 'investigate' })
+    expect(computerActivity('computer_result', { id: 'c4', cancel: true })).toEqual({ text: 'Cancelling the held call', kind: 'investigate' })
+    expect(computerActivity('computer_result', undefined)).toEqual({ text: 'Waiting for the held call', kind: 'investigate' })
   })
 })
 

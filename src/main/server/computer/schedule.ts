@@ -13,6 +13,7 @@ import {
 import { hostErrorLine } from '@shared/computer/hostErrors'
 import { COMPUTER_SESSION_TOOL, computerSessionAskTitle } from '@shared/computer/words'
 import { CLIPBOARD_WAIT_WORDS, macFreeWords } from '@shared/statusWords'
+import { READER_WAIT_WORDS } from '@shared/computer/heldCalls'
 import type { OwnInputWindow, OwnSpan, PersonIdleSource } from '../../personIdle'
 import type { PresenceSource } from '../../presence'
 import type { ComputerService } from './service'
@@ -200,7 +201,7 @@ export class SessionScheduler implements SessionTierGate {
   async run<T extends ActionResult | BatchResult>(ctx: TierGateRun, send: (tiers: Tier[]) => Promise<T>): Promise<T> {
     const st = this.state(ctx.threadId)
     let tiers = ctx.tiers
-    if (tiers.includes('session')) {
+    while (tiers.includes('session')) {
       try {
         await this.slot.acquire(ctx.threadId, ctx.signal, (place) => this.setHeld(ctx.threadId, macFreeWords(place)))
       } finally {
@@ -210,6 +211,22 @@ export class SessionScheduler implements SessionTierGate {
       if (!st.heldDown && !this.freedom(st).free) {
         tiers = tiers.filter((t) => t !== 'session')
         this.slot.release(ctx.threadId)
+        break
+      }
+      // a bridged call nobody reads now never sits on the person's Mac: the slot goes to the next thread, and it is admitted again from the top
+      const reader = ctx.reader
+      if (!reader || reader.present() || st.heldDown || ctx.signal.aborted) break
+      this.slot.release(ctx.threadId)
+      this.setHeld(ctx.threadId, READER_WAIT_WORDS)
+      try {
+        await reader.whenPresent(ctx.signal)
+      } finally {
+        this.setHeld(ctx.threadId, null)
+      }
+      const f = this.freedom(st)
+      if (ctx.signal.aborted || !f.free) {
+        tiers = tiers.filter((t) => t !== 'session')
+        break
       }
     }
     const session = tiers.includes('session')

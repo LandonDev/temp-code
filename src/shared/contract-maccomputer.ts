@@ -14,12 +14,14 @@ import { ComputerToolCallSchema, ComputerToolResultSchema, type ComputerToolCall
  * the call, lands the pictures under its own thread and mirrors the Mac's row
  * for the thread's Activity. `mac.computerEnd` tells the Mac the box thread's
  * turn settled, was stopped, or the thread ended; the existing `mac.cancel`
- * reaches a call in flight.
+ * reaches a call in flight. `mac.computerReader` tells the Mac whether anyone
+ * on the box still reads a call (computer/pending.ts): a call nobody reads
+ * waits at its next request.
  */
 
 /** The offer a Mac adds to peer.register for a host whose computer use is on and possible. */
 export const MAC_COMPUTER_OFFER = 'computer'
-export const MAC_COMPUTER_PEER_METHODS = ['mac.computer', 'mac.computerEnd'] as const
+export const MAC_COMPUTER_PEER_METHODS = ['mac.computer', 'mac.computerEnd', 'mac.computerReader'] as const
 export type MacComputerPeerMethod = (typeof MAC_COMPUTER_PEER_METHODS)[number]
 export const isMacComputerPeerMethod = (m: string): m is MacComputerPeerMethod =>
   (MAC_COMPUTER_PEER_METHODS as readonly string[]).includes(m)
@@ -89,6 +91,18 @@ export type MacComputerCallArgs = z.infer<typeof MacComputerCallArgsSchema>
 
 export const MacComputerEndArgsSchema = z.object({ reason: z.enum(['settled', 'stopped', 'ended']) })
 export type MacComputerEndArgs = z.infer<typeof MacComputerEndArgsSchema>
+
+/** Whether anyone on the box reads these calls: `false` holds each at its next request, `true` lets it go on. */
+export const MacComputerReaderArgsSchema = z.object({ callIds: z.array(z.string().min(1).max(200)).min(1).max(16), reading: z.boolean() })
+export type MacComputerReaderArgs = z.infer<typeof MacComputerReaderArgsSchema>
+/**
+ * `held: true` when every named call now waits at a hold with no request out,
+ * so nothing passes its gate unread; `false` when one has a request out (its
+ * flag stays true) or is not here.
+ */
+export interface MacComputerReaderResult {
+  held: boolean
+}
 
 /**
  * What a `mac.computer` call answers: the step lines and the body apart, so

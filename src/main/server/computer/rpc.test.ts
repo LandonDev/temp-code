@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { COMPUTER_TOOLS, computerToolJsonSchema } from '@shared/computer/tools'
+import { COMPUTER_TOOLS, computerToolJsonSchema, computerToolSpecs } from '@shared/computer/tools'
+import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, type HeldTimings } from '@shared/computer/heldCalls'
 import type { ComputerPush } from '@shared/contract-computer'
 import { ComputerPushSchema } from '@shared/wireSchemas'
 import { MacThreadTokens } from '../macTools'
@@ -23,13 +24,13 @@ const until = async (pred: () => boolean, label: string): Promise<void> => {
   }
 }
 
-function make(permission: 'safe' | 'auto' = 'auto') {
+function make(permission: 'safe' | 'auto' = 'auto', timings?: HeldTimings, setToolHold?: (id: string, line: string | null) => void) {
   const h = computerHarness()
   harnesses.push(h)
   h.set('t1', { permission })
   const tokens = new MacThreadTokens(null, 'computer')
   const host: ComputerHost = { available: () => true, sessions: h.sessions, service: h.service, tokens }
-  const rpc = new ComputerRpc(host)
+  const rpc = new ComputerRpc(host, undefined, null, { ...(timings ? { timings } : {}), ...(setToolHold ? { setToolHold } : {}) })
   rpcs.push(rpc)
   const token = tokens.tokenFor('t1')
   const count = (method: string) => h.requests().filter((r) => r.method === method).length
@@ -97,8 +98,9 @@ describe('the bridge', () => {
 
   it('app.computerTools equals the JSON schemas of tools.ts', () => {
     const { rpc, token } = make()
+    // the bridge lists computer_result after the four
     expect(rpc.socket().tools({ sessionId: 't1', token })).toEqual({
-      tools: COMPUTER_TOOLS.map((t) => ({ name: t.name, description: t.description, inputSchema: computerToolJsonSchema(t.input) }))
+      tools: computerToolSpecs('anthropic', 'act', { result: true }).map((t) => ({ name: t.name, description: t.description, inputSchema: computerToolJsonSchema(t.input) }))
     })
   })
 
@@ -107,12 +109,12 @@ describe('the bridge', () => {
     h.set('t2', { provider: 'codex', model: 'gpt-6.1-sol' })
     const tokens = (rpc as unknown as { host: ComputerHost }).host.tokens
     const { tools } = rpc.socket().tools({ sessionId: 't2', token: tokens.tokenFor('t2') })
-    expect(tools.map((t) => t.name)).toEqual(['computer_apps', 'computer_observe', 'computer_act', 'computer_batch'])
+    expect(tools.map((t) => t.name)).toEqual(['computer_apps', 'computer_observe', 'computer_act', 'computer_batch', 'computer_result'])
     expect(tools[1].description).toContain('getAXState')
     h.set('t3', { provider: 'muse', model: 'muse-wonder-1.0' })
     const muse = rpc.socket().tools({ sessionId: 't3', token: tokens.tokenFor('t3') }).tools
     expect(muse[1].description).not.toContain('getAXState')
-    expect(muse.map((t) => t.description)).toEqual(COMPUTER_TOOLS.map((t) => t.description))
+    expect(muse.map((t) => t.description)).toEqual([...COMPUTER_TOOLS, computerToolSpecs('anthropic', 'act', { result: true })[4]].map((t) => t.description))
   })
 
   it('app.computerCancel denies a waiting card, and an Allow after it acts on nothing', async () => {
@@ -149,6 +151,91 @@ describe('the bridge', () => {
     expect((await queued).text).toBe('cancelled: the call was given up')
     expect(h.cards).toHaveLength(0)
     expect(count('action.run')).toBe(0)
+  })
+})
+
+describe('a held call on the bridge (pending.ts)', () => {
+  const quick: HeldTimings = { answerMs: 150, waitMs: 150, unreadMs: 60_000 }
+  const act = { app: 'TextEdit', action: 'key', text: 'a' }
+
+  it("refuses computer_result with a token not the thread's own", async () => {
+    const { rpc } = make()
+    await expect(rpc.socket().call({ sessionId: 't1', token: 'x', call: 1, tool: 'computer_result', args: { id: 'c1' }, images: 'none' })).rejects.toThrow(/forbidden/)
+  })
+
+  it('a call held on its card answers with an id; allowed, it sends nothing until computer_result reads it', async () => {
+    const holds: (string | null)[] = []
+    const { h, rpc, token, count } = make('safe', quick, (_id, line) => holds.push(line))
+    const socket = rpc.socket()
+    const first = await socket.call({ sessionId: 't1', token, call: 1, tool: 'computer_act', args: act, images: 'none' })
+    expect(first.isError).toBe(false)
+    expect(first.text).toBe(
+      `Held after 0s: ${LOCAL_CARD_WORDS}. Nothing runs until you ask for it: call computer_result with id "c1". Your next other computer call cancels it.`
+    )
+    expect(h.cards).toHaveLength(1)
+    h.cards[0].decide(true)
+    await until(() => h.sessions.rowOf('t1')?.running?.words === READER_WAIT_WORDS, 'the row to wait for the thread')
+    await new Promise((r) => setTimeout(r, 100))
+    expect(count('action.run')).toBe(0)
+    const result = await socket.call({ sessionId: 't1', token, call: 2, tool: 'computer_result', args: { id: 'c1' }, images: 'none' })
+    expect(result.isError).toBe(false)
+    expect(result.text).toMatch(/^key a · process · changed/)
+    expect(count('action.run')).toBe(1)
+    // the id is spent
+    const again = await socket.call({ sessionId: 't1', token, call: 3, tool: 'computer_result', args: { id: 'c1' }, images: 'none' })
+    expect(again).toMatchObject({ isError: true, text: 'nothing held under "c1": its result was given, or it was cancelled' })
+  })
+
+  it('computer_result on a call still held says so after its wait; cancel answers that nothing ran', async () => {
+    const { h, rpc, token, count } = make('safe', quick)
+    const socket = rpc.socket()
+    await socket.call({ sessionId: 't1', token, call: 1, tool: 'computer_act', args: act, images: 'none' })
+    const still = await socket.call({ sessionId: 't1', token, call: 2, tool: 'computer_result', args: { id: 'c1' }, images: 'none' })
+    expect(still.text).toMatch(new RegExp(`^Still held, \\d+s: ${LOCAL_CARD_WORDS}\\. Call computer_result again`))
+    const cancelled = await socket.call({ sessionId: 't1', token, call: 3, tool: 'computer_result', args: { id: 'c1', cancel: true }, images: 'none' })
+    expect(cancelled).toMatchObject({ isError: false, text: 'Cancelled c1 (key in TextEdit) before it ran.' })
+    expect(h.cards[0].req.signal?.aborted).toBe(true)
+    expect(count('action.run')).toBe(0)
+  })
+
+  it('the next other computer call cancels the pending one and says so first', async () => {
+    const { h, rpc, token, count } = make('safe', quick)
+    const socket = rpc.socket()
+    await socket.call({ sessionId: 't1', token, call: 1, tool: 'computer_act', args: act, images: 'none' })
+    h.set('t1', { permission: 'auto' })
+    const next = await socket.call({ sessionId: 't1', token, call: 2, tool: 'computer_observe', args: { app: 'TextEdit' }, images: 'none' })
+    expect(next.text.split('\n')[0]).toBe('Cancelled c1 (key in TextEdit) before it ran.')
+    expect(next.text).toContain('app "TextEdit"')
+    expect(count('action.run')).toBe(0)
+  })
+
+  it("a waiting turn keeps the pending call; a settled or paused one cancels it", async () => {
+    const { h, rpc, token } = make('safe', quick)
+    const socket = rpc.socket()
+    await socket.call({ sessionId: 't1', token, call: 1, tool: 'computer_act', args: act, images: 'none' })
+    rpc.onMeta({ id: 't1', status: 'waiting', archived: false })
+    expect(h.cards[0].req.signal?.aborted).toBe(false)
+    rpc.onMeta({ id: 't1', status: 'idle', archived: false })
+    expect(h.cards[0].req.signal?.aborted).toBe(true)
+    const gone = await socket.call({ sessionId: 't1', token, call: 2, tool: 'computer_result', args: { id: 'c1' }, images: 'none' })
+    expect(gone.text).toBe('nothing held under "c1": its result was given, or it was cancelled')
+    await socket.call({ sessionId: 't1', token, call: 3, tool: 'computer_act', args: act, images: 'none' })
+    rpc.onMeta({ id: 't1', status: 'paused', archived: false })
+    expect(h.cards[1].req.signal?.aborted).toBe(true)
+  })
+
+  it("the status line drops the hold while nobody reads the call and says it again when a reader comes", async () => {
+    const holds: (string | null)[] = []
+    const { rpc, token } = make('safe', quick, (_id, line) => holds.push(line))
+    const socket = rpc.socket()
+    rpc.toolHold('t1', 'Waiting for the Mac to be free')
+    expect(holds).toEqual(['Waiting for the Mac to be free'])
+    await socket.call({ sessionId: 't1', token, call: 1, tool: 'computer_act', args: act, images: 'none' })
+    expect(holds).toEqual(['Waiting for the Mac to be free', null])
+    const read = socket.call({ sessionId: 't1', token, call: 2, tool: 'computer_result', args: { id: 'c1' }, images: 'none' })
+    expect(holds).toEqual(['Waiting for the Mac to be free', null, 'Waiting for the Mac to be free'])
+    await read
+    expect(holds.at(-1)).toBeNull()
   })
 })
 

@@ -264,6 +264,48 @@ describe('app-mcp-bridge computer tools over stdio', () => {
     ])
   })
 
+  it("lists computer_result from the app's list and sends it as app.computer with no client deadline", async () => {
+    const tools = ['computer_apps', 'computer_observe', 'computer_act', 'computer_batch', 'computer_result'].map((name) => ({
+      name,
+      description: `Server description for ${name}`,
+      inputSchema: { type: 'object', properties: {} }
+    }))
+    const app = await startBridge((request, ws) => {
+      if (request.method === 'app.computerTools') reply(ws, request, { tools })
+      else setTimeout(() => reply(ws, request, { text: 'left_click · ax · changed', images: [], isError: false }), 80)
+    }, tokenEnv, true)
+    expect(computerNames(await app.request(1, 'tools/list')).map((t) => t.name)).toContain('computer_result')
+    const args = { id: 'c4' }
+    const response = await app.request('read-1', 'tools/call', { name: 'computer_result', arguments: args })
+    expect(app.requests.find((r) => r.method === 'app.computer')).toMatchObject({
+      params: { sessionId: 'computer-thread', call: 'read-1', tool: 'computer_result', args, token: 'thread-token' }
+    })
+    expect(response.result).toEqual({ content: [{ type: 'text', text: 'left_click · ax · changed' }], isError: false })
+  })
+
+  it('a cancel for a computer_result sends app.computerCancel with its own request id', async () => {
+    const pending = new Map<unknown, { request: RpcRequest; ws: WebSocket }>()
+    const app = await startBridge((request, ws) => {
+      if (request.method === 'app.computer') pending.set(request.params.call, { request, ws })
+      else if (request.method === 'app.computerCancel') {
+        const p = pending.get(request.params.call)!
+        reply(ws, request, { cancelled: true })
+        reply(p.ws, p.request, { text: 'cancelled', images: [], isError: true })
+      } else reply(ws, request, 'threads')
+    }, tokenEnv)
+    const held = app.request('act-9', 'tools/call', { name: 'computer_act', arguments: {} })
+    const read = app.request('read-9', 'tools/call', { name: 'computer_result', arguments: { id: 'c1' } })
+    await vi.waitFor(() => expect(pending.size).toBe(2))
+    app.notify('notifications/cancelled', { requestId: 'read-9' })
+    expect((await read).result.isError).toBe(true)
+    expect(app.requests.filter((r) => r.method === 'app.computerCancel')).toEqual([
+      expect.objectContaining({ params: { sessionId: 'computer-thread', call: 'read-9', token: 'thread-token' } })
+    ])
+    const act = pending.get('act-9')!
+    reply(act.ws, act.request, { text: 'done', images: [], isError: false })
+    expect((await held).result.isError).toBe(false)
+  })
+
   it('logs a discovery failure once, caches the empty list and keeps serving other tools', async () => {
     const app = await startBridge((request, ws) => {
       if (request.method === 'app.computerTools') {

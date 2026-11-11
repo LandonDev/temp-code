@@ -21,12 +21,14 @@ import {
   COMPUTER_SWITCH_OFF,
   MacComputerCallArgsSchema,
   MacComputerEndArgsSchema,
+  MacComputerReaderArgsSchema,
   computerCallBudgetMs,
   computerUnavailableOnMac,
   macComputerKey,
   type ComputerPeerAnswer,
   type MacComputerEndResult,
-  type MacComputerPeerMethod
+  type MacComputerPeerMethod,
+  type MacComputerReaderResult
 } from '@shared/contract-maccomputer'
 import { hostErrorLine } from '@shared/computer/hostErrors'
 import type { ComputerToolCall } from '@shared/computer/tools'
@@ -144,6 +146,12 @@ interface CallState {
   awayDenied: boolean
   /** the call's own progress sender */
   progress: RowSender | null
+  /** someone on the box reads this call (mac.computerReader); while false its next request waits */
+  reading: boolean
+  /** service requests out */
+  out: number
+  /** woken when reading turns true */
+  waiters: Set<() => void>
 }
 
 interface LiveState {
@@ -185,6 +193,39 @@ const REAL_CLOCK: MacComputerClock = {
 
 let localCalls = 0
 
+/** The call's gate on the box's word (mac.computerReader): every request waits while nobody there reads the call. */
+function readerOf(own: CallState): NonNullable<ComputerToolContext['reader']> {
+  const whenPresent = (signal: AbortSignal): Promise<void> =>
+    own.reading || signal.aborted
+      ? Promise.resolve()
+      : new Promise((resolve) => {
+          const done = (): void => {
+            own.waiters.delete(done)
+            signal.removeEventListener('abort', done)
+            resolve()
+          }
+          own.waiters.add(done)
+          signal.addEventListener('abort', done, { once: true })
+        })
+  return {
+    present: () => own.reading,
+    whenPresent,
+    request: async (signal, send) => {
+      while (!own.reading) {
+        if (signal.aborted) throw new Error(abortedLine(signal) ?? hostErrorLine('cancelled'))
+        await whenPresent(signal)
+      }
+      if (signal.aborted) throw new Error(abortedLine(signal) ?? hostErrorLine('cancelled'))
+      own.out++
+      try {
+        return await send()
+      } finally {
+        own.out--
+      }
+    }
+  }
+}
+
 const appOf = (call: ComputerToolCall): string => ('app' in call.args && typeof call.args.app === 'string' ? call.args.app : '')
 const windowOf = (call: ComputerToolCall): string | null =>
   'window' in call.args && typeof call.args.window === 'string' ? call.args.window : null
@@ -215,8 +256,31 @@ export class MacComputer {
     method: MacComputerPeerMethod,
     args: unknown,
     ctx: { deadlineAt: number; callId?: string; progress?: (chunk: string) => void }
-  ): Promise<ComputerPeerAnswer | MacComputerEndResult> {
+  ): Promise<ComputerPeerAnswer | MacComputerEndResult | MacComputerReaderResult> {
+    if (method === 'mac.computerReader') return Promise.resolve(this.reader(env, thread, args))
     return method === 'mac.computerEnd' ? this.end(env, thread, args) : this.call(env, thread, args, ctx)
+  }
+
+  /**
+   * mac.computerReader from the box. `false` sets a call's flag only while it
+   * waits at a hold (no request out) and answers `{ held: true }`: nothing
+   * passes its gate unread from now. One with a request out keeps its flag and
+   * answers `{ held: false }`, so the box waits on as for a running call.
+   */
+  private reader(env: { id: string; name: string }, thread: MacCallThread, raw: unknown): MacComputerReaderResult {
+    const { callIds, reading } = MacComputerReaderArgsSchema.parse(raw)
+    const st = this.states.get(macComputerKey(env.id, thread.id))
+    const calls = callIds.map((id) => st?.calls.get(id))
+    if (reading) {
+      for (const c of calls) if (c && !c.reading) {
+        c.reading = true
+        for (const wake of [...c.waiters]) wake()
+      }
+      return { held: false }
+    }
+    if (calls.some((c) => !c || c.out > 0)) return { held: false }
+    for (const c of calls) if (c) c.reading = false
+    return { held: true }
   }
 
   /** mac.cancel from the box: the named calls of the thread stop now (the box has answered them already). */
@@ -309,7 +373,7 @@ export class MacComputer {
 
     const st = this.stateOf(key, env.id, thread.id)
     const callId = ctx.callId ?? `local_${++localCalls}`
-    const own: CallState = { controller: new AbortController(), away: false, awayDenies, awayDenied: false, progress: null }
+    const own: CallState = { controller: new AbortController(), away: false, awayDenies, awayDenied: false, progress: null, reading: true, out: 0, waiters: new Set() }
     const signal = own.controller.signal
     st.calls.set(callId, own)
     this.disarmIdle(st)
@@ -330,7 +394,8 @@ export class MacComputer {
           rootId: macComputerKey(env.id, rootId),
           permission: () => call.permission,
           signal,
-          approve: (req) => this.ask(env, thread, st, own, req, ctx.deadlineAt - budget, callId, line)
+          approve: (req) => this.ask(env, thread, st, own, req, ctx.deadlineAt - budget, callId, line),
+          reader: readerOf(own)
         },
         call.tool,
         call.args

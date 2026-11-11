@@ -1343,7 +1343,8 @@ export async function startServer(
         awayOn: () => registry.awayOn(),
         getSetting: (key) => store.getSetting(key),
         held: (threadId, line) => {
-          registry.setToolHold(threadId, line)
+          // the status line says the hold only while someone reads the call (computer/pending.ts)
+          computerRpc.toolHold(threadId, line)
           sessions.setHeld(threadId, line)
         },
         threadOf: (serviceSession) => sessions.threadOfServiceSession(serviceSession)
@@ -1371,7 +1372,7 @@ export async function startServer(
       resources,
       reboot: (id) => void registry.rebootAtNextTurn(id),
       awayNoticed: (id, kind, what) => registry.awayNotice(id, kind, what),
-      held: (id, line) => registry.setToolHold(id, line)
+      held: (id, line) => computerRpc.toolHold(id, line)
     })
     peerCalls.onOffers((id, offers) => bridge.offersChanged(id, offers))
     peerCalls.onDrop((id) => bridge.linkDown(id))
@@ -1382,7 +1383,11 @@ export async function startServer(
   }
   computerBridgeHooks.current = computerBridge
   computerBridgeHooks.tokens = computerBridge ? computerBridgeTokens : null
-  const computerRpc = new ComputerRpc(computer, () => computerWhy, computerBridge ? { bridge: computerBridge, tokens: computerBridgeTokens } : null)
+  const computerRpc = new ComputerRpc(computer, () => computerWhy, computerBridge ? { bridge: computerBridge, tokens: computerBridgeTokens } : null, {
+    setToolHold: (id, line) => registry.setToolHold(id, line)
+  })
+  // a turn that settles or pauses cancels the thread's held calls left pending on the bridge
+  registry.onMeta((m) => computerRpc.onMeta(m))
   // The box side: a thread here starting or spawning on a registered Mac,
   // reached by the app tools (apptools.ts, orchestration.ts).
   // Notices name this host as the environment switcher does.

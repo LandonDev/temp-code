@@ -3704,7 +3704,8 @@ export class SessionRegistry {
         this.pendingAwayDenies.delete(toolKey)
         clearTimeout(timer)
         this.append(sessionId, { type: 'approval-resolved', requestId, allow, auto })
-        this.append(sessionId, { type: 'status', status: 'running' })
+        // back to running only from this wait: a card withdrawn after the turn settled (a computer call left pending) leaves the thread idle
+        if (map.size === 0 && this.get(sessionId)?.status === 'waiting') this.append(sessionId, { type: 'status', status: 'running' })
         resolve(allow)
       }
       const timer = setTimeout(() => finish(false, true), APPROVAL_TIMEOUT_MS)

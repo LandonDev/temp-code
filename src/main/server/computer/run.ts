@@ -22,6 +22,7 @@ import { actionWords, asFourTool, computerActivity, computerApprovalInput, compu
 import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
 import { hostErrorLine, noObservationLine, noReadForTextLine, sessionRefusedLine } from '@shared/computer/hostErrors'
 import { formatHeldLine } from '@shared/computer/scheduleRules'
+import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/computer/heldCalls'
 import { awayAllowsKind } from '@shared/away'
 import type { PermissionPolicy, SessionMeta } from '@shared/events'
 import type { ApprovalRequest } from '../drivers/types'
@@ -50,6 +51,7 @@ import {
   type StepsResult
 } from './result'
 import type { ComputerService } from './service'
+import type { CallReader } from './pending'
 import { landShot, nextShotNumber } from './shots'
 import type { SessionTierGate, TierDecision, TierGateContext } from './tierGate'
 import type { SettingsStore, TierVerdicts } from './verdicts'
@@ -76,6 +78,11 @@ export interface ComputerToolContext {
   approve?: (req: ApprovalRequest) => Promise<boolean>
   /** the thread's root for the tier gate; default the host's rootOf (a box thread on the Mac: macComputerKey(box, root)) */
   rootId?: string
+  /**
+   * A bridged call (pending.ts): every service request waits for someone to
+   * read the call's answer; Claude's calls carry none and pay nothing.
+   */
+  reader?: Pick<CallReader, 'present' | 'whenPresent' | 'request'>
 }
 
 export interface ComputerRegistry {
@@ -159,7 +166,11 @@ const ABORT_WORDS: Record<string, string> = {
   stopped: hostErrorLine('stopped'),
   paused: hostErrorLine('cancelled', 'the thread was paused'),
   interrupt: hostErrorLine('cancelled', 'the turn was stopped'),
-  ended: hostErrorLine('cancelled', 'the thread ended')
+  ended: hostErrorLine('cancelled', 'the thread ended'),
+  settled: hostErrorLine('cancelled', 'the turn ended'),
+  unread: hostErrorLine('cancelled', UNREAD_WORDS),
+  superseded: hostErrorLine('cancelled', 'a later computer call replaced it'),
+  cancel: hostErrorLine('cancelled', 'computer_result cancelled it')
 }
 
 /** The line a call answers once its signal fired, or null while it runs on. */
@@ -286,7 +297,26 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
 
   // 3. the card, the permission read now: safe and edits ask for every act, every mode for a flag or a password field
   const permission = ctx.permission?.() ?? host.registry.get(threadId)?.permission ?? 'safe'
-  const approve = ctx.approve ?? ((req: ApprovalRequest) => host.registry.requestApproval(threadId, req))
+  const ask = ctx.approve ?? ((req: ApprovalRequest) => host.registry.requestApproval(threadId, req))
+  /** The row's held line while a wait of the call's own lasts; a line the gate set meanwhile is left alone. */
+  const holding = async <T>(line: string, wait: () => Promise<T>): Promise<T> => {
+    const live = t.live
+    const mine = live !== null && !live.held
+    if (mine) {
+      live.held = line
+      host.touched(t)
+    }
+    try {
+      return await wait()
+    } finally {
+      if (mine && live!.held === line) {
+        live!.held = null
+        host.touched(t)
+      }
+    }
+  }
+  // a card is a hold: the row says so, and a bridged call held on it answers in time (pending.ts)
+  const approve = (req: ApprovalRequest): Promise<boolean> => holding(LOCAL_CARD_WORDS, () => ask(req))
   const hostNeed = passwordTarget(steps, app()?.book)
   const titleCtx = (): TitleContext => {
     const a = app()
@@ -308,7 +338,8 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
       classes,
       serviceSession: t.serviceSession,
       ...(ctx.callId ? { callId: ctx.callId } : {}),
-      approve
+      approve,
+      ...(ctx.reader ? { reader: ctx.reader } : {})
     }
   }
   const need = needsApproval(tool, args, permission, hostNeed)
@@ -353,7 +384,7 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     await host.service.request('session.open', { session: t.serviceSession })
     t.openedIn = conn.epoch
   }
-  async function call<M extends ComputerMethod>(method: M, params: ComputerParams<M>): Promise<ComputerResult<M>> {
+  async function send<M extends ComputerMethod>(method: M, params: ComputerParams<M>): Promise<ComputerResult<M>> {
     await open()
     try {
       return await host.service.request(method, params, { signal })
@@ -363,6 +394,13 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
       await open()
       return await host.service.request(method, params, { signal })
     }
+  }
+  /** Every request, a read or an input: on the bridge it waits until someone will read the result, so nothing runs unread. */
+  async function call<M extends ComputerMethod>(method: M, params: ComputerParams<M>): Promise<ComputerResult<M>> {
+    const reader = ctx.reader
+    if (!reader) return await send(method, params)
+    if (!reader.present()) await holding(READER_WAIT_WORDS, () => reader.whenPresent(signal))
+    return await reader.request(signal, () => send(method, params))
   }
 
   const errCtx: ErrorContext = {

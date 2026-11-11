@@ -29,6 +29,8 @@ export interface TierGateContext {
   callId?: string
   /** the call's own card path: registry.requestApproval here, the Mac bridge's card for a box thread */
   approve?: (req: ApprovalRequest) => Promise<boolean>
+  /** a bridged call's reader (pending.ts): a session-tier call takes the person's Mac only while someone will read its result */
+  reader?: { present(): boolean; whenPresent(signal: AbortSignal): Promise<void> }
 }
 
 export interface TierGateRequest extends TierGateContext {

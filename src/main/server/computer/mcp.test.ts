@@ -119,6 +119,26 @@ describe('computerTools on a box thread bridged to its Mac', () => {
     expect(computerToolList(session).some((t) => t.description.endsWith(COMPUTER_BRIDGE_NOTE))).toBe(false)
   })
 
+  it('the bridge lists computer_result fifth in both tool shapes when asked, and Claude never gets it', async () => {
+    for (const meta of [{ provider: 'codex', model: 'gpt-6.1-sol' }, { provider: 'muse', model: 'muse-wonder-1.0' }] as const) {
+      for (const words of [null, { shape: 'anthropic', tools: 'act' }, { shape: 'cua', tools: 'act' }, { shape: 'anthropic', tools: 'per-verb' }, { shape: 'cua', tools: 'per-verb' }] as const) {
+        setComputerWordsOverride(words)
+        const four = computerToolList(meta, { bridged: true }).map((t) => t.name)
+        const five = computerToolList(meta, { bridged: true, result: true })
+        expect(four).not.toContain('computer_result')
+        expect(five.map((t) => t.name)).toEqual([...four, 'computer_result'])
+        expect(five.at(-1)!.description.endsWith(COMPUTER_BRIDGE_NOTE)).toBe(true)
+        expect(five.at(-1)!.inputSchema.required).toEqual(['id'])
+        if (words?.tools === 'act') expect([four.length, five.length]).toEqual([4, 5])
+      }
+    }
+    setComputerWordsOverride(null)
+    expect(computerToolList({ provider: 'codex', model: 'gpt-6.1-sol' }, { result: true })).toHaveLength(5)
+    expect(computerToolList({ provider: 'codex', model: 'gpt-6.1-sol' })).toHaveLength(4)
+    const { tools } = await (await connect(null, stubBridge(true).bridge)).listTools()
+    expect(tools.map((t) => t.name)).not.toContain('computer_result')
+  })
+
   it('a call goes to the bridge, never to a host that is not available', async () => {
     const h = computerHarness()
     harnesses.push(h)

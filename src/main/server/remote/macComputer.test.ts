@@ -522,3 +522,95 @@ describe('MacComputer: the answer', () => {
     expect(bridgedLanding('/d', KEY('t1'))).toMatch(/^\/d\/computer\/bridged\/t_[0-9a-f]{40}$/)
   })
 })
+
+describe("MacComputer: the box's reader (mac.computerReader)", () => {
+  const click = { tool: 'computer_act' as const, args: { app: 'TextEdit', action: 'left_click', coordinate: [5, 5] }, permission: 'safe' as const }
+  const reading = (s: ReturnType<typeof setup>, callIds: string[], on: boolean, thread = 's1'): Promise<unknown> =>
+    s.mb.handle('mac.computerReader', { thread: { id: thread, title: '' }, args: { callIds, reading: on } } as never, { from: ENV, deadlineAt: Date.now() + 15_000 })
+  /** The fake's act goes through the reader's gate as the real run's service requests do; `sent` counts what reached the service. */
+  const gatedAct = (s: ReturnType<typeof setup>) => {
+    const sent: string[] = []
+    s.fake.behave(async (r) =>
+      r.ctx.reader!.request(r.ctx.signal!, async () => {
+        sent.push(r.ctx.threadId)
+        return { steps: ['1. left_click · ax · changed'], shots: [], body: 'ok', isError: false }
+      })
+    )
+    return sent
+  }
+  const quiet = (): Promise<void> => new Promise((ok) => setTimeout(ok, 30))
+
+  it('false while the call waits at its card answers held: true; once allowed nothing reaches the service until true', async () => {
+    const s = setup()
+    const sent = gatedAct(s)
+    const p = s.call({ ...click, callId: 'cx' })
+    await until(() => s.cards().length === 1, 'the card')
+    expect(await reading(s, ['cx'], false)).toEqual({ held: true })
+    s.mb.decide(s.cards()[0].id, true, 'thread')
+    await quiet()
+    expect(sent).toEqual([])
+    expect(await reading(s, ['cx'], true)).toEqual({ held: false })
+    expect(await p).toMatchObject({ isError: false, steps: ['1. left_click · ax · changed'] })
+    expect(sent).toEqual([KEY()])
+  })
+
+  it('false while the call waits for the cap answers held: true; once admitted nothing reaches the service until true', async () => {
+    const s = setup({ maxComputer: 1 })
+    await s.call({ thread: 's0' })
+    const sent = gatedAct(s)
+    const p = s.call({ ...click, permission: 'auto', thread: 's1', callId: 'cap' })
+    await until(() => s.lives().some((r) => r.sessionId === 's1' && r.status === 'held'), 'in line')
+    expect(await reading(s, ['cap'], false, 's1')).toEqual({ held: true })
+    await s.end('settled', 's0')
+    await until(() => s.fake.runs.some((r) => r.ctx.threadId === KEY('s1')), 'admitted')
+    await quiet()
+    expect(sent).toEqual([])
+    await reading(s, ['cap'], true, 's1')
+    expect((await p).isError).toBe(false)
+    expect(sent).toEqual([KEY('s1')])
+  })
+
+  it('a cancel while the call is held unread sends no input', async () => {
+    const s = setup()
+    const sent = gatedAct(s)
+    const p = s.settle(s.call({ ...click, callId: 'cx' }))
+    await until(() => s.cards().length === 1, 'the card')
+    expect(await reading(s, ['cx'], false)).toEqual({ held: true })
+    s.mb.decide(s.cards()[0].id, true, 'thread')
+    await quiet()
+    await s.cancel(['cx'])
+    const out = await p
+    expect(out.ok ? out.value.isError : true).toBe(true)
+    await reading(s, ['cx'], true)
+    await quiet()
+    expect(sent).toEqual([])
+  })
+
+  it('false while a request is out answers held: false and leaves the flag true: the call finishes without waiting', async () => {
+    const s = setup()
+    let open: () => void = () => {}
+    const gate = new Promise<void>((ok) => (open = ok))
+    let inside = false
+    const sent: number[] = []
+    s.fake.behave(async (r) => {
+      await r.ctx.reader!.request(r.ctx.signal!, async () => {
+        inside = true
+        sent.push(1)
+        await gate
+      })
+      await r.ctx.reader!.request(r.ctx.signal!, async () => void sent.push(2))
+      return { steps: ['1. key a · ax · changed', '2. key b · ax · changed'], shots: [], body: 'ok', isError: false }
+    })
+    const p = s.call({ ...click, permission: 'auto', callId: 'cx' })
+    await until(() => inside, 'the request out')
+    expect(await reading(s, ['cx'], false)).toEqual({ held: false })
+    open()
+    expect(await p).toMatchObject({ isError: false })
+    expect(sent).toEqual([1, 2])
+  })
+
+  it('a call this Mac does not hold answers held: false', async () => {
+    const s = setup()
+    expect(await reading(s, ['nobody'], false)).toEqual({ held: false })
+  })
+})

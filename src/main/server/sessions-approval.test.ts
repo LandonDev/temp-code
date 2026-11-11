@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
 import type { DriverCtx } from './drivers/types'
@@ -224,4 +224,55 @@ it("writes a card's choices when it names them, and none otherwise", async () =>
   expect('choices' in second).toBe(false)
   await registry.approve(s.id, (second as { requestId: string }).requestId, false)
   expect(await plain).toBe(false)
+})
+
+describe("the approval cleanup's running", () => {
+  const card = (input: Record<string, unknown> = { app: 'TextEdit' }) => ({ toolName: 'mcp__app__computer_act', input, title: 'Click in TextEdit' })
+  const requests = (id: string): string[] =>
+    registry.eventsAfter(id, 0).map((r) => r.event).filter((e) => e.type === 'approval-request').map((e) => (e as { requestId: string }).requestId)
+
+  it('a card withdrawn after the thread settled idle leaves it idle', async () => {
+    const s = await registry.create({ cwd: root, provider: 'grok' })
+    await settle()
+    registry.append(s.id, { type: 'status', status: 'running' })
+    const withdraw = new AbortController()
+    const asked = registry.requestApproval(s.id, { ...card(), signal: withdraw.signal })
+    expect(registry.get(s.id)?.status).toBe('waiting')
+    // the turn settles while a computer call left pending still holds its card
+    registry.append(s.id, { type: 'status', status: 'idle' })
+    withdraw.abort('settled')
+    expect(await asked).toBe(false)
+    await settle()
+    expect(types(s.id).slice(-2)).toEqual(['status:idle', 'approval-resolved'])
+    expect(registry.get(s.id)?.status).toBe('idle')
+  })
+
+  it('a card allowed mid-turn returns the row to running', async () => {
+    const s = await registry.create({ cwd: root, provider: 'grok' })
+    await settle()
+    registry.append(s.id, { type: 'status', status: 'running' })
+    const asked = registry.requestApproval(s.id, card())
+    expect(registry.get(s.id)?.status).toBe('waiting')
+    await registry.approve(s.id, requests(s.id)[0], true)
+    expect(await asked).toBe(true)
+    expect(types(s.id).slice(-2)).toEqual(['approval-resolved', 'status:running'])
+    expect(registry.get(s.id)?.status).toBe('running')
+  })
+
+  it('with two cards out, the first answered leaves the row waiting; the last returns it to running', async () => {
+    const s = await registry.create({ cwd: root, provider: 'grok' })
+    await settle()
+    registry.append(s.id, { type: 'status', status: 'running' })
+    const first = registry.requestApproval(s.id, card())
+    const second = registry.requestApproval(s.id, card({ app: 'Notes' }))
+    const [a, b] = requests(s.id)
+    await registry.approve(s.id, a, true)
+    expect(await first).toBe(true)
+    expect(types(s.id).at(-1)).toBe('approval-resolved')
+    expect(registry.get(s.id)?.status).toBe('waiting')
+    await registry.approve(s.id, b, false)
+    expect(await second).toBe(false)
+    expect(types(s.id).slice(-2)).toEqual(['approval-resolved', 'status:running'])
+    expect(registry.get(s.id)?.status).toBe('running')
+  })
 })

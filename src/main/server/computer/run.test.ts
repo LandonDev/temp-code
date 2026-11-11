@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { COMPUTER_WAIT, type Observation } from '@shared/computer/protocol'
 import { tierVerdictSetting } from '@shared/computer/tools'
 import { hostErrorLine } from '@shared/computer/hostErrors'
+import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/computer/heldCalls'
 import { PERMISSION_SWITCH, remember, type ThreadComputer } from './run'
 import { computerHarness, type ComputerHarness } from './runHarness'
 import { IDLE_CLOSE_MS } from './sessions'
@@ -232,15 +233,17 @@ describe('tiers', () => {
       run: (c, send) => send(c.tiers)
     }
     const h = make({ gate })
-    const approve = async (): Promise<boolean> => true
+    let asked = 0
+    const approve = async (): Promise<boolean> => (asked++, true)
     const batch = { app: 'Sessiony', actions: [{ action: 'hold_key', text: 'shift', duration: 1 }] }
     await h.sessions.run({ threadId: 'env_abcdefghijklmnopqrstuv:t9', rootId: 'env_abcdefghijklmnopqrstuv:root', approve }, 'computer_batch', batch)
     await h.run('computer_batch', batch, 't2')
     expect(seen.map((c) => c.rootId)).toEqual(['env_abcdefghijklmnopqrstuv:root', 't2'])
-    expect(seen[0].approve).toBe(approve)
+    // the caller's card path, behind the row's held line while it waits
+    expect(await seen[0].approve!({ toolName: 'x', input: {}, title: 'x' })).toBe(true)
+    expect(asked).toBe(1)
     // the host's own threads ask through the registry: the gate always gets a card path (tier scheduling plan §9)
     expect(typeof seen[1].approve).toBe('function')
-    expect(seen[1].approve).not.toBe(approve)
   })
 
   it("a close button's click runs at ax under a session click verdict, as every plain click does (§22.3, §24.1)", async () => {
@@ -812,5 +815,80 @@ describe('launch and open without taking the screen (§23)', () => {
     expect(next.steps).toContain('Preview came to the front 12 s after the call; TextEdit was put back in 90 ms')
     const again = await h.run('computer_observe', { app: 'TextEdit' }, 't1')
     expect(again.steps.some((l) => l.includes('after the call'))).toBe(false)
+  })
+})
+
+describe('a reader (pending.ts): nothing runs unread', () => {
+  /** A reader the test opens and shuts; it counts the requests that waited on it. */
+  function reader(present = false) {
+    let on = present
+    const waiters = new Set<() => void>()
+    const r = {
+      gated: 0,
+      present: () => on,
+      whenPresent: (signal: AbortSignal) =>
+        on || signal.aborted
+          ? Promise.resolve()
+          : new Promise<void>((resolve) => {
+              waiters.add(resolve)
+              signal.addEventListener('abort', () => resolve(), { once: true })
+            }),
+      request: async <T,>(signal: AbortSignal, send: () => Promise<T>): Promise<T> => {
+        r.gated++
+        while (!on) {
+          if (signal.aborted) throw new Error('cancelled')
+          await r.whenPresent(signal)
+        }
+        return await send()
+      },
+      open: () => {
+        on = true
+        for (const w of [...waiters]) w()
+        waiters.clear()
+      }
+    }
+    return r
+  }
+
+  it('every service request waits for a reader, reads included, the row saying so; Claude pays nothing', async () => {
+    const h = make()
+    const r = reader()
+    const read = h.sessions.run({ threadId: 't1', reader: r }, 'computer_observe', { app: 'TextEdit' })
+    await until(() => h.sessions.rowOf('t1')?.running?.words === READER_WAIT_WORDS, 'the row to wait for the thread')
+    expect(h.sessions.rowOf('t1')?.running?.held).toBe(true)
+    expect(count(h, 'state.get')).toBe(0)
+    r.open()
+    expect((await read).isError).toBe(false)
+    expect(count(h, 'state.get')).toBe(1)
+    expect(r.gated).toBeGreaterThanOrEqual(2)
+    // with no reader in the context (a Claude call) nothing waits
+    expect((await h.run('computer_observe', { app: 'TextEdit' })).isError).toBe(false)
+  })
+
+  it('a card is a hold the row says; the act after it waits for a reader', async () => {
+    const h = make()
+    h.set('t1', { permission: 'safe' })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    const r = reader()
+    const act = h.sessions.run({ threadId: 't1', reader: r }, 'computer_act', { app: 'TextEdit', action: 'key', text: 'a' })
+    await until(() => h.cards.length === 1, 'the card')
+    expect(h.sessions.rowOf('t1')?.running).toMatchObject({ words: LOCAL_CARD_WORDS, held: true })
+    h.cards[0].decide(true)
+    await until(() => h.sessions.rowOf('t1')?.running?.words === READER_WAIT_WORDS, 'the act to wait for the thread')
+    expect(count(h, 'action.run')).toBe(0)
+    r.open()
+    expect((await act).steps[0]).toMatch(/^key a · /)
+    expect(count(h, 'action.run')).toBe(1)
+  })
+
+  it('a call cancelled while it waits for a reader answers the unread line and sends nothing', async () => {
+    const h = make()
+    await h.run('computer_observe', { app: 'TextEdit' })
+    const own = new AbortController()
+    const act = h.sessions.run({ threadId: 't1', reader: reader(), signal: own.signal }, 'computer_act', { app: 'TextEdit', action: 'key', text: 'a' })
+    await until(() => h.sessions.rowOf('t1')?.running?.words === READER_WAIT_WORDS, 'the wait')
+    own.abort('unread')
+    expect(await act).toMatchObject({ isError: true, body: hostErrorLine('cancelled', UNREAD_WORDS) })
+    expect(count(h, 'action.run')).toBe(0)
   })
 })

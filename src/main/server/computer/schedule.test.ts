@@ -5,6 +5,7 @@ import type { OwnSpan } from '../../personIdle'
 import type { ApprovalRequest } from '../drivers/types'
 import { SessionScheduler, SessionSlot, type ScheduleClock } from './schedule'
 import { settle } from './testFake'
+import { READER_WAIT_WORDS } from '@shared/computer/heldCalls'
 import type { TierGateContext, TierGateRequest, TierGateRun } from './tierGate'
 
 const T0 = 1_800_000_000_000
@@ -427,6 +428,37 @@ describe('the slot', () => {
     await a
     await b
     expect(sent).toEqual([['ax', 'process']])
+  })
+
+  it('a step whose reader left while it waited takes the slot, gives it to the next thread, sends nothing, and runs once read and admitted again', async () => {
+    const { w, s } = setup()
+    w.idleFor(200_000)
+    const first = deferred<ActionResult>()
+    const sent: string[] = []
+    const a = s.run(runOf(w, 't1', ['ax', 'process', 'session'], [{ action: 'key', text: 'a' }]), () => first.promise)
+    await settle()
+    let present = true
+    let back: (() => void) | null = null
+    const reader = {
+      present: () => present,
+      whenPresent: () => (present ? Promise.resolve() : new Promise<void>((r) => (back = r)))
+    }
+    const b = s.run({ ...runOf(w, 't2', ['ax', 'process', 'session'], [{ action: 'key', text: 'b' }]), reader }, async (tiers) => (sent.push(`t2 ${tiers}`), single(ok('key', 'session'))))
+    await settle()
+    const c = s.run(runOf(w, 't3', ['ax', 'process', 'session'], [{ action: 'key', text: 'c' }]), async (tiers) => (sent.push(`t3 ${tiers}`), single(ok('key', 'session'))))
+    await settle()
+    // nobody reads t2's call now
+    present = false
+    first.resolve(single(ok('key', 'session')))
+    await a
+    await c
+    expect(sent).toEqual(['t3 ax,process,session'])
+    expect(linesOf(w, 't2').at(-1)).toBe(READER_WAIT_WORDS)
+    present = true
+    back!()
+    await b
+    expect(sent).toEqual(['t3 ax,process,session', 't2 ax,process,session'])
+    expect(linesOf(w, 't2').at(-1)).toBeNull()
   })
 
   it('a waiter that is given up leaves the line', async () => {

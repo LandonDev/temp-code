@@ -2178,7 +2178,14 @@ why and the measured headline.
   row (`computer.stop`) ends computer use for the turn.
 - **The app tools.** The four `computer_*` tools on every Mac thread,
   subagents too: deferred on Claude (computer/mcp.ts), through the bridge
-  on codex and Muse behind a per-thread token. `offersComputerTools` and
+  on codex and Muse behind a per-thread token. The bridge also lists
+  `computer_result`: a Codex or Muse call held 20 s answers with an id and
+  waits, running nothing unread, until `computer_result` reads or cancels it
+  (computer/pending.ts, the lines and timings in
+  src/shared/computer/heldCalls.ts; a box thread's call on the Mac through
+  `mac.computerReader`); 60 s unread or the thread's next computer call
+  cancels it. Seam `TEMP_CODE_COMPUTER_HELD_MS=<answer>,<wait>,<unread>`
+  (isolated instances only); docs/computer-protocol.md §17.8. `offersComputerTools` and
   `computerMechanicsFor` (apptools.ts) decide who gets them and
   COMPUTER_MECHANICS (computer/prompts.ts); a cursor thread gets neither.
   The words come in two shapes by the model's maker

@@ -9,13 +9,16 @@ import {
   COMPUTER_BRIDGE_IDLE_CLOSE_MS,
   COMPUTER_MAC_WENT_OFFLINE,
   COMPUTER_OFFER_PREFIX,
+  askingWords,
   type ComputerPeerAnswer
 } from '@shared/contract-maccomputer'
+import { READER_ACK_MS } from '@shared/computer/heldCalls'
 import type { SessionMeta, SessionStatus } from '@shared/events'
 import { MAC_AWAY_REFUSAL, MAC_AWAY_REFUSAL_LEGACY } from '../awayPrompts'
 import { CANCELLED_PAUSED, MacPause } from '../macPause'
 import { PeerCalls, handlePeerRequest } from '../remote/peerCalls'
-import { ComputerBridge, STOP_REPLY_MS } from './bridge'
+import { ComputerBridge, MAC_SILENT_CANCEL, STOP_REPLY_MS } from './bridge'
+import type { CallReader } from './pending'
 import { renderText } from './result'
 import { ManualClock, settle } from './testFake'
 
@@ -581,5 +584,268 @@ describe("ComputerBridge: the Mac's hold is the thread's status", () => {
     expect(b.holds.at(-1)).toEqual(['t1', null])
     b.progress(callId, heldRow(LOAD('1st')))
     expect(b.holds).toHaveLength(2)
+  })
+})
+
+/** A reader the test turns on and off; the bridge's release hook is captured to be called as pending.ts would. */
+function stubReader(present = true) {
+  let here = present
+  const listeners = new Set<(p: boolean) => void>()
+  const waiters = new Set<() => void>()
+  let release: (() => Promise<boolean>) | null = null
+  const reader: CallReader = {
+    present: () => here,
+    whenPresent: (signal) =>
+      here || signal.aborted
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => {
+            waiters.add(resolve)
+            signal.addEventListener('abort', () => resolve(), { once: true })
+          }),
+    request: (_signal, send) => send(),
+    onChange: (fn) => {
+      listeners.add(fn)
+      return () => listeners.delete(fn)
+    },
+    releaseBy: (fn) => {
+      release = fn
+    }
+  }
+  return {
+    reader,
+    set(p: boolean): void {
+      here = p
+      for (const l of [...listeners]) l(p)
+      if (p) for (const w of [...waiters]) w()
+      if (p) waiters.clear()
+    },
+    release: (): Promise<boolean> => {
+      if (!release) throw new Error('the bridge set no release hook')
+      return release()
+    },
+    listening: (): number => listeners.size
+  }
+}
+
+describe('ComputerBridge: a held call and its reader', () => {
+  const LOAD = 'Waiting for the Mac, load 12.3 of 8, 3rd in line'
+  const heldRow = (words = LOAD) => row({ running: { tool: 'computer_act', words, startedAt: 5, held: true } })
+  const runningRow = () => row({ running: { tool: 'computer_act', words: 'Clicking in TextEdit', startedAt: 5 } })
+
+  /** One call out on t1 under a stub reader, the Mac holding it at LOAD. */
+  async function held(present = true) {
+    const b = box()
+    const s = stubReader(present)
+    const ac = new AbortController()
+    let settled = false
+    const p = b.bridge.run({ threadId: 't1', signal: ac.signal, reader: s.reader }, 'computer_act', click).then((o) => {
+      settled = true
+      return o
+    })
+    await b.until(() => b.ofMethod('mac.computer').length === 1, 'out')
+    const callId = b.ofMethod('mac.computer')[0].callId
+    b.progress(callId, heldRow())
+    return { b, s, ac, p, callId, settled: () => settled }
+  }
+  const readers = (b: ReturnType<typeof box>) => b.ofMethod('mac.computerReader')
+
+  it('nothing goes to the Mac while nobody reads the call; it goes once a reader comes', async () => {
+    const b = box()
+    const s = stubReader(false)
+    const ac = new AbortController()
+    const p = b.bridge.run({ threadId: 't1', signal: ac.signal, reader: s.reader }, 'computer_observe', observe)
+    for (let i = 0; i < 20; i++) await settle()
+    expect(b.out).toHaveLength(0)
+    s.set(true)
+    await b.until(() => b.ofMethod('mac.computer').length === 1, 'out once read')
+    b.reply(b.out[0].callId, answer())
+    expect((await p).isError).toBe(false)
+  })
+
+  it('a call given up while it waits for a reader never reaches the Mac', async () => {
+    const b = box()
+    const s = stubReader(false)
+    const ac = new AbortController()
+    const p = b.bridge.run({ threadId: 't1', signal: ac.signal, reader: s.reader }, 'computer_observe', observe)
+    for (let i = 0; i < 10; i++) await settle()
+    ac.abort('x')
+    expect((await p).body).toBe('cancelled: the call was given up')
+    s.set(true)
+    for (let i = 0; i < 10; i++) await settle()
+    expect(b.out).toHaveLength(0)
+  })
+
+  it("the reader may leave only on the Mac's held: true; the notice names the call, and a reader back sends reading: true", async () => {
+    const { b, s, p, callId } = await held()
+    let left: boolean | null = null
+    const rel = s.release().then((ok) => (left = ok))
+    await b.until(() => readers(b).length === 1, 'the notice')
+    expect(readers(b)[0].params.args).toEqual({ callIds: [callId], reading: false })
+    expect(readers(b)[0].params.thread.id).toBe('t1')
+    for (let i = 0; i < 5; i++) await settle()
+    expect(left).toBeNull()
+    b.reply(readers(b)[0].callId, { held: true })
+    await rel
+    expect(left).toBe(true)
+    // released already: no second notice
+    expect(await s.release()).toBe(true)
+    expect(readers(b)).toHaveLength(1)
+    s.set(true)
+    await b.until(() => readers(b).length === 2, 'reading again')
+    expect(readers(b)[1].params.args).toEqual({ callIds: [callId], reading: true })
+    b.reply(readers(b)[1].callId, { held: false })
+    b.reply(callId, answer({ steps: ['left_click · ax · changed'] }))
+    expect((await p).steps).toEqual(['left_click · ax · changed'])
+    expect(s.listening()).toBe(0)
+  })
+
+  it('held: false keeps the reader, and no notice goes again until another hold begins', async () => {
+    const { b, s, p, callId } = await held()
+    const first = s.release()
+    await b.until(() => readers(b).length === 1, 'the notice')
+    b.reply(readers(b)[0].callId, { held: false })
+    expect(await first).toBe(false)
+    expect(await s.release()).toBe(false)
+    expect(readers(b)).toHaveLength(1)
+    // the request ends and a new hold begins: the Mac is asked again
+    b.progress(callId, runningRow())
+    b.progress(callId, heldRow())
+    const again = s.release()
+    await b.until(() => readers(b).length === 2, 'the second notice')
+    b.reply(readers(b)[1].callId, { held: true })
+    expect(await again).toBe(true)
+    s.set(true)
+    await b.until(() => readers(b).length === 3, 'reading again')
+    b.reply(readers(b)[2].callId, { held: false })
+    b.reply(callId, answer())
+    expect((await p).isError).toBe(false)
+  })
+
+  it('an answer past READER_ACK_MS keeps the reader and sends reading: true at once; the call still runs', async () => {
+    const { b, s, p, callId } = await held()
+    const original = b.calls.call.bind(b.calls)
+    const deadlines: number[] = []
+    // the ack deadline as a few ms of real time: the Mac set the flag and answers too late
+    b.calls.call = ((env, method, params, deadlineMs, opts) => {
+      if (method === 'mac.computerReader') {
+        deadlines.push(deadlineMs)
+        if ((params as { args: { reading: boolean } }).args.reading === false) return original(env, method, params, 5, opts)
+      }
+      return original(env, method, params, deadlineMs, opts)
+    }) as typeof b.calls.call
+    let left: boolean | null = null
+    const rel = s.release().then((ok) => (left = ok))
+    await new Promise((r) => setTimeout(r, 30))
+    await b.until(() => readers(b).length === 2, 'the notice and reading: true after it')
+    expect(readers(b).map((c) => c.params.args)).toEqual([
+      { callIds: [callId], reading: false },
+      { callIds: [callId], reading: true }
+    ])
+    expect(deadlines).toEqual([READER_ACK_MS, READER_ACK_MS])
+    b.reply(readers(b)[1].callId, { held: false })
+    await rel
+    expect(left).toBe(false)
+    expect(b.ofMethod('mac.cancel')).toHaveLength(0)
+    b.reply(callId, answer({ steps: ['left_click · ax · changed'] }))
+    expect((await p).steps).toEqual(['left_click · ax · changed'])
+  })
+
+  it('a reading: true that fails after a late ack cancels the call softly: mac.cancel, then the given-up line past STOP_REPLY_MS', async () => {
+    const { b, s, p, callId, settled } = await held()
+    const original = b.calls.call.bind(b.calls)
+    b.calls.call = ((env, method, params, deadlineMs, opts) =>
+      original(env, method, params, method === 'mac.computerReader' && (params as { args: { reading: boolean } }).args.reading === false ? 5 : deadlineMs, opts)) as typeof b.calls.call
+    const rel = s.release()
+    await new Promise((r) => setTimeout(r, 30))
+    await b.until(() => readers(b).length === 2, 'reading: true')
+    b.fail(readers(b)[1].callId, 'the socket broke')
+    expect(await rel).toBe(false)
+    await b.until(() => b.ofMethod('mac.cancel').length === 1, 'mac.cancel')
+    expect(b.ofMethod('mac.cancel')[0].params.args).toEqual({ callIds: [callId], reason: 'stopped' })
+    for (let i = 0; i < 5; i++) await settle()
+    expect(settled()).toBe(false)
+    await b.clock.advance(STOP_REPLY_MS + 1)
+    expect((await p).body).toBe(MAC_SILENT_CANCEL)
+  })
+
+  it("an older Mac's refusal keeps the reader, and that Mac is told nothing more", async () => {
+    const { b, s, p, callId } = await held()
+    const first = s.release()
+    await b.until(() => readers(b).length === 1, 'the notice')
+    b.fail(readers(b)[0].callId, 'unknown method mac.computerReader')
+    expect(await first).toBe(false)
+    b.progress(callId, runningRow())
+    b.progress(callId, heldRow())
+    expect(await s.release()).toBe(false)
+    b.reply(callId, answer())
+    await p
+    // a later call to the same Mac: still nothing
+    const s2 = stubReader()
+    const q = b.bridge.run({ threadId: 't2', signal: new AbortController().signal, reader: s2.reader }, 'computer_act', click)
+    await b.until(() => b.ofMethod('mac.computer').length === 2, 'the second call')
+    const second = b.ofMethod('mac.computer')[1].callId
+    b.progress(second, heldRow())
+    expect(await s2.release()).toBe(false)
+    expect(readers(b)).toHaveLength(1)
+    b.reply(second, answer())
+    await q
+    // its link dropping forgets the mark: it may come back on a newer build
+    b.bridge.linkDown(MAC)
+    const s3 = stubReader()
+    const r = b.bridge.run({ threadId: 't2', signal: new AbortController().signal, reader: s3.reader }, 'computer_act', click)
+    await b.until(() => b.ofMethod('mac.computer').length === 3, 'the third call')
+    const third = b.ofMethod('mac.computer')[2].callId
+    b.progress(third, heldRow())
+    const asked = s3.release()
+    await b.until(() => readers(b).length === 2, 'a notice again')
+    b.reply(readers(b)[1].callId, { held: true })
+    expect(await asked).toBe(true)
+    b.reply(third, answer())
+    await r
+  })
+
+  it("a soft cancel sends mac.cancel, keeps the call out and answers the Mac's reply with its steps", async () => {
+    const { b, ac, p, callId, settled } = await held()
+    ac.abort('unread')
+    await b.until(() => b.ofMethod('mac.cancel').length === 1, 'mac.cancel')
+    expect(b.ofMethod('mac.cancel')[0].params.args).toEqual({ callIds: [callId], reason: 'stopped' })
+    for (let i = 0; i < 5; i++) await settle()
+    expect(settled()).toBe(false)
+    b.reply(callId, answer({ steps: ['key a · ax · changed', 'Not executed: an earlier action in this batch failed.'], body: 'cancelled', isError: true }))
+    expect(await p).toMatchObject({ steps: ['key a · ax · changed', 'Not executed: an earlier action in this batch failed.'], body: 'cancelled' })
+  })
+
+  it('a soft cancel the Mac never answers is given up with MAC_SILENT_CANCEL after STOP_REPLY_MS', async () => {
+    for (const why of ['superseded', 'cancel'] as const) {
+      const { b, ac, p } = await held()
+      ac.abort(why)
+      await b.until(() => b.ofMethod('mac.cancel').length === 1, 'mac.cancel')
+      await b.clock.advance(STOP_REPLY_MS - 1)
+      await settle()
+      await b.clock.advance(2)
+      expect((await p).body).toBe(MAC_SILENT_CANCEL)
+    }
+  })
+
+  it('a dropped link ends a release in flight with false and the call with COMPUTER_MAC_WENT_OFFLINE', async () => {
+    const { b, s, p } = await held()
+    const rel = s.release()
+    await b.until(() => readers(b).length === 1, 'the notice')
+    b.calls.drop(1)
+    expect(await rel).toBe(false)
+    expect((await p).body).toBe(COMPUTER_MAC_WENT_OFFLINE)
+  })
+
+  it("holdWords says the mirrored row's hold, the card's words while one waits, and nothing once the call answered", async () => {
+    const { b, p, callId } = await held()
+    expect(b.bridge.holdWords('t1')).toBe(LOAD)
+    b.progress(callId, runningRow())
+    expect(b.bridge.holdWords('t1')).toBeNull()
+    b.progress(callId, row({ running: { tool: 'computer_act', words: 'Clicking in TextEdit', startedAt: 5 }, asking: { line: 'Click (5, 5) in TextEdit?' } }))
+    expect(b.bridge.holdWords('t1')).toBe(askingWords('Studio'))
+    b.reply(callId, answer())
+    await p
+    expect(b.bridge.holdWords('t1')).toBeNull()
+    expect(b.bridge.holdWords('t2')).toBeNull()
   })
 })

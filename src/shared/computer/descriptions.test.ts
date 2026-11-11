@@ -113,9 +113,39 @@ describe('the tool specs', () => {
     }
   })
 
-  it('stay within the tools/list budget the bridge pays on every Mac thread', () => {
+  it('add computer_result last only when asked, in both tool shapes, every name unique', () => {
+    for (const shape of WORDS_SHAPES)
+      for (const tools of TOOL_SHAPES) {
+        const four = computerToolSpecs(shape, tools).map((t) => t.name)
+        const bridge = computerToolSpecs(shape, tools, { result: true }).map((t) => t.name)
+        expect(four, `${shape}/${tools}`).not.toContain('computer_result')
+        expect(bridge, `${shape}/${tools}`).toEqual([...four, 'computer_result'])
+        expect(new Set(bridge).size, `${shape}/${tools}`).toBe(bridge.length)
+      }
+    expect(computerToolSpecs('cua', 'act', { result: true })).toBe(computerToolSpecs('cua', 'act', { result: true }))
+    expect(computerToolSpecs('cua', 'act', { result: false })).toBe(computerToolSpecs('cua', 'act'))
+  })
+
+  it('word computer_result in one sentence a shape, its fields within the cap', () => {
+    expect(toolDescription('anthropic', 'act', 'computer_result')).toBe(
+      'Gets the result of a computer call that answered "Held", by its id, waiting up to 20 s, or says it is still held. cancel: true cancels it; a held call never runs unless you ask for its result.'
+    )
     for (const shape of WORDS_SHAPES) {
-      const list = computerToolSpecs(shape, 'act').map((t) => ({ name: t.name, description: t.description, inputSchema: computerToolJsonSchema(t.input) }))
+      const d = toolDescription(shape, 'act', 'computer_result')
+      for (const fact of ['"Held"', 'its id', '20 s', 'still held', 'cancel: true', 'never runs unless you ask for its result']) expect(d, `${shape} ${fact}`).toContain(fact)
+      const spec = computerToolSpecs(shape, 'act', { result: true }).at(-1)!
+      const schema = computerToolJsonSchema(spec.input) as { properties: Record<string, Json>; required: string[] }
+      expect(Object.keys(schema.properties)).toEqual(['id', 'cancel'])
+      expect(schema.required).toEqual(['id'])
+      for (const p of Object.values(schema.properties)) expect((p.description as string).length).toBeLessThanOrEqual(FIELD_DESCRIPTION_MAX)
+    }
+    expect(toolDescription('cua', 'act', 'computer_result')).not.toBe(toolDescription('anthropic', 'act', 'computer_result'))
+  })
+
+  it('stay within the tools/list budget the bridge pays on every Mac thread, computer_result included', () => {
+    for (const shape of WORDS_SHAPES) {
+      const list = computerToolSpecs(shape, 'act', { result: true }).map((t) => ({ name: t.name, description: t.description, inputSchema: computerToolJsonSchema(t.input) }))
+      expect(list).toHaveLength(5)
       expect(JSON.stringify(list).length, shape).toBeLessThanOrEqual(TOOLS_LIST_MAX)
       for (const t of list) {
         expect(t.inputSchema.oneOf).toBeUndefined()

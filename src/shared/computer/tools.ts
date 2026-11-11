@@ -9,6 +9,7 @@
 import { z } from 'zod'
 import { PermissionPolicySchema } from '../events'
 import { fieldWords, perVerbDescription, toolDescription, type FieldKey, type ToolShape, type WordsShape } from './descriptions'
+import { COMPUTER_RESULT_TOOL } from './heldCalls'
 import { parseElementLine, parseKeyCombo } from './observation'
 import { ConfirmSchema } from './policy'
 import {
@@ -175,6 +176,7 @@ function toolInputs(w: FieldText) {
       actions: z.array(z.object(actionShape).superRefine(refineAction)).min(1).max(TOOL_BATCH_MAX_ACTIONS).describe(w.actions),
       confirm: confirm(w['batch.confirm'])
     }),
+    result: z.object({ id: z.string().min(1).max(16).describe(w['result.id']), cancel: z.boolean().optional().describe(w['result.cancel']) }),
     target,
     confirm: confirm(w.confirm)
   }
@@ -191,6 +193,14 @@ export type ComputerAppsInput = z.infer<typeof ComputerAppsInputSchema>
 export type ComputerObserveInput = z.infer<typeof ComputerObserveInputSchema>
 export type ComputerActInput = z.infer<typeof ComputerActInputSchema>
 export type ComputerBatchInput = z.infer<typeof ComputerBatchInputSchema>
+
+/**
+ * `computer_result` (heldCalls.ts): the result of a bridged call that answered
+ * "Held", by its id, or `cancel: true` to cancel it. Only the bridge lists it;
+ * it is none of the four tools, and the host routes it before them.
+ */
+export const ComputerResultInputSchema = INPUTS.anthropic.result
+export type ComputerResultInput = z.infer<typeof ComputerResultInputSchema>
 
 /** After each tool's description on a thread whose calls cross the Mac bridge (computer/bridge.ts). */
 export const COMPUTER_BRIDGE_NOTE = " These act on the user's Mac, where the apps run; this thread runs on another host."
@@ -213,10 +223,11 @@ const specs = new Map<string, readonly ComputerToolSpec[]>()
 /**
  * The tools a thread gets, in its word shape: the four, or with `per-verb`
  * computer_apps, computer_observe, computer_batch and one tool per action in
- * computer_act's place.
+ * computer_act's place. `result` adds computer_result last, for the bridge
+ * (codex and Muse); Claude's list never has it.
  */
-export function computerToolSpecs(shape: WordsShape = 'anthropic', tools: ToolShape = 'act'): readonly ComputerToolSpec[] {
-  const key = `${shape}/${tools}`
+export function computerToolSpecs(shape: WordsShape = 'anthropic', tools: ToolShape = 'act', opts: { result?: boolean } = {}): readonly ComputerToolSpec[] {
+  const key = `${shape}/${tools}${opts.result ? '/result' : ''}`
   const kept = specs.get(key)
   if (kept) return kept
   const i = INPUTS[shape]
@@ -224,10 +235,11 @@ export function computerToolSpecs(shape: WordsShape = 'anthropic', tools: ToolSh
   const apps = { name: 'computer_apps', description: d('computer_apps'), input: i.apps }
   const observe = { name: 'computer_observe', description: d('computer_observe'), input: i.observe }
   const batch = { name: 'computer_batch', description: d('computer_batch'), input: i.batch }
+  const result = opts.result ? [{ name: COMPUTER_RESULT_TOOL, description: toolDescription(shape, tools, COMPUTER_RESULT_TOOL), input: i.result }] : []
   const made = Object.freeze(
     tools === 'act'
-      ? [apps, observe, { name: 'computer_act', description: d('computer_act'), input: i.act }, batch]
-      : [apps, observe, batch, ...perVerbTools(shape)]
+      ? [apps, observe, { name: 'computer_act', description: d('computer_act'), input: i.act }, batch, ...result]
+      : [apps, observe, batch, ...perVerbTools(shape), ...result]
   )
   specs.set(key, made)
   return made
