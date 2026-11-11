@@ -98,6 +98,8 @@ public enum InputTiming {
     public static let frontKeysMaxUnits = ComputerDefaults.Front.keysMaxUnits
     /// a save panel must show within this after the press that opens it (§25.7)
     public static let panelOpenMaxMs = ComputerDefaults.Front.panelOpenMaxMs
+    /// the save panel flow reads the window again this often while it waits for a sheet to come or go
+    public static let panelPollMs = 50
     /// a step expected to commit polls the disk every `commitPollMs` for at most this (§25.8)
     public static let commitSettleMs = ComputerDefaults.Front.commitSettleMs
     public static let commitPollMs = ComputerDefaults.Front.commitPollMs
