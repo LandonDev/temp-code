@@ -1,8 +1,8 @@
-import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync } from 'node:fs'
+import { chmodSync, mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { STEAL_PLIST_KEYS, STEAL_PROBE_BUNDLE_ID, binarySpellings, guiLaunchEnvironment, probePlist, stealDocName } from './tcProbeApp'
+import { STEAL_PLIST_KEYS, STEAL_PROBE_BUNDLE_ID, ScreenWatch, binarySpellings, guiLaunchEnvironment, probePlist, stealDocName } from './tcProbeApp'
 
 describe('binarySpellings', () => {
   const dir = mkdtempSync(join(tmpdir(), 'tc-probe-spell-'))
@@ -74,5 +74,26 @@ describe('guiLaunchEnvironment', () => {
     const runner = { PATH: '/usr/bin', TEMP_CODE_COMPUTER_PROOF: '1', TEMP_CODE_THREAD: 't1', TEMP_CODE_CALL: 'c1', TEMP_CODE_INSTANCE: 'i1', CLAUDE_PID: '7', ANTHROPIC_BASE_URL: 'http://127.0.0.1/~t=t1' }
     expect(guiLaunchEnvironment(runner)).toEqual({ PATH: '/usr/bin', TEMP_CODE_COMPUTER_PROOF: '1' })
     expect(runner.TEMP_CODE_THREAD).toBe('t1')
+  })
+})
+
+describe('ScreenWatch', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tc-screen-watch-'))
+  afterAll(() => rmSync(dir, { recursive: true, force: true }))
+  const fakeProbe = (reply: string): string => {
+    const path = join(dir, `probe-${Math.random().toString(36).slice(2)}`)
+    writeFileSync(path, `#!/bin/sh\necho '${reply}'\n`)
+    chmodSync(path, 0o755)
+    return path
+  }
+
+  it('reads the probe through parseMacScreen: an unlocked screen passes, a locked one stops the watch', () => {
+    const open = new ScreenWatch()
+    open.start(fakeProbe('{"locked":false,"asleep":false}'), 60_000)
+    expect(() => open.check()).not.toThrow()
+    open.stop()
+    const locked = new ScreenWatch()
+    expect(() => locked.start(fakeProbe('{"locked":true,"asleep":false}'), 60_000)).toThrow(/the Mac locked/)
+    locked.stop()
   })
 })

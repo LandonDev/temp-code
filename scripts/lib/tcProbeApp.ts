@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { CALL_MARK, INSTANCE_MARK, THREAD_MARK } from '../../src/shared/bashMarks'
 import { probeAppPids, stopProofPids } from './computerProofProcesses'
+import { parseMacScreen, readyMacScreen } from './macScreen'
 
 /**
  * Launch Services gives a scratch app to launchd (ppid 1) with the caller's environment, so a proof run from a
