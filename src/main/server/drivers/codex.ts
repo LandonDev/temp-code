@@ -1097,6 +1097,19 @@ export const codexDriver: HarnessDriver = {
 
     return {
       confirmsSteers: true,
+      // A host line into the running turn alone: turn/steer with no client
+      // id (no person's steer to stamp). A refusal (the turn just ended, an
+      // older binary) or no turn answers false and the registry holds the
+      // line; never turn/start, which would make it a turn of its own.
+      async whisper(text: string): Promise<boolean> {
+        if (disposed || conn.exited || !currentTurnId) return false
+        try {
+          await conn.request('turn/steer', { threadId, expectedTurnId: currentTurnId, input: [{ type: 'text', text }] })
+          return true
+        } catch {
+          return false
+        }
+      },
       async send(text: string, attachments: Attachment[] = [], opts?: SendOpts): Promise<void> {
         // A dead app-server (a turn/start deadline killed it, a crash, a
         // dispose) must not swallow the message: the registry drops the

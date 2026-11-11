@@ -398,6 +398,17 @@ async function start(ctx: DriverCtx): Promise<DriverHandle> {
 
   return {
     confirmsSteers: true,
+    // A host line into the live turn alone (`turn/steer`, no steer id to
+    // stamp); no turn or a refusal answers false and the registry holds it.
+    async whisper(text: string): Promise<boolean> {
+      if (disposed || !host?.alive() || !turnOpen || !currentTurnId) return false
+      try {
+        await command('turn/steer', { sessionId: nativeId, expectedTurnId: currentTurnId, input: [{ type: 'text', text }] })
+        return true
+      } catch {
+        return false
+      }
+    },
     async send(text: string, attachments: Attachment[] = [], opts: SendOpts = {}): Promise<void> {
       if (disposed || !host?.alive()) throw new Error('muse serve is gone')
       const input = await turnInput(text, attachments)

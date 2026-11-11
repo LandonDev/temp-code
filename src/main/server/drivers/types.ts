@@ -79,6 +79,10 @@ export interface DriverCtx {
   /** The provider refused the thread's account until `resetsAt` (Muse's
    *  quota stop): routing keeps the account out until then. */
   observeLimit?: (window: LimitWindow, resetsAt: number) => void
+  /** Host lines the driver took through `whisper` that never reached the
+   *  model (the turn's result came first, the stream ended, the handle was
+   *  put down): the registry holds them for the next real message. */
+  returnWhispers?: (texts: string[]) => void
 }
 
 /** What a send carries besides its text. */
@@ -96,6 +100,12 @@ export interface DriverHandle {
    *  userMessage clientId); without it the registry stamps received at the
    *  first output of the turn that carries the steer. */
   confirmsSteers?: boolean
+  /** A host line (a notes reminder, the notes block, a dev-server line, a
+   *  master pin notice) added to the OPEN turn, only if the model will read
+   *  it before that turn ends; it never starts a turn of its own. False
+   *  when it cannot (no turn open, the harness refused): the registry then
+   *  holds it for the next real message. Absent, the registry always holds. */
+  whisper?: (text: string) => Promise<boolean>
   interrupt: () => void
   /** Stop one background task by the CLI's id (claude's query.stopTask);
    *  its settle arrives as the usual task notification. */
