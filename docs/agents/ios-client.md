@@ -749,3 +749,52 @@
   approval decided on the card, then everything archived and revoked. Never
   put a pairing link or a key in a file or a log; the scripts scrub their
   output.
+
+## The data path's two contracts (the performance pass, 2026-11)
+
+What a push and a key may re-run is written down in docs/IOS-DESIGN.md
+"Performance" ("What a push and a key may re-run"), and the client
+package's tests hold it: `ObservationIsolationTests`, `PushIngressTests`,
+`TranscriptModelTests`, `ComposerDraftTests`. Before changing the client's
+state, a list reader or the composer, read that section. The rules a change
+most easily breaks:
+
+- **A thread is a `ThreadModel`, never a value in an observed dictionary.**
+  Inside the package a thread is written in place through
+  `EnvironmentClient.write(_:_:)` and read with nothing tracked through
+  `peek(_:)`. A view takes `client.thread(id)` and then the one projection
+  it draws (`content`, `dock`, `flags`, `overlays`, `frame`).
+  `client.threads[id]` and `ThreadModel.state` answer the whole value and
+  run their reader at every write to the thread: only a view that is the
+  thread's own page reads them (a board, the fleet, the sources), and only
+  while it is in view (`HeroGate`). `ThreadScreen.body` reads `frame` and
+  `flags`; a fact it needs is added to `FrameFacts`, kept without walking
+  the thread. A view that draws rows never holds a `ThreadState`.
+- **Sessions: pick the reader.** `client.session(id)` tracks that session
+  alone. `listedSessions` is the list screens' copy, up to 250 ms old while
+  no list shows. `currentSession(_:)` and `currentSessions` are the store as
+  it is now with nothing tracked: code that acts (a send, the badge, a
+  launch route, `markSeen`) reads these, never the trailing list. There is
+  no `sessions` property, so a new reader has to choose.
+- **A new write to `ThreadFold.items` goes through `set(_:_:)`** (a key
+  through `rekeyEcho`, growth through `append`), which records it in
+  `FoldChanges`. A write that skips it leaves a stale row on screen;
+  scripts/ios-fold-writes.test.ts holds the source to one site of each.
+- **A new push kind joins `PushIngress`**, or empties it first, or is
+  listed as free of order in `EnvironmentClient.apply`. One that bypasses
+  the queue can overtake queued rows.
+- **Cache writes go through `CacheWriter`** in the order the client applied
+  them; a read that must see them awaits `cacheWrites.drained()`.
+- **Nothing below `ThreadScreen` in the dock holds a `SessionMeta`.** The
+  dock draws a `ComposerChrome`; an action reads `client.currentSession`
+  when it runs. A field the dock needs is added to the chrome.
+- **Only the field reads `ComposerDraft.text`.** Everything else reads
+  `hasContent`.
+- **No `TimelineView`, no `KeyframeAnimator`.** Either one, while it is
+  on screen, runs SwiftUI's display link on the main thread every frame. A
+  clock is a `Tick` (Design/LiveText.swift); a loop is a Core Animation
+  layer (`Motion.repeating`, Thread/WorkingLine.swift); a short fade steps
+  its own clock from a task that ends (Thread/StreamFade.swift).
+- **A view's body counts itself** where the perf set gates it
+  (`let _ = PerfCounters.bump(...)`); a new view on the push or key path
+  that should stay still gets a counter and a gate.

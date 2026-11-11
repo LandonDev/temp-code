@@ -18,12 +18,16 @@ Sources/TempCodeClient
   Connection/   Backoff, Status (TransportState, EnvironmentStatus, CloseReason, HaltReason),
                 WebSocketConnection (+ URLSessionWebSocket), Transport, TempCodeSocket
   Environments/ PairedEnvironment + PairingLink, KeyStore (Keychain, in-memory), RemoteAPI, EnvironmentStore
-  Cache/        Database (sqlite3), SessionCache
+  Cache/        Database (sqlite3), SessionCache, CacheWriter (every cache write, one serial queue)
   Client/       Subscriptions, EnvironmentClient (+ MovedThread), ClientRegistry, SearchRows, CrossHostSearch, Actions, PlanFlow, ProjectSettings,
-                Batches (each master's BatchState, the push coalesced to two landings a second)
+                Batches (each master's BatchState, the push coalesced to two landings a second),
+                ThreadModel (one observable per held thread), SessionStore (the sessions, a slot per id),
+                PushIngress (the pushes of one 16 ms window, applied together), PerfCounters
   Rendering/    ThreadFold (rows → stamped items + BoardState), Transcript (item types), Board,
                 ResearchBoard, Fleet, PlanDoc, Inbox, DiffDocument (the diff screen's lines,
                 hunks and column geometry), MarkdownBlocks, MarkdownClose, MarkdownCache, PlanDocument,
+                TranscriptModel (the rows kept between passes, rebuilt where the fold changed),
+                TranscriptWindow (how much of them the list shows), ComposerDraft, ComposerChrome,
                 PlanPages, ProjectPlan, ProjectPairs, CrossHost, PathHost (two hosts: pairs, cross-host
                 children, the host of a path), TranscriptRows (entries → the list's rows:
                 items, groups of the work between two paragraphs with GroupFold, turn
@@ -34,7 +38,9 @@ Sources/TempCodeClient
   Shell/        HomeSections, ThreadGroups, HomeModel, HostPresentation, ProjectLinks, FailureCue,
                 DuoLayout, and the shell's shape: Routes, ShellPose, ShellPaths, ThreadStrip
   Design/       TimeFormat, ModelName, CompactNumber, ThreadRowModel: the design kit's pure
-                logic, tested here; the app's Design/ holds the views
+                logic, tested here; the app's Design/ holds the views. MotionLoop (a repeating
+                value as keyframes, what the app hands Core Animation), TickRule (when a clock
+                on screen draws again)
   Support/      SocketClock (SystemClock, ManualClock)
 Tests/TempCodeClientTests
   fake-socket and manual-clock suites, cache and client suites, LiveServerTests (a real server)
@@ -132,9 +138,54 @@ protocols would be, and the release gate builds this package on every
 commit: no dependency to resolve, nothing to fetch.
 
 **EnvironmentClient** (`@MainActor @Observable`) is one environment as the
-app sees it: `status`, `workspaces`, `projects`, `sessions` (newest first),
-`threads[id]` (`ThreadState`: rows oldest first and unique by seq,
+app sees it: `status`, `workspaces`, `projects`, the sessions (below) and
+the held threads (`ThreadState`: rows oldest first and unique by seq,
 `moreBefore`, `isLoading`, `isLoadingOlder`, `isLive`, `goneReason`).
+
+A push re-runs only what reads the thing it changed. Each held thread is a
+**ThreadModel** (`@Observable`, `client.thread(id)`): its `ThreadState` is
+written in place (`mutate`), and its readers take one of five projections,
+each assigned only when it changed: `content` (what the transcript draws),
+`dock` (`DockState`), `flags` (loading, live, gone), `overlays` (pending
+sends, live edits) and `frame` (**FrameFacts**: whether the thread has a
+board, agents or sources, the newest row that waits on the person, the
+todo labels; `ThreadPhase` is built from it with no row read, and
+**UndecidedTracker** finds that newest row by reading only the items
+written since it last looked). `client.threads[id]` answers the whole value and tracks
+that thread alone. The sessions live in a **SessionStore** outside
+observation: `byId`, `sorted` (newest first, a changed meta moved by
+position), and a `SessionSlot` per id, so `client.session(id)` tracks that
+session alone; `SessionProjection`s hold what several sessions decide
+together and change only when their value does (`children(of:)`,
+`agentsCue(of:)`, `pausedBatch(of:)`). The list screens read
+`listedSessions`, the sorted list published at once while a list is on
+screen (`listVisible`) and at most four times a second otherwise, with the
+seen marks beside it. Code that acts reads the store as it is now, with
+nothing tracked: `currentSession(_:)`, `currentSessions`. There is no
+`sessions` property.
+
+Pushes that change threads or the session list wait in **PushIngress**
+(`events`, `live-edit`, `sessions`): the first after a quiet 16 ms is
+applied at once, the rest of the window together when it closes, in one
+synchronous block that keeps their order and merges only neighbours (a
+thread's rows into one batch, live edits into one write per thread, metas
+into one merge that keeps each change of status). A page, a resume's cursor
+read, a resync, a removal, a move, the lists, an adoption and a new socket
+empty it first; a closed socket drops it. `merge` compares each meta with
+the one held before any work: an equal meta sorts nothing, calls no
+observer and writes no cache row. A trimmed thread grows 400 rows past
+2,000 before it is cut back, all at once and never under the oldest row the
+view's window holds (`keepRows`), nor before its type is known. Every cache
+write goes through **CacheWriter**, one serial queue in the order the
+client applied them; the push loop awaits none, and a read that must see
+them awaits `cacheWrites.drained()`.
+
+**PerfCounters** (`@MainActor`, a fixed array by `PerfCounter`) counts what
+the performance proof gates: body runs by view, refolds, row builds and the
+rows built, batches, publishes, the app's offset writes. `PerfOffMain`
+counts folds run off the main actor. Compiled in every configuration. **DiagnosticsText**
+(`Shell/`) is the words of the hidden Diagnostics screen: a late-frame
+share, a time in ms, a hitch ratio, the display line.
 `start()` paints from the cache, then connects; on each new session the open
 threads resume first (`visibleThread`, the one on screen, at the head of the
 first batch) while the shell catches up alongside in one round trip
@@ -188,15 +239,18 @@ an omitted body from the cache or one `session.rowBody`; `assetRequest(host:
 path:)` is a `GET` for `/asset/<host>/<path>` with the key as the bearer
 (logos, media, agent pages; the server accepts an app key there since L2).
 
-**PerfCounters** (`Client/PerfCounters.swift`, `@MainActor`, a fixed array
-by `PerfCounter`) counts what the performance proof gates
-(docs/IOS-DESIGN.md "Performance"): body runs by view, refolds, row builds
-and the rows built, batches and pushed rows, publishes, the app's offset
-writes. A view bumps its own in its body. `PerfOffMain` counts folds run
-off the main actor. Compiled in every configuration, since the Release
-build is the one measured. **DiagnosticsText** (`Shell/`) is the words of
-the hidden Diagnostics screen: a late-frame share, a time in ms, a hitch
-ratio, the display line.
+**ComposerDraft** (`@MainActor @Observable`) is what the person has typed
+into a composer. The field alone reads `text`; everything else reads
+`hasContent`, assigned only when it flips, by the send's own test (not
+white space alone). `type` is the field's setter and the one write that is
+a person's edit (`onEdit`); `clear`, `restore` (a refused send's words
+ahead of what was typed since, after a blank line) and `seed` are the
+others. **ComposerChrome** is what the bottom dock draws of its thread's
+session and nothing else of it: status, provider, model, effort,
+permission, the context meter, the placeholder, `isMaster`, `busySince`,
+the frozen time only while paused or stopped, the queued words only while
+queued, a paused master's batch count. It compares equal through every
+meta that changes none of these.
 
 **ClientRegistry** holds one client per stored environment, starts new ones,
 tears down removed ones (socket stopped, cache cleared), and fans
@@ -227,11 +281,29 @@ replace the list, TaskCreate and TaskUpdate build it up by the "#3" the
 create's result reported; a plan-tool call moves the model before its own
 row lands, so it and everything after belong to the new todo.
 
-`EnvironmentClient` keeps `threads[id].fold` current: rows that extend the
+`EnvironmentClient` keeps each thread's fold current: rows that extend the
 tail apply incrementally, anything else (a replacement, an older page, a
-reset, a trim) folds again. A partial tool call (ephemeral, seq -1) is one
+reset, a trim) folds again; an older page folds off the main actor against
+the thread's revision. A partial tool call (ephemeral, seq -1) is one
 row per call replaced in place and retired by its final row; `cursor` skips
-it.
+it. The fold records every write to its items (`FoldChanges`: an epoch per
+fold made whole, a generation per write, the lowest item each write
+touched), through one helper each for an item, a key, growth and removal.
+
+**TranscriptModel** is the transcript's rows kept between passes. `update`
+compares the fold's `FoldChanges`, the pending turns, `board.turnOpen` and
+the agents' statuses its waits need; unchanged, it answers the rows it has.
+A change rebuilds from the earliest of the turn that holds the lowest item
+written, the turn that was last, and any turn with a wait still undecided;
+everything before keeps its rows, its group keys and its place. A fold made
+whole (history joined above, a trim) builds every turn but reuses each
+settled turn whose entries are the ones it was built from. The rows equal
+`TranscriptRows.rows` at every step (`TranscriptModelTests`, the scenario
+runner). It also answers a row's index, its turn, the gaps above each row
+and `changedIDs()`, the rows the last build changed. **TranscriptWindow**
+is how much of them the list shows: 75 on a cold open, 150 more while the
+reader is within 25 rows of the window's top, and an older page asked for
+while under a page is held above it.
 
 The selectors the screens read: **Board** (rounds.ts: `groupByTodo`,
 `activeMs`, `actKind`, `editPath`, `changeStat`, `wholeChange` →
@@ -252,9 +324,16 @@ diff screen and lines the blocks up with the host's file metadata).
 **MarkdownCache** (`@MainActor @Observable`) parses a
 row's markdown into `RenderedBlock`s with inline `AttributedString`s off
 the main actor (`@concurrent`), keyed by environment, session, seq and text hash: a read is
-synchronous, a miss parses and lands as an observable change; `prefetch`
-starts a row's parse before it mounts, and a changed row keeps its height
-undrawn until its own parse lands, never plain text first. A streaming
+synchronous; a settled miss of up to 8 KiB parses in place, so its row
+mounts at its height, and a longer one parses off the actor and lands as an
+observable change; `prefetch` starts a row's parse before it mounts (the
+transcript asks a page above its window), and a changed row keeps its height
+undrawn until its own parse lands, never plain text first. What is kept is
+bounded by count and by cost (12 MiB of parsed text by estimate), and what
+leaves is what was read longest ago. A code block carries its line count
+and line numbers from the parse (`CodeText`), and prose the parse found no
+inline code in is marked (`InlineCodeFree`), so a row's body splits, joins
+and restyles nothing for them. A streaming
 row's last block has its open inline spans closed first (**MarkdownClose**,
 the desktop's remend), so no raw mark shows mid-stream. **PlanDocument** is the
 plan page's parser: the file's frontmatter lifted out, then blocks with

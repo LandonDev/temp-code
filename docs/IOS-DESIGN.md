@@ -957,8 +957,9 @@ The slot above the box (`Thread/WorkingStrip.swift` over the client's
 `ComposerSlot`, the desktop's `composerSlotOf`) holds one 28 pt row in the
 detail type on the column's edges, its actions small glass capsules at the
 trailing edge (`.glassProminent` in a tint for the one thing to do). While a
-turn works or waits: the turn's elapsed in secondary tabular digits (from a
-second on), counted from the click (`ThreadState.sentAt`, which the
+turn works or waits: the turn's elapsed in secondary tabular digits that
+step with the second and do not roll (from a second on), counted from the
+click (`ThreadState.sentAt`, which the
 optimistic send stamps when no turn is open; the host's later `busySince`
 never steps it back), and Stop, which reads "Stopping…" while it is out.
 Paused: the pause glyph in the warning tint, "Paused", the frozen time, on a
@@ -1352,9 +1353,11 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
 - **The shimmer** (`WorkingText`, the desktop's): the words muted, and
   over them a copy in the primary step seen through a band that rests off
   the words until 15 % of a 3 s period, crosses them on the sweep curve by
-  85 % and rests again; the band moves by its offset alone
-  (`keyframeAnimator`), so a frame lays nothing out. Still, muted words
-  under reduced motion and while the scene is not active.
+  85 % and rests again; the band is a layer cut to the words' shape that
+  Core Animation moves by its offset alone (`ShimmerBandView`,
+  `MotionValues.shimmerLoop`), so the render server draws each frame and
+  none runs on the main thread. Still, muted words under reduced motion and
+  while the scene is not active.
 - **Edits**: the desktop's bordered card: the icon in a 20 pt box, the file
   name medium, the directory dim, a live verb while the call runs, `+n −m`
   in success and destructive, semibold and tabular; deleted and failed say
@@ -2476,10 +2479,10 @@ left in a view.
 | Preamble fold | `fast` cross-fade, no height spring | `Motion.crossFade` |
 | Needs-you row appearing | `base` ease-out, opacity and 4 pt translateY; removal `fast`, opacity only | `.rowAppearTransition()` (`Motion.appear(reduced:)`, `Motion.rowAppear`, `Motion.rowLeave`, `Motion.travel`) |
 | Last-activity line changing | `fast` cross-fade with 2 pt blur; the row never changes height | `SwapText`, `.swapTransition()` (`Motion.swap(reduced:)`, `Motion.crossFade`, `Motion.crossFadeBlur`) |
-| Counts and elapsed | `contentTransition(.numericText())` on `fast` | `.numeric(value)` (`Motion.numeric`), `CountText`, `ElapsedText`, `AgoText` |
+| Counts and elapsed | `contentTransition(.numericText())` on `fast` | `.numeric(value)` (`Motion.numeric`), `CountText`, `ElapsedText`, `AgoText`; a clock draws again from `Tick` (a task that sleeps to the next whole period, `TickRule`), never a `TimelineView`; the slot's own clock steps without a roll |
 | Streaming text | the desktop's jitter buffer (`SmoothText`, smoothText.ts as of 0b82ddad, in UTF-16 units): the base pace is the arrival rate over the last 1.5 s (a gap counted 1 s at most, a burst at 1,500/s over a step), clamped 25–1,500 units/s, 400 before the first gap; a lead held behind the live end, seeded 250 ms (every host is remote to the phone), never under twice the gaps' 90th percentile (100–800 ms), an underrun growing it 1.5 times or by the wait, its excess decaying on a 6 s time constant; each spurt holds until a lead and a step are in hand; the pace leans up to 1.5 times while more than the lead is buffered, and every character shows within 1.5 s of arriving; the stream's end drains at the same pace, only a rewrite of the shown prefix and a hidden row snap. Whole words every 100 ms (`revealCut`: a token past 24 units cut where the pace reaches, never inside a grapheme; a bare block marker, a table's header row and a row that is only its pipes held until they have content, none of those inside an open fence; inside one a code line shows whole once its newline comes, and one held open `revealLineHold` (0.6 s) steps by words from then on, the clock waking the row once the hold is over), on a timer between steps, no display frames. A row that joins the last turn after the transcript opened is born live and reveals from its first word even when it mounts settled; the opening seq waits for the loaded thread; SwiftUI may prepare a row more than once, so preparation reads its eligibility and appearance consumes it; history and a row scrolled back in show whole. A reply short enough to land whole in its first step stays on the streaming render until that step is drawn and faded (`StreamRowRule`), so it fades like a long one. Each step fades in as one run over `revealFade` (0.4 s, linear; the desktop's `.stream-step`): the streaming block's text is one `Text` interpolated from its runs, the settled prefix as one and each step younger than the fade as its own (at most four; older young steps join the prefix), each young run carrying `StreamFadeAttribute` with its arrival, drawn at its opacity by `StreamFadeRenderer`, a `TextRenderer` under a `TimelineView` on a finite schedule (`FadeSchedule` over `RevealSegment.fadeTicks`, 30 Hz) that ends with the youngest run's fade (`RevealSegment.fadeEnd`), whether or not anything redraws the row after it. A per-block ledger keyed by the block's first 32 characters without their marks (`StreamRevealLedger`) keeps old steps merged into the prefix; a block whose marks alone were rewritten (a link's text closed into literal brackets, a lone `*` read literally once the block is no longer the last) keeps what it showed where it now falls (`shownEnd`) and fades only the new text; a block reparsed into another text fades in whole; text a row held when it mounted shows without a fade; paragraphs, headings, quotes and list items fade, code, tables and rules never; no rise; under reduced motion the word steps stay and nothing fades. The row stays on the streaming render until the drain and its last fade are done, then swaps to the settled parse, the same document (`streamingDocument(settled:)` stands in until the settled parse lands), so nothing on screen changes; while it reveals it reports to the thread's `RevealDrain` under its turn, which the closing line waits on. A running step reads in the present tense on its row and settles into the past tense in place | `SmoothTextReveal`, `StreamingAssistantRow`, `StreamFadeText`, `StreamRevealLedger`, `RevealDrain`, `BornRows` |
-| Working mark | three 3 pt dots in a 14 pt box gather into one and part every 1.6 s (the left and middle gather by 42 % and part at 58 %, the right by 50 % and 66 %, each leg on the breathing curve), offset and scale only; enters and leaves as a glyph trading state does | `WorkingMark` (`Motion.markDots`, `Motion.breathe`, `Motion.markDot`); the three dots at rest under reduced motion |
-| The shimmer | the band crosses the working words every 3 s, offset only | `WorkingText` (`Motion.shimmerLegs`); muted words under reduced motion |
+| Working mark | three 3 pt dots in a 14 pt box gather into one and part every 1.6 s (the left and middle gather by 42 % and part at 58 %, the right by 50 % and 66 %, each leg on the breathing curve), offset and scale only; enters and leaves as a glyph trading state does | `WorkingMark` (`Motion.markDots`, `MotionValues.markLoop`, `Motion.markDot`), run by Core Animation (`Motion.repeating`); the three dots at rest under reduced motion |
+| The shimmer | the band crosses the working words every 3 s, offset only | `WorkingText` (`MotionValues.shimmerLoop`), run by Core Animation; muted words under reduced motion |
 | Word morph | the old words lift 3 pt and fade over `swapOut`, then the new rise 3 pt over `base` on the swap curve while the box glides its width over `base` from the old words' width to the new (the new words are measured behind the box and never size it, `MorphModel.boxWidth`), the arriving words clipped, never cut with an ellipsis; new words under one key drawn at once; nothing on mount | `MorphText` (`Motion.swapOut`, `Motion.swapIn`, `Motion.morphLift`); reduced motion fades out, then in, `fast` each, no lift and no glide |
 | The working line settling | once every row of the turn has finished revealing: the mark leaves as a glyph trading state, the words morph into the closing words and slide 22 pt to the prose edge on `base` and the swap curve | `TurnLineRow` (`Motion.settleSlide`); the morph's fades and no slide under reduced motion |
 | The working line held, the Watching line | folds closed and opens again on the layout spring, the words kept; never unmounted while on screen | `Motion.layout`; opacity on `fast` under reduced motion |
@@ -2516,7 +2519,7 @@ keyboard action. Every animated change has a static cue as well.
 ## Performance
 
 - **Paint from disk.** The cache holds workspaces, projects, sessions, the
-  last 75 rows per thread and expanded bodies. Home and any thread the user
+  newest 1,000 rows per thread and expanded bodies. Home and any thread the user
   has opened paint from the cache before the socket is open; the socket's
   catch-up applies as a diff, never a reload.
 - **Rows are the unit.** Lists are `List` or `LazyVStack` with stable
@@ -2527,8 +2530,14 @@ keyboard action. Every animated change has a static cue as well.
   the changed block only, on the main actor.
 - **Bodies on demand.** Omitted bodies (over 2 KiB) are fetched when a chip
   expands and cached; a diff is fetched when opened.
-- **Budget.** A cold thread open is 75 rows, one page back on scroll to the
-  top. The row count, not turns, bounds every window.
+- **Budget.** A cold thread open folds the newest 300 wire rows; an older
+  page is 200. A chat, a master and a subagent thread hold 2,000 rows and
+  grow to 2,400 before they are cut back to 2,000 (one refold per 400 rows,
+  never under the reader's window); a board thread (implementation,
+  orchestration, planning, research) holds its whole history. The list
+  shows a window of the row model's rows: 75 on a cold open, grown 150 at a
+  time while the reader is within 25 rows of its top (`TranscriptWindow`).
+  The row count, not turns, bounds every window.
 - **Images** go through `/asset` with the system URL cache and a memory
   cost cap; thumbnails are decoded at display size.
 - **Nothing on the main actor waits on the network.** Every RPC is an async
@@ -2731,6 +2740,82 @@ keyboard action. Every animated change has a static cue as well.
   A revealing row asks the follow rule to pin at each shown step
   (`TranscriptFollow`), since the reveal grows a row with no row landing.
 
+### What a push and a key may re-run
+
+Two contracts shape the data path, and the `perf` set counts both.
+
+| Push | May re-run |
+| --- | --- |
+| Rows for the thread on screen | That transcript's body, once per 16 ms window; the rows of the live turn whose model changed; the dock only when `DockState` changed |
+| Rows for another thread | Nothing on this screen; a board row that shows that child, alone |
+| A meta for the thread on screen | The readers of the fields that changed (header, slot, composer chrome); never the transcript, the shell or the strip's other chips |
+| A meta for another session | Nothing on the thread screen; that thread's chip in the strip if its look changed; list screens at most 4 times a second while no list is on screen |
+| Live edits | The one running edit row, once per window |
+| Any push while the reader's finger is down or the list decelerates | Never an offset write |
+
+A keystroke may re-run the field (its text and its height); the button,
+only when "has content" flips; the dock's height, only on a wrap (the
+transcript's bottom inset moves in one layout pass, and no row is measured
+or drawn again). Nothing else: not `+`, not the model row, not the slot,
+not `ThreadScreen`, not the transcript, not the client. A thread's composer
+writes nothing to disk; the new-thread draft is encoded after 500 ms of quiet.
+
+How the code holds them (the types are in ios/TempCodeClient/README.md):
+
+- **One observable per thread and per session.** A held thread is a
+  `ThreadModel`, written in place; its readers take `content`, `dock`,
+  `flags`, `overlays` or `frame`, each assigned only when it changed. The
+  thread screen reads `frame` (`FrameFacts`: has it a board, agents,
+  sources, the newest row that waits on the person, the todo labels) and
+  the flags, never the state, so a row landing does not run it; a small
+  view of its own watches the newest seq. A hero (the board, the fleet,
+  the sources) that is not in view, on the pager's other page, draws the
+  thread as it last read it and reads nothing (`HeroGate`,
+  `ThreadPose.pageInView`): building a board walks the whole thread, and
+  it ran at every row beside a chat nobody could see it from. Sessions live
+  in a `SessionStore` outside observation, a slot per id. The list screens
+  read `listedSessions`, caught up at once while a list shows and four
+  times a second otherwise. The shell and its strip read a `KeptScope`
+  worked out off their bodies.
+- **Rows built where the thread changed.** `ThreadFold` records each write
+  to its items (`FoldChanges`); `TranscriptModel` keeps the rows between
+  passes and rebuilds from the turn that holds the lowest item written. A
+  DEBUG build checks one build in 16 against a whole build and fails the
+  `transcript` set on a difference (`rowsMismatch`).
+- **One write per window.** Pushes that change threads and the session list
+  wait in `PushIngress`: the first after a quiet 16 ms lands at once, the
+  rest of the window together when it closes, in order. Cache writes go
+  through one serial `CacheWriter`; the push loop waits for none.
+- **Scrolling back.** The window grows before the reader reaches its top;
+  rows that join above a moving reader are held in place by the list's
+  bounds when its content size lands, with no offset written; an older page
+  folds off the main actor; markdown is parsed ahead of the window and a
+  small miss parses in place, so a row mounts at its height.
+- **The composer.** The typed text is a `ComposerDraft` the field alone
+  reads; the bar reads `hasContent`. The dock takes a `ComposerChrome` (what
+  it draws of the session, and no `SessionMeta`) and is `Equatable`.
+- **Render work.** The pager's sides are cut by a clip, not a mask; a code
+  block's lines are counted and numbered at the parse; no handler reads the
+  transcript's offset per frame; the working line's two loops (the mark's
+  dots, the shimmer's band) are Core Animation keyframes the render server
+  runs (`MotionLoop`), where a closure ran on the main thread every frame.
+- **Nothing on screen ticks the display link.** A `TimelineView`, while
+  mounted, kept SwiftUI's display link updating the view graph and
+  redrawing glyphs every frame with no body running: the slot's one-second
+  clock and the streaming reply's fade each cost about 95 ms of CPU a
+  second that way, for as long as a turn worked. Every clock is a `Tick`
+  now (a task sleeps to the next whole period and writes one date), and
+  the fade steps its renderer's clock from a task that ends with the
+  youngest run's fade. The slot's clock steps with the second and does not
+  roll: a numeric transition every second redrew its glyphs through half
+  of each one. A new clock uses `Tick`; a new per-frame effect is a Core
+  Animation layer.
+
+The transcript stays a `List`. What a `List` cannot do is take a row's
+height from us: it estimates rows it has not sized. The `perf` set's jump
+count on the cold scroll back is the number that says whether that still
+shows ("Measured" below).
+
 ### The perf proof
 
 `TC_PROOF_SET=perf bun scripts/ios-sim-proof-local.ts` runs nine launches on the Measure
@@ -2799,39 +2884,86 @@ simulator cannot see: render cost, or the `List`.
 
 ### Measured
 
-The baseline: slice 0's Measure app (commit `d6c75a8f9`, kept on the Mac at
-`/tmp/tc-ios-perf/baseline/TempCode.app`), three passes on 2026-11-10 in the
-iPhone 17 Pro simulator (iOS 27.0, headless, 60 Hz), the Mac's 1-minute
-load 6 to 14 on 16 cores. CPU is the best of the three passes; counts are
-the range over them. The reports are in
-`.temp-code/findings/ios-perf-pass/baseline/`.
+Before: slice 0's Measure app, the measuring kit with nothing fixed (commit
+`d6c75a8f9`, kept on the Mac at `/tmp/tc-ios-perf/baseline/TempCode.app`).
+After: master at the end of the pass. Both ran in turn in one simulator
+(iPhone 17 Pro, iOS 27.0, headless, 60 Hz) on 2026-11-11, three passes
+each, the Mac's 1-minute load 5 to 65 on 16 cores from other work. CPU is
+the best of three passes; counts are the range over them. The reports and
+the samples are in `.temp-code/findings/ios-perf-pass/`.
 
-| What | Run | Target | Baseline |
-| --- | --- | --- | --- |
-| Main-thread CPU per interval while scrolling, p95 / p99 / worst | `scroll-idle` | 8 / 12 / 16 ms | 13.0 / 34.5 / 78.5 ms |
-| | `scroll-busy` | | 684 / 870 / 1,152 ms |
-| | `master` | | 49.4 / 67.5 / 92.0 ms |
-| Turn cost of an applied batch, p95 | `follow` | 2 ms | 697 ms |
-| The same cost on 12,000 rows against 600 | `scale-*` | ratio 1.5 | 9.1 (304 ms against 33 ms) |
-| Turn cost of a keystroke, p95 / worst | `type-idle` | 3 / 8 ms | 12.8 / 89.3 ms |
-| | `type-busy` | | 79.2 / 97.6 ms |
-| Main-thread CPU, a working turn at rest | `rest` | 10 ms a second | 128 ms a second |
-| Bodies run in the load-only window | `follow` | 0 | shell 23 to 43, thread screen 36 to 55, transcript 11 to 13 |
-| Transcript bodies against batches applied, 20 s | `follow` | no more bodies than batches | 61 to 68 bodies for 8 to 12 batches |
-| Whole refolds while 1,000 rows stream past the cap | `type-busy` | 3 | 584 to 659 |
-| Rows built per batch, p95, against the live turn's rows | `follow` | the live turn's | 1,983 to 2,379 against 2 |
-| | `scale-build` | | 1,185 against 3 |
-| Bodies per keystroke outside the field | `type-idle` | 0 | the composer bar, 140 for 140 keys |
-| Jumps on the cold scroll back, per 64,000 pt | `scroll-idle` | 1 per 10,000 pt, none over 8 pt | 0 to 3, the largest 182 pt |
-| | `scroll-busy` | | 3 to 6, the largest 7,014 pt |
-| Jumps on the warm pass | both | 0 | 0 |
-| `jumpUp`; the app's offset writes under a moving reader | every run | 0 | 1 `jumpUp` in one `scroll-busy`; 2 writes a `scroll-idle`, 4 a `scroll-busy`, 2 a `master` |
-| Late frames; hitch time | `scroll-idle` | half the baseline's; 5 ms a second | 113 to 125 of about 2,370; 67 to 79 ms a second |
+| What | Run | Target | Before | After |
+| --- | --- | --- | --- | --- |
+| Turn cost of an applied batch, p95 | `follow` | 2 ms | 697 ms | **10.8 ms** (7 ms at the median) |
+| | `scroll-busy` | | 417 ms | 12.6 ms |
+| | `type-busy` | | 26 ms | 6.3 ms |
+| | `master` | | 27 ms | 1.7 ms |
+| The same cost on 12,000 rows against 600 | `scale-*` | ratio 1.5 | 9.1 | **1.23** |
+| Batches applied in a 20 s stream on 12,000 rows | `follow` | all of them | 8 to 12 | 1,018 to 1,042 |
+| Frames drawn in that run; late | `follow` | | 59 to 62; all late | 1,438 to 1,476; 14 to 41 |
+| Bodies run in the load-only window | `follow` | 0 | shell 23 to 43, thread screen 36 to 55, transcript 11 to 13 | **0** |
+| Transcript bodies against batches applied | `follow` | no more bodies than batches | 61 to 68 for 8 to 12 | 922 to 939 for 1,018 to 1,042 |
+| Whole refolds while 1,000 rows stream past the cap | `type-busy` | 3 | 584 to 659 | **1** |
+| Rows built per batch, p95, against the live turn's rows | `follow`, `scale-*` | the live turn's | 1,983 to 2,379 against 2 | **4 against 4, 3 against 3** |
+| Bodies per keystroke outside the field | `type-idle` | 0, and one bar pass per flip | the bar, 140 for 140 keys | **0, bar 1** |
+| Turn cost of a keystroke, p95 / worst | `type-idle` | 3 / 8 ms | 12.8 / 89.3 ms | 11.6 / 82.8 ms |
+| | `type-busy` | | 79.2 / 97.6 ms | 10.3 / 37.7 ms |
+| Main-thread CPU per interval while scrolling, p95 / p99 / worst | `scroll-idle` | 8 / 12 / 16 ms | 13.0 / 34.5 / 78.5 ms | 11.2 / 26.9 / 45.1 ms |
+| | `scroll-busy` | | 684 / 870 / 1,152 ms | 17.7 / 34.6 / 66.0 ms |
+| | `master` | | 49.4 / 67.5 / 92.0 ms | 10.6 / 31.6 / 110 ms |
+| Main-thread CPU, a working turn at rest | `rest` | 10 ms a second | 128 ms a second | 11.6 ms a second (11.6 to 14.5 over three runs, loads 18 to 40) |
+| The app's offset writes under a moving reader | every run | 0 | 2 a `scroll-idle`, 4 a `scroll-busy`, 2 a `master` | **0** |
+| Jumps on the cold scroll back, per 62,000 pt, the largest | `scroll-idle` | 1 per 10,000 pt, none over 8 pt | 0 to 3, 182 pt | 0 to 2, 270 pt |
+| | `scroll-busy` | | 3 to 6, 7,014 pt | 1 to 4, 34 pt |
+| Jumps on the warm pass | `scroll-idle`; `scroll-busy` | 0 | 0; 0 | 0; 0 to 2 |
+| `jumpUp` | every run | 0 | 1 in one `scroll-busy` | 1 in two of three `master` runs |
+| Late frames, ours against the baseline's in the same passes | `scroll-busy`; `master`; `type-busy`; `follow` | half | | 414 / 1,331; 272 / 1,839; 9 / 717; 80 / 183 |
+| | `scroll-idle` | half | | 285 / 338 |
 
-On the 12,000-row thread the baseline cannot keep up with a stream at all:
-each one-row batch costs 300 to 1,000 ms, so `follow` applies 8 to 12
-batches in its 20 s and every frame of it is late. The typing runs had no
-software keyboard (the headless simulator shows none).
+The gates in `scripts/lib/ios_perf_gates.json` that hold in every pass are
+on: `load-only`, `bodies-per-batch`, `refolds`, `rows-built`,
+`keystroke-bodies`, `scale`. The rest are off, and their targets stand:
+
+- **A batch costs 10.8 ms at p95, not 2.** With the thread screen and the
+  board out of it, what is left is SwiftUI's update of the list, the
+  layout and the commit of the live turn's rows (7 ms at the median, on
+  600 rows as on 12,000). The app's own share is the rebuild of the live
+  turn, a quarter of it.
+- **A keystroke costs about 10 ms, not 3.** No body outside the field
+  runs. The time is the vertical `TextField` itself: about 2.7 ms in
+  TextKit for the key, 3.2 ms for SwiftUI to measure the field again, 3.4 ms
+  for UIKit to lay the text view out and commit. A `UITextView` composer,
+  which the pass ruled out, is what this number asks for. The worst key
+  of a run costs 83 ms, as it did before (89).
+- **Scrolling costs 11.2 ms an interval at p95, not 8.** The sample shows
+  the main thread in Core Animation's commit (28%) and layout (24%, the
+  collection view 17%) as rows come on screen; row bodies are under 0.2%
+  each and nothing parses on the main thread. That is the `List` hosting
+  SwiftUI rows, and at 120 Hz it has half the time.
+- **At rest a working turn costs 11.6 ms a second, not 10.** It cost 128:
+  the working line's loops were 28 of that, two `TimelineView`s 45, and
+  the slot clock's roll 45. What is left is the clock's one redraw a
+  second and the measuring kit's own display link.
+- **Jumps.** On the cold scroll back, up to two rows in 62,000 pt still
+  jump (270 pt at the worst), where the window grows above the reader:
+  the list's bounds are corrected when the content size lands and the
+  correction is not exact. Before the pass the app wrote the offset there,
+  which stops a real fling dead; now nothing is written and the fling goes
+  on. One `jumpUp` remains in two of three `master` runs.
+
+**The `List` verdict.** The plan's test was: cold jumps over 1 per 10,000
+pt, or any over 8 pt, or a `jumpUp`, with no offset write of ours beside
+it, and the `List` has failed. Jumps over 8 pt remain and no offset is
+written, but they sit at the app's own join (the bounds correction), so
+they do not yet convict the `List`. What does point at it is the scroll
+cost: with the app's own work gone from the sample, the commit and layout
+of hosted rows is what misses the 8 ms target. The transcript stays a
+`List`; a `UICollectionView` with measured heights is the next plan's
+question, and the phone's Diagnostics numbers decide whether to ask it.
+
+What only the phone can add: the software keyboard was never up in these
+runs (the headless simulator shows none), the simulator draws at 60 Hz,
+and the render server's cost is not in any number above.
 
 ## Push, the Live Activity and the Dynamic Island
 
