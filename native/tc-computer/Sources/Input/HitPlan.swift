@@ -160,6 +160,13 @@ public enum CaretWrite {
     public enum Decision: Equatable, Sendable { case done, write, wait }
     public static let caretWrites = 3
 
+    /// The character under the point: the focused field's answer first. A field nobody was editing answers
+    /// from its cell, which may name no character there (TC Probe's Digits field said 0 at its fifth digit,
+    /// 2026-11-11), and once focused from the field editor that lays out the text the click lands in.
+    public static func location(unfocused: Int?, focused: Int?) -> Int? {
+        focused ?? unfocused
+    }
+
     public static func next(range: TextRange?, want: TextRange, writes: Int) -> Decision {
         if range == want { return .done }
         return writes < caretWrites ? .write : .wait

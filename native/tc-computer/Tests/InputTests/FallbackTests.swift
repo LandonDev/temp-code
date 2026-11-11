@@ -235,6 +235,12 @@ private let win = Rect(x: 0, y: 0, w: 400, h: 300)
         #expect(CaretWrite.next(range: nil, want: want, writes: 0) == .write)
     }
 
+    @Test func theFocusedFieldsPositionWins() {
+        #expect(CaretWrite.location(unfocused: 0, focused: 4) == 4)
+        #expect(CaretWrite.location(unfocused: 4, focused: nil) == 4)
+        #expect(CaretWrite.location(unfocused: nil, focused: nil) == nil)
+    }
+
     @Test func atMostThreeWrites() {
         #expect(CaretWrite.next(range: TextRange(location: 0, length: 10), want: want, writes: CaretWrite.caretWrites) == .wait)
     }

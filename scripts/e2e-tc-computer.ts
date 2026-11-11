@@ -1266,9 +1266,10 @@ async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
   })
   await leg.step("fallbacks 4: a click at the field's fifth character puts the caret there", async (data) => {
     const field = findElement(o!, 'the Digits field', (e) => e.role === 'input' && !!e.frame && (e.name === 'Digits' || e.value === '0123456789'))
-    // 13 pt monospaced digits, the text 2 pt in: the middle of the fifth, in the picture's pixels
+    // 13 pt monospaced digits 8 pt apart, drawn 4 pt in by the cell and 7 pt in by the field editor once
+    // focused (AXBoundsForRange, 2026-11-11): 42 pt in lies inside the fifth in both, in the picture's pixels
     const k = o!.space.width / o!.window.frame.w
-    const at = intPoint(field.frame!.x + (2 + 4.5 * 7.83) * k, field.frame!.y + field.frame!.h / 2)
+    const at = intPoint(field.frame!.x + 42 * k, field.frame!.y + field.frame!.h / 2)
     const before = personState()
     const r = await act(o!, { action: 'left_click', coordinate: at }, ['ax', 'process'])
     data.person = assertPersonUntouched(before, 'after the click')
