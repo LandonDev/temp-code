@@ -28,7 +28,10 @@ import {
   passNeed,
   readBaseline,
   renderBenchTable,
+  baseHost,
   runFault,
+  runHostMsStep,
+  runHostMsTask,
   stepsOf,
   summarize,
   toolKind,
@@ -37,7 +40,8 @@ import {
   type BaselineRow,
   type BenchCall,
   type BenchReport,
-  type BenchRun
+  type BenchRun,
+  type BenchStep
 } from './lib/computerBench'
 
 // ── builders ────────────────────────────────────────────────────────────
@@ -335,9 +339,11 @@ describe('needsRerun', () => {
     expect(needsRerun(run({ outcome: 'failed', reason: 'text area holds ""' }), row())).toBe(true)
     expect(needsRerun(run({ otherTools: ['Bash'] }), null)).toBe(true)
     expect(needsRerun(run({ calls: calls(7) }), row())).toBe(true)
-    expect(needsRerun(run({ calls: calls(6) }), row())).toBe(false)
-    expect(needsRerun(run({ calls: calls(4, 251) }), row())).toBe(true)
-    expect(needsRerun(run({ calls: calls(4, 250) }), row())).toBe(false)
+    expect(needsRerun(run({ calls: calls(6, 90) }), row())).toBe(false)
+    // the task's 400 ms may reach 550, a step's 100 ms 250
+    expect(needsRerun(run({ calls: calls(4, 138) }), row())).toBe(true)
+    expect(needsRerun(run({ calls: calls(4, 137) }), row())).toBe(false)
+    expect(needsRerun(run({ calls: [call({ hostMs: 251 })] }), row())).toBe(true)
     expect(needsRerun(run({ outcome: 'skipped', calls: [] }), row())).toBe(false)
   })
 })
@@ -350,7 +356,9 @@ describe('judgeBench', () => {
     expect(j.ok).toBe(true)
     expect(verdict(j, 'end state, runs passed')).toMatchObject({ got: 1, limit: 1, ok: true })
     expect(verdict(j, 'median computer calls')).toMatchObject({ got: 4, limit: 6, ok: true })
-    expect(verdict(j, 'median host ms per call')).toMatchObject({ got: 100, limit: 250, ok: true })
+    expect(verdict(j, 'median host ms per task')).toMatchObject({ got: 400, limit: 550, ok: true })
+    expect(verdict(j, 'median host ms per step')).toMatchObject({ got: 100, limit: 250, ok: true })
+    expect(verdict(j, 'median host ms per call')).toBeUndefined()
     expect(verdict(j, 'median wall s')).toMatchObject({ reportOnly: true })
     expect(verdict(j, 'median think s')).toMatchObject({ reportOnly: true })
   })
@@ -368,8 +376,9 @@ describe('judgeBench', () => {
     expect(judgeBench(report([run({ calls: calls(7) })]), base(row())).ok).toBe(false)
     // past the ratio while the plus is the smaller limit
     const big = base(row({ callsMedian: 10 }))
-    expect(judgeBench(report([run({ calls: calls(15), stepBudget: 20 })]), big).ok).toBe(true)
-    expect(judgeBench(report([run({ calls: calls(16), stepBudget: 20 })]), big).ok).toBe(false)
+    // shorter calls, so the task's host time (1000 ms, at most 1300) stays inside its own margin
+    expect(judgeBench(report([run({ calls: calls(15, 80), stepBudget: 20 })]), big).ok).toBe(true)
+    expect(judgeBench(report([run({ calls: calls(16, 80), stepBudget: 20 })]), big).ok).toBe(false)
   })
 
   it('takes the larger of the ratio and the plus for host ms', () => {
@@ -381,11 +390,57 @@ describe('judgeBench', () => {
     expect(judgeBench(report([run({ calls: calls(4, 1310) })]), slow).ok).toBe(false)
   })
 
+  describe('host time per task and per step (the rule of 2026-11-11)', () => {
+    const steps = (n: number): BenchStep[] => Array.from({ length: n }, () => ({ action: 'set_value', tier: 'ax', effect: 'changed', ok: true }))
+    const form = (observe: number, batch: number, n = 6) =>
+      run({ task: 'chrome-form', calls: [call({ tool: 'computer_observe', hostMs: observe, steps: [] }), call({ tool: 'computer_batch', hostMs: batch, steps: steps(n) })] })
+
+    it('measures a task as the sum of its calls and a step as a batch of n counted n times', () => {
+      expect(runHostMsTask(form(503, 2704))).toBe(3207)
+      expect(runHostMsStep(form(503, 2704))).toBeCloseTo(450.67, 1)
+      expect(runHostMsTask(run({ calls: [call({ hostMs: null })] }))).toBeNull()
+      expect(runHostMsStep(run({ calls: [call({ hostMs: null })] }))).toBeNull()
+      expect(baseHost(row({ callsMedian: 10.5, hostMsMedian: 894 }))).toEqual({ task: 9387, step: 894 })
+      expect(baseHost(row({ hostMsTaskMedian: 3207, hostMsStepMedian: 451 }))).toEqual({ task: 3207, step: 451 })
+    })
+
+    it('passes GPT-6.1 Sol\'s two-call form (an observe and a batch of six) against a row of single calls', () => {
+      for (const base0 of [row({ task: 'chrome-form', callsMedian: 10.5, hostMsMedian: 894 }), row({ task: 'chrome-form', callsMedian: 7, hostMsMedian: 872 })]) {
+        const j = judgeBench(report([form(503, 2704)]), base(base0))
+        expect(j.ok).toBe(true)
+        expect(verdict(j, 'median host ms per task')).toMatchObject({ got: 3207, ok: true })
+        expect(verdict(j, 'median host ms per step')).toMatchObject({ got: 451, ok: true })
+      }
+    })
+
+    it('fails the same work with every step twice as slow', () => {
+      // a row written from the two-call shape itself
+      const twoCall = base(row({ task: 'chrome-form', callsMedian: 2, hostMsMedian: 1604, hostMsTaskMedian: 3207, hostMsStepMedian: 451 }))
+      const slow = judgeBench(report([form(1006, 5408)]), twoCall)
+      expect(slow.ok).toBe(false)
+      expect(verdict(slow, 'median host ms per task')).toMatchObject({ got: 6414, limit: 4169, ok: false })
+      // single calls against a row derived from single calls
+      const single = judgeBench(report([run({ calls: calls(4, 200) })]), base(row()))
+      expect(single.ok).toBe(false)
+      expect(verdict(single, 'median host ms per task')).toMatchObject({ got: 800, limit: 550, ok: false })
+    })
+
+    it('fails a slow batch the step measure lets through: a 500 ms observe and a batch of five slowed from 1000 to 1500 ms', () => {
+      // the row of the 500 + 1000 run, per call only: 2 calls at 750
+      const j = judgeBench(report([form(500, 1500, 5)]), base(row({ task: 'chrome-form', callsMedian: 2, hostMsMedian: 750 })))
+      expect(j.ok).toBe(false)
+      expect(verdict(j, 'median host ms per task')).toMatchObject({ got: 2000, limit: 1950, ok: false })
+      expect(verdict(j, 'median host ms per step')).toMatchObject({ got: 300, ok: true })
+      expect(needsRerun(form(500, 1500, 5), row({ task: 'chrome-form', callsMedian: 2, hostMsMedian: 750 }))).toBe(true)
+    })
+  })
+
   it('judges a task with no baseline on its end state alone', () => {
     const j = judgeBench(report([run({ calls: calls(9), stepBudget: 10 })]), EMPTY_BASELINE)
     expect(j.ok).toBe(true)
     expect(verdict(j, 'median computer calls')).toBeUndefined()
-    expect(verdict(j, 'median host ms per call')).toBeUndefined()
+    expect(verdict(j, 'median host ms per task')).toBeUndefined()
+    expect(verdict(j, 'median host ms per step')).toBeUndefined()
     expect(verdict(j, 'median wall s')).toBeUndefined()
   })
 
@@ -467,6 +522,12 @@ describe('the baseline', () => {
       ['textedit-write', 5]
     ])
     expect(merged.rows[1]).toMatchObject({ hostMsMedian: 120, commit: 'abcdef0123456789', at: passedAndFailed.endedAt })
+  })
+
+  it('writes the task and step figures in a new row, and leaves an existing row as it was', () => {
+    const merged = mergeBaseline(base(row({ task: 'chrome-form', callsMedian: 6 })), passedAndFailed, { replace: false })
+    expect(merged.rows[0]).toEqual(row({ task: 'chrome-form', callsMedian: 6 }))
+    expect(merged.rows[1]).toMatchObject({ task: 'textedit-write', hostMsMedian: 120, hostMsTaskMedian: 600, hostMsStepMedian: 120 })
   })
 
   it('replace rewrites every task that passed', () => {

@@ -139,7 +139,11 @@ export const BENCH_RULE = {
   name: 'computer-bench',
   /** median computer calls per task may reach max(1.5 × base, base + 2) */
   calls: { ratio: 1.5, plus: 2 },
-  /** median host ms per call may reach max(1.3 × base, base + 150) */
+  /**
+   * median host ms per task (the sum over a run's computer calls) and median
+   * host ms per action step may each reach max(1.3 × base, base + 150);
+   * both must hold (hostMsLimit, judgeBench)
+   */
   hostMs: { ratio: 1.3, plus: 150 },
   /** a breach on the first run earns two more */
   reruns: 2,
@@ -246,8 +250,28 @@ export function median(xs: readonly number[]): number | null {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2
 }
 
-/** A run's median host ms per computer call; null with no calls. */
+/** A run's median host ms per computer call; null with no calls. Reported, no longer judged. */
 export const runHostMs = (run: BenchRun): number | null => median(nums(run.calls.map((c) => c.hostMs)))
+
+/** A run's host ms for the whole task: the sum over its computer calls; null with no timed call. */
+export function runHostMsTask(run: BenchRun): number | null {
+  const host = nums(run.calls.map((c) => c.hostMs))
+  return host.length ? host.reduce((n, ms) => n + ms, 0) : null
+}
+
+/** A run's median host ms per action step: a call of n steps counts n times at hostMs / n, an observe once; null with no timed call. */
+export const runHostMsStep = (run: BenchRun): number | null =>
+  median(run.calls.flatMap((c) => (c.hostMs === null ? [] : Array<number>(Math.max(1, c.steps.length)).fill(c.hostMs / Math.max(1, c.steps.length)))))
+
+/**
+ * The baseline's task and step figures: the row's own when it has them, else
+ * derived from its per-call figures, the rule of 2026-11-11 (its calls were
+ * single steps, so per step is per call, and a task is its calls times that).
+ */
+export const baseHost = (base: BaselineRow): { task: number; step: number } => ({
+  task: base.hostMsTaskMedian ?? base.callsMedian * base.hostMsMedian,
+  step: base.hostMsStepMedian ?? base.hostMsMedian
+})
 
 /** Runs that must pass their end state: 1 of 1, 2 of 3. */
 export const passNeed = (runs: number, rule: BenchRule = BENCH_RULE): number =>
@@ -264,8 +288,12 @@ export interface TaskSummary {
   /** the skip's line when every run of the task was skipped */
   skipped: string | null
   callsMedian: number | null
-  /** the median of each run's median host ms per call */
+  /** the median of each run's median host ms per call, reported */
   hostMsMedian: number | null
+  /** the median of each run's host ms for the whole task (runHostMsTask) */
+  hostMsTaskMedian: number | null
+  /** the median of each run's median host ms per action step (runHostMsStep) */
+  hostMsStepMedian: number | null
   wallMsMedian: number | null
   thinkMsMedian: number | null
   queuedMsMedian: number | null
@@ -310,6 +338,8 @@ export function summarize(runs: readonly BenchRun[]): TaskSummary[] {
       skipped: ran.length ? null : (group[0].reason ?? 'skipped'),
       callsMedian: median(ran.map((r) => r.calls.length)),
       hostMsMedian: median(nums(ran.map(runHostMs))),
+      hostMsTaskMedian: median(nums(ran.map(runHostMsTask))),
+      hostMsStepMedian: median(nums(ran.map(runHostMsStep))),
       wallMsMedian: median(ran.map((r) => r.wallMs)),
       thinkMsMedian: median(ran.map((r) => r.thinkMs)),
       queuedMsMedian: median(ran.map((r) => r.queuedMs)),
@@ -336,6 +366,9 @@ const BaselineRowSchema = z.object({
   taskVersion: z.number().int(),
   callsMedian: z.number().nonnegative(),
   hostMsMedian: z.number().nonnegative(),
+  /** rows written before 2026-11-11 lack these two; baseHost derives them from the per-call figures */
+  hostMsTaskMedian: z.number().nonnegative().optional(),
+  hostMsStepMedian: z.number().nonnegative().optional(),
   /** shown beside the run's, never judged */
   wallMsMedian: z.number().nonnegative(),
   thinkMsMedian: z.number().nonnegative(),
@@ -401,6 +434,8 @@ export function mergeBaseline(b: Baseline, report: BenchReport, opts: { replace:
       taskVersion: s.taskVersion,
       callsMedian: s.callsMedian,
       hostMsMedian: Math.round(s.hostMsMedian),
+      ...(s.hostMsTaskMedian === null ? {} : { hostMsTaskMedian: Math.round(s.hostMsTaskMedian) }),
+      ...(s.hostMsStepMedian === null ? {} : { hostMsStepMedian: Math.round(s.hostMsStepMedian) }),
       wallMsMedian: Math.round(s.wallMsMedian),
       thinkMsMedian: Math.round(s.thinkMsMedian),
       commit: report.commit,
@@ -446,8 +481,10 @@ export function needsRerun(first: BenchRun, base: BaselineRow | null, rule: Benc
   if (!runPassed(first)) return true
   if (!base) return false
   if (first.calls.length > callsLimit(base.callsMedian, rule)) return true
-  const host = runHostMs(first)
-  return host !== null && host > hostMsLimit(base.hostMsMedian, rule)
+  const b = baseHost(base)
+  const task = runHostMsTask(first)
+  const step = runHostMsStep(first)
+  return (task !== null && task > hostMsLimit(b.task, rule)) || (step !== null && step > hostMsLimit(b.step, rule))
 }
 
 export interface BenchJudgement {
@@ -459,11 +496,11 @@ export interface BenchJudgement {
 }
 
 /**
- * Each task's end state, its median computer calls and its median host ms
- * per call against the baseline (a task with no row is judged on its end
- * state alone); wall and think time beside the baseline's, reported only. A
- * gate task the bench's own budget never reached fails, unless the scheduler
- * held the runs; a skipped lane or task never fails.
+ * Each task's end state, its median computer calls, and its median host ms
+ * per task and per action step against the baseline (a task with no row is
+ * judged on its end state alone); wall and think time beside the baseline's,
+ * reported only. A gate task the bench's own budget never reached fails,
+ * unless the scheduler held the runs; a skipped lane or task never fails.
  */
 export function judgeBench(report: BenchReport, baseline: Baseline, rule: BenchRule = BENCH_RULE): BenchJudgement {
   const verdicts: Verdict[] = []
@@ -483,9 +520,15 @@ export function judgeBench(report: BenchReport, baseline: Baseline, rule: BenchR
       const limit = round1(callsLimit(base.callsMedian, rule))
       verdicts.push({ what: `${name}: median computer calls`, got: s.callsMedian, limit, ok: s.callsMedian <= limit })
     }
-    if (base && s.hostMsMedian !== null) {
-      const limit = Math.round(hostMsLimit(base.hostMsMedian, rule))
-      verdicts.push({ what: `${name}: median host ms per call`, got: Math.round(s.hostMsMedian), limit, ok: s.hostMsMedian <= limit })
+    // Both: the step measure's fixed floor counts for more against a small unit, so a slow batch is caught by the task's.
+    const b = base && baseHost(base)
+    if (b && s.hostMsTaskMedian !== null) {
+      const limit = Math.round(hostMsLimit(b.task, rule))
+      verdicts.push({ what: `${name}: median host ms per task`, got: Math.round(s.hostMsTaskMedian), limit, ok: s.hostMsTaskMedian <= limit })
+    }
+    if (b && s.hostMsStepMedian !== null) {
+      const limit = Math.round(hostMsLimit(b.step, rule))
+      verdicts.push({ what: `${name}: median host ms per step`, got: Math.round(s.hostMsStepMedian), limit, ok: s.hostMsStepMedian <= limit })
     }
     // Beside the baseline's, reported only; with no row the table already says them.
     if (base && s.wallMsMedian !== null) {

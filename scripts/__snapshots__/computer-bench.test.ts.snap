@@ -30,27 +30,32 @@ macOS 26.1, Apple M4 Max, load 4.6
 |---|---|---|---|
 | claude-opus-5-5 textedit-write: end state, runs passed | 1 | 1 | pass |
 | claude-opus-5-5 textedit-write: median computer calls | 2 | 4 | pass |
-| claude-opus-5-5 textedit-write: median host ms per call | 138 | 280 | pass |
+| claude-opus-5-5 textedit-write: median host ms per task | 275 | 410 | pass |
+| claude-opus-5-5 textedit-write: median host ms per step | 138 | 280 | pass |
 | claude-opus-5-5 textedit-write: median wall s | 9.4 | 9.8 | pass |
 | claude-opus-5-5 textedit-write: median think s | 7.1 | 7.4 | pass |
 | claude-opus-5-5 chrome-read: end state, runs passed | 1 | 1 | pass |
 | claude-opus-5-5 chrome-read: median computer calls | 3 | 5 | pass |
-| claude-opus-5-5 chrome-read: median host ms per call | 380 | 510 | pass |
+| claude-opus-5-5 chrome-read: median host ms per task | 940 | 1404 | pass |
+| claude-opus-5-5 chrome-read: median host ms per step | 380 | 510 | pass |
 | claude-opus-5-5 chrome-read: median wall s | 14.2 | 13.8 | over, reported |
 | claude-opus-5-5 chrome-read: median think s | 10.9 | 10.4 | over, reported |
 | claude-opus-5-5 chrome-form: end state, runs passed | 1 | 1 | pass |
 | claude-opus-5-5 chrome-form: median computer calls | 2 | 4 | pass |
-| claude-opus-5-5 chrome-form: median host ms per call | 655 | 832 | pass |
+| claude-opus-5-5 chrome-form: median host ms per task | 1310 | 1664 | pass |
+| claude-opus-5-5 chrome-form: median host ms per step | 152 | 832 | pass |
 | claude-opus-5-5 chrome-form: median wall s | 16.8 | 15.9 | over, reported |
 | claude-opus-5-5 chrome-form: median think s | 12.1 | 11.7 | over, reported |
 | gpt-6.1-sol textedit-write: end state, runs passed | 1 | 1 | pass |
 | gpt-6.1-sol textedit-write: median computer calls | 3 | 5 | pass |
-| gpt-6.1-sol textedit-write: median host ms per call | 160 | 300 | pass |
+| gpt-6.1-sol textedit-write: median host ms per task | 440 | 600 | pass |
+| gpt-6.1-sol textedit-write: median host ms per step | 160 | 300 | pass |
 | gpt-6.1-sol textedit-write: median wall s | 11.8 | 11 | over, reported |
 | gpt-6.1-sol textedit-write: median think s | 9.2 | 8.8 | over, reported |
 | gpt-6.1-sol chrome-read: end state, runs passed | 2 | 2 | pass |
 | gpt-6.1-sol chrome-read: median computer calls | 3 | 4 | pass |
-| gpt-6.1-sol chrome-read: median host ms per call | 360 | 430 | pass |
+| gpt-6.1-sol chrome-read: median host ms per task | 925 | 728 | FAIL |
+| gpt-6.1-sol chrome-read: median host ms per step | 360 | 430 | pass |
 | gpt-6.1-sol chrome-read: median wall s | 15.3 | 12.5 | over, reported |
 | gpt-6.1-sol chrome-read: median think s | 11.8 | 9.9 | over, reported |
 | gpt-6.1-sol chrome-form: end state, runs passed | 1 | 1 | pass |
@@ -70,7 +75,7 @@ macOS 26.1, Apple M4 Max, load 4.6
 | gpt-6.1-sol | 0 | 0 | 0 | 0 | 0 |
 | muse-wonder-1.0 | 0 | 0 | 0 | 0 | 0 |
 
-computer bench passed
+computer bench failed: gpt-6.1-sol chrome-read: median host ms per task
 "
 `;
 

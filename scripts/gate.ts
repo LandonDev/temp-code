@@ -310,7 +310,7 @@ export const STEPS: Step[] = [
     lane: 'computer',
     capMs: 15 * 60_000,
     onlyAtPublish: true,
-    why: 'real desktop tasks (TextEdit, Chrome, a dev window, System Settings, a save dialog) through the computer tools and tc-computer on three models side by side, in the background tiers: each end state, median tool calls and median host time per call against the baseline in the gate dir (scripts/e2e-computer-bench.ts --gate, about 6 min, 15 min at most)',
+    why: 'real desktop tasks (TextEdit, Chrome, a dev window, System Settings, a save dialog) through the computer tools and tc-computer on three models side by side, in the background tiers: each end state, median tool calls, and median host time per task and per action step against the baseline in the gate dir (scripts/e2e-computer-bench.ts --gate, about 6 min, 15 min at most)',
     mac: true,
     screen: true
   }
