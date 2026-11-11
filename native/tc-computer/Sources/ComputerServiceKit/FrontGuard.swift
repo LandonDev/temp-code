@@ -175,6 +175,9 @@ public struct FrontGuard: Equatable, Sendable {
     public private(set) var watched: WatchedApp
     /// nil while the recorded app has quit and no other came forward yet
     public private(set) var recorded: FrontRecord?
+    /// the record before the guard followed another app forward: macOS gives the front back to it when that app
+    /// quits, and so does the record (a renderer soak's instance came forward and quit within 70 ms, 2026-11-11)
+    public private(set) var followedFrom: FrontRecord?
     public private(set) var phase: Phase = .idle
     public private(set) var signals = PersonSignals()
     public private(set) var steals = 0
@@ -239,11 +242,23 @@ public struct FrontGuard: Equatable, Sendable {
             return sample(front: front, window: window, above: above, at: at)
         case .quit(let pid):
             if pid == watched.pid { return end() }
+            if pid == followedFrom?.pid { followedFrom = nil }
             guard pid == recorded?.pid else { return .none }
-            recorded = nil
-            if case .pending = phase { settle(.failed, ms: nil) }
-            if case .restoring = phase { settle(.failed, ms: nil) }
-            return .none
+            recorded = followedFrom
+            followedFrom = nil
+            let stealAt: Double
+            switch phase {
+            case .pending(_, let at), .restoring(_, let at, _): stealAt = at
+            default: return .none
+            }
+            // a steal's undo goes to the app the record fell back to, inside a restore bound of its own
+            guard let back = recorded else {
+                settle(.failed, ms: nil)
+                return .none
+            }
+            phase = .pending(.app(back.pid), stealAt: stealAt)
+            windowRaised = false
+            return decision(.app(back.pid))
         case .paused(let reason, _):
             if !isPaused { stolenWhilePaused = nil }
             pauses.insert(reason)
@@ -253,6 +268,7 @@ public struct FrontGuard: Equatable, Sendable {
             if let front {
                 // a session step moved the front and its restore put back what it could: the front read again is the record
                 recorded = front
+                followedFrom = nil
                 stolenWhilePaused = nil
                 if case .pending = phase { phase = .idle }
             }
@@ -292,7 +308,7 @@ public struct FrontGuard: Equatable, Sendable {
             if isWatched, let recorded { return steal(.app(recorded.pid), at: at) }
             // a third app: the person switched; the restore ends and that app is the record
             if case .restoring = phase { settle(.restored, ms: at - stealAt) } else { phase = .idle }
-            recorded = FrontRecord(pid: pid)
+            follow(pid)
             return .follow(pid)
         case .idle:
             if isWatched {
@@ -306,11 +322,18 @@ public struct FrontGuard: Equatable, Sendable {
                 return steal(.app(recorded.pid), at: at)
             }
             guard pid != recorded?.pid else { return .none }
-            recorded = FrontRecord(pid: pid)
+            follow(pid)
             return .follow(pid)
         case .ended:
             return .none
         }
+    }
+
+    /// The record moves to an app that came forward; the one it held is kept to fall back to when that app quits.
+    private mutating func follow(_ pid: Int32) {
+        if let recorded, recorded.pid != pid { followedFrom = recorded }
+        if followedFrom?.pid == pid { followedFrom = nil }
+        recorded = FrontRecord(pid: pid)
     }
 
     /// The window rule: while the watched app is the person's front app, a focus change they did not make is put back.

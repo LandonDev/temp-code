@@ -536,3 +536,50 @@ private func stealAndRestore(_ g: inout FrontGuard, at: Double) {
         #expect(FrontGuard.traceLine(1, late, d, g, settled: true)?.hasSuffix("settled failed") == true)
     }
 }
+
+/// A renderer soak's instance (pid 300) comes forward over the person's app and quits 70 ms later, while
+/// the service's scratch app (pid 200) picks a menu value (v1.0.341's publish, 2026-11-11).
+@Suite struct FrontGuardFollowedQuitTests {
+    @Test func aRecordThatQuitsFallsBackToTheAppItFollowedFrom() {
+        var g = launch()
+        #expect(g.handle(activated(third, at: 100)) == .follow(third))
+        #expect(g.recorded == FrontRecord(pid: third))
+        #expect(g.followedFrom == FrontRecord(pid: person, window: 11))
+        #expect(g.handle(.quit(third)) == .none)
+        #expect(g.recorded == FrontRecord(pid: person, window: 11))
+        #expect(g.followedFrom == nil)
+        // the scratch app's steal now puts the person's app back, and is restored
+        stealAndRestore(&g, at: 300)
+        #expect(g.report == FrontReport(raised: true, restored: .restored, ms: 60))
+    }
+
+    @Test func aRestoreToTheFollowedAppGoesBackToThePersonsWhenItQuits() {
+        var g = launch()
+        _ = g.handle(activated(third, at: 100))
+        #expect(g.handle(activated(stealer, at: 200)) == .restore(third))
+        #expect(g.handle(.restoreStarted(at: 205)) == .none)
+        // the soak's instance quits inside the restore: the undo goes to the person's app instead
+        #expect(g.handle(.quit(third)) == .restore(person))
+        #expect(g.handle(.restoreStarted(at: 280)) == .none)
+        #expect(g.handle(activated(person, at: 300)) == .none)
+        #expect(g.handle(.sample(front: person, window: 11, above: false, at: 320)) == .none)
+        #expect(g.report == FrontReport(raised: true, restored: .restored, ms: 120))
+    }
+
+    @Test func aRecordThatQuitsWithNothingBeforeItStillFailsItsSteal() {
+        var g = FrontGuard(recorded: FrontRecord(pid: third), watched: steal, at: 0)
+        #expect(g.handle(activated(stealer, at: 100)) == .restore(third))
+        #expect(g.handle(.quit(third)) == .none)
+        #expect(g.recorded == nil)
+        #expect(g.report == FrontReport(raised: true, restored: .failed))
+    }
+
+    @Test func theAppFollowedFromQuittingFirstLeavesNothingToFallBackTo() {
+        var g = launch()
+        _ = g.handle(activated(third, at: 100))
+        #expect(g.handle(.quit(person)) == .none)
+        #expect(g.followedFrom == nil)
+        #expect(g.handle(.quit(third)) == .none)
+        #expect(g.recorded == nil)
+    }
+}
