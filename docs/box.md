@@ -1940,8 +1940,12 @@ for a call without a picture. The Mac gate run on 2026-11-10 measured added
 p50/p90 of 3/19 ms for observe, 9/24 ms with a picture and 10/42 ms for
 `set_value` (1 ms loopback round trip), inside +40/+100 ms. The row took
 95 s; timing passed while 11 other checks failed. After the proof fixes,
-all 60 checks passed in 96 s: added p50/p90 was 13/32 ms for observe,
-14/29 ms with a picture and 2/33 ms for `set_value`, under the same bounds. A direct link, binary frames and smaller
+all 60 checks passed in 96 s before the schema rebase: added p50/p90 was 13/32 ms for observe,
+14/29 ms with a picture and 2/33 ms for `set_value`, under the same bounds.
+After the rebase, 59/60 passed in 90 s (4/11, 2/28, 9/25 ms); the one
+stale remote-note check is now corrected. Later high-load runs failed;
+the final commit is not run: the Mac was locked. The full record is in §18.
+A direct link, binary frames and smaller
 pictures were ruled out; docs/computer-protocol.md §18 "What the bridge
 costs" says why.
 

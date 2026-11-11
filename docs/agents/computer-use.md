@@ -273,8 +273,14 @@ allowed notice, but refuses a `pay`-flagged click before it runs. The
 2026-11-10 timing leg added 3–10 ms at p50 and 19–42 ms at p90 on loopback
 (§18); it passed while the old proof’s other checks failed.
 
-After the proof fixes, all 60 checks passed on the Mac in 96 s: added
+Before the schema rebase, all 60 checks passed on the Mac in 96 s: added
 p50/p90 13/32 ms observe, 14/29 ms with a picture, 2/33 ms `set_value`,
 with the same bounds. The probe survived past the orphan grace and exited
 in its own runner’s cleanup. Evidence lives under
 `.temp-code/findings/computer-bridge-gate-fixed-2026-11-10/attempt2-4b6e6a4a7/`.
+
+After the schema rebase, 59/60 checks passed in 90 s; the one stale check
+expected the remote note on every tool and is now corrected. Added p50/p90
+was 4/11 ms observe, 2/28 ms with a picture and 9/25 ms `set_value`.
+Later high-load attempts remain failures. The final commit is **not run:
+the Mac was locked**. The watcher is stopped; §18 has the full record.
