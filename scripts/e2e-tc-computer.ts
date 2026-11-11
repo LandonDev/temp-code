@@ -32,6 +32,10 @@
  *    A background TextEdit ignores a left click and Command-V at the process
  *    tier (§14.8): the click and the paste record that as a finding, and the
  *    paste step still holds the lock and the clipboard's restore.
+ *  - the web leg (§25), on unmodified Chrome for Testing with a private profile: page and tab
+ *    reads, long tables, AX scrolling and controls, menu closure, value read-back and key focus.
+ *    Launch waits for five quiet seconds and restores the front app and window; the actions use only
+ *    ax and process. A missing Chrome for Testing skips the leg.
  *  - the front guard (docs/computer-protocol.md §23.9), in the gate too: "TC
  *    Probe Steal", the probe built to activate itself, is launched, opened
  *    into with a scratch .tcprobe and pressed at ax; each time the result (or
@@ -82,7 +86,7 @@ import {
 import { basename, dirname, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { promisify } from 'node:util'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   type ElementLine,
   type LineFrame,
@@ -92,6 +96,7 @@ import {
 import {
   COMPUTER_PROTOCOL,
   COMPUTER_WAIT,
+  OBSERVATION_BUDGET,
   ComputerNotificationSchema,
   HostNotificationSchema,
   LOCKS,
@@ -117,6 +122,11 @@ import {
   type WaitReport
 } from '../src/shared/computer/protocol'
 import { waitForGateBuild } from './lib/gateBuild'
+import { chromiumForTests, CHROMIUM_MISSING, TEST_CHROMIUM_BUNDLE, SCRATCH_CHROME_FRAME, hasChromeProfile, stopScratchChromium } from './lib/chromiumForTests'
+import { createProcScan } from './lib/procScan'
+import { macReady } from './lib/benchRun'
+import { webProofFixtures, WEB_NONCE, WEB_TITLES } from './lib/webProofFixtures'
+import { FIELD_FORM, fieldFormCode } from './lib/fieldTasks'
 import { intPoint } from './lib/computerPoint'
 import { STEAL_PROBE_APP_NAME, buildStealProbeApp, cleanupProbeApp, launchProbe } from './lib/tcProbeApp'
 import { COMPUTER_PROOF_ENV, sweepComputerProofProcesses } from './lib/computerProofProcesses'
@@ -463,7 +473,7 @@ function swiftEnv(): NodeJS.ProcessEnv {
 // ── what the Mac looks like from outside the service ────────────────────
 
 function probe<T>(
-  command: 'pointer' | 'frontmost' | 'frontwindow' | 'pasteboard' | 'hide',
+  command: 'pointer' | 'frontmost' | 'frontwindow' | 'pasteboard' | 'hide' | 'restore-front' | 'omnibox' | 'screen',
   args: string[] = [],
   timeoutMs = 10_000
 ): T {
@@ -833,6 +843,7 @@ const shotNumber = (path: string): number => Number(/^(\d+)-/.exec(basename(path
 
 // ── the run ─────────────────────────────────────────────────────────────
 
+const webCleanups = new Set<() => number[]>()
 let probePid = 0
 let stealPid = 0
 let textEditPid = 0
@@ -996,6 +1007,7 @@ function hideThenKillApps(): number[] {
 function abortApps(servicesFrom: number): void {
   tryAborted = true
   hideThenKillApps()
+  for (const stop of webCleanups) { try { stop() } catch { /* retried in cleanup */ } }
   for (const svc of services.slice(servicesFrom)) if (!svc.done) svc.proc.kill('SIGKILL')
 }
 
@@ -1286,6 +1298,209 @@ async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
   rmSync(scratch, { recursive: true, force: true })
 }
 
+/** §25, on an unmodified Chrome for Testing and a private scratch profile. */
+async function webLeg(): Promise<void> {
+  const browser = chromiumForTests()
+  if (!browser) {
+    record({ name: 'web: Chrome for Testing', outcome: 'skipped', ms: 0, why: CHROMIUM_MISSING })
+    return
+  }
+  const held = await macReady({ idleSeconds: personIdleSecondsAsync, screen: async () => probe<{ locked: boolean; asleep: boolean }>('screen') }, false)
+  if (held) {
+    record({ name: 'web: launch', outcome: 'skipped', ms: 0, why: `skipped: ${held}` })
+    return
+  }
+  const leg = new Chain()
+  const scratch = join(WORK, `web-${process.pid}`)
+  const profile = join(scratch, 'profile')
+  const scan = createProcScan()
+  const session = 'web-proof'
+  let pid = 0
+  const stopBrowser = (): number[] => {
+    pid ||= scan.processes().find((p) => hasChromeProfile(p.command, profile) && p.command.startsWith(join(browser, 'Contents/MacOS/Google Chrome for Testing')))?.pid ?? 0
+    const stopped = stopScratchChromium(pid, profile)
+    check(!scan.processes().some((row) => hasChromeProfile(row.command, profile)), 'web: no scratch profile process remains')
+    webCleanups.delete(stopBrowser)
+    return stopped
+  }
+  let svc: Service | undefined
+  let o: Observation | null = null
+  let savedFront: FrontWindow | null = null
+  const checkFront = async (word?: FrontReport): Promise<void> => {
+    if (!savedFront) return
+    if (word?.raised) check(word.restored === 'restored', 'web: the service restored a steal', word)
+    await until(() => {
+      const after = frontWindow()
+      return after.pid === savedFront!.pid && after.window === savedFront!.window ? true : null
+    }, SERVICE.frontRestoreMs + 500, 'web: the original front app and window')
+  }
+  const read = async (title?: string, element?: number): Promise<Observation> => {
+    const next = await svc!.call('state.get', {
+      session, app: { pid }, window: title ? { title } : { id: o!.window.id },
+      mode: 'full', geometry: true, screenshot: 'never', wait: COMPUTER_WAIT.observe,
+      ...(element === undefined ? {} : { element, epoch: o!.epoch, geometry: false, budget: { bytes: OBSERVATION_BUDGET.maxBytes } })
+    })
+    await checkFront()
+    o = next
+    return next
+  }
+  const act = async (action: ComputerParams<'action.run'>['action'], tiers: ('ax' | 'process')[] = ['ax', 'process']) => {
+    const r = await svc!.call('action.run', {
+      session, app: { pid }, window: { id: o!.window.id }, epoch: o!.epoch,
+      action, tiers, wait: COMPUTER_WAIT.action, observe: { mode: 'full', screenshot: 'never', geometry: true }
+    })
+    await checkFront(r.front)
+    if (r.observation) o = r.observation
+    return r
+  }
+  const field = (name: string) => findElement(o!, name, (e) => e.name === name)
+  const noMenu = async () => {
+    const focused = await svc!.call('state.get', { session, app: { pid }, mode: 'full', screenshot: 'never' })
+    check(focused.window.id === o!.window.id && !elementLines(focused).some((e) => e.role === 'menu'), 'web: no menu remains open', focused.text)
+    await checkFront()
+  }
+  try {
+    await leg.step('web: launch after 5 quiet seconds and restore the front app and window', async (data) => {
+      mkdirSync(profile, { recursive: true })
+      for (const [name, html] of Object.entries(webProofFixtures())) writeFileSync(join(scratch, name), html)
+      const before = frontWindow()
+      const frame = SCRATCH_CHROME_FRAME
+      const args = ['-n', '-g', '-a', browser, '--args', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
+        `--window-position=${frame.x},${frame.y}`, `--window-size=${frame.w},${frame.h}`,
+        ...['front.html', 'report.html', 'form.html'].map((name) => pathToFileURL(join(scratch, name)).href)]
+      // Recheck after disk work, immediately before open; no forced AX or throttling flags.
+      if (personIdleSeconds() < 5 || !(await screenAwake())) throw skip('skipped: no quiet, unlocked launch gap')
+      webCleanups.add(stopBrowser)
+      try {
+        execFileSync('open', args, { stdio: 'pipe', timeout: 10_000 })
+        pid = await until(() => scan.processes().find((p) => hasChromeProfile(p.command, profile) && p.command.startsWith(join(browser, 'Contents/MacOS/Google Chrome for Testing')))?.pid ?? null, 15_000, 'the scratch Chrome pid')
+        await sleep(1_000)
+      } finally {
+        pid ||= scan.processes().find((p) => hasChromeProfile(p.command, profile) && p.command.startsWith(join(browser, 'Contents/MacOS/Google Chrome for Testing')))?.pid ?? 0
+        // open -g can still activate Chrome. Restore by pid and the saved window, never by a shared bundle id.
+        if (pid && frontWindow().pid === pid) probe('restore-front', [String(before.pid), String(before.window)])
+      }
+      data.pid = pid
+      data.before = before
+      data.after = frontWindow()
+      check(frontWindow().pid === before.pid && frontWindow().window === before.window, 'web: launch left the front app and window as before', data)
+      savedFront = before
+      svc = new Service('web', { TEMP_CODE_COMPUTER_PIN: `Google Chrome for Testing=${pid},${TEST_CHROMIUM_BUNDLE}=${pid}` })
+      await initialize(svc, join(scratch, 'service'))
+      await svc.call('session.open', { session })
+      await until(async () => (await svc!.call('apps.list', { windows: true })).apps.find((a) => a.pid === pid)?.windows?.length ? true : null, 10_000, 'the scratch browser window')
+    })
+    if (!svc) return
+    await leg.step('web: a single page wait loads the selected front tab', async (data) => {
+      const start = performance.now()
+      const r = await read(WEB_TITLES.front)
+      data.ms = Math.round(performance.now() - start)
+      data.page = r.page
+      check(r.page?.state === 'loaded' && r.page.tab === WEB_TITLES.front, 'web: the read waited for the page', r)
+      check(r.text.includes('Scratch tab'), 'web: the page body is present', r.text)
+    })
+    await leg.step('web: window names a background tab, selectedTab, forty rows in one read', async (data) => {
+      const r = await read(WEB_TITLES.report)
+      data.selectedTab = r.selectedTab
+      check(r.selectedTab === WEB_TITLES.report && r.page?.state === 'loaded', 'web: the report tab was selected and loaded', r)
+      for (let i = 1; i <= 40; i++) check(r.text.includes(`City ${String(i).padStart(3, '0')}`), `web: row ${i} in the one read`, r.text)
+    })
+    await leg.step('web: an element read returns all three hundred rows', async () => {
+      okStep((await act({ action: 'left_click', element: field('Read 300 rows').index }, ['ax'])).step)
+      await read()
+      check(o!.page?.state === 'loaded' && o!.page.tab === WEB_TITLES.large, 'web: the large page loaded', o!.page)
+      const table = findElement(o!, 'the large table', (e) => e.role === 'table')
+      const subtree = await read(undefined, table.index)
+      for (let i = 1; i <= 300; i++) check(subtree.text.includes(`City ${String(i).padStart(3, '0')}`), `web: subtree row ${i}`, subtree.text)
+    })
+    await leg.step('web: scroll-into-view moves the page at ax', async (data) => {
+      await read()
+      const table = findElement(o!, 'table frame', (e) => e.role === 'table' && !!e.frame)
+      const area = findElement(o!, 'web area', (e) => e.role === 'web area')
+      const r = await act({ action: 'scroll', element: area.index, scroll_direction: 'down', scroll_amount: 5 }, ['ax'])
+      const step = okStep(r.step)
+      data.step = step
+      check(step.input?.via === 'scroll-into-view' && step.effect === 'changed' && step.tier === 'ax', 'web: AXScrollToVisible changed the page', step)
+      await read()
+      const after = findElement(o!, 'table after scrolling', (e) => e.role === 'table' && !!e.frame)
+      check(after.frame!.y < table.frame!.y, 'web: the table moved upward', { before: table.frame, after: after.frame })
+    })
+    await leg.step('web: set_value text fields reads back the requested values', async () => {
+      await read(WEB_TITLES.form)
+      for (const [name, text] of [['Full name', FIELD_FORM.name], ['Email', FIELD_FORM.email]]) {
+        const step = okStep((await act({ action: 'set_value', element: field(name).index, value: text }, ['ax'])).step)
+        check(step.tier === 'ax', 'web: text set through AX', step)
+        await read()
+        check(field(name).value === text, `web: ${name} read back`, o!.text)
+      }
+    })
+    await leg.step('web: pick reads Team back and closes its menu', async (data) => {
+      const step = okStep((await act({ action: 'set_value', element: field('Plan').index, value: FIELD_FORM.plan }, ['ax'])).step)
+      data.step = step
+      check(step.tier === 'ax' && step.input?.via === 'pick', 'web: select used pick', step)
+      await read()
+      check(field('Plan').value === FIELD_FORM.plan, 'web: select reads Team', o!.text)
+      await noMenu()
+    })
+    await leg.step('web: checkbox uses AXPress and reads checked', async () => {
+      const step = okStep((await act({ action: 'left_click', element: field('I agree to the terms').index }, ['ax'])).step)
+      check(step.tier === 'ax' && step.effect === 'changed', 'web: checkbox changed through AXPress', step)
+      await read()
+      const checkbox = field('I agree to the terms')
+      check(checkbox.states.includes('checked') || checkbox.value === '1', 'web: checkbox reads checked', checkbox)
+    })
+    await leg.step('web: AX-focused omnibox refuses an unnamed key without typing', async (data) => {
+      const box = probe<{ focused: boolean; value: string }>('omnibox', [String(pid), 'focus'])
+      check(box.focused, 'web: AXFocused took on the omnibox', box)
+      // Deliberately a fresh read, so the browser-field rule must hold even without an old focus expectation.
+      await read()
+      const failed = failedStep((await act({ action: 'key', text: 'x' })).step, 'focus_moved')
+      data.error = failed.error
+      const after = probe<{ value: string }>('omnibox', [String(pid)])
+      check(after.value === box.value, 'web: nothing reached the omnibox', { before: box.value, after: after.value })
+    })
+    await leg.step('web: key with element focuses the field and types there', async () => {
+      await read()
+      const step = okStep((await act({ action: 'key', text: 'z', element: field('Full name').index })).step)
+      check(step.tier === 'process', 'web: the targeted key used process, never session', step)
+      await read()
+      check(field('Full name').value?.includes('z'), 'web: the field contains the targeted key', o!.text)
+      okStep((await act({ action: 'set_value', element: field('Full name').index, value: FIELD_FORM.name }, ['ax'])).step)
+      await read()
+    })
+    await leg.step('web: Submit confirms the exact field values on the page', async () => {
+      okStep((await act({ action: 'left_click', element: field('Submit').index }, ['ax'])).step)
+      await read()
+      check(o!.text.includes(`Confirmation: ${fieldFormCode(WEB_NONCE)}`), 'web: the page confirmed every field', o!.text)
+    })
+    await leg.step('web: a refused select fails value_not_taken and leaves no menu', async (data) => {
+      okStep((await act({ action: 'left_click', element: field('Refused value page').index }, ['ax'])).step)
+      await read()
+      check(o!.page?.tab === WEB_TITLES.refused, 'web: the refused-value page loaded', o!.page)
+      const failed = failedStep((await act({ action: 'set_value', element: field('Locked plan').index, value: 'Team' }, ['ax'])).step, 'value_not_taken')
+      data.error = failed.error
+      check(failed.error.value === 'Starter', 'web: the failure names the value that stayed', failed.error)
+      await read()
+      check(field('Locked plan').value === 'Starter', 'web: the refused value stayed Starter', o!.text)
+      await noMenu()
+    })
+    await leg.step('web: the original front app and window remain', async () => { await checkFront() })
+  } finally {
+    // Cleanup must run even when the global abort flag makes Chain skip every step.
+    const name = 'web: stop only this profile’s recorded browser and children'
+    const started = performance.now()
+    try {
+      if (svc && !svc.done) { svc.closeStdin(); await within(svc.exit, 2_000, 'the web service exiting').catch(() => svc!.proc.kill('SIGTERM')) }
+      const stopped = stopBrowser()
+      rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+      check(!existsSync(profile), 'web: the scratch profile is gone')
+      record({ name, outcome: 'passed', ms: Math.round(performance.now() - started), data: { stopped } })
+    } catch (error) {
+      record({ name, outcome: 'failed', ms: Math.round(performance.now() - started), why: error instanceof Error ? error.message : String(error) })
+    }
+  }
+}
+
 /** One try at the probe app and the scratch TextEdit, on a service of its own. */
 async function appSections(
   attempt: number,
@@ -1426,6 +1641,7 @@ async function appSections(
   })
   await windowLeg(a, mayLaunch)
   await fallbackLeg(a, mayLaunch)
+  await webLeg()
   if (GATE) {
     for (const name of [
       'open a scratch TextEdit', 'TextEdit full read with geometry',
@@ -2026,6 +2242,7 @@ function probeInfoPlist(): string {
 async function cleanup(): Promise<void> {
   if (!ownsWork) return
   const done = (what: string): void => void report.cleanup.push(what)
+  for (const stop of webCleanups) for (const pid of stop()) done(`ended scratch Chrome ${pid}`)
   await Promise.allSettled(services.filter((svc) => !svc.done).map(async (svc) => {
     try {
       svc.closeStdin()
@@ -2056,6 +2273,7 @@ async function cleanup(): Promise<void> {
 
 process.once('exit', () => {
   if (!ownsWork) return
+  for (const stop of webCleanups) { try { stop() } catch { /* do not signal an unverified pid */ } }
   for (const pid of ownedPids()) { try { process.kill(pid, 'SIGKILL') } catch { /* gone */ } }
   for (const svc of services) if (!svc.done) svc.proc.kill('SIGKILL')
   for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')

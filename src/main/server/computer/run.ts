@@ -5,6 +5,7 @@ import {
   actionElements,
   waitActionWait,
   type AppRef,
+  type AppInfo,
   type ComputerAction,
   type ComputerError,
   type ComputerMethod,
@@ -55,6 +56,7 @@ import type { CallReader } from './pending'
 import { landShot, nextShotNumber } from './shots'
 import type { SessionTierGate, TierDecision, TierGateContext } from './tierGate'
 import type { Admitted, SettingsStore, TierVerdicts } from './verdicts'
+import type { CallTiming } from '@shared/computer/bridgeTiming'
 
 /**
  * One computer call, start to end (docs/computer-protocol.md "Sessions" and
@@ -83,6 +85,8 @@ export interface ComputerToolContext {
    * read the call's answer; Claude's calls carry none and pay nothing.
    */
   reader?: Pick<CallReader, 'present' | 'whenPresent' | 'request'>
+  /** the call's tally (shared/computer/bridgeTiming.ts): each service request's round trip, each observation's wait */
+  timing?: CallTiming
 }
 
 export interface ComputerRegistry {
@@ -113,6 +117,8 @@ export interface ThreadComputer {
   /** the epoch session.open last ran in */
   openedIn: string | null
   apps: Map<string, AppState>
+  /** The last apps list this thread saw, for tab names on its card. */
+  listedApps?: AppInfo[]
   /** the model's `app` strings, lower-cased → key */
   aliases: Map<string, string>
   /** app keys, last used first */
@@ -203,6 +209,21 @@ type Args = Record<string, unknown> & {
   actions?: ComputerAction[]
 }
 
+/** A known unselected tab, after exact window matches and before substring window matches. */
+function knownTab(t: ThreadComputer, query: string | undefined, ref: string | undefined): { title: string; window: string } | null {
+  if (!query || !ref) return null
+  const known = lookupApp(t, query)
+  const app = t.listedApps?.find((a) =>
+    known ? a.pid === known.pid : [a.name, a.bundleId].some((s) => s?.toLowerCase() === query.toLowerCase())
+  )
+  const windows = app?.windows ?? []
+  if (windows.some((w) => w.title === ref)) return null
+  const tabs = windows.flatMap((w) => (w.tabs ?? []).map((tab) => ({ ...tab, window: w.title })))
+  const exact = tabs.find((tab) => tab.title === ref)
+  const match = exact ?? (windows.some((w) => w.title.includes(ref)) ? undefined : tabs.find((tab) => tab.title.includes(ref)))
+  return match && !match.selected ? { title: match.title, window: match.window } : null
+}
+
 /** What every targeted request carries (protocol.ts TargetSchema). */
 interface TargetBase {
   session: string
@@ -276,6 +297,7 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
   const threadId = ctx.threadId
   const app = (): AppState | undefined => (args.app ? lookupApp(t, args.app) : undefined)
   const steps = actionsOf(tool, args)
+  const readFocus = app()?.book.focused ?? null
 
   // read first: an element, or text, needs a read of the app in this thread
   const named =
@@ -318,23 +340,29 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
   // a card is a hold: the row says so, and a bridged call held on it answers in time (pending.ts)
   const approve = (req: ApprovalRequest): Promise<boolean> => holding(LOCAL_CARD_WORDS, () => ask(req))
   const hostNeed = passwordTarget(steps, app()?.book)
+  let resolvedApp: { pid: number; bundleId: string | null; name: string } | undefined
   const titleCtx = (): TitleContext => {
     const a = app()
+    const tab = knownTab(t, args.app, args.window)
+    const listed = t.listedApps?.find((entry) => [entry.name, entry.bundleId].some((name) => name?.toLowerCase() === args.app?.toLowerCase()))
     return {
-      appName: a?.name ?? args.app ?? 'an app',
-      window: args.window ?? a?.window?.title ?? null,
+      appName: a?.name ?? listed?.name ?? args.app ?? 'an app',
+      window: tab?.window ?? args.window ?? a?.window?.title ?? null,
+      ...(tab ? { tab: tab.title } : {}),
       element: (i) => a?.book.brief(i) ?? null,
       maskText: hostNeed !== null
     }
   }
   const gateCtx = (classes: ActionClass[]): TierGateContext => {
     const a = app()
+    const targetApp = resolvedApp ?? (a ? { pid: a.pid, bundleId: a.bundleId, name: a.name } : undefined)
+    const window = t.listedApps?.find((entry) => entry.pid === targetApp?.pid)?.windows?.find((w) => w.title === titleCtx().window)
     return {
       threadId,
       rootId: ctx.rootId ?? host.rootOf(threadId),
       permission,
-      app: a ? { pid: a.pid, bundleId: a.bundleId, name: a.name } : { pid: 0, bundleId: null, name: args.app ?? '' },
-      window: a?.window ?? null,
+      app: targetApp ?? { pid: 0, bundleId: null, name: args.app ?? '' },
+      window: window ? { id: window.id, title: window.title } : a?.window ?? null,
       classes,
       serviceSession: t.serviceSession,
       ...(ctx.callId ? { callId: ctx.callId } : {}),
@@ -350,7 +378,7 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
       // a step with an ax route tries it first (§24.1): the card claims the session tier only for one without
       (a) => sendsInput(a) && ((host.verdicts.needsSession(bundleId, a) && !mayRunAtAx(a)) || (a.action === 'perform' && a.name === 'raise'))
     )
-    // a step whose class needs the app in front says so; an Allow covers the hold (§25.6)
+    // a step whose class needs the app in front says so; an Allow covers the hold (§26.6)
     const front =
       !session &&
       host.service.serves?.('front') === true &&
@@ -386,18 +414,31 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
   const open = async (): Promise<void> => {
     const conn = await host.service.connection()
     if (t.openedIn === conn.epoch) return
-    await host.service.request('session.open', { session: t.serviceSession })
+    await timed('session.open', { session: t.serviceSession })
     t.openedIn = conn.epoch
+  }
+  /** One service request, its round trip and any observation's wait on the call's tally. */
+  async function timed<M extends ComputerMethod>(method: M, params: ComputerParams<M>): Promise<ComputerResult<M>> {
+    const tally = ctx.timing
+    if (!tally) return await host.service.request(method, params, { signal })
+    const at = host.now()
+    try {
+      const result = await host.service.request(method, params, { signal })
+      tally.addWaited(waitedIn(result))
+      return result
+    } finally {
+      tally.addService(host.now() - at)
+    }
   }
   async function send<M extends ComputerMethod>(method: M, params: ComputerParams<M>): Promise<ComputerResult<M>> {
     await open()
     try {
-      return await host.service.request(method, params, { signal })
+      return await timed(method, params)
     } catch (e) {
       if (!(e instanceof ComputerRpcError) || e.data?.kind !== 'unknown_session') throw e
       t.openedIn = null
       await open()
-      return await host.service.request(method, params, { signal })
+      return await timed(method, params)
     }
   }
   /** Every request, a read or an input: on the bridge it waits until someone will read the result, so nothing runs unread. */
@@ -416,13 +457,14 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
   }
   try {
     if (tool === 'computer_apps') {
-      const apps = await runApps(call, args, t.serviceSession)
+      const apps = await runApps(call, args, t)
       return abortedLine(signal) ? refusal(abortedLine(signal)!) : apps
     }
 
     // 5. the target: the app pinned to a pid before any request, and checked
     const pin = await pinApp(host, args.app!, call, t.serviceSession)
     if ('line' in pin) return refusal(pin.line)
+    resolvedApp = pin.app
     /** the person's app as the list cached before the act reads it, for the front line */
     const person = host.targets.activeName(pin.app.pid)
     const refused = refusedTarget(pin.app, steps.some(sendsInput) ? 'act' : 'read')
@@ -431,12 +473,14 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     const bound = !args.window && a?.window ? { id: a.window.id } : undefined
     // text with no element is pinned to the window the thread read, by id: a title names it, not which window the service picks
     const readOne = blindText && a?.window ? { id: a.window.id } : undefined
+    const expectFocus = steps.length ? a?.book.focused ?? undefined : undefined
+    const epoch = a?.epoch
     const target = (useBound = true): TargetBase => ({
       session: t.serviceSession,
       app: { pid: pin.app.pid },
       ...(readOne ? { window: readOne } : args.window ? { window: { title: args.window } } : bound && useBound ? { window: bound } : {}),
       launch: false,
-      ...(named.length && a ? { epoch: a.epoch } : {})
+      ...((named.length || expectFocus !== undefined) && epoch ? { epoch } : {})
     })
     /** A bound window that closed falls back to the app's main window, once. */
     const targeted: Targeted = async (method, params) => {
@@ -469,7 +513,10 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     /** The model will not see the observation just taken: that app's next read is full. */
     const discarded = (): void => {
       const st = app()
-      if (st) st.needsFull = true
+      if (st) {
+        st.needsFull = true
+        st.book.focused = readFocus
+      }
     }
     const take = async (obs: Observation | undefined): Promise<void> => {
       if (!obs) return
@@ -483,6 +530,7 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
       const full = args.full === true || a?.needsFull === true
       const obs = await targeted('state.get', (tg) => ({
         ...tg,
+        tabs: 'background',
         mode: full ? 'full' : 'auto',
         ...(args.element !== undefined ? { element: args.element as number } : {}),
         screenshot: shotPolicy(args.screenshot),
@@ -496,21 +544,25 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
         return refusal(stopped)
       }
       const out = outcomeOf([], { steps: [], observation: obs }, shots, undefined, errCtx)
-      return { ...out, steps: notes }
+      return { ...out, steps: [...out.steps, ...notes] }
     }
 
     const single = tool === 'computer_act'
     const actions: ComputerAction[] = steps
     /** An observation the model will not see: the book takes it, and that app's next read is full. */
     const drop = (obs: Observation): void => {
+      const focused = app()?.book.focused ?? null
       remember(t, args.app!, obs)
-      lookupApp(t, args.app!)!.needsFull = true
+      const st = lookupApp(t, args.app!)!
+      st.book.focused = focused
+      st.needsFull = true
     }
     const result = await runActions(host, {
       threadId,
       session: t.serviceSession,
       args,
       actions,
+      expectFocus,
       single,
       signal,
       targeted,
@@ -532,6 +584,7 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     const lastTier = [...result.steps].reverse().find((s) => s.status === 'ok' && s.tier !== null)
     if (t.live && lastTier?.status === 'ok') t.live.tier = lastTier.tier
     const out = outcomeOf(actions, result, shots, result.hostLines, errCtx, person)
+    if (result.requestLine) return { ...out, body: result.requestLine, isError: true }
     const stoppedLine = abortedLine(signal)
     if (stoppedLine && result.observation) discarded()
     return { ...out, steps: [...out.steps, ...notes], ...(stoppedLine ? { body: stoppedLine, isError: true } : {}) }
@@ -559,11 +612,13 @@ const openOf = (args: Args): string[] => (Array.isArray(args.open) ? (args.open 
  * names and the refused bundles, then the list. The app it answered is
  * checked against the refused ones as a pinned target is.
  */
-async function runApps(call: <M extends ComputerMethod>(m: M, p: ComputerParams<M>) => Promise<ComputerResult<M>>, args: Args, session: string): Promise<ComputerToolOutcome> {
+async function runApps(call: <M extends ComputerMethod>(m: M, p: ComputerParams<M>) => Promise<ComputerResult<M>>, args: Args, t: ThreadComputer): Promise<ComputerToolOutcome> {
+  const session = t.serviceSession
   const launch = typeof args.launch === 'string' ? args.launch : null
   const open = openOf(args)
   const r = launch ? await call('apps.launch', { app: launch, ...(open.length ? { open } : {}), session, refuse: [...REFUSED_LAUNCH_BUNDLES] }) : null
   const { apps } = await call('apps.list', { windows: true })
+  t.listedApps = apps
   const app = r ? apps.find((a) => a.pid === r.pid) : undefined
   const refused = r ? refusedTarget(app ?? { pid: r.pid, bundleId: null }, open.length ? 'act' : 'read') : null
   if (refused) return refusal(refused)
@@ -614,6 +669,14 @@ async function pinApp(
 }
 
 /** The app's state from an observation the model gets: who it is, its window, the epoch, the book. */
+/** The smart wait the service reported for the observations in a result: a `state.get`'s own, or an action's or batch's closing one. */
+export function waitedIn(result: unknown): number {
+  if (!result || typeof result !== 'object') return 0
+  const r = result as { text?: unknown; waited?: { waitedMs?: number }; observation?: { waited?: { waitedMs?: number } } }
+  const own = typeof r.text === 'string' ? (r.waited?.waitedMs ?? 0) : 0
+  return own + (r.observation?.waited?.waitedMs ?? 0)
+}
+
 export function remember(t: ThreadComputer, query: string, obs: Observation): void {
   const key = (obs.app.bundleId ?? obs.app.name).toLowerCase()
   const st: AppState = t.apps.get(key) ?? {
@@ -631,6 +694,12 @@ export function remember(t: ThreadComputer, query: string, obs: Observation): vo
   if (st.epoch !== obs.epoch) st.book.clear()
   Object.assign(st, { pid: obs.app.pid, bundleId: obs.app.bundleId, name: obs.app.name, epoch: obs.epoch, seq: obs.seq, thin: obs.stats.thin })
   st.window = { id: obs.window.id, title: obs.window.title }
+  const tab = obs.page?.tab ?? obs.selectedTab
+  const listed = t.listedApps?.find((a) => a.pid === obs.app.pid)?.windows?.find((w) => w.id === obs.window.id)
+  if (listed) {
+    listed.title = obs.window.title
+    if (tab) for (const entry of listed.tabs ?? []) entry.selected = entry.title === tab
+  }
   st.book.apply(obs.text, obs.kind)
   if (obs.kind === 'full') st.needsFull = false
   t.apps.set(key, st)
@@ -644,6 +713,7 @@ interface ActionsRun {
   args: Args
   actions: ComputerAction[]
   single: boolean
+  expectFocus?: number
   signal: AbortSignal
   targeted: Targeted
   call: <M extends ComputerMethod>(method: M, params: ComputerParams<M>) => Promise<ComputerResult<M>>
@@ -671,12 +741,12 @@ let callSeq = 0
  * retry drops the first run's closing observation, so that app's next read is
  * full.
  */
-async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult & { hostLines: Map<number, string> }> {
+async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult & { hostLines: Map<number, string>; requestLine?: string }> {
   const { actions, signal, gateCtx } = run
   const gate = host.gate()
   const bundleOf = (): string | null => run.appOf()?.bundleId ?? null
   const classes = [...new Set(actions.filter(sendsInput).map(classOf).filter((c): c is ActionClass => c !== null))]
-  // `front` only to a service that speaks it (§25, decision 14)
+  // `front` only to a service that speaks it (§26, decision 14)
   const served = host.service.serves?.('front') === true
   const admitted: Admitted = { session: gate.admitted(gateCtx(classes)), front: served && (gate.frontAdmitted?.(gateCtx(classes)) ?? false) }
   const override = new Map<number, Tier[]>()
@@ -738,7 +808,7 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
   let stopAt = actions.length
   for (const [i, a] of actions.entries()) {
     if (!sendsInput(a)) continue
-    // the verdict alone says session, or front while the setting holds front back (§25.6)
+    // the verdict alone says session, or front while the setting holds front back (§26.6)
     const needed =
       !admitted.session && host.verdicts.needsSession(bundleOf(), a)
         ? 'session'
@@ -762,22 +832,38 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
   // probe an app once, before the first process-tier input, after the card
   await probeOnce(host, run, actions.slice(0, stopAt))
 
-  /** the tiers each step has been offered past its first run: `process → front → session`, each once (§25, decision 13) */
+  /** the tiers each step has been offered past its first run: `process → front → session`, each once (§26, decision 13) */
   const offered = new Map<number, Set<Tier>>()
   const wasOffered = (i: number, tier: Tier): boolean => offered.get(i)?.has(tier) === true
   /** a key or paste whose window was not key leaves out the tiers that refused it on every later retry */
   const dropped = new Map<number, Tier[]>()
   let from = 0
   let ranAny = false
+  let ranStep = false
+  let tabsAny = false
   while (from < stopAt && !signal.aborted) {
-    const segments = planBatch(actions.slice(from, stopAt), (a, k) => tiersOf(a, from + k))
+    const segments = planBatch(actions.slice(from, stopAt), (a, k) => tiersOf(a, from + k), ranStep ? undefined : run.expectFocus)
     let failedAt: number | null = null
     for (const seg of segments) {
       const at = from + seg.from
       // an ax-first try leaves the ignored routes out, so it never ends ok/none short of the gate
       const skip = seg.actions.some((_, k) => axFirst.has(at + k))
       const ignored = host.verdicts.ignoredFor(bundleOf())
-      const r = await runSegment(run, gate, classes, seg.actions, seg.tiers, seg.last, skip ? { ...ignored, skip: true } : ignored)
+      const sendSegment = () => runSegment(run, gate, classes, seg.actions, seg.tiers, seg.last, skip ? { ...ignored, skip: true } : ignored, seg.expectFocus, tabsAny)
+      let r: StepsResult
+      try {
+        r = await sendSegment()
+      } catch (e) {
+        if (!(e instanceof ComputerRpcError && e.data?.kind === 'tab_in_use') || !actions.some(sendsInput)) throw e
+        // Request errors run no steps. Reads never come here; this act takes the same hold as a session step.
+        const decision = await gate.request({ ...stepCtx(at), words: `select tab ${JSON.stringify(run.args.window ?? '')} and ${run.wordsOf(actions[at])}` })
+        if (!decision.admit) return { steps: steps.filter((s) => s.status !== 'not-run'), hostLines, requestLine: decision.message }
+        const line = decision.via && decision.waitedMs !== undefined ? formatHeldLine({ waitedMs: decision.waitedMs, via: decision.via }) : null
+        if (line) heldLines.set(at, line)
+        tabsAny = true
+        r = await sendSegment()
+      }
+      ranStep ||= r.steps.some((s) => s.status === 'ok' || (s.status === 'failed' && s.error.session !== undefined))
       ranAny = true
       front = mergeFront(front, r.front)
       for (const m of r.menusLeftOpen ?? []) if (!menusLeftOpen.includes(m)) menusLeftOpen.push(m)
@@ -823,7 +909,7 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
         offering = 'ax'
         retry = ['ax']
       } else {
-        // `front` makes the target window key with AXMain and AXRaise before the session tier is asked (§25, decision 10);
+        // `front` makes the target window key with AXMain and AXRaise before the session tier is asked (§26, decision 10);
         // a front the gate refuses goes on to the session tier's own ask
         if (served && !wasOffered(failedAt, 'front')) {
           offering = 'front'
@@ -855,6 +941,7 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
     try {
       observation = await run.targeted('state.get', (tg) => ({
         ...tg,
+        tabs: 'background',
         mode: run.appOf()?.needsFull ? 'full' : 'auto',
         screenshot: shotPolicy(run.args.screenshot),
         wait: COMPUTER_WAIT.action
@@ -876,16 +963,20 @@ async function runSegment(
   actions: ComputerAction[],
   tiers: Tier[],
   last: boolean,
-  ignored?: IgnoredRoutes
+  ignored?: IgnoredRoutes,
+  expectFocus?: number,
+  tabsAny = false
 ): Promise<StepsResult> {
   const observe = last ? { mode: run.appOf()?.needsFull ? ('full' as const) : ('auto' as const), screenshot: shotPolicy(run.args.screenshot) } : { mode: 'none' as const }
   const wait = last ? COMPUTER_WAIT.action : COMPUTER_WAIT.step
   const extras = (allowed: Tier[]) => ({
+    ...(expectFocus !== undefined ? { expectFocus } : {}),
     ...(gate.pasteQuietMs !== undefined ? { pasteQuietMs: gate.pasteQuietMs } : {}),
     ...(allowed.includes('session') && gate.personIdleMs ? { personIdleMs: gate.personIdleMs() } : {}),
     ...(ignored ? { ignored } : {})
   })
-  const ctx = { ...run.gateCtx(classes), tiers, actions, signal: run.signal }
+  const ctx = { ...run.gateCtx(classes), tiers: tabsAny && !tiers.includes('session') ? [...tiers, 'session' as const] : tiers, actions, signal: run.signal }
+  const tabs = (allowed: Tier[]) => tabsAny && allowed.includes('session') ? 'any' as const : 'background' as const
   if (run.single) {
     const action = actions[0]
     const r = await gate.run(ctx, (allowed) =>
@@ -893,6 +984,7 @@ async function runSegment(
         ...tg,
         action,
         tiers: allowed,
+        tabs: tabs(allowed),
         wait: action.action === 'wait' && action.duration ? waitActionWait(action.duration) : wait,
         observe,
         ...extras(allowed)
@@ -906,10 +998,10 @@ async function runSegment(
       ...(r.menusLeftOpen ? { menusLeftOpen: r.menusLeftOpen } : {})
     }
   }
-  return await gate.run(ctx, (allowed) => run.targeted('action.batch', (tg) => ({ ...tg, actions, tiers: allowed, stepWait: COMPUTER_WAIT.step, wait, observe, ...extras(allowed) })))
+  return await gate.run(ctx, (allowed) => run.targeted('action.batch', (tg) => ({ ...tg, actions, tiers: allowed, tabs: tabs(allowed), stepWait: COMPUTER_WAIT.step, wait, observe, ...extras(allowed) })))
 }
 
-/** A key or paste into an app whose background windows were seen not key: its retry brings the app forward (§25, decision 10). */
+/** A key or paste into an app whose background windows were seen not key: its retry brings the app forward (§26, decision 10). */
 function needsKeyWindowFront(host: RunHost, bundleId: string | null, a: ComputerAction): boolean {
   return (a.action === 'key' || a.action === 'paste') && host.verdicts.get(bundleId)?.needsKeyWindow === true
 }

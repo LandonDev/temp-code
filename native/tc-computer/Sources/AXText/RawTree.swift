@@ -68,8 +68,27 @@ public enum RawTree {
         }
     }
 
-    /// One recorded node and its subtree, cut to the viewport. `clip` nil: no clip.
-    static func node(_ raw: RawAXNode, clip: Rect?, ids: NodeIDSource, focused: inout NodeID?, nodes: inout Int) -> AXNode {
+    /// What a recorded container's children say of its visible lists: tables and outlines list visible rows
+    /// (their other children, columns and a header, are judged by frame), any other its visible children. A child
+    /// the recorder marked neither way is judged by frame. The recorder marks the children of any container that
+    /// answers AXVisibleChildren, where the walker asks lists alone (`Viewport.listRoles`); inside a web area,
+    /// where the read-ahead applies, the page's own flow believes neither, so the two cut web content alike.
+    static func lists(_ raw: RawAXNode) -> ViewportCut.Lists<Int>? {
+        let shown = raw.children.indices.filter { raw.children[$0].visible == true }
+        if raw.role == "AXTable" || raw.role == "AXOutline" {
+            return ViewportCut.Lists(visibleRows: shown.filter { raw.children[$0].role == "AXRow" }, rows: raw.children.indices.filter { raw.children[$0].role == "AXRow" })
+        }
+        return ViewportCut.Lists(visibleChildren: shown)
+    }
+
+    static func marks(_ raw: RawAXNode, scope: Viewport.Scope) -> [Bool?] {
+        var m = ViewportCut.marks(Array(raw.children.indices), lists: lists(raw), scope: scope)
+        for i in m.indices where raw.children[i].visible == nil { m[i] = nil }
+        return m
+    }
+
+    /// One recorded node and its subtree, cut to the viewport. `clip` nil: no clip. `scope`: where it sits (§25.5).
+    static func node(_ raw: RawAXNode, clip: Rect?, scope: Viewport.Scope = .window, ids: NodeIDSource, focused: inout NodeID?, nodes: inout Int) -> AXNode {
         nodes += 1
         let id = raw.id.map(ids.recorded) ?? ids.fresh()
         // the deepest focused element: what AXFocusedUIElement would answer
@@ -86,34 +105,14 @@ public enum RawTree {
             settable: Set(raw.settable ?? []),
             selectedTextRange: raw.selectedTextRange
         )
-        let inner = Viewport.childClip(role: raw.role, frame: raw.frame, clip: clip)
-        // tables and outlines list visible rows: their other children (columns, a header) are judged by frame
-        let rowsOnly = raw.role == "AXTable" || raw.role == "AXOutline"
-        var marked = Set(raw.children.indices.filter { raw.children[$0].visible != nil && (!rowsOnly || raw.children[$0].role == "AXRow") })
-        let firstVisible = raw.children.indices.first { marked.contains($0) && raw.children[$0].visible == true }
-        // a list naming no visible row is not believed (IntelliJ's is empty with its rows on screen): judge by frame
-        if firstVisible == nil { marked = [] }
-        var hidden = Hidden()
+        let inner = Viewport.childClip(role: raw.role, frame: raw.frame, clip: clip, scope: scope)
+        let below = scope.inside(raw.role)
         let sliver = Viewport.clipRoles.contains(raw.role)
-        var slivers: [Int] = []
-        var firstShown: Int?
-        for (i, child) in raw.children.enumerated() {
-            // a child the list names as hidden is counted; any other is judged by its frame too
-            // (Chrome lists every child of an overflow box as visible)
-            if marked.contains(i), child.visible != true {
-                if let first = firstVisible, i < first { hidden.above += 1 } else { hidden.below += 1 }
-            } else if let side = Viewport.missed(child.frame, inner, sliver: sliver) {
-                switch side {
-                case .above: hidden.above += 1
-                case .below: hidden.below += 1
-                case .sliver: slivers.append(i)
-                }
-            } else {
-                firstShown = firstShown ?? i
-                n.children.append(node(child, clip: inner, ids: ids, focused: &focused, nodes: &nodes))
-            }
+        let (kept, hidden) = ViewportCut.children(raw.children, marks: marks(raw, scope: scope)) { _, child -> ViewportCut.Outcome<AXNode> in
+            if let side = Viewport.cut(role: child.role, frame: child.frame, clip: inner, sliver: sliver) { return .hidden(side) }
+            return .node(node(child, clip: inner, scope: below, ids: ids, focused: &focused, nodes: &nodes))
         }
-        hidden = hidden + Viewport.slivers(slivers, firstShown: firstShown)
+        n.children = kept
         if !hidden.isEmpty { n.hidden = hidden }
         return n
     }

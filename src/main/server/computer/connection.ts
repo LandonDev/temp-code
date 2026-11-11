@@ -227,7 +227,7 @@ export class ComputerConnection {
     return this.initResult!
   }
 
-  /** What the service speaks beyond protocol 1 (§25, decision 14): an older service lists nothing, and the host sends it nothing new. */
+  /** What the service speaks beyond protocol 1 (§26, decision 14): an older service lists nothing, and the host sends it nothing new. */
   get features(): ReadonlySet<string> {
     return new Set(this.initResult?.features ?? [])
   }

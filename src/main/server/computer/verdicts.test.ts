@@ -127,7 +127,7 @@ describe('the probe', () => {
 })
 
 describe('the background routes (§24.1)', () => {
-  const route = (via: 'hit' | 'caret' | 'scroll-page' | 'menu' | 'scroll-bar', effect: 'changed' | 'none' | 'unknown'): StepResult => ({
+  const route = (via: 'hit' | 'caret' | 'scroll-page' | 'scroll-into-view' | 'menu' | 'scroll-bar', effect: 'changed' | 'none' | 'unknown'): StepResult => ({
     index: 0,
     action: 'left_click',
     status: 'ok',
@@ -164,7 +164,7 @@ describe('the background routes (§24.1)', () => {
   })
 })
 
-describe('the front tier in the verdict (§25, decision 11)', () => {
+describe('the front tier in the verdict (§26, decision 11)', () => {
   const learn = (v: TierVerdict | null, step: StepResult): TierVerdict | null => nextVerdict(v, 'click', step, 1, B)
   it('counts uncommitted as a miss, and raises to front after two process misses then a change in front', () => {
     let v = learn(null, ok('process', 'uncommitted'))
@@ -278,5 +278,21 @@ describe('Settings → Computer use: names, list, forget, onChange', () => {
     off()
     v.forget(null)
     expect(calls).toBe(3)
+  })
+})
+
+
+describe('scroll-into-view learning (§25)', () => {
+  it('learns misses, ignores unknown evidence, sends the ignored route, and clears on change', () => {
+    const v = new TierVerdicts(memoryStore(), { now: () => 10 })
+    const action = { action: 'scroll' as const }
+    const step = (effect: 'none' | 'changed' | 'unknown'): StepResult => ({ index: 0, action: 'scroll', status: 'ok', tier: 'ax', effect, input: { via: 'scroll-into-view' } })
+    v.learn(B, action, step('none'))
+    v.learn(B, action, step('unknown'))
+    expect(v.get(B)?.viaMisses?.['scroll-into-view']).toBe(1)
+    v.learn(B, action, step('none'))
+    expect(v.ignoredFor(B)).toEqual({ via: ['scroll-into-view'] })
+    v.learn(B, action, step('changed'))
+    expect(v.ignoredFor(B)).toBeUndefined()
   })
 })

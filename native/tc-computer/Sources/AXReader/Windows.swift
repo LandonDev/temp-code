@@ -58,15 +58,25 @@ enum WindowList {
     }
 }
 
-/// One AX window and what the wire says of it.
+/// A tab a window ref named (§25.4): the element to press, as resolution found it.
+public struct TabTarget {
+    public let element: AXUIElement
+    public let title: String
+    public let selected: Bool
+}
+
+/// One AX window and what the wire says of it; `tab` when the ref matched one of its tabs.
 struct ResolvedWindow {
     let element: AXUIElement
     let info: WindowInfo
+    var tab: TabTarget?
 }
 
-/// Spec §2.1: by id, then exact title, then substring; else AXMainWindow,
-/// AXFocusedWindow, the first standard window. No window is ever read without
-/// a unique id, so a base's window key always tells two windows apart.
+/// Spec §2.1 as §25.4 widens it: by id; the window title exactly; a tab title exactly, in any of a
+/// Chromium app's browser windows; the window title as a substring; a tab title as a substring
+/// (`TabMatch`); else AXMainWindow, AXFocusedWindow, the first standard window. No window is ever read
+/// without a unique id, so a base's window key always tells two windows apart. Resolution has no side
+/// effect: a tab match returns its window and the tab, which `TabSelect` presses.
 struct WindowResolver {
     let lookup: WindowIDLookup
 
@@ -88,13 +98,15 @@ struct WindowResolver {
 
     func titles(_ app: AXUIElement) -> [String] { windows(of: app).compactMap { AX.string(AX.copy($0, "AXTitle").value) } }
 
-    func resolve(app: AXUIElement, pid: pid_t, ref: ComputerProtocol.WindowRef?) throws -> ResolvedWindow {
+    /// `chromium`: tabs are matched (a Chromium process, `ChromiumBundle`).
+    func resolve(app: AXUIElement, pid: pid_t, ref: ComputerProtocol.WindowRef?, chromium: Bool = false) throws -> ResolvedWindow {
         // the first call decides: a hung app answers `timeout` after one 2 s wait, not one per call
         let first = AX.copy(app, "AXWindows")
         if let failure = AXErrorMap.failure(first, what: "The app") { throw failure }
         let list = WindowList.entries()
         let all = AX.elements(first.value)
         var pick: AXUIElement?
+        var tab: TabTarget?
         if let id = ref?.id {
             pick = all.first { w in
                 let a = AX.batch(w, ["AXTitle", "AXPosition", "AXSize"])
@@ -103,7 +115,16 @@ struct WindowResolver {
             }
         } else if let title = ref?.title {
             let named = all.map { ($0, AX.string(AX.copy($0, "AXTitle").value) ?? "") }
-            pick = named.first { $0.1 == title }?.0 ?? named.first { $0.1.contains(title) }?.0
+            // the tab strips are scanned only when no window title matches exactly, and only in a Chromium app
+            let scanTabs = chromium && !named.contains { $0.1 == title }
+            let found = named.map { scanTabs ? LiveTabs.scan($0.0).tabs : [] }
+            let windows = named.indices.map { TabMatch.Window(title: named[$0].1, tabs: found[$0].map(LiveTabs.info)) }
+            if let hit = TabMatch.pick(windows: windows, ref: ComputerProtocol.WindowRef(title: title)) {
+                pick = named[hit.window].0
+                if case .tab(let w, let t) = hit {
+                    tab = TabTarget(element: found[w][t], title: windows[w].tabs[t].title, selected: windows[w].tabs[t].selected)
+                }
+            }
         } else {
             pick = AX.element(AX.copy(app, "AXMainWindow").value) ?? AX.element(AX.copy(app, "AXFocusedWindow").value)
                 ?? all.first { AX.string(AX.copy($0, "AXSubrole").value) == "AXStandardWindow" }
@@ -111,7 +132,7 @@ struct WindowResolver {
         guard let window = pick else {
             throw ComputerFailure(ComputerError(kind: .windowNotFound, message: "No such window", candidates: titles(app)))
         }
-        return ResolvedWindow(element: window, info: try describe(window, app: app, pid: pid, list: list))
+        return ResolvedWindow(element: window, info: try describe(window, app: app, pid: pid, list: list), tab: tab)
     }
 }
 
@@ -131,11 +152,32 @@ public enum AppWindows {
         AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), Float(ComputerDefaults.AXWalk.messagingTimeoutMs) / 1_000)
     }()
 
-    /// spec §2.1's pick of `ref` among the app's windows: by id, then exact title, then substring, else main,
-    /// focused, the first standard window.
+    /// spec §2.1's pick of `ref` among the app's windows (§25.4's order, tabs included), else main, focused, the
+    /// first standard window. A ref naming a tab resolves to its window; `resolveTarget` also gives the tab.
     public static func resolve(pid: pid_t, ref: ComputerProtocol.WindowRef?) throws -> (element: AXUIElement, info: WindowInfo) {
-        let resolved = try WindowResolver(lookup: .live).resolve(app: appElement(pid), pid: pid, ref: ref)
+        let resolved = try resolveTarget(pid: pid, ref: ref)
         return (resolved.element, resolved.info)
+    }
+
+    /// The window and, for a ref that matched a tab of a browser window, that tab: no side effect. A tab
+    /// that is not selected is the handlers' to select (`TabSelect.select`).
+    public static func resolveTarget(pid: pid_t, ref: ComputerProtocol.WindowRef?) throws -> (element: AXUIElement, info: WindowInfo, tab: TabTarget?) {
+        let resolved = try WindowResolver(lookup: .live).resolve(app: appElement(pid), pid: pid, ref: ref, chromium: LiveBundles.kind(pid).isChromium)
+        return (resolved.element, resolved.info, resolved.tab)
+    }
+
+    /// §25.1: whether the pid is a Chromium process, by its bundle (read once per bundle).
+    public static func isChromium(pid: pid_t) -> Bool { LiveBundles.kind(pid).isChromium }
+
+    /// Whether a tab element reads AXSelected true now.
+    public static func tabSelected(_ tab: AXUIElement) -> Bool { LiveTabs.info(tab).selected }
+
+    /// The tab of the window with this id whose title is `title` exactly, else contains it (`tc-ax select-tab`).
+    public static func tab(pid: pid_t, windowID: Int, title: String) throws -> (window: AXUIElement, tab: TabTarget)? {
+        let window = try resolveTarget(pid: pid, ref: ComputerProtocol.WindowRef(id: windowID)).element
+        let tabs = LiveTabs.scan(window).tabs.map { ($0, LiveTabs.info($0)) }
+        guard let hit = tabs.first(where: { $0.1.title == title }) ?? tabs.first(where: { $0.1.title.contains(title) }) else { return nil }
+        return (window, TabTarget(element: hit.0, title: hit.1.title, selected: hit.1.selected))
     }
 
     /// One AX window's CGWindowID: the private symbol, else the window list's one match by title and frame.
@@ -147,11 +189,22 @@ public enum AppWindows {
         return WindowMatch.pick(WindowList.entries(), pid: pid, title: AX.string(a["AXTitle"]?.value) ?? "", frame: frame)
     }
 
+    /// Every window, a Chromium app's browser windows with their tabs in strip order (`TabList.max`, then
+    /// `moreTabs`, §25.4).
     public static func list(pid: pid_t) -> [WindowInfo] {
         let app = appElement(pid)
         let resolver = WindowResolver(lookup: .live)
         let entries = WindowList.entries()
-        return resolver.windows(of: app).compactMap { try? resolver.describe($0, app: app, pid: pid, list: entries) }
+        let chromium = LiveBundles.kind(pid).isChromium
+        return resolver.windows(of: app).compactMap { w -> WindowInfo? in
+            guard let info = try? resolver.describe(w, app: app, pid: pid, list: entries) else { return nil }
+            guard chromium else { return info }
+            let tabs = LiveTabs.scan(w).tabs
+            guard !tabs.isEmpty else { return info }
+            let shown = tabs.prefix(TabList.max).map(LiveTabs.info)
+            return WindowInfo(id: info.id, title: info.title, frame: info.frame, main: info.main, focused: info.focused, minimized: info.minimized,
+                              onScreen: info.onScreen, space: info.space, tabs: shown, moreTabs: tabs.count > TabList.max ? tabs.count - TabList.max : nil)
+        }
     }
 
     /// Whether the window with this id holds an element of `role` whose title, description or value is `name`,

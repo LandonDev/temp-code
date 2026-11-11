@@ -8,7 +8,7 @@ import Testing
 @testable import Input
 #endif
 
-// The `front` tier in the route plan (docs/computer-protocol.md §25.3). Foundation only: the box
+// The `front` tier in the route plan (docs/computer-protocol.md §26.3). Foundation only: the box
 // runs this file from scripts/computer-text-test.sh, the Mac in InputTests.
 
 private let withFront: [Tier] = [.ax, .process, .front, .session]

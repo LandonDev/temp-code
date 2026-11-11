@@ -45,7 +45,7 @@ describe('host error kinds', () => {
     )
     expect(sessionRefusedLine('no-scheduler', 'TextEdit', { menu: [] })).toBe(sessionRefusedLine('no-scheduler'))
   })
-  it('a refused front step says the app must come forward, which waits for the person to be away (§25.6)', () => {
+  it('a refused front step says the app must come forward, which waits for the person to be away (§26.6)', () => {
     expect(sessionRefusedLine('skipped', 'TextEdit', { menu: ['File', 'Save'], tier: 'front' })).toBe(
       'File › Save is disabled while TextEdit is in the background; needs TextEdit in front for a moment, which the person set to wait until they are away: the person did not choose Run now'
     )

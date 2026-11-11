@@ -4,7 +4,7 @@ import Foundation
 private typealias T = ObservationTables
 
 /// What is behind the window on disk, as its document line says it (docs/computer-protocol.md
-/// §25.10): the window's AXDocument and the close button's AXEdited (E5), read in the walk's stage B.
+/// §26.10): the window's AXDocument and the close button's AXEdited (E5), read in the walk's stage B.
 public struct DocumentLine: Sendable, Equatable {
     public enum Kind: Sendable, Equatable { case file, folder, unsaved }
 

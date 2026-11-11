@@ -28,9 +28,9 @@ public struct Base: Sendable {
     public var stubs: [Int: [String]]
     public var others: [OtherWindow]
     public var fullBytes: Int
-    /// the document line's facts the model was shown (§25.10)
+    /// the document line's facts the model was shown (§26.10)
     public var document: DocumentLine? = nil
-    /// the containers shown with the closed-menu note under them (§25.11)
+    /// the containers shown with the closed-menu note under them (§26.11)
     public var notes: Set<Int> = []
 }
 

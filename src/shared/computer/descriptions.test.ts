@@ -208,10 +208,10 @@ describe('the background routes in the words (§24)', () => {
     expect(act).toContain('In the background a shortcut runs its menu item, a click presses the element under it and text goes straight in')
     const cua = toolDescription('cua', 'act', 'computer_act')
     expect(cua).toContain("In the background pressKey runs the combo's menu item, click presses the element under it")
-    // a command that needs the app active brings it forward, save_as checks the disk, and the uncommitted words (§25)
+    // a command that needs the app active brings it forward, save_as checks the disk, and the uncommitted words (§26)
     for (const text of [act, cua]) {
-      expect(text).toContain('a command that needs the app in front (Save, Move to Trash) brings it forward a moment')
-      expect(text).toContain('save_as saves to a path and checks the file; "on screen only" means the disk did not change.')
+      expect(text).toContain('a command that needs the app in front (Save, Trash) brings it forward briefly')
+      expect(text).toContain('save_as saves to path and checks the file; "on screen only" means not on disk.')
     }
     for (const shape of WORDS_SHAPES) {
       expect(perVerbDescription(shape, 'save_as')).toContain('checks the file on disk')
@@ -243,4 +243,23 @@ describe("computer_apps' open", () => {
       expect(fields['apps.confirm'], shape).toContain('confirm')
     }
   })
+})
+
+describe('web content words (§25)', () => {
+  for (const shape of WORDS_SHAPES) {
+    it(`${shape}: teaches tabs, covered pages, long reads, picks and focused keys within the budgets`, () => {
+      const observe = toolDescription(shape, 'act', 'computer_observe')
+      expect(observe).toContain('In a browser, window may name a tab: a background tab is selected first and the result says so.')
+      expect(observe).toContain('"page not drawn" means the window is covered and the browser has not drawn that tab: perform raise on its window draws it when the Mac is free.')
+      expect(observe).toContain('"… N more below" under a list or table in a page: observe with element set to its [index] reads its rows, up to a few thousand; past that the read says it was cut, and you read on from a later row.')
+      const act = toolDescription(shape, 'act', 'computer_act')
+      expect(act).toContain('on a pop up picks the item of that name, and a value that did not take fails the step.')
+      expect(act).toContain('takes element to focus first; in a browser, text and keys with no element never go into its address bar.')
+      expect(fieldWords(shape).window).toBe("Part of the window's title, or a tab's title in a browser (that tab is selected first). Left out: the window you used last in this app, else its main window.")
+      expect(fieldWords(shape).element).toContain('key and hold_key: the element to focus first.')
+      for (const verb of ['key', 'hold_key'] as const) expect(perVerbDescription(shape, verb)).toContain('element focuses it first.')
+      expect(perVerbDescription(shape, 'set_value')).toContain('On a pop up it picks the item by name.')
+      expect(toolDescription(shape, 'act', 'computer_apps')).toContain("each browser window's tabs")
+    })
+  }
 })

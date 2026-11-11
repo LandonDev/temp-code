@@ -447,6 +447,8 @@ public enum InputVia: RawRepresentable, Codable, Hashable, Sendable {
     case caret
     case scrollBar
     case scrollPage
+    case pick
+    case scrollIntoView
     case panel
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
@@ -462,6 +464,8 @@ public enum InputVia: RawRepresentable, Codable, Hashable, Sendable {
         case "caret": self = .caret
         case "scroll-bar": self = .scrollBar
         case "scroll-page": self = .scrollPage
+        case "pick": self = .pick
+        case "scroll-into-view": self = .scrollIntoView
         case "panel": self = .panel
         default: self = .unknown(rawValue)
         }
@@ -478,6 +482,8 @@ public enum InputVia: RawRepresentable, Codable, Hashable, Sendable {
         case .caret: "caret"
         case .scrollBar: "scroll-bar"
         case .scrollPage: "scroll-page"
+        case .pick: "pick"
+        case .scrollIntoView: "scroll-into-view"
         case .panel: "panel"
         case .unknown(let value): value
         }
@@ -561,6 +567,9 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
     case sessionUnavailable
     case alreadyRunning
     case openRefused
+    case valueNotTaken
+    case focusMoved
+    case tabInUse
     case notCommitted
     case fileExists
     /// A value this build does not know; `rawValue` keeps it.
@@ -592,6 +601,9 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
         case "session_unavailable": self = .sessionUnavailable
         case "already_running": self = .alreadyRunning
         case "open_refused": self = .openRefused
+        case "value_not_taken": self = .valueNotTaken
+        case "focus_moved": self = .focusMoved
+        case "tab_in_use": self = .tabInUse
         case "not_committed": self = .notCommitted
         case "file_exists": self = .fileExists
         default: self = .unknown(rawValue)
@@ -624,6 +636,9 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
         case .sessionUnavailable: "session_unavailable"
         case .alreadyRunning: "already_running"
         case .openRefused: "open_refused"
+        case .valueNotTaken: "value_not_taken"
+        case .focusMoved: "focus_moved"
+        case .tabInUse: "tab_in_use"
         case .notCommitted: "not_committed"
         case .fileExists: "file_exists"
         case .unknown(let value): value
@@ -663,6 +678,8 @@ public enum ErrorReason: RawRepresentable, Codable, Hashable, Sendable {
     case executable
     case scheme
     case app
+    case browserField
+    case moved
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -679,6 +696,8 @@ public enum ErrorReason: RawRepresentable, Codable, Hashable, Sendable {
         case "executable": self = .executable
         case "scheme": self = .scheme
         case "app": self = .app
+        case "browser-field": self = .browserField
+        case "moved": self = .moved
         default: self = .unknown(rawValue)
         }
     }
@@ -696,6 +715,8 @@ public enum ErrorReason: RawRepresentable, Codable, Hashable, Sendable {
         case .executable: "executable"
         case .scheme: "scheme"
         case .app: "app"
+        case .browserField: "browser-field"
+        case .moved: "moved"
         case .unknown(let value): value
         }
     }
@@ -806,6 +827,55 @@ public enum FrontRestore: RawRepresentable, Codable, Hashable, Sendable {
         case .personChose: "person-chose"
         case .failed: "failed"
         case .hidApp: "hid-app"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum PageState: RawRepresentable, Codable, Hashable, Sendable {
+    case loaded
+    case loading
+    case notDrawn
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "loaded": self = .loaded
+        case "loading": self = .loading
+        case "not-drawn": self = .notDrawn
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .loaded: "loaded"
+        case .loading: "loading"
+        case .notDrawn: "not-drawn"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum TabsMode: RawRepresentable, Codable, Hashable, Sendable {
+    case background
+    case `any`
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "background": self = .background
+        case "any": self = .`any`
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .background: "background"
+        case .`any`: "any"
         case .unknown(let value): value
         }
     }

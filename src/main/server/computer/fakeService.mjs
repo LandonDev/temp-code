@@ -27,10 +27,11 @@ const apps = [
   // Closey: a click on button "close" closes the window it targets (§22.6)
   { name: 'Closey', pid: 16900, bundleId: 'dev.fake.closey', windows: [windowInfo(169000, 'Closey Doc'), windowInfo(169001, 'Closey Plain')] },
   { name: 'Preview', pid: 17000, bundleId: 'com.apple.Preview', windows: [windowInfo(170000, 'Preview')] },
-  // §25: Fronty's File › Save runs only in front, Committy's rename reaches the disk only when committed in front,
+  { name: 'Webby', pid: 17100, bundleId: 'dev.fake.webby', windows: [{ ...windowInfo(171000, 'Web front - Webby'), tabs: [{ title: 'Web front', selected: true }, { title: 'Web report', selected: false }] }] },
+  // §26: Fronty's File › Save runs only in front, Committy's rename reaches the disk only when committed in front,
   // Panely saves through its panel, Menuy leaves a menu open
   ...['Fronty', 'Committy', 'Panely', 'Menuy'].map((name, i) => ({
-    name, pid: 17100 + i, bundleId: `dev.fake.${name.toLowerCase()}`, windows: [windowInfo((17100 + i) * 10, `${name} Doc`)]
+    name, pid: 17200 + i, bundleId: `dev.fake.${name.toLowerCase()}`, windows: [windowInfo((17200 + i) * 10, `${name} Doc`)]
   })),
   { name: 'Finder', pid: 400, bundleId: 'com.apple.finder', windows: [] }
 ]
@@ -108,16 +109,31 @@ function target(params) {
   if (app.name === 'Preview') previewRunning = true
   if (app.name === 'NoAX') throw failure('permission_missing', 'Allow accessibility to read this app.', { which: 'accessibility' })
   const ref = params.window ?? {}
+  let selectedTab
+  let matchedTab
+  const tabWindow = (exact) => app.windows.find((w) => {
+    const tab = w.tabs?.find((t) => exact ? t.title === ref.title : t.title.includes(ref.title))
+    if (tab) matchedTab = tab
+    return !!tab
+  })
   const window = ref.id !== undefined ? app.windows.find((w) => w.id === ref.id) : ref.title !== undefined ?
-    app.windows.find((w) => w.title === ref.title) ?? app.windows.find((w) => w.title.includes(ref.title)) : app.windows[0]
+    app.windows.find((w) => w.title === ref.title) ?? tabWindow(true) ?? app.windows.find((w) => w.title.includes(ref.title)) ?? tabWindow(false) : app.windows[0]
   if (!window) throw failure('window_not_found', 'Choose a window from this app.', { candidates: app.windows.map((w) => w.title) })
   const named = params.element !== undefined ? [params.element] : params.action ? elements(params.action) : (params.actions ?? []).flatMap(elements)
+  if (params.expectFocus !== undefined) named.push(params.expectFocus)
   if (named.length && params.epoch !== epoch) throw failure('stale_element', 'Read the app again after the service restart.', { element: named[0], reason: 'service-restarted' })
+  if (matchedTab && !matchedTab.selected) {
+    if (process.env.FAKE_WEB_ACTIVE === '1' && params.tabs !== 'any') throw failure('tab_in_use', 'The person is on another tab.')
+    for (const tab of window.tabs) tab.selected = tab === matchedTab
+    selectedTab = matchedTab.title
+    window.title = selectedTab + ' - Webby'
+    window.pageReads = 0
+  }
   let perApp = states.get(params.session)
   if (!perApp) states.set(params.session, perApp = new Map())
   let state = perApp.get(app.pid)
   if (!state) perApp.set(app.pid, state = { seq: 0, dirty: false, maxIndex: 0, gotFirst: false })
-  return { app, window, state, session: params.session }
+  return { app, window, state, selectedTab, session: params.session }
 }
 function shot(ctx, action) {
   if (ctx.app.name === 'NoShot' || !permissions.screenRecording) throw shotFailure()
@@ -144,7 +160,7 @@ function rewrite(text, ctx) {
 function observation(ctx, options = {}, action = 'observe') {
   const { state } = ctx
   const base = state.seq
-  const kind = options.element !== undefined ? 'subtree' : options.mode === 'full' || !state.gotFirst ? 'full' : state.dirty ? 'diff' : 'unchanged'
+  let kind = options.element !== undefined ? 'subtree' : options.mode === 'full' || !state.gotFirst ? 'full' : state.dirty ? 'diff' : 'unchanged'
   let text
   if (kind === 'subtree') {
     const line = options.element === 3 ? texts.full.split('\n').find((line) => line.trimStart().startsWith('[3] ')).trim() : `[${options.element}] group "Part"`
@@ -160,12 +176,27 @@ function observation(ctx, options = {}, action = 'observe') {
   text = rewrite(text, ctx)
   // FAKE_PASSWORD=1: the focused text area is a password field
   if (process.env.FAKE_PASSWORD === '1') text = text.replace('[3] text area', '[3] password "Password"')
+  let page
+  if (ctx.app.name === 'Webby') {
+    const tab = ctx.window.tabs.find((t) => t.selected).title
+    const pageState = process.env.FAKE_WEB_NOT_DRAWN === '1' ? 'not-drawn' : tab === 'Web report' && !ctx.window.pageReads ? 'loading' : 'loaded'
+    ctx.window.pageReads = (ctx.window.pageReads ?? 0) + 1
+    page = { tab, state: pageState }
+    kind = 'full'
+    state.maxIndex = 40
+    state.focused ??= 3
+    text = `app "Webby" · window ${JSON.stringify(ctx.window.title)} · 1280×1072 · focused [${state.focused}]` +
+      (pageState === 'loading' ? ' · still loading' : pageState === 'not-drawn' ? ' · page not drawn' : '') +
+      `\n[1] window ${JSON.stringify(ctx.window.title)}\n  [3] input "Name" = ""\n  [4] input "Blocked value" = "Original"\n  [9] input "Address and search bar"\n  [19] pop up "Plan" = ${JSON.stringify(state.plan ?? 'Choose a plan')}\n  [20] table "Report"`
+  }
   const lines = text.split('\n')
   const result = {
     epoch, session: ctx.session, app: brief(ctx.app), window: { id: ctx.window.id, title: ctx.window.title, frame },
     kind, seq: state.seq, ...(kind === 'diff' ? { base } : {}), text, space,
     stats: { elements: lines.filter((line) => line.includes('[')).length, lines: lines.length - 1, bytes: Buffer.byteLength(text), omitted: 0, thin: ctx.app.name === 'Thin', partial: false, readMs: 5 },
-    waited
+    waited,
+    ...(page ? { page } : {}),
+    ...(ctx.selectedTab !== undefined ? { selectedTab: ctx.selectedTab } : {})
   }
   if (options.screenshot === 'always' || (options.screenshot !== 'never' && result.stats.thin)) {
     try { result.shot = shot(ctx, action) } catch (error) { result.shotError = error }
@@ -181,6 +212,7 @@ function sessionChange(app) {
   }
 }
 function elementLine(index, ctx) {
+  if (ctx.app.name === 'Webby') return ({ 1: `window ${JSON.stringify(ctx.window.title)}`, 3: 'input "Name"', 4: 'input "Blocked value"', 9: 'input "Address and search bar"', 19: 'pop up "Plan"', 20: 'table "Report"' })[index] ?? 'group "Part"'
   // Changed and new lines in the diff take precedence after a diff was returned.
   const sources = ctx.state.maxIndex === 47 ? [texts.diff, texts.full] : [texts.full]
   for (const source of sources) {
@@ -191,10 +223,10 @@ function elementLine(index, ctx) {
 }
 // Hitty's coordinate clicks pressed through the hit route: the first two change nothing (§24.3)
 let hits = 0
-// what the host said it speaks at initialize (§25, decision 14); FAKE_NO_FEATURES=1 plays an older service
+// what the host said it speaks at initialize (§26, decision 14); FAKE_NO_FEATURES=1 plays an older service
 let hostFeatures = new Set()
 const speaks = (feature) => process.env.FAKE_NO_FEATURES !== '1' && hostFeatures.has(feature)
-// a front hold, shared by a batch's run of front steps until 2,000 ms (§25.2)
+// a front hold, shared by a batch's run of front steps until 2,000 ms (§26.2)
 const FRONT_STEP_MS = 700
 let hold = null
 function frontHold() {
@@ -203,7 +235,7 @@ function frontHold() {
   hold.heldMs += FRONT_STEP_MS
   return { heldMs: hold.heldMs, activateMs: 80, restoreMs: 40, restored: 'restored', person: brief(apps[0]), armedAt: hold.armedAt, idleAtArmMs: 2_000, lastInputAt: now }
 }
-/** The four §25 apps; null when the step is not theirs. */
+/** The four §26 apps; null when the step is not theirs. */
 function activeStep(ctx, action, tiers, result, fail) {
   const verb = action.action
   const front = tiers.includes('front') && speaks('front')
@@ -215,7 +247,7 @@ function activeStep(ctx, action, tiers, result, fail) {
   }
   if (ctx.app.name === 'Committy' && (verb === 'set_value' || (verb === 'key' && combo === 'return'))) {
     ctx.state.dirty = true
-    // a commit step in a background app skips process and runs once in front (§25, decision 12)
+    // a commit step in a background app skips process and runs once in front (§26, decision 12)
     if (verb === 'key' && front) return { ...result, tier: 'front', effect: 'changed', front: frontHold(), disk: { renamed: [{ from: '~/run/a.txt', to: '~/run/b.txt' }] } }
     const tier = verb === 'set_value' ? 'ax' : 'process'
     if (!tiers.includes(tier)) return fail(failure('needs_tier', 'Allow the tier this action needs.', { needed: tier }))
@@ -232,7 +264,7 @@ function activeStep(ctx, action, tiers, result, fail) {
     const path = action.path ?? ''
     if (path.endsWith('/exists.txt') && !action.replace) return fail(failure('file_exists', `${path} exists; pass replace to overwrite it.`))
     if (path.endsWith('/nothing.txt')) return fail(failure('not_committed', `${ctx.app.name} closed the save panel and no file appeared.`))
-    // the folder's Go to Folder confirms only in front (§25.7, E4')
+    // the folder's Go to Folder confirms only in front (§26.7, E4')
     if (!front) return fail(failure('needs_tier', 'The save panel changes folders only with the app in front.', { needed: 'front' }))
     ctx.state.dirty = true
     return { ...result, tier: 'front', effect: 'changed', input: { via: 'panel', on: path }, front: frontHold(), disk: { saved: path } }
@@ -263,6 +295,24 @@ function step(ctx, action, tiers, index, pasteQuietMs, ignored) {
   }
   const active = activeStep(ctx, action, tiers, result, fail)
   if (active) return active
+  // Webby (§25): a native pick, read-back failure, page scroll, and focus leaving the page.
+  if (ctx.app.name === 'Webby') {
+    if (['key', 'hold_key', 'type', 'paste'].includes(verb)) {
+      const focused = process.env.FAKE_WEB_FOCUS_MOVED === '1' ? 9 : ctx.state.focused ?? 3
+      if (action.element === undefined && focused === 9 && !(verb === 'key' && action.text === 'super+l'))
+        return fail(failure('focus_moved', 'Focus left the page.', { element: 9, focused: { index: 9, line: 'input "Address and search bar"' }, reason: 'browser-field' }))
+      if (action.element !== undefined) ctx.state.focused = action.element
+      if (action.text === 'super+l') ctx.state.focused = 9
+    }
+    if (verb === 'set_value' && element === 4)
+      return fail(failure('value_not_taken', 'AXValue did not take.', { element: 4, value: 'Original' }))
+    if (verb === 'set_value' && element === 19) {
+      ctx.state.plan = action.value
+      ctx.state.dirty = true
+      return { ...result, element: { index: 19, line: 'pop up "Plan"' }, tier: 'ax', effect: 'changed', input: { via: 'pick', on: action.value } }
+    }
+    if (verb === 'scroll') return { ...result, tier: 'ax', effect: 'changed', input: { via: 'scroll-into-view' } }
+  }
   // Menuey (§24.2): ⌘⇧P runs its menu item at ax; ⌘W's item is disabled while the app is in the background
   if (ctx.app.name === 'Menuey' && verb === 'key') {
     const combo = (action.text ?? '').toLowerCase()
@@ -390,7 +440,7 @@ function handle({ id, method, params = {} }) {
     case 'permissions.request': return reply(id, permissions)
     case 'apps.list': return reply(id, { apps: apps.filter((app) => app.name !== 'Preview' || previewRunning)
       .sort((a, b) => a.name === 'TextEdit' ? -1 : b.name === 'TextEdit' ? 1 : a.name.localeCompare(b.name))
-      .map((app) => ({ ...brief(app), active: app.name === 'TextEdit', hidden: app.name === 'Finder', ...(params.windows ? { windows: app.windows } : {}) })) })
+      .map((app) => ({ ...brief(app), active: app.name === 'Webby' ? process.env.FAKE_WEB_ACTIVE === '1' : app.name === 'TextEdit', hidden: app.name === 'Finder', ...(params.windows ? { windows: app.windows } : {}) })) })
     case 'apps.launch': {
       // §23.2: the items and the app are checked before anything opens
       const open = params.open ?? []

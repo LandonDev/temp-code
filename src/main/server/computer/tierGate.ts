@@ -41,7 +41,7 @@ export interface TierGateRequest extends TierGateContext {
   /** the call, unique on the host: a paste's deadline holds across its re-runs */
   call: string
   signal: AbortSignal
-  /** the tier the step needs: `session` when left out; `front` waits only under "wait until I'm away" (§25.6) */
+  /** the tier the step needs: `session` when left out; `front` waits only under "wait until I'm away" (§26.6) */
   needed?: 'front' | 'session'
 }
 
@@ -60,7 +60,7 @@ export type ClipboardDecision = { ok: true; waitedMs: number } | { ok: false; ca
 export interface SessionTierGate {
   /** Before a call: may its tiers include 'session'? Fast, no wait. */
   admitted(ctx: TierGateContext): boolean
-  /** Before a call: may its tiers include 'front' (§25.6)? Fast, no wait; absent reads as no. */
+  /** Before a call: may its tiers include 'front' (§26.6)? Fast, no wait; absent reads as no. */
   frontAdmitted?(ctx: TierGateContext): boolean
   /** A step needs the session tier the call did not allow: admit it (after any wait the gate owns) or refuse with a reason. */
   request(ctx: TierGateRequest): Promise<TierDecision>

@@ -20,7 +20,7 @@ export type MechanicsFact = (typeof MECHANICS_FACTS)[number]
 export const MECHANICS_MAX = 3050
 
 /**
- * The tiers (§5.2, §25): what each takes of the person's Mac, cut to the
+ * The tiers (§5.2, §26): what each takes of the person's Mac, cut to the
  * budget with every fact kept; the held lines stay schedule.ts's.
  */
 export const COMPUTER_TIERS =

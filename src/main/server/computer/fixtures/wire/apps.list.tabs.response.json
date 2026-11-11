@@ -1,0 +1,46 @@
+{
+  "jsonrpc": "2.0",
+  "id": 64,
+  "result": {
+    "apps": [
+      {
+        "pid": 21410,
+        "bundleId": "com.google.chrome.for.testing",
+        "name": "Google Chrome for Testing",
+        "active": false,
+        "hidden": false,
+        "windows": [
+          {
+            "id": 2210,
+            "title": "TC field front - Google Chrome for Testing",
+            "frame": {
+              "x": 120,
+              "y": 80,
+              "w": 1100,
+              "h": 800
+            },
+            "main": true,
+            "focused": true,
+            "minimized": false,
+            "onScreen": true,
+            "space": "current",
+            "tabs": [
+              {
+                "title": "TC field front",
+                "selected": true
+              },
+              {
+                "title": "TC field report",
+                "selected": false
+              },
+              {
+                "title": "TC field form",
+                "selected": false
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

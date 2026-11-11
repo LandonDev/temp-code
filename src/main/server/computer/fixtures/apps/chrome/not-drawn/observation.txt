@@ -1,0 +1,21 @@
+app "Google Chrome" · window "Computer fixture form - Google Chrome" · 930×1280 · page not drawn
+[1] window "Computer fixture form - Google Chrome"
+  [2] group "Computer fixture form - Google Chrome"
+    [3] group actions: show menu
+      [4] button "Back" disabled actions: show menu
+      [5] button "Forward" disabled actions: show menu
+      [6] button "Reload" actions: show menu
+      [7] group actions: show menu
+        [8] pop up "File"
+        [9] input "Address and search bar" = "/tmp/tc-fixture-clone/src/main/server/computer/fixtures/page/form.html" actions: press, show menu
+        [10] button "Bookmark this tab"
+      [11] button "Sign In to Chrome?" actions: show menu
+      [12] pop up "Chrome"
+      [13] scroll area
+      [14] pop up "Tab search"
+      [15] tab "Computer fixture form" selected actions: show menu
+        [16] button "Close"
+      [17] button "New Tab" actions: show menu
+  [18] button "close"
+  [19] button "minimize"
+  [20] button "full screen" actions: zoom window, show menu

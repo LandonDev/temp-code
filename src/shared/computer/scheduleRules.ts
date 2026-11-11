@@ -76,7 +76,7 @@ export function freedom(i: FreedomInput): Freedom {
 }
 
 /**
- * When a step that needs the app in front gets it (§25.6): `brief`, the default, brings it forward at once;
+ * When a step that needs the app in front gets it (§26.6): `brief`, the default, brings it forward at once;
  * `away` waits as the session tier does (§20.1). Anything else reads as `brief`.
  */
 export const ACTIVE_APP_SETTING = 'computer.activeApp'
@@ -96,7 +96,7 @@ export interface FrontFreedomInput {
   session: Freedom
 }
 
-/** Whether a `front` step is admitted now (§25.6): never locked or asleep; at once with Away on or under `brief`; else as the session tier. */
+/** Whether a `front` step is admitted now (§26.6): never locked or asleep; at once with Away on or under `brief`; else as the session tier. */
 export function frontFreedom(i: FrontFreedomInput): Freedom {
   if (i.presence.power === 'asleep') return { free: false, why: 'asleep' }
   if (i.presence.screen === 'locked') return { free: false, why: 'locked' }

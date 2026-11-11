@@ -59,6 +59,9 @@ final class ServiceRig: @unchecked Sendable {
         capture = FakeCapture(log: log, pixelLive: pixelLive)
         self.dataDir = dataDir ?? URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("tc-svc-\(UUID().uuidString)")
         windows.set(500, [window(7, "Doc"), window(8, "Other")])
+        windows.log = log
+        let fakeWindows = windows
+        readers.pageSource = { fakeWindows.page($0) }
         windows.set(600, [window(9, "Notes")])
         var t = ServiceTiming()
         t.appSlotWait = .milliseconds(200)

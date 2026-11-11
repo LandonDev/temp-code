@@ -264,7 +264,7 @@ describe("Settings › Computer use", () => {
   });
 });
 
-describe("When a step needs the app in front (§25.6)", () => {
+describe("When a step needs the app in front (§26.6)", () => {
   it("reads the setting, saves a pick and says the host's refusal", async () => {
     let refuse = false;
     host.handlers["computer.settings.set"] = async (params) => {

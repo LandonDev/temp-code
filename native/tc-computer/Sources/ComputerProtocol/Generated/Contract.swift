@@ -35,6 +35,11 @@ public enum ComputerDefaults {
         public static let maxNodes = 5000
         public static let maxMs = 2000
         public static let messagingTimeoutMs = 2000
+        public static let webReadAheadAbove = 1
+        public static let webReadAheadBelow = 3
+        public static let tabScanMaxDepth = 12
+        public static let tabScanMaxNodes = 600
+        public static let intoViewMaxNodes = 400
     }
     public enum ObservationText {
         public static let indentSpaces = 2
@@ -94,6 +99,8 @@ public enum ComputerDefaults {
         public static let repeatMax = 100
         public static let durationMaxSeconds = 300
         public static let clickDurationMaxSeconds = 10
+        public static let pickMenuMs = 500
+        public static let readBackMs = 300
     }
     public enum Front {
         public static let activateMaxMs = 400

@@ -3,6 +3,7 @@ import { MAC_APPROVAL_WAIT_MS } from './contract-macbridge'
 export { MAC_BRIDGE_DEFAULT_MAX_COMPUTER, MAC_BRIDGE_MAX_COMPUTER_CAP } from './contract-macbridge'
 import { ComputerSessionRowSchema } from './contract-computer'
 import { ComputerToolCallSchema, ComputerToolResultSchema, type ComputerToolCall } from './computer/tools'
+import { BridgeTimingSchema } from './computer/bridgeTiming'
 
 /**
  * Computer use through the Mac bridge (docs/box.md "Computer use from a box
@@ -86,7 +87,7 @@ export const MacComputerCallArgsSchema = z.object({
   turn: z.string().min(1).max(100),
   /** The box thread's root: the scheduler's rootId on the Mac is macComputerKey(env, rootId). */
   rootId: z.string().min(1).max(200),
-  /** What the box parses beyond the first wire (§25, decision 14): `front` on a row's tier. An older box sends none. */
+  /** What the box parses beyond the first wire (§26, decision 14): `front` on a row's tier. An older box sends none. */
   features: z.array(z.string().max(40)).max(8).optional()
 })
 export type MacComputerCallArgs = z.infer<typeof MacComputerCallArgsSchema>
@@ -148,7 +149,9 @@ export const ComputerPeerAnswerSchema = z.object({
   away: z.literal(true).optional(),
   images: ComputerToolResultSchema.shape.images,
   /** The Mac's row for the session after the call. */
-  row: ComputerSessionRowSchema.nullable()
+  row: ComputerSessionRowSchema.nullable(),
+  /** What the Mac spent, leg by leg (computer/bridgeTiming.ts); an older Mac sends none. */
+  timing: BridgeTimingSchema.optional()
 })
 export type ComputerPeerAnswer = z.infer<typeof ComputerPeerAnswerSchema>
 

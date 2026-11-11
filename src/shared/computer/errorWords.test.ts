@@ -31,6 +31,9 @@ const SAMPLES: Record<ComputerErrorKind, Partial<ComputerError>> = {
   key_window_unavailable: { keyWindow: { id: 4, title: 'Inbox' } },
   session_unavailable: { reason: 'locked' },
   already_running: {},
+  value_not_taken: { element: 19, value: 'Choose a plan' },
+  focus_moved: { element: 9, reason: 'browser-field', focused: { index: 9, line: 'input "Address and search bar"' } },
+  tab_in_use: {},
   not_committed: {},
   file_exists: {}
 }
@@ -47,6 +50,21 @@ describe('the error words', () => {
         else expect(line, kind).not.toBe(SERVICE)
       }
     }
+  })
+
+  it('word the web content kinds (§25)', () => {
+    expect(errorLine(err('value_not_taken', SAMPLES.value_not_taken))).toBe(
+      '[19] still reads "Choose a plan"; nothing after it ran. On a pop up, click it and perform pick on the item; on a field, type with element'
+    )
+    expect(errorLine(err('focus_moved', SAMPLES.focus_moved))).toBe(
+      'the keys would go to [9] input "Address and search bar", not the page; name the element they are for'
+    )
+    expect(errorLine(err('focus_moved', { ...SAMPLES.focus_moved, reason: 'moved' }))).toBe(
+      'the focus moved to [9] input "Address and search bar" since your read; name the element the keys are for'
+    )
+    expect(errorLine(err('tab_in_use'), { app: 'Google Chrome' })).toBe(
+      "the person has Google Chrome's window in front on another tab, so a read won't switch it; switch tabs with an act, which waits for the Mac to be free"
+    )
   })
 
   it('fall back to the service’s message for a kind the table lacks', () => {
@@ -117,7 +135,7 @@ describe('open_refused', () => {
   })
 })
 
-describe('the words of steps that need the app in front (§25)', () => {
+describe('the words of steps that need the app in front (§26)', () => {
   const saveAs: ComputerAction = { action: 'save_as', path: '~/run/note.rtf' }
   it('names the path a save_as could not write or would overwrite', () => {
     expect(errorLine(err('not_committed'), { app: 'TextEdit', action: saveAs })).toBe(

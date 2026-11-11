@@ -169,6 +169,11 @@ export function recordDriverNote(body: string): void {
   write(body, false)
 }
 
+/** A bridged computer call whose bridge legs passed their bound (computer/bridge.ts); the line carries its own legs and lag. */
+export function recordComputerSpan(body: string): void {
+  write(body)
+}
+
 /** Runs `fn` and logs it when it held the loop for TIMED_MS or more. */
 export function timed<T>(label: string, fn: () => T): T {
   const startedAt = performance.now()

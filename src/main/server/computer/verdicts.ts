@@ -29,7 +29,7 @@ export interface SettingsStore {
 export const VERDICT_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
 const empty = (bundleId: string, now: number): TierVerdict => ({ bundleId, classes: {}, misses: {}, updatedAt: now })
-/** `uncommitted` is a miss (§25, decision 11): the window changed and the disk did not. */
+/** `uncommitted` is a miss (§26, decision 11): the window changed and the disk did not. */
 const missed = (effect: string): boolean => effect === 'none' || effect === 'uncommitted'
 /** The newest name wins; no name leaves the one kept. */
 const named = (v: TierVerdict, name: string | undefined): TierVerdict => (name && name !== v.name ? { ...v, name } : v)
@@ -38,7 +38,7 @@ const isLearned = (via: string | undefined): via is LearnedVia => (LEARNED_VIAS 
 
 /**
  * A learned fallback route's misses (§24.1): `none` counts one up, `changed` clears it, `unknown`
- * leaves it. Only `hit`, `caret` and `scroll-page`: a bar at its end and a menu item that changes
+ * leaves it. Only `hit`, `caret`, `scroll-page` and `scroll-into-view`: a bar at its end and a menu item that changes
  * nothing in the window are honest no-ops, and learning from them would demote the route.
  */
 function learnVia(v: TierVerdict, step: StepResult): boolean {
@@ -55,7 +55,7 @@ function learnVia(v: TierVerdict, step: StepResult): boolean {
 const classOf = (action: Pick<ComputerAction, 'action'>): ActionClass | null => COMPUTER_ACTIONS[action.action].class
 
 /**
- * Pure: the next verdict after one step, or null when it learns nothing (§5.2, §25 decision 11). A miss
+ * Pure: the next verdict after one step, or null when it learns nothing (§5.2, §26 decision 11). A miss
  * (`none` or `uncommitted`) counts at the tier it ran on; two misses at `process` then `changed` at `front`
  * set the class to `front`; two at `front` (or at `process`, from an older service) then `changed` at
  * `session` set it to `session`; a later `changed` at a lower tier lowers it.
@@ -114,7 +114,7 @@ function clearFront(v: TierVerdict, cls: ActionClass): void {
   else delete v.frontMisses
 }
 
-/** What the gate admits now: `front` (§25.6) and `session` (§20). */
+/** What the gate admits now: `front` (§26.6) and `session` (§20). */
 export interface Admitted {
   front: boolean
   session: boolean
@@ -166,7 +166,7 @@ export class TierVerdicts {
    * is 'front' or 'session', 'front' when admitted and the class has not
    * outgrown it, 'session' only when admitted. A class that missed twice
    * below an admitted tier skips the lower one, so the step that raises the
-   * verdict gets its chance (§25, decision 11). `admitted` as a boolean is
+   * verdict gets its chance (§26, decision 11). `admitted` as a boolean is
    * the session tier alone, for a service that speaks no `front`.
    */
   tiersFor(bundleId: string | null, action: Pick<ComputerAction, 'action'>, admitted: Admitted | boolean): Tier[] {

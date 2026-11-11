@@ -2,7 +2,7 @@ import ComputerProtocol
 import Foundation
 
 // What a step is expected to commit to disk, and the effect the commit check reports
-// (docs/computer-protocol.md §25.8, §25.9; decisions 12, 17, 18). Pure: the live side reads the
+// (docs/computer-protocol.md §26.8, §26.9; decisions 12, 17, 18). Pure: the live side reads the
 // window's document, the element and the disk; this decides.
 
 /// A key equivalent, from a `key` action's combo or a menu item's AX shortcut.
@@ -116,7 +116,7 @@ public enum CommitKind: Equatable, Sendable {
 }
 
 public enum CommitRule {
-    /// The commit menu's titles in English, without a trailing ellipsis, lower-cased (§25.9).
+    /// The commit menu's titles in English, without a trailing ellipsis, lower-cased (§26.9).
     static let titles: [String: CommitKind] = [
         "save": .save, "save as": .write, "rename": .write, "move to": .write, "move to trash": .write,
         "new folder": .write, "export": .write, "revert to saved": .write
@@ -150,7 +150,7 @@ public enum CommitRule {
         }
     }
 
-    /// §25.8: anything on disk is `changed`, whatever the window did; a Save that cleared the edited
+    /// §26.8: anything on disk is `changed`, whatever the window did; a Save that cleared the edited
     /// flag is `changed`; an expected commit that changed the window and nothing on disk is
     /// `uncommitted`; else the window's effect. `disk` nil: the check read both times and nothing
     /// moved; a check that could not read the disk (`unknown`) changes nothing.
@@ -164,7 +164,7 @@ public enum CommitRule {
         return window
     }
 
-    /// The disk part with the hint an `uncommitted` step carries (§25.12): what commits it instead.
+    /// The disk part with the hint an `uncommitted` step carries (§26.12): what commits it instead.
     public static func hinted(_ disk: DiskChange?, effect: StepEffect, context c: CommitContext) -> DiskChange? {
         guard effect == .uncommitted, let h = hint(c) else { return disk }
         let d = disk ?? DiskChange()

@@ -8,6 +8,7 @@ import { attachmentDir } from '../attachmentDir'
 import { hostErrorLine } from '@shared/computer/hostErrors'
 import { frontLine, refusal, type ComputerToolOutcome } from './result'
 import { runComputerTool, type ComputerRegistry, type ComputerToolContext, type RunHost, type ThreadComputer } from './run'
+import { CallTiming, timingLine } from '@shared/computer/bridgeTiming'
 import type { Clock, ComputerService } from './service'
 import { TargetResolver } from './policy'
 import { pruneServiceShots } from './shots'
@@ -39,6 +40,8 @@ export interface ComputerSessionsOptions {
   rootOf?: (threadId: string) => string
   clock?: Clock
   log?: (line: string) => void
+  /** TEMP_CODE_COMPUTER_TRACE=1: one `[computer] timing` line per call this host's own thread makes */
+  trace?: boolean
 }
 
 export const IDLE_CLOSE_MS = 600_000
@@ -110,14 +113,24 @@ export class ComputerSessions {
   /** The tool flow for one call (run.ts), behind the thread's serial queue. */
   run(ctx: ComputerToolContext, tool: string, args: unknown): Promise<ComputerToolOutcome> {
     const t = this.thread(ctx.threadId)
+    const startedAt = this.clock.now()
     const job = t.queue.then(async () => {
       const own = new AbortController()
       t.inflight = own
       const signal = ctx.signal ? AbortSignal.any([ctx.signal, own.signal]) : own.signal
+      // a bridged call brings its own tally (remote/macComputer.ts); this host's own thread gets one here, for the trace
+      const timing = ctx.timing ?? (this.opts.trace ? new CallTiming() : undefined)
+      const runFrom = this.clock.now()
       try {
         if (t.ended) return refusal(hostErrorLine('cancelled', 'the thread ended'))
-        return await runComputerTool(this.host, t, ctx, tool, args, signal)
+        return await runComputerTool(this.host, t, timing ? { ...ctx, timing } : ctx, tool, args, signal)
       } finally {
+        if (timing && !ctx.timing) {
+          const now = this.clock.now()
+          this.host.log(
+            `thread=${t.threadId} ${timingLine({ total: now - startedAt, queue: runFrom - startedAt, run: now - runFrom }, { tool, service: timing.serviceMs, waited: timing.waitedMs })}`
+          )
+        }
         if (t.inflight === own) t.inflight = null
         this.targetChanged(t.threadId)
         this.armIdleClose(t)
@@ -325,6 +338,7 @@ export class ComputerSessions {
       await this.opts.service.request('session.close', { session: t.serviceSession }).catch(() => undefined)
     t.openedIn = null
     t.apps.clear()
+    t.listedApps = undefined
     t.used = []
     this.targetChanged(t.threadId)
     await pruneServiceShots(this.opts.dataDir, t.serviceSession).catch(() => undefined)

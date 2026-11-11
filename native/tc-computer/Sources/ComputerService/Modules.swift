@@ -18,6 +18,56 @@ public protocol WindowSource: Sendable {
     func list(pid: pid_t) throws -> [WindowInfo]
     /// the CGWindowID of an AX window element (`_AXUIElementGetWindow`, else the public match)
     func windowID(of element: AXUIElement, pid: pid_t) -> UInt32?
+    /// §25.4's order, tabs included: the window and, for a ref that matched a browser tab, that tab; no side effect
+    func resolveTab(pid: pid_t, ref: WindowRef?) throws -> (element: AXUIElement, info: WindowInfo, tab: TabHandle?)
+    /// §25.4's selection (AXReader `TabSelect`): run only under the app's exclusive slot; throws `tab_in_use`
+    /// for the person's front window unless `mode` is `any`, `timeout` or `action_unsupported` when the press does not take
+    func selectTab(pid: pid_t, window: AXUIElement, tab: TabHandle, mode: TabsMode, waitMs: Int) throws -> TabSelection
+    /// whether the matched tab reads selected now (a read's check after its shared lease)
+    func tabSelected(_ tab: TabHandle) -> Bool
+    /// §25.1: the process is Chromium, by its bundle
+    func chromium(pid: pid_t) -> Bool
+}
+
+extension WindowSource {
+    public func resolveTab(pid: pid_t, ref: WindowRef?) throws -> (element: AXUIElement, info: WindowInfo, tab: TabHandle?) {
+        let (element, info) = try resolve(pid: pid, ref: ref)
+        return (element, info, nil)
+    }
+
+    public func selectTab(pid: pid_t, window: AXUIElement, tab: TabHandle, mode: TabsMode, waitMs: Int) throws -> TabSelection {
+        TabSelection(title: tab.title, switched: false, page: nil)
+    }
+
+    public func tabSelected(_ tab: TabHandle) -> Bool { tab.selected }
+
+    public func chromium(pid: pid_t) -> Bool { false }
+}
+
+/// A tab a window ref matched: its element (which stays on the session × pid's worker), title and selection.
+public struct TabHandle: @unchecked Sendable {
+    public let element: AXUIElement
+    public let title: String
+    public let selected: Bool
+
+    public init(element: AXUIElement, title: String, selected: Bool) {
+        self.element = element
+        self.title = title
+        self.selected = selected
+    }
+}
+
+/// What a selection did: the tab's title, whether it switched, and the page as its wait left it.
+public struct TabSelection: Sendable, Equatable {
+    public let title: String
+    public let switched: Bool
+    public let page: Page?
+
+    public init(title: String, switched: Bool, page: Page?) {
+        self.title = title
+        self.switched = switched
+        self.page = page
+    }
 }
 
 /// What Input is built with (input A11): the two Mac-wide locks, the pasteboard watch's word on a

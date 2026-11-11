@@ -99,7 +99,7 @@ import Testing
     }
 }
 
-/// §25.8, E5: the window's file and edited flag ride batches the walk already makes.
+/// §26.8, E5: the window's file and edited flag ride batches the walk already makes.
 @Suite struct WindowDocumentWalkTests {
     @Test func aWindowAsksForItsDocumentAndTheCloseButtonForItsFlag() {
         #expect(Attributes.stageB("AXWindow").contains("AXDocument"))

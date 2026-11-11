@@ -1,0 +1,1359 @@
+{
+  "app" : {
+    "bundleId" : "com.google.Chrome",
+    "name" : "Google Chrome",
+    "version" : "156.0.8078.81"
+  },
+  "manualAccessibility" : "refused",
+  "os" : "macOS 27.2.0",
+  "recordedAt" : "2026-11-09T00:48:57Z",
+  "recorder" : "record-computer-fixture 1",
+  "root" : {
+    "actions" : [
+      "AXRaise"
+    ],
+    "children" : [
+      {
+        "busy" : false,
+        "children" : [
+          {
+            "actions" : [
+              "AXShowMenu"
+            ],
+            "busy" : false,
+            "children" : [
+              {
+                "busy" : false,
+                "children" : [
+                  {
+                    "busy" : false,
+                    "children" : [
+                      {
+                        "busy" : false,
+                        "children" : [
+                          {
+                            "busy" : false,
+                            "children" : [
+                              {
+                                "actions" : [
+                                  "AXPress",
+                                  "AXShowMenu"
+                                ],
+                                "busy" : false,
+                                "children" : [],
+                                "description" : "Back",
+                                "domIdentifier" : "view_1001",
+                                "enabled" : false,
+                                "focused" : false,
+                                "frame" : {
+                                  "h" : 34,
+                                  "w" : 34,
+                                  "x" : 28,
+                                  "y" : 98
+                                },
+                                "invalid" : false,
+                                "loaded" : false,
+                                "minimized" : false,
+                                "modal" : false,
+                                "required" : false,
+                                "role" : "AXButton",
+                                "roleDescription" : "button",
+                                "selected" : false,
+                                "selectedTextRange" : [
+                                  0,
+                                  0
+                                ],
+                                "settable" : [
+                                  "AXValue",
+                                  "AXSelectedText",
+                                  "AXSelectedTextRange",
+                                  "AXFocused"
+                                ],
+                                "title" : "Back",
+                                "value" : {
+                                  "text" : "",
+                                  "type" : "string"
+                                }
+                              },
+                              {
+                                "actions" : [
+                                  "AXPress",
+                                  "AXShowMenu"
+                                ],
+                                "busy" : false,
+                                "children" : [],
+                                "description" : "Forward",
+                                "domIdentifier" : "view_1002",
+                                "enabled" : false,
+                                "focused" : false,
+                                "frame" : {
+                                  "h" : 34,
+                                  "w" : 34,
+                                  "x" : 64,
+                                  "y" : 98
+                                },
+                                "invalid" : false,
+                                "loaded" : false,
+                                "minimized" : false,
+                                "modal" : false,
+                                "required" : false,
+                                "role" : "AXButton",
+                                "roleDescription" : "button",
+                                "selected" : false,
+                                "selectedTextRange" : [
+                                  0,
+                                  0
+                                ],
+                                "settable" : [
+                                  "AXValue",
+                                  "AXSelectedText",
+                                  "AXSelectedTextRange",
+                                  "AXFocused"
+                                ],
+                                "title" : "Forward",
+                                "value" : {
+                                  "text" : "",
+                                  "type" : "string"
+                                }
+                              },
+                              {
+                                "actions" : [
+                                  "AXPress",
+                                  "AXShowMenu"
+                                ],
+                                "busy" : false,
+                                "children" : [],
+                                "description" : "Reload",
+                                "domIdentifier" : "view_1003",
+                                "enabled" : true,
+                                "focused" : false,
+                                "frame" : {
+                                  "h" : 34,
+                                  "w" : 34,
+                                  "x" : 100,
+                                  "y" : 98
+                                },
+                                "invalid" : false,
+                                "loaded" : false,
+                                "minimized" : false,
+                                "modal" : false,
+                                "required" : false,
+                                "role" : "AXButton",
+                                "roleDescription" : "button",
+                                "selected" : false,
+                                "selectedTextRange" : [
+                                  0,
+                                  0
+                                ],
+                                "settable" : [
+                                  "AXValue",
+                                  "AXSelectedText",
+                                  "AXSelectedTextRange",
+                                  "AXFocused"
+                                ],
+                                "title" : "Reload",
+                                "value" : {
+                                  "text" : "",
+                                  "type" : "string"
+                                }
+                              },
+                              {
+                                "actions" : [
+                                  "AXShowMenu"
+                                ],
+                                "busy" : false,
+                                "children" : [
+                                  {
+                                    "actions" : [
+                                      "AXPress",
+                                      "AXShowMenu"
+                                    ],
+                                    "busy" : false,
+                                    "children" : [],
+                                    "description" : "File",
+                                    "domIdentifier" : "view_1011",
+                                    "enabled" : true,
+                                    "focused" : false,
+                                    "frame" : {
+                                      "h" : 24,
+                                      "w" : 53,
+                                      "x" : 148,
+                                      "y" : 103
+                                    },
+                                    "invalid" : false,
+                                    "loaded" : false,
+                                    "minimized" : false,
+                                    "modal" : false,
+                                    "required" : false,
+                                    "role" : "AXPopUpButton",
+                                    "roleDescription" : "pop up button",
+                                    "selected" : false,
+                                    "selectedTextRange" : [
+                                      0,
+                                      0
+                                    ],
+                                    "settable" : [
+                                      "AXValue",
+                                      "AXSelectedText",
+                                      "AXSelectedTextRange",
+                                      "AXFocused"
+                                    ],
+                                    "title" : "File",
+                                    "value" : {
+                                      "text" : "",
+                                      "type" : "string"
+                                    }
+                                  },
+                                  {
+                                    "actions" : [
+                                      "AXPress",
+                                      "AXShowMenu"
+                                    ],
+                                    "busy" : false,
+                                    "children" : [],
+                                    "description" : "Address and search bar",
+                                    "domIdentifier" : "view_1012",
+                                    "enabled" : true,
+                                    "focused" : false,
+                                    "frame" : {
+                                      "h" : 24,
+                                      "w" : 751,
+                                      "x" : 209,
+                                      "y" : 103
+                                    },
+                                    "invalid" : false,
+                                    "loaded" : false,
+                                    "minimized" : false,
+                                    "modal" : false,
+                                    "placeholder" : "Search Google or type a URL",
+                                    "required" : false,
+                                    "role" : "AXTextField",
+                                    "roleDescription" : "text field",
+                                    "selected" : false,
+                                    "selectedTextRange" : [
+                                      0,
+                                      0
+                                    ],
+                                    "settable" : [
+                                      "AXValue",
+                                      "AXSelectedText",
+                                      "AXSelectedTextRange",
+                                      "AXFocused"
+                                    ],
+                                    "title" : "Address and search bar",
+                                    "value" : {
+                                      "text" : "/tmp/tc-fixture-clone/src/main/server/computer/fixtures/page/form.html",
+                                      "type" : "string"
+                                    }
+                                  },
+                                  {
+                                    "busy" : false,
+                                    "children" : [
+                                      {
+                                        "actions" : [
+                                          "AXPress"
+                                        ],
+                                        "busy" : false,
+                                        "children" : [],
+                                        "description" : "Bookmark this tab",
+                                        "domIdentifier" : "",
+                                        "enabled" : true,
+                                        "focused" : false,
+                                        "frame" : {
+                                          "h" : 24,
+                                          "w" : 24,
+                                          "x" : 968,
+                                          "y" : 103
+                                        },
+                                        "invalid" : false,
+                                        "loaded" : false,
+                                        "minimized" : false,
+                                        "modal" : false,
+                                        "required" : false,
+                                        "role" : "AXButton",
+                                        "roleDescription" : "button",
+                                        "selected" : false,
+                                        "selectedTextRange" : [
+                                          0,
+                                          0
+                                        ],
+                                        "settable" : [
+                                          "AXValue",
+                                          "AXSelectedText",
+                                          "AXSelectedTextRange",
+                                          "AXFocused"
+                                        ],
+                                        "title" : "Bookmark this tab",
+                                        "value" : {
+                                          "text" : "",
+                                          "type" : "string"
+                                        }
+                                      }
+                                    ],
+                                    "description" : "",
+                                    "domIdentifier" : "",
+                                    "enabled" : true,
+                                    "focused" : false,
+                                    "frame" : {
+                                      "h" : 24,
+                                      "w" : 24,
+                                      "x" : 968,
+                                      "y" : 103
+                                    },
+                                    "invalid" : false,
+                                    "loaded" : false,
+                                    "minimized" : false,
+                                    "modal" : false,
+                                    "required" : false,
+                                    "role" : "AXGroup",
+                                    "roleDescription" : "group",
+                                    "selected" : false,
+                                    "selectedTextRange" : [
+                                      0,
+                                      0
+                                    ],
+                                    "settable" : [
+                                      "AXValue",
+                                      "AXSelectedText",
+                                      "AXSelectedTextRange",
+                                      "AXFocused"
+                                    ],
+                                    "title" : "",
+                                    "value" : {
+                                      "text" : "",
+                                      "type" : "string"
+                                    }
+                                  }
+                                ],
+                                "description" : "",
+                                "domIdentifier" : "",
+                                "enabled" : true,
+                                "focused" : false,
+                                "frame" : {
+                                  "h" : 34,
+                                  "w" : 861,
+                                  "x" : 143,
+                                  "y" : 98
+                                },
+                                "invalid" : false,
+                                "loaded" : false,
+                                "minimized" : false,
+                                "modal" : false,
+                                "required" : false,
+                                "role" : "AXGroup",
+                                "roleDescription" : "group",
+                                "selected" : false,
+                                "selectedTextRange" : [
+                                  0,
+                                  0
+                                ],
+                                "settable" : [
+                                  "AXValue",
+                                  "AXSelectedText",
+                                  "AXSelectedTextRange",
+                                  "AXFocused"
+                                ],
+                                "subrole" : "AXApplicationGroup",
+                                "title" : "",
+                                "value" : {
+                                  "text" : "",
+                                  "type" : "string"
+                                }
+                              },
+                              {
+                                "actions" : [
+                                  "AXPress",
+                                  "AXShowMenu"
+                                ],
+                                "busy" : false,
+                                "children" : [],
+                                "description" : "Sign In to Chrome?",
+                                "domIdentifier" : "view_1018",
+                                "enabled" : true,
+                                "focused" : false,
+                                "frame" : {
+                                  "h" : 34,
+                                  "w" : 164,
+                                  "x" : 1013,
+                                  "y" : 98
+                                },
+                                "invalid" : false,
+                                "loaded" : false,
+                                "minimized" : false,
+                                "modal" : false,
+                                "required" : false,
+                                "role" : "AXButton",
+                                "roleDescription" : "button",
+                                "selected" : false,
+                                "selectedTextRange" : [
+                                  0,
+                                  0
+                                ],
+                                "settable" : [
+                                  "AXValue",
+                                  "AXSelectedText",
+                                  "AXSelectedTextRange",
+                                  "AXFocused"
+                                ],
+                                "title" : "Sign In to Chrome?",
+                                "value" : {
+                                  "text" : "",
+                                  "type" : "string"
+                                }
+                              },
+                              {
+                                "actions" : [
+                                  "AXPress",
+                                  "AXShowMenu"
+                                ],
+                                "busy" : false,
+                                "children" : [],
+                                "description" : "Chrome",
+                                "domIdentifier" : "view_1007",
+                                "enabled" : true,
+                                "focused" : false,
+                                "frame" : {
+                                  "h" : 34,
+                                  "w" : 34,
+                                  "x" : 1182,
+                                  "y" : 98
+                                },
+                                "invalid" : false,
+                                "loaded" : false,
+                                "minimized" : false,
+                                "modal" : false,
+                                "required" : false,
+                                "role" : "AXPopUpButton",
+                                "roleDescription" : "pop up button",
+                                "selected" : false,
+                                "selectedTextRange" : [
+                                  0,
+                                  0
+                                ],
+                                "settable" : [
+                                  "AXValue",
+                                  "AXSelectedText",
+                                  "AXSelectedTextRange",
+                                  "AXFocused"
+                                ],
+                                "title" : "Chrome",
+                                "value" : {
+                                  "text" : "",
+                                  "type" : "string"
+                                }
+                              }
+                            ],
+                            "description" : "",
+                            "domIdentifier" : "view_1000",
+                            "enabled" : true,
+                            "focused" : false,
+                            "frame" : {
+                              "h" : 46,
+                              "w" : 1200,
+                              "x" : 22,
+                              "y" : 92
+                            },
+                            "invalid" : false,
+                            "loaded" : false,
+                            "minimized" : false,
+                            "modal" : false,
+                            "required" : false,
+                            "role" : "AXToolbar",
+                            "roleDescription" : "toolbar",
+                            "selected" : false,
+                            "selectedTextRange" : [
+                              0,
+                              0
+                            ],
+                            "settable" : [
+                              "AXValue",
+                              "AXSelectedText",
+                              "AXSelectedTextRange",
+                              "AXFocused"
+                            ],
+                            "title" : "",
+                            "value" : {
+                              "text" : "",
+                              "type" : "string"
+                            }
+                          }
+                        ],
+                        "description" : "",
+                        "domIdentifier" : "",
+                        "enabled" : true,
+                        "focused" : false,
+                        "frame" : {
+                          "h" : 46,
+                          "w" : 1200,
+                          "x" : 22,
+                          "y" : 92
+                        },
+                        "invalid" : false,
+                        "loaded" : false,
+                        "minimized" : false,
+                        "modal" : false,
+                        "required" : false,
+                        "role" : "AXGroup",
+                        "roleDescription" : "group",
+                        "selected" : false,
+                        "selectedTextRange" : [
+                          0,
+                          0
+                        ],
+                        "settable" : [
+                          "AXValue",
+                          "AXSelectedText",
+                          "AXSelectedTextRange",
+                          "AXFocused"
+                        ],
+                        "title" : "",
+                        "value" : {
+                          "text" : "",
+                          "type" : "string"
+                        }
+                      },
+                      {
+                        "busy" : false,
+                        "children" : [
+                          {
+                            "busy" : false,
+                            "children" : [
+                              {
+                                "busy" : false,
+                                "children" : [],
+                                "description" : "",
+                                "domIdentifier" : "",
+                                "enabled" : true,
+                                "focused" : false,
+                                "frame" : {
+                                  "h" : 0,
+                                  "w" : 1200,
+                                  "x" : 22,
+                                  "y" : 139
+                                },
+                                "invalid" : false,
+                                "loaded" : false,
+                                "minimized" : false,
+                                "modal" : false,
+                                "required" : false,
+                                "role" : "AXGroup",
+                                "roleDescription" : "group",
+                                "selected" : false,
+                                "selectedTextRange" : [
+                                  0,
+                                  0
+                                ],
+                                "settable" : [
+                                  "AXValue",
+                                  "AXSelectedText",
+                                  "AXSelectedTextRange",
+                                  "AXFocused"
+                                ],
+                                "title" : "",
+                                "value" : {
+                                  "text" : "",
+                                  "type" : "string"
+                                }
+                              },
+                              {
+                                "children" : [],
+                                "focused" : false,
+                                "frame" : {
+                                  "h" : 1565,
+                                  "w" : 1200,
+                                  "x" : 22,
+                                  "y" : 139
+                                },
+                                "role" : "AXScrollArea",
+                                "roleDescription" : "scroll area",
+                                "settable" : [
+                                  "AXFocused"
+                                ]
+                              }
+                            ],
+                            "description" : "",
+                            "domIdentifier" : "",
+                            "enabled" : true,
+                            "focused" : false,
+                            "frame" : {
+                              "h" : 1565,
+                              "w" : 1200,
+                              "x" : 22,
+                              "y" : 139
+                            },
+                            "invalid" : false,
+                            "loaded" : false,
+                            "minimized" : false,
+                            "modal" : false,
+                            "required" : false,
+                            "role" : "AXGroup",
+                            "roleDescription" : "group",
+                            "selected" : false,
+                            "selectedTextRange" : [
+                              0,
+                              0
+                            ],
+                            "settable" : [
+                              "AXValue",
+                              "AXSelectedText",
+                              "AXSelectedTextRange",
+                              "AXFocused"
+                            ],
+                            "title" : "",
+                            "value" : {
+                              "text" : "",
+                              "type" : "string"
+                            }
+                          },
+                          {
+                            "busy" : false,
+                            "children" : [],
+                            "description" : "",
+                            "domIdentifier" : "",
+                            "enabled" : true,
+                            "focused" : false,
+                            "frame" : {
+                              "h" : 1,
+                              "w" : 1200,
+                              "x" : 22,
+                              "y" : 138
+                            },
+                            "invalid" : false,
+                            "loaded" : false,
+                            "minimized" : false,
+                            "modal" : false,
+                            "required" : false,
+                            "role" : "AXGroup",
+                            "roleDescription" : "group",
+                            "selected" : false,
+                            "selectedTextRange" : [
+                              0,
+                              0
+                            ],
+                            "settable" : [
+                              "AXValue",
+                              "AXSelectedText",
+                              "AXSelectedTextRange",
+                              "AXFocused"
+                            ],
+                            "title" : "",
+                            "value" : {
+                              "text" : "",
+                              "type" : "string"
+                            }
+                          }
+                        ],
+                        "description" : "",
+                        "domIdentifier" : "",
+                        "enabled" : true,
+                        "focused" : false,
+                        "frame" : {
+                          "h" : 1566,
+                          "w" : 1200,
+                          "x" : 22,
+                          "y" : 138
+                        },
+                        "invalid" : false,
+                        "loaded" : false,
+                        "minimized" : false,
+                        "modal" : false,
+                        "required" : false,
+                        "role" : "AXGroup",
+                        "roleDescription" : "group",
+                        "selected" : false,
+                        "selectedTextRange" : [
+                          0,
+                          0
+                        ],
+                        "settable" : [
+                          "AXValue",
+                          "AXSelectedText",
+                          "AXSelectedTextRange",
+                          "AXFocused"
+                        ],
+                        "title" : "",
+                        "value" : {
+                          "text" : "",
+                          "type" : "string"
+                        }
+                      },
+                      {
+                        "busy" : false,
+                        "children" : [
+                          {
+                            "busy" : false,
+                            "children" : [
+                              {
+                                "actions" : [
+                                  "AXPress",
+                                  "AXShowMenu"
+                                ],
+                                "busy" : false,
+                                "children" : [],
+                                "description" : "Tab search",
+                                "domIdentifier" : "",
+                                "enabled" : true,
+                                "focused" : false,
+                                "frame" : {
+                                  "h" : 28,
+                                  "w" : 28,
+                                  "x" : 114,
+                                  "y" : 58
+                                },
+                                "invalid" : false,
+                                "loaded" : false,
+                                "minimized" : false,
+                                "modal" : false,
+                                "required" : false,
+                                "role" : "AXPopUpButton",
+                                "roleDescription" : "pop up button",
+                                "selected" : false,
+                                "selectedTextRange" : [
+                                  0,
+                                  0
+                                ],
+                                "settable" : [
+                                  "AXValue",
+                                  "AXSelectedText",
+                                  "AXSelectedTextRange",
+                                  "AXFocused"
+                                ],
+                                "title" : "Tab search",
+                                "value" : {
+                                  "text" : "",
+                                  "type" : "string"
+                                }
+                              }
+                            ],
+                            "description" : "",
+                            "domIdentifier" : "",
+                            "enabled" : true,
+                            "focused" : false,
+                            "frame" : {
+                              "h" : 41,
+                              "w" : 28,
+                              "x" : 114,
+                              "y" : 52
+                            },
+                            "invalid" : false,
+                            "loaded" : false,
+                            "minimized" : false,
+                            "modal" : false,
+                            "required" : false,
+                            "role" : "AXGroup",
+                            "roleDescription" : "group",
+                            "selected" : false,
+                            "selectedTextRange" : [
+                              0,
+                              0
+                            ],
+                            "settable" : [
+                              "AXValue",
+                              "AXSelectedText",
+                              "AXSelectedTextRange",
+                              "AXFocused"
+                            ],
+                            "title" : "",
+                            "value" : {
+                              "text" : "",
+                              "type" : "string"
+                            }
+                          },
+                          {
+                            "busy" : false,
+                            "children" : [
+                              {
+                                "busy" : false,
+                                "children" : [
+                                  {
+                                    "actions" : [
+                                      "AXPress",
+                                      "AXShowMenu"
+                                    ],
+                                    "busy" : false,
+                                    "children" : [
+                                      {
+                                        "actions" : [
+                                          "AXPress"
+                                        ],
+                                        "busy" : false,
+                                        "children" : [],
+                                        "description" : "Close",
+                                        "domIdentifier" : "",
+                                        "enabled" : true,
+                                        "focused" : false,
+                                        "frame" : {
+                                          "h" : 28,
+                                          "w" : 28,
+                                          "x" : 350,
+                                          "y" : 58
+                                        },
+                                        "invalid" : false,
+                                        "loaded" : false,
+                                        "minimized" : false,
+                                        "modal" : false,
+                                        "required" : false,
+                                        "role" : "AXButton",
+                                        "roleDescription" : "button",
+                                        "selected" : false,
+                                        "selectedTextRange" : [
+                                          0,
+                                          0
+                                        ],
+                                        "settable" : [
+                                          "AXValue",
+                                          "AXSelectedText",
+                                          "AXSelectedTextRange",
+                                          "AXFocused"
+                                        ],
+                                        "title" : "Close",
+                                        "value" : {
+                                          "text" : "",
+                                          "type" : "string"
+                                        }
+                                      }
+                                    ],
+                                    "description" : "Computer fixture form",
+                                    "domIdentifier" : "view_20",
+                                    "enabled" : true,
+                                    "focused" : false,
+                                    "frame" : {
+                                      "h" : 41,
+                                      "w" : 256,
+                                      "x" : 136,
+                                      "y" : 52
+                                    },
+                                    "invalid" : false,
+                                    "loaded" : false,
+                                    "minimized" : false,
+                                    "modal" : false,
+                                    "required" : false,
+                                    "role" : "AXRadioButton",
+                                    "roleDescription" : "tab",
+                                    "selected" : true,
+                                    "selectedTextRange" : [
+                                      0,
+                                      0
+                                    ],
+                                    "settable" : [
+                                      "AXValue",
+                                      "AXSelectedText",
+                                      "AXSelectedTextRange",
+                                      "AXFocused"
+                                    ],
+                                    "subrole" : "AXTabButton",
+                                    "title" : "Computer fixture form",
+                                    "value" : {
+                                      "text" : "true",
+                                      "type" : "bool"
+                                    }
+                                  }
+                                ],
+                                "description" : "",
+                                "domIdentifier" : "",
+                                "enabled" : true,
+                                "focused" : false,
+                                "frame" : {
+                                  "h" : 41,
+                                  "w" : 256,
+                                  "x" : 136,
+                                  "y" : 52
+                                },
+                                "invalid" : false,
+                                "loaded" : false,
+                                "minimized" : false,
+                                "modal" : false,
+                                "required" : false,
+                                "role" : "AXTabGroup",
+                                "roleDescription" : "tab group",
+                                "selected" : false,
+                                "selectedTextRange" : [
+                                  0,
+                                  0
+                                ],
+                                "settable" : [
+                                  "AXValue",
+                                  "AXSelectedText",
+                                  "AXSelectedTextRange",
+                                  "AXFocused"
+                                ],
+                                "title" : "",
+                                "value" : {
+                                  "text" : "",
+                                  "type" : "string"
+                                }
+                              },
+                              {
+                                "busy" : false,
+                                "children" : [],
+                                "description" : "",
+                                "domIdentifier" : "",
+                                "enabled" : true,
+                                "focused" : false,
+                                "frame" : {
+                                  "h" : 41,
+                                  "w" : 256,
+                                  "x" : 136,
+                                  "y" : 52
+                                },
+                                "invalid" : false,
+                                "loaded" : false,
+                                "minimized" : false,
+                                "modal" : false,
+                                "required" : false,
+                                "role" : "AXGroup",
+                                "roleDescription" : "group",
+                                "selected" : false,
+                                "selectedTextRange" : [
+                                  0,
+                                  0
+                                ],
+                                "settable" : [
+                                  "AXValue",
+                                  "AXSelectedText",
+                                  "AXSelectedTextRange",
+                                  "AXFocused"
+                                ],
+                                "title" : "",
+                                "value" : {
+                                  "text" : "",
+                                  "type" : "string"
+                                }
+                              }
+                            ],
+                            "description" : "",
+                            "domIdentifier" : "view_21",
+                            "enabled" : true,
+                            "focused" : false,
+                            "frame" : {
+                              "h" : 41,
+                              "w" : 256,
+                              "x" : 136,
+                              "y" : 52
+                            },
+                            "invalid" : false,
+                            "loaded" : false,
+                            "minimized" : false,
+                            "modal" : false,
+                            "required" : false,
+                            "role" : "AXGroup",
+                            "roleDescription" : "group",
+                            "selected" : false,
+                            "selectedTextRange" : [
+                              0,
+                              0
+                            ],
+                            "settable" : [
+                              "AXValue",
+                              "AXSelectedText",
+                              "AXSelectedTextRange",
+                              "AXFocused"
+                            ],
+                            "title" : "",
+                            "value" : {
+                              "text" : "",
+                              "type" : "string"
+                            }
+                          },
+                          {
+                            "actions" : [
+                              "AXPress",
+                              "AXShowMenu"
+                            ],
+                            "busy" : false,
+                            "children" : [],
+                            "description" : "New Tab",
+                            "domIdentifier" : "",
+                            "enabled" : true,
+                            "focused" : false,
+                            "frame" : {
+                              "h" : 41,
+                              "w" : 28,
+                              "x" : 386,
+                              "y" : 52
+                            },
+                            "invalid" : false,
+                            "loaded" : false,
+                            "minimized" : false,
+                            "modal" : false,
+                            "required" : false,
+                            "role" : "AXButton",
+                            "roleDescription" : "button",
+                            "selected" : false,
+                            "selectedTextRange" : [
+                              0,
+                              0
+                            ],
+                            "settable" : [
+                              "AXValue",
+                              "AXSelectedText",
+                              "AXSelectedTextRange",
+                              "AXFocused"
+                            ],
+                            "title" : "New Tab",
+                            "value" : {
+                              "text" : "",
+                              "type" : "string"
+                            }
+                          },
+                          {
+                            "busy" : false,
+                            "children" : [],
+                            "description" : "",
+                            "domIdentifier" : "",
+                            "enabled" : true,
+                            "focused" : false,
+                            "frame" : {
+                              "h" : 41,
+                              "w" : 796,
+                              "x" : 426,
+                              "y" : 52
+                            },
+                            "invalid" : false,
+                            "loaded" : false,
+                            "minimized" : false,
+                            "modal" : false,
+                            "required" : false,
+                            "role" : "AXGroup",
+                            "roleDescription" : "group",
+                            "selected" : false,
+                            "selectedTextRange" : [
+                              0,
+                              0
+                            ],
+                            "settable" : [
+                              "AXValue",
+                              "AXSelectedText",
+                              "AXSelectedTextRange",
+                              "AXFocused"
+                            ],
+                            "title" : "",
+                            "value" : {
+                              "text" : "",
+                              "type" : "string"
+                            }
+                          }
+                        ],
+                        "description" : "",
+                        "domIdentifier" : "",
+                        "enabled" : true,
+                        "focused" : false,
+                        "frame" : {
+                          "h" : 41,
+                          "w" : 1114,
+                          "x" : 108,
+                          "y" : 52
+                        },
+                        "invalid" : false,
+                        "loaded" : false,
+                        "minimized" : false,
+                        "modal" : false,
+                        "required" : false,
+                        "role" : "AXGroup",
+                        "roleDescription" : "group",
+                        "selected" : false,
+                        "selectedTextRange" : [
+                          0,
+                          0
+                        ],
+                        "settable" : [
+                          "AXValue",
+                          "AXSelectedText",
+                          "AXSelectedTextRange",
+                          "AXFocused"
+                        ],
+                        "title" : "",
+                        "value" : {
+                          "text" : "",
+                          "type" : "string"
+                        }
+                      },
+                      {
+                        "busy" : false,
+                        "children" : [],
+                        "description" : "",
+                        "domIdentifier" : "",
+                        "enabled" : true,
+                        "focused" : false,
+                        "frame" : {
+                          "h" : 0,
+                          "w" : 0,
+                          "x" : 22,
+                          "y" : 52
+                        },
+                        "invalid" : false,
+                        "loaded" : false,
+                        "minimized" : false,
+                        "modal" : false,
+                        "required" : false,
+                        "role" : "AXGroup",
+                        "roleDescription" : "group",
+                        "selected" : false,
+                        "selectedTextRange" : [
+                          0,
+                          0
+                        ],
+                        "settable" : [
+                          "AXValue",
+                          "AXSelectedText",
+                          "AXSelectedTextRange",
+                          "AXFocused"
+                        ],
+                        "title" : "",
+                        "value" : {
+                          "text" : "",
+                          "type" : "string"
+                        }
+                      }
+                    ],
+                    "description" : "",
+                    "domIdentifier" : "",
+                    "enabled" : true,
+                    "focused" : false,
+                    "frame" : {
+                      "h" : 1652,
+                      "w" : 1200,
+                      "x" : 22,
+                      "y" : 52
+                    },
+                    "invalid" : false,
+                    "loaded" : false,
+                    "minimized" : false,
+                    "modal" : false,
+                    "required" : false,
+                    "role" : "AXGroup",
+                    "roleDescription" : "group",
+                    "selected" : false,
+                    "selectedTextRange" : [
+                      0,
+                      0
+                    ],
+                    "settable" : [
+                      "AXValue",
+                      "AXSelectedText",
+                      "AXSelectedTextRange",
+                      "AXFocused"
+                    ],
+                    "title" : "",
+                    "value" : {
+                      "text" : "",
+                      "type" : "string"
+                    }
+                  }
+                ],
+                "description" : "",
+                "domIdentifier" : "",
+                "enabled" : true,
+                "focused" : false,
+                "frame" : {
+                  "h" : 1652,
+                  "w" : 1200,
+                  "x" : 22,
+                  "y" : 52
+                },
+                "invalid" : false,
+                "loaded" : false,
+                "minimized" : false,
+                "modal" : false,
+                "required" : false,
+                "role" : "AXGroup",
+                "roleDescription" : "group",
+                "selected" : false,
+                "selectedTextRange" : [
+                  0,
+                  0
+                ],
+                "settable" : [
+                  "AXValue",
+                  "AXSelectedText",
+                  "AXSelectedTextRange",
+                  "AXFocused"
+                ],
+                "title" : "",
+                "value" : {
+                  "text" : "",
+                  "type" : "string"
+                }
+              }
+            ],
+            "description" : "",
+            "domIdentifier" : "",
+            "enabled" : true,
+            "focused" : false,
+            "frame" : {
+              "h" : 1652,
+              "w" : 1200,
+              "x" : 22,
+              "y" : 52
+            },
+            "invalid" : false,
+            "loaded" : false,
+            "minimized" : false,
+            "modal" : false,
+            "required" : false,
+            "role" : "AXGroup",
+            "roleDescription" : "group",
+            "selected" : false,
+            "selectedTextRange" : [
+              0,
+              0
+            ],
+            "settable" : [
+              "AXValue",
+              "AXSelectedText",
+              "AXSelectedTextRange",
+              "AXFocused"
+            ],
+            "title" : "",
+            "value" : {
+              "text" : "",
+              "type" : "string"
+            }
+          }
+        ],
+        "description" : "",
+        "domIdentifier" : "",
+        "enabled" : true,
+        "focused" : false,
+        "frame" : {
+          "h" : 1652,
+          "w" : 1200,
+          "x" : 22,
+          "y" : 52
+        },
+        "invalid" : false,
+        "loaded" : false,
+        "minimized" : false,
+        "modal" : false,
+        "required" : false,
+        "role" : "AXGroup",
+        "roleDescription" : "group",
+        "selected" : false,
+        "selectedTextRange" : [
+          0,
+          0
+        ],
+        "settable" : [
+          "AXValue",
+          "AXSelectedText",
+          "AXSelectedTextRange",
+          "AXFocused"
+        ],
+        "title" : "Computer fixture form - Google Chrome",
+        "value" : {
+          "text" : "",
+          "type" : "string"
+        }
+      },
+      {
+        "actions" : [
+          "AXPress"
+        ],
+        "children" : [],
+        "enabled" : true,
+        "focused" : false,
+        "frame" : {
+          "h" : 16,
+          "w" : 16,
+          "x" : 34,
+          "y" : 64.5
+        },
+        "role" : "AXButton",
+        "roleDescription" : "close button",
+        "subrole" : "AXCloseButton"
+      },
+      {
+        "actions" : [
+          "AXPress",
+          "AXZoomWindow",
+          "AXShowMenu"
+        ],
+        "children" : [
+          {
+            "children" : [
+              {
+                "children" : [],
+                "focused" : false,
+                "frame" : {
+                  "h" : 14,
+                  "w" : 14,
+                  "x" : 81,
+                  "y" : 66
+                },
+                "role" : "AXGroup",
+                "roleDescription" : "group"
+              }
+            ],
+            "focused" : false,
+            "frame" : {
+              "h" : 14,
+              "w" : 14,
+              "x" : 81,
+              "y" : 65.5
+            },
+            "role" : "AXGroup",
+            "roleDescription" : "group"
+          }
+        ],
+        "enabled" : true,
+        "focused" : false,
+        "frame" : {
+          "h" : 16,
+          "w" : 16,
+          "x" : 80,
+          "y" : 64.5
+        },
+        "help" : "this button also has an action to zoom the window",
+        "role" : "AXButton",
+        "roleDescription" : "full screen button",
+        "subrole" : "AXFullScreenButton"
+      },
+      {
+        "actions" : [
+          "AXPress"
+        ],
+        "children" : [],
+        "enabled" : true,
+        "focused" : false,
+        "frame" : {
+          "h" : 16,
+          "w" : 16,
+          "x" : 57,
+          "y" : 64.5
+        },
+        "role" : "AXButton",
+        "roleDescription" : "minimize button",
+        "subrole" : "AXMinimizeButton"
+      }
+    ],
+    "focused" : false,
+    "frame" : {
+      "h" : 1652,
+      "w" : 1200,
+      "x" : 22,
+      "y" : 52
+    },
+    "minimized" : false,
+    "modal" : false,
+    "role" : "AXWindow",
+    "roleDescription" : "standard window",
+    "subrole" : "AXStandardWindow",
+    "title" : "Computer fixture form - Google Chrome"
+  },
+  "scale" : 2,
+  "walk" : {
+    "capped" : false,
+    "depth" : 9,
+    "ms" : 74,
+    "nodes" : 38
+  },
+  "window" : {
+    "frame" : {
+      "h" : 1652,
+      "w" : 1200,
+      "x" : 22,
+      "y" : 52
+    },
+    "title" : "Computer fixture form - Google Chrome"
+  }
+}

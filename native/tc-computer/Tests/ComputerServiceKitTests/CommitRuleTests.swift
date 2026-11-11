@@ -2,7 +2,7 @@ import ComputerProtocol
 @testable import ComputerServiceKit
 import Testing
 
-// What a step is expected to commit, and the effect the check reports (§25.8, §25.9).
+// What a step is expected to commit, and the effect the check reports (§26.8, §26.9).
 
 private let run = DocumentKind.folder("/Users/me/run")
 private let doc = DocumentKind.file("/Users/me/run/Total.txt")

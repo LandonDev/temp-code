@@ -38,7 +38,20 @@ why and the measured headline.
   the tree, the capture badge never (docs/computer-protocol.md §22): closing
   and minimizing are clicks at `ax`; restoring is `perform raise`, at the
   session tier.
-- **Steps that need the app active** (docs/computer-protocol.md §25, plan
+- **Web content** (docs/computer-protocol.md §25). A Chromium process is
+  known by its bundle (`ChromiumBundle`), never by `AXManualAccessibility`,
+  which Chrome refuses. `window` may name a browser tab, which a call selects
+  over AX under the app's action slot (`TabSelect`; the person's own front
+  window answers `tab_in_use`, which a read words and an act takes to the tier
+  gate); the observation carries `page` (loaded, loading, not drawn: the
+  header's ` · page not drawn`) and `selectedTab`; a web area reads one screen
+  above and three below; a web pop up's `set_value` is `pick`, every web
+  `set_value` is read back (`value_not_taken`); `key` and `hold_key` take
+  `element`, and keys never go into the browser's own fields
+  (`focus_moved`, with the host's `expectFocus` from the model's last read);
+  a page scrolls by `scroll-into-view`. The gate's `webLeg` runs it on Chrome
+  for Testing; field hand runs use plain Chrome with `--cover`.
+- **Steps that need the app active** (docs/computer-protocol.md §26, plan
   .temp-code/plan-CAMMKRiJRhhu.md). The `front` tier sits between `process`
   and `session` (`TIER_ORDER`): one bounded hold brings the app forward,
   acts through AX or events posted to its pid, never the pointer or the HID
@@ -94,7 +107,7 @@ why and the measured headline.
   Mac desktop only, `macOnly` in lib/settings.ts): the service with Try
   again while down, Take the screen after (`computer.sessionIdleMs`, in
   minutes), When a step needs the app in front (`computer.activeApp`: Bring
-  it forward for a moment, or Wait until I'm away; §25.6), the two grants with Grant…, the learned apps (`verdictWords`)
+  it forward for a moment, or Wait until I'm away; §26.6), the two grants with Grant…, the learned apps (`verdictWords`)
   with Forget; `computer.settings.get/set`, `computer.verdicts.forget`,
   `computer.permissions`, `computer.service.retry`, all `local`
   (computer/settingsRpc.ts); the `computer-settings` push.
@@ -140,10 +153,22 @@ why and the measured headline.
   `macBridge.maxComputer.<envId>` (2) live sessions. A call the Mac holds
   (`running.held` on its row) is the box thread's tool hold, so its status
   says the Mac's line ("Waiting for the Mac, load 12.3 of 8, 3rd in line").
-  §18 and docs/box.md "Computer use from a box thread".
+  The bridge costs about one round trip a call and is held there: the Mac
+  sends its legs with each answer (`timing`, src/shared/computer/
+  bridgeTiming.ts), the box joins them with its own into one
+  `[computer-bridge] thread=<id> timing total=… queue=… box=… transit=…
+  mac=… run=…` line under `TEMP_CODE_COMPUTER_TRACE=1` (a Mac thread's call:
+  `[computer] thread=<id> timing …`), and a call whose bridge part passes
+  250 ms writes a `computer-bridge` line to stalls.log with the loop's lag.
+  The bridge proof's timing leg (scripts/lib/computerBridgeTiming.ts
+  `BRIDGE_TIMING_RULE`) judges ten interleaved pairs: box minus Mac at most
+  40 ms median and 100 ms p90 on loopback, at most the run's round trip
+  plus 40 ms over the network. A reply past 2 MiB sends its chunks two at a
+  time. §18 "What the bridge costs" and docs/box.md "Computer use from a box
+  thread".
 - **Seams.** `TEMP_CODE_COMPUTER=0` (off; `=1` serves a headless Mac
   instance), `TEMP_CODE_COMPUTER_BIN` (the binary),
-  `TEMP_CODE_COMPUTER_TRACE=1` (every frame), `TEMP_CODE_COMPUTER_PIN`
+  `TEMP_CODE_COMPUTER_TRACE=1` (every frame and every call's timing line), `TEMP_CODE_COMPUTER_PIN`
   ("TextEdit=<pid>", isolated instances only), `TEMP_CODE_SKIP_NATIVE`,
   `TEMP_CODE_REQUIRE_NATIVE`, `TC_PROOF_UNGATED=1` (a Mac proof without its
   idle wait, for a run the person sits beside or one on TC Probe alone).

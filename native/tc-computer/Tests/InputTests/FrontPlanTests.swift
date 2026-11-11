@@ -8,7 +8,7 @@ import Testing
 @testable import Input
 #endif
 
-// The `front` hold's state machine (docs/computer-protocol.md §25.2–§25.5). Foundation only: the
+// The `front` hold's state machine (docs/computer-protocol.md §26.2–§26.5). Foundation only: the
 // box runs this file from scripts/computer-text-test.sh, the Mac in InputTests.
 
 /// A hold already active at `at`.

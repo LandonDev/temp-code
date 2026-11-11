@@ -1,0 +1,17 @@
+{
+  "jsonrpc": "2.0",
+  "id": 61,
+  "result": {
+    "step": {
+      "index": 0,
+      "action": "set_value",
+      "status": "failed",
+      "error": {
+        "kind": "value_not_taken",
+        "message": "[19] pop up \"Plan\" still reads \"Choose a plan\".",
+        "element": 19,
+        "value": "Choose a plan"
+      }
+    }
+  }
+}

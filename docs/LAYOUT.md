@@ -301,7 +301,7 @@ of its own on a narrow page), then Take the screen after, a `CommitField` in
 whole minutes, 1 to 60, committed as `computer.sessionIdleMs`, then When a
 step needs the app in front, a `ChoiceSelect` of Bring it forward for a moment
 (`brief`) and Wait until I'm away (`away`), saved as `computer.activeApp`
-(docs/computer-protocol.md §25.6). Permissions:
+(docs/computer-protocol.md §26.6). Permissions:
 Accessibility and Screen Recording on the `PermissionRow` Appshots shares,
 muted Granted or amber Not granted with Grant… to the System Settings pane;
 the service's own while it is up, else `computer.permissions`, asked on

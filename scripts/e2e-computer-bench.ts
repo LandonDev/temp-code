@@ -238,7 +238,7 @@ for (const sig of ['SIGTERM', 'SIGINT'] as const) {
 // ── the rig ─────────────────────────────────────────────────────────────
 
 try {
-  rig = await startRig({ root: ROOT, work: WORK, sessionTier: args.session ? 'scheduled' : 'refused', proofSession: 'bench-proof', log })
+  rig = await startRig({ root: ROOT, work: WORK, sessionTier: args.session ? 'scheduled' : 'refused', proofSession: 'bench-proof', plainChrome: FIELD, cover: args.cover, log })
 } catch (e) {
   if (!(e instanceof RigStop)) throw e
   console.log(`STOP  ${e.message}`)
@@ -824,6 +824,7 @@ async function driveBox(lane: Lane, task: ComputerTask, start: TaskStart, run: B
       return { ...run, queuedMs: waited, reason: 'queued past 5 minutes on the box' }
     }
   }
+  const firstRunningTs = scan.firstRunningTs
   run.queuedMs = scan.queuedMs
   lane.queuedMs += scan.queuedMs
   const deadline = Date.now() + task.wallMs

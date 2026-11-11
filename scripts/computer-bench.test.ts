@@ -166,7 +166,7 @@ describe('parseStepLine', () => {
     expect(parseStepLine(click)).toEqual({ action: 'left_click', tier: 'ax', via: 'hit', effect: 'none', ok: true })
   })
 
-  it('reads a front route, save_as\'s panel, the hint and the disk part (§25.12)', () => {
+  it('reads a front route, save_as\'s panel, the hint and the disk part (§26.12)', () => {
     expect(parseStepLine('key super+s · front menu File › Save · changed · on disk: saved ~/run/Total.txt')).toEqual({
       action: 'key',
       tier: 'front',

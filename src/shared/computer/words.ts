@@ -100,6 +100,8 @@ export interface TitleContext {
   appName: string
   /** the model's `window`, else the bound window's title; null leaves it out */
   window: string | null
+  /** A known tab this call will select before its steps. */
+  tab?: string
   /** the thread's book: an element's line, or null when it has none */
   element: (index: number) => ElementBrief | null
   /** text goes into a password field: steps say how long it is, never what */
@@ -216,7 +218,7 @@ function actingSteps(tool: ComputerToolName, args: ToolArgs): ComputerAction[] {
 
 /** What a card says when the call is expected to take the person's pointer and keyboard. */
 export const USING_SESSION_WORDS = ', using your pointer and keyboard'
-/** What a card says when a step is expected to bring the app forward for a moment (§25.6): `, bringing TextEdit forward for a moment`. */
+/** What a card says when a step is expected to bring the app forward for a moment (§26.6): `, bringing TextEdit forward for a moment`. */
 export const bringingForwardWords = (app: string): string => `, bringing ${app} forward for a moment`
 
 /**
@@ -227,7 +229,7 @@ export const bringingForwardWords = (app: string): string => `, bringing ${app} 
  * A batch's reads are left out. With `session` (a step expected to need the
  * session tier) it ends `, using your pointer and keyboard`, and an Allow
  * then covers that tier too; with `front` (a step expected to need the app in
- * front, §25.6) it ends `, bringing TextEdit forward for a moment`, and an
+ * front, §26.6) it ends `, bringing TextEdit forward for a moment`, and an
  * Allow covers the hold.
  */
 export function computerApprovalTitle(
@@ -244,7 +246,8 @@ export function computerApprovalTitle(
   }
   const steps = actingSteps(tool, args).map((a) => actionWords(a, ctx))
   const using = opts.session ? USING_SESSION_WORDS : opts.front ? bringingForwardWords(ctx.appName) : ''
-  if (confirm) return confirmTitle(confirm, ctx.appName, steps.join(', ') || undefined) + using
+  if (confirm) return confirmTitle(confirm, ctx.appName, [...(ctx.tab ? [`select tab ${JSON.stringify(ctx.tab)}`] : []), ...steps].join(', ') || undefined) + using
+  if (ctx.tab) return `Select tab ${JSON.stringify(ctx.tab)} and ${steps.length === 1 ? steps[0] : `${steps.length} actions`} in ${where(ctx)}${using}${steps.length > 1 ? `: ${steps.join(', ')}` : ''}`
   if (steps.length === 1) return `${capital(steps[0])} in ${where(ctx)}${using}`
   return `${steps.length} actions in ${where(ctx)}${using}: ${steps.join(', ')}`
 }
@@ -254,7 +257,7 @@ export const COMPUTER_SESSION_TOOL = 'computer_session'
 
 /**
  * That card's title: `Use your pointer and keyboard to click button "Save" in TextEdit, window "Untitled"`;
- * for a step that needs the app in front (§25.6) `Bring TextEdit forward for a moment to press super+s, window "Total.txt"`.
+ * for a step that needs the app in front (§26.6) `Bring TextEdit forward for a moment to press super+s, window "Total.txt"`.
  */
 export function computerSessionAskTitle(stepWords: string, ctx: Pick<TitleContext, 'appName' | 'window'>, opts: { front?: boolean } = {}): string {
   if (opts.front) return `Bring ${ctx.appName} forward for a moment to ${stepWords}${ctx.window ? `, window ${JSON.stringify(ctx.window)}` : ''}`
@@ -283,7 +286,7 @@ export function computerApprovalInput(tool: ComputerToolName, args: ToolArgs, ct
   return {
     app: ctx.appName,
     window: ctx.window,
-    actions: actingSteps(tool, args).map((a) => actionWords(a, ctx)),
+    actions: [...(ctx.tab ? [`select tab ${JSON.stringify(ctx.tab)}`] : []), ...actingSteps(tool, args).map((a) => actionWords(a, ctx))],
     ...(confirm ? { confirm: confirmInput(confirm) } : {})
   }
 }

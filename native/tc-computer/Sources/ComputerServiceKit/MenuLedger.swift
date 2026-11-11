@@ -1,6 +1,6 @@
 import ComputerProtocol
 
-// The menus a call opened and their closing (docs/computer-protocol.md §25.11, decision 20). The
+// The menus a call opened and their closing (docs/computer-protocol.md §26.11, decision 20). The
 // live side records what it saw open and tries each close; this keeps the book and the order.
 
 /// What opened a menu.

@@ -88,7 +88,7 @@ export function hostErrorLine(kind: HostErrorKind, detail?: string): string {
 export function sessionRefusedLine(reason: SessionTierRefusal, app?: string, opts: { menu?: readonly string[]; tier?: 'front' | 'session' } = {}): string {
   const line =
     opts.tier === 'front'
-      ? // a step that needed the app in front, under "wait until I'm away" (§25.6)
+      ? // a step that needed the app in front, under "wait until I'm away" (§26.6)
         `needs ${app ?? 'the app'} in front for a moment, which the person set to wait until they are away: ${sessionRefusalWords(reason, app)}`
       : hostErrorLine('session_refused', sessionRefusalWords(reason, app))
   return opts.menu?.length ? `${opts.menu.join(' › ')} is disabled while ${app ?? 'the app'} is in the background; ${line}` : line

@@ -51,6 +51,15 @@ describe('scratchArgs', () => {
   })
 })
 
+describe('plain scratch Chrome', () => {
+  it('uses the suite.py flags and fixed cover frame only for field runs', () => {
+    const plain = scratchArgs('Google Chrome', 'file:///front.html', '/tmp/profile', ['file:///report.html'], { plainChrome: true })
+    expect(plain).not.toContain('--force-renderer-accessibility')
+    expect(plain).toEqual(['-n', '-g', '-a', 'Google Chrome', '--args', '--user-data-dir=/tmp/profile', '--no-first-run', '--no-default-browser-check', '--window-position=80,80', '--window-size=1000,800', 'file:///front.html', 'file:///report.html'])
+    expect(scratchArgs('Google Chrome', 'file:///front.html', '/tmp/profile')).toContain('--force-renderer-accessibility')
+  })
+})
+
 describe('recordCalls', () => {
   it('records each call’s host time, step lines and shots under its thread, in its lane', async () => {
     const pins = new LanePins()
@@ -74,6 +83,24 @@ describe('recordCalls', () => {
     expect(rec.calls('t2')).toEqual([])
     rec.clear('t1')
     expect(rec.calls('t1')).toEqual([])
+  })
+
+  it('samples target coverage at call entry and keeps it on a failed call', async () => {
+    const pins = new LanePins()
+    const h = computerHarness()
+    harnesses.push(h)
+    const sampled: string[] = []
+    let covered = true
+    const rec = recordCalls(h.sessions, pins, Date.now, (threadId) => {
+      sampled.push(threadId)
+      return { window: 42, covered, fraction: covered ? 1 : 0 }
+    })
+    await h.sessions.run({ threadId: 't1' }, 'computer_act', { app: 'TextEdit', action: 'left_click', element: 999 })
+    covered = false
+    await h.sessions.run({ threadId: 't1' }, 'computer_observe', { app: 'TextEdit' })
+    expect(sampled).toEqual(['t1', 't1'])
+    expect(rec.calls('t1').map((c) => c.coverage?.covered)).toEqual([true, false])
+    expect(rec.calls('t1')[0].isError).toBe(true)
   })
 
   it('records a refusal as an error call', async () => {

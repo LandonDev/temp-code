@@ -2,7 +2,7 @@
 import Foundation
 import Testing
 
-/// The commit check's disk reads (docs/computer-protocol.md §25.8) on a scratch folder of their own.
+/// The commit check's disk reads (docs/computer-protocol.md §26.8) on a scratch folder of their own.
 @Suite struct DiskFactsTests {
     private let root: URL
 

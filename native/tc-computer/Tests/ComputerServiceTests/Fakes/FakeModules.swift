@@ -69,10 +69,16 @@ final class FakeReader: AppReading, @unchecked Sendable {
     /// what `resolve` answers, by index; a missing index is `no_such_element`
     var elements: Set<Int> = [1, 2, 3, 4, 5]
     var stale: Set<Int> = []
+    /// the page a window read finds (§25.2), from the fake windows' selected tab
+    let pageOf: (@Sendable () -> Page?)?
+    private var page: Page?
+    /// what `brief(of:)` answers for any element (the model's latest read listed it)
+    var focusedBrief: ElementBrief?
 
-    init(pid: pid_t, log: CallLog) {
+    init(pid: pid_t, log: CallLog, pageOf: (@Sendable () -> Page?)? = nil) {
         self.pid = pid
         self.log = log
+        self.pageOf = pageOf
         self.signal = FakeChangeSignal(log: log)
         self.changes = signal
     }
@@ -90,7 +96,21 @@ final class FakeReader: AppReading, @unchecked Sendable {
             return (kinds.isEmpty ? .full : .diff, false)
         }
         lock.withLock { kinds.append(kind) }
-        return ObservationText(kind: kind, text: "[1] window \"Doc\"", stats: stats(thin: thin), window: window(7, "Doc"), focused: nil)
+        // a window read finds the selected tab's page; an element read none
+        let found = request.element == nil ? pageOf?() : nil
+        lock.withLock { page = found }
+        if let found { log.add("observe page=\(found.tab)") }
+        let text = "[1] window \"Doc\"" + (found.map { " tab \"\($0.tab)\"" } ?? "")
+        return ObservationText(kind: kind, text: text, stats: stats(thin: thin), window: window(7, "Doc"), focused: nil)
+    }
+
+    var lastPage: Page? { lock.withLock { page } }
+
+    func brief(of element: AXUIElement) -> ElementBrief? { lock.withLock { focusedBrief } }
+
+    func watchPage(window: AXUIElement) {
+        log.add("watchPage")
+        signal.setBusy(true)
     }
 
     func resolve(_ index: Int) throws -> ResolvedElement {
@@ -119,6 +139,8 @@ final class FakeReaders: ReaderPool, @unchecked Sendable {
     private let lock = NSLock()
     private var readers: [String: FakeReader] = [:]
     let log: CallLog
+    /// the page each pid's reader finds (`FakeWindows.page`)
+    var pageSource: (@Sendable (pid_t) -> Page?)?
 
     init(log: CallLog) { self.log = log }
 
@@ -127,7 +149,8 @@ final class FakeReaders: ReaderPool, @unchecked Sendable {
     func fake(_ session: String, _ pid: pid_t) -> FakeReader {
         lock.withLock {
             if let reader = readers["\(session):\(pid)"] { return reader }
-            let reader = FakeReader(pid: pid, log: log)
+            let source = pageSource
+            let reader = FakeReader(pid: pid, log: log, pageOf: source.map { pages in { @Sendable in pages(pid) } })
             readers["\(session):\(pid)"] = reader
             return reader
         }
@@ -159,6 +182,77 @@ final class FakeWindows: WindowSource, @unchecked Sendable {
     func list(pid: pid_t) throws -> [WindowInfo] { lock.withLock { windows[pid] ?? [] } }
 
     func windowID(of element: AXUIElement, pid: pid_t) -> UInt32? { nil }
+
+    // §25: a browser window's tabs, by window id; the selected one's page
+    struct Strip {
+        var titles: [String]
+        var selected: Int
+    }
+
+    var strips: [Int: Strip] = [:]
+    var chromiumPids: Set<pid_t> = []
+    /// the person is looking at the browser window: a `background` selection is `tab_in_use`
+    var personsWindow = false
+    /// how long a selection's page wait takes
+    var selectDelay: Duration = .zero
+    var log: CallLog?
+
+    func setTabs(_ pid: pid_t, window info: WindowInfo, _ titles: [String], selected: Int = 0) {
+        lock.withLock {
+            windows[pid, default: []].append(info)
+            strips[info.id] = Strip(titles: titles, selected: selected)
+            chromiumPids.insert(pid)
+        }
+    }
+
+    /// The selected tab's page of the pid's first browser window.
+    func page(_ pid: pid_t) -> Page? {
+        lock.withLock {
+            guard let id = windows[pid]?.first(where: { strips[$0.id] != nil })?.id, let strip = strips[id] else { return nil }
+            return Page(tab: strip.titles[strip.selected], state: .loaded)
+        }
+    }
+
+    func resolveTab(pid: pid_t, ref: WindowRef?) throws -> (element: AXUIElement, info: WindowInfo, tab: TabHandle?) {
+        let (list, strips) = lock.withLock { (windows[pid] ?? [], self.strips) }
+        if let title = ref?.title, ref?.id == nil, !list.contains(where: { $0.title == title }) {
+            for info in list {
+                if let strip = strips[info.id], let at = strip.titles.firstIndex(of: title) {
+                    return (AXUIElementCreateApplication(pid), info, TabHandle(element: AXUIElementCreateApplication(pid), title: title, selected: at == strip.selected))
+                }
+            }
+        }
+        let (element, info) = try resolve(pid: pid, ref: ref)
+        return (element, info, nil)
+    }
+
+    func selectTab(pid: pid_t, window: AXUIElement, tab: TabHandle, mode: TabsMode, waitMs: Int) throws -> TabSelection {
+        log?.add("selectTab \(tab.title) \(mode.rawValue)")
+        let (id, already, front) = lock.withLock { () -> (Int?, Bool, Bool) in
+            let id = windows[pid]?.first { strips[$0.id]?.titles.contains(tab.title) == true }?.id
+            let strip = id.flatMap { strips[$0] }
+            return (id, strip.map { $0.titles[$0.selected] == tab.title } ?? false, personsWindow)
+        }
+        guard let id else { throw ComputerError(kind: .windowNotFound, message: "no tab") }
+        if already { return TabSelection(title: tab.title, switched: false, page: page(pid)) }
+        if front && mode != .any {
+            throw ComputerError(kind: .tabInUse, message: "Browser's window \"W\" is in front, on tab \"x\"; switch tabs with an act, which waits for the Mac to be free")
+        }
+        let delay = lock.withLock { selectDelay }
+        if delay > .zero { usleep(useconds_t(delay / .microseconds(1))) }
+        lock.withLock {
+            let selected = strips[id]?.titles.firstIndex(of: tab.title) ?? 0
+            strips[id]?.selected = selected
+        }
+        log?.add("selected \(tab.title)")
+        return TabSelection(title: tab.title, switched: true, page: page(pid))
+    }
+
+    func tabSelected(_ tab: TabHandle) -> Bool {
+        lock.withLock { strips.values.contains { $0.titles[$0.selected] == tab.title } }
+    }
+
+    func chromium(pid: pid_t) -> Bool { lock.withLock { chromiumPids.contains(pid) } }
 }
 
 // MARK: Capture
@@ -301,6 +395,8 @@ final class FakeInput: InputPerforming, @unchecked Sendable {
     private(set) var quiets: [Int?] = []
     private(set) var tokens: [Int?] = []
     private(set) var idles: [Int?] = []
+    /// §25.9 as each step saw it: the process is Chromium, the expected focus's index, the brief of the window
+    private(set) var webFacts: [(chromium: Bool, expect: Int?, brief: ElementBrief?)] = []
     private var nextToken = 0
 
     init(wiring: InputWiring, log: CallLog) {
@@ -315,6 +411,7 @@ final class FakeInput: InputPerforming, @unchecked Sendable {
             quiets.append(target.pasteQuietMs)
             tokens.append(target.callToken)
             idles.append(target.personIdleMs)
+            webFacts.append((target.chromium, target.expectFocus?.index, target.briefOf(target.window)))
         }
         if let onPerform = lock.withLock({ onPerform }) { return try onPerform(action, target) }
         if action.action == .cursorPosition { return InputOutcome(tier: nil, via: nil, clipboard: nil, cursor: target.cursor ?? [0, 0]) }
@@ -359,6 +456,7 @@ final class FakeInput: InputPerforming, @unchecked Sendable {
     }
 
     var releasedPids: [pid_t] { lock.withLock { released } }
+    var seenWeb: [(chromium: Bool, expect: Int?, brief: ElementBrief?)] { lock.withLock { webFacts } }
     var seenTokens: [Int?] { lock.withLock { tokens } }
     var seenPersonIdles: [Int?] { lock.withLock { idles } }
     var staleRecords: [HeldRecord] { lock.withLock { stale } }

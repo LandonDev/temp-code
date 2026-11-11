@@ -12,8 +12,10 @@ public struct BuildRequest: Sendable {
     public var loading: Bool
     /// false when the call's screenshot is `never` (A4)
     public var noteThin: Bool
+    /// the selected tab's page as the reader found it after its re-reads (§25.2); `not-drawn` prints in the header
+    public var page: PageState?
 
-    public init(mode: ObservationMode = .auto, subtreeOf: Int? = nil, budgetBytes: Int = ComputerDefaults.ObservationBudget.defaultBytes, geometry: Bool = false, space: CoordinateSpace, loading: Bool = false, noteThin: Bool = true) {
+    public init(mode: ObservationMode = .auto, subtreeOf: Int? = nil, budgetBytes: Int = ComputerDefaults.ObservationBudget.defaultBytes, geometry: Bool = false, space: CoordinateSpace, loading: Bool = false, noteThin: Bool = true, page: PageState? = nil) {
         self.mode = mode
         self.subtreeOf = subtreeOf
         self.budgetBytes = budgetBytes
@@ -21,6 +23,7 @@ public struct BuildRequest: Sendable {
         self.space = space
         self.loading = loading
         self.noteThin = noteThin
+        self.page = page
     }
 }
 
@@ -50,7 +53,8 @@ public enum Builder {
         let geometry = request.geometry || (kept.thin && request.noteThin)
         var layout = Layout.build(kept, indexed, snapshot: s, space: request.space, geometry: geometry, wholeValues: subtree)
         let focused = layout.rows.first { $0.kind == .element && $0.facts.states.first == "focused" }?.index
-        var header = HeaderFacts(focused: focused, loading: request.loading, change: nil, thin: kept.thin && request.noteThin)
+        var header = HeaderFacts(focused: focused, loading: request.loading, change: nil, thin: kept.thin && request.noteThin,
+                                 notDrawn: !subtree && request.page == .notDrawn)
         let fitted = TextBudget.fit(&layout, header: header, budget: budget)
         let full = layout.text(header, footer: fitted.footer)
 

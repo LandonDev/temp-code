@@ -1,6 +1,6 @@
 import ComputerProtocol
 
-// `save_as` (docs/computer-protocol.md §25.7): the save panel's parts in a tree value, the flow
+// `save_as` (docs/computer-protocol.md §26.7): the save panel's parts in a tree value, the flow
 // from opening the panel to the file on disk as a state machine over what the live layer reads,
 // and the disk's proof. Nothing here touches AX or the file system.
 
@@ -105,7 +105,7 @@ public struct SavePanelParts: Equatable, Sendable {
     }
 }
 
-/// `save_as`'s path, split and worded (§25.7): absolute or `~/…`, file name included.
+/// `save_as`'s path, split and worded (§26.7): absolute or `~/…`, file name included.
 public struct SaveTarget: Equatable, Sendable {
     /// absolute, no trailing slash (`/` for the root)
     public var folder: String
@@ -217,7 +217,7 @@ public enum PanelMove: Equatable, Sendable {
     case fail(ComputerError)
 }
 
-/// The steps of §25.7 with their read-backs.
+/// The steps of §26.7 with their read-backs.
 public struct SavePanelFlow: Equatable, Sendable {
     enum Stage: Equatable, Sendable {
         case find, opening, goTo, goToOpening, path, pathCheck, confirm, confirmWait, folder, name, nameCheck, save, closing, done
@@ -371,7 +371,7 @@ public struct SavePanelFlow: Equatable, Sendable {
     private func notCommitted(_ m: String) -> ComputerError { ComputerError(kind: .notCommitted, message: m) }
 }
 
-/// §25.7 (6): what proves the save, from the destination folder's listing after the panel closed.
+/// §26.7 (6): what proves the save, from the destination folder's listing after the panel closed.
 public enum SaveProof {
     /// `after`: each file in the destination folder with its mtime (seconds); `startedAt`: when the
     /// step began, same clock; `documentAfter`: the window's AXDocument path after the save.

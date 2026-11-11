@@ -68,7 +68,16 @@ export const AX_WALK = {
   maxNodes: 5_000,
   maxMs: 2_000,
   /** AXUIElementSetMessagingTimeout per app: a hung app answers `timeout` */
-  messagingTimeoutMs: 2_000
+  messagingTimeoutMs: 2_000,
+  /** inside a web area the viewport cut reads this many visible heights above the visible rect… (§25.5) */
+  webReadAheadAbove: 1,
+  /** …and this many below it */
+  webReadAheadBelow: 3,
+  /** the scan for a window's tab strip (§25.1): it stops at this depth or node count and never enters a web area */
+  tabScanMaxDepth: 12,
+  tabScanMaxNodes: 600,
+  /** the `scroll-into-view` route's scan for the element at the scroll's distance (§25.6) */
+  intoViewMaxNodes: 400
 } as const
 
 /** Observation text (§4.1, §4.5). */
@@ -162,8 +171,8 @@ export function lockPath(tmpdir: string, which: 'clipboard' | 'session'): string
 }
 
 /**
- * The `front` tier (§25): a brief, bounded activation of the target app for a step that needs it active.
- * Bounds, not measurements, until the first free-Mac run of the activeLeg records them (§25.1).
+ * The `front` tier (§26): a brief, bounded activation of the target app for a step that needs it active.
+ * Bounds, not measurements, until the first free-Mac run of the activeLeg records them (§26.1).
  */
 export const FRONT = {
   /** the app must be front with the target window focused within this, polled every pollMs, else `activation-refused` */
@@ -208,7 +217,11 @@ export const ACTION_LIMITS = {
   /** `hold_key` and `wait`, in seconds, as the native members */
   durationMaxSeconds: 300,
   /** a click's `duration`: how long the button stays down */
-  clickDurationMaxSeconds: 10
+  clickDurationMaxSeconds: 10,
+  /** the `pick` route's wait for the pop up's menu to open (§25.7) */
+  pickMenuMs: 500,
+  /** how long a web control's value or state is read back after a route (§25.7, §25.8) */
+  readBackMs: 300
 } as const
 
 /** The fixture recorder cuts a raw value past this many characters (§10). */
@@ -236,7 +249,7 @@ export type Region = z.infer<typeof RegionSchema>
 /** `front` is appended so the Swift enum keeps its old cases' order; compare tiers with TIER_ORDER. */
 export const TierSchema = z.enum(['ax', 'process', 'session', 'front'])
 export type Tier = z.infer<typeof TierSchema>
-/** The tiers from least to most of the person's Mac they take (§5.2, §25.2). */
+/** The tiers from least to most of the person's Mac they take (§5.2, §26.2). */
 export const TIER_ORDER: readonly Tier[] = ['ax', 'process', 'front', 'session']
 /** A tier's place in TIER_ORDER. */
 export const tierRank = (tier: Tier): number => TIER_ORDER.indexOf(tier)
@@ -287,6 +300,27 @@ export type CoordinateSpace = z.infer<typeof CoordinateSpaceSchema>
 
 export const WindowSpaceSchema = z.enum(['current', 'other', 'unknown'])
 
+/** `apps.list` lists at most this many tabs per browser window, then their count (§25.4). */
+export const TAB_LIST_MAX = 50
+
+/** One tab of a browser window's strip: its title is the page's title (§25.4). */
+export const TabInfoSchema = z.object({ title: z.string(), selected: z.boolean() })
+export type TabInfo = z.infer<typeof TabInfoSchema>
+
+/** The selected tab's page (§25.2): loaded, still loading, or not drawn when the wait ran out. */
+export const PageStateSchema = z.enum(['loaded', 'loading', 'not-drawn'])
+export type PageState = z.infer<typeof PageStateSchema>
+
+export const PageSchema = z.object({ tab: z.string(), state: PageStateSchema })
+export type Page = z.infer<typeof PageSchema>
+
+/**
+ * Whether a call may select a tab in the window the person has in front (§25.4): `background` (the default)
+ * answers `tab_in_use` instead; `any` is what the host sends once the tier gate admitted the act.
+ */
+export const TabsModeSchema = z.enum(['background', 'any'])
+export type TabsMode = z.infer<typeof TabsModeSchema>
+
 export const WindowInfoSchema = z.object({
   id: int(),
   title: z.string(),
@@ -295,7 +329,11 @@ export const WindowInfoSchema = z.object({
   focused: z.boolean(),
   minimized: z.boolean(),
   onScreen: z.boolean(),
-  space: WindowSpaceSchema
+  space: WindowSpaceSchema,
+  /** a browser window's tabs, in strip order, at most TAB_LIST_MAX (§25.4) */
+  tabs: z.array(TabInfoSchema).max(TAB_LIST_MAX).optional(),
+  /** the tabs past TAB_LIST_MAX */
+  moreTabs: int().positive().optional()
 })
 export type WindowInfo = z.infer<typeof WindowInfoSchema>
 
@@ -481,8 +519,8 @@ export const ACTION_PARAMS: Record<
   cursor_position: { required: [], optional: [] },
   scroll: { required: ['scroll_direction', 'scroll_amount'], optional: [...POINTER] },
   type: { required: ['text'], optional: ['element'] },
-  key: { required: ['text'], optional: ['repeat'] },
-  hold_key: { required: ['text', 'duration'], optional: [] },
+  key: { required: ['text'], optional: ['repeat', 'element'] },
+  hold_key: { required: ['text', 'duration'], optional: ['element'] },
   wait: { required: ['duration'], optional: [] },
   set_value: { required: ['element', 'value'], optional: [] },
   perform: { required: ['element', 'name'], optional: [] },
@@ -612,6 +650,9 @@ export const COMPUTER_ERROR_KINDS = [
   'session_unavailable',
   'already_running',
   'open_refused',
+  'value_not_taken',
+  'focus_moved',
+  'tab_in_use',
   'not_committed',
   'file_exists'
 ] as const
@@ -628,6 +669,8 @@ export const STEP_ONLY_ERROR_KINDS: readonly ComputerErrorKind[] = [
   'clipboard_busy',
   'text_not_found',
   'key_window_unavailable',
+  'value_not_taken',
+  'focus_moved',
   'not_committed',
   'file_exists'
 ]
@@ -636,6 +679,7 @@ export const InterruptedBySchema = z.enum(['person'])
 /**
  * `stale_element`: gone, service-restarted. `session_unavailable`: locked, secure-input, activation-refused, in-use.
  * `clipboard_busy`: recent-copy. `open_refused`: missing, executable, scheme, app (§23.2).
+ * `focus_moved`: browser-field (the keys would go to the browser's own field), moved (since the model's read) (§25.9).
  */
 export const ErrorReasonSchema = z.enum([
   'gone',
@@ -648,7 +692,9 @@ export const ErrorReasonSchema = z.enum([
   'missing',
   'executable',
   'scheme',
-  'app'
+  'app',
+  'browser-field',
+  'moved'
 ])
 export type ErrorReason = z.infer<typeof ErrorReasonSchema>
 
@@ -678,12 +724,12 @@ export const SessionChangeSchema = z.object({
 })
 export type SessionChange = z.infer<typeof SessionChangeSchema>
 
-/** How a `front` hold's restore ended (§25.4). */
+/** How a `front` hold's restore ended (§26.4). */
 export const FrontHoldRestoreSchema = z.enum(['restored', 'person-moved', 'app-gone', 'failed'])
 export type FrontHoldRestore = z.infer<typeof FrontHoldRestoreSchema>
 
 /**
- * What a `front` hold did (§25.4): how long the app was in front, how long it took to come and to give the
+ * What a `front` hold did (§26.4): how long the app was in front, how long it took to come and to give the
  * person's app back, and the span of the hold's own input as SessionChange states it, so the host can tell
  * the hold's posted events from the person's.
  */
@@ -703,7 +749,7 @@ export type FrontHold = z.infer<typeof FrontHoldSchema>
 /** A path the commit check names: `~`-relative under the home folder, at most FRONT.pathMaxUnits. */
 const DiskPathSchema = z.string().max(FRONT.pathMaxUnits)
 
-/** What a step changed on disk behind its window (§25.8); `unknown` when the check could not read it. */
+/** What a step changed on disk behind its window (§26.8); `unknown` when the check could not read it. */
 export const DiskChangeSchema = z.object({
   saved: DiskPathSchema.optional(),
   renamed: z.array(z.object({ from: DiskPathSchema, to: DiskPathSchema })).max(32).optional(),
@@ -739,7 +785,11 @@ export const ComputerErrorSchema = z.object({
   /** a step that failed inside a `front` hold says what the hold did */
   front: FrontHoldSchema.optional(),
   /** a shortcut whose menu item is disabled (§24.2): the item's title path, `["File", "Close"]` */
-  menu: z.array(z.string()).max(8).optional()
+  menu: z.array(z.string()).max(8).optional(),
+  /** `value_not_taken`: what the element reads after the route (§25.8) */
+  value: z.string().optional(),
+  /** `focus_moved`: the focused element's line; `element` carries its index (§25.9) */
+  focused: ElementBriefSchema.optional()
 })
 export type ComputerError = z.infer<typeof ComputerErrorSchema>
 
@@ -761,7 +811,11 @@ export const ObservationSchema = z.object({
   shot: ShotSchema.optional(),
   /** the screenshot this observation would carry could not be taken (Screen Recording off, minimized, capture failed) */
   shotError: ComputerErrorSchema.optional(),
-  waited: WaitReportSchema.optional()
+  waited: WaitReportSchema.optional(),
+  /** a browser window's selected tab and its page (§25.2) */
+  page: PageSchema.optional(),
+  /** the tab this call selected, by title (§25.4) */
+  selectedTab: z.string().optional()
 })
 export type Observation = z.infer<typeof ObservationSchema>
 
@@ -770,16 +824,29 @@ export type Observation = z.infer<typeof ObservationSchema>
 /**
  * How a step's input went in: the four typing routes, then the background fallbacks of §24 (appended, so the
  * Swift enum keeps its old cases' order): a shortcut's menu item, the element under a click, the caret, the
- * scroll bar, the page scroll a wheel became; then `save_as`'s save panel (§25.7).
+ * scroll bar, the page scroll a wheel became; then a pop up's menu pick and a web page's scroll into view (§26); then `save_as`'s save panel (§26.7).
  */
-export const InputViaSchema = z.enum(['ax-insert', 'ax-value', 'keys', 'paste', 'menu', 'hit', 'caret', 'scroll-bar', 'scroll-page', 'panel'])
+export const InputViaSchema = z.enum([
+  'ax-insert',
+  'ax-value',
+  'keys',
+  'paste',
+  'menu',
+  'hit',
+  'caret',
+  'scroll-bar',
+  'scroll-page',
+  'pick',
+  'scroll-into-view',
+  'panel'
+])
 export type InputVia = z.infer<typeof InputViaSchema>
 /** The fallback routes whose misses the host learns (§24.1, §17.3); `menu`, `scroll-bar` and the typing routes are not learned. */
-export const LEARNED_VIAS = ['hit', 'caret', 'scroll-page'] as const satisfies readonly InputVia[]
+export const LEARNED_VIAS = ['hit', 'caret', 'scroll-page', 'scroll-into-view'] as const satisfies readonly InputVia[]
 export type LearnedVia = (typeof LEARNED_VIAS)[number]
 export const ClipboardOutcomeSchema = z.enum(['restored', 'kept-person-copy'])
 export type ClipboardOutcome = z.infer<typeof ClipboardOutcomeSchema>
-/** `uncommitted` (§25.8): the window changed and the disk did not, for a step expected to reach the disk. */
+/** `uncommitted` (§26.8): the window changed and the disk did not, for a step expected to reach the disk. */
 export const StepEffectSchema = z.enum(['changed', 'none', 'unknown', 'uncommitted'])
 export type StepEffect = z.infer<typeof StepEffectSchema>
 
@@ -801,9 +868,9 @@ export const StepOkSchema = z.object({
   waited: WaitReportSchema.optional(),
   /** present on every step that ran at the `session` tier */
   session: SessionChangeSchema.optional(),
-  /** present on every step that ran at the `front` tier (§25.4) */
+  /** present on every step that ran at the `front` tier (§26.4) */
   front: FrontHoldSchema.optional(),
-  /** the commit check's finding (§25.8), on a step whose window has a file behind it */
+  /** the commit check's finding (§26.8), on a step whose window has a file behind it */
   disk: DiskChangeSchema.optional()
 })
 export const StepFailedSchema = z.object({
@@ -848,7 +915,7 @@ export const ActionResultSchema = z.object({
   observationError: ComputerErrorSchema.optional(),
   /** the app came forward during the call (§23.4) */
   front: FrontReportSchema.optional(),
-  /** menus the call opened and could not close (§25.11), by the title of what opened them */
+  /** menus the call opened and could not close (§26.11), by the title of what opened them */
   menusLeftOpen: MenusLeftOpenSchema.optional()
 })
 export type ActionResult = z.infer<typeof ActionResultSchema>
@@ -860,7 +927,7 @@ export const BatchResultSchema = z.object({
   waited: WaitReportSchema,
   /** the app came forward during the call (§23.4) */
   front: FrontReportSchema.optional(),
-  /** menus the call opened and could not close (§25.11), by the title of what opened them */
+  /** menus the call opened and could not close (§26.11), by the title of what opened them */
   menusLeftOpen: MenusLeftOpenSchema.optional()
 })
 export type BatchResult = z.infer<typeof BatchResultSchema>
@@ -880,6 +947,10 @@ function needsEpoch(names: number[], epoch: string | undefined, ctx: z.Refinemen
     ctx.addIssue({ code: 'custom', path: ['epoch'], message: 'a call that names an element carries the epoch of its observation' })
 }
 
+/** `expectFocus` is an element index like any other: it needs the epoch it came from (§25.9). */
+const withFocus = (names: number[], expectFocus: number | undefined): number[] =>
+  expectFocus === undefined ? names : [...names, expectFocus]
+
 export const StateGetParamsSchema = TargetSchema.extend({
   mode: ObservationModeSchema.optional(),
   /** that element's subtree, whole */
@@ -889,7 +960,8 @@ export const StateGetParamsSchema = TargetSchema.extend({
   geometry: z.boolean().optional(),
   menus: z.boolean().optional(),
   budget: BudgetSchema.optional(),
-  wait: WaitOptionsSchema.optional()
+  wait: WaitOptionsSchema.optional(),
+  tabs: TabsModeSchema.optional()
 }).superRefine((p, ctx) => needsEpoch(p.element === undefined ? [] : [p.element], p.epoch, ctx))
 
 /** A paste waits out the person's copy: one within this many ms fails the step `clipboard_busy { reason: 'recent-copy' }` with the pasteboard untouched. */
@@ -907,7 +979,7 @@ const PersonIdleSchema = int().nonnegative()
 export const IgnoredRoutesSchema = z.object({
   via: z.array(InputViaSchema).optional(),
   process: z.array(ActionClassSchema).optional(),
-  /** classes whose `front` route missed twice (§25, decision 11): run last, after the session route when it is allowed */
+  /** classes whose `front` route missed twice (§26, decision 11): run last, after the session route when it is allowed */
   front: z.array(ActionClassSchema).optional(),
   skip: z.boolean().optional()
 })
@@ -921,8 +993,11 @@ export const ActionRunParamsSchema = TargetSchema.extend({
   observe: ObserveOptionsSchema.optional(),
   pasteQuietMs: PasteQuietSchema.optional(),
   personIdleMs: PersonIdleSchema.optional(),
-  ignored: IgnoredRoutesSchema.optional()
-}).superRefine((p, ctx) => needsEpoch(actionElements(p.action), p.epoch, ctx))
+  ignored: IgnoredRoutesSchema.optional(),
+  tabs: TabsModeSchema.optional(),
+  /** the focused element of the model's latest read of this app; binds the call's first key or text step (§25.9) */
+  expectFocus: ElementIndexSchema.optional()
+}).superRefine((p, ctx) => needsEpoch(withFocus(actionElements(p.action), p.expectFocus), p.epoch, ctx))
 
 export const ActionBatchParamsSchema = TargetSchema.extend({
   actions: z.array(ComputerActionSchema).min(1).max(SERVICE.batchMaxActions),
@@ -932,13 +1007,16 @@ export const ActionBatchParamsSchema = TargetSchema.extend({
   observe: ObserveOptionsSchema.optional(),
   pasteQuietMs: PasteQuietSchema.optional(),
   personIdleMs: PersonIdleSchema.optional(),
-  ignored: IgnoredRoutesSchema.optional()
-}).superRefine((p, ctx) => needsEpoch(p.actions.flatMap(actionElements), p.epoch, ctx))
+  ignored: IgnoredRoutesSchema.optional(),
+  tabs: TabsModeSchema.optional(),
+  expectFocus: ElementIndexSchema.optional()
+}).superRefine((p, ctx) => needsEpoch(withFocus(p.actions.flatMap(actionElements), p.expectFocus), p.epoch, ctx))
 
 export const CaptureScreenshotParamsSchema = TargetSchema.extend({
   maxEdge: MaxEdgeSchema.optional(),
   region: RegionSchema.optional(),
-  format: ShotFormatSchema.optional()
+  format: ShotFormatSchema.optional(),
+  tabs: TabsModeSchema.optional()
 })
 
 export const CaptureStreamStartParamsSchema = TargetSchema.extend({
@@ -1298,7 +1376,7 @@ export const RawAXTreeSchema = z.object({
   /** open menus and popovers the app shows outside the window's own children */
   attached: z.array(RawAXNodeSchema).optional(),
   /**
-   * What is behind the window on disk (§25.10, E5): the window's AXDocument (a `file:` URL; a folder's ends in /),
+   * What is behind the window on disk (§26.10, E5): the window's AXDocument (a `file:` URL; a folder's ends in /),
    * the file's mtime in seconds since 1970, and the close button's AXEdited
    */
   document: z.object({ url: z.string().optional(), mtime: z.number().optional(), edited: z.boolean().optional() }).optional()

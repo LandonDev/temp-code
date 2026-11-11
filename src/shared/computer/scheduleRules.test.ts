@@ -158,7 +158,7 @@ describe('refusal words', () => {
   })
 })
 
-describe('the front tier\'s setting (§25.6)', () => {
+describe('the front tier\'s setting (§26.6)', () => {
   const present = freedom(at({}))
   it('reads brief unless the setting says away', () => {
     expect(activeApp(null)).toBe('brief')

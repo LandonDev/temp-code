@@ -141,7 +141,7 @@ export class ComputerService {
     return this.perms
   }
 
-  /** Whether the live service speaks a feature beyond protocol 1 (§25, decision 14); false with no service up. */
+  /** Whether the live service speaks a feature beyond protocol 1 (§26, decision 14); false with no service up. */
   serves(feature: ComputerFeature): boolean {
     return this.conn?.features.has(feature) ?? false
   }

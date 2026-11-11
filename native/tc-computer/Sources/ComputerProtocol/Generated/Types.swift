@@ -83,6 +83,26 @@ public struct CoordinateSpace: Codable, Hashable, Sendable {
     }
 }
 
+public struct TabInfo: Codable, Hashable, Sendable {
+    public let title: String
+    public let selected: Bool
+
+    public init(title: String, selected: Bool) {
+        self.title = title
+        self.selected = selected
+    }
+}
+
+public struct Page: Codable, Hashable, Sendable {
+    public let tab: String
+    public let state: PageState
+
+    public init(tab: String, state: PageState) {
+        self.tab = tab
+        self.state = state
+    }
+}
+
 public struct WindowInfo: Codable, Hashable, Sendable {
     public let id: Int
     public let title: String
@@ -92,8 +112,10 @@ public struct WindowInfo: Codable, Hashable, Sendable {
     public let minimized: Bool
     public let onScreen: Bool
     public let space: WindowSpace
+    public let tabs: [TabInfo]?
+    public let moreTabs: Int?
 
-    public init(id: Int, title: String, frame: Rect, main: Bool, focused: Bool, minimized: Bool, onScreen: Bool, space: WindowSpace) {
+    public init(id: Int, title: String, frame: Rect, main: Bool, focused: Bool, minimized: Bool, onScreen: Bool, space: WindowSpace, tabs: [TabInfo]? = nil, moreTabs: Int? = nil) {
         self.id = id
         self.title = title
         self.frame = frame
@@ -102,6 +124,8 @@ public struct WindowInfo: Codable, Hashable, Sendable {
         self.minimized = minimized
         self.onScreen = onScreen
         self.space = space
+        self.tabs = tabs
+        self.moreTabs = moreTabs
     }
 }
 
@@ -511,8 +535,10 @@ public struct Observation: Codable, Hashable, Sendable {
     public let shot: Shot?
     public let shotError: ComputerError?
     public let waited: WaitReport?
+    public let page: Page?
+    public let selectedTab: String?
 
-    public init(epoch: String, session: String, app: App, window: Window, kind: ObservationKind, seq: Int, base: Int? = nil, text: String, space: CoordinateSpace, stats: ObservationStats, shot: Shot? = nil, shotError: ComputerError? = nil, waited: WaitReport? = nil) {
+    public init(epoch: String, session: String, app: App, window: Window, kind: ObservationKind, seq: Int, base: Int? = nil, text: String, space: CoordinateSpace, stats: ObservationStats, shot: Shot? = nil, shotError: ComputerError? = nil, waited: WaitReport? = nil, page: Page? = nil, selectedTab: String? = nil) {
         self.epoch = epoch
         self.session = session
         self.app = app
@@ -526,6 +552,8 @@ public struct Observation: Codable, Hashable, Sendable {
         self.shot = shot
         self.shotError = shotError
         self.waited = waited
+        self.page = page
+        self.selectedTab = selectedTab
     }
 }
 
@@ -555,8 +583,10 @@ public struct ComputerError: Codable, Hashable, Sendable {
     public let session: SessionChange?
     public let front: FrontHold?
     public let menu: [String]?
+    public let value: String?
+    public let focused: ElementBrief?
 
-    public init(kind: ComputerErrorKind, message: String, which: PermissionName? = nil, candidates: [String]? = nil, element: Int? = nil, reason: ErrorReason? = nil, available: [String]? = nil, needed: Tier? = nil, coordinate: Point? = nil, space: CoordinateSpace? = nil, by: InterruptedBy? = nil, keyWindow: KeyWindow? = nil, session: SessionChange? = nil, front: FrontHold? = nil, menu: [String]? = nil) {
+    public init(kind: ComputerErrorKind, message: String, which: PermissionName? = nil, candidates: [String]? = nil, element: Int? = nil, reason: ErrorReason? = nil, available: [String]? = nil, needed: Tier? = nil, coordinate: Point? = nil, space: CoordinateSpace? = nil, by: InterruptedBy? = nil, keyWindow: KeyWindow? = nil, session: SessionChange? = nil, front: FrontHold? = nil, menu: [String]? = nil, value: String? = nil, focused: ElementBrief? = nil) {
         self.kind = kind
         self.message = message
         self.which = which
@@ -572,6 +602,8 @@ public struct ComputerError: Codable, Hashable, Sendable {
         self.session = session
         self.front = front
         self.menu = menu
+        self.value = value
+        self.focused = focused
     }
 }
 

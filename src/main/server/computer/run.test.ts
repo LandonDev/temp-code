@@ -5,7 +5,8 @@ import { COMPUTER_WAIT, type Observation } from '@shared/computer/protocol'
 import { tierVerdictSetting } from '@shared/computer/tools'
 import { hostErrorLine } from '@shared/computer/hostErrors'
 import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/computer/heldCalls'
-import { PERMISSION_SWITCH, remember, type ThreadComputer } from './run'
+import { PERMISSION_SWITCH, remember, waitedIn, type ThreadComputer } from './run'
+import { CallTiming, parseTimingLine } from '@shared/computer/bridgeTiming'
 import { computerHarness, type ComputerHarness } from './runHarness'
 import { IDLE_CLOSE_MS } from './sessions'
 import { ManualClock, settle } from './testFake'
@@ -221,7 +222,7 @@ describe('tiers', () => {
     const gate: SessionTierGate = { admitted: () => false, request: async () => ({ admit: true }), run: (c, send) => send(c.tiers) }
     const h = make({ gate })
     const o = await h.run('computer_act', { app: 'KeyWin', action: 'key', text: 'a' })
-    // front first (§25, decision 10): it makes the window key; KeyWin still wants the session tier
+    // front first (§26, decision 10): it makes the window key; KeyWin still wants the session tier
     expect(h.requests().filter((r) => r.method === 'action.run').map((r) => r.params.tiers)).toEqual([['ax', 'process'], ['front'], ['session']])
     expect(o.steps).toEqual(['key a · session · changed'])
   })
@@ -918,7 +919,7 @@ describe('a reader (pending.ts): nothing runs unread', () => {
   })
 })
 
-describe('steps that need the app active (§25)', () => {
+describe('steps that need the app active (§26)', () => {
   const frontGate = (asked: { step: number; needed?: string }[], frontAdmitted: boolean, admits = true): SessionTierGate => ({
     admitted: () => false,
     frontAdmitted: () => frontAdmitted,
@@ -997,5 +998,206 @@ describe('steps that need the app active (§25)', () => {
     await h.run('computer_observe', { app: 'Menuy' })
     const o = await h.run('computer_act', { app: 'Menuy', action: 'perform', element: 4, name: 'show menu' })
     expect(o.steps).toContain('menu left open: Action')
+  })
+})
+
+describe('web content (§25)', () => {
+  it('a read refuses an active tab switch with its error line and no card or gate', async () => {
+    let asked = 0
+    const gate: SessionTierGate = { admitted: () => false, request: async () => (asked++, { admit: true }), run: (c, send) => send(c.tiers) }
+    const h = make({ gate, env: { FAKE_WEB_ACTIVE: '1' } })
+    h.set('t1', { permission: 'safe' })
+    const o = await h.run('computer_observe', { app: 'Webby', window: 'Web report' })
+    expect(o).toMatchObject({ isError: true, body: "the person has Webby's window in front on another tab, so a read won't switch it; switch tabs with an act, which waits for the Mac to be free" })
+    expect(last(h, 'state.get').params.tabs).toBe('background')
+    expect(h.cards).toHaveLength(0)
+    expect(asked).toBe(0)
+    // A screenshot-only call is a read too.
+    expect((await h.run('computer_act', { app: 'Webby', window: 'Web report', action: 'screenshot' })).isError).toBe(true)
+    expect(asked).toBe(0)
+  })
+
+  it('an act takes tab_in_use through the tier gate and reruns under its hold with tabs any', async () => {
+    const asked: unknown[] = []
+    const holds: unknown[] = []
+    const gate: SessionTierGate = {
+      admitted: () => false,
+      request: async (c) => (asked.push(c), { admit: true }),
+      run: (c, send) => (holds.push(c.tiers), send(c.tiers))
+    }
+    const h = make({ gate, env: { FAKE_WEB_ACTIVE: '1' } })
+    await h.run('computer_apps', {})
+    await h.run('computer_observe', { app: 'Webby' })
+    const o = await h.run('computer_act', { app: 'Webby', window: 'Web report', action: 'key', text: 'Tab' })
+    expect(asked).toHaveLength(1)
+    expect(asked[0]).toMatchObject({ app: { pid: 17100, name: 'Webby' }, window: { id: 171000 }, step: 0, words: 'select tab "Web report" and press Tab' })
+    expect(holds).toEqual([['ax', 'process'], ['ax', 'process', 'session']])
+    const calls = h.requests().filter((r) => r.method === 'action.run')
+    expect(calls.map((r) => [r.params.tabs, r.params.expectFocus])).toEqual([['background', 3], ['any', 3]])
+    expect(o.steps[0]).toBe('Selected tab "Web report" in window "Web report - Webby"')
+    expect(o.body).toContain('still loading')
+    expect((await h.run('computer_observe', { app: 'Webby' })).body).not.toContain('still loading')
+    expect(last(h, 'state.get').params.window).toEqual({ id: 171000 })
+  })
+
+  it('a refused tab switch answers the gate’s own line', async () => {
+    const gate: SessionTierGate = { admitted: () => false, request: async () => ({ admit: false, reason: 'skipped', message: 'the gate refused this tab switch' }), run: (c, send) => send(c.tiers) }
+    const h = make({ gate, env: { FAKE_WEB_ACTIVE: '1' } })
+    expect(await h.run('computer_act', { app: 'Webby', window: 'Web report', action: 'key', text: 'Tab' })).toMatchObject({ isError: true, body: 'the gate refused this tab switch' })
+    expect(count(h, 'action.run')).toBe(1)
+  })
+
+  it('a lost gate admission never sends tabs any', async () => {
+    const gate: SessionTierGate = { admitted: () => false, request: async () => ({ admit: true }), run: (c, send) => send(c.tiers.filter((tier) => tier !== 'session')) }
+    const h = make({ gate, env: { FAKE_WEB_ACTIVE: '1' } })
+    expect((await h.run('computer_act', { app: 'Webby', window: 'Web report', action: 'key', text: 'Tab' })).isError).toBe(true)
+    expect(h.requests().filter((r) => r.method === 'action.run').map((r) => r.params.tabs)).toEqual(['background', 'background'])
+  })
+
+  it('the call’s card names a known tab and its window; an unknown title keeps the window wording', async () => {
+    const h = make()
+    await h.run('computer_apps', {})
+    h.set('t1', { permission: 'safe' })
+    const o = h.run('computer_batch', { app: 'Webby', window: 'Web report', actions: [{ action: 'key', text: 'Tab' }, { action: 'key', text: 'Return' }] })
+    await until(() => h.cards.length === 1, 'the tab card')
+    expect(h.cards[0].req.title).toBe('Select tab "Web report" and 2 actions in Webby, window "Web front - Webby": press Tab, press Return')
+    expect(h.cards[0].req.input).toMatchObject({ window: 'Web front - Webby', actions: ['select tab "Web report"', 'press Tab', 'press Return'] })
+    h.cards[0].decide(true)
+    expect((await o).isError).toBe(false)
+    const next = h.run('computer_act', { app: 'Webby', window: 'Unknown tab', action: 'key', text: 'Tab' })
+    await until(() => h.cards.length === 2, 'the unknown window card')
+    expect(h.cards[1].req.title).toBe('Press Tab in Webby, window "Unknown tab"')
+    h.cards[1].decide(false)
+    await next
+  })
+
+  it('expectFocus is on the first split segment alone and gone on a retry after a completed step', async () => {
+    const gate: SessionTierGate = { admitted: () => false, request: async () => ({ admit: true }), run: (c, send) => send(c.tiers) }
+    const h = make({ gate })
+    await h.run('computer_observe', { app: 'Sessiony' })
+    await h.run('computer_batch', { app: 'Sessiony', actions: [{ action: 'key', text: 'Tab' }, { action: 'hold_key', text: 'shift', duration: 1 }, { action: 'key', text: 'Return' }] })
+    const calls = h.requests().filter((r) => r.method === 'action.batch')
+    expect(calls.map((r) => r.params.expectFocus)).toEqual([3, undefined, undefined])
+    expect(calls.map((r) => r.params.epoch)).toEqual([h.service.state().epoch, h.service.state().epoch, h.service.state().epoch])
+  })
+
+  it('expectFocus is kept on a retry when no step ran, with the epoch of the model’s read', async () => {
+    const gate: SessionTierGate = { admitted: () => false, request: async () => ({ admit: true }), run: (c, send) => send(c.tiers) }
+    const h = make({ gate })
+    await h.run('computer_observe', { app: 'Sessiony' })
+    await h.run('computer_batch', { app: 'Sessiony', actions: [{ action: 'hold_key', text: 'shift', duration: 1 }, { action: 'key', text: 'Return' }] })
+    expect(h.requests().filter((r) => r.method === 'action.batch').map((r) => r.params.expectFocus)).toEqual([3, 3, undefined])
+  })
+
+  it('an unnamed key’s focus expectation is stale after a service restart', async () => {
+    const h = make()
+    await h.run('computer_observe', { app: 'TextEdit' })
+    const epoch = h.service.state().epoch
+    await h.run('computer_act', { app: 'Crashy', action: 'key', text: 'a' })
+    const o = await h.run('computer_act', { app: 'TextEdit', action: 'key', text: 'Tab' })
+    expect(last(h, 'action.run').params).toMatchObject({ epoch, expectFocus: 3 })
+    expect(o).toMatchObject({ isError: true, body: 'the computer service restarted, so every index is stale; read the window again' })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    expect((await h.run('computer_act', { app: 'TextEdit', action: 'key', text: 'Tab' })).isError).toBe(false)
+  })
+
+  it('passes page not drawn through, picks a pop up, stops on read-back failure and words a moved focus', async () => {
+    const h = make({ env: { FAKE_WEB_NOT_DRAWN: '1', FAKE_WEB_FOCUS_MOVED: '1' } })
+    expect((await h.run('computer_observe', { app: 'Webby' })).body).toContain(' · page not drawn')
+    const pick = await h.run('computer_act', { app: 'Webby', action: 'set_value', element: 19, value: 'Team' })
+    expect(pick.steps[0]).toContain(' · pick Team · changed')
+    expect(pick.body).toContain('pop up "Plan" = "Team"')
+    const blocked = await h.run('computer_batch', { app: 'Webby', actions: [{ action: 'set_value', element: 4, value: 'New' }, { action: 'key', text: 'Return' }] })
+    expect(blocked.steps[0]).toContain('[4] still reads "Original"; nothing after it ran')
+    expect(blocked.steps[1]).toBe('Not executed: an earlier action in this batch failed.')
+    const key = await h.run('computer_act', { app: 'Webby', action: 'key', text: 'Tab' })
+    expect(key.steps[0]).toContain('the keys would go to [9] input "Address and search bar", not the page')
+    const aimed = await h.run('computer_act', { app: 'Webby', action: 'key', text: 'Tab', element: 3 })
+    expect(last(h, 'action.run').params.action).toMatchObject({ action: 'key', element: 3 })
+    expect(aimed.steps[0]).not.toContain('failed')
+  })
+})
+
+describe('the call timing (shared/computer/bridgeTiming.ts)', () => {
+  /** every request the call sends moves the clock 10 ms, so the tally is exact */
+  const timed = (): { h: ComputerHarness; sent: () => number } => {
+    const clock = new ManualClock()
+    const h = make({ clock })
+    const request = h.service.request.bind(h.service)
+    let sent = 0
+    h.service.request = ((method: string, params: unknown, opts?: unknown) => {
+      if (method !== 'permissions.request') {
+        sent++
+        clock.t += 10
+      }
+      return (request as (m: string, p: unknown, o?: unknown) => Promise<unknown>)(method, params, opts)
+    }) as typeof h.service.request
+    return { h, sent: () => sent }
+  }
+
+  it("sums each service request's round trip and the observation's wait", async () => {
+    const { h, sent } = timed()
+    const timing = new CallTiming()
+    expect((await h.run('computer_observe', { app: 'TextEdit' }, 't1', { timing })).isError).toBe(false)
+    expect(sent()).toBeGreaterThan(1)
+    expect(timing.serviceMs).toBe(10 * sent())
+    expect(timing.waitedMs).toBe(12)
+  })
+
+  it('counts the request a forgotten session made it send again', async () => {
+    const { h, sent } = timed()
+    await h.run('computer_observe', { app: 'TextEdit' })
+    await h.service.request('session.close', { session: 't1' })
+    const before = sent()
+    const gets = count(h, 'state.get')
+    const timing = new CallTiming()
+    expect((await h.run('computer_observe', { app: 'TextEdit' }, 't1', { timing })).isError).toBe(false)
+    // the refused state.get, session.open, the state.get again
+    expect(count(h, 'state.get') - gets).toBe(2)
+    expect(timing.serviceMs).toBe(10 * (sent() - before))
+    expect(timing.serviceMs).toBeGreaterThanOrEqual(30)
+  })
+
+  it("sums the waits over a batch's observations", async () => {
+    const { h } = timed()
+    await h.run('computer_observe', { app: 'TextEdit' })
+    const timing = new CallTiming()
+    const o = await h.run('computer_batch', { app: 'TextEdit', actions: [{ action: 'left_click', element: 21 }, { action: 'key', text: 'a' }] }, 't1', { timing })
+    expect(o.isError).toBe(false)
+    expect(timing.waitedMs).toBe(12 * (count(h, 'action.batch') + count(h, 'action.run')))
+  })
+
+  it('reads the wait of an observation and of an action or batch result, nothing else', () => {
+    const wait = { waitedMs: 30, settled: true, busy: false, reason: 'quiet' }
+    expect(waitedIn({ text: 'app', waited: wait })).toBe(30)
+    expect(waitedIn({ step: {}, observation: { waited: wait } })).toBe(30)
+    expect(waitedIn({ steps: [], waited: wait, observation: { waited: wait } })).toBe(30)
+    expect(waitedIn({ apps: [] })).toBe(0)
+    expect(waitedIn(null)).toBe(0)
+  })
+
+  it("traces a call of this host's own thread as one [computer] timing line, and a bridged call never", async () => {
+    const clock = new ManualClock()
+    const lines: string[] = []
+    const h = make({ clock, trace: true, log: (l) => void lines.push(l) })
+    const request = h.service.request.bind(h.service)
+    h.service.request = ((method: string, params: unknown, opts?: unknown) => {
+      clock.t += 10
+      return (request as (m: string, p: unknown, o?: unknown) => Promise<unknown>)(method, params, opts)
+    }) as typeof h.service.request
+    await h.run('computer_observe', { app: 'TextEdit' })
+    const timing = lines.filter((l) => l.includes(' timing '))
+    expect(timing).toHaveLength(1)
+    expect(timing[0]).toMatch(/^\[computer\] thread=t1 timing total=\d+ queue=0 run=\d+ tool=computer_observe service=\d+ waited=12$/)
+    const fields = parseTimingLine(timing[0])!
+    expect(fields.total).toBe(fields.service)
+    // a bridged call (remote/macComputer.ts) brings its own tally and its line is the box's
+    await h.run('computer_observe', { app: 'TextEdit' }, 't1', { timing: new CallTiming() })
+    expect(lines.filter((l) => l.includes(' timing '))).toHaveLength(1)
+  })
+
+  it('a call without a tally sends the same requests', async () => {
+    const h = make()
+    expect((await h.run('computer_observe', { app: 'TextEdit' })).isError).toBe(false)
   })
 })

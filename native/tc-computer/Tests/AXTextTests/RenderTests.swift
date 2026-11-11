@@ -45,6 +45,19 @@ import Testing
         #expect(layout.header(HeaderFacts(focused: 4, loading: true, change: .diff, thin: true))
                 == "app \"Mail\" · window \"Inbox\" · 800×600 · focused [4] · still loading · changes since your last read · thin tree, see the screenshot")
         #expect(layout.header(HeaderFacts(change: .unchanged)) == "app \"Mail\" · window \"Inbox\" · 800×600 · no changes")
+        // §25.3: in loading's place, never beside it
+        #expect(layout.header(HeaderFacts(focused: 4, change: .diff, notDrawn: true))
+                == "app \"Mail\" · window \"Inbox\" · 800×600 · focused [4] · page not drawn · changes since your last read")
+        #expect(layout.header(HeaderFacts(loading: true, notDrawn: true)) == "app \"Mail\" · window \"Inbox\" · 800×600 · still loading")
+    }
+
+    @Test func onlyAWindowReadSaysPageNotDrawn() {
+        let s = snapshot([t.window([t.node("AXButton", title: "Go", actions: ["AXPress"])])])
+        #expect(Reader().read(s, page: .notDrawn).text.hasPrefix("app \"TextEdit\" · window \"Untitled\" · 1280×1072 · page not drawn\n"))
+        #expect(!Reader().read(s, page: .loading).text.contains("page not drawn"))
+        let reader = Reader()
+        reader.read(s)
+        #expect(!reader.read(s, subtree: 1, page: .notDrawn).text.contains("page not drawn"))
     }
 
     @Test func theOtherWindowsLine() {

@@ -29,7 +29,7 @@ import { PermissionRow } from "./PermissionRow";
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
-/** When a step that needs the app in front gets it (docs/computer-protocol.md §25.6). */
+/** When a step that needs the app in front gets it (docs/computer-protocol.md §26.6). */
 const ACTIVE_APP_CHOICES: { value: ActiveAppMode; label: string }[] = [
   { value: "brief", label: "Bring it forward for a moment" },
   { value: "away", label: "Wait until I'm away" },

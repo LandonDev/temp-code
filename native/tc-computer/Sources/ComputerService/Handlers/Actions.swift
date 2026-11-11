@@ -4,6 +4,7 @@ import ComputerProtocol
 import struct ComputerProtocol.WindowRef
 import ComputerServiceKit
 import Foundation
+import Input
 
 /// Input, handed to a worker closure.
 struct InputBox: @unchecked Sendable {
@@ -16,8 +17,13 @@ private struct StepRun {
     /// `t0`: the step's last input, for the wait after it; nil when it posted none
     var t0: UInt64?
     var signature0: UInt64 = 0
+    /// the step's effect as Input read it itself (§25.7: a web toggle's value read back); it stands in for the wait's
+    var inputEffect: StepEffect?
     /// the step failed or was cancelled
     var stops: Bool { if case .ok = step { return false } else { return true } }
+
+    /// the wait's verdict, unless Input read the step's effect itself
+    func effect(_ waited: StepEffect) -> StepEffect { inputEffect ?? waited }
 }
 
 private struct Performed: Sendable {
@@ -27,10 +33,21 @@ private struct Performed: Sendable {
     let returnedAt: UInt64
 }
 
-/// The call a step is in, for Input's person guard: its token, the host's person idle at its start.
+/// The call a step is in, for Input's person guard: its token, the host's person idle at its start; and its
+/// §25.9 facts: the process is Chromium, the expected focus (an epoch-checked index) and the call's actions,
+/// by which `FocusCheck.bindsExpectation` names the one step the expectation binds.
 struct StepCall: Sendable {
     let token: Int?
     let personIdleMs: Int?
+    var chromium = false
+    var expectFocus: Int?
+    var actions: [ComputerAction] = []
+
+    /// The index the step at `index` expects focused: the call's `expectFocus` on the step it binds alone.
+    func expectation(at index: Int) -> Int? {
+        guard let expectFocus, FocusCheck.bindsExpectation(step: index, of: actions) else { return nil }
+        return expectFocus
+    }
 }
 
 extension ComputerService {
@@ -39,7 +56,8 @@ extension ComputerService {
         router.on("action.run", keepsResult: true) { [self] (p: Methods.ActionRun.Params, ctx) -> ActionResult in
             let result = try await runActions(
                 session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch,
-                actions: [p.action], tiers: p.tiers, stepWait: nil, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, personIdleMs: p.personIdleMs, ignored: p.ignored, ctx: ctx
+                actions: [p.action], tiers: p.tiers, stepWait: nil, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, personIdleMs: p.personIdleMs, ignored: p.ignored,
+                tabs: p.tabs, expectFocus: p.expectFocus, ctx: ctx
             )
             return features.fit(ActionResult(
                 step: result.steps[0], observation: result.observation, observationError: result.observationError, front: result.front,
@@ -49,7 +67,8 @@ extension ComputerService {
         router.on("action.batch", keepsResult: true) { [self] (p: Methods.ActionBatch.Params, ctx) in
             features.fit(try await runActions(
                 session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch,
-                actions: p.actions, tiers: p.tiers, stepWait: p.stepWait, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, personIdleMs: p.personIdleMs, ignored: p.ignored, ctx: ctx
+                actions: p.actions, tiers: p.tiers, stepWait: p.stepWait, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, personIdleMs: p.personIdleMs, ignored: p.ignored,
+                tabs: p.tabs, expectFocus: p.expectFocus, ctx: ctx
             ))
         }
     }
@@ -58,16 +77,20 @@ extension ComputerService {
     /// change the screen, a stop at the first failure, the `action` wait once after the last step that ran,
     /// one observation. `pasteQuietMs` goes to Input with every step: a paste refuses a copy that recent.
     /// `personIdleMs` too: the person guard gives typing back only after a call whose person was that recent (§14.9.4).
-    /// The whole call runs under the front guard (§23.4), its report on the result.
+    /// The whole call runs under the front guard (§23.4), its report on the result. `tabs` and `expectFocus`
+    /// are §25.4's and §25.9's: a ref naming a background tab selects it under the call's exclusive slot, and
+    /// the expected focus binds the step `FocusCheck.bindsExpectation` names.
     func runActions(
         session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, actions: [ComputerAction],
-        tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil, ctx: RequestContext
+        tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil,
+        tabs: TabsMode? = nil, expectFocus: Int? = nil, ctx: RequestContext
     ) async throws -> BatchResult {
         let guarded = FrontRun(front, actions: actions, tiers: tiers, tail: env.timing.frontActionTail)
         do {
             let result = try await runActions(
                 session: session, app: app, window: window, launch: launch, epoch: callEpoch, actions: actions, tiers: tiers,
-                stepWait: stepWait, wait: wait, observe: observe, pasteQuietMs: pasteQuietMs, personIdleMs: personIdleMs, ignored: ignored, ctx: ctx, front: guarded
+                stepWait: stepWait, wait: wait, observe: observe, pasteQuietMs: pasteQuietMs, personIdleMs: personIdleMs, ignored: ignored,
+                tabs: tabs, expectFocus: expectFocus, ctx: ctx, front: guarded
             )
             return result.with(front: guarded.answered(result, cancelled: ctx.cancel.isSet))
         } catch {
@@ -78,13 +101,11 @@ extension ComputerService {
 
     private func runActions(
         session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, actions: [ComputerAction],
-        tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int?, personIdleMs: Int?, ignored: IgnoredRoutes?, ctx: RequestContext, front: FrontRun
+        tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int?, personIdleMs: Int?, ignored: IgnoredRoutes?,
+        tabs: TabsMode?, expectFocus: Int?, ctx: RequestContext, front: FrontRun
     ) async throws -> BatchResult {
-        for action in actions {
-            for element in [action.element, action.start_element].compactMap({ $0 }) {
-                if let failure = EpochCheck.check(names: element, epoch: callEpoch, current: epoch) { throw failure }
-            }
-        }
+        // every index the call names, `expectFocus` with them, against the call's epoch (§4.2, §25.9)
+        if let failure = CallIndexes.check(actions, expectFocus: expectFocus, epoch: callEpoch, current: epoch) { throw failure }
         let target = try await resolveTarget(session: session, app: app, window: window, launch: launch, ctx: ctx)
         front.watch(target)
         // a click this call makes is carried for a stream that starts until clickCarryMs after its answer
@@ -101,9 +122,19 @@ extension ComputerService {
             )
         }
         defer { lease.release() }
+        // §25.4: a ref naming a background tab selects it now, under this call's exclusive slot, which it holds
+        // through the steps and the observation; `tab_in_use` and a selection that did not take are request errors
+        var selection: TabSelection?
+        if TabPlan.decide(.act, tabSelected: target.tab?.selected).select {
+            selection = try await selectTab(target, tabs: tabs, waitMs: (wait ?? ComputerDefaults.Wait.action).busyMaxMs)
+        }
+        let chromium = await isChromium(target)
         // a call that may use the session tier is bracketed before any step, so a trip anywhere in it
         // finds its session and marks it (§14.9.5)
-        let call = StepCall(token: tiers.contains(.session) ? input.callBegan(pid: target.pid) : nil, personIdleMs: personIdleMs)
+        var call = StepCall(token: tiers.contains(.session) ? input.callBegan(pid: target.pid) : nil, personIdleMs: personIdleMs)
+        call.chromium = chromium
+        call.expectFocus = expectFocus
+        call.actions = actions
         if let token = call.token {
             book.noteSessionStep(session: session, pid: target.pid)
             book.beginCall(token: token, session: session, pid: target.pid)
@@ -127,7 +158,7 @@ extension ComputerService {
             let isLast = index == actions.count - 1
             if !run.stops && !isLast, let t0 = run.t0, case .ok(let ok) = run.step {
                 let waited = await waitAfter(target, options: stepWait ?? ComputerDefaults.Wait.step, t0: t0, signature0: run.signature0, pasteboard: WaitRule.readsPasteboard(action), cancel: ctx.cancel)
-                run.step = .ok(ok.with(effect: waited.effect(thin: book.lastThin(session, pid: target.pid)), waited: waited.report))
+                run.step = .ok(ok.with(effect: run.effect(waited.effect(thin: book.lastThin(session, pid: target.pid))), waited: waited.report))
             }
             steps.append(run.step)
             last = run
@@ -148,7 +179,8 @@ extension ComputerService {
                 windowGone = inventory.isRunning(target.pid) ? await windowClosed(target) : true
             }
             if let at = steps.indices.last, case .ok(let ok) = steps[at] {
-                steps[at] = .ok(ok.with(effect: waited.effect(thin: book.lastThin(session, pid: target.pid), windowGone: windowGone), waited: waited.report))
+                let effect = waited.effect(thin: book.lastThin(session, pid: target.pid), windowGone: windowGone)
+                steps[at] = .ok(ok.with(effect: last.effect(effect), waited: waited.report))
             }
         }
         front.closing()
@@ -170,7 +202,8 @@ extension ComputerService {
             var knobs = ObserveKnobs(observe)
             if windowGone { knobs.mode = .full }
             let shown = windowGone ? try await windowAfterClose(target) : target
-            let observation = try await self.observe(shown, knobs, loading: waited.report.busy, waited: waited.report, cancel: ctx.cancel)
+            let switched = selection.flatMap { TabPlan.selectedTab(switched: $0.switched, title: $0.title) }
+            let observation = try await self.observe(shown, knobs, loading: waited.report.busy, waited: waited.report, selectedTab: windowGone ? nil : switched, cancel: ctx.cancel)
             return BatchResult(steps: steps, observation: observation, waited: waited.report)
         } catch {
             if ctx.cancel.isSet { await releaseHeld(session: session) }
@@ -230,6 +263,7 @@ extension ComputerService {
         let info = target.info
         let pid = target.pid
         let windowID = target.windowID
+        let expected = call.expectation(at: index)
         do {
             let done = try await target.worker.run { state -> Performed in
                 guard let reader = state.reader, let window = state.windows[windowID] else {
@@ -237,10 +271,13 @@ extension ComputerService {
                 }
                 let element = try action.element.map { try reader.resolve($0) }
                 let start = try action.start_element.map { try reader.resolve($0) }
+                // §25.9: the focus the model's latest read showed, on the one step it binds; gone is `stale_element`
+                let expectFocus = try expected.map { try reader.resolve($0) }
                 let inputTarget = InputTarget(
                     pid: pid, windowID: windowID, windowFrame: info.frame, window: window, space: space,
                     element: element, startElement: start, cursor: cursor, cancelled: { flag.isSet }, pasteQuietMs: pasteQuietMs, ignored: ignored,
-                    callToken: call.token, personIdleMs: call.personIdleMs
+                    callToken: call.token, personIdleMs: call.personIdleMs,
+                    chromium: call.chromium, expectFocus: expectFocus, briefOf: { [reader] in reader.brief(of: $0) }
                 )
                 let sig0 = reader.changes.signature()
                 let outcome = try box.input.perform(action, on: inputTarget, tiers: tiers)
@@ -256,12 +293,12 @@ extension ComputerService {
             let isCursor = action.action == .cursorPosition
             let ok = OkStep(
                 index: index, action: action.action, tier: isCursor ? nil : outcome.tier,
-                effect: WaitRule.skipped().effect(thin: false), element: done.element,
+                effect: outcome.effect ?? WaitRule.skipped().effect(thin: false), element: done.element,
                 input: outcome.via.map { OkStep.Input(via: $0, clipboard: outcome.clipboard, on: outcome.on) },
                 cursor: outcome.cursor, text: isCursor ? outcome.cursor.map { "X=\($0[0]), Y=\($0[1])" } : nil,
                 session: outcome.session
             )
-            return StepRun(step: .ok(ok), t0: isCursor ? nil : (outcome.lastInputAt ?? done.returnedAt), signature0: done.signature0)
+            return StepRun(step: .ok(ok), t0: isCursor ? nil : (outcome.lastInputAt ?? done.returnedAt), signature0: done.signature0, inputEffect: outcome.effect)
         } catch {
             let failure = ComputerService.failure(error, or: .actionUnsupported)
             // once per call, whether this step or the between-calls path tells it first
@@ -269,6 +306,13 @@ extension ComputerService {
             if failure.kind == .permissionMissing { pokePermissions() }
             return StepRun(step: .failed(FailedStep(index: index, action: action.action, error: failure)))
         }
+    }
+
+    /// §25.1: whether the target's process is Chromium, by its bundle (read once per bundle).
+    private func isChromium(_ target: Resolved) async -> Bool {
+        let source = modules.windows
+        let pid = target.pid
+        return (try? await target.worker.run { _ in source.chromium(pid: pid) }) ?? false
     }
 
     /// Whether the target window has left the app's AXWindows (a close; its CG entry may stay a while).

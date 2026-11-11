@@ -227,6 +227,17 @@ describe('app-mcp-bridge computer tools over stdio', () => {
     })
   })
 
+  it('carries a key’s element and a selected-tab result through the existing bridge call', async () => {
+    const text = 'Selected tab "Report" in window "Report - Chrome"\nkey Tab · process · changed\n\napp "Chrome" · window "Report - Chrome" · 1×1 · page not drawn'
+    const app = await startBridge((request, ws) => reply(ws, request, { text, images: [], isError: false }), tokenEnv)
+    const args = { app: 'Chrome', window: 'Report', action: 'key', element: 19, text: 'Tab' }
+    const response = await app.request('web-key', 'tools/call', { name: 'computer_act', arguments: args })
+    expect(app.requests[0]).toMatchObject({ method: 'app.computer', params: { args } })
+    expect(response.result).toEqual({ content: [{ type: 'text', text }], isError: false })
+    expect(app.requests[0].params).not.toHaveProperty('tabs')
+    expect(app.requests[0].params).not.toHaveProperty('expectFocus')
+  })
+
   it.each([undefined, 'none', 'invalid'])('uses images none for the setting %j and defaults missing arguments', async (images) => {
     const app = await startBridge((request, ws) => reply(ws, request, {
       text: 'done', images: [], isError: false

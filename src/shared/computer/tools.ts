@@ -68,7 +68,7 @@ const CLASS_OF: Partial<Record<ComputerActionName, ActionClass>> = {
   hold_key: 'key',
   type: 'type',
   paste: 'type',
-  /** the save panel's name goes in as text (§25.7) */
+  /** the save panel's name goes in as text (§26.7) */
   save_as: 'type'
 }
 const AX_ONLY: readonly ComputerActionName[] = ['set_value', 'perform', 'select_text']
@@ -96,7 +96,7 @@ export function mayRunAtAx(a: ComputerAction): boolean {
       return !a.text
     case 'paste':
     case 'type':
-    // the panel opens and takes its name over AX; only its folder needs the app in front (§25.7)
+    // the panel opens and takes its name over AX; only its folder needs the app in front (§26.7)
     case 'save_as':
       return true
     default:
@@ -349,7 +349,7 @@ export const TierVerdictSchema = z.object({
   }),
   /** steps in a row with effect 'none' (or 'uncommitted') at `process` */
   misses: ClassCountsSchema,
-  /** steps in a row with effect 'none' or 'uncommitted' at `front` (§25, decision 11) */
+  /** steps in a row with effect 'none' or 'uncommitted' at `front` (§26, decision 11) */
   frontMisses: ClassCountsSchema.optional(),
   /**
    * This app's background windows have been seen not key: a process-tier keys
@@ -366,7 +366,8 @@ export const TierVerdictSchema = z.object({
     .object({
       hit: z.number().int().nonnegative().optional(),
       caret: z.number().int().nonnegative().optional(),
-      'scroll-page': z.number().int().nonnegative().optional()
+      'scroll-page': z.number().int().nonnegative().optional(),
+      'scroll-into-view': z.number().int().nonnegative().optional()
     })
     .optional(),
   /** when the host last ran `input.probe` on this app, epoch ms: a probe runs once per app */
@@ -392,9 +393,9 @@ export const EFFECT_WORDS: Readonly<Record<StepEffect, string>> = {
   unknown: "can't tell",
   uncommitted: 'on screen only, not on disk'
 }
-/** Between `uncommitted`'s words and what commits the step instead (§25.12). */
+/** Between `uncommitted`'s words and what commits the step instead (§26.12). */
 export const HINT_SEPARATOR = '; '
-/** The disk part of a step line, after its effect (§25.12). */
+/** The disk part of a step line, after its effect (§26.12). */
 export const DISK_PREFIX = 'on disk: '
 /** Anthropic's own sentence, with "batch" for "turn". */
 export const NOT_EXECUTED_LINE = 'Not executed: an earlier action in this batch failed.'
@@ -471,7 +472,7 @@ export function stepTarget(action: ComputerAction, brief?: ElementBrief): string
 }
 
 /**
- * What the commit check found, in the step line's words (§25.12): `saved ~/run/Total.txt`,
+ * What the commit check found, in the step line's words (§26.12): `saved ~/run/Total.txt`,
  * `renamed ~/run/a.txt to ~/run/b.txt`; null when there is nothing to say.
  */
 export function diskWords(disk: DiskChange | undefined): string | null {
@@ -517,7 +518,7 @@ export function formatStepLine(step: StepResult, action: ComputerAction): string
 }
 
 /** The background routes (§24.8): the line names them with what they acted on, `menu File › Close`. */
-export const FALLBACK_VIAS: readonly InputVia[] = ['menu', 'hit', 'caret', 'scroll-bar', 'scroll-page']
+export const FALLBACK_VIAS: readonly InputVia[] = ['menu', 'hit', 'caret', 'scroll-bar', 'scroll-page', 'pick', 'scroll-into-view']
 
 /** How a step went in: a fallback route and what it acted on, `type`'s way, else the tier. A paste that went by the clipboard names its tier. */
 function howWords(action: ComputerAction, step: Extract<StepResult, { status: 'ok' }>): string {

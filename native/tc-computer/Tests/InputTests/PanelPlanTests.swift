@@ -8,7 +8,7 @@ import Testing
 @testable import Input
 #endif
 
-// `save_as`'s pure parts (docs/computer-protocol.md §25.7). Foundation only: the box runs this file
+// `save_as`'s pure parts (docs/computer-protocol.md §26.7). Foundation only: the box runs this file
 // from scripts/computer-text-test.sh, the Mac in InputTests.
 
 private let home = "/Users/me"

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  formatHeader,
   ACTION_WORDS,
   MENU_CLOSED_NOTE,
   KeyComboError,
@@ -115,6 +116,17 @@ describe('observations', () => {
     const p = parseObservation(`${header} · focused [4] · still loading · changes since your last read · thin tree, see the screenshot`)
     expect(p.header).toMatchObject({ focused: 4, loading: true, change: 'diff', thin: true })
     expect(parses(`${header} · thin tree, see the screenshot · still loading`)).toBe(false)
+  })
+
+  it('read and write page not drawn after the focus, never beside still loading (§25.2)', () => {
+    const line = `${header} · focused [4] · page not drawn · changes since your last read`
+    const p = parseObservation(line)
+    expect(p.header).toMatchObject({ focused: 4, loading: false, notDrawn: true, change: 'diff' })
+    expect(formatObservation(p)).toBe(line)
+    expect(parses(`${header} · still loading · page not drawn`)).toBe(false)
+    expect(formatHeader({ app: 'A', window: 'W', width: 1, height: 1, loading: true, notDrawn: true, change: null, thin: false })).toBe(
+      'app "A" · window "W" · 1×1 · still loading'
+    )
   })
 
   it('hold a tree to its shape', () => {
@@ -240,7 +252,7 @@ describe('key combos', () => {
   })
 })
 
-describe('the document line (§25.10) and the menu note (§25.11)', () => {
+describe('the document line (§26.10) and the menu note (§26.11)', () => {
   const head = 'app "TextEdit" · window "Total.txt" · 800×600'
   it('reads a file, an unsaved document and a folder back to the same text', () => {
     for (const doc of ['file "~/run/Total.txt" written 14:02:11 · edited', 'file "~/run/Total.txt" written 14:02:11', 'file: not saved yet · edited', 'folder "~/run"']) {

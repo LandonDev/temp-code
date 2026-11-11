@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": 62,
+  "result": {
+    "step": {
+      "index": 0,
+      "action": "type",
+      "status": "failed",
+      "error": {
+        "kind": "focus_moved",
+        "message": "The keys would go to [9] input \"Address and search bar\", not the page; name the element they are for.",
+        "element": 9,
+        "reason": "browser-field",
+        "focused": {
+          "index": 9,
+          "line": "input \"Address and search bar\""
+        }
+      }
+    }
+  }
+}

@@ -34,10 +34,16 @@ function walk(dir: string): string[] {
   })
 }
 
-/** A second request of one method: `input.restoreSession` right after the person's touch stopped a step. */
+/**
+ * A second request of one method: `input.restoreSession` right after the person's touch stopped a step; a
+ * browser's tabs (§25): a read naming a background tab, a key with `expectFocus`.
+ */
 const VARIANTS: Readonly<Record<string, ComputerMethod>> = {
   'input.restoreSession.after-interrupt.request.json': 'input.restoreSession',
-  // a host that speaks the front tier, save_as and the commit check (§25); the plain files are an older peer's
+  'apps.list.tabs.request.json': 'apps.list',
+  'state.get.tab.request.json': 'state.get',
+  'action.run.expect-focus.request.json': 'action.run',
+  // a host that speaks the front tier, save_as and the commit check (§26); the plain files are an older peer's
   'initialize.features.request.json': 'initialize',
   'action.run.front.request.json': 'action.run',
   'action.run.save_as.request.json': 'action.run'
@@ -46,8 +52,15 @@ const RESULT_VARIANTS: Readonly<Record<string, ComputerMethod>> = {
   'initialize.features.response.json': 'initialize',
   'action.run.front.response.json': 'action.run'
 }
-/** A second response of one method: the restore that ended a person guard (§14.9). */
-const RESPONSE_VARIANTS: Readonly<Record<string, ComputerMethod>> = { 'input.restoreSession.guarded.response.json': 'input.restoreSession' }
+/**
+ * A second response of one method: the restore that ended a person guard (§14.9); a browser window's tabs, a
+ * page not drawn and the tab a read selected (§25).
+ */
+const RESPONSE_VARIANTS: Readonly<Record<string, ComputerMethod>> = {
+  'input.restoreSession.guarded.response.json': 'input.restoreSession',
+  'apps.list.tabs.response.json': 'apps.list',
+  'state.get.tab.response.json': 'state.get'
+}
 const notificationFile = (method: string): string => `notify-${method.replace(/^\$\//, '').replace(/\//g, '-')}.json`
 const serviceNotes = ComputerNotificationSchema.options.map((o) => o.shape.method.value)
 const hostNotes = HostNotificationSchema.options.map((o) => o.shape.method.value)
@@ -100,7 +113,7 @@ describe('wire fixtures', () => {
     }
   })
 
-  it('keep the front tier, save_as and features out of what an older peer sends (§25, decision 14)', () => {
+  it('keep the front tier, save_as and features out of what an older peer sends (§26, decision 14)', () => {
     expect(json(join(wire, 'initialize.request.json'))).not.toHaveProperty('params.features')
     expect(json(join(wire, 'initialize.response.json'))).not.toHaveProperty('result.features')
     expect(resultFrameSchema('initialize').parse(json(join(wire, 'initialize.features.response.json'))).result.features).toEqual(['front', 'commit', 'save_as'])
@@ -196,6 +209,7 @@ describe('recorded app fixtures', () => {
     'chrome/form',
     'chrome/menu-open',
     'chrome/loading',
+    'chrome/not-drawn',
     'tempcode-dev/first-run',
     'tempcode-dev/thread',
     'intellij/project',

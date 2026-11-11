@@ -7,6 +7,7 @@
 import { mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AgentEvent, EventRow } from '../../src/shared/events'
+import type { CoverageNote } from './windowCover'
 import { bareToolName, stepsOf, toolKind, type BenchCall, type BenchProvider } from './computerBench'
 
 // ── flags ───────────────────────────────────────────────────────────────
@@ -25,6 +26,7 @@ export interface BenchArgs {
   runs: number | null
   /** include the session-tier tasks; the tier admitted only while the Mac is idle */
   session: boolean
+  cover: boolean
   rebaseline: boolean
   /** re-judge a saved report; runs nothing */
   judge: string | null
@@ -33,7 +35,7 @@ export interface BenchArgs {
 }
 
 export const BENCH_USAGE =
-  'usage: bun run script:e2e-computer-bench -- [--gate | --report-only | --reference codex | --judge <report.json> | --judge-field <report.json>…] [--set gate|field] [--host mac|box] [--round <label>] [--models a,b] [--tasks a,b] [--runs n] [--session] [--rebaseline]'
+  'usage: bun run script:e2e-computer-bench -- [--gate | --report-only | --reference codex | --judge <report.json> | --judge-field <report.json>…] [--set gate|field] [--host mac|box] [--round <label>] [--models a,b] [--tasks a,b] [--runs n] [--session] [--cover] [--rebaseline]'
 
 export function parseBenchArgs(argv: readonly string[]): BenchArgs {
   const out: BenchArgs = {
@@ -45,6 +47,7 @@ export function parseBenchArgs(argv: readonly string[]): BenchArgs {
     tasks: null,
     runs: null,
     session: false,
+    cover: false,
     rebaseline: false,
     judge: null,
     judgeField: null
@@ -86,11 +89,13 @@ export function parseBenchArgs(argv: readonly string[]): BenchArgs {
       if (!Number.isInteger(n) || n < 1 || n > 10) throw new Error('--runs takes a whole number from 1 to 10')
       out.runs = n
     } else if (a === '--session') out.session = true
+    else if (a === '--cover') out.cover = true
     else if (a === '--rebaseline') out.rebaseline = true
     else throw new Error(`unknown argument ${a}\n${BENCH_USAGE}`)
   }
   if (modes.size > 1) throw new Error(`--gate, --report-only and --reference go alone (got ${[...modes].join(', ')})`)
   if (out.mode === 'gate' && out.runs !== null) throw new Error('--runs is for a hand run; --gate runs each task once and reruns a breach')
+  if (out.cover && (out.set !== 'field' || !['hand', 'reference'].includes(out.mode))) throw new Error('--cover is for a hand run with --set field')
   if (out.set === 'field') {
     if (out.mode === 'gate' || out.mode === 'report-only') throw new Error('--set field is a hand run (or --reference codex); the gate’s run and tasks stay as they are')
     if (out.rebaseline) throw new Error('--set field never writes the gate’s baseline')
@@ -187,6 +192,7 @@ export interface HostCall {
   steps: string[]
   shots: number
   isError: boolean
+  coverage?: CoverageNote | null
 }
 
 export interface RowFacts {
@@ -270,7 +276,8 @@ export function readRun(
       steps: h ? stepsOf(h.steps) : [],
       screenshotAsked: askedShot(name, input),
       shots: h?.shots ?? 0,
-      isError: h?.isError ?? false
+      isError: h?.isError ?? false,
+      ...(h?.coverage !== undefined ? { coverage: h.coverage } : {})
     })
   }
   const cards = inWindow.flatMap((r) =>

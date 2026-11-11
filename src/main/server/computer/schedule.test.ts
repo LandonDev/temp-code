@@ -801,7 +801,7 @@ describe('the clipboard', () => {
   })
 })
 
-describe('the front tier (§25.6)', () => {
+describe('the front tier (§26.6)', () => {
   it('is admitted at once with the person present under the default, never locked or asleep', async () => {
     const { w, s } = setup()
     w.input()

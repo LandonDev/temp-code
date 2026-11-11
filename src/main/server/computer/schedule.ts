@@ -178,7 +178,7 @@ export class SessionScheduler implements SessionTierGate {
   }
 
   /**
-   * `front` (§25.6): at once under `computer.activeApp` `brief` (the default) or with Away on, never
+   * `front` (§26.6): at once under `computer.activeApp` `brief` (the default) or with Away on, never
    * locked or asleep; under `away` only while the session tier would be. The service's own keyboard-quiet
    * wait runs as each hold starts.
    */
@@ -254,7 +254,7 @@ export class SessionScheduler implements SessionTierGate {
       }
     }
     const session = tiers.includes('session')
-    // a front hold posts events to the app's pid: they move the system's idle time as a session step's do (§25.4)
+    // a front hold posts events to the app's pid: they move the system's idle time as a session step's do (§26.4)
     const own = session || tiers.includes('front') ? this.opts.idle.beginOwn() : null
     st.inCall = true
     st.interruptedInCall = false

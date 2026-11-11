@@ -1,0 +1,16 @@
+{
+  "jsonrpc": "2.0",
+  "id": 65,
+  "method": "state.get",
+  "params": {
+    "session": "thread-9fK2",
+    "app": {
+      "app": "Google Chrome for Testing"
+    },
+    "window": {
+      "title": "TC field report"
+    },
+    "tabs": "background",
+    "screenshot": "never"
+  }
+}

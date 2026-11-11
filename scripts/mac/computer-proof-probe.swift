@@ -8,6 +8,9 @@
 //   frontmost   {"pid":..,"bundleId":..}  the active app's pid (0 when there is none) and bundle id
 //   frontwindow {"pid":..,"window":..}  the active app's pid and its frontmost on-screen window's
 //               CGWindowID (0 when it shows none), read from the window list with no grant
+//   windows     [{id,pid,layer,alpha,x,y,w,h},...] CGWindowList, front to back; no titles
+//   restore-front <pid> <window> restores a launch steal to the saved app and exact window bounds
+//   omnibox <pid> [focus] reads, or AX-focuses and reads, the scratch browser address field
 //   frontwatch --every <ms>
 //               the active app's pid sampled every tick, one line {"pid":..,"at":..} per change
 //               (the first sample too) until killed: the front guard measurement's own record
@@ -31,6 +34,7 @@
 //               the person's pasteboard kept aside and put back around the proof's own copy; digest is
 //               a sha256 over every item's types and data
 import AppKit
+import ApplicationServices
 import CryptoKit
 
 func emit(_ object: [String: Any], exitAfter: Bool = true) {
@@ -77,6 +81,76 @@ case "frontwindow":
     let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
     let top = list.first { ($0[kCGWindowOwnerPID as String] as? Int) == Int(pid) && ($0[kCGWindowLayer as String] as? Int) == 0 }
     emit(["pid": Int(pid), "window": top?[kCGWindowNumber as String] as? Int ?? 0])
+
+case "windows":
+    let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    let rows: [[String: Any]] = list.map { w in
+        let b = w[kCGWindowBounds as String] as? [String: Double] ?? [:]
+        return ["id": w[kCGWindowNumber as String] as? Int ?? 0,
+                "pid": w[kCGWindowOwnerPID as String] as? Int ?? 0,
+                "layer": w[kCGWindowLayer as String] as? Int ?? 0,
+                "alpha": w[kCGWindowAlpha as String] as? Double ?? 1,
+                "x": b["X"] ?? 0, "y": b["Y"] ?? 0,
+                "w": b["Width"] ?? 0, "h": b["Height"] ?? 0]
+    }
+    let data = try! JSONSerialization.data(withJSONObject: rows, options: [.sortedKeys])
+    FileHandle.standardOutput.write(data + Data([0x0A]))
+    exit(0)
+
+case "restore-front":
+    guard args.count == 3, let pid = pid_t(args[1]), let window = UInt32(args[2]),
+          let running = NSRunningApplication(processIdentifier: pid) else { fail("restore-front <pid> <window>") }
+    let app = AXUIElementCreateApplication(pid)
+    // Match the saved CGWindowID's bounds to its AX window, rather than choosing another window of the app.
+    if window != 0 {
+        let list = CGWindowListCopyWindowInfo(.optionIncludingWindow, window) as? [[String: Any]] ?? []
+        guard let record = list.first, (record[kCGWindowOwnerPID as String] as? Int) == Int(pid),
+              let bounds = record[kCGWindowBounds as String] as? [String: Double] else { fail("saved front window is gone") }
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success,
+              let windows = value as? [AXUIElement] else { fail("saved app windows are unreadable") }
+        let matches = windows.filter { w in
+            var pointValue: CFTypeRef?, sizeValue: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(w, kAXPositionAttribute as CFString, &pointValue) == .success,
+                  AXUIElementCopyAttributeValue(w, kAXSizeAttribute as CFString, &sizeValue) == .success,
+                  let pv = pointValue, let sv = sizeValue,
+                  CFGetTypeID(pv) == AXValueGetTypeID(), CFGetTypeID(sv) == AXValueGetTypeID() else { return false }
+            var point = CGPoint.zero, size = CGSize.zero
+            guard AXValueGetValue(pv as! AXValue, .cgPoint, &point), AXValueGetValue(sv as! AXValue, .cgSize, &size) else { return false }
+            return abs(point.x - (bounds["X"] ?? .infinity)) < 1 && abs(point.y - (bounds["Y"] ?? .infinity)) < 1 && abs(size.width - (bounds["Width"] ?? .infinity)) < 1 && abs(size.height - (bounds["Height"] ?? .infinity)) < 1
+        }
+        guard matches.count == 1 else { fail("saved front window could not be matched uniquely") }
+        AXUIElementPerformAction(matches[0], kAXRaiseAction as CFString)
+        AXUIElementSetAttributeValue(app, kAXFocusedWindowAttribute as CFString, matches[0])
+    }
+    let activated = running.activate(options: [])
+    usleep(300_000)
+    emit(["activated": activated])
+
+case "omnibox":
+    guard args.count >= 2, let pid = pid_t(args[1]) else { fail("omnibox <pid> [focus]") }
+    let app = AXUIElementCreateApplication(pid)
+    func attr(_ e: AXUIElement, _ name: String) -> CFTypeRef? {
+        var value: CFTypeRef?
+        return AXUIElementCopyAttributeValue(e, name as CFString, &value) == .success ? value : nil
+    }
+    var queue: [(AXUIElement, Int)] = [(app, 0)], offset = 0
+    while offset < queue.count && offset < 1000 {
+        let (e, depth) = queue[offset]; offset += 1
+        let role = attr(e, "AXRole") as? String ?? ""
+        if role == "AXWebArea" { continue }
+        let label = ["AXTitle", "AXDescription"].compactMap { attr(e, $0) as? String }.joined(separator: " ").lowercased()
+        if ["AXTextField", "AXComboBox"].contains(role), label.contains("address") {
+            if args.last == "focus" {
+                guard AXUIElementSetAttributeValue(e, "AXFocused" as CFString, kCFBooleanTrue) == .success else { fail("omnibox refused AXFocused") }
+                usleep(200_000)
+            }
+            let focused = attr(app, "AXFocusedUIElement").map { CFEqual($0, e) } ?? false
+            emit(["value": attr(e, "AXValue") as? String ?? "", "focused": focused])
+        }
+        if depth < 12 { queue += (attr(e, "AXChildren") as? [AXUIElement] ?? []).map { ($0, depth + 1) } }
+    }
+    fail("scratch omnibox not found")
 
 case "frontwatch":
     let every = millis("--every")

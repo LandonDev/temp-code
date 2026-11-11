@@ -40,11 +40,16 @@ public enum WindowMatch {
     }
 }
 
-/// AXManualAccessibility, set once per pid on its first read (plan §5.4).
-/// Success marks a Chromium or Electron process; -25205 a native one. A
-/// Chromium read that comes back thin within 5 s of the set is read again at
-/// 250, 500, 1,000, 1,500, 2,500 and 3,500 ms after it, and the first one not
-/// thin wins (an Electron window's web area came 1.5 to 3 s after the set, 2026-11-09).
+/// AXManualAccessibility, set once per pid on its first read (plan §5.4), for
+/// Electron. Whether the process is Chromium comes from its bundle
+/// (`ChromiumBundle`, §25.1): Chrome answers the set with -25205 (M1). A set
+/// that took marks a process Chromium too, as before the bundle rule.
+///
+/// Retries: a Chromium window whose selected tab has no web area is read again
+/// at 250, 500, 1,000, 1,500, 2,500 and 3,500 ms after the read, at any time
+/// (§25.2, `PageRule`); a Chromium read with no tab strip that came back thin
+/// within 5 s of the set keeps that schedule from the set (an Electron window's
+/// web area came 1.5 to 3 s after the set, 2026-11-09).
 public final class ManualAccessibility: @unchecked Sendable {
     public enum Process: Sendable, Equatable {
         /// set at this clock time, ms
@@ -52,17 +57,19 @@ public final class ManualAccessibility: @unchecked Sendable {
         case native
     }
 
-    public static let retryAfterMs: [Double] = [250, 500, 1_000, 1_500, 2_500, 3_500]
+    public static let retryAfterMs: [Double] = PageRule.rereadAfterMs
     public static let retryWindowMs: Double = 5_000
 
     private let lock = NSLock()
     private var processes: [Int32: Process] = [:]
     private let set: (Int32) -> Bool
+    private let kind: (Int32) -> ChromiumBundle.Kind
     private let clock: () -> Double
 
-    /// `set` makes the call and says whether it took; `clock` is ms on any monotonic scale.
-    public init(set: @escaping (Int32) -> Bool, clock: @escaping () -> Double) {
+    /// `set` makes the call and says whether it took; `kind` reads the bundle; `clock` is ms on any monotonic scale.
+    public init(set: @escaping (Int32) -> Bool, kind: @escaping (Int32) -> ChromiumBundle.Kind = { _ in .native }, clock: @escaping () -> Double) {
         self.set = set
+        self.kind = kind
         self.clock = clock
     }
 
@@ -71,19 +78,26 @@ public final class ManualAccessibility: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         if let known = processes[pid] { return known }
-        let kind: Process = set(pid) ? .chromium(setAt: clock()) : .native
-        processes[pid] = kind
-        return kind
+        let took = set(pid)
+        let process: Process = kind(pid).isChromium || took ? .chromium(setAt: clock()) : .native
+        processes[pid] = process
+        return process
     }
 
-    /// The clock times to read again at, for a read that came back thin now; empty when none.
-    public func retries(_ pid: Int32, thin: Bool) -> [Double] {
+    /// The clock times to read again at; empty when none. `pageMissing`: the read found a selected tab with no
+    /// page, scheduled from `readAt` (the first read's start, now when nil) whatever the time since the set.
+    /// Else `thin`: within 5 s of the set, from the set.
+    public func retries(_ pid: Int32, thin: Bool, pageMissing: Bool = false, readAt: Double? = nil) -> [Double] {
         lock.lock()
-        let kind = processes[pid]
+        let process = processes[pid]
         lock.unlock()
-        guard thin, case .chromium(let at)? = kind else { return [] }
+        guard case .chromium(let at)? = process else { return [] }
         let now = clock()
-        guard now - at < Self.retryWindowMs else { return [] }
+        if pageMissing {
+            let from = readAt ?? now
+            return Self.retryAfterMs.map { from + $0 }.filter { $0 > now }
+        }
+        guard thin, now - at < Self.retryWindowMs else { return [] }
         return Self.retryAfterMs.map { at + $0 }.filter { $0 > now }
     }
 
@@ -96,13 +110,17 @@ public final class ManualAccessibility: @unchecked Sendable {
 
 /// When a busy indicator counts as showing (spec §7, plan §5.5).
 public enum BusyRule {
-    public enum Kind: Sendable { case busy, progress, webArea }
+    /// `pageMissing`: a browser window whose selected tab has no web area yet (§25.2); its candidate is the window.
+    public enum Kind: Sendable { case busy, progress, webArea, pageMissing }
 
-    /// `clips` are the current frames of the window and of the containers above the candidate.
+    /// `clips` are the current frames of the window and of the containers above the candidate. For
+    /// `pageMissing`, `loaded` is whether the page rule finds the selected tab's page now.
     public static func showing(_ kind: Kind, frame: Rect?, hasValue: Bool, busy: Bool?, loaded: Bool?, clips: [Rect]) -> Bool {
         switch kind {
         case .webArea:
             return busy == true || loaded == false
+        case .pageMissing:
+            return loaded != true
         case .busy, .progress:
             guard let f = frame, !Viewport.isZero(f) else { return false }
             var clip: Rect?
@@ -111,6 +129,9 @@ public enum BusyRule {
             return kind == .busy || !hasValue
         }
     }
+
+    /// Whether a window's page state holds the smart wait: a selected tab with no page yet (§25.2).
+    public static func pageMissing(_ state: PageState?) -> Bool { state == .loading || state == .notDrawn }
 }
 
 /// The busy scan (A11): Chrome announces no spinner it shows (no AXCreated,

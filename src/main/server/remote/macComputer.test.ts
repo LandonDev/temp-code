@@ -518,6 +518,36 @@ describe('MacComputer: the answer', () => {
     expect(existsSync(dir)).toBe(false)
   })
 
+  it("carries the Mac's timing: the run's tally, the legs in order and the pictures' length", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'tc-mac-computer-'))
+    const s = setup({ dataDir })
+    const dir = bridgedLanding(dataDir, KEY())
+    mkdirSync(dir, { recursive: true })
+    const path = join(dir, '0001.jpg')
+    writeFileSync(path, Buffer.from([0xff, 0xd8, 1, 2, 3, 4]))
+    const shot: LandedShot = { label: 'observation', where: 'observation', path, mimeType: 'image/jpeg', width: 10, height: 20 }
+    s.fake.behave(async (r) => {
+      r.ctx.timing?.addService(30)
+      r.ctx.timing?.addService(12)
+      r.ctx.timing?.addWaited(120)
+      await new Promise((ok) => setTimeout(ok, 15))
+      return { steps: [], shots: [shot], body: 'TextEdit', isError: false }
+    })
+    const answer = await s.call()
+    const t = answer.timing!
+    expect(t).toMatchObject({ serviceMs: 42, waitedMs: 120, shotChars: answer.images[0]!.data.length })
+    expect(t.shotChars).toBe(8)
+    expect(t.runMs).toBeGreaterThanOrEqual(14)
+    expect(t.macMs).toBeGreaterThanOrEqual(t.checksMs + t.guardMs + t.runMs + t.shotsMs)
+    await s.end('ended')
+  })
+
+  it('a refusal before the run sends no answer, so no timing', async () => {
+    const s = setup({ computer: false })
+    expect(await s.settle(s.call())).toEqual({ ok: false, error: COMPUTER_SWITCH_OFF })
+    expect(s.fake.runs).toHaveLength(0)
+  })
+
   it("the bridged landing is under the data dir by the session's service id", () => {
     expect(bridgedLanding('/d', KEY('t1'))).toMatch(/^\/d\/computer\/bridged\/t_[0-9a-f]{40}$/)
   })
@@ -615,7 +645,7 @@ describe("MacComputer: the box's reader (mac.computerReader)", () => {
   })
 })
 
-describe('MacComputer: a row an older box can parse (§25, decision 14)', () => {
+describe('MacComputer: a row an older box can parse (§26, decision 14)', () => {
   const row = { tier: 'front' } as never as Parameters<typeof rowForPeer>[0]
   it('says session for a front row unless the box listed front', () => {
     expect(rowForPeer(row, false).tier).toBe('session')

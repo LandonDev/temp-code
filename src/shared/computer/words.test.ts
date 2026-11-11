@@ -367,7 +367,7 @@ describe('an open through computer_apps', () => {
   })
 })
 
-describe('the card for a step that needs the app in front (§25.6)', () => {
+describe('the card for a step that needs the app in front (§26.6)', () => {
   it('ends the title with the app coming forward for a moment', () => {
     expect(computerApprovalTitle('computer_act', { action: 'key', text: 'super+s' } as ComputerAction, ctx(), null, { front: true })).toBe(
       'Press super+s in TextEdit, window "Untitled", bringing TextEdit forward for a moment'
@@ -402,5 +402,19 @@ describe('verdictWords', () => {
     const all = verdictWords({ click: 'session', drag: 'session', hover: 'session', scroll: 'session', key: 'session', type: 'session' })
     expect(all).toBe('May take the screen to click, drag, hover, scroll, press keys and type')
     expect(all).not.toMatch(/session|process|\bax\b/)
+  })
+})
+
+
+describe('tab selection on a card (§25)', () => {
+  it('names the tab, its bound window and the acting steps', () => {
+    const context = ctx({ appName: 'Google Chrome', window: 'Front - Google Chrome', tab: 'Report' })
+    const args = { actions: [{ action: 'key' as const, text: 'Tab' }, { action: 'key' as const, text: 'Return' }] }
+    expect(computerApprovalTitle('computer_batch', args, context)).toBe('Select tab "Report" and 2 actions in Google Chrome, window "Front - Google Chrome": press Tab, press Return')
+    expect(computerApprovalInput('computer_batch', args, context).actions).toEqual(['select tab "Report"', 'press Tab', 'press Return'])
+    expect(computerApprovalTitle('computer_act', { action: 'key', text: 'Tab' } as ComputerAction, context)).toBe('Select tab "Report" and press Tab in Google Chrome, window "Front - Google Chrome"')
+    const confirm = { kind: 'send' as const, what: 'Submit the form' }
+    expect(computerApprovalTitle('computer_batch', args, context, confirm)).toContain('Send in Google Chrome: Submit the form')
+    expect(computerApprovalInput('computer_batch', args, context, confirm).actions[0]).toBe('select tab "Report"')
   })
 })

@@ -428,6 +428,9 @@ export type LinkRequest = (
   opts?: { timeoutMs?: number }
 ) => Promise<unknown>
 
+/** Chunks of one reply out at once, unacknowledged. */
+export const PEER_CHUNK_WINDOW = 2
+
 /** Send one call's outcome; a result whose JSON passes PEER_CHUNK_CHARS goes as chunks first. */
 export async function replyOverLink(
   request: LinkRequest,
@@ -454,13 +457,21 @@ export async function replyOverLink(
     })
     return
   }
-  // One frame at a time, each acknowledged: the socket never holds more than one chunk.
-  for (let i = 0; i < chunks; i++)
-    await request(
+  // Two frames out at once: the next chunk uploads while the last one's acknowledgment travels back,
+  // so the socket holds at most two chunks; the reply goes only once every chunk is acknowledged.
+  const out: Promise<unknown>[] = []
+  for (let i = 0; i < chunks; i++) {
+    if (out.length >= PEER_CHUNK_WINDOW) await out.shift()
+    const sent = request(
       'peer.chunk',
       { callId, index: i, data: json.slice(i * chunkChars, (i + 1) * chunkChars) },
       { timeoutMs: 120_000 }
     )
+    // a sibling's failure throws first; this one's own rejection is still awaited, never left unhandled
+    sent.catch(() => undefined)
+    out.push(sent)
+  }
+  for (const sent of out) await sent
   await request('peer.reply', { callId, ok: true, chunks, ...away })
 }
 

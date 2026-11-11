@@ -30,8 +30,8 @@ export const FIELD_DESCRIPTION_MAX = 200
 export const PER_VERB_DESCRIPTION_MAX = 400
 /**
  * The bridge's `tools/list` JSON, descriptions and schemas: the four tools and computer_result.
- * 15,000 since computer_apps took `open` and its `confirm` (§23): about 800 characters in the cua shape;
- * 15,500 since save_as and its two fields joined computer_act and every batch step (§25): about 300 more.
+ * Kept under 15,000 with open/confirm (§23) and the web-content words (§25).
+ * save_as and its two fields (§26) joined computer_act and every batch step: about 300 more.
  */
 export const TOOLS_LIST_MAX = 15_500
 
@@ -45,29 +45,32 @@ const ACTION_LIST =
 
 const ANTHROPIC: Record<ToolKey, string> = {
   computer_apps:
-    "Lists the Mac's running apps, the active one first: name, bundle id, and each window's title, minimized or on another Space. launch starts an installed app in the background; open opens files, folders or web pages in it, never programs. An app that comes forward anyway is sent back, and the result says so. Opening into an app that holds the person's documents can change them: prefer a file you made over File › New there. Use this when you do not know which app or window holds the work; the other tools launch an app by name.",
+    "Lists the Mac's running apps, the active one first: name, bundle id, each window's title and each browser window's tabs, minimized or on another Space. launch starts an installed app in the background; open opens files, folders or web pages in it, never programs. An app that comes forward anyway is sent back, and the result says so. Opening into an app that holds the person's documents can change them: prefer a file you made over File › New there. Use it to find the app or window; the other tools launch by name.",
   computer_observe:
     'Reads one window of an app as text: its accessibility tree, one element a line, each with an [index], its role, name, value, state and any actions beyond a click ("actions: show menu"). Start here, then act by [index]. The first read of an app in this thread is the whole tree; later reads are a diff against your last one: "-" removed, "~" changed, "+ in [n]:" added, or "no changes". It waits for the window to settle, so never sleep first, and never read again with no action between. When the header says "thin tree" a picture of the window comes too: aim with coordinates in its pixels. Title-bar buttons are elements: click close or minimize by [index]; a whole read with no close line means the window cannot close. "minimized" on the window line means it is in the Dock.',
   computer_act:
-    'Does one action in an app window, waits for the window to settle, and returns the step\'s line and the window as a diff: that is your next read. The actions are the computer tool\'s, with its parameters: left_click, right_click, middle_click, double_click, triple_click, left_click_drag, mouse_move, left_mouse_down, left_mouse_up, scroll, type, key, hold_key, wait, screenshot, zoom, cursor_position. Four more work on an element: set_value replaces its value, perform runs an action word it lists or one its role does by default, select_text selects text in it, paste puts in text, markdown or HTML and gives back the clipboard. Aim with element, or coordinate on a thin tree. Prefer set_value to clicking and typing. type and paste with no element go to the focused element of your latest read. key takes xdotool names: Return, Tab, Escape, super+c. The step line names the tier it ran on and whether the window changed; "no change seen" means try another way. In the background a shortcut runs its menu item, a click presses the element under it and text goes straight in; a command that needs the app in front (Save, Move to Trash) brings it forward a moment. save_as saves to a path and checks the file; "on screen only" means the disk did not change. With more than one step in view, use computer_batch. Set confirm for an act the person approves first, of a kind confirm.kind lists.',
+    'Does one action in an app window, waits for the window to settle, and returns the step\'s line and the window as a diff: that is your next read. The actions are the computer tool\'s, with its parameters: left_click, right_click, middle_click, double_click, triple_click, left_click_drag, mouse_move, left_mouse_down, left_mouse_up, scroll, type, key, hold_key, wait, screenshot, zoom, cursor_position. Four more work on an element: set_value replaces its value, perform runs an action word it lists or one its role does by default, select_text selects text in it, paste puts in text, markdown or HTML and gives back the clipboard. Aim with element, or coordinate on a thin tree. Prefer set_value to clicking and typing. type and paste with no element go to the focused element of your latest read. key takes xdotool names: Return, Tab, Escape, super+c. The step line names the tier it ran on and whether the window changed; "no change seen" means try another way. In the background a shortcut runs its menu item, a click presses the element under it and text goes straight in; a command that needs the app in front (Save, Trash) brings it forward briefly. save_as saves to path and checks the file; "on screen only" means not on disk. For several steps, use computer_batch. Set confirm for an act the person approves first, of a kind confirm.kind lists.',
   computer_batch:
-    'Does up to 20 actions in order in one app window, waits once, and returns a line per step and one read of the window: the fast way to work. Put in every step your latest read lets you foresee: click a field, type, press Tab, type, click Save. Each step is an object with action ({actions}) and that action\'s parameters, {steps}. An element the batch makes appear needs the next read. After another action in the same batch, type and paste name their element. The batch stops at the first failure and the steps after it say Not executed. Each step line names how the step went in. End the batch before a step that needs confirm and send that step alone. You are done when the returned tree shows the result, not when the actions ran.',
+    'Does up to 20 actions in order in one app window, waits once, and returns a line per step and one read of the window: the fast way to work. Batch every step your read lets you foresee: click, type, press Tab, type, click Save. Each step is an object with action ({actions}) and that action\'s parameters, {steps}. An element the batch makes appear needs the next read. After another action in the same batch, type and paste name their element. The batch stops at the first failure and the steps after it say Not executed. End the batch before a step that needs confirm and send that step alone. You are done when the returned tree shows the result, not when the actions ran.',
   computer_result:
     'Gets the result of a computer call that answered "Held", by its id, waiting up to 20 s, or says it is still held. cancel: true cancels it; a held call never runs unless you ask for its result.'
 }
 
 const CUA: Record<ToolKey, string> = {
   computer_apps:
-    "Lists the Mac's running apps and their windows, the active app first: names, bundle ids, window titles, minimized or on another Space. launch opens an installed app in the background; open hands it files, folders or web pages, never programs. If the app comes forward anyway, the person's app is put back and the result says so. Opening into an app holding the person's documents can change them: prefer a file you made over File › New there. Call it when you do not know which app or window holds the work.",
+    "Lists the Mac's running apps and their windows, the active app first: names, bundle ids, window titles and each browser window's tabs, minimized or on another Space. launch opens an installed app in the background; open hands it files, folders or web pages, never programs. If the app comes forward anyway, the person's app is put back and the result says so. Opening into an app holding the person's documents can change them: prefer a file you made over File › New there. Use it to find the app or window.",
   computer_observe:
-    'This is getAXState: one window\'s accessibility tree as text, an [index] on each element with its role, name, value, state and any actions beyond a click ("actions: show menu"). Call it first, then act on elements by [index]. Your first read of an app in this thread is the whole tree; after that you get a diff against your last read ("-" removed, "~" changed, "+ in [n]:" added, or "no changes"). It waits for the window to settle, so do not sleep before it, and do not call it again with no action between. When the header says "thin tree" a picture of the window comes too: then use coordinates in its pixels. Title-bar buttons are elements: click(index) close or minimize; a whole read with no close line means the window cannot close. "minimized" on the window line: it is in the Dock.',
+    'This is getAXState: one window\'s accessibility tree as text, an [index] on each element with its role, name, value, state and any actions beyond a click ("actions: show menu"). Call it first, then act on elements by [index]. The first read of an app in this thread is the whole tree; later reads diff your last one ("-" removed, "~" changed, "+ in [n]:" added, or "no changes"). It waits for the window to settle: do not sleep first or read twice with no action between. When the header says "thin tree" a picture of the window comes too: then use coordinates in its pixels. Title-bar buttons are elements: click(index) close or minimize; a whole read with no close line means the window cannot close. "minimized" on the window line: it is in the Dock.',
   computer_act:
-    'Runs one action in an app window, waits for it to settle, and returns the step\'s line and the window\'s state as a diff: your next read. left_click with element is click(index); set_value is setValue and replaces an element\'s value; perform is performSecondaryAction and takes an action name the element lists or one its role does by default; select_text is selectText; type is typeText; key is pressKey, xdotool syntax (Return, Tab, Escape, super+c); paste is paste, text, markdown or HTML with the clipboard restored. The rest are the computer tool\'s pointer and screen actions: right_click, middle_click, double_click, triple_click, left_click_drag, mouse_move, left_mouse_down, left_mouse_up, scroll, hold_key, wait, screenshot, zoom, cursor_position. Name an element by its [index], or use coordinate on a thin tree. Prefer setValue to a click and typeText. type and paste with no element go to the focused element of your latest read. The step line names its tier and whether the window changed; "no change seen" means try another way. In the background pressKey runs the combo\'s menu item, click presses the element under it and text goes straight in; a command that needs the app in front (Save, Move to Trash) brings it forward a moment. save_as saves to a path and checks the file; "on screen only" means the disk did not change. When you can see more than one step ahead, use computer_batch. Set confirm when the person must approve this act first, of a kind confirm.kind lists.',
+    'Runs one action, waits for the window to settle, and returns its line and a diff: your next read. left_click with element is click(index); set_value is setValue and replaces an element\'s value; perform is performSecondaryAction and takes an action name the element lists or one its role does by default; select_text is selectText; type is typeText; key is pressKey, xdotool syntax (Return, Tab, Escape, super+c); paste is paste, text, markdown or HTML with the clipboard restored. Other pointer and screen actions: right_click, middle_click, double_click, triple_click, left_click_drag, mouse_move, left_mouse_down, left_mouse_up, scroll, hold_key, wait, screenshot, zoom, cursor_position. Use element [index], or coordinate on a thin tree. Prefer setValue to typeText. type and paste with no element go to the focused element of your latest read. The step line names its tier and whether the window changed; "no change seen" means try another way. In the background pressKey runs the combo\'s menu item, click presses the element under it and text goes straight in; a command that needs the app in front (Save, Trash) brings it forward briefly. save_as saves to path and checks the file; "on screen only" means not on disk. For several steps, use computer_batch. Set confirm for acts the person must approve, using a confirm.kind.',
   computer_batch:
-    'This is one cua_repl script: up to 20 actions run in order in one app window, then it waits once and returns a line per step and the window\'s state. Each step is an object with action ({actions}) and that action\'s parameters, {steps}. Put in every step your latest read lets you foresee: click a field, type, press Tab, type, click Save. An element the batch makes appear needs the next read. After another action in the same batch, type and paste name their element. The batch stops at the first failure; the steps after it say Not executed. End the batch before a step that needs confirm and send that step alone. An action tried is not a task done: keep going until the returned state shows the result, or name what blocks you.',
+    'This is one cua_repl script: up to 20 actions run in order in one app window, then it waits once and returns a line per step and the window\'s state. Each step is an object with action ({actions}) and that action\'s parameters, {steps}. Batch every step your read lets you foresee: click, type, press Tab, type, click Save. An element the batch makes appear needs the next read. After another action in the same batch, type and paste name their element. The batch stops at the first failure; the steps after it say Not executed. End the batch before a step that needs confirm and send that step alone. An action tried is not a task done: keep going until the returned state shows the result, or name what blocks you.',
   computer_result:
     'Waits up to 20 s for the result of a computer call that answered "Held", named by its id, or says it is still held. With cancel: true it cancels the call instead; a held call never runs unless you ask for its result.'
 }
+
+const WEB_OBSERVE = "In a browser, window may name a tab: a background tab is selected first and the result says so. \"page not drawn\" means the window is covered and the browser has not drawn that tab: perform raise on its window draws it when the Mac is free. \"… N more below\" under a list or table in a page: observe with element set to its [index] reads its rows, up to a few thousand; past that the read says it was cut, and you read on from a later row."
+const WEB_ACT = "In a web page, set_value on a pop up picks the item of that name, and a value that did not take fails the step. key takes element to focus first; in a browser, text and keys with no element never go into its address bar."
 
 const STEPS_AS: Record<ToolShape, string> = {
   act: 'as computer_act takes them',
@@ -77,7 +80,12 @@ const STEPS_AS: Record<ToolShape, string> = {
 /** One tool's description in a word shape; computer_batch says where its steps' parameters are described. */
 export function toolDescription(shape: WordsShape, tools: ToolShape, name: ToolKey): string {
   const text = (shape === 'cua' ? CUA : ANTHROPIC)[name]
-  return name === 'computer_batch' ? text.replace('{actions}', ACTION_LIST).replace('{steps}', STEPS_AS[tools]) : text
+  const web = name === 'computer_observe'
+    ? WEB_OBSERVE
+    : name === 'computer_act'
+      ? shape === 'cua' ? WEB_ACT.replace('set_value', 'set_value (setValue)').replace('key takes', 'key (pressKey) takes') : WEB_ACT
+      : ''
+  return name === 'computer_batch' ? text.replace('{actions}', ACTION_LIST).replace('{steps}', STEPS_AS[tools]) : text + (web ? ` ${web}` : '')
 }
 
 // ── the fields ──────────────────────────────────────────────────────────
@@ -105,29 +113,29 @@ export type FieldKey =
   | ActionParam
 
 const ANTHROPIC_FIELDS: Record<FieldKey, string> = {
-  app: 'The app\'s name or bundle id, as computer_apps lists it. One that is installed but not running starts in the background.',
-  window: "Part of the window's title. Left out: the window you used last in this app, else its main window.",
-  screenshot: 'Attach a picture of the window to the read. Left out: a picture comes only with a thin tree.',
+  app: 'App name or bundle id from computer_apps. An installed app starts in the background if it is not running.',
+  window: "Part of the window's title, or a tab's title in a browser (that tab is selected first). Left out: the window you used last in this app, else its main window.",
+  screenshot: 'Attach a window picture. Left out: a picture comes only with a thin tree.',
   full: 'The whole tree, not a diff against your last read.',
-  'observe.element': "One element's subtree in full, values uncut: a long document's text.",
+  'observe.element': "One element's full subtree with uncut values, such as a long document.",
   menus: 'Include the menu bar.',
   launch: 'Start this app in the background before listing.',
   open: 'Absolute paths, file or http(s) URLs to open in the launch app. Never programs.',
   'apps.confirm': "As computer_act's confirm: set when an item sends, uploads or shares the person's data.",
   'apps.confirm.kind': "As on computer_act's confirm.",
-  actions: 'The steps, in order, each an object with action and its parameters.',
-  action: 'Which action, by its name in the tool description.',
-  element: 'The [index] to act on, from your latest read.',
-  coordinate: "[x, y] in the latest screenshot's pixels, from the window's top left. Use element when the tree has one.",
-  start_element: 'Where a drag starts: an [index] from your latest read.',
-  start_coordinate: "Where a drag starts: [x, y] in the screenshot's pixels.",
-  text: 'type and paste: the text. key and hold_key: the key or combo (Return, super+c). Clicks, drag, scroll: modifiers to hold (shift, ctrl, alt, super). select_text: the text to select.',
+  actions: 'Ordered steps, each with action and its parameters.',
+  action: 'Action name from the tool description.',
+  element: 'The [index] from your latest read. key and hold_key: the element to focus first.',
+  coordinate: "[x, y] in screenshot pixels from the window's top left. Prefer element when the tree has one.",
+  start_element: 'Drag start: an [index] from your latest read.',
+  start_coordinate: "Drag start: [x, y] in screenshot pixels.",
+  text: 'type, paste, select_text: text. key, hold_key: key or combo (Return, super+c). Clicks, drag, scroll: modifiers (shift, ctrl, alt, super).',
   region: "zoom: [x0, y0, x1, y1] in the screenshot's pixels.",
   scroll_direction: 'up, down, left or right.',
   scroll_amount: 'Wheel clicks; five is about a page.',
   repeat: 'key: how many times to press it.',
   duration:
-    'Seconds. wait: the longest to wait for the window to settle; it ends sooner when it does. hold_key: how long to hold. Clicks: how long to hold the button.',
+    'Seconds. wait: max time for the window to settle; ends sooner if settled. hold_key: key hold time. Clicks: button hold time.',
   value: 'set_value: the new value, which replaces the old.',
   name: 'perform: an action word the element lists after "actions:", or one its role does by default: expand, collapse, increment, decrement, raise (a window, from the Dock too).',
   range: 'select_text: [start, end] in UTF-16 units, instead of text.',
@@ -135,13 +143,13 @@ const ANTHROPIC_FIELDS: Record<FieldKey, string> = {
   suffix: 'select_text: the text right after the match, to pick one of several.',
   place: 'select_text: select (the default), or before or after to put the caret there.',
   format: 'paste: text (the default), markdown or html.',
-  path: 'save_as: an absolute or ~/ path, file name included.',
-  replace: 'save_as: overwrite a file already there.',
-  confirm: "Set when this act needs the person's OK first. The app shows a card and acts only on Allow. Leave it out for anything else.",
+  path: 'save_as: an absolute or ~/ path with the file name.',
+  replace: 'save_as: overwrite the file there.',
+  confirm: "Ask for the person's OK before this act. The app acts only on Allow. Leave out otherwise.",
   'batch.confirm':
-    "Set when a step of this batch needs the person's OK first. The app shows one card for the batch and runs it only on Allow.",
+    "Ask for the person's OK before this batch. One card covers it; it runs only on Allow.",
   'confirm.kind':
-    "What the act does. delete, send, pay, subscribe, account, access, install, captcha, security and medical: always. The rest: unless the person's own words asked for this act.",
+    "delete, send, pay, subscribe, account, access, install, captcha, security, medical: always. Other kinds: unless the person asked for the act.",
   'confirm.what': 'What happens and to whom, in one line: "Reply to Ana accepting Friday\'s lunch".',
   'result.id': 'The id the "Held" answer named, such as c4.',
   'result.cancel': 'Cancel the held call instead of waiting for it.'
@@ -149,11 +157,11 @@ const ANTHROPIC_FIELDS: Record<FieldKey, string> = {
 
 const CUA_FIELDS: Record<FieldKey, string> = {
   ...ANTHROPIC_FIELDS,
-  full: 'disableDiffing: the whole tree, not a diff against your last read.',
-  element: 'The [index] to act on, from your latest read: left_click with element is click(index).',
-  text: 'type (typeText) and paste: the text. key (pressKey) and hold_key: the key or combo (Return, super+c). Clicks, drag, scroll: modifiers to hold. select_text: the text to select.',
+  full: 'disableDiffing: full tree, without a diff.',
+  element: 'The [index] from your latest read; left_click is click(index). key and hold_key: the element to focus first.',
+  text: 'type (typeText), paste, select_text: text. key (pressKey), hold_key: keys. Clicks, drag, scroll: modifiers.',
   scroll_amount: 'Wheel clicks, five to a page.',
-  value: 'set_value (setValue): the new value, which replaces the old.',
+  value: 'set_value (setValue): replaces the value.',
   name: 'perform (performSecondaryAction): an action word the element lists after "actions:", or a role default: expand, collapse, increment, decrement, raise (a window, from the Dock too).'
 }
 
@@ -178,10 +186,10 @@ const PER_VERB: Record<ComputerActionName, string> = {
   cursor_position: 'Says where the pointer is, in the screenshot\'s pixels.',
   scroll: 'Scrolls: scroll_direction and scroll_amount in wheel clicks, five to a page; element or coordinate for where. In the background it moves the scroll bar.',
   type: 'Types text. element names the field; left out, the focused element of your latest read.',
-  key: "Presses a key or combo in xdotool names: text (Return, Tab, Escape, super+c); repeat to press it again. In the background it runs the app's menu item for the combo.",
-  hold_key: 'Holds a key or combo (text) for duration seconds.',
+  key: "Presses a key or combo in xdotool names: text (Return, Tab, Escape, super+c); repeat to press it again. element focuses it first. In the background it runs the app's menu item for the combo.",
+  hold_key: 'Holds a key or combo (text) for duration seconds. element focuses it first.',
   wait: 'Waits up to duration seconds for the window to settle, and ends sooner when it does.',
-  set_value: "Replaces an element's value: element and value. Faster than a click and typing.",
+  set_value: "Replaces an element's value: element and value. Faster than a click and typing. On a pop up it picks the item by name.",
   perform: 'Runs an action on an element: element and name, a word it lists after "actions:" or a role default (expand, collapse, increment, decrement; raise on a window, out of the Dock too, when the Mac is free).',
   select_text: 'Selects text in an element: element and text or range; prefix and suffix pick one of several; place puts the caret before or after.',
   paste: 'Puts in text, markdown or HTML (format) and gives back the clipboard: text, and element or the focused one.',

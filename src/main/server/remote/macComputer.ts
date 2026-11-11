@@ -1,5 +1,6 @@
 import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { CallTiming, type BridgeTiming } from '@shared/computer/bridgeTiming'
 import { approvalLine } from '@shared/approvalLine'
 import type { ComputerSessionRow } from '@shared/contract-computer'
 import {
@@ -173,7 +174,7 @@ interface KeyState {
   held: { held: MacBridgeHeld; tool: string; startedAt: number } | null
   /** the row while the session has none of its own (its first call, held) */
   provisional: ComputerSessionRow | null
-  /** the box's last call listed `front` among its features: it parses that tier on a row (§25, decision 14) */
+  /** the box's last call listed `front` among its features: it parses that tier on a row (§26, decision 14) */
   readsFront?: boolean
 }
 
@@ -349,6 +350,7 @@ export class MacComputer {
     raw: unknown,
     ctx: { deadlineAt: number; callId?: string; progress?: (chunk: string) => void }
   ): Promise<ComputerPeerAnswer> {
+    const startedAt = this.clock.now()
     const parsed = MacComputerCallArgsSchema.safeParse(raw)
     if (!parsed.success) throw new Error(`refused: the call did not parse (${parsed.error.issues[0]?.message ?? 'bad arguments'})`)
     const { call, turn, rootId, features } = parsed.data
@@ -378,6 +380,7 @@ export class MacComputer {
       throw new Error(MAC_AWAY_REFUSAL)
     }
 
+    const checkedAt = this.clock.now()
     const st = this.stateOf(key, env.id, thread.id)
     st.readsFront = features?.includes('front') === true
     const callId = ctx.callId ?? `local_${++localCalls}`
@@ -393,9 +396,12 @@ export class MacComputer {
         st.turn = turn
         host.sessions.beginTurn(key)
       }
+      const guardFrom = this.clock.now()
       await this.ensureLive(env, thread, st, call, own, ctx.deadlineAt, host)
       if (signal.aborted) throw new Error(hostErrorLine('cancelled'))
       const budget = computerCallBudgetMs(call)
+      const tally = new CallTiming()
+      const runFrom = this.clock.now()
       const outcome = await host.sessions.run(
         {
           threadId: key,
@@ -403,20 +409,34 @@ export class MacComputer {
           permission: () => call.permission,
           signal,
           approve: (req) => this.ask(env, thread, st, own, req, ctx.deadlineAt - budget, callId, line),
-          reader: readerOf(own)
+          reader: readerOf(own),
+          timing: tally
         },
         call.tool,
         call.args
       )
       // a money card Away denied: the box writes the skipped row from this refusal (computer/bridge.ts)
       if (own.awayDenied) throw new Error(MAC_AWAY_REFUSAL)
+      const shotsFrom = this.clock.now()
       const images = await this.readShots(outcome)
+      const shotsTo = this.clock.now()
       const sessionRow = host.sessions.rowOf(key)
       const row = sessionRow && rowForPeer(sessionRow, st.readsFront === true)
       const first = row?.apps[0]
       if (st.live && first) this.deps.bridge.updateLive(st.live.id, { app: first.name, window: first.window })
       line(outcome.isError ? `answered: ${outcome.body ?? 'error'}` : `answered (${outcome.steps.length} step(s), ${images.length} picture(s))`)
-      return { steps: outcome.steps, body: outcome.body, isError: outcome.isError, ...(own.away ? { away: true as const } : {}), images, row }
+      const span = (from: number, to: number): number => Math.max(0, Math.round(to - from))
+      const timing: BridgeTiming = {
+        macMs: span(startedAt, this.clock.now()),
+        checksMs: span(startedAt, checkedAt),
+        guardMs: span(guardFrom, runFrom),
+        runMs: span(runFrom, shotsFrom),
+        serviceMs: tally.serviceMs,
+        waitedMs: tally.waitedMs,
+        shotsMs: span(shotsFrom, shotsTo),
+        shotChars: images.reduce((n, i) => n + i.data.length, 0)
+      }
+      return { steps: outcome.steps, body: outcome.body, isError: outcome.isError, ...(own.away ? { away: true as const } : {}), images, row, timing }
     } finally {
       this.clock.clearTimeout(deadline)
       rowsOff?.()

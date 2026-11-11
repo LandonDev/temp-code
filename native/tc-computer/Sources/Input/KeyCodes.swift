@@ -8,6 +8,7 @@ public enum KeyCodes {
 
     public static let returnKey: UInt16 = 36
     public static let tab: UInt16 = 48
+    public static let escape: UInt16 = 53
 
     private static let fixed: [String: UInt16] = [
         "Return": 36, "Tab": 48, "space": 49, "BackSpace": 51, "Escape": 53, "Delete": 117,

@@ -1,0 +1,36 @@
+{
+  "app" : "chrome",
+  "appshot" : false,
+  "backingScale" : 2,
+  "macos" : "27.2.0",
+  "recordedAt" : "2026-11-09T00:48:57Z",
+  "recorder" : "record-computer-fixture 1",
+  "setup" : [
+    "a second Chrome on a throwaway profile (/tmp/tc-fixture-chrome, --force-renderer-accessibility) showing fixtures/page/form.html",
+    "derived from chrome/form, not recorded (docs/computer-protocol.md \u00a725.3): the selected tab's AXWebArea taken out of the window's tree, as Chrome leaves a tab selected while its window is covered; the shot is chrome/form's with everything under the toolbar painted white, drawn browser chrome over a blank body"
+  ],
+  "shot" : {
+    "bytes" : 18571,
+    "file" : "window.jpg",
+    "height" : 1280,
+    "maxEdge" : 1280,
+    "scale" : 0.775,
+    "width" : 930
+  },
+  "state" : "not-drawn",
+  "walk" : {
+    "capped" : false,
+    "depth" : 9,
+    "ms" : 74,
+    "nodes" : 38
+  },
+  "window" : {
+    "frame" : {
+      "h" : 1652,
+      "w" : 1200,
+      "x" : 22,
+      "y" : 52
+    },
+    "title" : "Computer fixture form - Google Chrome"
+  }
+}

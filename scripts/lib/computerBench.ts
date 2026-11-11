@@ -8,6 +8,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { z } from 'zod'
+import type { CoverageNote } from './windowCover'
 import {
   COMPUTER_ACTION_NAMES,
   NO_INPUT_ACTIONS,
@@ -33,7 +34,7 @@ export interface BenchStep {
   /** how a `type` went in, said in the tier's place */
   via?: InputVia
   effect?: StepEffect
-  /** the step line's disk part (§25.12), after `on disk: ` */
+  /** the step line's disk part (§26.12), after `on disk: ` */
   disk?: string
   ok: boolean
   error?: string
@@ -52,6 +53,8 @@ export interface BenchCall {
   /** pictures the result carried, asked or thin-tree */
   shots: number
   isError: boolean
+  /** Window coverage sampled at call entry; null when the target could not be read. */
+  coverage?: CoverageNote | null
 }
 
 /**
@@ -204,7 +207,7 @@ export function parseStepLine(line: string): BenchStep | null {
   if (NO_INPUT_ACTIONS.includes(action)) return { action, tier: null, ok: true }
   // The target may hold the separator inside its quotes: read from the end.
   const parts = line.split(STEP_SEPARATOR)
-  // the disk part, when there is one, follows the effect (§25.12)
+  // the disk part, when there is one, follows the effect (§26.12)
   const last = parts[parts.length - 1]
   const disk = last.startsWith(DISK_PREFIX) ? last.slice(DISK_PREFIX.length) : undefined
   if (disk !== undefined) parts.pop()

@@ -18,7 +18,8 @@ import type { SessionMeta, SessionStatus } from '@shared/events'
 import { MAC_AWAY_REFUSAL, MAC_AWAY_REFUSAL_LEGACY } from '../awayPrompts'
 import { CANCELLED_PAUSED, MacPause } from '../macPause'
 import { PeerCalls, handlePeerRequest } from '../remote/peerCalls'
-import { ComputerBridge, MAC_SILENT_CANCEL, STOP_REPLY_MS } from './bridge'
+import { COMPUTER_SPAN_MS, ComputerBridge, MAC_SILENT_CANCEL, STOP_REPLY_MS } from './bridge'
+import { parseTimingLine } from '@shared/computer/bridgeTiming'
 import type { CallReader } from './pending'
 import { renderText } from './result'
 import { ManualClock, settle } from './testFake'
@@ -45,7 +46,7 @@ afterEach(() => {
   for (const b of bridges.splice(0)) b.close()
 })
 
-function box(opts: { bridged?: string[]; offers?: string[] } = {}) {
+function box(opts: { bridged?: string[]; offers?: string[]; trace?: boolean } = {}) {
   const sessions = new Map<string, SessionMeta>([
     ['t1', meta('t1')],
     ['t2', meta('t2')],
@@ -82,6 +83,8 @@ function box(opts: { bridged?: string[]; offers?: string[] } = {}) {
   const ledger: string[] = []
   const pushed: ComputerSessionRow[][] = []
   const holds: [string, string | null][] = []
+  const logs: string[] = []
+  const spans: string[] = []
   const bridge = new ComputerBridge({
     calls,
     macPeerOf: (id) => {
@@ -101,7 +104,10 @@ function box(opts: { bridged?: string[]; offers?: string[] } = {}) {
     awayNoticed: (id, kind, what) => void away.push([id, kind, what]),
     held: (id, line) => void holds.push([id, line]),
     clock,
-    log: () => {}
+    log: (line) => void logs.push(line),
+    trace: opts.trace,
+    span: (line) => void spans.push(line),
+    lag: () => 7
   })
   bridges.push(bridge)
   bridge.onRows((rows) => pushed.push(rows))
@@ -120,7 +126,7 @@ function box(opts: { bridged?: string[]; offers?: string[] } = {}) {
     }
     throw new Error(`timed out: ${label}`)
   }
-  return { sessions, bridged, settings, calls, out, register, reply, fail, progress, pause, landingRoot, clock, reboots, away, ledger, pushed, holds, bridge, ofMethod, status, run, until }
+  return { sessions, bridged, settings, calls, out, register, reply, fail, progress, pause, landingRoot, clock, reboots, away, ledger, pushed, holds, logs, spans, bridge, ofMethod, status, run, until }
 }
 
 const observe = { app: 'TextEdit' }
@@ -892,5 +898,63 @@ describe('ComputerBridge: a held call and its reader', () => {
     await p
     expect(b.bridge.holdWords('t1')).toBeNull()
     expect(b.bridge.holdWords('t2')).toBeNull()
+  })
+})
+
+describe('ComputerBridge: what a call cost (shared/computer/bridgeTiming.ts)', () => {
+  const mac = { macMs: 100, checksMs: 1, guardMs: 2, runMs: 80, serviceMs: 70, waitedMs: 12, shotsMs: 3, shotChars: 4000 }
+  /** one call whose reply lands `tripMs` after it went out */
+  const call = async (b: ReturnType<typeof box>, tripMs: number, extra: Partial<ComputerPeerAnswer>): Promise<void> => {
+    const done = b.run('computer_observe', observe)
+    const n = b.ofMethod('mac.computer').length
+    await b.until(() => b.ofMethod('mac.computer').length === n + 1, 'the call out')
+    b.clock.t += tripMs
+    b.reply(b.ofMethod('mac.computer')[n].callId, answer(extra))
+    await done
+  }
+  const timings = (lines: string[]) => lines.filter((l) => l.includes(' timing ')).map((l) => parseTimingLine(l)!)
+
+  it('traces each call with its legs joined to the Mac timing', async () => {
+    const b = box({ trace: true })
+    await call(b, 160, { timing: mac })
+    expect(timings(b.logs)).toEqual([
+      { total: 160, queue: 0, box: 0, transit: 60, mac: 100, run: 80, tool: 'computer_observe', checks: 1, guard: 2, service: 70, waited: 12, shots: 3, shotChars: 4000, lag: 7 }
+    ])
+    expect(b.logs[0]).toMatch(/^thread=t1 timing /)
+  })
+
+  it('writes stalls.log only when the bridge part passes its bound, traced or not', async () => {
+    const b = box()
+    await call(b, 80 + COMPUTER_SPAN_MS, { timing: mac })
+    expect(b.spans).toEqual([])
+    await call(b, 81 + COMPUTER_SPAN_MS, { timing: mac })
+    expect(b.spans).toHaveLength(1)
+    expect(b.spans[0]).toMatch(/^computer-bridge thread=t1 timing total=331 /)
+    expect(parseTimingLine(b.spans[0])).toMatchObject({ transit: 231, lag: 7, shotChars: 4000 })
+    expect(timings(b.logs)).toEqual([])
+  })
+
+  it("logs an older Mac's answer without timing as mac=-, and never as slow", async () => {
+    const b = box({ trace: true })
+    await call(b, 5_000, {})
+    expect(timings(b.logs)).toEqual([{ total: 5000, queue: 0, box: 0, transit: null, mac: null, run: null, tool: 'computer_observe', checks: null, guard: null, service: null, waited: null, shots: null, shotChars: null, lag: 7 }])
+    expect(b.logs[0]).toContain('mac=-')
+    expect(b.spans).toEqual([])
+  })
+
+  it("counts the wait behind the thread's other call as its queue, not the bridge's", async () => {
+    const b = box({ trace: true })
+    const first = b.run('computer_observe', observe)
+    const second = b.run('computer_observe', observe)
+    await b.until(() => b.ofMethod('mac.computer').length === 1, 'the first out')
+    b.clock.t += 500
+    b.reply(b.ofMethod('mac.computer')[0].callId, answer({ timing: mac }))
+    await first
+    await b.until(() => b.ofMethod('mac.computer').length === 2, 'the second out')
+    b.clock.t += 120
+    b.reply(b.ofMethod('mac.computer')[1].callId, answer({ timing: mac }))
+    await second
+    expect(timings(b.logs).map((t) => [t.total, t.queue])).toEqual([[500, 0], [620, 500]])
+    expect(b.spans).toHaveLength(1)
   })
 })

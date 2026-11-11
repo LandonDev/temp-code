@@ -1,3 +1,4 @@
+import type { CallTiming } from '@shared/computer/bridgeTiming'
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -30,6 +31,9 @@ export function computerHarness(
     makeGate?: (parts: { service: ComputerService; sessions: ComputerSessions }) => SessionTierGate
     resolveApp?: (q: string) => AppRef | null
     clock?: ManualClock
+    /** the sessions' trace, its lines into `log` */
+    trace?: boolean
+    log?: (line: string) => void
   } = {}
 ) {
   const dataDir = mkdtempSync(join(tmpdir(), 'tc-computer-run-'))
@@ -66,7 +70,8 @@ export function computerHarness(
     gate: opts.gate || opts.makeGate ? () => gate! : undefined,
     resolveApp: opts.resolveApp,
     clock: opts.clock,
-    log: () => undefined
+    log: opts.log ?? (() => undefined),
+    trace: opts.trace
   })
   if (opts.makeGate) gate = opts.makeGate({ service, sessions })
   const set = (threadId: string, meta: Partial<{ status: SessionStatus; permission: PermissionPolicy; provider: string; model: string }>): void => {
@@ -85,7 +90,7 @@ export function computerHarness(
     set,
     setAway: (on: boolean) => (away = on),
     gate: () => gate,
-    run: (tool: string, args: unknown, threadId = 't1', ctx: { signal?: AbortSignal; callId?: string } = {}): Promise<ComputerToolOutcome> =>
+    run: (tool: string, args: unknown, threadId = 't1', ctx: { signal?: AbortSignal; callId?: string; timing?: CallTiming } = {}): Promise<ComputerToolOutcome> =>
       sessions.run({ threadId, ...ctx }, tool, args),
     /** every request line the fake received, parsed, in order */
     requests: (): { id?: number; method: string; params: Record<string, unknown> }[] =>

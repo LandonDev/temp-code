@@ -3,7 +3,7 @@ import ComputerProtocol
 import Foundation
 import Testing
 
-// The document line (docs/computer-protocol.md §25.10) and the closed-menu note (§25.11), as
+// The document line (docs/computer-protocol.md §26.10) and the closed-menu note (§26.11), as
 // src/shared/computer/observation.ts formatDocumentLine and its parser write them.
 
 private let utc = TimeZone(identifier: "UTC")!

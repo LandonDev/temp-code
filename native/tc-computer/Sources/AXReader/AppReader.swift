@@ -24,13 +24,18 @@ public final class AppReader: AppReading, @unchecked Sendable {
     private(set) var lastProcess: ManualAccessibility.Process?
     public private(set) var lastWalkMs = 0.0
     public private(set) var lastBuildMs = 0.0
+    /// The last window read's page (§25.2): its selected tab and state; nil for a window with no tab strip,
+    /// a process that is not Chromium, or an element read. The ComputerService puts it on `Observation.page`.
+    public private(set) var lastPage: Page?
+    /// the last window read's lines by index, for `brief(of:)` (§25.9's `focus_moved`)
+    private var lastBriefs: [Int: String] = [:]
 
     /// The last walk's nodes read, AX calls, attributes asked and stage-C calls.
     public var lastWalk: (nodes: Int, calls: Int, attributes: Int, stageC: Int) {
         (lastCounts.nodes, lastCounts.calls, lastCounts.attributes, lastCounts.stageC)
     }
 
-    /// Whether AXManualAccessibility took for this pid (a Chromium or Electron process); nil before the first read.
+    /// Whether this pid is a Chromium process (its bundle, or a set of AXManualAccessibility that took); nil before the first read.
     public var chromium: Bool? {
         switch lastProcess {
         case .chromium?: true
@@ -53,7 +58,7 @@ public final class AppReader: AppReading, @unchecked Sendable {
 
     public var changes: any ChangeSignal { monitor }
 
-    /// The target window's file and edited flag as the last whole-window read saw them (§25.8); a subtree
+    /// The target window's file and edited flag as the last whole-window read saw them (§26.8); a subtree
     /// read leaves it. The commit check and the document line read it.
     public private(set) var lastDocument = WindowDocument()
 
@@ -67,23 +72,37 @@ public final class AppReader: AppReading, @unchecked Sendable {
         lastProcess = manual.prepare(pid)
         let build = BuildRequest(mode: request.mode, subtreeOf: request.element, budgetBytes: request.budgetBytes, geometry: request.geometry,
                                  space: request.space, loading: request.loading, noteThin: request.noteThin)
-        func once() throws -> (Built, Base?, WalkNotes, AXUIElement) {
+        let chromium = lastProcess.map { $0 != .native } ?? false
+        /// `last`: no re-read follows, so a selected tab still without a page is `not-drawn`
+        func once(last: Bool) throws -> (Built, Base?, WalkNotes, AXUIElement, PageRule.Reading?) {
             let t0 = Self.ms()
             let (snapshot, notes, window) = try read(request)
+            let reading = chromium && request.element == nil ? snapshot.roots.first.flatMap(PageRule.read) : nil
+            var b = build
+            b.page = reading?.state(waitedOut: last)
             let t1 = Self.ms()
-            let (built, next) = Builder.build(snapshot, build, book: book, base: base)
+            let (built, next) = Builder.build(snapshot, b, book: book, base: base)
             lastWalkMs = t1 - t0
             lastBuildMs = Self.ms() - t1
-            return (built, next, notes, window)
+            return (built, next, notes, window, reading)
         }
-        var (built, next, notes, window) = try once()
-        // a Chromium tree that comes back thin right after the set is read again
-        for at in manual.retries(pid, thin: built.stats.thin) {
+        // a selected tab whose page the wait already waited out (`loading`) is not read again
+        var (built, next, notes, window, reading) = try once(last: request.loading)
+        // a Chromium tree that comes back thin right after the set, or whose selected tab has no page, is read again
+        let missing = reading?.missing == true && !request.loading
+        let retries = manual.retries(pid, thin: built.stats.thin, pageMissing: missing, readAt: start)
+        // a first read slower than the whole schedule: one more read says `not-drawn`
+        if missing, retries.isEmpty { (built, next, notes, window, reading) = try once(last: true) }
+        for (i, at) in retries.enumerated() {
             let wait = at - Self.ms()
             if wait > 0 { Thread.sleep(forTimeInterval: wait / 1_000) }
-            (built, next, notes, window) = try once()
-            if !built.stats.thin { break }
+            (built, next, notes, window, reading) = try once(last: missing && i == retries.count - 1)
+            if !built.stats.thin && reading?.missing != true { break }
         }
+        lastPage = reading.flatMap { r in r.selectedTab.flatMap { tab in r.state(waitedOut: r.missing).map { Page(tab: tab.title, state: $0) } } }
+        // a selected tab still without its page holds the smart wait (§25.2): the window is the candidate
+        if reading?.missing == true { notes.busy.append((window, .pageMissing, [])) }
+        if request.element == nil { lastBriefs = built.briefs }
         if request.element == nil, let next { base = next }
         if request.element == nil { lastDocument = notes.document }
         monitor.noteWalk(notes, window: window)
@@ -210,6 +229,19 @@ public final class AppReader: AppReading, @unchecked Sendable {
         let facts = Facts.of(n, FactContext(focusedID: focused ? n.id : nil))
         return ResolvedElement(index: index, element: el, role: n.role, frame: n.frame ?? ComputerProtocol.Rect(x: 0, y: 0, w: 0, h: 0),
                                actions: n.actions, settable: settable, brief: ElementBrief(index: index, line: Facts.body(facts.line)))
+    }
+
+    /// The index and line the model's latest window read gave this element; nil for one it did not list.
+    public func brief(of element: AXUIElement) -> ElementBrief? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let id = handles.existing(element), let index = book.index(of: id), let line = lastBriefs[index] else { return nil }
+        return ElementBrief(index: index, line: line)
+    }
+
+    /// After a tab switch (§25.2): the window's page is a busy candidate until it is there and loaded.
+    public func watchPage(window: AXUIElement) {
+        monitor.watchPage(window)
     }
 
     public func resetBase() {

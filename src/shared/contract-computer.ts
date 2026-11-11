@@ -74,7 +74,7 @@ export const ComputerAppVerdictSchema = z.object({
 })
 export type ComputerAppVerdict = z.infer<typeof ComputerAppVerdictSchema>
 
-/** This Mac's computer settings: the session tier's idle threshold, when a step that needs the app in front gets it (§25.6), and every app it learned. */
+/** This Mac's computer settings: the session tier's idle threshold, when a step that needs the app in front gets it (§26.6), and every app it learned. */
 export const ComputerSettingsSchema = z.object({
   sessionIdleMs: z.number().int(),
   activeApp: z.enum(ACTIVE_APP_MODES),

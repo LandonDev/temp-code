@@ -1,7 +1,7 @@
 import ComputerProtocol
 import Foundation
 
-/// `DiskFacts`: what the commit check reads of the disk (docs/computer-protocol.md §25.8): one file's stat, or a
+/// `DiskFacts`: what the commit check reads of the disk (docs/computer-protocol.md §26.8): one file's stat, or a
 /// folder's listing bounded by `ComputerDefaults.Front.commitListMax` entries and `commitListMs`. A read the
 /// system refuses (a TCC folder TempCode has no grant for, a volume gone) is unknown, never a guess.
 enum DiskFacts {

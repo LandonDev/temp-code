@@ -14,18 +14,20 @@ export interface BatchSegment {
   actions: ComputerAction[]
   tiers: Tier[]
   last: boolean
+  /** The read’s focus belongs to the first segment alone. */
+  expectFocus?: number
 }
 
 const sameTiers = (a: Tier[], b: Tier[]): boolean => a.length === b.length && a.every((t, i) => t === b[i])
 
 /** Consecutive steps with equal tier lists form one segment. */
-export function planBatch(actions: ComputerAction[], tiersOf: (a: ComputerAction, i: number) => Tier[]): BatchSegment[] {
+export function planBatch(actions: ComputerAction[], tiersOf: (a: ComputerAction, i: number) => Tier[], expectFocus?: number): BatchSegment[] {
   const segments: BatchSegment[] = []
   actions.forEach((action, i) => {
     const tiers = tiersOf(action, i)
     const open = segments[segments.length - 1]
     if (open && sameTiers(open.tiers, tiers)) open.actions.push(action)
-    else segments.push({ from: i, actions: [action], tiers, last: false })
+    else segments.push({ from: i, actions: [action], tiers, last: false, ...(i === 0 && expectFocus !== undefined ? { expectFocus } : {}) })
   })
   if (segments.length) segments[segments.length - 1].last = true
   return segments

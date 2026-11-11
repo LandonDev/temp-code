@@ -1,7 +1,7 @@
 import ComputerProtocol
 
 // The commit check's two reads of the disk and what changed between them
-// (docs/computer-protocol.md §25.8). The live side stats the file or lists the folder; this compares.
+// (docs/computer-protocol.md §26.8). The live side stats the file or lists the folder; this compares.
 
 /// One file as stat(2) answers it.
 public struct FileStamp: Equatable, Sendable {

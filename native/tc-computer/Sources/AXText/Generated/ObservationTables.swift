@@ -119,17 +119,18 @@ public enum ObservationTables {
     public static let typingRoles: Set<String> = ["input", "search", "password", "text area", "date", "combo box"]
     public static let headerSeparator = " · "
     public static let headerLoading = "still loading"
+    public static let headerNotDrawn = "page not drawn"
     public static let headerDiff = "changes since your last read"
     public static let headerUnchanged = "no changes"
     public static let headerThin = "thin tree, see the screenshot"
     public static let otherWindowsPrefix = "other windows: "
     public static let stubSuffix = ": items not exposed to accessibility; see the screenshot)"
-    /// The document line's words (§25.10): `file "~/run/a.txt" written 14:02:11 · edited`, `file: not saved yet`, `folder "~/run"`.
+    /// The document line's words (§26.10): `file "~/run/a.txt" written 14:02:11 · edited`, `file: not saved yet`, `folder "~/run"`.
     public static let documentFile = "file "
     public static let documentFolder = "folder "
     public static let documentUnsaved = "file: not saved yet"
     public static let documentWritten = " written "
     public static let documentEdited = "edited"
-    /// Under a menu the call closes after the read (§25.11).
+    /// Under a menu the call closes after the read (§26.11).
     public static let menuClosedNote = "(menu closed after this read; its items still take actions)"
 }

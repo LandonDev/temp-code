@@ -5,6 +5,9 @@
 //   tc-ax session --pid <p> --expect-title <t>      JSON lines in, JSON lines out (see Live.swift)
 //   tc-ax bench   --pid <p> --expect-title <t> [--reads 20] [--warm 2] [--mode full|auto] [--signature 50] [--budget <n>]
 //   tc-ax windows --pid <p>                          the pid's window titles
+//   tc-ax tabs    --pid <p>                          each window's tabs (a Chromium app's browser windows, §25.4)
+//   tc-ax select-tab <tab title> --pid <p> --expect-title <t> [--tabs any]   select that tab of the window (§25.4)
+//   tc-ax page    --pid <p> --expect-title <t>      the window's page state and header line (§25.2)
 //   tc-ax replay  <tree.json> [--reads 20] [--budget <n>] [--print]   a recorded tree through the builder (buildMs); runs anywhere
 //   tc-ax replay  --synthetic <nodes> [--reads 20]          a synthetic tree of that many nodes
 //

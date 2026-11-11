@@ -2,7 +2,7 @@ import ComputerProtocol
 @testable import ComputerServiceKit
 import Testing
 
-// The commit check's two reads compared (§25.8).
+// The commit check's two reads compared (§26.8).
 
 private let home = "/Users/me"
 private let path = "/Users/me/run/Total.txt"

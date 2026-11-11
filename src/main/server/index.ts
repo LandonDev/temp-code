@@ -1331,7 +1331,8 @@ export async function startServer(
       // A box thread's pictures (its session keyed by box and thread) land apart, only to be read back to the box.
       landing: (id) => (parseMacComputerKey(id) ? bridgedLanding(computerData, id) : join(attachmentDir(id), 'computer')),
       ...(pin ? { resolveApp: pin } : {}),
-      rootOf: (id) => registry.rootSessionOf(id)
+      rootOf: (id) => registry.rootSessionOf(id),
+      trace: process.env.TEMP_CODE_COMPUTER_TRACE === '1'
     })
     computer = { available: () => computerUnavailable() === null, sessions, service, tokens: MacThreadTokens.fromEnv(process.env, 'computer') }
     registry.onMeta((m) => sessions.onMeta(m))
@@ -1375,7 +1376,8 @@ export async function startServer(
       resources,
       reboot: (id) => void registry.rebootAtNextTurn(id),
       awayNoticed: (id, kind, what) => registry.awayNotice(id, kind, what),
-      held: (id, line) => computerRpc.toolHold(id, line)
+      held: (id, line) => computerRpc.toolHold(id, line),
+      trace: process.env.TEMP_CODE_COMPUTER_TRACE === '1'
     })
     peerCalls.onOffers((id, offers) => bridge.offersChanged(id, offers))
     peerCalls.onDrop((id) => bridge.linkDown(id))

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
 import { MAX_IMAGE_PARTS, OBSERVATION_FAILED_PREFIX, formatShotLine, formatStepLine, type ComputerToolResult } from '@shared/computer/tools'
-import type { AppInfo, ComputerAction, ComputerError, FrontReport, LaunchedWindow, Observation, StepResult } from '@shared/computer/protocol'
+import type { AppInfo, ComputerAction, ComputerError, FrontReport, LaunchedWindow, Observation, StepResult, WindowInfo } from '@shared/computer/protocol'
 import { openItemsWords } from '@shared/computer/words'
 
 /**
@@ -40,11 +40,11 @@ export interface StepsResult {
   observationError?: ComputerError
   /** the app came forward during the call (§23.4) */
   front?: FrontReport
-  /** menus the call opened and could not close (§25.11) */
+  /** menus the call opened and could not close (§26.11) */
   menusLeftOpen?: string[]
 }
 
-/** `menu left open: Action` (§25.11): never silently left. */
+/** `menu left open: Action` (§26.11): never silently left. */
 export const menuLeftOpenLine = (titles: readonly string[]): string => `menu left open: ${titles.join(', ')}`
 
 /**
@@ -97,6 +97,8 @@ export function outcomeOf(
     const worded = step.status === 'failed' ? { ...step, error: { ...step.error, message: errorLine(step.error, { ...ctx, action }) } } : step
     return hostLines.get(i) ?? formatStepLine(worded, action)
   })
+  if (result.observation?.selectedTab !== undefined)
+    steps.unshift(`Selected tab ${JSON.stringify(result.observation.selectedTab)} in window ${JSON.stringify(result.observation.window.title)}`)
   const front = frontLine(result.observation?.app.name ?? ctx.app ?? 'the app', result.front, person)
   if (front) steps.push(front)
   if (result.menusLeftOpen?.length) steps.push(menuLeftOpenLine(result.menusLeftOpen))
@@ -161,6 +163,17 @@ function launchLines(r: LaunchReport): string[] {
   return lines
 }
 
+/** A window's title, browser tabs, and the state that affects targeting it. */
+function windowWords(w: WindowInfo): string {
+  let text = quote(w.title)
+  if (w.tabs) {
+    const tabs = w.tabs.map((t) => quote(t.title) + (t.selected ? ' selected' : ''))
+    if (w.moreTabs) tabs.push(`and ${w.moreTabs} more`)
+    text += ` (tabs: ${tabs.join(', ')})`
+  }
+  return text + (w.minimized ? ' minimized' : w.space === 'other' ? ' other Space' : '')
+}
+
 /**
  * One app a line, the active one first: `TextEdit (com.apple.TextEdit) · active · windows: "Untitled", "Notes.rtf" minimized`.
  * With a launch, its lines come first (launchLines).
@@ -176,7 +189,7 @@ export function formatAppsList(apps: AppInfo[], launched?: LaunchReport): string
     const windows = app.windows ?? []
     parts.push(
       windows.length
-        ? `windows: ${windows.map((w) => quote(w.title) + (w.minimized ? ' minimized' : w.space === 'other' ? ' other Space' : '')).join(', ')}`
+        ? `windows: ${windows.map(windowWords).join(', ')}`
         : 'no windows'
     )
     lines.push(parts.join(' · '))

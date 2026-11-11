@@ -49,6 +49,14 @@ describe('the bridge payloads', () => {
     expect(ComputerPeerAnswerSchema.safeParse({ steps: [], body: null, isError: false, images: [] }).success).toBe(false)
   })
 
+  it('reads an answer with the Mac timing, and one from an older Mac without it', () => {
+    const answer = { steps: [], body: 'TC Probe', isError: false, images: [], row: null }
+    const timing = { macMs: 40, checksMs: 0, guardMs: 1, runMs: 35, serviceMs: 30, waitedMs: 0, shotsMs: 0, shotChars: 0 }
+    expect(ComputerPeerAnswerSchema.parse({ ...answer, timing }).timing).toEqual(timing)
+    expect(ComputerPeerAnswerSchema.parse(answer).timing).toBeUndefined()
+    expect(ComputerPeerAnswerSchema.safeParse({ ...answer, timing: { macMs: 40 } }).success).toBe(false)
+  })
+
   it('reads a progress row, the mirror fields included', () => {
     const mirrored = { ...row, macPeer: ENV, macName: 'Mac', asking: { line: 'Click button "Save"?' } }
     expect(ComputerPeerProgressSchema.parse({ row: mirrored }).row.asking?.line).toBe('Click button "Save"?')

@@ -46,6 +46,13 @@ enum Goldens {
         RawTree.snapshot(try RawTree.decode(Data(contentsOf: apps.appendingPathComponent("\(state)/tree.json"))), ids: ids)
     }
 
+    /// A recorded browser window's page as the reader ends its wait on it (§25.2): Chrome's states only, since the
+    /// live reader asks only a Chromium process.
+    static func page(_ state: String, _ s: AXSnapshot) -> PageState? {
+        guard state.hasPrefix("chrome/") else { return nil }
+        return s.roots.first.flatMap(PageRule.read)?.state(waitedOut: true)
+    }
+
     static func space(_ state: String) throws -> CoordinateSpace {
         let m = try meta(state)
         return CoordinateSpace(width: m.shot.width, height: m.shot.height, scale: m.shot.scale)
@@ -65,12 +72,13 @@ enum Goldens {
 
 @Suite struct GoldenTests {
     @Test func thereAreRecordedStates() {
-        #expect(Goldens.states().count >= 9)
+        #expect(Goldens.states().count >= 11)
     }
 
     @Test(arguments: Goldens.states())
     func eachTreeReadsAsItsObservation(_ state: String) throws {
-        let built = Reader().read(try Goldens.snapshot(state, ids: NodeIDSource()), space: try Goldens.space(state))
+        let s = try Goldens.snapshot(state, ids: NodeIDSource())
+        let built = Reader().read(s, space: try Goldens.space(state), page: Goldens.page(state, s))
         #expect(built.kind == .full)
         try Goldens.check(state, "observation.txt", built.text)
     }
@@ -81,8 +89,9 @@ enum Goldens {
         let prior = "\(meta.app)/\(meta.after!.state)"
         let ids = NodeIDSource()
         let reader = Reader()
-        reader.read(try Goldens.snapshot(prior, ids: ids), space: try Goldens.space(prior))
-        let built = reader.read(try Goldens.snapshot(state, ids: ids), space: try Goldens.space(state))
+        let before = try Goldens.snapshot(prior, ids: ids), after = try Goldens.snapshot(state, ids: ids)
+        reader.read(before, space: try Goldens.space(prior), page: Goldens.page(prior, before))
+        let built = reader.read(after, space: try Goldens.space(state), page: Goldens.page(state, after))
         try Goldens.check(state, "diff.txt", built.text)
     }
 
@@ -91,6 +100,15 @@ enum Goldens {
     @Test func theDocUnderACaptureReadsAsTheDoc() throws {
         let read = { (state: String) in Reader().read(try Goldens.snapshot(state, ids: NodeIDSource()), space: try Goldens.space(state)).text }
         #expect(try read("textedit/doc-shared") == read("textedit/doc"))
+    }
+
+    /// §25.3: a selected tab with no web area at the end of the wait says so in the header, and nothing else about it.
+    @Test func aSelectedTabWithNoPageReadsPageNotDrawn() throws {
+        let s = try Goldens.snapshot("chrome/not-drawn", ids: NodeIDSource())
+        #expect(Goldens.page("chrome/not-drawn", s) == .notDrawn)
+        let header = Reader().read(s, space: try Goldens.space("chrome/not-drawn"), page: .notDrawn).text.split(separator: "\n")[0]
+        #expect(header.hasSuffix(" · page not drawn"))
+        #expect(Goldens.page("chrome/form", try Goldens.snapshot("chrome/form", ids: NodeIDSource())) == .loaded)
     }
 
     /// At the 2,000-byte minimum: once Chrome's scrolled-away rows are counted, the whole form is 2,220 bytes.

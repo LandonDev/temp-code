@@ -120,7 +120,7 @@ export const BACKGROUND_CHECK_WORDS = 'Checking background tasks'
 export const COMPUTER_TIER_WORDS: Readonly<Record<'ax' | 'process' | 'front' | 'session', string>> = {
   ax: 'in the background',
   process: 'to the app',
-  /** the app brought forward for a moment (§25) */
+  /** the app brought forward for a moment (§26) */
   front: 'in front',
   session: 'on the screen'
 }

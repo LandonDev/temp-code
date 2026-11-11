@@ -217,8 +217,8 @@ one contract:
 | e2e-addon-grants | `e2e` | both | two paired headless instances, scripts/lib/fakeOAuthServer.ts | nothing (no model) | 133 s, 134 s, 134 s | 134 s, 134 s, 134 s | 17 min |
 | e2e-skills-store | `e2e` | both | two paired headless instances | nothing (no model) | 13 s, 15 s, 15 s | 13 s, 13 s, 13 s | 11 min |
 | e2e-skills-drivers | `e2e` | both | one headless instance, the real CLIs against scripts/lib/spikeFakes.ts | the real-model legs (`--host box\|mac`) | 10 s, 10 s, 10 s | 29 s, 28 s, 29 s | 12 min |
-| e2e-tc-computer | `computer` | Mac | the service and TC Probe (four instances: plain, `--windows`, `--fallbacks`, `--active`) | the TextEdit legs and the paste | n/a | 19 s, 19 s, 19 s, measured before the fallbacks leg (docs/computer-protocol.md §24.11) and the active leg (§25.15), whose times is not yet measured: the fallbacks leg's first run failed at step 3 on the proof's own expectation (§24.9), and the fixed leg is not run, the Mac was locked (2026-11-10) | 11 min |
-| e2e-computer-bridge | `computer` | Mac | two headless instances (the box half seamed linux), the service, TC Probe | the SSH pair | n/a | 28 s, 29 s, 28 s | 12 min |
+| e2e-tc-computer | `computer` | Mac | the service, TC Probe (four instances: plain, `--windows`, `--fallbacks`, `--active`) and scratch Chrome for Testing (`webLeg`) | the TextEdit legs and the paste | n/a | 19 s, 19 s, 19 s, measured before the fallbacks leg (docs/computer-protocol.md §24.11) and the active leg (§26.15), whose times are not yet measured: the fallbacks leg's first run failed at step 3 on the proof's own expectation (§24.9), and the fixed leg is not run, the Mac was locked (2026-11-10) | 11 min |
+| e2e-computer-bridge | `computer` | Mac | two headless instances (the box half seamed linux), the service, TC Probe | the SSH pair | n/a | 28 s, 29 s, 28 s, measured before the timing leg (ten interleaved pairs of three kinds, judged by `BRIDGE_TIMING_RULE`: box minus Mac at most 40 ms median and 100 ms p90, the box's own legs at most 25 ms median), whose time and numbers are to measure: the Mac was locked (2026-11-10) | 12 min |
 | e2e-computer-preview | `computer` | Mac | the service and TC Probe | leg 4, the Escape tap, which takes the person's Escape | n/a | 24 s, 23 s, 23 s | 12 min |
 
 The four store rows run one at a time in the `e2e` lane after the fence;
@@ -275,7 +275,7 @@ otherwise.
 | `script:e2e-computer-images` | Mac | the same on the real service | — | not run: the Mac was locked, the person away (2026-11-09) |
 | `script:e2e-tc-computer` (whole) | Mac | 5 idle minutes (TextEdit and the paste come forward) | — | not run: the Mac was locked, the person away (2026-11-09) |
 | `script:e2e-computer` | Mac | real Sonnet turns | — | not run: the Mac was locked, the person away (2026-11-09) |
-| `script:e2e-computer-bridge` over SSH | Mac and box | both clones built at one commit | — | not run: the Mac was locked, the person away (2026-11-09) |
+| `script:e2e-computer-bridge` over SSH | Mac and box | both clones built at one commit | — | not run: the Mac was locked, the person away (2026-11-09); its timing leg (the full mode: a call without a picture adds at most the run's own round trip plus 40 ms, median; pictures reported with their bytes and the upload rate) is to measure |
 | `script:e2e-computer-ax` | Mac | the person away; IntelliJ only with `TC_AX_INTELLIJ=1` | — | not run: the Mac was locked, the person away (2026-11-09) |
 | `script:e2e-computer-input -- --session` | Mac | the person away | — | not run: the Mac was locked, the person away (2026-11-09) |
 | `script:e2e-computer-capture -- --keep <dir>` | Mac | Screen Recording; minutes of watch scenes on its own inert windows | — | not run: the Mac was locked, the person away (2026-11-09) |
@@ -340,6 +340,16 @@ system, never the model's word.
   the sign and the soaks; the script stops itself at 14 minutes
   (`BENCH_TIMING.budgetMs`) and the gate kills it at 15. Its report is the
   step's log, and `last.json` and `runs/` beside the baseline.
+
+## The web proof and covered field run
+
+`bun run script:e2e-tc-computer -- --gate` runs `webLeg` after the fallbacks leg. `scripts/lib/chromiumForTests.ts` uses `TEMP_CODE_TEST_CHROMIUM` (an app bundle path), else Chrome for Testing in `~/Library/Caches/ms-playwright`. If absent it records `skipped: Chrome for Testing is not installed (bunx playwright install chromium)`. It installs nothing.
+
+The leg launches three local tabs on its own profile, without forced renderer accessibility or throttling flags, after five seconds without input (at most 60 seconds waiting). It puts the saved front app and window back if launch took them. Reads and actions target the recorded pid; actions use `ax` and `process` only. The checks cover page wait, background-tab selection, 40 rows in one read, a 300-row table subtree, AX scrolling, field values, select pick and menu closure, refused values, the checkbox, the page's confirmation, and key focus. Each call checks the saved front app and window. Cleanup checks the exact profile argument before each signal and leaves other Chrome instances alone.
+
+**Timing: not measured on the Mac.** The earlier 19-second totals predate this leg and the fallbacks leg. Each `web:` step records its elapsed milliseconds in `/tmp/tc-computer-proof/report.json`; use the first Mac runs to replace the stale whole-row time. No timing or live pass is claimed by the Linux checks.
+
+The covered hand run and its two-of-three bar are in [computer-protocol.md §21.7](computer-protocol.md#217-the-field-suite). Run both commands there on the Mac, with all three default field models. The next hand check also reruns `~/tc-cu-test/suite.py` T2/T3 from one box thread and one Mac thread (Opus 5.5, then GPT-6.1 Sol), under the idle gate, checking the report's staged data and form code. Record those live findings separately; this change supplies the rig, not those measurements.
 
 ## The bench's hand run
 
@@ -466,7 +476,7 @@ these ran, so its numbers moved by up to 40 % between runs.
 | e2e-skills-store | 13 s (three runs) | | 12 to 15 s | 11 min | the same lane |
 | e2e-skills-drivers | 28 to 29 s (three runs) | | 10 s | 12 min | the same lane, last; the real CLIs against fakes |
 | e2e-tc-computer | 19 s (three runs) | | n/a | 11 min | Mac only; the `computer` lane, before the bench |
-| e2e-computer-bridge | 28 to 29 s (three runs) | | n/a | 12 min | Mac only; both halves on the Mac |
+| e2e-computer-bridge | 28 to 29 s (three runs, before the timing leg; with it, to measure) | | n/a | 12 min | Mac only; both halves on the Mac |
 | e2e-computer-preview | 23 to 24 s (three runs) | | n/a | 12 min | Mac only; the Escape leg skipped |
 | computer-bench | 511 s, one run (2026-11-09, ungated, before the codex route fix; failed: see "The bench's hand run") | | n/a | 15 min | Mac only; three model lanes in its own lane, beside the build |
 

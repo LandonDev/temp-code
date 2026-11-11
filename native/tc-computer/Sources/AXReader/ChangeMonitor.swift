@@ -139,6 +139,15 @@ final class ChangeMonitor: ChangeSignal, @unchecked Sendable {
         candidates = notes.busy.map { Candidate(element: $0.element, kind: $0.kind, containers: $0.containers) }
     }
 
+    /// A tab switch's window (§25.2): its page is a busy candidate until the next walk says what it holds.
+    func watchPage(_ window: AXUIElement) {
+        lock.lock()
+        if !candidates.contains(where: { $0.kind == .pageMissing && CFEqual($0.element, window) }) {
+            candidates.append(Candidate(element: window, kind: .pageMissing, containers: []))
+        }
+        lock.unlock()
+    }
+
     /// Spec §7's parts, never a walk: the focused element, its value and
     /// selection, the window's title, its children's identities, and the child
     /// counts of the window and the scroll areas last shown (A7's limits).
@@ -236,7 +245,7 @@ final class ChangeMonitor: ChangeSignal, @unchecked Sendable {
         return isChrome
     }
 
-    /// A busy indicator, an indeterminate progress or a busy web area that shows now
+    /// A busy indicator, an indeterminate progress, a busy web area or a selected tab with no page that shows now
     /// (spec §7, A11): each candidate and its containers read again, the clip made from their frames now;
     /// with none showing and the app changed since the last scan, the web areas are scanned for a new one.
     func busyIndicatorShowing() -> Bool {
@@ -253,6 +262,12 @@ final class ChangeMonitor: ChangeSignal, @unchecked Sendable {
         func shows(_ c: Candidate) -> Bool? {
             let a = AX.batch(c.element, ["AXRole", "AXValue", "AXElementBusy", "AXLoaded", "AXPosition", "AXSize"])
             if case .gone? = a["AXRole"] { return nil }
+            // a browser window whose selected tab had no page (§25.2): its strip and top-level web areas read again
+            if c.kind == .pageMissing {
+                // loaded: the selected tab's page is there and done; a page found but still loading holds too
+                let page = LiveTabs.reading(c.element, ids: HandleTable(capacity: 64)).map { $0.0.state(waitedOut: false) == .loaded } ?? true
+                return BusyRule.showing(.pageMissing, frame: nil, hasValue: false, busy: nil, loaded: page, clips: [])
+            }
             let clips = [windowFrame].compactMap { $0 } + c.containers.compactMap(frameOf)
             let hasValue: Bool = {
                 switch AX.scalar(a["AXValue"]?.value) {

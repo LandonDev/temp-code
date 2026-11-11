@@ -88,13 +88,18 @@ Real accessibility trees and screenshots, recorded on the Mac:
   the grammar tests parse it.
 
 The states are `textedit/{doc,typed,save-sheet}`,
-`chrome/{form,menu-open,loading}`, `tempcode-dev/{first-run,thread}` and
+`chrome/{form,menu-open,loading,not-drawn}`, `tempcode-dev/{first-run,thread}` and
 `intellij/project`. `textedit/doc-shared` is no recording: `textedit/doc`'s
 tree as the walk gives it while a capture runs (docs/computer-protocol.md
 §22: the title-bar buttons out of AXChildren, the "Window sharing" badge in
 their place, the buttons appended after it), its screenshot `doc`'s, and its
-observation equal to `doc`'s. Two more are no recordings either, until the
-recorder reads AXDocument and the edited flag (§25.10): `textedit/doc-edited`
+observation equal to `doc`'s. `chrome/not-drawn` is no recording either:
+`chrome/form`'s tree with the selected tab's `AXWebArea` taken out, as Chrome
+leaves a tab selected while its window is covered (docs/computer-protocol.md
+§25.3), and `form`'s shot with everything under the toolbar painted white; its
+observation's header ends ` · page not drawn`.
+Two more are no recordings either, until the
+recorder reads AXDocument and the edited flag (§26.10): `textedit/doc-edited`
 is `doc` with a file behind it (`tree.json`'s `document`: AXDocument
 `file:///Users/me/run/Total.txt`, its mtime, the close button's AXEdited) and
 follows `doc`, so its `diff.txt` is the document line's `~` form;

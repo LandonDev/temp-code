@@ -80,13 +80,17 @@ enum AXTier {
         if err != .success { throw AX.failure(err, element: e.index, available: accepted, what: word) }
     }
 
-    /// `set_value`: AXValue; read-only answers action_unsupported.
-    static func setValue(_ e: ResolvedElement, _ value: String) throws {
+    /// `set_value`: AXValue; read-only answers action_unsupported. With `readBack` (web content, §25.8)
+    /// the value is read back for up to `readBackMs`, and one that does not read as asked fails
+    /// `value_not_taken`; a password, or an element whose value reads nothing, keeps the write's answer.
+    static func setValue(_ e: ResolvedElement, _ value: String, readBack: Bool = false, clock: InputClock? = nil) throws {
         guard AX.settable(e.element, "AXValue") else {
             throw ComputerFailure(ComputerError(kind: .actionUnsupported, message: "[\(e.index)]'s value can't be set.", element: e.index))
         }
         let err = AX.set(e.element, "AXValue", value as CFString)
         if err != .success { throw AX.failure(err, element: e.index, what: "take a value") }
+        guard readBack, let clock, AX.string(e.element, "AXSubrole") != "AXSecureTextField" else { return }
+        try confirmValue(e, clock: clock) { ReadBack.verdict(asked: value, read: AX.valueText(e.element)) }
     }
 
     /// `select_text`: the first match with its prefix and suffix, or the range; `place` selects it or puts the caret beside it.

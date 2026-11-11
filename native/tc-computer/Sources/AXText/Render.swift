@@ -87,12 +87,15 @@ public struct HeaderFacts: Sendable, Equatable {
     public var loading: Bool
     public var change: Change?
     public var thin: Bool
+    /// the selected tab's page was not drawn by the end of the wait (§25.3); `loading` wins when both are set
+    public var notDrawn: Bool
 
-    public init(focused: Int? = nil, loading: Bool = false, change: Change? = nil, thin: Bool = false) {
+    public init(focused: Int? = nil, loading: Bool = false, change: Change? = nil, thin: Bool = false, notDrawn: Bool = false) {
         self.focused = focused
         self.loading = loading
         self.change = change
         self.thin = thin
+        self.notDrawn = notDrawn
     }
 }
 
@@ -106,7 +109,7 @@ public struct Layout: Sendable {
     public var titleLimit = Int.max
     public var others: [OtherWindow]
     public var showOthers = true
-    /// the document line's facts (§25.10); always printed, the budget never drops it
+    /// the document line's facts (§26.10); always printed, the budget never drops it
     public var document: DocumentLine?
     public var space: CoordinateSpace
     public var windowFrame: Rect
@@ -146,7 +149,7 @@ public struct Layout: Sendable {
                                     valueLimit: wholeValues ? .max : ComputerDefaults.ObservationText.valueMaxChars,
                                     frame: n.frame, hidden: Hidden(), cls: f.cls, isList: n.isList, compares: [Compare(f)]))
                     add(n.children, parent: r, hidden: n.hidden)
-                    // a menu the call closes after this read: its items still take actions (§25.11)
+                    // a menu the call closes after this read: its items still take actions (§26.11)
                     if s.closingMenus.contains(n.id) {
                         rows.append(Row(kind: .note, index: 0, last: 0, parent: r, end: rows.count + 1, facts: LineFacts(role: ""),
                                         valueTotal: 0, nameLimit: .max, valueLimit: .max, frame: nil, hidden: Hidden(), cls: .other,
@@ -219,7 +222,7 @@ public struct Layout: Sendable {
     public func header(_ h: HeaderFacts) -> String {
         var parts = ["app " + Quote.json(Cut.name(app, max: appLimit)), "window " + Quote.json(Cut.name(title, max: titleLimit)), "\(space.width)×\(space.height)"]
         if let f = h.focused { parts.append("focused [\(f)]") }
-        if h.loading { parts.append(T.headerLoading) }
+        if h.loading { parts.append(T.headerLoading) } else if h.notDrawn { parts.append(T.headerNotDrawn) }
         switch h.change {
         case .diff: parts.append(T.headerDiff)
         case .unchanged: parts.append(T.headerUnchanged)

@@ -2,7 +2,7 @@ import ComputerProtocol
 @testable import ComputerServiceKit
 import Testing
 
-// The menus a call opened and their closing (§25.11).
+// The menus a call opened and their closing (§26.11).
 
 private let action = OpenedMenu(id: "e12", title: "Action", opener: .popUp, items: ["New Folder", "Get Info"])
 private let file = OpenedMenu(id: "bar2", title: "File", opener: .menuBar, items: ["Save", "Close"])

@@ -1,10 +1,10 @@
 import ComputerProtocol
 
-// The `front` tier's hold as values (docs/computer-protocol.md §25.2–§25.5): what the live layer
+// The `front` tier's hold as values (docs/computer-protocol.md §26.2–§26.5): what the live layer
 // asks before each move and what it does with the answer. Every time is monotonic milliseconds
 // from the live layer's clock; nothing here reads a clock, the screen or AX.
 
-/// The keyboard-quiet wait before a hold (§25.5): the person's last key down is `frontQuietMs`
+/// The keyboard-quiet wait before a hold (§26.5): the person's last key down is `frontQuietMs`
 /// old and nothing is held, waited for at most `frontQuietMaxMs`; past that the hold goes anyway
 /// and the person guard covers the rest.
 public enum QuietWait {
@@ -156,7 +156,7 @@ public struct FrontHoldPlan: Equatable, Sendable {
         timeLeft(now: now) >= InputTiming.frontSettleMs
     }
 
-    /// The person's input during the hold (§25.5): Escape always stops it; with the guard every
+    /// The person's input during the hold (§26.5): Escape always stops it; with the guard every
     /// other touch is dropped and the hold goes on; without it a key, click or wheel stops it.
     public mutating func touched(_ t: PersonTouch, guarded: Bool) -> Touched {
         guard phase == .active || phase == .activating else { return .ignore }

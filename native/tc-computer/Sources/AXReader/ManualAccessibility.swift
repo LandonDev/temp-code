@@ -5,24 +5,16 @@ import AXText
 import Foundation
 
 extension ManualAccessibility {
-    /// The live setter: AXManualAccessibility on the app element, which
-    /// Electron answers and a native app refuses with -25205. An app bundle
-    /// holding Electron's framework counts as Chromium whatever the answer: the
-    /// set takes effect with a delay and reads back false. AXEnhancedUserInterface
-    /// is never set: it disturbs window animation.
+    /// The live machine: AXManualAccessibility set once per pid on the app element, for Electron (which
+    /// answers it; Chrome refuses it with -25205, M1), and the process's kind from its bundle's
+    /// `Contents/Frameworks`, read once (`LiveBundles`, §25.1). AXEnhancedUserInterface is never set:
+    /// it changes how the app's windows animate and move for the person.
     static func live() -> ManualAccessibility {
         ManualAccessibility(
-            set: { pid in
-                let took = AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXManualAccessibility" as CFString, kCFBooleanTrue) == .success
-                return took || electron(pid)
-            },
+            set: { pid in AXUIElementSetAttributeValue(AXUIElementCreateApplication(pid), "AXManualAccessibility" as CFString, kCFBooleanTrue) == .success },
+            kind: { LiveBundles.kind($0) },
             clock: { Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000 }
         )
-    }
-
-    static func electron(_ pid: pid_t) -> Bool {
-        guard let bundle = NSRunningApplication(processIdentifier: pid)?.bundleURL else { return false }
-        return FileManager.default.fileExists(atPath: bundle.appendingPathComponent("Contents/Frameworks/Electron Framework.framework").path)
     }
 }
 #endif

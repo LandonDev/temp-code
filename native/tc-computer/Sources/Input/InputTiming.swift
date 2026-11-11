@@ -88,7 +88,7 @@ public enum InputTiming {
     /// the caret route reads its element's focus and range back for at most this long (§24.4)
     public static let caretEvidenceMs = 300
 
-    /// the `front` tier's hold (§25.2): activation polled every `frontPollMs` for at most this long
+    /// the `front` tier's hold (§26.2): activation polled every `frontPollMs` for at most this long
     public static let frontActivateMaxMs = ComputerDefaults.Front.activateMaxMs
     public static let frontPollMs = ComputerDefaults.Front.pollMs
     /// after the last input, the app stays in front until a change signal or this, at most `frontSettleMaxMs`
@@ -104,11 +104,11 @@ public enum InputTiming {
     /// a `key` at `front` repeats at most this often; longer `type` text than this goes by paste
     public static let frontKeyRepeatMax = ComputerDefaults.Front.keyRepeatMax
     public static let frontKeysMaxUnits = ComputerDefaults.Front.keysMaxUnits
-    /// a save panel must show within this after the press that opens it (§25.7)
+    /// a save panel must show within this after the press that opens it (§26.7)
     public static let panelOpenMaxMs = ComputerDefaults.Front.panelOpenMaxMs
     /// the save panel flow reads the window again this often while it waits for a sheet to come or go
     public static let panelPollMs = 50
-    /// a step expected to commit polls the disk every `commitPollMs` for at most this (§25.8)
+    /// a step expected to commit polls the disk every `commitPollMs` for at most this (§26.8)
     public static let commitSettleMs = ComputerDefaults.Front.commitSettleMs
     public static let commitPollMs = ComputerDefaults.Front.commitPollMs
 }
