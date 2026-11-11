@@ -17,13 +17,14 @@ import { useSyncExternalStore } from "react";
  * names a pane or a shown thread and lands on the right one (`paneOf`).
  */
 
-export type Section = "activity" | "agents" | "changes" | "notes" | "files" | "build" | "debug";
+export type Section = "activity" | "agents" | "computer" | "changes" | "notes" | "files" | "build" | "debug";
 
-export const SECTIONS: readonly Section[] = ["agents", "activity", "changes", "notes", "files", "build", "debug"];
+export const SECTIONS: readonly Section[] = ["agents", "activity", "computer", "changes", "notes", "files", "build", "debug"];
 
 export const SECTION_LABEL: Record<Section, string> = {
   activity: "Activity",
   agents: "Agents",
+  computer: "Computer",
   changes: "Changes",
   notes: "Notes",
   files: "Files",
@@ -49,6 +50,21 @@ export function panelFit(containerWidth: number, storedWidth: number): number | 
   return Math.min(PANEL_MAX, Math.max(PANEL_MIN, Math.min(storedWidth, room)));
 }
 
+/** A header segment and the gap between two, and what the header keeps for itself: its 12px insets, Hide and the gap before it, the pane's hairline. */
+export const SEGMENT_PX = 28;
+export const SEGMENT_GAP_PX = 2;
+export const SEGMENT_COMPACT_PX = 24;
+export const HEADER_CHROME_PX = 12 + 12 + 4 + 28 + 1;
+
+/**
+ * Whether `count` segments do not fit a panel `width` wide at their 28px, 2px
+ * apart: the header then draws them 24px wide with no gap. Eight sections in
+ * a 260px panel need 238px of the 203px it has; compact they take 192px.
+ */
+export function sectionsCompact(count: number, width: number): boolean {
+  return count * SEGMENT_PX + Math.max(0, count - 1) * SEGMENT_GAP_PX > width - HEADER_CHROME_PX;
+}
+
 /** The toggle's reason while a thread's row is too narrow for the panel. */
 export const NO_ROOM_LABEL = "No room for the panel";
 
@@ -66,6 +82,10 @@ export type PanelFacts = {
   agents: number;
   /** The Activity section's rows (lib/activity.ts): background tasks, a master's batch, the thread's dev servers, its Mac calls. */
   activity: number;
+  /** The Computer section exists (lib/computerSection.ts): a live session this desktop can draw, or kept steps. */
+  computer: boolean;
+  /** A session this desktop can draw is live in the thread's tree. */
+  computerLive: boolean;
   /** A dev build, or the debug setting on: the Debug section is listed. */
   debug: boolean;
 };
@@ -81,21 +101,25 @@ export function sectionsFor(facts: PanelFacts): PanelSections {
   // A master's batch lives on its board, never here: agents means its own subagents.
   if (facts.agents > 0) sections.push("agents");
   if (activity) sections.push("activity");
+  if (facts.computer) sections.push("computer");
   if (facts.checkout) sections.push("changes");
   if (facts.notes) sections.push("notes");
   if (facts.checkout) sections.push("files");
   if (facts.project) sections.push("build");
   if (facts.project && facts.debug) sections.push("debug");
-  // Subagents first: what a thread watches is its agents far more often than a shell.
+  // Subagents first: what a thread watches is its agents far more often than a shell. Then the Mac while the
+  // thread uses it; its kept steps alone never take the default.
   const defaultSection: Section | null = facts.agents > 0
     ? "agents"
-    : activity
-      ? "activity"
-      : facts.checkout
-        ? "changes"
-        : facts.notes
-          ? "notes"
-          : null;
+    : facts.computer && facts.computerLive
+      ? "computer"
+      : activity
+        ? "activity"
+        : facts.checkout
+          ? "changes"
+          : facts.notes
+            ? "notes"
+            : null;
   return { sections, defaultSection: defaultSection ?? sections[0] ?? null };
 }
 

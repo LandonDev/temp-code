@@ -132,7 +132,8 @@ export interface PreviewContext {
   localId: string | null
 }
 
-function previewContext(): PreviewContext {
+/** What this desktop is: only a Mac's own desktop draws a session's window or reads its journal. */
+export function previewContext(): PreviewContext {
   return {
     macDesktop: !isWebMode() && nativePlatform() === 'darwin',
     localId: registry.statusOf(LOCAL_ENVIRONMENT_ID).lastHello?.environmentId ?? null

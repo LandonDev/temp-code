@@ -7,6 +7,7 @@ import {
   THREAD_MIN,
   panelFit,
   rightPanel,
+  sectionsCompact,
   sectionsFor,
   shownSection,
   watchSection,
@@ -20,6 +21,8 @@ const quiet: PanelFacts = {
   checkout: false,
   agents: 0,
   activity: 0,
+  computer: false,
+  computerLive: false,
   debug: false,
 };
 
@@ -66,6 +69,64 @@ describe("sectionsFor", () => {
   it("Activity exists only with rows, and takes the default only without subagents", () => {
     expect(sectionsFor({ ...quiet, activity: 1 })).toEqual({ sections: ["activity", "notes"], defaultSection: "activity" });
     expect(sectionsFor({ ...quiet, project: true, checkout: true }).sections).not.toContain("activity");
+  });
+
+  it("Computer exists with a drawable live session or kept steps, after Activity in the header", () => {
+    expect(sectionsFor(quiet).sections).not.toContain("computer");
+    expect(sectionsFor({ ...quiet, computer: true }).sections).toEqual(["computer", "notes"]);
+    expect(sectionsFor({ ...quiet, computer: true, computerLive: true, activity: 1, agents: 1, project: true, checkout: true, debug: true }).sections).toEqual([
+      "agents",
+      "activity",
+      "computer",
+      "changes",
+      "notes",
+      "files",
+      "build",
+      "debug",
+    ]);
+    // a subagent a pane shows may have used the computer too
+    expect(sectionsFor({ ...quiet, notes: false, computer: true }).sections).toEqual(["computer"]);
+    expect(sectionsFor({ ...quiet, root: false, computer: true, computerLive: true })).toEqual({ sections: [], defaultSection: null });
+  });
+
+  it("Computer takes the default only while a session is live, after Agents and before Activity", () => {
+    const live = { ...quiet, computer: true, computerLive: true };
+    expect(sectionsFor(live).defaultSection).toBe("computer");
+    expect(sectionsFor({ ...live, activity: 2, checkout: true }).defaultSection).toBe("computer");
+    expect(sectionsFor({ ...live, agents: 1 }).defaultSection).toBe("agents");
+    // kept steps alone never take it: the thread's state does, as before
+    const kept = { ...quiet, computer: true };
+    expect(sectionsFor(kept).defaultSection).toBe("notes");
+    expect(sectionsFor({ ...kept, activity: 1 }).defaultSection).toBe("activity");
+    expect(sectionsFor({ ...kept, checkout: true }).defaultSection).toBe("changes");
+    // a live flag with no section (nothing this desktop can draw) changes nothing
+    expect(sectionsFor({ ...quiet, computerLive: true }).defaultSection).toBe("notes");
+  });
+
+  it("a section the person picked stays theirs while Computer goes live", () => {
+    rightPanel.reset();
+    rightPanel.set("t9", { open: true, section: "notes" });
+    const live = sectionsFor({ ...quiet, computer: true, computerLive: true });
+    expect(shownSection(rightPanel.get("t9").section, live)).toBe("notes");
+    // and a picked Computer stays once the session settles, on its kept steps
+    rightPanel.set("t9", { section: "computer" });
+    expect(shownSection(rightPanel.get("t9").section, sectionsFor({ ...quiet, computer: true }))).toBe("computer");
+    // with nothing kept the section is gone and the default takes over
+    expect(shownSection(rightPanel.get("t9").section, sectionsFor(quiet))).toBe("notes");
+  });
+
+  it("the header goes compact where its segments do not fit the panel", () => {
+    // seven 28px segments 2px apart need 208px; a 260px panel has 203px for them
+    expect(sectionsCompact(7, 260)).toBe(true);
+    expect(sectionsCompact(7, 265)).toBe(false);
+    expect(sectionsCompact(8, 260)).toBe(true);
+    expect(sectionsCompact(8, 294)).toBe(true);
+    expect(sectionsCompact(8, 295)).toBe(false);
+    expect(sectionsCompact(8, PANEL_WIDTH)).toBe(false);
+    expect(sectionsCompact(6, PANEL_MIN)).toBe(false);
+    expect(sectionsCompact(1, PANEL_MIN)).toBe(false);
+    // compact, eight 24px segments with no gap fit the narrowest panel
+    expect(8 * 24).toBeLessThanOrEqual(PANEL_MIN - 57);
   });
 
   it("the Watching line opens Agents for a thread waiting on subagents, else Activity", () => {

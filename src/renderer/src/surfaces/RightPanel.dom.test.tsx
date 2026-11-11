@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   workspaces: [] as { id: string; environmentId: string; path: string; git: boolean }[],
   agents: [] as SessionMeta[],
   meta: null as SessionMeta | null,
+  computer: { exists: false, live: false },
 }));
 
 vi.mock("../lib/threads/agents", () => ({
@@ -20,6 +21,10 @@ vi.mock("../lib/tcserver/projects", () => ({ projectForCwd: (cwd: string) => (cw
 // The joined activity rows: one per background task on the meta is enough for the frame.
 vi.mock("../lib/activity", () => ({
   useActivity: () => ({ rows: (state.meta?.background?.tasks ?? []).map((task) => ({ id: task.id, kind: task.kind, label: task.label })), meta: state.meta }),
+}));
+// What the Computer section reads for the thread: whether it exists (a drawable live session or kept steps) and is live.
+vi.mock("../lib/computerSection", () => ({
+  useComputerSection: () => ({ entries: [], keys: [], histories: {}, exists: state.computer.exists, live: state.computer.live }),
 }));
 vi.mock("../hooks/useGitFileStatuses", () => ({ useGitFileStatuses: () => ({}) }));
 vi.mock("./threads/fleet/FleetPanel", () => ({
@@ -56,6 +61,7 @@ beforeEach(() => {
   state.agents = [];
   state.workspaces = [];
   state.meta = null;
+  state.computer = { exists: false, live: false };
 });
 afterEach(() => {
   cleanup();
@@ -179,6 +185,53 @@ describe("RightPanel", () => {
       expect(tab.querySelector("svg")).toBeTruthy();
       expect(tab.className.split(/\s+/)).toEqual(expect.arrayContaining(["size-7", "rounded-lg"]));
     }
+  });
+
+  it("lists Computer after Activity once the thread used the Mac, and opens on it only while a session is live", () => {
+    state.meta = { id: "s1", status: "idle", background: { tasks: [{ id: "t1", label: "x", kind: "shell", startedAt: 0 }], agents: [], batch: null, watchingSince: null } } as unknown as SessionMeta;
+    state.computer = { exists: true, live: false };
+    rightPanel.open("s1");
+    const { unmount } = render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-label"))).toEqual(["Activity", "Computer", "Changes", "Notes", "Files", "Build", ...(import.meta.env.DEV ? ["Debug"] : [])]);
+    // kept steps alone: the thread's state still picks the default
+    expect(screen.getByRole("tab", { name: "Activity" }).getAttribute("aria-selected")).toBe("true");
+    unmount();
+    state.computer = { exists: true, live: true };
+    render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.getByRole("tab", { name: "Computer" }).getAttribute("aria-selected")).toBe("true");
+    // a section the person picked stays theirs
+    fireEvent.click(screen.getByRole("tab", { name: "Notes" }));
+    expect(screen.getByTestId("notes-body")).toBeTruthy();
+    expect(rightPanel.get("s1").section).toBe("notes");
+  });
+
+  it("no Computer section for a thread that never used the Mac", () => {
+    rightPanel.open("s1");
+    render(<RightPanel session={session} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.queryByRole("tab", { name: "Computer" })).toBeNull();
+  });
+
+  it("a header whose segments do not fit the panel draws them 24px wide with no gap", () => {
+    state.agents = [agent("a1", "running")];
+    state.meta = { id: "s1", status: "idle", background: { tasks: [{ id: "t1", label: "x", kind: "shell", startedAt: 0 }], agents: [], batch: null, watchingSince: null } } as unknown as SessionMeta;
+    state.computer = { exists: true, live: true };
+    rightPanel.open("s1");
+    // seven or eight sections (Debug is a dev build's) in the narrowest panel
+    const { unmount } = render(<RightPanel session={session} width={260} onOpenFile={noop} onOpenDiff={noop} />);
+    const list = screen.getByRole("tablist", { name: "Panel sections" });
+    expect(list.getAttribute("data-compact")).toBe("true");
+    expect(list.className.split(/\s+/)).toContain("gap-0");
+    expect(list.className.split(/\s+/)).not.toContain("gap-0.5");
+    for (const tab of screen.getAllByRole("tab")) {
+      expect(tab.className.split(/\s+/)).toEqual(expect.arrayContaining(["size-6", "rounded-md"]));
+      expect(tab.className.split(/\s+/)).not.toContain("size-7");
+      expect(tab.getAttribute("aria-label")).toBeTruthy();
+    }
+    unmount();
+    // the same sections at 320px keep their 28px
+    render(<RightPanel session={session} width={320} onOpenFile={noop} onOpenDiff={noop} />);
+    expect(screen.getByRole("tablist", { name: "Panel sections" }).getAttribute("data-compact")).toBeNull();
+    expect(screen.getAllByRole("tab")[0].className.split(/\s+/)).toContain("size-7");
   });
 
   it("arrives from the right edge on transitions, and leaves over the thread, inert, until its fade ends", () => {

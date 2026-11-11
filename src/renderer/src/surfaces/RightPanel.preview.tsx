@@ -8,7 +8,7 @@ export function PanelHeaderPreview({ width, sections, value }: { width: number; 
     <div className="flex flex-col" style={{ width }}>
       <div className="h-10 border-b border-border" />
       <div className="flex h-40 flex-col border-l border-border bg-sidebar">
-        <PanelHeader sections={sections} value={value} onChange={() => {}} onClose={() => {}} />
+        <PanelHeader sections={sections} value={value} onChange={() => {}} onClose={() => {}} width={width} />
       </div>
     </div>
   );

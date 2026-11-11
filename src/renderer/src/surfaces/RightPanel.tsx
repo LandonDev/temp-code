@@ -4,7 +4,7 @@ import { cn } from "@renderer/lib/cn";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "@renderer/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { Kbd } from "@renderer/components/ui/kbd";
-import { Activity, Bug, Folder, GitCompare, Hammer, StickyNote, Users, X, type IconComponent } from "../chrome/icons";
+import { Activity, Bug, Folder, GitCompare, Hammer, SquareMousePointer, StickyNote, Users, X, type IconComponent } from "../chrome/icons";
 import { BuildPanel } from "../chrome/rail/BuildPanel";
 import { ChangesPanel } from "../chrome/rail/ChangesPanel";
 import { FileTree } from "../chrome/FileTree";
@@ -17,6 +17,7 @@ import {
   PANEL_WIDTH,
   rightPanel,
   SECTION_LABEL,
+  sectionsCompact,
   sectionsFor,
   shownSection,
   useRightPanel,
@@ -32,6 +33,7 @@ import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useProjects, useWorkspaces } from "../lib/tcserver/workspaces";
 import { useAgents } from "../lib/threads/agents";
 import { useActivity } from "../lib/activity";
+import { useComputerSection } from "../lib/computerSection";
 import { ActivitySection } from "./threads/ActivitySection";
 import { FleetList } from "./threads/fleet/FleetPanel";
 import { NotesBody } from "./threads/NotesPanel";
@@ -51,6 +53,7 @@ export const MASTER_AGENTS_EMPTY = "Batch threads are on the board";
 const SECTION_ICON: Record<Section, IconComponent> = {
   activity: Activity,
   agents: Users,
+  computer: SquareMousePointer,
   changes: GitCompare,
   notes: StickyNote,
   files: Folder,
@@ -60,26 +63,41 @@ const SECTION_ICON: Record<Section, IconComponent> = {
 
 /** The header's sections: flat 28px ghost icon buttons 2px apart, named by
  *  their aria-label and a tooltip, with no track; the selected one's fill is
- *  the pill, gliding between them on the layout spring. */
+ *  the pill, gliding between them on the layout spring. `compact` (the
+ *  segments do not fit the panel's width, `sectionsCompact`) draws them 24px
+ *  wide with no gap, so eight sections fit the narrowest panel. */
 export function PanelSections({
   sections,
   value,
   onChange,
+  compact = false,
 }: {
   sections: readonly Section[];
   value: Section;
   onChange: (section: Section) => void;
+  compact?: boolean;
 }) {
   return (
     <Tabs value={value} onValueChange={(next) => onChange(next as Section)} className="min-w-0 flex-1">
-      <TabsList aria-label="Panel sections" data-slot="panel-sections" className="relative gap-0.5 bg-transparent p-0 group-data-[orientation=horizontal]/tabs:h-7">
+      <TabsList
+        aria-label="Panel sections"
+        data-slot="panel-sections"
+        data-compact={compact || undefined}
+        className={cn("relative bg-transparent p-0 group-data-[orientation=horizontal]/tabs:h-7", compact ? "gap-0" : "gap-0.5")}
+      >
         <TabsIndicator className="bg-foreground/7" />
         {sections.map((s) => {
           const Icon = SECTION_ICON[s];
           return (
             <Tooltip key={s}>
               <TooltipTrigger
-                render={<TabsTrigger value={s} aria-label={SECTION_LABEL[s]} className={`size-7 flex-none rounded-lg p-0 not-data-active:hover:bg-foreground/5 ${TABS_PILL_TRIGGER}`} />}
+                render={
+                  <TabsTrigger
+                    value={s}
+                    aria-label={SECTION_LABEL[s]}
+                    className={cn("flex-none p-0 not-data-active:hover:bg-foreground/5", compact ? "size-6 rounded-md" : "size-7 rounded-lg", TABS_PILL_TRIGGER)}
+                  />
+                }
               >
                 <Icon className="size-3.5" />
               </TooltipTrigger>
@@ -92,12 +110,24 @@ export function PanelSections({
   );
 }
 
-/** The panel's 40px header, the same height as the title bar's row above it, so the buttons sit with 6px of air between its line and the title bar's: the sections on the 12px inset and Hide at its end. */
-export function PanelHeader({ sections, value, onChange, onClose }: { sections: readonly Section[]; value: Section; onChange: (section: Section) => void; onClose: () => void }) {
+/** The panel's 40px header, the same height as the title bar's row above it, so the buttons sit with 6px of air between its line and the title bar's: the sections on the 12px inset and Hide at its end. `width` is the panel's drawn width: where the segments do not fit it they draw compact. */
+export function PanelHeader({
+  sections,
+  value,
+  onChange,
+  onClose,
+  width = PANEL_WIDTH,
+}: {
+  sections: readonly Section[];
+  value: Section;
+  onChange: (section: Section) => void;
+  onClose: () => void;
+  width?: number;
+}) {
   return (
     <TooltipProvider>
       <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-3">
-        <PanelSections sections={sections} value={value} onChange={onChange} />
+        <PanelSections sections={sections} value={value} onChange={onChange} compact={sectionsCompact(sections.length, width)} />
       <Tooltip>
         <TooltipTrigger
           render={
@@ -209,7 +239,13 @@ export function RightPanel(props: RightPanelProps) {
       className={cn("relative flex shrink-0 flex-col border-l border-border bg-sidebar", PANE_MOTION, props.motion === "arrive" && PANE_ARRIVE, leaving && PANE_LEAVE)}
       style={{ width: props.width ?? state.width, contain: "strict" }}
     >
-      <PanelHeader sections={available.sections} value={section} onChange={(next) => rightPanel.set(pane, { section: next })} onClose={() => rightPanel.close(pane)} />
+      <PanelHeader
+        sections={available.sections}
+        value={section}
+        onChange={(next) => rightPanel.set(pane, { section: next })}
+        onClose={() => rightPanel.close(pane)}
+        width={props.width ?? state.width}
+      />
       <div
         key={section}
         className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-(--dur-fast) flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -239,6 +275,7 @@ function usePanelFacts(session: Session, state: PanelState, inPane: boolean): Pa
     projects.find((p) => p.id === session.projectId && p.environmentId === session.environmentId);
   const workspace = project?.cwd ? undefined : looseWorkspace(session, workspaces);
   const activity = useActivity(session.id).rows;
+  const computer = useComputerSection(session.id);
   const facts = useMemo<PanelFacts>(
     () => ({
       root: !session.parentId || inPane,
@@ -248,9 +285,12 @@ function usePanelFacts(session: Session, state: PanelState, inPane: boolean): Pa
       agents: agents.length,
       // The rows A6 joins: background tasks, a batch, the thread's dev servers and Mac bridge calls.
       activity: activity.length,
+      // A live session this desktop can draw, or steps this Mac kept (lib/computerSection.ts).
+      computer: computer.exists,
+      computerLive: computer.live,
       debug: DEBUG_SECTION || state.debug,
     }),
-    [session, project, workspace, agents.length, activity.length, state.debug, inPane],
+    [session, project, workspace, agents.length, activity.length, computer.exists, computer.live, state.debug, inPane],
   );
   return { facts, project, workspace };
 }
@@ -291,6 +331,8 @@ function SectionBody({
           onOpenDiff={onOpenDiff}
         />
       );
+    case "computer":
+      return null;
     case "notes":
       return <NotesBody session={session} />;
     case "changes":
