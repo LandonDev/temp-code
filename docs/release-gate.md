@@ -11,7 +11,7 @@ file. A sibling change that needs a new check (the bundle-size check after
 
 | tier | steps | runs |
 | --- | --- | --- |
-| `commit` | typecheck, vitest, build, bundle-size | in the post-commit hook, on every commit on master |
+| `commit` | typecheck, vitest, build, bundle-size | in the post-commit hook, on every commit on master; vitest holds the prompt budgets too (scripts/claudeMdBudget.test.ts: CLAUDE.md at most 40,000 bytes with every docs/agents file linked once; src/main/server/promptBudget.test.ts: the host-written prompt parts against src/shared/promptBudget.ts) |
 | `publish` | renderer-soak, renderer-soak-chat, renderer-soak-typing, renderer-soak-scroll, e2e-remote-fence, e2e-addons, e2e-addon-grants, e2e-skills-store, e2e-skills-drivers, hub, ios, ios-client, computer-swift, e2e-tc-computer, e2e-computer-bridge, e2e-computer-preview, computer-bench | before signing in `release:publish`; and in the hook when a commit touches a guarded path, all but computer-bench. The four soaks, hub, ios, ios-client, computer-swift, e2e-tc-computer, e2e-computer-bridge, e2e-computer-preview and computer-bench are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships; the four store proofs run on both hosts |
 
 The four rows `e2e-tc-computer`, `e2e-computer-bridge`,

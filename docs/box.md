@@ -654,7 +654,7 @@ temp-code `src/main/server/remote/{peers,accountSync}.ts`):
   `visibleModels`: does the catalog offer its model here) fold into one
   `failure` on the event: a kind (`oauth_expired`, `account_unknown`,
   `token_expired`, `rate_limited`, `quota`, `model_unavailable`, `network`,
-  `harness_crashed`, `turn_ended`, `unknown`), the account the turn was routed to, one
+  `harness_crashed`, `turn_ended`, `context_thrash`, `unknown`), the account the turn was routed to, one
   line naming what happened ("Anthropic session for landon@… expired and
   could not be refreshed", "Account work@… is no longer on file") and one
   with the likely cause. A gateway control call that times out (30 s; a
@@ -678,7 +678,11 @@ temp-code `src/main/server/remote/{peers,accountSync}.ts`):
   `TURN_ENDED_SUMMARY`), cause the CLI's line or the subtype's meaning
   ("The CLI's turn limit was reached."); a line that names a death or a
   network cut keeps that kind, and an `unknown` with no reason reads the
-  fallback word for word. The verdict is folded onto the session row (`session_folds.failure`,
+  fallback word for word. A turn the host ended because the window refilled
+  to its limit on every request (four compactions inside ten minutes, or
+  Claude Code's "Autocompact is thrashing") is `context_thrash`, "The context
+  window keeps filling up", its card leading with Continue with 1M context
+  where the model has it (docs/agents/provider-traffic.md). The verdict is folded onto the session row (`session_folds.failure`,
   `SessionMeta.failure`, cleared by whatever settles the error) so the tab
   edge and the workspace popover's failed row print the summary instead of
   "Failed", and the phone contract carries it (`Failure` in the generated

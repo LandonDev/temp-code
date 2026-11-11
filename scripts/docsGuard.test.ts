@@ -5,8 +5,8 @@ import { citations, expandBraces, sectionOf } from './lib/docsCitations'
 
 const REPO = resolve(__dirname, '..')
 
-/** The CLAUDE.md sections the docs sweep wrote, whose citations must stay true. */
-export const GUARDED_SECTIONS = ['Add-ons: one registry, every harness', 'Skills: one store, materialized per host', "Computer use: the Mac's apps from any thread"]
+/** The docs/agents files (CLAUDE.md sections until the split) the docs sweep wrote, whose citations must stay true. */
+export const GUARDED_SECTIONS = ['docs/agents/add-ons.md', 'docs/agents/skills.md', 'docs/agents/computer-use.md']
 
 describe('the citation extractor', () => {
   const fixture = [
@@ -48,14 +48,16 @@ describe('the citation extractor', () => {
   })
 })
 
-describe("CLAUDE.md's guarded sections cite what exists", () => {
-  const claude = readFileSync(join(REPO, 'CLAUDE.md'), 'utf8')
+describe("the guarded docs/agents files cite what exists", () => {
   const scripts = new Set(Object.keys((JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8')) as { scripts: Record<string, string> }).scripts))
 
-  for (const heading of GUARDED_SECTIONS) {
-    it(heading, () => {
-      const text = sectionOf(claude, heading)
-      expect(text, `CLAUDE.md has no section "## ${heading}"`).not.toBeNull()
+  for (const file of GUARDED_SECTIONS) {
+    it(file, () => {
+      const path = join(REPO, file)
+      expect(existsSync(path), `${file} is missing`).toBe(true)
+      // The file's body after its title, the section as it read in CLAUDE.md.
+      const text: string | null = readFileSync(path, 'utf8').replace(/^# [^\n]*\n/, '')
+      const heading = file
       const cited = citations(text!)
       const missing = [
         ...cited.scripts.filter((s) => !scripts.has(s)).map((s) => `script entry ${s}`),
