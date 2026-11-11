@@ -117,12 +117,22 @@ export function judgeFewerStopped(result: BatchResult): string[] {
 }
 
 /** The click-only call must carry the opened-menu block even if its normal body is a diff or unchanged. */
+export const MENU_BLOCK_MISSING = 'the closing observation must carry the menu opened by step 1 block'
+
+/**
+ * An open menu closes at the person's click or key anywhere on the Mac, so a closing read without the block
+ * is theirs when they used the Mac during the call and nothing else was wrong: the step is void, not failed.
+ */
+export function menuClosedByPerson(errors: readonly string[], personInput: boolean): boolean {
+  return personInput && errors.length > 0 && errors.every((e) => e === MENU_BLOCK_MISSING)
+}
+
 export function judgeFewerMenu(result: BatchResult): string[] {
   const { errors, steps, parsed } = inspect(result, ['left_click'])
   if (steps[0]?.effect !== 'changed') errors.push('opening the pop-up must change the state')
   const lines = parsed?.lines ?? []
   const at = lines.findIndex((line) => line.type === 'menuBlock' && line.step === 1)
-  if (at < 0) errors.push('the closing observation must carry the menu opened by step 1 block')
+  if (at < 0) errors.push(MENU_BLOCK_MISSING)
   else {
     const block = lines[at]
     // A silent menu is a valid §27.4 block: its exact recovery sentence is checked by the parser.

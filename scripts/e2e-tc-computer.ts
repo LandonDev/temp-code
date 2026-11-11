@@ -127,7 +127,8 @@ import {
   type StepResult,
   type WaitReport
 } from '../src/shared/computer/protocol'
-import { FEWER_PROBE, judgeFewerPopup, judgeFewerNote, judgeFewerRename, judgeFewerStopped, judgeFewerMenu, rowShowing } from './lib/fewerLeg'
+import { guardOutcome, settledInResult } from './lib/guardWord'
+import { FEWER_PROBE, menuClosedByPerson, judgeFewerPopup, judgeFewerNote, judgeFewerRename, judgeFewerStopped, judgeFewerMenu, rowShowing } from './lib/fewerLeg'
 import { waitForGateBuild } from './lib/gateBuild'
 import { chromiumForTests, CHROMIUM_MISSING, TEST_CHROMIUM_BUNDLE, SCRATCH_CHROME_FRAME, hasChromeProfile, stopScratchChromium } from './lib/chromiumForTests'
 import { createProcScan } from './lib/procScan'
@@ -1414,7 +1415,8 @@ async function fewerLeg(a: Service, mayLaunch: () => void): Promise<void> {
   const batch = async (
     actions: ComputerParams<'action.batch'>['actions'],
     judge: (result: ComputerResult<'action.batch'>) => string[],
-    data: Record<string, unknown>
+    data: Record<string, unknown>,
+    personVoids?: (errors: string[], personInput: boolean) => boolean
   ): Promise<void> => {
     const before = personState()
     const t0 = performance.now()
@@ -1428,6 +1430,7 @@ async function fewerLeg(a: Service, mayLaunch: () => void): Promise<void> {
     data.result = r
     data.person = assertPersonUntouched(before, 'after the fewer calls batch')
     const errors = judge(r)
+    if (personVoids?.(errors, personIdleSeconds() * 1_000 < Date.now() - before.at)) throw skip(`void: the person's input during the call: ${errors.join('; ')}`)
     check(errors.length === 0, errors.join('; '), r)
     o = r.observation ?? (await read())
   }
@@ -1436,7 +1439,7 @@ async function fewerLeg(a: Service, mayLaunch: () => void): Promise<void> {
     await leg.step('fewer: launch a TC Probe with --fewer in the background', async (data) => {
       const before = personState()
       mayLaunch()
-      pid = (await launchProbe(PROBE_BUILD, ['--fewer'], frontmost)).pid
+      pid = (await launchProbe(PROBE_BUILD, ['--fewer', '--over-front'], frontmost)).pid
       data.pid = pid
       o = await until(async () => (await a.call('apps.list', { windows: true })).apps.find((x) => x.pid === pid)?.windows?.some((w) => w.title === FEWER_PROBE.window) ? read() : null, 10_000, 'the fewer calls window')
       data.person = assertPersonUntouched(before, 'after the launch', pid)
@@ -1489,7 +1492,8 @@ async function fewerLeg(a: Service, mayLaunch: () => void): Promise<void> {
     await leg.step('fewer 5: a click-only batch closes with the opened-menu block', async (data) => {
       o = await read()
       const popup = findElement(o, 'the Destination pop-up', (e) => e.role === 'pop up' && e.name === FEWER_PROBE.popup)
-      await batch([{ action: 'left_click', element: popup.index }], judgeFewerMenu, data)
+      // a voided try leaves the pop-up's menu closed (the person's click closed it), so a rerun opens it afresh
+      await batch([{ action: 'left_click', element: popup.index }], judgeFewerMenu, data, menuClosedByPerson)
     })
   } finally {
     // Also closes a menu left open by the last check, without posting Escape outside its batch.
@@ -2709,13 +2713,14 @@ interface FrontWindow {
 const frontWindow = (): FrontWindow => probe<FrontWindow>('frontwindow')
 
 /**
- * The guard's word on a steal: the result's own `front`, or, for a steal after the result went
- * out, the `apps/frontRestored` notice for that pid. Null when the app never came forward.
+ * The guard's word on a steal: the result's own `front` once it says how the steal ended, else the
+ * `apps/frontRestored` notice for that pid, which tells a steal after the result went out and one whose
+ * restore was still running then (§23.5). Null when the app never came forward.
  */
 async function guardWord(svc: Service, front: FrontReport | undefined, pid: number, since: number): Promise<FrontReport | null> {
-  if (front?.raised) return front
+  if (settledInResult(front)) return front!
   const late = await svc.noteMatching((n) => n.method === 'apps/frontRestored' && n.params.pid === pid && svc.notes.indexOf(n) >= since, 3_000)
-  return late?.method === 'apps/frontRestored' ? late.params.front : null
+  return guardOutcome(front, late?.method === 'apps/frontRestored' ? late.params.front : null)
 }
 
 /**

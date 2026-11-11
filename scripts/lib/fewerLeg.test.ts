@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { MENU_BLOCK, parseObservation, type ElementLine } from '../../src/shared/computer/observation'
 import { BatchResultSchema, type BatchResult, type ComputerActionName, type StepResult } from '../../src/shared/computer/protocol'
-import { FEWER_PROBE, judgeFewerMenu, judgeFewerNote, judgeFewerPopup, judgeFewerRename, judgeFewerStopped, rowShowing } from './fewerLeg'
+import { FEWER_PROBE, MENU_BLOCK_MISSING, menuClosedByPerson, judgeFewerMenu, judgeFewerNote, judgeFewerPopup, judgeFewerRename, judgeFewerStopped, rowShowing } from './fewerLeg'
 
 const waited = { waitedMs: 450, settled: true, busy: false, reason: 'quiet' as const }
 const ok = (index: number, action: ComputerActionName, extra: Partial<Extract<StepResult, { status: 'ok' }>> = {}): StepResult => ({
@@ -169,5 +169,14 @@ describe('the --fewer single-batch judges (§27.15)', () => {
     const tier = popup()
     if (tier.steps[0].status === 'ok') tier.steps[0].tier = 'session'
     expect(judgeFewerPopup(tier)).not.toEqual([])
+  })
+})
+
+describe('menuClosedByPerson', () => {
+  it('voids a missing menu block only when the person used the Mac and nothing else failed', () => {
+    expect(menuClosedByPerson([MENU_BLOCK_MISSING], true)).toBe(true)
+    expect(menuClosedByPerson([MENU_BLOCK_MISSING], false)).toBe(false)
+    expect(menuClosedByPerson([MENU_BLOCK_MISSING, 'opening the pop-up must change the state'], true)).toBe(false)
+    expect(menuClosedByPerson([], true)).toBe(false)
   })
 })

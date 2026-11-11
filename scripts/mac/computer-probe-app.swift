@@ -477,9 +477,38 @@ final class ProbeFewer: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             scroll.heightAnchor.constraint(equalToConstant: 100),
         ])
         window.contentView = content
+        // `--over-front`: under the person's front window, so a window the app orders above it during a call
+        // is the front guard's to see (§23.3), wherever the person's window sits
+        if CommandLine.arguments.contains("--over-front"), let frame = Self.underFrontWindow(size: window.frame.size) {
+            window.setFrameOrigin(frame)
+        }
         window.orderBack(nil)
         window.makeKey()
         self.window = window
+    }
+
+    /// The origin, in AppKit's coordinates, that centres a window of `size` on the front app's frontmost
+    /// normal window, kept on that window's screen; nil when no other app has one on screen.
+    static func underFrontWindow(size: NSSize) -> NSPoint? {
+        guard let front = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+              front != ProcessInfo.processInfo.processIdentifier,
+              let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+        else { return nil }
+        for info in list where (info[kCGWindowOwnerPID as String] as? Int).map(Int32.init) == front && (info[kCGWindowLayer as String] as? Int) == 0 {
+            guard let dict = info[kCGWindowBounds as String] as? NSDictionary, let rect = CGRect(dictionaryRepresentation: dict),
+                  rect.width >= 80, rect.height >= 80 else { continue }
+            // CGWindowList is top-left on the main display; AppKit is bottom-left
+            let mainHeight = NSScreen.screens.first?.frame.height ?? 0
+            let centre = NSPoint(x: rect.midX, y: mainHeight - rect.midY)
+            var origin = NSPoint(x: centre.x - size.width / 2, y: centre.y - size.height / 2)
+            if let screen = NSScreen.screens.first(where: { $0.frame.contains(centre) }) {
+                let room = screen.visibleFrame
+                origin.x = min(max(origin.x, room.minX), room.maxX - size.width)
+                origin.y = min(max(origin.y, room.minY), room.maxY - size.height)
+            }
+            return origin
+        }
+        return nil
     }
 
     private func makeWindow(_ title: String, height: CGFloat) -> NSWindow {
