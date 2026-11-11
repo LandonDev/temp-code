@@ -323,6 +323,8 @@ export type ComputerToolResult = z.infer<typeof ComputerToolResultSchema>
 /** Per app: the lowest tier that worked for each class. */
 export const TierVerdictSchema = z.object({
   bundleId: z.string().min(1),
+  /** the app's own name, the newest seen; absent on a verdict saved before names were kept */
+  name: z.string().optional(),
   classes: z.object({
     click: TierSchema.optional(),
     drag: TierSchema.optional(),

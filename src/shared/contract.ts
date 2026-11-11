@@ -1468,6 +1468,8 @@ export type ServerPush =
   | import('./contract-skills').SkillsPush
   // Computer use (contract-computer.ts): the service's state and the live sessions, to every client socket.
   | import('./contract-computer').ComputerPush
+  // Settings → Computer use (contract-computer.ts): the threshold and the learned apps, to every client socket.
+  | import('./contract-computer').ComputerSettingsPush
   // The live preview (contract-computer.ts): frames, clicks and its state, to the asking socket only.
   | import('./contract-computer').ComputerFramePush
   | import('./contract-computer').ComputerClickPush

@@ -36,7 +36,11 @@ export function computerHarness(
   const landingRoot = mkdtempSync(join(tmpdir(), 'tc-computer-landing-'))
   const log = join(dataDir, 'requests.log')
   const rows = new Map<string, string>()
-  const store = { getSetting: (k: string) => rows.get(k) ?? null, setSetting: (k: string, v: string | null) => void (v === null ? rows.delete(k) : rows.set(k, v)) }
+  const store = {
+    getSetting: (k: string) => rows.get(k) ?? null,
+    setSetting: (k: string, v: string | null) => void (v === null ? rows.delete(k) : rows.set(k, v)),
+    settingsWithPrefix: (p: string) => new Map([...rows].filter(([k]) => k.startsWith(p)))
+  }
   const metas = new Map<string, { status: SessionStatus; permission: PermissionPolicy; provider?: string; model?: string }>()
   const cards: Card[] = []
   let away = false

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { PermissionsSchema, TierSchema } from './computer/protocol'
-import { ComputerToolResultSchema } from './computer/tools'
+import { SCHEDULE } from './computer/scheduleRules'
+import { ComputerToolResultSchema, TierVerdictSchema } from './computer/tools'
 
 /**
  * Computer use over the app's own wire (docs/computer-protocol.md "The
@@ -60,6 +61,29 @@ export interface ComputerSessionsAnswer {
   sessions: ComputerSessionRow[]
 }
 
+/** One app's learned verdict, as Settings → Computer use shows it. */
+export const ComputerAppVerdictSchema = z.object({
+  bundleId: z.string().min(1),
+  /** null for a verdict saved before names were kept */
+  name: z.string().nullable(),
+  classes: TierVerdictSchema.shape.classes,
+  updatedAt: z.number().int()
+})
+export type ComputerAppVerdict = z.infer<typeof ComputerAppVerdictSchema>
+
+/** This Mac's computer settings: the session tier's idle threshold and every app it learned. */
+export const ComputerSettingsSchema = z.object({
+  sessionIdleMs: z.number().int(),
+  apps: z.array(ComputerAppVerdictSchema)
+})
+export type ComputerSettings = z.infer<typeof ComputerSettingsSchema>
+
+/** `computer.settings.set`: a partial, each field written alone. */
+export const ComputerSettingsPatchSchema = z.object({
+  sessionIdleMs: z.number().int().min(SCHEDULE.sessionIdleMsMin).max(SCHEDULE.sessionIdleMsMax).optional()
+})
+export type ComputerSettingsPatch = z.infer<typeof ComputerSettingsPatchSchema>
+
 /** What `app.computer` answers the bridge: the result text, its pictures (or none), and whether nothing ran. */
 export const AppComputerAnswerSchema = ComputerToolResultSchema.extend({ isError: z.boolean() })
 export type AppComputerAnswer = z.infer<typeof AppComputerAnswerSchema>
@@ -107,6 +131,17 @@ export const ComputerRequestSchemas = [
   request('computer.preview.ack', z.object({ preview: z.string(), seq: z.number().int().nonnegative() })),
   /** → null */
   request('computer.preview.stop', z.object({ preview: z.string() })),
+  // Settings → Computer use (surfaces/settings/Computer.tsx): this Mac's desktop only.
+  /** → ComputerSettings */
+  request('computer.settings.get', z.object({})),
+  /** → ComputerSettings */
+  request('computer.settings.set', ComputerSettingsPatchSchema),
+  /** → ComputerSettings: one app's verdict gone, or every app's with null; the next call probes again */
+  request('computer.verdicts.forget', z.object({ bundleId: z.string().min(1).nullable() })),
+  /** → Permissions | null: the service's own while it is up, else one `tc-computer permissions`; null when computer use is unavailable here or the read failed */
+  request('computer.permissions', z.object({})),
+  /** → ComputerServiceState: Try again on a service down after crashes */
+  request('computer.service.retry', z.object({})),
   /** → null: a session hold for no thread, so a proof can show the banner without the session tier; refused unless TEMP_CODE_E2E_STATUS=1 */
   request('computer.proofHold', z.object({ on: z.boolean() }))
 ] as const
@@ -128,6 +163,12 @@ export interface ComputerPush {
   push: 'computer'
   service: ComputerServiceState
   sessions: ComputerSessionRow[]
+}
+
+/** To every client when the threshold or a verdict changes, at most once a second. */
+export interface ComputerSettingsPush {
+  push: 'computer-settings'
+  settings: ComputerSettings
 }
 
 /** One frame of a preview, to the socket that asked only. At most one in flight per watcher until its ack. */

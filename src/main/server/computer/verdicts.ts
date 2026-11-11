@@ -20,12 +20,17 @@ import type { ComputerAction, ProbeReport, StepResult, Tier } from '@shared/comp
 export interface SettingsStore {
   getSetting(key: string): string | null
   setSetting(key: string, value: string | null): void
+  /** every row whose key starts with `prefix` (db.ts) */
+  settingsWithPrefix(prefix: string): Map<string, string>
 }
 
 /** A verdict older than this is forgotten: an app update may have fixed it. */
 export const VERDICT_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
 const empty = (bundleId: string, now: number): TierVerdict => ({ bundleId, classes: {}, misses: {}, updatedAt: now })
+/** The newest name wins; no name leaves the one kept. */
+const named = (v: TierVerdict, name: string | undefined): TierVerdict => (name && name !== v.name ? { ...v, name } : v)
+const VERDICT_PREFIX = tierVerdictSetting('')
 const isLearned = (via: string | undefined): via is LearnedVia => (LEARNED_VIAS as readonly string[]).includes(via ?? '')
 
 /**
@@ -78,6 +83,8 @@ export function nextVerdict(prev: TierVerdict | null, cls: ActionClass, step: St
 }
 
 export class TierVerdicts {
+  private readonly listeners = new Set<() => void>()
+
   constructor(
     private readonly store: SettingsStore,
     private readonly clock: { now(): number } = Date
@@ -85,14 +92,35 @@ export class TierVerdicts {
 
   get(bundleId: string | null): TierVerdict | null {
     if (!bundleId) return null
-    const raw = this.store.getSetting(tierVerdictSetting(bundleId))
-    if (!raw) return null
-    try {
-      const v = TierVerdictSchema.parse(JSON.parse(raw))
-      return this.clock.now() - v.updatedAt > VERDICT_TTL_MS ? null : v
-    } catch {
-      return null
+    return this.parse(this.store.getSetting(tierVerdictSetting(bundleId)))
+  }
+
+  /** Every verdict still kept: past-TTL and unreadable rows left out. */
+  list(): TierVerdict[] {
+    const out: TierVerdict[] = []
+    for (const [key, raw] of this.store.settingsWithPrefix(VERDICT_PREFIX)) {
+      const v = this.parse(raw)
+      if (v && tierVerdictSetting(v.bundleId) === key) out.push(v)
     }
+    return out
+  }
+
+  /** Settings → Computer use's Forget: one app's verdict, or every app's with null. Its classes, misses and probe go together, so the next call probes again. */
+  forget(bundleId: string | null): void {
+    const keys = bundleId === null ? [...this.store.settingsWithPrefix(VERDICT_PREFIX).keys()] : [tierVerdictSetting(bundleId)]
+    let changed = false
+    for (const key of keys) {
+      if (this.store.getSetting(key) === null) continue
+      this.store.setSetting(key, null)
+      changed = true
+    }
+    if (changed) this.emit()
+  }
+
+  /** Called after every write and forget; answers its unsubscribe. */
+  onChange(fn: () => void): () => void {
+    this.listeners.add(fn)
+    return () => this.listeners.delete(fn)
   }
 
   /**
@@ -130,15 +158,18 @@ export class TierVerdicts {
     return { ...(via.length ? { via } : {}), ...(process.length ? { process } : {}) }
   }
 
-  learn(bundleId: string | null, action: Pick<ComputerAction, 'action'>, step: StepResult): void {
+  /** One step's verdict; `name` is the app's, kept on a verdict that learns, or one that lacks it or holds an older one. */
+  learn(bundleId: string | null, action: Pick<ComputerAction, 'action'>, step: StepResult, name?: string): void {
     const cls = classOf(action)
     if (!bundleId || !cls) return
-    const next = nextVerdict(this.get(bundleId), cls, step, this.clock.now(), bundleId)
-    if (next) this.save(next)
+    const prev = this.get(bundleId)
+    const next = nextVerdict(prev, cls, step, this.clock.now(), bundleId)
+    if (next) this.save(named(next, name))
+    else if (prev && name && prev.name !== name) this.save(named(prev, name))
   }
 
   /** input.probe's report: honoured sets the class to process, ignored puts it two misses in, a key window elsewhere is recorded. */
-  learnProbe(bundleId: string, report: ProbeReport): void {
+  learnProbe(bundleId: string, report: ProbeReport, name?: string): void {
     const now = this.clock.now()
     const v = this.get(bundleId) ?? empty(bundleId, now)
     for (const r of report.results) {
@@ -148,13 +179,13 @@ export class TierVerdicts {
       } else if (r.outcome === 'ignored') v.misses[r.class] = VERDICT_MISSES_TO_RAISE
     }
     if (report.keyWindow !== 'target') v.needsKeyWindow = true
-    this.save({ ...v, probedAt: now, updatedAt: now })
+    this.save(named({ ...v, probedAt: now, updatedAt: now }, name))
   }
 
   /** A probe that failed is stamped too, so it never runs again for that app. */
-  stampProbe(bundleId: string): void {
+  stampProbe(bundleId: string, name?: string): void {
     const now = this.clock.now()
-    this.save({ ...(this.get(bundleId) ?? empty(bundleId, now)), probedAt: now, updatedAt: now })
+    this.save(named({ ...(this.get(bundleId) ?? empty(bundleId, now)), probedAt: now, updatedAt: now }, name))
   }
 
   /** No verdict and never probed. */
@@ -163,7 +194,22 @@ export class TierVerdicts {
     return bundleId !== null && (v === null || v.probedAt === undefined) && !(v && Object.keys(v.classes).length)
   }
 
+  private parse(raw: string | null): TierVerdict | null {
+    if (!raw) return null
+    try {
+      const v = TierVerdictSchema.parse(JSON.parse(raw))
+      return this.clock.now() - v.updatedAt > VERDICT_TTL_MS ? null : v
+    } catch {
+      return null
+    }
+  }
+
   private save(v: TierVerdict): void {
     this.store.setSetting(tierVerdictSetting(v.bundleId), JSON.stringify(TierVerdictSchema.parse(v)))
+    this.emit()
+  }
+
+  private emit(): void {
+    for (const fn of this.listeners) fn()
   }
 }

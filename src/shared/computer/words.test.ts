@@ -14,6 +14,7 @@ import {
   isComputerResult,
   needsApproval,
   openItemName,
+  verdictWords,
   type TitleContext
 } from './words'
 
@@ -363,5 +364,25 @@ describe('an open through computer_apps', () => {
     expect(openItemName('file:///Users/me/My%20Notes.txt')).toBe('My Notes.txt')
     expect(openItemName('https://example.com/')).toBe('example.com')
     expect(openItemName('https://example.com/a/b?q=1')).toBe('example.com/a/b')
+  })
+})
+
+describe('verdictWords', () => {
+  it('says nothing when no class is at the session tier', () => {
+    expect(verdictWords({})).toBeNull()
+    expect(verdictWords({ click: 'ax', type: 'process' })).toBeNull()
+  })
+  it('names one class alone', () => {
+    expect(verdictWords({ click: 'session', type: 'process' })).toBe('May take the screen to click')
+    expect(verdictWords({ key: 'session' })).toBe('May take the screen to press keys')
+  })
+  it('joins two with and, more with commas, in reading order', () => {
+    expect(verdictWords({ type: 'session', click: 'session' })).toBe('May take the screen to click and type')
+    expect(verdictWords({ type: 'session', scroll: 'session', click: 'session', drag: 'ax' })).toBe('May take the screen to click, scroll and type')
+  })
+  it('lists all six and never names a tier', () => {
+    const all = verdictWords({ click: 'session', drag: 'session', hover: 'session', scroll: 'session', key: 'session', type: 'session' })
+    expect(all).toBe('May take the screen to click, drag, hover, scroll, press keys and type')
+    expect(all).not.toMatch(/session|process|\bax\b/)
   })
 })

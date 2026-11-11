@@ -83,6 +83,7 @@ import { computerHooks, type ComputerHost } from './computer/mcp'
 import { ComputerPreviews, handleComputerPreview } from './computer/preview'
 import { SessionHolds, computerBannerHooks, handleComputerProofHold } from './computer/hold'
 import { ComputerRpc } from './computer/rpc'
+import { ComputerSettingsRpc } from './computer/settingsRpc'
 import { ComputerService } from './computer/service'
 import { ComputerSessions } from './computer/sessions'
 import { SessionScheduler } from './computer/schedule'
@@ -1388,6 +1389,12 @@ export async function startServer(
   })
   // a turn that settles or pauses cancels the thread's held calls left pending on the bridge
   registry.onMeta((m) => computerRpc.onMeta(m))
+  // Settings → Computer use (computer/settingsRpc.ts): the threshold, the learned apps, the grants, Try again.
+  const computerSettings = new ComputerSettingsRpc({
+    host: computer ? { service: computer.service, verdicts: computer.sessions.verdicts } : null,
+    store,
+    unavailable: () => computerUnavailable()
+  })
   // The box side: a thread here starting or spawning on a registered Mac,
   // reached by the app tools (apptools.ts, orchestration.ts).
   // Notices name this host as the environment switcher does.
@@ -1967,6 +1974,7 @@ export async function startServer(
     const offStores = storePush.onPush(sendFrame)
     // Computer use: the service and the live sessions to every client; the bridge's calls die with this socket.
     const offComputer = computerRpc.onPush(sendFrame)
+    const offComputerSettings = computerSettings.onPush(sendFrame)
     const computerSocket = computerRpc.socket()
     // Add-on grants: every view of this host after a change, never a value.
     const offGrants = addonGrants.onChange((grants) => sendFrame({ push: 'addon-grants', grants }))
@@ -3330,6 +3338,21 @@ export async function startServer(
           case 'computer.stop':
             sendFrame({ id: req.id, ok: true, result: await computerRpc.stop(req.params.sessionId) })
             break
+          case 'computer.settings.get':
+            sendFrame({ id: req.id, ok: true, result: computerSettings.get() })
+            break
+          case 'computer.settings.set':
+            sendFrame({ id: req.id, ok: true, result: computerSettings.set(req.params) })
+            break
+          case 'computer.verdicts.forget':
+            sendFrame({ id: req.id, ok: true, result: computerSettings.forget(req.params.bundleId) })
+            break
+          case 'computer.permissions':
+            sendFrame({ id: req.id, ok: true, result: await computerSettings.permissions() })
+            break
+          case 'computer.service.retry':
+            sendFrame({ id: req.id, ok: true, result: await computerSettings.retry() })
+            break
           case 'app.computer':
             sendFrame({ id: req.id, ok: true, result: await computerSocket.call(req.params) })
             break
@@ -3382,6 +3405,7 @@ export async function startServer(
       offAway()
       offStores()
       offComputer()
+      offComputerSettings()
       computerSocket.close()
       offGrants()
       offMeta()
@@ -3621,6 +3645,7 @@ export async function startServer(
       setAppSkillTools(null)
       storePush.close()
       computerRpc.close()
+      computerSettings.close()
       computerBridge?.close()
       holds?.close()
       void previews?.close()

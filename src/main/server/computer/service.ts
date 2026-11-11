@@ -148,6 +148,22 @@ export class ComputerService {
     else this.armIdle()
   }
 
+  /**
+   * Settings → Computer use's Try again on a service down after crashes: the
+   * crash window, the backoff and the five-minute wait are forgotten and it
+   * starts at once. Any other state, a permanent reason included, only
+   * answers the state.
+   */
+  async retry(): Promise<ComputerServiceState> {
+    if (this.status.state !== 'down' || this.permanent || this.closed) return this.state()
+    this.crashes = []
+    this.backoffStep = 0
+    this.downUntil = 0
+    this.nextSpawnAt = 0
+    await this.connection().catch((e: Error) => this.log(`Try again failed: ${e.message}`))
+    return this.state()
+  }
+
   /** The server closing: shut down, never respawn. */
   async close(): Promise<void> {
     this.closed = true

@@ -283,6 +283,7 @@ describe('tiers', () => {
     await h.run('computer_act', { app: 'Stubborn', action: 'left_click', coordinate: [5, 5] })
     const verdict = JSON.parse(h.rows.get(tierVerdictSetting('dev.fake.stubborn'))!)
     expect(verdict.classes.click).toBe('session')
+    expect(verdict.name).toBe('Stubborn')
     expect(last(h, 'action.run').params.tiers).toEqual(['ax', 'session'])
   })
 
@@ -297,7 +298,7 @@ describe('tiers', () => {
     expect(methods.filter((m) => m === 'input.probe')).toHaveLength(1)
     expect(methods.indexOf('input.probe')).toBeLessThan(methods.lastIndexOf('action.run'))
     expect(last(h, 'input.probe').params).toMatchObject({ app: { pid: 16800 }, window: { id: 1581 } })
-    expect(JSON.parse(h.rows.get(tierVerdictSetting('com.apple.TextEdit'))!).probedAt).toBeGreaterThan(0)
+    expect(JSON.parse(h.rows.get(tierVerdictSetting('com.apple.TextEdit'))!)).toMatchObject({ name: 'TextEdit', probedAt: expect.any(Number) })
   })
 })
 
