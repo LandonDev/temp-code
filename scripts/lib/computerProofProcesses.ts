@@ -24,6 +24,9 @@ const proofRunner = (command: string): boolean =>
 export function staleComputerProofPids(ps: string, self: number): number[] {
   const rows = processRows(ps)
   const byId = new Map(rows.map((row) => [row.pid, row]))
+  // A launcher above this runner (scripts/proof-bun.ts) names the proof too: it is ours, not another's.
+  const mine = new Set<number>()
+  for (let at = byId.get(self); at && !mine.has(at.pid); at = byId.get(at.ppid)) mine.add(at.pid)
   return rows.filter((row) => {
     if (row.pid === self) return false
     const probe = /^\/(?:private\/)?(?:tmp|var\/folders)\/[^\n]*\/TC Probe( Steal)?\.app\/Contents\/MacOS\/TC Probe\1(?:\s|$)/.test(row.command)
@@ -36,7 +39,7 @@ export function staleComputerProofPids(ps: string, self: number): number[] {
     for (let parent = byId.get(row.ppid); parent && !seen.has(parent.pid); parent = byId.get(parent.ppid)) {
       seen.add(parent.pid)
       if (proofRunner(parent.command)) {
-        if (parent.pid !== self) return false
+        if (!mine.has(parent.pid)) return false
         owned = true
       }
     }

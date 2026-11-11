@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import type { ChildProcess, spawn } from 'node:child_process'
 import { expect, it, vi } from 'vitest'
-import { preferredProofBun, runProofBun } from './proofBun'
+import { preferredProofBun, proofBunCandidates, runProofBun, sqliteProofBun } from './proofBun'
 
 it('selects the user runtime over an ancestor npm Bun and avoids a reexec loop', () => {
   const ops = { executable: () => true, realpath: (p: string) => p }
@@ -57,4 +57,21 @@ it('fails if the runtime cannot start', async () => {
   } finally {
     error.mockRestore()
   }
+})
+
+it('runs a proof under a Bun with node:sqlite, never the ancestor .bin copy that lacks it', () => {
+  const ancestor = '/Users/p/node_modules/.bin/bun'
+  const candidates = proofBunCandidates(ancestor, '/Users/p')
+  expect(candidates[0]).toBe('/Users/p/.bun/bin/bun')
+  const has = new Set(['/Users/p/.bun/bin/bun', '/opt/homebrew/bin/bun'])
+  const ops = { executable: () => true, hasSqlite: (p: string) => has.has(p) }
+  expect(sqliteProofBun(candidates, ops)).toBe('/Users/p/.bun/bin/bun')
+  has.delete('/Users/p/.bun/bin/bun')
+  expect(sqliteProofBun(candidates, ops)).toBe('/opt/homebrew/bin/bun')
+  // the running Bun is fine when it has sqlite and the person has no ~/.bun
+  expect(sqliteProofBun(proofBunCandidates('/usr/bin/bun', '/Users/p'), {
+    executable: (p) => p === '/usr/bin/bun',
+    hasSqlite: () => true
+  })).toBe('/usr/bin/bun')
+  expect(sqliteProofBun(candidates, { executable: () => true, hasSqlite: () => false })).toBeNull()
 })

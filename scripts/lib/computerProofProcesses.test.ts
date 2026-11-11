@@ -55,6 +55,15 @@ describe('staleComputerProofPids', () => {
       46 99 ${probe}
     `, 99)).toEqual([45, 46])
   })
+
+  it('counts the launcher above this runner as its own, not another proof', () => {
+    expect(staleComputerProofPids(`
+      98 1 bun scripts/proof-bun.ts scripts/e2e-tc-computer.ts --gate
+      99 98 /home/p/.bun/bin/bun /repo/scripts/e2e-tc-computer.ts --gate
+      45 99 ${bin} serve
+      46 99 ${probe}
+    `, 99)).toEqual([45, 46])
+  })
 })
 
 it('finds all exact spellings for a launch whose pid was never recorded', () => {
