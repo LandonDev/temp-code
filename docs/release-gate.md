@@ -431,7 +431,15 @@ system, never the model's word.
   The baseline was not re-recorded; its rows' task and step figures come
   from their per-call ones. Against the 7-call row the two-call shape has
   room for about twice its host time per task until a green run writes a
-  row of its own shape.
+  row of its own shape. Judged by the new rule, the two red runs pass
+  (GPT chrome-form 3920 and 3268 ms a task against 7935, 492 and 451 ms a
+  step against 1134), and two `--gate` runs in a row at a6c07ccaf with no
+  generator passed whole: 179 s at load 7.1 to 9.3 and 192 s at load 4.5
+  to 7.8, Opus and GPT-6.1 Sol every task they ran, GPT chrome-form 3260
+  and 4183 ms a task, 457 and 506 ms a step, none taking the front, Muse
+  skipped by its preflight, settings-toggle skipped (System Settings open),
+  save-dialog the hand run's, the person's baseline copied in before each
+  and left as it was.
 - **Can the publish load it?** The gate's lanes run at once
   (scripts/gate.ts) beside the build and the sign (release-publish.sh), and
   the bench is the computer lane's last row, after e2e-tc-computer (200 to
@@ -588,7 +596,7 @@ these ran, so its numbers moved by up to 40 % between runs.
 | e2e-tc-computer | 19 s (three runs) | | n/a | 11 min | Mac only; the `computer` lane, before the bench; whole row 200, 202 and 209 s under load 19 to 25 (2026-11-11) |
 | e2e-computer-bridge | 96 s, 60/60 before the schema rebase; 90 s, 59/60 after it (stale check since corrected); final commit not run: the Mac was locked; 293 s for 60/60 under load 18 to 40 at 55351169 (2026-11-11) | | n/a | 12 min | Mac only; both halves on the Mac; proof record in §18 |
 | e2e-computer-preview | 23 to 24 s (three runs); 24.7 s on 2026-11-11; 27 s under load 21 to 23 | | n/a | 12 min | Mac only; the Escape leg skipped |
-| computer-bench | 511 s, one run (2026-11-09, ungated, before the codex route fix; failed: see "The bench's hand run"); `--gate` passed twice on 2026-11-11 after the rig fix, 219 s and 167 s: Opus 5/5, GPT-6.1 Sol 5/5, took the front 0, Muse skipped by its preflight, baseline unchanged; on 2026-11-11 at 55351169 it failed GPT-6.1 Sol chrome-form's host ms per call twice, 1636 of 1134 at load 19.9 to 51.3 (165 s) and 1634 of 1134 at load 5.1 to 6.9 (166 s), every end state passing: the model's two-call shape, not load ("The computer bench") | | n/a | 15 min | Mac only; three model lanes in its own lane, beside the build |
+| computer-bench | 511 s, one run (2026-11-09, ungated, before the codex route fix; failed: see "The bench's hand run"); `--gate` passed twice on 2026-11-11 after the rig fix, 219 s and 167 s: Opus 5/5, GPT-6.1 Sol 5/5, took the front 0, Muse skipped by its preflight, baseline unchanged; on 2026-11-11 at 55351169 it failed GPT-6.1 Sol chrome-form's host ms per call twice, 1636 of 1134 at load 19.9 to 51.3 (165 s) and 1634 of 1134 at load 5.1 to 6.9 (166 s), every end state passing: the model's two-call shape, not load; with the cell made per task and per step, `--gate` passed twice in a row at a6c07ccaf, 179 s and 192 s at load 4.5 to 9.3 ("The computer bench") | | n/a | 15 min | Mac only; three model lanes in its own lane, beside the build |
 
 The box's share of the publish tier with the store rows (2026-11-09,
 `bun run gate --tier all --skip typecheck,vitest`, three runs: 205 s, 218 s
