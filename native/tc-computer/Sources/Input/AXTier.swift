@@ -168,11 +168,24 @@ enum AXTier {
         AX.set(e, "AXFocused", kCFBooleanTrue)
         // a field nobody was editing answers the position only once focus gave it a field editor
         if location == nil { location = AXHit.characterIndex(e, at: p) }
-        if let location {
-            let err = AX.set(e, "AXSelectedTextRange", AX.rangeValue(TextRange(location: location, length: 0)))
-            if err != .success, err != .cannotComplete { throw AX.failure(err, element: nil, what: "take the caret") }
-        }
         let deadline = clock.seconds() + Double(InputTiming.caretEvidenceMs) / 1000
+        if let location {
+            let want = TextRange(location: location, length: 0)
+            var writes = 0
+            loop: repeat {
+                switch CaretWrite.next(range: AX.range(e), want: want, writes: writes) {
+                case .done:
+                    return .changed
+                case .write:
+                    let err = AX.set(e, "AXSelectedTextRange", AX.rangeValue(want))
+                    if err != .success, err != .cannotComplete { throw AX.failure(err, element: nil, what: "take the caret") }
+                    writes += 1
+                case .wait:
+                    break loop
+                }
+                clock.sleep(ms: 20)
+            } while clock.seconds() < deadline
+        }
         repeat {
             let focused = AX.bool(e, "AXFocused")
             let range = AX.range(e)

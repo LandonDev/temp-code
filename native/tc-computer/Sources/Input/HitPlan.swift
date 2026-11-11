@@ -152,3 +152,16 @@ public func walkHit<Node>(root: Node, point: ScreenPoint, budget: Int = InputTim
 private func contains(_ r: ComputerProtocol.Rect, _ p: ScreenPoint) -> Bool {
     p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h
 }
+
+/// The caret write's read-back (§24.4). Focusing a field nobody was editing gives it a field editor that
+/// selects the whole text, possibly after the caret's first write landed, so the range is read back and
+/// written again, at most `caretWrites` times in all, until it holds.
+public enum CaretWrite {
+    public enum Decision: Equatable, Sendable { case done, write, wait }
+    public static let caretWrites = 3
+
+    public static func next(range: TextRange?, want: TextRange, writes: Int) -> Decision {
+        if range == want { return .done }
+        return writes < caretWrites ? .write : .wait
+    }
+}

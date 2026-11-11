@@ -225,6 +225,21 @@ private let win = Rect(x: 0, y: 0, w: 400, h: 300)
     }
 }
 
+@Suite struct CaretWriteTests {
+    let want = TextRange(location: 4, length: 0)
+
+    @Test func theCaretIsWrittenAgainUntilItHolds() {
+        // the field editor's select-all over the first write
+        #expect(CaretWrite.next(range: TextRange(location: 0, length: 10), want: want, writes: 1) == .write)
+        #expect(CaretWrite.next(range: want, want: want, writes: 1) == .done)
+        #expect(CaretWrite.next(range: nil, want: want, writes: 0) == .write)
+    }
+
+    @Test func atMostThreeWrites() {
+        #expect(CaretWrite.next(range: TextRange(location: 0, length: 10), want: want, writes: CaretWrite.caretWrites) == .wait)
+    }
+}
+
 @Suite struct HitPlanTests {
     @Test func aLabelInAButtonPressesTheButton() {
         let chain = [HitFacts(role: "text"), HitFacts(role: "button", actions: ["AXPress"])]
