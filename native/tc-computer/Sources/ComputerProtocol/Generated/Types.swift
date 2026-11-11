@@ -406,11 +406,13 @@ public struct ComputerAction: Codable, Hashable, Sendable {
 public struct IgnoredRoutes: Codable, Hashable, Sendable {
     public let via: [InputVia]?
     public let process: [ActionClass]?
+    public let front: [ActionClass]?
     public let skip: Bool?
 
-    public init(via: [InputVia]? = nil, process: [ActionClass]? = nil, skip: Bool? = nil) {
+    public init(via: [InputVia]? = nil, process: [ActionClass]? = nil, front: [ActionClass]? = nil, skip: Bool? = nil) {
         self.via = via
         self.process = process
+        self.front = front
         self.skip = skip
     }
 }
@@ -600,12 +602,14 @@ public struct ActionResult: Codable, Hashable, Sendable {
     public let observation: Observation?
     public let observationError: ComputerError?
     public let front: FrontReport?
+    public let menusLeftOpen: [String]?
 
-    public init(step: StepResult, observation: Observation? = nil, observationError: ComputerError? = nil, front: FrontReport? = nil) {
+    public init(step: StepResult, observation: Observation? = nil, observationError: ComputerError? = nil, front: FrontReport? = nil, menusLeftOpen: [String]? = nil) {
         self.step = step
         self.observation = observation
         self.observationError = observationError
         self.front = front
+        self.menusLeftOpen = menusLeftOpen
     }
 }
 
@@ -615,13 +619,15 @@ public struct BatchResult: Codable, Hashable, Sendable {
     public let observationError: ComputerError?
     public let waited: WaitReport
     public let front: FrontReport?
+    public let menusLeftOpen: [String]?
 
-    public init(steps: [StepResult], observation: Observation? = nil, observationError: ComputerError? = nil, waited: WaitReport, front: FrontReport? = nil) {
+    public init(steps: [StepResult], observation: Observation? = nil, observationError: ComputerError? = nil, waited: WaitReport, front: FrontReport? = nil, menusLeftOpen: [String]? = nil) {
         self.steps = steps
         self.observation = observation
         self.observationError = observationError
         self.waited = waited
         self.front = front
+        self.menusLeftOpen = menusLeftOpen
     }
 }
 

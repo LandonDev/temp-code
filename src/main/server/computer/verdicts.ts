@@ -13,8 +13,9 @@ import type { ComputerAction, ProbeReport, StepResult, Tier } from '@shared/comp
  * Per app, the lowest tier that worked for each action class
  * (docs/computer-protocol.md §5.2 and "Tier verdicts"), kept in the settings
  * row `computer.tiers.<bundleId>`. Each call's `tiers` comes from it: `ax`
- * first, `process` unless the class's verdict is `session`, `session` only
- * when the gate admits it. Apps with no bundle id keep no verdict.
+ * first, `process` unless the class's verdict is `front` or `session`,
+ * `front` and `session` only when the gate admits them. Apps with no bundle
+ * id keep no verdict.
  */
 
 export interface SettingsStore {
@@ -26,6 +27,8 @@ export interface SettingsStore {
 export const VERDICT_TTL_MS = 30 * 24 * 60 * 60 * 1000
 
 const empty = (bundleId: string, now: number): TierVerdict => ({ bundleId, classes: {}, misses: {}, updatedAt: now })
+/** `uncommitted` is a miss (§25, decision 11): the window changed and the disk did not. */
+const missed = (effect: string): boolean => effect === 'none' || effect === 'uncommitted'
 const isLearned = (via: string | undefined): via is LearnedVia => (LEARNED_VIAS as readonly string[]).includes(via ?? '')
 
 /**
@@ -37,7 +40,7 @@ function learnVia(v: TierVerdict, step: StepResult): boolean {
   if (step.status !== 'ok' || step.effect === 'unknown' || !isLearned(step.input?.via)) return false
   const via = step.input.via
   const misses = { ...v.viaMisses }
-  if (step.effect === 'none') misses[via] = (misses[via] ?? 0) + 1
+  if (missed(step.effect)) misses[via] = (misses[via] ?? 0) + 1
   else if (misses[via] === undefined) return false
   else delete misses[via]
   if (Object.keys(misses).length) v.viaMisses = misses
@@ -46,9 +49,16 @@ function learnVia(v: TierVerdict, step: StepResult): boolean {
 }
 const classOf = (action: Pick<ComputerAction, 'action'>): ActionClass | null => COMPUTER_ACTIONS[action.action].class
 
-/** Pure: the next verdict after one step, or null when it learns nothing. */
+/**
+ * Pure: the next verdict after one step, or null when it learns nothing (§5.2, §25 decision 11). A miss
+ * (`none` or `uncommitted`) counts at the tier it ran on; two misses at `process` then `changed` at `front`
+ * set the class to `front`; two at `front` (or at `process`, from an older service) then `changed` at
+ * `session` set it to `session`; a later `changed` at a lower tier lowers it.
+ */
 export function nextVerdict(prev: TierVerdict | null, cls: ActionClass, step: StepResult, now: number, bundleId: string): TierVerdict | null {
-  const v: TierVerdict = prev ? { ...prev, classes: { ...prev.classes }, misses: { ...prev.misses } } : empty(bundleId, now)
+  const v: TierVerdict = prev
+    ? { ...prev, classes: { ...prev.classes }, misses: { ...prev.misses }, ...(prev.frontMisses ? { frontMisses: { ...prev.frontMisses } } : {}) }
+    : empty(bundleId, now)
   // a fallback route is learned before the ax step's early return below
   if (learnVia(v, step) && step.status === 'ok' && step.tier === 'ax') {
     v.updatedAt = now
@@ -60,21 +70,49 @@ export function nextVerdict(prev: TierVerdict | null, cls: ActionClass, step: St
   } else if (step.status === 'ok') {
     if (step.tier === null || step.tier === 'ax' || step.effect === 'unknown') return null
     const misses = v.misses[cls] ?? 0
+    const frontMisses = v.frontMisses?.[cls] ?? 0
     if (step.tier === 'process') {
-      if (step.effect === 'none') v.misses[cls] = misses + 1
+      if (missed(step.effect)) v.misses[cls] = misses + 1
       else {
-        if (v.classes[cls] === 'process' && misses === 0) return null
+        if (v.classes[cls] === 'process' && misses === 0 && frontMisses === 0) return null
         delete v.misses[cls]
+        clearFront(v, cls)
         v.classes[cls] = 'process'
       }
+    } else if (step.tier === 'front') {
+      if (missed(step.effect)) v.frontMisses = { ...v.frontMisses, [cls]: frontMisses + 1 }
+      else {
+        const raise = v.classes[cls] !== 'front' && (misses >= VERDICT_MISSES_TO_RAISE || v.classes[cls] === 'session')
+        if (!raise && frontMisses === 0) return null
+        if (raise) {
+          v.classes[cls] = 'front'
+          delete v.misses[cls]
+        }
+        clearFront(v, cls)
+      }
     } else {
-      if (step.effect !== 'changed' || misses < VERDICT_MISSES_TO_RAISE || v.classes[cls] === 'session') return null
+      if (step.effect !== 'changed' || Math.max(misses, frontMisses) < VERDICT_MISSES_TO_RAISE || v.classes[cls] === 'session') return null
       v.classes[cls] = 'session'
       delete v.misses[cls]
+      clearFront(v, cls)
     }
   } else return null
   v.updatedAt = now
   return v
+}
+
+function clearFront(v: TierVerdict, cls: ActionClass): void {
+  if (!v.frontMisses) return
+  const rest = { ...v.frontMisses }
+  delete rest[cls]
+  if (Object.keys(rest).length) v.frontMisses = rest
+  else delete v.frontMisses
+}
+
+/** What the gate admits now: `front` (§25.6) and `session` (§20). */
+export interface Admitted {
+  front: boolean
+  session: boolean
 }
 
 export class TierVerdicts {
@@ -97,24 +135,40 @@ export class TierVerdicts {
 
   /**
    * The tiers for one step: 'ax' first, 'process' unless the class's verdict
-   * is 'session', 'session' only when admitted. With 'session' admitted, a
-   * class that missed at 'process' twice skips it, so the session step that
-   * raises the verdict gets its chance.
+   * is 'front' or 'session', 'front' when admitted and the class has not
+   * outgrown it, 'session' only when admitted. A class that missed twice
+   * below an admitted tier skips the lower one, so the step that raises the
+   * verdict gets its chance (§25, decision 11). `admitted` as a boolean is
+   * the session tier alone, for a service that speaks no `front`.
    */
-  tiersFor(bundleId: string | null, action: Pick<ComputerAction, 'action'>, sessionAdmitted: boolean): Tier[] {
+  tiersFor(bundleId: string | null, action: Pick<ComputerAction, 'action'>, admitted: Admitted | boolean): Tier[] {
+    const a = typeof admitted === 'boolean' ? { front: false, session: admitted } : admitted
     const cls = classOf(action)
     const v = this.get(bundleId)
+    const verdict = cls === null ? undefined : v?.classes[cls]
+    const misses = cls === null ? 0 : (v?.misses[cls] ?? 0)
+    const frontMisses = cls === null ? 0 : (v?.frontMisses?.[cls] ?? 0)
     const tiers: Tier[] = ['ax']
-    const skipProcess = cls !== null && (v?.classes[cls] === 'session' || (sessionAdmitted && (v?.misses[cls] ?? 0) >= VERDICT_MISSES_TO_RAISE))
+    const skipProcess = verdict === 'session' || verdict === 'front' || ((a.front || a.session) && misses >= VERDICT_MISSES_TO_RAISE)
     if (!skipProcess) tiers.push('process')
-    if (sessionAdmitted) tiers.push('session')
+    const skipFront = verdict === 'session' || (a.session && frontMisses >= VERDICT_MISSES_TO_RAISE)
+    if (a.front && !skipFront) tiers.push('front')
+    if (a.session) tiers.push('session')
     return tiers
   }
 
-  /** Does this step need the session tier by the verdict alone? */
+  /** Does this step need the session tier by the verdict alone? Two `front` misses say so too (decision 11). */
   needsSession(bundleId: string | null, action: Pick<ComputerAction, 'action'>): boolean {
     const cls = classOf(action)
-    return cls !== null && this.get(bundleId)?.classes[cls] === 'session'
+    if (cls === null) return false
+    const v = this.get(bundleId)
+    return v?.classes[cls] === 'session' || (v?.frontMisses?.[cls] ?? 0) >= VERDICT_MISSES_TO_RAISE
+  }
+
+  /** Does this step need the app in front by the verdict alone? */
+  needsFront(bundleId: string | null, action: Pick<ComputerAction, 'action'>): boolean {
+    const cls = classOf(action)
+    return cls !== null && this.get(bundleId)?.classes[cls] === 'front'
   }
 
   /**
@@ -125,9 +179,11 @@ export class TierVerdicts {
     const v = this.get(bundleId)
     if (!v) return undefined
     const via = LEARNED_VIAS.filter((r) => (v.viaMisses?.[r] ?? 0) >= VERDICT_MISSES_TO_RAISE)
-    const process = (Object.keys(v.misses) as ActionClass[]).filter((c) => (v.misses[c] ?? 0) >= VERDICT_MISSES_TO_RAISE)
+    const front = (Object.keys(v.frontMisses ?? {}) as ActionClass[]).filter((c) => (v.frontMisses?.[c] ?? 0) >= VERDICT_MISSES_TO_RAISE)
+    // a class whose front route missed twice puts its process route last too
+    const process = [...new Set([...(Object.keys(v.misses) as ActionClass[]).filter((c) => (v.misses[c] ?? 0) >= VERDICT_MISSES_TO_RAISE), ...front])]
     if (!via.length && !process.length) return undefined
-    return { ...(via.length ? { via } : {}), ...(process.length ? { process } : {}) }
+    return { ...(via.length ? { via } : {}), ...(process.length ? { process } : {}), ...(front.length ? { front } : {}) }
   }
 
   learn(bundleId: string | null, action: Pick<ComputerAction, 'action'>, step: StepResult): void {

@@ -41,6 +41,8 @@ export interface TierGateRequest extends TierGateContext {
   /** the call, unique on the host: a paste's deadline holds across its re-runs */
   call: string
   signal: AbortSignal
+  /** the tier the step needs: `session` when left out; `front` waits only under "wait until I'm away" (§25.6) */
+  needed?: 'front' | 'session'
 }
 
 export interface TierGateRun extends TierGateContext {
@@ -58,6 +60,8 @@ export type ClipboardDecision = { ok: true; waitedMs: number } | { ok: false; ca
 export interface SessionTierGate {
   /** Before a call: may its tiers include 'session'? Fast, no wait. */
   admitted(ctx: TierGateContext): boolean
+  /** Before a call: may its tiers include 'front' (§25.6)? Fast, no wait; absent reads as no. */
+  frontAdmitted?(ctx: TierGateContext): boolean
   /** A step needs the session tier the call did not allow: admit it (after any wait the gate owns) or refuse with a reason. */
   request(ctx: TierGateRequest): Promise<TierDecision>
   /** A session-tier step ran: what it took (input plan A6). */
@@ -74,10 +78,12 @@ export interface SessionTierGate {
   settle?(threadId: string, why: 'turn-end' | 'stopped' | 'paused' | 'ended'): Promise<void>
 }
 
+/** With no scheduler (headless, a host with no person to watch for) neither `session` nor `front` runs. */
 export const REFUSE_SESSION_TIER: SessionTierGate = {
   admitted: () => false,
+  frontAdmitted: () => false,
   request: async () => ({ admit: false, reason: 'no-scheduler', message: sessionRefusalWords('no-scheduler') }),
-  run: (ctx, send) => send(ctx.tiers.filter((t) => t !== 'session'))
+  run: (ctx, send) => send(ctx.tiers.filter((t) => t !== 'session' && t !== 'front'))
 }
 
 let current: SessionTierGate = REFUSE_SESSION_TIER

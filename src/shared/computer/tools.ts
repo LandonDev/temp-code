@@ -325,6 +325,15 @@ export type ComputerToolResult = z.infer<typeof ComputerToolResultSchema>
 
 // ── the tier verdict (§5.2) ─────────────────────────────────────────────
 
+const ClassCountsSchema = z.object({
+  click: z.number().int().nonnegative().optional(),
+  drag: z.number().int().nonnegative().optional(),
+  hover: z.number().int().nonnegative().optional(),
+  scroll: z.number().int().nonnegative().optional(),
+  key: z.number().int().nonnegative().optional(),
+  type: z.number().int().nonnegative().optional()
+})
+
 /** Per app: the lowest tier that worked for each class. */
 export const TierVerdictSchema = z.object({
   bundleId: z.string().min(1),
@@ -336,15 +345,10 @@ export const TierVerdictSchema = z.object({
     key: TierSchema.optional(),
     type: TierSchema.optional()
   }),
-  /** steps in a row with effect 'none' at the class's current tier */
-  misses: z.object({
-    click: z.number().int().nonnegative().optional(),
-    drag: z.number().int().nonnegative().optional(),
-    hover: z.number().int().nonnegative().optional(),
-    scroll: z.number().int().nonnegative().optional(),
-    key: z.number().int().nonnegative().optional(),
-    type: z.number().int().nonnegative().optional()
-  }),
+  /** steps in a row with effect 'none' (or 'uncommitted') at `process` */
+  misses: ClassCountsSchema,
+  /** steps in a row with effect 'none' or 'uncommitted' at `front` (§25, decision 11) */
+  frontMisses: ClassCountsSchema.optional(),
   /**
    * This app's background windows have been seen not key: a process-tier keys
    * step answered `key_window_unavailable`, or a probe found the key window
@@ -372,7 +376,7 @@ export type TierVerdict = z.infer<typeof TierVerdictSchema>
 
 /** The tier a class with no verdict starts at. */
 export const DEFAULT_TIER: Tier = 'process'
-/** `effect: 'none'` this many times in a row at a class's tier, then `changed` at `session`, raises the verdict. */
+/** `effect: 'none'` (or `uncommitted`) this many times in a row at a class's tier, then `changed` at the next tier up, raises the verdict. */
 export const VERDICT_MISSES_TO_RAISE = 2
 /** Where the host keeps an app's verdict. */
 export const tierVerdictSetting = (bundleId: string): string => `computer.tiers.${bundleId}`

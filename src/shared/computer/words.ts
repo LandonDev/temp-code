@@ -198,6 +198,8 @@ export function actionWords(action: ComputerAction, ctx: TitleContext): string {
       return 'read the cursor'
     case 'wait':
       return `wait up to ${action.duration} s`
+    case 'save_as':
+      return `save as ${action.path}${action.replace ? ', replacing the file there' : ''}`
     default:
       return action.action
   }
@@ -214,6 +216,8 @@ function actingSteps(tool: ComputerToolName, args: ToolArgs): ComputerAction[] {
 
 /** What a card says when the call is expected to take the person's pointer and keyboard. */
 export const USING_SESSION_WORDS = ', using your pointer and keyboard'
+/** What a card says when a step is expected to bring the app forward for a moment (§25.6): `, bringing TextEdit forward for a moment`. */
+export const bringingForwardWords = (app: string): string => `, bringing ${app} forward for a moment`
 
 /**
  * The card's title (the card's row, the notifier and the away row read it):
@@ -222,14 +226,16 @@ export const USING_SESSION_WORDS = ', using your pointer and keyboard'
  * A flagged call leads with its kind: `Send in Mail: Reply to Ana (click button "Send")`.
  * A batch's reads are left out. With `session` (a step expected to need the
  * session tier) it ends `, using your pointer and keyboard`, and an Allow
- * then covers that tier too.
+ * then covers that tier too; with `front` (a step expected to need the app in
+ * front, §25.6) it ends `, bringing TextEdit forward for a moment`, and an
+ * Allow covers the hold.
  */
 export function computerApprovalTitle(
   tool: ComputerToolName,
   args: ToolArgs,
   ctx: TitleContext,
   confirm: ConfirmNeed | null = null,
-  opts: { session?: boolean } = {}
+  opts: { session?: boolean; front?: boolean } = {}
 ): string {
   if (tool === 'computer_apps') {
     const app = args.launch ?? ctx.appName
@@ -237,7 +243,7 @@ export function computerApprovalTitle(
     return confirm ? confirmTitle(confirm, app, what) : `${capital(what)} in ${app}`
   }
   const steps = actingSteps(tool, args).map((a) => actionWords(a, ctx))
-  const using = opts.session ? USING_SESSION_WORDS : ''
+  const using = opts.session ? USING_SESSION_WORDS : opts.front ? bringingForwardWords(ctx.appName) : ''
   if (confirm) return confirmTitle(confirm, ctx.appName, steps.join(', ') || undefined) + using
   if (steps.length === 1) return `${capital(steps[0])} in ${where(ctx)}${using}`
   return `${steps.length} actions in ${where(ctx)}${using}: ${steps.join(', ')}`
@@ -246,8 +252,12 @@ export function computerApprovalTitle(
 /** The card tier scheduling raises for a held step: a tool name no harness calls. */
 export const COMPUTER_SESSION_TOOL = 'computer_session'
 
-/** That card's title: `Use your pointer and keyboard to click button "Save" in TextEdit, window "Untitled"`. */
-export function computerSessionAskTitle(stepWords: string, ctx: Pick<TitleContext, 'appName' | 'window'>): string {
+/**
+ * That card's title: `Use your pointer and keyboard to click button "Save" in TextEdit, window "Untitled"`;
+ * for a step that needs the app in front (§25.6) `Bring TextEdit forward for a moment to press super+s, window "Total.txt"`.
+ */
+export function computerSessionAskTitle(stepWords: string, ctx: Pick<TitleContext, 'appName' | 'window'>, opts: { front?: boolean } = {}): string {
+  if (opts.front) return `Bring ${ctx.appName} forward for a moment to ${stepWords}${ctx.window ? `, window ${JSON.stringify(ctx.window)}` : ''}`
   return `Use your pointer and keyboard to ${stepWords} in ${where(ctx)}`
 }
 

@@ -40,7 +40,12 @@ export interface StepsResult {
   observationError?: ComputerError
   /** the app came forward during the call (§23.4) */
   front?: FrontReport
+  /** menus the call opened and could not close (§25.11) */
+  menusLeftOpen?: string[]
 }
+
+/** `menu left open: Action` (§25.11): never silently left. */
+export const menuLeftOpenLine = (titles: readonly string[]): string => `menu left open: ${titles.join(', ')}`
 
 /**
  * What the front guard did when `name` came forward (§23.5), or null when it
@@ -94,6 +99,7 @@ export function outcomeOf(
   })
   const front = frontLine(result.observation?.app.name ?? ctx.app ?? 'the app', result.front, person)
   if (front) steps.push(front)
+  if (result.menusLeftOpen?.length) steps.push(menuLeftOpenLine(result.menusLeftOpen))
   const body = result.observation
     ? result.observation.text
     : result.observationError

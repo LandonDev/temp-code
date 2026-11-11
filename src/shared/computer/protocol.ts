@@ -837,6 +837,9 @@ export type FrontReport = z.infer<typeof FrontReportSchema>
 export const LaunchedWindowSchema = z.object({ id: int(), title: z.string() })
 export type LaunchedWindow = z.infer<typeof LaunchedWindowSchema>
 
+/** At most 8 menu titles, each at most 100 UTF-16 units. */
+const MenusLeftOpenSchema = z.array(z.string().max(100)).max(8)
+
 export const ActionResultSchema = z.object({
   step: StepResultSchema,
   /** absent with observe.mode 'none', or when observationError says why */
@@ -844,7 +847,9 @@ export const ActionResultSchema = z.object({
   /** the closing observation failed; the step stands */
   observationError: ComputerErrorSchema.optional(),
   /** the app came forward during the call (§23.4) */
-  front: FrontReportSchema.optional()
+  front: FrontReportSchema.optional(),
+  /** menus the call opened and could not close (§25.11), by the title of what opened them */
+  menusLeftOpen: MenusLeftOpenSchema.optional()
 })
 export type ActionResult = z.infer<typeof ActionResultSchema>
 
@@ -854,7 +859,9 @@ export const BatchResultSchema = z.object({
   observationError: ComputerErrorSchema.optional(),
   waited: WaitReportSchema,
   /** the app came forward during the call (§23.4) */
-  front: FrontReportSchema.optional()
+  front: FrontReportSchema.optional(),
+  /** menus the call opened and could not close (§25.11), by the title of what opened them */
+  menusLeftOpen: MenusLeftOpenSchema.optional()
 })
 export type BatchResult = z.infer<typeof BatchResultSchema>
 
@@ -895,6 +902,8 @@ const PasteQuietSchema = int().nonnegative()
 export const IgnoredRoutesSchema = z.object({
   via: z.array(InputViaSchema).optional(),
   process: z.array(ActionClassSchema).optional(),
+  /** classes whose `front` route missed twice (§25, decision 11): run last, after the session route when it is allowed */
+  front: z.array(ActionClassSchema).optional(),
   skip: z.boolean().optional()
 })
 export type IgnoredRoutes = z.infer<typeof IgnoredRoutesSchema>
