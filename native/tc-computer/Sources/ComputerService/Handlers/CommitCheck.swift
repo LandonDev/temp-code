@@ -1,11 +1,13 @@
 import ApplicationServices
+import AXReader
 import ComputerCore
 import ComputerProtocol
 import ComputerServiceKit
 import Foundation
 import Input
 
-/// What the window says of its file now: its AXDocument and its close button's AXEdited (§26.8, E5).
+/// What the window says of its file now: its AXDocument and its edited flag, the close button's AXEdited or the
+/// title bar's status (§26.8, E5, `EditedFlag`).
 struct DocumentState: Equatable, Sendable {
     var url: String?
     var edited: Bool?
@@ -26,6 +28,18 @@ struct DocumentState: Equatable, Sendable {
                 edited = (flag as? NSNumber)?.boolValue
             }
         }
+        // an autosaving document says it only in the title bar's status, a menu button of the window (EditedFlag)
+        var titles: [String] = []
+        var children: CFTypeRef?
+        if AXUIElementCopyAttributeValue(window, "AXChildren" as CFString, &children) == .success, let list = children as? [AXUIElement] {
+            for child in list {
+                var role: CFTypeRef?, title: CFTypeRef?
+                guard AXUIElementCopyAttributeValue(child, "AXRole" as CFString, &role) == .success, role as? String == "AXMenuButton",
+                      AXUIElementCopyAttributeValue(child, "AXTitle" as CFString, &title) == .success, let t = title as? String, !t.isEmpty else { continue }
+                titles.append(t)
+            }
+        }
+        edited = EditedFlag.of(closeButton: edited, statusTitles: titles)
         return url == nil && edited == nil ? nil : DocumentState(url: url, edited: edited)
     }
 }

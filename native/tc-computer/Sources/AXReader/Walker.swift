@@ -21,6 +21,8 @@ struct WalkNotes {
     var busy: [(element: AXUIElement, kind: BusyRule.Kind, containers: [AXUIElement])] = []
     /// the target window's document (§26.8): its `AXDocument` and its close button's `AXEdited`
     var document = WindowDocument()
+    /// the titles of the window's own menu buttons, one of which is its title bar's status (`EditedFlag`)
+    var statusTitles: [String] = []
     /// every open menu the walk read (§26.11), with what opened it when the walk came through it
     var menus: [OpenMenu] = []
 }
@@ -89,13 +91,17 @@ final class Walker {
     /// A root (the window, an open menu, a popover, the menu bar). The window's
     /// own failures end the read; another root that fails is left out.
     func walk(root el: AXUIElement, clip: ComputerProtocol.Rect?, menuBar: Bool, isWindow: Bool) throws -> AXNode? {
+        windowWalk = isWindow
         let out = try node(el, clip: clip, scope: .window, depth: 0, menuBar: menuBar, containers: [], root: true, isWindow: isWindow)
+        windowWalk = false
         // a walk cut short before the close button: its flag in one read of its own
         if isWindow, notes.document.edited == nil, let closeButton {
             notes.document.edited = AX.bool(AX.copy(closeButton, Attributes.edited).value)
             counts.calls += 1
             counts.attributes += 1
         }
+        // an autosaving document says it only in the title bar's status (EditedFlag)
+        if isWindow { notes.document.edited = EditedFlag.of(closeButton: notes.document.edited, statusTitles: notes.statusTitles) }
         switch out {
         case .node(let n): return n
         default: return nil
@@ -103,6 +109,9 @@ final class Walker {
     }
 
     typealias Outcome = ViewportCut.Outcome<AXNode>
+
+    /// the walk under way is a window's, whose own children hold its title bar's status
+    private var windowWalk = false
 
     private func stop() {
         partial = true
@@ -154,6 +163,8 @@ final class Walker {
             closeButton = AX.element(s("AXCloseButton"))
         } else if subrole == "AXCloseButton", let closeButton, CFEqual(el, closeButton) {
             notes.document.edited = AX.bool(s(Attributes.edited))
+        } else if windowWalk, depth == 1, role == "AXMenuButton", let title = AX.string(s("AXTitle")), !title.isEmpty {
+            notes.statusTitles.append(title)
         }
         var n = AXNode(
             id: id, role: role, subrole: subrole, title: AX.string(s("AXTitle")), description: AX.string(s("AXDescription")),
