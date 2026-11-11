@@ -495,7 +495,9 @@ struct ThreadScreen: View {
                     .frame(width: columns.hero + columns.gap, height: 1)
                     .allowsHitTesting(false)
             }
-            BottomDock(client: client, sessionId: sessionId, session: session, dock: client.thread(sessionId)?.dock ?? DockState(), focused: $composerFocused, regularWidth: regularWidth, draft: draftSeed)
+            // The dock takes what it draws of the session and compares equal through every other meta.
+            BottomDock(client: client, sessionId: sessionId, chrome: ComposerChrome(session, pausedBatch: session?.isMaster == true && session?.status == .paused ? client.pausedBatch(of: sessionId) : 0), dock: client.thread(sessionId)?.dock ?? DockState(), focused: $composerFocused, regularWidth: regularWidth, seed: draftSeed)
+                .equatable()
                 .frame(maxWidth: mode == .single ? ReadingMeasure.columnFrame(width: width) : .infinity)
                 #if DEBUG
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { TestHooks.recordDock(height: $0, focused: TestHooks.open == "composer") }

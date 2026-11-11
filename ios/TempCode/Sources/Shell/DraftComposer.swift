@@ -21,6 +21,9 @@ import TempCodeContract
 /// (`DraftSending`); the box empties at the click and stays open, so what
 /// is written meanwhile is the next draft, and a failed create gives the
 /// sent text and photos back. The send opens the new thread in the shell.
+/// The message's text is typed into a `ComposerDraft` the field alone reads;
+/// each key still goes to the store at once, in memory, and this body reads
+/// only whether the box has content, so it does not run per key.
 struct DraftComposer: View {
     let scope: StripScope
     @Environment(AppModel.self) private var model
@@ -28,7 +31,9 @@ struct DraftComposer: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var focused: Bool
+    /// The draft but for its message, which is `typed`'s (`current` joins them).
     @State private var draft = ProjectDraft()
+    @State private var typed = ComposerDraft()
     @State private var choice = CatalogChoice(provider: .claude, model: "", reasoning: nil)
     @State private var busy = false
     @State private var failure: String?
@@ -90,25 +95,29 @@ struct DraftComposer: View {
 
     /// The host's catalog has landed (the model is known) and nothing is in flight.
     private var canSend: Bool {
-        DraftSend.canSend(text: draft.text, sending: busy, model: choice.catalog == nil ? "" : choice.key.model)
+        DraftSend.canSend(hasContent: typed.hasContent, sending: busy, model: choice.catalog == nil ? "" : choice.key.model)
+    }
+
+    /// The draft as it stands: its fields with the text typed so far. Read by
+    /// what acts (a key, a setter), never by the body.
+    private var current: ProjectDraft {
+        var whole = draft
+        whole.text = typed.text
+        return whole
+    }
+
+    /// Kept in the store at once, in memory; it writes after its quiet spell.
+    private func keep() {
+        store.set(key, current)
+    }
+
+    /// The store's copy becomes the one shown: the fields here, the text in the box.
+    private func show(_ kept: ProjectDraft) {
+        draft = kept
+        typed.seed(kept.text)
     }
 
     private var photos: [DraftPhoto] { store.photos[key] ?? [] }
-
-    /// The draft's text as the field writes it, kept as it changes; a paste of more than one line eases the height.
-    private var field: Binding<String> {
-        Binding {
-            draft.text
-        } set: { new in
-            if ComposerHeight.eases(from: draft.text, to: new), !reduceMotion {
-                withAnimation(Motion.base) { draft.text = new }
-            } else {
-                Motion.withoutAnimation { draft.text = new }
-            }
-            failure = nil
-            store.set(key, draft)
-        }
-    }
 
     /// The draft row's name, cut at 80 characters as it is typed.
     private var title: Binding<String> {
@@ -116,7 +125,7 @@ struct DraftComposer: View {
             draft.title ?? ""
         } set: { new in
             draft.title = ProjectDraft.cleanTitle(new)
-            store.set(key, draft)
+            keep()
         }
     }
 
@@ -125,7 +134,7 @@ struct DraftComposer: View {
             draft.permission ?? .edits
         } set: { policy in
             draft.permission = policy
-            store.set(key, draft)
+            keep()
         }
     }
 
@@ -141,13 +150,13 @@ struct DraftComposer: View {
             }
             VStack(spacing: ComposerMetrics.rowGap) {
                 TCGlassContainer {
-                    ComposerBox(placeholder: ComposerRules.placeholder(for: nil), text: field, focused: $focused, blocked: block, canAttach: block == nil, attachEnabled: photos.count < ComposerBar.maxPhotos, onAttach: { picking = true }) {
+                    ComposerBox(placeholder: ComposerRules.placeholder(for: nil), draft: typed, focused: $focused, blocked: block, canAttach: block == nil, attachEnabled: photos.count < ComposerBar.maxPhotos, onAttach: { picking = true }) {
                         ComposerButton(intent: .send, enabled: canSend, offersQueue: false, holding: .constant(false), reduced: reduceMotion, busy: busy, onTap: send, onQueue: {})
                     }
                 }
                 if let client = target?.client {
-                    ComposerRowView(client: client, session: nil, choice: choice, draftMode: mode, waiting: CatalogLoad.waitLine(hostName: client.environment.name, transport: client.status.transport, hasCatalog: choice.catalog != nil))
-                    DraftRow(draft: draft, title: title, types: Self.types, copies: copies, newCopyHosts: newCopyHosts, setType: setType, setMaster: setMaster, setHost: setHost, newCopy: newCopy, titleDone: { focused = true })
+                    ComposerRowView(client: client, choice: choice, draftMode: mode, waiting: CatalogLoad.waitLine(hostName: client.environment.name, transport: client.status.transport, hasCatalog: choice.catalog != nil))
+                    DraftRow(threadType: draft.threadType, master: draft.master, environmentId: draft.environmentId, title: title, types: Self.types, copies: copies, newCopyHosts: newCopyHosts, setType: setType, setMaster: setMaster, setHost: setHost, newCopy: newCopy, titleDone: { focused = true })
                 }
             }
         }
@@ -166,15 +175,20 @@ struct DraftComposer: View {
             Task { await add(items) }
         }
         .onChange(of: key, initial: true) {
-            draft = store.draft(key) ?? ProjectDraft()
+            show(store.draft(key) ?? ProjectDraft())
             seededHost = nil
+            // A person's edit is kept under the key shown now, and takes the refusal away.
+            typed.onEdit = {
+                if failure != nil { failure = nil }
+                keep()
+            }
         }
         // The drafts wait 500 ms of quiet before they are written; leaving writes them now.
         .onChange(of: scenePhase) { if scenePhase != .active { store.flush() } }
         .onDisappear { store.flush() }
         .onChange(of: store.focusRequest, initial: true) {
             guard store.focusRequest == key else { return }
-            draft = store.draft(key) ?? draft
+            show(store.draft(key) ?? current)
             focused = true
             store.focusRequest = nil
         }
@@ -198,29 +212,29 @@ struct DraftComposer: View {
             guard !Self.launchActed, let action = TestHooks.action else { return }
             if action.hasPrefix("draft:") {
                 Self.launchActed = true
-                draft.text = String(action.dropFirst(6))
-                store.set(key, draft)
+                typed.seed(String(action.dropFirst(6)))
+                keep()
                 focused = true
             } else if action == "new-chat" {
                 Self.launchActed = true
-                draft.text = "A chat started from its draft"
-                store.set(key, draft)
+                typed.seed("A chat started from its draft")
+                keep()
                 for _ in 0..<50 where choice.catalog == nil { try? await Task.sleep(for: .milliseconds(100)) }
                 send()
             } else if action == "new-chat-wait" {
                 // A draft opened while its host is down (the test server's `/hold`): the row
                 // says "Waiting for <host>", and the send goes once the host is up and its catalog lands.
                 Self.launchActed = true
-                draft.text = "A chat sent once its host came up"
-                store.set(key, draft)
+                typed.seed("A chat sent once its host came up")
+                keep()
                 for _ in 0..<TestHooks.catalogWaitTicks where choice.catalog == nil { try? await Task.sleep(for: .milliseconds(100)) }
                 send()
             } else if action == "new-chat-held" {
                 // The send in flight for the shot: a named chat whose create the hook holds (`send`).
                 Self.launchActed = true
-                draft.text = "A chat held while its create runs"
+                typed.seed("A chat held while its create runs")
                 draft.title = "Held mid-send"
-                store.set(key, draft)
+                keep()
                 for _ in 0..<50 where choice.catalog == nil { try? await Task.sleep(for: .milliseconds(100)) }
                 send()
             }
@@ -233,23 +247,23 @@ struct DraftComposer: View {
         draft.provider = choice.key.provider
         draft.model = choice.key.model
         draft.reasoning = choice.reasoning
-        store.set(key, draft)
+        keep()
     }
 
     private func setType(_ type: ThreadType) {
         draft.threadType = type
         if type != .chat { draft.master = false }
-        store.set(key, draft)
+        keep()
     }
 
     private func setMaster(_ on: Bool) {
         draft.master = on
-        store.set(key, draft)
+        keep()
     }
 
     private func setHost(_ environmentId: String) {
         draft.environmentId = environmentId
-        store.set(key, draft)
+        keep()
     }
 
     /// A copy of the linked project on `client`'s host, found or made; the draft then starts there.
@@ -291,7 +305,7 @@ struct DraftComposer: View {
         let (sent, sentPhotos) = store.take(key)
         let text = sent.text.trimmingCharacters(in: .whitespacesAndNewlines)
         // A keyboard action never animates: the field empties at once.
-        Motion.withoutAnimation { draft = store.draft(key) ?? sent.taken }
+        Motion.withoutAnimation { show(store.draft(key) ?? sent.taken) }
         let client = target.client
         let thread = ProjectDrafts.threadDraft(sent, workspaceId: target.workspace.id, projectId: target.project?.id, provider: choice.key.provider, model: choice.key.model, reasoning: choice.reasoning)
         store.beginSending(key, DraftSending(environmentId: client.environment.id, workspaceId: target.workspace.id, projectId: target.project?.id, title: DraftSending.title(of: sent, text: text), threadType: sent.threadType, provider: thread.provider, model: thread.model, startedAt: Int(Date().timeIntervalSince1970 * 1_000)))
@@ -311,7 +325,7 @@ struct DraftComposer: View {
             } catch {
                 store.endSending(key)
                 store.restore(key, draft: sent, photos: sentPhotos)
-                draft = store.draft(key) ?? sent
+                show(store.draft(key) ?? sent)
                 failure = (error as? ActionError)?.message ?? String(describing: error)
             }
         }
@@ -322,7 +336,10 @@ struct DraftComposer: View {
 /// chip, the host for a linked project, Master for a chat. Quiet controls in
 /// the detail type and secondary, each touch reaching 44 pt.
 private struct DraftRow: View {
-    let draft: ProjectDraft
+    let threadType: ThreadType
+    let master: Bool
+    /// The host the draft starts on; nil is the lead copy.
+    let environmentId: String?
     @Binding var title: String
     let types: [ThreadType]
     let copies: [DraftComposer.Copy]
@@ -354,8 +371,8 @@ private struct DraftRow: View {
             typeMenu
                 .fixedSize()
             titleField
-            if draft.threadType == .chat {
-                master
+            if threadType == .chat {
+                masterCheck
                     .fixedSize(horizontal: fixed, vertical: false)
             }
             Spacer(minLength: 0)
@@ -392,40 +409,40 @@ private struct DraftRow: View {
                         Text(type.label)
                         Text(type.hint)
                     } icon: {
-                        Image(systemName: type == draft.threadType ? "checkmark" : type.symbol)
+                        Image(systemName: type == threadType ? "checkmark" : type.symbol)
                     }
                 }
             }
         } label: {
             HStack(spacing: TranscriptMetrics.wordGap) {
-                Image(systemName: draft.threadType.symbol)
-                    .foregroundStyle(draft.threadType.tint)
-                Text(draft.threadType.label)
+                Image(systemName: threadType.symbol)
+                    .foregroundStyle(threadType.tint)
+                Text(threadType.label)
             }
             .rowHit()
         }
         .menuOrder(.fixed)
         .quietMenu()
-        .accessibilityLabel("Thread type: \(draft.threadType.label)")
+        .accessibilityLabel("Thread type: \(threadType.label)")
     }
 
-    private var master: some View {
+    private var masterCheck: some View {
         Button {
-            setMaster(!draft.master)
+            setMaster(!master)
         } label: {
             HStack(spacing: TranscriptMetrics.wordGap) {
-                Image(systemName: draft.master ? "checkmark.square.fill" : "square")
-                    .foregroundStyle(draft.master ? Color.accentColor : Color(.secondaryLabel))
+                Image(systemName: master ? "checkmark.square.fill" : "square")
+                    .foregroundStyle(master ? Color.accentColor : Color(.secondaryLabel))
                 Text("Master thread")
             }
             .rowHit()
         }
         .buttonStyle(.plain)
-        .accessibilityAddTraits(draft.master ? .isSelected : [])
+        .accessibilityAddTraits(master ? .isSelected : [])
     }
 
     private func hostMenu(showsName: Bool) -> some View {
-        let current = copies.first { $0.id == draft.environmentId } ?? copies.first
+        let current = copies.first { $0.id == environmentId } ?? copies.first
         return Menu {
             ForEach(copies) { copy in
                 Button {

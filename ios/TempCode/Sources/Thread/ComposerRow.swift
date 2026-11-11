@@ -13,9 +13,13 @@ import TempCodeContract
 /// (`session.permission`, approve; a lesser key reads it). Quiet controls
 /// in the detail type and secondary, each touch reaching 44 pt. A narrow row
 /// gives way in the desktop's order and never wraps (`ComposerRow.fit`).
+/// Of the thread's session it holds what it draws (`ComposerChrome`); the
+/// mode's pick reads the session as it is when it runs.
 struct ComposerRowView: View {
     let client: EnvironmentClient
-    let session: SessionMeta?
+    /// The thread; nil on a project's draft.
+    var sessionId: String?
+    var chrome: ComposerChrome?
     var dock: DockState?
     @Bindable var choice: CatalogChoice
     /// A project's draft: its mode before any thread exists, set here and
@@ -36,7 +40,7 @@ struct ComposerRowView: View {
     /// The harness squeezes the window: the meter's ring turns to a spinner.
     private var compacting: Bool {
         guard let dock else { return false }
-        return dock.compacting && ComposerRules.busy(status: session?.status, sending: dock.sending)
+        return dock.compacting && ComposerRules.busy(status: chrome?.status, sending: dock.sending)
     }
 
     private var modelAccess: ComposerRow.Access {
@@ -44,7 +48,7 @@ struct ComposerRowView: View {
     }
 
     private var modeAccess: ComposerRow.Access {
-        ComposerRow.modeAccess(hasThread: session != nil || draftMode != nil, approve: client.environment.allows(.approve))
+        ComposerRow.modeAccess(hasThread: chrome?.exists == true || draftMode != nil, approve: client.environment.allows(.approve))
     }
 
     var body: some View {
@@ -62,7 +66,7 @@ struct ComposerRowView: View {
         .frame(minHeight: ComposerMetrics.row)
         .frame(maxWidth: .infinity)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-        .onChange(of: session?.permission) { asked = nil }
+        .onChange(of: chrome?.permission) { asked = nil }
         .animation(Motion.crossFade, value: waiting)
         .animation(Motion.crossFade, value: choice.failed)
     }
@@ -71,12 +75,12 @@ struct ComposerRowView: View {
         HStack(spacing: TranscriptMetrics.glyphGap) {
             model(fit, truncates: truncates)
             Spacer(minLength: 0)
-            if let meter = ComposerRow.meter(session?.context, compacting: compacting) {
+            if let meter = ComposerRow.meter(chrome?.context, compacting: compacting) {
                 MeterView(meter: meter, showsPercent: fit.percent)
                     .fixedSize()
                     .layoutPriority(1)
             }
-            if modeAccess != .hidden, let current = draftMode?.wrappedValue ?? session.map({ asked ?? $0.permission }) {
+            if modeAccess != .hidden, let current = draftMode?.wrappedValue ?? chrome?.permission.map({ asked ?? $0 }) {
                 mode(current, fit: fit)
                     .fixedSize()
                     .layoutPriority(1)
@@ -207,11 +211,11 @@ struct ComposerRowView: View {
             draftMode.wrappedValue = policy
             return
         }
-        guard let session, policy != (asked ?? session.permission) else { return }
+        guard let sessionId, let held = client.currentSession(sessionId)?.permission, policy != (asked ?? held) else { return }
         asked = policy
         Task {
             do {
-                try await client.setPermission(session.id, policy)
+                try await client.setPermission(sessionId, policy)
             } catch {
                 asked = nil
             }

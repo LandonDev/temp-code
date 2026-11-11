@@ -19,7 +19,7 @@ import TempCodeContract
 struct WorkingStripView: View {
     let client: EnvironmentClient
     let sessionId: String
-    let session: SessionMeta?
+    let chrome: ComposerChrome
     let dock: DockState
     let slot: ComposerSlot
     /// The slot action out on the wire, so only its control says so.
@@ -70,7 +70,7 @@ struct WorkingStripView: View {
         row {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let now = Int(context.date.timeIntervalSince1970 * 1000)
-                if let ms = ComposerSlot.elapsedMs(.timer, sentAt: dock.sentAt, busySince: session?.busySince, sentTurn: dock.sentTurn, frozen: nil, now: now) {
+                if let ms = ComposerSlot.elapsedMs(.timer, sentAt: dock.sentAt, busySince: chrome.busySince, sentTurn: dock.sentTurn, frozen: nil, now: now) {
                     let shown = TimeFormat.duration(ms: ms)
                     Text(shown)
                         .transcriptType(TranscriptType.detail)
@@ -114,15 +114,14 @@ struct WorkingStripView: View {
     }
 
     private var frozen: String? {
-        ComposerSlot.elapsedMs(slot, sentAt: nil, busySince: nil, frozen: session?.frozenActiveElapsed, now: 0).map { TimeFormat.duration(ms: $0) }
+        ComposerSlot.elapsedMs(slot, sentAt: nil, busySince: nil, frozen: chrome.frozen, now: 0).map { TimeFormat.duration(ms: $0) }
     }
 
     /// Paused: the glyph in the warning tint, the frozen time, the batch
     /// on a master, then Stop and Continue.
     private var pausedRow: some View {
-        let batch = session?.isMaster == true ? client.pausedBatch(of: sessionId) : 0
-        return row {
-            words(.paused(batch: batch), symbol: "pause.fill", tint: Tint.warning, stamp: frozen)
+        row {
+            words(.paused(batch: chrome.pausedBatch), symbol: "pause.fill", tint: Tint.warning, stamp: frozen)
         } actions: {
             StripButton("Stop", systemImage: "stop.fill") {
                 run(.stop) { try await client.stop(sessionId) }
@@ -149,7 +148,7 @@ struct WorkingStripView: View {
     /// cap, memory) after the word; Start now runs it ahead.
     private var queuedRow: some View {
         row {
-            words(session.map(StatusWords.queuedLine) ?? StripWords(title: "Queued"), symbol: "clock", tint: Color.secondary)
+            words(chrome.queued ?? StripWords(title: "Queued"), symbol: "clock", tint: Color.secondary)
         } actions: {
             StripButton(acting == .start ? "Starting…" : "Start now", systemImage: "play.fill") {
                 run(.start) { try await client.start(sessionId) }

@@ -123,8 +123,11 @@ public enum ComposerHeight {
 
     /// A keystroke (Return included) and the clear after a send snap the
     /// height; a paste of more than one line eases it over `base`.
+    /// The lengths are read in bytes, which a string knows without a walk,
+    /// and the lines are counted only for a change of more than one byte: a
+    /// key costs nothing here however long the draft is.
     public static func eases(from old: String, to new: String) -> Bool {
-        new.count - old.count > 1 && lineCount(new) > lineCount(old)
+        new.utf8.count - old.utf8.count > 1 && lineCount(new) > lineCount(old)
     }
 
     private static func natural(lines: Int) -> Double {

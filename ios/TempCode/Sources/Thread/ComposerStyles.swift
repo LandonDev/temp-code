@@ -120,8 +120,12 @@ final class CatalogChoice {
 
     /// Back onto a thread's own model, when the chips should follow it again.
     func follow(_ session: SessionMeta) {
-        key = ModelKey(provider: session.provider, model: session.model)
-        reasoning = session.reasoning
+        follow(provider: session.provider, model: session.model, reasoning: session.reasoning)
+    }
+
+    func follow(provider: ProviderId, model: String, reasoning: Reasoning) {
+        key = ModelKey(provider: provider, model: model)
+        self.reasoning = reasoning
         picked = false
         settle()
     }

@@ -8,7 +8,7 @@
   "bodies-per-batch": true,
   "refolds": true,
   "rows-built": false,
-  "keystroke-bodies": false,
+  "keystroke-bodies": true,
   "jumps": false,
   "jump-up": false,
   "late-frames": false

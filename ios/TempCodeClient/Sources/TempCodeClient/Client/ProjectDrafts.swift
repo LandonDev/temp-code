@@ -87,12 +87,20 @@ public struct ProjectDrafts: Codable, Sendable, Hashable {
         return draft
     }
 
-    /// Writes the draft at `now`, pruning what is past its age and past the cap.
+    /// Writes the draft at `now`: one entry, whatever else is held. Every
+    /// key of a draft comes through here, so the age and the cap are
+    /// `prune`'s, run when the drafts are written.
     public mutating func set(_ key: String, _ draft: ProjectDraft, now: Int) {
         var draft = draft
         draft.updatedAt = now
         entries[key] = draft
-        entries = entries.filter { now - $0.value.updatedAt <= Self.maxAgeMs }
+    }
+
+    /// Drops what is past its age and past the cap, the oldest first.
+    public mutating func prune(now: Int) {
+        if entries.contains(where: { now - $0.value.updatedAt > Self.maxAgeMs }) {
+            entries = entries.filter { now - $0.value.updatedAt <= Self.maxAgeMs }
+        }
         if entries.count > Self.maxKeys {
             let keep = entries.sorted { ($0.value.updatedAt, $0.key) > ($1.value.updatedAt, $1.key) }.prefix(Self.maxKeys)
             entries = Dictionary(uniqueKeysWithValues: keep.map { ($0.key, $0.value) })
@@ -153,7 +161,12 @@ public enum DraftSend {
     /// Send waits for the host's catalog: before it lands the model is
     /// empty, and the host would skip the thread defaults. One send at a time.
     public static func canSend(text: String, sending: Bool, model: String) -> Bool {
-        !sending && !model.isEmpty && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        canSend(hasContent: !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, sending: sending, model: model)
+    }
+
+    /// The same rule for a composer that knows only whether its box has content (`ComposerDraft.hasContent`).
+    public static func canSend(hasContent: Bool, sending: Bool, model: String) -> Bool {
+        !sending && !model.isEmpty && hasContent
     }
 
     public static func steps(text: String, photos: Int) -> [Step] {
@@ -327,6 +340,7 @@ public final class ProjectDraftStore {
     private func save() {
         pendingSave?.cancel()
         pendingSave = nil
+        drafts.prune(now: Self.now())
         if let data = try? JSONEncoder().encode(drafts) { defaults.set(data, forKey: Self.defaultsKey) }
     }
 }

@@ -14,19 +14,26 @@ import TempCodeContract
 /// edge under the bar (`BottomEdgeFade`) is the dock's own background, so in
 /// two-pane it spans the chat column the dock sits under and nothing else.
 /// The screen owns the composer's focus (`focused`) for the segment bar
-/// rule, and `draft` is the proof's `draft:` text, typed into the field once.
-struct BottomDock: View {
+/// rule, and `seed` is the proof's `draft:` text, typed into the field once.
+/// Of its session it holds the chrome alone (`ComposerChrome`), and it is
+/// drawn again only when one of the things it compares changed: a meta that
+/// moves none of them (the activity line, the time) leaves the dock as it is.
+struct BottomDock: View, Equatable {
     let client: EnvironmentClient
     let sessionId: String
-    let session: SessionMeta?
+    let chrome: ComposerChrome
     let dock: DockState
     let focused: FocusState<Bool>.Binding
     /// The screen's width class: regular keeps the slot's room reserved.
     var regularWidth = false
-    var draft: String?
+    var seed: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var slot: ComposerSlot { ComposerSlot(status: session?.status, sending: dock.sending) }
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.client === rhs.client && lhs.sessionId == rhs.sessionId && lhs.chrome == rhs.chrome && lhs.dock == rhs.dock && lhs.regularWidth == rhs.regularWidth && lhs.seed == rhs.seed
+    }
+
+    private var slot: ComposerSlot { ComposerSlot(status: chrome.status, sending: dock.sending) }
 
     /// A relayed host that is locked or asleep says so in the slot while it is empty.
     private var relayLine: Bool {
@@ -52,13 +59,13 @@ struct BottomDock: View {
         let backing = ComposerSlot.backing(occupies: occupies)
         VStack(spacing: ComposerMetrics.slotGap) {
             if occupies {
-                WorkingStripView(client: client, sessionId: sessionId, session: session, dock: dock, slot: slot)
+                WorkingStripView(client: client, sessionId: sessionId, chrome: chrome, dock: dock, slot: slot)
                     .transition(slotTransition)
                     #if DEBUG
                     .layoutProbeFrame("slot.frame")
                     #endif
             }
-            ComposerBar(client: client, sessionId: sessionId, session: session, dock: dock, focused: focused, draft: draft)
+            ComposerBar(client: client, sessionId: sessionId, chrome: chrome, dock: dock, focused: focused, seed: seed)
                 #if DEBUG
                 .layoutProbeFrame("composer.frame")
                 #endif
@@ -106,16 +113,21 @@ struct BottomDock: View {
 /// cannot act, the field carries the reason in place of its placeholder,
 /// `+` and the button leave and nothing sends. A light tap on send and on a
 /// queue, a selection tick when the hold turns into a queue, never on typing.
+/// The typed text lives in a `ComposerDraft` the bar owns: the field alone
+/// reads it (`ComposerField`), and the bar reads whether the box has content,
+/// so a key that leaves the box neither newly empty nor newly filled runs
+/// the field's body and no other.
 struct ComposerBar: View {
     let client: EnvironmentClient
     let sessionId: String
-    let session: SessionMeta?
+    let chrome: ComposerChrome
     let dock: DockState
     /// The screen's focus state: it reads it for the segment bar rule in compact height.
     let focused: FocusState<Bool>.Binding
     /// DEBUG proof: text to type into the field and focus, once, without sending.
-    var draft: String?
-    @State private var text = ""
+    var seed: String?
+    /// What is typed. Owned here, above every pose branch, so a fold keeps it.
+    @State private var draft = ComposerDraft()
     @State private var busy = false
     /// The host's refusal, shown above the box until the next edit.
     @State private var failure: String?
@@ -144,20 +156,19 @@ struct ComposerBar: View {
     /// Photos per turn.
     static let maxPhotos = 4
 
-    private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var hasText: Bool { !trimmed.isEmpty }
+    private var hasText: Bool { draft.hasContent }
     /// A photo is content as text is: alone in the box mid-turn it steers.
     private var hasPhotos: Bool { !uploads.isEmpty }
 
     /// A turn is open (a watching master's is not): the button pauses or steers.
-    private var turnOpen: Bool { ComposerRules.busy(status: session?.status, sending: dock.sending) }
+    private var turnOpen: Bool { ComposerRules.busy(status: chrome.status, sending: dock.sending) }
 
     /// What the button does now.
     private var intent: ComposerIntent {
-        ComposerRules.intent(status: session?.status, sending: dock.sending, hasText: hasText, hasPhotos: hasPhotos, holding: holding)
+        ComposerRules.intent(status: chrome.status, sending: dock.sending, hasText: hasText, hasPhotos: hasPhotos, holding: holding)
     }
 
-    private var offersQueue: Bool { ComposerRules.offersQueue(status: session?.status, sending: dock.sending, hasText: hasText, hasPhotos: hasPhotos) }
+    private var offersQueue: Bool { ComposerRules.offersQueue(status: chrome.status, sending: dock.sending, hasText: hasText, hasPhotos: hasPhotos) }
 
     /// Every photo is on the host; one still going up or failed holds the send (never Pause).
     private var photosSettled: Bool { uploads.allSatisfy { $0.committed != nil } }
@@ -166,19 +177,6 @@ struct ComposerBar: View {
 
     /// `+`: the key operates and the host is reachable.
     private var canAttach: Bool { block == nil && client.environment.allows(.operate) }
-
-    /// The text as the field writes it: a paste of more than one line eases the height, a keystroke snaps it.
-    private var field: Binding<String> {
-        Binding {
-            text
-        } set: { new in
-            if ComposerHeight.eases(from: text, to: new), !reduceMotion {
-                withAnimation(Motion.base) { text = new }
-            } else {
-                Motion.withoutAnimation { text = new }
-            }
-        }
-    }
 
     var body: some View {
         let _ = PerfCounters.bump(.composerBarBody)
@@ -201,7 +199,7 @@ struct ComposerBar: View {
                 TCGlassContainer {
                     box
                 }
-                ComposerRowView(client: client, session: session, dock: dock, choice: choice)
+                ComposerRowView(client: client, sessionId: sessionId, chrome: chrome, dock: dock, choice: choice)
             }
         }
         .animation(reduceMotion ? nil : Motion.collapse, value: uploads.isEmpty)
@@ -224,36 +222,37 @@ struct ComposerBar: View {
         .task(id: client.operateBlock) { await settleBlock() }
         // The row under the box names the catalog's models, for every key; a host that comes up asks again.
         .task(id: CatalogChoice.trigger(client)) { await choice.load(client) }
+        // A person's edit takes the refusal and the queued note away; nothing else the draft is told does.
+        .onAppear {
+            draft.onEdit = {
+                if failure != nil { failure = nil }
+                if queuedNote { queuedNote = false }
+            }
+        }
         #if DEBUG
         .task {
             guard TestHooks.open == "composer", block == nil else { return }
             try? await Task.sleep(for: .seconds(2))
             focused.wrappedValue = true
         }
-        .onChange(of: draft, initial: true) {
+        .onChange(of: seed, initial: true) {
             // The proof's `draft:`: the text lands as if typed and the keyboard comes up; nothing sends.
-            guard let draft, block == nil else { return }
-            text = draft
+            guard let seed, block == nil else { return }
+            draft.seed(seed)
             focused.wrappedValue = true
         }
-        // The Duo proof's fold run holds the typed draft (UTF-16 units) unchanged through every fold.
-        .onChange(of: text, initial: true) { LayoutProbe.note("draftChars", String(text.utf16.count)) }
         #endif
-        .task(id: session.map { "\($0.provider.rawValue)/\($0.model)/\($0.reasoning.rawValue)" }) {
+        .task(id: chrome.provider.map { "\($0.rawValue)/\(chrome.model ?? "")/\(chrome.reasoning?.rawValue ?? "")" }) {
             // The thread's own model lands (or changes under us): the choice follows it unless the person has a pick in hand.
-            guard let session, !choice.picked else { return }
-            choice.follow(session)
+            guard let provider = chrome.provider, let model = chrome.model, let reasoning = chrome.reasoning, !choice.picked else { return }
+            choice.follow(provider: provider, model: model, reasoning: reasoning)
         }
     }
 
     /// The box, with this thread's field and button.
     private var box: some View {
-        ComposerBox(placeholder: placeholder, text: field, focused: focused, blocked: block.map { $0.text(now: Date().timeIntervalSince1970 * 1000) }, canAttach: canAttach, attachEnabled: uploads.count < Self.maxPhotos, onAttach: { picking = true }) {
+        ComposerBox(placeholder: placeholder, draft: draft, focused: focused, blocked: block.map { $0.text(now: Date().timeIntervalSince1970 * 1000) }, canAttach: canAttach, attachEnabled: uploads.count < Self.maxPhotos, onAttach: { picking = true }) {
             ComposerButton(intent: intent, enabled: enabled, offersQueue: offersQueue, holding: $holding, reduced: reduceMotion, onTap: act, onQueue: queue)
-        }
-        .onChange(of: text) {
-            failure = nil
-            queuedNote = false
         }
     }
 
@@ -261,7 +260,7 @@ struct ComposerBar: View {
         if let block {
             return block.text(now: Date().timeIntervalSince1970 * 1000)
         }
-        return ComposerRules.placeholder(for: session)
+        return chrome.placeholder
     }
 
     /// The block as the field shows it: a read-only key or a halt at once,
@@ -329,7 +328,7 @@ struct ComposerBar: View {
         submit { body, settings, attachments in
             try await client.send(sessionId, text: body, model: settings, attachments: attachments)
             // The person started this turn: it goes on the lock screen.
-            if let session, session.parentId == nil { app.activities.sent(client, session, registry: app.registry) }
+            if let session = client.currentSession(sessionId), session.parentId == nil { app.activities.sent(client, session, registry: app.registry) }
         }
     }
 
@@ -343,16 +342,21 @@ struct ComposerBar: View {
     }
 
     /// The text, the pick and the photos go out together; a refusal gives
-    /// all three back (photos picked meanwhile stay).
+    /// all three back: the sent words ahead of what was typed meanwhile
+    /// (`ComposerDraft.restore`), the sent photos ahead of those picked since.
     private func submit(_ deliver: @escaping (String, TurnModel?, [Attachment]) async throws -> Void) {
-        let body = trimmed
+        let body = draft.trimmed
         guard !body.isEmpty || !uploads.isEmpty, !busy, photosSettled else { return }
         busy = true
         // A keyboard action never animates: the field empties at once.
-        Motion.withoutAnimation { text = "" }
+        Motion.withoutAnimation { draft.clear() }
+        // The click is no edit: the lines about the last message leave here.
+        failure = nil
+        queuedNote = false
         sentCount += 1
         // Only a pick rides on the turn: the catalog settling the chips onto a model the host has is not one.
-        let settings = choice.picked ? session.flatMap { TurnModel.override(for: $0, provider: choice.key.provider, model: choice.key.model, reasoning: choice.reasoning) } : nil
+        // The session is read as it is at the click, never from a body's copy.
+        let settings = choice.picked ? client.currentSession(sessionId).flatMap { TurnModel.override(for: $0, provider: choice.key.provider, model: choice.key.model, reasoning: choice.reasoning) } : nil
         let photos = uploads
         let attachments = photos.compactMap(\.committed)
         uploads = []
@@ -363,7 +367,7 @@ struct ComposerBar: View {
                 // The pick went with the turn; the chips follow the thread's model again once its push lands.
                 choice.release()
             } catch {
-                text = body
+                draft.restore(body)
                 uploads = photos + uploads
                 failure = (error as? ActionError)?.message ?? String(describing: error)
             }
@@ -513,9 +517,11 @@ struct ComposerButton: View {
 /// the bottom line as the field grows. `blocked` is the reason the key or
 /// the link cannot act: it takes the placeholder's place, the field is
 /// off, and `+` and the button leave. A tap on the padding focuses the field.
+/// The box holds the draft and never reads its text: the field inside does
+/// (`ComposerField`), so a key runs that one body.
 struct ComposerBox<Trailing: View>: View {
     let placeholder: String
-    let text: Binding<String>
+    let draft: ComposerDraft
     let focused: FocusState<Bool>.Binding
     var blocked: String?
     var canAttach = true
@@ -544,15 +550,10 @@ struct ComposerBox<Trailing: View>: View {
                 .accessibilityLabel("Add photos")
                 .transition(.opacity)
             }
-            TextField(blocked ?? placeholder, text: text, axis: .vertical)
-                .transcriptType(TranscriptType.prose)
-                .lineLimit(1...ComposerMetrics.maxLines)
-                .focused(focused)
-                .disabled(blocked != nil)
+            ComposerField(draft: draft, prompt: blocked ?? placeholder, label: blocked ?? "Message", focused: focused, off: blocked != nil)
                 .padding(.vertical, ComposerMetrics.fieldPad)
                 .padding(.leading, canAttach ? 0 : ComposerMetrics.gap)
                 .frame(minHeight: side)
-                .accessibilityLabel(blocked ?? "Message")
             if blocked == nil {
                 button
                     .transition(.opacity)
@@ -564,5 +565,44 @@ struct ComposerBox<Trailing: View>: View {
         .tcGlass(in: RoundedRectangle.corner(ComposerMetrics.radius))
         .contentShape(RoundedRectangle.corner(ComposerMetrics.radius))
         .onTapGesture { if blocked == nil { focused.wrappedValue = true } }
+    }
+}
+
+/// The field alone: the one view that reads the draft's text, so a key runs
+/// this body and nothing around it. The setter hands the draft what the
+/// system gave it, at once and as it is (`ComposerDraft.type`); a paste of
+/// more than one line eases the height and a keystroke snaps it
+/// (`ComposerHeight.eases`).
+private struct ComposerField: View {
+    let draft: ComposerDraft
+    let prompt: String
+    let label: String
+    let focused: FocusState<Bool>.Binding
+    let off: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var text: Binding<String> {
+        Binding {
+            draft.text
+        } set: { new in
+            if ComposerHeight.eases(from: draft.text, to: new), !reduceMotion {
+                withAnimation(Motion.base) { draft.type(new) }
+            } else {
+                Motion.withoutAnimation { draft.type(new) }
+            }
+        }
+    }
+
+    var body: some View {
+        TextField(prompt, text: text, axis: .vertical)
+            .transcriptType(TranscriptType.prose)
+            .lineLimit(1...ComposerMetrics.maxLines)
+            .focused(focused)
+            .disabled(off)
+            .accessibilityLabel(label)
+            #if DEBUG
+            // The Duo proof's fold run holds the typed draft (UTF-16 units) unchanged through every fold.
+            .onChange(of: draft.text, initial: true) { LayoutProbe.note("draftChars", String(draft.text.utf16.count)) }
+            #endif
     }
 }

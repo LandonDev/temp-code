@@ -17,14 +17,49 @@ import TempCodeContract
         #expect(drafts.draft("loose:link:wl", now: 2)?.text == "a question")
     }
 
-    @Test func `a draft older than 30 days is gone, and the cap keeps the 64 newest`() {
+    @Test func `a draft older than 30 days is gone, and the cap keeps the 64 newest once pruned`() {
         var drafts = ProjectDrafts()
         drafts.set("old", ProjectDraft(text: "x"), now: 0)
         #expect(drafts.draft("old", now: 31 * day) == nil)
         for i in 0..<70 { drafts.set("k\(i)", ProjectDraft(text: "\(i)"), now: 31 * day + i) }
+        // A key writes its one entry and sorts nothing: the age and the cap are the save's.
+        #expect(drafts.entries.count == 71)
+        drafts.prune(now: 31 * day + 70)
         #expect(drafts.entries.count == ProjectDrafts.maxKeys)
+        #expect(drafts.entries["old"] == nil)
         #expect(drafts.entries["k0"] == nil)
         #expect(drafts.entries["k69"] != nil)
+        let pruned = drafts
+        drafts.prune(now: 31 * day + 70)
+        #expect(drafts == pruned)
+    }
+
+    @MainActor @Test func `the store prunes when it writes, never on a key`() throws {
+        let defaults = try #require(UserDefaults(suiteName: "drafts-prune-\(UUID().uuidString)"))
+        let store = ProjectDraftStore(defaults: defaults, saveDelay: .seconds(60))
+        for i in 0..<70 { store.set("k\(i)", ProjectDraft(text: "\(i)")) }
+        #expect(store.drafts.entries.count == 70)
+        store.flush()
+        #expect(store.drafts.entries.count == ProjectDrafts.maxKeys)
+        #expect(ProjectDraftStore(defaults: defaults).drafts.entries.count == ProjectDrafts.maxKeys)
+    }
+
+    @MainActor @Test func `a send inside the quiet spell after the last key sends the last text`() throws {
+        let defaults = try #require(UserDefaults(suiteName: "drafts-fast-send-\(UUID().uuidString)"))
+        let store = ProjectDraftStore(defaults: defaults, saveDelay: .seconds(60))
+        // Each key is kept in memory at once; nothing is on disk yet.
+        for text in ["h", "he", "hel", "hello"] { store.set("p", ProjectDraft(text: text, title: "Named")) }
+        #expect(defaults.data(forKey: ProjectDraftStore.defaultsKey) == nil)
+        let (sent, _) = store.take("p")
+        #expect(sent.text == "hello")
+        #expect(sent.title == "Named")
+        #expect(store.draft("p")?.text == "")
+        // The take writes: a relaunch finds the box empty, not the words that went.
+        #expect(ProjectDraftStore(defaults: defaults).draft("p")?.text == "")
+        #expect(DraftSend.canSend(hasContent: true, sending: false, model: "m"))
+        #expect(!DraftSend.canSend(hasContent: false, sending: false, model: "m"))
+        #expect(!DraftSend.canSend(hasContent: true, sending: true, model: "m"))
+        #expect(!DraftSend.canSend(hasContent: true, sending: false, model: ""))
     }
 
     @Test func `New thread of a type keeps the text, and a type other than chat drops Master`() {
