@@ -80,6 +80,14 @@ export interface Step {
 /** A soak's outer limit: the 10 minutes it may wait for the build, its 90 s, and teardown. */
 export const SOAK_CAP_MS = 12 * 60_000
 
+/**
+ * Lanes that start only once another lane has finished, by lane name. The computer rows drive TC Probe and a
+ * scratch Chrome on the person's screen, and the renderer soaks open windowed instances that come forward and
+ * quit: sharing the screen, v1.0.340 and v1.0.341's publishes failed e2e-tc-computer on a soak window over the
+ * probe (2026-11-11), so the computer lane waits for the build lane, where the four soaks run.
+ */
+export const LANE_AFTER: Readonly<Record<string, string>> = { computer: 'build' }
+
 /** The 10 minutes a proof may wait for the build (scripts/lib/gateBuild.ts). */
 export const BUILD_WAIT_MS = 10 * 60_000
 
@@ -604,7 +612,10 @@ export async function runSteps(
     }
     lanes.set(step.lane, [...(lanes.get(step.lane) ?? []), step])
   }
+  const done = new Map<string, Promise<void>>()
   const runLane = async (queue: Step[]): Promise<void> => {
+    const after = LANE_AFTER[queue[0].lane]
+    if (after && after !== queue[0].lane) await done.get(after)
     for (const step of queue) {
       if (failed) {
         results.set(step.name, { name: step.name, outcome: 'not run', ms: 0 })
@@ -647,7 +658,12 @@ export async function runSteps(
       events.onFinish?.(result)
     }
   }
-  await Promise.all([...lanes.values()].map(runLane))
+  // every lane's promise is known before any waits on another's
+  let release!: () => void
+  const ready = new Promise<void>((r) => (release = r))
+  for (const [lane, queue] of lanes) done.set(lane, ready.then(() => runLane(queue)))
+  release()
+  await Promise.all(done.values())
   const ordered = steps.map((s) => results.get(s.name)!).filter(Boolean)
   return { ok: !failed, ms: Date.now() - t0, results: ordered }
 }

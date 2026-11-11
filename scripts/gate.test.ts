@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { STEPS, TIER_PATHS, formatReport, gateDir, matchPath, parseArgs, readStoredHash, runSteps, selectSteps, shouldSkipTypecheck, storeHash, tiersForPaths, typecheckHash, type Step, macOnlySkips, judgeReport, spawnStep, stepArgs, atPublishSkips, fmtCap, SOAK_CAP_MS, BUILD_WAIT_MS, proofCap, STORE_MEASURED_MS, STORE_CAP_MS, COMPUTER_MEASURED_MS, COMPUTER_CAP_MS, buildBarrier, gate, screenOnlySkips } from './gate'
+import { STEPS, TIER_PATHS, LANE_AFTER, formatReport, gateDir, matchPath, parseArgs, readStoredHash, runSteps, selectSteps, shouldSkipTypecheck, storeHash, tiersForPaths, typecheckHash, type Step, macOnlySkips, judgeReport, spawnStep, stepArgs, atPublishSkips, fmtCap, SOAK_CAP_MS, BUILD_WAIT_MS, proofCap, STORE_MEASURED_MS, STORE_CAP_MS, COMPUTER_MEASURED_MS, COMPUTER_CAP_MS, buildBarrier, gate, screenOnlySkips } from './gate'
 import { BENCH_TIMING } from './lib/computerBench'
 
 describe('the step list', () => {
@@ -484,6 +484,30 @@ describe('the parallel runner', () => {
       ['a2', 'passed'],
       ['b1', 'passed']
     ])
+  })
+
+  it('starts the computer lane only after the build lane, where the soaks run, has finished', async () => {
+    expect(LANE_AFTER).toEqual({ computer: 'build' })
+    const steps = [step('renderer-soak', 'build'), step('renderer-soak-scroll', 'build'), step('e2e-tc-computer', 'computer'), step('e2e-remote-fence', 'e2e')]
+    const log: string[] = []
+    const report = await runSteps(steps, async (s) => {
+      log.push(`start ${s.name}`)
+      await new Promise((r) => setTimeout(r, s.lane === 'build' ? 20 : 5))
+      log.push(`end ${s.name}`)
+      return { exitCode: 0, tail: '' }
+    })
+    expect(report.ok).toBe(true)
+    // the e2e lane still runs beside the soaks; the computer lane waits for the last soak
+    expect(log.indexOf('start e2e-remote-fence')).toBeLessThan(log.indexOf('end renderer-soak'))
+    expect(log.indexOf('start e2e-tc-computer')).toBeGreaterThan(log.indexOf('end renderer-soak-scroll'))
+    // with no build lane selected the computer lane starts at once
+    const alone = await runSteps([step('e2e-tc-computer', 'computer')], async () => ({ exitCode: 0, tail: '' }))
+    expect(alone.results[0].outcome).toBe('passed')
+  })
+
+  it('does not start the computer lane after a soak failed', async () => {
+    const report = await runSteps([step('renderer-soak', 'build'), step('e2e-tc-computer', 'computer')], async (s) => ({ exitCode: s.lane === 'build' ? 1 : 0, tail: 'boom' }))
+    expect(report.results.map((r) => [r.name, r.outcome])).toEqual([['renderer-soak', 'failed'], ['e2e-tc-computer', 'not run']])
   })
 
   it('names a passed step’s flakes from its output, in the result and the report', async () => {
