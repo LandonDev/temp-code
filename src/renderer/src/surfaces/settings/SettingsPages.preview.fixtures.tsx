@@ -14,12 +14,15 @@ const PAGES = [
   "skills-empty",
   "addons-offline",
   "skills-offline",
+  "computer",
+  "computer-empty",
+  "computer-down",
   "orchestration",
   "reviews",
   "hosts",
   "workspace",
 ] as const;
-const READS = new Set<string>(["general", "defaults", "editor", "providers", "addons", "skills", "orchestration", "reviews", "hosts", "workspace"]);
+const READS = new Set<string>(["general", "defaults", "editor", "providers", "addons", "skills", "orchestration", "reviews", "hosts", "workspace", "computer"]);
 const only = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.SETTINGS_PREVIEW?.split(",");
 const shown = PAGES.filter((page) => !only || only.includes(page));
 

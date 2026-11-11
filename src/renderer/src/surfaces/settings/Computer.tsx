@@ -150,7 +150,8 @@ function ServiceRow({ link, service }: { link: Link; service: ComputerServiceSta
     }
   };
   return (
-    <PageRow title="Service" error={error}>
+    // a mark with its detail and Try again outgrow a narrow page: they take a line of their own there
+    <PageRow title="Service" error={error} wide={mark.detail !== undefined}>
       <StatusMark state={mark.state} word={mark.word} detail={mark.detail} glyph={mark.state !== "idle"} />
       {service.state === "down" ? (
         <Button variant="secondary" size="sm" disabled={busy} onClick={() => void retry()}>
