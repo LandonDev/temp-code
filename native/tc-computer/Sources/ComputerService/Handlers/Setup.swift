@@ -79,16 +79,23 @@ extension ComputerService {
         }
 
         let read = readPermissions()
-        lock.withLock { permissions = read }
+        lock.withLock {
+            permissions = read
+            hostFeatures = HostFeatures(p.features)
+        }
         return (Methods.Initialize.Output(
             protocol: computerProtocol,
             service: .init(version: build.version, build: build.build),
             epoch: epoch,
             os: .init(version: env.system.osVersion(), arch: env.system.arch()),
             permissions: read,
-            displays: env.system.displays()
+            displays: env.system.displays(),
+            features: computerFeatures
         ), stale.count)
     }
+
+    /// The host's features, for a result on its way out.
+    var features: HostFeatures { lock.withLock { hostFeatures } }
 
     /// `initialize` stays answered from `initResult`; this is for `log`, which waits for it.
     var dataDir: String? { lock.withLock { initResult?.dataDir } }

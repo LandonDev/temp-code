@@ -4,6 +4,9 @@
 /// The protocol number `initialize` checks (src/shared/computer/protocol.ts COMPUTER_PROTOCOL).
 public let computerProtocol: Int = 1
 
+/// What each side may speak beyond protocol 1 (COMPUTER_FEATURES); `initialize` names them both ways.
+public let computerFeatures: [String] = ["front", "commit", "save_as"]
+
 /// Every number the service applies when the host leaves a field out, and its own limits.
 public enum ComputerDefaults {
     public enum Service {

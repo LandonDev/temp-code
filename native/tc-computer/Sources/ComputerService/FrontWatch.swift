@@ -432,7 +432,7 @@ final class FrontRun: @unchecked Sendable {
 extension BatchResult {
     /// The same result with the guard's report.
     func with(front: FrontReport?) -> BatchResult {
-        BatchResult(steps: steps, observation: observation, observationError: observationError, waited: waited, front: front)
+        BatchResult(steps: steps, observation: observation, observationError: observationError, waited: waited, front: front, menusLeftOpen: menusLeftOpen)
     }
 }
 
