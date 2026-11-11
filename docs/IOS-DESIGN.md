@@ -2587,10 +2587,11 @@ keyboard action. Every animated change has a static cue as well.
   count) are brought in line with what the app shows; a queued thread ends
   its activity like a finished one. A host that restarted mid-turn says so
   once per boot (`bootResume`, deduped by the boot's time in the cache).
-- **Measure.** Scroll a 2,000-row thread at 120 Hz with the Instruments
-  animation hitch template; a hitch over 8 ms in the transcript is a bug.
-  The simulator proof's `scroll` and `stream` sets (below) record the same
-  frames from a display link.
+- **Measure.** The `perf` proof set ("The perf proof" below) counts what
+  each push and each key re-ran and times the main thread while a long
+  thread scrolls, streams and is typed into; the phone's own numbers come
+  from Settings → Diagnostics ("On the phone" below). The simulator proof's
+  `scroll` and `stream` sets record frames from a display link too.
 - **Streaming.** The thread screen names its thread to the host while it
   is on screen and the app is active (`session.focus { sessionId, shown }`,
   `FocusSignal`; operate, so a read key sends nothing; null when the app
@@ -2729,6 +2730,108 @@ keyboard action. Every animated change has a static cue as well.
   tried and was worse: mid-update the list reports a stale size too.
   A revealing row asks the follow rule to pin at each shown step
   (`TranscriptFollow`), since the reveal grows a row with no row landing.
+
+### The perf proof
+
+`TC_PROOF_SET=perf bun scripts/ios-sim-proof-local.ts` runs nine launches on the Measure
+build (Release's optimizer with the launch hooks compiled in), headless: it
+never opens Simulator.app and sends no input, so it needs no idle Mac. The
+proof probes (`LayoutProbe`, the row-init probe, the transcript trace) stand
+down in a perf run, so they are not what is timed. The test server makes
+the fixtures under `TC_TEST_PERF_SEEDS=1`: an implementation thread of
+12,000 wire rows, a chat of 2,600, a thread of 600, a master with eight
+children, and twelve sessions outside the shown project for `POST /load`
+(the host's other traffic: metas, rows into unopened threads, a sibling's
+status). Each run writes `Documents/perf/<run>.json`:
+
+| Run | What it does |
+| --- | --- |
+| `follow` | Pinned at the bottom of the 12,000-row thread: 5 s of load alone (the load-only window), then stream and load for 20 s |
+| `scroll-idle`, `scroll-busy` | 30,000 pt up and back at 3,000 pt/s, cold then warm; `busy` streams and loads meanwhile |
+| `type-idle`, `type-busy` | 140 keys into the composer of the 2,600-row chat; `busy` streams 1,000 rows past its cap |
+| `rest` | A working turn on screen, no pushes, 10 s |
+| `master` | The master's chat scrolled while its eight children stream |
+| `scale-short`, `scale-build` | The same 200-frame stream into 600 rows and into 12,000 |
+
+A report carries the frame intervals (p50, p95, p99, worst, late frames,
+hitch time), the main thread's own CPU per interval and per second, the
+turn cost of each applied batch and each key (that CPU from the event to
+the end of the commit after it), the body counts by view, refolds, rows
+built, publishes, the app's offset writes under a moving reader, the jump
+tracker's jumps (a visible row that moved more than 2 pt beyond the
+driver's step) and the Mac's load. `scripts/lib/ios_perf_check.py` judges
+a pass against the gates in `scripts/lib/ios_perf_gates.json`; CPU gates
+read the best of three passes, counts must hold in every pass, and the
+frame gates compare with a baseline app run in turn in the same simulator
+(`TC_PERF_APP`, `--baseline`). Wall-clock frames on a loaded Mac are noise;
+CPU time and counts are what can fail a change.
+
+The headless simulator shows no software keyboard, so the typing runs time
+the field, the bar and the dock and not the keyboard's own cost, and it
+draws at 60 Hz, one layout per 16.7 ms where the phone lays out twice. The
+render server is not measured at all. Those are the phone's to show.
+
+### On the phone
+
+What only the phone shows: the render server's cost (the glass, the blur),
+real 120 Hz pacing under a finger, the system keyboard's own latency with
+autocorrect, and heat or Low Power Mode, which holds the screen to 60 Hz.
+
+Settings → hold the version line → Diagnostics. It runs on the thread last
+opened, in the Release build:
+
+1. Open a long agent thread, then Settings → Diagnostics. "Thread" names it.
+2. **Run Scroll Check**: the list scrolls 30,000 pt up and back at 3,000
+   pt/s. Smooth is under 1 % late frames (over 12.5 ms at 120 Hz), no frame
+   over 34 ms, under 5 ms of hitch a second, and a main-thread p95 of 4 ms a
+   frame. Run it idle and again while a turn streams.
+3. **Run Typing Check**: 140 keys into the composer, wraps included. Smooth
+   is 17 ms from key to screen for most keys and 34 ms for the slowest, not
+   counting the keyboard's own delay.
+4. **From iOS**: "Display" says what the panel offers and what the check
+   saw (120 Hz reads as a median interval of 8.3 ms); "Scroll Hitches" is
+   MetricKit's scroll hitch ratio over the app's real use, which iOS
+   reports at most once a day. Under 5 ms a second is smooth.
+5. **Share Report** sends the numbers as JSON.
+
+A miss on the phone with the simulator's gates passing points at what the
+simulator cannot see: render cost, or the `List`.
+
+### Measured
+
+The baseline: slice 0's Measure app (commit `d6c75a8f9`, kept on the Mac at
+`/tmp/tc-ios-perf/baseline/TempCode.app`), three passes on 2026-11-10 in the
+iPhone 17 Pro simulator (iOS 27.0, headless, 60 Hz), the Mac's 1-minute
+load 6 to 14 on 16 cores. CPU is the best of the three passes; counts are
+the range over them. The reports are in
+`.temp-code/findings/ios-perf-pass/baseline/`.
+
+| What | Run | Target | Baseline |
+| --- | --- | --- | --- |
+| Main-thread CPU per interval while scrolling, p95 / p99 / worst | `scroll-idle` | 8 / 12 / 16 ms | 13.0 / 34.5 / 78.5 ms |
+| | `scroll-busy` | | 684 / 870 / 1,152 ms |
+| | `master` | | 49.4 / 67.5 / 92.0 ms |
+| Turn cost of an applied batch, p95 | `follow` | 2 ms | 697 ms |
+| The same cost on 12,000 rows against 600 | `scale-*` | ratio 1.5 | 9.1 (304 ms against 33 ms) |
+| Turn cost of a keystroke, p95 / worst | `type-idle` | 3 / 8 ms | 12.8 / 89.3 ms |
+| | `type-busy` | | 79.2 / 97.6 ms |
+| Main-thread CPU, a working turn at rest | `rest` | 10 ms a second | 128 ms a second |
+| Bodies run in the load-only window | `follow` | 0 | shell 23 to 43, thread screen 36 to 55, transcript 11 to 13 |
+| Transcript bodies against batches applied, 20 s | `follow` | no more bodies than batches | 61 to 68 bodies for 8 to 12 batches |
+| Whole refolds while 1,000 rows stream past the cap | `type-busy` | 3 | 584 to 659 |
+| Rows built per batch, p95, against the live turn's rows | `follow` | the live turn's | 1,983 to 2,379 against 2 |
+| | `scale-build` | | 1,185 against 3 |
+| Bodies per keystroke outside the field | `type-idle` | 0 | the composer bar, 140 for 140 keys |
+| Jumps on the cold scroll back, per 64,000 pt | `scroll-idle` | 1 per 10,000 pt, none over 8 pt | 0 to 3, the largest 182 pt |
+| | `scroll-busy` | | 3 to 6, the largest 7,014 pt |
+| Jumps on the warm pass | both | 0 | 0 |
+| `jumpUp`; the app's offset writes under a moving reader | every run | 0 | 1 `jumpUp` in one `scroll-busy`; 2 writes a `scroll-idle`, 4 a `scroll-busy`, 2 a `master` |
+| Late frames; hitch time | `scroll-idle` | half the baseline's; 5 ms a second | 113 to 125 of about 2,370; 67 to 79 ms a second |
+
+On the 12,000-row thread the baseline cannot keep up with a stream at all:
+each one-row batch costs 300 to 1,000 ms, so `follow` applies 8 to 12
+batches in its 20 s and every frame of it is late. The typing runs had no
+software keyboard (the headless simulator shows none).
 
 ## Push, the Live Activity and the Dynamic Island
 

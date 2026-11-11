@@ -728,7 +728,16 @@
   `TC_PROOF_SET=box TC_TEST_THREADS="a|b" scripts/ios-sim-proof.sh` with
   `TC_TEST_PAIR_LINK` from `tc-local remote.pairings.create` on the box; it
   drives the simulator with `simctl` because XCUITest cannot run while the
-  Command Line Tools are the selected developer directory. The `features` set
+  Command Line Tools are the selected developer directory. `TC_PROOF_SET=perf`
+  is the performance proof (docs/IOS-DESIGN.md "Performance", "The perf
+  proof"): nine headless launches of the Measure build, each run by the app
+  itself (`TC_TEST_PERF=<run>`, `Sources/Perf/PerfRun.swift`) against the
+  test server's perf fixtures (`TC_TEST_PERF_SEEDS=1`,
+  scripts/lib/ios-perf-seeds.ts, `POST /load`), each writing
+  `Documents/perf/<run>.json`; scripts/lib/ios_perf_check.py judges the
+  pass against scripts/lib/ios_perf_gates.json (scripts/ios-perf-check.test.ts
+  feeds it canned reports). It opens no window and needs no idle Mac; it is
+  a hand run (docs/release-gate.md). The `features` set
   shoots the screens the 2026-10-22 batch added (the master's board and
   rules, the project plan, notices, failures, the account menu, resources,
   queued and stopped roots, the gate row, Home's fleet confirm). The `actions` set

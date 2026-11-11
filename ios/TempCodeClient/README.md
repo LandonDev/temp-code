@@ -188,6 +188,16 @@ an omitted body from the cache or one `session.rowBody`; `assetRequest(host:
 path:)` is a `GET` for `/asset/<host>/<path>` with the key as the bearer
 (logos, media, agent pages; the server accepts an app key there since L2).
 
+**PerfCounters** (`Client/PerfCounters.swift`, `@MainActor`, a fixed array
+by `PerfCounter`) counts what the performance proof gates
+(docs/IOS-DESIGN.md "Performance"): body runs by view, refolds, row builds
+and the rows built, batches and pushed rows, publishes, the app's offset
+writes. A view bumps its own in its body. `PerfOffMain` counts folds run
+off the main actor. Compiled in every configuration, since the Release
+build is the one measured. **DiagnosticsText** (`Shell/`) is the words of
+the hidden Diagnostics screen: a late-frame share, a time in ms, a hitch
+ratio, the display line.
+
 **ClientRegistry** holds one client per stored environment, starts new ones,
 tears down removed ones (socket stopped, cache cleared), and fans
 foreground/online out to every socket.
