@@ -21,6 +21,8 @@ export interface Notice {
   kind?: NoticeKind
   /** The approval a phone may decide from the notification (kind `approval`). */
   requestId?: string
+  /** A computer step held for the session tier: the category is `tc.run-skip`, Run now and Skip. */
+  choices?: 'run-skip'
   /** The host's name: `tc.host`, which the phone's service extension adds to the subtitle when several hosts are paired. */
   hostName?: string
 }

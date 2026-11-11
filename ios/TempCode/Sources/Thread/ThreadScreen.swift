@@ -377,7 +377,7 @@ struct ThreadScreen: View {
             if let approval = thread.fold.items.lazy.compactMap({ entry -> ApprovalItem? in
                 if case .approval(let a) = entry.item, a.allowed == nil { return a } else { return nil }
             }).last {
-                try? await client.approve(sessionId, requestId: approval.request.requestId, allow: parts[0] == "approve")
+                try? await client.approve(sessionId, requestId: approval.request.requestId, allow: parts[0] == "approve", choices: approval.request.choices)
             }
         case "answer":
             if let question = thread.fold.items.lazy.compactMap({ entry -> QuestionItem? in

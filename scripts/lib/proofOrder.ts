@@ -18,6 +18,7 @@ export const COMPUTER_PROOFS: readonly string[] = [
   'input-proof',
   'capture-proof',
   'e2e-computer-schedule',
+  'e2e-person-guard',
   'e2e-computer-preview',
   'e2e-computer-ui',
   'compare-computer-words',

@@ -222,9 +222,10 @@ public enum Methods {
             public let wait: WaitOptions?
             public let observe: ObserveOptions?
             public let pasteQuietMs: Int?
+            public let personIdleMs: Int?
             public let ignored: IgnoredRoutes?
 
-            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, action: ComputerAction, tiers: [Tier], wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, ignored: IgnoredRoutes? = nil) {
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, action: ComputerAction, tiers: [Tier], wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil) {
                 self.session = session
                 self.app = app
                 self.window = window
@@ -235,6 +236,7 @@ public enum Methods {
                 self.wait = wait
                 self.observe = observe
                 self.pasteQuietMs = pasteQuietMs
+                self.personIdleMs = personIdleMs
                 self.ignored = ignored
             }
         }
@@ -257,9 +259,10 @@ public enum Methods {
             public let wait: WaitOptions?
             public let observe: ObserveOptions?
             public let pasteQuietMs: Int?
+            public let personIdleMs: Int?
             public let ignored: IgnoredRoutes?
 
-            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, actions: [ComputerAction], tiers: [Tier], stepWait: WaitOptions? = nil, wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, ignored: IgnoredRoutes? = nil) {
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, actions: [ComputerAction], tiers: [Tier], stepWait: WaitOptions? = nil, wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil) {
                 self.session = session
                 self.app = app
                 self.window = window
@@ -271,6 +274,7 @@ public enum Methods {
                 self.wait = wait
                 self.observe = observe
                 self.pasteQuietMs = pasteQuietMs
+                self.personIdleMs = personIdleMs
                 self.ignored = ignored
             }
         }

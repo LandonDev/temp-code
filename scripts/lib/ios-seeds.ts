@@ -17,6 +17,8 @@ import { emptyNotes } from '../../src/shared/notes'
 import { TURN_ENDED_SUMMARY } from '../../src/shared/failureFallback'
 import { freshRow, type StoredBatch } from '../../src/main/server/batch'
 import type { HolderRow, MacDevicesDeps } from '../../src/main/server/devices/hostDevices'
+import { approvalLine } from '../../src/shared/approvalLine'
+import { COMPUTER_SESSION_TOOL, computerApprovalInput, computerApprovalTitle, computerSessionAskTitle, type TitleContext } from '../../src/shared/computer/words'
 
 // ── the preamble stamp ────────────────────────────────────────────────
 
@@ -509,4 +511,81 @@ export function accountsSnapshot(peer: { environmentId: string; name: string; bu
       [peer.environmentId]: { name: peer.name, connected: true, lastSyncAt: now - 300_000, error: null, build }
     }
   }
+}
+
+// ── computer use: a held step, a confirmation, a step allowed while away ──
+
+/** The book the computer seeds' titles read their elements from. */
+const COMPUTER_BOOK: Record<number, string> = { 7: 'button "To"', 9: 'button "Send"' }
+const computerCtx = (appName: string, window: string): TitleContext => ({
+  appName,
+  window,
+  element: (index) => (COMPUTER_BOOK[index] ? { index, line: COMPUTER_BOOK[index] } : null)
+})
+
+/** The held step's request id, which the simulator proof decides. */
+export const COMPUTER_HELD_REQUEST = 'seed-run-skip'
+
+/**
+ * A computer step held for the session tier, the card the host's
+ * computer/schedule.ts asks: a running `computer_act` click, then the
+ * `computer_session` request with `choices: 'run-skip'` on its call, the
+ * thread waiting. `requestId` and `callId` let `/ask` raise a fresh one.
+ */
+export function runSkipAsk(requestId: string, callId: string, where = { appName: 'TextEdit', window: 'Untitled' }, words = 'click button "Save"'): AgentEvent {
+  return {
+    type: 'approval-request',
+    requestId,
+    toolName: COMPUTER_SESSION_TOOL,
+    input: { app: where.appName, window: where.window, actions: [words] },
+    title: computerSessionAskTitle(words, where),
+    choices: 'run-skip',
+    callId
+  }
+}
+
+export function computerHeldRows(): AgentEvent[] {
+  return [
+    { type: 'user-text', text: 'Save the draft in TextEdit' },
+    { type: 'status', status: 'running' },
+    { type: 'tool-call', callId: 'cu-held', name: 'mcp__app__computer_act', input: { action: 'left_click', element: 3 } },
+    runSkipAsk(COMPUTER_HELD_REQUEST, 'cu-held'),
+    { type: 'status', status: 'waiting', detail: 'awaiting approval' }
+  ]
+}
+
+/** A safe-mode confirmation: a `computer_batch` in Mail, its card's input and title as the host words them. */
+export function computerConfirmRows(): AgentEvent[] {
+  const args = { actions: [{ action: 'left_click' as const, element: 7 }, { action: 'type' as const, text: 'Lunch at noon?' }, { action: 'left_click' as const, element: 9 }] }
+  const ctx = computerCtx('Mail', 'Re: Lunch')
+  return [
+    { type: 'user-text', text: 'Send the reply in Mail' },
+    { type: 'status', status: 'running' },
+    { type: 'tool-call', callId: 'cu-confirm', name: 'mcp__app__computer_batch', input: args },
+    {
+      type: 'approval-request',
+      requestId: 'seed-computer-confirm',
+      toolName: 'mcp__app__computer_batch',
+      input: { ...computerApprovalInput('computer_batch', args, ctx) },
+      title: computerApprovalTitle('computer_batch', args, ctx),
+      callId: 'cu-confirm'
+    },
+    { type: 'status', status: 'waiting', detail: 'awaiting approval' }
+  ]
+}
+
+/** A held step the host allowed while the person was away: no card, the away notice the registry writes, then the call's result. */
+export function computerAwayRows(): AgentEvent[] {
+  const ask = runSkipAsk('seed-away-run-skip', 'cu-away', { appName: 'Finder', window: 'Documents' }, 'click button "Rename"')
+  const text = ask.type === 'approval-request' ? approvalLine(ask.toolName, ask.input, ask.title) : ''
+  return [
+    { type: 'user-text', text: 'Rename the folder in Finder' },
+    { type: 'status', status: 'running' },
+    { type: 'tool-call', callId: 'cu-away', name: 'mcp__app__computer_act', input: { action: 'left_click', element: 3 } },
+    { type: 'notice', kind: 'away', message: `Allowed while away: ${text}`, away: { kind: 'allowed', text } },
+    { type: 'tool-result', callId: 'cu-away', output: 'Clicked button "Rename" in Finder', isError: false },
+    { type: 'assistant-text', text: 'Renamed the folder.', delta: false, msgId: 'cu-away-m1', blockIndex: 0 },
+    { type: 'turn-complete' },
+    { type: 'status', status: 'idle' }
+  ]
 }

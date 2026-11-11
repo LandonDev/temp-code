@@ -25,12 +25,12 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
 
     public init(clipboardLock: MacLock, sessionLock: MacLock,
                 recentForeignCopy: @escaping @Sendable (_ withinMs: Int) -> Bool = { _ in false },
-                onPersonInput: @escaping @Sendable (pid_t) -> Void,
+                onPersonInput: @escaping @Sendable (pid_t, [Int]) -> Void,
                 onHeld: @escaping @Sendable (HeldEvent) -> Void,
                 sink: EventSink = LiveEventSink(),
                 pasteboard: PasteboardStore = SystemPasteboard(),
                 layout: KeyLayoutSource = CurrentKeyLayout.shared,
-                watch: PersonWatching = PersonWatch(),
+                watch: PersonWatching = PersonWatch(tap: LivePersonTap()),
                 clock: InputClock = SystemClock()) {
         let host = LiveSessionHost()
         self.host = host
@@ -42,12 +42,16 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         self.layout = layout
         let core = InputCore(host: host, watch: watch, sessionLock: sessionLock, sink: sink, clock: clock, layout: layout, onPersonInput: onPersonInput, onHeld: onHeld)
         self.core = core
+        core.driver.trace = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
         host.onActivation = { [weak core] pid in core?.driver.noteActivation(pid: pid) }
         host.observeActivations()
-        // the 30 s auto-release of a held button
+        // the 30 s auto-release of a held button, and the person guard's end (§14.9.2)
         sweeper = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
         sweeper.schedule(deadline: .now() + 1, repeating: 1)
-        sweeper.setEventHandler { [weak core] in core?.held.sweep() }
+        sweeper.setEventHandler { [weak core] in
+            core?.held.sweep()
+            core?.driver.sweepGuard()
+        }
         sweeper.resume()
     }
 
@@ -118,6 +122,18 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
 
     public func releaseHeld(pid: pid_t) {
         core.releaseHeld(pid: pid)
+    }
+
+    public func callBegan(pid: pid_t) -> Int {
+        core.driver.callBegan(pid: pid)
+    }
+
+    public func callEnded(_ token: Int) {
+        core.driver.callEnded(token)
+    }
+
+    public func endGuard() {
+        core.driver.endGuard()
     }
 
     public func releaseStale(_ record: HeldRecord) {
@@ -262,7 +278,7 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
     private func raise(_ action: ComputerAction, target: InputTarget) throws -> InputOutcome {
         let e = try element(target, action)
         let at = axClickAt(e, target)
-        let change = try core.raiseWindow(pid: target.pid, windowID: target.windowID, window: target.window, element: e.element, cancelled: target.cancelled) {
+        let change = try core.raiseWindow(pid: target.pid, windowID: target.windowID, window: target.window, element: e.element, call: target.sessionCall, cancelled: target.cancelled) {
             let err = AX.perform(e.element, "AXRaise")
             if err != .success { throw AX.failure(err, element: e.index, what: "be raised") }
         }
@@ -290,7 +306,7 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
             if Self.isKeyVerb(name) { try ProcessTier.requireKeyWindow(pid: target.pid, window: target.window) }
         }
         let fresh = tier == .session
-        let (at, change, last) = try core.step(tier: tier, pid: target.pid, windowID: target.windowID, window: target.window, keys: Self.isKeyVerb(name), cancelled: target.cancelled) { ctx -> ScreenPoint? in
+        let (at, change, last) = try core.step(tier: tier, pid: target.pid, windowID: target.windowID, window: target.window, keys: Self.isKeyVerb(name), call: target.sessionCall, cancelled: target.cancelled) { ctx -> ScreenPoint? in
             switch name {
             case .leftClick, .rightClick, .middleClick, .doubleClick, .tripleClick:
                 let button: MouseButton = name == .rightClick ? .right : name == .middleClick ? .middle : .left
@@ -356,4 +372,9 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         }
         throw ComputerFailure(ComputerError(kind: .outOfBounds, message: "No pointer position yet; give an element or a coordinate.", space: target.space))
     }
+}
+
+extension InputTarget {
+    /// The call a session step is in, as the person guard reads it.
+    var sessionCall: SessionCall { SessionCall(token: callToken, personIdleMs: personIdleMs) }
 }

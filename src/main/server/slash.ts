@@ -66,6 +66,14 @@ export async function expandSlashRefs(
       )
       continue
     }
+    if ((provider === 'codex' || provider === 'muse') && c.source === 'skill') {
+      // Codex and Muse list the scope's skills themselves and load one on
+      // demand: a pointer costs a line where the inlined body cost the
+      // whole SKILL.md on every first message (about 15k tokens a thread
+      // for two design skills; docs/agents/prompt-overhead.md).
+      blocks.push(`Where the message says /${c.name}: open your "${c.name}" skill (${c.path}) and follow it for that part of the request.`)
+      continue
+    }
     const body = await readFile(c.path, 'utf8').catch(() => null)
     if (!body) continue
     const baseNote =

@@ -339,6 +339,10 @@ export class FocusSignal {
   /** What each link's socket was last told; absent: nothing since it opened. */
   private sent = new Map<string, FocusPair | typeof UNKNOWN>();
   private queued = false;
+  /** The thread the person is looking at and the one on screen, as of the last flush. */
+  private attendedNow: string | null = null;
+  private shownNow: string | null = null;
+  private changeListeners = new Set<() => void>();
 
   constructor(
     private readonly linkOf: (environmentId: string) => FocusLink | undefined,
@@ -394,9 +398,34 @@ export class FocusSignal {
     });
   }
 
+  /** The thread the person is looking at: the focused pane's, while the
+   *  window is focused and the person is at the machine. What the host's
+   *  read mark follows (lib/readMarks.ts). */
+  attended(): string | null {
+    return this.attendedNow;
+  }
+
+  /** The focused pane's thread while the document is visible. */
+  shown(): string | null {
+    return this.shownNow;
+  }
+
+  /** Fires when `attended()` or `shown()` moves. */
+  onChange(listener: () => void): () => void {
+    this.changeListeners.add(listener);
+    return () => this.changeListeners.delete(listener);
+  }
+
   private flush(): void {
     const want = this.windowFocused && this.personPresent ? this.active : null;
     const onScreen = this.documentVisible ? this.active : null;
+    const attended = want?.sessionId ?? null;
+    const shown = onScreen?.sessionId ?? null;
+    if (attended !== this.attendedNow || shown !== this.shownNow) {
+      this.attendedNow = attended;
+      this.shownNow = shown;
+      for (const listener of this.changeListeners) listener();
+    }
     const hosts = new Set(this.sent.keys());
     if (want) hosts.add(want.environmentId);
     if (onScreen) hosts.add(onScreen.environmentId);
@@ -631,7 +660,7 @@ export type StartThreadParams = {
   after?: string;
   /** Queue behind the host's cap and `after` instead of booting at once (scheduler.ts). */
   queue?: boolean;
-  /** Pin the new root thread as a master from its first spawn (admin on the host). */
+  /** Pin the new root thread as a master from its first spawn (operate on the host, as session.setMaster). */
   master?: boolean;
 };
 

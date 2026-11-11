@@ -880,10 +880,11 @@ async function runSegment(
 ): Promise<StepsResult> {
   const observe = last ? { mode: run.appOf()?.needsFull ? ('full' as const) : ('auto' as const), screenshot: shotPolicy(run.args.screenshot) } : { mode: 'none' as const }
   const wait = last ? COMPUTER_WAIT.action : COMPUTER_WAIT.step
-  const extras = {
+  const extras = (allowed: Tier[]) => ({
     ...(gate.pasteQuietMs !== undefined ? { pasteQuietMs: gate.pasteQuietMs } : {}),
+    ...(allowed.includes('session') && gate.personIdleMs ? { personIdleMs: gate.personIdleMs() } : {}),
     ...(ignored ? { ignored } : {})
-  }
+  })
   const ctx = { ...run.gateCtx(classes), tiers, actions, signal: run.signal }
   if (run.single) {
     const action = actions[0]
@@ -894,7 +895,7 @@ async function runSegment(
         tiers: allowed,
         wait: action.action === 'wait' && action.duration ? waitActionWait(action.duration) : wait,
         observe,
-        ...extras
+        ...extras(allowed)
       }))
     )
     return {
@@ -905,7 +906,7 @@ async function runSegment(
       ...(r.menusLeftOpen ? { menusLeftOpen: r.menusLeftOpen } : {})
     }
   }
-  return await gate.run(ctx, (allowed) => run.targeted('action.batch', (tg) => ({ ...tg, actions, tiers: allowed, stepWait: COMPUTER_WAIT.step, wait, observe, ...extras })))
+  return await gate.run(ctx, (allowed) => run.targeted('action.batch', (tg) => ({ ...tg, actions, tiers: allowed, stepWait: COMPUTER_WAIT.step, wait, observe, ...extras(allowed) })))
 }
 
 /** A key or paste into an app whose background windows were seen not key: its retry brings the app forward (§25, decision 10). */

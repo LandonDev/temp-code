@@ -55,6 +55,7 @@ public final class ClientRegistry {
         client.quietly = quietly
         client.relayObserver = { [weak self] client, hosts, whole in self?.heard(client, hosts, whole: whole) }
         client.platformObserver = { [weak self] client, platform in self?.store.setPlatform(client.environment.id, platform) }
+        client.nameObserver = { [weak self] client, name in self?.heardName(client.environment.id, name) }
         if let host = relayed.host(environment.id) {
             client.presence = host.presence
             client.stateSince = host.stateSince
@@ -80,11 +81,12 @@ public final class ClientRegistry {
     private func runSync() async {
         let wanted = wantedEnvironments()
         for environment in wanted where environment.isRelayed {
-            // Pair Again on the carrier, or the Mac renamed: the lane needs the new key or name.
-            guard let existing = clients[environment.id], existing.environment != environment else { continue }
+            // Pair Again on the carrier: the lane needs the new key. A new name alone is a relabel.
+            guard let existing = clients[environment.id], !existing.environment.sameLane(as: environment) else { continue }
             await existing.stop()
             clients[environment.id] = nil
         }
+        relabel(wanted)
         prepare()
         for environment in wanted {
             guard let client = clients[environment.id] else { continue }
@@ -100,11 +102,38 @@ public final class ClientRegistry {
         }
     }
 
-    /// The union, in rail order: each stored environment, then the hosts relayed through it.
+    /// The union, in rail order: each stored environment, then the hosts
+    /// relayed through it, each named by its label (`HostNames.labels`: the
+    /// person's name, else the host's own, short unless two would read the same).
     private func wantedEnvironments() -> [PairedEnvironment] {
-        store.environments.flatMap { carrier in
+        let union = store.environments.flatMap { carrier in
             [carrier] + relayedHosts(via: carrier.id).map { PairedEnvironment.relayed($0, through: carrier) }
         }
+        let labels = HostNames.labels(union.map { HostNames.Entry(id: $0.id, name: $0.customName ?? $0.name, custom: $0.customName != nil) })
+        return union.map { environment in
+            var labelled = environment
+            labelled.name = labels[environment.id] ?? environment.name
+            return labelled
+        }
+    }
+
+    /// Every live client takes its current label; nothing reconnects.
+    private func relabel(_ wanted: [PairedEnvironment]) {
+        for environment in wanted { clients[environment.id]?.relabel(environment.name) }
+    }
+
+    /// A hello named its host: remembered, and every label recomputed (one
+    /// host's new name can lengthen another's).
+    private func heardName(_ id: String, _ name: String) {
+        guard store.environment(id)?.name != name else { return }
+        store.setHostName(id, name)
+        relabel(wantedEnvironments())
+    }
+
+    /// The person named a host in Settings → Hosts (empty clears it).
+    public func rename(_ id: String, to name: String) {
+        store.rename(id, to: name)
+        relabel(wantedEnvironments())
     }
 
     /// The hosts relayed through `carrier` that are not paired directly: a
@@ -159,14 +188,14 @@ public final class ClientRegistry {
         return clients[via]
     }
 
-    public func add(pairingLink: String, name: String? = nil) async throws(EnvironmentStoreError) -> EnvironmentClient {
-        let environment = try await store.add(pairingLink: pairingLink, name: name)
+    public func add(pairingLink: String, clientName: String? = nil) async throws(EnvironmentStoreError) -> EnvironmentClient {
+        let environment = try await store.add(pairingLink: pairingLink, clientName: clientName)
         await sync()
         return clients[environment.id]!
     }
 
-    public func add(origin: URL, key: String, name: String? = nil) async throws(EnvironmentStoreError) -> EnvironmentClient {
-        let environment = try await store.add(origin: origin, key: key, name: name)
+    public func add(origin: URL, key: String) async throws(EnvironmentStoreError) -> EnvironmentClient {
+        let environment = try await store.add(origin: origin, key: key)
         await sync()
         return clients[environment.id]!
     }
@@ -194,12 +223,12 @@ public final class ClientRegistry {
     private func heard(_ client: EnvironmentClient, _ hosts: [HostPresence], whole: Bool) {
         if let via = client.environment.via {
             if whole {
-                relayed.apply(hosts, via: via)
+                relayed.apply(hosts, via: via, carrier: store.environment(via))
             } else if let own = hosts.first {
                 relayed.update(own, via: via)
             }
         } else if whole {
-            relayed.apply(hosts, via: client.environment.id)
+            relayed.apply(hosts, via: client.environment.id, carrier: store.environment(client.environment.id))
         }
     }
 

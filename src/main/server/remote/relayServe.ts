@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { hostname } from 'node:os'
+import { hostLabel } from '../../hostLabel'
 import { ZodError } from 'zod'
 import type { WebSocket } from 'ws'
 import { CONTRACT_VERSION, type Principal } from '@shared/capabilities'
@@ -212,7 +212,7 @@ export class RelayServer {
   /** peer.register's extra fields for macBridge.linkUp. */
   registration(): RelayRegistration {
     return {
-      name: this.deps.hostname ?? hostname(),
+      name: this.deps.hostname ?? hostLabel(),
       presence: this.deps.presence.snapshot(),
       ...(this.deps.build ? { build: this.deps.build } : {})
     }
@@ -353,6 +353,7 @@ export class RelayServer {
       ts: notice.ts,
       seq: notice.seq,
       ...(notice.requestId ? { requestId: notice.requestId } : {}),
+      ...(notice.choices ? { choices: notice.choices } : {}),
       ...(notice.hostName ? { hostName: notice.hostName } : {}),
       // A thread its person is looking at on this Mac: the box's webhooks still hear, its phones do not.
       ...(notice.onScreen ? { onScreen: true as const } : {})

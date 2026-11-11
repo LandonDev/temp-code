@@ -311,7 +311,7 @@ private func held(_ pid: Int32, kind: HeldRecord.Kind = .button) -> HeldRecord {
             return InputOutcome(tier: .session, via: nil, clipboard: nil, cursor: nil, lastInputAt: mach_absolute_time())
         }
         _ = await rig.call("action.run", "{\(docTarget),\"action\":{\"action\":\"hold_key\",\"text\":\"shift\",\"duration\":1},\"tiers\":[\"session\"],\"wait\":\(quick)}")
-        wiring.onPersonInput(500)
+        wiring.onPersonInput(500, [])
         #expect(await eventually { rig.lines.notifications("session/interrupted").first?["session"]?.stringValue == "s1" })
     }
 

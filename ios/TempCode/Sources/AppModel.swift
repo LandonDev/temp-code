@@ -199,7 +199,7 @@ final class AppModel: PushHandler {
         if registry.store.environments.contains(where: { $0.origin == parsed.origin }) { return }
         let began = Date()
         do {
-            _ = try await registry.add(pairingLink: link, name: name)
+            _ = try await registry.add(pairingLink: link, clientName: name)
             log.notice("\(label, privacy: .public) done in \(Int(Date().timeIntervalSince(began) * 1000), privacy: .public) ms")
         } catch {
             // The proof reads this from the simulator log; the message never carries the code or a key.

@@ -14,7 +14,9 @@ import { mergeModelSettings, nativeModelId, resolveModel } from "../lib/models";
 import { draftPicks, projectDrafts, projectDraftsStore } from "../lib/projectDrafts";
 import { looksLikeProject } from "../lib/recents";
 import { replaceProjectHistory } from "../lib/sessionHistory";
-import { markSessionSeen, pruneLastSeen } from "../lib/sessionSeen";
+import { installHostMarks, markSessionSeen, pruneLastSeen } from "../lib/sessionSeen";
+import { createReadMarks } from "../lib/readMarks";
+import { focusSignal } from "../lib/tcserver/commands";
 import {
   isPersistedThread,
   listSessionsByProject,
@@ -516,6 +518,26 @@ export function installDraftTabSweep(): Teardown {
 }
 
 /** Everything above, once, after the boot fills the stores. */
+/** The hosts' read marks over the seen map, and the writes back to them
+ *  (lib/readMarks.ts; CLAUDE.md "Read and unread: the host's mark"). */
+export function installReadMarks(): Teardown {
+  const marks = createReadMarks({
+    metas: () => sessionStore.metas(),
+    metaOf: (id) => sessionStore.metaOf(id),
+    environmentOf: (id) => sessionStore.environmentOf(id),
+    onMetaChange: (listener) => sessionStore.onMetaChange((changes) => listener(changes.ids)),
+    linkOf: (environmentId) => registry.link(environmentId),
+    attended: () => focusSignal.attended(),
+    shown: () => focusSignal.shown(),
+    onFocusChange: (listener) => focusSignal.onChange(listener),
+  });
+  const uninstall = installHostMarks(marks);
+  return () => {
+    uninstall();
+    marks.dispose();
+  };
+}
+
 export function installSubscriptions(): Teardown {
   return teardownAll([
     installVisitSettling(),
@@ -529,5 +551,6 @@ export function installSubscriptions(): Teardown {
     installBootTasks(),
     installProjectDraftWriter(),
     installDraftTabSweep(),
+    installReadMarks(),
   ]);
 }

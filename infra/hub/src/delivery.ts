@@ -12,7 +12,13 @@ const ALERT_TTL_S = 3600
 export const ACTIVITY_DISMISS_S = 120
 /** The category the phone registers Approve and Deny under; every other thread notice carries the Open one. */
 export const APPROVAL_CATEGORY = 'tc.approval'
+/** A computer step held for the Mac: the phone's Run now and Skip, under the same two actions. */
+export const RUN_SKIP_CATEGORY = 'tc.run-skip'
 export const THREAD_CATEGORY = 'tc.thread'
+function categoryOf(notice: Pick<Notice, 'kind' | 'choices'>): string {
+  if (notice.kind !== 'approval') return THREAD_CATEGORY
+  return notice.choices === 'run-skip' ? RUN_SKIP_CATEGORY : APPROVAL_CATEGORY
+}
 const SOUNDED = new Set<Notice['event']>(['needs_you', 'failed', 'host_down'])
 const RELEVANCE: Record<Notice['event'], number> = { needs_you: 1, failed: 0.8, host_down: 0.8, stuck: 0.6, finished: 0.4, host_up: 0.2 }
 
@@ -36,7 +42,7 @@ export function notificationPayload(notice: Notice): unknown {
       'summary-arg': notice.subtitle ?? notice.title,
       'interruption-level': notice.event === 'needs_you' ? 'time-sensitive' : 'active',
       'relevance-score': RELEVANCE[notice.event],
-      ...(notice.threadId === undefined ? {} : { category: notice.kind === 'approval' ? APPROVAL_CATEGORY : THREAD_CATEGORY }),
+      ...(notice.threadId === undefined ? {} : { category: categoryOf(notice) }),
       // The phone's service extension may add the host to the subtitle when several hosts are paired.
       'mutable-content': 1
     },

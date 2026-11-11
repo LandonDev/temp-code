@@ -3,6 +3,7 @@ import { sweepThreadAttachments } from './attachmentUploads'
 import { attachmentDir } from './attachmentDir'
 import { ThreadNotes } from './threadNotes'
 import { NOTES_STREAK_LIMIT } from '@shared/notes'
+import { contextThrashRow, isThrashing, recentCompactions } from '@shared/contextThrash'
 import {
   isCommitCall,
   isNoteDecisionCall,
@@ -648,6 +649,25 @@ export class SessionRegistry {
     this.notifyMeta(next)
   }
 
+  /** The person saw these threads (CLAUDE.md "Read and unread: the host's
+   *  mark"): each one's read mark moves up to its `at`, else to the row as
+   *  it stands; clients hear the meta. Unknown ids are skipped (a thread
+   *  deleted while a client's write was queued), never an error. */
+  markRead(items: readonly { sessionId: string; at?: number }[]): void {
+    for (const { sessionId, at } of items) {
+      const next = this.store.markSessionRead(sessionId, at)
+      if (next) this.notifyMeta(next, 'read')
+    }
+  }
+
+  /** Mark as unread: each thread reads unread until it is seen again. */
+  markUnread(sessionIds: readonly string[]): void {
+    for (const id of sessionIds) {
+      const next = this.store.markSessionUnread(id)
+      if (next) this.notifyMeta(next, 'read')
+    }
+  }
+
   private closed = false
   private handles = new Map<string, DriverHandle>()
   /** Approvals raised through requestApproval, per session: requestId →
@@ -763,6 +783,16 @@ export class SessionRegistry {
    *  settle since. The activity reads COMPACTING_WORDS meanwhile, through
    *  a mid-compaction `running` and past the provider-wait threshold. */
   private compacting = new Set<string>()
+  /** When each thread's compactions finished this turn, for the thrash
+   *  guard (src/shared/contextThrash.ts): a window that refills to its limit
+   *  on every request compacts again and again and makes no progress. */
+  private compactionTimes = new Map<string, number[]>()
+  /** The first context reading after each harness boot: about the size of
+   *  the fixed overhead (instructions, tools, the first message), which the
+   *  thrash row names. */
+  private firstContexts = new Map<string, { tokens: number; window: number | null }>()
+  /** Turns the thrash guard is ending, and the error row their settle writes. */
+  private thrashing = new Map<string, string>()
   /** What a watching thread waits on (background task and cron
    *  descriptions from the driver's background-tasks event) — transient
    *  like activities; decorate() turns it into the "Waiting on …" line. */
@@ -3018,6 +3048,7 @@ export class SessionRegistry {
     const first = opts?.echoed ? opts.echoed.first : !this.store.hasUserText(sessionId)
     this.notesReminderSent.delete(sessionId)
     this.notesStreaks.delete(sessionId)
+    this.compactionTimes.delete(sessionId)
     const attachments = opts?.attachments?.length ? opts.attachments : undefined
     // The project preamble (projectPreamble.ts) rides the FIRST message of
     // every thread started in a project, on every start path — all of them
@@ -4044,6 +4075,9 @@ export class SessionRegistry {
       this.activities.delete(id)
       this.phases.delete(id)
       this.compacting.delete(id)
+      this.compactionTimes.delete(id)
+      this.firstContexts.delete(id)
+      this.thrashing.delete(id)
       this.todoFolds.delete(id)
       this.warming.delete(id)
       this.folds.delete(id)
@@ -4588,6 +4622,8 @@ export class SessionRegistry {
           throw new BootStopped()
         }
         this.handles.set(sessionId, handle)
+        // A fresh harness: its first context reading is its own fixed overhead.
+        this.firstContexts.delete(sessionId)
         // A thread that went idle while its harness booted can now give its
         // slot to the queue (reclaimIdle only puts down a booted harness).
         if (this.indexOf().byId.get(sessionId)?.status === 'idle') this.scheduler.schedule()
@@ -4639,6 +4675,15 @@ export class SessionRegistry {
       this.append(sessionId, { type: 'error', message: FIRST_OUTPUT_GAVE_UP })
       event = { type: 'status', status: 'error' }
     }
+    // The thrash guard ended this turn: the driver's own row for the cut
+    // turn is dropped, and its settle writes the guard's row and fails.
+    if (event.type === 'error' && this.thrashing.has(sessionId)) return
+    if (event.type === 'status' && (event.status === 'idle' || event.status === 'error') && this.thrashing.has(sessionId)) {
+      const row = this.thrashing.get(sessionId)!
+      this.thrashing.delete(sessionId)
+      this.append(sessionId, { type: 'error', message: row })
+      event = { type: 'status', status: 'error' }
+    }
     const masterWatch = event.type === 'status' && event.status === 'idle' && this.masterKeepsWatching(sessionId)
     if (masterWatch) event = { type: 'status', status: 'watching' }
     // Research boards: web tool calls anywhere in a research thread's agent
@@ -4669,6 +4714,7 @@ export class SessionRegistry {
       const window = event.window ?? prev?.window ?? null
       if (prev?.tokens === event.tokens && prev?.window === window) return
       const context = { tokens: event.tokens, window }
+      if (!this.firstContexts.has(sessionId)) this.firstContexts.set(sessionId, context)
       this.liveContexts.set(sessionId, context)
       this.store.setSessionContext(sessionId, context)
       const meta = this.row(sessionId)
@@ -4681,6 +4727,7 @@ export class SessionRegistry {
     // into the live turn now, else ahead of the next message. The window
     // is fresh again for the pre-compaction reminder.
     if (event.type === 'compaction' && event.phase === 'done') {
+      this.noteCompaction(sessionId)
       this.notesReminded.delete(sessionId)
       const text = this.notes.textFor(sessionId)
       if (text) this.whisper(sessionId, notesAfterCompaction(text))
@@ -4710,6 +4757,7 @@ export class SessionRegistry {
     // The settle that ends a stopped turn: what is parked for the thread
     // (its subagents' reports) waits for its next turn instead of starting one.
     const stoppedSettle = event.type === 'status' && event.status === 'idle' && this.stopping.has(sessionId)
+    if (event.type === 'status' && event.status === 'starting') this.compactionTimes.delete(sessionId)
     if (event.type === 'status') {
       // The stop outlives a question's or an approval's `running` cleanup
       // and a `waiting`: the CLI's result still has to arrive.
@@ -5328,6 +5376,30 @@ export class SessionRegistry {
   /** A turn settled: any steer it still holds at sent waits for the next turn's first output. */
   private steersSettled(sessionId: string): void {
     for (const s of this.steers.get(sessionId)?.values() ?? []) if (s.state === 'sent') s.fallback = true
+  }
+
+  /** A compaction finished: four inside ten minutes on a running turn is a
+   *  window that refills on every request (contextThrash.ts). The guard ends
+   *  the turn through the handle's interrupt, never as the person's Stop:
+   *  the settle writes `context thrash: …` and the row fails as
+   *  `context_thrash`, so a master reads the cause, not a transient. */
+  private noteCompaction(sessionId: string): void {
+    const now = Date.now()
+    const times = recentCompactions([...(this.compactionTimes.get(sessionId) ?? []), now], now)
+    this.compactionTimes.set(sessionId, times)
+    if (!isThrashing(times, now) || this.thrashing.has(sessionId)) return
+    if (this.store.getSession(sessionId)?.status !== 'running') return
+    const row = contextThrashRow(times.length, times[times.length - 1] - times[0], this.firstContexts.get(sessionId))
+    console.warn(`[thrash] ${sessionId}: ${row}`)
+    this.thrashing.set(sessionId, row)
+    this.compactionTimes.delete(sessionId)
+    // After this event's own append: the handle's settle comes back through append.
+    queueMicrotask(() => {
+      if (!this.thrashing.has(sessionId)) return
+      const handle = this.handles.get(sessionId)
+      if (handle) handle.interrupt()
+      else this.append(sessionId, { type: 'status', status: 'idle' })
+    })
   }
 
   /** The first-output watchdog settled the turn with nothing back: the

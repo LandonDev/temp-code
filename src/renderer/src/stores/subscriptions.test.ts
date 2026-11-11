@@ -84,7 +84,7 @@ vi.mock("../lib/sessionStore", async (importOriginal) => ({
   listSessionsByProject: vi.fn(() => Promise.resolve([])),
   subscribeSessionHistory: vi.fn(() => () => {}),
 }));
-vi.mock("../lib/sessionSeen", () => ({ markSessionSeen: vi.fn(), pruneLastSeen: vi.fn() }));
+vi.mock("../lib/sessionSeen", () => ({ markSessionSeen: vi.fn(), pruneLastSeen: vi.fn(), installHostMarks: vi.fn(() => () => {}) }));
 vi.mock("../lib/workspaceMigration", () => ({ migrateWorkspaces: vi.fn(() => Promise.resolve()) }));
 vi.mock("../lib/tcserver/projects", () => ({
   createWorkspace: vi.fn(() => Promise.resolve({})),

@@ -17,6 +17,7 @@ import type {
 } from '@muse-code/sdk/dist/src/msp'
 import type { Attachment } from '@shared/events'
 import { bridgeMcpConfig } from '../apptools'
+import { expandSlashRefs } from '../slash'
 import { museConfigDirFor, museDirKind, museSkillsFor, recaptureMuseDir } from '../museConfigDirs'
 import { exitWords, spawnMuseHost, type MuseHost } from './harness/museHost'
 import {
@@ -411,7 +412,8 @@ async function start(ctx: DriverCtx): Promise<DriverHandle> {
     },
     async send(text: string, attachments: Attachment[] = [], opts: SendOpts = {}): Promise<void> {
       if (disposed || !host?.alive()) throw new Error('muse serve is gone')
-      const input = await turnInput(text, attachments)
+      // A /skill in the message is a pointer to the skill Muse lists itself (slash.ts).
+      const input = await turnInput(await expandSlashRefs('muse', session.cwd, text), attachments)
       const effort = reasoningEffortOf(session.reasoning)
       if (turnOpen && currentTurnId && opts.steerId) {
         const commandId = conn.mintCommandId()

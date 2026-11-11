@@ -22,11 +22,12 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
     let layout: KeyLayoutSource
     let held: HeldInput
     let driver: SessionDriver<Host>
-    private let onPersonInput: @Sendable (pid_t) -> Void
+    /// the person tripped the guard between calls: the pid, and the tokens of the calls it is for
+    private let onPersonInput: @Sendable (pid_t, [Int]) -> Void
     private let state = NSLock()
     private var interruptedOnce: Set<Int32> = []
 
-    init(host: Host, watch: PersonWatching, sessionLock: MacLock, sink: EventSink, clock: InputClock, layout: KeyLayoutSource, onPersonInput: @escaping @Sendable (pid_t) -> Void, onHeld: @escaping @Sendable (HeldEvent) -> Void) {
+    init(host: Host, watch: PersonWatching, sessionLock: MacLock, sink: EventSink, clock: InputClock, layout: KeyLayoutSource, onPersonInput: @escaping @Sendable (pid_t, [Int]) -> Void, onHeld: @escaping @Sendable (HeldEvent) -> Void) {
         self.sink = sink
         self.clock = clock
         self.layout = layout
@@ -37,22 +38,28 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
             guard let self else { return }
             self.driver.settle(holding: self.held.holdsSession)
         }
-        driver.onTripBetweenCalls = { [weak self] in
+        driver.onTripBetweenCalls = { [weak self] tokens, stopped in
             guard let core = self else { return }
             // the watch calls on main; the release posts events and takes locks, never there
-            DispatchQueue.global(qos: .userInitiated).async { core.personBetweenCalls() }
+            DispatchQueue.global(qos: .userInitiated).async { core.personBetweenCalls(tokens: tokens, stoppedPid: stopped) }
         }
     }
 
-    /// A trip while session input is held between calls: let it go, tell the shell, fail the pid's next call once.
-    func personBetweenCalls() {
-        let pids = held.sessionPids()
+    /// A trip with no step running, or one a step met (§14.9.5): let go of the held session input
+    /// and fail each such pid's next call once; tell the shell, with the tokens of the calls the trip
+    /// is for, for those pids or else for the guard's owner. `stoppedPid`: the step that stopped
+    /// for the person lets go of its own pid's input, and its call fails, not the next.
+    func personBetweenCalls(tokens: [Int] = [], stoppedPid: Int32? = nil) {
+        let pids = held.sessionPids().filter { $0 != stoppedPid }
         driver.notePersonBetweenCalls()
+        var left = tokens
         for pid in pids {
             held.releaseAll(pid: pid)
             state.withLock { _ = interruptedOnce.insert(pid) }
-            onPersonInput(pid)
+            onPersonInput(pid, left)
+            left = []
         }
+        if !left.isEmpty, let owner = driver.guardOwners.first(where: { !pids.contains($0) }) { onPersonInput(owner, left) }
         driver.settle(holding: held.holdsSession)
     }
 
@@ -65,12 +72,12 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
     /// driver at the HID tap at `session`. The body resolves its points itself (at the session
     /// tier, after activation moved things). Returns the body's value, the session change and
     /// the last input time.
-    func step<T>(tier: Tier, pid: Int32, windowID: UInt32, window: Host.Window, keys: Bool, activate: Bool = true, cancelled: @escaping @Sendable () -> Bool, body: (inout StepContext) throws -> T) throws -> (T, SessionChange?, UInt64?) {
+    func step<T>(tier: Tier, pid: Int32, windowID: UInt32, window: Host.Window, keys: Bool, activate: Bool = true, call: SessionCall = SessionCall(), cancelled: @escaping @Sendable () -> Bool, body: (inout StepContext) throws -> T) throws -> (T, SessionChange?, UInt64?) {
         do {
             switch tier {
             case .session:
                 let last = LastInput()
-                let (value, change) = try driver.run(pid: pid, window: window, keys: keys, activate: activate, cancelled: cancelled, holding: { held.holdsSession }, lastInput: { last.ticks }) { check in
+                let (value, change) = try driver.run(pid: pid, window: window, keys: keys, activate: activate, call: call, cancelled: cancelled, holding: { held.holdsSession }, lastInput: { last.ticks }) { check in
                     var ctx = StepContext(tier: .session, pid: pid, route: .hid, poster: Poster(sink: sink, clock: clock, route: .hid, check: check))
                     defer { last.ticks = ctx.poster.lastInputAt }
                     return try body(&ctx)
@@ -93,8 +100,8 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
     /// `perform raise` (§5.2, §22.5): one session step with no activation of its own; a window in
     /// the Dock comes out first (`AXMinimized` false orders it over the person's front window, the
     /// reason this is the session tier's), then `raise` makes the AX call.
-    func raiseWindow(pid: Int32, windowID: UInt32, window: Host.Window, element: Host.Window, cancelled: @escaping @Sendable () -> Bool, raise: () throws -> Void) throws -> SessionChange? {
-        let (_, change, _) = try step(tier: .session, pid: pid, windowID: windowID, window: window, keys: false, activate: false, cancelled: cancelled) { _ in
+    func raiseWindow(pid: Int32, windowID: UInt32, window: Host.Window, element: Host.Window, call: SessionCall = SessionCall(), cancelled: @escaping @Sendable () -> Bool, raise: () throws -> Void) throws -> SessionChange? {
+        let (_, change, _) = try step(tier: .session, pid: pid, windowID: windowID, window: window, keys: false, activate: false, call: call, cancelled: cancelled) { _ in
             if driver.host.minimized(element) { try driver.host.unminimize(element) }
             try raise()
         }
@@ -261,9 +268,9 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
     /// flow first refuses a recent foreign copy, once it holds the clipboard lock. `insert` is the
     /// AX insert rung (§24.6); `pressPaste` delivers Command-V as the app's Paste item when it
     /// answers true (§24.2), else the step posts the key.
-    func paste(_ content: PasteContent, flow: PasteFlow, quietMs: Int?, tier: Tier, pid: Int32, windowID: UInt32, window: Host.Window, cancelled: @escaping @Sendable () -> Bool, insert: (() throws -> StepEffect?)? = nil, pressPaste: (() throws -> Bool)? = nil, checks: () throws -> Void, recheck: () throws -> Void, evidence: () -> Evidence?) throws -> (PasteResult, SessionChange?, UInt64?) {
+    func paste(_ content: PasteContent, flow: PasteFlow, quietMs: Int?, tier: Tier, pid: Int32, windowID: UInt32, window: Host.Window, call: SessionCall = SessionCall(), cancelled: @escaping @Sendable () -> Bool, insert: (() throws -> StepEffect?)? = nil, pressPaste: (() throws -> Bool)? = nil, checks: () throws -> Void, recheck: () throws -> Void, evidence: () -> Evidence?) throws -> (PasteResult, SessionChange?, UInt64?) {
         var result = PasteResult(via: .paste, clipboard: .restored, effect: .unknown)
-        let (_, change, last) = try step(tier: tier, pid: pid, windowID: windowID, window: window, keys: true, cancelled: cancelled) { ctx in
+        let (_, change, last) = try step(tier: tier, pid: pid, windowID: windowID, window: window, keys: true, call: call, cancelled: cancelled) { ctx in
             result = try flow.run(content, quietMs: quietMs, cancelled: cancelled, insert: insert, checks: checks, recheck: recheck, deliver: {
                 if let pressPaste, try pressPaste() { return }
                 try commandV(&ctx)

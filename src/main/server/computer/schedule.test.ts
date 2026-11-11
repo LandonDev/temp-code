@@ -60,8 +60,13 @@ function world() {
   /** the person's last input, epoch ms */
   let lastInput = T0 - 300_000
   const ends: OwnSpan[][] = []
+  const marks: number[] = []
   const idle = {
     getSystemIdleTime: () => Math.floor((clock.now() - lastInput) / 1000),
+    markPerson: (at: number) => {
+      marks.push(at)
+      lastInput = Math.max(lastInput, at)
+    },
     beginOwn: () => ({ end: (spans: OwnSpan[]) => void ends.push(spans) })
   }
   let presence: MacPresence = { screen: 'unlocked', power: 'awake', at: 0 }
@@ -72,15 +77,18 @@ function world() {
   const restores: (Record<string, unknown> | undefined)[] = []
   let restoreHold: Deferred<void> | null = null
   let restoreThrows = false
+  let restoreCheck: (() => void) | null = null
+  let personGuard: SessionRestore['personGuard']
   let clipboard: ClipboardActivity = { changeCount: 1, foreignChangeAt: null, watchingSince: T0 - 60_000 }
   const notes = new Set<(n: ComputerNotification) => void>()
   const service = {
     request: async (method: string, params?: unknown): Promise<never> => {
       if (method === 'input.restoreSession') {
+        restoreCheck?.()
         restores.push(params as Record<string, unknown>)
         if (restoreHold) await restoreHold.promise
         if (restoreThrows) throw new Error('the service is gone')
-        return { frontmost: 'restored', pointer: 'restored', held: null } satisfies SessionRestore as never
+        return { frontmost: 'restored', pointer: 'restored', held: null, ...(personGuard ? { personGuard } : {}) } satisfies SessionRestore as never
       }
       if (method === 'clipboard.state') return { ...clipboard } as never
       throw new Error(`unexpected ${method}`)
@@ -115,6 +123,7 @@ function world() {
   return {
     clock,
     ends,
+    marks,
     lines,
     logs,
     restores,
@@ -133,6 +142,8 @@ function world() {
       restoreHold = null
     },
     failRestores: () => (restoreThrows = true),
+    onRestore: (check: () => void) => (restoreCheck = check),
+    setGuardReport: (report: SessionRestore['personGuard']) => (personGuard = report),
     setClipboard: (c: Partial<ClipboardActivity>) => (clipboard = { ...clipboard, ...c }),
     interrupt: (session: string) => {
       for (const fn of notes) fn({ method: 'session/interrupted', params: { session, by: 'person', at: clock.now() } })
@@ -533,6 +544,74 @@ describe('restore', () => {
 })
 
 describe("the person's touch", () => {
+  it('marks the person and clears Run now before restoring, so a call within 1.5 s waits (S8)', async () => {
+    const { w, s } = setup()
+    w.input()
+    const lease = s.request(reqOf(w, 't1', { permission: 'safe' }))
+    w.cards[0].decide(true)
+    await lease
+    const reply = deferred<ActionResult>()
+    const call = s.run(runOf(w, 't1', ['session'], [{ action: 'key', text: 'a' }]), () => reply.promise)
+    await settle()
+    await w.clock.advance(500)
+    w.holdRestore()
+    const abort = new AbortController()
+    let waiting!: Promise<unknown>
+    let admitted = false
+    w.onRestore(() => {
+      expect(w.marks).toEqual([w.clock.now()])
+      expect(s.personIdleMs()).toBe(0)
+      waiting = s.request(reqOf(w, 't1', { signal: abort.signal })).then((r) => (admitted = r.admit))
+      expect(linesOf(w).at(-1)).toBe('Waiting for the Mac to be free')
+    })
+    w.interrupt('t1')
+    await w.clock.advance(500)
+    expect(admitted).toBe(false)
+    expect(w.restores).toEqual([{ afterInterrupt: true }])
+    abort.abort()
+    await waiting
+    w.releaseRestore()
+    reply.resolve(single(ok('key', 'session')))
+    await call
+  })
+
+  it('keeps no button from a successful down before a mid-call trip, and releases the slot after restore (S5)', async () => {
+    const { w, s } = setup()
+    const reply = deferred<ActionResult>()
+    const call = s.run(runOf(w, 't1', ['session'], [{ action: 'left_mouse_down' }]), () => reply.promise)
+    await settle()
+    w.holdRestore()
+    const sent: Tier[][] = []
+    const other = s.run(runOf(w, 't2', ['ax', 'session'], [{ action: 'key', text: 'b' }]), async (tiers) => (sent.push(tiers), single(ok('key', 'ax'))))
+    await settle()
+    w.interrupt('t1')
+    reply.resolve(single(ok('left_mouse_down', 'session')))
+    await settle()
+    expect(s.admitted(ctxOf(w))).toBe(false)
+    expect(sent).toEqual([])
+    w.releaseRestore()
+    await call
+    await other
+    expect(sent).toEqual([['ax']])
+    expect(w.restores).toEqual([{ afterInterrupt: true }])
+    expect(w.ends[0]).toEqual([])
+    // the trip belongs to the old call: a later down may hold the button again
+    w.idleFor(200_000)
+    await s.run(runOf(w, 't1', ['session'], [{ action: 'left_mouse_down' }]), async () => single(ok('left_mouse_down', 'session')))
+    expect(s.admitted(ctxOf(w))).toBe(true)
+    await s.settle('t1', 'stopped')
+  })
+
+  it.each(['active', 'passive'] as const)('logs the %s guard report on restore', async (mode) => {
+    const { w, s } = setup()
+    w.setGuardReport({ mode, dropped: 4, replayed: 2, rearmed: 1 })
+    await s.run(runOf(w, 't1', ['session'], [{ action: 'key', text: 'a' }]), async () => {
+      w.interrupt('t1')
+      return single(ok('key', 'session'))
+    })
+    expect(w.logs).toContain(`[computer] schedule restore t1 frontmost=restored pointer=restored after-interrupt guard=${mode} dropped=4 replayed=2 rearmed=1`)
+  })
+
   it('restores at once on the notice, before the reply, and the call restores nothing more', async () => {
     const { w, s } = setup()
     w.idleFor(200_000)

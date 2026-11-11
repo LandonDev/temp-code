@@ -70,6 +70,21 @@ struct DecoderRulesTests {
         #expect(cleared.statusDetail == nil)
     }
 
+    @Test("an approval's choices: a held computer step's Run now and Skip, none, and one this build does not know", arguments: [
+        (#","choices":"run-skip""#, ApprovalRequestEvent.Choices?.some(.runSkip)),
+        ("", nil),
+        (#","choices":"later-never""#, .some(.unknown("later-never")))
+    ])
+    func approvalChoices(extra: String, expected: ApprovalRequestEvent.Choices?) throws {
+        let event = try roundTrip(AgentEvent.self, #"{"type":"approval-request","requestId":"r","toolName":"computer_session","title":"Use your pointer and keyboard to click button \"Save\" in TextEdit","callId":"c"\#(extra)}"#)
+        guard case .approvalRequest(let request) = event else {
+            Issue.record("expected an approval request")
+            return
+        }
+        #expect(request.choices == expected)
+        #expect(request.toolName == "computer_session")
+    }
+
     @Test func noticeOfUnknownKindKeepsMessage() throws {
         let event = try roundTrip(AgentEvent.self, #"{"type":"notice","kind":"weather","message":"Rain"}"#)
         guard case .notice(let notice) = event else {

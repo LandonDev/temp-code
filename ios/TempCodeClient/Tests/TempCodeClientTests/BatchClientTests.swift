@@ -143,14 +143,16 @@ private final class BatchRig {
         #expect(try await stop.value)
     }
 
-    @Test("pinning a master needs admin: any key without it reads noAdmin before the wire") func setMasterNeedsAdmin() async throws {
-        let operate = try BatchRig(caps: [.read, .operate])
-        await #expect(throws: ActionError.blocked(.noAdmin)) { try await operate.client.setMaster("m", true) }
+    @Test("pinning a master needs operate, never admin: an operate key sends it, a read key reads readOnly before the wire") func setMasterNeedsOperate() async throws {
+        let rig = try BatchRig(caps: [.read, .operate])
+        let fake = await rig.open()
+        let pin = Task { try await rig.client.setMaster("m", true) }
+        let sent = try #require(await rig.request(fake, "session.setMaster"))
+        #expect(sent.params == .object(["sessionId": .string("m"), "master": .bool(true)]))
+        fake.answer(id: sent.id, result: "null")
+        try await pin.value
         let read = try BatchRig(caps: [.read])
-        await #expect(throws: ActionError.blocked(.noAdmin)) { try await read.client.setMaster("m", true) }
-        let open = EnvironmentStatus(transport: .open, fresh: true)
-        #expect(Actions.block(status: open, environment: batchEnvironment([.read, .operate, .admin]), needs: .admin) == nil)
-        #expect(Actions.block(status: open, environment: batchEnvironment([.read, .operate]), needs: .admin) == .noAdmin)
+        await #expect(throws: ActionError.blocked(.readOnly)) { try await read.client.setMaster("m", true) }
     }
 
     @Test("the add sheet's draft joins the batch with the master as starter") func batchDraft() throws {

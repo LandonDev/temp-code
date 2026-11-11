@@ -8,14 +8,16 @@ import { OPEN_MODEL_PICKER, type ModelPickerRequest } from "../lib/modelPickerSi
 
 const continueSession = vi.fn<(id: string, run?: Record<string, string>) => Promise<void>>();
 const rerouteSession = vi.fn<(id: string) => Promise<{ account: string | null; moved: boolean }>>();
+const tune = vi.fn<(id: string, patch: Record<string, unknown>) => Promise<void>>();
 vi.mock("../lib/tcserver/commands", () => ({
+  tune: (id: string, patch: Record<string, unknown>) => tune(id, patch),
   continueSession: (id: string, run?: Record<string, string>) => (run ? continueSession(id, run) : continueSession(id)),
   rerouteSession: (id: string) => rerouteSession(id),
   reasoningOf: (s: { modelSettings: Record<string, string> }) => s.modelSettings.effort,
 }));
 
 // The thread the card belongs to: null (a claude thread by default) unless a test names one.
-let threadMeta: { provider: string; model: string; environmentId?: string } | null = null;
+let threadMeta: { provider: string; model: string; environmentId?: string; context1m?: boolean } | null = null;
 vi.mock("../lib/tcserver/store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/tcserver/store")>()),
   useSessionMeta: () => threadMeta,
@@ -42,6 +44,7 @@ const KINDS: FailureKind[] = [
   "model_unavailable",
   "network",
   "harness_crashed",
+  "context_thrash",
   "unknown",
 ];
 
@@ -123,6 +126,8 @@ describe("FailureCard wired", () => {
   beforeEach(() => {
     continueSession.mockReset();
     rerouteSession.mockReset();
+    tune.mockReset();
+    tune.mockResolvedValue(undefined);
     continueSession.mockResolvedValue(undefined);
   });
   afterEach(() => {
@@ -278,6 +283,37 @@ describe("FailureCard wired", () => {
     expect(next.container.textContent).toContain("session s1 is manually paused");
     done();
     next.unmount();
+  });
+
+  it("a thrashing window on a model with 1M leads with Continue with 1M context: the window, then the continue", async () => {
+    threadMeta = { provider: "claude", model: "claude-opus-5-5" };
+    const order: string[] = [];
+    tune.mockImplementation(async () => {
+      order.push("session.tune");
+    });
+    continueSession.mockImplementation(async () => {
+      order.push("session.continue");
+    });
+    const probe = mountProbe(<FailureCard sessionId="s1" failure={failure("context_thrash")} />);
+    expect(buttons(probe.container)).toEqual(["Continue with 1M context", "Continue on another model", "Retry"]);
+    await act(async () => {
+      fireEvent.click(probe.container.querySelector("button[data-failure-action=use-1m]")!);
+    });
+    expect(tune).toHaveBeenCalledWith("s1", { context1m: true });
+    expect(continueSession).toHaveBeenCalledWith("s1");
+    expect(order).toEqual(["session.tune", "session.continue"]);
+    probe.unmount();
+  });
+
+  it("a thrashing window already on 1M, or on a model without it, offers another model and Retry", () => {
+    threadMeta = { provider: "claude", model: "claude-opus-5-5", context1m: true };
+    const on1m = mountProbe(<FailureCard sessionId="s1" failure={failure("context_thrash")} />);
+    expect(buttons(on1m.container)).toEqual(["Continue on another model", "Retry"]);
+    on1m.unmount();
+    threadMeta = { provider: "codex", model: "gpt-6.1-sol" };
+    const codex = mountProbe(<FailureCard sessionId="s1" failure={failure("context_thrash")} />);
+    expect(buttons(codex.container)).toEqual(["Continue on another model", "Retry"]);
+    codex.unmount();
   });
 
   it("a row the host cannot continue from offers neither Retry nor Continue on another model", () => {

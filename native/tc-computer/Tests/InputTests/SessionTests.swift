@@ -108,7 +108,8 @@ private let textEdit = AppBrief(pid: 7, bundleId: "com.apple.TextEdit", name: "T
         #expect(rig.sink.posted.allSatisfy { $0.1 == .hid })
         #expect(rig.sink.events.first == .move(pt(400, 300), dragging: nil))
         #expect(!rig.lock.isTaken)
-        #expect(!rig.watch.armed)
+        // the person guard outlives the step: it ends with the restore after it (§14.9.2)
+        #expect(rig.watch.armed)
     }
 
     @Test func refusesALockedScreenAndSecureInputBeforeAnythingChanges() {
@@ -276,7 +277,7 @@ private let textEdit = AppBrief(pid: 7, bundleId: "com.apple.TextEdit", name: "T
         let rig = Rig()
         let postedAtPressing = Box(-1)
         let sink = rig.sink
-        let core = InputCore(host: rig.host, watch: rig.watch, sessionLock: rig.lock, sink: sink, clock: rig.clock, layout: USANSILayout(), onPersonInput: { _ in }, onHeld: { e in
+        let core = InputCore(host: rig.host, watch: rig.watch, sessionLock: rig.lock, sink: sink, clock: rig.clock, layout: USANSILayout(), onPersonInput: { _, _ in }, onHeld: { e in
             if case .pressing = e { postedAtPressing.value = sink.posted.count }
         })
         _ = try core.step(tier: .process, pid: 7, windowID: 70, window: 70, keys: false, cancelled: { false }) { ctx in try core.mouseDown(&ctx, at: pt(5, 5)) }
@@ -334,6 +335,10 @@ private let textEdit = AppBrief(pid: 7, bundleId: "com.apple.TextEdit", name: "T
         _ = try rig.step(.session) { ctx in try rig.core.mouseUp(&ctx, at: nil) }
         #expect(rig.lock.acquisitions == 1)
         #expect(!rig.lock.isTaken)
+        // the lock goes with the button; the guard lingers 10 s past the release
+        #expect(rig.watch.armed)
+        rig.clock.advance(InputTiming.guardLingerS)
+        rig.core.driver.sweepGuard()
         #expect(!rig.watch.armed)
     }
 
@@ -534,3 +539,127 @@ private let textEdit = AppBrief(pid: 7, bundleId: "com.apple.TextEdit", name: "T
     }
 }
 
+
+/// The person guard's life in the driver (§14.9): it outlives the step, ends with the restore or
+/// its linger, and a trip anywhere reaches the shell once for every call it is for.
+@Suite struct PersonGuardDriverTests {
+    private func typed(_ code: UInt16) -> [GuardedEvent] {
+        [GuardedEvent(type: .keyDown, keyCode: code), GuardedEvent(type: .keyUp, keyCode: code)]
+    }
+
+    @Test func restoreReplaysThenDisarmsAndAnswersTheReport() throws {
+        let rig = Rig()
+        rig.watch.dropped = typed(0) + typed(11)
+        let token = rig.core.driver.callBegan(pid: 7)
+        _ = try rig.step(.session, call: SessionCall(token: token, personIdleMs: 800)) { _ in }
+        rig.core.driver.callEnded(token)
+        // the person types in a batch gap: the guard dropped their keys
+        rig.watch.trip()
+        rig.waitForPersonInput()
+        let r = try rig.core.restoreSession(afterInterrupt: true)
+        #expect(r.frontmost == .restored)
+        #expect(rig.watch.log == ["arm", "replay", "disarm"])
+        #expect(rig.watch.replays == [[0, 1, 2, 3]])
+        #expect(r.personGuard == SessionRestore.PersonGuard(mode: .active, dropped: 2, replayed: 2, rearmed: 0))
+        // the next restore has no guard to report
+        #expect(try rig.core.restoreSession().personGuard == nil)
+    }
+
+    @Test func nothingReplaysForAPersonComingBackOrAMovedField() throws {
+        for (idle, field) in [(9_000, 11), (800, 12)] {
+            let rig = Rig()
+            rig.watch.dropped = typed(0)
+            let token = rig.core.driver.callBegan(pid: 7)
+            _ = try rig.step(.session, call: SessionCall(token: token, personIdleMs: idle)) { _ in }
+            rig.watch.trip()
+            rig.waitForPersonInput()
+            rig.host.focusedElements[1] = field
+            let r = try rig.core.restoreSession(afterInterrupt: true)
+            #expect(rig.watch.replays.isEmpty)
+            #expect(r.personGuard?.replayed == 0)
+            #expect(r.personGuard?.dropped == 1)
+        }
+    }
+
+    @Test func theSweepEndsItTenSecondsAfterTheCallNeverDuringIt() throws {
+        let rig = Rig()
+        let token = rig.core.driver.callBegan(pid: 7)
+        _ = try rig.step(.session, call: SessionCall(token: token)) { _ in }
+        rig.clock.advance(100)
+        rig.core.driver.sweepGuard()
+        #expect(rig.watch.armed)
+        rig.core.driver.callEnded(token)
+        rig.clock.advance(InputTiming.guardLingerS - 0.1)
+        rig.core.driver.sweepGuard()
+        #expect(rig.watch.armed)
+        rig.clock.advance(0.1)
+        rig.core.driver.sweepGuard()
+        #expect(!rig.watch.armed)
+        // the report waits for the restore that comes after
+        #expect(try rig.core.restoreSession().personGuard?.mode == .active)
+    }
+
+    @Test func aTripAfterAStepWithNothingHeldTellsOnceAndFailsNothing() throws {
+        let rig = Rig()
+        let token = rig.core.driver.callBegan(pid: 7)
+        _ = try rig.step(.session, call: SessionCall(token: token)) { _ in }
+        rig.watch.trip()
+        rig.waitForPersonInput()
+        Thread.sleep(forTimeInterval: 0.05)
+        #expect(rig.personInput == [7])
+        #expect(rig.personTokens == [[token]])
+        #expect(!rig.core.takeInterruption(pid: 7))
+        #expect(rig.core.driver.record?.personTookOver == true)
+    }
+
+    @Test func aTripAfterTheBodysLastCheckReachesTheShellOnce() throws {
+        let rig = Rig()
+        let token = rig.core.driver.callBegan(pid: 7)
+        // the person's key lands after the step's last check: the step itself answers ok
+        _ = try rig.step(.session, call: SessionCall(token: token)) { _ in rig.watch.trip() }
+        rig.waitForPersonInput()
+        Thread.sleep(forTimeInterval: 0.05)
+        #expect(rig.personInput == [7])
+        #expect(rig.personTokens == [[token]])
+    }
+
+    @Test func aMarkedCallsLaterStepAnswersInterruptedAndTheNextCallRuns() throws {
+        let rig = Rig()
+        let first = rig.core.driver.callBegan(pid: 7)
+        _ = try rig.step(.session, call: SessionCall(token: first)) { _ in }
+        rig.watch.trip()
+        rig.waitForPersonInput()
+        _ = try rig.core.restoreSession(afterInterrupt: true)
+        rig.host.log = []
+        do {
+            _ = try rig.step(.session, call: SessionCall(token: first)) { _ in }
+            Issue.record("the marked call raised the app again")
+        } catch {
+            #expect(kind(error) == .interrupted)
+        }
+        #expect(rig.host.log.isEmpty)
+        rig.core.driver.callEnded(first)
+        let next = rig.core.driver.callBegan(pid: 7)
+        _ = try rig.step(.session, call: SessionCall(token: next)) { _ in }
+        #expect(rig.host.log.first == "bringForward 7")
+    }
+
+    @Test func aTripDuringAStepThatStopsForItLeavesItsOwnReleaseToTheStep() throws {
+        let rig = Rig()
+        let token = rig.core.driver.callBegan(pid: 7)
+        do {
+            _ = try rig.step(.session, call: SessionCall(token: token)) { ctx in
+                try rig.core.mouseDown(&ctx, at: pt(400, 300))
+                rig.watch.trip()
+                try ctx.poster.pause(InputTiming.watchSliceMs)
+            }
+            Issue.record("the step ran on")
+        } catch { #expect(kind(error) == .interrupted) }
+        rig.waitForPersonInput()
+        Thread.sleep(forTimeInterval: 0.05)
+        // the step's call is told (the shell's book keeps it to once); the pid's next call is not failed
+        #expect(rig.personTokens == [[token]])
+        #expect(!rig.core.takeInterruption(pid: 7))
+        #expect(rig.core.held.hold(pid: 7) == nil)
+    }
+}

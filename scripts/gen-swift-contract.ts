@@ -314,6 +314,9 @@ export const SUBSET: SubsetEntry[] = [
   method('review.override', W.ReviewOverrideAnswerSchema),
   // master threads, the queue, the launch mirror, notes
   method('session.setMaster', z.null()),
+  // read marks: the host owns a thread's read mark (SessionMeta.readAt)
+  method('session.markRead', z.null()),
+  method('session.markUnread', z.null()),
   method('session.start', W.SessionStartedSchema),
   method('session.batch', W.SessionBatchResultSchema),
   method('resources.list', z.object({ resources: z.array(W.ThreadResourceSchema) })),

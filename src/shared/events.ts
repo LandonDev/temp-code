@@ -185,6 +185,9 @@ export const FailureKindSchema = z.enum([
   'harness_crashed',
   /** the CLI ended the turn itself: its turn or spend limit, or an execution error it named */
   'turn_ended',
+  /** the context window refilled to its limit on every request, so the turn compacted again and again
+   *  (the host's guard, src/shared/contextThrash.ts, or Claude Code's "Autocompact is thrashing") */
+  'context_thrash',
   'unknown'
 ])
 export type FailureKind = z.infer<typeof FailureKindSchema>
@@ -659,6 +662,11 @@ export interface SessionMeta {
   masterId?: string | null
   /** A queued thread's sibling: the session it waits for before it boots. */
   after?: string | null
+  /** The thread's updatedAt as of the last time the person saw it, on any
+   *  client (`session.markRead`); 0 when unseen since it began or marked
+   *  unread. Unread is `updatedAt > readAt`. Absent from a host older than
+   *  the mark, whose clients keep their own seen maps. */
+  readAt?: number
   createdAt: number
   updatedAt: number
 }

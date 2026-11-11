@@ -65,6 +65,8 @@ export interface StartState {
   seams: {
     /** TEMP_CODE_GATEWAY_TRACE=1 */
     trace: boolean
+    /** TEMP_CODE_GATEWAY_SHAPE=1, as main honours it (isolated instances only). */
+    shape?: boolean
     /** TEMP_CODE_FAKE_PROVIDERS, as main honours it (isolated instances only). */
     fakeProviders: string | null
     /** TEMP_CODE_GATEWAY_ROLE=owner, as main honours it. */

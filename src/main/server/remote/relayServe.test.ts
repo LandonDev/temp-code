@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Principal } from '@shared/capabilities'
 import type { MacBridgePush } from '@shared/contract-macbridge'
 import { CONTRACT_VERSION } from '@shared/capabilities'
-import type { RelayCallParams } from '@shared/contract-relay'
+import { RelayNoticeSchema, type RelayCallParams } from '@shared/contract-relay'
 import { MacPresenceWatcher } from '../../presence'
 import type { FacadeContext } from './facade'
 import { RelaySocket, RelayServer, relayOffers } from './relayServe'
@@ -349,6 +349,13 @@ describe('RelayServer', () => {
     await tick()
     const marked = relayed.requests.filter((r) => r.method === 'relay.notice').slice(2)
     expect(marked.map((r) => (r.params as { notice: { onScreen?: true } }).notice.onScreen)).toEqual([true, true])
+    // A computer step held for this Mac keeps its Run now and Skip on the way through the box, and the box's schema takes it.
+    relayed.server.onNotice({ ...notice, requestId: 'h1', choices: 'run-skip' })
+    await tick()
+    const held = relayed.requests.filter((r) => r.method === 'relay.notice').slice(4)
+    expect(held.map((r) => (r.params as { notice: { choices?: string } }).notice.choices)).toEqual(['run-skip', 'run-skip'])
+    expect(RelayNoticeSchema.parse((held[0].params as { notice: unknown }).notice)).toMatchObject({ choices: 'run-skip' })
+    expect(RelayNoticeSchema.safeParse({ ...(held[0].params as { notice: object }).notice, choices: 'later' }).success).toBe(false)
   })
 
   it('onPeerPush serves relay.* pushes and leaves every other push alone', async () => {

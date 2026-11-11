@@ -250,6 +250,7 @@ export function runGatewayChild(wire: Wire, deps: ChildDeps): { stop: () => Prom
       control,
       tls: state.tls,
       trace,
+      shape: state.seams.shape ?? false,
       label,
       pid: state.mainPid
     })

@@ -1,4 +1,4 @@
-import { hostname } from 'node:os'
+import { hostLabel } from '../../hostLabel'
 import { basename } from 'node:path'
 import { z } from 'zod'
 import { allows, type Capability, type Principal } from '@shared/capabilities'
@@ -61,7 +61,7 @@ export interface FacadeContext {
   origin?: string | null
   /** This host's environment id, stamped on every row as `host`; 'local' when unknown (tests). */
   environmentId?: string
-  /** This host's name for list_projects' own row; os.hostname() by default. */
+  /** This host's name for list_projects' own row; the short hostname by default. */
   hostName?: string
   /** The relayed hosts (remote/relay.ts), for list_projects' host rows; mcp.ts does the merge. */
   relay?: RelayFacadeHosts
@@ -667,7 +667,7 @@ export interface Repo {
 export function selfHostRow(ctx: Pick<FacadeContext, 'environmentId' | 'hostName'>): HostRow {
   return {
     environmentId: hostOf(ctx),
-    name: ctx.hostName ?? hostname(),
+    name: ctx.hostName ?? hostLabel(),
     self: true,
     state: 'available',
     since: new Date(STARTED_AT).toISOString(),

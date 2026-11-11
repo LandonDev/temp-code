@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { allows, requiredCapability, type Principal } from '@shared/capabilities'
 import { ClientRequestSchema, type ClientRequest, type ServerFrame, type ServerPush } from '@shared/contract'
+import { shortHostName } from '@shared/hostNames'
 import {
   RELAY_BOX_LOCAL,
   RELAY_CALL_MS,
@@ -39,6 +40,8 @@ import { PeerCalls, PeerOfflineError } from './peerCalls'
 
 const HOSTS_KEY = 'relay.hosts'
 const PERSIST_DEBOUNCE_MS = 1_000
+/** A host down this long leaves the list: it is not coming back under this id. */
+export const RELAY_STALE_MS = 14 * 24 * 60 * 60 * 1000
 
 /** What the lane needs of the phone's socket (ws's WebSocket fits; tests pass a fake). */
 export interface LaneSocket {
@@ -227,16 +230,35 @@ export class HostRelay {
     for (const lane of [...this.lanes.values()]) if (lane.envId === envId) this.unreachable(lane, row)
   }
 
-  /** Newest registration first; the oldest row leaves past the cap. */
+  /** Newest registration first; the oldest row leaves past the cap, a past identity and a long-gone row at once. */
   private place(envId: string, row: HostPresence): void {
     this.rows.delete(envId)
     const rest = [...this.rows.entries()]
     this.rows.clear()
     this.rows.set(envId, row)
     for (const [id, r] of rest) this.rows.set(id, r)
+    this.prune()
     while (this.rows.size > RELAY_HOSTS_MAX) {
       const last = [...this.rows.keys()].pop()
       if (last) this.rows.delete(last)
+    }
+  }
+
+  /**
+   * A down row is dropped when a host of the same name and platform
+   * registered after it went down and is up (the same machine under a new
+   * environment id: a data dir moved, a reinstall; two machines of one name
+   * that are both live keep their rows), and when it has been down past
+   * RELAY_STALE_MS. Either way the phone would list a machine twice, or a
+   * dead one forever.
+   */
+  private prune(): void {
+    const now = this.now()
+    const rows = [...this.rows.values()]
+    for (const row of rows) {
+      if (row.link !== 'down') continue
+      const superseded = row.platform !== 'unknown' && rows.some((other) => other !== row && sameMachineName(other.name, row.name) && other.platform === row.platform && other.link === 'up' && other.since >= row.since)
+      if (superseded || now - row.since > RELAY_STALE_MS) this.rows.delete(row.environmentId)
     }
   }
 
@@ -258,6 +280,7 @@ export class HostRelay {
         // Nothing is up before it registers again; `since` stays what it was so a down host still says since when.
         this.rows.set(row.environmentId, { ...row, link: 'down' })
       }
+      this.prune()
     } catch {
       /* a corrupt row set starts empty */
     }
@@ -288,6 +311,7 @@ export class HostRelay {
     this.send(lane, {
       push: 'hello',
       environmentId: envId,
+      ...(row ? { name: row.name } : {}),
       contract: this.deps.contract,
       caps: principal.caps,
       key: { id: principal.keyId, name: principal.name },
@@ -468,4 +492,9 @@ export class HostRelay {
     }
     for (const lane of [...this.lanes.values()]) this.end(lane, RELAY_CLOSE_HOST_CLOSED, 'server closing')
   }
+}
+
+/** One machine's names across builds: "Mac.attlocal.net" from an older host is "Mac" from a newer one. */
+function sameMachineName(a: string, b: string): boolean {
+  return shortHostName(a).toLowerCase() === shortHostName(b).toLowerCase()
 }

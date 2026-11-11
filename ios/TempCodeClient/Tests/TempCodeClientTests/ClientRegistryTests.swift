@@ -33,8 +33,8 @@ private final class RegistryRig {
         registry = ClientRegistry(store: store, cache: cache) { environment in
             EnvironmentClient(environment: environment, keys: keys, cache: cache, api: tickets, connect: sockets[environment.id]!.factory, clock: ManualClock(random: [0]))
         }
-        _ = try await store.add(origin: URL(string: "https://a.example")!, key: "tc_K1.secret", name: "A")
-        _ = try await store.add(origin: URL(string: "https://b.example")!, key: "tc_K1.secret", name: "B")
+        _ = try await store.add(origin: URL(string: "https://a.example")!, key: "tc_K1.secret")
+        _ = try await store.add(origin: URL(string: "https://b.example")!, key: "tc_K1.secret")
     }
 
     func wait(_ predicate: () -> Bool) async -> Bool {

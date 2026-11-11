@@ -51,6 +51,14 @@ public enum InputTiming {
     public static let heldReleaseS = Double(ComputerDefaults.Service.heldInputReleaseMs) / 1000
     /// `input.restoreSession { afterInterrupt }` skips the person check this long after their trip
     public static let restoreAfterInterruptS = Double(ComputerDefaults.Service.restoreAfterInterruptMs) / 1000
+    /// the person guard (§14.9) ends this long after the last call ended or held input was let go
+    public static let guardLingerS = 10.0
+    /// the guard buffers at most this many dropped events for the replay, ups of buffered downs aside
+    public static let guardReplayMax = 64
+    /// the guard gives typing back only when the person's idle at the call's start was under this
+    public static let guardReplayIdleMs = 5_000
+    /// a tap the system disabled for a timeout is enabled again this many times per guard
+    public static let guardTimeoutRearms = 1
     /// a click's `duration` cap
     public static let maxClickDurationS = Double(ComputerDefaults.ActionLimits.clickDurationMaxSeconds)
 

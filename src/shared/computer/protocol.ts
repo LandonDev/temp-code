@@ -894,6 +894,11 @@ export const StateGetParamsSchema = TargetSchema.extend({
 
 /** A paste waits out the person's copy: one within this many ms fails the step `clipboard_busy { reason: 'recent-copy' }` with the pasteboard untouched. */
 const PasteQuietSchema = int().nonnegative()
+/**
+ * The host's person-only idle when the call began (PersonIdle, the app's own input taken out), in ms. The person
+ * guard (§14.9) gives back typing it dropped only when this was under 5 s; absent, it gives back nothing.
+ */
+const PersonIdleSchema = int().nonnegative()
 
 /**
  * The routes and process classes this app was seen to ignore (§24.1): the service runs them last, or with
@@ -915,6 +920,7 @@ export const ActionRunParamsSchema = TargetSchema.extend({
   wait: WaitOptionsSchema.optional(),
   observe: ObserveOptionsSchema.optional(),
   pasteQuietMs: PasteQuietSchema.optional(),
+  personIdleMs: PersonIdleSchema.optional(),
   ignored: IgnoredRoutesSchema.optional()
 }).superRefine((p, ctx) => needsEpoch(actionElements(p.action), p.epoch, ctx))
 
@@ -925,6 +931,7 @@ export const ActionBatchParamsSchema = TargetSchema.extend({
   wait: WaitOptionsSchema.optional(),
   observe: ObserveOptionsSchema.optional(),
   pasteQuietMs: PasteQuietSchema.optional(),
+  personIdleMs: PersonIdleSchema.optional(),
   ignored: IgnoredRoutesSchema.optional()
 }).superRefine((p, ctx) => needsEpoch(p.actions.flatMap(actionElements), p.epoch, ctx))
 
@@ -982,7 +989,20 @@ export const SessionRestoreSchema = z.object({
   frontmost: RestoreOutcomeSchema,
   pointer: RestoreOutcomeSchema,
   /** the app it put back in front */
-  held: AppBriefSchema.nullable()
+  held: AppBriefSchema.nullable(),
+  /**
+   * The person guard this restore ended (§14.9), absent when no session step ran since the last restore: `active` with
+   * its tap, `passive` when the tap could not be made. `dropped` and `replayed` count key downs, modifier presses,
+   * button downs and wheel events, never ups; `rearmed` the times the system disabled the tap and it was enabled again.
+   */
+  personGuard: z
+    .object({
+      mode: z.enum(['active', 'passive']),
+      dropped: int().nonnegative(),
+      replayed: int().nonnegative(),
+      rearmed: int().nonnegative()
+    })
+    .optional()
 })
 export type SessionRestore = z.infer<typeof SessionRestoreSchema>
 

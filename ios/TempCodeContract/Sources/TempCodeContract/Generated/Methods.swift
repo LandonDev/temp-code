@@ -590,6 +590,44 @@ public enum Methods {
         public typealias Output = NoOutput
     }
 
+    public enum SessionMarkRead: ContractMethod {
+        public static let name = "session.markRead"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public struct Item: Codable, Hashable, Sendable {
+                public let sessionId: String
+                public let at: Int?
+
+                public init(sessionId: String, at: Int? = nil) {
+                    self.sessionId = sessionId
+                    self.at = at
+                }
+            }
+
+            public let items: [Item]
+
+            public init(items: [Item]) {
+                self.items = items
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
+    public enum SessionMarkUnread: ContractMethod {
+        public static let name = "session.markUnread"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionIds: [String]
+
+            public init(sessionIds: [String]) {
+                self.sessionIds = sessionIds
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
     public enum SessionStart: ContractMethod {
         public static let name = "session.start"
 

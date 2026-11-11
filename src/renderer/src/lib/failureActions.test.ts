@@ -13,6 +13,7 @@ const KINDS: FailureKind[] = [
   "network",
   "harness_crashed",
   "turn_ended",
+  "context_thrash",
   "unknown",
 ];
 
@@ -23,7 +24,7 @@ const labels = (kind: FailureKind, ctx = mac) => failureActions(kind, ctx).map((
 describe("failureActions", () => {
   it("never offers more than three actions and always ends on Retry", () => {
     for (const kind of KINDS) {
-      for (const ctx of [mac, box, { provider: "cursor", signInHere: true }, { ...mac, roomElsewhere: false }, { ...box, roomElsewhere: true }]) {
+      for (const ctx of [mac, box, { provider: "cursor", signInHere: true }, { ...mac, roomElsewhere: false }, { ...box, roomElsewhere: true }, { ...mac, offers1m: true }]) {
         const actions = failureActions(kind, ctx);
         expect(actions.length, `${kind} ${JSON.stringify(ctx)}`).toBeLessThanOrEqual(3);
         expect(actions.at(-1)?.id).toBe("retry");
@@ -91,5 +92,17 @@ describe("failureActions", () => {
       expect(labels(kind, { provider: "cursor", signInHere: true })).toEqual(["Continue on another model", "Retry"]);
     }
     expect(failureNote("oauth_expired", { provider: "cursor", signInHere: false })).toBeNull();
+  });
+});
+
+describe("failureActions for a thrashing window", () => {
+  it("offers 1M first when the model has it, then another model, Retry last", () => {
+    expect(failureActions("context_thrash", { ...mac, offers1m: true }).map((a) => a.id)).toEqual(["use-1m", "pick-model", "retry"]);
+    expect(labels("context_thrash", { ...mac, offers1m: true } as typeof mac)[0]).toBe("Continue with 1M context");
+  });
+
+  it("without 1M on offer: another model, then Retry", () => {
+    expect(failureActions("context_thrash", mac).map((a) => a.id)).toEqual(["pick-model", "retry"]);
+    expect(failureActions("context_thrash", { provider: "codex", signInHere: false, offers1m: false }).map((a) => a.id)).toEqual(["pick-model", "retry"]);
   });
 });

@@ -1,0 +1,44 @@
+{
+  "input": {
+    "event": "needs_you",
+    "hostId": "box",
+    "environmentId": "env_box",
+    "threadId": "thread-2",
+    "seq": 57,
+    "title": "Save the draft in TextEdit",
+    "subtitle": "temp-code",
+    "body": "Use your pointer and keyboard to click button \"Save\" in TextEdit, window \"Untitled\"?",
+    "kind": "approval",
+    "requestId": "req-9",
+    "choices": "run-skip",
+    "hostName": "box",
+    "ts": 1760000000000
+  },
+  "payload": {
+    "aps": {
+      "alert": {
+        "title": "Save the draft in TextEdit",
+        "subtitle": "temp-code",
+        "body": "Use your pointer and keyboard to click button \"Save\" in TextEdit, window \"Untitled\"?"
+      },
+      "sound": "default",
+      "thread-id": "thread-2",
+      "summary-arg": "temp-code",
+      "interruption-level": "time-sensitive",
+      "relevance-score": 1,
+      "category": "tc.run-skip",
+      "mutable-content": 1
+    },
+    "tc": {
+      "event": "needs_you",
+      "hostId": "box",
+      "environmentId": "env_box",
+      "threadId": "thread-2",
+      "seq": 57,
+      "kind": "approval",
+      "requestId": "req-9",
+      "host": "box",
+      "ts": 1760000000000
+    }
+  }
+}

@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import type { Failure } from "@server/shared/events";
 import { SERVICE_OF, isPickedProvider } from "@server/shared/accounts";
+import { supportsContext1m } from "@server/shared/catalog";
 import { AccountsPopover } from "../chrome/AccountsPopover";
 import { LOCAL_ENVIRONMENT_ID } from "../lib/connection/registry";
 import { scopeOf } from "../lib/accountScope";
@@ -12,7 +13,7 @@ import {
   type FailureActionId,
 } from "../lib/failureActions";
 import { requestModelPicker } from "../lib/modelPickerSignal";
-import { continueSession, reasoningOf, rerouteSession } from "../lib/tcserver/commands";
+import { continueSession, reasoningOf, rerouteSession, tune } from "../lib/tcserver/commands";
 import { nativeModelId } from "../lib/models";
 import { useSessionMeta } from "../lib/tcserver/store";
 import { useProjects, useWorkspaces } from "../lib/tcserver/workspaces";
@@ -66,6 +67,7 @@ export function FailureCardView({
       case "sign-in":
         return "Signing in…";
       case "pick-model":
+      case "use-1m":
         return "Continuing…";
       default:
         return "";
@@ -142,10 +144,11 @@ export function FailureCard({
     provider,
     model: meta?.model ?? null,
     signInHere: canSignInHere(environmentId),
+    offers1m: !!meta?.model && !meta.context1m && supportsContext1m(provider, nativeModelId(meta.model)),
     ...(failure.roomElsewhere === undefined ? {} : { roomElsewhere: failure.roomElsewhere }),
   };
-  // Both continue the work, which only a host that can continue does.
-  const actions = failureActions(failure.kind, ctx).filter((a) => canRetry || (a.id !== "retry" && a.id !== "pick-model"));
+  // These continue the work, which only a host that can continue does.
+  const actions = failureActions(failure.kind, ctx).filter((a) => canRetry || (a.id !== "retry" && a.id !== "pick-model" && a.id !== "use-1m"));
   const note = failureNote(failure.kind, ctx);
   const [state, setState] = useState<FailureCardState>({ pending: null, outcome: null });
   const [picking, setPicking] = useState(false);
@@ -206,6 +209,13 @@ export function FailureCard({
             );
           },
         });
+        return;
+      case "use-1m":
+        // The window first (the handle reboots on it at the next turn start), then the continue that turn is.
+        setState({ pending: "use-1m", outcome: null });
+        void tune(sessionId, { context1m: true })
+          .then(() => continueSession(sessionId))
+          .catch((err: unknown) => settle(errorLine(err)));
         return;
       case "add-key":
       case "open-accounts":

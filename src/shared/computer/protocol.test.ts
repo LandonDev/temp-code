@@ -294,6 +294,22 @@ describe("the tier scheduling's additions", () => {
     expect(ActionRunParamsSchema.safeParse({ ...target, action: { action: 'key', text: 'a' }, tiers: ['process'], pasteQuietMs: -1 }).success).toBe(false)
   })
 
+  it('carries personIdleMs on action.run and action.batch', () => {
+    expect(ActionRunParamsSchema.safeParse({ ...target, action: { action: 'key', text: 'a' }, tiers: ['session'], personIdleMs: 1_200 }).success).toBe(true)
+    expect(ActionBatchParamsSchema.safeParse({ ...target, actions: [{ action: 'key', text: 'a' }], tiers: ['session'], personIdleMs: 0 }).success).toBe(true)
+    expect(ActionRunParamsSchema.safeParse({ ...target, action: { action: 'key', text: 'a' }, tiers: ['session'], personIdleMs: -1 }).success).toBe(false)
+  })
+
+  it("answers input.restoreSession with the person guard's report, or without one", () => {
+    const { result } = COMPUTER_METHODS['input.restoreSession']
+    const base = { frontmost: 'restored', pointer: 'restored', held: null }
+    expect(result.safeParse(base).success).toBe(true)
+    expect(result.safeParse({ ...base, personGuard: { mode: 'active', dropped: 3, replayed: 2, rearmed: 0 } }).success).toBe(true)
+    expect(result.safeParse({ ...base, personGuard: { mode: 'passive', dropped: 0, replayed: 0, rearmed: 0 } }).success).toBe(true)
+    expect(result.safeParse({ ...base, personGuard: { mode: 'active', dropped: -1, replayed: 0, rearmed: 0 } }).success).toBe(false)
+    expect(result.safeParse({ ...base, personGuard: { mode: 'tap', dropped: 0, replayed: 0, rearmed: 0 } }).success).toBe(false)
+  })
+
   it("parses a session step's span, and a change without one", () => {
     const span = { armedAt: 1_800_000_000_100, idleAtArmMs: 130_000, lastInputAt: 1_800_000_000_900 }
     const okStep = { index: 0, action: 'left_click', status: 'ok', tier: 'session', effect: 'changed', session: { ...session, ...span } }

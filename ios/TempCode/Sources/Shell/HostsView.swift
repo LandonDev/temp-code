@@ -306,10 +306,11 @@ struct HostDetailView: View {
         .onDisappear { rename(environment) }
     }
 
+    /// The person's name for the host; an emptied field gives the host its own name back.
     private func rename(_ environment: PairedEnvironment) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed != environment.name else { return }
-        model.registry.store.rename(environment.id, to: trimmed)
+        guard trimmed != environment.name else { return }
+        model.registry.rename(environment.id, to: trimmed)
     }
 }
 

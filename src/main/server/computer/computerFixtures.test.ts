@@ -46,6 +46,8 @@ const RESULT_VARIANTS: Readonly<Record<string, ComputerMethod>> = {
   'initialize.features.response.json': 'initialize',
   'action.run.front.response.json': 'action.run'
 }
+/** A second response of one method: the restore that ended a person guard (§14.9). */
+const RESPONSE_VARIANTS: Readonly<Record<string, ComputerMethod>> = { 'input.restoreSession.guarded.response.json': 'input.restoreSession' }
 const notificationFile = (method: string): string => `notify-${method.replace(/^\$\//, '').replace(/\//g, '-')}.json`
 const serviceNotes = ComputerNotificationSchema.options.map((o) => o.shape.method.value)
 const hostNotes = HostNotificationSchema.options.map((o) => o.shape.method.value)
@@ -107,11 +109,22 @@ describe('wire fixtures', () => {
     expect(step.status === 'ok' && step.disk?.saved).toBe('~/run/Total.txt')
   })
 
+  it('take the responses a method has in more than one shape', () => {
+    for (const [file, method] of Object.entries(RESPONSE_VARIANTS)) {
+      const response = resultFrameSchema(method).safeParse(json(join(wire, file)))
+      expect(response.error?.issues, file).toBeUndefined()
+    }
+    const guarded = resultFrameSchema('input.restoreSession').parse(json(join(wire, 'input.restoreSession.guarded.response.json')))
+    expect(guarded.result.personGuard?.mode).toBe('active')
+    expect(resultFrameSchema('input.restoreSession').parse(json(join(wire, 'input.restoreSession.response.json'))).result.personGuard).toBeUndefined()
+  })
+
   it('hold nothing else', () => {
     const expected = new Set([
       ...Object.keys(COMPUTER_METHODS).flatMap((m) => [`${m}.request.json`, `${m}.response.json`]),
       ...Object.keys(VARIANTS),
       ...Object.keys(RESULT_VARIANTS),
+      ...Object.keys(RESPONSE_VARIANTS),
       ...COMPUTER_ERROR_KINDS.map((k) => `error-${k}.json`),
       ...[...serviceNotes, ...hostNotes].map(notificationFile)
     ])

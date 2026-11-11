@@ -563,8 +563,8 @@ would have shown as "Key refused".
   500 ms with the newest state of a burst, and an RPC answer lands at once
   over anything waiting. `setBatchRules` (the whole rules through
   `RulesEdit.params`), `stopBatchStep`, `adoptIntoBatch`, `archiveBatch` and
-  `sessionBatch` (the fleet switches) need operate; `setMaster` needs admin,
-  and a key without admin reads `.noAdmin` before the wire. `ThreadDraft.batch` builds the board's
+  `sessionBatch` (the fleet switches) and `setMaster` need operate, and a
+  read key reads `.readOnly` before the wire. `ThreadDraft.batch` builds the board's
   add sheet draft: the master's project, directory and access, `masterId`
   and `startedBy` the master, `after` and `context1m` when chosen.
 

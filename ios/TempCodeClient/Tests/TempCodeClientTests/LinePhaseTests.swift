@@ -52,6 +52,30 @@ private func entry(_ item: TranscriptItem) -> ThreadEntry { ThreadEntry(item: it
         #expect(LinePhase.told([user, bash, asking]).isEmpty)
     }
 
+    @Test func `a lone running computer call says the host's words, a hold morphing to its release`() {
+        let act = entry(toolItem(2, name: "mcp__app__computer_act", input: ["action": .string("left_click"), "element": .number(3)]))
+        let clicking = LinePhase.of(turn: [user, act], activity: "Clicking button Save in TextEdit")
+        #expect(clicking.words == "Clicking button Save in TextEdit")
+        #expect(clicking.verb == nil)
+        let held = LinePhase.of(turn: [user, act], activity: "Waiting for the Mac to be free")
+        let second = LinePhase.of(turn: [user, act], activity: "Waiting for the Mac to be free, 2nd in line")
+        #expect(second.words == "Waiting for the Mac to be free, 2nd in line")
+        #expect(held.key == second.key, "a place in line changes the words, not the phase")
+        #expect(held.key != clicking.key, "the hold and its release morph")
+        #expect(LinePhase.of(turn: [user, act], activity: "Waiting for the clipboard").words == "Waiting for the clipboard")
+    }
+
+    @Test func `a computer call with no host words, or beside another call, keeps the call's phrase`() {
+        let act = entry(toolItem(2, name: "mcp__app__computer_act", input: ["action": .string("left_click")]))
+        let alone = LinePhase.of(turn: [user, act], activity: nil)
+        #expect(alone.key == "call:c2")
+        #expect(LinePhase.of(turn: [user, act], activity: "  ").key == "call:c2")
+        let read = entry(toolItem(3, name: "Read", input: ["file_path": .string("a.ts")]))
+        #expect(LinePhase.of(turn: [user, act, read], activity: "Clicking button Save in TextEdit").key == "calls")
+        // Any other lone call keeps its phrase whatever the host says.
+        #expect(LinePhase.of(turn: [user, read], activity: "Waiting for the provider").key == "call:c3")
+    }
+
     @Test func `a streaming thought shows its newest finished sentence, spoken as Thinking`() {
         let thought = entry(textItem(2, "First I read the file. Then I check the tests. Now the", thinking: true, streaming: true))
         let phase = LinePhase.of(turn: [user, thought], activity: nil)

@@ -99,6 +99,14 @@ describe('addEnvironment', () => {
     expect(store.rows.get(`remote.environments.${HOST_ID}`)).toContain('tc_k1.two')
     expect(store.rows.get(`remote.environments.${HOST_ID}`)).not.toContain('tc_k1.one')
   })
+  it('a host saved by its hello takes the short name; a name the person gave stays whole', async () => {
+    const store = fakeStore()
+    const { ctx } = ctxWith(store, () => json(200, hello({ name: 'Mac.attlocal.net', key: { id: 'k1', name: 'p' } })))
+    expect((await addEnvironment(ctx, { url: 'https://mac.example', key: 'tc_k1.one' })).name).toBe('Mac')
+    const other = fakeStore()
+    const named = ctxWith(other, () => json(200, hello({ name: 'Mac.attlocal.net', key: { id: 'k1', name: 'p' } })))
+    expect((await addEnvironment(named.ctx, { url: 'https://mac.example', key: 'tc_k1.one', name: 'Studio.Mac' })).name).toBe('Studio.Mac')
+  })
   it('a key the host does not take is unauthorized; a non-host is unavailable; this machine is refused', async () => {
     const store = fakeStore()
     await expect(addEnvironment(ctxWith(store, () => json(200, hello())).ctx, { url: 'https://h', key: 'tc_x.y' })).rejects.toThrow(/^unauthorized:/)

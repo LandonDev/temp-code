@@ -102,7 +102,8 @@ final class EscapeWatch: Stoppable, @unchecked Sendable {
 }
 
 /// The live tap: an active `CGEventTap` at the session tap point for key down and key up, on a run
-/// loop thread of its own. It needs the Accessibility grant the service already holds.
+/// loop thread of its own. It needs the Accessibility grant the service already holds. It is
+/// head-inserted, so it sees each event before the person guard's tap (§14.9.9).
 public final class LiveEscapeTap: EscapeTapping, @unchecked Sendable {
     public init() {}
 
@@ -204,7 +205,10 @@ private func escapeTapCallback(proxy: CGEventTapProxy, type: CGEventType, event:
         case .pass:
             return Unmanaged.passUnretained(event)
         case .take(let press):
-            if press { DispatchQueue.global(qos: .userInitiated).async(execute: box.onPress) }
+            guard press else { return nil }
+            // the person guard's replay stops here, however late the press is dispatched (§14.9.9)
+            GuardCut.shared.note(event.timestamp)
+            DispatchQueue.global(qos: .userInitiated).async(execute: box.onPress)
             return nil
         }
     default:

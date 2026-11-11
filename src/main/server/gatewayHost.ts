@@ -5,6 +5,7 @@ import { GatewayCore, OWNER, type ControlPlane, type RoutingHooks } from './gate
 import { InProcessControl } from './gatewayControl'
 import { answer, Calls, WireGone, type AccountsState, type ChildCall, type ChildEvent, type MainCall, type OutMark, type StartState, type Wire, type WireMessage } from './gatewayWire'
 import { loadTls, trustHint, type TlsMaterial } from './tls'
+import { shapeEnabled } from './gatewayShape'
 
 /**
  * temp-code's loopback gateway as the rest of the app sees it. Every Claude
@@ -118,6 +119,7 @@ export function seamsFromEnv(env: NodeJS.ProcessEnv = process.env): StartState['
   const isolated = !!env.TEMP_CODE_USER_DATA
   return {
     trace: env.TEMP_CODE_GATEWAY_TRACE === '1',
+    shape: shapeEnabled(env),
     fakeProviders: (isolated && env.TEMP_CODE_FAKE_PROVIDERS) || null,
     role: isolated && env.TEMP_CODE_GATEWAY_ROLE === 'owner' ? 'owner' : null
   }
@@ -421,7 +423,7 @@ export class GatewayHost {
 
   /** The byte path in this process, on the ports the child held (if it ever ran). */
   private async runHere(): Promise<void> {
-    const core = new GatewayCore({ control: this.control, tls: this.tls })
+    const core = new GatewayCore({ control: this.control, tls: this.tls, shape: shapeEnabled() })
     try {
       this.port = await core.listen(this.port)
     } catch (e) {

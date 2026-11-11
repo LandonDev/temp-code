@@ -119,6 +119,37 @@ afterEach(() => {
 })
 
 describe('needs_you', () => {
+  it('a computer step held for the Mac carries its Run now and Skip choices; any other approval none', () => {
+    reg.add('t1', { title: 'Save the draft in TextEdit' })
+    notifier.start()
+    reg.status('t1', 'running')
+    reg.row('t1', { type: 'user-text', text: 'save it' })
+    reg.row('t1', {
+      type: 'approval-request',
+      requestId: 'h1',
+      toolName: 'computer_session',
+      input: { app: 'TextEdit', window: 'Untitled', actions: ['click button "Save"'] },
+      title: 'Use your pointer and keyboard to click button "Save" in TextEdit, window "Untitled"',
+      choices: 'run-skip'
+    })
+    reg.status('t1', 'waiting')
+    settle()
+    expect(notices).toHaveLength(1)
+    expect(notices[0]).toMatchObject({
+      kind: 'approval',
+      requestId: 'h1',
+      choices: 'run-skip',
+      body: 'Use your pointer and keyboard to click button "Save" in TextEdit, window "Untitled"?'
+    })
+    reg.row('t1', { type: 'approval-resolved', requestId: 'h1', allow: true })
+    reg.status('t1', 'running')
+    reg.row('t1', { type: 'approval-request', requestId: 'h2', toolName: 'Bash', input: { command: 'ls' }, choices: 'allow-deny' })
+    reg.status('t1', 'waiting')
+    settle()
+    expect(notices).toHaveLength(2)
+    expect(notices[1]).not.toHaveProperty('choices')
+  })
+
   it('fires once for a permission prompt, never for the same prompt twice, then finished once', () => {
     reg.add('t1', { title: 'Ship it' })
     notifier.start()

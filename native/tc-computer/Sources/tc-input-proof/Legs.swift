@@ -25,7 +25,7 @@ final class Proof: @unchecked Sendable {
         engine = InputEngine(
             clipboardLock: FlockLock("clipboard.lock"),
             sessionLock: FlockLock("session.lock"),
-            onPersonInput: { [weak self] pid in self?.interrupted.append(pid) },
+            onPersonInput: { [weak self] pid, _ in self?.interrupted.append(pid) },
             onHeld: { _ in }
         )
     }

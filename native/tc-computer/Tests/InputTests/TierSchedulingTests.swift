@@ -32,7 +32,8 @@ private func interruptedStep(_ rig: Rig) {
         rig.host.idle = 0.1
         rig.clock.advance(1.5)
         let r = try rig.core.restoreSession(afterInterrupt: true)
-        #expect(r == SessionRestore(frontmost: .restored, pointer: .restored, held: terminal))
+        // the guard the step armed ends with this restore and answers its report (§14.9.10)
+        #expect(r == SessionRestore(frontmost: .restored, pointer: .restored, held: terminal, personGuard: .init(mode: .active, dropped: 0, replayed: 0, rearmed: 0)))
         #expect(rig.host.front == terminal)
         #expect(rig.host.pointerAt == pt(100, 100))
     }

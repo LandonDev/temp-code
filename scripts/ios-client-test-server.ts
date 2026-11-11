@@ -24,7 +24,8 @@
  *                                 live edits into ios-streaming; 409 while one runs
  *   POST /scenario { sessionId? }  → plays the no-jerk timeline (scripts/lib/soakScenarios.ts) as host events on a
  *                                chat at real speed, one at a time; answers { started, ms } (POST /finish stops it)
- *   POST /ask { sessionId, kind: 'approval' | 'question' }  → a fresh card on a thread, which waits
+ *   POST /ask { sessionId, kind: 'approval' | 'question' | 'run-skip' }  → a fresh card on a thread, which waits
+ *        (run-skip: a computer step held for the Mac, Run now and Skip)
  *   POST /push { frame }        → writes any push frame to every remote socket (a push with no
  *                                 machinery behind it here: macBridge.held, boot-resume, accounts)
  *   POST /batch-log { masterId, lines }  → appends lines to the master's running shell step (a streaming console)
@@ -84,7 +85,11 @@ import {
   fakeMacDevicesDeps,
   notesFive,
   notesTwo,
-  withShellLog
+  runSkipAsk,
+  withShellLog,
+  computerAwayRows,
+  computerConfirmRows,
+  computerHeldRows
 } from './lib/ios-seeds'
 import { openDb, Store } from '../src/main/server/db'
 
@@ -456,6 +461,14 @@ server.registry.append('ios-waiting', { type: 'user-text', text: 'Run the tests 
 server.registry.append('ios-waiting', { type: 'status', status: 'running' })
 server.registry.append('ios-waiting', { type: 'approval-request', requestId: 'seed-approval', toolName: 'Bash', input: { command: 'bun test' }, title: 'run bun test', callId: 'c7' })
 server.registry.append('ios-waiting', { type: 'status', status: 'waiting', detail: 'awaiting approval' })
+// Computer use: a step held for the Mac (Run now and Skip), a safe-mode
+// confirmation, and a held step the host allowed while the person was away.
+await make('ios-computer-held', { projectId: project.id, threadType: 'chat', title: 'Save the draft in TextEdit' })
+for (const row of computerHeldRows()) server.registry.append('ios-computer-held', row)
+await make('ios-computer-confirm', { projectId: project.id, threadType: 'chat', permission: 'safe', title: 'Send the reply in Mail' })
+for (const row of computerConfirmRows()) server.registry.append('ios-computer-confirm', row)
+await make('ios-computer-away', { projectId: project.id, threadType: 'chat', title: 'Rename the folder in Finder' })
+for (const row of computerAwayRows()) server.registry.append('ios-computer-away', row)
 await make('ios-question', { projectId: project2.id, threadType: 'implementation', title: 'Fix the invoice totals' })
 server.registry.append('ios-question', { type: 'user-text', text: 'Invoices round the wrong way', newPass: true })
 server.registry.append('ios-question', { type: 'status', status: 'running' })
@@ -1894,7 +1907,12 @@ const control = createServer((req, res) => {
         const sessionId = String(body.sessionId ?? THREAD_A)
         appended++
         const requestId = `ask-${appended}`
-        if (body.kind === 'question') {
+        if (body.kind === 'run-skip') {
+          registry.append(sessionId, { type: 'status', status: 'running' })
+          registry.append(sessionId, { type: 'tool-call', callId: requestId, name: 'mcp__app__computer_act', input: { action: 'left_click', element: 3 } })
+          registry.append(sessionId, runSkipAsk(requestId, requestId))
+          registry.append(sessionId, { type: 'status', status: 'waiting', detail: 'awaiting approval' })
+        } else if (body.kind === 'question') {
           registry.append(sessionId, { type: 'question-request', requestId, questions: [{ question: String(body.question ?? 'Which way?'), header: 'Choice', allowFreeform: true, options: [{ label: 'This way', description: 'The short road' }, { label: 'That way', description: 'The scenic one' }] }] })
           registry.append(sessionId, { type: 'status', status: 'waiting', detail: 'awaiting an answer' })
         } else {

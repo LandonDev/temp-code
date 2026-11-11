@@ -100,6 +100,38 @@ describe('PersonIdle', () => {
     expect(idle.getSystemIdleTime()).toBe(302)
   })
 
+  it("keeps a person's mark inside a kept span, even when raw idle still reads the app's input", () => {
+    const own = idle.beginOwn()
+    const span = step(T0 + 100, T0 + 900)
+    now = T0 + 1_200
+    own.end([span])
+    idle.markPerson(T0 + 500)
+    now = T0 + 2_500
+    expect(idle.getSystemIdleTime()).toBe(2)
+    input(now)
+    expect(idle.getSystemIdleTime()).toBe(0)
+  })
+
+  it("keeps a person's mark inside an open call and after its spans arrive", () => {
+    const own = idle.beginOwn()
+    const span = step(T0 + 100, T0 + 900)
+    now = T0 + 1_200
+    idle.markPerson(T0 + 500)
+    now = T0 + 2_500
+    expect(idle.getSystemIdleTime()).toBe(2)
+    own.end([span])
+    expect(idle.getSystemIdleTime()).toBe(2)
+  })
+
+  it('keeps the latest mark and ignores future and invalid marks', () => {
+    idle.markPerson(T0 - 4_000)
+    idle.markPerson(T0 - 10_000)
+    idle.markPerson(T0 + 1_000)
+    idle.markPerson(NaN)
+    idle.markPerson(Infinity)
+    expect(idle.getSystemIdleTime()).toBe(4)
+  })
+
   it(`keeps the newest ${OWN_SPANS_MAX} spans`, () => {
     for (let i = 0; i <= OWN_SPANS_MAX; i++) {
       const at = T0 + i * 10_000

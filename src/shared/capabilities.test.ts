@@ -94,7 +94,6 @@ describe('METHOD_CAPABILITY', () => {
         'appshots.set',
         'project.setAccounts',
         'project.setStartOn',
-        'session.setMaster',
         'workspace.setAccounts',
         'project.setPreamble',
         // One project across hosts (shared/projectLinks.ts): the linker's stamp and the settings home's whole-bundle write.
@@ -157,6 +156,14 @@ describe('METHOD_CAPABILITY', () => {
   })
 })
 
+describe('read marks', () => {
+  it('are operate: a read key watches without moving the marks', () => {
+    expect(METHOD_CAPABILITY['session.markRead']).toBe('operate')
+    expect(METHOD_CAPABILITY['session.markUnread']).toBe('operate')
+    expect(allows(normalizeCaps(['read']), 'operate')).toBe(false)
+  })
+})
+
 describe('push registration (thread L6)', () => {
   it('is read: any paired key registers its own device', () => {
     expect(methods.filter((m) => m.startsWith('remote.push.')).sort()).toEqual(['remote.push.activity', 'remote.push.register', 'remote.push.status', 'remote.push.unregister'])
@@ -169,9 +176,17 @@ describe('requiredCapability', () => {
     expect(requiredCapability({ method: 'session.create', params: { permission: 'auto' } } as never)).toBe('approve')
     expect(requiredCapability({ method: 'session.create', params: { permission: 'edits' } } as never)).toBe('operate')
     expect(requiredCapability({ method: 'session.create', params: {} } as never)).toBe('operate')
-    expect(requiredCapability({ method: 'session.create', params: { master: true } } as never)).toBe('admin')
-    expect(requiredCapability({ method: 'session.create', params: { master: true, permission: 'auto' } } as never)).toBe('admin')
+    expect(requiredCapability({ method: 'session.create', params: { master: true } } as never)).toBe('operate')
+    expect(requiredCapability({ method: 'session.create', params: { master: true, permission: 'auto' } } as never)).toBe('approve')
     expect(requiredCapability({ method: 'session.create', params: { master: false } } as never)).toBe('operate')
+  })
+})
+
+describe('master threads', () => {
+  it('pinning or starting a master needs operate, never admin', () => {
+    expect(METHOD_CAPABILITY['session.setMaster']).toBe('operate')
+    expect(requiredCapability({ method: 'session.setMaster', params: { sessionId: 's', master: true } } as never)).toBe('operate')
+    for (const m of ['batch.setRules', 'batch.stopStep', 'batch.adopt', 'batch.archive', 'session.batch'] as const) expect(METHOD_CAPABILITY[m]).toBe('operate')
   })
 })
 

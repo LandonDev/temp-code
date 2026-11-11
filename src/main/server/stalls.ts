@@ -164,6 +164,11 @@ export function recordSendSpan(body: string): void {
   write(body)
 }
 
+/** A driver's note about a thread that the stall log keeps (codex's model metadata wait, a fallback first turn). */
+export function recordDriverNote(body: string): void {
+  write(body, false)
+}
+
 /** Runs `fn` and logs it when it held the loop for TIMED_MS or more. */
 export function timed<T>(label: string, fn: () => T): T {
   const startedAt = performance.now()

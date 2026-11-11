@@ -53,11 +53,10 @@ import TempCodeContract
         #expect(DraftSend.steps(text: "look", photos: 2) == [.create(firstMessage: nil), .upload(count: 2), .send, .archiveOnFailure])
     }
 
-    @Test func `Master needs an admin key; a lesser key sees the reason`() {
-        #expect(ProjectDrafts.masterBlock(caps: [.read, .operate, .approve, .admin]) == nil)
-        #expect(ProjectDrafts.masterBlock(caps: [.read, .operate]) == "Master needs an admin key")
+    @Test func `Master takes the key that starts threads, never admin`() {
         let draft = ThreadDraft(threadType: .chat, provider: .claude, model: "m", master: true)
-        #expect(draft.needs == .admin)
+        #expect(draft.needs == .operate)
+        #expect(ThreadDraft(threadType: .chat, provider: .claude, model: "m", permission: .auto, master: true).needs == .approve)
         #expect(draft.params.master == true)
     }
 
@@ -326,9 +325,9 @@ import TempCodeContract
         await rig.client.stop()
     }
 
-    @Test func `Master rides the create for a chat alone, and takes an admin key`() {
+    @Test func `Master rides the create for a chat alone, on an operate key`() {
         let chat = ProjectDrafts.threadDraft(ProjectDraft(threadType: .chat, master: true), workspaceId: "w1", projectId: nil, provider: .claude, model: "m", reasoning: nil)
-        #expect(chat.master == true && chat.needs == .admin)
+        #expect(chat.master == true && chat.needs == .operate)
         let plan = ProjectDrafts.threadDraft(ProjectDraft(threadType: .planning, master: true), workspaceId: "w1", projectId: nil, provider: .claude, model: "m", reasoning: nil)
         #expect(plan.master == nil && plan.needs == .operate)
         let picked = ProjectDrafts.threadDraft(ProjectDraft(threadType: .implementation, provider: .codex, model: "gpt-6.1-sol", reasoning: .high, permission: .auto), workspaceId: "w1", projectId: "p1", provider: .codex, model: "gpt-6.1-sol", reasoning: .high)

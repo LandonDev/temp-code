@@ -355,3 +355,43 @@ private final class LinesBox: @unchecked Sendable {
         #expect(ran.count == 1, "the gate is free again and the cancelled body never ran")
     }
 }
+
+/// The person guard's call book (docs/computer-protocol.md §14.9.5).
+@Suite struct SessionBookGuardTests {
+    @Test func theSessionStepOwnerIsSetReadAndCleared() {
+        let book = SessionBook()
+        #expect(book.sessionStepOwner(pid: 7) == nil)
+        book.noteSessionStep(session: "s1", pid: 7)
+        book.noteSessionStep(session: "s2", pid: 9)
+        #expect(book.sessionStepOwner(pid: 7) == "s1")
+        book.clearSessionSteps()
+        #expect(book.sessionStepOwner(pid: 7) == nil)
+        #expect(book.sessionStepOwner(pid: 9) == nil)
+    }
+
+    @Test func eachCallIsToldOnceAndOverlappingCallsApart() {
+        let book = SessionBook()
+        book.beginCall(token: 1, session: "s1", pid: 7)
+        book.beginCall(token: 2, session: "s2", pid: 9)
+        #expect(book.callsInFlight(pid: 7) == [1])
+        #expect(book.markTold(token: 1))
+        #expect(!book.markTold(token: 1))
+        #expect(book.markTold(token: 2))
+        #expect(!book.markTold(token: 3))
+    }
+
+    @Test func anEndedCallKeepsItsSessionUntilTheRestore() {
+        let book = SessionBook()
+        book.beginCall(token: 1, session: "s1", pid: 7)
+        book.beginCall(token: 2, session: "s1", pid: 7)
+        book.endCall(token: 1)
+        #expect(book.callsInFlight(pid: 7) == [2])
+        #expect(book.session(token: 1) == "s1")
+        book.clearSessionSteps()
+        #expect(book.session(token: 1) == nil)
+        // a call still in flight keeps its entry and its told mark
+        #expect(book.markTold(token: 2))
+        book.clearSessionSteps()
+        #expect(!book.markTold(token: 2))
+    }
+}

@@ -8,7 +8,10 @@
  *  (b) per task, each model's Mac medians (wall seconds and computer calls)
  *      are at or under Codex's;
  *  (c) a model's box run's total seconds are within 15% of its Mac run's.
- * Every miss is named; a missing report skips its bar, never fails it.
+ * Every miss is named. The judge takes the EXPECTED models and tasks (C5):
+ * a (model, task) a given report lacks is a 'missing' miss, so "bar met" is
+ * impossible with a hole; only a whole report may be absent, which skips its
+ * bar with a note.
  */
 import { passNeed, summarize, type BenchReport, type TaskSummary } from './computerBench'
 
@@ -17,8 +20,14 @@ export type FieldKind = 'mac' | 'box' | 'codex'
 /** What a saved report is, from its own fields: the reference is codex, else the host kind. */
 export const classifyFieldReport = (r: BenchReport): FieldKind => (r.mode === 'reference' ? 'codex' : r.hostKind === 'box' ? 'box' : 'mac')
 
+/** What a round must cover: the field models and every field task id; the judge CLI passes FIELD_MODELS × FIELD_TASKS. */
+export interface FieldExpectation {
+  models: readonly string[]
+  tasks: readonly string[]
+}
+
 export interface FieldMiss {
-  kind: 'parity' | 'no-win' | 'slower' | 'more-calls' | 'box-total'
+  kind: 'parity' | 'no-win' | 'slower' | 'more-calls' | 'box-total' | 'missing'
   model: string
   task?: string
   detail: string
@@ -62,12 +71,14 @@ const roundOf = (r: BenchReport): string => r.round ?? new Date(r.startedAt).toI
 
 /**
  * Judges the bar over the reports given (each classified by its own fields;
- * two of one kind throw). Returns the verdict, each miss named, and the
+ * two of one kind, or a report that is no field report, throw) against the
+ * expected models and tasks. Returns the verdict, each miss named, and the
  * markdown table a judge run prints.
  */
-export function fieldBar(reports: readonly BenchReport[]): FieldJudgement {
+export function fieldBar(reports: readonly BenchReport[], expect: FieldExpectation): FieldJudgement {
   const byKind = new Map<FieldKind, BenchReport>()
   for (const r of reports) {
+    if (r.set !== 'field') throw new Error(`a report without set: 'field' (mode ${r.mode}, commit ${r.commit.slice(0, 8)}) is no field report; the bar does not judge it`)
     const kind = classifyFieldReport(r)
     if (byKind.has(kind)) throw new Error(`two ${kind} reports given; one of each at most`)
     byKind.set(kind, r)
@@ -79,13 +90,31 @@ export function fieldBar(reports: readonly BenchReport[]): FieldJudgement {
   const boxCells = cellsOf(box)
   const codexCells = cellsOf(codex)
   // The reference runs one model; its summaries apply to every model's bar.
-  const codexByTask = [...codexCells.byModel.values()][0] ?? new Map<string, TaskSummary>()
+  const codexModel = [...codexCells.byModel.keys()][0] ?? codex?.models[0]?.model ?? 'the reference model'
+  const codexByTask = codexCells.byModel.get(codexModel) ?? new Map<string, TaskSummary>()
 
   const misses: FieldMiss[] = []
   const skipped: string[] = []
   if (!mac) skipped.push('no Mac report: the parity and speed bars not judged')
   if (!codex) skipped.push('no Codex reference report: the parity and speed bars not judged')
   if (!box) skipped.push('no box report: the box-total bar not judged')
+
+  // C5: a hole in a GIVEN report is a named miss, never a silent pass.
+  for (const [kind, host] of [['mac', mac], ['box', box]] as const) {
+    if (!host) continue
+    const cells = kind === 'mac' ? macCells : boxCells
+    for (const model of expect.models) {
+      for (const task of expect.tasks) {
+        const s = cells.byModel.get(model)?.get(task)
+        if (!ran(s)) misses.push({ kind: 'missing', model, task, detail: `no ${kind} run${s?.skipped ? ` (${s.skipped})` : ''}` })
+      }
+    }
+  }
+  if (codex)
+    for (const task of expect.tasks) {
+      const s = codexByTask.get(task)
+      if (!ran(s)) misses.push({ kind: 'missing', model: codexModel, task, detail: `no codex run${s?.skipped ? ` (${s.skipped})` : ''}` })
+    }
 
   // (a) parity and a win, (b) medians, per model on the Mac.
   if (mac && codex) {
@@ -100,8 +129,10 @@ export function fieldBar(reports: readonly BenchReport[]): FieldJudgement {
           if (ran(ours) && passed(ours)) win = true
           continue
         }
-        if (!ran(ours) || !passed(ours)) {
-          misses.push({ kind: 'parity', model, task, detail: `Codex passed, ${model} ${!ran(ours) ? 'never ran it' : 'failed'}` })
+        // a hole (no run of ours) is already a 'missing' miss; parity judges only runs that ran
+        if (!ran(ours)) continue
+        if (!passed(ours)) {
+          misses.push({ kind: 'parity', model, task, detail: `Codex passed, ${model} failed` })
           continue
         }
         // (b) only where Codex passed: a speed on a task it failed proves nothing.
@@ -143,11 +174,18 @@ export function fieldBar(reports: readonly BenchReport[]): FieldJudgement {
     }
   }
 
+  // A task edited between rounds compares different content: say so (never silently).
+  const allCells = [macCells, boxCells, codexCells]
+  for (const task of expect.tasks) {
+    const versions = new Set(allCells.flatMap((c) => [...c.byModel.values()].flatMap((m) => (m.get(task) ? [m.get(task)!.taskVersion] : []))))
+    if (versions.size > 1) skipped.push(`${task}: compared across task versions ${[...versions].sort().join(' and ')}`)
+  }
+
   // ── the table ──
   const out: string[] = ['# Field suite', '']
   for (const [kind, r] of byKind) out.push(`- ${kind}: round ${roundOf(r)}, commit ${r.commit.slice(0, 8)}, ${new Date(r.startedAt).toISOString()}${r.ungated ? ', ungated' : ''}`)
-  const tasks = [...new Set([...macCells.tasks, ...boxCells.tasks, ...codexCells.tasks])]
-  const models = [...new Set([...macCells.byModel.keys(), ...boxCells.byModel.keys()])]
+  const tasks = [...new Set([...expect.tasks, ...macCells.tasks, ...boxCells.tasks, ...codexCells.tasks])]
+  const models = [...new Set([...expect.models, ...macCells.byModel.keys(), ...boxCells.byModel.keys()])]
   for (const model of models.length ? models : [...codexCells.byModel.keys()]) {
     out.push(
       '',

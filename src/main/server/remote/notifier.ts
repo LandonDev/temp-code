@@ -46,6 +46,8 @@ export interface Notice {
   seq: number
   /** The approval a phone may decide from the notification (kind `approval`). */
   requestId?: string
+  /** A computer step held for the session tier: the phone's category is `tc.run-skip`, Run now and Skip. */
+  choices?: 'run-skip'
   /** This host's name: the phone adds it to the subtitle when several hosts are paired. */
   hostName?: string
   /** A desktop window shows this thread to its person right now: the person-facing sinks (hub, APNs, relay) skip it. */
@@ -99,6 +101,19 @@ interface Pending {
   face: string
   /** The root's row the prompt sits at (a subagent's prompt lands on the root's latest row). */
   seq: number
+  /** The approval's buttons are Run now and Skip (a held computer step). */
+  choices?: 'run-skip'
+}
+
+/** What a thread is in now, as one notice to send (`decide`). */
+interface Decision {
+  event: NoticeEvent
+  kind: NoticeKind
+  key: string
+  body: string
+  seq: number
+  requestId?: string
+  choices?: 'run-skip'
 }
 
 interface ThreadState {
@@ -278,7 +293,8 @@ export class Notifier {
           requestId: event.requestId,
           kind: plan ? 'plan' : 'permission',
           face: plan ? '' : approvalLine(event.toolName, event.input, event.title),
-          seq: own ? row.seq : state.lastRowSeq
+          seq: own ? row.seq : state.lastRowSeq,
+          ...(event.choices === 'run-skip' ? { choices: 'run-skip' as const } : {})
         }
         this.arm(rootId)
         return
@@ -333,7 +349,7 @@ export class Notifier {
   private decide(
     id: string,
     state: ThreadState
-  ): { event: NoticeEvent; kind: NoticeKind; key: string; body: string; seq: number; requestId?: string } | null {
+  ): Decision | null {
     const meta = this.options.registry.get(id)
     if (!meta || meta.archived) return null
     state.status = meta.status
@@ -364,7 +380,7 @@ export class Notifier {
         key: `prompt:${p.requestId}`,
         body: cut(body, BODY_CHARS),
         seq: p.seq,
-        ...(p.kind === 'permission' ? { requestId: p.requestId } : {})
+        ...(p.kind === 'permission' ? { requestId: p.requestId, ...(p.choices ? { choices: p.choices } : {}) } : {})
       }
     }
     if (meta.status === 'error') {
@@ -444,7 +460,7 @@ export class Notifier {
       state.batchTold = true
     }
     state.sent = { event: decision.event, key: decision.key }
-    this.emit(id, decision.event, decision.kind, decision.body, decision.seq, decision.requestId)
+    this.emit(id, decision.event, decision.kind, decision.body, decision.seq, decision)
   }
 
   /** Working threads silent past the limit (and nothing told us since) get one `stuck`. */
@@ -470,7 +486,14 @@ export class Notifier {
     }
   }
 
-  private emit(id: string, event: NoticeEvent, kind: NoticeKind, body: string, seq: number, requestId?: string): void {
+  private emit(
+    id: string,
+    event: NoticeEvent,
+    kind: NoticeKind,
+    body: string,
+    seq: number,
+    prompt: Pick<Notice, 'requestId' | 'choices'> = {}
+  ): void {
     const meta = this.options.registry.get(id)
     if (!meta) return
     const origin = this.options.origin?.() ?? null
@@ -488,7 +511,8 @@ export class Notifier {
       ...(origin ? { url: `${origin}/ui#thread=${id}` } : {}),
       ts: this.now(),
       seq,
-      ...(requestId === undefined ? {} : { requestId }),
+      ...(prompt.requestId === undefined ? {} : { requestId: prompt.requestId }),
+      ...(prompt.choices ? { choices: prompt.choices } : {}),
       ...(hostName ? { hostName: cut(oneLine(hostName), 80) } : {}),
       ...(this.options.onScreen?.(id) ? { onScreen: true as const } : {})
     }

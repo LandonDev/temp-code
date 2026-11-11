@@ -1,7 +1,8 @@
 import type { Failure, FailureKind, LimitWindow } from '@shared/events'
 import type { ProviderId } from '@shared/catalog'
 import { isRoutedProvider, routedProviderOf, SIGN_IN_NAME, type RoutedProvider } from '@shared/accounts'
-import { fallbackFailure, TURN_ENDED_SUMMARY } from '@shared/failureFallback'
+import { CONTEXT_THRASH_SUMMARY, fallbackFailure, TURN_ENDED_SUMMARY } from '@shared/failureFallback'
+import { CLI_THRASH, parseContextThrashRow } from '@shared/contextThrash'
 import { splitPath } from 'aliax-core'
 import type { NetworkInfo } from './gatewayCore'
 
@@ -117,6 +118,10 @@ function sessionName(provider: ProviderId): string {
 /** The kind alone: the precedence the two lines are written from. */
 export function failureKindOf(ctx: FailureContext): FailureKind {
   const text = ctx.message
+  // The host's own guard, or Claude Code's: the window refills on every
+  // request. Ahead of everything, since the CLI's line ends the turn as an
+  // execution error and would read as turn_ended or unknown.
+  if (parseContextThrashRow(text) || CLI_THRASH.test(text)) return 'context_thrash'
   // The host knows more than the words: an account gone from the vault
   // explains every 401 and every "no account" the harness reported.
   if (ctx.account && ctx.accountKnown === false) return 'account_unknown'
@@ -293,6 +298,12 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext, room: bo
     case 'turn_ended': {
       const [, subtype = '', line = ''] = TURN_ENDED.exec(ctx.message) ?? []
       return { summary: TURN_ENDED_SUMMARY, cause: line.trim() ? oneLine(line) : turnEndedCause(subtype, harness) }
+    }
+    case 'context_thrash': {
+      const row = parseContextThrashRow(ctx.message)
+      if (!row) return { summary: CONTEXT_THRASH_SUMMARY, cause: `${harness} stopped after the context refilled to its limit 3 times in a row` }
+      const span = `${row.count} compactions in ${row.minutes} ${row.minutes === 1 ? 'minute' : 'minutes'}`
+      return { summary: CONTEXT_THRASH_SUMMARY, cause: row.first && row.window ? `${span}; the first request held ${row.first} of a ${row.window} window` : span }
     }
     case 'unknown': {
       // No reason at all reads as the renderer's fallback, word for word.

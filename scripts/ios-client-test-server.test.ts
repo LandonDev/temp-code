@@ -35,8 +35,11 @@ describe('the iOS test server seeds', () => {
   })
   it('seed the ids the fleet codes against', () => {
     const ids = new Set(seededIds(source))
-    for (const id of ['ios-queued', 'ios-stopped', 'ios-master', 'ios-master-paused', 'ios-project-plan', 'ios-notes-five', 'ios-notes-two', 'ios-notices', 'ios-failures', 'ios-preamble', 'ios-resources', 'ios-pinned-account', 'ios-meta', 'ios-xhost'])
+    for (const id of ['ios-queued', 'ios-stopped', 'ios-master', 'ios-master-paused', 'ios-project-plan', 'ios-notes-five', 'ios-notes-two', 'ios-notices', 'ios-failures', 'ios-preamble', 'ios-resources', 'ios-pinned-account', 'ios-meta', 'ios-xhost', 'ios-computer-held', 'ios-computer-confirm', 'ios-computer-away'])
       expect(ids.has(id), id).toBe(true)
+  })
+  it('/ask raises a held computer step on Run now and Skip', () => {
+    expect(source).toMatch(/body\.kind === 'run-skip'[\s\S]{0,400}runSkipAsk\(requestId, requestId\)/)
   })
   it('the regex reads a creation of each shape', () => {
     expect(seededIds("make('a', {})\nmakeTyped(THREAD_B, 'chat')\nexport const THREAD_B = 'b'\nagent('c', 'explorer')\nserver.registry.create({ id: 'd', x: 1 })\ncreate({ id: THREAD_B })")).toEqual(['a', 'b', 'c', 'd', 'b'])

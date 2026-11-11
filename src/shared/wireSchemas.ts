@@ -406,6 +406,7 @@ export const SessionMetaSchema = z.object({
   isMaster: z.boolean().optional(),
   masterId: z.string().nullable().optional(),
   after: z.string().nullable().optional(),
+  readAt: z.number().int().optional(),
   createdAt: z.number().int(),
   updatedAt: z.number().int()
 })
@@ -1015,6 +1016,7 @@ const push = <P extends string, S extends z.ZodRawShape>(
 
 export const HelloPushSchema = push('hello', {
   environmentId: z.string(),
+  name: z.string().optional(),
   contract: z.number().int(),
   caps: z.array(CapabilitySchema),
   key: z.object({ id: z.string(), name: z.string() }).optional(),

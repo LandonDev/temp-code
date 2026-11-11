@@ -197,7 +197,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'projectLogo.save': 'operate',
   'projectLogo.remove': 'operate',
   'text.generate': 'operate',
-  'session.create': 'operate', // permission: 'auto' needs approve, master admin (requiredCapability)
+  'session.create': 'operate', // permission: 'auto' needs approve (requiredCapability)
   'session.send': 'operate',
   'session.interrupt': 'operate',
   'session.preconnect': 'operate',
@@ -299,7 +299,11 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'project.ensureLinked': 'operate',
   'project.settings.get': 'read',
   'project.settings.set': 'admin',
-  'session.setMaster': 'admin',
+  // Pinning a master is steering threads: the key that starts and sends may make one a master.
+  'session.setMaster': 'operate',
+  // The person's read marks: a read key watches without moving them.
+  'session.markRead': 'operate',
+  'session.markUnread': 'operate',
   // A master thread's batch (contract-batch.ts): reads, the rules a person may set, the batch's membership and its end.
   'batch.get': 'read',
   'batch.board': 'read',
@@ -498,12 +502,11 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
 }
 
 /** The capability one request needs: the table row, plus the param-level
- *  rules of session.create (a master pin is session.setMaster's admin; a
- *  full-access thread skips every prompt). */
+ *  rule of session.create (a full-access thread skips every prompt, so it
+ *  needs approve; born a master is operate, as session.setMaster is). */
 export function requiredCapability(req: { method: ClientRequest['method']; params?: unknown }): MethodCapability {
   if (req.method === 'session.create') {
-    const params = req.params as { permission?: string; master?: boolean } | undefined
-    if (params?.master) return 'admin'
+    const params = req.params as { permission?: string } | undefined
     if (params?.permission === 'auto') return 'approve'
   }
   return METHOD_CAPABILITY[req.method]

@@ -144,20 +144,50 @@ export const calcFactors = (seed: number): { a: number; b: number } => {
   return { a: 1100 + Math.floor(r() * 8700), b: 1100 + Math.floor(r() * 8700) }
 }
 
-export const FINDER_DRAFT = 'draft of the plan\n'
-export const FINDER_LOG = 'old log line\n'
+/** The scratch Finder files carry the run's nonce, so a check or a Trash sweep never matches another run's or the person's bytes. */
+export const finderDraft = (nonce: string): string => `draft of the plan ${nonce}\n`
+export const finderLog = (nonce: string): string => `old log line ${nonce}\n`
+export const finderKeep = (nonce: string): string => `# keep ${nonce}\n`
 
 // ── reading the end state ───────────────────────────────────────────────
 
-/** Digit-grouping marks stripped, so "964,801" and "964 801" both say 964801. */
-const ungroup = (s: string): string => s.replace(/[,\s  ']/g, '')
+/**
+ * Digit-group separators collapsed only BETWEEN digits (comma, apostrophe,
+ * nbsp, narrow nbsp — never a space or newline, which would join adjacent
+ * numbers in a dump: "3,456\n789,012" must not contain 456789).
+ */
+const joinGroups = (s: string): string => s.replace(/(\d)[,'  ](?=\d)/g, '$1')
 
-/** Does the reply carry the number, however it groups the digits? */
-export const replyHasNumber = (reply: string, n: number): boolean => ungroup(reply).includes(String(n))
+/** Strips grouping inside one short display value (Calculator's), spaces included: the value is one number, nothing can join. */
+const ungroupValue = (s: string): string => s.replace(/(\d)[,\s  '](?=\d)/g, '$1')
 
-/** Does any element of the window (Calculator's display) show the number? */
+/** The number as its own token in the reply: digit boundaries on the raw text, separators normalised without joining numbers. */
+export const replyNumberToken = (reply: string, n: number): boolean => new RegExp(`(^|\\D)${n}(?=\\D|$)`).test(joinGroups(reply))
+
+/** The city as its own word, case as the table writes it (Split the city, not "split"). */
+export const replyCityToken = (reply: string, city: string): boolean => new RegExp(`(^|[^A-Za-z])${city}(?=[^A-Za-z]|$)`).test(reply)
+
+/** Does any one element of the window (Calculator's display) show the number as a whole value? */
 export const treeShowsNumber = (o: ParsedObservation, n: number): boolean =>
-  elements(o).some((e) => ungroup(`${e.name ?? ''} ${e.value ?? ''}`).includes(String(n)))
+  elements(o).some((e) => [e.name, e.value].some((t) => t && new RegExp(`(^|\\D)${n}(?=\\D|$)`).test(ungroupValue(t))))
+
+/**
+ * The reply against the table (C2): the expected number (and city) must be
+ * named as its own token, and a reply that names more than one of the
+ * table's revenues (or cities, where a city is asked) fails as a hedge or a
+ * dump — the true row being among the candidates proves nothing.
+ */
+export function tableReplyCheck(reply: string, rows: readonly FieldRow[], want: FieldRow, opts: { city: boolean }): CheckResult {
+  if (!replyNumberToken(reply, want.revenue)) return { ok: false, detail: `the reply lacks ${want.revenue} as its own number` }
+  const numbers = rows.filter((r) => replyNumberToken(reply, r.revenue))
+  if (numbers.length > 1) return { ok: false, detail: `the reply names ${numbers.length} of the table's revenues: ${numbers.map((r) => r.revenue).join(', ')}` }
+  if (opts.city) {
+    if (!replyCityToken(reply, want.city)) return { ok: false, detail: `the reply lacks ${want.city}` }
+    const cities = rows.filter((r) => replyCityToken(reply, r.city))
+    if (cities.length > 1) return { ok: false, detail: `the reply names ${cities.length} of the table's cities: ${cities.map((r) => r.city).join(', ')}` }
+  }
+  return { ok: true, detail: opts.city ? `${want.city} ${want.revenue}` : String(want.revenue) }
+}
 
 /** The form page's confirmation line, from the AX tree; null while it shows none. */
 export function confirmationText(o: ParsedObservation): string | null {
@@ -170,13 +200,22 @@ export function confirmationText(o: ParsedObservation): string | null {
   return null
 }
 
-/** True once the app no longer answers a read for the window: closed, or the app quit. */
-export async function windowGone(read: TaskReader, app: TaskApp, title: string): Promise<boolean> {
+export interface WindowGone {
+  gone: boolean
+  /** a read error that is NOT "no such window" (a hung app, a service restart): the check fails with it, never passes */
+  error?: string
+}
+
+/** Gone only on the service's own "no such window" (or the app quit); any other error is the caller's failure, not a pass. */
+export async function windowGone(read: TaskReader, app: TaskApp, title: string): Promise<WindowGone> {
   try {
     await read.read(app, title)
-    return false
-  } catch {
-    return true
+    return { gone: false }
+  } catch (e) {
+    const kind = (e as { data?: { kind?: string } }).data?.kind
+    const message = e instanceof Error ? e.message : String(e)
+    if (kind === 'window_not_found' || /window_not_found|has no window open|quit\.$/.test(message)) return { gone: true }
+    return { gone: false, error: message }
   }
 }
 
@@ -201,20 +240,68 @@ export async function spotlightHits(run: Exec, nonce: string): Promise<string[]>
   return r.code === 0 ? r.stdout.split('\n').filter(Boolean) : []
 }
 
+export const STRAY_TRIES = { tries: 4, waitMs: 1500 } as const
+/** The retry wait, swappable so the unit tests run without real waits. */
+export const STRAY_WAIT = { wait: (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms)) }
+
 /**
- * Removes the trashed scratch log's copies from the Trash: entries named
- * old.log (or Finder's "old <time>.log" rename) whose bytes are exactly the
- * scratch line, so nothing of the person's is ever touched.
+ * The strays under the roots, asked of Spotlight several times: a seconds-old
+ * autosave in iCloud routinely lags the index, so one empty read proves
+ * nothing. Any read that finds strays answers at once; "no strays" only
+ * after every try.
  */
-export function removeTrashedScratch(home: string): string[] {
+export async function spotlightStrays(
+  run: Exec,
+  nonce: string,
+  home: string,
+  opts: { tries?: number; waitMs?: number; wait?: (ms: number) => Promise<void> } = {}
+): Promise<string[]> {
+  const { tries = STRAY_TRIES.tries, waitMs = STRAY_TRIES.waitMs, wait = STRAY_WAIT.wait } = opts
+  for (let i = 0; ; i++) {
+    const strays = straysUnder(await spotlightHits(run, nonce), home)
+    if (strays.length || i >= tries - 1) return strays
+    await wait(waitMs)
+  }
+}
+
+/** Does the file (or any file inside the .rtfd folder) hold the marker? Nothing without it is ours to remove. */
+export function holdsMarker(path: string, marker: string): boolean {
+  try {
+    const stat = statSync(path)
+    if (stat.isDirectory()) return readdirSync(path).some((name) => holdsMarker(join(path, name), marker))
+    return stat.size < 1_048_576 && readFileSync(path, 'utf8').includes(marker)
+  } catch {
+    return false
+  }
+}
+
+/** Removes a stray only once its content proves it is the run's (M1: the roots are the person's folders). */
+export function removeStrays(paths: readonly string[], marker: string): string[] {
+  const removed: string[] = []
+  for (const path of paths) {
+    if (!holdsMarker(path, marker)) continue
+    rmSync(path, { recursive: true, force: true })
+    removed.push(path)
+  }
+  return removed
+}
+
+/**
+ * Removes the run's scratch files from the Trash: small top-level entries
+ * whose bytes carry the run's nonce (every scratch Finder file does), so a
+ * model that trashed the wrong file is cleaned up too and nothing of the
+ * person's is ever touched.
+ */
+export function removeTrashedScratch(home: string, nonce: string): string[] {
   const trash = join(home, '.Trash')
   const removed: string[] = []
   if (!existsSync(trash)) return removed
   for (const name of readdirSync(trash)) {
-    if (!/^old( .*)?\.log$/.test(name)) continue
     const path = join(trash, name)
     try {
-      if (readFileSync(path, 'utf8') !== FINDER_LOG) continue
+      const stat = statSync(path)
+      if (!stat.isFile() || stat.size > 4096) continue
+      if (!readFileSync(path, 'utf8').includes(nonce)) continue
       rmSync(path, { force: true })
       removed.push(name)
     } catch {
@@ -222,6 +309,45 @@ export function removeTrashedScratch(home: string): string[] {
     }
   }
   return removed
+}
+
+/** A file whose exact bytes sit anywhere under the folder (a rename or a move inside the folder is not a trash). */
+export function bytesUnder(dir: string, bytes: string): string | null {
+  let entries: string[]
+  try {
+    entries = readdirSync(dir)
+  } catch {
+    return null
+  }
+  for (const name of entries) {
+    const path = join(dir, name)
+    try {
+      const stat = statSync(path)
+      if (stat.isDirectory()) {
+        const hit = bytesUnder(path, bytes)
+        if (hit) return hit
+      } else if (stat.isFile() && stat.size === Buffer.byteLength(bytes) && readFileSync(path, 'utf8') === bytes) return path
+    } catch {
+      /* unreadable: not a hit */
+    }
+  }
+  return null
+}
+
+/** The trashed file by its exact bytes among the Trash's top-level entries (Finder renames duplicates, so never by name alone). */
+export function inTrash(home: string, bytes: string): string | null {
+  const trash = join(home, '.Trash')
+  if (!existsSync(trash)) return null
+  for (const name of readdirSync(trash)) {
+    const path = join(trash, name)
+    try {
+      const stat = statSync(path)
+      if (stat.isFile() && stat.size === Buffer.byteLength(bytes) && readFileSync(path, 'utf8') === bytes) return name
+    } catch {
+      /* unreadable: not a hit */
+    }
+  }
+  return null
 }
 
 // ── the field data a run carries ────────────────────────────────────────
@@ -266,8 +392,10 @@ const closeFinderWindows = async (run: Exec, name: string): Promise<void> => {
   ])
 }
 
-/** Closes the scratch TextEdit documents that hold the run's text, without saving. */
+/** Closes the scratch TextEdit documents that hold the run's text, without saving; never LAUNCHES TextEdit (AppleScript would). */
 const closeTextEditDocs = async (run: Exec, marker: string): Promise<void> => {
+  const running = await run('pgrep', ['-x', 'TextEdit'])
+  if (!running.stdout.trim()) return
   await run('osascript', [
     '-e',
     `with timeout of 8 seconds\ntell application "TextEdit"\nrepeat 8 times\nset hit to false\nrepeat with d in (get every document)\ntry\nset t to ""\ntry\nset t to text of d\nend try\nif (name of d contains "${marker}") or (t contains "${marker}") then\nclose d saving no\nset hit to true\nexit repeat\nend if\nend try\nend repeat\nif not hit then exit repeat\nend repeat\nend tell\nend timeout`
@@ -277,11 +405,18 @@ const closeTextEditDocs = async (run: Exec, marker: string): Promise<void> => {
 const finderSetup = async (ctx: TaskContext): Promise<FieldStart> => {
   const dir = join(ctx.dir, `files-${ctx.nonce}`)
   mkdirSync(dir, { recursive: true })
-  await ctx.writeFile(join(dir, 'draft.txt'), FINDER_DRAFT)
-  await ctx.writeFile(join(dir, 'old.log'), FINDER_LOG)
-  await ctx.writeFile(join(dir, 'keep.md'), '# keep\n')
+  await ctx.writeFile(join(dir, 'draft.txt'), finderDraft(ctx.nonce))
+  await ctx.writeFile(join(dir, 'old.log'), finderLog(ctx.nonce))
+  await ctx.writeFile(join(dir, 'keep.md'), finderKeep(ctx.nonce))
   await ctx.open('Finder', dir)
   return { app: 'Finder', window: `files-${ctx.nonce}`, nonce: ctx.nonce, seed: ctx.seed, field: { dir, home: ctx.home } }
+}
+
+/** Every Finder teardown: close the run's window, and sweep the run's files (by their nonce-carrying bytes) out of the Trash. */
+const finderTeardown = async (s: TaskStart, run: Exec): Promise<void> => {
+  await closeFinderWindows(run, s.window)
+  const home = fieldOf(s).home
+  if (home) removeTrashedScratch(home, s.nonce)
 }
 
 const calcSetup = async (ctx: TaskContext, launchIt: boolean): Promise<FieldStart | { skip: string }> => {
@@ -294,7 +429,7 @@ const calcSetup = async (ctx: TaskContext, launchIt: boolean): Promise<FieldStar
 
 const checkCalc = async (s: TaskStart, read: TaskReader, reply: string): Promise<CheckResult> => {
   const product = fieldOf(s).product!
-  if (!replyHasNumber(reply, product)) return bad(`the reply lacks ${product}`)
+  if (!replyNumberToken(reply, product)) return bad(`the reply lacks ${product} as its own number`)
   const tree = await read.read('Calculator', 'Calculator')
   return treeShowsNumber(tree, product) ? ok(`Calculator shows ${product}`) : bad('the reply has the product but Calculator never showed it')
 }
@@ -305,7 +440,7 @@ export const FIELD_TASKS: ComputerTask[] = [
   {
     id: 'field-calc',
     app: 'Calculator',
-    version: 1,
+    version: 2,
     tier: 'background',
     shared: 'calculator',
     stepBudget: 8,
@@ -321,7 +456,7 @@ export const FIELD_TASKS: ComputerTask[] = [
   {
     id: 'field-app-launch',
     app: 'Calculator',
-    version: 1,
+    version: 2,
     tier: 'background',
     shared: 'calculator',
     stepBudget: 10,
@@ -343,7 +478,7 @@ export const FIELD_TASKS: ComputerTask[] = [
   {
     id: 'field-chrome-bg-tab',
     app: 'Google Chrome',
-    version: 1,
+    version: 2,
     tier: 'background',
     stepBudget: 10,
     wallMs: TASK_WALL_MS,
@@ -358,19 +493,18 @@ export const FIELD_TASKS: ComputerTask[] = [
     },
     prompt: (s) =>
       rule(
-        `Chrome's window "${fieldWindow('front', s.nonce)}" has a second tab, "${fieldWindow('report', s.nonce)}", behind the front one. In that report, which city has the highest revenue? Answer with the city and its revenue.`
+        `Chrome's window "${fieldWindow('front', s.nonce)}" has a second tab, "${fieldWindow('report', s.nonce)}", behind the front one. In that report, which city has the highest revenue? Answer with that one city and its revenue, nothing else.`
       ),
     async check(s, _read, reply) {
       const { city, revenue } = fieldOf(s)
-      if (!reply.includes(city!)) return bad(`the reply lacks ${city}`)
-      return replyHasNumber(reply, revenue!) ? ok(`${city} ${revenue}`) : bad(`the reply lacks ${revenue}`)
+      return tableReplyCheck(reply, fieldRows(s.seed), { city: city!, revenue: revenue! }, { city: true })
     },
     teardown: async () => {}
   },
   {
     id: 'field-chrome-below-fold',
     app: 'Google Chrome',
-    version: 1,
+    version: 2,
     tier: 'background',
     stepBudget: 8,
     wallMs: TASK_WALL_MS,
@@ -383,15 +517,15 @@ export const FIELD_TASKS: ComputerTask[] = [
     },
     prompt: (s) => rule(`In Chrome's window "${fieldWindow('report', s.nonce)}", what is the revenue of ${fieldOf(s).city} in the table? Answer with the number alone.`),
     async check(s, _read, reply) {
-      const { revenue } = fieldOf(s)
-      return replyHasNumber(reply, revenue!) ? ok(String(revenue)) : bad(`the reply lacks ${revenue}`)
+      const { city, revenue } = fieldOf(s)
+      return tableReplyCheck(reply, fieldRows(s.seed), { city: city!, revenue: revenue! }, { city: false })
     },
     teardown: async () => {}
   },
   {
     id: 'field-chrome-tab-switch',
     app: 'Google Chrome',
-    version: 1,
+    version: 2,
     tier: 'background',
     stepBudget: 8,
     wallMs: TASK_WALL_MS,
@@ -407,8 +541,8 @@ export const FIELD_TASKS: ComputerTask[] = [
     prompt: (s) =>
       rule(`In Chrome's window "${fieldWindow('front', s.nonce)}", switch to the tab "${fieldWindow('report', s.nonce)}" and tell me the revenue of ${fieldOf(s).city}. Answer with the number alone.`),
     async check(s, _read, reply) {
-      const { revenue } = fieldOf(s)
-      return replyHasNumber(reply, revenue!) ? ok(String(revenue)) : bad(`the reply lacks ${revenue}`)
+      const { city, revenue } = fieldOf(s)
+      return tableReplyCheck(reply, fieldRows(s.seed), { city: city!, revenue: revenue! }, { city: false })
     },
     teardown: async () => {}
   },
@@ -455,7 +589,7 @@ export const FIELD_TASKS: ComputerTask[] = [
     async check(s, read) {
       const { file, total } = fieldOf(s)
       const text = await docText(read.exec, file!)
-      if (!ungroup(text).includes(`Total:$${total}`)) return bad(`the file on disk has no "Total: $${total}" line`)
+      if (!new RegExp(`Total:\\s*\\$\\s*${total}(?=\\D|$)`).test(joinGroups(text))) return bad(`the file on disk has no "Total: $${total}" line`)
       // The field test's inverse false outcome: the disk was right but the window still read Edited. Best effort: a closed window is fine.
       try {
         const tree = await read.read('TextEdit', s.window)
@@ -470,7 +604,7 @@ export const FIELD_TASKS: ComputerTask[] = [
   {
     id: 'field-textedit-save-as',
     app: 'TextEdit',
-    version: 1,
+    version: 2,
     // Every field-test run met the save panel only at the session tier.
     tier: 'session',
     stepBudget: 24,
@@ -490,23 +624,25 @@ export const FIELD_TASKS: ComputerTask[] = [
     prompt: (s) => rule(`In TextEdit, create a new document with the text "${fieldOf(s).text}", and save it with the name "note" in the folder ${fieldOf(s).dir}.`),
     async check(s, read) {
       const { dir, text, home } = fieldOf(s)
-      const strays = straysUnder(await spotlightHits(read.exec, s.nonce), home!)
       const saved: string[] = []
       for (const path of noteFiles(dir!)) if ((await docText(read.exec, path)).includes(text!)) saved.push(path)
+      // Spotlight read several times: a seconds-old autosave in iCloud lags the index, and one empty read proves nothing.
+      const strays = await spotlightStrays(read.exec, s.nonce, home!)
       if (!saved.length) return bad(`no file named note with the text in ${dir}${strays.length ? `; a copy strayed to ${strays.join(', ')}` : ''}`)
       if (strays.length) return bad(`saved, but a copy strayed outside the folder: ${strays.join(', ')}`)
       return ok('note saved in the folder, no strays')
     },
     async teardown(s, run) {
       await closeTextEditDocs(run, s.nonce)
+      // Always remove the strays the run made: Spotlight read again with the retries, each removal content-proved (M1).
       const home = fieldOf(s).home
-      if (home) for (const path of straysUnder(await spotlightHits(run, s.nonce), home)) rmSync(path, { recursive: true, force: true })
+      if (home) removeStrays(await spotlightStrays(run, s.nonce, home), s.nonce)
     }
   },
   {
     id: 'field-textedit-close-discard',
     app: 'TextEdit',
-    version: 1,
+    version: 2,
     tier: 'background',
     stepBudget: 10,
     wallMs: TASK_WALL_MS,
@@ -519,17 +655,22 @@ export const FIELD_TASKS: ComputerTask[] = [
       return { app: 'TextEdit', window: ctx.nonce, nonce: ctx.nonce, seed: ctx.seed, field: { file, bytes, extra: `Added ${ctx.nonce}` } } satisfies FieldStart
     },
     prompt: (s) => rule(`In TextEdit's window "${s.window}", add the line "${fieldOf(s).extra}" at the end, then close the window. When it asks about the unsaved changes, choose to discard them.`),
-    async check(s, read) {
-      const { file, bytes } = fieldOf(s)
-      if (!(await windowGone(read, 'TextEdit', s.window))) return bad('the window is still open')
-      return readFileSync(file!).toString('base64') === bytes ? ok('window closed, the file unchanged') : bad('the window closed but the file changed on disk')
+    async check(s, read, _reply, calls) {
+      const { file, bytes, extra } = fieldOf(s)
+      // C6: the end state of "closed an untouched window" is identical; the run must show the edit happened (the typed line in a call).
+      if (!calls.some((c) => JSON.stringify(c.input).includes(extra!) || c.result.includes(extra!)))
+        return bad(`no call of the run carried the line ${JSON.stringify(extra)}: the window may have been closed unedited, with no sheet`)
+      const gone = await windowGone(read, 'TextEdit', s.window)
+      if (gone.error) return bad(`the window could not be read: ${gone.error}`)
+      if (!gone.gone) return bad('the window is still open')
+      return readFileSync(file!).toString('base64') === bytes ? ok('edited, window closed, the file unchanged') : bad('the window closed but the file changed on disk')
     },
     teardown: (s, run) => closeTextEditDocs(run, s.nonce)
   },
   {
     id: 'field-textedit-close-keep',
     app: 'TextEdit',
-    version: 1,
+    version: 2,
     tier: 'background',
     stepBudget: 10,
     wallMs: TASK_WALL_MS,
@@ -542,7 +683,9 @@ export const FIELD_TASKS: ComputerTask[] = [
     prompt: (s) => rule(`In TextEdit's window "${s.window}", add the line "${fieldOf(s).extra}" at the end, then close the window. When it asks about the unsaved changes, choose to keep them.`),
     async check(s, read) {
       const { file, extra } = fieldOf(s)
-      if (!(await windowGone(read, 'TextEdit', s.window))) return bad('the window is still open')
+      const gone = await windowGone(read, 'TextEdit', s.window)
+      if (gone.error) return bad(`the window could not be read: ${gone.error}`)
+      if (!gone.gone) return bad('the window is still open')
       return (await docText(read.exec, file!)).includes(extra!) ? ok('window closed, the line kept') : bad('the window closed but the file lacks the line')
     },
     teardown: (s, run) => closeTextEditDocs(run, s.nonce)
@@ -574,7 +717,7 @@ export const FIELD_TASKS: ComputerTask[] = [
   {
     id: 'field-finder-rename',
     app: 'Finder',
-    version: 1,
+    version: 2,
     // Every field-test rename "committed" in the list but not on disk until the session tier typed it.
     tier: 'session',
     shared: 'finder',
@@ -587,14 +730,14 @@ export const FIELD_TASKS: ComputerTask[] = [
       const final = join(dir, 'final.txt')
       if (!existsSync(final)) return bad('final.txt is not on disk')
       if (existsSync(join(dir, 'draft.txt'))) return bad('draft.txt is still on disk beside final.txt')
-      return readFileSync(final, 'utf8') === FINDER_DRAFT ? ok('renamed on disk') : bad('final.txt exists but its content changed')
+      return readFileSync(final, 'utf8') === finderDraft(s.nonce) ? ok('renamed on disk') : bad('final.txt exists but its content changed')
     },
-    teardown: (s, run) => closeFinderWindows(run, s.window)
+    teardown: finderTeardown
   },
   {
     id: 'field-finder-trash',
     app: 'Finder',
-    version: 1,
+    version: 2,
     tier: 'session',
     shared: 'finder',
     stepBudget: 12,
@@ -602,20 +745,21 @@ export const FIELD_TASKS: ComputerTask[] = [
     setup: finderSetup,
     prompt: (s) => rule(`In the Finder window "${s.window}", move old.log to the Trash.`),
     async check(s) {
-      const dir = fieldOf(s).dir!
-      if (existsSync(join(dir, 'old.log'))) return bad('old.log is still in the folder')
-      return existsSync(join(dir, 'keep.md')) ? ok('old.log left the folder') : bad('old.log left, but keep.md went with it')
+      const { dir, home } = fieldOf(s)
+      const bytes = finderLog(s.nonce)
+      // Renamed in place or moved into a subfolder is not a trash: the bytes must be gone from the whole folder…
+      const inside = bytesUnder(dir!, bytes)
+      if (inside) return bad(`old.log is still under the folder, as ${inside.slice(dir!.length + 1)}`)
+      if (!existsSync(join(dir!, 'keep.md'))) return bad('old.log left, but keep.md went with it')
+      // …and IN the Trash, found by its exact bytes (Finder renames duplicates, so never by name).
+      return inTrash(home!, bytes) ? ok('old.log is in the Trash') : bad('old.log left the folder but is not in the Trash (deleted outright, or moved elsewhere)')
     },
-    async teardown(s, run) {
-      await closeFinderWindows(run, s.window)
-      const home = fieldOf(s).home
-      if (home) removeTrashedScratch(home)
-    }
+    teardown: finderTeardown
   },
   {
     id: 'field-finder-new-folder',
     app: 'Finder',
-    version: 1,
+    version: 2,
     tier: 'session',
     shared: 'finder',
     stepBudget: 12,
@@ -630,7 +774,7 @@ export const FIELD_TASKS: ComputerTask[] = [
         return bad('no folder named archive on disk (an "untitled folder" whose rename never committed does not count)')
       }
     },
-    teardown: (s, run) => closeFinderWindows(run, s.window)
+    teardown: finderTeardown
   }
 ]
 

@@ -101,8 +101,8 @@ struct ModelMark: View {
 }
 
 /// "Make master thread" / "Not the master" for a root thread in a project.
-/// Admin only: a key without it sees the row disabled with the reason as its
-/// hint. A refusal goes to `onFailure`; a menu with no alert of its own
+/// Any key that steers threads (operate): a read key sees the row disabled
+/// with the reason as its hint. A refusal goes to `onFailure`; a menu with no alert of its own
 /// passes nil and the pin simply stays as it was.
 struct MasterPinButton: View {
     let client: EnvironmentClient
@@ -123,8 +123,8 @@ struct MasterPinButton: View {
             } label: {
                 Label(pinned ? "Not the master" : "Make master thread", systemImage: pinned ? "crown.slash" : "crown")
             }
-            .disabled(client.adminBlock != nil)
-            .accessibilityHint(client.adminBlock.map { $0.text(now: Date().timeIntervalSince1970 * 1000) } ?? "")
+            .disabled(client.operateBlock != nil)
+            .accessibilityHint(client.operateBlock.map { $0.text(now: Date().timeIntervalSince1970 * 1000) } ?? "")
         }
     }
 }

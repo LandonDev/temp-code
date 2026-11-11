@@ -32,7 +32,8 @@ describe('Settings → Computer use wire', () => {
   it('carries an app with no name and only the classes it learned', () => {
     const app = { bundleId: 'com.apple.TextEdit', name: null, classes: { click: 'session' }, updatedAt: 1 }
     expect(ComputerAppVerdictSchema.parse(app)).toEqual(app)
-    expect(ComputerSettingsSchema.safeParse({ sessionIdleMs: 120_000, apps: [app] }).success).toBe(true)
+    expect(ComputerSettingsSchema.safeParse({ sessionIdleMs: 120_000, activeApp: 'brief', apps: [app] }).success).toBe(true)
+    expect(ComputerSettingsSchema.safeParse({ sessionIdleMs: 120_000, activeApp: 'ask', apps: [] }).success).toBe(false)
     expect(ComputerAppVerdictSchema.safeParse({ ...app, classes: { click: 'screen' } }).success).toBe(false)
   })
 })

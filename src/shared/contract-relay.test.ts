@@ -114,3 +114,10 @@ describe('RELAY_METHODS', () => {
     for (const m of RELAY_BOX_LOCAL) expect(m.startsWith('remote.push.')).toBe(true)
   })
 })
+
+describe('read marks through the relay', () => {
+  it('a Mac thread read on the phone is marked on the Mac', () => {
+    expect(RELAY_METHODS['session.markRead']).toBe('link')
+    expect(RELAY_METHODS['session.markUnread']).toBe('link')
+  })
+})

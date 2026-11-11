@@ -100,7 +100,7 @@ export const CreateSessionParams = z.object({
    *  `after` is unmet (scheduler.ts); a master's children always queue. */
   queue: z.boolean().optional(),
   /** Pin the new root thread as a master from its first spawn (the same
-   *  flag `session.setMaster` sets; admin, requiredCapability). */
+   *  flag `session.setMaster` sets; operate, like the rest of the create). */
   master: z.boolean().optional(),
   /** The thread's first message, stored as its first row in the same step
    *  (SessionRegistry.startWith): the thread and its brief, or neither. */
@@ -292,6 +292,21 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('project.settings.set'),
     params: z.object({ projectId: z.string(), bundle: ProjectSettingsBundleSchema })
+  }),
+  // Read marks (CLAUDE.md "Read and unread: the host's mark"): the person saw
+  // these threads up to `at` (the updatedAt they saw; absent = as each stands),
+  // or wants them unread again. One call carries a client's coalesced marks.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.markRead'),
+    params: z.object({
+      items: z.array(z.object({ sessionId: z.string(), at: z.number().int().nonnegative().optional() })).max(5000)
+    })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('session.markUnread'),
+    params: z.object({ sessionIds: z.array(z.string()).max(5000) })
   }),
   // A master thread (CLAUDE.md "Master threads"): pin a root thread as one, or unpin it. Many per project.
   z.object({
@@ -1379,6 +1394,8 @@ export type ServerPush =
   | {
       push: 'hello'
       environmentId: string
+      /** What the host calls itself, short (src/shared/hostNames.ts); absent on an older host. A client shows it unless the person renamed the host. */
+      name?: string
       contract: number
       caps: import('./capabilities').Capability[]
       key?: { id: string; name: string }

@@ -158,3 +158,38 @@ describe("sessionSeen", () => {
     expect(mod.seenFloor()).toBe(0);
   });
 });
+
+describe("sessionSeen with the hosts' marks", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it("lays the hosts' marks over the window's map, and sends Mark all read to them", async () => {
+    mockLocalStorage({ [KEY]: JSON.stringify({ a: 10, b: 10 }), [FLOOR_KEY]: "5" });
+    const mod = await load();
+    let marks: Record<string, number> = { a: 0 };
+    const subs = new Set<() => void>();
+    const sent: [string[], number][] = [];
+    const off = mod.installHostMarks({
+      marks: () => marks,
+      subscribe: (l) => (subs.add(l), () => subs.delete(l)),
+      read: (ids, at) => void sent.push([[...ids], at]),
+    });
+    // The host's mark wins for its thread (marked unread there), the window's for the rest.
+    expect(mod.loadLastSeen()).toEqual({ a: 0, b: 10 });
+    expect(mod.loadLastSeen()).toBe(mod.loadLastSeen());
+    marks = { a: 20 };
+    for (const l of subs) l();
+    expect(mod.loadLastSeen()).toEqual({ a: 20, b: 10 });
+
+    mod.markSessionsSeen(["a", "c"], 30);
+    mod.markAllSeen(["b"], 40);
+    expect(sent).toEqual([[["a", "c"], 30], [["b"], 40]]);
+    // A single tab's own mark stays the window's: the host hears the person through readMarks.
+    mod.markSessionSeen("d", 50);
+    expect(sent).toHaveLength(2);
+
+    off();
+    expect(mod.loadLastSeen()).toEqual({ a: 30, b: 40, c: 30, d: 50 });
+  });
+});

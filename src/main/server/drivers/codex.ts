@@ -9,6 +9,7 @@ import type { DriverCtx, DriverHandle, HarnessDriver, SendOpts } from './types'
 import { harnessEnv, resolveBinary } from './binaries'
 import { WarmPool, type WarmSpec } from './warm'
 import { expandSlashRefs } from '../slash'
+import { recordDriverNote } from '../stalls'
 import { toolDisplay } from './display'
 import { bridgeMcpConfig } from '../apptools'
 import { researchWriteRoots } from '../orchestration'
@@ -384,6 +385,18 @@ function connectorReauth(item: Item): { app: string; url: string } | undefined {
  * keeps `chatgpt_base_url` and no provider block.
  */
 export const META_CONTEXT_WINDOW = 1_048_576
+/** How long, and how often, the first turn waits for `model/list` to name the thread's model. */
+export const MODEL_LIST_WAIT = { everyMs: 250, capMs: 10_000 }
+/** The window Codex assumes for a model it has no metadata for: 272,000 × 0.95. */
+export const FALLBACK_CONTEXT_WINDOW = 258_400
+
+/** The model ids a `model/list` answer names, or null when it names none (no list at all says nothing). */
+export function listedModelIds(result: unknown): string[] | null {
+  const data = (result as { data?: unknown } | null)?.data
+  if (!Array.isArray(data) || data.length === 0) return null
+  return (data as Record<string, unknown>[]).map((m) => (typeof m.model === 'string' ? m.model : typeof m.id === 'string' ? m.id : '')).filter(Boolean)
+}
+
 export function metaCodexConfig(session: { provider: ProviderId; model: string }, endpoint: string | null): Record<string, unknown> {
   if (!isMetaModel(session.provider, session.model)) return endpoint ? { chatgpt_base_url: endpoint } : {}
   return {
@@ -440,6 +453,33 @@ export const codexDriver: HarnessDriver = {
     // plugins are callable from message one.
     const mcpStarting = new Set<string>()
     let mcpSettled: (() => void) | null = null
+    // Codex runs a turn on fallback metadata (a 258,400 window, every tool
+    // inline) for a model its `model/list` does not name yet: one Mac
+    // thread's first request was 309k tokens and compacted after every
+    // request (docs/agents/prompt-overhead.md). The first send also waits
+    // for the list to name the thread's model, asked every 250 ms for 10 s.
+    let modelListed: boolean | null = null
+    let fallbackLogged = false
+    const waitForModel = async (): Promise<void> => {
+      const deadline = Date.now() + MODEL_LIST_WAIT.capMs
+      for (;;) {
+        const ids = listedModelIds(await conn.request('model/list', {}).catch(() => null))
+        if (ids === null) return
+        if (ids.includes(session.model)) {
+          modelListed = true
+          return
+        }
+        if (Date.now() >= deadline || disposed || conn.exited) {
+          modelListed = false
+          recordDriverNote(`[codex] ${session.id}: ${session.model} not in model/list after ${MODEL_LIST_WAIT.capMs / 1000}s: first turn may run on fallback metadata`)
+          return
+        }
+        await new Promise((r) => setTimeout(r, MODEL_LIST_WAIT.everyMs))
+      }
+    }
+    /** A compaction in flight: the context it held before, for the done event's preTokens. */
+    let compactionFrom: number | null = null
+    let compactionPending = false
     let firstTurnGate: Promise<void> | null = new Promise((resolve) => {
       const bail = setTimeout(() => resolve(), 20_000)
       mcpSettled = () => {
@@ -481,6 +521,11 @@ export const codexDriver: HarnessDriver = {
           break
         case 'imageView':
           emit({ type: 'tool-call', callId: String(item.id), name: 'view_image', input: { path: item.path } })
+          break
+        case 'contextCompaction':
+          compactionFrom = contextTokens || null
+          compactionPending = false
+          emit({ type: 'compaction', phase: 'start', trigger: 'auto' })
           break
         case 'commandExecution':
           emit({
@@ -544,6 +589,10 @@ export const codexDriver: HarnessDriver = {
         }
         case 'imageView':
           emit({ type: 'tool-result', callId: String(item.id), output: '[image]', isError: false })
+          break
+        case 'contextCompaction':
+          // Done once the next token reading says what the window holds now (postTokens).
+          compactionPending = true
           break
         case 'commandExecution':
           emit({
@@ -736,6 +785,17 @@ export const codexDriver: HarnessDriver = {
             | undefined
           if (tu?.total)
             lastUsage = { inputTokens: tu.total.inputTokens, outputTokens: tu.total.outputTokens }
+          // A listed model whose turn still runs on the fallback window: said once per handle.
+          if (tu?.modelContextWindow === FALLBACK_CONTEXT_WINDOW && modelListed === true && !fallbackLogged) {
+            fallbackLogged = true
+            recordDriverNote(`[codex] ${session.id}: first turn on fallback model metadata (window ${FALLBACK_CONTEXT_WINDOW})`)
+          }
+          // The first reading after a compaction is what it left.
+          if (compactionPending && tu?.last?.totalTokens !== undefined) {
+            compactionPending = false
+            emit({ type: 'compaction', phase: 'done', trigger: 'auto', ...(compactionFrom !== null ? { preTokens: compactionFrom } : {}), postTokens: tu.last.totalTokens })
+            compactionFrom = null
+          }
           // The last turn's total ≈ what the context currently holds.
           if (tu?.last?.totalTokens !== undefined && tu.last.totalTokens !== contextTokens) {
             contextTokens = tu.last.totalTokens
@@ -765,6 +825,12 @@ export const codexDriver: HarnessDriver = {
           pictureCalls.clear()
           currentTurnId = null
           retryLogged = false
+          // A compaction the turn ended on before a token reading: done, its size unknown.
+          if (compactionPending) {
+            compactionPending = false
+            emit({ type: 'compaction', phase: 'done', trigger: 'auto', ...(compactionFrom !== null ? { preTokens: compactionFrom } : {}) })
+            compactionFrom = null
+          }
           const turn = params.turn as { status?: string; error?: { message?: string } | null }
           if (turn?.error?.message) {
             emit({ type: 'error', message: turn.error.message, ...limitField('codex', turn.error.message) })
@@ -1122,7 +1188,7 @@ export const codexDriver: HarnessDriver = {
         if (firstTurnGate) {
           const gateFrom = Date.now()
           emit({ type: 'phase', phase: 'initializing' })
-          await firstTurnGate
+          await Promise.all([firstTurnGate, waitForModel()])
           firstTurnGate = null
           gateMs = Date.now() - gateFrom
           emit({ type: 'phase', phase: null })

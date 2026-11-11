@@ -116,11 +116,6 @@ public struct ProjectDrafts: Codable, Sendable, Hashable {
         entries[key] = nil
     }
 
-    /// Why a key cannot pick Master: the reason in its place, nil when it can.
-    public static func masterBlock(caps: [Capability]) -> String? {
-        caps.contains(.admin) ? nil : "Master needs an admin key"
-    }
-
     /// The create a draft's first send makes, on the copy it starts in: its
     /// type and mode, Master for a chat, the text as the first message
     /// (`DraftSend` decides whether the create carries it), and the model and

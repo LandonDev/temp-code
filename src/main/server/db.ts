@@ -305,6 +305,15 @@ export function openDb(path: string): DatabaseSync {
     db.exec(`ALTER TABLE sessions ADD COLUMN is_master INTEGER NOT NULL DEFAULT 0`)
     db.exec(`UPDATE sessions SET is_master = 1 WHERE parent_id IS NULL AND id IN (SELECT master_thread_id FROM projects WHERE master_thread_id IS NOT NULL)`)
   }
+  // Read marks (CLAUDE.md "Read and unread: the host's mark"): the thread's
+  // `updated_at` as of the last time the person saw it, on any client. A
+  // database from before the column starts with every thread read, so the
+  // upgrade lights nothing; a thread made since starts unread (0).
+  const hadReadAt = db.prepare(`SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'read_at'`).get()
+  if (!hadReadAt) {
+    db.exec(`ALTER TABLE sessions ADD COLUMN read_at INTEGER NOT NULL DEFAULT 0`)
+    db.exec(`UPDATE sessions SET read_at = updated_at`)
+  }
   // The cold file holds the logs of archived threads, same schema, on the
   // same connection: an archived thread's rows leave the hot file so every
   // scan of `events` (boot folds, search, the WAL) covers only live work.
@@ -441,6 +450,7 @@ interface SessionRowRaw {
   is_master: number
   master_id: string | null
   after_id: string | null
+  read_at: number | null
   created_at: number
   updated_at: number
 }
@@ -498,6 +508,7 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     isMaster: !!r.is_master,
     masterId: r.master_id ?? null,
     after: r.after_id ?? null,
+    readAt: r.read_at ?? 0,
     createdAt: r.created_at,
     updatedAt: r.updated_at
   }
@@ -847,6 +858,27 @@ export class Store {
     if (cur.archived && !next.archived) this.moveToHot(id)
     this.rowChanged({ id, row: next })
     return next
+  }
+
+  /** The person saw the thread up to `at` (its updatedAt as a client saw
+   *  it; absent = as it stands). Never moves back and never past the row's
+   *  updatedAt; not an edit, so updated_at stays put (the mark would
+   *  otherwise unread the thread it marks). Null when nothing moved. */
+  markSessionRead(id: string, at?: number): SessionMeta | null {
+    const cur = this.getSession(id)
+    if (!cur) return null
+    const next = Math.min(at ?? cur.updatedAt, cur.updatedAt)
+    if (next <= (cur.readAt ?? 0)) return null
+    this.stmt(`UPDATE sessions SET read_at = ? WHERE id = ?`).run(next, id)
+    return this.rowWritten(id)
+  }
+
+  /** The person asked to see the thread again: unread until next seen. */
+  markSessionUnread(id: string): SessionMeta | null {
+    const cur = this.getSession(id)
+    if (!cur || (cur.readAt ?? 0) === 0) return null
+    this.stmt(`UPDATE sessions SET read_at = 0 WHERE id = ?`).run(id)
+    return this.rowWritten(id)
   }
 
   /** The account a thread spends from now, as the gateway reports it. Not

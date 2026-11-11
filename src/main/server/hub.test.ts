@@ -80,6 +80,7 @@ describe('host hub client', () => {
       transcript: 'private'
     }
     expect(await client.notify(event)).toEqual({ delivered: 2, failed: 1 })
+    expect(JSON.parse(fetch.mock.calls[1][1]!.body as string)).not.toHaveProperty('choices')
     expect(JSON.parse(fetch.mock.calls[1][1]!.body as string).environmentId).toBe('env-1')
     fetch.mockResolvedValueOnce(Response.json({ delivered: 1, failed: 0 }))
     await client.notify({ ...event, environmentId: 'env_mac' })
@@ -96,6 +97,10 @@ describe('host hub client', () => {
     })
     expect(init!.body).not.toContain('private')
     expect(init!.headers).toMatchObject({ authorization: 'Bearer ' + options.hostToken })
+    // a computer step held for the Mac rides with its choices, so the hub sends tc.run-skip
+    fetch.mockResolvedValueOnce(Response.json({ delivered: 1, failed: 0 }))
+    await client.notify({ event: 'needs_you', title: 'Save', body: 'Use?', threadId: 't', kind: 'approval', requestId: 'h1', choices: 'run-skip' })
+    expect(JSON.parse(fetch.mock.calls[3][1]!.body as string)).toMatchObject({ kind: 'approval', requestId: 'h1', choices: 'run-skip' })
   })
   it('logs once per failure state, then once on recovery, with no token or fetch error text', async () => {
     let online = false

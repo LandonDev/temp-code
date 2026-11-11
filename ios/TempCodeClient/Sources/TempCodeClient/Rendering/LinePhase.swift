@@ -48,7 +48,10 @@ public struct LinePhase: Sendable, Hashable {
     /// (`waitOn`, `WaitSteps.waitOn`'s words: an agent's title or "2
     /// subagents"), drawn like a call: "Waiting on" muted, what it waits on
     /// in the primary step; the running calls the line tells, one by its verb and
-    /// object, several by the group's present-tense phrase; a thought
+    /// object (a lone computer call by the host's words when it sends some:
+    /// "Clicking button Save in TextEdit", "Waiting for the Mac to be free,
+    /// 2nd in line", keyed like the words before the turn started, so a hold
+    /// and its release morph), several by the group's present-tense phrase; a thought
     /// streaming, as its newest finished sentence in Thinking's place; prose
     /// streaming, as the mark alone; else Thinking. `turn` is the open
     /// turn's entries, its user row first.
@@ -56,13 +59,15 @@ public struct LinePhase: Sendable, Hashable {
         let last = turn.last
         if let last, case .user(let user) = last.item, user.seq < 0 { return LinePhase(key: "sending", words: "Sending") }
         if !started(turn), let activity = activity?.trimmingCharacters(in: .whitespaces), !activity.isEmpty {
-            let head = activity.split(separator: ",", maxSplits: 1).first.map(String.init) ?? activity
-            return LinePhase(key: "host:\(head)", words: activity)
+            return LinePhase(key: "host:\(firstClause(activity))", words: activity)
         }
         if let waitOn, !waitOn.isEmpty {
             return LinePhase(key: "wait", words: "\(waitVerb) \(waitOn)", verb: waitVerb, object: waitOn)
         }
         let calls = told(turn)
+        if calls.count == 1, ApprovalShape.titleOnly(calls[0].name), let words = activity?.trimmingCharacters(in: .whitespaces), !words.isEmpty {
+            return LinePhase(key: "host:\(firstClause(words))", words: words)
+        }
         if calls.count == 1 {
             let phrase = ToolPhrase.of(calls[0], live: true, cwd: cwd)
             return LinePhase(key: "call:\(calls[0].callId)", words: phrase.line, verb: phrase.verb, object: phrase.target)
@@ -76,6 +81,12 @@ public struct LinePhase: Sendable, Hashable {
         }
         if let last, case .assistant(let block) = last.item, block.streaming { return LinePhase(key: "writing", words: "") }
         return .thinking
+    }
+
+    /// The host's words up to the first comma: what keys a host phase, so a
+    /// count or a place in line changes the words without a morph.
+    static func firstClause(_ words: String) -> String {
+        words.split(separator: ",", maxSplits: 1).first.map(String.init) ?? words
     }
 
     /// Something of the turn's own has come: anything but the person's row and an empty thought or reply.

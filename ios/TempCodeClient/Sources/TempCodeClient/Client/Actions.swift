@@ -208,7 +208,7 @@ public struct ThreadDraft: Sendable, Hashable {
     /// itself (`session.create { firstMessage }`): a draft reaches the host
     /// only with its first send.
     public var firstMessage: String?
-    /// Born a master (a chat draft's Master pick; admin).
+    /// Born a master (a chat draft's Master pick; operate, like any create).
     public var master: Bool?
 
     public init(threadType: ThreadType, provider: ProviderId, model: String, reasoning: Reasoning? = nil, projectId: String? = nil, workspaceId: String? = nil, cwd: String? = nil, permission: PermissionPolicy? = nil, planPath: String? = nil, goal: String? = nil, title: String? = nil, brief: String? = nil, masterId: String? = nil, after: String? = nil, startedBy: String? = nil, context1m: Bool? = nil, firstMessage: String? = nil, master: Bool? = nil) {
@@ -237,11 +237,10 @@ public struct ThreadDraft: Sendable, Hashable {
         type == .orchestration ? .orchestrator : .implementer
     }
 
-    /// The capability the create needs: born a master takes `admin`; a
-    /// full-access thread skips every prompt, so it takes `approve`.
+    /// The capability the create needs: a full-access thread skips every
+    /// prompt, so it takes `approve`; anything else, a master too, `operate`.
     public var needs: Capability {
-        if master == true { return .admin }
-        return permission == .auto ? .approve : .operate
+        permission == .auto ? .approve : .operate
     }
 
     public var params: Methods.SessionCreate.Params {
@@ -479,8 +478,9 @@ extension EnvironmentClient {
     /// Decide an approval. The card shows the decision at once and reverts if the host refuses.
     /// The decision shows on the tap and goes once: a second tap while one is
     /// out, or after this device decided, sends nothing. A refusal puts the
-    /// card back undecided with its line (`CardDecision.refusalLine`).
-    public func approve(_ sessionId: String, requestId: String, allow: Bool) async throws {
+    /// card back undecided with its line (`CardDecision.refusalLine`), worded
+    /// by the request's `choices`: "Not run" for a held computer step's Run now.
+    public func approve(_ sessionId: String, requestId: String, allow: Bool, choices: ApprovalRequestEvent.Choices? = nil) async throws {
         if let block = approveBlock { throw ActionError.blocked(block) }
         guard threads[sessionId]?.deciding.contains(requestId) != true, threads[sessionId]?.decisions[requestId] == nil else { return }
         threads[sessionId]?.deciding.insert(requestId)
@@ -492,7 +492,7 @@ extension EnvironmentClient {
         } catch {
             let wrapped = ActionError.wrap(error)
             threads[sessionId]?.decisions[requestId] = nil
-            threads[sessionId]?.refusals[requestId] = CardDecision.refusalLine(allow: allow, reason: wrapped.message)
+            threads[sessionId]?.refusals[requestId] = CardDecision.refusalLine(allow: allow, reason: wrapped.message, choices: choices)
             throw wrapped
         }
     }
@@ -581,9 +581,9 @@ extension EnvironmentClient {
         try await acting(.operate) { try await self.request(Methods.SessionBatch.self, .init(action: action, ids: ids)) }
     }
 
-    /// Pin a root thread as a master, or unpin it; admin only. The meta push says the rest.
+    /// Pin a root thread as a master, or unpin it; any key that steers threads (operate). The meta push says the rest.
     public func setMaster(_ sessionId: String, _ master: Bool) async throws {
-        try await act(.admin) { try await self.request(Methods.SessionSetMaster.self, .init(sessionId: sessionId, master: master)) }
+        try await act(.operate) { try await self.request(Methods.SessionSetMaster.self, .init(sessionId: sessionId, master: master)) }
     }
 
     /// The host's catalog, fetched once per session and kept; `refresh` asks the host to re-probe.

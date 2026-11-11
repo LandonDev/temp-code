@@ -26,7 +26,7 @@ extension PushHandler {
         activities.isLive(ThreadKey(environmentId: target.environmentId, sessionId: target.sessionId))
     }
 
-    /// Approve or Deny from the notification's actions: the host's `session.approve`,
+    /// Approve or Deny (Run now or Skip) from the notification's actions: the host's `session.approve`,
     /// through the thread's client. The app runs in the background for this, so the
     /// socket is brought up first and given a moment. A refusal (a key that may not
     /// approve, a host out of reach, a prompt already decided) is said back as one
@@ -43,7 +43,7 @@ extension PushHandler {
             try? await Task.sleep(for: .milliseconds(250))
         }
         do {
-            try await client.approve(target.sessionId, requestId: decision.requestId, allow: decision.allow)
+            try await client.approve(target.sessionId, requestId: decision.requestId, allow: decision.allow, choices: decision.choices)
         } catch {
             PushDelegate.explain(decision, (error as? ActionError)?.message ?? error.localizedDescription)
         }
@@ -51,11 +51,13 @@ extension PushHandler {
     }
 }
 
-/// An Approve or Deny tapped on an approval notice.
+/// An Approve or Deny (Run now or Skip) tapped on an approval notice.
 nonisolated struct PushDecision: Sendable, Hashable {
     let target: PushTarget
     let requestId: String
     let allow: Bool
+    /// The choices the notification's category names: the words of a refusal.
+    let choices: ApprovalRequestEvent.Choices?
     /// The notice's own words, for the answer when the decision is refused.
     let title: String
     let subtitle: String
@@ -69,17 +71,6 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
     @MainActor static weak var handler: PushHandler?
     nonisolated private static let log = Logger(subsystem: "dev.landon.tempcode", category: "push")
 
-    /// The categories the host names in `aps.category` (remote/apnsPayload.ts).
-    enum Category {
-        nonisolated static let approval = "tc.approval"
-        nonisolated static let thread = "tc.thread"
-    }
-
-    enum Action {
-        nonisolated static let approve = "tc.approve"
-        nonisolated static let deny = "tc.deny"
-    }
-
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
@@ -87,13 +78,16 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
         return true
     }
 
-    /// Approve asks for the phone's unlock; Deny is the destructive one. Every other thread notice opens the thread on tap.
+    /// The host's categories (`PushCategories`): an approval's Approve and a
+    /// held computer step's Run now ask for the phone's unlock; Deny and Skip
+    /// are the destructive ones. Every other thread notice opens the thread on tap.
     nonisolated static func categories() -> Set<UNNotificationCategory> {
-        let approve = UNNotificationAction(identifier: Action.approve, title: "Approve", options: [.authenticationRequired])
-        let deny = UNNotificationAction(identifier: Action.deny, title: "Deny", options: [.destructive])
-        let approval = UNNotificationCategory(identifier: Category.approval, actions: [approve, deny], intentIdentifiers: [], hiddenPreviewsBodyPlaceholder: "Needs approval", options: [])
-        let thread = UNNotificationCategory(identifier: Category.thread, actions: [], intentIdentifiers: [], hiddenPreviewsBodyPlaceholder: "Thread update", options: [])
-        return [approval, thread]
+        Set(PushCategories.all.map { category in
+            let actions = category.actions.map { action in
+                UNNotificationAction(identifier: action.id, title: action.title, options: action.option == .destructive ? [.destructive] : [.authenticationRequired])
+            }
+            return UNNotificationCategory(identifier: category.id, actions: actions, intentIdentifiers: [], hiddenPreviewsBodyPlaceholder: category.hiddenPreview, options: [])
+        })
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
@@ -112,15 +106,16 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
     // asserts the main thread there (the async forms returned on a
     // cooperative thread and aborted the app on the first real tap).
 
-    /// A tap on a notification opens the thread and its card; Approve or Deny decides the prompt without opening anything.
+    /// A tap on a notification opens the thread and its card; Approve or Deny (Run now or Skip) decides the prompt without opening anything.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         // The payload is read here; only Sendable values cross to the main actor.
         let content = response.notification.request.content
         let target = PushTarget(userInfo: content.userInfo)
         let decision: PushDecision? = {
-            guard let target, response.actionIdentifier == Action.approve || response.actionIdentifier == Action.deny,
+            guard let target, let allow = PushCategories.allow(action: response.actionIdentifier),
                   let tc = content.userInfo["tc"] as? [AnyHashable: Any], let requestId = tc["requestId"] as? String, !requestId.isEmpty else { return nil }
-            return PushDecision(target: target, requestId: requestId, allow: response.actionIdentifier == Action.approve, title: content.title, subtitle: content.subtitle)
+            let choices = PushCategories.named(content.categoryIdentifier)?.choices
+            return PushDecision(target: target, requestId: requestId, allow: allow, choices: choices, title: content.title, subtitle: content.subtitle)
         }()
         // UIKit's handler is not Sendable in this SDK; it is made to be called once, on the main thread, which is where this lands.
         let action = response.actionIdentifier
@@ -173,9 +168,11 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
         let content = UNMutableNotificationContent()
         content.title = decision.title
         if !decision.subtitle.isEmpty { content.subtitle = decision.subtitle }
-        content.body = "\(decision.allow ? "Not approved" : "Not denied"): \(reason)"
+        content.body = decision.choices == nil
+            ? "\(decision.allow ? "Not approved" : "Not denied"): \(reason)"
+            : CardDecision.refusalLine(allow: decision.allow, reason: reason, choices: decision.choices)
         content.threadIdentifier = decision.target.sessionId
-        content.categoryIdentifier = Category.thread
+        content.categoryIdentifier = PushCategories.thread.id
         content.interruptionLevel = .timeSensitive
         content.relevanceScore = 1
         var tc: [String: Any] = ["event": "needs_you", "environmentId": decision.target.environmentId, "threadId": decision.target.sessionId, "ts": Int(Date.now.timeIntervalSince1970 * 1000)]
