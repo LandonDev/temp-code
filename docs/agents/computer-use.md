@@ -207,7 +207,12 @@ why and the measured headline.
   Screen Recording, a named failure without Accessibility) is
   scripts/lib/computerProofGate.ts; scripts/lib/macScreen.ts skips their
   `--gate` runs at entry if the screen is locked, asleep or unreadable
-  (docs/computer-protocol.md "The unattended proof modes"). Each proof's
+  (docs/computer-protocol.md "The unattended proof modes"). The tc-computer
+  and bridge rows start through scripts/proof-bun.ts, which picks a Bun with
+  `node:sqlite` whatever `bun` an ancestor node_modules/.bin offers;
+  `TC_PROOF_LEGS=<leg>` runs some of e2e-tc-computer's legs by hand. Where
+  they stand on 2026-11-11: base steps and fallbacks 1 to 3 passed on the
+  Mac, every later step not run (locked). Each proof's
   startup sweep (scripts/lib/computerProofProcesses.ts) ends leftover TC Probe
   copies and proof-owned services after taking its turn. Services carry
   `TEMP_CODE_COMPUTER_PROOF=1`; the sweep also recognises older gate services
