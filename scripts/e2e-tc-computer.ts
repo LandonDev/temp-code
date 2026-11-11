@@ -234,6 +234,8 @@ const report = {
     outcome: 'ran' | 'aborted'
     why?: 'input' | 'deadline' | 'locked'
     afterMs?: number
+    /** for a try the screen ended: what the last dark read saw */
+    screen?: string
   }[],
   stopped: null as string | null,
   cleanup: [] as string[],
@@ -433,11 +435,15 @@ async function screenAwake(): Promise<boolean> {
   try {
     const { stdout } = await execFileAsync(PROBE_TOOL, ['screen'], { encoding: 'utf8', timeout: 5_000 })
     const screen = JSON.parse(stdout) as { locked: boolean; asleep: boolean }
+    if (screen.locked || screen.asleep) lastDarkRead = `${new Date().toISOString()} ${stdout.trim()}`
     return !screen.locked && !screen.asleep
-  } catch {
+  } catch (e) {
+    lastDarkRead = `${new Date().toISOString()} the screen read failed: ${(e as Error).message.split('\n')[0]}`
     return false
   }
 }
+/** What the last read that found the screen dark saw, for the report of a try it ended. */
+let lastDarkRead: string | null = null
 
 /** Set when an idle stretch long enough for a try came while the Mac was locked or dark. */
 let lockedGap = false
@@ -472,13 +478,16 @@ function watchPerson(deadline: number, onStop: () => void): Watch {
     fired = { at: Date.now(), why }
     onStop()
   }
+  // one dark read can be a probe that timed out under load: the screen counts as lost on the second in a row
+  let dark = 0
   const look = async (): Promise<void> => {
     if (fired) return
     if (Date.now() > deadline) return fire('deadline')
     try {
       const [idle, awake] = await Promise.all([personIdleSecondsAsync(), screenAwake()])
+      dark = awake ? 0 : dark + 1
       if (!UNGATED && personSince(Date.now(), idle, since, ownInput)) fire('input')
-      else if (!awake) fire('locked')
+      else if (dark >= 2) fire('locked')
     } catch {
       // the next look reads again
     }
@@ -1003,7 +1012,8 @@ async function run(): Promise<void> {
       at,
       outcome: 'aborted',
       why: fired?.why ?? 'input',
-      afterMs: (fired?.at ?? Date.now()) - t0
+      afterMs: (fired?.at ?? Date.now()) - t0,
+      ...(fired?.why === 'locked' && lastDarkRead ? { screen: lastDarkRead } : {})
     })
     abortApps(servicesFrom)
     tryAborted = false
