@@ -34,3 +34,14 @@ import Testing
         #expect(!RenameEditor.isEditor(role: "AXOutline", sameAsField: false))
     }
 }
+
+#if canImport(AppKit)
+@testable import Input
+
+/// The front app by AX, never NSRunningApplication's isActive, which goes stale off main's loop.
+@Suite struct FrontAppTests {
+    @Test func anAppThatIsNotRunningIsNotInFront() {
+        #expect(!AX.isFrontApp(999_999))
+    }
+}
+#endif

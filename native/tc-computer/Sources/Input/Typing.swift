@@ -129,7 +129,7 @@ extension InputEngine {
             pasteItem = menuItem(KeyCombo(modifiers: .command, key: .character("v")), pid: pid)
             // at `front` the hold re-validates a Paste the background disables: read again inside it
             if tier != .front, let (_, m) = pasteItem, !m.enabled {
-                if tier == .process, NSRunningApplication(processIdentifier: pid)?.isActive != true {
+                if tier == .process, !AX.isFrontApp(pid) {
                     throw needsFrontForMenu(m.path, pid: pid)
                 }
                 throw ComputerFailure(ComputerError(kind: .actionUnsupported, message: "\(m.line) is disabled.", menu: m.path))

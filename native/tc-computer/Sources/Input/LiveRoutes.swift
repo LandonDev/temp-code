@@ -35,7 +35,7 @@ final class LiveRoutes {
             hit: { [self] in readHit() },
             scrollBar: { [self] in readArea().map { AXTier.hasScrollBar($0, direction: action.scroll_direction ?? .down) } ?? false },
             pageScrolls: { [self] in readArea().map { Set(AX.actions($0).filter { $0.hasPrefix("AXScroll") && $0.hasSuffix("ByPage") }) } ?? [] },
-            appActive: { [self] in NSRunningApplication(processIdentifier: target.pid)?.isActive ?? false },
+            appActive: { [self] in AX.isFrontApp(target.pid) },
             webContent: { [self] in readWeb() },
             commitExpected: { [self] in target.commitExpected?(action) ?? false }
         )

@@ -459,14 +459,7 @@ final class FrontTier: @unchecked Sendable {
         }
     }
 
-    /// The app in front, by AX: NSWorkspace's answer goes stale on a thread that does not run main's loop.
-    private func focusedAppPid() -> pid_t? {
-        guard let app = AX.element(AXUIElementCreateSystemWide(), "AXFocusedApplication") else {
-            return NSWorkspace.shared.frontmostApplication?.processIdentifier
-        }
-        var pid: pid_t = 0
-        return AXUIElementGetPid(app, &pid) == .success ? pid : nil
-    }
+    private func focusedAppPid() -> pid_t? { AX.focusedAppPid() }
 
     private func appBrief(_ pid: pid_t) -> AppBrief? {
         guard let app = NSRunningApplication(processIdentifier: pid) else { return nil }

@@ -1,3 +1,4 @@
+import AppKit
 import ApplicationServices
 import ComputerCore
 import ComputerProtocol
@@ -149,4 +150,19 @@ enum AX {
             return ComputerFailure(ComputerError(kind: .actionUnsupported, message: "\(name) can't \(what) (AX error \(err.rawValue)).", element: index, available: available))
         }
     }
+}
+
+extension AX {
+    /// The app in front, by AX: NSWorkspace's answer and NSRunningApplication.isActive go stale on a thread that
+    /// does not run main's loop (an app a session step brought forward read active after it was put back).
+    static func focusedAppPid() -> pid_t? {
+        guard let app = element(AXUIElementCreateSystemWide(), "AXFocusedApplication") else {
+            return NSWorkspace.shared.frontmostApplication?.processIdentifier
+        }
+        var pid: pid_t = 0
+        return AXUIElementGetPid(app, &pid) == .success ? pid : nil
+    }
+
+    /// Whether `pid` is the app in front now.
+    static func isFrontApp(_ pid: pid_t) -> Bool { focusedAppPid() == pid }
 }

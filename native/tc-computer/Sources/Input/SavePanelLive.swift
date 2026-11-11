@@ -60,7 +60,7 @@ extension InputEngine {
         let app = NSRunningApplication(processIdentifier: pid)?.localizedName ?? "The app"
         let frontAllowed = tiers.contains(.front)
         var flow = SavePanelFlow(target: goal, replace: action.replace ?? false, app: app, frontAllowed: frontAllowed,
-                                 sessionAllowed: tiers.contains(.session), appActive: NSRunningApplication(processIdentifier: pid)?.isActive ?? false)
+                                 sessionAllowed: tiers.contains(.session), appActive: AX.isFrontApp(pid))
         let startedAt = Date().timeIntervalSince1970 - 1
         var hold: FrontHold?
         var session: SessionChange?
@@ -103,7 +103,13 @@ extension InputEngine {
                 if err != .success { throw AX.failure(err, element: nil, what: "take \(text)") }
             case .press(let part):
                 guard let e = read.element(partPath(part, parts)) else { throw lostPanel(app, goal) }
-                try AX.press(e, what: "be pressed")
+                // right after Go to Folder the panel's buttons are briefly not pressable while it changes folder
+                let until = clock.seconds() + Double(InputTiming.panelOpenMaxMs) / 1000
+                while AX.bool(e, "AXEnabled") == false, clock.seconds() < until { clock.sleep(ms: InputTiming.panelPollMs) }
+                if AX.perform(e, "AXPress") != .success {
+                    clock.sleep(ms: InputTiming.panelPollMs * 2)
+                    try AX.press(e, what: "be pressed")
+                }
             case .confirmGoTo:
                 // E4': Go to Folder confirms only in the active app: AXConfirm first, else Return to the panel's own pid
                 guard let field = read.element(parts?.pathField) else { throw lostPanel(app, goal) }
