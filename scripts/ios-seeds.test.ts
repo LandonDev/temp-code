@@ -20,7 +20,12 @@ import {
   preambleRow,
   preambleText,
   projectPlanMarkdown,
-  withShellLog
+  withShellLog,
+  COMPUTER_HELD_REQUEST,
+  computerAwayRows,
+  computerConfirmRows,
+  computerHeldRows,
+  runSkipAsk
 } from './lib/ios-seeds'
 
 describe('the notices thread', () => {
@@ -136,5 +141,38 @@ describe('accounts', () => {
     expect(claude.reports[1]?.windows.find((w) => w.label === 'Weekly')?.usedPercent).toBe(95)
     expect(snapshot.providers.codex.profiles).toHaveLength(1)
     expect(snapshot.peers?.env_b).toMatchObject({ connected: true, build })
+  })
+})
+
+describe('the computer threads', () => {
+  it('hold a step for the Mac on Run now and Skip, on the call it waits for, every row on the wire schema', () => {
+    const rows = computerHeldRows()
+    for (const row of [...rows, ...computerConfirmRows(), ...computerAwayRows()]) expect(WireAgentEventSchema.parse(row)).toEqual(row)
+    const call = rows.find((r) => r.type === 'tool-call')
+    const ask = rows.find((r) => r.type === 'approval-request')
+    expect(ask).toMatchObject({
+      requestId: COMPUTER_HELD_REQUEST,
+      toolName: 'computer_session',
+      choices: 'run-skip',
+      title: 'Use your pointer and keyboard to click button "Save" in TextEdit, window "Untitled"',
+      callId: call?.type === 'tool-call' ? call.callId : null
+    })
+    expect(rows.at(-1)).toEqual({ type: 'status', status: 'waiting', detail: 'awaiting approval' })
+    expect(runSkipAsk('r', 'c')).toMatchObject({ requestId: 'r', callId: 'c', choices: 'run-skip' })
+  })
+  it('a confirmation carries the host\'s computer card shape, no choices', () => {
+    const ask = computerConfirmRows().find((r) => r.type === 'approval-request')
+    expect(ask?.type === 'approval-request' && ask.choices).toBeUndefined()
+    expect(ask).toMatchObject({ toolName: 'mcp__app__computer_batch', input: { app: 'Mail', window: 'Re: Lunch', actions: ['click button "To"', 'type "Lunch at noon?"', 'click button "Send"'] } })
+    expect(ask?.type === 'approval-request' && ask.title).toMatch(/^3 actions in Mail, window "Re: Lunch": /)
+  })
+  it('a step allowed while away is the registry\'s away notice, no card', () => {
+    const rows = computerAwayRows()
+    expect(rows.some((r) => r.type === 'approval-request')).toBe(false)
+    expect(rows.find((r) => r.type === 'notice')).toMatchObject({
+      kind: 'away',
+      message: 'Allowed while away: Use your pointer and keyboard to click button "Rename" in Finder, window "Documents"?',
+      away: { kind: 'allowed' }
+    })
   })
 })

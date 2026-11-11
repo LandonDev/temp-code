@@ -358,13 +358,16 @@ struct ThreadCard<Content: View>: View {
 
 /// What an approval asks for, shaped per tool and never raw JSON (the
 /// desktop's `approvalDetailOf`): a shell command with its gist, a file
-/// edit with the lines it adds, or the request's string fields.
+/// edit with the lines it adds, or the request's string fields. A computer
+/// tool's title already names the app, the window and each action, so its
+/// card is the title alone (`ApprovalShape.titleOnly`).
 private enum ApprovalDetail {
     case shell(doing: String, command: String)
     case file(path: String, added: [String], more: Bool)
     case fields([(String, String)])
 
     static func of(_ request: ApprovalRequestEvent) -> ApprovalDetail? {
+        if ApprovalShape.titleOnly(request.toolName) { return nil }
         let input = request.input?.objectValue ?? [:]
         let name = request.toolName.lowercased()
         let command: String? = {
@@ -392,7 +395,8 @@ private enum ApprovalDetail {
 /// An approval with its decided state, the desktop's `ApprovalControls`:
 /// undecided, what the agent wants to do in plain words with the command
 /// in a mono well, then Allow and Deny (`ApprovalActions`, the steering
-/// thread's); decided, the one-line verdict.
+/// thread's), or Run now and Skip for a computer step held for the Mac
+/// (`CardDecision` by the request's `choices`); decided, the one-line verdict.
 struct ApprovalCard: View {
     let approval: ApprovalItem
     let client: EnvironmentClient
@@ -484,7 +488,7 @@ struct ApprovalCard: View {
     }
 
     private func heading(_ decided: Bool?) -> String {
-        CardDecision.heading(allowed: decided, auto: approval.auto)
+        CardDecision.heading(allowed: decided, auto: approval.auto, choices: approval.request.choices)
     }
 
     private func symbol(_ decided: Bool?) -> String {

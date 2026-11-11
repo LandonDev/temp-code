@@ -93,6 +93,8 @@ export function notice(value: unknown): Notice {
     ...(v.subtitle === undefined ? {} : { subtitle: str(v.subtitle, 'subtitle', 200) }),
     ...(v.kind === undefined ? {} : { kind: noticeKind(v.kind) }),
     ...(v.requestId === undefined ? {} : { requestId: str(v.requestId, 'requestId', 200) }),
+    // Only the one value a phone knows; any other is left out, so the notice keeps Approve and Deny.
+    ...(v.choices === 'run-skip' ? { choices: 'run-skip' as const } : {}),
     ...(v.hostName === undefined ? {} : { hostName: str(v.hostName, 'hostName', 80) })
   }
 }

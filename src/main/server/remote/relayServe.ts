@@ -353,6 +353,7 @@ export class RelayServer {
       ts: notice.ts,
       seq: notice.seq,
       ...(notice.requestId ? { requestId: notice.requestId } : {}),
+      ...(notice.choices ? { choices: notice.choices } : {}),
       ...(notice.hostName ? { hostName: notice.hostName } : {}),
       // A thread its person is looking at on this Mac: the box's webhooks still hear, its phones do not.
       ...(notice.onScreen ? { onScreen: true as const } : {})

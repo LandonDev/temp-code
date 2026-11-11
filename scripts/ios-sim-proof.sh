@@ -54,6 +54,15 @@
 #           the composer empty, with text and mid-turn at the largest
 #           accessibility size; the key shots in dark too. TC_TEST_CONTROL_URL is the test server's
 #           control panel; the set reads back what landed.
+#   computer A computer step held for the Mac: the card's Run now and Skip in
+#           light, dark and at the accessibility size ("Save the draft in
+#           TextEdit"), Run now decided (Ran now), a fresh held step from
+#           /ask decided with Skip (Skipped), a safe-mode confirmation as its
+#           title alone ("Send the reply in Mail"), and a held step allowed
+#           while away as its away row ("Rename the folder in Finder"). Run
+#           alone it shoots the read key's card first (ro-run-skip-light),
+#           then pairs with TC_TEST_PAIR_LINK_OPERATE; it reads back that one
+#           Run now and one Skip landed. Needs TC_TEST_CONTROL_URL.
 #   catalog The catalog's asks erring twice with the link open (/fail): "Couldn't
 #           load models" with Retry on a draft and a thread's composer, light and
 #           dark (the actions set shoots the light pair too). Needs TC_TEST_CONTROL_URL.
@@ -562,6 +571,7 @@ actions_set() {
   # The read key first: nothing hidden, everything disabled with the reason.
   shot "ro-composer-light" thread "gateway refuse"
   shot "ro-approval-light" thread "Run the test suite"
+  shot "ro-run-skip-light" thread "Save the draft in TextEdit"
   appearance dark
   shot "ro-composer-dark" thread "gateway refuse"
   appearance light
@@ -671,6 +681,41 @@ if missing:
 PY
 }
 
+# A computer step held for the Mac (docs/IOS-DESIGN.md "Live cards"): the
+# card says Run now and Skip, the decisions land as session.approve.
+computer_set() {
+  [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ] && [ -n "${TC_TEST_CONTROL_URL:-}" ] || { echo "ios-sim-proof: the computer set needs TC_TEST_PAIR_LINK_OPERATE and TC_TEST_CONTROL_URL" >&2; return 2; }
+  appearance light
+  # Alone, the app still holds the read key: the card with the reason in the buttons' place.
+  [ "$SET" = computer ] && shot "ro-run-skip-light" thread "Save the draft in TextEdit"
+  xcrun simctl terminate "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
+  xcrun simctl uninstall "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
+  xcrun simctl install "$TC_SIM_UDID" "$APP"
+  TC_TEST_PAIR_LINK="$TC_TEST_PAIR_LINK_OPERATE" TC_TEST_PAIR_NAME="${TC_TEST_PAIR_NAME:-} (acting)" pair || { echo "ios-sim-proof: the app did not pair with the acting key" >&2; return 3; }
+  rm -f "$OUT/shots/00-pairing.png"
+  control /actions/clear >/dev/null
+  shot "computer-held-light" thread "Save the draft in TextEdit"
+  appearance dark
+  shot "computer-held-dark" thread "Save the draft in TextEdit"
+  appearance light
+  xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
+  shot "computer-held-a11y" thread "Save the draft in TextEdit"
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+  shot "computer-confirm-light" thread "Send the reply in Mail"
+  shot "computer-away-light" thread "Rename the folder in Finder"
+  TC_ACTION="approve" shot "computer-ran-now-light" thread "Save the draft in TextEdit"
+  control /ask '{"sessionId":"ios-computer-held","kind":"run-skip"}' >/dev/null
+  TC_ACTION="deny" shot "computer-skipped-light" thread "Save the draft in TextEdit"
+  python3 - "$(control /actions)" <<'PY'
+import json, sys
+decided = [a.get("allow") for a in json.loads(sys.argv[1])["actions"] if a["kind"] == "approve" and a["sessionId"] == "ios-computer-held"]
+print("ios-sim-proof: computer decisions " + json.dumps(decided))
+if sorted(decided) != [False, True]:
+    print("ios-sim-proof: MISSING one Run now and one Skip on ios-computer-held", file=sys.stderr)
+    sys.exit(4)
+PY
+}
+
 # A notification tap lands on the card: the launch feeds the delegate a
 # hub-shaped payload for the named thread and row, the transcript's
 # navigation report says which row it opened on.
@@ -683,6 +728,10 @@ push_set() {
   rm -f "$container/Documents/navigation-report.json"
   TC_NOTIFY="Run the test suite|0" shot "push-tap-approval" notification "" "" "" 14
   cp "$container/Documents/navigation-report.json" "$OUT/push-navigation-approval.json" 2>/dev/null || echo '{}' > "$OUT/push-navigation-approval.json"
+  rm -f "$container/Documents/navigation-report.json"
+  # A held computer step's notification opens on its Run now and Skip card.
+  TC_NOTIFY="Save the draft in TextEdit|0" shot "push-tap-run-skip" notification "" "" "" 14
+  cp "$container/Documents/navigation-report.json" "$OUT/push-navigation-run-skip.json" 2>/dev/null || echo '{}' > "$OUT/push-navigation-run-skip.json"
   shot "push-settings-row" settings
   # A real delivery through the notification centre's delegate while the app
   # is in the foreground (simctl push): the delegate must answer on the main
@@ -1415,6 +1464,7 @@ case "$SET" in
   box) box_set ;;
   actions) actions_set ;;
   catalog) catalog_set ;;
+  computer) computer_set ;;
   box-actions) box_actions_set ;;
   push) push_set ;;
   features) features_set ;;
@@ -1422,7 +1472,7 @@ case "$SET" in
   markup) markup_set ;;
   glass) glass_set ;;
   return) return_set ;;
-  all) shell_set; threads_set; scroll_set; actions_set; push_set; host_gone_set ;;
+  all) shell_set; threads_set; scroll_set; actions_set; computer_set; push_set; host_gone_set ;;
   *) echo "ios-sim-proof: unknown TC_PROOF_SET $SET" >&2; exit 2 ;;
 esac
 

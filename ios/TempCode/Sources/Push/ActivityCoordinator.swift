@@ -94,6 +94,8 @@ final class ActivityCoordinator {
             case .approval(let approval) where approval.allowed == nil:
                 let request = approval.request
                 if request.toolName == "ExitPlanMode" || request.toolName == "exit_plan_mode" { return "Plan ready to approve" }
+                // A held computer step: its title as the host's question, the line the host's push says too.
+                if request.choices == .runSkip, let title = request.title, !title.isEmpty { return CardDecision.question(title: title) }
                 let face = request.title.map { "\(request.toolName) — \($0)" } ?? request.toolName
                 return "Needs approval: \(face)"
             case .question(let question) where !question.resolved:

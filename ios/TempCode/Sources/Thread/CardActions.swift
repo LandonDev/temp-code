@@ -10,8 +10,9 @@ import TempCodeContract
 // place; a link that is only down for a moment sees the buttons dimmed
 // with the reason under them.
 
-/// Allow and Deny under an approval. Allow is the prominent one, in the
-/// accent; Deny is quiet. A decision shows at once (the client records it
+/// Allow and Deny under an approval, Run now and Skip under a computer step
+/// held for the Mac (`CardDecision`, by the request's `choices`). Allow is
+/// the prominent one, in the accent; Deny is quiet. A decision shows at once (the client records it
 /// before the wire) and the card settles in 200 ms ease-out when the
 /// buttons leave; a refusal rolls the decision back and says so in one
 /// quiet line that the next decision clears.
@@ -27,18 +28,20 @@ struct ApprovalActions: View {
 
     var body: some View {
         let block = client.approveBlock
+        let allow = CardDecision.allow(approval.request.choices)
+        let deny = CardDecision.deny(approval.request.choices)
         VStack(alignment: .leading, spacing: 8) {
             if let block, !block.isTransient {
                 blockLine(block)
             } else {
-                CardButton("Allow", role: .prominent, busy: busy == true) { decide(true) }
+                CardButton(allow.title, role: .prominent, busy: busy == true) { decide(true) }
                     .disabled(busy != nil || block != nil)
                     .opacity(block == nil ? 1 : 0.5)
-                    .accessibilityHint("Let the agent run this")
-                CardButton("Deny", role: .quiet, busy: busy == false) { decide(false) }
+                    .accessibilityHint(allow.hint)
+                CardButton(deny.title, role: .quiet, busy: busy == false) { decide(false) }
                     .disabled(busy != nil || block != nil)
                     .opacity(block == nil ? 1 : 0.5)
-                    .accessibilityHint("Refuse this")
+                    .accessibilityHint(deny.hint)
                 if let block {
                     blockLine(block)
                 }
@@ -67,7 +70,7 @@ struct ApprovalActions: View {
         decidedCount += 1
         Task {
             defer { busy = nil }
-            try? await client.approve(sessionId, requestId: approval.request.requestId, allow: allow)
+            try? await client.approve(sessionId, requestId: approval.request.requestId, allow: allow, choices: approval.request.choices)
         }
     }
 }

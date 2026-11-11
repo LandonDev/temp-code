@@ -244,6 +244,31 @@ describe('ActivityFeed', () => {
     expect(push.hasActivities('t1')).toBe(false)
     feed.stop()
   })
+  it('a computer step held for the Mac reads working with the hold line, then waiting with the run-skip card\'s question', async () => {
+    const listeners = new Set<(m: SessionMeta) => void>()
+    const { hub, calls } = fakeHub()
+    const push = new PushRegistry(db(), { hub: () => hub, log: () => {} })
+    await push.setActivity('k1', { sessionId: 't1', token: TOKEN, bundleId: 'b', environment: 'sandbox' })
+    let latest: SessionMeta | null = null
+    const feed = new ActivityFeed({ registry: { onMeta: (l) => (listeners.add(l), () => listeners.delete(l)), get: () => latest }, push, hub: () => hub, now: () => 2000, reasonWaitMs: 5, log: () => {} })
+    feed.start()
+    const emit = (m: SessionMeta) => listeners.forEach((l) => l((latest = m)))
+    // The registry's tool hold (setToolHold) is the live row's activity and detail: the decorated meta the feed hears.
+    emit(meta({ activity: 'Waiting for the Mac to be free', statusDetail: 'Waiting for the Mac to be free' }))
+    emit(meta({ status: 'waiting' }))
+    // The notifier's line for the card: approvalLine of its title.
+    const question = 'Use your pointer and keyboard to click button "Save" in TextEdit, window "Untitled"?'
+    feed.needsYou('t1', question)
+    await new Promise((r) => setTimeout(r, 20))
+    const pushes = calls.filter((c) => c.method === 'pushActivity').map((c) => c.args as { event: string; state: HubActivityState })
+    expect(pushes.map((p) => [p.event, p.state.phase])).toEqual([
+      ['update', 'working'],
+      ['end', 'waiting']
+    ])
+    expect(pushes[0].state.task).toBe('Waiting for the Mac to be free')
+    expect(pushes[1].state.reason).toBe(question)
+    feed.stop()
+  })
   it('coalesces task-line changes to one push per window at priority 5, the latest line winning, and waits briefly for a reason before an end', async () => {
     const listeners = new Set<(m: SessionMeta) => void>()
     const { hub, calls } = fakeHub()
@@ -303,6 +328,9 @@ describe('a host with its own APNs sender', () => {
     // a relayed host's notice names that host, so the tap opens the thread there
     await push.deliver({ event: 'needs_you', threadId: 'm1', seq: 4, title: 'On the Mac', body: 'Asked', ts: 7000, environmentId: 'env_mac' })
     expect((sent[2].payload as { tc: Record<string, unknown> }).tc).toMatchObject({ hostId: 'box', environmentId: 'env_mac', threadId: 'm1', seq: 4 })
+    // a computer step held for the Mac, relayed through this box: the phone's Run now and Skip, on the Mac's thread
+    await push.deliver({ event: 'needs_you', threadId: 'm1', seq: 22, title: 'Save', body: 'Use your pointer?', kind: 'approval', requestId: 'h1', choices: 'run-skip', ts: 8000, environmentId: 'env_mac' })
+    expect(sent[3].payload).toMatchObject({ aps: { category: 'tc.run-skip' }, tc: { environmentId: 'env_mac', requestId: 'h1' } })
   })
   it('drops a phone Apple calls gone, records other failures on the row, and pushes activity states to the thread tokens', async () => {
     const { apns, sent } = fakeApns((token) => (token.startsWith('ab') ? { ok: false, error: 'APNs 410 Unregistered', gone: true } : { ok: false, error: 'APNs 500', gone: false }))

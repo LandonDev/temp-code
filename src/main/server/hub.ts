@@ -15,6 +15,8 @@ export interface HubEvent {
   kind?: HubNoticeKind
   /** The approval a phone's Approve or Deny decides (kind `approval`). */
   requestId?: string
+  /** A computer step held for the session tier: the phone's Run now and Skip (`tc.run-skip`). */
+  choices?: 'run-skip'
   /** This host's name: the payload's `tc.host`, which the phone adds to the subtitle when several hosts are paired. */
   hostName?: string
   /** Another host's thread: a relayed host's notice (remote/relay.ts); default this host's own id. */
@@ -274,6 +276,7 @@ export function startHub(options: HubOptions, dependencies: Dependencies = {}): 
           ...(event.subtitle === undefined ? {} : { subtitle: event.subtitle }),
           ...(event.kind === undefined ? {} : { kind: event.kind }),
           ...(event.requestId === undefined ? {} : { requestId: event.requestId }),
+          ...(event.choices === undefined ? {} : { choices: event.choices }),
           ...(event.hostName === undefined ? {} : { hostName: event.hostName })
         },
         'notify',

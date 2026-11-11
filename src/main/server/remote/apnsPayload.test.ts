@@ -39,6 +39,7 @@ describe('the APNs payloads match the shared fixtures', () => {
       'needs-you-approval',
       'needs-you-plan',
       'needs-you-question',
+      'needs-you-run-skip',
       'needs-you-waiting',
       'stuck'
     ])
@@ -64,6 +65,13 @@ describe('the rules the fixtures rest on', () => {
     expect(payload.aps).not.toHaveProperty('category')
     expect(payload.tc).not.toHaveProperty('host')
     expect((notificationPayload({ ...base, hostName: 'mac' }) as { tc: Record<string, unknown> }).tc.host).toBe('mac')
+  })
+  it('Run now and Skip only on an approval that carries them: any other kind keeps its category', () => {
+    const category = (n: Partial<ApnsNotice>) => (notificationPayload({ ...base, threadId: 't', ...n }) as { aps: Record<string, unknown> }).aps.category
+    expect(category({ kind: 'approval', choices: 'run-skip' })).toBe('tc.run-skip')
+    expect(category({ kind: 'approval' })).toBe('tc.approval')
+    expect(category({ kind: 'waiting', choices: 'run-skip' })).toBe('tc.thread')
+    expect((notificationPayload({ ...base, threadId: 't', kind: 'approval', choices: 'run-skip' }) as { tc: Record<string, unknown> }).tc).not.toHaveProperty('choices')
   })
   it('a stopped end ranks with waiting and failed; a working update does not', () => {
     const score = (phase: ApnsActivityUpdate['state']['phase'], event: 'update' | 'end' = 'end') =>

@@ -26,6 +26,8 @@ export interface ApnsNotice {
   body: string
   kind?: HubNoticeKind
   requestId?: string
+  /** A computer step held for the session tier: the category is `tc.run-skip`, Run now and Skip. */
+  choices?: 'run-skip'
   /** The host's name: `tc.host`, which the phone's service extension adds to the subtitle when several hosts are paired. */
   hostName?: string
   ts: number
@@ -44,8 +46,16 @@ export const ACTIVITY_DISMISS_S = 120
 export const ALERT_TTL_S = 3600
 /** The category the phone registers Approve and Deny under. */
 export const APPROVAL_CATEGORY = 'tc.approval'
+/** A computer step held for the Mac: the phone's Run now and Skip, under the same two actions. */
+export const RUN_SKIP_CATEGORY = 'tc.run-skip'
 /** Every other thread notice: the phone's Open action. */
 export const THREAD_CATEGORY = 'tc.thread'
+
+/** The phone's actions for a thread's notice: Approve and Deny, Run now and Skip, else Open. */
+function categoryOf(notice: Pick<ApnsNotice, 'kind' | 'choices'>): string {
+  if (notice.kind !== 'approval') return THREAD_CATEGORY
+  return notice.choices === 'run-skip' ? RUN_SKIP_CATEGORY : APPROVAL_CATEGORY
+}
 const SOUNDED = new Set<ApnsEventKind>(['needs_you', 'failed', 'host_down'])
 const RELEVANCE: Record<ApnsEventKind, number> = {
   needs_you: 1,
@@ -69,7 +79,7 @@ export function notificationPayload(notice: ApnsNotice): unknown {
       'summary-arg': notice.subtitle ?? notice.title,
       'interruption-level': notice.event === 'needs_you' ? 'time-sensitive' : 'active',
       'relevance-score': RELEVANCE[notice.event],
-      ...(notice.threadId === undefined ? {} : { category: notice.kind === 'approval' ? APPROVAL_CATEGORY : THREAD_CATEGORY }),
+      ...(notice.threadId === undefined ? {} : { category: categoryOf(notice) }),
       // The phone's service extension may add the host to the subtitle when several hosts are paired.
       'mutable-content': 1
     },

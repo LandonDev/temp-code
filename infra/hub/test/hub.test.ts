@@ -728,7 +728,7 @@ describe('the APNs payloads match the shared fixtures', () => {
     .sort()
     .map((path) => ({ file: path.replace(/^.*\//, ''), ...files[path] }))
   it('has every case', () => {
-    expect(fixtures).toHaveLength(22)
+    expect(fixtures).toHaveLength(23)
   })
   for (const f of fixtures.filter((f) => !f.file.startsWith('activity-'))) {
     it(`alert ${f.file}`, () => {
@@ -755,6 +755,11 @@ describe('the APNs payloads match the shared fixtures', () => {
       expect(sent.tc).toMatchObject({ kind, host: 'box' })
       expect(sent.aps['mutable-content']).toBe(1)
     }
+    // A held computer step's choices: run-skip names the phone's Run now and Skip, any other value is left out.
+    await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, kind: 'approval', requestId: 'h1', choices: 'run-skip' }, auth)
+    expect(JSON.parse(fetch.mock.calls.at(-1)![1]!.body as string).aps.category).toBe('tc.run-skip')
+    await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, kind: 'approval', requestId: 'h1', choices: 'later' }, auth)
+    expect(JSON.parse(fetch.mock.calls.at(-1)![1]!.body as string).aps.category).toBe('tc.approval')
     await callWith(hubEnv, `/v1/hosts/box/activities/thread-1/k1`, 'PUT', { token: TOKEN, bundleId: 'dev.landon.tempcode.ios', environment: 'production' }, auth)
     const update = { hostId: 'box', threadId: 'thread-1', event: 'update', state: { phase: 'working', since: 1000, ts: 5000, done: 2, total: 4, unit: 'threads' }, ts: 5000 }
     expect(await (await callWith(hubEnv, '/v1/activity', 'POST', update, auth)).json()).toEqual({ delivered: 1, failed: 0 })
