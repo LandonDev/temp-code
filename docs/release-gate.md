@@ -285,6 +285,7 @@ otherwise.
 | `script:compare-computer-words` | Mac | real model runs; the scratch windows come forward | 23 min for the 48 runs, then the policy check (the instructions build's run, 13:35 to 13:58 UTC, not repeated) | Opus 5.5 and Muse Wonder 1.0 passed every task on both words, GPT-6.1 Sol two of three; the cua words ship for Anthropic and OpenAI, the anthropic words for Meta (docs/computer-protocol.md §19.6) |
 | `script:measure-front-guard` | Mac | 5 idle minutes, aborting at the person's first input; TextEdit, Chrome (scratch profile), Finder, Calculator and IntelliJ come forward | about 2 min after the idle wait | 2026-11-10, ungated, the person away: Finder and Calculator ran and never raised; TextEdit, Chrome and IntelliJ skipped because the person's own copies were running (docs/computer-protocol.md §23.9) |
 | `script:e2e-computer-bench` | Mac | "The bench's hand run" below | | |
+| `script:e2e-computer-bench -- --set field [--host box \| --reference codex] --round <r>` | Mac (the box run needs the branch's built clone on the box, `TC_BOX_CLONE`, and SSH) | the field suite (docs/computer-protocol.md §21.7): 14 tasks × 3 models, real turns; the person away, `TC_BENCH_UNGATED=1` as their leave (the session-tier tasks take the pointer); Chrome, TextEdit, Calculator, Finder; roughly 30–60 min per host run | — | not yet run: built 2026-11-10, after the field test; judge the three saved reports with `--judge-field` on any host |
 
 ## The computer bench
 

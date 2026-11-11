@@ -32,7 +32,7 @@ import {
 } from './benchChecks'
 
 export type TaskId = 'textedit-write' | 'chrome-read' | 'chrome-form' | 'chrome-delete' | 'devapp-form' | 'settings-toggle' | 'save-dialog'
-export type TaskApp = 'TextEdit' | 'Google Chrome' | 'Electron' | 'System Settings'
+export type TaskApp = 'TextEdit' | 'Google Chrome' | 'Electron' | 'System Settings' | 'Calculator' | 'Finder'
 
 export interface TaskContext {
   /** a fresh word that names the run's window */
@@ -44,8 +44,11 @@ export interface TaskContext {
   /** bench.html as a file URL */
   benchUrl: string
   writeFile(path: string, text: string): Promise<void>
-  /** opens a file or URL in the app in the background, as the runner launches it; resolves once its window is listed */
-  open(app: TaskApp, target: string): Promise<void>
+  /** opens a file or URL in the app in the background, as the runner launches it; resolves once its window is listed.
+   *  `args` appends to the launcher's arguments (a second Chrome tab, a TextEdit defaults flag). */
+  open(app: TaskApp, target: string, opts?: { args?: string[] }): Promise<void>
+  /** pins an app the MODEL launched into the run's lane, so the check can read it (the field set's app-launch task) */
+  pin?(app: TaskApp, pid: number): void
   /** commands: defaults, textutil, osascript, mdfind */
   run: Exec
   home: string
@@ -98,14 +101,15 @@ export interface CheckResult {
 }
 
 export interface ComputerTask {
-  id: TaskId
+  /** the gate tasks use TaskId; the field set (fieldTasks.ts) its own ids */
+  id: string
   app: TaskApp
   /** bumped whenever the start, the message or the check changes: a baseline row of another version is ignored */
   version: number
   /** 'background': doable in the ax and process tiers; 'session': needs the session tier, left out of the gate run */
   tier: 'background' | 'session'
   /** a Mac-wide app every lane shares: runs of it take the bench's lock, one at a time */
-  shared?: 'system-settings' | 'dev-instance'
+  shared?: 'system-settings' | 'dev-instance' | 'calculator' | 'finder'
   /** scratch content for one run: a fresh document or a fresh page with a new seed; or why it cannot run now */
   setup(ctx: TaskContext): Promise<TaskStart | { skip: string }>
   /** the person's message, naming the window by its scratch title */
@@ -130,7 +134,7 @@ export const BENCH_ORDERS = 60
 
 // ── bench.html's orders ─────────────────────────────────────────────────
 
-function mulberry32(seed: number): () => number {
+export function mulberry32(seed: number): () => number {
   let a = seed
   return () => {
     a |= 0
@@ -167,8 +171,9 @@ export const FORM_STATUS = 'Submitted: Ana Ruiz, ana@example.com, L, gift, expre
 
 // ── reading the end state ───────────────────────────────────────────────
 
-type Element = Extract<ObservationLine, { type: 'element' }>
-const elements = (o: ParsedObservation): Element[] => o.lines.filter((l): l is Element => l.type === 'element')
+export type ObsElement = Extract<ObservationLine, { type: 'element' }>
+type Element = ObsElement
+export const elements = (o: ParsedObservation): Element[] => o.lines.filter((l): l is Element => l.type === 'element')
 
 /** What the page ever writes into its status line. */
 const STATUS_WORDS = /^(Submitted: |Deleted )/
@@ -378,8 +383,8 @@ export const gateTasks = (tasks: readonly ComputerTask[] = COMPUTER_TASKS): Comp
 export const COMPARISON_TASKS: readonly TaskId[] = ['textedit-write', 'chrome-read', 'chrome-form']
 export const POLICY_TASK: TaskId = 'chrome-delete'
 
-export function taskById(id: TaskId): ComputerTask {
-  const t = COMPUTER_TASKS.find((x) => x.id === id)
-  if (!t) throw new Error(`no task ${id}`)
+export function taskById(id: string, tasks: readonly ComputerTask[] = COMPUTER_TASKS): ComputerTask {
+  const t = tasks.find((x) => x.id === id)
+  if (!t) throw new Error(`no task ${id} (tasks: ${tasks.map((x) => x.id).join(', ')})`)
   return t
 }

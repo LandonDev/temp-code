@@ -19,14 +19,24 @@
  *   bun run script:e2e-computer-bench -- --report-only | --runs 3 | --models a,b | --tasks a,b | --session | --rebaseline
  *   bun run script:e2e-computer-bench -- --judge <report.json>   (re-judge a saved report; runs nothing)
  *   bun run script:e2e-computer-bench -- --reference codex       (Codex's own computer use, by hand)
+ *
+ * The field suite (scripts/lib/fieldTasks.ts; §21.7), hand run only — the
+ * same tasks three ways, each writing the same report shape:
+ *   bun run script:e2e-computer-bench -- --set field --round r1                  (our tools, Mac threads)
+ *   bun run script:e2e-computer-bench -- --set field --host box --round r1      (our tools from box threads over the
+ *       Mac bridge; TC_BOX_CLONE names the branch's built clone on the box, TC_BOX_SSH/TC_BOX_BUN as the bridge proof)
+ *   bun run script:e2e-computer-bench -- --set field --reference codex --round r1  (Codex's own cua_repl)
+ *   bun run script:e2e-computer-bench -- --judge-field mac.json box.json codex.json (the bar, fieldBar.ts; any host)
  */
 import { gateScreenSkip } from './lib/macScreen'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, loadavg } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { randomBytes } from 'node:crypto'
+import { createServer } from 'node:net'
+import { createInterface } from 'node:readline'
 import { computerHooks } from '../src/main/server/computer/mcp'
 import { probeCatalogs } from '../src/main/server/drivers/catalogProbe'
 import { installedCodexVersion } from '../src/main/server/drivers/codexVersion'
@@ -36,6 +46,8 @@ import { exec } from './lib/benchChecks'
 import {
   BENCH_MODELS,
   BENCH_UNGATED_ENV,
+  FIELD_MODELS,
+  isSettleEvent,
   keepFront,
   keepReport,
   laneOrder,
@@ -43,6 +55,7 @@ import {
   readRun,
   macReady,
   runStamp,
+  scanRun,
   type BenchArgs,
   type BenchModel
 } from './lib/benchRun'
@@ -66,7 +79,9 @@ import {
 import { RigStop, asProbe, repoRoot, startRig, type Rig } from './lib/computerRig'
 import { otherProof } from './lib/proofOrder'
 import { killGroup, startDevInstance } from './lib/devInstance'
-import { COMPUTER_ONLY_LINE, COMPUTER_TASKS, gateTasks, taskById, type CallRecord, type CheckResult, type ComputerTask, type DevInstance, type TaskContext, type TaskId, type TaskStart } from './lib/computerTasks'
+import { COMPUTER_ONLY_LINE, COMPUTER_TASKS, gateTasks, taskById, type CallRecord, type CheckResult, type ComputerTask, type DevInstance, type TaskContext, type TaskStart } from './lib/computerTasks'
+import { FIELD_TASKS } from './lib/fieldTasks'
+import { fieldBar } from './lib/fieldBar'
 import { buildIsCurrent, type BuildStamp } from './lib/soakJudge'
 
 const ROOT = repoRoot()
@@ -96,6 +111,13 @@ function loadBaseline(): Baseline {
   }
 }
 
+if (args.judgeField) {
+  // The field bar over saved reports (fieldBar.ts): runs nothing, works on any host.
+  const saved = args.judgeField.map((path) => JSON.parse(readFileSync(path, 'utf8')) as BenchReport)
+  const judged = fieldBar(saved)
+  process.stdout.write(judged.table)
+  process.exit(judged.ok ? 0 : 1)
+}
 if (args.judge) {
   const saved = JSON.parse(readFileSync(args.judge, 'utf8')) as BenchReport
   const judged = judgeBench(saved, loadBaseline())
@@ -116,6 +138,9 @@ if (screenSkip) {
 // ── the run's places and its report ─────────────────────────────────────
 
 const STARTED = Date.now()
+/** The field set (fieldTasks.ts): the field test's tasks, three ways to run them (docs/computer-protocol.md §21.7). */
+const FIELD = args.set === 'field'
+const BOX = args.host === 'box'
 const judged = args.mode === 'gate' || args.mode === 'report-only'
 /** The script's own deadline holds for the gate's plan alone (one run a task, reruns on a breach); `--runs n` takes as long as it takes. */
 const DEADLINE = judged && args.runs === null ? STARTED + BENCH_TIMING.budgetMs : Infinity
@@ -146,6 +171,9 @@ const report: BenchReport = {
   commit: git('rev-parse', 'HEAD'),
   clean: git('status', '--porcelain', '--untracked-files=no') === '',
   mode: args.mode,
+  ...(FIELD ? { set: 'field' as const } : {}),
+  ...(BOX ? { hostKind: 'box' as const } : {}),
+  ...(args.round ? { round: args.round } : {}),
   ...(UNGATED ? { ungated: true } : {}),
   host: { macos: sh('sw_vers', ['-productVersion']), chip: sh('sysctl', ['-n', 'machdep.cpu.brand_string']), load1: loadavg()[0] },
   models: [],
@@ -170,6 +198,10 @@ const pending = new Set<() => Promise<void>>()
 const devGroups = new Set<number>()
 /** Threads whose computer work must stop before anything is put back. */
 const liveThreads = new Set<string>()
+/** Box threads still live (--host box), stopped over the link on any exit. */
+const liveBoxThreads = new Set<string>()
+/** The box half's link while --host box runs (startBoxLink below). */
+let box: BoxLink | null = null
 let rig: Rig | null = null
 let cleaned = false
 /** Inside the 5 s the gate's kill gives between SIGTERM and SIGKILL: the dev groups first, then the threads' computer work and the scratch apps, then what runs changed. */
@@ -179,6 +211,9 @@ async function cleanup(): Promise<void> {
   for (const pgid of devGroups) killGroup(pgid, 'SIGKILL')
   const within = (ms: number, work: Promise<unknown>): Promise<unknown> => Promise.race([work.catch(() => undefined), sleep(ms)])
   await within(1_500, Promise.all([...liveThreads].map((id) => rig?.sessions.stop(id))))
+  await within(5_000, Promise.all([...liveBoxThreads].map((id) => box?.call('session.interrupt', { sessionId: id, subtree: true }))))
+  await within(8_000, box?.quit() ?? Promise.resolve())
+  box = null
   // A call still stopping cannot act on an app that is gone: no late act lands after the switch is put back.
   rig?.closeLanes()
   await within(2_000, Promise.all([...pending].map((undo) => undo())))
@@ -217,9 +252,10 @@ if (UNGATED) log(`${BENCH_UNGATED_ENV}=1: no idle wait before a launch; only a l
 // ── lanes and tasks ─────────────────────────────────────────────────────
 
 await Promise.all([probeCatalogs(), installedCodexVersion()])
+const MODEL_SET: readonly BenchModel[] = FIELD ? FIELD_MODELS : BENCH_MODELS
 const wanted: BenchModel[] =
-  args.mode === 'reference' ? [BENCH_MODELS.find((m) => m.provider === 'codex')!] : BENCH_MODELS.filter((m) => !args.models || args.models.includes(m.model))
-for (const name of args.models ?? []) if (!BENCH_MODELS.some((m) => m.model === name)) throw new Error(`no bench model ${name} (models: ${BENCH_MODELS.map((m) => m.model).join(', ')})`)
+  args.mode === 'reference' ? [MODEL_SET.find((m) => m.provider === 'codex')!] : MODEL_SET.filter((m) => !args.models || args.models.includes(m.model))
+for (const name of args.models ?? []) if (!MODEL_SET.some((m) => m.model === name)) throw new Error(`no ${args.set} model ${name} (models: ${MODEL_SET.map((m) => m.model).join(', ')})`)
 const lanes = wanted.flatMap((m, index) => {
   if (modelInfo(m.provider as ProviderId, m.model)) {
     report.models.push({ model: m.model })
@@ -233,7 +269,9 @@ const lanes = wanted.flatMap((m, index) => {
 })
 type Lane = (typeof lanes)[number]
 
-const asked: ComputerTask[] = args.tasks ? args.tasks.map((id) => taskById(id as TaskId)) : COMPUTER_TASKS
+const SET_TASKS: readonly ComputerTask[] = FIELD ? FIELD_TASKS : COMPUTER_TASKS
+const asked: ComputerTask[] = args.tasks ? args.tasks.map((id) => taskById(id, SET_TASKS)) : [...SET_TASKS]
+// The field set runs every task, whatever tier the host's scheduler grants (args.session is forced on).
 const runnable = args.session ? asked : gateTasks(asked)
 const needsSession = asked.filter((t) => !runnable.includes(t))
 
@@ -298,6 +336,128 @@ async function devInstance(lane: Lane, dir: string, onBounce: () => void): Promi
   return { userData: dev.userData, window: dev.window, stop: dev.stop }
 }
 
+// ── the box half (--host box): real threads on an isolated box instance ──
+
+const sleepMs = sleep
+const freePort = (): Promise<number> =>
+  new Promise((ok) => {
+    const s = createServer()
+    s.listen(0, '127.0.0.1', () => {
+      const { port } = s.address() as { port: number }
+      s.close(() => ok(port))
+    })
+  })
+const until = async (ms: number, test: () => Promise<boolean> | boolean): Promise<boolean> => {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    if (await Promise.resolve(test()).catch(() => false)) return true
+    await sleepMs(500)
+  }
+  return false
+}
+
+/** A wire call on the rig's own in-process server (its local loopback socket is the implicit admin). */
+async function macRpc<T = unknown>(method: string, params: unknown = {}): Promise<T> {
+  const ws = new WebSocket(`ws://127.0.0.1:${R.server.port}/`)
+  return new Promise<T>((ok, fail) => {
+    const timer = setTimeout(() => {
+      ws.close()
+      fail(new Error(`no answer to ${method}`))
+    }, 60_000)
+    ws.addEventListener('open', () => ws.send(JSON.stringify({ id: 'field', method, params })))
+    ws.addEventListener('message', (ev) => {
+      const frame = JSON.parse(String(ev.data)) as { id?: string; ok?: boolean; result?: T; error?: string }
+      if (frame.id !== 'field') return
+      clearTimeout(timer)
+      ws.close()
+      if (frame.ok) ok(frame.result as T)
+      else fail(new Error(frame.error))
+    })
+    ws.addEventListener('error', () => {
+      clearTimeout(timer)
+      fail(new Error(`socket error on ${method}`))
+    })
+  })
+}
+
+interface BoxLink {
+  envId: string
+  /** the box half's scratch root and the work dir its threads run in */
+  root: string
+  work: string
+  call<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>
+  quit(): Promise<void>
+}
+
+/**
+ * The box half (scripts/e2e-computer-bench-box.ts) over SSH, its remote
+ * listener tunnelled here; the rig's server registers it as an environment,
+ * sets the bridge policy and turns its computer switch on, as
+ * scripts/e2e-computer-bridge.ts does with full instances.
+ */
+async function startBoxLink(): Promise<BoxLink> {
+  const sshWords = (process.env.TC_BOX_SSH || 'ssh box').split(/\s+/).filter(Boolean)
+  const clone = process.env.TC_BOX_CLONE
+  if (!clone) throw new Error('TC_BOX_CLONE names the clone of this branch on the box, built (electron-vite build)')
+  const boxBun = process.env.TC_BOX_BUN || '/srv/agents/home/.bun/bin/bun'
+  const boxPort = 20_000 + Math.floor(Math.random() * 20_000)
+  const tunnel = await freePort()
+  const half = `${boxBun} scripts/e2e-computer-bench-box.ts --port ${boxPort}`
+  // The Mac's key may log in as root, and Electron refuses to run as root: the half runs as the agents user then.
+  const boxCommand = `cd ${clone} && if [ "$(id -u)" = 0 ]; then exec runuser -u agents -- env HOME=/srv/agents/home ${half}; else exec ${half}; fi`
+  const ssh: ChildProcess = spawn(
+    sshWords[0],
+    [...sshWords.slice(1, -1), '-o', 'ExitOnForwardFailure=yes', '-L', `127.0.0.1:${tunnel}:127.0.0.1:${boxPort}`, sshWords[sshWords.length - 1], boxCommand],
+    { stdio: ['pipe', 'pipe', 'inherit'] }
+  )
+  const pending = new Map<number, (out: { result?: unknown; error?: string }) => void>()
+  let nextId = 0
+  type ReadyLine = { ready: boolean; envId: string; key: string; root: string; work: string; error?: string; log?: string }
+  const halfLine: { ready: ReadyLine | null } = { ready: null }
+  createInterface({ input: ssh.stdout! }).on('line', (line) => {
+    let msg: { id?: number; ready?: boolean; result?: unknown; error?: string }
+    try {
+      msg = JSON.parse(line)
+    } catch {
+      return
+    }
+    if (msg.ready !== undefined) halfLine.ready = msg as ReadyLine
+    else if (msg.id !== undefined) pending.get(msg.id)?.(msg)
+  })
+  ssh.once('error', (error) => {
+    for (const answer of pending.values()) answer({ error: `box half: ${error.message}` })
+    pending.clear()
+  })
+  const call = <T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> =>
+    new Promise<T>((ok, fail) => {
+      const id = ++nextId
+      pending.set(id, (out) => (out.error !== undefined ? fail(new Error(out.error)) : ok(out.result as T)))
+      ssh.stdin?.write(JSON.stringify({ id, method, params }) + '\n')
+    })
+  await until(180_000, () => halfLine.ready !== null)
+  if (!halfLine.ready?.ready)
+    throw new Error(`the box half did not come up: ${halfLine.ready?.error ?? 'no ready line'}${halfLine.ready?.log ? `\n--- the box instance's log, its end ---\n${halfLine.ready.log}` : ''}`)
+  const { envId, key, root, work } = halfLine.ready
+  await macRpc('remote.environments.add', { url: `http://127.0.0.1:${tunnel}`, key, name: 'box' })
+  const registered = await until(60_000, async () =>
+    (await macRpc<{ environmentId?: string; registered?: boolean }[]>('macBridge.policy.get')).some((r) => (r.environmentId ?? envId) === envId && r.registered === true)
+  )
+  if (!registered) throw new Error('the box half never registered on the rig over the tunnel')
+  await macRpc('macBridge.policy.set', { environmentId: envId, policy: 'read' })
+  await macRpc('macBridge.computer.set', { environmentId: envId, on: true })
+  log(`box half up: ${envId}, threads run in ${work}`)
+  return {
+    envId,
+    root,
+    work,
+    call,
+    quit: async () => {
+      await Promise.race([call('quit').catch(() => null), sleepMs(5_000)])
+      ssh.kill()
+    }
+  }
+}
+
 // ── one run ─────────────────────────────────────────────────────────────
 
 class SkipRun extends Error {}
@@ -319,7 +479,7 @@ async function withLock<T>(key: string | undefined, fn: () => Promise<T>): Promi
 }
 
 type Settle = { kind: 'settled' | 'question' | 'timeout'; at: number }
-const isSettle = (e: AgentEvent): boolean => e.type === 'turn-complete' || (e.type === 'status' && (e.status === 'idle' || e.status === 'error' || e.status === 'stopped'))
+const isSettle = (e: AgentEvent): boolean => isSettleEvent(e)
 
 /** The thread's next settle after `afterSeq`, a question it asks, or the wall time. */
 function nextSettle(id: string, afterSeq: number, timeoutMs: number): Promise<Settle> {
@@ -421,14 +581,15 @@ async function oneRun(lane: Lane, task: ComputerTask, attempt: number): Promise<
       writeFile: async (p, t) => writeFileSync(p, t),
       run: exec,
       home: homedir(),
-      open: async (app, target) => {
+      open: async (app, target, opts) => {
         const held = await macReady(probe, UNGATED)
         if (held) throw new SkipRun(held)
-        const { front } = await R.launch(lane.name, app, target)
+        const { front } = await R.launch(lane.name, app, target, opts)
         // Ungated, the person accepts the scratch windows coming forward: the front is not judged.
         if (front === 'took' && !UNGATED) throw new FailRun('took the front')
         if (front !== 'kept') run.front.bounced = true
       },
+      pin: (app, pid) => R.pins.pin(lane.name, app, pid),
       devInstance: () => devInstance(lane, dir, () => (run.front.bounced = true))
     }
     let start: TaskStart | null = null
@@ -437,11 +598,12 @@ async function oneRun(lane: Lane, task: ComputerTask, attempt: number): Promise<
     }
     pending.add(undo)
     let thread: string | null = null
+    let boxThread: string | null = null
     try {
       const s = await task.setup(ctx)
       if ('skip' in s) return { ...run, reason: s.skip }
       start = s
-      return await drive(lane, task, start, run, (id) => (thread = id))
+      return BOX ? await driveBox(lane, task, start, run, (id) => (boxThread = id)) : await drive(lane, task, start, run, (id) => (thread = id))
     } catch (e) {
       if (e instanceof SkipRun) return { ...run, reason: e.message }
       if (e instanceof FailRun) return { ...run, outcome: 'failed', reason: e.message, front: { ...run.front, benchInFront: e.message === 'took the front' } }
@@ -449,12 +611,21 @@ async function oneRun(lane: Lane, task: ComputerTask, attempt: number): Promise<
     } finally {
       // No computer call may still be running when the run puts things back: a stopped turn's last act could land after.
       if (thread) await R.sessions.stop(thread).catch(() => undefined)
+      if (boxThread && box) {
+        await box.call('computer.stop', { sessionId: boxThread }).catch(() => undefined)
+        await box.call('session.interrupt', { sessionId: boxThread, subtree: true }).catch(() => undefined)
+      }
       await undo().catch((e: Error) => log(`teardown ${task.id}: ${e.message}`))
       pending.delete(undo)
       if (thread) {
         liveThreads.delete(thread)
         R.pins.unbind(thread)
         await registry.setArchived(thread, true).catch(() => undefined)
+      }
+      if (boxThread && box) {
+        liveBoxThreads.delete(boxThread)
+        R.pins.unbind(`${box.envId}:${boxThread}`)
+        await box.call('session.archive', { sessionId: boxThread, archived: true }).catch(() => undefined)
       }
       R.closeLane(lane.name)
       rmSync(dir, { recursive: true, force: true })
@@ -476,7 +647,8 @@ async function drive(lane: Lane, task: ComputerTask, start: TaskStart, run: Benc
   const offCards = registry.subscribe(id, (row: EventRow) => {
     if (row.event.type !== 'approval-request') return
     const requestId = row.event.requestId
-    const allow = row.event.choices !== 'run-skip'
+    // The field set answers the tier scheduler's Run now (the person's TC_BENCH_UNGATED leave); the gate's run Skips it.
+    const allow = row.event.choices !== 'run-skip' || (FIELD && UNGATED)
     queueMicrotask(() => void registry.approve(id, requestId, allow))
   })
   try {
@@ -515,7 +687,8 @@ async function drive(lane: Lane, task: ComputerTask, start: TaskStart, run: Benc
       check = c.ok && task.policy && args.mode !== 'reference' ? task.policy(start, records) : c
     }
     const after1 = R.mac.frontmost()
-    const benchInFront = !UNGATED && R.pins.pids(lane.name).includes(after1.pid)
+    // An adopted app (Finder) is the person's: never judged as the bench taking the front.
+    const benchInFront = !UNGATED && R.pins.pids(lane.name).filter((p) => !R.adopted().has(p)).includes(after1.pid)
     if (benchInFront && before.bundleId) {
       try {
         R.mac.activate(before.bundleId)
@@ -547,6 +720,132 @@ async function drive(lane: Lane, task: ComputerTask, start: TaskStart, run: Benc
   }
 }
 
+/**
+ * One run whose thread lives on the box instance (--host box): the turn runs
+ * there, its computer calls come back over the Mac bridge to this rig's
+ * tc-computer, and the run reads both clocks — the Mac-side host time per
+ * call (the rig's wrapper, keyed `<envId>:<sessionId>`) and the box-side row
+ * time — so the bridge's added latency is visible (rowMs − hostMs).
+ */
+async function driveBox(lane: Lane, task: ComputerTask, start: TaskStart, run: BenchRun, made: (id: string) => void): Promise<BenchRun> {
+  const B = box!
+  if (task.then) return { ...run, reason: 'two-turn tasks are not run in box mode' }
+  const before = R.mac.frontmost()
+  const t0 = Date.now()
+  const { id } = await B.call<{ id: string }>('session.create', {
+    provider: lane.model.provider,
+    model: lane.model.model,
+    reasoning: lane.model.effort,
+    permission: 'auto',
+    cwd: B.work,
+    threadType: 'chat',
+    title: `field ${task.id}`
+  })
+  made(id)
+  liveBoxThreads.add(id)
+  await B.call('macBridge.thread.set', { sessionId: id, macPeer: R.server.environmentId })
+  // Bridged calls run on this host keyed `<envId>:<sessionId>` (macComputerKey): bind the key to the lane so the
+  // thread's queries resolve to the lane's scratch pids and its host times land under the key.
+  const key = `${B.envId}:${id}`
+  R.pins.bind(key, lane.name)
+  const rowsOf = async (): Promise<EventRow[]> => {
+    const out = await B.call<EventRow[] | { rows: EventRow[] }>('session.events', { sessionId: id, afterSeq: 0 })
+    return Array.isArray(out) ? out : (out.rows ?? [])
+  }
+  const answered = new Set<string>()
+  const decided = new Set<string>()
+  /** Every card is answered: the box thread's own (Allow; the tier card Run now under the person's leave) and a Mac bridge prompt. */
+  const attend = async (rows: readonly EventRow[]): Promise<void> => {
+    for (const r of rows) {
+      if (r.event.type !== 'approval-request') continue
+      const requestId = r.event.requestId
+      if (answered.has(requestId)) continue
+      answered.add(requestId)
+      const allow = r.event.choices !== 'run-skip' || UNGATED
+      await B.call('session.approve', { sessionId: id, requestId, allow }).catch(() => undefined)
+    }
+    const cards = await macRpc<{ id: string; kind: string; status: string; sessionId: string }[]>('macBridge.pending').catch(() => [])
+    for (const c of cards) {
+      if (c.status !== 'pending' || c.sessionId !== id || decided.has(c.id)) continue
+      decided.add(c.id)
+      await macRpc('macBridge.decide', { id: c.id, allow: true }).catch(() => undefined)
+    }
+  }
+  const after = (await rowsOf()).at(-1)?.seq ?? 0
+  const sent = Date.now()
+  await B.call('session.send', { sessionId: id, text: promptOf(task.prompt(start)) })
+  let rows: EventRow[] = []
+  let scan = scanRun(rows, after)
+  const queueUntil = Date.now() + BENCH_TIMING.queueSkipMs
+  while (scan.firstRunningTs === null) {
+    await sleep(1_000)
+    rows = await rowsOf()
+    scan = scanRun(rows, after)
+    if (scan.firstRunningTs === null && Date.now() > queueUntil) {
+      const waited = Date.now() - sent
+      lane.queuedMs += waited
+      return { ...run, queuedMs: waited, reason: 'queued past 5 minutes on the box' }
+    }
+  }
+  run.queuedMs = scan.queuedMs
+  lane.queuedMs += scan.queuedMs
+  const deadline = Date.now() + task.wallMs
+  let timedOut = false
+  while (scan.settledAt === null) {
+    if (Date.now() > deadline) {
+      timedOut = true
+      await B.call('session.interrupt', { sessionId: id }).catch(() => undefined)
+      break
+    }
+    await attend(rows)
+    await sleep(1_000)
+    rows = await rowsOf()
+    scan = scanRun(rows, after)
+  }
+  if (timedOut) {
+    await sleep(2_000)
+    rows = await rowsOf()
+    scan = scanRun(rows, after)
+  }
+  const settleTs = scan.settledAt ?? rows.at(-1)?.ts ?? scan.firstRunningTs
+  const facts = readRun(rows, R.calls(key), scan.firstRunningTs, settleTs)
+  let check: CheckResult
+  if (timedOut) check = { ok: false, detail: 'timed out' }
+  else if (scan.question) check = { ok: false, detail: 'asked the person a question' }
+  else {
+    const records = callRecords(rows)
+    const c = await task.check(start, R.reader(lane.name), replyOf(rows), records).catch((e: Error) => ({ ok: false, detail: `check: ${e.message}` }))
+    check = c.ok && task.policy ? task.policy(start, records) : c
+  }
+  const after1 = R.mac.frontmost()
+  const benchInFront = !UNGATED && R.pins.pids(lane.name).filter((p) => !R.adopted().has(p)).includes(after1.pid)
+  if (benchInFront && before.bundleId) {
+    try {
+      R.mac.activate(before.bundleId)
+    } catch {
+      /* the run fails as having taken the front either way */
+    }
+  }
+  const done: BenchRun = {
+    ...run,
+    outcome: 'passed',
+    wallMs: facts.wallMs,
+    thinkMs: facts.thinkMs,
+    calls: facts.calls,
+    otherTools: facts.otherTools,
+    cards: facts.cards,
+    ...(facts.tokens ? { tokens: facts.tokens } : {}),
+    front: {
+      before: before.bundleId ?? String(before.pid),
+      after: after1.bundleId ?? String(after1.pid),
+      bounced: run.front.bounced,
+      personActive: R.mac.idleSeconds() < (Date.now() - t0) / 1000,
+      benchInFront
+    }
+  }
+  const fault = runFault(done)
+  return check.ok && !fault ? done : { ...done, outcome: 'failed', reason: fault ?? check.detail }
+}
 
 // ── the lanes, side by side ─────────────────────────────────────────────
 
@@ -604,7 +903,10 @@ const hooks = computerHooks.current
 if (args.mode === 'reference') computerHooks.current = null
 let exitCode = 0
 try {
-  log(`${args.mode}: ${lanes.map((l) => l.model.model).join(', ') || 'no lane'} on ${runnable.map((t) => t.id).join(', ')}`)
+  log(
+    `${args.mode}${FIELD ? ` · field set · host ${args.host}${args.round ? ` · round ${args.round}` : ''}` : ''}: ${lanes.map((l) => l.model.model).join(', ') || 'no lane'} on ${runnable.map((t) => t.id).join(', ')}`
+  )
+  if (BOX) box = await startBoxLink()
   await Promise.all(lanes.map(runLane))
 } finally {
   computerHooks.current = hooks

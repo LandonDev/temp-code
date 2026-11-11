@@ -2285,7 +2285,13 @@ why and the measured headline.
   in the background tiers, each end state read through the AX tree, the
   files or `defaults`; `BENCH_RULE` (scripts/lib/computerBench.ts) judges
   it against `<git-dir>/temp-code-gate/computer-bench/baseline.json`.
-  docs/release-gate.md "The computer bench".
+  docs/release-gate.md "The computer bench". `--set field` (§21.7, hand run
+  only; scripts/lib/fieldTasks.ts) is the 2026-11-10 field test as 14 tasks
+  on Opus, Sonnet and GPT-6.1 Sol, run three ways — `--host mac`, `--host
+  box` (threads on an isolated box instance over the Mac bridge, both
+  clocks recorded) and `--reference codex` — and judged across saved
+  reports by `--judge-field` (scripts/lib/fieldBar.ts: parity with Codex,
+  medians at or under its, the box within 15% of the Mac).
 - **Fixtures.** src/main/server/computer/fixtures/ (its README): wire
   frames, observation texts and app trees recorded from scratch content
   only (scripts/mac/record-computer-fixtures.sh), held to their schemas
