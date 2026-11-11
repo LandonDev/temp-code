@@ -1945,7 +1945,18 @@ from disk, never the Trash. Every action stays at the ax or process tier but the
 active leg's `front` steps and the stealer's steal (§23.9). In a hand run
 (`TC_PROOF_UNGATED=1`) each step that may bring an app forward waits for 5 s with
 no input, at most 2 minutes (`awaitQuiet`), and the person's front app and window
-are checked back after it. `TC_PROOF_LEGS=<leg>[,<leg>]` (windows, fallbacks,
+are checked back after it. `TC_PROOF_PRESENT=1` beside it is a hand run with the person at the Mac who
+accepts scratch apps coming forward: no step waits for quiet. A hand run with
+`--keep-going` (or `TC_PROOF_KEEP_GOING=1`) goes past a failed step to the rest of
+its leg, and stops only at a failed setup step (a launch, a build, a service, a
+scratch app or window; `chainSkip` in `scripts/lib/proofSteps.ts`); the gate stops a
+leg at its first failure as before. While the person uses the Mac, a call is judged
+by what the service did (`judgeFront`, `judgePointer`): a scratch app left in front,
+a restore the service reports `failed`, a window changed in the person's app with no
+input or a pointer moved with none fail; any other app in front is the person's or the
+system's and is noted. A step the person voided (the guard yielded because they chose
+the stealer) runs again at once, three times, before it is recorded void.
+`TC_PROOF_LEGS=<leg>[,<leg>]` (windows, fallbacks,
 fewer, web, active, stealer) runs some legs by hand, each other one recorded
 skipped:
 

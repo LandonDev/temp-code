@@ -136,6 +136,7 @@ import { webProofFixtures, WEB_NONCE, WEB_TITLES } from './lib/webProofFixtures'
 import { FIELD_FORM, fieldFormCode } from './lib/fieldTasks'
 import { intPoint } from './lib/computerPoint'
 import { STEAL_PROBE_APP_NAME, buildStealProbeApp, cleanupProbeApp, guiLaunchEnvironment, launchProbe } from './lib/tcProbeApp'
+import { chainSkip, isSetupStep, isVoid, judgeFront, judgePointer, keepGoing, retriesVoid } from './lib/proofSteps'
 import { COMPUTER_PROOF_ENV, sweepComputerProofProcesses } from './lib/computerProofProcesses'
 import { computerInitializeMs, computerProofMode, computerProofPolicy, LOST_TRY_LINE, lostTry, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
 import { OwnInput, personSince } from './lib/proofGate'
@@ -267,38 +268,42 @@ function check(ok: unknown, what: string, saw?: unknown): asserts ok {
 let currentStep = ''
 
 /** Steps that build on each other: once one fails, the rest skip. */
+/** A hand run's `--keep-going` (TC_PROOF_KEEP_GOING=1): a failed step skips the rest of its leg only when it was a setup step. */
+const KEEP_GOING = keepGoing()
+
 class Chain {
-  private broken: string | null = null
+  private broken: { name: string; setup: boolean } | null = null
 
   async step(name: string, fn: (data: Record<string, unknown>) => Promise<void>): Promise<void> {
     if (tryAborted) {
       record({ name, outcome: 'skipped', ms: 0, why: ABORTED })
       return
     }
-    if (this.broken) {
-      record({ name, outcome: 'skipped', ms: 0, why: `${this.broken} failed` })
+    const skipped = chainSkip(this.broken, KEEP_GOING)
+    if (skipped) {
+      record({ name, outcome: 'skipped', ms: 0, why: skipped })
       return
     }
     currentStep = name
-    const data: Record<string, unknown> = {}
-    const t0 = performance.now()
-    try {
-      await fn(data)
-      record({ name, outcome: 'passed', ms: Math.round(performance.now() - t0), data })
-    } catch (error) {
-      if (error instanceof Skip) {
-        record({
-          name,
-          outcome: 'skipped',
-          ms: Math.round(performance.now() - t0),
-          why: error.why,
-          data
-        })
+    // a step the person voided runs again at once, VOID_RETRIES times, before it is recorded void
+    for (let attempt = 0; ; attempt++) {
+      const data: Record<string, unknown> = attempt ? { voidedTries: attempt } : {}
+      const t0 = performance.now()
+      try {
+        await fn(data)
+        record({ name, outcome: 'passed', ms: Math.round(performance.now() - t0), data })
+        return
+      } catch (error) {
+        if (error instanceof Skip) {
+          if (isVoid(error.why) && retriesVoid(attempt) && !tryAborted) continue
+          record({ name, outcome: 'skipped', ms: Math.round(performance.now() - t0), why: error.why, data })
+          return
+        }
+        const why = error instanceof Error ? error.message : String(error)
+        record({ name, outcome: 'failed', ms: Math.round(performance.now() - t0), why, data })
+        this.broken = { name, setup: isSetupStep(name) }
         return
       }
-      const why = error instanceof Error ? error.message : String(error)
-      record({ name, outcome: 'failed', ms: Math.round(performance.now() - t0), why, data })
-      this.broken = name
     }
   }
 }
@@ -558,10 +563,19 @@ const personState = (): PersonState => ({
   at: Date.now()
 })
 
+/** The scratch apps the run started whose pids no global above names (the web leg's browser). */
+const scratchApps = new Set<number>()
+
+/** Every scratch app of the run: a front any of them holds after a call is the service's doing. */
+function scratchPids(launched?: number): number[] {
+  return [...new Set([probePid, stealPid, textEditPid, ...scratchApps, ...ownedPids(), launched ?? 0])].filter(Boolean)
+}
+
 /**
- * The person's frontmost app and pointer are where they were. When either moved and the person
- * used the Mac since `before`, it was them, not the service: the check is inconclusive, not failed.
- * An app the step `launched` coming in front is a raise behind the launch gate: noted, not failed.
+ * The person's frontmost app and pointer, judged by what the service did (scripts/lib/proofSteps.ts):
+ * a scratch app left in front fails, as does a pointer moved with no input; another app in front, or a
+ * pointer moved while the person used the Mac, is theirs and noted. An app the step `launched` coming in
+ * front is a raise behind the launch gate: noted, not failed.
  */
 function assertPersonUntouched(
   before: PersonState,
@@ -571,14 +585,13 @@ function assertPersonUntouched(
   const after = personState()
   const moved = Math.hypot(after.pointer.x - before.pointer.x, after.pointer.y - before.pointer.y)
   if (after.frontmost === before.frontmost && moved < 0.5) return 'untouched'
-  if (personIdleSeconds() * 1_000 < Date.now() - before.at) return 'person-active'
+  const personInput = personIdleSeconds() * 1_000 < Date.now() - before.at
   if (launched && after.frontmost === launched && moved < 0.5) return 'raised at launch'
-  check(after.frontmost === before.frontmost, `${when}: the frontmost app changed`, {
-    before: before.frontmost,
-    after: after.frontmost
-  })
-  check(moved < 0.5, `${when}: the pointer moved`, { before: before.pointer, after: after.pointer })
-  return 'untouched'
+  const front = judgeFront({ before: { pid: before.frontmost }, after: { pid: after.frontmost }, scratch: scratchPids(launched), personInput })
+  check(front.verdict !== 'failed', `${when}: ${front.verdict === 'failed' ? front.why : ''}`, { before: before.frontmost, after: after.frontmost })
+  const pointer = judgePointer(moved, personInput)
+  check(pointer !== 'moved', `${when}: the pointer moved with no input`, { before: before.pointer, after: after.pointer })
+  return front.verdict === 'kept' && pointer === 'still' ? 'untouched' : 'person-active'
 }
 
 interface PasteboardCount {
@@ -1506,7 +1519,7 @@ async function webLeg(): Promise<void> {
    */
   const checkFront = async (word?: FrontReport, since = Date.now()): Promise<void> => {
     if (!savedFront) return
-    if (word?.raised) check(word.restored === 'restored', 'web: the service restored a steal', word)
+    if (word?.raised) check(word.restored === 'restored' || word.restored === 'person-chose', 'web: the service restored a steal', word)
     const want = savedFront
     const same = (w: FrontWindow) => w.pid === want.pid && w.window === want.window
     const end = Date.now() + SERVICE.frontRestoreMs + 500
@@ -1516,8 +1529,9 @@ async function webLeg(): Promise<void> {
       after = frontWindow()
     }
     if (same(after)) return
-    check(after.pid !== pid, 'web: the scratch browser kept the front', { before: want, after })
-    check(personIdleSeconds() * 1_000 < Date.now() - since, 'web: the front app and window are the ones before the call', { before: want, after })
+    // judged by what the service did: the browser left in front fails; the person's or the system's change is noted
+    const front = judgeFront({ before: want, after, scratch: [pid, ...scratchPids()], report: word, personInput: personIdleSeconds() * 1_000 < Date.now() - since })
+    check(front.verdict !== 'failed', `web: ${front.verdict === 'failed' ? front.why : ''}`, { before: want, after })
     personMoved++
     savedFront = after
   }
@@ -1564,6 +1578,7 @@ async function webLeg(): Promise<void> {
       try {
         execFileSync('open', args, { stdio: 'pipe', timeout: 10_000, env: guiLaunchEnvironment() })
         pid = await until(() => scan.processes().find((p) => hasChromeProfile(p.command, profile) && p.command.startsWith(join(browser, 'Contents/MacOS/Google Chrome for Testing')))?.pid ?? null, 15_000, 'the scratch Chrome pid')
+        scratchApps.add(pid)
         await sleep(1_000)
       } finally {
         pid ||= scan.processes().find((p) => hasChromeProfile(p.command, profile) && p.command.startsWith(join(browser, 'Contents/MacOS/Google Chrome for Testing')))?.pid ?? 0
@@ -1911,7 +1926,9 @@ async function activeAppsSteps(a: Service, leg: Chain, scratch: string, awayLong
     }, SERVICE.frontRestoreMs + 500, 'the person\'s front app and window').catch(() => frontWindow())
     data.front = { before, after }
     if (after.pid === before.pid && after.window === before.window) return
-    check(personIdleSeconds() * 1_000 < Date.now() - since, "the person's front app and window came back", data.front)
+    // judged by what the service did: a target left in front fails; the person's own change is theirs
+    const front = judgeFront({ before, after, scratch: [...scratchPids(), tePid, finder].filter(Boolean), personInput: personIdleSeconds() * 1_000 < Date.now() - since })
+    check(front.verdict !== 'failed', `the person's front app and window came back: ${front.verdict === 'failed' ? front.why : ''}`, data.front)
   }
   let tePid = 0
   let finder = 0
@@ -2675,21 +2692,25 @@ async function guardWord(svc: Service, front: FrontReport | undefined, pid: numb
 }
 
 /**
- * A steal the guard undid leaves the person's front app and its front window as they were; the
- * person using the Mac meanwhile makes the step void, not failed. A stealer that never came forward
- * proves nothing about the guard, and the step fails.
+ * A steal the guard undid leaves the person's front app and its front window as they were, judged by
+ * what the service did (scripts/lib/proofSteps.ts `judgeFront`): its word, and the stealer not in front
+ * after; the person moving their own front meanwhile is theirs. A guard that yielded because the person
+ * chose the stealer proves nothing and voids the step, which runs again. A stealer that never came
+ * forward proves nothing about the guard, and the step fails.
  */
 function judgeGuard(data: Record<string, unknown>, word: FrontReport | null, before: FrontWindow, at: number): void {
   data.front = word ?? { raised: false }
-  if (personIdleSeconds() * 1_000 < Date.now() - at) throw skip('void: the person used the Mac during the step')
   const after = frontWindow()
   data.frontWindow = { before, after }
   // TC Probe Steal opens its own bundle with `activates`, which macOS 27.2 honours from the background;
   // a stealer that never came forward leaves the guard unproven, so the step fails rather than passing
   check(word, 'the stealer came forward and the guard said what it undid', { front: data.front, ...(data.frontWindow as object) })
+  const front = judgeFront({ before, after, scratch: [stealPid, ...scratchPids()], report: word, personInput: personIdleSeconds() * 1_000 < Date.now() - at })
+  if (front.verdict === 'person-chose') throw skip('void: the person chose the stealer, so the guard yielded')
   check(word.restored === 'restored', "the guard put the person's front back", word)
   check(word.ms !== undefined && word.ms <= SERVICE.frontRestoreMs, `within ${SERVICE.frontRestoreMs} ms`, word)
-  check(after.pid === before.pid && after.window === before.window, 'the front app and its front window are the ones before', data.frontWindow)
+  check(front.verdict !== 'failed', front.verdict === 'failed' ? front.why : '', data.frontWindow)
+  data.frontVerdict = front.verdict
 }
 
 /**
