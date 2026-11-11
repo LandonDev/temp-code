@@ -23,11 +23,14 @@ public final class FrontHoldContext: @unchecked Sendable {
     private let lock = NSLock()
     private var plan: FrontHoldPlan
     private var stop: Stop?
+    /// the person guard is on for this hold: their keys, clicks and wheel are dropped and stop nothing
+    let guarded: Bool
     private let nowMs: @Sendable () -> Int
     private let callCancelled: @Sendable () -> Bool
 
-    init(plan: FrontHoldPlan, nowMs: @escaping @Sendable () -> Int, cancelled: @escaping @Sendable () -> Bool) {
+    init(plan: FrontHoldPlan, nowMs: @escaping @Sendable () -> Int, cancelled: @escaping @Sendable () -> Bool, guarded: Bool = false) {
         self.plan = plan
+        self.guarded = guarded
         self.nowMs = nowMs
         callCancelled = cancelled
     }
@@ -65,7 +68,7 @@ public final class FrontHoldContext: @unchecked Sendable {
 
     func touched(_ t: PersonTouch) {
         lock.withLock {
-            if case .stop = plan.touched(t, guarded: false) { stop = .person }
+            if case .stop = plan.touched(t, guarded: guarded) { stop = .person }
         }
     }
 
@@ -128,6 +131,16 @@ public struct SessionKeyboardState: KeyboardState {
     }
 }
 
+/// The context the guard's Escape reaches, set once the context exists.
+private final class EscapeBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private weak var _ctx: FrontHoldContext?
+    var ctx: FrontHoldContext? {
+        get { lock.withLock { _ctx } }
+        set { lock.withLock { _ctx = newValue } }
+    }
+}
+
 /// The hold itself.
 final class FrontTier: @unchecked Sendable {
     let host: LiveSessionHost
@@ -135,11 +148,14 @@ final class FrontTier: @unchecked Sendable {
     let clock: InputClock
     let keyboard: KeyboardState
     let watch = HoldWatch()
+    /// the person guard's tap for a hold (§14.9, §25.5); nil or refused, the watch alone stops on a touch
+    let tap: PersonTapping?
     /// one hold at a time in this process, as one session step: the per-app queues never share the front
     private let holds = NSLock()
 
-    init(host: LiveSessionHost, sessionLock: MacLock, clock: InputClock, keyboard: KeyboardState = SessionKeyboardState()) {
+    init(host: LiveSessionHost, sessionLock: MacLock, clock: InputClock, keyboard: KeyboardState = SessionKeyboardState(), tap: PersonTapping? = nil) {
         self.host = host
+        self.tap = tap
         self.sessionLock = sessionLock
         self.clock = clock
         self.keyboard = keyboard
@@ -169,9 +185,8 @@ final class FrontTier: @unchecked Sendable {
         var plan = FrontHoldPlan(startedAt: nowMs(), person: person)
         plan.armedAt = arm.epochMs
         plan.idleAtArmMs = (host.sessionIdleSeconds() * 1000).rounded()
-        let ctx = FrontHoldContext(plan: plan, nowMs: { [clock] in Int((clock.seconds() * 1000).rounded()) }, cancelled: cancelled)
-        watch.arm { [weak ctx] t in ctx?.touched(t) }
-        defer { watch.disarm() }
+        let ctx = try guardHold(plan: plan, cancelled: cancelled)
+        defer { endGuard(ctx) }
 
         var outcome: Result<T, Error>
         var lastTicks: UInt64?
@@ -201,6 +216,23 @@ final class FrontTier: @unchecked Sendable {
         case .success(let value): return (value, report)
         case .failure(let error): throw withFront(error, report)
         }
+    }
+
+    /// Decision 6: the person guard for the hold, when its tap can be made: their keys, clicks and wheel
+    /// are dropped and stop nothing, Escape stops the step and restores at once. Without it, the watch:
+    /// their first key, click or wheel stops it the same way.
+    func guardHold(plan: FrontHoldPlan, cancelled: @escaping @Sendable () -> Bool) throws -> FrontHoldContext {
+        let now: @Sendable () -> Int = { [clock] in Int((clock.seconds() * 1000).rounded()) }
+        let escape = EscapeBox()
+        let on = tap?.enableReportingEscape(onTrip: {}, onEscape: { escape.ctx?.touched(.escape) }) ?? false
+        let ctx = FrontHoldContext(plan: plan, nowMs: now, cancelled: cancelled, guarded: on)
+        escape.ctx = ctx
+        if !on { watch.arm { [weak ctx] t in ctx?.touched(t) } }
+        return ctx
+    }
+
+    func endGuard(_ ctx: FrontHoldContext) {
+        if ctx.guarded { _ = tap?.disable() } else { watch.disarm() }
     }
 
     /// §25.5: wait until the person's last key down is `frontQuietMs` old and nothing is held, at most

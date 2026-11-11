@@ -33,6 +33,7 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
                 pasteboard: PasteboardStore = SystemPasteboard(),
                 layout: KeyLayoutSource = CurrentKeyLayout.shared,
                 watch: PersonWatching = PersonWatch(tap: LivePersonTap()),
+                frontTap: PersonTapping? = LivePersonTap(),
                 clock: InputClock = SystemClock()) {
         let host = LiveSessionHost()
         self.host = host
@@ -45,7 +46,7 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         let core = InputCore(host: host, watch: watch, sessionLock: sessionLock, sink: sink, clock: clock, layout: layout, onPersonInput: onPersonInput, onHeld: onHeld)
         self.core = core
         core.driver.trace = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
-        frontTier = FrontTier(host: host, sessionLock: sessionLock, clock: clock)
+        frontTier = FrontTier(host: host, sessionLock: sessionLock, clock: clock, tap: frontTap)
         host.onActivation = { [weak core] pid in core?.driver.noteActivation(pid: pid) }
         host.observeActivations()
         // the 30 s auto-release of a held button, and the person guard's end (§14.9.2)

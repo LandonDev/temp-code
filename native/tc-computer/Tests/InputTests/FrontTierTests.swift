@@ -141,3 +141,87 @@ final class FakeKeyboard: KeyboardState, @unchecked Sendable {
         #expect(out.front == hold && out.on == "File › Save")
     }
 }
+
+/// A tap the test drives: whether it can be made, the Escape it reports, what it was asked.
+final class FakeTap: PersonTapping, @unchecked Sendable {
+    private let lock = NSLock()
+    let makes: Bool
+    private var escape: (@Sendable () -> Void)?
+    private(set) var enabled = 0
+    private(set) var disabled = 0
+
+    init(makes: Bool) { self.makes = makes }
+
+    func enable(onTrip: @escaping @Sendable () -> Void) -> Bool {
+        lock.withLock { enabled += 1 }
+        return makes
+    }
+
+    func enableReportingEscape(onTrip: @escaping @Sendable () -> Void, onEscape: @escaping @Sendable () -> Void) -> Bool {
+        lock.withLock {
+            enabled += 1
+            escape = onEscape
+        }
+        return makes
+    }
+
+    func replay(plan: ([GuardedEvent]) -> [Int], gapMs: Int, stillThere: () -> Bool) {}
+
+    func disable() -> GuardReport {
+        lock.withLock { disabled += 1 }
+        return GuardReport(mode: .active)
+    }
+
+    func pressEscape() { lock.withLock { escape }?() }
+}
+
+/// Decision 6: the person guard during a hold.
+@Suite struct FrontGuardTests {
+    private func hold(_ tap: FakeTap?) -> (FrontTier, FrontHoldContext) {
+        let clock = FakeClock()
+        let tier = FrontTier(host: LiveSessionHost(), sessionLock: FakeLock(clock: clock), clock: clock, keyboard: FakeKeyboard(clock: clock), tap: tap)
+        let start = Int((clock.seconds() * 1000).rounded())
+        var plan = FrontHoldPlan(startedAt: start)
+        _ = plan.activation(now: start, isFront: true)
+        return (tier, try! tier.guardHold(plan: plan, cancelled: { false }))
+    }
+
+    @Test func withTheGuardTheTouchesAreDroppedAndStopNothing() {
+        let tap = FakeTap(makes: true)
+        let (tier, ctx) = hold(tap)
+        #expect(ctx.guarded)
+        for t in [PersonTouch.key, .click, .wheel, .pointerMove] { ctx.touched(t) }
+        #expect(!ctx.cancelled() && ctx.stopped == nil)
+        tier.endGuard(ctx)
+        #expect(tap.enabled == 1 && tap.disabled == 1)
+    }
+
+    @Test func withTheGuardEscapeStopsTheHold() {
+        let tap = FakeTap(makes: true)
+        let (tier, ctx) = hold(tap)
+        tap.pressEscape()
+        #expect(ctx.stopped == .person && ctx.cancelled())
+        #expect(kind(FrontTier.stopError(cancelledFailure(), ctx: ctx, app: "TC Probe")) == .interrupted)
+        tier.endGuard(ctx)
+    }
+
+    @Test func aTapTheSystemRefusesLeavesTheFirstTouchToStopIt() {
+        let tap = FakeTap(makes: false)
+        let (tier, ctx) = hold(tap)
+        #expect(!ctx.guarded)
+        ctx.touched(.pointerMove)
+        #expect(ctx.stopped == nil)
+        ctx.touched(.click)
+        #expect(ctx.stopped == .person)
+        tier.endGuard(ctx)
+        #expect(tap.disabled == 0)
+    }
+
+    @Test func noTapAtAllIsTheWatchAlone() {
+        let (tier, ctx) = hold(nil)
+        #expect(!ctx.guarded)
+        ctx.touched(.key)
+        #expect(ctx.stopped == .person)
+        tier.endGuard(ctx)
+    }
+}

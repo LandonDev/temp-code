@@ -20,6 +20,8 @@ public final class LivePersonTap: PersonTapping, @unchecked Sendable {
         var bufferedDowns: Set<UInt16> = []
         var tripped = false
         var onTrip: (@Sendable () -> Void)?
+        /// a `front` hold's: the person's Escape, dropped (§25.5)
+        var onEscape: (@Sendable () -> Void)?
         var replayed = 0
         var port: CFMachPort?
     }
@@ -32,6 +34,14 @@ public final class LivePersonTap: PersonTapping, @unchecked Sendable {
     public init() {}
 
     public func enable(onTrip: @escaping @Sendable () -> Void) -> Bool {
+        enable(onTrip: onTrip, escape: nil)
+    }
+
+    public func enableReportingEscape(onTrip: @escaping @Sendable () -> Void, onEscape: @escaping @Sendable () -> Void) -> Bool {
+        enable(onTrip: onTrip, escape: onEscape)
+    }
+
+    private func enable(onTrip: @escaping @Sendable () -> Void, escape: (@Sendable () -> Void)?) -> Bool {
         guard let port = madePort() else { return false }
         state.lock.withLock {
             state.rule.reset()
@@ -42,6 +52,7 @@ public final class LivePersonTap: PersonTapping, @unchecked Sendable {
             state.tripped = false
             state.replayed = 0
             state.onTrip = onTrip
+            state.onEscape = escape
             state.active = true
         }
         CGEvent.tapEnable(tap: port, enable: true)
@@ -52,6 +63,7 @@ public final class LivePersonTap: PersonTapping, @unchecked Sendable {
         let (port, report): (CFMachPort?, GuardReport) = state.lock.withLock {
             state.active = false
             state.onTrip = nil
+            state.onEscape = nil
             state.buffer = []
             return (state.port, GuardReport(mode: .active, dropped: state.rule.dropped, replayed: state.replayed, rearmed: state.rearm.rearmed))
         }
@@ -179,16 +191,18 @@ private func personTapCallback(proxy: CGEventTapProxy, type: CGEventType, event:
         return Unmanaged.passUnretained(event)
     }
     guard let g = guardedEvent(type, event) else { return Unmanaged.passUnretained(event) }
-    let (drop, trip): (Bool, (@Sendable () -> Void)?) = s.lock.withLock {
+    let (drop, trip, escape): (Bool, (@Sendable () -> Void)?, (@Sendable () -> Void)?) = s.lock.withLock {
         // a disable that raced this event: pass it
-        guard s.active else { return (false, nil) }
-        guard case .drop(let trips, let keep) = s.rule.decide(g) else { return (false, nil) }
+        guard s.active else { return (false, nil, nil) }
+        guard case .drop(let trips, let keep) = s.rule.decide(g) else { return (false, nil, nil) }
         if keep { buffer(g, event, in: s) }
-        guard trips, !s.tripped else { return (true, nil) }
+        let escape = g.type == .keyDown && g.keyCode == 53 && !g.autorepeat ? s.onEscape : nil
+        guard trips, !s.tripped else { return (true, nil, escape) }
         s.tripped = true
-        return (true, s.onTrip)
+        return (true, s.onTrip, escape)
     }
     if let trip { DispatchQueue.global(qos: .userInitiated).async(execute: trip) }
+    if let escape { DispatchQueue.global(qos: .userInitiated).async(execute: escape) }
     return drop ? nil : Unmanaged.passUnretained(event)
 }
 
