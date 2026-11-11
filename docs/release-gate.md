@@ -236,9 +236,9 @@ one contract:
 | e2e-addon-grants | `e2e` | both | two paired headless instances, scripts/lib/fakeOAuthServer.ts | nothing (no model) | 133 s, 134 s, 134 s | 134 s, 134 s, 134 s | 17 min |
 | e2e-skills-store | `e2e` | both | two paired headless instances | nothing (no model) | 13 s, 15 s, 15 s | 13 s, 13 s, 13 s | 11 min |
 | e2e-skills-drivers | `e2e` | both | one headless instance, the real CLIs against scripts/lib/spikeFakes.ts | the real-model legs (`--host box\|mac`) | 10 s, 10 s, 10 s | 29 s, 28 s, 29 s | 12 min |
-| e2e-tc-computer | `computer` | Mac | the service, TC Probe (five instances: plain, `--windows`, `--fallbacks`, `--active`, `--fewer`) and scratch Chrome for Testing (`webLeg`) | the TextEdit legs and the paste | n/a | 19 s, 19 s, 19 s, measured before the fallbacks leg (docs/computer-protocol.md §24.11), the web leg (§25.11), the active leg (§26.15), the fewer leg (§27.15) and the stealer (§23.9). At d24b29c7b the whole row ran 91 s and failed fallbacks 3, the web page wait and active 1 (.temp-code/findings/computer-gate-proofs-2026-11-10.md). On 2026-11-11, with the person at the Mac: the base steps, the window leg (16.3 s), the fallbacks leg (28.6 s), the fewer leg (14.9 s) and the web leg (27.3 s) passed whole. Later that day, with the fewer leg's probe under the person's front window, the fewer leg (7 steps, 14.4 to 18.6 s) and the stealer (6 steps, 7.2 to 8.0 s) passed whole in five of six runs; the sixth failed the stealer's launch at a 642 ms restore while another agent's scratch TC Probe activated (computer-protocol.md §23.9, §27.15); the active leg passed whole, 20 of 20 in about 70 s (§26.15: `save_as` confirms Go to Folder at `session`, Finder's rename commits through its own editor; every front hold 94–477 ms, restored). By hand: `TC_PROOF_UNGATED=1 TC_PROOF_LEGS=<leg> bun run script:e2e-tc-computer -- --gate` ("The unattended proof modes") The final check (2026-11-11, 387f2be8 with three fixes: the web scroll's effect, Chrome's late front after the launch, ScreenCaptureKit's unanswered window list): the whole row passed twice in a row, 193 to 201 s (base 19.8 s, windows 17.0, fallbacks 26.7, web 33.3, active 69.8, fewer 14.3, stealer 8.7 s), the TextEdit legs skipped as hand runs. | 11 min |
-| e2e-computer-bridge | `computer` | Mac | two headless instances (the box half seamed linux), the service, TC Probe | the SSH pair | n/a | 95 s original timing run; 96 s for 60/60 before the schema rebase; 90 s for 59/60 after it (one stale note check, since corrected); 90 s for 60/60 at 652f9dac with the gate-r2 fixes (2026-11-11) | 12 min |
-| e2e-computer-preview | `computer` | Mac | the service and TC Probe | leg 4, the Escape tap, which takes the person's Escape | n/a | 24 s, 23 s, 23 s; 24.7 s for 17/17 at 7e6d5588 with the ScreenWatch import fixed (2026-11-11; computer-protocol.md "The live proofs on the Mac") | 12 min |
+| e2e-tc-computer | `computer` | Mac | the service, TC Probe (five instances: plain, `--windows`, `--fallbacks`, `--active`, `--fewer`) and scratch Chrome for Testing (`webLeg`) | the TextEdit legs and the paste | n/a | 19 s, 19 s, 19 s, measured before the fallbacks leg (docs/computer-protocol.md §24.11), the web leg (§25.11), the active leg (§26.15), the fewer leg (§27.15) and the stealer (§23.9). At d24b29c7b the whole row ran 91 s and failed fallbacks 3, the web page wait and active 1 (.temp-code/findings/computer-gate-proofs-2026-11-10.md). On 2026-11-11, with the person at the Mac: the base steps, the window leg (16.3 s), the fallbacks leg (28.6 s), the fewer leg (14.9 s) and the web leg (27.3 s) passed whole. Later that day, with the fewer leg's probe under the person's front window, the fewer leg (7 steps, 14.4 to 18.6 s) and the stealer (6 steps, 7.2 to 8.0 s) passed whole in five of six runs; the sixth failed the stealer's launch at a 642 ms restore while another agent's scratch TC Probe activated (computer-protocol.md §23.9, §27.15); the active leg passed whole, 20 of 20 in about 70 s (§26.15: `save_as` confirms Go to Folder at `session`, Finder's rename commits through its own editor; every front hold 94–477 ms, restored). By hand: `TC_PROOF_UNGATED=1 TC_PROOF_LEGS=<leg> bun run script:e2e-tc-computer -- --gate` ("The unattended proof modes") The final check (2026-11-11, 387f2be8 with three fixes: the web scroll's effect, Chrome's late front after the launch, ScreenCaptureKit's unanswered window list): the whole row passed twice in a row, 193 to 201 s (base 19.8 s, windows 17.0, fallbacks 26.7, web 33.3, active 69.8, fewer 14.3, stealer 8.7 s), the TextEdit legs skipped as hand runs. Under load (2026-11-11, 55351169, the first build of its InputEngine change, on a scratch clone, with `yes` holding the 1-minute load at about 20 to 25 to match v1.0.339's publish, which failed active Finder 2 at load 17 to 32): three runs in a row passed whole, 83 passed and 10 hand-run skips each, 200 s, 202 s and 209 s, load 18.9 to 45.0 (a 30 s overshoot as the first run began), 19.9 to 24.7 and 20.2 to 25.5; active Finder 2 took 1987, 2286 and 2281 ms. | 11 min |
+| e2e-computer-bridge | `computer` | Mac | two headless instances (the box half seamed linux), the service, TC Probe | the SSH pair | n/a | 95 s original timing run; 96 s for 60/60 before the schema rebase; 90 s for 59/60 after it (one stale note check, since corrected); 90 s for 60/60 at 652f9dac with the gate-r2 fixes (2026-11-11); under load at 55351169 (2026-11-11), 60/60 in 293 s, load 18.2 to 40.1 (21.2 at the start, 18.5 at the end): the two instances' start lifted the load past 32, so the product's load admission (twice the 16 cores) held its threads six times; added p50/p90 4/24 ms observe, -9/23 ms observe-shot, 8/35 ms set-value, within the gate bound | 12 min |
+| e2e-computer-preview | `computer` | Mac | the service and TC Probe | leg 4, the Escape tap, which takes the person's Escape | n/a | 24 s, 23 s, 23 s; 24.7 s for 17/17 at 7e6d5588 with the ScreenWatch import fixed (2026-11-11; computer-protocol.md "The live proofs on the Mac"); under load at 55351169 (2026-11-11), 17/17 in 27 s, load 20.6 to 23.3 | 12 min |
 
 Bridge timing on loopback, added p50/p90 ms for observe, with a picture,
 and `set_value`, respectively: the original run measured 3/19, 9/24,
@@ -402,6 +402,35 @@ system, never the model's word.
   launches per model put back each time), Muse skipped by its preflight,
   settings-toggle skipped (System Settings open) and save-dialog the hand
   run's.
+- **Under load and after it, 2026-11-11 (55351169, a scratch clone, the
+  baseline copied in and restored before each run).** Two `--gate` runs
+  failed one cell, GPT-6.1 Sol chrome-form's median host ms per call
+  against 1134 (the row's 872, from 7 calls on 2026-11-09): 1636 at load
+  19.9 to 51.3 (26.2 at the start; `yes` holding about 20 to 25, the
+  bench's own start pushing past 50 for 30 s) in 165 s, and 1634 at load
+  5.1 to 6.9 with no generator in 166 s. Every end state passed both
+  times, no run took the front and nothing else failed; settings-toggle was
+  skipped (System Settings open) and save-dialog left for the hand run.
+  The cause is the model's call shape, not load: GPT now does the form as
+  an observe and one batch of five or six actions, often with the final
+  click inside, so a two-call run's median is the mean of the observe
+  (494 to 803 ms) and the batch (2461 to 3117 ms loaded, 2657 to 2837 ms
+  unloaded); the three-call runs of earlier gate runs read about 900. The
+  bound and the baseline are unchanged; the row passes again only when the
+  person rebaselines it (`--rebaseline`) or the model returns to more
+  calls. A per-action measure was tried and dropped: with the same +150 ms
+  floor it is looser for batch-heavy work.
+- **Can the publish load it?** The gate's lanes run at once
+  (scripts/gate.ts) beside the build and the sign (release-publish.sh), and
+  the bench is the computer lane's last row, after e2e-tc-computer (200 to
+  255 s), the bridge (90 s) and the preview (25 s). In v1.0.339's publish
+  the other lanes were done within 255 s (the soaks 255 s, the e2e lane
+  255 s, the Swift lane 79 s) and the sign ends about 3.5 minutes in, so
+  the bench starts on a Mac the publish has mostly left: its report's
+  `load1` read 6.5 in v1.0.338's publish and 8.4 and 6.8 in the two gate
+  runs after its fix (16.1 for the run that wrote the baseline). Load a
+  sibling thread brings (a simulator boot reached 100 to 400 the same
+  morning) is not the publish's.
 - **A gap it does not cover**: the person's own Chrome, covered by their
   windows, may show the service no page, since no launch switch reaches a
   Chrome they started and Chrome 156 builds no page tree for an outside
@@ -544,10 +573,10 @@ these ran, so its numbers moved by up to 40 % between runs.
 | e2e-addon-grants | 134 s (three runs) | | 133 s | 17 min | the same lane, after e2e-addons |
 | e2e-skills-store | 13 s (three runs) | | 12 to 15 s | 11 min | the same lane |
 | e2e-skills-drivers | 28 to 29 s (three runs) | | 10 s | 12 min | the same lane, last; the real CLIs against fakes |
-| e2e-tc-computer | 19 s (three runs) | | n/a | 11 min | Mac only; the `computer` lane, before the bench |
-| e2e-computer-bridge | 96 s, 60/60 before the schema rebase; 90 s, 59/60 after it (stale check since corrected); final commit not run: the Mac was locked | | n/a | 12 min | Mac only; both halves on the Mac; proof record in §18 |
-| e2e-computer-preview | 23 to 24 s (three runs); 24.7 s on 2026-11-11 | | n/a | 12 min | Mac only; the Escape leg skipped |
-| computer-bench | 511 s, one run (2026-11-09, ungated, before the codex route fix; failed: see "The bench's hand run"); `--gate` passed twice on 2026-11-11 after the rig fix, 219 s and 167 s: Opus 5/5, GPT-6.1 Sol 5/5, took the front 0, Muse skipped by its preflight, baseline unchanged | | n/a | 15 min | Mac only; three model lanes in its own lane, beside the build |
+| e2e-tc-computer | 19 s (three runs) | | n/a | 11 min | Mac only; the `computer` lane, before the bench; whole row 200, 202 and 209 s under load 19 to 25 (2026-11-11) |
+| e2e-computer-bridge | 96 s, 60/60 before the schema rebase; 90 s, 59/60 after it (stale check since corrected); final commit not run: the Mac was locked; 293 s for 60/60 under load 18 to 40 at 55351169 (2026-11-11) | | n/a | 12 min | Mac only; both halves on the Mac; proof record in §18 |
+| e2e-computer-preview | 23 to 24 s (three runs); 24.7 s on 2026-11-11; 27 s under load 21 to 23 | | n/a | 12 min | Mac only; the Escape leg skipped |
+| computer-bench | 511 s, one run (2026-11-09, ungated, before the codex route fix; failed: see "The bench's hand run"); `--gate` passed twice on 2026-11-11 after the rig fix, 219 s and 167 s: Opus 5/5, GPT-6.1 Sol 5/5, took the front 0, Muse skipped by its preflight, baseline unchanged; on 2026-11-11 at 55351169 it failed GPT-6.1 Sol chrome-form's host ms per call twice, 1636 of 1134 at load 19.9 to 51.3 (165 s) and 1634 of 1134 at load 5.1 to 6.9 (166 s), every end state passing: the model's two-call shape, not load ("The computer bench") | | n/a | 15 min | Mac only; three model lanes in its own lane, beside the build |
 
 The box's share of the publish tier with the store rows (2026-11-09,
 `bun run gate --tier all --skip typecheck,vitest`, three runs: 205 s, 218 s
