@@ -5,10 +5,9 @@
  * in its group, so the gate's group kill and the proof order (scripts/lib/proofOrder.ts) still see it.
  */
 import { accessSync, constants, realpathSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
 import { homedir } from 'node:os'
 import { resolve } from 'node:path'
-import { proofBunCandidates, runProofBun, sqliteProofBun } from './lib/proofBun'
+import { bunHasSqlite, proofBunCandidates, runProofBun, sqliteProofBun } from './lib/proofBun'
 
 const [script, ...args] = process.argv.slice(2)
 if (!script) {
@@ -24,8 +23,7 @@ const bun = sqliteProofBun(proofBunCandidates(process.execPath, process.env.HOME
       return false
     }
   },
-  hasSqlite: (path) =>
-    spawnSync(path, ['-e', 'require("node:sqlite")'], { stdio: 'ignore', timeout: 10_000 }).status === 0
+  hasSqlite: (path) => bunHasSqlite(path)
 })
 if (!bun) {
   console.error(`no Bun with node:sqlite: tried ${proofBunCandidates(process.execPath, process.env.HOME || homedir()).join(', ')}`)

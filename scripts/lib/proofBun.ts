@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { accessSync, constants, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import type { EventEmitter } from 'node:events'
@@ -88,4 +88,21 @@ export function sqliteProofBun(
     if (ops.executable(bun) && ops.hasSqlite(bun)) return bun
   }
   return null
+}
+
+/**
+ * The import the proofs make, run by `bun`: a static import, since Bun 1.3.12 exits 0 on a bare
+ * `require("node:sqlite")` it then cannot resolve as an import. It prints `function` only where the
+ * module really loads.
+ */
+export const SQLITE_PROBE = 'import { DatabaseSync } from "node:sqlite"; console.log(typeof DatabaseSync)'
+
+/** Whether the Bun at `path` can import `node:sqlite`. */
+export function bunHasSqlite(
+  path: string,
+  run: (cmd: string, args: string[]) => { status: number | null; stdout?: string | Buffer | null } = (cmd, args) =>
+    spawnSync(cmd, args, { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', timeout: 10_000 })
+): boolean {
+  const r = run(path, ['-e', SQLITE_PROBE])
+  return r.status === 0 && String(r.stdout ?? '').trim() === 'function'
 }

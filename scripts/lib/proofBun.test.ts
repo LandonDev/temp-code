@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import type { ChildProcess, spawn } from 'node:child_process'
 import { expect, it, vi } from 'vitest'
-import { preferredProofBun, proofBunCandidates, runProofBun, sqliteProofBun } from './proofBun'
+import { bunHasSqlite, preferredProofBun, proofBunCandidates, runProofBun, sqliteProofBun, SQLITE_PROBE } from './proofBun'
 
 it('selects the user runtime over an ancestor npm Bun and avoids a reexec loop', () => {
   const ops = { executable: () => true, realpath: (p: string) => p }
@@ -74,4 +74,14 @@ it('runs a proof under a Bun with node:sqlite, never the ancestor .bin copy that
     hasSqlite: () => true
   })).toBe('/usr/bin/bun')
   expect(sqliteProofBun(candidates, { executable: () => true, hasSqlite: () => false })).toBeNull()
+})
+
+it('takes a Bun for node:sqlite only when the import loads, not when a bare require exits 0', () => {
+  const run = vi.fn((_cmd: string, _args: string[]) => ({ status: 0, stdout: 'function\n' }))
+  expect(bunHasSqlite('/opt/homebrew/bin/bun', run)).toBe(true)
+  expect(run).toHaveBeenCalledWith('/opt/homebrew/bin/bun', ['-e', SQLITE_PROBE])
+  expect(SQLITE_PROBE).toMatch(/^import \{ DatabaseSync \} from "node:sqlite"/)
+  // Bun 1.3.12 on the Mac: exit 0, nothing printed
+  expect(bunHasSqlite('/home/.bun/bin/bun', () => ({ status: 0, stdout: '' }))).toBe(false)
+  expect(bunHasSqlite('/old/bun', () => ({ status: 1, stdout: '' }))).toBe(false)
 })
