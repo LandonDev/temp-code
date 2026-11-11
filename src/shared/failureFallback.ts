@@ -5,6 +5,9 @@ import type { Failure } from './events'
  *  fallback say the same words. */
 export const TURN_ENDED_SUMMARY = 'The turn ended before it finished'
 
+/** The summary of a turn ended because its context window refilled to the limit on every request (`context_thrash`). */
+export const CONTEXT_THRASH_SUMMARY = 'The context window keeps filling up'
+
 /**
  * The words a failure reads when the host gave no verdict: a row written
  * before verdicts existed. The transcript's FailureCard prints them with

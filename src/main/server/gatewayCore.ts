@@ -27,6 +27,7 @@ import {
 import { SERVICE_OF, type AccountProvider } from '@shared/accounts'
 import { newTrace, upstreamTrace } from './upstream'
 import { GatewayControlTimeout } from './gatewayWire'
+import { shapeEnabled, shapeLine, startShape } from './gatewayShape'
 
 /**
  * The gateway's byte path, wherever it runs: the listeners, the scope
@@ -175,6 +176,8 @@ export interface GatewayCoreOptions {
   tls: { cert: Buffer | string; key: Buffer | string } | null
   /** One line per forwarded request (TEMP_CODE_GATEWAY_TRACE=1). */
   trace?: boolean
+  /** One `[gateway:shape]` line per scoped request, its body parsed (TEMP_CODE_GATEWAY_SHAPE=1, isolated instances only). */
+  shape?: boolean
   /** The prefix of every line this core logs. */
   label?: string
   /** The pid the liveness answer (`/__aliax`) names: the marker's, which is the host's. */
@@ -203,6 +206,7 @@ export class GatewayCore {
   private readonly warm = new Map<string, RouteScope | null>()
   private readonly accounts: AccountSource
   private readonly trace: boolean
+  private readonly shape: boolean
   private readonly label: string
   /** Numbers the trace lines, so a start and its finish read together. */
   private requestSeq = 0
@@ -212,6 +216,7 @@ export class GatewayCore {
   constructor(private readonly options: GatewayCoreOptions) {
     const c = options.control
     this.trace = options.trace ?? process.env.TEMP_CODE_GATEWAY_TRACE === '1'
+    this.shape = options.shape ?? shapeEnabled()
     this.label = options.label ?? '[gateway]'
     this.accounts = {
       credentialFor: (service, account, serviceId) => c.credentialFor(service, account, serviceId ?? null),
@@ -465,6 +470,8 @@ export class GatewayCore {
     // (a side call on another model), else off the scope the driver wrote.
     const body = ['GET', 'HEAD'].includes(req.method ?? 'GET') ? undefined : await readBody(req)
     const model = scanModel(body) ?? scope.model ?? null
+    // The measuring seam alone parses a body; the byte path never does.
+    const shaped = startShape(this.shape, url, body, req.headers['content-encoding'], (line) => console.log(`${this.label} ${line}`))
     const info = (account: string, body?: string): ScopedRequest => ({ service, serviceId, thread: scope.thread, account, own: scope.account, model, ...(body !== undefined ? { body } : {}) })
     let substitute = await c.substitute(info(routeOf(scope.thread) ?? scope.account))
     for (let attempt = 0; ; attempt++) {
@@ -472,7 +479,7 @@ export class GatewayCore {
       const effective: RouteScope = substitute ? { ...scope, account: substitute, pin: true } : scope
       this.noteSubstitute(service, serviceId, scope, substitute)
       let answered: string | null = null
-      const held = new HeldResponse(res)
+      const held = new HeldResponse(res, shaped ? (chunk) => shaped.tap.feed(chunk) : undefined)
       const out = await this.forward(
         replay(req, rescope(url, effective), body),
         held as unknown as ServerResponse,
@@ -490,6 +497,10 @@ export class GatewayCore {
         }
       }
       held.flush()
+      if (shaped) {
+        shaped.tap.end()
+        console.log(`${this.label} ${shapeLine(scope.thread, shaped.shape, shaped.tap.usage, held.status)}`)
+      }
       return out
     }
   }
@@ -514,7 +525,11 @@ export class HeldResponse {
   private held: { headers: Record<string, string>; chunks: Buffer[] } | null = null
   private through = false
 
-  constructor(private readonly res: ServerResponse) {}
+  constructor(
+    private readonly res: ServerResponse,
+    /** Sees every chunk that goes through (the shape line's usage). */
+    private readonly tap?: (chunk: Buffer | string) => void
+  ) {}
 
   get headersSent(): boolean {
     return this.through ? this.res.headersSent : this.held !== null
@@ -535,6 +550,7 @@ export class HeldResponse {
       this.held.chunks.push(Buffer.from(chunk))
       return true
     }
+    this.tap?.(chunk)
     return this.res.write(chunk)
   }
 
@@ -549,6 +565,7 @@ export class HeldResponse {
       if (data) this.held.chunks.push(Buffer.from(data))
       return this
     }
+    if (data) this.tap?.(data)
     this.res.end(data)
     return this
   }

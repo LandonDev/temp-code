@@ -185,6 +185,9 @@ export const FailureKindSchema = z.enum([
   'harness_crashed',
   /** the CLI ended the turn itself: its turn or spend limit, or an execution error it named */
   'turn_ended',
+  /** the context window refilled to its limit on every request, so the turn compacted again and again
+   *  (the host's guard, src/shared/contextThrash.ts, or Claude Code's "Autocompact is thrashing") */
+  'context_thrash',
   'unknown'
 ])
 export type FailureKind = z.infer<typeof FailureKindSchema>

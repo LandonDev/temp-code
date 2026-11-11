@@ -289,3 +289,31 @@ describe('a usage cap', () => {
     expect(classifyFailure(ctx({ ...cap, account: 'discord@example.com' })).account).toBe('discord@example.com')
   })
 })
+
+describe('context_thrash', () => {
+  // Claude Code's line that ended five turns of NdDwla3D-WUO (seq 133).
+  const CLI_LINE = 'Autocompact is thrashing: the context refilled to the limit within 3 turns of the previous compact, 3 times in a row.'
+
+  it("reads Claude Code's own guard, bare or as the turn it ended, ahead of turn_ended and unknown", () => {
+    expect(failureKindOf(ctx({ message: CLI_LINE }))).toBe('context_thrash')
+    expect(failureKindOf(ctx({ message: `turn ended: error_during_execution: ${CLI_LINE}` }))).toBe('context_thrash')
+    expect(classifyFailure(ctx({ message: CLI_LINE }))).toMatchObject({
+      kind: 'context_thrash',
+      summary: 'The context window keeps filling up',
+      cause: 'Claude Code stopped after the context refilled to its limit 3 times in a row'
+    })
+  })
+
+  it("reads the host's row with and without the first request", () => {
+    expect(classifyFailure(ctx({ message: 'context thrash: 4 compactions in 6 min; first request 167k of 200k' }))).toMatchObject({
+      kind: 'context_thrash',
+      summary: 'The context window keeps filling up',
+      cause: '4 compactions in 6 minutes; the first request held 167k of a 200k window'
+    })
+    expect(classifyFailure(ctx({ provider: 'codex', model: 'gpt-6.1-sol', message: 'context thrash: 4 compactions in 1 min' })).cause).toBe('4 compactions in 1 minute')
+  })
+
+  it('is a kind of the schema', () => {
+    expect(FailureKindSchema.options).toContain('context_thrash')
+  })
+})

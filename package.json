@@ -53,6 +53,7 @@
     "script:e2e-accounts-sync": "bun scripts/e2e-accounts-sync.ts",
     "script:e2e-static-tokens": "bun scripts/e2e-static-tokens.ts",
     "script:e2e-warm-start": "bun scripts/e2e-warm-start.ts",
+    "script:measure-first-request": "bun scripts/measure-first-request.ts",
     "script:spike-config-dirs": "bun scripts/spike-config-dirs.ts",
     "script:e2e-harness-sync": "bun scripts/e2e-harness-sync.ts",
     "script:e2e-attachments": "bun scripts/e2e-attachments.ts",

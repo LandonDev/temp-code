@@ -67,6 +67,8 @@ vi.mock('./binaries', () => ({ resolveBinary: async () => '/fake/codex', harness
 vi.mock('../endpoint', () => ({ routedEndpointFor: async () => ({ url: null, account: 'acct-1' }) }))
 vi.mock('../apptools', () => ({ bridgeMcpConfig: vi.fn(() => null) }))
 vi.mock('../gatewayObserve', () => ({ observeCodexSnapshot: () => undefined }))
+const driverNotes = vi.fn<(body: string) => void>()
+vi.mock('../stalls', async (importOriginal) => ({ ...(await importOriginal<typeof import('../stalls')>()), recordDriverNote: (body: string) => driverNotes(body) }))
 
 const { codexDriver, codexWarm, bootOptions, setCodexBootFailureLog, withoutImageBytes, codexComputerImages } = await import('./codex')
 
@@ -544,6 +546,88 @@ describe('computer pictures', () => {
     for (const method of ['item/started', 'item/completed']) spawned[0].stdout.write(JSON.stringify({ method, params: { item: { type: 'imageView', id: 'v1', path: '/tmp/shot.png' } } }) + '\n')
     await vi.waitFor(() => expect(events.some((e) => e.type === 'tool-result' && e.callId === 'v1')).toBe(true))
     expect(events.filter((e) => e.type === 'tool-call')).toContainEqual({ type: 'tool-call', callId: 'v1', name: 'view_image', input: { path: '/tmp/shot.png' } })
+    await handle.dispose()
+  })
+})
+
+describe("the first turn waits for the model's metadata", () => {
+  /** A healthy app-server whose model/list names `gpt-6-astra` from its `listsFrom`-th answer on (never with Infinity). */
+  const listing = (listsFrom: number, requests: Frame[]): Script => {
+    let asked = 0
+    return (proc, frame) => {
+      requests.push(frame)
+      if (frame.method === 'model/list' && frame.id !== undefined) {
+        asked++
+        proc.reply(frame.id, { data: [{ model: 'gpt-6.1-sol' }, ...(asked >= listsFrom ? [{ model: 'gpt-6-astra' }] : [])] })
+      } else healthy(proc, frame)
+    }
+  }
+  const boot = async (script: Script) => {
+    vi.useFakeTimers()
+    vi.stubEnv('TEMP_CODE_WARM_HARNESS', '0')
+    driverNotes.mockReset()
+    scripts.push(script)
+    const handle = await codexDriver.start(ctx())
+    const notify = (method: string, params: Record<string, unknown>): void => {
+      spawned[0].stdout.write(JSON.stringify({ jsonrpc: '2.0', method, params: { threadId: 't1', ...params } }) + '\n')
+    }
+    notify('mcpServer/startupStatus/updated', { name: 'x', status: 'ready' })
+    await vi.advanceTimersByTimeAsync(600)
+    return { handle, notify }
+  }
+  const started = (requests: Frame[]) => requests.some((r) => r.method === 'turn/start')
+
+  it('holds turn/start until model/list names the model (its third answer)', async () => {
+    const requests: Frame[] = []
+    const { handle } = await boot(listing(3, requests))
+    const sent = handle.send('hello')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(started(requests)).toBe(false)
+    await vi.advanceTimersByTimeAsync(250)
+    expect(started(requests)).toBe(false)
+    await vi.advanceTimersByTimeAsync(250)
+    await sent
+    expect(requests.filter((r) => r.method === 'model/list')).toHaveLength(3)
+    expect(started(requests)).toBe(true)
+    expect(driverNotes).not.toHaveBeenCalled()
+    await handle.dispose()
+  })
+
+  it('releases at 10 s with one stall line when the model is never listed', async () => {
+    const requests: Frame[] = []
+    const { handle } = await boot(listing(Infinity, requests))
+    const sent = handle.send('hello')
+    await vi.advanceTimersByTimeAsync(9_000)
+    expect(started(requests)).toBe(false)
+    await vi.advanceTimersByTimeAsync(1_500)
+    await sent
+    expect(started(requests)).toBe(true)
+    expect(driverNotes.mock.calls.map((c) => c[0])).toEqual(['[codex] sess-1: gpt-6-astra not in model/list after 10s: first turn may run on fallback metadata'])
+    await handle.dispose()
+  })
+
+  it('says once when a listed model still reports the fallback window', async () => {
+    const requests: Frame[] = []
+    const { handle, notify } = await boot(listing(1, requests))
+    await handle.send('hello')
+    for (let i = 0; i < 2; i++) notify('thread/tokenUsage/updated', { tokenUsage: { last: { totalTokens: 309_125 + i }, total: {}, modelContextWindow: 258_400 } })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(driverNotes.mock.calls.map((c) => c[0])).toEqual(['[codex] sess-1: first turn on fallback model metadata (window 258400)'])
+    await handle.dispose()
+  })
+
+  it('maps a contextCompaction item to compaction start and done with the tokens before and after', async () => {
+    const { handle, notify } = await boot(listing(1, []))
+    await handle.send('hello')
+    notify('thread/tokenUsage/updated', { tokenUsage: { last: { totalTokens: 250_000 }, total: {}, modelContextWindow: 475_000 } })
+    notify('item/started', { item: { type: 'contextCompaction', id: 'c1' } })
+    notify('item/completed', { item: { type: 'contextCompaction', id: 'c1' } })
+    notify('thread/tokenUsage/updated', { tokenUsage: { last: { totalTokens: 31_000 }, total: {}, modelContextWindow: 475_000 } })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(events.filter((e) => e.type === 'compaction')).toEqual([
+      { type: 'compaction', phase: 'start', trigger: 'auto' },
+      { type: 'compaction', phase: 'done', trigger: 'auto', preTokens: 250_000, postTokens: 31_000 }
+    ])
     await handle.dispose()
   })
 })

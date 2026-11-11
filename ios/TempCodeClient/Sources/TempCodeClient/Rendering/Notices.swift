@@ -189,6 +189,10 @@ public enum FailureActions {
             routed != nil ? [.route, .retry] : [.retry]
         case .modelUnavailable:
             [.pickModel, .retry]
+        case .contextThrash:
+            // A window the fixed overhead fills: a model with a bigger one. The desktop's
+            // Continue with 1M context needs session.tune, which the phone does not speak.
+            [.pickModel, .retry]
         case .network, .harnessCrashed, .turnEnded, .unknown, .unrecognized:
             [.retry]
         }

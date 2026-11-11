@@ -111,7 +111,7 @@ private func review(_ outcome: ReviewOutcome, blocking: Int = 0, minor: Int = 0,
 }
 
 @Suite struct FailureActionsTests {
-    static let kinds: [FailureKind] = [.oauthExpired, .accountUnknown, .tokenExpired, .rateLimited, .quota, .keyInvalid, .modelUnavailable, .network, .harnessCrashed, .turnEnded, .unknown, .unrecognized("x")]
+    static let kinds: [FailureKind] = [.oauthExpired, .accountUnknown, .tokenExpired, .rateLimited, .quota, .keyInvalid, .modelUnavailable, .network, .harnessCrashed, .turnEnded, .contextThrash, .unknown, .unrecognized("x")]
     static let routes: [RoutedProvider?] = [.claude, .codex, .meta, nil]
 
     @Test(arguments: Self.kinds, Self.routes)
@@ -160,6 +160,12 @@ private func review(_ outcome: ReviewOutcome, blocking: Int = 0, minor: Int = 0,
         }
         for kind in [FailureKind.network, .harnessCrashed, .turnEnded, .unknown, .unrecognized("x")] {
             #expect(FailureActions.actions(kind: kind, routed: .claude).map(\.label) == ["Retry"])
+        }
+    }
+
+    @Test func `a thrashing window offers another model, then Retry`() {
+        for routed in [RoutedProvider.claude, .codex, nil] {
+            #expect(FailureActions.actions(kind: .contextThrash, routed: routed).map(\.label) == ["Continue on another model", "Retry"])
         }
     }
 

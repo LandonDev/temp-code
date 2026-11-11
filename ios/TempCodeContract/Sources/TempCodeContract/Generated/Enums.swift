@@ -854,6 +854,7 @@ public enum FailureKind: RawRepresentable, Codable, Hashable, Sendable {
     case network
     case harnessCrashed
     case turnEnded
+    case contextThrash
     case unknown
     /// A value this build does not know; `rawValue` keeps it.
     case unrecognized(String)
@@ -870,6 +871,7 @@ public enum FailureKind: RawRepresentable, Codable, Hashable, Sendable {
         case "network": self = .network
         case "harness_crashed": self = .harnessCrashed
         case "turn_ended": self = .turnEnded
+        case "context_thrash": self = .contextThrash
         case "unknown": self = .unknown
         default: self = .unrecognized(rawValue)
         }
@@ -887,6 +889,7 @@ public enum FailureKind: RawRepresentable, Codable, Hashable, Sendable {
         case .network: "network"
         case .harnessCrashed: "harness_crashed"
         case .turnEnded: "turn_ended"
+        case .contextThrash: "context_thrash"
         case .unknown: "unknown"
         case .unrecognized(let value): value
         }

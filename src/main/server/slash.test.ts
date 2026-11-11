@@ -32,3 +32,34 @@ describe('expandSlashRefs', () => {
     expect(await expandSlashRefs('claude', '/tmp', 'then /x again')).toContain('use your "x" plugin')
   })
 })
+
+describe('expandSlashRefs by harness and source', () => {
+  it('points codex and muse at a store skill with its path, never its body', async () => {
+    const { mkdtempSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const dir = mkdtempSync(join(tmpdir(), 'slash-'))
+    const skill = join(dir, 'SKILL.md')
+    const prompt = join(dir, 'prompt.md')
+    writeFileSync(skill, 'SKILL BODY')
+    writeFileSync(prompt, 'PROMPT BODY')
+    const commands = await import('./commands')
+    const list = vi.spyOn(commands, 'listCommands').mockResolvedValue([
+      { name: 'impeccable', source: 'skill', path: skill, description: '', scope: 'user' },
+      { name: 'ship', source: 'prompt', path: prompt, description: '', scope: 'user' }
+    ] as never)
+    for (const provider of ['codex', 'muse'] as const) {
+      const out = await expandSlashRefs(provider, '/tmp', 'polish it /impeccable then /ship')
+      expect(out).toContain(`Where the message says /impeccable: open your "impeccable" skill (${skill}) and follow it`)
+      expect(out).not.toContain('SKILL BODY')
+      // A prompt has no skill behind it: its body still goes in.
+      expect(out).toContain('PROMPT BODY')
+    }
+    const claude = await expandSlashRefs('claude', '/tmp', 'polish it /impeccable')
+    expect(claude).toContain('invoke your "impeccable" skill')
+    expect(claude).not.toContain('SKILL BODY')
+    // Cursor loads no skill itself: the body is inlined.
+    expect(await expandSlashRefs('cursor', '/tmp', 'polish it /impeccable')).toContain('SKILL BODY')
+    list.mockRestore()
+  })
+})

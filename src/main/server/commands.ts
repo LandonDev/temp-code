@@ -206,7 +206,7 @@ async function claudeAddons(): Promise<SlashCommand[]> {
 
 export interface CommandSkillSources {
   /** The store's skills folder for a thread at cwd (`<generation>/skills`); null when the host has no store. */
-  storeDir(provider: 'claude' | 'codex', cwd: string): string | null
+  storeDir(provider: 'claude' | 'codex' | 'muse', cwd: string): string | null
   /** Also read ~/.claude/skills and ~/.codex/skills for names the store lacks. */
   readHome: boolean
   /** The prefix the CLI gives store skills ('' unless the drivers' route is a plugin). */
@@ -235,7 +235,7 @@ const cache = new Map<string, { at: number; commands: SlashCommand[] }>()
 const CACHE_MS = 30_000
 
 export async function listCommands(provider: ProviderId, cwd: string): Promise<SlashCommand[]> {
-  const storeDir = (provider === 'claude' || provider === 'codex') && skillSources ? skillSources.storeDir(provider, cwd) : null
+  const storeDir = (provider === 'claude' || provider === 'codex' || provider === 'muse') && skillSources ? skillSources.storeDir(provider, cwd) : null
   // A new generation is a new key: a write shows at the next menu open.
   const key = `${provider}:${cwd}:${storeDir ?? ''}`
   const hit = cache.get(key)
@@ -257,7 +257,10 @@ export async function listCommands(provider: ProviderId, cwd: string): Promise<S
             mdFilesIn(join(home, '.codex', 'prompts'), 'prompt', 'user'),
             codexAddons()
           ]
-        : [
+        : provider === 'muse'
+          ? // Muse reads the store's scope pointer (museConfigDirs.ts): its skills, and no home folder.
+            [storeDir ? flatSkillsIn(storeDir, 'user') : Promise.resolve([])]
+          : [
             mdFilesIn(join(home, '.cursor', 'commands'), 'command', 'user'),
             mdFilesIn(join(cwd, '.cursor', 'commands'), 'command', 'project')
           ]

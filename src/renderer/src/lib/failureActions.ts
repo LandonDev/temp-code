@@ -8,7 +8,7 @@ import { isPickedProvider, routedProviderOf } from "@server/shared/accounts";
  * box, or a browser window, gets the note instead and Route automatically
  * takes its place.
  */
-export type FailureActionId = "route" | "pick-account" | "sign-in" | "add-key" | "open-accounts" | "pick-model" | "retry";
+export type FailureActionId = "route" | "pick-account" | "sign-in" | "add-key" | "open-accounts" | "use-1m" | "pick-model" | "retry";
 
 export interface FailureAction {
   id: FailureActionId;
@@ -24,6 +24,8 @@ export interface FailureActionContext {
   signInHere: boolean;
   /** A cap's verdict: whether another account had room for the model (absent: the host did not say). */
   roomElsewhere?: boolean;
+  /** The thread's model has a 1M window it is not on yet (`supportsContext1m`, the meta's `context1m` off). */
+  offers1m?: boolean;
 }
 
 export const SIGN_IN_ELSEWHERE_NOTE = "Sign in on the Mac, the box never signs in.";
@@ -34,6 +36,7 @@ const LABELS: Record<FailureActionId, string> = {
   "sign-in": "Sign in",
   "add-key": "Add key…",
   "open-accounts": "Open accounts",
+  "use-1m": "Continue with 1M context",
   "pick-model": "Continue on another model",
   retry: "Retry",
 };
@@ -64,6 +67,9 @@ function ids(kind: FailureKind, ctx: FailureActionContext): FailureActionId[] {
       return ["pick-model", "retry"];
     case "model_unavailable":
       return ["pick-model", "retry"];
+    case "context_thrash":
+      // A window the fixed overhead fills: a bigger one, else a model with one.
+      return ctx.offers1m ? ["use-1m", "pick-model", "retry"] : ["pick-model", "retry"];
     case "network":
     case "harness_crashed":
     case "turn_ended":
