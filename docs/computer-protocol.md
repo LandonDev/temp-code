@@ -648,8 +648,9 @@ relay, the click record, the escape watch and the session hold, writing its
 report under /tmp/tc-preview-proof. `bun run script:e2e-computer-ui` checks
 the Computer row, the preview, the screenshot row and the banner through a
 real thread in an isolated instance, writing its report under
-/tmp/tc-preview-reports/ui. Neither has run yet. On 2026-11-09, at
-c68b770a, the result was "not run: the Mac was locked, the person away".
+/tmp/tc-preview-reports/ui. On 2026-11-09, at c68b770a, both read "not run:
+the Mac was locked, the person away". On 2026-11-11 its `--gate` mode passed whole on the Mac at 7e6d5588 with one fix (ScreenWatch imported the screen readers it called): 17 passed, 0 failed, 0 inconclusive in 24.7 s, the Escape leg skipped as a hand run; 20 frames in 5.00 s (4.00 fps), 511×301 JPEGs of 11 KiB at maxEdge 512, `computer-click` 158 ms after the first click and 143 ms after the second, no frame in the 1.5 s after it nor after the stop. Two runs before it each voided a check, the front app moved by another thread's iOS simulator proof; the person's own app and pointer stayed put. The whole preview proof (with
+its Escape leg) and `script:e2e-computer-ui`: not run.
 Landing B merged on the box's typecheck and tests, `computer:test` on the
 Mac (482) and three review rounds.
 
@@ -707,9 +708,9 @@ Mac (482) and three review rounds.
   front app unchanged); its cleanup ends only the instance's own process
   group. Both need an unlocked, awake screen: `ScreenWatch` reads it before
   each launch and every second, and a lock or a dark display stops the run
-  as inconclusive and cleans up. Neither has run yet: on 2026-11-09 they
-  read "not run: the Mac was locked, the person away"
-  (docs/computer-protocol.md "The live proofs on the Mac").
+  as inconclusive and cleans up. The preview's `--gate` mode passed on
+  2026-11-11 (24.7 s; "The live proofs on the Mac"); the whole preview proof
+  and `script:e2e-computer-ui` have not run.
 - Pictures to each model: claude and Muse get a computer call's pictures as
   image parts; codex too (`codexComputerImages()` in drivers/codex.ts, its
   measured default `parts`; `TEMP_CODE_CODEX_COMPUTER_IMAGES=parts|steer|view`
