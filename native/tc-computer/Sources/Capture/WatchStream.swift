@@ -66,7 +66,7 @@ final class WatchStream: NSObject, PixelChangeSignal, SCStreamOutput, SCStreamDe
         do {
             try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
             self.stream = stream
-            try await stream.startCapture()
+            try await withDeadline(CaptureTuning.streamStartTimeout, failure: ComputerFailure.captureTimedOut) { try await stream.startCapture() }
         } catch {
             let code = error as NSError
             queue.async { self.shutDown(capturing: false, cause: .startFailed(domain: code.domain, code: code.code)) }

@@ -17,8 +17,17 @@ public protocol ShareableWindowSource: Sendable {
 /// every Space (`onScreenWindowsOnly: false`), and a window is picked by its CGWindowID alone.
 public final class ShareableWindows: ShareableWindowSource, @unchecked Sendable {
     private let cache = OSAllocatedUnfairLock<SCShareableContent?>(uncheckedState: nil)
+    private let list: @Sendable () async throws -> SCShareableContent
+    private let timeout: Duration
 
-    public init() {}
+    /// `list` asks ScreenCaptureKit for every window (the tests give one that never answers), within `timeout`.
+    public init(
+        list: @escaping @Sendable () async throws -> SCShareableContent = { try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false) },
+        timeout: Duration = CaptureTuning.listTimeout
+    ) {
+        self.list = list
+        self.timeout = timeout
+    }
 
     /// The window, refreshing the list once when it is missing or its size has moved more than
     /// 0.5 pt from the live bounds; still missing, `window_not_found`.
@@ -26,7 +35,7 @@ public final class ShareableWindows: ShareableWindowSource, @unchecked Sendable 
         if let cached = cache.withLockUnchecked({ $0 }), let window = Self.find(id, in: cached), Self.fits(window, expectedSize) {
             return window
         }
-        let fresh = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+        let fresh = try await withDeadline(timeout, failure: ComputerFailure.captureTimedOut, list)
         cache.withLockUnchecked { $0 = fresh }
         guard let window = Self.find(id, in: fresh) else { throw ComputerFailure.windowGone(id) }
         return window

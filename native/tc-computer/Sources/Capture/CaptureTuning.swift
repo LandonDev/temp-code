@@ -15,6 +15,11 @@ public enum CaptureTuning {
     /// Flatness at or above which a shot with no named format is also tried as PNG (A1).
     public static let flatPNG = 0.85
     public static let shotTimeout: Duration = .seconds(5)
+    /// ScreenCaptureKit's window list and a stream's start, each bounded: its Swift overlay can leak its
+    /// continuation and never answer (a web leg's read hung for good on 2026-11-11), and a read then goes on without
+    /// the window's pixels instead of waiting
+    public static let listTimeout: Duration = .seconds(3)
+    public static let streamStartTimeout: Duration = .seconds(3)
 
     // The preview stream (PREVIEW_STREAM in protocol.ts)
     public static let streamFPSDefault = ComputerDefaults.PreviewStream.defaultFps

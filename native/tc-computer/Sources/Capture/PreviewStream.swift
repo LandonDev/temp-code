@@ -75,7 +75,7 @@ final class PreviewStream: NSObject, StreamHandle, SCStreamOutput, SCStreamDeleg
         let stream = SCStream(filter: filter, configuration: configuration(size), delegate: self)
         try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
         self.stream = stream
-        try await stream.startCapture()
+        try await withDeadline(CaptureTuning.streamStartTimeout, failure: ComputerFailure.captureTimedOut) { try await stream.startCapture() }
         queue.async { self.startClock() }
     }
 
