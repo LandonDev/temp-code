@@ -36,6 +36,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileS
 import { join, resolve } from 'node:path'
 
 import { readMacScreen, readyMacScreen, SCREEN_SKIP_NOTE, type MacScreen } from './lib/macScreen'
+import { flakesInLog } from './lib/legRerun'
 
 export type Tier = 'commit' | 'publish'
 
@@ -561,6 +562,8 @@ export interface StepResult {
   /** The last lines of the step's output, kept for the failure report. */
   tail?: string
   note?: string
+  /** A passed step's flakes, by name: the steps its own rerun passed after a first failure (scripts/lib/legRerun.ts) */
+  flakes?: string[]
 }
 
 export interface Report {
@@ -618,7 +621,10 @@ export async function runSteps(
         const { exitCode, tail } = await runOne(step, signal)
         const ms = Date.now() - start
         if (cap?.signal.aborted) result = { name: step.name, outcome: 'failed', ms, exitCode, tail, note: `passed its ${fmtCap(step.capMs!)} cap` }
-        else if (exitCode === 0) result = { name: step.name, outcome: 'passed', ms }
+        else if (exitCode === 0) {
+          const flakes = flakesInLog(tail)
+          result = { name: step.name, outcome: 'passed', ms, ...(flakes.length ? { flakes, note: `${flakes.length} flake${flakes.length === 1 ? '' : 's'}` } : {}) }
+        }
         else if (controller.signal.aborted && failed) result = { name: step.name, outcome: 'stopped', ms, exitCode, tail }
         else result = { name: step.name, outcome: 'failed', ms, exitCode, tail }
       } catch (err) {
@@ -810,7 +816,7 @@ export function formatReport(report: Report): string {
   const lines = report.results.map((r) => {
     const time = r.outcome === 'not run' || r.outcome === 'skipped' ? '' : fmtMs(r.ms).padStart(6)
     const note = r.note ? `  ${r.note}` : r.exitCode != null && r.outcome !== 'passed' ? `  exit ${r.exitCode}` : ''
-    return `  ${MARK[r.outcome]} ${r.name.padEnd(width)} ${time.padStart(6)}  ${r.outcome}${note}`
+    return [`  ${MARK[r.outcome]} ${r.name.padEnd(width)} ${time.padStart(6)}  ${r.outcome}${note}`, ...(r.flakes ?? []).map((f) => `      flake: ${f}`)].join('\n')
   })
   const failed = report.results.filter((r) => r.outcome === 'failed')
   for (const r of failed) {
@@ -928,6 +934,7 @@ export async function gate(opts: GateOptions): Promise<Report> {
         clear()
         const time = r.outcome === 'not run' || r.outcome === 'skipped' ? '' : ` ${fmtMs(r.ms)}`
         console.log(`${stamp()} ${MARK[r.outcome]} ${r.name}${time} ${r.outcome}${r.note ? `: ${r.note}` : ''}`)
+        for (const f of r.flakes ?? []) console.log(`  flake: ${f}`)
         draw()
       }
     },

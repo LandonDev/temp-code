@@ -486,6 +486,15 @@ describe('the parallel runner', () => {
     ])
   })
 
+  it('names a passed step’s flakes from its output, in the result and the report', async () => {
+    const tail = ['✓ fallbacks 7 2380ms', 'flake: fallbacks leg, fallbacks 7: a scroll moves the bar: the bar moved', 'report: /tmp/tc-computer-proof/report.json'].join('\n')
+    const report = await runSteps([step('e2e-tc-computer', 'computer'), step('plain', 'b')], async (s) => ({ exitCode: 0, tail: s.name === 'plain' ? '✓ all' : tail }))
+    expect(report.ok).toBe(true)
+    expect(report.results[0]).toMatchObject({ outcome: 'passed', flakes: ['fallbacks leg, fallbacks 7: a scroll moves the bar: the bar moved'], note: '1 flake' })
+    expect(report.results[1].flakes).toBeUndefined()
+    expect(formatReport(report)).toContain('      flake: fallbacks leg, fallbacks 7: a scroll moves the bar: the bar moved')
+  })
+
   it('reports the failed step with its exit code and tail, stops the running ones and never starts the rest', async () => {
     const steps = [step('tsc', 'tsc'), step('vitest', 'vitest'), step('build', 'build'), step('size', 'build')]
     const finished: string[] = []

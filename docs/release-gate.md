@@ -227,6 +227,14 @@ one contract:
   a whole night of rows said "not run: the Mac was locked" on a Mac that needed
   no password and never slept. A proof that loses the screen after it
   starts still fails as inconclusive: its checks did not run whole.
+- **One rerun for an e2e-tc-computer leg** (scripts/lib/legRerun.ts), under
+  `--gate` only: a leg with a failed step runs once more from a clean launch,
+  judged by the same checks. The row stays green only when every step the
+  first run failed passes on the rerun; those failures are then flakes, named
+  in report.json (`flakes`, `reruns`), on `flake:` lines in the step's log,
+  under the gate's row and in last-run.json. A rerun that fails a step, or
+  skips or never reaches the one that failed, is red. A hand run never
+  reruns: its first failure stands.
 - **Three greens.** A proof joined the gate only after three green `--gate`
   runs in a row on each host it runs on (the sweep of 2026-11-09, below).
 

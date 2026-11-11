@@ -72,6 +72,7 @@
  *
  * Run on the Mac: bun run script:e2e-tc-computer
  */
+import { flakeLine, legRerunVerdict, needsLegRerun, type Flake } from './lib/legRerun'
 import { gateScreenSkip, parseMacScreen, readyMacScreen } from './lib/macScreen'
 import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import {
@@ -248,6 +249,10 @@ const report = {
   }[],
   stopped: null as string | null,
   cleanup: [] as string[],
+  /** --gate's safety net: the steps a leg failed and then passed when it ran once more from a clean launch, by name */
+  flakes: [] as Flake[],
+  /** each leg that ran twice, and whether the second run was red */
+  reruns: [] as { leg: string; failed: string[]; red: boolean }[],
   /** Each `front` step's hold (§26.4): activation, the step and its settle, the settle alone, the restore, the total. */
   frontHolds: [] as { step: string; activateMs: number; heldMs: number; settleMs: number | null; restoreMs: number; totalMs: number; restored: string }[]
 }
@@ -308,6 +313,31 @@ class Chain {
       }
     }
   }
+}
+
+/**
+ * --gate's safety net (scripts/lib/legRerun.ts): a leg with a failed step runs once more from a clean
+ * launch, each leg ending its own instances first. The rerun's records stand; a rerun that passes each step
+ * the first run failed names those failures as flakes, and one that fails again, or skips them, is red.
+ */
+async function legOnceMore(leg: string, run: () => Promise<void>): Promise<void> {
+  const from = report.steps.length
+  const waitsFrom = report.waits.length
+  await run()
+  const first = report.steps.slice(from)
+  if (!needsLegRerun(first, GATE, tryAborted)) return
+  report.steps.splice(from)
+  report.waits.splice(waitsFrom)
+  console.log(`rerun: the ${leg} leg failed ${first.filter((s) => s.outcome === 'failed').map((s) => s.name).join('; ')}; running it once more from a clean launch`)
+  await run()
+  const second = report.steps.slice(from)
+  const verdict = legRerunVerdict(leg, first, second)
+  const failedFirst = first.filter((s) => s.outcome === 'failed')
+  report.reruns.push({ leg, failed: failedFirst.map((s) => s.name), red: verdict.red })
+  report.flakes.push(...verdict.flakes)
+  // red with no failed step of its own: the rerun skipped or never reached what the first run failed
+  if (verdict.red && !second.some((s) => s.outcome === 'failed'))
+    record({ name: `${leg} leg, run again`, outcome: 'failed', ms: 0, why: `the first run failed ${failedFirst.map((s) => `${s.name} (${s.why ?? ''})`).join('; ')}, and the rerun did not pass it` })
 }
 
 function record(step: StepRecord): void {
@@ -2239,11 +2269,11 @@ async function appSections(
     const exit = await within(miss.exit, 2_000, 'the private-miss service exiting')
     check(exit.code === 0, 'the private-miss service exits 0', exit)
   })
-  if (runsLeg('windows')) await windowLeg(a, mayLaunch)
-  if (runsLeg('fallbacks')) await fallbackLeg(a, mayLaunch)
-  if (runsLeg('web')) await webLeg()
-  if (runsLeg('active')) await activeLeg(a, mayLaunch)
-  if (runsLeg('fewer')) await fewerLeg(a, mayLaunch)
+  if (runsLeg('windows')) await legOnceMore('windows', () => windowLeg(a, mayLaunch))
+  if (runsLeg('fallbacks')) await legOnceMore('fallbacks', () => fallbackLeg(a, mayLaunch))
+  if (runsLeg('web')) await legOnceMore('web', () => webLeg())
+  if (runsLeg('active')) await legOnceMore('active', () => activeLeg(a, mayLaunch))
+  if (runsLeg('fewer')) await legOnceMore('fewer', () => fewerLeg(a, mayLaunch))
   if (GATE) {
     for (const name of [
       'open a scratch TextEdit', 'TextEdit full read with geometry',
@@ -2934,6 +2964,7 @@ for (const s of report.steps) {
   else if (s.outcome === 'failed') console.log(`✗ ${s.name}: ${s.why}`)
   else console.log(`– ${s.name} skipped: ${s.why}`)
 }
+for (const f of report.flakes) console.log(flakeLine(f))
 if (report.stopped) console.log(report.stopped)
 console.log(`report: ${REPORT}`)
 process.exit(report.stopped || report.steps.some((s) => s.outcome === 'failed') ? 1 : 0)
