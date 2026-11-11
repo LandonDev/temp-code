@@ -96,10 +96,10 @@ export class PeerLink {
       try {
         const { ticket } = await mintTicket(this.ctx, this.env.id, route.url)
         if (this.closed || this.ws) return
-        await this.open(`${route.url}?ticket=${encodeURIComponent(ticket)}`)
+        const extensions = await this.open(`${route.url}?ticket=${encodeURIComponent(ticket)}`)
         this.attempts = 0
         this.lastError = null
-        this.log(connectedLine(this.env.name, route.kind, this.ws?.extensions ?? ''))
+        this.log(connectedLine(this.env.name, route.kind, extensions))
         this.events.onOpen?.(this.env.id)
         return
       } catch (err) {
@@ -109,7 +109,8 @@ export class PeerLink {
     this.scheduleRetry()
   }
 
-  private open(url: string): Promise<void> {
+  /** Opens the socket and waits for the host's hello; answers the extensions the host agreed to. */
+  private open(url: string): Promise<string> {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(url)
       let settled = false
@@ -149,7 +150,7 @@ export class PeerLink {
               this.build = frame.build
               rememberPlatform(this.ctx.store, this.env.id, frame.build.platform)
             }
-            resolve()
+            resolve(ws.extensions)
             return
           }
           if (settled && this.ws === ws) this.events.onPush?.(this.env.id, frame)

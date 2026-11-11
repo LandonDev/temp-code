@@ -20,8 +20,14 @@
  *    that port, an admin key, two threads; one line `{ ready, envId, key,
  *    threads, root }` on stdout (the SSH channel: the key never reaches a file
  *    or a log), then `{ id, method, params }` lines on stdin answered `{ id,
- *    result | error }` from its local socket, plus `digest`, `bridge` and
- *    `quit`.
+ *    result | error }` from its local socket, plus `digest`, `bridge`,
+ *    `timed` (a request timed around its own socket call), `ping`, `sink`
+ *    (the link's round trip and upload rate), `logTail` and `quit`.
+ *
+ * The timing leg (docs/computer-protocol.md "What the bridge costs") runs the
+ * same calls from a box thread and from a thread of the Mac instance in
+ * interleaved pairs and judges the difference by BRIDGE_TIMING_RULE
+ * (scripts/lib/computerBridgeTiming.ts): in `--gate` and in the full mode.
  *
  * No model turn: every computer call is the box thread's `app.computer` with
  * its computer token. Tiers ax and process only; no session-tier action is
@@ -48,6 +54,8 @@ import { proofDescendants } from './lib/proofProcesses'
 import { cleanupProbeApp } from './lib/tcProbeApp'
 import { COMPUTER_PROOF_ENV, sweepComputerProofProcesses } from './lib/computerProofProcesses'
 import { waitForBridgeProofCall } from './lib/computerBridgeProof'
+import { BRIDGE_TIMING_RULE, judgeBridgeTiming, median, timingTable, type TimingKind, type TimingSample } from './lib/computerBridgeTiming'
+import { parseTimingLine } from '../src/shared/computer/bridgeTiming'
 import { proofElectron } from './lib/proofElectron'
 import { waitForGateBuild } from './lib/gateBuild'
 import { computerProofMode, computerProofPolicy, requireGateNative, waitForComputerProof } from './lib/computerProofGate'
@@ -232,6 +240,8 @@ async function boxHalf(): Promise<void> {
     TEMP_CODE_E2E_STATUS: '1',
     // a held call answers at 3 s, computer_result waits 3 s, a pending call nobody reads goes at 8 s (the held leg)
     TEMP_CODE_COMPUTER_HELD_MS: HELD_SEAM,
+    // one `[computer-bridge] timing` line per call, which the timing leg reads back through logTail
+    TEMP_CODE_COMPUTER_TRACE: '1',
     ELECTRON_DISABLE_SANDBOX: '1'
   })
   if (!(await until(120_000, () => existsSync(join(box.data, 'server.json'))))) {
@@ -274,10 +284,22 @@ async function boxHalf(): Promise<void> {
         sessions.get(String(req.params.key))?.close()
         sessions.delete(String(req.params.key))
         answer({ result: null })
+      } else if (req.method === 'timed') {
+        // the bridged side's boundary: this host's own request, timed here, so the SSH channel is outside it
+        const t0 = performance.now()
+        const result = await persistent(String(req.params.method), req.params.params)
+        answer({ result: { ms: performance.now() - t0, answer: result } })
+      } else if (req.method === 'ping') {
+        answer({ result: null })
+      } else if (req.method === 'sink') {
+        answer({ result: String(req.params.data ?? '').length })
       } else if (req.method.startsWith('app.computer')) {
         answer({ result: await persistent(req.method, req.params) })
       } else if (req.method === 'log') {
         answer({ result: logOf(box) })
+      } else if (req.method === 'logTail') {
+        const text = logOf(box)
+        answer({ result: { text: text.slice(Number(req.params.from ?? 0)), end: text.length } })
       } else {
         answer({ result: await rpc(box, req.method, req.params) })
       }
@@ -412,7 +434,8 @@ async function orchestrator(): Promise<void> {
     steps: [] as string[],
     bounce: null as string | null,
     stopped: null as string | null,
-    screenWaits: [] as { at: string; ms: number }[]
+    screenWaits: [] as { at: string; ms: number }[],
+    timing: null as null | { mode: 'gate' | 'full'; roundTripMs: number | null; uploadMbps: number | null; samples: TimingSample[]; table: string; failures: string[] }
   }
   let failures = 0
   const check = (name: string, ok: boolean | 'skipped', detail = ''): boolean => {
@@ -637,7 +660,10 @@ async function orchestrator(): Promise<void> {
     TEMP_CODE_COMPUTER_PIN: `${APP}=${scratchPid},${PROBE_BUNDLE_ID}=${scratchPid}`,
     TEMP_CODE_COMPUTER_TRACE: '1',
     TEMP_CODE_COMPUTER_BIN: BIN,
-    TEMP_CODE_COMPUTER_HELD_MS: HELD_SEAM
+    TEMP_CODE_COMPUTER_HELD_MS: HELD_SEAM,
+    // the timing leg's Mac-local thread calls app.computer with its own token, and is marked running
+    TEMP_CODE_MAC_TOKEN_SEED: SEED,
+    TEMP_CODE_E2E_STATUS: '1'
   })
   if (!(await until(120_000, () => existsSync(join(mac.data, 'server.json'))))) await stop(`the Mac instance did not start; log ${mac.log}`)
   const macId = (await rpc<{ environmentId: string }>(mac, 'remote.status')).environmentId
@@ -703,6 +729,82 @@ async function orchestrator(): Promise<void> {
     // The act's own answer already carried the change, so a plain read would be "no changes": read the whole tree.
     const after = await computer(t1, 'computer_observe', { app: APP, window: APP, full: true })
     check('act: the observation shows the value', after.text.includes(`Lunch ${NONCE}?`), after.text.slice(0, 300))
+
+    // 4b. timing: the same calls from a box thread and a Mac thread, interleaved pairs, each timed by its own host's request
+    await awaitScreen()
+    {
+      // loopback (both halves on this Mac, as in --gate) is judged by the gate bound; over SSH by the run's own round trip
+      const mode = localPair ? 'gate' : 'full'
+      const macThread = (await rpc<{ id: string }>(mac, 'session.create', { provider: 'claude', cwd: mac.home, title: 'computer bridge timing', threadType: 'chat' })).id
+      await rpc(mac, 'session.permission', { sessionId: macThread, permission: 'auto' })
+      await rpc(mac, 'session.markStatus', { sessionId: macThread, status: 'running' })
+      const macSocket = persistentRpc(mac)
+      const kinds: TimingKind[] = pictures ? ['observe', 'observe-shot', 'set-value'] : ['observe', 'set-value']
+      const fieldOf: Record<'box' | 'mac', number | null> = { box: Number(field), mac: null }
+      const argsOf = (kind: TimingKind, side: 'box' | 'mac', pair: number): { tool: string; args: Record<string, unknown> } => {
+        if (kind === 'set-value') return { tool: 'computer_act', args: policy.observeArgs({ app: APP, window: APP, action: 'set_value', element: fieldOf[side], value: `Timing ${pair} ${side}` }) }
+        return { tool: 'computer_observe', args: policy.observeArgs({ app: APP, window: APP, screenshot: kind === 'observe-shot' }) }
+      }
+      const boxTimed = async (kind: TimingKind, pair: number): Promise<{ ms: number; legs: ReturnType<typeof parseTimingLine> }> => {
+        const { tool, args } = argsOf(kind, 'box', pair)
+        policy.assertRequest(tool, args)
+        const from = (await boxCall<{ end: number }>('logTail', { from: Number.MAX_SAFE_INTEGER })).end
+        const out = await boxCall<{ ms: number; answer: AppComputerAnswer }>('timed', { method: 'app.computer', params: { sessionId: t1, token: token(t1), call: ++callSeq, tool, args, images: 'parts' } })
+        if (out.answer.isError) throw new Error(`timing: the box's ${kind} failed: ${out.answer.text.slice(0, 200)}`)
+        // the instance's stdout reaches its log a moment after the answer
+        let legs: ReturnType<typeof parseTimingLine> = null
+        await until(2_000, async () => {
+          const line = (await boxCall<{ text: string }>('logTail', { from })).text.split('\n').find((l) => l.includes(`[computer-bridge] thread=${t1} timing `))
+          legs = line ? parseTimingLine(line) : null
+          return legs !== null
+        })
+        return { ms: out.ms, legs }
+      }
+      const macTimed = async (kind: TimingKind, pair: number): Promise<number> => {
+        const { tool, args } = argsOf(kind, 'mac', pair)
+        policy.assertRequest(tool, args)
+        const t0 = performance.now()
+        const answer = await macSocket<AppComputerAnswer>('app.computer', { sessionId: macThread, token: tokenFor(SEED, 'computer', macThread), call: ++callSeq, tool, args, images: 'parts' })
+        const ms = performance.now() - t0
+        if (answer.isError) throw new Error(`timing: the Mac's ${kind} failed: ${answer.text.slice(0, 200)}`)
+        // the Mac thread's own book numbers the field: read it from its first observe
+        if (kind === 'observe' && fieldOf.mac === null) fieldOf.mac = Number(answer.text.match(/\[(\d+)\] input\b/)?.[1] ?? NaN)
+        return ms
+      }
+      // the link apart from the calls: ten pings, three 1 MB sinks (base64 of random bytes, which nothing compresses)
+      const pings: number[] = []
+      for (let i = 0; i < 10; i++) {
+        const t0 = performance.now()
+        await boxCall('ping')
+        pings.push(performance.now() - t0)
+      }
+      const roundTripMs = median(pings)
+      const blob = randomBytes(750_000).toString('base64')
+      const sinks: number[] = []
+      for (let i = 0; i < 3; i++) {
+        const t0 = performance.now()
+        await boxCall('sink', { data: blob })
+        sinks.push(performance.now() - t0)
+      }
+      const sinkMs = Math.max(1, (median(sinks) ?? 1) - (roundTripMs ?? 0))
+      const uploadMbps = (blob.length * 8) / (sinkMs / 1000) / 1e6
+      const samples: TimingSample[] = []
+      for (let pair = 0; pair <= BRIDGE_TIMING_RULE.pairs; pair++) {
+        await awaitScreen()
+        for (const kind of kinds) {
+          const bridged = await boxTimed(kind, pair)
+          const localMs = await macTimed(kind, pair)
+          samples.push({ kind, pair, bridgedMs: Math.round(bridged.ms), localMs: Math.round(localMs), legs: bridged.legs })
+        }
+      }
+      const ctx = { roundTripMs, uploadMbps, ...(pictures ? {} : { skipped: { 'observe-shot': 'Screen Recording is off' } as const }) }
+      const verdict = judgeBridgeTiming(samples, mode, ctx)
+      const table = timingTable(verdict, ctx)
+      console.log(table.split('\n').map((l) => `      ${l}`).join('\n'))
+      report.timing = { mode, roundTripMs, uploadMbps, samples, table, failures: verdict.failures }
+      check(`timing: the bridge adds within its bound (${mode})`, verdict.ok, verdict.failures.join('; '))
+      await rpc(mac, 'session.markStatus', { sessionId: macThread, status: 'idle' })
+    }
 
     // 5. the card
     await awaitScreen()
