@@ -89,6 +89,7 @@ case "windows":
         return ["id": w[kCGWindowNumber as String] as? Int ?? 0,
                 "pid": w[kCGWindowOwnerPID as String] as? Int ?? 0,
                 "layer": w[kCGWindowLayer as String] as? Int ?? 0,
+                "owner": w[kCGWindowOwnerName as String] as? String ?? "",
                 "alpha": w[kCGWindowAlpha as String] as? Double ?? 1,
                 "x": b["X"] ?? 0, "y": b["Y"] ?? 0,
                 "w": b["Width"] ?? 0, "h": b["Height"] ?? 0]

@@ -66,7 +66,13 @@ describe('probeCover', () => {
     expect(cover!.fraction).toBeGreaterThan(0)
     expect(coverWord(cover)).toMatch(/^not judged: covered, \d+% by pid 777$/)
     // the Dock's full-screen window on a higher layer is no cover
-    expect(coverWord(probeCover([w(7, 742, 20, 0, 0, 3200, 1800), probe, person], 92853))).toBeNull()
+    expect(coverWord(probeCover([{ ...w(7, 742, 20, 0, 0, 3200, 1800), owner: 'Dock' }, probe, person], 92853))).toBeNull()
+    // another app's window on a higher layer is: a modal panel, a utility or status window, an overlay
+    for (const layer of [8, 19, 20, 25]) {
+      expect(coverWord(probeCover([{ ...w(8, 555, layer, 100, 1450, 200, 200), owner: 'Zoom' }, probe, person], 92853))).toMatch(/^not judged: covered, \d+% by pid 555$/)
+    }
+    // and one whose owner CG does not name counts as a cover too
+    expect(coverWord(probeCover([w(9, 742, 20, 0, 0, 3200, 1800), probe, person], 92853))).toBe('not judged: covered, 100% by pid 742')
     // a see-through window does not cover it
     expect(coverWord(probeCover([w(6, 777, 3, 100, 1450, 200, 200, 0.5), probe], 92853))).toBeNull()
   })

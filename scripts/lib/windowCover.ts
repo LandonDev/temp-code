@@ -10,6 +10,8 @@ export interface CoverWindow extends WindowRect {
   pid: number
   layer: number
   alpha: number
+  /** the owning process's name (kCGWindowOwnerName), "" or absent when CG gives none */
+  owner?: string
 }
 
 /** Fraction of a window covered by the union of opaque normal windows ahead of it. */
@@ -78,18 +80,22 @@ export interface ProbeCover {
   by: number[]
 }
 
+/** The Dock's process name, as CG gives it as a window's owner. */
+const DOCK = 'Dock'
+
 /**
  * TC Probe's window at its own layer (it floats, layer 3) and what covers it: opaque windows of other apps ahead
- * of it in the list, ordinary or floating ones only (the Dock keeps full-screen windows on higher layers, and they
- * are no cover: a publish-shaped run read TC Probe 100% covered by the Dock, 2026-11-11). Null when it is not on
- * screen at all, as on another Space or behind a full-screen app. A proof whose check reads pixels the probe draws
- * fails it as not judged while this is not clear (`coverWord`), rather than judging the screen.
+ * of it in the list, on any layer, but the Dock's own (it keeps full-screen windows on a higher layer, and they are
+ * no cover: a publish-shaped run read TC Probe 100% covered by the Dock, 2026-11-11). Another app's panel, utility,
+ * status or overlay window over the probe still covers it, and a window whose owner CG does not name counts. Null
+ * when it is not on screen at all, as on another Space or behind a full-screen app. A proof whose check reads
+ * pixels the probe draws fails it as not judged while this is not clear (`coverWord`), rather than judging the screen.
  */
 export function probeCover(windows: readonly CoverWindow[], pid: number, window?: number): ProbeCover | null {
   const at = windows.findIndex((w) => w.pid === pid && (window === undefined ? w.layer === 0 || w.layer === 3 : w.id === window))
   if (at < 0) return null
-  // app windows only, ordinary or floating: the Dock and the menu bar keep full-screen windows on higher layers
-  const ahead = windows.slice(0, at).filter((w) => w.pid !== pid && (w.layer === 0 || w.layer === 3) && w.alpha >= 0.99 && coveredFraction(windows[at], [w]) > 0)
+  // every opaque window ahead, on any layer, but the Dock's full-screen ones
+  const ahead = windows.slice(0, at).filter((w) => w.pid !== pid && w.owner !== DOCK && w.alpha >= 0.99 && coveredFraction(windows[at], [w]) > 0)
   return { window: windows[at].id, layer: windows[at].layer, fraction: coveredFraction(windows[at], ahead), by: [...new Set(ahead.map((w) => w.pid))] }
 }
 
