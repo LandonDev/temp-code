@@ -17,6 +17,7 @@ const tcComputer = (wrapper: number, runner: number, etime: string): string[] =>
 describe('proofOrder', () => {
   it('lists the bridge proof', () => {
     expect(COMPUTER_PROOFS).toContain('e2e-computer-bridge')
+    expect(COMPUTER_PROOFS).toContain('e2e-person-guard')
   })
 
   it('reads ps elapsed times', () => {

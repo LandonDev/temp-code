@@ -52,7 +52,7 @@ import { staticPresence } from '../src/main/presence'
 import { parseObservation } from '../src/shared/computer/observation'
 import { tierVerdictSetting } from '../src/shared/computer/tools'
 import { SESSION_IDLE_SETTING } from '../src/shared/computer/scheduleRules'
-import type { ComputerMethod, StepResult, Tier } from '../src/shared/computer/protocol'
+import type { ComputerMethod, SessionRestore, StepResult, Tier } from '../src/shared/computer/protocol'
 import type { PermissionPolicy, SessionMeta } from '../src/shared/events'
 import { buildTcComputer } from './lib/tcComputerBuild'
 import { repoRoot } from './lib/repoRoot'
@@ -500,7 +500,13 @@ console.log(`\n[${leg}]`)
   check('input.restoreSession { afterInterrupt: true } put the front app back', !!restore && restore.params.afterInterrupt === true && (restore.result as { frontmost?: string })?.frontmost === 'restored', JSON.stringify(restore?.result ?? null))
   await sleep(1_000)
   check('B is in front within 1 s', frontmost().pid === B.pid)
-  note('the key landed in A', textAreaLine(await read(A)).includes('y'))
+  check('the typist key did not land in A', !textAreaLine(await read(A)).includes('y'))
+  check('the typist key did not land in B', !textAreaLine(await read(B)).includes('y'))
+  const guard = (restore?.result as SessionRestore | undefined)?.personGuard
+  note('personGuard', guard ?? null)
+  check('the person guard was active', guard?.mode === 'active', JSON.stringify(guard ?? null))
+  check('the person guard dropped the key', (guard?.dropped ?? 0) >= 1, JSON.stringify(guard ?? null))
+  check('the return key was not replayed', guard?.replayed === 0, JSON.stringify(guard ?? null))
 }
 
 // ── 3. a process-tier click ─────────────────────────────────────────────
