@@ -5,7 +5,8 @@ import { COMPUTER_WAIT, type Observation } from '@shared/computer/protocol'
 import { tierVerdictSetting } from '@shared/computer/tools'
 import { hostErrorLine } from '@shared/computer/hostErrors'
 import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/computer/heldCalls'
-import { PERMISSION_SWITCH, remember, type ThreadComputer } from './run'
+import { PERMISSION_SWITCH, remember, waitedIn, type ThreadComputer } from './run'
+import { CallTiming, parseTimingLine } from '@shared/computer/bridgeTiming'
 import { computerHarness, type ComputerHarness } from './runHarness'
 import { IDLE_CLOSE_MS } from './sessions'
 import { ManualClock, settle } from './testFake'
@@ -914,5 +915,89 @@ describe('a reader (pending.ts): nothing runs unread', () => {
     own.abort('unread')
     expect(await act).toMatchObject({ isError: true, body: hostErrorLine('cancelled', UNREAD_WORDS) })
     expect(count(h, 'action.run')).toBe(0)
+  })
+})
+
+describe('the call timing (shared/computer/bridgeTiming.ts)', () => {
+  /** every request the call sends moves the clock 10 ms, so the tally is exact */
+  const timed = (): { h: ComputerHarness; sent: () => number } => {
+    const clock = new ManualClock()
+    const h = make({ clock })
+    const request = h.service.request.bind(h.service)
+    let sent = 0
+    h.service.request = ((method: string, params: unknown, opts?: unknown) => {
+      if (method !== 'permissions.request') {
+        sent++
+        clock.t += 10
+      }
+      return (request as (m: string, p: unknown, o?: unknown) => Promise<unknown>)(method, params, opts)
+    }) as typeof h.service.request
+    return { h, sent: () => sent }
+  }
+
+  it("sums each service request's round trip and the observation's wait", async () => {
+    const { h, sent } = timed()
+    const timing = new CallTiming()
+    expect((await h.run('computer_observe', { app: 'TextEdit' }, 't1', { timing })).isError).toBe(false)
+    expect(sent()).toBeGreaterThan(1)
+    expect(timing.serviceMs).toBe(10 * sent())
+    expect(timing.waitedMs).toBe(12)
+  })
+
+  it('counts the request a forgotten session made it send again', async () => {
+    const { h, sent } = timed()
+    await h.run('computer_observe', { app: 'TextEdit' })
+    await h.service.request('session.close', { session: 't1' })
+    const before = sent()
+    const gets = count(h, 'state.get')
+    const timing = new CallTiming()
+    expect((await h.run('computer_observe', { app: 'TextEdit' }, 't1', { timing })).isError).toBe(false)
+    // the refused state.get, session.open, the state.get again
+    expect(count(h, 'state.get') - gets).toBe(2)
+    expect(timing.serviceMs).toBe(10 * (sent() - before))
+    expect(timing.serviceMs).toBeGreaterThanOrEqual(30)
+  })
+
+  it("sums the waits over a batch's observations", async () => {
+    const { h } = timed()
+    await h.run('computer_observe', { app: 'TextEdit' })
+    const timing = new CallTiming()
+    const o = await h.run('computer_batch', { app: 'TextEdit', actions: [{ action: 'left_click', element: 21 }, { action: 'key', text: 'a' }] }, 't1', { timing })
+    expect(o.isError).toBe(false)
+    expect(timing.waitedMs).toBe(12 * (count(h, 'action.batch') + count(h, 'action.run')))
+  })
+
+  it('reads the wait of an observation and of an action or batch result, nothing else', () => {
+    const wait = { waitedMs: 30, settled: true, busy: false, reason: 'quiet' }
+    expect(waitedIn({ text: 'app', waited: wait })).toBe(30)
+    expect(waitedIn({ step: {}, observation: { waited: wait } })).toBe(30)
+    expect(waitedIn({ steps: [], waited: wait, observation: { waited: wait } })).toBe(30)
+    expect(waitedIn({ apps: [] })).toBe(0)
+    expect(waitedIn(null)).toBe(0)
+  })
+
+  it("traces a call of this host's own thread as one [computer] timing line, and a bridged call never", async () => {
+    const clock = new ManualClock()
+    const lines: string[] = []
+    const h = make({ clock, trace: true, log: (l) => void lines.push(l) })
+    const request = h.service.request.bind(h.service)
+    h.service.request = ((method: string, params: unknown, opts?: unknown) => {
+      clock.t += 10
+      return (request as (m: string, p: unknown, o?: unknown) => Promise<unknown>)(method, params, opts)
+    }) as typeof h.service.request
+    await h.run('computer_observe', { app: 'TextEdit' })
+    const timing = lines.filter((l) => l.includes(' timing '))
+    expect(timing).toHaveLength(1)
+    expect(timing[0]).toMatch(/^\[computer\] thread=t1 timing total=\d+ queue=0 run=\d+ tool=computer_observe service=\d+ waited=12$/)
+    const fields = parseTimingLine(timing[0])!
+    expect(fields.total).toBe(fields.service)
+    // a bridged call (remote/macComputer.ts) brings its own tally and its line is the box's
+    await h.run('computer_observe', { app: 'TextEdit' }, 't1', { timing: new CallTiming() })
+    expect(lines.filter((l) => l.includes(' timing '))).toHaveLength(1)
+  })
+
+  it('a call without a tally sends the same requests', async () => {
+    const h = make()
+    expect((await h.run('computer_observe', { app: 'TextEdit' })).isError).toBe(false)
   })
 })

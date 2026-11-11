@@ -33,6 +33,8 @@ import { isSoftCancel, type CallReader } from './pending'
 import { refusal, type ComputerToolOutcome, type LandedShot } from './result'
 import { abortedLine, checkComputerCall, type ComputerToolContext } from './run'
 import { landShotBytes, nextShotNumber } from './shots'
+import { bridgeLegs, bridgeOverhead, timingLine, type BridgeStamps } from '@shared/computer/bridgeTiming'
+import { currentLag, recordComputerSpan } from '../stalls'
 
 /**
  * The box side of computer use through the Mac bridge (docs/box.md "Computer
@@ -62,6 +64,8 @@ const SETTLED: readonly SessionStatus[] = ['idle', 'done', 'error', 'stopped', '
 export const STOP_REPLY_MS = 10_000
 /** A notice to the Mac (an end, a cancel): nothing waits on it. */
 const NOTICE_DEADLINE_MS = 15_000
+/** A call whose bridge legs (all but its queue and the Mac's run) pass this goes to stalls.log, traced or not. */
+export const COMPUTER_SPAN_MS = 250
 
 export interface BridgeClock {
   now(): number
@@ -99,6 +103,12 @@ export interface ComputerBridgeDeps {
   held?: (sessionId: string, line: string | null) => void
   clock?: BridgeClock
   log?: (line: string) => void
+  /** TEMP_CODE_COMPUTER_TRACE=1: one `timing` line per call */
+  trace?: boolean
+  /** where a slow call's line goes; default stalls.log */
+  span?: (line: string) => void
+  /** the main loop's lag now, in ms; default the stall monitor's mean */
+  lag?: () => number
 }
 
 interface Queued {
@@ -198,6 +208,7 @@ export class ComputerBridge {
 
   /** One call, as ComputerSessions.run serves a Mac thread; one at a time per thread, in arrival order. */
   run(ctx: BridgedCallContext, tool: string, args: unknown): Promise<ComputerToolOutcome> {
+    const startedAt = this.clock.now()
     const checked = checkComputerCall(tool, args)
     if (!checked.ok) return Promise.resolve(refusal(checked.line))
     const id = ctx.threadId
@@ -223,7 +234,7 @@ export class ComputerBridge {
         t.queued.delete(entry)
         ctx.signal?.removeEventListener('abort', onAbort)
         try {
-          settle(await this.dispatch(t, ctx, checked.tool, checked.args))
+          settle(await this.dispatch(t, ctx, checked.tool, checked.args, startedAt))
         } catch (err) {
           this.log(`thread=${id}: computer call failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`)
           settle(refusal(`the computer call failed: ${err instanceof Error ? err.message : String(err)}`))
@@ -251,7 +262,7 @@ export class ComputerBridge {
     return this.threads.get(sessionId)?.heldWords ?? null
   }
 
-  private async dispatch(t: ThreadBridge, ctx: BridgedCallContext, tool: ComputerToolName, args: Record<string, unknown>): Promise<ComputerToolOutcome> {
+  private async dispatch(t: ThreadBridge, ctx: BridgedCallContext, tool: ComputerToolName, args: Record<string, unknown>, startedAt: number): Promise<ComputerToolOutcome> {
     const id = t.id
     // nothing goes to the Mac unread: a call left pending waits here for someone to read it
     const reader = ctx.reader
@@ -259,6 +270,7 @@ export class ComputerBridge {
     // the same refusals again: a call can be given up, Stopped or paused while it waits behind another
     const late = this.refusalFor(id, ctx.signal)
     if (late) return refusal(late)
+    const stamps = { startedAt, dispatchedAt: this.clock.now(), sentAt: 0, repliedAt: 0 }
     const mac = this.deps.macPeerOf(id)!
     const meta = this.deps.sessions.get(id)
     const permission = ctx.permission?.() ?? meta?.permission ?? 'safe'
@@ -295,6 +307,7 @@ export class ComputerBridge {
       const raw = await this.deps.pause.guard({ sessionId: id, macPeer: mac, method: 'mac.computer', waitMs: 0, whilePaused: 'refuse' }, (callId) => {
         inflight.callId = callId
         if (given) return Promise.reject(new Error(abortedLine(ctx.signal) ?? hostErrorLine('cancelled')))
+        stamps.sentAt = this.clock.now()
         return this.deps.calls.call<unknown>(
           mac,
           'mac.computer',
@@ -303,7 +316,8 @@ export class ComputerBridge {
           { callId, onProgress: (frame) => this.progress(t, inflight, frame.chunk) }
         )
       })
-      return await this.answer(t, meta, call, raw, inflight)
+      stamps.repliedAt = this.clock.now()
+      return await this.answer(t, meta, call, raw, inflight, stamps)
     } catch (err) {
       return this.failure(t, call, err)
     } finally {
@@ -386,7 +400,14 @@ export class ComputerBridge {
   }
 
   /** The Mac's answer as the outcome; one for a call Stop or the thread's end closed still answers, but moves neither the row nor the ledger. */
-  private async answer(t: ThreadBridge, meta: SessionMeta | null | undefined, call: ComputerToolCall, raw: unknown, inflight: Inflight): Promise<ComputerToolOutcome> {
+  private async answer(
+    t: ThreadBridge,
+    meta: SessionMeta | null | undefined,
+    call: ComputerToolCall,
+    raw: unknown,
+    inflight: Inflight,
+    stamps: Omit<BridgeStamps, 'answeredAt' | 'timing'>
+  ): Promise<ComputerToolOutcome> {
     const parsed = ComputerPeerAnswerSchema.safeParse(raw)
     if (!parsed.success) return refusal(hostErrorLine('service_unavailable', COMPUTER_BAD_ANSWER))
     const a: ComputerPeerAnswer = parsed.data
@@ -409,7 +430,29 @@ export class ComputerBridge {
       this.deps.resources.recordComputer(t.id, mac, a.row?.apps[0]?.name ?? ('app' in call.args ? String(call.args.app ?? '') : ''))
       t.ledgered = true
     }
+    this.timed(t.id, call.tool, { ...stamps, answeredAt: this.clock.now(), timing: a.timing })
     return { steps: a.steps, shots, body: a.body, isError: a.isError }
+  }
+
+  /** The call's legs: a trace line when asked, and a stalls.log line when the bridge's own part passed COMPUTER_SPAN_MS. */
+  private timed(id: string, tool: string, stamps: BridgeStamps): void {
+    const legs = bridgeLegs(stamps)
+    const over = bridgeOverhead(legs)
+    const slow = over !== null && over > COMPUTER_SPAN_MS
+    if (!this.deps.trace && !slow) return
+    const m = stamps.timing
+    const line = timingLine(legs, {
+      tool,
+      checks: m?.checksMs,
+      guard: m?.guardMs,
+      service: m?.serviceMs,
+      waited: m?.waitedMs,
+      shots: m?.shotsMs,
+      shotChars: m?.shotChars,
+      lag: Math.round(this.deps.lag?.() ?? currentLag().meanMs)
+    })
+    if (this.deps.trace) this.log(`thread=${id} ${line}`)
+    if (slow) (this.deps.span ?? recordComputerSpan)(`computer-bridge thread=${id} ${line}`)
   }
 
   private failure(t: ThreadBridge, call: ComputerToolCall, err: unknown): ComputerToolOutcome {

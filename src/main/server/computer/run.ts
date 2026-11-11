@@ -55,6 +55,7 @@ import type { CallReader } from './pending'
 import { landShot, nextShotNumber } from './shots'
 import type { SessionTierGate, TierDecision, TierGateContext } from './tierGate'
 import type { SettingsStore, TierVerdicts } from './verdicts'
+import type { CallTiming } from '@shared/computer/bridgeTiming'
 
 /**
  * One computer call, start to end (docs/computer-protocol.md "Sessions" and
@@ -83,6 +84,8 @@ export interface ComputerToolContext {
    * read the call's answer; Claude's calls carry none and pay nothing.
    */
   reader?: Pick<CallReader, 'present' | 'whenPresent' | 'request'>
+  /** the call's tally (shared/computer/bridgeTiming.ts): each service request's round trip, each observation's wait */
+  timing?: CallTiming
 }
 
 export interface ComputerRegistry {
@@ -381,18 +384,31 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
   const open = async (): Promise<void> => {
     const conn = await host.service.connection()
     if (t.openedIn === conn.epoch) return
-    await host.service.request('session.open', { session: t.serviceSession })
+    await timed('session.open', { session: t.serviceSession })
     t.openedIn = conn.epoch
+  }
+  /** One service request, its round trip and any observation's wait on the call's tally. */
+  async function timed<M extends ComputerMethod>(method: M, params: ComputerParams<M>): Promise<ComputerResult<M>> {
+    const tally = ctx.timing
+    if (!tally) return await host.service.request(method, params, { signal })
+    const at = host.now()
+    try {
+      const result = await host.service.request(method, params, { signal })
+      tally.addWaited(waitedIn(result))
+      return result
+    } finally {
+      tally.addService(host.now() - at)
+    }
   }
   async function send<M extends ComputerMethod>(method: M, params: ComputerParams<M>): Promise<ComputerResult<M>> {
     await open()
     try {
-      return await host.service.request(method, params, { signal })
+      return await timed(method, params)
     } catch (e) {
       if (!(e instanceof ComputerRpcError) || e.data?.kind !== 'unknown_session') throw e
       t.openedIn = null
       await open()
-      return await host.service.request(method, params, { signal })
+      return await timed(method, params)
     }
   }
   /** Every request, a read or an input: on the bridge it waits until someone will read the result, so nothing runs unread. */
@@ -609,6 +625,14 @@ async function pinApp(
 }
 
 /** The app's state from an observation the model gets: who it is, its window, the epoch, the book. */
+/** The smart wait the service reported for the observations in a result: a `state.get`'s own, or an action's or batch's closing one. */
+export function waitedIn(result: unknown): number {
+  if (!result || typeof result !== 'object') return 0
+  const r = result as { text?: unknown; waited?: { waitedMs?: number }; observation?: { waited?: { waitedMs?: number } } }
+  const own = typeof r.text === 'string' ? (r.waited?.waitedMs ?? 0) : 0
+  return own + (r.observation?.waited?.waitedMs ?? 0)
+}
+
 export function remember(t: ThreadComputer, query: string, obs: Observation): void {
   const key = (obs.app.bundleId ?? obs.app.name).toLowerCase()
   const st: AppState = t.apps.get(key) ?? {
