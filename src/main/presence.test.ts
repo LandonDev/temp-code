@@ -112,15 +112,15 @@ describe('MacPresenceWatcher', () => {
 })
 
 describe('a screen saver is not a lock', () => {
-  const reader = (state: { sessionLocked: boolean; saverRunning: boolean; policy: 'off' | 'immediate' }) => async () => ({
-    facts: { sessionLocked: state.sessionLocked, onConsole: true, saverRunning: state.saverRunning },
+  const reader = (state: { sessionLocked: boolean; policy: 'off' | 'immediate' }) => async () => ({
+    session: { sessionLocked: state.sessionLocked, onConsole: true },
     policy: { kind: state.policy } as const
   })
 
-  it('lock-screen reads locked at once, then the facts say a passwordless saver: unlocked with the saver up', async () => {
-    const mac = { sessionLocked: true, saverRunning: true, policy: 'off' as const }
+  it('the idle saver (lock-screen with the person idle) reads unlocked with the saver up once the facts are read', async () => {
+    const mac = { sessionLocked: true, policy: 'off' as const }
     const w = new MacPresenceWatcher({ initial: { screen: 'unlocked' }, now: () => 1 })
-    w.useMac(reader(mac), async () => {})
+    w.useMac(reader(mac), async () => {}, () => 1200)
     const seen: string[] = []
     w.onChange((p) => seen.push(`${p.screen}${p.saver ? '+saver' : ''}`))
     const monitor = fakeMonitor()
@@ -133,49 +133,77 @@ describe('a screen saver is not a lock', () => {
     expect(w.snapshot().saver).toBeUndefined()
   })
 
+  it('an explicit lock (lock-screen right after input) stays locked whatever the policy', async () => {
+    let idle = 2
+    const w = new MacPresenceWatcher({ initial: { screen: 'unlocked' } })
+    w.useMac(reader({ sessionLocked: true, policy: 'off' }), async () => {}, () => idle)
+    const monitor = fakeMonitor()
+    w.attach(monitor)
+    monitor.fire('lock-screen')
+    idle = 5000
+    await w.refresh()
+    expect(w.snapshot()).toMatchObject({ screen: 'locked' })
+    expect(w.snapshot().saver).toBeUndefined()
+  })
+
   it('a password policy keeps it locked, and dismissSaver never touches a lock', async () => {
     let declared = 0
     const w = new MacPresenceWatcher({ sleep: async () => {} })
-    w.useMac(reader({ sessionLocked: true, saverRunning: true, policy: 'immediate' }), async () => void declared++)
+    w.useMac(reader({ sessionLocked: true, policy: 'immediate' }), async () => void declared++, () => 1200)
     expect((await w.dismissSaver()).screen).toBe('locked')
     expect(declared).toBe(0)
   })
 
-  it('dismissSaver declares activity and reads until the desktop is back', async () => {
-    const mac = { sessionLocked: true, saverRunning: true, policy: 'off' as const }
+  it('dismissSaver declares activity and reads until the desktop is back, judging the cover by the idle before it', async () => {
+    const mac = { sessionLocked: true, policy: 'off' as const }
     let declared = 0
+    let idle = 1500
     const w = new MacPresenceWatcher({ sleep: async () => {} })
     w.useMac(reader(mac), async () => {
       declared++
-      mac.sessionLocked = false
-      mac.saverRunning = false
-    })
+      idle = 0
+    }, () => idle)
     expect(await w.refresh()).toMatchObject({ screen: 'unlocked', saver: true })
+    // the first read after the declaration still sees the cover, with the idle reset by it
+    let reads = 0
+    w.useMac(async () => {
+      if (++reads > 1) mac.sessionLocked = false
+      return { session: { sessionLocked: mac.sessionLocked, onConsole: true }, policy: { kind: 'off' } }
+    }, async () => {
+      declared++
+      idle = 0
+    }, () => idle)
     const after = await w.dismissSaver()
     expect(declared).toBe(1)
     expect(after).toMatchObject({ screen: 'unlocked' })
     expect(after.saver).toBeUndefined()
   })
 
-  it('a dismiss the Mac ignores gives up after the wait, still saying saver', async () => {
+  it('a dismiss the Mac ignores was a lock after all: locked until the cover lifts', async () => {
     let t = 0
+    const mac = { sessionLocked: true, policy: 'off' as const }
     const w = new MacPresenceWatcher({ now: () => t, sleep: async (ms) => void (t += ms) })
-    w.useMac(reader({ sessionLocked: true, saverRunning: true, policy: 'off' }), async () => {})
-    expect((await w.dismissSaver()).saver).toBe(true)
+    w.useMac(reader(mac), async () => {}, () => 1200)
+    expect(await w.dismissSaver()).toMatchObject({ screen: 'locked' })
     expect(t).toBeGreaterThanOrEqual(3_000)
+    expect((await w.refresh()).screen).toBe('locked')
+    mac.sessionLocked = false
+    expect((await w.refresh()).screen).toBe('unlocked')
+    mac.sessionLocked = true
+    expect(await w.refresh()).toMatchObject({ screen: 'unlocked', saver: true })
+    w.dispose()
   })
 
-  it('macScreenReader folds ioreg, pgrep and sysadminctl (on stderr) into facts, keeping the policy', async () => {
+  it('macScreenReader folds ioreg and sysadminctl (on stderr) into the session and policy, keeping the policy', async () => {
     const calls: string[] = []
     const exec = (file: string, _args: readonly string[], _o: unknown, cb: (e: Error | null, out: string, err?: string) => void): unknown => {
       calls.push(file)
       if (file === 'ioreg') cb(null, LOCKED)
-      else if (file === '/usr/bin/pgrep') cb(null, '')
       else cb(null, '', '… sysadminctl[1:2] screenLock is off')
       return null
     }
     const read = macScreenReader(exec, () => 0)
-    expect(await read()).toEqual({ facts: { sessionLocked: true, onConsole: true, saverRunning: true }, policy: { kind: 'off' } })
+    expect(await read()).toEqual({ session: { sessionLocked: true, onConsole: true }, policy: { kind: 'off' } })
     await read()
     expect(calls.filter((c) => c === '/usr/sbin/sysadminctl')).toHaveLength(1)
   })
@@ -185,13 +213,13 @@ describe('a covered screen is read again until it is not', () => {
   it('re-reads every COVERED_RECHECK_MS while locked or under a saver, and stops once unlocked', async () => {
     vi.useFakeTimers()
     try {
-      const mac = { sessionLocked: true, saverRunning: false }
+      const mac = { sessionLocked: true }
       let reads = 0
       const w = new MacPresenceWatcher()
       w.useMac(async () => {
         reads++
-        return { facts: { ...mac, onConsole: true }, policy: { kind: 'off' } }
-      }, async () => {})
+        return { session: { ...mac, onConsole: true }, policy: { kind: 'immediate' } }
+      }, async () => {}, () => 0)
       await w.refresh()
       expect(w.snapshot().screen).toBe('locked')
       await vi.advanceTimersByTimeAsync(COVERED_RECHECK_MS)

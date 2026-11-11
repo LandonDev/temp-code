@@ -99,11 +99,15 @@ describe('the screen probe replies', () => {
 })
 
 describe('a screen saver is not a lock', () => {
-  const covered = '{"locked":true,"asleep":false,"session":true,"console":true}'
+  const covered = '{"locked":true,"asleep":false,"session":true,"console":true,"idle":1250}'
   it('classifies a covered reply that carries the raw session', () => {
-    expect(parseMacScreen(covered, () => 'saver')).toEqual({ locked: false, asleep: false, saver: true })
+    const seen: unknown[] = []
+    expect(parseMacScreen(covered, (s) => (seen.push(s), 'saver'))).toEqual({ locked: false, asleep: false, saver: true })
+    expect(seen).toEqual([{ sessionLocked: true, onConsole: true, idleS: 1250 }])
     expect(parseMacScreen(covered, () => 'locked')).toEqual({ locked: true, asleep: false })
-    expect(parseMacScreen('{"locked":false,"asleep":false,"session":false,"console":true}', () => { throw new Error('not asked') })).toEqual({ locked: false, asleep: false })
+    expect(parseMacScreen('{"locked":false,"asleep":false,"session":false,"console":true,"idle":3}', () => { throw new Error('not asked') })).toEqual({ locked: false, asleep: false })
+    // an older probe's reply, with no raw session, stays as it says
+    expect(parseMacScreen('{"locked":true,"asleep":false}', () => 'saver')).toEqual({ locked: true, asleep: false })
   })
 
   const seq = (...reads: (MacScreen | null)[]) => {
@@ -111,9 +115,9 @@ describe('a screen saver is not a lock', () => {
     return () => reads[Math.min(i++, reads.length - 1)]
   }
 
-  it('dismisses a passwordless saver and reads until the desktop is back', () => {
+  it('dismisses a passwordless saver and reads until the desktop is back, through reads the reset idle calls locked', () => {
     const declare = vi.fn()
-    const screen = readyMacScreen(seq({ locked: false, asleep: false, saver: true }, { locked: false, asleep: false, saver: true }, { locked: false, asleep: false }), { declare, sleep: () => {} })
+    const screen = readyMacScreen(seq({ locked: false, asleep: false, saver: true }, { locked: true, asleep: false }, { locked: false, asleep: false }), { declare, sleep: () => {} })
     expect(screen).toEqual({ locked: false, asleep: false })
     expect(declare).toHaveBeenCalledTimes(1)
   })
@@ -127,10 +131,10 @@ describe('a screen saver is not a lock', () => {
     expect(declare).toHaveBeenCalledTimes(1)
   })
 
-  it('gives up after the wait when the saver stays', () => {
+  it('a saver that stays after the wait was a lock after all', () => {
     let t = 0
     const screen = readyMacScreen(() => ({ locked: false, asleep: false, saver: true }), { declare: () => {}, now: () => t, sleep: (ms) => void (t += ms) })
-    expect(screen?.saver).toBe(true)
+    expect(screen).toEqual({ locked: true, asleep: false })
     expect(t).toBeGreaterThanOrEqual(3_000)
   })
 })

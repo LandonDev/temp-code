@@ -8,27 +8,35 @@
  * screen saver or the lock screen is up, whether or not a password is
  * needed to get back: on 2026-11-11 it read true for hours on a Mac whose
  * `sysadminctl -screenLock status` said "screenLock is off". So the flag
- * alone is not a lock. Three states:
+ * alone is not a lock. On macOS 27 the idle saver is the lock screen with
+ * the Aerial wallpaper (loginwindow raises it after its idle time; no
+ * ScreenSaverEngine process runs), and it posts com.apple.screenIsLocked and
+ * com.apple.screenIsUnlocked like any lock. Three states:
  *   - `unlocked`: nothing covers the screen;
- *   - `saver`: the screen saver is up and leaving it needs no password
- *     (screenLock off, or its delay not yet run out): declaring user
- *     activity (`caffeinate -u`) puts the desktop back;
- *   - `locked`: a password is needed (an explicit Lock Screen, the saver
- *     past the delay, another user on the console, or anything unread).
+ *   - `saver`: the cover rose on its own after idle (the person idle at
+ *     least IDLE_LAUNCH_MIN_S when it rose, where ⌃⌘Q or Lock Screen come
+ *     with fresh input) and the policy asks no password yet (screenLock off,
+ *     or its delay not run out): declaring user activity (`caffeinate -u`)
+ *     puts the desktop back, and a dismiss that does not take is a lock;
+ *   - `locked`: a password is needed: an explicit lock (always), the saver
+ *     past the delay, another user on the console, or anything unread.
  * The display's sleep is the other axis (`asleep`), read beside it.
  */
 
 export type ScreenCover = 'unlocked' | 'saver' | 'locked'
 
-/** What the Mac says, raw: the session dictionary, the saver's process and the main display. */
+/** What the Mac says, raw: the session dictionary, and how the cover rose. */
 export interface ScreenFacts {
   /** `CGSSessionScreenIsLocked` */
   sessionLocked: boolean
   /** `kCGSSessionOnConsoleKey`: false while another user has the console */
   onConsole: boolean
-  /** a ScreenSaverEngine (or legacyScreenSaver) process runs */
-  saverRunning: boolean
+  /** the cover rose with the person idle (IDLE_LAUNCH_MIN_S or more at that moment, or now when the moment is unknown) */
+  idleLaunched: boolean
 }
+
+/** An explicit lock comes with the person's own input; the idle saver only after this much quiet (its own minimum is a minute). */
+export const IDLE_LAUNCH_MIN_S = 60
 
 /** `sysadminctl -screenLock status`: how soon the saver asks for the password. */
 export type LockPolicy = { kind: 'off' } | { kind: 'immediate' } | { kind: 'delay'; seconds: number } | { kind: 'unknown' }
@@ -51,14 +59,11 @@ export function parseLockPolicy(text: string): LockPolicy {
 export function classifyScreen(facts: ScreenFacts, policy: LockPolicy, saverUpMs: number | null = null): ScreenCover {
   if (!facts.onConsole) return 'locked'
   if (!facts.sessionLocked) return 'unlocked'
-  if (!facts.saverRunning) return 'locked'
+  if (!facts.idleLaunched) return 'locked'
   if (policy.kind === 'off') return 'saver'
   if (policy.kind === 'delay' && saverUpMs !== null && saverUpMs < policy.seconds * 1000) return 'saver'
   return 'locked'
 }
-
-/** The saver's process names on macOS 14 and later. */
-export const SAVER_PROCESSES: readonly string[] = ['ScreenSaverEngine', 'legacyScreenSaver']
 
 /** How long a dismiss waits for the session to read uncovered. */
 export const DISMISS_WAIT_MS = 3_000

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { classifyScreen, parseLockPolicy } from './screenState'
 
-const facts = (over: Partial<Parameters<typeof classifyScreen>[0]> = {}) => ({ sessionLocked: true, onConsole: true, saverRunning: true, ...over })
+const facts = (over: Partial<Parameters<typeof classifyScreen>[0]> = {}) => ({ sessionLocked: true, onConsole: true, idleLaunched: true, ...over })
 
 describe('parseLockPolicy', () => {
   it("reads sysadminctl's three answers after its log prefix", () => {
@@ -20,7 +20,8 @@ describe('classifyScreen', () => {
 
   it('a password needed, an explicit lock, another user or an unread policy is locked', () => {
     expect(classifyScreen(facts(), { kind: 'immediate' })).toBe('locked')
-    expect(classifyScreen(facts({ saverRunning: false }), { kind: 'off' })).toBe('locked')
+    // an explicit lock comes with fresh input: locked whatever the policy
+    expect(classifyScreen(facts({ idleLaunched: false }), { kind: 'off' })).toBe('locked')
     expect(classifyScreen(facts({ onConsole: false, sessionLocked: false }), { kind: 'off' })).toBe('locked')
     expect(classifyScreen(facts(), { kind: 'unknown' })).toBe('locked')
   })

@@ -1,6 +1,6 @@
 import { execFile as nodeExecFile } from 'node:child_process'
 import type { MacPresence, PowerState, ScreenState } from '@shared/contract-relay'
-import { classifyScreen, DISMISS_POLL_MS, DISMISS_WAIT_MS, parseLockPolicy, SAVER_PROCESSES, type LockPolicy, type ScreenCover, type ScreenFacts } from '@shared/screenState'
+import { classifyScreen, DISMISS_POLL_MS, DISMISS_WAIT_MS, IDLE_LAUNCH_MIN_S, parseLockPolicy, type LockPolicy, type ScreenCover } from '@shared/screenState'
 
 /**
  * This host's presence for the relay (docs/box.md "The relay"): whether its
@@ -19,8 +19,8 @@ import { classifyScreen, DISMISS_POLL_MS, DISMISS_WAIT_MS, parseLockPolicy, SAVE
  * Sources: Electron's powerMonitor (`lock-screen`, `unlock-screen`,
  * `suspend`, `resume`); on `lock-screen` and at boot the facts behind it
  * (`ioreg -n Root -d1 -a`, the `IOConsoleUsers` entry's
- * `CGSSessionScreenIsLocked`; `pgrep` for the saver's process;
- * `sysadminctl -screenLock status`, kept ten minutes), classified by
+ * `CGSSessionScreenIsLocked`; `sysadminctl -screenLock status`, kept ten
+ * minutes; the person's idle when the cover rose), classified by
  * `classifyScreen`; and the seams: TEMP_CODE_PRESENCE for an isolated
  * instance's start state and the `presence.set` request under
  * TEMP_CODE_E2E_PRESENCE=1.
@@ -61,8 +61,8 @@ export function parseConsoleUsers(plistXml: string): boolean | null {
   return /<key>CGSSessionScreenIsLocked<\/key>\s*<true\/>/.test(users)
 }
 
-/** The facts and policy reader (a fake in tests): null when the session dictionary has no answer. */
-export type ScreenReader = () => Promise<{ facts: ScreenFacts; policy: LockPolicy } | null>
+/** The session's cover and the lock policy (a fake in tests): null when the session dictionary has no answer. */
+export type ScreenReader = () => Promise<{ session: { sessionLocked: boolean; onConsole: boolean }; policy: LockPolicy } | null>
 
 /** While the screen reads covered (locked or a saver), the facts are read again this often: a missed unlock notice never leaves it stale. */
 export const COVERED_RECHECK_MS = 30_000
@@ -81,20 +81,19 @@ const run = (exec: ExecFile, file: string, args: string[]): Promise<{ ok: boolea
     }
   })
 
-/** The Mac's reader: ioreg's session dictionary, pgrep for the saver, sysadminctl's policy (kept LOCK_POLICY_KEEP_MS). */
+/** The Mac's reader: ioreg's session dictionary and sysadminctl's policy (kept LOCK_POLICY_KEEP_MS). */
 export function macScreenReader(exec: ExecFile = nodeExecFile as unknown as ExecFile, now: () => number = Date.now): ScreenReader {
   let policy: { value: LockPolicy; at: number } | null = null
   return async () => {
     const ioreg = await run(exec, 'ioreg', ['-n', 'Root', '-d1', '-a'])
     const sessionLocked = ioreg.ok ? parseConsoleUsers(ioreg.out) : null
     if (sessionLocked === null) return null
-    const saver = await run(exec, '/usr/bin/pgrep', ['-q', `^(${SAVER_PROCESSES.join('|')})$`])
     if (!policy || now() - policy.at > LOCK_POLICY_KEEP_MS) {
       // sysadminctl says it on stderr and exits 0
       const value = parseLockPolicy((await run(exec, '/usr/sbin/sysadminctl', ['-screenLock', 'status'])).out)
       policy = value.kind === 'unknown' ? null : { value, at: now() }
     }
-    return { facts: { sessionLocked, onConsole: true, saverRunning: saver.ok }, policy: policy?.value ?? { kind: 'unknown' } }
+    return { session: { sessionLocked, onConsole: true }, policy: policy?.value ?? { kind: 'unknown' } }
   }
 }
 
@@ -123,6 +122,11 @@ export class MacPresenceWatcher implements PresenceSource {
   private at: number
   /** when lock-screen last fired: a delayed policy's saver is passwordless until its delay runs out */
   private coveredAt: number | null = null
+  /** the person's idle seconds when lock-screen fired: an explicit lock comes with fresh input */
+  private coverIdleS: number | null = null
+  /** a dismiss that did not take: this cover is a real lock until it lifts */
+  private refuted = false
+  private idleS: () => number = () => 0
   private delayTimer: ReturnType<typeof setTimeout> | null = null
   private recheck: ReturnType<typeof setInterval> | null = null
   private readonly now: () => number
@@ -141,20 +145,22 @@ export class MacPresenceWatcher implements PresenceSource {
   }
 
   /** The Mac's own facts behind the lock flag, and the way to leave a passwordless saver. */
-  useMac(reader: ScreenReader, declare: ActivityDeclarer): void {
+  useMac(reader: ScreenReader, declare: ActivityDeclarer, idleS: () => number): void {
     this.reader = reader
     this.declare = declare
+    this.idleS = idleS
   }
 
   /** Hooks Electron's powerMonitor: lock-screen → locked until the facts say saver; unlock-screen → unlocked; suspend → asleep, resume → awake. */
   attach(monitor: PowerMonitorLike): void {
     monitor.on('lock-screen', () => {
       this.coveredAt = this.now()
+      this.coverIdleS = this.idleS()
       this.set({ screen: 'locked' })
       void this.refresh()
     })
     monitor.on('unlock-screen', () => {
-      this.coveredAt = null
+      this.uncovered()
       this.set({ screen: 'unlocked', saver: false })
     })
     monitor.on('suspend', () => this.set({ power: 'asleep' }))
@@ -185,25 +191,34 @@ export class MacPresenceWatcher implements PresenceSource {
     const read = await this.reader().catch(() => null)
     if (!read) return this.snapshot()
     const upMs = this.coveredAt === null ? null : this.now() - this.coveredAt
-    const cover = classifyScreen(read.facts, read.policy, upMs)
-    if (cover === 'unlocked') this.coveredAt = null
+    // how the cover rose: the idle at its notice, else (at boot) the idle now
+    const idleLaunched = !this.refuted && (this.coverIdleS ?? this.idleS()) >= IDLE_LAUNCH_MIN_S
+    const cover = classifyScreen({ ...read.session, idleLaunched }, read.policy, upMs)
+    if (cover === 'unlocked') this.uncovered()
     this.armDelay(cover, read.policy, upMs)
     return this.set(coverPatch(cover))
   }
 
   /**
    * A passwordless saver: declare user activity, then read until the desktop
-   * is back (DISMISS_WAIT_MS). A real lock or an uncovered screen is left as
+   * is back (DISMISS_WAIT_MS). A cover that stays was a real lock after all:
+   * it reads locked until it lifts. A lock or an uncovered screen is left as
    * it is; nothing is typed.
    */
   async dismissSaver(): Promise<MacPresence> {
     let p = await this.refresh()
     if (!p.saver || !this.declare) return p
+    // the declaration is input: how the cover rose is judged by the idle before it
+    this.coverIdleS ??= this.idleS()
     await this.declare().catch(() => undefined)
     const deadline = this.now() + DISMISS_WAIT_MS
     for (;;) {
       p = await this.refresh()
-      if (!p.saver || this.now() >= deadline) return p
+      if (!p.saver) return p
+      if (this.now() >= deadline) {
+        this.refuted = true
+        return this.set({ screen: 'locked' })
+      }
       await this.sleep(DISMISS_POLL_MS)
     }
   }
@@ -223,6 +238,12 @@ export class MacPresenceWatcher implements PresenceSource {
       for (const l of this.listeners) l(snapshot)
     }
     return this.snapshot()
+  }
+
+  private uncovered(): void {
+    this.coveredAt = null
+    this.coverIdleS = null
+    this.refuted = false
   }
 
   /** Stops the re-read timers (tests, shutdown). */

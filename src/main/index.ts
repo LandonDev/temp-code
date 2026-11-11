@@ -186,7 +186,7 @@ app.whenReady().then(async () => {
         } finally {
           own?.end([{ armedAt, idleAtArmMs, lastInputAt: Date.now() }])
         }
-      })
+      }, () => (personIdle ?? powerMonitor).getSystemIdleTime())
     }
     presence.attach(powerMonitor)
     if (!fromEnv.screen) void presence.readInitialLock()

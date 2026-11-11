@@ -11,7 +11,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { classifyScreen, DISMISS_POLL_MS, DISMISS_WAIT_MS, parseLockPolicy, SAVER_PROCESSES, type LockPolicy, type ScreenCover } from '../../src/shared/screenState'
+import { classifyScreen, DISMISS_POLL_MS, DISMISS_WAIT_MS, IDLE_LAUNCH_MIN_S, parseLockPolicy, type LockPolicy, type ScreenCover } from '../../src/shared/screenState'
 
 /** `locked`: a password is needed; `saver`: a passwordless screen saver is up (locked false); `asleep`: the main display sleeps. */
 export interface MacScreen { locked: boolean; asleep: boolean; saver?: boolean }
@@ -19,27 +19,33 @@ export const SCREEN_SKIP_NOTE = 'the Mac is locked or asleep; run it by hand whe
 export const SCREEN_SKIP_LINE = 'skipped: the Mac is locked or asleep'
 
 // Same rule as computer-proof-probe.swift's screen command, without AppKit or its other probes:
-// `locked` is the raw cover (the flag, or another user on the console); `session` and `console` let it be classified.
+// `locked` is the raw cover (the flag, or another user on the console); `session`, `console` and `idle`
+// (whole seconds since the last HID input) let it be classified.
 export const SCREEN_SOURCE = String.raw`import CoreGraphics
 let session = CGSessionCopyCurrentDictionary() as? [String: Any] ?? [:]
 let locked = session["CGSSessionScreenIsLocked"] as? Bool ?? false
 let onConsole = session["kCGSSessionOnConsoleKey"] as? Bool ?? true
 let asleep = CGDisplayIsAsleep(CGMainDisplayID()) != 0
-print("{\"locked\":\(locked || !onConsole),\"asleep\":\(asleep),\"session\":\(locked),\"console\":\(onConsole)}")
+let idle = Int(CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: CGEventType(rawValue: ~0)!))
+print("{\"locked\":\(locked || !onConsole),\"asleep\":\(asleep),\"session\":\(locked),\"console\":\(onConsole),\"idle\":\(idle)}")
 `
 
 let keptPolicy: LockPolicy | null = null
 
-/** The Mac's own answer for a covered session: the saver's process (pgrep) and sysadminctl's policy (on stderr, kept per process). */
-export function liveCover(session: { sessionLocked: boolean; onConsole: boolean }): ScreenCover {
+/**
+ * The Mac's own answer for a covered session: sysadminctl's policy (on
+ * stderr, kept per process), and the idle now standing in for the idle when
+ * the cover rose (an explicit lock comes with fresh input; a dismiss that does
+ * not take settles the rest, readyMacScreen).
+ */
+export function liveCover(session: { sessionLocked: boolean; onConsole: boolean; idleS: number }): ScreenCover {
   try {
-    const saverRunning = spawnSync('/usr/bin/pgrep', ['-q', `^(${SAVER_PROCESSES.join('|')})$`], { timeout: 1_000 }).status === 0
     if (!keptPolicy) {
       const r = spawnSync('/usr/sbin/sysadminctl', ['-screenLock', 'status'], { encoding: 'utf8', timeout: 2_000 })
       const policy = parseLockPolicy(`${r.stdout ?? ''}${r.stderr ?? ''}`)
       if (policy.kind !== 'unknown') keptPolicy = policy
     }
-    return classifyScreen({ ...session, saverRunning }, keptPolicy ?? { kind: 'unknown' })
+    return classifyScreen({ sessionLocked: session.sessionLocked, onConsole: session.onConsole, idleLaunched: session.idleS >= IDLE_LAUNCH_MIN_S }, keptPolicy ?? { kind: 'unknown' })
   } catch {
     return 'locked'
   }
@@ -47,15 +53,15 @@ export function liveCover(session: { sessionLocked: boolean; onConsole: boolean 
 
 /**
  * Parse the probe's screen reply; missing fields are an unreadable screen. A
- * covered reply that carries the raw `session` and `console` is classified
- * (`coverOf`): a passwordless saver reads `{ locked: false, saver: true }`.
+ * covered reply that carries the raw `session`, `console` and `idle` is
+ * classified (`coverOf`): a passwordless saver reads `{ locked: false, saver: true }`.
  */
-export function parseMacScreen(text: string, coverOf: (session: { sessionLocked: boolean; onConsole: boolean }) => ScreenCover = liveCover): MacScreen | null {
+export function parseMacScreen(text: string, coverOf: (session: { sessionLocked: boolean; onConsole: boolean; idleS: number }) => ScreenCover = liveCover): MacScreen | null {
   try {
     const value = JSON.parse(text)
     if (typeof value?.locked !== 'boolean' || typeof value?.asleep !== 'boolean') return null
-    if (value.locked && typeof value.session === 'boolean' && typeof value.console === 'boolean') {
-      const cover = coverOf({ sessionLocked: value.session, onConsole: value.console })
+    if (value.locked && typeof value.session === 'boolean' && typeof value.console === 'boolean' && typeof value.idle === 'number') {
+      const cover = coverOf({ sessionLocked: value.session, onConsole: value.console, idleS: value.idle })
       if (cover === 'saver') return { locked: false, asleep: value.asleep, saver: true }
       if (cover === 'unlocked') return { locked: false, asleep: value.asleep }
     }
@@ -84,6 +90,8 @@ export interface ReadyOptions {
  * The screen made ready for a proof, then read: a passwordless saver is
  * dismissed (a dark display woken only under `wake`), and the read repeated
  * every DISMISS_POLL_MS until the desktop is back or DISMISS_WAIT_MS pass.
+ * A cover still up then was a lock after all and reads locked (the reads in
+ * the wait may say locked too: the declaration reset the idle they judge by).
  * A lock, an unreadable screen or a dark display it may not wake comes back
  * as read; nothing is dismissed then.
  */
@@ -98,12 +106,14 @@ export function readyMacScreen(read: () => MacScreen | null, opts: ReadyOptions 
   } catch {
     return screen
   }
+  const ready = (s: MacScreen | null): boolean => !!s && !s.locked && !s.saver && !s.asleep
   const deadline = now() + DISMISS_WAIT_MS
   for (;;) {
     screen = read()
-    if (!screen || screen.locked || (!screen.saver && !screen.asleep) || now() >= deadline) return screen
+    if (ready(screen) || now() >= deadline) break
     ;(opts.sleep ?? sleepSync)(DISMISS_POLL_MS)
   }
+  return screen?.saver ? { locked: true, asleep: screen.asleep } : screen
 }
 
 /** Compile once per source in the gate logs; compile and read share a 1.95 s budget. */

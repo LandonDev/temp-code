@@ -36,7 +36,7 @@ still-sleeping or unreadable screen skips those rows with
 `computer-swift` still compiles and tests. The check uses the proof's
 CoreGraphics rule in a tiny Swift binary cached in the gate's log dir
 (1.8 s compile cap, at most 400 ms to read, sharing a 1.95 s budget), and on a
-covered session reads the saver's process and `sysadminctl -screenLock status`.
+covered session reads the idle time and `sysadminctl -screenLock status`.
 It never checks off macOS or for a commit-only run. Direct `--gate` proof and bench runs make the same check
 before work and exit 0 with `skipped: the Mac is locked or asleep`.
 
