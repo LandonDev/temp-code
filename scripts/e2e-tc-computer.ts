@@ -136,7 +136,7 @@ import { macReady } from './lib/benchRun'
 import { webProofFixtures, WEB_NONCE, WEB_TITLES } from './lib/webProofFixtures'
 import { FIELD_FORM, fieldFormCode } from './lib/fieldTasks'
 import { intPoint } from './lib/computerPoint'
-import { settleFront } from './lib/settleFront'
+import { CHROME_DRAW_COVERED, restoreFront as restoreFrontBy, settleFront } from './lib/settleFront'
 import { STEAL_PROBE_APP_NAME, buildStealProbeApp, stealDocName, cleanupProbeApp, guiLaunchEnvironment, launchProbe } from './lib/tcProbeApp'
 import { chainSkip, isSetupStep, isVoid, judgeFront, judgePointer, keepGoing, retriesVoid } from './lib/proofSteps'
 import { COMPUTER_PROOF_ENV, sweepComputerProofProcesses } from './lib/computerProofProcesses'
@@ -407,22 +407,9 @@ async function launchProbeBack(flags: string[]): Promise<{ pid: number; raised: 
   return { pid, raised }
 }
 
-/**
- * Puts the person's front app and window back after a scratch app took it: by pid and the saved window, else,
- * once the person closed or changed that window meanwhile, their app alone. What it did, for the step's data.
- */
+/** Puts the person's front app and window back through the probe (scripts/lib/settleFront.ts restoreFront). */
 function restoreFront(before: FrontWindow): 'window' | 'app' | 'gone' {
-  try {
-    probe('restore-front', [String(before.pid), String(before.window)])
-    return 'window'
-  } catch {
-    try {
-      probe('restore-front', [String(before.pid), '0'])
-      return 'app'
-    } catch {
-      return 'gone'
-    }
-  }
+  return restoreFrontBy((pid, window) => probe('restore-front', [String(pid), String(window)]), before)
 }
 
 /** A step that may bring an app forward over the person's (a `front` hold, the stealer) waits for this much quiet in a hand run. */
@@ -1505,9 +1492,6 @@ async function fewerLeg(a: Service, mayLaunch: () => void): Promise<void> {
   }
 }
 
-/** Chrome's switches that keep a covered window drawing and its page's tree built (§25.10 C1, M2). */
-const WEB_DRAW_COVERED = ['--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--force-renderer-accessibility']
-
 /** §25, on Chrome for Testing and a private scratch profile, drawing while the person's windows cover it. */
 async function webLeg(): Promise<void> {
   const browser = chromiumForTests()
@@ -1599,7 +1583,7 @@ async function webLeg(): Promise<void> {
       // 156 builds no page tree for an outside reader (§25.10 M2 measured again); the leg proves the
       // service's web routes on a page, so its browser draws while covered and builds its tree
       const args = ['-n', '-g', '-a', browser, '--args', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
-        ...WEB_DRAW_COVERED,
+        ...CHROME_DRAW_COVERED,
         `--window-position=${frame.x},${frame.y}`, `--window-size=${frame.w},${frame.h}`,
         ...['front.html', 'report.html', 'form.html'].map((name) => pathToFileURL(join(scratch, name)).href)]
       // Recheck after disk work, immediately before open.

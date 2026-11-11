@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import type { AgentEvent, EventRow } from '../../src/shared/events'
 import type { CoverageNote } from './windowCover'
+import type { CallRecord } from './computerTasks'
 import { answerHeadOf, bareToolName, stepsOf, toolKind, type BenchCall, type BenchProvider, type BenchRun, type BenchStep } from './computerBench'
 
 // ── flags ───────────────────────────────────────────────────────────────
@@ -244,6 +245,23 @@ export function unionMs(spans: readonly [number, number][]): number {
 }
 
 /**
+ * The thread's tool calls for a task's check and policy, each with its whole input and its result. A call's row
+ * may come more than once (Claude writes one with no input at its block's start, the whole input at its end, then
+ * the assistant message's copy): the last whole one is the call, as in readRun.
+ */
+export function callRecords(rows: readonly EventRow[]): CallRecord[] {
+  const calls = new Map<string, EventRow & { event: { type: 'tool-call' } }>()
+  const results = new Map<string, string>()
+  for (const r of rows) {
+    if (r.event.type === 'tool-call' && !r.event.partial) calls.set(r.event.callId, r as EventRow & { event: { type: 'tool-call' } })
+    else if (r.event.type === 'tool-result' && !results.has(r.event.callId)) results.set(r.event.callId, r.event.output)
+  }
+  return [...calls.values()]
+    .sort((a, b) => a.seq - b.seq)
+    .map((r) => ({ name: r.event.name, input: (r.event.input ?? {}) as Record<string, unknown>, result: results.get(r.event.callId) ?? '' }))
+}
+
+/**
  * A run's facts from its thread's rows between `from` and `to` (its first
  * `running` and its last settle) and the rig's host calls for the thread.
  * The rows decide the calls (a call refused before the host still counts);
@@ -326,13 +344,30 @@ function tokensOf(rows: readonly EventRow[]): { tokens?: { input: number; output
   return last?.type === 'usage' ? { tokens: { input: last.inputTokens ?? 0, output: last.outputTokens ?? 0 } } : {}
 }
 
+// ── a lane that cannot run ──────────────────────────────────────────────
+
+/** What Muse's `mcpServer/readInventory` says of a session's MCP servers. */
+export interface MuseInventory {
+  servers: { name: string; state: string; error?: string }[]
+}
+
+/**
+ * A Muse lane's preflight: its skip line when the session's host withheld the `app` server, which carries the
+ * computer tools, else null to run the lane. Muse 1.4.15 (2026-11-10) withholds a session's MCP servers in a
+ * workspace it does not trust, the bench's scratch cwd among them: its threads then get no computer tool at all,
+ * Muse's rule and no run to judge. Only that word skips: a server missing from the list is ours, and the lane runs.
+ */
+export function musePreflightSkip(inventory: MuseInventory, version: string): string | null {
+  const app = inventory.servers.find((s) => s.name === 'app')
+  return app?.state === 'withheld' ? `Muse ${version} withholds the app's MCP server in a workspace it does not trust, so its threads get no computer tool` : null
+}
+
 // ── the person keeps the Mac ────────────────────────────────────────────
 
-/** Seconds since the person's last input, the app in front, the screen, and a way to bring an app forward again. */
+/** Seconds since the person's last input, the app in front and the screen. */
 export interface MacProbe {
   idleSeconds(): Promise<number>
   frontmost(): Promise<{ pid: number; bundleId: string | null }>
-  activate(bundleId: string): Promise<void>
   /** the session's screen lock (or another user on the console) and the main display's sleep */
   screen(): Promise<{ locked: boolean; asleep: boolean }>
 }
@@ -384,23 +419,6 @@ export async function macReady(
     if (waited >= maxMs) return DARK_SCREEN
     await wait(2_000)
   }
-}
-
-/**
- * A second after a launch: a scratch app in front sends the person's app
- * back to the front. 'kept' when nothing moved, 'bounced' when it was put
- * back, 'took' when it could not be (the run fails `took the front`).
- */
-export async function keepFront(probe: MacProbe, scratchPid: number, before: { pid: number; bundleId: string | null }): Promise<'kept' | 'bounced' | 'took'> {
-  if ((await probe.frontmost()).pid !== scratchPid) return 'kept'
-  if (before.bundleId) {
-    try {
-      await probe.activate(before.bundleId)
-    } catch {
-      /* the check below says */
-    }
-  }
-  return (await probe.frontmost()).pid === scratchPid ? 'took' : 'bounced'
 }
 
 // ── where the gate's reports go ─────────────────────────────────────────

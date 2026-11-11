@@ -23,13 +23,13 @@ import { REFUSE_SESSION_TIER, setSessionTierGate } from '../../src/main/server/c
 import { parseObservation, type ParsedObservation } from '../../src/shared/computer/observation'
 import { COMPUTER_WAIT, type AppRef, type ComputerMethod, type ComputerParams, type ComputerResult, type StepResult } from '../../src/shared/computer/protocol'
 import type { HostCall, MacProbe } from './benchRun'
-import { keepFront } from './benchRun'
 import { exec } from './benchChecks'
 import type { TaskApp, TaskReader } from './computerTasks'
 import { SCRATCH_CHROME_FRAME } from './chromiumForTests'
 import { windowCoverage, type CoverWindow, type CoverageNote } from './windowCover'
 import { answerHeadOf, parseStepLine, type BenchStep } from './computerBench'
 import { buildProbeApp, cleanupProbeApp, launchProbe, type ProbeAppBuild } from './tcProbeApp'
+import { CHROME_DRAW_COVERED, SETTLE_FRONT_MS, keepFrontAfterLaunch, restoreFront, type FrontWindow } from './settleFront'
 
 /**
  * The checkout a rig script runs in: the first folder up from `from` holding
@@ -77,8 +77,9 @@ const ADOPTED_APPS: readonly TaskApp[] = ['Finder']
 
 /**
  * The one launcher's arguments, the spec's fixture recording's (docs/computer-protocol.md
- * §10.1): Chrome as a second instance on its own profile with the renderer's
- * accessibility forced on for the gate baseline; the field set uses plainChrome,
+ * §10.1): Chrome as a second instance on its own profile, launched as the web
+ * leg's (CHROME_DRAW_COVERED: the person's windows cover it, and it must still
+ * draw and build its page's tree); the field set uses plainChrome,
  * without that flag, at the fixed cover frame. TextEdit
  * as a separate instance on a file under /tmp that restores none of the
  * person's documents, never saves to iCloud and adds nothing to Open Recent;
@@ -104,7 +105,7 @@ export function scratchArgs(app: TaskApp, target: string, chromeProfile: string,
       ]
     case 'Google Chrome':
       // extra: more URLs, opened as later tabs of the same window
-      return ['-n', '-g', '-a', 'Google Chrome', '--args', `--user-data-dir=${chromeProfile}`, '--no-first-run', '--no-default-browser-check', ...(opts.plainChrome ? [`--window-position=${SCRATCH_CHROME_FRAME.x},${SCRATCH_CHROME_FRAME.y}`, `--window-size=${SCRATCH_CHROME_FRAME.w},${SCRATCH_CHROME_FRAME.h}`] : ['--force-renderer-accessibility']), target, ...extra]
+      return ['-n', '-g', '-a', 'Google Chrome', '--args', `--user-data-dir=${chromeProfile}`, '--no-first-run', '--no-default-browser-check', ...(opts.plainChrome ? [`--window-position=${SCRATCH_CHROME_FRAME.x},${SCRATCH_CHROME_FRAME.y}`, `--window-size=${SCRATCH_CHROME_FRAME.w},${SCRATCH_CHROME_FRAME.h}`] : CHROME_DRAW_COVERED), target, ...extra]
     case 'System Settings':
       return ['-g', '-b', RIG_BUNDLES['System Settings'], ...(target ? [target] : [])]
     case 'Calculator':
@@ -155,6 +156,10 @@ export class LanePins {
   /** Every pid a lane has pinned. */
   pids(lane: string): number[] {
     return [...(this.pins.get(lane)?.values() ?? [])]
+  }
+  /** Every pid any lane has pinned. */
+  all(): Set<number> {
+    return new Set([...this.pins.values()].flatMap((m) => [...m.values()]))
   }
   /** Runs `fn` in the scope of the thread's lane. */
   within<T>(threadId: string, fn: () => T): T {
@@ -274,15 +279,13 @@ export interface MacReads {
   pointer(): { x: number; y: number }
   idleSeconds(): number
   screen(): { locked: boolean; asleep: boolean }
-  activate(bundleId: string): void
 }
 
 /** The probe's answers as the launch guard reads them. */
 export const asProbe = (mac: MacReads): MacProbe => ({
   idleSeconds: async () => mac.idleSeconds(),
   screen: async () => mac.screen(),
-  frontmost: async () => mac.frontmost(),
-  activate: async (id) => mac.activate(id)
+  frontmost: async () => mac.frontmost()
 })
 
 // ── the rig ─────────────────────────────────────────────────────────────
@@ -307,6 +310,12 @@ export interface Rig {
   launch(lane: string, app: TaskApp, target: string, opts?: { args?: string[] }): Promise<{ pid: number; front: 'kept' | 'bounced' | 'took' }>
   /** pids the rig adopted rather than launched (Finder): never killed, never judged as "took the front" */
   adopted(): ReadonlySet<number>
+  /** the person's front app and window: the front now, unless a scratch app of any lane holds it, then the last the rig saw of theirs */
+  personFront(): FrontWindow
+  /** puts that front back by pid and window, never by a bundle id a scratch app shares */
+  restoreFront(before: FrontWindow): void
+  /** after a scratch app's launch: the person's front put back each time it takes it, for `ms` (settleFront.ts) */
+  keepFront(pid: number, before: FrontWindow, ms?: number): Promise<'kept' | 'bounced' | 'took'>
   /** SIGKILL every scratch pid of the lane, drop its pins and its Chrome profile */
   closeLane(lane: string): void
   /** closeLane for every lane that launched */
@@ -353,8 +362,7 @@ export async function startRig(opts: {
     frontmost: () => probe('frontmost'),
     pointer: () => probe('pointer'),
     idleSeconds: () => probe<{ seconds: number }>('idle').seconds,
-    screen: () => probe('screen'),
-    activate: (bundleId) => void execFileSync('osascript', ['-e', `tell application id "${bundleId}" to activate`])
+    screen: () => probe('screen')
   }
   process.env.TEMP_CODE_COMPUTER_BIN = bin
   const grants = JSON.parse(execFileSync(bin, ['permissions'], { encoding: 'utf8' })) as { accessibility: boolean }
@@ -463,20 +471,26 @@ export async function startRig(opts: {
     finding.set(app, run.catch(() => undefined))
     return run
   }
+  // The person's front, never a scratch app's: with the lanes side by side, another lane's scratch app is often in
+  // front when one launches, and putting that back would leave the bench in front.
+  let personSeen: FrontWindow | null = null
+  const benchPids = (): Set<number> => new Set([...pins.all(), ...coverPids.values()].filter((p) => !adopted.has(p)))
+  const personFront = (): FrontWindow => {
+    const now = probe<FrontWindow>('frontwindow')
+    if (!benchPids().has(now.pid)) personSeen = now
+    return personSeen ?? now
+  }
+  const putBack = (before: FrontWindow): void => void restoreFront((pid, window) => probe('restore-front', [String(pid), String(window)]), before)
+  const keepFront = async (pid: number, before: FrontWindow, ms = SETTLE_FRONT_MS): Promise<'kept' | 'bounced' | 'took'> =>
+    (await keepFrontAfterLaunch(pid, { frontPid: () => probe<FrontWindow>('frontwindow').pid, restore: () => putBack(before), sleep, ms })).front
   const launch = async (lane: string, app: TaskApp, target: string, o?: { args?: string[] }): Promise<{ pid: number; front: 'kept' | 'bounced' | 'took' }> => {
-    const personFront = mac.frontmost()
-    const personWindow = opts.plainChrome ? probe<{ pid: number; window: number }>('frontwindow') : null
+    const before = personFront()
     const pid = await newPid(lane, app, target, o?.args ?? [])
     pins.pin(lane, app, pid)
-    await sleep(app === 'TextEdit' ? 1_000 : 3_000)
     // An adopted app that was already in front is the person's own front, not a take.
-    if (adopted.has(pid) && personFront.pid === pid) return { pid, front: 'kept' }
-    let front = await keepFront(asProbe(mac), pid, personFront)
-    if (front === 'bounced' && personWindow) {
-      probe('restore-front', [String(personWindow.pid), String(personWindow.window)])
-      const after = probe<{ pid: number; window: number }>('frontwindow')
-      if (after.pid !== personWindow.pid || after.window !== personWindow.window) front = 'took'
-    }
+    if (adopted.has(pid) && before.pid === pid) return { pid, front: 'kept' }
+    // Chrome brings its first window forward by itself some seconds after an `open -g` (the web leg's launch, 2026-11-11)
+    const front = await keepFront(pid, before, app === 'TextEdit' ? 1_000 : SETTLE_FRONT_MS)
     if (app === 'Google Chrome' && opts.cover) {
       const coverBuild = buildProbeApp(opts.root, join(opts.work, `cover-${lane}`), 'dev.landon.tempcode.field-cover')
       coverBuilds.set(lane, coverBuild)
@@ -530,6 +544,9 @@ export async function startRig(opts: {
       return launch(lane, app, target, o)
     },
     adopted: () => adopted,
+    personFront,
+    restoreFront: putBack,
+    keepFront,
     closeLane,
     closeLanes,
     close: async () => {

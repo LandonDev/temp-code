@@ -8,10 +8,11 @@ import {
   DARK_SCREEN,
   FIELD_MODELS,
   NEVER_QUIET,
-  keepFront,
+  callRecords,
   keepReport,
   laneOrder,
   macReady,
+  musePreflightSkip,
   parseBenchArgs,
   readRun,
   runStamp,
@@ -22,6 +23,7 @@ import {
   type MacProbe
 } from './lib/benchRun'
 import { runHostMs, summarize, type BenchRun } from './lib/computerBench'
+import { flaggedBeforeDelete } from './lib/computerTasks'
 
 describe('parseBenchArgs', () => {
   it('reads every flag', () => {
@@ -230,6 +232,25 @@ describe('readRun', () => {
     expect(summarize([{ ...({} as BenchRun), model: 'm', task: 't', taskVersion: 1, outcome: 'passed', calls: readRun(rows, [], 0, 3).calls, otherTools: [], stepBudget: 6, front: { before: '', after: '', bounced: false, personActive: false, benchInFront: false }, wallMs: 3, thinkMs: 2, queuedMs: 0 } as BenchRun])[0].shotsAskedMedian).toBe(1)
   })
 
+  it('gives the check one record per call, with its whole input: Claude writes a call\'s row three times', () => {
+    const del = { app: 'Google Chrome', action: 'left_click', element: 113, confirm: { kind: 'delete', what: 'Delete order X68U' } }
+    const rows = [
+      call(1, 's1', 'ToolSearch', { query: 'computer' }),
+      row(2, { type: 'tool-result', callId: 's1', output: 'found', isError: false }),
+      call(3, 'c1', 'mcp__app__computer_act', undefined),
+      call(4, 'c1', 'mcp__app__computer_act', { app: 'Google Chrome' }, true),
+      call(5, 'c1', 'mcp__app__computer_act', del),
+      row(6, { type: 'tool-result', callId: 'c1', output: 'Deleted X68U', isError: false }),
+      call(7, 'c1', 'mcp__app__computer_act', del)
+    ]
+    const records = callRecords(rows)
+    expect(records).toEqual([
+      { name: 'ToolSearch', input: { query: 'computer' }, result: 'found' },
+      { name: 'mcp__app__computer_act', input: del, result: 'Deleted X68U' }
+    ])
+    expect(flaggedBeforeDelete(records, 'X68U').ok).toBe(true)
+  })
+
   it('unions overlapping spans', () => {
     expect(unionMs([])).toBe(0)
     expect(unionMs([[0, 10], [5, 15], [20, 25]])).toBe(20)
@@ -270,23 +291,17 @@ describe('the person keeps the Mac', () => {
     expect(await macReady({ idleSeconds: async () => 9_000, screen: async () => ({ locked: true, asleep: false }) }, false, { wait: noWait })).toBe(DARK_SCREEN)
   })
 
-  it('sends a scratch app that came forward back, and says when it could not', async () => {
-    const before = { pid: 10, bundleId: 'com.apple.Terminal' }
-    const probe = (fronts: number[], activated: string[] = []): MacProbe => {
-      let i = 0
-      return {
-        idleSeconds: async () => 9,
-        screen: async () => ({ locked: false, asleep: false }),
-        frontmost: async () => ({ pid: fronts[Math.min(i++, fronts.length - 1)], bundleId: null }),
-        activate: async (id) => void activated.push(id)
-      }
-    }
-    expect(await keepFront(probe([10]), 77, before)).toBe('kept')
-    const activated: string[] = []
-    expect(await keepFront(probe([77, 10], activated), 77, before)).toBe('bounced')
-    expect(activated).toEqual(['com.apple.Terminal'])
-    expect(await keepFront(probe([77, 77]), 77, before)).toBe('took')
-    expect(await keepFront(probe([77, 77]), 77, { pid: 10, bundleId: null })).toBe('took')
+})
+
+describe('musePreflightSkip', () => {
+  it('skips a Muse lane whose host withheld the app server, by name, and runs it otherwise', () => {
+    expect(musePreflightSkip({ servers: [{ name: 'app', state: 'withheld' }] }, '1.4.15')).toBe(
+      "Muse 1.4.15 withholds the app's MCP server in a workspace it does not trust, so its threads get no computer tool"
+    )
+    expect(musePreflightSkip({ servers: [{ name: 'app', state: 'starting' }] }, '1.4.15')).toBeNull()
+    expect(musePreflightSkip({ servers: [{ name: 'other', state: 'withheld' }] }, '1.4.15')).toBeNull()
+    // a missing app server is the bridge's own fault: the lane runs and its runs say so
+    expect(musePreflightSkip({ servers: [] }, '1.4.15')).toBeNull()
   })
 })
 

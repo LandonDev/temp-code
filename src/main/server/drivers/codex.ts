@@ -80,6 +80,18 @@ export function codexComputerImages(): CodexComputerImages {
   return 'parts'
 }
 
+/**
+ * `TEMP_CODE_CODEX_PLUGINS=off` starts app-server with the person's Codex plugins off. The computer bench's gate
+ * sets it: their computer-use plugin's `cua_repl` acts on the screen, and the bench measures our tools in the
+ * background tiers alone (docs/computer-protocol.md §21.2).
+ */
+export function codexPluginArgs(env: NodeJS.ProcessEnv = process.env): string[] {
+  return codexPluginsOff(env) ? ['-c', 'features.plugins=false'] : []
+}
+
+/** The same switch, for a thread's own `features`: thread/start's config is read over the person's config.toml again. */
+export const codexPluginsOff = (env: NodeJS.ProcessEnv = process.env): boolean => env.TEMP_CODE_CODEX_PLUGINS === 'off'
+
 /** Backoff before each boot retry; a test shortens it. */
 export const bootOptions = { backoffMs: [1500, 4000] }
 
@@ -1004,7 +1016,7 @@ export const codexDriver: HarnessDriver = {
         console.warn(`[codex] ${session.id}: skills/extraRoots/set refused (${err instanceof Error ? err.message : String(err)}); ${heldRoot ? 'the old root stays' : 'no store skills'}`)
       }
     }
-    const spec: WarmSpec = { command: binPath, args: [...disableHomeSkillsArgs(disabledHome), 'app-server'], cwd: session.cwd, env: env as Record<string, string | undefined> }
+    const spec: WarmSpec = { command: binPath, args: [...codexPluginArgs(), ...disableHomeSkillsArgs(disabledHome), 'app-server'], cwd: session.cwd, env: env as Record<string, string | undefined> }
     const boot = async (attempt: number): Promise<void> => {
       let booted = false
       const onExit = (code: number | null): void => {
@@ -1063,7 +1075,8 @@ export const codexDriver: HarnessDriver = {
               // by bare name — models call them and conclude "only OpenAI
               // workers exist". Off, so spawn_agent always means the app's.
               multi_agent: false,
-              multi_agent_v2: false
+              multi_agent_v2: false,
+              ...(codexPluginsOff() ? { plugins: false } : {})
             },
             // Fast = OpenAI's priority service tier, Ultrafast = its
             // `ultrafast` tier, each sent only when on and listed by the

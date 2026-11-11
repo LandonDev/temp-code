@@ -46,14 +46,15 @@ import { exec } from './lib/benchChecks'
 import {
   BENCH_MODELS,
   BENCH_UNGATED_ENV,
+  callRecords,
   FIELD_MODELS,
   isSettleEvent,
-  keepFront,
   keepReport,
   laneOrder,
   parseBenchArgs,
   readRun,
   macReady,
+  musePreflightSkip,
   runStamp,
   scanRun,
   type BenchArgs,
@@ -80,7 +81,7 @@ import {
 import { RigStop, asProbe, repoRoot, startRig, type Rig } from './lib/computerRig'
 import { otherProof } from './lib/proofOrder'
 import { killGroup, startDevInstance } from './lib/devInstance'
-import { COMPUTER_ONLY_LINE, COMPUTER_TASKS, gateTasks, taskById, type CallRecord, type CheckResult, type ComputerTask, type DevInstance, type TaskContext, type TaskStart } from './lib/computerTasks'
+import { COMPUTER_ONLY_LINE, COMPUTER_TASKS, gateTasks, taskById, type CheckResult, type ComputerTask, type DevInstance, type TaskContext, type TaskStart } from './lib/computerTasks'
 import { FIELD_TASKS, benchTrashNames, finderDeleteTrashItems, finderTrashNames } from './lib/fieldTasks'
 import { fieldBar } from './lib/fieldBar'
 import { FIELD_TARGETS } from './lib/fieldTargets'
@@ -165,6 +166,9 @@ const REFERENCE_LINE = 'Use your computer use tools for this task.'
 const UNGATED = process.env[BENCH_UNGATED_ENV] === '1'
 /** A lane that waited longer than this in the scheduler had its runs held by it, not by the bench's speed. */
 const HELD_MS = 60_000
+// The person's Codex plugins stay off but for the reference: their computer-use plugin's cua_repl acts on the screen,
+// and the bench measures our tools in the background tiers (codex.ts codexPluginArgs).
+if (args.mode !== 'reference') process.env.TEMP_CODE_CODEX_PLUGINS = 'off'
 mkdirSync(WORK, { recursive: true })
 const baseline = loadBaseline()
 
@@ -268,13 +272,50 @@ const MODEL_SET: readonly BenchModel[] = FIELD ? FIELD_MODELS : BENCH_MODELS
 const wanted: BenchModel[] =
   args.mode === 'reference' ? [MODEL_SET.find((m) => m.provider === 'codex')!] : MODEL_SET.filter((m) => !args.models || args.models.includes(m.model))
 for (const name of args.models ?? []) if (!MODEL_SET.some((m) => m.model === name)) throw new Error(`no ${args.set} model ${name} (models: ${MODEL_SET.map((m) => m.model).join(', ')})`)
+/**
+ * Muse's preflight (benchRun.ts musePreflightSkip): one `muse serve` started as a thread's, with the bridge a
+ * thread gets, its `app` server's state read, no turn. A preflight that cannot read the state runs the lane.
+ */
+async function musePreflight(model: string): Promise<string | null> {
+  const { spawnMuseHost } = await import('../src/main/server/drivers/harness/museHost')
+  const { sessionStartParams } = await import('../src/main/server/drivers/harness/museProtocol')
+  const { bridgeMcpConfig } = await import('../src/main/server/apptools')
+  const cwd = join(WORK, 'cwd')
+  mkdirSync(cwd, { recursive: true })
+  try {
+    const host = await spawnMuseHost({ sessionId: 'bench-preflight', cwd })
+    try {
+      const facts = { cwd, model, permission: 'auto' as const, bridge: bridgeMcpConfig('bench-preflight', { computerImages: 'parts' }) }
+      const started = (await host.connection.command('session/start', sessionStartParams(facts))) as { session: { sessionId: string } }
+      const inventory = await host.connection.request('mcpServer/readInventory', { sessionId: started.session.sessionId })
+      return musePreflightSkip(inventory as never, host.init.serverInfo.version)
+    } finally {
+      await host.close()
+    }
+  } catch (e) {
+    log(`${model}: the preflight read nothing (${(e as Error).message}); the lane runs`)
+    return null
+  }
+}
+
+// Every lane's skip, decided side by side (Muse's preflight starts a host), then the lanes in order.
+const skips = await Promise.all(
+  wanted.map(async (m) =>
+    !modelInfo(m.provider as ProviderId, m.model)
+      ? m.provider === 'muse'
+        ? `${m.model} is not in this host's Muse catalog (no login, or an empty catalog)`
+        : `the installed ${m.provider} CLI cannot run ${m.model}`
+      : m.provider === 'muse' && args.mode !== 'reference'
+        ? await musePreflight(m.model)
+        : null
+  )
+)
 const lanes = wanted.flatMap((m, index) => {
-  if (modelInfo(m.provider as ProviderId, m.model)) {
+  const skipped = skips[index]
+  if (!skipped) {
     report.models.push({ model: m.model })
     return [{ model: m, index, name: m.provider, queuedMs: 0 }]
   }
-  const skipped =
-    m.provider === 'muse' ? `${m.model} is not in this host's Muse catalog (no login, or an empty catalog)` : `the installed ${m.provider} CLI cannot run ${m.model}`
   report.models.push({ model: m.model, skipped })
   log(`skip ${m.model}: ${skipped}`)
   return []
@@ -336,10 +377,10 @@ async function devInstance(lane: Lane, dir: string, onBounce: () => void): Promi
   if (notReady) return { skip: notReady }
   const held = await macReady(probe, UNGATED)
   if (held) return { skip: held }
-  const personFront = R.mac.frontmost()
+  const personFront = R.personFront()
   const dev = await startDevInstance({ root: ROOT, dir, groups: devGroups })
   R.pins.pin(lane.name, 'Electron', dev.pid)
-  const front = await keepFront(probe, dev.pid, personFront)
+  const front = await R.keepFront(dev.pid, personFront)
   if (front === 'took' && !UNGATED) {
     await dev.stop()
     throw new FailRun('took the front')
@@ -536,13 +577,6 @@ async function firstRunning(id: string, afterSeq: number): Promise<{ from: numbe
 const lastSeq = (id: string): number => registry.eventsAfter(id, 0).at(-1)?.seq ?? 0
 const replyOf = (rows: readonly EventRow[]): string =>
   rows.flatMap((r) => (r.event.type === 'assistant-text' && !r.event.delta ? [r.event.text] : [])).join('\n')
-const callRecords = (rows: readonly EventRow[]): CallRecord[] =>
-  rows.flatMap((r) => {
-    if (r.event.type !== 'tool-call' || r.event.partial) return []
-    const callId = r.event.callId
-    const result = rows.find((x) => x.event.type === 'tool-result' && x.event.callId === callId)
-    return [{ name: r.event.name, input: (r.event.input ?? {}) as Record<string, unknown>, result: result?.event.type === 'tool-result' ? result.event.output : '' }]
-  })
 const isCua = (name: string): boolean => /(?:^|__|\.)cua_repl$/.test(name)
 const promptOf = (text: string): string => (args.mode === 'reference' ? text.replace(COMPUTER_ONLY_LINE, REFERENCE_LINE) : text)
 
@@ -676,6 +710,7 @@ function heldSampler(key: string, maxMs = 15 * 60_000): { take(): number } {
 /** The thread's turns, then the checks, read through the rig and never through the thread. */
 async function drive(lane: Lane, task: ComputerTask, start: TaskStart, run: BenchRun, made: (id: string) => void): Promise<BenchRun> {
   const before = R.mac.frontmost()
+  const person = R.personFront()
   const t0 = Date.now()
   const id = (await registry.create({ provider: lane.model.provider as never, model: lane.model.model, reasoning: lane.model.effort, permission: 'auto', cwd: join(WORK, 'cwd'), threadType: 'chat' })).id
   made(id)
@@ -730,13 +765,8 @@ async function drive(lane: Lane, task: ComputerTask, start: TaskStart, run: Benc
     const after1 = R.mac.frontmost()
     // An adopted app (Finder) is the person's: never judged as the bench taking the front.
     const benchInFront = !UNGATED && R.pins.pids(lane.name).filter((p) => !R.adopted().has(p)).includes(after1.pid)
-    if (benchInFront && before.bundleId) {
-      try {
-        R.mac.activate(before.bundleId)
-      } catch {
-        /* the run fails as having taken the front either way */
-      }
-    }
+    // by pid and window: the person's bundle id may be another lane's scratch app's (a second Chrome, an Electron)
+    if (benchInFront) R.restoreFront(person)
     const done: BenchRun = {
       ...run,
       outcome: 'passed',
@@ -776,6 +806,7 @@ async function driveBox(lane: Lane, task: ComputerTask, start: TaskStart, run: B
   const B = box!
   if (task.then) return { ...run, reason: 'two-turn tasks are not run in box mode' }
   const before = R.mac.frontmost()
+  const person = R.personFront()
   const t0 = Date.now()
   const { id } = await B.call<{ id: string }>('session.create', {
     provider: lane.model.provider,
@@ -868,13 +899,7 @@ async function driveBox(lane: Lane, task: ComputerTask, start: TaskStart, run: B
   }
   const after1 = R.mac.frontmost()
   const benchInFront = !UNGATED && R.pins.pids(lane.name).filter((p) => !R.adopted().has(p)).includes(after1.pid)
-  if (benchInFront && before.bundleId) {
-    try {
-      R.mac.activate(before.bundleId)
-    } catch {
-      /* the run fails as having taken the front either way */
-    }
-  }
+  if (benchInFront) R.restoreFront(person)
   const done: BenchRun = {
     ...run,
     outcome: 'passed',

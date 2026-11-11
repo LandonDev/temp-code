@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { computerHarness, type ComputerHarness } from '../src/main/server/computer/runHarness'
 import { stepsOf } from './lib/computerBench'
+import { CHROME_DRAW_COVERED } from './lib/settleFront'
 import { DEFAULT_LANE, LanePins, RIG_QUERIES, recordCalls, recordStepWaits, scratchArgs, taskReader } from './lib/computerRig'
 import type { ComputerSessions } from '../src/main/server/computer/sessions'
 import { StateGetParamsSchema } from '../src/shared/computer/protocol'
@@ -33,6 +34,16 @@ describe('LanePins', () => {
     expect(pins.pids('claude')).toEqual([101])
   })
 
+  it('answers every pid of every lane, so a launch never takes another lane\'s scratch app for the person\'s', () => {
+    const pins = new LanePins()
+    pins.pin('claude', 'Google Chrome', 11)
+    pins.pin('codex', 'Google Chrome', 12)
+    pins.pin('codex', 'Electron', 13)
+    expect([...pins.all()].sort()).toEqual([11, 12, 13])
+    pins.unpin('codex')
+    expect([...pins.all()]).toEqual([11])
+  })
+
   it('pins every name a model may call the dev instance and System Settings by', () => {
     expect(RIG_QUERIES.Electron).toEqual(expect.arrayContaining(['electron', 'tempcode']))
     expect(RIG_QUERIES['System Settings']).toEqual(expect.arrayContaining(['system settings', 'com.apple.systempreferences']))
@@ -40,10 +51,11 @@ describe('LanePins', () => {
 })
 
 describe('scratchArgs', () => {
-  it('launches with the fixture recording’s flags, in the background', () => {
+  it('launches in the background, Chrome with the web leg’s switches that keep a covered page drawn', () => {
     expect(scratchArgs('Google Chrome', 'file:///b.html#seed=3', '/tmp/p')).toEqual([
-      '-n', '-g', '-a', 'Google Chrome', '--args', '--user-data-dir=/tmp/p', '--no-first-run', '--no-default-browser-check', '--force-renderer-accessibility', 'file:///b.html#seed=3'
+      '-n', '-g', '-a', 'Google Chrome', '--args', '--user-data-dir=/tmp/p', '--no-first-run', '--no-default-browser-check', ...CHROME_DRAW_COVERED, 'file:///b.html#seed=3'
     ])
+    expect(CHROME_DRAW_COVERED).toEqual(['--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--force-renderer-accessibility'])
     expect(scratchArgs('TextEdit', '/tmp/x.rtf', '')).toEqual([
       '-n', '-g', '-a', 'TextEdit', '/tmp/x.rtf', '--args', '-ApplePersistenceIgnoreState', 'YES', '-NSShowAppCentricOpenPanelInsteadOfUntitledFile', 'NO', '-NSDocumentSaveNewDocumentsToCloud', 'NO'
     ])

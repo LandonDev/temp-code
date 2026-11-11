@@ -25,6 +25,7 @@ class FakeProc extends EventEmitter {
   killed = false
   methods: string[] = []
   sets: unknown[] = []
+  starts: Record<string, unknown>[] = []
   constructor(
     public argv: string[],
     refuseSets: number
@@ -47,6 +48,7 @@ class FakeProc extends EventEmitter {
             }
           }
           if (frame.method === 'thread/start') {
+            this.starts.push(frame.params ?? {})
             beforeThreadStart?.()
             beforeThreadStart = null
             this.out({ id: frame.id, result: { thread: { id: 't1' } } })
@@ -166,6 +168,22 @@ it('the cold child\'s argv disables both home roots\' skills by path, both spell
   // The root is set after initialize and before the thread starts.
   expect(proc.methods.slice(0, 3)).toEqual(['initialize', 'skills/extraRoots/set', 'thread/start'])
   expect(proc.sets).toEqual([[`${gens.global}/skills`]])
+})
+
+it('TEMP_CODE_CODEX_PLUGINS=off turns the person\'s plugins off for the app-server and in the thread\'s own features', async () => {
+  vi.stubEnv('TEMP_CODE_WARM_HARNESS', '0')
+  vi.stubEnv('TEMP_CODE_CODEX_PLUGINS', 'off')
+  await start()
+  expect(codexArgs(spawned[0])).toEqual(['-c', 'features.plugins=false', 'app-server'])
+  await tick(50)
+  expect((spawned[0].starts[0].config as { features: Record<string, unknown> }).features.plugins).toBe(false)
+})
+
+it('without the switch the person\'s plugins stay as their config says', async () => {
+  vi.stubEnv('TEMP_CODE_WARM_HARNESS', '0')
+  await start()
+  await tick(50)
+  expect((spawned[0].starts[0].config as { features: Record<string, unknown> }).features).not.toHaveProperty('plugins')
 })
 
 it('with no home skills the argv is the plain app-server, and the root is still set', async () => {
