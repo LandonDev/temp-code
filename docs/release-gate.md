@@ -334,9 +334,12 @@ system, never the model's word.
 
 - **The person keeps the Mac.** The gate runs in the background tiers alone
   (`ax`, `process`), which never take the screen, the pointer or the
-  keyboard. A scratch app launches only after 5 s with no input, and one
-  that comes forward is sent back at once; a run that leaves it in front
-  fails. A task whose end state needs the session tier is skipped and kept
+  keyboard. A scratch app launches only after 5 s with no input; for 3 s
+  after its launch the person's app and window are put back by pid each
+  time it comes forward (never by bundle id, which a second Chrome or an
+  Electron shares); a run that leaves it in front fails. Codex threads run
+  with the person's plugins off (`TEMP_CODE_CODEX_PLUGINS=off`), so their
+  own computer use (`cua_repl`) is not in the thread. A task whose end state needs the session tier is skipped and kept
   for the hand run, and so is the System Settings task while System
   Settings is open.
 - **What fails.** A task's end state; its median computer calls above
@@ -350,7 +353,9 @@ system, never the model's word.
 - **Reruns.** One run per task; a run that breaks the rule earns two more,
   and then the end state must pass in two of three, the medians over the
   three.
-- **Never failed**: a lane whose model this Mac cannot run, a task skipped
+- **Never failed**: a lane whose model this Mac cannot run (a Muse lane
+  whose host withholds the app's MCP server is one, named by its preflight:
+  computer-protocol.md §21.2), a task skipped
   (the session tier, System Settings open, the person never pausing 5 s
   before a launch), a thread the scheduler held queued past 5 minutes.
 - **Ungated** (`TC_BENCH_UNGATED=1`, the person's leave for a hand run):
@@ -374,6 +379,36 @@ system, never the model's word.
   the sign and the soaks; the script stops itself at 14 minutes
   (`BENCH_TIMING.budgetMs`) and the gate kills it at 15. Its report is the
   step's log, and `last.json` and `runs/` beside the baseline.
+- **v1.0.338's publish, 2026-11-11.** The row failed in 500 s on the
+  rig's own faults; the product's background route was not one of them (a
+  solo devapp-form run took the front 0 times in 2, and every failed
+  step was `ax`). Runs that "took the front · 0 calls, 0 s" were the
+  rig's launch: it checked the front once after a fixed sleep and put the
+  person back by bundle id, which another lane's scratch Chrome or
+  Electron shares, and with the lanes side by side it often saved such an
+  app as the person's (now `keepFrontAfterLaunch`, by pid and window, the
+  person's front tracked across lanes). GPT-6.1 Sol's "off-route: js" was
+  the person's Codex computer-use plugin in the thread (`cua_repl.js`;
+  now `TEMP_CODE_CODEX_PLUGINS=off`). Opus's "the delete ran unflagged"
+  was the check reading Claude's first, empty row of the call
+  (`callRecords`). Muse 1.4.15 withholds the app's MCP server in a
+  workspace it does not trust, so its threads had no computer tool and
+  spent their runs on Bash until the budget ran out; its lane is now
+  skipped by its preflight, named in the report. The scratch Chrome now
+  launches with the web leg's switches. The baseline was not touched.
+  Then two `--gate` runs in a row on a scratch clone at origin/master
+  9a47aec4 plus the fix (83934438) passed: 219 s and 167 s, Opus 5 of 5
+  tasks and GPT-6.1 Sol 5 of 5 each time, no run took the front (3
+  launches per model put back each time), Muse skipped by its preflight,
+  settings-toggle skipped (System Settings open) and save-dialog the hand
+  run's.
+- **A gap it does not cover**: the person's own Chrome, covered by their
+  windows, may show the service no page, since no launch switch reaches a
+  Chrome they started and Chrome 156 builds no page tree for an outside
+  reader while covered (computer-protocol.md §25.10 M2). The one lever
+  the service has, `AXEnhancedUserInterface`, built the tree once in two
+  tries and changes how the app's windows move for the person, so it stays
+  unset; the field run (§21.7) measures that case.
 
 ## The web proof and covered field run
 

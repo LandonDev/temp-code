@@ -256,6 +256,9 @@ why and the measured headline.
   in the background tiers, each end state read through the AX tree, the
   files or `defaults`; `BENCH_RULE` (scripts/lib/computerBench.ts) judges
   it against `<git-dir>/temp-code-gate/computer-bench/baseline.json`.
+  Its codex threads run with the person's plugins off
+  (`TEMP_CODE_CODEX_PLUGINS=off`), and a Muse lane whose host withholds the
+  app's MCP server is skipped by its preflight (§21.2).
   docs/release-gate.md "The computer bench". `--set field` (§21.7, hand run
   only; scripts/lib/fieldTasks.ts) is the 2026-11-10 field test as 14 tasks
   on Opus, Sonnet and GPT-6.1 Sol, run three ways — `--host mac`, `--host
