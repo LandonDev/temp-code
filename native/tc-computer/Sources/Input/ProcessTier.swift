@@ -51,7 +51,7 @@ enum ProcessTier {
             if AX.same(AX.element(app, "AXFocusedUIElement"), e.element) { return }
             clock.sleep(ms: 10)
         } while clock.seconds() < deadline
-        throw ComputerFailure(ComputerError(kind: .actionUnsupported, message: "[\(e.index)] can't take keyboard focus.", element: e.index))
+        throw ComputerFailure(ComputerError(kind: .actionUnsupported, message: "[\(e.index)]\(RenameEditor.noFocus)", element: e.index))
     }
 
     /// Whether keyboard focus is still where the checks left it (the paste's second check).

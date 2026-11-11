@@ -390,6 +390,11 @@ public struct SavePanelFlow: Equatable, Sendable {
     private func notCommitted(_ m: String) -> ComputerError { ComputerError(kind: .notCommitted, message: m) }
 }
 
+/// The session confirm's one second Return: only while Go to Folder still holds the folder asked for.
+public enum SessionReturn {
+    public static func again(pathValue: String?, folder: String) -> Bool { pathValue == folder || pathValue == folder + "/" }
+}
+
 /// §26.7 (6): what proves the save, from the destination folder's listing after the panel closed.
 public enum SaveProof {
     /// `after`: each file in the destination folder with its mtime (seconds); `startedAt`: when the

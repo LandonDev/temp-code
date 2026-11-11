@@ -127,6 +127,18 @@ extension InputEngine {
                     // AX names the app front before the window server routes keys to its sheet: the settle first
                     try ctx.poster.pause(InputTiming.frontSettleMs)
                     try core.key(&ctx, try parseKeyCombo("Return"), repeat: 1)
+                    // a Return the window server routed before the sheet was key went nowhere: once more, only
+                    // while Go to Folder still shows the path (after it closed, Return would press Save)
+                    let until = clock.seconds() + Double(InputTiming.frontSettleMaxMs) / 1000
+                    var shown = PanelRead.read(window: target.window, pid: pid)
+                    while clock.seconds() < until, SavePanelParts.find(in: shown.root)?.goTo != nil {
+                        try ctx.poster.pause(InputTiming.panelPollMs)
+                        shown = PanelRead.read(window: target.window, pid: pid)
+                    }
+                    if let parts = SavePanelParts.find(in: shown.root), parts.goTo != nil,
+                       SessionReturn.again(pathValue: parts.pathField.flatMap { shown.root.at($0)?.value }, folder: goal.folder) {
+                        try core.key(&ctx, try parseKeyCombo("Return"), repeat: 1)
+                    }
                 }
                 session = change
                 _ = try? core.restoreSession(afterInterrupt: false)

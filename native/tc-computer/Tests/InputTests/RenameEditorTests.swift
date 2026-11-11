@@ -1,3 +1,4 @@
+import ComputerCore
 import ComputerProtocol
 import Input
 import Testing
@@ -19,6 +20,12 @@ import Testing
         #expect(!RenameEditor.applies(key("Tab"), role: "AXTextField", inRow: true, takesFocus: false))
         #expect(!RenameEditor.applies(key("Return"), role: "AXTextArea", inRow: true, takesFocus: false))
         #expect(!RenameEditor.applies(ComputerAction(action: .key, element: 6, text: "Return", repeat: 2), role: "AXTextField", inRow: true, takesFocus: false))
+    }
+
+    @Test func onlyTheOrdinaryRoutesFocusRefusalSendsItThere() {
+        #expect(RenameEditor.isFocusRefusal(ComputerError(kind: .actionUnsupported, message: "[6]\(RenameEditor.noFocus)", element: 6)))
+        #expect(!RenameEditor.isFocusRefusal(ComputerError(kind: .actionUnsupported, message: "[6] has no action \"confirm\".", element: 6)))
+        #expect(!RenameEditor.isFocusRefusal(ComputerError(kind: .needsTier, message: "[6]\(RenameEditor.noFocus)", element: 6)))
     }
 
     @Test func theEditorIsAnotherTextField() {

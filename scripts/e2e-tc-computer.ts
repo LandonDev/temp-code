@@ -1770,7 +1770,7 @@ async function activeLeg(a: Service, mayLaunch: () => void): Promise<void> {
   const files = join(scratch, 'files')
   const read = (title: string): Promise<Observation> =>
     a.call('state.get', { session: SESSION, app: { pid }, window: { title }, mode: 'full', wait: COMPUTER_WAIT.observe })
-  const act = (o: Observation, action: Record<string, unknown>, tiers: ('ax' | 'process' | 'front')[]) =>
+  const act = (o: Observation, action: Record<string, unknown>, tiers: ('ax' | 'process' | 'front' | 'session')[]) =>
     a.call('action.run', { session: SESSION, app: { pid }, window: { id: o.window.id }, epoch: o.epoch, action, tiers, wait: COMPUTER_WAIT.action } as never)
   // a hand run brings TC Probe forward only after FRONT_QUIET_S of quiet; the unattended run after FRONT_IDLE_S
   const awayLongEnough = async (): Promise<void> => {
@@ -1907,16 +1907,16 @@ async function activeLeg(a: Service, mayLaunch: () => void): Promise<void> {
     mkdirSync(out, { recursive: true })
     const target = join(out, 'note.txt')
     const before = personState()
-    const first = await act(doc!, { action: 'save_as', path: target }, ['ax', 'process', 'front'])
+    const first = await act(doc!, { action: 'save_as', path: target }, ['ax', 'process', 'front', 'session'])
     const step = okStep(first.step)
     data.first = step
     if (step.front) noteHold('active 9 save_as', step.front)
     check(step.input?.via === 'panel' && existsSync(target), 'save_as wrote the file', step)
     doc = await read('note.txt').catch(() => read('doc.txt'))
-    const again = await act(doc, { action: 'save_as', path: target }, ['ax', 'process', 'front'])
+    const again = await act(doc, { action: 'save_as', path: target }, ['ax', 'process', 'front', 'session'])
     check(again.step.status === 'failed' && again.step.error.kind === 'file_exists', 'a second save_as without replace refuses', again.step)
     doc = await read('note.txt').catch(() => read('doc.txt'))
-    const replaced = okStep((await act(doc, { action: 'save_as', path: target, replace: true }, ['ax', 'process', 'front'])).step)
+    const replaced = okStep((await act(doc, { action: 'save_as', path: target, replace: true }, ['ax', 'process', 'front', 'session'])).step)
     data.replaced = replaced
     if (replaced.front) noteHold('active 9 replace', replaced.front)
     data.person = assertPersonUntouched(before, 'after save_as')
@@ -1950,7 +1950,7 @@ async function activeAppsSteps(a: Service, leg: Chain, scratch: string, awayLong
   const te = join(scratch, 'te')
   const note = join(te, 'note.txt')
   const fd = join(scratch, `fd-${process.pid}`)
-  const act = (pid: number, o: Observation, action: Record<string, unknown>, tiers: ('ax' | 'process' | 'front')[]) =>
+  const act = (pid: number, o: Observation, action: Record<string, unknown>, tiers: ('ax' | 'process' | 'front' | 'session')[]) =>
     a.call('action.run', { session: SESSION, app: { pid }, window: { id: o.window.id }, epoch: o.epoch, action, tiers, wait: COMPUTER_WAIT.action } as never)
   const read = (pid: number, title: string): Promise<Observation> =>
     a.call('state.get', { session: SESSION, app: { pid }, window: { title }, mode: 'full', wait: COMPUTER_WAIT.observe })
@@ -2003,7 +2003,7 @@ async function activeAppsSteps(a: Service, leg: Chain, scratch: string, awayLong
       const target = join(te, 'out', 'te-note.txt')
       const before = frontWindow()
       const since = Date.now()
-      const r = await act(tePid, teDoc!, { action: 'save_as', path: target }, ['ax', 'process', 'front'])
+      const r = await act(tePid, teDoc!, { action: 'save_as', path: target }, ['ax', 'process', 'front', 'session'])
       const step = okStep(r.step)
       data.step = step
       if (step.front) noteHold('active TextEdit 1', step.front)

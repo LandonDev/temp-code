@@ -210,6 +210,13 @@ private let noPanel = PanelNode(role: "AXWindow", children: [PanelNode(role: "AX
         #expect(noFront.step(seen(window(goTo: true), path: "/Users/me/run")) == .confirmGoToAtSession)
     }
 
+    @Test func aSecondReturnOnlyWhileGoToHoldsTheFolder() {
+        #expect(SessionReturn.again(pathValue: "/Users/me/run", folder: "/Users/me/run"))
+        #expect(SessionReturn.again(pathValue: "/Users/me/run/", folder: "/Users/me/run"))
+        #expect(!SessionReturn.again(pathValue: nil, folder: "/Users/me/run"))
+        #expect(!SessionReturn.again(pathValue: "/Users/me", folder: "/Users/me/run"))
+    }
+
     @Test func aFrontConfirmThatLeavesGoToOpenAsksForSession() {
         var r = PanelRig()
         _ = r.step(seen(window(goTo: true), path: "/"))

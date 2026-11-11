@@ -7,10 +7,11 @@ import Foundation
 /// A rename that commits only in the app's own editor (docs/computer-protocol.md §26.9). Finder's list view keeps
 /// a row's name in a field that takes `set_value` but never keyboard focus; Return on the selected row opens Finder's
 /// editor, a field outside the window holding the name on disk, and Return there commits it (macOS 27.2). A commit
-/// on such a field selects its row, opens the editor with Return, writes the field's pending name into it, reads it
+/// on such a field, once the ordinary route refused it for focus, selects its row, opens the editor with Return, writes the field's pending name into it, reads it
 /// back and commits with Return, in a `front` hold (Return goes nowhere in a background app).
 public enum RenameEditor {
-    /// Return, Enter or `perform confirm` on a text field in a row that would not take keyboard focus.
+    /// Return, Enter or `perform confirm` on a text field in a row that would not take keyboard focus (TC Probe's field
+    /// takes it once its window is key, so the ordinary route's own refusal decides, `isFocusRefusal`).
     public static func applies(_ action: ComputerAction, role: String?, inRow: Bool, takesFocus: Bool) -> Bool {
         guard inRow, !takesFocus, role == "AXTextField" else { return false }
         switch action.action {
@@ -19,6 +20,12 @@ public enum RenameEditor {
         default: return false
         }
     }
+
+    /// The words of the refusal a key on an element that would not take keyboard focus fails with.
+    public static let noFocus = " can't take keyboard focus."
+
+    /// The ordinary route refused the step because its element would not take focus: nothing was posted.
+    public static func isFocusRefusal(_ e: ComputerError) -> Bool { e.kind == .actionUnsupported && e.element != nil && e.message.hasSuffix(noFocus) }
 
     /// The editor the app opened: its focused text field, no longer the row's own field.
     public static func isEditor(role: String?, sameAsField: Bool) -> Bool { role == "AXTextField" && !sameAsField }
@@ -36,23 +43,10 @@ extension InputEngine {
         return nil
     }
 
-    /// AXFocused on the field, then up to `focusConfirmMs` for the app's focus to be it.
-    func takesFocus(_ field: AXUIElement, pid: pid_t) -> Bool {
-        let app = AX.app(pid)
-        if AX.same(AX.element(app, "AXFocusedUIElement"), field) { return true }
-        AX.set(field, "AXFocused", kCFBooleanTrue)
-        let deadline = clock.seconds() + Double(InputTiming.focusConfirmMs) / 1000
-        repeat {
-            if AX.same(AX.element(app, "AXFocusedUIElement"), field) { return true }
-            clock.sleep(ms: 10)
-        } while clock.seconds() < deadline
-        return false
-    }
-
     /// The commit through the app's editor; nil when the step is no such commit.
     func renameInEditor(_ action: ComputerAction, target: InputTarget, tiers: [Tier]) throws -> InputOutcome? {
         guard let e = target.element, AX.string(e.element, "AXRole") == "AXTextField", let row = renameRow(e.element),
-              RenameEditor.applies(action, role: "AXTextField", inRow: true, takesFocus: takesFocus(e.element, pid: target.pid)) else { return nil }
+              RenameEditor.applies(action, role: "AXTextField", inRow: true, takesFocus: false) else { return nil }
         let app = NSRunningApplication(processIdentifier: target.pid)?.localizedName ?? "The app"
         guard tiers.contains(.front) else {
             throw ComputerFailure(ComputerError(kind: .needsTier, message: "\(app) renames only in its own editor, with the app in front.", needed: .front))
