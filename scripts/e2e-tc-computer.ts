@@ -1389,7 +1389,7 @@ async function fewerLeg(a: Service, mayLaunch: () => void): Promise<void> {
     data.person = assertPersonUntouched(before, 'after the fewer calls batch')
     const errors = judge(r)
     check(errors.length === 0, errors.join('; '), r)
-    o = await full(r.observation)
+    o = r.observation ?? (await read())
   }
 
   try {
