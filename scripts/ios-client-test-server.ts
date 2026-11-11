@@ -2155,6 +2155,8 @@ server.registry.notes.write('ios-waiting', '## Goal\n\nRun the suite and fix wha
 server.registry.append(THREAD_CHAT, { type: 'context', tokens: 38_000, window: 200_000 })
 server.registry.append('ios-stopped', { type: 'context', tokens: 176_000, window: 200_000 })
 
+// A runner that stopped reading (the proof ended) must not turn a late log line into a crash.
+process.stdout.on('error', () => {})
 // The one line the runner reads. The key appears here and nowhere else.
 process.stdout.write(
   JSON.stringify({

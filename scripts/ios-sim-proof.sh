@@ -274,6 +274,8 @@ restore() {
   xcrun simctl status_bar "$TC_SIM_UDID" clear >/dev/null 2>&1 || true
   xcrun simctl ui "$TC_SIM_UDID" appearance light >/dev/null 2>&1 || true
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null 2>&1 || true
+  # The perf set booted its device with no window: nothing is left running (TC_PERF_KEEP_BOOTED=1 keeps it for the next pass).
+  if [ "$SET" = perf ] && [ "${TC_PERF_KEEP_BOOTED:-}" != 1 ]; then xcrun simctl shutdown "$TC_SIM_UDID" >/dev/null 2>&1 || true; fi
 }
 trap restore EXIT
 

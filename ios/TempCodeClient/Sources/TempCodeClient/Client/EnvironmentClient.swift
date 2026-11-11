@@ -969,6 +969,7 @@ public final class EnvironmentClient {
             guard threads[value.sessionId] != nil else { return }
             if subscriptions.hold(value.sessionId, rows: value.rows) { return }
             PerfCounters.mark(.batch)
+            PerfCounters.bump(.pushedRows, by: value.rows.count)
             append(value.sessionId, rows: value.rows)
             threads[value.sessionId]?.isLive = true
             try? await cache.store(environment.id, sessionId: value.sessionId, rows: value.rows)
@@ -1117,6 +1118,7 @@ public final class EnvironmentClient {
 
     private func fold(_ id: String, page: EventsPage, tailFirst: Bool) {
         guard var state = threads[id] else { return }
+        PerfCounters.bump(.pages)
         if page.reset || tailFirst {
             cancelHistory(id)
             state.revision += 1

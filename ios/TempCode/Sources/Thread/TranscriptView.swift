@@ -244,7 +244,7 @@ struct TranscriptView: View {
             }
             #endif
             // A performance run asked of this thread (the proof's launch, the Diagnostics screen).
-            .task(id: PerfSession.shared.request.map { "\($0.id)|\(thread.isLoading)|\(rows.isEmpty)" } ?? "") {
+            .task(id: PerfSession.shared.taskKey(loading: thread.isLoading, empty: rows.isEmpty)) {
                 guard !thread.isLoading, !rows.isEmpty else { return }
                 await perfRun()
             }

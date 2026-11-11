@@ -18,8 +18,10 @@ public enum PerfCounter: Int, CaseIterable, Sendable {
     /// Runs of the transcript's row build, and the rows they made.
     case rowBuilds
     case rowsBuilt
-    /// Blocks of pushed rows applied to a thread.
+    /// Blocks of pushed rows applied to a thread, the rows in them, and pages folded in (a resume, a reset).
     case batches
+    case pushedRows
+    case pages
     /// Writes that wake a thread's readers, and the session list's.
     case threadPublishes
     case sessionPublishes

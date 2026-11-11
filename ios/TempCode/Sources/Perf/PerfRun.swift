@@ -116,14 +116,24 @@ final class PerfSession {
     }
 
     /// The transcript of `sessionId` takes the request, if it is its own.
+    /// The request stays until the run finishes: the transcript's task is
+    /// keyed on it, and a key that changed would cancel the run it started.
     func claim(_ sessionId: String) -> PerfRun? {
         guard running == nil, let request, request.sessionId == nil || request.sessionId == sessionId else { return nil }
-        self.request = nil
         running = request.run
         return request.run
     }
 
+    /// The transcript's task key: the request and whether its rows are in,
+    /// held still while a run goes, so neither the claim nor a page loading
+    /// under the scroll cancels it.
+    func taskKey(loading: Bool, empty: Bool) -> String {
+        guard let request else { return "" }
+        return running == nil ? "\(request.id)|\(loading)|\(empty)" : "\(request.id)|false|false"
+    }
+
     func finish(_ report: PerfReport) {
+        request = nil
         running = nil
         focus = nil
         self.report = report
@@ -176,6 +186,9 @@ struct PerfRunner {
         let id = context.sessionId
         let client = context.client
         if run == .typeBusy { await pageIn(client, id) }
+        // A board thread fetches its whole history after it opens: the run measures the thread
+        // once that is in, as a thread the person has had open, not the fetch.
+        await history(client, id)
         Self.write(landed: run, rows: client.threads[id]?.rows.count ?? 0)
         let recorder = FrameRecorder()
         recorder.rowAt = context.rowAt
@@ -298,6 +311,26 @@ struct PerfRunner {
             await Self.sleep(0.1)
         }
         return nil
+    }
+
+    /// Waits for the thread to go live (30 s at most) and, for a board
+    /// thread, for the history it fetches after that (3 minutes at most; the
+    /// report's `rowsHeld` shows what was in). A thread with no host behind
+    /// it is measured as it is.
+    private func history(_ client: EnvironmentClient, _ id: String) async {
+        for _ in 0..<300 {
+            if client.threads[id]?.isLive == true { break }
+            await Self.sleep(0.1)
+        }
+        let board: Bool = switch client.session(id)?.threadType {
+        case .implementation?, .research?, .orchestration?, .planning?, .projectPlan?: true
+        default: false
+        }
+        for _ in 0..<1_800 {
+            guard let state = client.threads[id], state.isLive, state.historyError == nil,
+                  state.isLoadingHistory || (board && state.moreBefore) else { return }
+            await Self.sleep(0.1)
+        }
     }
 
     /// Every older page, so the thread holds all its rows before the run.
