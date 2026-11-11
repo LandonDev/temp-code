@@ -34,6 +34,33 @@ export function etimeSeconds(etime: string): number {
   return Number(days) * 86_400 + parts[0] * 3600 + parts[1] * 60 + parts[2]
 }
 
+const FLAGS_WITH_VALUE = new Set(['--preload', '-r', '--require', '--import', '--loader', '--experimental-loader', '--env-file', '--cwd', '--config', '--tsconfig-override', '--conditions', '-O', '-o', '--rcfile', '--init-file'])
+
+/** The executable/script being run, never a log path or a command passed to a generic wrapper. */
+function proofTarget(command: string): string | null {
+  const [exe, ...args] = command.split(/\s+/)
+  const name = exe.slice(exe.lastIndexOf('/') + 1)
+  const shell = /^(?:bash|zsh|sh|dash|ksh)$/.test(name)
+  const runtime = /^(?:bun|node|nodejs|tsx)$/.test(name)
+  if (!shell && !runtime) return exe
+  let i = 0
+  const script = (): string | null => {
+    while (i < args.length && args[i].startsWith('-')) {
+      const flag = args[i++]
+      if (flag === '--') break
+      if (shell ? flag === '--command' || /^-[^-]*[cs]/.test(flag) : /^(?:-[ep]|--(?:eval|print)(?:=|$))/.test(flag)) return null
+      if (FLAGS_WITH_VALUE.has(flag) || (shell && /^-[^-]*[oO]$/.test(flag))) i++
+    }
+    return args[i++] ?? null
+  }
+  let target = script()
+  if (runtime && target === 'run') target = script()
+  // The shipped launcher forwards exactly one script. It is a real wrapper;
+  // arbitrary gated.sh/monitor scripts that mention a proof are not.
+  if (runtime && target && /(?:^|\/)proof-bun\.ts$/.test(target)) target = args[i] ?? null
+  return target
+}
+
 /**
  * The first other proof in `ps -Ao pid=,ppid=,etime=,command=` output that
  * started before this one, or null. Each proof is its topmost process that
@@ -52,19 +79,9 @@ export function otherProofIn(ps: string, self: number, patterns: readonly string
     // Scratch children can outlive a failed runner. Its wrapper owns the turn;
     // an orphaned app/helper must reach the next proof's startup sweep.
     if (/^\/.*\/tc-computer-proof\/(?:TC Probe\.app\/Contents\/MacOS\/TC Probe|computer-proof-probe)(?:\s|$)/.test(command)) return null
-    const hit = patterns.find((p) => command.includes(p))
-    if (!hit) return null
-    // A shell's -c text can keep naming a finished proof while only sleep
-    // remains. Count its actual runner, at that runner's age: a later child
-    // must not inherit an old shell's place and jump ahead of a live proof.
-    const [exe, ...args] = command.split(/\s+/)
-    if (/(?:^|\/)(?:bash|zsh|sh|dash|ksh)$/.test(exe)) {
-      for (const arg of args) {
-        if (!arg.startsWith('-')) break
-        if (arg === '--command' || /^-[^-]*c/.test(arg)) return null
-      }
-    }
-    return hit
+    if (!patterns.some((p) => command.includes(p))) return null
+    const target = proofTarget(command)
+    return target ? patterns.find((p) => target.includes(p)) ?? null : null
   }
   /** The wrapper: the topmost process up the chain that names a proof. */
   const wrapper = (pid: number): number => {

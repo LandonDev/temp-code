@@ -101,6 +101,37 @@ describe('proofOrder', () => {
   it('still counts a shell running a proof script by path', () => {
     const ps = [row(50, 1, '01:00', '/bin/sh scripts/mac/input-proof.sh --active'), ...bridge(200, 201, '00:10')].join('\n')
     expect(otherProofIn(ps, 201)).toBe('input-proof')
+    const strict = [row(50, 1, '01:00', '/bin/bash -euo pipefail scripts/mac/input-proof.sh --active'), ...bridge(200, 201, '00:10')].join('\n')
+    expect(otherProofIn(strict, 201)).toBe('input-proof')
+  })
+
+  it('ignores the real gated.sh wrapper’s trailing proof command while it only sleeps', () => {
+    const ps = [
+      row(54470, 1, '17:11', '/bin/bash /private/tmp/tc-fewer-tools/gated.sh gate /private/tmp/tc-fewer-measure/logs/gate.log -- bun run script:e2e-tc-computer -- --gate'),
+      row(97674, 54470, '00:02', 'sleep 5'),
+      ...bridge(200, 201, '00:10')
+    ].join('\n')
+    expect(otherProofIn(ps, 201)).toBeNull()
+  })
+
+  it('does not count a monitor script’s arguments or inline runtime text as a proof', () => {
+    const ps = [
+      row(50, 1, '10:00', 'node scripts/monitor.mjs e2e-tc-computer'),
+      row(51, 1, '10:00', 'bun -e console.log("e2e-tc-computer")'),
+      ...bridge(200, 201, '00:10')
+    ].join('\n')
+    expect(otherProofIn(ps, 201)).toBeNull()
+  })
+
+  it('keeps the known proof-bun launcher under its package wrapper as one proof', () => {
+    const ps = [
+      row(100, 1, '01:00', 'bun run script:e2e-tc-computer -- --gate'),
+      row(101, 100, '00:50', 'bun scripts/proof-bun.ts scripts/e2e-tc-computer.ts --gate'),
+      row(102, 101, '00:40', '/opt/homebrew/bin/bun scripts/e2e-tc-computer.ts --gate'),
+      ...bridge(200, 201, '00:10')
+    ].join('\n')
+    expect(otherProofIn(ps, 201)).toBe('e2e-tc-computer')
+    expect(otherProofIn(ps, 102)).toBeNull()
   })
 
   it('lets the next proof sweep orphaned scratch processes instead of waiting forever behind them', () => {
