@@ -29,7 +29,7 @@ import { handleAssetRequest, pagesRoot, registerAssetProtocol, registerSchemes, 
 import { registerAppProtocol } from './appScheme'
 import { migrateLocalStorage } from './originMigration'
 import { isHeadless, noDisplay, publishLocalPort, quitsOnAllClosed, unpublishLocalPort } from './headless'
-import { MacPresenceWatcher, presenceFromEnv } from './presence'
+import { declareUserActivity, MacPresenceWatcher, macScreenReader, presenceFromEnv } from './presence'
 import { AttentionWatcher } from './attention'
 import { PersonIdle } from './personIdle'
 import { htmlPreviewer } from './htmlPreview'
@@ -167,15 +167,30 @@ app.whenReady().then(async () => {
   // with a desktop follows powerMonitor and reads the lock once at boot; a
   // headless host or another platform reports unknown/awake, and either
   // takes TEMP_CODE_PRESENCE on an isolated instance.
-  const fromEnv = presenceFromEnv(process.env)
-  const presence = new MacPresenceWatcher({ initial: { screen: 'unknown', power: 'awake', ...fromEnv } })
-  if (process.platform === 'darwin' && !headless) {
-    presence.attach(powerMonitor)
-    if (!fromEnv.screen) void presence.readInitialLock()
-  }
   // The person's idle time with computer use's own session-tier input taken out (personIdle.ts): the
   // scheduler and attention both read it, so a step the app posts never reads as the person coming back.
   const personIdle = headless ? null : new PersonIdle(powerMonitor)
+  const fromEnv = presenceFromEnv(process.env)
+  const presence = new MacPresenceWatcher({ initial: { screen: 'unknown', power: 'awake', ...fromEnv } })
+  if (process.platform === 'darwin' && !headless) {
+    // A passwordless screen saver is told from a lock by its facts (shared/screenState.ts); dismissing it
+    // declares user activity, which is the app's own input, never the person coming back.
+    const declare = declareUserActivity()
+    if (!fromEnv.screen) {
+      presence.useMac(macScreenReader(), async () => {
+        const armedAt = Date.now()
+        const idleAtArmMs = powerMonitor.getSystemIdleTime() * 1000
+        const own = personIdle?.beginOwn()
+        try {
+          await declare()
+        } finally {
+          own?.end([{ armedAt, idleAtArmMs, lastInputAt: Date.now() }])
+        }
+      })
+    }
+    presence.attach(powerMonitor)
+    if (!fromEnv.screen) void presence.readInitialLock()
+  }
   // Whether the person is at this machine (attention.ts): the renderer names its focused thread only then.
   const attention = new AttentionWatcher(presence, personIdle ?? { getSystemIdleTime: () => 0 })
   ipcMain.handle('app:attention', () => attention.isPresent())

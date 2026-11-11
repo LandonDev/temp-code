@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MacPresenceWatcher, parseConsoleUsers, presenceFromEnv, staticPresence, type PowerMonitorLike } from './presence'
+import { MacPresenceWatcher, macScreenReader, parseConsoleUsers, presenceFromEnv, staticPresence, type PowerMonitorLike } from './presence'
 
 const plist = (users: string): string =>
   `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n\t<key>IOConsoleLocked</key>\n\t<false/>\n\t<key>IOConsoleUsers</key>\n\t${users}\n\t<key>IORegistryEntryName</key>\n\t<string>Root</string>\n</dict>\n</plist>\n`
@@ -108,5 +108,75 @@ describe('MacPresenceWatcher', () => {
       throw new Error('no such binary')
     })
     expect(threw.snapshot().screen).toBe('unknown')
+  })
+})
+
+describe('a screen saver is not a lock', () => {
+  const reader = (state: { sessionLocked: boolean; saverRunning: boolean; policy: 'off' | 'immediate' }) => async () => ({
+    facts: { sessionLocked: state.sessionLocked, onConsole: true, saverRunning: state.saverRunning },
+    policy: { kind: state.policy } as const
+  })
+
+  it('lock-screen reads locked at once, then the facts say a passwordless saver: unlocked with the saver up', async () => {
+    const mac = { sessionLocked: true, saverRunning: true, policy: 'off' as const }
+    const w = new MacPresenceWatcher({ initial: { screen: 'unlocked' }, now: () => 1 })
+    w.useMac(reader(mac), async () => {})
+    const seen: string[] = []
+    w.onChange((p) => seen.push(`${p.screen}${p.saver ? '+saver' : ''}`))
+    const monitor = fakeMonitor()
+    w.attach(monitor)
+    monitor.fire('lock-screen')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(seen).toEqual(['locked', 'unlocked+saver'])
+    expect(w.snapshot()).toEqual({ screen: 'unlocked', power: 'awake', at: 1, saver: true })
+    monitor.fire('unlock-screen')
+    expect(w.snapshot().saver).toBeUndefined()
+  })
+
+  it('a password policy keeps it locked, and dismissSaver never touches a lock', async () => {
+    let declared = 0
+    const w = new MacPresenceWatcher({ sleep: async () => {} })
+    w.useMac(reader({ sessionLocked: true, saverRunning: true, policy: 'immediate' }), async () => void declared++)
+    expect((await w.dismissSaver()).screen).toBe('locked')
+    expect(declared).toBe(0)
+  })
+
+  it('dismissSaver declares activity and reads until the desktop is back', async () => {
+    const mac = { sessionLocked: true, saverRunning: true, policy: 'off' as const }
+    let declared = 0
+    const w = new MacPresenceWatcher({ sleep: async () => {} })
+    w.useMac(reader(mac), async () => {
+      declared++
+      mac.sessionLocked = false
+      mac.saverRunning = false
+    })
+    expect(await w.refresh()).toMatchObject({ screen: 'unlocked', saver: true })
+    const after = await w.dismissSaver()
+    expect(declared).toBe(1)
+    expect(after).toMatchObject({ screen: 'unlocked' })
+    expect(after.saver).toBeUndefined()
+  })
+
+  it('a dismiss the Mac ignores gives up after the wait, still saying saver', async () => {
+    let t = 0
+    const w = new MacPresenceWatcher({ now: () => t, sleep: async (ms) => void (t += ms) })
+    w.useMac(reader({ sessionLocked: true, saverRunning: true, policy: 'off' }), async () => {})
+    expect((await w.dismissSaver()).saver).toBe(true)
+    expect(t).toBeGreaterThanOrEqual(3_000)
+  })
+
+  it('macScreenReader folds ioreg, pgrep and sysadminctl (on stderr) into facts, keeping the policy', async () => {
+    const calls: string[] = []
+    const exec = (file: string, _args: readonly string[], _o: unknown, cb: (e: Error | null, out: string, err?: string) => void): unknown => {
+      calls.push(file)
+      if (file === 'ioreg') cb(null, LOCKED)
+      else if (file === '/usr/bin/pgrep') cb(null, '')
+      else cb(null, '', '… sysadminctl[1:2] screenLock is off')
+      return null
+    }
+    const read = macScreenReader(exec, () => 0)
+    expect(await read()).toEqual({ facts: { sessionLocked: true, onConsole: true, saverRunning: true }, policy: { kind: 'off' } })
+    await read()
+    expect(calls.filter((c) => c === '/usr/sbin/sysadminctl')).toHaveLength(1)
   })
 })

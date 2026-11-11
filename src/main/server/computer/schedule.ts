@@ -202,12 +202,19 @@ export class SessionScheduler implements SessionTierGate {
     if (st.skipped.has(app)) return this.refuse('skipped-earlier', ctx)
     const started = this.clock.now()
     const ask = askAfter(ctx.permission, this.opts.askAfterMs ?? SCHEDULE.askAfterMs)
+    let rechecked = false
     try {
       for (;;) {
         if (ctx.signal.aborted) return this.refuse('cancelled', ctx)
         const f = this.freedom(st)
         if (f.free) return { admit: true, via: f.via, waitedMs: this.clock.now() - started }
         if (front && this.frontFreedom(st).free) return { admit: true, via: 'away', waitedMs: this.clock.now() - started }
+        // a locked or dark reading is checked again from the Mac's own facts before it refuses (a saver read as a lock, a stale picture)
+        if ((f.why === 'locked' || f.why === 'asleep') && !rechecked) {
+          rechecked = true
+          await this.uncover(true)
+          continue
+        }
         if (f.why === 'locked') return this.refuse('screen-locked', ctx)
         if (f.why === 'asleep') return this.refuse('asleep', ctx)
         if (this.clock.now() - started >= ask) {
@@ -224,6 +231,8 @@ export class SessionScheduler implements SessionTierGate {
 
   async run<T extends ActionResult | BatchResult>(ctx: TierGateRun, send: (tiers: Tier[]) => Promise<T>): Promise<T> {
     const st = this.state(ctx.threadId)
+    // a passwordless screen saver goes before any step acts: the desktop comes back as at a key press
+    if (this.opts.presence.snapshot().saver) await this.uncover(false)
     let tiers = ctx.tiers
     while (tiers.includes('session')) {
       try {
@@ -354,6 +363,17 @@ export class SessionScheduler implements SessionTierGate {
       mode: activeApp(this.opts.getSetting(ACTIVE_APP_SETTING)),
       session: this.freedom(st)
     })
+  }
+
+  /** Reads the screen again (`fresh`) and dismisses a passwordless saver; a real lock is left alone. */
+  private async uncover(fresh: boolean): Promise<void> {
+    const presence = this.opts.presence
+    try {
+      const p = fresh && presence.refresh ? await presence.refresh() : presence.snapshot()
+      if (p.saver && presence.dismissSaver) await presence.dismissSaver()
+    } catch (err) {
+      this.opts.log?.(`[computer] screen re-check failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   private refuse(reason: SessionTierRefusal, ctx: TierGateContext): TierDecision {

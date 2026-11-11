@@ -850,6 +850,7 @@ export const HostPresenceSchema = z.object({
   since: z.number().int(),
   screen: ScreenStateSchema,
   power: PowerStateSchema,
+  saver: z.boolean().optional(),
   lastSeenAt: z.number().int().nullable(),
   build: BuildFactsSchema.nullable()
 })

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Principal } from '@shared/capabilities'
 import type { ServerFrame, ServerPush } from '@shared/contract'
-import { RELAY_HOSTS_MAX, type HostPresence, type RelayFacadeResult, type RelayOpenResult, type RelayPrincipal } from '@shared/contract-relay'
+import { RELAY_HOSTS_MAX, relayRefusal, type HostPresence, type RelayFacadeResult, type RelayOpenResult, type RelayPrincipal } from '@shared/contract-relay'
 import { PeerOfflineError, type PeerInfo } from './peerCalls'
 import { HostRelay, RELAY_STALE_MS, type LaneSocket, type RelayTransport } from './relay'
 
@@ -177,6 +177,14 @@ describe('HostRelay presence rows', () => {
     relay.onPeerPresence('env_mac', { screen: 'locked', power: 'awake', at: T0 + 950 })
     expect(broadcasts).toHaveLength(2)
     expect(broadcasts[1].hosts[0]).toMatchObject({ screen: 'locked', lastSeenAt: T0 + 1_000 })
+    // a passwordless screen saver: unlocked, the saver said, and the screen method still runs
+    relay.onPeerPresence('env_mac', { screen: 'unlocked', power: 'awake', at: T0 + 960, saver: true })
+    expect(broadcasts).toHaveLength(3)
+    expect(broadcasts[2].hosts[0]).toMatchObject({ screen: 'unlocked', saver: true })
+    expect(relayRefusal(relay.presenceOf('env_mac')!, 'screen', T0)).toBeNull()
+    relay.onPeerPresence('env_mac', { screen: 'unlocked', power: 'awake', at: T0 + 970 })
+    expect(broadcasts).toHaveLength(4)
+    expect(relay.presenceOf('env_mac')?.saver).toBeUndefined()
     // a host with no row is ignored
     relay.onPeerPresence('env_nobody', { screen: 'locked', power: 'awake', at: 0 })
     expect(relay.hosts()).toHaveLength(1)

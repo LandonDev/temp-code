@@ -46,6 +46,11 @@ describe('AttentionWatcher', () => {
     expect(watcher.isPresent()).toBe(false)
     presence.set({ power: 'awake' })
     expect(seen).toEqual([false, true, false, true])
+    // a passwordless screen saver: nobody is looking
+    presence.set({ saver: true })
+    expect(watcher.isPresent()).toBe(false)
+    presence.set({ saver: false })
+    expect(watcher.isPresent()).toBe(true)
   })
   it("stays away through the app's own session input when it reads a PersonIdle", () => {
     watcher.stop()

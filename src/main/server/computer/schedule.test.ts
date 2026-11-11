@@ -70,6 +70,10 @@ function world() {
     beginOwn: () => ({ end: (spans: OwnSpan[]) => void ends.push(spans) })
   }
   let presence: MacPresence = { screen: 'unlocked', power: 'awake', at: 0 }
+  /** what a fresh read of the Mac's facts says (presence.refresh), null for the snapshot */
+  let fresh: Partial<MacPresence> | null = null
+  let refreshes = 0
+  let dismissals = 0
   let away = false
   const settings = new Map<string, string>()
   const lines: [string, string | null][] = []
@@ -111,7 +115,20 @@ function world() {
     new SessionScheduler({
       service: service as never,
       idle,
-      presence: { snapshot: () => presence, onChange: () => () => {} },
+      presence: {
+        snapshot: () => presence,
+        onChange: () => () => {},
+        refresh: async () => {
+          refreshes++
+          if (fresh) presence = { ...presence, ...fresh }
+          return presence
+        },
+        dismissSaver: async () => {
+          dismissals++
+          if (presence.saver) presence = { ...presence, saver: false }
+          return presence
+        }
+      },
       awayOn: () => away,
       getSetting: (k) => settings.get(k) ?? null,
       held: (t, l) => void lines.push([t, l]),
@@ -135,6 +152,9 @@ function world() {
     input: () => (lastInput = clock.now()),
     idleFor: (ms: number) => (lastInput = clock.now() - ms),
     setPresence: (p: Partial<MacPresence>) => (presence = { ...presence, ...p }),
+    /** the Mac's facts say this on the next refresh */
+    freshly: (p: Partial<MacPresence> | null) => (fresh = p),
+    counts: () => ({ refreshes, dismissals }),
     setAway: (on: boolean) => (away = on),
     holdRestore: () => (restoreHold = deferred<void>()),
     releaseRestore: () => {
@@ -279,6 +299,30 @@ describe('admission', () => {
     expect(await held).toMatchObject({ admit: false, reason: 'screen-locked' })
     expect(w.cards).toEqual([])
     expect(linesOf(w).at(-1)).toBeNull()
+  })
+
+  it('reads the facts again before it refuses: a saver read as a lock is dismissed and the step admitted', async () => {
+    const { w, s } = setup()
+    w.idleFor(500_000)
+    w.setPresence({ screen: 'locked' })
+    w.freshly({ screen: 'unlocked', saver: true })
+    expect(await s.request(reqOf(w))).toMatchObject({ admit: true, via: 'away' })
+    expect(w.counts()).toEqual({ refreshes: 1, dismissals: 1 })
+    // a real lock stays one after its re-check, and nothing is dismissed
+    w.setPresence({ screen: 'locked', saver: false })
+    w.freshly({ screen: 'locked' })
+    expect(await s.request(reqOf(w))).toMatchObject({ admit: false, reason: 'screen-locked' })
+    expect(w.counts()).toEqual({ refreshes: 2, dismissals: 1 })
+  })
+
+  it('dismisses a passwordless saver before a call acts, and leaves the screen alone otherwise', async () => {
+    const { w, s } = setup()
+    w.idleFor(500_000)
+    await s.run(runOf(w, 't1', ['ax', 'process'], [{ action: 'left_click' }]), async () => single(ok('left_click', 'process')))
+    expect(w.counts().dismissals).toBe(0)
+    w.setPresence({ saver: true })
+    await s.run(runOf(w, 't1', ['ax', 'process'], [{ action: 'left_click' }]), async () => single(ok('left_click', 'process')))
+    expect(w.counts().dismissals).toBe(1)
   })
 
   it('an abort while held refuses cancelled at once, with the line cleared and no card', async () => {

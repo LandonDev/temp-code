@@ -178,13 +178,16 @@ export class HostRelay {
   onPeerPresence(from: string, p: MacPresence): { ok: true } {
     const row = this.rows.get(from)
     if (!row) return { ok: true }
-    const changed = row.screen !== p.screen || row.power !== p.power
+    const saver = p.saver === true
+    const changed = row.screen !== p.screen || row.power !== p.power || (row.saver === true) !== saver
     row.screen = p.screen
     row.power = p.power
+    if (saver) row.saver = true
+    else delete row.saver
     row.lastSeenAt = this.now()
     this.persistLater()
     if (changed) {
-      this.log(`${row.name} (${from}): ${p.screen}, ${p.power}`)
+      this.log(`${row.name} (${from}): ${p.screen}${saver ? ' (screen saver)' : ''}, ${p.power}`)
       this.broadcast()
     }
     return { ok: true }
@@ -209,10 +212,11 @@ export class HostRelay {
       since: now,
       screen: info?.presence?.screen ?? 'unknown',
       power: info?.presence?.power ?? 'awake',
+      ...(info?.presence?.saver ? { saver: true } : {}),
       lastSeenAt: now,
       build: info?.build ?? prior?.build ?? null
     }
-    const changed = !prior || prior.link !== 'up' || prior.screen !== row.screen || prior.power !== row.power || prior.name !== row.name
+    const changed = !prior || prior.link !== 'up' || prior.screen !== row.screen || prior.power !== row.power || prior.saver !== row.saver || prior.name !== row.name
     this.place(envId, row)
     this.log(`${row.name} (${envId}): link up (${row.screen}, ${row.power})`)
     this.persistLater()

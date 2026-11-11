@@ -45,7 +45,9 @@ export const MacPresenceSchema = z.object({
   screen: ScreenStateSchema,
   power: PowerStateSchema,
   /** When this picture was taken on the host (its clock). */
-  at: z.number().int()
+  at: z.number().int(),
+  /** The screen saver is up and leaving it needs no password (src/shared/screenState.ts): `screen` reads unlocked, and screen work dismisses it first. Absent from an older host. */
+  saver: z.boolean().optional()
 })
 export type MacPresence = z.infer<typeof MacPresenceSchema>
 
@@ -61,6 +63,8 @@ export interface HostPresence {
   since: number
   screen: ScreenState
   power: PowerState
+  /** The screen saver is up with no password needed (MacPresence.saver); absent when not, or from an older host. */
+  saver?: boolean
   /** The last frame the box took from the host's link (register, presence, reply), null before any. */
   lastSeenAt: number | null
   build: BuildFacts | null

@@ -1,7 +1,7 @@
 import type { PresenceSource } from './presence'
 
 /**
- * Whether the person is at this Mac: the screen unlocked and awake
+ * Whether the person is at this Mac: the screen unlocked, no screen saver up, awake
  * (presence.ts) and input inside the last two minutes
  * (`powerMonitor.getSystemIdleTime`, read every 5 s). The renderer names a
  * focused thread to its hosts only while this holds (FocusSignal in
@@ -55,8 +55,9 @@ export class AttentionWatcher {
   }
 
   private read(): boolean {
-    const { screen, power } = this.presence.snapshot()
-    if (screen === 'locked' || power === 'asleep') return false
+    const { screen, power, saver } = this.presence.snapshot()
+    // a screen saver up means nobody is looking, password or not
+    if (screen === 'locked' || saver || power === 'asleep') return false
     return this.idle.getSystemIdleTime() < ATTENTION_IDLE_SECONDS
   }
 
