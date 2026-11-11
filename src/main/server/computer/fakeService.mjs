@@ -28,9 +28,47 @@ const apps = [
   { name: 'Closey', pid: 16900, bundleId: 'dev.fake.closey', windows: [windowInfo(169000, 'Closey Doc'), windowInfo(169001, 'Closey Plain')] },
   { name: 'Preview', pid: 17000, bundleId: 'com.apple.Preview', windows: [windowInfo(170000, 'Preview')] },
   { name: 'Webby', pid: 17100, bundleId: 'dev.fake.webby', windows: [{ ...windowInfo(171000, 'Web front - Webby'), tabs: [{ title: 'Web front', selected: true }, { title: 'Web report', selected: false }] }] },
-  { name: 'Finder', pid: 400, bundleId: 'com.apple.finder', windows: [] }
+  { name: 'Finder', pid: 400, bundleId: 'com.apple.finder', windows: [] },
+  // §27's scenarios: each reads its own small tree (FEWER below)
+  ...['Menuful', 'Newdoc', 'Renamey', 'Blindy', 'Unplanned', 'Secret', 'Splitty'].map((name, i) => ({
+    name, pid: 16820 + i, bundleId: `dev.fake.${name.toLowerCase()}`,
+    windows: name === 'Renamey' ? [windowInfo(168220, 'Untitled'), windowInfo(168221, 'Other')] : [windowInfo((16820 + i) * 10, name)]
+  }))
 ]
 const brief = ({ pid, bundleId, name }) => ({ pid, bundleId, name })
+// §27 (fewer calls). Each scenario app's tree as element lines, its focused element first; `named` resolves by these names.
+//   Menuful: a click on [5] opens the Sort menu, whose block closes the read; "Team" names two buttons.
+//   Newdoc: super+n opens a window with its text area [8] focused, and the call follows it.
+//   Renamey: the first type into "Untitled" autosaves it as "Draft.txt"; the old title still matches (§27.6).
+//   Blindy: a click on [5] changes nothing, so the keys after it do not run (§27.8).
+//   Unplanned: Tab walks onto the existing field [6]; text after it is refused (§27.7).
+//   Secret: [12] is a password field the read never lists; by name or by focus it is refused secure (§27.7a).
+//   Splitty: [5] changes nothing, Return focuses the rename field [8], "Search" is [7]; FAKE_FOCUS_DRIFT=1 moves the
+//   focus to [9] before every request that carries a prior.
+const FEWER = {
+  Menuful: { focused: 3, lines: { 3: 'text area = ""', 5: 'menu button "Sort"', 6: 'button "Team"', 7: 'button "Team"' } },
+  Newdoc: { focused: 3, lines: { 3: 'text area = ""', 4: 'button "New"', 8: 'text area "Body" = ""' } },
+  Renamey: { focused: 3, lines: { 3: 'text area = ""' } },
+  Blindy: { focused: 3, lines: { 3: 'text area = ""', 5: 'button "Refresh"' } },
+  Unplanned: { focused: 3, lines: { 3: 'list "Items"', 6: 'text field "Name"' } },
+  Secret: { focused: 11, lines: { 11: 'text field "User"', 13: 'button "Sign In"' }, hidden: { 12: 'password "Password"' } },
+  Splitty: { focused: 3, lines: { 3: 'list "Files"', 5: 'button "Refresh"', 7: 'text field "Search"', 8: 'text field "Rename"', 9: 'text field "Other"' } }
+}
+const MENU = { 50: 'menu "Sort"', 51: 'menu item "Name"', 52: 'menu item "Date"', 53: 'menu item "Team"' }
+const NAV_KEY = /^(shift\+)?(Tab|Up|Down|Left|Right|Home|End|Page_Up|Page_Down|Prior|Next)$/i
+const KEY_TEXT = ['type', 'paste', 'key', 'hold_key']
+const NO_INPUT = ['screenshot', 'zoom', 'cursor_position', 'wait']
+const isPassword = (line) => line?.startsWith('password')
+const fewerLine = (ctx, i) => (ctx.state.menu ? MENU[i] : undefined) ?? FEWER[ctx.app.name].lines[i] ?? FEWER[ctx.app.name].hidden?.[i]
+function fewerText(ctx) {
+  const app = FEWER[ctx.app.name]
+  const focused = ctx.state.focused ?? app.focused
+  const body = Object.entries(app.lines).map(([i, line]) => `  [${i}] ${line}${Number(i) === focused ? ' focused' : ''}`)
+  const block = ctx.state.menu ? [`+ menu opened by step ${ctx.state.menu.by}: [50] menu "Sort"`, ...[51, 52, 53].map((i) => `  [${i}] ${MENU[i]}`)] : []
+  return [`app ${JSON.stringify(ctx.app.name)} · window ${JSON.stringify(ctx.window.title)} · 1280×1072 · focused [${focused}]`, `[1] window ${JSON.stringify(ctx.window.title)}`, ...body, ...block].join('\n')
+}
+// the titles each session's calls have answered for a window, by window id (§27.6)
+const keptTitles = new Map()
 const sessions = new Set()
 const states = new Map()
 const shots = new Map()
@@ -111,9 +149,18 @@ function target(params) {
     if (tab) matchedTab = tab
     return !!tab
   })
+  let kept = keptTitles.get(params.session)
+  if (!kept) keptTitles.set(params.session, kept = new Map())
+  // a title a live window once answered to, when no live title or tab matched and no other live window shared it
+  const keptWindow = () => {
+    const once = app.windows.filter((w) => kept.get(w.id)?.has(ref.title))
+    return once.length === 1 ? once[0] : undefined
+  }
   const window = ref.id !== undefined ? app.windows.find((w) => w.id === ref.id) : ref.title !== undefined ?
-    app.windows.find((w) => w.title === ref.title) ?? tabWindow(true) ?? app.windows.find((w) => w.title.includes(ref.title)) ?? tabWindow(false) : app.windows[0]
+    app.windows.find((w) => w.title === ref.title) ?? tabWindow(true) ?? app.windows.find((w) => w.title.includes(ref.title)) ?? tabWindow(false) ?? keptWindow() : app.windows[0]
   if (!window) throw failure('window_not_found', 'Choose a window from this app.', { candidates: app.windows.map((w) => w.title) })
+  if (!kept.has(window.id)) kept.set(window.id, new Set())
+  kept.get(window.id).add(window.title)
   const named = params.element !== undefined ? [params.element] : params.action ? elements(params.action) : (params.actions ?? []).flatMap(elements)
   if (params.expectFocus !== undefined) named.push(params.expectFocus)
   if (named.length && params.epoch !== epoch) throw failure('stale_element', 'Read the app again after the service restart.', { element: named[0], reason: 'service-restarted' })
@@ -184,6 +231,11 @@ function observation(ctx, options = {}, action = 'observe') {
       (pageState === 'loading' ? ' · still loading' : pageState === 'not-drawn' ? ' · page not drawn' : '') +
       `\n[1] window ${JSON.stringify(ctx.window.title)}\n  [3] input "Name" = ""\n  [4] input "Blocked value" = "Original"\n  [9] input "Address and search bar"\n  [19] pop up "Plan" = ${JSON.stringify(state.plan ?? 'Choose a plan')}\n  [20] table "Report"`
   }
+  if (FEWER[ctx.app.name]) {
+    kind = 'full'
+    state.maxIndex = 60
+    text = fewerText(ctx)
+  }
   const lines = text.split('\n')
   const result = {
     epoch, session: ctx.session, app: brief(ctx.app), window: { id: ctx.window.id, title: ctx.window.title, frame },
@@ -207,6 +259,7 @@ function sessionChange(app) {
   }
 }
 function elementLine(index, ctx) {
+  if (FEWER[ctx.app.name]) return fewerLine(ctx, index) ?? 'group "Part"'
   if (ctx.app.name === 'Webby') return ({ 1: `window ${JSON.stringify(ctx.window.title)}`, 3: 'input "Name"', 4: 'input "Blocked value"', 9: 'input "Address and search bar"', 19: 'pop up "Plan"', 20: 'table "Report"' })[index] ?? 'group "Part"'
   // Changed and new lines in the diff take precedence after a diff was returned.
   const sources = ctx.state.maxIndex === 47 ? [texts.diff, texts.full] : [texts.full]
@@ -224,6 +277,12 @@ function step(ctx, action, tiers, index, pasteQuietMs, ignored) {
     if (element > ctx.state.maxIndex) return fail(failure('no_such_element', 'Read the app before using this element.', { element }))
   }
   const verb = action.action
+  // only the scenario apps resolve a name (§27.9)
+  if (action.named !== undefined && !FEWER[ctx.app.name]) return fail(failure('named_target', 'Nothing has that name.', { reason: 'no-match' }))
+  // keys or text with no target in a window other than the one the host last read (§27.6), unless the call opened it
+  if (['type', 'paste', 'key', 'hold_key'].includes(verb) && action.element === undefined && action.named === undefined && ctx.params?.textWindowId !== undefined &&
+    ctx.window.id !== ctx.params.textWindowId && !ctx.opened?.has(ctx.window.id) && !(ctx.params.prior?.windows ?? []).includes(ctx.window.id))
+    return fail(failure('window_not_found', `Read the window "${ctx.window.title}" before typing into it.`, { candidates: [ctx.window.title] }))
   const result = { index, action: verb, status: 'ok', tier: null, effect: 'none' }
   const element = action.element ?? action.start_element
   if (element !== undefined) result.element = { index: element, line: elementLine(element, ctx) }
@@ -312,13 +371,89 @@ function step(ctx, action, tiers, index, pasteQuietMs, ignored) {
   ctx.state.dirty = true
   return result
 }
+/**
+ * One step of a scenario app (§27): the stop rule, `named`, the live focus and the password field, then the step as
+ * any app runs it, then what it did to the focus, the menu and the windows. `call` is what the request's earlier steps
+ * (and its prior) did.
+ */
+function fewerStep(ctx, action, params, index, call) {
+  const verb = action.action
+  const fail = (error) => ({ index, action: verb, status: 'failed', error })
+  const blind = KEY_TEXT.includes(verb) && action.element === undefined && action.named === undefined
+  if (blind && call.lastEffect === 'none') return { index, action: verb, status: 'not-run', stopped: { afterStep: Math.max(call.lastInput, 0), reason: 'no-change' } }
+  let resolved
+  if (action.named !== undefined) {
+    const lines = { ...(ctx.state.menu ? MENU : {}), ...FEWER[ctx.app.name].lines, ...FEWER[ctx.app.name].hidden }
+    // a line's quoted name, exact before case-blind
+    const nameOf = (line) => { const m = /"((?:[^"\\]|\\.)*)"/.exec(line); return m ? JSON.parse(`"${m[1]}"`) : null }
+    const entries = Object.entries(lines)
+    const exact = entries.filter(([, line]) => nameOf(line) === action.named)
+    const matches = exact.length ? exact : entries.filter(([, line]) => nameOf(line)?.toLowerCase() === action.named.toLowerCase())
+    // what this call made appear first: an open menu's items
+    const menuFirst = ctx.state.menu ? matches.filter(([i]) => MENU[i]) : []
+    const pool = menuFirst.length ? menuFirst : matches
+    if (!pool.length) return fail(failure('named_target', 'Nothing has that name.', { reason: 'no-match' }))
+    if (pool.length > 1) return fail(failure('named_target', 'Several elements have that name.', { reason: 'several', elementCandidates: pool.map(([i, line]) => ({ index: Number(i), line })) }))
+    resolved = Number(pool[0][0])
+  }
+  const focused = ctx.state.focused ?? FEWER[ctx.app.name].focused
+  const secure = (i) => failure('focus_moved', 'A password field takes text by its element alone.', { element: i, focused: { index: i, line: fewerLine(ctx, i) }, reason: 'secure' })
+  if (resolved !== undefined && ['type', 'paste', 'set_value'].includes(verb) && isPassword(fewerLine(ctx, resolved))) return fail(secure(resolved))
+  if (blind && call.sentInput) {
+    if (['type', 'paste'].includes(verb) && isPassword(fewerLine(ctx, focused))) return fail(secure(focused))
+    if (!call.targeted.has(focused) && call.focusTo !== focused)
+      return fail(failure('focus_moved', 'No step of this call aimed at the focused element.', { element: focused, focused: { index: focused, line: fewerLine(ctx, focused) }, reason: 'unplanned' }))
+  }
+  const run = resolved !== undefined ? { ...action, named: undefined, element: resolved } : action
+  const result = step(ctx, run, params.tiers, index, params.pasteQuietMs, params.ignored)
+  if (result.status !== 'ok') return result
+  if (resolved !== undefined) result.resolved = resolved
+  const app = ctx.app.name
+  const target = run.element
+  if (['Blindy', 'Splitty'].includes(app) && verb === 'left_click' && target === 5) result.effect = 'none'
+  if (app === 'Menuful' && verb === 'left_click' && target === 5) ctx.state.menu = { by: index + 1 }
+  else if (app === 'Menuful' && MENU[target]) ctx.state.menu = undefined
+  if (app === 'Newdoc' && verb === 'key' && action.text === 'super+n') {
+    const id = ctx.app.windows.at(-1).id + 1
+    const opened = windowInfo(id, `Untitled ${ctx.app.windows.length + 1}`)
+    for (const w of ctx.app.windows) w.focused = false
+    ctx.app.windows.push(opened)
+    ctx.window = opened
+    ctx.opened.add(id)
+    result.opened = { id, title: opened.title }
+    ctx.state.focused = 8
+  }
+  if (app === 'Renamey' && verb === 'type' && ctx.window.title === 'Untitled') ctx.window.title = 'Draft.txt'
+  if (verb === 'left_click' && /^(text field|password)/.test(fewerLine(ctx, target) ?? '')) ctx.state.focused = target
+  if (app === 'Unplanned' && verb === 'key' && action.text === 'Tab') ctx.state.focused = 6
+  if (app === 'Splitty' && verb === 'key' && action.text === 'Return') ctx.state.focused = 8
+  const now = ctx.state.focused ?? FEWER[app].focused
+  if (now !== focused && !(verb === 'key' && NAV_KEY.test(action.text ?? ''))) result.focusTo = now
+  return result
+}
 function actionResult(ctx, params, method, wasCancelled = false) {
   const actions = method === 'action.run' ? [params.action] : params.actions
+  ctx.params = params
+  ctx.opened = new Set()
+  const fewer = FEWER[ctx.app.name]
+  if (fewer && process.env.FAKE_FOCUS_DRIFT === '1' && ctx.app.name === 'Splitty' && params.prior) ctx.state.focused = 9
+  const call = { lastEffect: params.prior?.effect, lastInput: -1, sentInput: params.prior !== undefined, targeted: new Set(params.prior?.targeted ?? []), focusTo: params.prior?.focusTo }
   let stopped = false
+  let halted
   const steps = actions.map((action, index) => {
+    if (halted) return { index, action: action.action, status: 'not-run', stopped: halted }
     if (stopped) return { index, action: action.action, status: 'not-run' }
-    const result = wasCancelled ? { index, action: action.action, status: 'failed', error: cancelled() } : step(ctx, action, params.tiers, index, params.pasteQuietMs, params.ignored)
+    const result = wasCancelled ? { index, action: action.action, status: 'failed', error: cancelled() } :
+      fewer ? fewerStep(ctx, action, params, index, call) : step(ctx, action, params.tiers, index, params.pasteQuietMs, params.ignored)
     stopped = result.status === 'failed'
+    if (result.status === 'not-run') halted = result.stopped
+    if (result.status === 'ok' && !NO_INPUT.includes(action.action)) {
+      call.lastEffect = result.effect
+      call.lastInput = index
+      call.sentInput = true
+      call.focusTo = result.focusTo
+      for (const i of [action.element, action.start_element, result.resolved]) if (i !== undefined) call.targeted.add(i)
+    }
     return result
   })
   const result = method === 'action.run' ? { step: steps[0] } : { steps, waited: wasCancelled ? { waitedMs: 0, settled: false, busy: false, reason: 'cancelled' } : waited }
@@ -328,7 +463,9 @@ function actionResult(ctx, params, method, wasCancelled = false) {
   if (wasCancelled) result.observationError = cancelled()
   else if (closed && !ctx.app.windows.length) result.observationError = failure('window_not_found', 'Closey has no window open.', { reason: 'gone' })
   else if (closed) result.observation = observation({ ...ctx, window: ctx.app.windows[0] }, { ...params.observe, mode: 'full' }, 'action')
-  else if (params.observe?.mode !== 'none') result.observation = observation(ctx, params.observe, 'action')
+  else if (params.observe?.mode !== 'none' && ctx.app.name === 'Secret' && process.env.FAKE_SECRET_NO_OBS === '1') result.observationError = failure('timeout', 'Secret did not answer.')
+  // a window the call opened is read whole (§27.5)
+  else if (params.observe?.mode !== 'none') result.observation = observation(ctx, ctx.opened.size ? { ...params.observe, mode: 'full' } : params.observe, 'action')
   return result
 }
 function handle({ id, method, params = {} }) {

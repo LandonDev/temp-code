@@ -92,7 +92,7 @@ import { preview as previewHtml, publish as publishHtml, type HtmlPreview } from
 import { INLINE_DIGEST_MAX_CHARS, mirrorRelPath, threadDigest } from './mirror'
 import type { SessionRegistry } from './sessions'
 import { macToolsHooks, toolUseIdOf } from './macTools'
-import { COMPUTER_APP_TOOLS, computerHooks, computerTools, type ComputerHost } from './computer/mcp'
+import { COMPUTER_APP_TOOLS, computerHooks, computerTools, eagerComputer, type ComputerHost } from './computer/mcp'
 import { computerBridgeHooks } from './computer/bridge'
 import { provenanceOf, renderComputerMechanics, wordsFor } from './computer/prompts'
 import { skillList, skillRemove, skillWrite, type SkillToolDeps } from './skills/tools'
@@ -193,9 +193,9 @@ export function offersComputerTools(
  */
 export function computerMechanicsFor(session: SessionMeta, host: ComputerHost | null = computerHooks.current): string {
   if (!offersComputerTools(session, host)) return ''
-  // Claude's tools are in process and four; the bridge (Codex, Muse) also lists computer_result
+  // Claude's tools are in process and four, behind tool search unless loaded at spawn (§27.11); the bridge (Codex, Muse) also lists computer_result
   const claude = session.provider === 'claude'
-  return renderComputerMechanics({ ...wordsFor(session), search: claude, provenance: provenanceOf(session), held: !claude })
+  return renderComputerMechanics({ ...wordsFor(session), search: claude && !eagerComputer(session, host), provenance: provenanceOf(session), held: !claude })
 }
 
 /** MCP server entry for a codex thread's config override (config.toml
@@ -898,7 +898,7 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
       tool(HTML_RENDER_TOOL_NAME, HTML_RENDER_TOOL_DESCRIPTION, HTML_RENDER_SHAPE, (args) =>
         htmlRenderTool(session.id, args)
       ),
-      // Computer use on a Mac thread: deferred, found by tool search (computer/mcp.ts).
+      // Computer use on a Mac thread: deferred behind tool search, or loaded for a thread that is going to use it (computer/mcp.ts).
       ...computerTools(session),
       // The add-on registry's management tools: deferred, found by tool search like the add-on tools themselves.
       deferredTool(

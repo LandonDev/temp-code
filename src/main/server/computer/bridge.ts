@@ -180,7 +180,7 @@ export class ComputerBridge {
     return this.deps.sessions.get(sessionId) ?? null
   }
 
-  /** The thread's bridge names a Mac whose last peer.register offered computer use to this host. */
+  /** The thread's bridge names a Mac whose last peer.register offered computer use to this host; a claude thread then loads the tools at spawn (mcp.ts eagerComputer). */
   offered(sessionId: string): boolean {
     const mac = this.deps.macPeerOf(sessionId)
     if (!mac) return false

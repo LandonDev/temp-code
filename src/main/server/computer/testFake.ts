@@ -34,7 +34,15 @@ export const FAKE_APPS = {
   Hitty: { name: 'Hitty', pid: 16811, bundleId: 'dev.fake.hitty', windowId: 168110 },
   Closey: { name: 'Closey', pid: 16900, bundleId: 'dev.fake.closey', windowId: 169000 },
   Preview: { name: 'Preview', pid: 17000, bundleId: 'com.apple.Preview', windowId: 170000 },
-  Finder: { name: 'Finder', pid: 400, bundleId: 'com.apple.finder', windowId: null }
+  Finder: { name: 'Finder', pid: 400, bundleId: 'com.apple.finder', windowId: null },
+  // §27's scenarios (fakeService.mjs FEWER)
+  Menuful: { name: 'Menuful', pid: 16820, bundleId: 'dev.fake.menuful', windowId: 168200 },
+  Newdoc: { name: 'Newdoc', pid: 16821, bundleId: 'dev.fake.newdoc', windowId: 168210 },
+  Renamey: { name: 'Renamey', pid: 16822, bundleId: 'dev.fake.renamey', windowId: 168220 },
+  Blindy: { name: 'Blindy', pid: 16823, bundleId: 'dev.fake.blindy', windowId: 168230 },
+  Unplanned: { name: 'Unplanned', pid: 16824, bundleId: 'dev.fake.unplanned', windowId: 168240 },
+  Secret: { name: 'Secret', pid: 16825, bundleId: 'dev.fake.secret', windowId: 168250 },
+  Splitty: { name: 'Splitty', pid: 16826, bundleId: 'dev.fake.splitty', windowId: 168260 }
 } as const
 
 /** A hand-turned clock for the host's own timers; the fake's and the connection's stay real. */

@@ -47,6 +47,14 @@ export class ElementBook {
     return false
   }
 
+  /**
+   * One element the service named outside an observation (§27.7a, §27.9): a `named` step's resolved element, a
+   * password field a refusal named. Its parent is kept when the book already holds it.
+   */
+  learn(brief: ElementBrief): void {
+    this.entries.set(brief.index, { line: brief.line, parent: this.entries.get(brief.index)?.parent ?? null })
+  }
+
   /** Take one observation the model got. A text off the grammar empties the book: names fall back to indices. */
   apply(text: string, kind: ObservationKind): void {
     let lines: ObservationLine[]
@@ -58,7 +66,13 @@ export class ElementBook {
       this.clear()
       return
     }
-    if (kind === 'unchanged') return
+    // the opened-menu blocks close the text (§27.4): the body before them is read as its kind says
+    const blockAt = lines.findIndex((l) => l.type === 'menuBlock')
+    if (kind !== 'unchanged') this.read(blockAt < 0 ? lines : lines.slice(0, blockAt), kind)
+    if (blockAt >= 0) this.menus(lines.slice(blockAt))
+  }
+
+  private read(lines: ObservationLine[], kind: ObservationKind): void {
     if (kind === 'full') {
       this.entries.clear()
       this.tree(lines, null, 0)
@@ -73,10 +87,32 @@ export class ElementBook {
     this.diff(lines)
   }
 
+  /** An opened menu's head and its items under it (§27.4). */
+  private menus(lines: ObservationLine[]): void {
+    let menu: number | null = null
+    for (const l of lines) {
+      if (l.type === 'menuBlock') {
+        menu = l.menu?.index ?? null
+        if (l.menu) this.entries.set(l.menu.index, { line: `menu ${JSON.stringify(l.menu.title)}`, parent: null })
+      } else if (l.type === 'element') this.entries.set(l.index, { line: lineOf(l), parent: menu })
+    }
+  }
+
   /** Full-tree lines from depth `base` on: each line's parent is the nearest shallower element. */
   private tree(lines: ObservationLine[], parentAtBase: number | null, base: number): void {
     const stack: (number | null)[] = []
     for (const l of lines) {
+      if (l.type === 'menuBar') {
+        // a compact menu bar line (§27.13): the menu, then each item under it
+        const depth = l.depth - base
+        const parent = depth <= 0 ? parentAtBase : (stack[depth - 1] ?? parentAtBase)
+        this.entries.set(l.index, { line: `menu ${JSON.stringify(l.title)}`, parent })
+        for (const item of l.items)
+          this.entries.set(item.index, { line: `menu item ${JSON.stringify(item.name)}${item.disabled ? ' disabled' : ''}`, parent: l.index })
+        stack[depth] = l.index
+        stack.length = depth + 1
+        continue
+      }
       if (l.type !== 'element' && l.type !== 'range') continue
       const depth = l.depth - base
       const parent = depth <= 0 ? parentAtBase : (stack[depth - 1] ?? parentAtBase)

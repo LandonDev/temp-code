@@ -1118,3 +1118,214 @@ describe('the call timing (shared/computer/bridgeTiming.ts)', () => {
     expect((await h.run('computer_observe', { app: 'TextEdit' })).isError).toBe(false)
   })
 })
+
+describe('fewer calls (§27)', () => {
+  const admitAll = (): SessionTierGate => ({ admitted: () => false, request: async () => ({ admit: true }), run: (c, send) => send(c.tiers) })
+  const verdict = (h: ComputerHarness, bundleId: string, classes: Record<string, string>): void =>
+    void h.rows.set(tierVerdictSetting(bundleId), JSON.stringify({ bundleId, classes, misses: {}, updatedAt: Date.now() }))
+  const batches = (h: ComputerHarness) => h.requests().filter((r) => r.method === 'action.batch')
+  const acting = (h: ComputerHarness) => h.requests().filter((r) => r.method === 'action.batch' || r.method === 'action.run')
+
+  it('sends the ax wait rows with every acting request: axAction after a last segment, axStep after one that is not', async () => {
+    const h = make({ gate: admitAll() })
+    await h.run('computer_observe', { app: 'TextEdit' })
+    await h.run('computer_act', { app: 'TextEdit', action: 'left_click', element: 21 })
+    expect(last(h, 'action.run').params).toMatchObject({ axWait: COMPUTER_WAIT.axAction, axStepWait: COMPUTER_WAIT.axStep })
+    await h.run('computer_batch', { app: 'Sessiony', actions: [{ action: 'hold_key', text: 'shift', duration: 1 }, { action: 'key', text: 'a' }] })
+    const split = batches(h).map((r) => [(r.params.observe as { mode: string }).mode, r.params.axWait, r.params.axStepWait])
+    expect(split.slice(1)).toEqual([
+      ['none', COMPUTER_WAIT.axStep, COMPUTER_WAIT.axStep],
+      ['full', COMPUTER_WAIT.axAction, COMPUTER_WAIT.axStep]
+    ])
+  })
+
+  it('takes the A/B arm from TEMP_CODE_COMPUTER_WAIT_AX on an isolated instance alone', async () => {
+    const row = { minMs: 100, quietMs: 200, maxMs: 900, busyMaxMs: 2_000 }
+    const saved = { ax: process.env.TEMP_CODE_COMPUTER_WAIT_AX, data: process.env.TEMP_CODE_USER_DATA }
+    process.env.TEMP_CODE_COMPUTER_WAIT_AX = JSON.stringify({ axAction: row })
+    try {
+      const h = make()
+      await h.run('computer_observe', { app: 'TextEdit' })
+      process.env.TEMP_CODE_USER_DATA = '/tmp/tc-isolated'
+      await h.run('computer_act', { app: 'TextEdit', action: 'left_click', element: 21 })
+      expect(last(h, 'action.run').params).toMatchObject({ axWait: row, axStepWait: COMPUTER_WAIT.axStep })
+      delete process.env.TEMP_CODE_USER_DATA
+      await h.run('computer_act', { app: 'TextEdit', action: 'left_click', element: 21 })
+      expect(last(h, 'action.run').params.axWait).toEqual(COMPUTER_WAIT.axAction)
+    } finally {
+      for (const [k, v] of [['TEMP_CODE_COMPUTER_WAIT_AX', saved.ax], ['TEMP_CODE_USER_DATA', saved.data]] as const)
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+    }
+  })
+
+  it('Menuful: a step that opens a menu returns its block; a later step picks from it by named, and the book learns the item', async () => {
+    const h = make()
+    await h.run('computer_observe', { app: 'Menuful' })
+    const opened = await h.run('computer_act', { app: 'Menuful', action: 'left_click', element: 5 })
+    expect(opened.body).toContain('+ menu opened by step 1: [50] menu "Sort"\n  [51] menu item "Name"\n  [52] menu item "Date"')
+    const picked = await h.run('computer_batch', { app: 'Menuful', actions: [{ action: 'left_click', element: 5 }, { action: 'left_click', named: 'Date' }] })
+    expect(picked.steps).toEqual(['left_click [5] menu button "Sort" · ax · changed', 'left_click "Date" [52] menu item · ax · changed'])
+    expect(picked.body).not.toContain('menu opened')
+    // the closing read no longer lists [52], and the card still names it
+    h.set('t1', { permission: 'safe' })
+    const again = h.run('computer_act', { app: 'Menuful', action: 'left_click', element: 52 })
+    await until(() => h.cards.length === 1, 'the card')
+    expect(h.cards[0].req.title).toContain('menu item "Date"')
+    h.cards[0].decide(false)
+    await again
+  })
+
+  it('Menuful: a name that matches several, or none, fails named_target with the candidates and is never retried', async () => {
+    const h = make()
+    await h.run('computer_observe', { app: 'Menuful' })
+    const several = await h.run('computer_batch', { app: 'Menuful', actions: [{ action: 'left_click', named: 'Team' }, { action: 'key', text: 'Return' }] })
+    expect(several.steps).toEqual([
+      'left_click "Team" · failed: several elements are named "Team"; use element: [6] button "Team", [7] button "Team"',
+      'Not executed: an earlier action in this batch failed.'
+    ])
+    const none = await h.run('computer_act', { app: 'Menuful', action: 'left_click', named: 'Nope' })
+    expect(none.steps[0]).toBe('left_click "Nope" · failed: nothing named "Nope" in the window or what this call opened; read the window and use an element')
+    expect(acting(h)).toHaveLength(2)
+  })
+
+  it('Newdoc: super+n opens a window, and every target of the call moves there and binds, a later segment included', async () => {
+    const h = make()
+    verdict(h, 'dev.fake.newdoc', { type: 'session' })
+    await h.run('computer_observe', { app: 'Newdoc' })
+    const o = await h.run('computer_batch', { app: 'Newdoc', actions: [{ action: 'key', text: 'super+n' }, { action: 'type', text: 'hello' }] })
+    expect(o.steps[0]).toMatch(/ · opened window "Untitled 2"$/)
+    expect(o.steps[1]).toBe('type "hello" · ax-insert · changed')
+    const sent = batches(h)
+    // the text was pinned to the window the thread read; after the step opened one, the next segment goes there
+    expect(sent.map((r) => r.params.window)).toEqual([{ id: 168210 }, { id: 168211 }])
+    expect(sent[1].params.prior).toEqual({ effect: 'changed', focusTo: 8, targeted: [], windows: [168211] })
+    expect(o.body).toMatch(/^app "Newdoc" · window "Untitled 2"/)
+    await h.run('computer_observe', { app: 'Newdoc' })
+    expect(last(h, 'state.get').params.window).toEqual({ id: 168211 })
+  })
+
+  it('Newdoc: a single act that opens a window binds it for the next call', async () => {
+    const h = make()
+    await h.run('computer_observe', { app: 'Newdoc' })
+    expect((await h.run('computer_act', { app: 'Newdoc', action: 'key', text: 'super+n' })).steps[0]).toMatch(/opened window "Untitled 2"$/)
+    await h.run('computer_act', { app: 'Newdoc', action: 'left_click', element: 4 })
+    expect(last(h, 'action.run').params.window).toEqual({ id: 168211 })
+  })
+
+  it('Renamey: a window named by a title autosave replaced goes to the service as given, with the id the thread read (§27.6)', async () => {
+    const h = make()
+    await h.run('computer_observe', { app: 'Renamey' })
+    const typed = await h.run('computer_act', { app: 'Renamey', action: 'type', text: 'a' })
+    expect(typed.body).toMatch(/^app "Renamey" · window "Draft.txt"/)
+    const again = await h.run('computer_act', { app: 'Renamey', window: 'Untitled', action: 'type', text: 'b' })
+    expect(again.steps[0]).toBe('type "b" · ax-insert · changed')
+    expect(last(h, 'action.run').params).toMatchObject({ window: { title: 'Untitled' }, textWindowId: 168220 })
+    // text into a live window the thread never read is refused, now on the service's answer
+    const other = await h.run('computer_act', { app: 'Renamey', window: 'Other', action: 'type', text: 'c' })
+    expect(other.steps[0]).toBe('type "c" · failed: read Renamey\'s window "Other" before typing into it')
+    expect(last(h, 'action.run').params).toMatchObject({ window: { title: 'Other' }, textWindowId: 168220 })
+  })
+
+  it('Blindy: keys after a click that changed nothing do not run, and the call ends with its closing read', async () => {
+    const h = make()
+    await h.run('computer_observe', { app: 'Blindy' })
+    const o = await h.run('computer_batch', { app: 'Blindy', actions: [{ action: 'left_click', element: 5 }, { action: 'key', text: 'Return' }, { action: 'type', text: 'x' }] })
+    const stopLine = 'Not executed: step 1 changed nothing, so these keys had no planned place.'
+    expect(o.steps).toEqual(['left_click [5] button "Refresh" · ax · no change seen', stopLine, stopLine])
+    expect(o.body).toMatch(/^app "Blindy"/)
+    expect(acting(h)).toHaveLength(1)
+  })
+
+  it('Unplanned: text after a Tab that walked onto a field is refused and not retried; a click that names the field licenses it', async () => {
+    const h = make()
+    await h.run('computer_observe', { app: 'Unplanned' })
+    const o = await h.run('computer_batch', { app: 'Unplanned', actions: [{ action: 'key', text: 'Tab' }, { action: 'type', text: 'x' }] })
+    expect(o.steps[1]).toBe('type "x" · failed: [6] text field "Name" has the focus, which no step of this batch aimed at; name the element the text is for')
+    expect(acting(h)).toHaveLength(1)
+    const named = await h.run('computer_batch', { app: 'Unplanned', actions: [{ action: 'left_click', element: 6 }, { action: 'type', text: 'x' }] })
+    expect(named.steps[1]).not.toContain('failed')
+  })
+
+  it('Unplanned in a browser: the address bar is the browser-field rule, which runs first', async () => {
+    const h = make({ env: { FAKE_WEB_FOCUS_MOVED: '1' } })
+    await h.run('computer_observe', { app: 'Webby' })
+    const o = await h.run('computer_batch', { app: 'Webby', actions: [{ action: 'left_click', element: 3 }, { action: 'type', text: 'x' }] })
+    expect(o.steps[1]).toContain('the keys would go to [9] input "Address and search bar", not the page')
+  })
+
+  for (const noObservation of [false, true])
+    it(`Secret: a password field by name or by focus is refused secure; the resend by element asks the password card${noObservation ? ', the closing read failed' : ''}`, async () => {
+      const h = make(noObservation ? { env: { FAKE_SECRET_NO_OBS: '1' } } : {})
+      await h.run('computer_observe', { app: 'Secret' })
+      const byName = await h.run('computer_act', { app: 'Secret', action: 'type', named: 'Password', text: 'hunter2' })
+      expect(byName.steps[0]).toBe(
+        'type "hunter2" into "Password" · failed: [12] password "Password" can only be typed into by its element, so the person can be asked; send the step again with element 12'
+      )
+      if (noObservation) expect(byName.body).toMatch(/^observation failed: /)
+      else expect(byName.body).not.toContain('[12]')
+      const byFocus = await h.run('computer_batch', { app: 'Secret', actions: [{ action: 'left_click', element: 12 }, { action: 'type', text: 'hunter2' }] })
+      expect(byFocus.steps[1]).toMatch(/^type "hunter2" · failed: \[12\] password "Password" can only be typed into by its element/)
+      expect(h.cards).toHaveLength(0)
+      expect(acting(h)).toHaveLength(2)
+      const resend = h.run('computer_act', { app: 'Secret', action: 'type', element: 12, text: 'hunter2' })
+      await until(() => h.cards.length === 1, 'the password card')
+      expect(h.cards[0].req.title).toBe('Type into a password field in Secret (type 7 characters into password "Password")')
+      h.cards[0].decide(true)
+      expect((await resend).steps[0]).not.toContain('failed')
+    })
+
+  describe('Splitty: one call across the segments the host splits it into (§27.7b)', () => {
+    const split = (env: Record<string, string> = {}): ComputerHarness => {
+      const h = make({ gate: admitAll(), env })
+      verdict(h, 'dev.fake.splitty', { key: 'session', type: 'session' })
+      return h
+    }
+    const stopLine = 'Not executed: step 1 changed nothing, so these keys had no planned place.'
+
+    it('a click that changed nothing at the boundary stops the next segment before it goes out, and the host reads the window', async () => {
+      const h = split()
+      await h.run('computer_observe', { app: 'Splitty' })
+      const reads = count(h, 'state.get')
+      const o = await h.run('computer_batch', { app: 'Splitty', actions: [{ action: 'left_click', element: 5 }, { action: 'key', text: 'Return' }] })
+      expect(o.steps).toEqual(['left_click [5] button "Refresh" · ax · no change seen', stopLine])
+      expect(batches(h)).toHaveLength(1)
+      expect(count(h, 'state.get')).toBe(reads + 1)
+      expect(o.body).toMatch(/^app "Splitty"/)
+    })
+
+    it('a stop the service answers in an earlier segment ends the call: no later segment, the closing read', async () => {
+      const h = make({ gate: admitAll() })
+      verdict(h, 'dev.fake.splitty', { key: 'session' })
+      await h.run('computer_observe', { app: 'Splitty' })
+      const o = await h.run('computer_batch', { app: 'Splitty', actions: [{ action: 'left_click', element: 5 }, { action: 'type', text: 'x' }, { action: 'key', text: 'Return' }] })
+      expect(o.steps.slice(1)).toEqual([stopLine, stopLine])
+      expect(batches(h)).toHaveLength(1)
+      expect(last(h, 'state.get').params.mode).toBe('auto')
+    })
+
+    it('a named click, then text in the next segment, runs: the prior names what it resolved and focused', async () => {
+      const h = split()
+      await h.run('computer_observe', { app: 'Splitty' })
+      const o = await h.run('computer_batch', { app: 'Splitty', actions: [{ action: 'left_click', named: 'Search' }, { action: 'type', text: 'hello' }] })
+      expect(o.steps).toEqual(['left_click "Search" [7] text field · ax · changed', 'type "hello" · ax-insert · changed'])
+      expect(batches(h).map((r) => r.params.prior)).toEqual([undefined, { effect: 'changed', focusTo: 7, targeted: [7] }])
+    })
+
+    it('a Return that focused a rename field, then text in the next segment, runs', async () => {
+      const h = split()
+      await h.run('computer_observe', { app: 'Splitty' })
+      const o = await h.run('computer_batch', { app: 'Splitty', actions: [{ action: 'key', text: 'Return' }, { action: 'type', text: 'New name' }] })
+      expect(o.steps[1]).toBe('type "New name" · ax-insert · changed')
+      expect(batches(h)[1].params.prior).toEqual({ effect: 'changed', focusTo: 8, targeted: [] })
+    })
+
+    it('the same with the focus moved to another field between the segments writes nothing, and is not retried', async () => {
+      const h = split({ FAKE_FOCUS_DRIFT: '1' })
+      await h.run('computer_observe', { app: 'Splitty' })
+      const o = await h.run('computer_batch', { app: 'Splitty', actions: [{ action: 'key', text: 'Return' }, { action: 'type', text: 'New name' }] })
+      expect(o.steps[1]).toBe('type "New name" · failed: [9] text field "Other" has the focus, which no step of this batch aimed at; name the element the text is for')
+      expect(batches(h)).toHaveLength(2)
+    })
+  })
+})

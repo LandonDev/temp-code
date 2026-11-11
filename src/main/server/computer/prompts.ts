@@ -86,7 +86,7 @@ const WORDS: Record<WordsShape, Facts> = {
 export interface MechanicsOptions {
   shape: WordsShape
   tools: ToolShape
-  /** claude loads the deferred tools through tool search */
+  /** the tools wait behind tool search: a claude thread whose tools were not loaded at spawn (§27.11) */
   search: boolean
   provenance: Provenance
   /** the bridge lists computer_result too (Codex and Muse; never Claude's in-process tools) */

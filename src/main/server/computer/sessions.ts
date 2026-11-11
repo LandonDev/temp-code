@@ -44,6 +44,9 @@ export interface ComputerSessionsOptions {
   trace?: boolean
 }
 
+/** The settings row a thread's first computer call writes: its next harness loads the tools without a search (§27.11). */
+export const computerUsedSetting = (threadId: string): string => `computer.used.${threadId}`
+
 export const IDLE_CLOSE_MS = 600_000
 /** rows push at most four a second */
 export const ROW_PUSH_MS = 250
@@ -76,6 +79,8 @@ export class ComputerSessions {
   private readonly statuses = new Map<string, SessionStatus>()
   private readonly targetListeners = new Set<(threadId: string) => void>()
   private readonly targetKeys = new Map<string, string>()
+  /** threads whose used marker is written, so a call reads the settings table at most once */
+  private readonly marked = new Set<string>()
   private readonly rowListeners = new Set<(rows: ComputerSessionRow[]) => void>()
   private readonly clock: Clock
   private readonly host: RunHost
@@ -112,6 +117,7 @@ export class ComputerSessions {
 
   /** The tool flow for one call (run.ts), behind the thread's serial queue. */
   run(ctx: ComputerToolContext, tool: string, args: unknown): Promise<ComputerToolOutcome> {
+    this.markUsed(ctx.threadId)
     const t = this.thread(ctx.threadId)
     const startedAt = this.clock.now()
     const job = t.queue.then(async () => {
@@ -151,6 +157,18 @@ export class ComputerSessions {
     const t = threadId ? this.threads.get(threadId) : undefined
     const line = frontLine(p.name, p.front, person, p.afterMs)
     if (t && line) t.pendingFront.push(line)
+  }
+
+  /** Whether the thread made a computer call before, on this host or in an earlier run of it (§27.11). */
+  used(threadId: string): boolean {
+    return this.marked.has(threadId) || this.opts.store.getSetting(computerUsedSetting(threadId)) !== null
+  }
+
+  private markUsed(threadId: string): void {
+    if (this.marked.has(threadId)) return
+    this.marked.add(threadId)
+    const key = computerUsedSetting(threadId)
+    if (this.opts.store.getSetting(key) === null) this.opts.store.setSetting(key, String(this.clock.now()))
   }
 
   /** The thread's row, for the words its bridge lists. */

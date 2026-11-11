@@ -68,4 +68,27 @@ describe('the focused index', () => {
     book.clear()
     expect(book.focused).toBeNull()
   })
+
+  it('learns an element the service named outside a read, keeping its parent', () => {
+    const book = new ElementBook()
+    book.apply(fixture('full.txt'), 'full')
+    book.learn({ index: 12, line: 'password "Password"' })
+    expect(book.brief(12)).toEqual({ index: 12, line: 'password "Password"' })
+    expect(book.hasRole('password')).toBe(true)
+    book.learn({ index: 70, line: 'menu item "Team"' })
+    expect(book.brief(70)?.line).toBe('menu item "Team"')
+  })
+
+  it('reads an opened menu after the body (§27.4) and a compact menu bar line (§27.13)', () => {
+    const book = new ElementBook()
+    const head = 'app "Menuful" · window "Menuful" · 1280×1072 · focused [3]\n[1] window "Menuful"\n  [3] text area = "" focused'
+    book.apply(`${head}\n+ menu opened by step 1: [50] menu "Sort"\n  [51] menu item "Name"\n  [52] menu item "Date" disabled`, 'full')
+    expect(book.brief(50)?.line).toBe('menu "Sort"')
+    expect(book.brief(52)?.line).toBe('menu item "Date" disabled')
+    expect(book.brief(3)?.line).toBe('text area = "" focused')
+    book.apply(`${head}\n  [41] menu "File": New [142], Save… [157] disabled`, 'full')
+    expect(book.has(50)).toBe(false)
+    expect(book.brief(41)?.line).toBe('menu "File"')
+    expect(book.brief(157)?.line).toBe('menu item "Save…" disabled')
+  })
 })

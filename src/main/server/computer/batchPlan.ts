@@ -1,4 +1,15 @@
-import type { BatchResult, ComputerAction, StepResult, Tier } from '@shared/computer/protocol'
+import { z } from 'zod'
+import { lastInputEffect, stopsHere } from '@shared/computer/batchStop'
+import {
+  COMPUTER_WAIT,
+  NO_INPUT_ACTIONS,
+  WaitOptionsSchema,
+  type BatchResult,
+  type ComputerAction,
+  type StepResult,
+  type Tier,
+  type WaitOptions
+} from '@shared/computer/protocol'
 
 /**
  * `action.batch` takes one `tiers` list for every step. When the steps'
@@ -69,4 +80,38 @@ export function needsClosingRead(segments: BatchSegment[], results: (BatchResult
   const ran = results.reduce((n, r, i) => (r ? i : n), -1)
   if (ran < 0 || segments[ran].last) return false
   return results[ran]!.steps.some((s) => s.status === 'failed')
+}
+
+/**
+ * §27.8 at a segment boundary: the step at `at` types blind and the call's last step that sent input changed nothing.
+ * Answers that step's index, or null when the step at `at` runs. `steps` are the call's, numbered as `actions`.
+ */
+export function stoppedBefore(actions: readonly ComputerAction[], steps: readonly StepResult[], at: number): number | null {
+  const ran = steps.slice(0, at)
+  if (!stopsHere(lastInputEffect(actions, ran), actions[at])) return null
+  for (let i = at - 1; i >= 0; i--) if (ran[i].status === 'ok' && !NO_INPUT_ACTIONS.includes(actions[i].action)) return i
+  return null
+}
+
+export interface AxWaitRows {
+  axAction: WaitOptions
+  axStep: WaitOptions
+}
+
+const AxWaitRowsSchema = z.object({ axAction: WaitOptionsSchema.optional(), axStep: WaitOptionsSchema.optional() }).strict()
+
+/**
+ * The ax wait rows every acting request carries (§27.3). `TEMP_CODE_COMPUTER_WAIT_AX` (JSON, either row or both) runs
+ * the A/B's other arm, only on an isolated instance (TEMP_CODE_USER_DATA set); a value off the schema is ignored.
+ */
+export function computerAxWaits(env: Record<string, string | undefined> = process.env): AxWaitRows {
+  const rows: AxWaitRows = { axAction: COMPUTER_WAIT.axAction, axStep: COMPUTER_WAIT.axStep }
+  const raw = env.TEMP_CODE_COMPUTER_WAIT_AX
+  if (!raw || !env.TEMP_CODE_USER_DATA) return rows
+  try {
+    const parsed = AxWaitRowsSchema.safeParse(JSON.parse(raw))
+    return parsed.success ? { ...rows, ...parsed.data } : rows
+  } catch {
+    return rows
+  }
 }

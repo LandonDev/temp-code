@@ -8,7 +8,7 @@ import type { SessionMeta } from '@shared/events'
 import { APP_TOOLS } from '../apptools'
 import { MacThreadTokens } from '../macTools'
 import type { ComputerBridge } from './bridge'
-import { COMPUTER_APP_TOOLS, computerToolList, computerTools, type ComputerHost } from './mcp'
+import { COMPUTER_APP_TOOLS, COMPUTER_REMOTE_NOTE, REMOTE_NOTE_TOOL, computerToolList, computerTools, eagerComputer, type ComputerHost } from './mcp'
 import { setComputerWordsOverride } from './prompts'
 import { computerHarness, type ComputerHarness } from './runHarness'
 
@@ -75,6 +75,26 @@ describe('computerTools', () => {
     expect(shot.content[1].mimeType).toBe('image/jpeg')
   })
 
+  it('loads the four at spawn for a thread that made a computer call before; a live harness keeps what it got (§27.11)', async () => {
+    const h = computerHarness()
+    harnesses.push(h)
+    const host = hostOf(h)
+    expect(eagerComputer(session, host, null)).toBe(false)
+    const before = await (await connect(host)).listTools()
+    await h.run('computer_observe', { app: 'TextEdit' })
+    expect(h.rows.get('computer.used.t1')).toMatch(/^\d+$/)
+    expect(eagerComputer(session, host, null)).toBe(true)
+    // another thread, and a host where computer use is off, stay deferred
+    expect(eagerComputer({ id: 't2' }, host, null)).toBe(false)
+    expect(eagerComputer(session, hostOf(h, false), null)).toBe(false)
+    const after = await (await connect(host)).listTools()
+    for (const t of before.tools) expect(t._meta?.['anthropic/alwaysLoad']).toBe(false)
+    for (const t of after.tools) {
+      expect(t._meta?.['anthropic/alwaysLoad']).toBe(true)
+      expect(t._meta?.['anthropic/searchHint']).toBeUndefined()
+    }
+  })
+
   it('APP_TOOLS lists every name either tool shape gives, so the CLI never asks a second time', () => {
     expect(COMPUTER_APP_TOOLS.slice(0, 4)).toEqual(['mcp__app__computer_apps', 'mcp__app__computer_observe', 'mcp__app__computer_act', 'mcp__app__computer_batch'])
     expect(COMPUTER_APP_TOOLS.slice(4)).toEqual(COMPUTER_ACTION_NAMES.map((a) => `mcp__app__computer_${a}`))
@@ -110,13 +130,17 @@ describe('computerTools on a box thread bridged to its Mac', () => {
     return { bridge, runs }
   }
 
-  it('lists the four with the bridge note when the Mac offers computer use, none when it does not', async () => {
+  it('lists the four, loaded, with the bridge note on computer_apps alone when the Mac offers computer use, none when it does not', async () => {
     expect(computerTools(session, null, stubBridge(false).bridge)).toEqual([])
     const { tools } = await (await connect(null, stubBridge(true).bridge)).listTools()
     expect(tools.map((t) => t.name)).toEqual(COMPUTER_TOOLS.map((t) => t.name))
-    for (const t of tools) expect(t.description?.endsWith(COMPUTER_BRIDGE_NOTE)).toBe(true)
-    expect(computerToolList(session, { bridged: true }).every((t) => t.description.endsWith(COMPUTER_BRIDGE_NOTE))).toBe(true)
-    expect(computerToolList(session).some((t) => t.description.endsWith(COMPUTER_BRIDGE_NOTE))).toBe(false)
+    const noted = (list: { name: string; description?: string }[]): string[] => list.filter((t) => t.description?.endsWith(COMPUTER_BRIDGE_NOTE)).map((t) => t.name)
+    expect(noted(tools)).toEqual([REMOTE_NOTE_TOOL])
+    // a thread whose bridge names a Mac with computer use on loads them at spawn (§27.11)
+    for (const t of tools) expect(t._meta?.['anthropic/alwaysLoad']).toBe(true)
+    expect(noted(computerToolList(session, { bridged: true }))).toEqual([REMOTE_NOTE_TOOL])
+    expect(noted(computerToolList(session))).toEqual([])
+    expect(COMPUTER_REMOTE_NOTE).toBe(COMPUTER_BRIDGE_NOTE)
   })
 
   it('the bridge lists computer_result fifth in both tool shapes when asked, and Claude never gets it', async () => {
@@ -127,7 +151,7 @@ describe('computerTools on a box thread bridged to its Mac', () => {
         const five = computerToolList(meta, { bridged: true, result: true })
         expect(four).not.toContain('computer_result')
         expect(five.map((t) => t.name)).toEqual([...four, 'computer_result'])
-        expect(five.at(-1)!.description.endsWith(COMPUTER_BRIDGE_NOTE)).toBe(true)
+        expect(five.filter((t) => t.description.endsWith(COMPUTER_BRIDGE_NOTE)).map((t) => t.name)).toEqual([REMOTE_NOTE_TOOL])
         expect(five.at(-1)!.inputSchema.required).toEqual(['id'])
         if (words?.tools === 'act') expect([four.length, five.length]).toEqual([4, 5])
       }

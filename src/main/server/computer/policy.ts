@@ -2,7 +2,6 @@ import { errorLine } from '@shared/computer/errorWords'
 import { hostErrorLine } from '@shared/computer/hostErrors'
 import type { ConfirmNeed } from '@shared/computer/policy'
 import {
-  NO_INPUT_ACTIONS,
   type AppInfo,
   type ComputerAction,
   type ComputerError,
@@ -15,8 +14,8 @@ import type { ElementBook } from './elements'
  * What the host enforces of the confirmations policy, whatever the model
  * flagged (docs/computer-protocol.md "The model's words"): the app a call
  * acts on, pinned by pid before any request, so the app checked is the app
- * acted on; the apps no call may touch; the password rule; and a text step's
- * known destination.
+ * acted on; the apps no call may touch; and the password rule. Where text
+ * with no target goes is the service's to judge (§27.7).
  */
 
 /** The installed app's bundle id: no instance reads or acts on any TempCode window. */
@@ -133,21 +132,6 @@ export function refusedOpenItem(item: string): string | null {
 }
 
 const TEXT_STEPS: readonly ComputerAction['action'][] = ['type', 'paste']
-const sendsInput = (a: ComputerAction): boolean => !NO_INPUT_ACTIONS.includes(a.action)
-
-/**
- * A text step's destination is its own element or the latest read's focused
- * one, never a guess about where focus went: in one call, a type or paste
- * with no element after another step that sends input is refused before
- * anything runs.
- */
-export function textTargetProblem(actions: readonly ComputerAction[]): string | null {
-  for (const [i, a] of actions.entries()) {
-    if (!TEXT_STEPS.includes(a.action) || a.element !== undefined) continue
-    if (actions.slice(0, i).some(sendsInput)) return hostErrorLine('invalid_args', 'in a batch, type and paste after another action name their element')
-  }
-  return null
-}
 
 const isPasswordLine = (book: ElementBook, index: number): boolean => {
   const brief = book.brief(index)
@@ -158,13 +142,14 @@ const isPasswordLine = (book: ElementBook, index: number): boolean => {
  * The host's own card: a type, paste or set_value step whose destination is a
  * password field asks in every mode. The destination is the step's element,
  * else the latest read's focused element; with neither, a window that shows a
- * password field asks too. Its `what` is empty: the card's steps say where,
- * and never what is typed.
+ * password field asks too. A step that names its target by `named` never
+ * reaches a password field: the service refuses it (§27.7a). Its `what` is
+ * empty: the card's steps say where, and never what is typed.
  */
 export function passwordTarget(actions: readonly ComputerAction[], book: ElementBook | undefined): ConfirmNeed | null {
   if (!book) return null
   for (const a of actions) {
-    if (!TEXT_STEPS.includes(a.action) && a.action !== 'set_value') continue
+    if ((!TEXT_STEPS.includes(a.action) && a.action !== 'set_value') || a.named !== undefined) continue
     const at = a.element ?? book.focused
     if (at !== null && at !== undefined ? isPasswordLine(book, at) : book.hasRole('password')) return { kind: 'password', what: '' }
   }

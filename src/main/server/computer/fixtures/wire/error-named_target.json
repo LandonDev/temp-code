@@ -1,0 +1,20 @@
+{
+  "jsonrpc": "2.0",
+  "id": 64,
+  "result": {
+    "step": {
+      "index": 0,
+      "action": "left_click",
+      "status": "failed",
+      "error": {
+        "kind": "named_target",
+        "message": "Several elements are named \"Team\"; use one by its element.",
+        "reason": "several",
+        "elementCandidates": [
+          { "index": 52, "line": "menu item \"Team\"" },
+          { "index": 9, "line": "button \"Team\"" }
+        ]
+      }
+    }
+  }
+}

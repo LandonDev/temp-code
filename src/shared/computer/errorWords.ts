@@ -7,6 +7,7 @@
  * text.
  */
 import type { ComputerAction, ComputerError, ComputerErrorKind, ErrorReason } from './protocol'
+import { noReadForTextLine } from './hostErrors'
 import { openItemName } from './words'
 
 /** What the model asked for: its `app` and `window` strings and the step that failed. */
@@ -16,6 +17,8 @@ export interface ErrorContext {
   action?: ComputerAction
   /** computer_apps: the items the call opens; one names itself in the line */
   open?: string[]
+  /** the error is one step's, not the request's */
+  step?: boolean
 }
 
 /** A line, or null for the service's own `message`. */
@@ -102,6 +105,8 @@ export const COMPUTER_ERROR_WORDS: Readonly<Record<ComputerErrorKind, Words>> = 
   window_not_found: (e, ctx) => {
     // the target closed or its app quit (§22.6): the service names which, "<App> has no window open." or "<App> quit."
     if (e.reason === 'gone') return null
+    // a step's: blind keys or text in a window other than the one the thread last read (§27.6)
+    if (ctx.step) return noReadForTextLine(quoteApp(ctx.app), ctx.window ?? e.candidates?.[0])
     const head = `no window of ${ctx.app ?? 'the app'} matches ${ctx.window ? quote(ctx.window) : 'that title'}`
     if (!e.candidates?.length) return `${head}; computer_apps lists its windows`
     const lead = `${head}; its windows: `
@@ -154,23 +159,26 @@ export const COMPUTER_ERROR_WORDS: Readonly<Record<ComputerErrorKind, Words>> = 
     return `${index(e, ctx)} ${reads}; nothing after it ran. On a pop up, click it and perform pick on the item; on a field, type with element`
   },
   focus_moved: (e) => {
-    const at = e.focused ? `[${e.focused.index}] ${cutLine(e.focused.line)}` : 'another element'
+    const i = e.focused?.index ?? e.element
+    const at = e.focused ? `[${e.focused.index}] ${cutLine(e.focused.line)}` : i !== undefined ? `[${i}]` : 'another element'
     switch (e.reason) {
       case 'browser-field':
         return `the keys would go to ${at}, not the page; name the element they are for`
       case 'unplanned':
         return `${at} has the focus, which no step of this batch aimed at; name the element the text is for`
       case 'secure':
-        return `${at} can only be typed into by its element, so the person can be asked; send the step again with element ${e.focused?.index ?? e.element ?? '<index>'}`
+        return `${at} can only be typed into by its element, so the person can be asked; send the step again with ${i !== undefined ? `element ${i}` : 'its element'}`
       default:
         return `the focus moved to ${at} since your read; name the element the keys are for`
     }
   },
   named_target: (e, ctx) => {
-    const name = ctx.action?.named ?? ctx.action?.menu
-    const what = name ? quote(name) : 'that name'
+    const path = ctx.action?.menu
+    const what = quote(ctx.action?.named ?? path ?? '')
     if (e.reason !== 'several' || !e.elementCandidates?.length)
-      return `nothing named ${what} in the window or what this call opened; read the window and use an element`
+      return path
+        ? `the menu bar has no item ${what}; read it with menus: true and use an element`
+        : `nothing named ${ctx.action?.named ? what : 'that'} in the window or what this call opened; read the window and use an element`
     const lead = `several elements are named ${what}; use element: `
     return `${lead}${fitList(e.elementCandidates.map((c) => `[${c.index}] ${cutLine(c.line)}`), ERROR_LINE_MAX - lead.length)}`
   },

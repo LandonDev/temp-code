@@ -42,6 +42,7 @@ vi.mock('./drivers', () => {
 
 const { claudeDriver } = await import('./drivers/claude')
 const { computerHooks } = await import('./computer/mcp')
+const { computerBridgeHooks } = await import('./computer/bridge')
 const { computerTools } = await import('./computer/mcp')
 const { offersComputerTools, setAppBridge } = await import('./apptools')
 const { mechanicsFor, setOrchestrationRegistry } = await import('./orchestration')
@@ -53,13 +54,16 @@ const HEADING = '## Computer use'
 const count = (text: string | undefined): number => (text ?? '').split(HEADING).length - 1
 
 const available = { current: true }
+/** threads that made a computer call before (§27.11) */
+const used = new Set<string>()
 function mac(): void {
-  computerHooks.current = { available: () => available.current } as unknown as NonNullable<typeof computerHooks.current>
+  computerHooks.current = { available: () => available.current, sessions: { used: (id: string) => used.has(id) } } as unknown as NonNullable<typeof computerHooks.current>
 }
 
 const handles: DriverHandle[] = []
 beforeEach(() => {
   available.current = true
+  used.clear()
   mac()
   setAppBridge({ port: 1, scriptPath: '/bridge.mjs', command: 'node', env: {} })
 })
@@ -106,6 +110,30 @@ describe('claude reads it once, in its system prompt', () => {
   it('and nowhere when computer use is unavailable', async () => {
     available.current = false
     for (const [, over] of CLAUDE_KINDS) expect(count(await systemPromptOf(over))).toBe(0)
+  })
+
+  it('tells a thread to search for the tools only while they are deferred (§27.11)', async () => {
+    const SEARCH = 'tool search (query "computer")'
+    expect(await systemPromptOf({ threadType: 'chat' })).toContain(SEARCH)
+    // a thread that made a computer call before loads them at spawn
+    used.add('c-1')
+    const loaded = await systemPromptOf({ threadType: 'chat' })
+    expect(count(loaded)).toBe(1)
+    expect(loaded).not.toContain(SEARCH)
+  })
+
+  it('a box thread whose bridge names a Mac with computer use on loads them too; one without it reads the search sentence', async () => {
+    computerHooks.current = null
+    computerBridgeHooks.current = { offered: () => true } as unknown as NonNullable<typeof computerBridgeHooks.current>
+    try {
+      const prompt = await systemPromptOf({ threadType: 'chat' })
+      expect(count(prompt)).toBe(1)
+      expect(prompt).not.toContain('tool search')
+      computerBridgeHooks.current = { offered: () => false } as unknown as NonNullable<typeof computerBridgeHooks.current>
+      expect(count(await systemPromptOf({ threadType: 'chat' }))).toBe(0)
+    } finally {
+      computerBridgeHooks.current = null
+    }
   })
 
   it('mechanicsFor leaves it out for a codex session, which reads it in its first message', () => {

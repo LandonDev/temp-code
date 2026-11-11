@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { BatchResult, ComputerAction, Observation, StepResult, Tier } from '@shared/computer/protocol'
-import { mergeBatch, needsClosingRead, planBatch } from './batchPlan'
+import { COMPUTER_WAIT, type BatchResult, type ComputerAction, type Observation, type StepResult, type Tier } from '@shared/computer/protocol'
+import { computerAxWaits, mergeBatch, needsClosingRead, planBatch, stoppedBefore } from './batchPlan'
 
 const A = (action: ComputerAction['action']): ComputerAction => ({ action }) as ComputerAction
 const ok = (index: number, action: ComputerAction['action']): StepResult => ({ index, action, status: 'ok', tier: 'process', effect: 'changed' })
@@ -52,5 +52,41 @@ describe('mergeBatch', () => {
     expect(merged.observation).toBeUndefined()
     expect(needsClosingRead(segs, results)).toBe(true)
     expect(needsClosingRead(segs, [r1, { steps: [ok(0, 'hold_key')], waited }, { steps: [ok(0, 'key')], observation: obs, waited }])).toBe(false)
+  })
+})
+
+describe('stoppedBefore (§27.8 at a segment boundary)', () => {
+  const none = (index: number, action: ComputerAction['action']): StepResult => ({ index, action, status: 'ok', tier: 'ax', effect: 'none' })
+  const notRun = (index: number, action: ComputerAction['action']): StepResult => ({ index, action, status: 'not-run' })
+  const acts = [A('left_click'), A('screenshot'), { action: 'key', text: 'Return' } as ComputerAction]
+
+  it('names the step that changed nothing when the next segment opens with blind keys, past steps that send no input', () => {
+    expect(stoppedBefore(acts, [none(0, 'left_click'), ok(1, 'screenshot'), notRun(2, 'key')], 2)).toBe(0)
+  })
+
+  it('lets a step run after a change, after a thin tree, or when it names its target', () => {
+    expect(stoppedBefore(acts, [ok(0, 'left_click'), ok(1, 'screenshot'), notRun(2, 'key')], 2)).toBeNull()
+    const unknown: StepResult = { index: 0, action: 'left_click', status: 'ok', tier: 'ax', effect: 'unknown' }
+    expect(stoppedBefore(acts, [unknown, ok(1, 'screenshot'), notRun(2, 'key')], 2)).toBeNull()
+    const aimed = [...acts.slice(0, 2), { action: 'key', text: 'Return', element: 4 } as ComputerAction]
+    expect(stoppedBefore(aimed, [none(0, 'left_click'), ok(1, 'screenshot'), notRun(2, 'key')], 2)).toBeNull()
+  })
+})
+
+describe('computerAxWaits (§27.3)', () => {
+  const row = { minMs: 100, quietMs: 200, maxMs: 900, busyMaxMs: 2_000 }
+  const shipped = { axAction: COMPUTER_WAIT.axAction, axStep: COMPUTER_WAIT.axStep }
+
+  it('ships the rows equal to action and step', () => {
+    expect(computerAxWaits({})).toEqual(shipped)
+    expect(shipped).toEqual({ axAction: COMPUTER_WAIT.action, axStep: COMPUTER_WAIT.step })
+  })
+
+  it('takes either row from the seam only with TEMP_CODE_USER_DATA, and ignores a value off the schema', () => {
+    const seam = JSON.stringify({ axStep: row })
+    expect(computerAxWaits({ TEMP_CODE_COMPUTER_WAIT_AX: seam })).toEqual(shipped)
+    expect(computerAxWaits({ TEMP_CODE_COMPUTER_WAIT_AX: seam, TEMP_CODE_USER_DATA: '/tmp/x' })).toEqual({ ...shipped, axStep: row })
+    for (const bad of ['not json', '{"axStep":{"minMs":5}}', '{"other":{}}', JSON.stringify({ axAction: { ...row, maxMs: 50 } })])
+      expect(computerAxWaits({ TEMP_CODE_COMPUTER_WAIT_AX: bad, TEMP_CODE_USER_DATA: '/tmp/x' }), bad).toEqual(shipped)
   })
 })

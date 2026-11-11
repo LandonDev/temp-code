@@ -206,15 +206,23 @@ describe("the confirm flag and the host's own rules", () => {
     await flagged
   })
 
-  it('text with no element goes only to a window this thread read', async () => {
+  it('text with no element goes only to a window this thread read, judged by the service on its live titles (§27.6)', async () => {
     const h = make('auto')
     await h.run('computer_observe', { app: 'TextEdit' })
-    expect((await h.run('computer_act', { app: 'TextEdit', window: 'Notes', action: 'type', text: 'x' })).body).toBe(
-      'read TextEdit\'s window "Notes" before typing into it'
-    )
-    expect(count(h, 'action.run')).toBe(0)
-    expect((await h.run('computer_act', { app: 'TextEdit', window: 'Untitled', action: 'type', text: 'x' })).isError).toBe(false)
-    expect(h.requests().filter((r) => r.method === 'action.run').at(-1)!.params.window).toEqual({ id: 1581 })
+    const lastRun = () => h.requests().filter((r) => r.method === 'action.run').at(-1)!.params
+    expect((await h.run('computer_act', { app: 'TextEdit', window: 'Untitled', action: 'type', text: 'x' })).steps[0]).not.toContain('failed')
+    expect(lastRun()).toMatchObject({ window: { title: 'Untitled' }, textWindowId: 1581 })
+    const other = await h.run('computer_act', { app: 'TextEdit', window: 'Notes', action: 'type', text: 'x' })
+    expect(other.steps[0]).toBe('type "x" · failed: read TextEdit\'s window "Notes" before typing into it')
+    expect(lastRun()).toMatchObject({ window: { title: 'Notes' }, textWindowId: 1581 })
+    // that call's closing read was of Notes, so Notes is now the window the thread read
+    expect((await h.run('computer_act', { app: 'TextEdit', window: 'Notes', action: 'type', text: 'x' })).steps[0]).not.toContain('failed')
+    expect(lastRun()).toMatchObject({ window: { title: 'Notes' }, textWindowId: 1582 })
+    // with no window named, text is pinned to the window the thread read, by id, and carries no textWindowId
+    await h.run('computer_act', { app: 'TextEdit', action: 'type', text: 'x' })
+    const plain = h.requests().filter((r) => r.method === 'action.run').at(-1)!.params
+    expect(plain.window).toEqual({ id: 1582 })
+    expect(plain.textWindowId).toBeUndefined()
   })
 
   it('text into an app this thread has not read answers no_observation, nothing sent', async () => {
@@ -223,13 +231,12 @@ describe("the confirm flag and the host's own rules", () => {
     expect(h.requests().filter((r) => r.method !== 'initialize' && r.method !== 'permissions.get')).toHaveLength(0)
   })
 
-  it('in a batch, a text step after another input names its element, refused before anything runs', async () => {
+  it('in a batch, a text step after another input goes to the service, which judges where it lands (§27.7)', async () => {
     const h = make('auto')
     await h.run('computer_observe', { app: 'TextEdit' })
     const o = await h.run('computer_batch', { app: 'TextEdit', actions: [{ action: 'left_click', element: 21 }, { action: 'type', text: 'x' }] })
-    expect(o.body).toBe("invalid arguments: in a batch, type and paste after another action name their element; see the tool's description")
-    expect(count(h, 'action.batch')).toBe(0)
-    expect((await h.run('computer_batch', { app: 'TextEdit', actions: [{ action: 'type', text: 'x' }, { action: 'key', text: 'Tab' }] })).isError).toBe(false)
+    expect(o.isError).toBe(false)
+    expect(count(h, 'action.batch')).toBe(1)
   })
 
   it('every request carries the pinned pid, and TempCode itself is refused with no request', async () => {

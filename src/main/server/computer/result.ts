@@ -89,7 +89,7 @@ export function outcomeOf(
 ): ComputerToolOutcome {
   const steps = result.steps.map((step, i) => {
     const action = actions[i] ?? ({ action: step.action } as ComputerAction)
-    const worded = step.status === 'failed' ? { ...step, error: { ...step.error, message: errorLine(step.error, { ...ctx, action }) } } : step
+    const worded = step.status === 'failed' ? { ...step, error: { ...step.error, message: errorLine(step.error, { ...ctx, action, step: true }) } } : step
     return hostLines.get(i) ?? formatStepLine(worded, action)
   })
   if (result.observation?.selectedTab !== undefined)

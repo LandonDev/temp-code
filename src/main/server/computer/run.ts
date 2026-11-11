@@ -15,9 +15,11 @@ import {
   type IgnoredRoutes,
   type Observation,
   type PermissionName,
+  type Prior,
   type StepResult,
   type Tier
 } from '@shared/computer/protocol'
+import { buildPrior } from '@shared/computer/batchStop'
 import { COMPUTER_ACTIONS, COMPUTER_TOOLS, formatStepLine, mayRunAtAx, type ActionClass, type ComputerToolName } from '@shared/computer/tools'
 import { actionWords, asFourTool, computerActivity, computerApprovalInput, computerApprovalTitle, needsApproval, type TitleContext } from '@shared/computer/words'
 import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
@@ -27,7 +29,7 @@ import { LOCAL_CARD_WORDS, READER_WAIT_WORDS, UNREAD_WORDS } from '@shared/compu
 import { awayAllowsKind } from '@shared/away'
 import type { PermissionPolicy, SessionMeta } from '@shared/events'
 import type { ApprovalRequest } from '../drivers/types'
-import { planBatch } from './batchPlan'
+import { computerAxWaits, planBatch, stoppedBefore, type AxWaitRows } from './batchPlan'
 import { ComputerHostError, ComputerRpcError } from './connection'
 import { ElementBook } from './elements'
 import {
@@ -36,7 +38,6 @@ import {
   refusedLaunch,
   refusedOpenItem,
   refusedTarget,
-  textTargetProblem,
   type Resolved,
   type TargetResolver
 } from './policy'
@@ -237,8 +238,8 @@ type Targeted = <M extends ComputerMethod>(method: M, params: (target: TargetBas
 /**
  * Step 1 of a call, on its own (the Mac bridge's box side checks a call with
  * it before it crosses): a per-verb name becomes `computer_act` with its
- * action, `confirm` kept, the tool's full schema parses the arguments, and a
- * batch's text step after another input must name its element.
+ * action, `confirm` kept, and the tool's full schema parses the arguments.
+ * Where text with no target goes is the service's to judge (§27.7).
  */
 export function checkComputerCall(toolName: string, rawArgs: unknown): { ok: true; tool: ComputerToolName; args: Record<string, unknown> } | { ok: false; line: string } {
   const four = asFourTool(toolName, rawArgs)
@@ -246,10 +247,7 @@ export function checkComputerCall(toolName: string, rawArgs: unknown): { ok: tru
   const spec = COMPUTER_TOOLS.find((s) => s.name === four.tool)!
   const parsed = spec.input.safeParse(four.args)
   if (!parsed.success) return { ok: false, line: hostErrorLine('invalid_args', issueWords(parsed.error)) }
-  const args = parsed.data as Args
-  const textProblem = textTargetProblem(actionsOf(four.tool, args))
-  if (textProblem) return { ok: false, line: textProblem }
-  return { ok: true, tool: four.tool, args }
+  return { ok: true, tool: four.tool, args: parsed.data as Args }
 }
 
 export async function runComputerTool(host: RunHost, t: ThreadComputer, ctx: ComputerToolContext, toolName: string, rawArgs: unknown, signal: AbortSignal): Promise<ComputerToolOutcome> {
@@ -304,11 +302,8 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     tool === 'computer_observe' ? (args.element !== undefined ? [args.element as number] : []) : steps.flatMap(actionElements)
   if (named.length && !app()) return refusal(noObservationLine(named[0], args.app!))
   if (steps.some((s) => s.action === 'type' || s.action === 'paste') && !app()) return refusal(hostErrorLine('no_observation', noReadForTextLine(args.app!)))
-  // text with no element goes to the focused element of the window the thread read, never one it has not
-  const blindText = steps.some((s) => (s.action === 'type' || s.action === 'paste') && s.element === undefined)
-  const readWindow = app()?.window?.title
-  if (blindText && args.window && !(readWindow ?? '').includes(args.window))
-    return refusal(hostErrorLine('no_observation', noReadForTextLine(args.app!, args.window)))
+  // text with no target goes to the window the thread read: the service judges a named window by its live titles (§27.6)
+  const blindText = steps.some((s) => (s.action === 'type' || s.action === 'paste') && s.element === undefined && s.named === undefined)
 
   // an app no call may touch, or an item that is no page, file or folder: refused before the card
   if (tool === 'computer_apps') {
@@ -466,23 +461,32 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     if (refused) return refusal(refused)
     const a = app()
     const bound = !args.window && a?.window ? { id: a.window.id } : undefined
-    // text with no element is pinned to the window the thread read, by id: a title names it, not which window the service picks
-    const readOne = blindText && a?.window ? { id: a.window.id } : undefined
+    // text with no target in a call that names no window is pinned to the window the thread read, by id; a named
+    // window goes as given, with the id the thread read for the service to hold the text to (§27.6)
+    const readOne = !args.window && blindText && a?.window ? { id: a.window.id } : undefined
+    const textWindowId = args.window && blindText && a?.window ? a.window.id : undefined
+    /** a window a step opened: the call's later requests act there (§27.5) */
+    let followed: { id: number } | null = null
     const expectFocus = steps.length ? a?.book.focused ?? undefined : undefined
     const epoch = a?.epoch
-    const target = (useBound = true): TargetBase => ({
-      session: t.serviceSession,
-      app: { pid: pin.app.pid },
-      ...(readOne ? { window: readOne } : args.window ? { window: { title: args.window } } : bound && useBound ? { window: bound } : {}),
-      launch: false,
-      ...((named.length || expectFocus !== undefined) && epoch ? { epoch } : {})
-    })
+    const windowOf = (useBound: boolean): TargetBase['window'] =>
+      followed ?? readOne ?? (args.window ? { title: args.window } : bound && useBound ? bound : undefined)
+    const target = (useBound = true): TargetBase => {
+      const window = windowOf(useBound)
+      return {
+        session: t.serviceSession,
+        app: { pid: pin.app.pid },
+        ...(window ? { window } : {}),
+        launch: false,
+        ...((named.length || expectFocus !== undefined) && epoch ? { epoch } : {})
+      }
+    }
     /** A bound window that closed falls back to the app's main window, once. */
     const targeted: Targeted = async (method, params) => {
       try {
         return await call(method, params(target()))
       } catch (e) {
-        if (!(bound && !blindText && e instanceof ComputerRpcError && e.data?.kind === 'window_not_found')) throw e
+        if (!(bound && !readOne && !followed && e instanceof ComputerRpcError && e.data?.kind === 'window_not_found')) throw e
         if (a) a.window = null
         return await call(method, params(target(false)))
       }
@@ -558,9 +562,16 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
       args,
       actions,
       expectFocus,
+      ...(textWindowId !== undefined ? { textWindowId } : {}),
       single,
       signal,
       targeted,
+      follow: (opened) => {
+        // every target the call holds moves to the window the step opened, and the thread binds it (§27.5)
+        followed = { id: opened.id }
+        const st = app()
+        if (st) st.window = { id: opened.id, title: opened.title }
+      },
       call,
       appOf: app,
       drop,
@@ -571,6 +582,14 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     for (const s of result.steps) if (s.status === 'failed') noteMissing(s.error)
     for (const [i, s] of result.steps.entries()) if (s.status === 'ok' && s.shot) await land(s.shot, `step ${i + 1}`, i + 1)
     await take(result.observation)
+    // after the closing read, so a full read that leaves them out keeps them: a named step's element (§27.9), and the
+    // password field a refusal named, so the resend by element asks the password card (§27.7a)
+    const book = app()?.book
+    if (book)
+      for (const s of result.steps) {
+        if (s.status === 'ok' && s.resolved !== undefined && s.element?.index === s.resolved) book.learn(s.element)
+        if (s.status === 'failed' && s.error.kind === 'focus_moved' && s.error.reason === 'secure' && s.error.focused) book.learn(s.error.focused)
+      }
     // the window the thread used closed, or the app quit (§22.6): its next call targets the app's main window
     if (result.observationError?.kind === 'window_not_found') {
       const st = app()
@@ -709,8 +728,12 @@ interface ActionsRun {
   actions: ComputerAction[]
   single: boolean
   expectFocus?: number
+  /** the window the thread last read, sent when the call names a window and types with no target (§27.6) */
+  textWindowId?: number
   signal: AbortSignal
   targeted: Targeted
+  /** a step opened a window: the call's later requests and its closing read go there (§27.5) */
+  follow: (opened: { id: number; title: string }) => void
   call: <M extends ComputerMethod>(method: M, params: ComputerParams<M>) => Promise<ComputerResult<M>>
   appOf: () => AppState | undefined
   drop: (obs: Observation) => void
@@ -815,20 +838,44 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
   // probe an app once, before the first process-tier input, after the card
   await probeOnce(host, run, actions.slice(0, stopAt))
 
+  /**
+   * §27.8 ended the call before step `i`: it and every later step not yet run read the stop, numbered from the call's
+   * last step that ran and sent input, whatever request the stop came from.
+   */
+  const stopFrom = (i: number): void => {
+    let afterStep = -1
+    for (let k = i - 1; k >= 0 && afterStep < 0; k--) if (steps[k].status === 'ok' && sendsInput(actions[k])) afterStep = k
+    if (afterStep < 0) return
+    for (let k = i; k < actions.length; k++)
+      if (steps[k].status === 'not-run') steps[k] = { index: k, action: actions[k].action, status: 'not-run', stopped: { afterStep, reason: 'no-change' } }
+  }
+
+  const waits = computerAxWaits()
   const retried = new Set<number>()
   let from = 0
   let ranAny = false
   let ranStep = false
   let tabsAny = false
+  let stopped = false
+  let opened = false
   while (from < stopAt && !signal.aborted) {
     const segments = planBatch(actions.slice(from, stopAt), (a, k) => tiersOf(a, from + k), ranStep ? undefined : run.expectFocus)
     let failedAt: number | null = null
     for (const seg of segments) {
       const at = from + seg.from
+      // the host's half of §27.8: blind keys after a step that changed nothing in an earlier request never go out
+      if (at > 0 && stoppedBefore(actions, steps, at) !== null) {
+        stopFrom(at)
+        stopped = true
+        break
+      }
+      // what the call's earlier requests did, for the service to read as if they had run in this one (§27.7b)
+      const prior = at > 0 ? buildPrior(actions, steps.slice(0, at)) : undefined
       // an ax-first try leaves the ignored routes out, so it never ends ok/none short of the gate
       const skip = seg.actions.some((_, k) => axFirst.has(at + k))
       const ignored = host.verdicts.ignoredFor(bundleOf())
-      const sendSegment = () => runSegment(run, gate, classes, seg.actions, seg.tiers, seg.last, skip ? { ...ignored, skip: true } : ignored, seg.expectFocus, tabsAny)
+      const sendSegment = () =>
+        runSegment(run, gate, classes, seg.actions, seg.tiers, seg.last, { ignored: skip ? { ...ignored, skip: true } : ignored, expectFocus: seg.expectFocus, tabsAny, prior, waits })
       let r: StepsResult
       try {
         r = await sendSegment()
@@ -846,6 +893,11 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
       ranAny = true
       front = mergeFront(front, r.front)
       r.steps.forEach((s, k) => (steps[at + k] = { ...s, index: at + k }))
+      for (const s of r.steps)
+        if (s.status === 'ok' && s.opened) {
+          run.follow(s.opened)
+          opened = true
+        }
       const appName = r.observation?.app.name ?? run.appOf()?.name
       for (const [k, s] of r.steps.entries()) host.verdicts.learn(r.observation?.app.bundleId ?? bundleOf(), seg.actions[k], s, appName)
       for (const s of r.steps) if (s.status === 'ok' && s.tier === 'session') gate.ran?.(gateCtx(classes), s.session)
@@ -858,8 +910,16 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
         failedAt = at + failed
         break
       }
+      // a step the service stopped ends the call: no later request, the closing read as after a failure (§27.7b)
+      const stop = r.steps.findIndex((s) => s.status === 'not-run' && s.stopped)
+      if (stop >= 0) {
+        stopFrom(at + stop)
+        stopped = true
+        break
+      }
     }
-    if (failedAt === null || signal.aborted) break
+    // a refused named target or a focus the call did not plan for is the model's to resolve: never retried
+    if (stopped || failedAt === null || signal.aborted) break
     const failed = steps[failedAt]
     if (failed.status !== 'failed') break
     const a = actions[failedAt]
@@ -891,7 +951,8 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
       observation = await run.targeted('state.get', (tg) => ({
         ...tg,
         tabs: 'background',
-        mode: run.appOf()?.needsFull ? 'full' : 'auto',
+        // a window the call opened is read whole (§27.5)
+        mode: run.appOf()?.needsFull || opened ? 'full' : 'auto',
         screenshot: shotPolicy(run.args.screenshot),
         wait: COMPUTER_WAIT.action
       }))
@@ -905,6 +966,15 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
 }
 
 /** One acting request, through the gate: it may take `session` out of the tiers, holds the Mac for it and puts it back after. */
+interface SegmentOptions {
+  ignored?: IgnoredRoutes
+  expectFocus?: number
+  tabsAny: boolean
+  /** the call's earlier requests, on every request after the first (§27.7b) */
+  prior?: Prior
+  waits: AxWaitRows
+}
+
 async function runSegment(
   run: ActionsRun,
   gate: SessionTierGate,
@@ -912,13 +982,16 @@ async function runSegment(
   actions: ComputerAction[],
   tiers: Tier[],
   last: boolean,
-  ignored?: IgnoredRoutes,
-  expectFocus?: number,
-  tabsAny = false
+  { ignored, expectFocus, tabsAny, prior, waits }: SegmentOptions
 ): Promise<StepsResult> {
   const observe = last ? { mode: run.appOf()?.needsFull ? ('full' as const) : ('auto' as const), screenshot: shotPolicy(run.args.screenshot) } : { mode: 'none' as const }
   const wait = last ? COMPUTER_WAIT.action : COMPUTER_WAIT.step
   const extras = (allowed: Tier[]) => ({
+    // the service picks the ax rows for the steps that went in at ax (§27.3)
+    axWait: last ? waits.axAction : waits.axStep,
+    axStepWait: waits.axStep,
+    ...(prior ? { prior } : {}),
+    ...(run.textWindowId !== undefined ? { textWindowId: run.textWindowId } : {}),
     ...(expectFocus !== undefined ? { expectFocus } : {}),
     ...(gate.pasteQuietMs !== undefined ? { pasteQuietMs: gate.pasteQuietMs } : {}),
     ...(allowed.includes('session') && gate.personIdleMs ? { personIdleMs: gate.personIdleMs() } : {}),

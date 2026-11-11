@@ -112,6 +112,44 @@ describe('the error words', () => {
   })
 })
 
+describe('fewer calls (§27)', () => {
+  const field = { index: 6, line: 'text field "Name"' }
+  const lines = (): string[] => [
+    errorLine(err('focus_moved', { element: 6, reason: 'unplanned', focused: field })),
+    errorLine(err('window_not_found', { candidates: ['Other'] }), { app: 'Renamey', window: 'Other', step: true }),
+    errorLine(err('focus_moved', { reason: 'unplanned' })),
+    errorLine(err('focus_moved', { element: 12, reason: 'secure', focused: { index: 12, line: 'password "Password"' } })),
+    errorLine(err('focus_moved', { element: 12, reason: 'secure' })),
+    errorLine(err('named_target', { reason: 'no-match' }), { action: { action: 'left_click', named: 'Team' } as ComputerAction }),
+    errorLine(err('named_target', SAMPLES.named_target), { action: { action: 'left_click', named: 'Team' } as ComputerAction }),
+    errorLine(err('named_target', { reason: 'no-match' }), { action: { action: 'left_click', menu: 'File > Save…' } as ComputerAction })
+  ]
+
+  it('word a focus no step aimed at, a step’s window the thread did not read, a password field and a named target', () => {
+    expect(lines()).toEqual([
+      '[6] text field "Name" has the focus, which no step of this batch aimed at; name the element the text is for',
+      'read Renamey\'s window "Other" before typing into it',
+      'another element has the focus, which no step of this batch aimed at; name the element the text is for',
+      '[12] password "Password" can only be typed into by its element, so the person can be asked; send the step again with element 12',
+      '[12] can only be typed into by its element, so the person can be asked; send the step again with element 12',
+      'nothing named "Team" in the window or what this call opened; read the window and use an element',
+      'several elements are named "Team"; use element: [52] menu item "Team", [9] button "Team"',
+      'the menu bar has no item "File > Save…"; read it with menus: true and use an element'
+    ])
+  })
+
+  it('keep every line whole: within the budget, no double space, a long candidate cut at a word', () => {
+    const long = Array.from({ length: 5 }, (_, i) => ({ index: 60 + i, line: `menu item "${'Export to a very long format name '.repeat(2)}${i}"` }))
+    const all = [...lines(), errorLine(err('named_target', { reason: 'several', elementCandidates: long }), { action: { action: 'left_click', named: 'Export' } as ComputerAction })]
+    for (const line of all) {
+      expect(line.length, line).toBeLessThanOrEqual(ERROR_LINE_MAX)
+      expect(line, line).not.toMatch(/ {2}/)
+      expect(line, line).not.toMatch(/^ | $/)
+    }
+    expect(all.at(-1)).toMatch(/, …$|…"$/)
+  })
+})
+
 describe('a disabled menu item (§24.2)', () => {
   it('in the background waits for the Mac; with the app in front it says to try another way', () => {
     const background = err('needs_tier', { needed: 'session', menu: ['File', 'Close'] })

@@ -18,10 +18,11 @@ import type { ComputerSessions } from './sessions'
  * The computer tools on every Mac thread's `app` server
  * (docs/computer-protocol.md "Tools on each harness"): in process for
  * Claude, deferred behind tool search so a thread that never touches an app
- * pays no schema; codex and Muse reach the same flow through the bridge
- * (rpc.ts). A box thread gets them only when its bridge names a Mac that
- * offers computer use (computer/bridge.ts): the same tools, each description
- * followed by COMPUTER_BRIDGE_NOTE, its calls carried to the Mac. Each thread
+ * pays no schema, and loaded at spawn for a thread that is going to use them
+ * (`eagerComputer`, §27.11); codex and Muse reach the same flow through the
+ * bridge (rpc.ts). A box thread gets them only when its bridge names a Mac that
+ * offers computer use (computer/bridge.ts): the same tools, computer_apps'
+ * description followed by COMPUTER_BRIDGE_NOTE, its calls carried to the Mac. Each thread
  * gets the words and the tool shape `wordsFor` gives its model (prompts.ts);
  * `offersComputerTools` (apptools.ts) decides whether it gets any, and its
  * COMPUTER_MECHANICS with them.
@@ -38,6 +39,14 @@ export interface ComputerHost {
 
 /** Set by index.ts on a host where computer use may run; null elsewhere. */
 export const computerHooks: { current: ComputerHost | null } = { current: null }
+
+/** The remote-Mac note rides on this tool's description alone (§27.12). */
+export const REMOTE_NOTE_TOOL = 'computer_apps'
+/** The note's text, as a bridged thread's computer_apps reads it after its description. */
+export const COMPUTER_REMOTE_NOTE = COMPUTER_BRIDGE_NOTE
+/** A tool's description as a thread on another host reads it. */
+export const remoteDescription = (name: string, description: string): string =>
+  name === REMOTE_NOTE_TOOL ? description + COMPUTER_REMOTE_NOTE : description
 
 /** Every name either tool shape lists, on every host: claude's allow list covers them and the warm pool's argv stays one shape. */
 export const COMPUTER_APP_TOOLS: readonly string[] = [...COMPUTER_TOOL_NAMES, ...COMPUTER_ACTION_NAMES.map((a) => `computer_${a}`)].map((n) => `mcp__app__${n}`)
@@ -80,38 +89,52 @@ export function computerToolList(
   session: Pick<SessionMeta, 'provider' | 'model'>,
   opts: { bridged?: boolean; result?: boolean } = {}
 ): { name: string; description: string; inputSchema: Record<string, unknown> }[] {
-  const note = opts.bridged ? COMPUTER_BRIDGE_NOTE : ''
   const { shape, tools } = wordsFor(session)
-  return computerToolSpecs(shape, tools, { result: opts.result }).map((t) => ({ name: t.name, description: t.description + note, inputSchema: computerToolJsonSchema(t.input) }))
+  return computerToolSpecs(shape, tools, { result: opts.result }).map((t) => ({
+    name: t.name,
+    description: opts.bridged ? remoteDescription(t.name, t.description) : t.description,
+    inputSchema: computerToolJsonSchema(t.input)
+  }))
 }
 
 const shapeOf = (input: z.ZodType): z.ZodRawShape => (input as unknown as { shape: z.ZodRawShape }).shape
 
 /**
- * One claude thread's tools in its words, deferred behind tool search: run
- * here where computer use is available, else carried to the thread's Mac when
- * its bridge names one that offers it; [] otherwise.
+ * Whether a claude thread loads the computer tools at spawn rather than behind
+ * tool search (§27.11): its Mac bridge names a Mac whose computer use is on for
+ * this host, or it made a computer call before (`computer.used.<threadId>`).
+ */
+export function eagerComputer(session: Pick<SessionMeta, 'id'>, host: ComputerHost | null = computerHooks.current, bridge = computerBridgeHooks.current): boolean {
+  if (bridge?.offered(session.id)) return true
+  return !!host?.available() && host.sessions.used(session.id)
+}
+
+/**
+ * One claude thread's tools in its words: run here where computer use is
+ * available, else carried to the thread's Mac when its bridge names one that
+ * offers it; [] otherwise. Deferred behind tool search unless the thread is
+ * going to use them (`eagerComputer`); the choice holds for the harness's life.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function computerTools(session: SessionMeta, host: ComputerHost | null = computerHooks.current, bridge = computerBridgeHooks.current): SdkMcpToolDefinition<any>[] {
   const local = host?.available() ? host : null
   if (!local && !bridge?.offered(session.id)) return []
   const { shape, tools } = wordsFor(session)
-  return computerToolSpecs(shape, tools).map((spec) =>
-    deferredTool(
-      tool(
-        spec.name,
-        local ? spec.description : spec.description + COMPUTER_BRIDGE_NOTE,
-        shapeOf(spec.input),
-        async (args, extra) => {
-          // the queue parses again with the tool's full schema, refinements and all
-          const signal = (extra as { signal?: AbortSignal } | undefined)?.signal
-          const ctx = { threadId: session.id, callId: toolUseIdOf(extra), signal }
-          const outcome = local ? await local.sessions.run(ctx, spec.name, args) : await bridge!.run(ctx, spec.name, args)
-          return computerContent(outcome, 'parts')
-        },
-        { searchHint: COMPUTER_SEARCH_HINT }
-      )
+  const eager = eagerComputer(session, host, bridge)
+  return computerToolSpecs(shape, tools).map((spec) => {
+    const def = tool(
+      spec.name,
+      local ? spec.description : remoteDescription(spec.name, spec.description),
+      shapeOf(spec.input),
+      async (args, extra) => {
+        // the queue parses again with the tool's full schema, refinements and all
+        const signal = (extra as { signal?: AbortSignal } | undefined)?.signal
+        const ctx = { threadId: session.id, callId: toolUseIdOf(extra), signal }
+        const outcome = local ? await local.sessions.run(ctx, spec.name, args) : await bridge!.run(ctx, spec.name, args)
+        return computerContent(outcome, 'parts')
+      },
+      eager ? { alwaysLoad: true } : { searchHint: COMPUTER_SEARCH_HINT }
     )
-  )
+    return eager ? def : deferredTool(def)
+  })
 }

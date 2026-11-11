@@ -10,9 +10,9 @@ import {
   refusedLaunch,
   refusedOpenItem,
   refusedTarget,
-  textTargetProblem,
   type AppsSource
 } from './policy'
+import { checkComputerCall } from './run'
 
 const app = (name: string, pid: number, bundleId: string | null = `com.example.${name.toLowerCase().replace(/ /g, '')}`): AppInfo => ({
   name,
@@ -157,14 +157,27 @@ describe('passwordTarget', () => {
   })
 })
 
-describe('textTargetProblem', () => {
-  it('refuses type or paste without element after another input step, and accepts it first', () => {
-    const click = { action: 'left_click', element: 2 } as ComputerAction
-    expect(textTargetProblem([click, { action: 'type', text: 'x' } as ComputerAction])).toMatch(/type and paste after another action name their element/)
-    expect(textTargetProblem([click, { action: 'paste', text: 'x' } as ComputerAction])).not.toBeNull()
-    expect(textTargetProblem([{ action: 'type', text: 'x' } as ComputerAction, click])).toBeNull()
-    expect(textTargetProblem([{ action: 'screenshot' } as ComputerAction, { action: 'type', text: 'x' } as ComputerAction])).toBeNull()
-    expect(textTargetProblem([click, { action: 'type', text: 'x', element: 3 } as ComputerAction])).toBeNull()
+describe('text with no target (§27.7)', () => {
+  it('is the service’s to judge: a batch of a click or a shortcut, then text, is no longer refused', () => {
+    for (const first of [{ action: 'left_click', element: 2 }, { action: 'key', text: 'super+n' }]) {
+      const checked = checkComputerCall('computer_batch', { app: 'TextEdit', actions: [first, { action: 'type', text: 'x' }] })
+      expect(checked.ok).toBe(true)
+    }
+    expect(checkComputerCall('computer_batch', { app: 'TextEdit', actions: [{ action: 'left_click', element: 2 }, { action: 'paste', text: 'x' }] }).ok).toBe(true)
+  })
+
+  it('a step that names its target by named never asks: the service refuses a password field by name (§27.7a)', () => {
+    expect(passwordTarget([{ action: 'type', text: 'x', named: 'Password' } as ComputerAction], read(LOGIN))).toBeNull()
+  })
+
+  it('a password field a secure refusal named, which no read listed, asks when the step comes back with its element', () => {
+    const book = read(PLAIN)
+    expect(passwordTarget([{ action: 'type', text: 'x', element: 12 } as ComputerAction], book)).toBeNull()
+    book.learn({ index: 12, line: 'password "Password"' })
+    expect(passwordTarget([{ action: 'type', text: 'x', element: 12 } as ComputerAction], book)).toEqual({ kind: 'password', what: '' })
+    // a later full read that leaves it out drops it again, as it drops every element it does not list
+    book.apply(PLAIN, 'full')
+    expect(book.has(12)).toBe(false)
   })
 })
 
