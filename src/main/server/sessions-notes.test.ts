@@ -5,7 +5,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent } from '@shared/events'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
-import { NOTES_MECHANICS, STEER_MECHANICS, isCommitCall, isNotesCall, wrapSteer } from './notesPrompts'
+import {
+  NOTES_MECHANICS,
+  NOTES_REARM_MS,
+  NOTES_REMINDER_CONTEXT,
+  STEER_MECHANICS,
+  isCommitCall,
+  isNoteDecisionCall,
+  isNotesCall,
+  notesAfterCompaction,
+  wrapSteer
+} from './notesPrompts'
 import { MASTER_MECHANICS, implementerSpawnPrompt, orchestratorPrompt } from './orchestration'
 import { threadPreamble } from './threads'
 import { appUpdateNotes, setAppBridge } from './apptools'
@@ -364,6 +374,18 @@ describe('the mechanics text', () => {
     expect(wrapped).toMatch(/answer it in one short line of your own words/)
   })
 
+  it('the reminder and the notes block ask for no write unconditionally, and the mechanics bound the habit', () => {
+    expect(NOTES_REMINDER_CONTEXT).not.toMatch(/Before anything else/)
+    expect(NOTES_REMINDER_CONTEXT).toMatch(/If the notes are behind what you know/)
+    expect(NOTES_REMINDER_CONTEXT).toMatch(/If they are current, carry on\./)
+    const block = notesAfterCompaction('## State\n\nin flight')
+    expect(block).not.toMatch(/keep them current with update_notes/)
+    expect(block).toMatch(/They are current: carry on with the task/)
+    expect(NOTES_MECHANICS).toMatch(/Never update them in place of doing the task/)
+    expect(NOTES_MECHANICS).not.toMatch(/after every decision/)
+    expect(NOTES_REARM_MS).toBe(15 * 60_000)
+  })
+
   it('tells a commit from any shell tool and the notes tool from any surface', () => {
     expect(isCommitCall('Bash', { command: 'git commit -m "x"' })).toBe(true)
     expect(isCommitCall('Bash', { command: 'git -C /repo merge main' })).toBe(true)
@@ -374,6 +396,9 @@ describe('the mechanics text', () => {
     expect(isNotesCall('update_notes')).toBe(true)
     expect(isNotesCall('app.update_notes')).toBe(true)
     expect(isNotesCall('mcp__app__app_read_thread')).toBe(false)
+    expect(isNoteDecisionCall('mcp__app__note_decision')).toBe(true)
+    expect(isNoteDecisionCall('app.note_decision')).toBe(true)
+    expect(isNoteDecisionCall('mcp__app__update_notes')).toBe(false)
   })
 })
 

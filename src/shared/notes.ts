@@ -25,7 +25,13 @@ export const NOTES_FILE = 'notes.md'
 
 export const UPDATE_NOTES_TOOL_NAME = 'update_notes'
 export const UPDATE_NOTES_DESCRIPTION =
-  "Update this thread's working notes: the one document that survives a context compaction and seeds any successor thread. Replace or append ONE section (Goal, Decisions, State, Pointers, Open questions); the app writes notes.md beside the thread's attachments and shows it live in the Notes panel. Keep State current (what is done, in flight, blocked) and Pointers concrete (files, commands, ids). Update after every decision, before context runs low, and after a commit or merge."
+  "Update this thread's working notes: the one document that survives a context compaction and seeds any successor thread. Replace or append ONE section (Goal, Decisions, State, Pointers, Open questions); the app writes notes.md beside the thread's attachments and shows it live in the Notes panel. Keep State current (what is done, in flight, blocked) and Pointers concrete (files, commands, ids). Update a section when it changes for real, not as a habit or in place of the task."
+/** How many update_notes calls may follow one another with no other tool
+ *  call between: five lets a thread rewrite every fixed section once. */
+export const NOTES_STREAK_LIMIT = 5
+/** The answer past the limit; nothing is written. */
+export const NOTES_STREAK_STOP =
+  'refused: the notes were saved 5 times in a row with nothing else between; they are current. Do the task now, or end the turn if it is done. update_notes works again after your next other tool call.'
 export const UPDATE_NOTES_PARAMS = {
   section: 'Which heading: Goal | Decisions | State | Pointers | Open questions (a new heading is allowed, after the fixed ones).',
   mode: 'replace (default) swaps the section body; append adds a paragraph under it.',
