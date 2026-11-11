@@ -30,6 +30,8 @@ import { spanWords, thoughtLines } from "@renderer/surfaces/transcript/thinking"
 export const ReasoningColumn = memo(function ReasoningColumn({ text, live, className }: { text: string; live: boolean; className?: string }) {
   const reduce = useReducedMotion() === true;
   const paragraphs = useMemo(() => thoughtLines(text), [text]);
+  // The finished text, one string: what the column has to draw changes only when it does.
+  const shown = useMemo(() => paragraphs.map((p) => p.join(" ")).join("\n"), [paragraphs]);
   const count = paragraphs.reduce((n, p) => n + p.length, 0);
   const box = useRef<HTMLDivElement>(null);
   const edges = useOverflowEdges<HTMLDivElement>("y");
@@ -84,19 +86,32 @@ export const ReasoningColumn = memo(function ReasoningColumn({ text, live, class
         className,
       )}
     >
-      {paragraphs.map((sentences, p) => (
-        <p key={p} dir="auto">
-          {sentences.map((sentence, i) => (
-            <span key={i} className="stream-step">
-              {i > 0 ? " " : null}
-              {sentence}
-            </span>
-          ))}
-        </p>
-      ))}
+      <Paragraphs paragraphs={paragraphs} shown={shown} />
     </div>
   );
 });
+
+/**
+ * The sentences, rendered only when one finishes: `shown` is the finished
+ * text, so the twenty deltas a second that end no sentence re-render nothing
+ * here (the memo compares the string, never the fresh arrays), and a sentence
+ * once drawn is never diffed again.
+ */
+const Paragraphs = memo(
+  function Paragraphs({ paragraphs }: { paragraphs: string[][]; shown: string }) {
+    return paragraphs.map((sentences, p) => (
+      <p key={p} dir="auto">
+        {sentences.map((sentence, i) => (
+          <span key={i} className="stream-step">
+            {i > 0 ? " " : null}
+            {sentence}
+          </span>
+        ))}
+      </p>
+    ));
+  },
+  (a, b) => a.shown === b.shown,
+);
 
 /**
  * The seconds a thought block has run, 4px after "Thinking" on the working
