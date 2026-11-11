@@ -76,6 +76,17 @@ public enum WaitDecision: Sendable, Equatable {
     case done(WaitOutcome)
 }
 
+extension WaitRule {
+    /// Whether an AX notification stamped at or before t0 came while the step's own input ran (after `inputFrom`):
+    /// an AX set or press the app handled and announced before it answered. The wait counts it as a change at 0 ms,
+    /// since the step made it; TC Probe's text field, its Ping label and a scroll bar's value came only so, and a window
+    /// the person's windows cover may not redraw for the pixels to say it (v1.0.341's publish, 2026-11-11).
+    public static func duringInput(stamp: UInt64, inputFrom: UInt64?) -> Bool {
+        guard let inputFrom else { return false }
+        return stamp > inputFrom
+    }
+}
+
 /// The buckets a wait counts the gaps between adjacent changes into (§27.2, protocol.ts `WAIT_GAP_EDGES_MS`): each edge
 /// is a bucket's upper bound, inclusive, and one bucket above the last counts the rest.
 public enum WaitGaps {

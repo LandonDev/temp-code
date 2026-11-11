@@ -16,6 +16,8 @@ private struct StepRun {
     var step: StepResult
     /// `t0`: the step's last input, for the wait after it; nil when it posted none
     var t0: UInt64?
+    /// when the step's input began: a notification between it and t0 is the step's own (`WaitRule.duringInput`)
+    var inputFrom: UInt64?
     var signature0: UInt64 = 0
     /// the step's effect as Input read it itself (§25.7: a web toggle's value read back); it stands in for the wait's
     var inputEffect: StepEffect?
@@ -39,6 +41,7 @@ private struct Performed: Sendable {
     var check: CommitCheck?
     let element: ElementBrief?
     let returnedAt: UInt64
+    var startedAt: UInt64?
     /// §27: the element a `named` or `menu` target resolved to, the focused element and window list before the input
     var resolved: Int?
     var focusBefore: Int?
@@ -215,7 +218,7 @@ extension ComputerService {
             if case .ok(let ok) = run.step { routes.append(ok.tier) }
             if !run.stops && !isLast, let t0 = run.t0, case .ok(let ok) = run.step {
                 // §27.3: a step that went in at `ax` takes the axStep row; a `front` step is not one, its wait runs after the restore
-                let waited = await waitAfter(current, options: rows.between(tier: ok.tier), t0: t0, signature0: run.signature0, pasteboard: WaitRule.readsPasteboard(action), cancel: ctx.cancel)
+                let waited = await waitAfter(current, options: rows.between(tier: ok.tier), t0: t0, inputFrom: run.inputFrom, signature0: run.signature0, pasteboard: WaitRule.readsPasteboard(action), cancel: ctx.cancel)
                 let opened = await openedDuring(current, step: index)
                 var judged = ok.with(effect: run.effect(waited.effect(thin: book.lastThin(session, pid: target.pid), opened: opened)), waited: waited.report)
                 if let check = run.check, !ctx.cancel.isSet { judged = await committed(judged, check, current) }
@@ -249,7 +252,7 @@ extension ComputerService {
         var waited = WaitRule.skipped()
         var windowGone = false
         if let last, let t0 = last.t0, !ctx.cancel.isSet {
-            waited = await waitAfter(current, options: rows.last(tiers: routes), t0: t0, signature0: last.signature0, pasteboard: lastAction.map(WaitRule.readsPasteboard) ?? false, cancel: ctx.cancel)
+            waited = await waitAfter(current, options: rows.last(tiers: routes), t0: t0, inputFrom: last.inputFrom, signature0: last.signature0, pasteboard: lastAction.map(WaitRule.readsPasteboard) ?? false, cancel: ctx.cancel)
             if waited.report.reason != .cancelled, !waited.appLeft {
                 // an app that quit just after the wait ended counts as one that quit during it
                 windowGone = inventory.isRunning(target.pid) ? await windowClosed(current) : true
@@ -459,8 +462,10 @@ extension ComputerService {
                 let windowsBefore = ((try? source.list(pid: pid)) ?? []).map(\.id)
                 reader.recordStep(index)
                 let sig0 = reader.changes.signature()
+                let startedAt = MachTime.now()
                 let outcome = try box.input.perform(input, on: inputTarget, tiers: tiers)
                 var done = Performed(outcome: outcome, signature0: sig0, check: check, element: element?.brief, returnedAt: MachTime.now())
+                done.startedAt = startedAt
                 done.resolved = named?.index
                 done.focusBefore = focusBefore
                 done.windowsBefore = windowsBefore
@@ -482,6 +487,7 @@ extension ComputerService {
                 session: outcome.session, front: outcome.front, disk: outcome.disk, resolved: done.resolved
             )
             var run = StepRun(step: .ok(ok), t0: isCursor ? nil : (outcome.lastInputAt ?? done.returnedAt), signature0: done.signature0, inputEffect: outcome.effect, check: done.check)
+            run.inputFrom = run.t0 == nil ? nil : done.startedAt
             run.focusBefore = done.focusBefore
             run.windowsBefore = done.windowsBefore
             run.focusRead = true
@@ -590,7 +596,7 @@ extension ComputerService {
 
     /// The wait after a step, from its last input. A copy or cut (`pasteboard`) also watches the
     /// pasteboard's foreign changes (§24.10), as milliseconds since t0.
-    private func waitAfter(_ target: Resolved, options: WaitOptions, t0: UInt64, signature0: UInt64, pasteboard: Bool = false, cancel: CancelFlag) async -> WaitOutcome {
+    private func waitAfter(_ target: Resolved, options: WaitOptions, t0: UInt64, inputFrom: UInt64? = nil, signature0: UInt64, pasteboard: Bool = false, cancel: CancelFlag) async -> WaitOutcome {
         let pixel = await pixelWatch(target)
         let keepAlive = keepWatchAlive(target, while: pixel != nil)
         defer { keepAlive?.cancel() }
@@ -604,7 +610,7 @@ extension ComputerService {
             }
         }
         return await SmartWait.run(
-            options, from: t0, signature0: signature0, thin: book.lastThin(target.session, pid: target.pid), watch: watch, cancel: cancel,
+            options, from: t0, inputFrom: inputFrom, signature0: signature0, thin: book.lastThin(target.session, pid: target.pid), watch: watch, cancel: cancel,
             isRunning: { [inventory] in inventory.isRunning($0) }, tick: env.timing.waitTick, trace: trace
         )
     }

@@ -34,7 +34,8 @@ enum SmartWait {
     static let signatureEveryMs = 100
     static let busyEveryMs = 200
 
-    static func run(_ options: WaitOptions, from t0: UInt64, signature0: UInt64, thin: Bool, watch: WaitWatch,
+    /// `inputFrom`: when the step's input began, so a notification the app sent while handling it counts (`WaitRule.duringInput`).
+    static func run(_ options: WaitOptions, from t0: UInt64, inputFrom: UInt64? = nil, signature0: UInt64, thin: Bool, watch: WaitWatch,
                     cancel: CancelFlag, isRunning: @Sendable (pid_t) -> Bool, tick: Duration, trace: Trace?) async -> WaitOutcome {
         var rule = WaitRule(options: options, signature0: signature0, thin: thin, pixels: watch.pixel?.live ?? false, pasteboard: watch.pasteboardChange != nil)
         var lastSignature = Int.min / 2
@@ -44,7 +45,9 @@ enum SmartWait {
             if cancel.isSet || Task.isCancelled { return finish(rule.cancelled(at: at), trace) }
             if !isRunning(watch.pid) { return finish(rule.appGone(at: at), trace) }
             var sample = WaitSample(at: at)
-            if let stamp = watch.change?.signal.lastChange, stamp > t0 { sample.axLastChange = MachTime.ms(from: t0, to: stamp) }
+            if let stamp = watch.change?.signal.lastChange {
+                if stamp > t0 { sample.axLastChange = MachTime.ms(from: t0, to: stamp) } else if WaitRule.duringInput(stamp: stamp, inputFrom: inputFrom) { sample.axLastChange = 0 }
+            }
             if let pixel = watch.pixel, pixel.live, pixel.lastChange > t0 { sample.pixelLastChange = MachTime.ms(from: t0, to: pixel.lastChange) }
             if let pb = watch.pasteboardChange?() { sample.pasteboardLastChange = pb }
             if at - lastSignature >= signatureEveryMs, let change = watch.change {

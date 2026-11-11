@@ -303,3 +303,31 @@ private func run(
         #expect(WindowFollow.opened(before: [301], focusedAfter: nil) == nil)
     }
 }
+
+@Suite struct WaitDuringInputTests {
+    @Test func aNotificationWhileTheStepsInputRanIsTheSteps() {
+        // the input began at 1_000 and answered at 1_400 (t0): the app announced its change at 1_200
+        #expect(WaitRule.duringInput(stamp: 1_200, inputFrom: 1_000))
+        // before the input began it is not the step's
+        #expect(!WaitRule.duringInput(stamp: 900, inputFrom: 1_000))
+        #expect(!WaitRule.duringInput(stamp: 1_000, inputFrom: 1_000))
+        // a step that posted no input has no window to count
+        #expect(!WaitRule.duringInput(stamp: 1_200, inputFrom: nil))
+    }
+
+    @Test func itCountsAsAChangeAtZeroThatMovesNoClock() {
+        var rule = WaitRule(options: WaitOptions(minMs: 300, quietMs: 450, maxMs: 1_500, busyMaxMs: 5_000), signature0: 1, thin: false, pixels: false)
+        _ = rule.take(WaitSample(at: 25, axLastChange: 0))
+        var done: WaitOutcome?
+        var at = 50
+        while done == nil, at <= 1_500 {
+            if case .done(let out) = rule.take(WaitSample(at: at)) { done = out }
+            at += 25
+        }
+        // quiet from minMs as with no change at all: the change at 0 restarts no clock
+        #expect(done?.report.reason == .quiet)
+        #expect(done?.report.waitedMs == 750)
+        #expect(done?.counts.ax == 1)
+        #expect(done?.effect(thin: false) == .changed)
+    }
+}
