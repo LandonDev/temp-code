@@ -631,7 +631,7 @@ export type StartThreadParams = {
   after?: string;
   /** Queue behind the host's cap and `after` instead of booting at once (scheduler.ts). */
   queue?: boolean;
-  /** Pin the new root thread as a master from its first spawn (admin on the host). */
+  /** Pin the new root thread as a master from its first spawn (operate on the host, as session.setMaster). */
   master?: boolean;
 };
 

@@ -100,7 +100,7 @@ export const CreateSessionParams = z.object({
    *  `after` is unmet (scheduler.ts); a master's children always queue. */
   queue: z.boolean().optional(),
   /** Pin the new root thread as a master from its first spawn (the same
-   *  flag `session.setMaster` sets; admin, requiredCapability). */
+   *  flag `session.setMaster` sets; operate, like the rest of the create). */
   master: z.boolean().optional(),
   /** The thread's first message, stored as its first row in the same step
    *  (SessionRegistry.startWith): the thread and its brief, or neither. */

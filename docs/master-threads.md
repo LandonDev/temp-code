@@ -42,14 +42,15 @@ several threads of one project may be, each with its own batch keyed by
 its id (one master per release train, another for a side quest). The pin
 is "Make master thread" / "Remove as master" on the thread's context menu
 (the rail row and the tab) and the RPC `session.setMaster { sessionId,
-master }` (admin; a subagent is refused). Clients hear it as the thread's
+master }` (operate, as any start or steer is: a key that can start
+threads can make one a master; a subagent is refused). Clients hear it as the thread's
 meta push. A new chat can be born a master: while the composer shows an
 unsent chat draft, its draft row offers "Master thread"
 (chrome/MasterCheck.tsx; the pick lives on the project's draft record as
 `master`, so it survives a reload until the send), and the first send
-creates the thread with `session.create { master: true }` (admin, like
-`session.setMaster`; `requiredCapability` asks it of the param, and a
-subagent is refused). The flag is set before the eager boot, so the first
+creates the thread with `session.create { master: true }` (operate, like
+`session.setMaster`; only `permission: 'auto'` raises a create, to
+approve, and a subagent is refused). The flag is set before the eager boot, so the first
 spawn carries the master block and the batch tools with no pin notice.
 Another type never offers it, nor does a thread that exists (its menu
 does); the phone's New thread sheet has no such pick yet. The harness's prompt and tool set were built at its spawn, and
@@ -730,7 +731,7 @@ renderer's read of the flag on the thread).
   written; `ProjectMeta.masterThreadId` left the wire (gen:swift ran).
 - `session.create { masterId?, after?, queue?, startedBy? }` (operate),
   `session.start { sessionId }` (operate), `session.setMaster { sessionId,
-  master }` (admin), `batch.get`, `batch.board` (the board in one answer:
+  master }` (operate), `batch.get`, `batch.board` (the board in one answer:
   children, a digest each, the state; src/main/server/boardDigest.ts) and
   `batch.children` (read),
   `batch.setRules { masterId, rules }`, `batch.stopStep { masterId,
@@ -758,7 +759,7 @@ renderer's read of the flag on the thread).
   Board (docs/IOS-DESIGN.md "Master: the batch is the hero"): the rows in
   four groups, the foot with the steps and the running step's console, the
   bar's + Thread and fleet switches, the Rules, add, adopt and archive
-  sheets, and the pin for an admin key. The client lands the push at most
+  sheets, and the pin for any key that can operate. The client lands the push at most
   twice a second and asks `batch.get` every 5 s while the board shows. On
   Home a queued root is not under Running (`HomeModel.isLive` counts running
   and starting only).

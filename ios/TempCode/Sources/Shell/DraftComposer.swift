@@ -10,8 +10,8 @@ import TempCodeContract
 /// menu of the types with their one-line hints), the thread's name ("Name
 /// this thread", 80 characters, the title the first send gives it), the host for a project
 /// linked across hosts (every copy, then "New copy on <host>" through
-/// `project.ensureLinked`), and for a chat "Master thread", which needs an
-/// admin key (a lesser key reads the reason in its place). Everything is
+/// `project.ensureLinked`), and for a chat "Master thread" (a key that cannot
+/// send reads why in the box above, so the check carries no reason of its own). Everything is
 /// kept in `ProjectDraftStore` as it changes (written after 500 ms of
 /// quiet), photos in memory only. Nothing reaches the host until the first
 /// send (`sendDraft`), which waits for the host's catalog (asked again when
@@ -147,7 +147,7 @@ struct DraftComposer: View {
                 }
                 if let client = target?.client {
                     ComposerRowView(client: client, session: nil, choice: choice, draftMode: mode, waiting: CatalogLoad.waitLine(hostName: client.environment.name, transport: client.status.transport, hasCatalog: choice.catalog != nil))
-                    DraftRow(draft: draft, title: title, types: Self.types, copies: copies, newCopyHosts: newCopyHosts, masterBlock: ProjectDrafts.masterBlock(caps: client.environment.caps), setType: setType, setMaster: setMaster, setHost: setHost, newCopy: newCopy, titleDone: { focused = true })
+                    DraftRow(draft: draft, title: title, types: Self.types, copies: copies, newCopyHosts: newCopyHosts, setType: setType, setMaster: setMaster, setHost: setHost, newCopy: newCopy, titleDone: { focused = true })
                 }
             }
         }
@@ -327,8 +327,6 @@ private struct DraftRow: View {
     let types: [ThreadType]
     let copies: [DraftComposer.Copy]
     let newCopyHosts: [EnvironmentClient]
-    /// Why this key cannot pick Master, nil when it can.
-    let masterBlock: String?
     let setType: (ThreadType) -> Void
     let setMaster: (Bool) -> Void
     let setHost: (String) -> Void
@@ -411,25 +409,19 @@ private struct DraftRow: View {
         .accessibilityLabel("Thread type: \(draft.threadType.label)")
     }
 
-    @ViewBuilder
     private var master: some View {
-        if let masterBlock {
-            Text(masterBlock)
-                .foregroundStyle(.tertiary)
-        } else {
-            Button {
-                setMaster(!draft.master)
-            } label: {
-                HStack(spacing: TranscriptMetrics.wordGap) {
-                    Image(systemName: draft.master ? "checkmark.square.fill" : "square")
-                        .foregroundStyle(draft.master ? Color.accentColor : Color(.secondaryLabel))
-                    Text("Master thread")
-                }
-                .rowHit()
+        Button {
+            setMaster(!draft.master)
+        } label: {
+            HStack(spacing: TranscriptMetrics.wordGap) {
+                Image(systemName: draft.master ? "checkmark.square.fill" : "square")
+                    .foregroundStyle(draft.master ? Color.accentColor : Color(.secondaryLabel))
+                Text("Master thread")
             }
-            .buttonStyle(.plain)
-            .accessibilityAddTraits(draft.master ? .isSelected : [])
+            .rowHit()
         }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(draft.master ? .isSelected : [])
     }
 
     private func hostMenu(showsName: Bool) -> some View {

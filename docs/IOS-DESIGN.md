@@ -859,9 +859,8 @@ foot on the transcript's column the composer's box (`ComposerBox`, the
 one a thread's composer draws), the row under it with the draft's own
 model, effort and mode, and 4 pt under that the draft row: the type chip
 (its tinted glyph and its name, a menu of the types with their one-line
-hints), "Master thread" after it for a chat (a quiet check; an admin key's
-alone, a lesser key reads "Master threads need an admin key" in its
-place), and at the trailing edge the host of a project linked across hosts
+hints), "Master thread" after it for a chat (a quiet check for any key
+that can send; a read key's box already says why it cannot), and at the trailing edge the host of a project linked across hosts
 (every copy with a check on the one the send starts on, then "New copy on
 <host>" for a connected host without one, through `project.ensureLinked`;
 a host with no checkout says why in the line above the box). Nothing

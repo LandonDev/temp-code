@@ -208,7 +208,7 @@ public struct ThreadDraft: Sendable, Hashable {
     /// itself (`session.create { firstMessage }`): a draft reaches the host
     /// only with its first send.
     public var firstMessage: String?
-    /// Born a master (a chat draft's Master pick; admin).
+    /// Born a master (a chat draft's Master pick; operate, like any create).
     public var master: Bool?
 
     public init(threadType: ThreadType, provider: ProviderId, model: String, reasoning: Reasoning? = nil, projectId: String? = nil, workspaceId: String? = nil, cwd: String? = nil, permission: PermissionPolicy? = nil, planPath: String? = nil, goal: String? = nil, title: String? = nil, brief: String? = nil, masterId: String? = nil, after: String? = nil, startedBy: String? = nil, context1m: Bool? = nil, firstMessage: String? = nil, master: Bool? = nil) {
@@ -237,11 +237,10 @@ public struct ThreadDraft: Sendable, Hashable {
         type == .orchestration ? .orchestrator : .implementer
     }
 
-    /// The capability the create needs: born a master takes `admin`; a
-    /// full-access thread skips every prompt, so it takes `approve`.
+    /// The capability the create needs: a full-access thread skips every
+    /// prompt, so it takes `approve`; anything else, a master too, `operate`.
     public var needs: Capability {
-        if master == true { return .admin }
-        return permission == .auto ? .approve : .operate
+        permission == .auto ? .approve : .operate
     }
 
     public var params: Methods.SessionCreate.Params {
@@ -581,9 +580,9 @@ extension EnvironmentClient {
         try await acting(.operate) { try await self.request(Methods.SessionBatch.self, .init(action: action, ids: ids)) }
     }
 
-    /// Pin a root thread as a master, or unpin it; admin only. The meta push says the rest.
+    /// Pin a root thread as a master, or unpin it; any key that steers threads (operate). The meta push says the rest.
     public func setMaster(_ sessionId: String, _ master: Bool) async throws {
-        try await act(.admin) { try await self.request(Methods.SessionSetMaster.self, .init(sessionId: sessionId, master: master)) }
+        try await act(.operate) { try await self.request(Methods.SessionSetMaster.self, .init(sessionId: sessionId, master: master)) }
     }
 
     /// The host's catalog, fetched once per session and kept; `refresh` asks the host to re-probe.

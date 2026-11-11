@@ -2969,7 +2969,7 @@ proof and the sizing rules; the pieces, by name:
   empty body and Shell/DraftComposer.swift: the A10 box as `ComposerBox`,
   the A11 row with the draft's own mode, and the draft row with the type,
   "Name this thread" (80 characters, `ProjectDraft.title`, sent as
-  `session.create { title }`), Master for a chat (admin) and the host of a
+  `session.create { title }`), Master for a chat (operate) and the host of a
   linked project with New copy through `project.ensureLinked`; the client's
   `ProjectDraftStore`, one draft per link key or `loose:<workspace>`, 64
   keys for 30 days in UserDefaults `project.drafts.v1` written after 500 ms
@@ -3399,7 +3399,7 @@ proof and the sizing rules; the pieces, by name:
   hooks: `TC_TEST_ACTION=start-now|resume|pause|queue:<text>` beside the L4 ones.
   A master opens on its Board (`ios/TempCode/Sources/Thread/Master/**`:
   MasterView with its bar, MasterRows, BatchFoot and StepConsole, the
-  Rules, add, adopt and archive sheets, MasterPinButton for an admin key)
+  Rules, add, adopt and archive sheets, MasterPinButton for an operate key)
   over the client package's `Rendering/Batch.swift` (`MasterBoard`,
   `BatchSteps`, `RulesEdit`, `BoardActions`), `Client/ThreadBatch.swift` (the fleet switches' rule)
   and `Client/Batches.swift` (each master's `BatchState`, the `batch` push
@@ -3765,16 +3765,18 @@ this is the short one.
   pinned as a master on its own row (`sessions.is_master`,
   `SessionMeta.isMaster`; "Make master thread" / "Remove as master" on the
   thread's context menu, rail row and tab; RPC `session.setMaster
-  { sessionId, master }`, admin, a subagent refused, answered as the
+  { sessionId, master }`, operate (any key that starts and steers threads;
+  never admin), a subagent refused, answered as the
   thread's meta push; the row is disabled on an unsent draft with "Send a
   message first" as its tooltip, since the host pins only a thread it knows).
   A new chat is born pinned instead: an unsent chat draft's composer
   offers "Master thread" in its draft row (chrome/MasterCheck.tsx, the
   box from the select chunk, kept on the draft's record as `master`), and
-  its first send passes `session.create { master: true }` (admin through
-  `requiredCapability`, a subagent refused), which sets the flag before
-  the eager boot, so the first spawn is a master's; the phone's New thread
-  sheet has no such pick yet. Several threads of one project may be, each with
+  its first send passes `session.create { master: true }` (operate, like
+  any create; only `permission: 'auto'` raises it to approve through
+  `requiredCapability`; a subagent refused), which sets the flag before
+  the eager boot, so the first spawn is a master's; the phone's draft row
+  offers the same pick to any key that can send. Several threads of one project may be, each with
   its own batch keyed by its id. `projects.master_thread_id` is read once
   into the flag when the column is added and ignored since (the column
   stays; `ProjectMeta.masterThreadId` left the wire). Its tab reads one
