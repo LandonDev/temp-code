@@ -294,8 +294,18 @@ public final class EnvironmentClient {
     public private(set) var listCursor: ListCursor?
     /// The host's restart notice, once per boot; `dismissBootResume()` clears it.
     public private(set) var bootResume: BootResumeNotice?
-    /// When the user last looked at each thread, from the cache; `markSeen` writes it.
+    /// When the user last looked at each thread: the host's read mark for a
+    /// thread whose host keeps them (`SessionMeta.readAt`), this phone's own
+    /// otherwise (`ReadMarks.merged`); `markSeen` writes both.
     public private(set) var seen: [String: SeenMark] = [:]
+    /// This phone's own marks, from the cache.
+    @ObservationIgnored private var localSeen: [String: SeenMark] = [:]
+    /// The host's marks this phone has to send or has not heard back.
+    @ObservationIgnored private var readMarks = ReadMarks()
+    @ObservationIgnored private var readFlush: Task<Void, Never>?
+    @ObservationIgnored private var readFirst: ContinuousClock.Instant?
+    /// The app is in the foreground: only then is a thread on screen seen.
+    @ObservationIgnored private var foreground = true
     /// Workspace icons as the cache holds them; `icon(_:)` asks the host once per launch.
     public private(set) var icons: [String: CachedIcon] = [:]
     /// Threads this host moved elsewhere in this process, by the root's and each subagent's id.
@@ -333,7 +343,11 @@ public final class EnvironmentClient {
     /// first on a new session, and only its rows publish with the view's own
     /// motion; a thread nobody is looking at publishes through `quietly`.
     public var visibleThread: String? {
-        didSet { if visibleThread != oldValue { syncFocus() } }
+        didSet {
+            guard visibleThread != oldValue else { return }
+            syncFocus()
+            refreshSeen()
+        }
     }
     /// What this socket last told the host it shows (`session.focus`).
     @ObservationIgnored var focusSignal = FocusSignal()
@@ -391,7 +405,8 @@ public final class EnvironmentClient {
             if !shell.sessions.isEmpty { shellSource = .cache }
         }
         listCursor = try? await cache.cursor(environment.id)
-        seen = (try? await cache.seen(environment.id)) ?? [:]
+        localSeen = (try? await cache.seen(environment.id)) ?? [:]
+        refreshSeen()
         icons = (try? await cache.icons(environment.id)) ?? [:]
         let socket = self.socket
         loops = [
@@ -438,7 +453,10 @@ public final class EnvironmentClient {
     }
 
     public func retry() async { await socket.retry() }
-    public func setForeground(_ foreground: Bool) async { await socket.setForeground(foreground) }
+    public func setForeground(_ foreground: Bool) async {
+        self.foreground = foreground
+        await socket.setForeground(foreground)
+    }
     public func setOnline(_ online: Bool) async { await socket.setOnline(online) }
 
     /// The one word the phone acts on for a relayed host; nil on a paired one.
@@ -465,15 +483,57 @@ public final class EnvironmentClient {
         sessions.first { $0.id == id }
     }
 
-    /// The user is looking at the thread: its newest work counts as seen from here on.
+    /// The user is looking at the thread: its newest work counts as seen from
+    /// here on. On a host that keeps read marks the mark goes there too, while
+    /// the app is in the foreground and the key may operate, coalesced
+    /// (`scheduleReadFlush`), so the Mac and the box read it as read.
     public func markSeen(_ id: String) {
         guard let meta = session(id) else { return }
         let mark = SeenMark(at: meta.updatedAt, seq: threads[id]?.cursor ?? 0)
-        guard seen[id] != mark else { return }
-        seen[id] = mark
+        if foreground, environment.allows(.operate), readMarks.read(meta) { scheduleReadFlush() }
+        guard localSeen[id] != mark else { return }
+        localSeen[id] = mark
+        refreshSeen()
         let env = environment.id
         let cache = self.cache
         Task { try? await cache.markSeen(env, sessionId: id, at: mark.at, seq: mark.seq) }
+    }
+
+    /// How long the phone waits after a mark before sending, and the longest it holds the first one.
+    static let readQuietMs = 1500
+    static let readMaxWaitMs = 5000
+
+    private func scheduleReadFlush() {
+        let now = ContinuousClock.now
+        let first = readFirst ?? now
+        readFirst = first
+        let deadline = min(now + .milliseconds(Self.readQuietMs), first + .milliseconds(Self.readMaxWaitMs))
+        readFlush?.cancel()
+        readFlush = Task { [weak self] in
+            try? await Task.sleep(until: deadline, clock: .continuous)
+            guard !Task.isCancelled else { return }
+            await self?.flushReads()
+        }
+    }
+
+    /// Sends what is queued in one `session.markRead`; held while the socket
+    /// is down (the next open sends it), put back when the request fails.
+    func flushReads() async {
+        readFirst = nil
+        guard await socket.isOpen else { return }
+        let items = readMarks.take()
+        guard !items.isEmpty else { return }
+        do {
+            _ = try await socket.request(Methods.SessionMarkRead.self, .init(items: items))
+        } catch {
+            readMarks.requeue(items)
+        }
+    }
+
+    /// The seen map every rule reads, republished only when it moved.
+    private func refreshSeen() {
+        let next = readMarks.merged(local: localSeen, sessions: sessions, visible: visibleThread)
+        if next != seen { seen = next }
     }
 
     /// The newest rows of a thread the screen has not opened (a needs-you line
@@ -729,6 +789,8 @@ public final class EnvironmentClient {
             // A new socket has told the host nothing: name the thread on screen again.
             focusSignal.reconnected()
             syncFocus()
+            // Marks made while the host was away go now.
+            await flushReads()
             // The thread on screen catches up first, the rest of the open set
             // after it, while the shell lists alongside: the person came back
             // to the thread they left, not to the list.
@@ -957,7 +1019,10 @@ public final class EnvironmentClient {
     private func merge(_ metas: [SessionMeta]) {
         guard !metas.isEmpty else { return }
         var byId = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
+        var readMoved = false
         for meta in metas {
+            if byId[meta.id]?.readAt != meta.readAt || readMarks.pending[meta.id] != nil { readMoved = true }
+            readMarks.heard(meta)
             byId[meta.id] = meta
             // The host's status moves the click's busy and clock (`ThreadState.observe`).
             threads[meta.id]?.observe(meta)
@@ -966,6 +1031,7 @@ public final class EnvironmentClient {
         // A list that did not change in order or membership is not republished:
         // a catch-up that confirms what was already true moves nothing.
         if sorted != sessions { publishList { sessions = sorted } }
+        if readMoved { refreshSeen() }
         reindexPlacing(metas, gone: [])
         // The thread on screen is seen as of this meta: on return its rows
         // land before the list reconciles, so the earlier mark would read
@@ -1009,10 +1075,12 @@ public final class EnvironmentClient {
             quietly { threads[id] = nil }
             subscriptions.remove(id)
             cancelHistory(id)
-            seen[id] = nil
+            localSeen[id] = nil
             peeked[id] = nil
             notes[id] = nil // iOS 18: a removed thread's notes go with it
         }
+        readMarks.forget(ids)
+        refreshSeen()
         let env = environment.id
         let cache = self.cache
         Task { try? await cache.removeSessions(env, ids) }

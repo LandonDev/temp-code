@@ -15,10 +15,11 @@ private final class ClientRig {
     let sockets = FakeSocketFactory()
     let keys = InMemoryKeyStore()
     let cache: SessionCache
-    let environment = PairedEnvironment(id: "env_test", name: "box", origin: URL(string: "https://box.example")!, caps: [.read], keyId: "K1", keyName: "iphone", addedAt: 0)
+    let environment: PairedEnvironment
     let client: EnvironmentClient
 
-    init(cache: SessionCache? = nil) throws {
+    init(cache: SessionCache? = nil, caps: [Capability] = [.read]) throws {
+        environment = PairedEnvironment(id: "env_test", name: "box", origin: URL(string: "https://box.example")!, caps: caps, keyId: "K1", keyName: "iphone", addedAt: 0)
         self.cache = try cache ?? SessionCache.inMemory()
         try keys.set("tc_K1.secret", for: "env_test")
         let api = RemoteAPI { request in
@@ -98,8 +99,51 @@ private func clientSession(_ id: String, title: String = "A thread", updatedAt: 
 
 private func seqs(_ rows: [EventRow]) -> [Int] { rows.map(\.seq) }
 
+/// A session on a host that keeps read marks.
+private func markedSession(_ id: String, updatedAt: Int, readAt: Int) -> SessionMeta {
+    let m = clientSession(id, updatedAt: updatedAt)
+    return SessionMeta(id: m.id, parentId: nil, projectId: m.projectId, workspaceId: nil, threadType: m.threadType, planPath: nil, provider: m.provider, model: m.model, reasoning: m.reasoning, agentType: m.agentType, title: m.title, cwd: m.cwd, status: .idle, pinned: false, archived: false, permission: m.permission, fast: false, ultrafast: false, context1m: false, busySince: nil, pausedAt: nil, frozenActiveElapsed: nil, nativeId: nil, readAt: readAt, createdAt: 1, updatedAt: updatedAt)
+}
+
 @MainActor
 @Suite struct EnvironmentClientTests {
+    @Test func `a thread seen on the phone is marked read on its host, and a mark from another client is the phone's too`() async throws {
+        let rig = try ClientRig(caps: [.read, .operate])
+        await rig.client.start()
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        await rig.answerShell(fake, sessions: [markedSession("s1", updatedAt: 10, readAt: 0), markedSession("s2", updatedAt: 10, readAt: 10)])
+        #expect(await rig.wait { rig.client.sessions.count == 2 })
+        // The host's marks decide: s1 is unread on the phone though it never looked.
+        #expect(ThreadGroups.isUnseen(rig.client.session("s1")!, seen: rig.client.seen, floor: 0))
+        #expect(!ThreadGroups.isUnseen(rig.client.session("s2")!, seen: rig.client.seen, floor: 0))
+
+        rig.client.markSeen("s1")
+        // Read at once on the phone, sent once after the quiet beat.
+        #expect(!ThreadGroups.isUnseen(rig.client.session("s1")!, seen: rig.client.seen, floor: 0))
+        let request = await rig.waitForRequest(fake, "session.markRead")
+        #expect(request?.params == .object(["items": .array([.object(["sessionId": .string("s1"), "at": .number(10)])])]))
+        rig.client.markSeen("s1")
+        try? await Task.sleep(for: .milliseconds(1700))
+        #expect(rig.sent(fake, "session.markRead").count == 1)
+
+        // Another client marks s2 unread: the phone reads it unread.
+        fake.deliver(#"{"push":"sessions","sessions":\#(json([markedSession("s2", updatedAt: 10, readAt: 0)]))}"#)
+        #expect(await rig.wait { ThreadGroups.isUnseen(rig.client.session("s2")!, seen: rig.client.seen, floor: 0) })
+    }
+
+    @Test func `a read key keeps its marks on the phone`() async throws {
+        let rig = try ClientRig()
+        await rig.client.start()
+        let fake = await rig.sockets.socket(0)
+        fake.hello()
+        await rig.answerShell(fake, sessions: [markedSession("s1", updatedAt: 10, readAt: 0)])
+        #expect(await rig.wait { rig.client.sessions.count == 1 })
+        rig.client.markSeen("s1")
+        try? await Task.sleep(for: .milliseconds(1700))
+        #expect(rig.sent(fake, "session.markRead").isEmpty)
+    }
+
     @Test func `a cold launch paints the cached shell and tail before the socket is up`() async throws {
         let cache = try SessionCache.inMemory()
         try await cache.replaceProjects("env_test", [sampleProject("p1")])
