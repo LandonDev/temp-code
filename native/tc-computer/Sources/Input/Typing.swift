@@ -68,7 +68,7 @@ extension InputEngine {
             try ProcessTier.requireKeyWindow(pid: pid, window: target.window)
         }
         var effect: StepEffect = .unknown
-        let (_, change, last) = try core.step(tier: tier, pid: pid, windowID: target.windowID, window: target.window, keys: true, cancelled: target.cancelled) { ctx in
+        let (_, change, last) = try core.step(tier: tier, pid: pid, windowID: target.windowID, window: target.window, keys: true, call: target.sessionCall, cancelled: target.cancelled) { ctx in
             if tier == .session, let e = target.element { try ProcessTier.confirmFocus(e, pid: pid, clock: clock) }
             // activation may move focus: the evidence is read where the keys go, the app's focused element now
             let into = tier == .session && target.element == nil ? AX.element(AX.app(pid), "AXFocusedUIElement") : dest
@@ -139,7 +139,7 @@ extension InputEngine {
         }
         let insert: (() throws -> StepEffect?)? = insertFirst ? { [self] in try insertOnly(content.plain, target: target) } : nil
         let dest = { target.element?.element ?? focusedAtCheck }
-        return try core.paste(content, flow: flow, quietMs: target.pasteQuietMs, tier: tier, pid: pid, windowID: target.windowID, window: target.window, cancelled: target.cancelled, insert: insert, pressPaste: pressPaste, checks: checks, recheck: recheck, evidence: { evidence(dest()) })
+        return try core.paste(content, flow: flow, quietMs: target.pasteQuietMs, tier: tier, pid: pid, windowID: target.windowID, window: target.window, call: target.sessionCall, cancelled: target.cancelled, insert: insert, pressPaste: pressPaste, checks: checks, recheck: recheck, evidence: { evidence(dest()) })
     }
 
     /// `needs_tier { needed: 'session', menu }`: a disabled item in an inactive app (§24.2).

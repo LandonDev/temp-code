@@ -72,7 +72,7 @@ public final class ComputerService: @unchecked Sendable {
             clipboardLock: clipboardLock,
             sessionLock: sessionLock,
             recentForeignCopy: { ms in relay.service?.recentForeignCopy(withinMs: ms) ?? false },
-            onPersonInput: { pid in relay.service?.personInput(pid: pid) },
+            onPersonInput: { pid, tokens in relay.service?.personInput(pid: pid, tokens: tokens) },
             onHeld: { event in relay.service?.held.handle(event) }
         ))
         self.escape = EscapeWatch(
@@ -181,9 +181,19 @@ public final class ComputerService: @unchecked Sendable {
     // MARK: Person input and outbox
 
     /// Input saw the person's own input while a session held input on `pid`.
-    func personInput(pid: pid_t) {
-        guard let session = held.session(holding: pid) else { return }
-        interrupted(session: session)
+    /// The person tripped the guard between calls (§14.9.5): each call the trip is for hears it once, in
+    /// the session its call book entry names; the session holding input on `pid` too, unless it was
+    /// one of those calls'. With no token, the held ledger, else the call that last noted the pid.
+    func personInput(pid: pid_t, tokens: [Int] = []) {
+        var told: [String] = []
+        for token in tokens where book.markTold(token: token) {
+            if let s = book.session(token: token), !told.contains(s) { told.append(s) }
+        }
+        let theirs = Set(tokens.compactMap { book.session(token: $0) })
+        if let s = held.session(holding: pid) ?? (tokens.isEmpty ? book.sessionStepOwner(pid: pid) : nil), !theirs.contains(s), !told.contains(s) {
+            told.append(s)
+        }
+        for s in told { interrupted(session: s) }
     }
 
     func interrupted(session: String) {
@@ -208,6 +218,8 @@ public final class ComputerService: @unchecked Sendable {
         router.cancelAll()
         let box = InputBox(input: input)
         for (pid, _) in held.all { _ = try? await blocking { box.input.releaseHeld(pid: pid) } }
+        // the person guard's tap is off once nothing is held (§16.2)
+        _ = try? await blocking { box.input.endGuard() }
         let ending: [StreamEntry] = lock.withLock {
             defer { streams.removeAll() }
             return Array(streams.values)

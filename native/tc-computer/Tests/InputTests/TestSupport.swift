@@ -83,6 +83,15 @@ final class FakeWatch: PersonWatching, @unchecked Sendable {
     private var _armed = false, _tripped = false
     private var onTrip: (@Sendable () -> Void)?
     private(set) var arms = 0
+    private(set) var disarms = 0
+    /// what the guard's tap dropped, as the replay's plan reads it
+    var dropped: [GuardedEvent] = []
+    /// the indices each replay posted, in order
+    private(set) var replays: [[Int]] = []
+    /// arm, replay and disarm, in order
+    private(set) var log: [String] = []
+    private var _report: GuardReport?
+    var report: GuardReport? { lock.withLock { _report } }
     /// runs once, the next time `armed` is read, before it answers (a trip timed into a step's arming)
     var onArmedRead: (() -> Void)?
     var armed: Bool {
@@ -92,10 +101,31 @@ final class FakeWatch: PersonWatching, @unchecked Sendable {
     var tripped: Bool { lock.withLock { _tripped } }
 
     func arm(onTrip: @escaping @Sendable () -> Void) {
-        lock.withLock { _armed = true; _tripped = false; self.onTrip = onTrip; arms += 1 }
+        lock.withLock { _armed = true; _tripped = false; self.onTrip = onTrip; arms += 1; log.append("arm") }
     }
 
-    func disarm() { lock.withLock { _armed = false; onTrip = nil } }
+    func disarm() {
+        lock.withLock {
+            if _armed {
+                let replayed = replays.joined().filter { dropped[$0].isDownLike }.count
+                _report = GuardReport(mode: .active, dropped: dropped.filter(\.isDownLike).count, replayed: replayed)
+            }
+            _armed = false
+            onTrip = nil
+            disarms += 1
+            log.append("disarm")
+        }
+    }
+
+    /// Posts what the plan picks, asking `stillThere` before each down as the live tap does.
+    func replay(plan: ([GuardedEvent]) -> [Int], stillThere: () -> Bool) {
+        var posted: [Int] = []
+        for i in plan(dropped) {
+            if dropped[i].isDownLike, !stillThere() { break }
+            posted.append(i)
+        }
+        lock.withLock { replays.append(posted); log.append("replay") }
+    }
 
     /// The person touches a key or the mouse.
     func trip() {
@@ -120,6 +150,8 @@ final class FakeHost: SessionHost {
     var minimizedWindows: Set<Int> = []
     var focused: [Int32: Int] = [:]
     var refuseActivation = false
+    /// each app's focused element: Terminal's field is 11
+    var focusedElements: [Int32: Int] = [1: 11]
     var apps: [Int32: AppBrief] = [7: AppBrief(pid: 7, bundleId: "com.apple.TextEdit", name: "TextEdit"), 1: AppBrief(pid: 1, bundleId: "com.apple.Terminal", name: "Terminal")]
     /// called before each write, to let a test trip the watch mid-activation
     var beforeWrite: ((String) -> Void)?
@@ -150,6 +182,8 @@ final class FakeHost: SessionHost {
         return true
     }
     func warpPointer(to p: ScreenPoint) { log.append("warp \(p.x),\(p.y)"); pointerAt = p }
+    func focusedElement(pid: Int32) -> Int? { focusedElements[pid] }
+    func sameElement(_ e: Int, pid: Int32) -> Bool { focusedElements[pid] == e }
 }
 
 /// A core over the fakes, with what it told the shell.
@@ -162,18 +196,32 @@ final class Rig: @unchecked Sendable {
     private let state = NSLock()
     private var _heldEvents: [HeldEvent] = []
     private var _personInput: [pid_t] = []
+    private var _personTokens: [[Int]] = []
     var heldEvents: [HeldEvent] { state.withLock { _heldEvents } }
     var personInput: [pid_t] { state.withLock { _personInput } }
+    /// the call tokens each `onPersonInput` carried
+    var personTokens: [[Int]] { state.withLock { _personTokens } }
     lazy var core: InputCore<FakeHost> = InputCore(
         host: host, watch: watch, sessionLock: lock, sink: sink, clock: clock, layout: USANSILayout(),
-        onPersonInput: { [weak self] pid in self?.state.withLock { self?._personInput.append(pid) } },
+        onPersonInput: { [weak self] pid, tokens in
+            self?.state.withLock {
+                self?._personInput.append(pid)
+                self?._personTokens.append(tokens)
+            }
+        },
         onHeld: { [weak self] e in self?.state.withLock { self?._heldEvents.append(e) } }
     )
 
     init() { lock = FakeLock(clock: clock) }
 
-    func step<T>(_ tier: Tier, keys: Bool = false, _ body: (inout StepContext) throws -> T) throws -> (T, SessionChange?, UInt64?) {
-        try core.step(tier: tier, pid: 7, windowID: 70, window: 70, keys: keys, cancelled: { false }, body: body)
+    func step<T>(_ tier: Tier, keys: Bool = false, call: SessionCall = SessionCall(), _ body: (inout StepContext) throws -> T) throws -> (T, SessionChange?, UInt64?) {
+        try core.step(tier: tier, pid: 7, windowID: 70, window: 70, keys: keys, call: call, cancelled: { false }, body: body)
+    }
+
+    /// Waits up to 2 s for the between-calls path, which runs on another queue.
+    func waitForPersonInput(count: Int = 1) {
+        let deadline = Date().addingTimeInterval(2)
+        while personInput.count < count, Date() < deadline { Thread.sleep(forTimeInterval: 0.005) }
     }
 }
 

@@ -27,20 +27,26 @@ private struct Performed: Sendable {
     let returnedAt: UInt64
 }
 
+/// The call a step is in, for Input's person guard: its token, the host's person idle at its start.
+struct StepCall: Sendable {
+    let token: Int?
+    let personIdleMs: Int?
+}
+
 extension ComputerService {
     func registerActions() {
         // a cancelled action answers its normal result, the stopped step failed (spec §1)
         router.on("action.run", keepsResult: true) { [self] (p: Methods.ActionRun.Params, ctx) -> ActionResult in
             let result = try await runActions(
                 session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch,
-                actions: [p.action], tiers: p.tiers, stepWait: nil, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, ignored: p.ignored, ctx: ctx
+                actions: [p.action], tiers: p.tiers, stepWait: nil, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, personIdleMs: p.personIdleMs, ignored: p.ignored, ctx: ctx
             )
             return ActionResult(step: result.steps[0], observation: result.observation, observationError: result.observationError, front: result.front)
         }
         router.on("action.batch", keepsResult: true) { [self] (p: Methods.ActionBatch.Params, ctx) in
             try await runActions(
                 session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch,
-                actions: p.actions, tiers: p.tiers, stepWait: p.stepWait, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, ignored: p.ignored, ctx: ctx
+                actions: p.actions, tiers: p.tiers, stepWait: p.stepWait, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, personIdleMs: p.personIdleMs, ignored: p.ignored, ctx: ctx
             )
         }
     }
@@ -48,16 +54,17 @@ extension ComputerService {
     /// One or more actions on one app (shell §9.1): the steps in order, the `step` wait between those that can
     /// change the screen, a stop at the first failure, the `action` wait once after the last step that ran,
     /// one observation. `pasteQuietMs` goes to Input with every step: a paste refuses a copy that recent.
+    /// `personIdleMs` too: the person guard gives typing back only after a call whose person was that recent (§14.9.4).
     /// The whole call runs under the front guard (§23.4), its report on the result.
     func runActions(
         session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, actions: [ComputerAction],
-        tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int? = nil, ignored: IgnoredRoutes? = nil, ctx: RequestContext
+        tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil, ctx: RequestContext
     ) async throws -> BatchResult {
         let guarded = FrontRun(front, actions: actions, tiers: tiers, tail: env.timing.frontActionTail)
         do {
             let result = try await runActions(
                 session: session, app: app, window: window, launch: launch, epoch: callEpoch, actions: actions, tiers: tiers,
-                stepWait: stepWait, wait: wait, observe: observe, pasteQuietMs: pasteQuietMs, ignored: ignored, ctx: ctx, front: guarded
+                stepWait: stepWait, wait: wait, observe: observe, pasteQuietMs: pasteQuietMs, personIdleMs: personIdleMs, ignored: ignored, ctx: ctx, front: guarded
             )
             return result.with(front: guarded.answered(result, cancelled: ctx.cancel.isSet))
         } catch {
@@ -68,7 +75,7 @@ extension ComputerService {
 
     private func runActions(
         session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, actions: [ComputerAction],
-        tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int?, ignored: IgnoredRoutes?, ctx: RequestContext, front: FrontRun
+        tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int?, personIdleMs: Int?, ignored: IgnoredRoutes?, ctx: RequestContext, front: FrontRun
     ) async throws -> BatchResult {
         for action in actions {
             for element in [action.element, action.start_element].compactMap({ $0 }) {
@@ -91,6 +98,19 @@ extension ComputerService {
             )
         }
         defer { lease.release() }
+        // a call that may use the session tier is bracketed before any step, so a trip anywhere in it
+        // finds its session and marks it (§14.9.5)
+        let call = StepCall(token: tiers.contains(.session) ? input.callBegan(pid: target.pid) : nil, personIdleMs: personIdleMs)
+        if let token = call.token {
+            book.noteSessionStep(session: session, pid: target.pid)
+            book.beginCall(token: token, session: session, pid: target.pid)
+        }
+        defer {
+            if let token = call.token {
+                input.callEnded(token)
+                book.endCall(token: token)
+            }
+        }
 
         var steps: [StepResult] = []
         var last: StepRun?
@@ -100,7 +120,7 @@ extension ComputerService {
                 steps += notRun(actions, from: index + 1, first: .failed(FailedStep(index: index, action: action.action, error: Router.cancelledError)))
                 break
             }
-            var run = await step(index, action, target: target, tiers: tiers, maxEdge: observe?.maxEdge, pasteQuietMs: pasteQuietMs, ignored: ignored, ctx: ctx)
+            var run = await step(index, action, target: target, tiers: tiers, maxEdge: observe?.maxEdge, pasteQuietMs: pasteQuietMs, call: call, ignored: ignored, ctx: ctx)
             let isLast = index == actions.count - 1
             if !run.stops && !isLast, let t0 = run.t0, case .ok(let ok) = run.step {
                 let waited = await waitAfter(target, options: stepWait ?? ComputerDefaults.Wait.step, t0: t0, signature0: run.signature0, pasteboard: WaitRule.readsPasteboard(action), cancel: ctx.cancel)
@@ -156,7 +176,7 @@ extension ComputerService {
     }
 
     /// One step: the shell's own pictures and wait, or Input.
-    private func step(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], maxEdge: Int?, pasteQuietMs: Int?, ignored: IgnoredRoutes?, ctx: RequestContext) async -> StepRun {
+    private func step(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], maxEdge: Int?, pasteQuietMs: Int?, call: StepCall, ignored: IgnoredRoutes?, ctx: RequestContext) async -> StepRun {
         let thin = book.lastThin(target.session, pid: target.pid)
         switch action.action {
         case .screenshot, .zoom:
@@ -189,12 +209,12 @@ extension ComputerService {
                 return StepRun(step: failed(index, action, error, or: .windowNotFound))
             }
         default:
-            return await perform(index, action, target: target, tiers: tiers, pasteQuietMs: pasteQuietMs, ignored: ignored, ctx: ctx)
+            return await perform(index, action, target: target, tiers: tiers, pasteQuietMs: pasteQuietMs, call: call, ignored: ignored, ctx: ctx)
         }
     }
 
     /// Everything else, `cursor_position` included, goes to Input (shell §9.1 step 4).
-    private func perform(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], pasteQuietMs: Int?, ignored: IgnoredRoutes?, ctx: RequestContext) async -> StepRun {
+    private func perform(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], pasteQuietMs: Int?, call: StepCall, ignored: IgnoredRoutes?, ctx: RequestContext) async -> StepRun {
         let pixel = await pixelWatch(target)
         let keepAlive = keepWatchAlive(target, while: pixel != nil)
         defer { keepAlive?.cancel() }
@@ -216,7 +236,8 @@ extension ComputerService {
                 let start = try action.start_element.map { try reader.resolve($0) }
                 let inputTarget = InputTarget(
                     pid: pid, windowID: windowID, windowFrame: info.frame, window: window, space: space,
-                    element: element, startElement: start, cursor: cursor, cancelled: { flag.isSet }, pasteQuietMs: pasteQuietMs, ignored: ignored
+                    element: element, startElement: start, cursor: cursor, cancelled: { flag.isSet }, pasteQuietMs: pasteQuietMs, ignored: ignored,
+                    callToken: call.token, personIdleMs: call.personIdleMs
                 )
                 let sig0 = reader.changes.signature()
                 let outcome = try box.input.perform(action, on: inputTarget, tiers: tiers)
@@ -240,7 +261,8 @@ extension ComputerService {
             return StepRun(step: .ok(ok), t0: isCursor ? nil : (outcome.lastInputAt ?? done.returnedAt), signature0: done.signature0)
         } catch {
             let failure = ComputerService.failure(error, or: .actionUnsupported)
-            if failure.kind == .interrupted { interrupted(session: target.session) }
+            // once per call, whether this step or the between-calls path tells it first
+            if failure.kind == .interrupted, call.token.map(book.markTold) ?? true { interrupted(session: target.session) }
             if failure.kind == .permissionMissing { pokePermissions() }
             return StepRun(step: .failed(FailedStep(index: index, action: action.action, error: failure)))
         }

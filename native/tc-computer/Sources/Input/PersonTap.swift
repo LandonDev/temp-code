@@ -59,7 +59,7 @@ public final class LivePersonTap: PersonTapping, @unchecked Sendable {
         return report
     }
 
-    public func replay(plan: @escaping @Sendable ([GuardedEvent]) -> [Int], gapMs: Int, stillThere: @escaping @Sendable () -> Bool) {
+    public func replay(plan: ([GuardedEvent]) -> [Int], gapMs: Int, stillThere: () -> Bool) {
         var posted = Set<Int>()
         var down: Set<UInt16> = []
         var gone = false

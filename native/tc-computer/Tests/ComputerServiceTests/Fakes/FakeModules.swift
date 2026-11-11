@@ -299,6 +299,9 @@ final class FakeInput: InputPerforming, @unchecked Sendable {
     private(set) var stale: [HeldRecord] = []
     private(set) var cursors: [[Int]?] = []
     private(set) var quiets: [Int?] = []
+    private(set) var tokens: [Int?] = []
+    private(set) var idles: [Int?] = []
+    private var nextToken = 0
 
     init(wiring: InputWiring, log: CallLog) {
         self.wiring = wiring
@@ -310,6 +313,8 @@ final class FakeInput: InputPerforming, @unchecked Sendable {
         lock.withLock {
             cursors.append(target.cursor)
             quiets.append(target.pasteQuietMs)
+            tokens.append(target.callToken)
+            idles.append(target.personIdleMs)
         }
         if let onPerform = lock.withLock({ onPerform }) { return try onPerform(action, target) }
         if action.action == .cursorPosition { return InputOutcome(tier: nil, via: nil, clipboard: nil, cursor: target.cursor ?? [0, 0]) }
@@ -336,7 +341,26 @@ final class FakeInput: InputPerforming, @unchecked Sendable {
         lock.withLock { stale.append(record) }
     }
 
+    func callBegan(pid: pid_t) -> Int {
+        let token = lock.withLock { () -> Int in
+            nextToken += 1
+            return nextToken
+        }
+        log.add("callBegan \(pid) \(token)")
+        return token
+    }
+
+    func callEnded(_ token: Int) {
+        log.add("callEnded \(token)")
+    }
+
+    func endGuard() {
+        log.add("endGuard")
+    }
+
     var releasedPids: [pid_t] { lock.withLock { released } }
+    var seenTokens: [Int?] { lock.withLock { tokens } }
+    var seenPersonIdles: [Int?] { lock.withLock { idles } }
     var staleRecords: [HeldRecord] { lock.withLock { stale } }
     var seenCursors: [[Int]?] { lock.withLock { cursors } }
     var seenPasteQuiets: [Int?] { lock.withLock { quiets } }

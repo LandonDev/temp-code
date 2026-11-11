@@ -131,7 +131,10 @@ extension ComputerService {
             let box = InputBox(input: input)
             let afterInterrupt = p.afterInterrupt ?? false
             defer { front.restoreAnswered() }
-            return try await blocking { try box.input.restoreSession(afterInterrupt: afterInterrupt) }
+            let restored = try await blocking { try box.input.restoreSession(afterInterrupt: afterInterrupt) }
+            // the guard ended with it: a later trip belongs to the next guard's calls (§14.9.5)
+            book.clearSessionSteps()
+            return restored
         }
     }
 }

@@ -442,7 +442,7 @@ public protocol PersonTapping: AnyObject, Sendable {
     /// Posts, marked and `gapMs` apart, the buffered events `plan` picks from what it has buffered
     /// (asked again after each post, so what the person types meanwhile joins it), asking
     /// `stillThere` before each key down and modifier press and dropping the rest when it says no.
-    func replay(plan: @escaping @Sendable ([GuardedEvent]) -> [Int], gapMs: Int, stillThere: @escaping @Sendable () -> Bool)
+    func replay(plan: ([GuardedEvent]) -> [Int], gapMs: Int, stillThere: () -> Bool)
     /// Disables the tap and answers what it did since `enable`.
     func disable() -> GuardReport
 }

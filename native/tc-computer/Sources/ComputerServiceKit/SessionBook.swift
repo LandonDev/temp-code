@@ -16,8 +16,20 @@ public final class SessionBook: @unchecked Sendable {
         var spaces: [UInt32: CoordinateSpace] = [:]
     }
 
+    /// A call that may use the session tier, by its Input token (§14.9.5): kept past its end
+    /// until the restore clears it, so a trip told late still finds its session.
+    private struct CallEntry {
+        let session: String
+        let pid: Int32
+        var inFlight = true
+        var told = false
+    }
+
     private let lock = NSLock()
     private var sessions: [String: SessionState] = [:]
+    /// the session of the last call that may use the session tier, per pid, noted at the call's start
+    private var stepOwners: [Int32: String] = [:]
+    private var calls: [Int: CallEntry] = [:]
 
     public init() {}
 
@@ -94,6 +106,50 @@ public final class SessionBook: @unchecked Sendable {
 
     public func space(_ session: String, window: UInt32) -> CoordinateSpace? {
         lock.locked { sessions[session]?.spaces[window] }
+    }
+
+    // MARK: the person guard's calls (§14.9.5)
+
+    /// A call that may use the session tier is about to run its steps on `pid`.
+    public func noteSessionStep(session: String, pid: Int32) {
+        lock.locked { stepOwners[pid] = session }
+    }
+
+    public func sessionStepOwner(pid: Int32) -> String? {
+        lock.locked { stepOwners[pid] }
+    }
+
+    /// The restore: the step owners and the calls that ended are forgotten; a call in flight keeps its entry.
+    public func clearSessionSteps() {
+        lock.locked {
+            stepOwners = [:]
+            calls = calls.filter { $0.value.inFlight }
+        }
+    }
+
+    public func beginCall(token: Int, session: String, pid: Int32) {
+        lock.locked { calls[token] = CallEntry(session: session, pid: pid) }
+    }
+
+    public func endCall(token: Int) {
+        lock.locked { calls[token]?.inFlight = false }
+    }
+
+    public func callsInFlight(pid: Int32) -> [Int] {
+        lock.locked { calls.filter { $0.value.inFlight && $0.value.pid == pid }.map(\.key).sorted() }
+    }
+
+    public func session(token: Int) -> String? {
+        lock.locked { calls[token]?.session }
+    }
+
+    /// True the first time only: each call hears `session/interrupted` at most once, whichever path tells it first.
+    public func markTold(token: Int) -> Bool {
+        lock.locked {
+            guard let entry = calls[token], !entry.told else { return false }
+            calls[token]?.told = true
+            return true
+        }
     }
 
     private func update(_ session: String, _ pid: Int32, _ change: (inout AppState) -> Void) {

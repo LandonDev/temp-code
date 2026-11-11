@@ -278,8 +278,12 @@ public struct InputTarget {
     public let pasteQuietMs: Int?
     /// the call's `ignored`: routes and process classes this app was seen to ignore, run last (§24.1)
     public let ignored: IgnoredRoutes?
+    /// the call's token from `InputPerforming.callBegan`: a session step of a call the person came back during answers `interrupted` (§14.9.5)
+    public let callToken: Int?
+    /// the call's `personIdleMs`: the person guard gives typing back only when it was under 5 s (§14.9.4)
+    public let personIdleMs: Int?
 
-    public init(pid: pid_t, windowID: UInt32, windowFrame: ComputerProtocol.Rect, window: AXUIElement, space: CoordinateSpace, element: ResolvedElement?, startElement: ResolvedElement?, cursor: [Int]?, cancelled: @escaping @Sendable () -> Bool = { false }, pasteQuietMs: Int? = nil, ignored: IgnoredRoutes? = nil) {
+    public init(pid: pid_t, windowID: UInt32, windowFrame: ComputerProtocol.Rect, window: AXUIElement, space: CoordinateSpace, element: ResolvedElement?, startElement: ResolvedElement?, cursor: [Int]?, cancelled: @escaping @Sendable () -> Bool = { false }, pasteQuietMs: Int? = nil, ignored: IgnoredRoutes? = nil, callToken: Int? = nil, personIdleMs: Int? = nil) {
         self.pid = pid
         self.windowID = windowID
         self.windowFrame = windowFrame
@@ -291,6 +295,8 @@ public struct InputTarget {
         self.cancelled = cancelled
         self.pasteQuietMs = pasteQuietMs
         self.ignored = ignored
+        self.callToken = callToken
+        self.personIdleMs = personIdleMs
     }
 }
 
@@ -320,6 +326,17 @@ public protocol InputPerforming {
     func releaseHeld(pid: pid_t)
     /// the ups of a held record whose writer died, at its tier
     func releaseStale(_ record: HeldRecord)
+    /// a call that may use the session tier began, before any step; its token for `InputTarget.callToken`
+    func callBegan(pid: pid_t) -> Int
+    func callEnded(_ token: Int)
+    /// the exit path: the person guard ends with the held input (§16.2)
+    func endGuard()
+}
+
+extension InputPerforming {
+    public func callBegan(pid: pid_t) -> Int { 0 }
+    public func callEnded(_ token: Int) {}
+    public func endGuard() {}
 }
 
 #endif

@@ -2,14 +2,23 @@ import ComputerCore
 import ComputerProtocol
 import Foundation
 
-/// The person watch: armed from a session step's start until it ends, and longer while
-/// session-tier input stays held. Any input event without TC_EVENT_MARK trips it.
+/// The person watch: armed with the person guard (§14.9), from a session step's arm until the
+/// restore after it (or the guard's linger). Any input event without TC_EVENT_MARK trips it.
 public protocol PersonWatching: AnyObject, Sendable {
     /// Arms the watch, clearing an earlier trip; `onTrip` runs once at the person's first event, on any thread.
     func arm(onTrip: @escaping @Sendable () -> Void)
     func disarm()
     var armed: Bool { get }
     var tripped: Bool { get }
+    /// what the guard did, as of the last disarm
+    var report: GuardReport? { get }
+    /// gives back what `plan` picks of the dropped events (§14.9.4), while still armed
+    func replay(plan: ([GuardedEvent]) -> [Int], stillThere: () -> Bool)
+}
+
+extension PersonWatching {
+    public var report: GuardReport? { nil }
+    public func replay(plan: ([GuardedEvent]) -> [Int], stillThere: () -> Bool) {}
 }
 
 /// What the session tier reads and writes of the Mac; LiveSessionHost does it over AX,
@@ -46,10 +55,20 @@ public protocol SessionHost: SessionHostBase {
     func activate(_ app: AppBrief) -> Bool
     /// restore: puts the pointer back without an event
     func warpPointer(to p: ScreenPoint)
+    /// the app's focused element (AXFocusedUIElement), recorded when the person guard arms
+    func focusedElement(pid: Int32) -> Window?
+    /// the app's focused element is still `e`: the guard's replay goes only back where the person was typing
+    func sameElement(_ e: Window, pid: Int32) -> Bool
 }
 
 extension SessionHost {
     public func sessionIdleSeconds() -> Double { secondsSinceInput() }
+}
+
+/// What the person guard recorded when it armed: the app in front and its focused element.
+private struct ArmedFront<Window> {
+    let app: AppBrief
+    let element: Window?
 }
 
 func sessionUnavailable(_ reason: ErrorReason, _ message: String, session: SessionChange? = nil) -> ComputerFailure {
@@ -82,7 +101,8 @@ func isInterrupted(_ error: Error) -> Bool {
 /// The session tier's order of steps, generic over the host so the tests run it on a fake:
 /// refuse a locked screen or secure input, arm the watch, take the session lock, record
 /// what is in front, activate and confirm, run the body at the HID tap, and on every exit
-/// write the ledger and say what changed.
+/// write the ledger and say what changed. The watch arms the person guard (§14.9), which
+/// outlives the step: it ends with the restore after it, or by `GuardLife`'s rules.
 final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
     let host: Host
     let watch: PersonWatching
@@ -98,18 +118,70 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
     private let steps = NSLock()
     /// the pid whose held session input keeps `lockHold` between calls
     private var holdOwner: Int32?
-    /// what the engine does when the person trips the watch between calls
-    var onTripBetweenCalls: (@Sendable () -> Void)?
+    /// what the engine does when the person trips the watch with no step running, or once the step
+    /// that was running ended: the tokens of the calls the trip is for, and the pid of that step
+    /// when it stopped for the person (its own catch lets go of what the pid held)
+    var onTripBetweenCalls: (@Sendable (_ tokens: [Int], _ stoppedPid: Int32?) -> Void)?
     /// the person's trips so far: a step that waited compares it, since re-arming clears `watch.tripped`
     private var trips = 0
     /// monotonic seconds of the latest trip
     private var lastTripAt: Double?
+    /// the person guard's life, and the calls in flight with their marks
+    private var life = GuardLife()
+    /// the escape tap's cut, cleared when a guard arms
+    let cut: GuardCut
+    /// each call in flight: its start, its pid
+    private var calls: [Int: (startedAt: Double, pid: Int32)] = [:]
+    /// what the guard recorded at arm, for the replay
+    private var armedFront: ArmedFront<Host.Window>?
+    private var armedIdleMs: Int?
+    /// the pid of the last session step, and the call whose session step last armed the guard
+    private var lastStepPid: Int32?
+    private var guardToken: Int?
+    /// a trip while a step ran, handed on once the step is over
+    private var tripWhileRunning: [Int]?
+    /// the report of a guard that ended before a restore asked for it
+    private var endedReport: GuardReport?
+    /// one line for the service's log (the secure-input note at arm)
+    var trace: (@Sendable (String) -> Void)?
 
-    init(host: Host, watch: PersonWatching, sessionLock: MacLock, clock: InputClock) {
+    init(host: Host, watch: PersonWatching, sessionLock: MacLock, clock: InputClock, cut: GuardCut = .shared) {
         self.host = host
         self.watch = watch
         self.sessionLock = sessionLock
         self.clock = clock
+        self.cut = cut
+    }
+
+    /// A call that may use the session tier began; its token marks it until it ends.
+    func callBegan(pid: Int32) -> Int {
+        let now = clock.seconds()
+        return state.withLock {
+            let token = life.callBegan()
+            calls[token] = (now, pid)
+            return token
+        }
+    }
+
+    func callEnded(_ token: Int) {
+        let now = clock.seconds()
+        state.withLock {
+            calls[token] = nil
+            life.callEnded(token, now: now)
+        }
+    }
+
+    /// The person guard is on.
+    var guardOn: Bool { state.withLock { life.on } }
+
+    /// The pids the guard is for: every call in flight's, then the last session step's.
+    var guardOwners: [Int32] {
+        state.withLock {
+            var out = calls.keys.sorted().compactMap { calls[$0]?.pid }
+            if let p = lastStepPid { out.append(p) }
+            var seen = Set<Int32>()
+            return out.filter { seen.insert($0).inserted }
+        }
     }
 
     var record: SessionRecord? { state.withLock { ledger.record } }
@@ -125,25 +197,57 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
         state.withLock { ledger.personTripped(at: lastTripAt ?? now) }
     }
 
-    private func armWatch() {
+    /// Arms the guard and the watch for a session step of `call` on `pid`. The first step of a
+    /// guard records the person's app, its focused element and the idle the replay reads.
+    private func armWatch(call: SessionCall, pid: Int32) {
+        let now = clock.seconds()
+        let fresh = state.withLock { () -> Bool in
+            let fresh = !life.on
+            life.armed(now: now)
+            lastStepPid = pid
+            if let t = call.token { guardToken = t }
+            return fresh
+        }
+        if fresh {
+            cut.clear()
+            let front = host.frontmost()
+            let element = front.flatMap { host.focusedElement(pid: Int32($0.pid)) }
+            state.withLock {
+                var aged = call
+                aged.startedAt = call.token.flatMap { calls[$0]?.startedAt }
+                armedFront = front.map { ArmedFront(app: $0, element: element) }
+                armedIdleMs = aged.idle(atArm: now)
+            }
+            // keys pass the tap and the watch unseen while it is on (§14.9.8)
+            if host.secureInputOn() { trace?("[input] the person guard armed with secure input on") }
+        }
         guard !watch.armed else { return }
         watch.arm { [weak self] in
             guard let self else { return }
             let at = self.clock.seconds()
-            let between = self.state.withLock {
+            let between: [Int]? = self.state.withLock {
                 self.trips += 1
                 self.lastTripAt = at
-                return !self.running
+                var tokens = self.life.tripped(at: at)
+                if tokens.isEmpty, let t = self.guardToken { tokens = [t] }
+                if self.running {
+                    self.tripWhileRunning = tokens
+                    return nil
+                }
+                return tokens
             }
-            if between { self.onTripBetweenCalls?() }
+            if let between { self.onTripBetweenCalls?(between, nil) }
         }
     }
 
-    /// Lets the watch and the lock go when no step runs and nothing session-tier is held;
-    /// while something is, both stay (for `owner`) until its release calls this again.
+    /// Lets the lock go when no step runs and nothing session-tier is held; while something is,
+    /// it stays (for `owner`) until its release calls this again. The guard and its watch stay
+    /// either way: they end with the restore, or by `GuardLife`'s rules (`sweepGuard`).
     func settle(holding: Bool, owner: Int32? = nil) {
+        let now = clock.seconds()
         let release: MacLockHold? = state.withLock {
             guard !running else { return nil }
+            life.holding(holding, now: now)
             if holding {
                 // the step that started the hold owns it; another app's refused step never takes it over
                 if holdOwner == nil { holdOwner = owner }
@@ -156,7 +260,28 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
             return lockHold
         }
         release?.release()
-        if !holding, !state.withLock({ running }) { watch.disarm() }
+    }
+
+    /// Ends the guard once its rules say so; the engine's 1 s sweeper calls it.
+    func sweepGuard() {
+        let now = clock.seconds()
+        if state.withLock({ !running && life.expired(now: now) }) { endGuard() }
+    }
+
+    /// Ends the guard and disarms the watch, keeping the guard's report for the next restore.
+    /// The restore calls it after the replay; so does the exit path (§16.2).
+    func endGuard() {
+        let wasOn = state.withLock { () -> Bool in
+            defer {
+                life.ended()
+                armedFront = nil
+                armedIdleMs = nil
+                guardToken = nil
+            }
+            return life.on
+        }
+        watch.disarm()
+        if wasOn, let report = watch.report { state.withLock { endedReport = report } }
     }
 
     /// Takes the session lock in short tries for at most 5 s, stopping for a cancel and, for a
@@ -188,7 +313,10 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
     /// `holding` says, on every exit, whether session-tier input stays held, so the lock and the watch stay.
     /// `lastInput` is the step's last posted event (ticks), read once the body has returned or thrown:
     /// with the moment the watch armed it is the step's span on its change.
-    func run<T>(pid: Int32, window: Host.Window, keys: Bool, activate: Bool = true, cancelled: @escaping () -> Bool, holding: () -> Bool, lastInput: () -> UInt64? = { nil }, body: (_ check: @escaping () throws -> Void) throws -> T) throws -> (T, SessionChange) {
+    /// `call`: the call the step is in; a call the person tripped the guard during answers `interrupted` before it arms.
+    func run<T>(pid: Int32, window: Host.Window, keys: Bool, activate: Bool = true, call: SessionCall = SessionCall(), cancelled: @escaping () -> Bool, holding: () -> Bool, lastInput: () -> UInt64? = { nil }, body: (_ check: @escaping () throws -> Void) throws -> T) throws -> (T, SessionChange) {
+        // the person came back during this call: nothing raises the app again (§14.9.5)
+        if let t = call.token, state.withLock({ life.isMarked(t) }) { throw interruptedByPerson() }
         if host.screenLocked() { throw sessionUnavailable(.locked, "The screen is locked; the session tier can't use the keyboard or mouse.") }
         if keys, host.secureInputOn() {
             throw sessionUnavailable(.secureInput, "Secure input is on (a password field has focus somewhere); keys can't be sent.")
@@ -206,18 +334,35 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
         // the span starts here: the system's idle before anything of the step's, then the watch
         let idleAtArm = host.sessionIdleSeconds()
         let arm = TickEpoch.now(clock)
-        armWatch()
+        armWatch(call: call, pid: pid)
         state.withLock { running = true }
+        var stoppedByPerson = false
         defer {
-            state.withLock { running = false }
+            let now = clock.seconds()
+            let handOn: [Int]? = state.withLock {
+                running = false
+                life.stepEnded(now: now)
+                defer { tripWhileRunning = nil }
+                return tripWhileRunning
+            }
             settle(holding: holding(), owner: pid)
+            // a trip the step met, thrown or after its last check: told for every call it is for, once
+            if let handOn { onTripBetweenCalls?(handOn, stoppedByPerson ? pid : nil) }
         }
         // the person took over since this step began (a trip that let a held button go, and the
         // re-arm cleared it): checked once the watch is armed, so a later trip latches instead
-        if state.withLock({ trips }) != tripsAtStart { throw interruptedByPerson() }
+        if state.withLock({ trips }) != tripsAtStart {
+            stoppedByPerson = true
+            throw interruptedByPerson()
+        }
         if state.withLock({ lockHold == nil }) {
-            let h = try takeLock(cancelled: cancelled)
-            state.withLock { lockHold = h }
+            do {
+                let h = try takeLock(cancelled: cancelled)
+                state.withLock { lockHold = h }
+            } catch {
+                stoppedByPerson = isInterrupted(error)
+                throw error
+            }
         }
 
         let before = (host.frontmost(), host.pointer())
@@ -236,6 +381,7 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
         } catch {
             let after = (host.frontmost(), host.pointer())
             let interrupted = isInterrupted(error)
+            stoppedByPerson = interrupted
             state.withLock { ledger.stepEnded(frontmost: after.0, pointer: after.1, now: clock.seconds(), interrupted: interrupted, trippedAt: interrupted ? lastTripAt : nil) }
             let span = SessionSpan.of(arm: arm, idleSeconds: idleAtArm, lastTicks: lastInput())
             throw withSession(error, SessionLedger.change(before: before, after: after, restorable: true, span: span))
@@ -270,8 +416,12 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
 
     /// `input.restoreSession`, after the engine released the held session input: takes the lock and
     /// puts back each half the ledger allows, then forgets the record. `afterInterrupt`, within
-    /// 2 s of the person's trip, skips the person check (SessionLedger.plan).
+    /// 2 s of the person's trip, skips the person check (SessionLedger.plan). Then the guard gives
+    /// back the person's typing (§14.9.4), ends, and its report rides the answer.
     func restore(afterInterrupt: Bool = false, cancelled: () -> Bool = { false }) throws -> SessionRestore {
+        state.withLock { life.restoreBegan() }
+        var ended = false
+        defer { if !ended { state.withLock { life.restoreFailed() } } }
         let deadline = clock.seconds() + InputTiming.sessionLockWaitS
         try waitFor({ steps.try() }, deadline: deadline, cancelled: cancelled, watchPerson: false)
         defer { steps.unlock() }
@@ -290,6 +440,28 @@ final class SessionDriver<Host: SessionHost>: @unchecked Sendable {
         }
         if let p = plan.movePointer { host.warpPointer(to: p) }
         state.withLock { ledger.clear() }
-        return SessionRestore(frontmost: plan.frontmost, pointer: plan.pointer, held: put)
+        replay(frontmost: plan.frontmost, put: put)
+        endGuard()
+        ended = true
+        let report = state.withLock { () -> GuardReport? in
+            defer { endedReport = nil }
+            return endedReport
+        }
+        return SessionRestore(frontmost: plan.frontmost, pointer: plan.pointer, held: put, personGuard: report?.wire)
+    }
+
+    /// The person's typing back into the field they were in, when ReplayContext allows it.
+    private func replay(frontmost: RestoreOutcome, put: AppBrief?) {
+        let (front, idle) = state.withLock { (armedFront, armedIdleMs) }
+        guard watch.armed, let front, let element = front.element, let put, put.pid == front.app.pid else { return }
+        let pid = Int32(put.pid)
+        let same = frontmost == .restored && host.sameElement(element, pid: pid)
+        let context = ReplayContext(tripped: watch.tripped, personIdleMs: idle, frontmost: frontmost, sameElement: same)
+        guard context.allows else { return }
+        watch.replay(
+            // read at each plan: an Escape taken during the replay still cuts it
+            plan: { ReplayPlan.plan($0, cut: self.cut.value, context: context) },
+            stillThere: { self.host.frontmost()?.pid == put.pid && self.host.sameElement(element, pid: pid) }
+        )
     }
 }

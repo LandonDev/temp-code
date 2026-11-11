@@ -95,6 +95,16 @@ public final class LiveSessionHost: SessionHost, @unchecked Sendable {
         return frontmost()?.pid == app.pid
     }
 
+    public func focusedElement(pid: Int32) -> AXUIElement? {
+        let app = AX.app(pid)
+        AX.setTimeout(app, seconds: InputTiming.axTimeoutS)
+        return AX.element(app, "AXFocusedUIElement")
+    }
+
+    public func sameElement(_ e: AXUIElement, pid: Int32) -> Bool {
+        AX.same(focusedElement(pid: pid), e)
+    }
+
     /// Moves the pointer back with no event to any app, then lets the mouse drive it again at once.
     public func warpPointer(to p: ScreenPoint) {
         CGWarpMouseCursorPosition(p.cg)
