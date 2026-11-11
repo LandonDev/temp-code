@@ -29,6 +29,8 @@ import { HostSection, type HostMenuAction } from "./HostSection";
 import { rpc } from "./rpc";
 import { HostSync, LocalSync } from "./Sync";
 import { ThisHost } from "./ThisHost";
+import { KeepAwakeRow } from "./KeepAwake";
+import type { KeepAwakeStatusWire } from "@server/shared/contract-power";
 
 /**
  * Settings → Hosts (docs/LAYOUT.md "Settings"): this machine and every host
@@ -57,6 +59,7 @@ type RemoteData = {
   harness: HarnessSyncStatus | null;
   memory: MemorySyncStatus | null;
   attachments: AttachmentSettings | null;
+  power: KeepAwakeStatusWire | null;
 };
 
 /** This host's remote access: the listener, its clients and the sync, read every 5 s so a phone pairing shows without a click. */
@@ -65,7 +68,7 @@ function useRemoteData() {
   const [error, setError] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     try {
-      const [status, keys, pairings, sessions, harness, memory, attachments] = await Promise.all([
+      const [status, keys, pairings, sessions, harness, memory, attachments, power] = await Promise.all([
         rpc<RemoteStatus>("remote.status"),
         rpc<RemoteKey[]>("remote.keys.list"),
         rpc<RemotePairing[]>("remote.pairings.list"),
@@ -74,8 +77,9 @@ function useRemoteData() {
         rpc<HarnessSyncStatus>("harness.status").catch(() => null),
         rpc<MemorySyncStatus>("memory.status").catch(() => null),
         rpc<AttachmentSettings>("attachment.settings", {}).catch(() => null),
+        rpc<KeepAwakeStatusWire>("power.status", {}).catch(() => null),
       ]);
-      setData({ status, keys, pairings, sessions, harness, memory, attachments });
+      setData({ status, keys, pairings, sessions, harness, memory, attachments, power });
       setError(null);
     } catch (err) {
       setError(errorText(err));
@@ -171,7 +175,7 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
       <PageSkeleton />
     );
   }
-  const { status, keys, pairings, sessions, harness, memory, attachments } = remote.data;
+  const { status, keys, pairings, sessions, harness, memory, attachments, power } = remote.data;
   const sections = hostSections({ environments, saved: hosts.saved, bridgeHosts, deviceHosts: deviceHosts ?? [], web });
   const close = (): void => setDialog(null);
   const onMenu = (env: SavedEnvironment) => (action: HostMenuAction) =>
@@ -204,6 +208,9 @@ export function HostsPage({ onOpenSession }: { onOpenSession?: (sessionId: strin
                     onSettings={(patch) => remote.act("remote.settings.set", patch)}
                     onAct={remote.act}
                   />
+                  {power?.supported ? (
+                    <KeepAwakeRow status={power} onSet={(keepAwake) => remote.act("power.settings.set", { keepAwake })} />
+                  ) : null}
                   <HostAdmission environmentId={section.id} />
                   {web ? null : <LoadLimitRow />}
                 </>
