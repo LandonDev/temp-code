@@ -18,7 +18,11 @@ TempCode's computer-use service on the Mac: one Swift process per app instance t
 
 Only the `tc-computer` product ships: `scripts/lib/tcComputerBuild.ts` builds `--product tc-computer` into `resources/native/tc-computer`.
 
-Tests: `bun run computer:test` on the Mac (every target). The whole package builds only on the Mac, so on the box the Linux toolchain under `~/toolchains` runs `sh scripts/computer-text-test.sh`: `InputPureTests` (Input's FallbackTests.swift), `ComputerProtocolTests`, `ComputerServiceKitTests` and `AXTextTests` from a scratch package linked back into the checkout, the goldens of `src/main/server/computer/fixtures/apps` included (`TC_AX_GOLDEN=update` rewrites them in place; read each before committing).
+Tests: `bun run computer:test` on the Mac (every target). The whole package builds only on the Mac, so on the box the Linux toolchain under `~/toolchains` runs `sh scripts/computer-text-test.sh`: `InputPureTests` (Input's FallbackTests.swift and PersonGuardTests.swift), `ComputerProtocolTests`, `ComputerServiceKitTests` and `AXTextTests` from a scratch package linked back into the checkout, the goldens of `src/main/server/computer/fixtures/apps` included (`TC_AX_GOLDEN=update` rewrites them in place; read each before committing).
+
+## Event taps
+
+The service makes two active `CGEventTap`s at the session tap point, never at the HID point, and both need only the Accessibility grant. The escape tap (`ComputerService/EscapeTap.swift`) is head-inserted and runs only while `escape.watch` is on; the person guard's tap (`Input/PersonTap.swift`) is tail-appended and enabled only while a guard is on (docs/computer-protocol.md §14.9). Head-insert puts a tap before the taps already there and tail-append after them, so the escape tap sees every event first whichever was made first: the person's Escape is taken there, and its timestamp cuts the guard's replay. No unit test makes either tap.
 
 ## stdout
 

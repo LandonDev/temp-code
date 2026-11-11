@@ -2241,6 +2241,12 @@ why and the measured headline.
   access; answered Run now while Away is on). One session call at a time per host; the person's app and
   pointer go back after it. A paste waits out the person's copy
   (`RECENT_COPY_MS`). main feeds it `PersonIdle` (src/main/personIdle.ts).
+  From a session step's start until the restore after it, the person
+  guard (an active session tap, `PersonTap.swift`) drops the person's keys,
+  clicks and wheel and lets pointer moves through, so nothing they do lands
+  in the raised window; a person who was typing when the step began gets
+  their plain typing back in the field they were in, never a shortcut,
+  Return or Escape (docs/computer-protocol.md §14.9).
 - **What the person sees** (§8 "What the person sees"). A Computer row per
   live session in the right panel's Activity section
   (src/renderer/src/lib/computerSessions.ts, the tier in
@@ -2299,6 +2305,8 @@ why and the measured headline.
   over SSH (the real pair), `script:e2e-computer-ax` and
   `script:e2e-computer-input` (the person away), `script:e2e-computer-capture`
   (Screen Recording), `script:e2e-computer-schedule` (the session tier),
+  `script:e2e-person-guard` (a person's real keys, clicks and Escape
+  during a session step; a person at the keys),
   `script:e2e-computer-preview` whole (it takes Escape for two seconds),
   `script:e2e-computer-images` and `script:e2e-computer-ui` (real model
   turns), `script:compare-computer-words` (48 model runs, about 25 minutes)
