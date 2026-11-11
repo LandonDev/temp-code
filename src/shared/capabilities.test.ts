@@ -119,6 +119,8 @@ describe('METHOD_CAPABILITY', () => {
         ...methods.filter((m) => m.startsWith('memory.')),
         // A host's per-file attachment limit.
         'attachment.settings.set',
+        // This Mac's keep-awake setting (contract-power.ts).
+        'power.settings.set',
         'away.apply',
         // A stored agent page, read by another host's main process over the peer link.
         'page.read',

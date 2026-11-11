@@ -5,12 +5,13 @@ import TempCodeContract
 
 /// The wire's row for a relayed host, as JSON, so the tests never depend on
 /// the generated type's memberwise init. Shared with the registry and live suites.
-func presenceJSON(id: String = "env_mac", name: String = "Studio Mac", platform: String = "darwin", link: String = "up", screen: String = "unlocked", power: String = "awake", since: Int = 0, build: String = "null") -> String {
-    #"{"environmentId":"\#(id)","name":"\#(name)","platform":"\#(platform)","link":"\#(link)","since":\#(since),"screen":"\#(screen)","power":"\#(power)","lastSeenAt":null,"build":\#(build)}"#
+func presenceJSON(id: String = "env_mac", name: String = "Studio Mac", platform: String = "darwin", link: String = "up", screen: String = "unlocked", power: String = "awake", since: Int = 0, build: String = "null", saver: Bool = false) -> String {
+    let saverKey = saver ? #""saver":true,"# : ""
+    return #"{"environmentId":"\#(id)","name":"\#(name)","platform":"\#(platform)","link":"\#(link)","since":\#(since),"screen":"\#(screen)","power":"\#(power)",\#(saverKey)"lastSeenAt":null,"build":\#(build)}"#
 }
 
-func presence(id: String = "env_mac", name: String = "Studio Mac", platform: String = "darwin", link: String = "up", screen: String = "unlocked", power: String = "awake", since: Int = 0) -> HostPresence {
-    try! JSONDecoder().decode(HostPresence.self, from: Data(presenceJSON(id: id, name: name, platform: platform, link: link, screen: screen, power: power, since: since).utf8))
+func presence(id: String = "env_mac", name: String = "Studio Mac", platform: String = "darwin", link: String = "up", screen: String = "unlocked", power: String = "awake", since: Int = 0, saver: Bool = false) -> HostPresence {
+    try! JSONDecoder().decode(HostPresence.self, from: Data(presenceJSON(id: id, name: name, platform: platform, link: link, screen: screen, power: power, since: since, saver: saver).utf8))
 }
 
 private let utc: Calendar = {
@@ -70,6 +71,13 @@ struct RelayWordsTests {
     @Test func `the subline names the carrier and adds the presence`() {
         #expect(RelayWords.subline(presence(), carrierName: "box", lockedSince: nil, now: noon, calendar: utc, locale: posix) == "through box")
         #expect(RelayWords.subline(presence(power: "asleep"), carrierName: "box", lockedSince: nil, now: noon, calendar: utc, locale: posix) == "through box, asleep")
+        #expect(RelayWords.subline(presence(saver: true), carrierName: "box", lockedSince: nil, now: noon, calendar: utc, locale: posix) == "through box, screen saver on")
+    }
+
+    @Test func `a passwordless screen saver is available, says so on the row and nowhere else`() {
+        #expect(RelayState(presence(saver: true)) == .available)
+        #expect(RelayWords.rowLine(presence(saver: true), lockedSince: nil, now: noon, calendar: utc, locale: posix) == "screen saver on")
+        #expect(RelayWords.stripLine(presence(saver: true), lockedSince: nil, now: noon, calendar: utc, locale: posix) == nil)
     }
 
     @Test func `the strip line speaks only when locked`() {

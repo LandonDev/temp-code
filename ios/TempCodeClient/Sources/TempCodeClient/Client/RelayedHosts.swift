@@ -237,12 +237,14 @@ public enum RelayWords {
     }
 
     /// The row's dim line, with no subject (the row's title is the host):
-    /// nil when available; "locked since 9:14" (or "locked" before the phone
-    /// saw the move), "asleep" or "unreachable since 9:14".
+    /// nil when available; "screen saver on" while a passwordless saver is
+    /// up (still available: screen work dismisses it); "locked since 9:14"
+    /// (or "locked" before the phone saw the move), "asleep" or
+    /// "unreachable since 9:14".
     public static func rowLine(_ presence: HostPresence, lockedSince: Int?, now: Date, calendar: Calendar = .current, locale: Locale = .current) -> String? {
         switch RelayState(presence) {
         case .available:
-            return nil
+            return presence.saver == true ? "screen saver on" : nil
         case .locked:
             guard let lockedSince else { return "locked" }
             return "locked since \(since(lockedSince, now: now, calendar: calendar, locale: locale))"

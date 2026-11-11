@@ -2928,10 +2928,11 @@ public struct HostPresence: Codable, Hashable, Sendable {
     public let since: Int
     public let screen: ScreenState
     public let power: PowerState
+    public let saver: Bool?
     public let lastSeenAt: Int?
     public let build: BuildFacts?
 
-    public init(environmentId: String, name: String, platform: String, link: Link, since: Int, screen: ScreenState, power: PowerState, lastSeenAt: Int?, build: BuildFacts?) {
+    public init(environmentId: String, name: String, platform: String, link: Link, since: Int, screen: ScreenState, power: PowerState, saver: Bool? = nil, lastSeenAt: Int?, build: BuildFacts?) {
         self.environmentId = environmentId
         self.name = name
         self.platform = platform
@@ -2939,12 +2940,13 @@ public struct HostPresence: Codable, Hashable, Sendable {
         self.since = since
         self.screen = screen
         self.power = power
+        self.saver = saver
         self.lastSeenAt = lastSeenAt
         self.build = build
     }
 
     private enum CodingKeys: String, CodingKey {
-        case environmentId, name, platform, link, since, screen, power, lastSeenAt, build
+        case environmentId, name, platform, link, since, screen, power, saver, lastSeenAt, build
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -2956,6 +2958,7 @@ public struct HostPresence: Codable, Hashable, Sendable {
         try container.encode(since, forKey: .since)
         try container.encode(screen, forKey: .screen)
         try container.encode(power, forKey: .power)
+        try container.encodeIfPresent(saver, forKey: .saver)
         try container.encode(lastSeenAt, forKey: .lastSeenAt)
         try container.encode(build, forKey: .build)
     }
