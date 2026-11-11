@@ -24,6 +24,7 @@
  *                                 streaming turn with a growing Edit and live edits into ios-streaming; 409 while
  *                                 one runs. `frames` ends the answer after that many deltas (no Edit), `rows` after
  *                                 that many rows; `hold` leaves the turn open; `intervalMs` paces the deltas (7)
+ *   POST /quiet                 → stops the load and a stream that still plays (its turn ends: turn-complete, idle)
  *   POST /load { seconds, children? }  → the host's other traffic for that long (the perf fixtures, TC_TEST_PERF_SEEDS=1):
  *                                 metas at 10 a second on 12 sessions outside the perf project, events at 20 a second
  *                                 into 6 of them, one status flip in the perf project's sibling, and with `children`
@@ -68,13 +69,15 @@
  * the unreachable one is refused 503.
  */
 import { createServer, Server as HttpServer } from 'node:http'
-import { execFileSync, spawn } from 'node:child_process'
+import { execFileSync, fork, spawn, type Serializable } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { deflateSync } from 'node:zlib'
 import { configure } from 'aliax-core'
 import { startServer } from '../src/main/server/index'
+import type { ExecBrokerLink } from '../src/main/server/execBroker'
+import { brokerPort, type BrokerPortLike } from '../src/main/server/execBrokerWire'
 import { failAnswers } from '../src/main/server/answerSeams'
 import { BUILT_IN_DRIVERS } from '../src/main/server/drivers'
 import type { DriverHandle } from '../src/main/server/drivers/types'
@@ -207,10 +210,28 @@ if (process.env.TC_TEST_NO_HARNESS === '1') {
 }
 // The host's id is made in its data dir before the boot, so the fake devices gatherer can carry it.
 const environmentId = loadEnvironmentId(root)
+// Helper children from a small process of their own, as the app's host runs
+// them (scripts/lib/ios-test-exec-broker.ts): in process, the guard's `ps`
+// spawns held this loop for seconds at a time on a busy Mac.
+const brokerEntry = process.env.TC_TEST_EXEC_BROKER
+const spawnExecBroker = brokerEntry
+  ? (): ExecBrokerLink => {
+      const child = fork(brokerEntry, [], { serialization: 'advanced', stdio: ['ignore', 'ignore', 'inherit', 'ipc'], env: { ...process.env, TC_TEST_EXEC_MAIN_PID: String(process.pid) } })
+      const port = {
+        postMessage: (message: unknown) => void child.send(message as Serializable),
+        on: (event: 'message' | 'close', fn: (e?: { data: unknown }) => void) =>
+          event === 'message' ? child.on('message', (data) => fn({ data })) : child.on('disconnect', () => fn()),
+        start: () => {},
+        close: () => child.disconnect()
+      } as unknown as BrokerPortLike
+      return { wire: brokerPort(port), kill: () => void child.kill(), onExit: (fn) => void child.once('exit', (code) => fn(code)) }
+    }
+  : undefined
 const server = await startServer(dbPath, {
   claimShim: false,
   remotePort: 0,
   assets,
+  spawnExecBroker,
   devices: new MacDevices(fakeMacDevicesDeps(environmentId, { session: (id) => (id === 'ios-resources' ? { title: 'Clean up after the simulator run', status: 'idle' } : null) }))
 })
 if (!server.remote || server.remote.port === 0) throw new Error('the remote listener did not bind')
@@ -2079,6 +2100,21 @@ const control = createServer((req, res) => {
         const limits: StreamLimits = { frames: count(body.frames), rows: count(body.rows), hold: body.hold === true, intervalMs: count(body.intervalMs) }
         void playStream(sessionId, Number(body.cps ?? 300), Number(body.seconds ?? 12), Number(body.seed ?? 1), body.markup === true, limits).catch((err) => console.error('[stream]', err))
         return answer(200, { started: sessionId })
+      }
+      case '/quiet': {
+        // Between perf runs: the load and a stream the last run started stop, so the next run
+        // measures its own traffic alone. A stream cut short ends its turn as a turn ends.
+        // Both slots free at once: a stopped run emits nothing more, though a stream may sleep 4 s before it returns.
+        const stream = streamRun
+        if (loadRun) loadRun.stopped = true
+        loadRun = null
+        streamRun = null
+        if (stream && !stream.stopped) {
+          stream.stopped = true
+          registry.append(stream.sessionId, { type: 'turn-complete' })
+          registry.append(stream.sessionId, { type: 'status', status: 'idle' })
+        }
+        return answer(200, { quiet: true })
       }
       case '/load': {
         // The perf fixtures' other traffic; one at a time.

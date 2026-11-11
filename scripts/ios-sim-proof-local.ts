@@ -16,10 +16,17 @@ if (bundle.error || bundle.status !== 0) {
   console.error(`esbuild failed: ${bundle.error?.message ?? `exit ${bundle.status}`}`)
   process.exit(bundle.status ?? 1)
 }
+// The server's helper children run from a process of their own (scripts/lib/ios-test-exec-broker.ts).
+const broker = resolve(repo, 'scripts/.out/ios-test-exec-broker.mjs')
+const brokerBundle = spawnSync(resolve(repo, 'node_modules/.bin/esbuild'), ['scripts/lib/ios-test-exec-broker.ts', '--bundle', '--platform=node', '--format=esm', `--outfile=${broker}`, '--log-level=warning'], { cwd: repo, stdio: 'inherit' })
+if (brokerBundle.error || brokerBundle.status !== 0) {
+  console.error(`esbuild failed: ${brokerBundle.error?.message ?? `exit ${brokerBundle.status}`}`)
+  process.exit(brokerBundle.status ?? 1)
+}
 
 // The perf set reads what its fixtures and the control panel write: 16,000 seeded rows more, and no CLI behind any thread.
 const perf = process.env.TC_PROOF_SET === 'perf'
-const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'], env: perf ? { ...process.env, TC_TEST_PERF_SEEDS: '1', TC_TEST_NO_HARNESS: '1' } : process.env })
+const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, TC_TEST_EXEC_BROKER: broker, ...(perf ? { TC_TEST_PERF_SEEDS: '1', TC_TEST_NO_HARNESS: '1' } : {}) } })
 const ready = await new Promise<{ baseUrl: string; controlUrl: string; pairingLink: string; pairingLinkOperate: string; adminPairing?: string; second?: { pairingLink: string } }>((ok, bad) => {
   let buffer = ''
   const timer = setTimeout(() => bad(new Error('the test server did not come up in 120 s')), 120_000)

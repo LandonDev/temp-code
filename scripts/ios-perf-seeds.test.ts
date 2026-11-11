@@ -4,6 +4,8 @@ import { resolve } from 'node:path'
 import { PERF_CHILDREN, PERF_LOAD, PERF_THREADS, perfThread } from './lib/ios-perf-seeds'
 
 const server = readFileSync(resolve(import.meta.dirname, 'ios-client-test-server.ts'), 'utf8')
+const proof = readFileSync(resolve(import.meta.dirname, 'ios-sim-proof.sh'), 'utf8')
+const local = readFileSync(resolve(import.meta.dirname, 'ios-sim-proof-local.ts'), 'utf8')
 
 describe('the perf fixtures', () => {
   it('hold exactly the rows they name, closed and idle', () => {
@@ -39,6 +41,10 @@ describe('the perf fixtures', () => {
     expect(replies.some((t) => t.includes('```ts'))).toBe(true)
     expect(replies.some((t) => t.includes('| --- |'))).toBe(true)
     expect(replies.some((t) => t.includes('\n- '))).toBe(true)
+    // Every shell call is backgrounded: the host's process guard would end each foreground one through `ps` when the thread closes.
+    const shells = calls.filter((e) => e.type === 'tool-call' && e.name === 'Bash')
+    expect(shells.length).toBeGreaterThan(1_000)
+    expect(shells.every((e) => e.type === 'tool-call' && (e.input as { run_in_background?: boolean }).run_in_background === true)).toBe(true)
     // Every call id is its own: a repeat would fold two calls into one row.
     const ids = calls.map((e) => (e.type === 'tool-call' ? e.callId : ''))
     expect(new Set(ids).size).toBe(ids.length)
@@ -58,5 +64,16 @@ describe('the test server', () => {
     expect(server).toMatch(/case '\/load':/)
     expect(server).toMatch(/frames: count\(body\.frames\)/)
     expect(server).toMatch(/rows: count\(body\.rows\)/)
+  })
+  it('goes quiet between runs: the load and a stream stop, and the stream\'s turn ends', () => {
+    const quiet = server.slice(server.indexOf("case '/quiet':"), server.indexOf("case '/load':"))
+    expect(quiet).toMatch(/loadRun\.stopped = true/)
+    expect(quiet).toMatch(/stream\.stopped = true[\s\S]*turn-complete[\s\S]*status: 'idle'/)
+    expect(proof).toMatch(/simctl terminate[^\n]*\n[^\n]*\n\s*curl[^\n]*\/quiet/)
+  })
+  it('runs its helper children from a broker process when the proof names one', () => {
+    expect(server).toMatch(/process\.env\.TC_TEST_EXEC_BROKER/)
+    expect(server).toMatch(/spawnExecBroker,/)
+    expect(local).toMatch(/TC_TEST_EXEC_BROKER: broker/)
   })
 })

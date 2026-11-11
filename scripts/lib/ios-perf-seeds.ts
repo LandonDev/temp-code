@@ -96,7 +96,10 @@ function call(rand: () => number, id: string): AgentEvent[] {
     const lines: string[] = []
     for (let size = 0; size < bytes; size += 64) lines.push(` ✓ src/main/server/row-${lines.length}.test.ts (${1 + Math.floor(rand() * 40)} tests) ${Math.floor(rand() * 900)}ms`)
     return [
-      { type: 'tool-call', callId: id, name: 'Bash', input: { command, description: command }, preview: { kind: 'shell', title: command } },
+      // Backgrounded: the host's process guard leaves these calls alone. In the
+      // foreground, the thread's closing idle ended some 2,800 of them at once,
+      // and each end read every process on the Mac, for an hour.
+      { type: 'tool-call', callId: id, name: 'Bash', input: { command, description: command, run_in_background: true }, preview: { kind: 'shell', title: command } },
       { type: 'tool-result', callId: id, output: lines.join('\n') || 'ok', isError: rand() < 0.04 }
     ]
   }

@@ -1519,6 +1519,8 @@ LINE
     echo "ios-sim-proof: perf $name: no report" >&2
   fi
   xcrun simctl terminate "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
+  # The run's load and stream outlive it on the host (a 40 s load under 15 s of typing): stop them before the next run.
+  curl -s -m 5 -X POST "$TC_TEST_CONTROL_URL/quiet" >/dev/null 2>&1 || true
 }
 perf_set() {
   [ -n "${TC_TEST_CONTROL_URL:-}" ] || { echo "ios-sim-proof: the perf set needs TC_TEST_CONTROL_URL" >&2; return 2; }
