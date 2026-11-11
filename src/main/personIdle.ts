@@ -7,13 +7,13 @@ import type { IdleSource } from './attention'
  * would read as the person coming back: the scheduler would hold the thread's
  * next session step for two minutes, and attention.ts would flip to present.
  *
- * The service's person watch is armed for exactly the life of each session
- * step and stops it on any input it did not post, so a step that ran to its
- * end is a span the host may take out, and only the span: the gaps between a
- * batch's steps and a call's closing wait have no watch, and input there
- * stays the person's. While a call is out (`beginOwn` until `end`) every
- * input after its start reads as the app's, since its spans are not known
- * yet; `end` replaces that with the spans alone.
+ * The service's person watch lives from a session step's arm to the restore
+ * after it (the person guard, docs/computer-protocol.md §14.9). A step that
+ * ran to its end is a span the host may take out. While a call is out
+ * (`beginOwn` until `end`) input after its start reads as the app's, since
+ * its spans are not known yet; `end` replaces that with the spans alone.
+ * A guard trip marks the person's input explicitly: neither a span nor an
+ * open call can hide it, even when the dropped event leaves raw idle alone.
  */
 
 /** One session step that ran to its end, from its SessionChange. */
@@ -32,6 +32,8 @@ export interface OwnInputWindow {
 }
 
 export interface PersonIdleSource extends IdleSource {
+  /** A guard trip: the person's input, even inside the app's own input window. */
+  markPerson(atMs: number): void
   /** Before a call that may post at the session tier: input after this reads as the app's until end(). */
   beginOwn(): OwnInputWindow
 }
@@ -50,6 +52,7 @@ interface OpenCall {
 export class PersonIdle implements PersonIdleSource {
   private spans: OwnSpan[] = []
   private readonly open = new Set<OpenCall>()
+  private markedAt = -Infinity
 
   constructor(
     private readonly raw: IdleSource,
@@ -60,6 +63,10 @@ export class PersonIdle implements PersonIdleSource {
   getSystemIdleTime(): number {
     const now = this.now()
     return Math.max(0, Math.floor((now - this.personAt(now)) / 1000))
+  }
+
+  markPerson(atMs: number): void {
+    if (Number.isFinite(atMs) && atMs <= this.now()) this.markedAt = Math.max(this.markedAt, atMs)
   }
 
   beginOwn(): OwnInputWindow {
@@ -89,7 +96,7 @@ export class PersonIdle implements PersonIdleSource {
       if (!span) break
       at = span.armedAt - span.idleAtArmMs
     }
-    return at
+    return this.markedAt <= now ? Math.max(at, this.markedAt) : at
   }
 
   private keep(spans: OwnSpan[]): void {

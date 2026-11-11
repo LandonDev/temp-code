@@ -141,6 +141,7 @@ interface ThreadState {
   heldExpiresAt: number
   heldTimer: AbortController | null
   inCall: boolean
+  interruptedInCall: boolean
   /** a restore started by the person's touch */
   restoring: Promise<void> | null
   line: string | null
@@ -171,6 +172,10 @@ export class SessionScheduler implements SessionTierGate {
 
   admitted(ctx: TierGateContext): boolean {
     return this.threads.get(ctx.threadId)?.heldDown === true
+  }
+
+  personIdleMs(): number {
+    return this.opts.idle.getSystemIdleTime() * 1000
   }
 
   async request(ctx: TierGateRequest): Promise<TierDecision> {
@@ -232,6 +237,7 @@ export class SessionScheduler implements SessionTierGate {
     const session = tiers.includes('session')
     const own = session ? this.opts.idle.beginOwn() : null
     st.inCall = true
+    st.interruptedInCall = false
     let result: T | undefined
     try {
       result = await send(tiers)
@@ -302,7 +308,7 @@ export class SessionScheduler implements SessionTierGate {
   private state(threadId: string): ThreadState {
     let st = this.threads.get(threadId)
     if (!st) {
-      st = { leaseFrom: null, skipped: new Set(), heldDown: false, heldExpiresAt: 0, heldTimer: null, inCall: false, restoring: null, line: null }
+      st = { leaseFrom: null, skipped: new Set(), heldDown: false, heldExpiresAt: 0, heldTimer: null, inCall: false, interruptedInCall: false, restoring: null, line: null }
       this.threads.set(threadId, st)
     }
     return st
@@ -352,14 +358,14 @@ export class SessionScheduler implements SessionTierGate {
   /** After every acting call, whatever happened: the held button, the spans, the restore, the slot. */
   private async afterCall(ctx: TierGateRun, st: ThreadState, session: boolean, result: ActionResult | BatchResult | undefined, own: OwnInputWindow | null): Promise<void> {
     const steps = stepsOf(result)
-    const interrupted = steps.some((s) => s.status === 'failed' && s.error.kind === 'interrupted')
+    const interrupted = st.interruptedInCall || steps.some((s) => s.status === 'failed' && s.error.kind === 'interrupted')
     // a call that ended without its answer (a Stop, the service gone) may have changed the Mac before it did
     let touched = steps.some((s) => (s.status === 'ok' && s.tier === 'session') || (s.status === 'failed' && s.error.session !== undefined))
     if (session && (!result || ctx.signal.aborted)) touched = true
     for (const s of steps) {
       const action = ctx.actions[s.index]?.action
       if (s.status !== 'ok' || s.tier !== 'session') continue
-      if (action === 'left_mouse_down') this.holdDown(ctx.threadId, st)
+      if (action === 'left_mouse_down' && !interrupted) this.holdDown(ctx.threadId, st)
       if (action === 'left_mouse_up') this.letGo(st)
     }
     // a touch, a cut-short call or a cancel (pause, Stop) lets go of held input: the service did, or will on the cancel
@@ -404,12 +410,15 @@ export class SessionScheduler implements SessionTierGate {
     st.heldTimer = null
   }
 
-  /** The service saw the person touch the Mac during a session step: their app comes back at once, before the call's reply. */
+  /** The person touched the Mac while the guard was on: their app comes back at once, before the call's reply. */
   private onNotification(n: ComputerNotification): void {
     if (n.method !== 'session/interrupted') return
     const threadId = this.opts.threadOf(n.params.session)
     if (!threadId) return
     const st = this.state(threadId)
+    st.interruptedInCall = true
+    st.leaseFrom = null
+    this.opts.idle.markPerson(n.params.at)
     this.letGo(st)
     const restoring = this.restore(threadId, true)
     st.restoring = restoring
@@ -424,7 +433,8 @@ export class SessionScheduler implements SessionTierGate {
   private async restore(threadId: string, afterInterrupt: boolean): Promise<void> {
     try {
       const r = await this.opts.service.request('input.restoreSession', afterInterrupt ? { afterInterrupt: true } : {})
-      this.log(`restore ${threadId} frontmost=${r.frontmost} pointer=${r.pointer}${afterInterrupt ? ' after-interrupt' : ''}`)
+      const g = r.personGuard
+      this.log(`restore ${threadId} frontmost=${r.frontmost} pointer=${r.pointer}${afterInterrupt ? ' after-interrupt' : ''}${g ? ` guard=${g.mode} dropped=${g.dropped} replayed=${g.replayed} rearmed=${g.rearmed}` : ''}`)
     } catch (e) {
       this.log(`restore ${threadId} failed: ${(e as Error).message}`)
     }

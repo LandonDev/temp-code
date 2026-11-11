@@ -606,6 +606,7 @@ function scheduled(env: Record<string, string> = {}, numbers: Partial<SessionSch
   return {
     h,
     idle,
+    raw,
     lines,
     sched: () => sched,
     setPresent: (on: boolean) => (present = on),
@@ -615,6 +616,28 @@ function scheduled(env: Record<string, string> = {}, numbers: Partial<SessionSch
 }
 
 describe('tier scheduling', () => {
+  it.each(['computer_act', 'computer_batch'] as const)('sends person-only idle on consecutive session calls through %s (S15)', async (tool) => {
+    const s = scheduled({ FAKE_CLOSING_WAIT_MS: '500' })
+    const action = { action: 'hold_key', text: 'shift', duration: 1 }
+    const args = { app: 'Sessiony', ...(tool === 'computer_act' ? action : { actions: [action] }) }
+    const method = tool === 'computer_act' ? 'action.run' : 'action.batch'
+    const first = s.h.run(tool, args)
+    await until(() => count(s.h, method) === 2, 'the first session step')
+    s.key() // the service's own input, with no human input between the calls
+    await first
+    expect(s.raw.getSystemIdleTime()).toBeLessThanOrEqual(1)
+    expect(s.idle.getSystemIdleTime()).toBeGreaterThan(5)
+    await s.h.run(tool, args)
+    const calls = s.h.requests().filter((r) => r.method === method)
+    const sessionCalls = calls.filter((r) => (r.params.tiers as string[]).includes('session'))
+    expect(sessionCalls).toHaveLength(2)
+    for (const r of sessionCalls) {
+      expect(r.params.personIdleMs).toBeGreaterThan(5_000)
+      expect(r.params.pasteQuietMs).toBe(1_600)
+    }
+    for (const r of calls.filter((r) => !(r.params.tiers as string[]).includes('session'))) expect(r.params.personIdleMs).toBeUndefined()
+  })
+
   it('holds a session step while the person is present, says so on the row, and runs it once they go, its wait before its line, then restores', async () => {
     const s = scheduled()
     s.setPresent(true)

@@ -68,6 +68,8 @@ export interface SessionTierGate {
   clipboard?(ctx: TierGateRequest): Promise<ClipboardDecision>
   /** sent with every acting request: a paste within this long of the person's copy fails `recent-copy` */
   readonly pasteQuietMs?: number
+  /** The person's idle at the acting request's start, with the app's own input taken out. */
+  personIdleMs?(): number
   /** The call's own card (safe, edits) named the session tier and was allowed at `at`. */
   cardAllowed?(ctx: TierGateContext, at: number): void
   /** The thread's turn ended, a Stop, a pause or its end: what the gate holds for it goes. */
