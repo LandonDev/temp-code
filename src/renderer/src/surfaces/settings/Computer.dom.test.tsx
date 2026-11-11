@@ -28,6 +28,7 @@ const link = {
   },
 };
 vi.mock("../../lib/connection", () => ({ registry: { primary: () => link } }));
+vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 vi.mock("../../lib/native", () => ({ openUrl: (url: string) => host.openUrl(url) }));
 vi.mock("../../lib/computerSessions", async () => {
   const { useSyncExternalStore } = await import("react");
@@ -48,7 +49,7 @@ const { ComputerPage } = await import("./Computer");
 
 const SERVICE: ComputerServiceState = { state: "idle", restarts: 0, permissions: null };
 const app = (bundleId: string, name: string | null, classes: ComputerAppVerdict["classes"] = {}): ComputerAppVerdict => ({ bundleId, name, classes, updatedAt: 1 });
-const SETTINGS: ComputerSettings = { sessionIdleMs: 120_000, apps: [app("com.apple.TextEdit", "TextEdit"), app("com.google.Chrome", "Chrome", { click: "session", type: "session" })] };
+const SETTINGS: ComputerSettings = { sessionIdleMs: 120_000, activeApp: "brief", apps: [app("com.apple.TextEdit", "TextEdit"), app("com.google.Chrome", "Chrome", { click: "session", type: "session" })] };
 const GRANTED = { accessibility: true, screenRecording: true };
 const answer = (value: unknown): Handler => async () => value;
 const calls = (method: string) => host.calls.filter(([m]) => m === method);
@@ -256,9 +257,42 @@ describe("Settings › Computer use", () => {
   it("follows the computer-settings push", async () => {
     render(<ComputerPage />);
     await settle();
-    act(() => host.pushes.forEach((fn) => fn({ push: "computer-settings", settings: { sessionIdleMs: 600_000, apps: [app("com.apple.Notes", "Notes")] } })));
+    act(() => host.pushes.forEach((fn) => fn({ push: "computer-settings", settings: { sessionIdleMs: 600_000, activeApp: "brief", apps: [app("com.apple.Notes", "Notes")] } })));
     expect((screen.getByRole("textbox", { name: "Take the screen after minutes" }) as HTMLInputElement).value).toBe("10");
     expect(screen.getByRole("button", { name: "Forget Notes" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Forget TextEdit" })).toBeNull();
   });
 });
+
+describe("When a step needs the app in front (§25.6)", () => {
+  it("reads the setting, saves a pick and says the host's refusal", async () => {
+    let refuse = false;
+    host.handlers["computer.settings.set"] = async (params) => {
+      if (refuse) throw new Error("the host refused it");
+      return { ...SETTINGS, ...(params as object) };
+    };
+    render(<ComputerPage />);
+    await settle();
+    const trigger = screen.getByRole("combobox", { name: "When a step needs the app in front" });
+    expect(trigger.textContent).toContain("Bring it forward for a moment");
+    await choose(trigger, "Wait until I'm away");
+    await settle();
+    expect(calls("computer.settings.set")).toEqual([["computer.settings.set", { activeApp: "away" }]]);
+    expect(trigger.textContent).toContain("Wait until I'm away");
+    refuse = true;
+    await choose(trigger, "Bring it forward for a moment");
+    await settle();
+    expect(screen.getByText("the host refused it")).toBeTruthy();
+  });
+});
+
+async function choose(trigger: HTMLElement, name: string) {
+  await act(async () => {
+    fireEvent.click(trigger);
+  });
+  const option = await screen.findByRole("option", { name });
+  await act(async () => {
+    fireEvent.pointerDown(option, { pointerType: "mouse" });
+    fireEvent.click(option);
+  });
+}

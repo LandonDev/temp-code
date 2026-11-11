@@ -2245,7 +2245,8 @@ why and the measured headline.
 - **The page.** Settings → Computer use (surfaces/settings/Computer.tsx;
   Mac desktop only, `macOnly` in lib/settings.ts): the service with Try
   again while down, Take the screen after (`computer.sessionIdleMs`, in
-  minutes), the two grants with Grant…, the learned apps (`verdictWords`)
+  minutes), When a step needs the app in front (`computer.activeApp`: Bring
+  it forward for a moment, or Wait until I'm away; §25.6), the two grants with Grant…, the learned apps (`verdictWords`)
   with Forget; `computer.settings.get/set`, `computer.verdicts.forget`,
   `computer.permissions`, `computer.service.retry`, all `local`
   (computer/settingsRpc.ts); the `computer-settings` push.

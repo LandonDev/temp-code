@@ -1,6 +1,6 @@
 import type { ComputerAppVerdict, ComputerServiceState, ComputerSettings, ComputerSettingsPatch, ComputerSettingsPush } from '@shared/contract-computer'
 import { PermissionsSchema, type Permissions } from '@shared/computer/protocol'
-import { SESSION_IDLE_SETTING, sessionIdleMs } from '@shared/computer/scheduleRules'
+import { ACTIVE_APP_SETTING, SESSION_IDLE_SETTING, activeApp, sessionIdleMs } from '@shared/computer/scheduleRules'
 import { execFileBudgeted, oneShotBudget, withBudget } from '../spawnBudget'
 import { computerBinaryPath } from './binary'
 import type { ComputerService } from './service'
@@ -51,13 +51,21 @@ export class ComputerSettingsRpc {
       classes: v.classes,
       updatedAt: v.updatedAt
     }))
-    return { sessionIdleMs: sessionIdleMs(this.opts.store.getSetting(SESSION_IDLE_SETTING)), apps }
+    return {
+      sessionIdleMs: sessionIdleMs(this.opts.store.getSetting(SESSION_IDLE_SETTING)),
+      activeApp: activeApp(this.opts.store.getSetting(ACTIVE_APP_SETTING)),
+      apps
+    }
   }
 
-  /** The scheduler reads the threshold at every check, so it holds from the next one. */
+  /** The scheduler reads both settings at every check, so each holds from the next one. */
   set(patch: ComputerSettingsPatch): ComputerSettings {
     if (patch.sessionIdleMs !== undefined) {
       this.opts.store.setSetting(SESSION_IDLE_SETTING, String(patch.sessionIdleMs))
+      this.schedule()
+    }
+    if (patch.activeApp !== undefined) {
+      this.opts.store.setSetting(ACTIVE_APP_SETTING, patch.activeApp)
       this.schedule()
     }
     return this.get()

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { PermissionsSchema, TierSchema } from './computer/protocol'
-import { SCHEDULE } from './computer/scheduleRules'
+import { ACTIVE_APP_MODES, SCHEDULE } from './computer/scheduleRules'
 import { ComputerToolResultSchema, TierVerdictSchema } from './computer/tools'
 
 /**
@@ -74,16 +74,18 @@ export const ComputerAppVerdictSchema = z.object({
 })
 export type ComputerAppVerdict = z.infer<typeof ComputerAppVerdictSchema>
 
-/** This Mac's computer settings: the session tier's idle threshold and every app it learned. */
+/** This Mac's computer settings: the session tier's idle threshold, when a step that needs the app in front gets it (§25.6), and every app it learned. */
 export const ComputerSettingsSchema = z.object({
   sessionIdleMs: z.number().int(),
+  activeApp: z.enum(ACTIVE_APP_MODES),
   apps: z.array(ComputerAppVerdictSchema)
 })
 export type ComputerSettings = z.infer<typeof ComputerSettingsSchema>
 
 /** `computer.settings.set`: a partial, each field written alone. */
 export const ComputerSettingsPatchSchema = z.object({
-  sessionIdleMs: z.number().int().min(SCHEDULE.sessionIdleMsMin).max(SCHEDULE.sessionIdleMsMax).optional()
+  sessionIdleMs: z.number().int().min(SCHEDULE.sessionIdleMsMin).max(SCHEDULE.sessionIdleMsMax).optional(),
+  activeApp: z.enum(ACTIVE_APP_MODES).optional()
 })
 export type ComputerSettingsPatch = z.infer<typeof ComputerSettingsPatchSchema>
 

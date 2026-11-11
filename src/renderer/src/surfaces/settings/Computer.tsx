@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { ComputerAppVerdict, ComputerServiceState } from "@server/shared/contract-computer";
+import type { ActiveAppMode } from "@server/shared/computer/scheduleRules";
 import { verdictWords } from "@server/shared/computer/words";
+import { ChoiceSelect } from "../../components/choice-select";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -27,6 +29,12 @@ import { PermissionRow } from "./PermissionRow";
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
+/** When a step that needs the app in front gets it (docs/computer-protocol.md §25.6). */
+const ACTIVE_APP_CHOICES: { value: ActiveAppMode; label: string }[] = [
+  { value: "brief", label: "Bring it forward for a moment" },
+  { value: "away", label: "Wait until I'm away" },
+];
+
 /**
  * Settings › Computer use, on this Mac's own host: the service and how long
  * the person must be away before a thread may take the pointer and keyboard,
@@ -39,6 +47,7 @@ export function ComputerPage() {
   const { set } = settings;
   const perms = useComputerPermissions(link, service);
   const [idleError, setIdleError] = useState<string | null>(null);
+  const [activeError, setActiveError] = useState<string | null>(null);
 
   useEffect(() => onComputerSettings(link, set), [link, set]);
 
@@ -51,6 +60,15 @@ export function ComputerPage() {
     } catch (err) {
       setIdleError(message(err));
       return false;
+    }
+  };
+
+  const chooseActiveApp = async (activeApp: ActiveAppMode): Promise<void> => {
+    try {
+      set(await setComputerSettings(link, { activeApp }));
+      setActiveError(null);
+    } catch (err) {
+      setActiveError(message(err));
     }
   };
 
@@ -78,8 +96,18 @@ export function ComputerPage() {
         ) : settings.error ? (
           <PageError action={retryRead}>{settings.error}</PageError>
         ) : (
-          <PageRowsSkeleton rows={[{ description: true, control: "number" }]} />
+          <PageRowsSkeleton rows={[{ description: true, control: "number" }, { control: "select" }]} />
         )}
+        {settings.value ? (
+          <PageRow title="When a step needs the app in front" error={activeError}>
+            <ChoiceSelect
+              label="When a step needs the app in front"
+              value={settings.value.activeApp}
+              options={ACTIVE_APP_CHOICES}
+              onChange={(choice) => void chooseActiveApp(choice)}
+            />
+          </PageRow>
+        ) : null}
       </PageSection>
 
       <PageSection title="Permissions">

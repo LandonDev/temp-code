@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ComputerServiceState, ComputerSettingsPush } from '@shared/contract-computer'
-import { SCHEDULE, SESSION_IDLE_SETTING, sessionIdleMs } from '@shared/computer/scheduleRules'
+import { ACTIVE_APP_SETTING, SCHEDULE, SESSION_IDLE_SETTING, sessionIdleMs } from '@shared/computer/scheduleRules'
 import { tierVerdictSetting } from '@shared/computer/tools'
 import { ComputerSettingsRpc, SETTINGS_PUSH_MS, type ComputerSettingsHost } from './settingsRpc'
 import { TierVerdicts } from './verdicts'
@@ -57,7 +57,7 @@ afterEach(() => {
 
 describe('ComputerSettingsRpc', () => {
   it('answers the default threshold and no apps on a fresh host', () => {
-    expect(make().rpc.get()).toEqual({ sessionIdleMs: SCHEDULE.sessionIdleMsDefault, apps: [] })
+    expect(make().rpc.get()).toEqual({ sessionIdleMs: SCHEDULE.sessionIdleMsDefault, activeApp: 'brief', apps: [] })
   })
 
   it('answers the threshold and every learned app with its name', () => {
@@ -80,6 +80,10 @@ describe('ComputerSettingsRpc', () => {
     expect(rpc.set({ sessionIdleMs: 600_000 }).sessionIdleMs).toBe(600_000)
     expect(sessionIdleMs(store.getSetting(SESSION_IDLE_SETTING))).toBe(600_000)
     expect(rpc.set({}).sessionIdleMs).toBe(600_000)
+    // when a step that needs the app in front gets it (§25.6): written alone, read as the scheduler reads it
+    expect(rpc.set({ activeApp: 'away' })).toMatchObject({ activeApp: 'away', sessionIdleMs: 600_000 })
+    expect(store.getSetting(ACTIVE_APP_SETTING)).toBe('away')
+    expect(rpc.set({ activeApp: 'brief' }).activeApp).toBe('brief')
   })
 
   it('forgets one app and every app, pushing once for a burst', () => {
@@ -94,7 +98,7 @@ describe('ComputerSettingsRpc', () => {
     expect(pushes).toHaveLength(0)
     vi.advanceTimersByTime(SETTINGS_PUSH_MS)
     expect(pushes).toHaveLength(1)
-    expect(pushes[0]).toEqual({ push: 'computer-settings', settings: { sessionIdleMs: SCHEDULE.sessionIdleMsDefault, apps: [] } })
+    expect(pushes[0]).toEqual({ push: 'computer-settings', settings: { sessionIdleMs: SCHEDULE.sessionIdleMsDefault, activeApp: 'brief', apps: [] } })
   })
 
   it('coalesces changes to one push a second', () => {
