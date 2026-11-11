@@ -59,6 +59,9 @@ const SESSION_WHY: Partial<Record<ErrorReason, string>> = {
   'in-use': 'another app holds it'
 }
 
+/** An element's line, cut to fit a sentence. */
+const cutLine = (line: string): string => (line.length > 60 ? `${line.slice(0, 59)}…` : line)
+
 /** The one item a refusal is about by name, when the call named one; else a plain noun. */
 const oneItem = (ctx: ErrorContext): string | null => (ctx.open?.length === 1 ? openItemName(ctx.open[0]) : null)
 
@@ -151,10 +154,25 @@ export const COMPUTER_ERROR_WORDS: Readonly<Record<ComputerErrorKind, Words>> = 
     return `${index(e, ctx)} ${reads}; nothing after it ran. On a pop up, click it and perform pick on the item; on a field, type with element`
   },
   focus_moved: (e) => {
-    const at = e.focused ? `[${e.focused.index}] ${e.focused.line.length > 60 ? `${e.focused.line.slice(0, 59)}…` : e.focused.line}` : 'another element'
-    return e.reason === 'browser-field'
-      ? `the keys would go to ${at}, not the page; name the element they are for`
-      : `the focus moved to ${at} since your read; name the element the keys are for`
+    const at = e.focused ? `[${e.focused.index}] ${cutLine(e.focused.line)}` : 'another element'
+    switch (e.reason) {
+      case 'browser-field':
+        return `the keys would go to ${at}, not the page; name the element they are for`
+      case 'unplanned':
+        return `${at} has the focus, which no step of this batch aimed at; name the element the text is for`
+      case 'secure':
+        return `${at} can only be typed into by its element, so the person can be asked; send the step again with element ${e.focused?.index ?? e.element ?? '<index>'}`
+      default:
+        return `the focus moved to ${at} since your read; name the element the keys are for`
+    }
+  },
+  named_target: (e, ctx) => {
+    const name = ctx.action?.named ?? ctx.action?.menu
+    const what = name ? quote(name) : 'that name'
+    if (e.reason !== 'several' || !e.elementCandidates?.length)
+      return `nothing named ${what} in the window or what this call opened; read the window and use an element`
+    const lead = `several elements are named ${what}; use element: `
+    return `${lead}${fitList(e.elementCandidates.map((c) => `[${c.index}] ${cutLine(c.line)}`), ERROR_LINE_MAX - lead.length)}`
   },
   tab_in_use: (_e, ctx) =>
     `the person has ${quoteApp(ctx.app)}'s window in front on another tab, so a read won't switch it; switch tabs with an act, which waits for the Mac to be free`,

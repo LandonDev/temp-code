@@ -380,6 +380,17 @@ export const HEADER_WORDS = {
 export const OTHER_WINDOWS_PREFIX = 'other windows: '
 export const STUB_SUFFIX = ': items not exposed to accessibility; see the screenshot)'
 
+/** A menu a step opened (§27.4): its block closes the observation, cut last, after every other cut. */
+export const MENU_BLOCK = {
+  prefix: '+ menu opened by step ',
+  /** the line when the menu's items did not answer within the AX timeout */
+  silent: '; its items did not answer: pick one with named, or close it with key Escape',
+  maxItems: 80,
+  maxBytes: 6_000
+} as const
+/** A submenu's mark after its title, in an opened-menu block and on a compact menu bar line (§27.4, §27.13). */
+export const SUBMENU_MARK = '▸'
+
 export interface ObservationHeader {
   app: string
   window: string
@@ -433,8 +444,36 @@ export interface RangeLine {
   role: string
 }
 
+/** One item of a compact menu bar line (§27.13): `New [142]`, `Save… [157] disabled`, `Export ▸ [160]`. */
+export interface MenuItemBrief {
+  name: string
+  index: number
+  disabled?: boolean
+  submenu?: boolean
+}
+
+/** `[41] menu "File": New [142], Open… [143]` (§27.13): a menu of the menu bar on one line. */
+export interface MenuBarLine {
+  depth: number
+  index: number
+  title: string
+  items: MenuItemBrief[]
+}
+
+/**
+ * The opened-menu block's head (§27.4): `+ menu opened by step <n>: [<i>] menu "<title>"`, or, when the items did not
+ * answer, `+ menu opened by step <n>; its items did not answer: …` with no menu and nothing under it.
+ */
+export interface MenuBlockLine {
+  step: number
+  menu?: { index: number; title: string }
+}
+
 export type ObservationLine =
   | ({ type: 'element' } & ElementLine)
+  | ({ type: 'menuBar' } & MenuBarLine)
+  | ({ type: 'menuBlock' } & MenuBlockLine)
+  | { type: 'menuMore'; more: number }
   | ({ type: 'range' } & RangeLine)
   | { type: 'more'; depth: number; below?: number; above?: number }
   | { type: 'stub'; depth: number; role: string; name?: string }
@@ -503,10 +542,28 @@ export function formatRangeLine(r: RangeLine): string {
   return (r.marker ? `${r.marker} ` : indent(r.depth)) + `[${r.first}]–[${r.last}] ${r.last - r.first + 1} × ${r.role}`
 }
 
+/** `New [142]`, `Save… [157] disabled`, `Export ▸ [160]`. */
+const formatMenuItem = (i: MenuItemBrief): string =>
+  `${i.name}${i.submenu ? ` ${SUBMENU_MARK}` : ''} [${i.index}]${i.disabled ? ' disabled' : ''}`
+
+export function formatMenuBarLine(m: MenuBarLine): string {
+  return `${indent(m.depth)}[${m.index}] menu ${quote(m.title)}:${m.items.length ? ' ' + m.items.map(formatMenuItem).join(', ') : ''}`
+}
+
+export function formatMenuBlockLine(b: MenuBlockLine): string {
+  return b.menu ? `${MENU_BLOCK.prefix}${b.step}: [${b.menu.index}] menu ${quote(b.menu.title)}` : `${MENU_BLOCK.prefix}${b.step}${MENU_BLOCK.silent}`
+}
+
 export function formatLine(line: ObservationLine): string {
   switch (line.type) {
     case 'element':
       return formatElementLine(line)
+    case 'menuBar':
+      return formatMenuBarLine(line)
+    case 'menuBlock':
+      return formatMenuBlockLine(line)
+    case 'menuMore':
+      return `${indent(1)}… ${line.more} more`
     case 'range':
       return formatRangeLine(line)
     case 'more': {
@@ -689,7 +746,46 @@ export function parseElementLine(text: string, line = 1): ElementLine {
   return element
 }
 
+/** A compact menu bar line's items, each `<name>[ ▸] [<i>][ disabled]`, joined by `, ` (§27.13). */
+function parseMenuItems(text: string, line: number): MenuItemBrief[] {
+  const items: MenuItemBrief[] = []
+  const item = new RegExp(`(.+?)( ${SUBMENU_MARK})? \\[([1-9]\\d*)\\]( disabled)?(?:, |$)`, 'y')
+  while (item.lastIndex < text.length) {
+    const m = item.exec(text)
+    if (!m) throw new ObservationParseError(line, 'not a menu item: write "<name> [<i>]"')
+    items.push({
+      name: m[1],
+      index: Number(m[3]),
+      ...(m[4] ? { disabled: true } : {}),
+      ...(m[2] ? { submenu: true } : {})
+    })
+  }
+  return items
+}
+
+/** A line of the opened-menu block's head (§27.4), or undefined when the text is not one. */
+function parseMenuBlockLine(text: string, line: number): MenuBlockLine | undefined {
+  if (!text.startsWith(MENU_BLOCK.prefix)) return undefined
+  const c = new Cursor(text, line)
+  c.expect(MENU_BLOCK.prefix)
+  const step = c.int()
+  if (step < 0) c.fail('a step number is not negative')
+  if (c.take(MENU_BLOCK.silent)) {
+    if (!c.done) c.fail('unexpected text after the silent menu line')
+    return { step }
+  }
+  c.expect(': [')
+  const index = c.int()
+  if (index < 1) c.fail('an index is positive')
+  c.expect('] menu ')
+  const title = c.string()
+  if (!c.done) c.fail('unexpected text after the menu')
+  return { step, menu: { index, title } }
+}
+
 function parseLineAt(text: string, line: number): ObservationLine {
+  const block = parseMenuBlockLine(text, line)
+  if (block) return { type: 'menuBlock', ...block }
   if (text.startsWith('- ')) return { ...parseBody(text.slice(2), 0, line), marker: '-' }
   if (text.startsWith('~ ')) {
     const body = parseBody(text.slice(2), 0, line)
@@ -715,6 +811,17 @@ function parseLineAt(text: string, line: number): ObservationLine {
     const name = c.optionalString()
     if (!c.done) c.fail('unexpected text in a stub line')
     return name === undefined ? { type: 'stub', depth, role } : { type: 'stub', depth, role, name }
+  }
+  const menuMore = /^… ([1-9]\d*) more$/.exec(rest)
+  if (menuMore) {
+    if (depth !== 1) throw new ObservationParseError(line, "an opened menu's last line is one level under its block")
+    return { type: 'menuMore', more: Number(menuMore[1]) }
+  }
+  const menuBar = /^\[([1-9]\d*)\] menu ("(?:[^"\\]|\\.)*"):(?: (.+))?$/.exec(rest)
+  if (menuBar) {
+    const c = new Cursor(menuBar[2], line)
+    const title = c.string()
+    return { type: 'menuBar', depth, index: Number(menuBar[1]), title, items: menuBar[3] === undefined ? [] : parseMenuItems(menuBar[3], line) }
   }
   if (rest.startsWith('[')) {
     const body = parseBody(rest, depth, line)
@@ -765,6 +872,33 @@ function parseOthers(text: string): OtherWindow[] {
 }
 
 /**
+ * The opened-menu blocks from row `from` on (§27.4): each a head line, then its items one level under it and an optional
+ * `… n more`; a silent head has nothing under it. An item may repeat an element the body above printed.
+ */
+function parseMenuBlocks(rows: string[], from: number): ObservationLine[] {
+  const out: ObservationLine[] = []
+  let seen = new Set<number>()
+  let open: MenuBlockLine | undefined
+  let closed = false
+  for (let r = from; r < rows.length; r++) {
+    const n = r + 1
+    const line = parseLineAt(rows[r], n)
+    if (line.type === 'menuBlock') {
+      open = line
+      closed = line.menu === undefined
+      seen = new Set(line.menu ? [line.menu.index] : [])
+    } else if (!open || closed) throw new ObservationParseError(n, 'only an opened-menu block follows one')
+    else if (line.type === 'menuMore') closed = true
+    else if (line.type === 'element' && line.marker === undefined && line.depth === 1) {
+      if (seen.has(line.index)) throw new ObservationParseError(n, `[${line.index}] appears twice in one menu`)
+      seen.add(line.index)
+    } else throw new ObservationParseError(n, "an opened menu's items are element lines one level under its head")
+    out.push(line)
+  }
+  return out
+}
+
+/**
  * The observation text as lines, held to the grammar: a full or subtree
  * observation is a tree (depth grows one level at a time, an index at most
  * once, the `(truncated …)` line last); a diff is marker lines, added groups,
@@ -785,8 +919,11 @@ export function parseObservation(text: string): ParsedObservation {
     others = parseOthers(rows[1])
     at = 2
   }
-  if (header.change === 'unchanged' && rows.length > 1)
-    throw new ObservationParseError(2, 'an unchanged observation is its header alone')
+  // the opened-menu blocks close the observation (§27.4); everything before them is held to the rules below
+  const firstBlock = rows.findIndex((r, i) => i >= at && r.startsWith(MENU_BLOCK.prefix))
+  const end = firstBlock === -1 ? rows.length : firstBlock
+  if (header.change === 'unchanged' && end > at)
+    throw new ObservationParseError(at + 1, 'an unchanged observation is its header alone')
   const lines: ObservationLine[] = []
   const seen = new Set<number>()
   const claim = (from: number, to: number, line: number): void => {
@@ -800,9 +937,11 @@ export function parseObservation(text: string): ParsedObservation {
   let inAdded = false
   // a changed container's new summary lines, one level under its `~` line (amendment A2)
   let underChanged = false
-  for (let r = at; r < rows.length; r++) {
+  for (let r = at; r < end; r++) {
     const n = r + 1
     const line = parseLineAt(rows[r], n)
+    if (line.type === 'menuMore' || line.type === 'menuBlock')
+      throw new ObservationParseError(n, '"… n more" alone belongs to an opened menu')
     if (lines.some((l) => l.type === 'truncated')) throw new ObservationParseError(n, 'the truncated line comes last')
     const marked = (line.type === 'element' || line.type === 'range') && line.marker !== undefined
     if (line.type === 'added') {
@@ -829,7 +968,9 @@ export function parseObservation(text: string): ParsedObservation {
     }
     if (line.type === 'element') claim(line.index, line.index, n)
     if (line.type === 'range') claim(line.first, line.last, n)
+    if (line.type === 'menuBar') for (const i of [line.index, ...line.items.map((m) => m.index)]) claim(i, i, n)
     lines.push(line)
   }
+  lines.push(...parseMenuBlocks(rows, end))
   return { header, others, lines }
 }

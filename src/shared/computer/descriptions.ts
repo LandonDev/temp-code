@@ -142,6 +142,8 @@ const ANTHROPIC_FIELDS: Record<FieldKey, string> = {
   suffix: 'select_text: the text right after the match, to pick one of several.',
   place: 'select_text: select (the default), or before or after to put the caret there.',
   format: 'paste: text (the default), markdown or html.',
+  named: 'An element by its name in the tree, for one this call opens or one you have not read. Instead of element or coordinate.',
+  menu: 'A menu-bar item by its path, File > Save…; picks it with no menu open. left_click, or perform with name pick.',
   confirm: "Ask for the person's OK before this act. The app acts only on Allow. Leave out otherwise.",
   'batch.confirm':
     "Ask for the person's OK before this batch. One card covers it; it runs only on Allow.",

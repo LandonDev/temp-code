@@ -33,7 +33,9 @@ import {
   StepResultSchema,
   TAB_LIST_MAX,
   TargetSchema,
+  WAIT_GAP_EDGES_MS,
   WaitOptionsSchema,
+  WaitReportSchema,
   lockPath,
   waitActionWait
 } from './protocol'
@@ -83,7 +85,7 @@ describe('the action shape', () => {
   })
 
   it('refuses a mouse_move without a destination and a drag missing an end', () => {
-    expect(messages({ action: 'mouse_move' })).toContain('mouse_move needs one of element, coordinate')
+    expect(messages({ action: 'mouse_move' })).toContain('mouse_move needs one of element, coordinate, named')
     expect(messages({ action: 'left_click_drag', coordinate: [1, 2] })).toContain('left_click_drag needs one of start_element, start_coordinate')
     expect(messages({ action: 'left_click_drag', start_element: 1 })).toContain('left_click_drag needs one of element, coordinate')
   })
@@ -94,7 +96,7 @@ describe('the action shape', () => {
     expect(messages({ action: 'key' })).toContain('key needs text')
     expect(messages({ action: 'key', text: '' })).toContain('key needs a non-empty text')
     expect(messages({ action: 'perform', element: 2 })).toContain('perform needs name')
-    expect(messages({ action: 'set_value', value: 'x' })).toContain('set_value needs element')
+    expect(messages({ action: 'set_value', value: 'x' })).toContain('set_value needs one of element, named')
     expect(messages({ action: 'screenshot', coordinate: [1, 1] })).toContain('screenshot takes no coordinate')
     expect(messages({ action: 'key', text: 'a', region: [0, 0, 1, 1] })).toContain('key takes no region')
     expect(messages({ action: 'select_text', element: 3, range: [5, 2] })).toContain('a range is [a, b] with a ≤ b')
@@ -460,7 +462,7 @@ describe('web content in Chromium apps (§25)', () => {
   })
 
   it('names the three new kinds: two only a step carries, tab_in_use a request error', () => {
-    expect(COMPUTER_ERROR_KINDS.slice(-3)).toEqual(['value_not_taken', 'focus_moved', 'tab_in_use'])
+    expect(COMPUTER_ERROR_KINDS.slice(-4, -1)).toEqual(['value_not_taken', 'focus_moved', 'tab_in_use'])
     expect(STEP_ONLY_ERROR_KINDS).toContain('value_not_taken')
     expect(STEP_ONLY_ERROR_KINDS).toContain('focus_moved')
     expect(STEP_ONLY_ERROR_KINDS).not.toContain('tab_in_use')
@@ -474,5 +476,97 @@ describe('web content in Chromium apps (§25)', () => {
     expect(InputViaSchema.options.slice(-2)).toEqual(['pick', 'scroll-into-view'])
     const step = { index: 0, action: 'set_value', status: 'ok', tier: 'ax', effect: 'changed', input: { via: 'pick', on: 'Team' } }
     expect(StepResultSchema.parse(step)).toEqual(step)
+  })
+})
+
+describe('fewer calls (§27)', () => {
+  const base = { session: 's', app: { app: 'TextEdit' }, tiers: ['ax'] }
+
+  it('takes named in place of element or coordinate where §27.9 says, and nowhere else', () => {
+    for (const a of ['left_click', 'right_click', 'middle_click', 'double_click', 'triple_click', 'mouse_move', 'scroll'] as const) {
+      const extra = a === 'scroll' ? { scroll_direction: 'down', scroll_amount: 1 } : {}
+      expect(ok({ action: a, named: 'Team', ...extra }), a).toBe(true)
+    }
+    expect(ok({ action: 'set_value', named: 'Plan', value: 'Pro' })).toBe(true)
+    expect(ok({ action: 'perform', named: 'Row', name: 'press' })).toBe(true)
+    expect(ok({ action: 'select_text', named: 'Body', text: 'hi' })).toBe(true)
+    for (const a of ['type', 'paste'] as const) expect(ok({ action: a, named: 'Search', text: 'hi' }), a).toBe(true)
+    expect(ok({ action: 'key', named: 'Search', text: 'Return' })).toBe(true)
+    expect(ok({ action: 'hold_key', named: 'Search', text: 'shift', duration: 1 })).toBe(true)
+    expect(ok({ action: 'zoom', named: 'Team', region: [0, 0, 1, 1] })).toBe(false)
+    expect(ok({ action: 'left_click_drag', named: 'Team', coordinate: [1, 1], start_coordinate: [0, 0] })).toBe(false)
+    expect(ok({ action: 'left_click', named: '' })).toBe(false)
+    expect(ok({ action: 'left_click', named: 'x'.repeat(101) })).toBe(false)
+  })
+
+  it('still needs a target on set_value, perform, select_text and mouse_move', () => {
+    expect(ok({ action: 'set_value', value: 'Pro' })).toBe(false)
+    expect(ok({ action: 'perform', name: 'press' })).toBe(false)
+    expect(ok({ action: 'select_text', text: 'hi' })).toBe(false)
+    expect(ok({ action: 'mouse_move' })).toBe(false)
+  })
+
+  it('takes menu on left_click and on perform with name pick only', () => {
+    expect(ok({ action: 'left_click', menu: 'File > Save…' })).toBe(true)
+    expect(ok({ action: 'perform', menu: 'File > Save…', name: 'pick' })).toBe(true)
+    expect(ok({ action: 'perform', menu: 'File > Save…', name: 'press' })).toBe(false)
+    expect(ok({ action: 'right_click', menu: 'File > Save…' })).toBe(false)
+    expect(ok({ action: 'type', menu: 'File > Save…', text: 'x' })).toBe(false)
+  })
+
+  it('takes one target at most', () => {
+    expect(ok({ action: 'left_click', element: 3, named: 'Team' })).toBe(false)
+    expect(ok({ action: 'left_click', coordinate: [1, 1], named: 'Team' })).toBe(false)
+    expect(ok({ action: 'left_click', named: 'Team', menu: 'File > Save…' })).toBe(false)
+    expect(ok({ action: 'left_click', element: 3, menu: 'File > Save…' })).toBe(false)
+  })
+
+  it('names the new error kind, a step-only one, and the new reasons', () => {
+    expect(COMPUTER_ERROR_KINDS.at(-1)).toBe('named_target')
+    expect(STEP_ONLY_ERROR_KINDS).toContain('named_target')
+    const several = {
+      kind: 'named_target',
+      message: 'm',
+      reason: 'several',
+      candidates: ['TextEdit'],
+      elementCandidates: [{ index: 52, line: 'menu item "Team"' }]
+    }
+    expect(ComputerErrorSchema.parse(several)).toEqual(several)
+    for (const reason of ['unplanned', 'secure'])
+      expect(ComputerErrorSchema.safeParse({ kind: 'focus_moved', message: 'm', reason, element: 9, focused: { index: 9, line: 'password "Password"' } }).success).toBe(true)
+    const six = Array.from({ length: 6 }, (_, i) => ({ index: i + 1, line: 'button "Team"' }))
+    expect(ComputerErrorSchema.safeParse({ ...several, elementCandidates: six }).success).toBe(false)
+  })
+
+  it('reports when a wait first saw a change and the gaps between changes', () => {
+    const report = { waitedMs: 600, settled: true, busy: false, reason: 'quiet', firstChangeMs: 40, gapCounts: [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
+    expect(WaitReportSchema.parse(report)).toEqual(report)
+    expect(WAIT_GAP_EDGES_MS).toEqual([25, 50, 75, 100, 150, 200, 300, 450, 700, 1_000])
+    expect(WaitReportSchema.safeParse({ ...report, gapCounts: [1, 2] }).success).toBe(false)
+    expect(WaitReportSchema.safeParse({ waitedMs: 0, settled: true, busy: false, reason: 'skipped' }).success).toBe(true)
+  })
+
+  it('ships the ax rows equal to action and step', () => {
+    expect(COMPUTER_WAIT.axAction).toEqual(COMPUTER_WAIT.action)
+    expect(COMPUTER_WAIT.axStep).toEqual(COMPUTER_WAIT.step)
+  })
+
+  it('carries the ax waits, prior and textWindowId on both acting calls', () => {
+    const prior = { effect: 'changed', focusTo: 12, targeted: [4, 52], windows: [301] }
+    const extra = { axWait: COMPUTER_WAIT.axAction, axStepWait: COMPUTER_WAIT.axStep, prior, textWindowId: 300 }
+    expect(ActionRunParamsSchema.safeParse({ ...base, action: { action: 'type', text: 'hi' }, ...extra }).success).toBe(true)
+    expect(ActionBatchParamsSchema.safeParse({ ...base, actions: [{ action: 'key', text: 'Return' }], ...extra }).success).toBe(true)
+    expect(ActionBatchParamsSchema.safeParse({ ...base, actions: [{ action: 'key', text: 'Return' }], prior: { effect: 'changed' } }).success).toBe(false)
+  })
+
+  it("reports a step's opened window, resolved target, focus and the stop", () => {
+    const okStep = {
+      index: 1, action: 'left_click', status: 'ok', tier: 'ax', effect: 'changed',
+      opened: { id: 301, title: 'Untitled 2' }, resolved: 52, focusTo: 12
+    }
+    expect(StepResultSchema.parse(okStep)).toEqual(okStep)
+    const stopped = { index: 2, action: 'type', status: 'not-run', stopped: { afterStep: 1, reason: 'no-change' } }
+    expect(StepResultSchema.parse(stopped)).toEqual(stopped)
+    expect(StepResultSchema.safeParse({ ...stopped, stopped: { afterStep: 1, reason: 'other' } }).success).toBe(false)
   })
 })

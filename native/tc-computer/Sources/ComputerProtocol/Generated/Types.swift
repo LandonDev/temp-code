@@ -192,12 +192,16 @@ public struct WaitReport: Codable, Hashable, Sendable {
     public let settled: Bool
     public let busy: Bool
     public let reason: WaitReason
+    public let firstChangeMs: Int?
+    public let gapCounts: [Int]?
 
-    public init(waitedMs: Int, settled: Bool, busy: Bool, reason: WaitReason) {
+    public init(waitedMs: Int, settled: Bool, busy: Bool, reason: WaitReason, firstChangeMs: Int? = nil, gapCounts: [Int]? = nil) {
         self.waitedMs = waitedMs
         self.settled = settled
         self.busy = busy
         self.reason = reason
+        self.firstChangeMs = firstChangeMs
+        self.gapCounts = gapCounts
     }
 }
 
@@ -326,8 +330,10 @@ public struct ComputerAction: Codable, Hashable, Sendable {
     public let value: String?
     public let name: String?
     public let range: [Int]?
+    public let named: String?
+    public let menu: String?
 
-    public init(action: ComputerActionName, coordinate: Point? = nil, element: Int? = nil, start_coordinate: Point? = nil, start_element: Int? = nil, text: String? = nil, prefix: String? = nil, suffix: String? = nil, place: Placement? = nil, format: PasteFormat? = nil, region: Region? = nil, scroll_direction: ScrollDirection? = nil, scroll_amount: Int? = nil, `repeat`: Int? = nil, duration: Double? = nil, value: String? = nil, name: String? = nil, range: [Int]? = nil) {
+    public init(action: ComputerActionName, coordinate: Point? = nil, element: Int? = nil, start_coordinate: Point? = nil, start_element: Int? = nil, text: String? = nil, prefix: String? = nil, suffix: String? = nil, place: Placement? = nil, format: PasteFormat? = nil, region: Region? = nil, scroll_direction: ScrollDirection? = nil, scroll_amount: Int? = nil, `repeat`: Int? = nil, duration: Double? = nil, value: String? = nil, name: String? = nil, range: [Int]? = nil, named: String? = nil, menu: String? = nil) {
         self.action = action
         self.coordinate = coordinate
         self.element = element
@@ -346,6 +352,8 @@ public struct ComputerAction: Codable, Hashable, Sendable {
         self.value = value
         self.name = name
         self.range = range
+        self.named = named
+        self.menu = menu
     }
 }
 
@@ -358,6 +366,20 @@ public struct IgnoredRoutes: Codable, Hashable, Sendable {
         self.via = via
         self.process = process
         self.skip = skip
+    }
+}
+
+public struct Prior: Codable, Hashable, Sendable {
+    public let effect: StepEffect
+    public let focusTo: Int?
+    public let targeted: [Int]
+    public let windows: [Int]?
+
+    public init(effect: StepEffect, focusTo: Int? = nil, targeted: [Int], windows: [Int]? = nil) {
+        self.effect = effect
+        self.focusTo = focusTo
+        self.targeted = targeted
+        self.windows = windows
     }
 }
 
@@ -504,8 +526,9 @@ public struct ComputerError: Codable, Hashable, Sendable {
     public let menu: [String]?
     public let value: String?
     public let focused: ElementBrief?
+    public let elementCandidates: [ElementBrief]?
 
-    public init(kind: ComputerErrorKind, message: String, which: PermissionName? = nil, candidates: [String]? = nil, element: Int? = nil, reason: ErrorReason? = nil, available: [String]? = nil, needed: Tier? = nil, coordinate: Point? = nil, space: CoordinateSpace? = nil, by: InterruptedBy? = nil, keyWindow: KeyWindow? = nil, session: SessionChange? = nil, menu: [String]? = nil, value: String? = nil, focused: ElementBrief? = nil) {
+    public init(kind: ComputerErrorKind, message: String, which: PermissionName? = nil, candidates: [String]? = nil, element: Int? = nil, reason: ErrorReason? = nil, available: [String]? = nil, needed: Tier? = nil, coordinate: Point? = nil, space: CoordinateSpace? = nil, by: InterruptedBy? = nil, keyWindow: KeyWindow? = nil, session: SessionChange? = nil, menu: [String]? = nil, value: String? = nil, focused: ElementBrief? = nil, elementCandidates: [ElementBrief]? = nil) {
         self.kind = kind
         self.message = message
         self.which = which
@@ -522,6 +545,7 @@ public struct ComputerError: Codable, Hashable, Sendable {
         self.menu = menu
         self.value = value
         self.focused = focused
+        self.elementCandidates = elementCandidates
     }
 }
 

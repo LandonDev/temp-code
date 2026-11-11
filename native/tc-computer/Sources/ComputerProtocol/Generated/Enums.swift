@@ -558,6 +558,7 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
     case valueNotTaken
     case focusMoved
     case tabInUse
+    case namedTarget
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -590,6 +591,7 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
         case "value_not_taken": self = .valueNotTaken
         case "focus_moved": self = .focusMoved
         case "tab_in_use": self = .tabInUse
+        case "named_target": self = .namedTarget
         default: self = .unknown(rawValue)
         }
     }
@@ -623,6 +625,7 @@ public enum ComputerErrorKind: RawRepresentable, Codable, Hashable, Sendable {
         case .valueNotTaken: "value_not_taken"
         case .focusMoved: "focus_moved"
         case .tabInUse: "tab_in_use"
+        case .namedTarget: "named_target"
         case .unknown(let value): value
         }
     }
@@ -662,6 +665,10 @@ public enum ErrorReason: RawRepresentable, Codable, Hashable, Sendable {
     case app
     case browserField
     case moved
+    case unplanned
+    case secure
+    case noMatch
+    case several
     /// A value this build does not know; `rawValue` keeps it.
     case unknown(String)
 
@@ -680,6 +687,10 @@ public enum ErrorReason: RawRepresentable, Codable, Hashable, Sendable {
         case "app": self = .app
         case "browser-field": self = .browserField
         case "moved": self = .moved
+        case "unplanned": self = .unplanned
+        case "secure": self = .secure
+        case "no-match": self = .noMatch
+        case "several": self = .several
         default: self = .unknown(rawValue)
         }
     }
@@ -699,6 +710,10 @@ public enum ErrorReason: RawRepresentable, Codable, Hashable, Sendable {
         case .app: "app"
         case .browserField: "browser-field"
         case .moved: "moved"
+        case .unplanned: "unplanned"
+        case .secure: "secure"
+        case .noMatch: "no-match"
+        case .several: "several"
         case .unknown(let value): value
         }
     }

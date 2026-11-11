@@ -1,0 +1,15 @@
+{
+  "about": "§27.8 within a request and across the host's segments: lastEffect is the effect of the last step that ran and sent input (from prior at a segment's start); stops says whether this step and every step after it do not run. Read by src/shared/computer/batchStop.test.ts and BatchStopTests.swift.",
+  "cases": [
+    { "name": "keys after a step that changed nothing", "lastEffect": "none", "action": { "action": "key", "text": "Tab" }, "stops": true },
+    { "name": "text after a step that changed nothing", "lastEffect": "none", "action": { "action": "type", "text": "hi" }, "stops": true },
+    { "name": "paste after a step that changed nothing", "lastEffect": "none", "action": { "action": "paste", "text": "hi" }, "stops": true },
+    { "name": "hold_key after a step that changed nothing", "lastEffect": "none", "action": { "action": "hold_key", "text": "shift", "duration": 1 }, "stops": true },
+    { "name": "text that names its element", "lastEffect": "none", "action": { "action": "type", "text": "hi", "element": 4 }, "stops": false },
+    { "name": "text that names its target by name", "lastEffect": "none", "action": { "action": "type", "text": "hi", "named": "Search" }, "stops": false },
+    { "name": "a click after a step that changed nothing", "lastEffect": "none", "action": { "action": "left_click", "element": 3 }, "stops": false },
+    { "name": "keys after a thin tree's unknown", "lastEffect": "unknown", "action": { "action": "key", "text": "Return" }, "stops": false },
+    { "name": "keys after a change", "lastEffect": "changed", "action": { "action": "type", "text": "hi" }, "stops": false },
+    { "name": "keys first in the call", "action": { "action": "key", "text": "super+n" }, "stops": false }
+  ]
+}

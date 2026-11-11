@@ -33,7 +33,8 @@ const SAMPLES: Record<ComputerErrorKind, Partial<ComputerError>> = {
   already_running: {},
   value_not_taken: { element: 19, value: 'Choose a plan' },
   focus_moved: { element: 9, reason: 'browser-field', focused: { index: 9, line: 'input "Address and search bar"' } },
-  tab_in_use: {}
+  tab_in_use: {},
+  named_target: { reason: 'several', elementCandidates: [{ index: 52, line: 'menu item "Team"' }, { index: 9, line: 'button "Team"' }] },
 }
 
 describe('the error words', () => {

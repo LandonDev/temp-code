@@ -15,6 +15,15 @@ public struct OkStep: Codable, Hashable, Sendable {
             self.on = on
         }
     }
+    public struct Opened: Codable, Hashable, Sendable {
+        public let id: Int
+        public let title: String
+
+        public init(id: Int, title: String) {
+            self.id = id
+            self.title = title
+        }
+    }
 
     public let index: Int
     public let action: ComputerActionName
@@ -27,8 +36,11 @@ public struct OkStep: Codable, Hashable, Sendable {
     public let shot: Shot?
     public let waited: WaitReport?
     public let session: SessionChange?
+    public let opened: Opened?
+    public let resolved: Int?
+    public let focusTo: Int?
 
-    public init(index: Int, action: ComputerActionName, tier: Tier?, effect: StepEffect, element: ElementBrief? = nil, input: Input? = nil, cursor: Point? = nil, text: String? = nil, shot: Shot? = nil, waited: WaitReport? = nil, session: SessionChange? = nil) {
+    public init(index: Int, action: ComputerActionName, tier: Tier?, effect: StepEffect, element: ElementBrief? = nil, input: Input? = nil, cursor: Point? = nil, text: String? = nil, shot: Shot? = nil, waited: WaitReport? = nil, session: SessionChange? = nil, opened: Opened? = nil, resolved: Int? = nil, focusTo: Int? = nil) {
         self.index = index
         self.action = action
         self.tier = tier
@@ -40,10 +52,13 @@ public struct OkStep: Codable, Hashable, Sendable {
         self.shot = shot
         self.waited = waited
         self.session = session
+        self.opened = opened
+        self.resolved = resolved
+        self.focusTo = focusTo
     }
 
     private enum CodingKeys: String, CodingKey {
-        case index, action, tier, effect, element, input, cursor, text, shot, waited, session
+        case index, action, tier, effect, element, input, cursor, text, shot, waited, session, opened, resolved, focusTo
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -59,6 +74,9 @@ public struct OkStep: Codable, Hashable, Sendable {
         try container.encodeIfPresent(shot, forKey: .shot)
         try container.encodeIfPresent(waited, forKey: .waited)
         try container.encodeIfPresent(session, forKey: .session)
+        try container.encodeIfPresent(opened, forKey: .opened)
+        try container.encodeIfPresent(resolved, forKey: .resolved)
+        try container.encodeIfPresent(focusTo, forKey: .focusTo)
     }
 }
 
@@ -75,12 +93,24 @@ public struct FailedStep: Codable, Hashable, Sendable {
 }
 
 public struct NotRunStep: Codable, Hashable, Sendable {
+    public struct Stopped: Codable, Hashable, Sendable {
+        public let afterStep: Int
+        public let reason: String
+
+        public init(afterStep: Int, reason: String) {
+            self.afterStep = afterStep
+            self.reason = reason
+        }
+    }
+
     public let index: Int
     public let action: ComputerActionName
+    public let stopped: Stopped?
 
-    public init(index: Int, action: ComputerActionName) {
+    public init(index: Int, action: ComputerActionName, stopped: Stopped? = nil) {
         self.index = index
         self.action = action
+        self.stopped = stopped
     }
 }
 

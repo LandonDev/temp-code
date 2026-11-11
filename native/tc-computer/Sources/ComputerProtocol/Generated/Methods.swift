@@ -224,8 +224,12 @@ public enum Methods {
             public let ignored: IgnoredRoutes?
             public let tabs: TabsMode?
             public let expectFocus: Int?
+            public let axWait: WaitOptions?
+            public let axStepWait: WaitOptions?
+            public let prior: Prior?
+            public let textWindowId: Int?
 
-            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, action: ComputerAction, tiers: [Tier], wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil, tabs: TabsMode? = nil, expectFocus: Int? = nil) {
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, action: ComputerAction, tiers: [Tier], wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil, tabs: TabsMode? = nil, expectFocus: Int? = nil, axWait: WaitOptions? = nil, axStepWait: WaitOptions? = nil, prior: Prior? = nil, textWindowId: Int? = nil) {
                 self.session = session
                 self.app = app
                 self.window = window
@@ -240,6 +244,10 @@ public enum Methods {
                 self.ignored = ignored
                 self.tabs = tabs
                 self.expectFocus = expectFocus
+                self.axWait = axWait
+                self.axStepWait = axStepWait
+                self.prior = prior
+                self.textWindowId = textWindowId
             }
         }
 
@@ -265,8 +273,12 @@ public enum Methods {
             public let ignored: IgnoredRoutes?
             public let tabs: TabsMode?
             public let expectFocus: Int?
+            public let axWait: WaitOptions?
+            public let axStepWait: WaitOptions?
+            public let prior: Prior?
+            public let textWindowId: Int?
 
-            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, actions: [ComputerAction], tiers: [Tier], stepWait: WaitOptions? = nil, wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil, tabs: TabsMode? = nil, expectFocus: Int? = nil) {
+            public init(session: String, app: AppRef, window: WindowRef? = nil, launch: Bool? = nil, epoch: String? = nil, actions: [ComputerAction], tiers: [Tier], stepWait: WaitOptions? = nil, wait: WaitOptions? = nil, observe: ObserveOptions? = nil, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil, tabs: TabsMode? = nil, expectFocus: Int? = nil, axWait: WaitOptions? = nil, axStepWait: WaitOptions? = nil, prior: Prior? = nil, textWindowId: Int? = nil) {
                 self.session = session
                 self.app = app
                 self.window = window
@@ -282,6 +294,10 @@ public enum Methods {
                 self.ignored = ignored
                 self.tabs = tabs
                 self.expectFocus = expectFocus
+                self.axWait = axWait
+                self.axStepWait = axStepWait
+                self.prior = prior
+                self.textWindowId = textWindowId
             }
         }
 

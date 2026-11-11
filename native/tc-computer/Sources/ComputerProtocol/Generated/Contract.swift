@@ -111,6 +111,8 @@ public enum ComputerDefaults {
     public enum Wait {
         public static let action = WaitOptions(minMs: 300, quietMs: 450, maxMs: 1500, busyMaxMs: 5000)
         public static let step = WaitOptions(minMs: 0, quietMs: 150, maxMs: 1000, busyMaxMs: 2000)
+        public static let axAction = WaitOptions(minMs: 300, quietMs: 450, maxMs: 1500, busyMaxMs: 5000)
+        public static let axStep = WaitOptions(minMs: 0, quietMs: 150, maxMs: 1000, busyMaxMs: 2000)
         public static let observe = WaitOptions(minMs: 0, quietMs: 300, maxMs: 1000, busyMaxMs: 5000)
         /// The `wait` action: the smart wait capped at `duration` seconds.
         public static func waitAction(seconds: Double) -> WaitOptions {

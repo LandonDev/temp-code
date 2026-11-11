@@ -315,20 +315,34 @@ export type WaitOptions = z.infer<typeof WaitOptionsSchema>
 
 export const WaitReasonSchema = z.enum(['quiet', 'max', 'busy-max', 'cancelled', 'skipped'])
 
+/**
+ * The upper edges of the buckets a wait counts the gaps between adjacent changes into (§27.2); one more bucket counts
+ * every gap above the last edge, so `gapCounts` has WAIT_GAP_EDGES_MS.length + 1 entries.
+ */
+export const WAIT_GAP_EDGES_MS = [25, 50, 75, 100, 150, 200, 300, 450, 700, 1_000] as const
+
 export const WaitReportSchema = z.object({
   waitedMs: int().nonnegative(),
   settled: z.boolean(),
   busy: z.boolean(),
-  reason: WaitReasonSchema
+  reason: WaitReasonSchema,
+  /** from the step's start to the first sample that saw a counted change; absent when nothing counted (§27.2) */
+  firstChangeMs: int().nonnegative().optional(),
+  /** the gaps between adjacent changes, counted over WAIT_GAP_EDGES_MS and one bucket above (§27.2) */
+  gapCounts: z.array(int().nonnegative()).length(WAIT_GAP_EDGES_MS.length + 1).optional()
 })
 export type WaitReport = z.infer<typeof WaitReportSchema>
 
-/** The four waits the host sends with every call (§7). The Task benchmark tunes these rows and nothing else. */
+/** The waits the host sends with every call (§7). The Task benchmark tunes these rows and nothing else. */
 export const COMPUTER_WAIT = {
   /** after the last action */
   action: { minMs: 300, quietMs: 450, maxMs: 1_500, busyMaxMs: 5_000 },
   /** between batch steps */
   step: { minMs: 0, quietMs: 150, maxMs: 1_000, busyMaxMs: 2_000 },
+  /** after a segment's last step when every step of it went in at `ax` (§27.3); ships equal to `action` */
+  axAction: { minMs: 300, quietMs: 450, maxMs: 1_500, busyMaxMs: 5_000 },
+  /** after a step that went in at `ax` and is not the last (§27.3); ships equal to `step` */
+  axStep: { minMs: 0, quietMs: 150, maxMs: 1_000, busyMaxMs: 2_000 },
   /** a plain `state.get` */
   observe: { minMs: 0, quietMs: 300, maxMs: 1_000, busyMaxMs: 5_000 }
 } as const satisfies Record<string, WaitOptions>
@@ -404,6 +418,10 @@ export type Placement = z.infer<typeof PlacementSchema>
 export const PasteFormatSchema = z.enum(['text', 'markdown', 'html'])
 export type PasteFormat = z.infer<typeof PasteFormatSchema>
 
+/** The longest `named` target (§27.9) and `menu` path (§27.10). */
+export const NAMED_MAX = 100
+export const MENU_PATH_MAX = 300
+
 /** Every parameter any action takes, each optional: one flat object, one Swift struct. */
 export const COMPUTER_ACTION_SHAPE = {
   action: ComputerActionNameSchema,
@@ -432,11 +450,15 @@ export const COMPUTER_ACTION_SHAPE = {
   /** an action word the element lists, or a role default */
   name: z.string().min(1).optional(),
   /** `[a, b]` in UTF-16 units */
-  range: z.array(int().nonnegative()).length(2).optional()
+  range: z.array(int().nonnegative()).length(2).optional(),
+  /** a target by its name in the tree, resolved when the step runs (§27.9) */
+  named: z.string().min(1).max(NAMED_MAX).optional(),
+  /** a menu-bar item by its path, `File > Save…`, picked over AX with no menu open (§27.10) */
+  menu: z.string().min(1).max(MENU_PATH_MAX).optional()
 }
 export type ActionParam = Exclude<keyof typeof COMPUTER_ACTION_SHAPE, 'action'>
 
-const POINTER = ['element', 'coordinate', 'text'] as const satisfies ActionParam[]
+const POINTER = ['element', 'coordinate', 'named', 'text'] as const satisfies ActionParam[]
 /** A click may hold its button down for `duration` seconds. */
 const CLICK = [...POINTER, 'duration'] as const satisfies ActionParam[]
 
@@ -450,7 +472,7 @@ export const ACTION_PARAMS: Record<
 > = {
   screenshot: { required: [], optional: [] },
   zoom: { required: ['region'], optional: [] },
-  left_click: { required: [], optional: [...CLICK] },
+  left_click: { required: [], optional: [...CLICK, 'menu'] },
   right_click: { required: [], optional: [...CLICK] },
   middle_click: { required: [], optional: [...CLICK] },
   double_click: { required: [], optional: [...CLICK] },
@@ -463,24 +485,36 @@ export const ACTION_PARAMS: Record<
       ['element', 'coordinate']
     ]
   },
-  mouse_move: { required: [], optional: ['element', 'coordinate'], oneOf: [['element', 'coordinate']] },
+  mouse_move: { required: [], optional: ['element', 'coordinate', 'named'], oneOf: [['element', 'coordinate', 'named']] },
   left_mouse_down: { required: [], optional: [] },
   left_mouse_up: { required: [], optional: [] },
   cursor_position: { required: [], optional: [] },
   scroll: { required: ['scroll_direction', 'scroll_amount'], optional: [...POINTER] },
-  type: { required: ['text'], optional: ['element'] },
-  key: { required: ['text'], optional: ['repeat', 'element'] },
-  hold_key: { required: ['text', 'duration'], optional: ['element'] },
+  type: { required: ['text'], optional: ['element', 'named'] },
+  key: { required: ['text'], optional: ['repeat', 'element', 'named'] },
+  hold_key: { required: ['text', 'duration'], optional: ['element', 'named'] },
   wait: { required: ['duration'], optional: [] },
-  set_value: { required: ['element', 'value'], optional: [] },
-  perform: { required: ['element', 'name'], optional: [] },
-  select_text: { required: ['element'], optional: ['text', 'range', 'prefix', 'suffix', 'place'], oneOf: [['text', 'range']] },
-  paste: { required: ['text'], optional: ['format', 'element'] }
+  set_value: { required: ['value'], optional: ['element', 'named'], oneOf: [['element', 'named']] },
+  perform: { required: ['name'], optional: ['element', 'named', 'menu'], oneOf: [['element', 'named', 'menu']] },
+  select_text: {
+    required: [],
+    optional: ['element', 'named', 'text', 'range', 'prefix', 'suffix', 'place'],
+    oneOf: [
+      ['element', 'named'],
+      ['text', 'range']
+    ]
+  },
+  paste: { required: ['text'], optional: ['format', 'element', 'named'] }
 }
 
-/** Pairs that never go together on any action. */
+/** Pairs that never go together on any action: one target at most (§27.9, §27.10). */
 const EXCLUSIVE: [ActionParam, ActionParam][] = [
   ['element', 'coordinate'],
+  ['element', 'named'],
+  ['coordinate', 'named'],
+  ['element', 'menu'],
+  ['coordinate', 'menu'],
+  ['named', 'menu'],
   ['start_element', 'start_coordinate'],
   ['text', 'range'],
   ['range', 'prefix'],
@@ -509,6 +543,8 @@ export function refineAction(value: { action: ComputerActionName } & Partial<Rec
     ctx.addIssue({ code: 'custom', path: ['text'], message: `paste takes at most ${TYPING.pasteMaxUnits} UTF-16 units` })
   if (CLICK_ACTIONS.includes(value.action) && typeof value.duration === 'number' && value.duration > ACTION_LIMITS.clickDurationMaxSeconds)
     ctx.addIssue({ code: 'custom', path: ['duration'], message: `a click holds its button at most ${ACTION_LIMITS.clickDurationMaxSeconds} s` })
+  if (value.action === 'perform' && value.menu !== undefined && value.name !== 'pick')
+    ctx.addIssue({ code: 'custom', path: ['menu'], message: 'perform takes menu only with name pick' })
   const range = value.range as number[] | undefined
   if (range && range[0] > range[1])
     ctx.addIssue({ code: 'custom', path: ['range'], message: 'a range is [a, b] with a ≤ b' })
@@ -597,7 +633,8 @@ export const COMPUTER_ERROR_KINDS = [
   'open_refused',
   'value_not_taken',
   'focus_moved',
-  'tab_in_use'
+  'tab_in_use',
+  'named_target'
 ] as const
 export const ComputerErrorKindSchema = z.enum(COMPUTER_ERROR_KINDS)
 export type ComputerErrorKind = z.infer<typeof ComputerErrorKindSchema>
@@ -613,14 +650,17 @@ export const STEP_ONLY_ERROR_KINDS: readonly ComputerErrorKind[] = [
   'text_not_found',
   'key_window_unavailable',
   'value_not_taken',
-  'focus_moved'
+  'focus_moved',
+  'named_target'
 ]
 
 export const InterruptedBySchema = z.enum(['person'])
 /**
  * `stale_element`: gone, service-restarted. `session_unavailable`: locked, secure-input, activation-refused, in-use.
  * `clipboard_busy`: recent-copy. `open_refused`: missing, executable, scheme, app (§23.2).
- * `focus_moved`: browser-field (the keys would go to the browser's own field), moved (since the model's read) (§25.9).
+ * `focus_moved`: browser-field (the keys would go to the browser's own field), moved (since the model's read) (§25.9),
+ * unplanned (a focus no step of the call aimed at, §27.7), secure (a password field reached by name or by focus, §27.7a).
+ * `named_target`: no-match, several (§27.9).
  */
 export const ErrorReasonSchema = z.enum([
   'gone',
@@ -635,7 +675,11 @@ export const ErrorReasonSchema = z.enum([
   'scheme',
   'app',
   'browser-field',
-  'moved'
+  'moved',
+  'unplanned',
+  'secure',
+  'no-match',
+  'several'
 ])
 export type ErrorReason = z.infer<typeof ErrorReasonSchema>
 
@@ -665,6 +709,9 @@ export const SessionChangeSchema = z.object({
 })
 export type SessionChange = z.infer<typeof SessionChangeSchema>
 
+/** The most candidates a `named_target` `several` answer lists (§27.9). */
+export const NAMED_CANDIDATES_MAX = 5
+
 export const ComputerErrorSchema = z.object({
   kind: ComputerErrorKindSchema,
   /** one plain sentence a model can act on */
@@ -687,7 +734,9 @@ export const ComputerErrorSchema = z.object({
   /** `value_not_taken`: what the element reads after the route (§25.8) */
   value: z.string().optional(),
   /** `focus_moved`: the focused element's line; `element` carries its index (§25.9) */
-  focused: ElementBriefSchema.optional()
+  focused: ElementBriefSchema.optional(),
+  /** `named_target` `several`: up to five of the elements that matched, by their lines (§27.9) */
+  elementCandidates: z.array(ElementBriefSchema).max(NAMED_CANDIDATES_MAX).optional()
 })
 export type ComputerError = z.infer<typeof ComputerErrorSchema>
 
@@ -763,7 +812,13 @@ export const StepOkSchema = z.object({
   shot: ShotSchema.optional(),
   waited: WaitReportSchema.optional(),
   /** present on every step that ran at the `session` tier */
-  session: SessionChangeSchema.optional()
+  session: SessionChangeSchema.optional(),
+  /** the step opened a window, and the call's later steps and closing read act in it (§27.5) */
+  opened: z.object({ id: int(), title: z.string() }).optional(),
+  /** the element a `named` or `menu` target resolved to (§27.9) */
+  resolved: ElementIndexSchema.optional(),
+  /** focus moved during the step, not by a navigation key: the element focused after its wait (§27.7b) */
+  focusTo: ElementIndexSchema.optional()
 })
 export const StepFailedSchema = z.object({
   index: int().nonnegative(),
@@ -774,7 +829,9 @@ export const StepFailedSchema = z.object({
 export const StepNotRunSchema = z.object({
   index: int().nonnegative(),
   action: ComputerActionNameSchema,
-  status: z.literal('not-run')
+  status: z.literal('not-run'),
+  /** the batch stopped before this step: a step that changed nothing left these keys no planned place (§27.8) */
+  stopped: z.object({ afterStep: int().nonnegative(), reason: z.literal('no-change') }).optional()
 })
 export const StepResultSchema = z.discriminatedUnion('status', [StepOkSchema, StepFailedSchema, StepNotRunSchema])
 export type StepResult = z.infer<typeof StepResultSchema>
@@ -868,6 +925,33 @@ export const IgnoredRoutesSchema = z.object({
 })
 export type IgnoredRoutes = z.infer<typeof IgnoredRoutesSchema>
 
+/** The menus opened and windows created one call records (§27.4). */
+export const CALL_RECORD_MAX = 32
+
+/**
+ * What the call's earlier segments did, sent with each request after the first (§27.7b): the last step's effect, the
+ * element focus moved to during it (not by a navigation key), the elements earlier steps targeted, and the windows the
+ * call opened. A menu still open is live in the app's tree, so the next request finds it without being told.
+ */
+export const PriorSchema = z.object({
+  effect: StepEffectSchema,
+  focusTo: ElementIndexSchema.optional(),
+  targeted: z.array(ElementIndexSchema).max(SERVICE.batchMaxActions * 2),
+  windows: z.array(int()).max(CALL_RECORD_MAX).optional()
+})
+export type Prior = z.infer<typeof PriorSchema>
+
+/** The wait rows of §27.3 and the facts of §27.6, §27.7b every `action.run` and `action.batch` may carry. */
+const FewerCallsParams = {
+  /** the wait after the last step when every step went in at `ax` (§27.3) */
+  axWait: WaitOptionsSchema.optional(),
+  /** the wait after a step that went in at `ax` and is not the last (§27.3) */
+  axStepWait: WaitOptionsSchema.optional(),
+  prior: PriorSchema.optional(),
+  /** the window the host last read; a target-less text step in another window fails as §17.3 says (§27.6) */
+  textWindowId: int().optional()
+}
+
 export const ActionRunParamsSchema = TargetSchema.extend({
   action: ComputerActionSchema,
   /** the tiers the host allows, in order */
@@ -879,7 +963,8 @@ export const ActionRunParamsSchema = TargetSchema.extend({
   ignored: IgnoredRoutesSchema.optional(),
   tabs: TabsModeSchema.optional(),
   /** the focused element of the model's latest read of this app; binds the call's first key or text step (§25.9) */
-  expectFocus: ElementIndexSchema.optional()
+  expectFocus: ElementIndexSchema.optional(),
+  ...FewerCallsParams
 }).superRefine((p, ctx) => needsEpoch(withFocus(actionElements(p.action), p.expectFocus), p.epoch, ctx))
 
 export const ActionBatchParamsSchema = TargetSchema.extend({
@@ -892,7 +977,8 @@ export const ActionBatchParamsSchema = TargetSchema.extend({
   personIdleMs: PersonIdleSchema.optional(),
   ignored: IgnoredRoutesSchema.optional(),
   tabs: TabsModeSchema.optional(),
-  expectFocus: ElementIndexSchema.optional()
+  expectFocus: ElementIndexSchema.optional(),
+  ...FewerCallsParams
 }).superRefine((p, ctx) => needsEpoch(withFocus(p.actions.flatMap(actionElements), p.expectFocus), p.epoch, ctx))
 
 export const CaptureScreenshotParamsSchema = TargetSchema.extend({

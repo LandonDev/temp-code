@@ -16,6 +16,7 @@ import {
   cutValue,
   formatElementLine,
   formatKeyCombo,
+  MENU_BLOCK,
   formatObservation,
   hasRoleDefault,
   listedActions,
@@ -247,5 +248,77 @@ describe('key combos', () => {
     expect(parseModifiers('shift')).toEqual(['shift'])
     expect(parseModifiers('cmd+alt')).toEqual(['super', 'alt'])
     expect(() => parseModifiers('shift+a')).toThrow(KeyComboError)
+  })
+})
+
+describe('fewer calls: the opened-menu block and the compact menu bar (§27.4, §27.13)', () => {
+  const round = (text: string): void => expect(formatObservation(parseObservation(text))).toBe(text)
+
+  it('closes an observation with the menu a step opened, its items one level under it', () => {
+    const text = [
+      `${header} · changes since your last read`,
+      '~ [4] pop up "Plan" = "Basic"',
+      '+ menu opened by step 1: [52] menu "Plan"',
+      '  [53] menu item "Basic" checked',
+      '  [54] menu item "Team"',
+      '  [55] menu item "Enterprise" disabled',
+      '  … 3 more'
+    ].join('\n')
+    round(text)
+    const lines = parseObservation(text).lines
+    expect(lines[1]).toEqual({ type: 'menuBlock', step: 1, menu: { index: 52, title: 'Plan' } })
+    expect(lines.at(-1)).toEqual({ type: 'menuMore', more: 3 })
+  })
+
+  it('lets a menu item repeat an element the body printed, and follow the truncated line', () => {
+    const text = [
+      header,
+      '[4] pop up "Plan" = "Basic"',
+      '(truncated: 9 elements left out; observe with element: 4 to see one part whole)',
+      '+ menu opened by step 0: [52] menu "Plan"',
+      '  [4] menu item "Basic"'
+    ].join('\n')
+    round(text)
+  })
+
+  it('follows an unchanged header, and words a menu whose items did not answer in one line', () => {
+    const silent = `${MENU_BLOCK.prefix}2${MENU_BLOCK.silent}`
+    round([`${header} · no changes`, silent].join('\n'))
+    expect(() => parseObservation([`${header} · no changes`, silent, '  [9] menu item "x"'].join('\n'))).toThrow(ObservationParseError)
+  })
+
+  it('refuses body lines after a block, an item listed twice, and a stray "… n more"', () => {
+    const head = '+ menu opened by step 1: [52] menu "Plan"'
+    expect(() => parseObservation([header, head, '[9] button "OK"'].join('\n'))).toThrow(ObservationParseError)
+    expect(() => parseObservation([header, head, '  [53] menu item "a"', '  [53] menu item "a"'].join('\n'))).toThrow(ObservationParseError)
+    expect(() => parseObservation([header, '[1] window "W"', '  … 3 more'].join('\n'))).toThrow(ObservationParseError)
+  })
+
+  it('reads a compact menu bar line, every item with its index', () => {
+    const text = [
+      header,
+      '[40] menu bar',
+      '  [41] menu "File": New [142], Open… [143], Save… [157] disabled, Export ▸ [160]',
+      '  [42] menu "Edit":'
+    ].join('\n')
+    round(text)
+    const file = parseObservation(text).lines[1]
+    expect(file).toEqual({
+      type: 'menuBar',
+      depth: 1,
+      index: 41,
+      title: 'File',
+      items: [
+        { name: 'New', index: 142 },
+        { name: 'Open…', index: 143 },
+        { name: 'Save…', index: 157, disabled: true },
+        { name: 'Export', index: 160, submenu: true }
+      ]
+    })
+  })
+
+  it('keeps commas and brackets inside an item name, and claims every index once', () => {
+    round([header, '[41] menu "Edit": Undo, Redo [5], Copy [list] [6]'].join('\n'))
+    expect(() => parseObservation([header, '[41] menu "Edit": Undo [41]'].join('\n'))).toThrow(ObservationParseError)
   })
 })
