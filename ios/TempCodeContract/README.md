@@ -91,6 +91,7 @@ socket only: `mac.*`, `macBridge.policy.*`, `macBridge.decide`,
 | `session.start` | `{ started }` (a queued root past its `after`) | operate |
 | `session.batch` | `SessionBatchResult` (the fleet switches) | operate |
 | `session.setMaster` | none | operate (a read key shows the control disabled) |
+| `session.markRead`, `session.markUnread` | none (the host's read mark, `SessionMeta.readAt`) | operate (a read key keeps its marks on the phone) |
 | `session.notes.get`, `session.notes.set` | `ThreadNotesDoc` | read, operate |
 | `queue.list`, `queue.add`, `queue.remove`, `queue.update`, `queue.reorder`, `queue.steer` | `[QueuedMessage]`, none | read, operate |
 | `batch.get`, `batch.children` | `BatchState`, `{ children: [SessionMeta] }` | read |

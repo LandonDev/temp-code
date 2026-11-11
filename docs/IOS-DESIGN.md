@@ -2553,7 +2553,14 @@ keyboard action. Every animated change has a static cue as well.
   already true moves; rows that arrived while away get the enter motion
   only on the list the person is looking at. A list that comes back as it
   was is not republished. The thread on screen stays seen through the
-  catch-up: its seen mark follows its rows and again its fresh meta. The
+  catch-up: its seen mark follows its rows and again its fresh meta. Unread
+  is the host's mark (`SessionMeta.readAt`, CLAUDE.md "Read and unread: the
+  host's mark"): a thread read on the Mac or the box reads read here, and
+  one read here is sent to its host (`session.markRead`, through the box for
+  a relayed Mac) while the app is in the foreground with an operate key,
+  coalesced to one request 1.5 s after the last mark (5 s at most), held
+  while the socket is down (`Client/ReadMarks.swift`). A host older than
+  the mark leaves the phone's own marks the answer. The
   status line (`StatusLine`) is one line of footnote text over the content,
   never in it: it exists only after the transport has been away 1.5 s,
   fades in and out over 150 ms, and is gone the frame the socket opens; the
