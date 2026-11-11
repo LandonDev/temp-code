@@ -56,7 +56,7 @@ export interface FrontSample {
  * guard's restore gone wrong.
  */
 export type FrontVerdict =
-  | { verdict: 'kept' | 'theirs' | 'person-chose' }
+  | { verdict: 'kept' | 'theirs' | 'person-chose' | 'gave-way' }
   | { verdict: 'failed'; why: string }
 
 export function judgeFront(input: {
@@ -65,11 +65,15 @@ export function judgeFront(input: {
   scratch: readonly number[]
   report?: FrontReport | null
   personInput: boolean
+  /** the call ran a session step, whose put-back gives way to the person's input (§20.3, SessionLedger.plan) */
+  session?: boolean
 }): FrontVerdict {
-  const { before, after, scratch, report, personInput } = input
+  const { before, after, scratch, report, personInput, session } = input
   if (report?.raised && report.restored === 'failed')
     return { verdict: 'failed', why: `the service raised the app and could not put the front back (pid ${after.pid} in front)` }
   if (report?.raised && report.restored === 'person-chose') return { verdict: 'person-chose' }
+  // a session step's put-back yields to a person using the Mac by design: the step was disturbed, not wrong
+  if (after.pid !== before.pid && scratch.includes(after.pid) && session && personInput) return { verdict: 'gave-way' }
   if (after.pid !== before.pid && scratch.includes(after.pid))
     return { verdict: 'failed', why: `the scratch app ${after.pid} kept the front` }
   if (after.pid === before.pid && (after.window === undefined || before.window === undefined || after.window === before.window))

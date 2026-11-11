@@ -44,6 +44,18 @@ describe('a voided step', () => {
   })
 })
 
+describe('judgeFront after a session step', () => {
+  const person = { pid: 2008 }
+  const probe = { pid: 74575 }
+  it('names a scratch app left in front while the person used the Mac as the put-back giving way, and fails it with no input', () => {
+    // active 9, 2026-11-11: save_as's Go to Folder confirm at session, the person at the Mac
+    expect(judgeFront({ before: person, after: probe, scratch: [74575], personInput: true, session: true })).toEqual({ verdict: 'gave-way' })
+    expect(judgeFront({ before: person, after: probe, scratch: [74575], personInput: false, session: true }).verdict).toBe('failed')
+    // with no session step the service owes the front back whatever the person did
+    expect(judgeFront({ before: person, after: probe, scratch: [74575], personInput: true }).verdict).toBe('failed')
+  })
+})
+
 describe('judgeFront', () => {
   const person = { pid: 100, window: 7 }
   const scratch = [500, 501]

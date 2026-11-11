@@ -629,14 +629,17 @@ function scratchPids(launched?: number): number[] {
 function assertPersonUntouched(
   before: PersonState,
   when: string,
-  launched?: number
+  launched?: number,
+  session = false
 ): 'untouched' | 'person-active' | 'raised at launch' {
   const after = personState()
   const moved = Math.hypot(after.pointer.x - before.pointer.x, after.pointer.y - before.pointer.y)
   if (after.frontmost === before.frontmost && moved < 0.5) return 'untouched'
   const personInput = personIdleSeconds() * 1_000 < Date.now() - before.at
   if (launched && after.frontmost === launched && moved < 0.5) return 'raised at launch'
-  const front = judgeFront({ before: { pid: before.frontmost }, after: { pid: after.frontmost }, scratch: scratchPids(launched), personInput })
+  const front = judgeFront({ before: { pid: before.frontmost }, after: { pid: after.frontmost }, scratch: scratchPids(launched), personInput, session })
+  // the step is run again at once (VOID_RETRIES): a session step's put-back gave way to the person (§20.3)
+  if (front.verdict === 'gave-way') throw skip(`void: ${when}: the person used the Mac, so the session step's put-back gave way and ${after.frontmost} kept the front`)
   check(front.verdict !== 'failed', `${when}: ${front.verdict === 'failed' ? front.why : ''}`, { before: before.frontmost, after: after.frontmost })
   const pointer = judgePointer(moved, personInput)
   check(pointer !== 'moved', `${when}: the pointer moved with no input`, { before: before.pointer, after: after.pointer })
@@ -1950,7 +1953,7 @@ async function activeLeg(a: Service, mayLaunch: () => void): Promise<void> {
     const replaced = okStep((await act(doc, { action: 'save_as', path: target, replace: true }, ['ax', 'process', 'front', 'session'])).step)
     data.replaced = replaced
     if (replaced.front) noteHold('active 9 replace', replaced.front)
-    data.person = assertPersonUntouched(before, 'after save_as')
+    data.person = assertPersonUntouched(before, 'after save_as', undefined, touchedSession([step, replaced]))
   })
   await activeAppsSteps(a, leg, scratch, awayLongEnough)
   await leg.step('active 10: every hold within its bound', async (data) => {
@@ -1986,7 +1989,7 @@ async function activeAppsSteps(a: Service, leg: Chain, scratch: string, awayLong
   const read = (pid: number, title: string): Promise<Observation> =>
     a.call('state.get', { session: SESSION, app: { pid }, window: { title }, mode: 'full', wait: COMPUTER_WAIT.observe })
   /** the person's front app and window after a step that took the front: as before, or moved by the person */
-  const frontBack = async (before: FrontWindow, since: number, data: Record<string, unknown>): Promise<void> => {
+  const frontBack = async (before: FrontWindow, since: number, data: Record<string, unknown>, session = false): Promise<void> => {
     const after = await until(() => {
       const now = frontWindow()
       return now.pid === before.pid && now.window === before.window ? now : null
@@ -2003,7 +2006,8 @@ async function activeAppsSteps(a: Service, leg: Chain, scratch: string, awayLong
       if (before.window >= first && after.window >= first) return
     }
     // judged by what the service did: a target left in front fails; the person's own change is theirs
-    const front = judgeFront({ before, after, scratch: [...scratchPids(), tePid, finder].filter(Boolean), personInput: personIdleSeconds() * 1_000 < Date.now() - since })
+    const front = judgeFront({ before, after, scratch: [...scratchPids(), tePid, finder].filter(Boolean), personInput: personIdleSeconds() * 1_000 < Date.now() - since, session })
+    if (front.verdict === 'gave-way') throw skip(`void: the person used the Mac, so the session step's put-back gave way and ${after.pid} kept the front`)
     check(front.verdict !== 'failed', `the person's front app and window came back: ${front.verdict === 'failed' ? front.why : ''}`, data.front)
   }
   let tePid = 0
@@ -2038,7 +2042,7 @@ async function activeAppsSteps(a: Service, leg: Chain, scratch: string, awayLong
       const step = okStep(r.step)
       data.step = step
       if (step.front) noteHold('active TextEdit 1', step.front)
-      await frontBack(before, since, data)
+      await frontBack(before, since, data, touchedSession([step]))
       check(step.input?.via === 'panel' && existsSync(target), 'save_as wrote the file through the panel', step)
       teDoc = await read(tePid, 'te-note').catch(() => read(tePid, 'note'))
     })
