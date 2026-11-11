@@ -28,12 +28,16 @@ public struct WindowListEntry: Sendable, Equatable {
 
 /// The public fallback for `_AXUIElementGetWindow` (plan §5.3).
 public enum WindowMatch {
-    /// The one window of `pid` on layer 0 whose bounds equal `frame` within a point and whose title,
-    /// when CG gives one, is `title`; nil when none or several.
+    /// The layers an app's own windows sit on: the ordinary one and the floating one (kCGFloatingWindowLevel), where
+    /// a palette or TC Probe's windows float above ordinary windows. Menus, the Dock and the menu bar sit higher.
+    public static let windowLayers: Set<Int> = [0, 3]
+
+    /// The one window of `pid` on an ordinary or floating layer whose bounds equal `frame` within a point and whose
+    /// title, when CG gives one, is `title`; nil when none or several.
     public static func pick(_ entries: [WindowListEntry], pid: Int32, title: String, frame: Rect) -> Int? {
         let near = { (a: Double, b: Double) in abs(a - b) <= 1 }
         let hits = entries.filter { e in
-            e.pid == pid && e.layer == 0 && (e.title.isEmpty || e.title == title)
+            e.pid == pid && windowLayers.contains(e.layer) && (e.title.isEmpty || e.title == title)
                 && near(e.bounds.x, frame.x) && near(e.bounds.y, frame.y) && near(e.bounds.w, frame.w) && near(e.bounds.h, frame.h)
         }
         return hits.count == 1 ? hits[0].id : nil

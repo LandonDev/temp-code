@@ -27,6 +27,7 @@
  * Run on the Mac: bun run script:e2e-computer-preview (esbuild → node, as script:e2e-computer).
  */
 import { gateScreenSkip } from './lib/macScreen'
+import { coverWord, probeCover, type CoverWindow } from './lib/windowCover'
 import { execFileSync } from 'node:child_process'
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -236,7 +237,9 @@ async function run(): Promise<void> {
   const fps = counted / seconds
   const last = got.frames.at(-1)?.push
   report.frames = { count: counted, seconds, fps: Math.round(fps * 100) / 100, size: last ? `${last.width}×${last.height}` : '' }
-  check('frames at 4 ± 1 fps over 5 s', fps >= 3 && fps <= 5, `${counted} frames in ${seconds.toFixed(2)} s = ${fps.toFixed(2)} fps`)
+  // the stream sends only new pixels: a covered or hidden TC Probe draws fewer, so the rate is not judged then (windowCover.ts)
+  const cover = coverWord(probeCover(probe<CoverWindow[]>('windows'), probePid, target!.window.id))
+  check('frames at 4 ± 1 fps over 5 s', !cover && fps >= 3 && fps <= 5, cover ?? `${counted} frames in ${seconds.toFixed(2)} s = ${fps.toFixed(2)} fps`)
   check('each frame a JPEG within maxEdge', !!last && Math.max(last.width, last.height) <= 512 && Buffer.from(last.data, 'base64').subarray(0, 2).toString('hex') === 'ffd8', last ? `${last.width}×${last.height}, ${Math.round((last.data.length * 3) / 4 / 1024)} KiB` : 'none')
 
   // ── 3. clicks ─────────────────────────────────────────────────────────

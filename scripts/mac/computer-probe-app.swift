@@ -33,10 +33,30 @@
 // with the file's name. Its windows stay inert all the same, so a steal takes none of the person's keys.
 import AppKit
 
+/// Where the probe's windows sit: above ordinary windows (the floating level), on every Space and beside a
+/// full-screen app's, so what the person has open never covers them and the proofs judge the service, not the
+/// screen (the bridge's Ping read "can't tell" and the preview counted 2 fps under the person's full-screen
+/// window, 2026-11-11). Ordering one floating window never makes it key nor brings the app forward. TC Probe
+/// Steal keeps the ordinary level: it plays an ordinary app that takes the front.
+enum ProbeLevel {
+    static let steals = Bundle.main.object(forInfoDictionaryKey: "TCProbeSteal") as? Bool ?? false
+
+    static func float(_ window: NSWindow) {
+        guard !steals else { return }
+        window.level = .floating
+        window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
+        window.hidesOnDeactivate = false
+    }
+}
+
 /// A window the person can neither click nor bring forward.
 final class InertWindow: NSWindow {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+    override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
+        super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
+        ProbeLevel.float(self)
+    }
 }
 
 final class ProbeDelegate: NSObject, NSApplicationDelegate {
@@ -69,7 +89,9 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
             cover.backgroundColor = .windowBackgroundColor
             cover.isOpaque = true
             cover.hasShadow = false
+            // a person's ordinary window over the scratch Chrome, not a floating one
             cover.level = .normal
+            cover.collectionBehavior = []
             cover.ignoresMouseEvents = true
             cover.isRestorable = false
             cover.isReleasedWhenClosed = false
@@ -193,6 +215,10 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
 final class SideWindow: NSWindow {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { true }
+    override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
+        super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
+        ProbeLevel.float(self)
+    }
 }
 
 /// Three windows beside "TC Probe" for the window actions leg: "TC Probe Doc" (close, minimize, an
@@ -257,6 +283,10 @@ final class ProbeWindows: NSObject, NSWindowDelegate {
 final class KeyableWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+    override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
+        super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
+        ProbeLevel.float(self)
+    }
 }
 
 /// A custom view with the button role and a label child of its own: a click on the label hits the

@@ -10,9 +10,18 @@ import Testing
     }
 
     @Test func oneWindowOfThatPidTitleAndFrameIsTheMatch() {
-        #expect(WindowMatch.pick([entry(7), entry(8, pid: 43), entry(9, title: "Other"), entry(10, dx: 40), entry(11, layer: 3)], pid: 42, title: "Untitled", frame: frame) == 7)
+        #expect(WindowMatch.pick([entry(7), entry(8, pid: 43), entry(9, title: "Other"), entry(10, dx: 40), entry(11, layer: 25)], pid: 42, title: "Untitled", frame: frame) == 7)
         // within a point; and a title CG hides (no Screen Recording) does not rule a window out
         #expect(WindowMatch.pick([entry(7, title: "", dx: 0.6)], pid: 42, title: "Untitled", frame: frame) == 7)
+    }
+
+    @Test func aFloatingWindowIsMatchedAtItsOwnLayer() {
+        // TC Probe's windows float above ordinary ones (kCGFloatingWindowLevel, layer 3)
+        #expect(WindowMatch.pick([entry(12, layer: 3)], pid: 42, title: "Untitled", frame: frame) == 12)
+        // a menu or a status item on a higher layer never is
+        #expect(WindowMatch.pick([entry(13, layer: 101)], pid: 42, title: "Untitled", frame: frame) == nil)
+        // an ordinary and a floating window with one frame and title: no telling them apart
+        #expect(WindowMatch.pick([entry(7), entry(12, layer: 3)], pid: 42, title: "Untitled", frame: frame) == nil)
     }
 
     @Test func noneOrTwoIsNoMatch() {

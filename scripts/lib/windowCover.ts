@@ -68,3 +68,32 @@ export function windowCoverage(
   )
   return { window: windows[at].id, covered: fraction >= 0.999, fraction }
 }
+
+export interface ProbeCover {
+  window: number
+  layer: number
+  /** the share of it the opaque windows ahead hide, 0 to 1 */
+  fraction: number
+  /** their owners' pids */
+  by: number[]
+}
+
+/**
+ * TC Probe's window at its own layer (it floats, layer 3) and what covers it: opaque windows of other apps ahead
+ * of it in the list, on any layer. Null when it is not on screen at all, as on another Space or behind a
+ * full-screen app. A proof whose check reads pixels the probe draws fails it as not judged while this is not
+ * clear (`coverWord`), rather than judging the screen.
+ */
+export function probeCover(windows: readonly CoverWindow[], pid: number, window?: number): ProbeCover | null {
+  const at = windows.findIndex((w) => w.pid === pid && (window === undefined ? w.layer === 0 || w.layer === 3 : w.id === window))
+  if (at < 0) return null
+  const ahead = windows.slice(0, at).filter((w) => w.pid !== pid && w.alpha >= 0.99 && coveredFraction(windows[at], [w]) > 0)
+  return { window: windows[at].id, layer: windows[at].layer, fraction: coveredFraction(windows[at], ahead), by: [...new Set(ahead.map((w) => w.pid))] }
+}
+
+/** Null when the probe is on screen and uncovered; else the words a check fails with. */
+export function coverWord(cover: ProbeCover | null): string | null {
+  if (!cover) return 'not judged: TC Probe is not on screen (another Space or a full-screen app)'
+  if (cover.fraction > 0) return `not judged: covered, ${Math.round(cover.fraction * 100)}% by pid ${cover.by.join(', ')}`
+  return null
+}

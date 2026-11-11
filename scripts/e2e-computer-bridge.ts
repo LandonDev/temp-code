@@ -42,6 +42,7 @@
  * TC_BOX_REPORT_DIR where the report is copied there.
  */
 import { gateScreenSkip, parseMacScreen, readyMacScreen } from './lib/macScreen'
+import { coverWord, probeCover, type CoverWindow } from './lib/windowCover'
 import { spawn, type ChildProcess, execFileSync } from 'node:child_process'
 import { createHash, createHmac, randomBytes } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -520,6 +521,8 @@ async function orchestrator(): Promise<void> {
   execFileSync('xcrun', ['swiftc', '-O', '-o', PROBE, join(REPO, 'scripts/mac/computer-proof-probe.swift')], { stdio: 'pipe' })
   execFileSync('codesign', ['-s', '-', '--force', PROBE], { stdio: 'pipe' })
   const frontmost = (): { pid: number; bundleId: string | null } => JSON.parse(execFileSync(PROBE, ['frontmost'], { encoding: 'utf8', timeout: 10_000 }))
+  /** Why a check on what TC Probe draws cannot be judged now (it is covered or off screen), or null (windowCover.ts). */
+  const probeCovered = (): string | null => coverWord(probeCover(JSON.parse(execFileSync(PROBE, ['windows'], { encoding: 'utf8', timeout: 10_000 })) as CoverWindow[], scratchPid))
   const screenReady = (): boolean => {
     // a passwordless screen saver is dismissed and read again (macScreen.ts readyMacScreen)
     const screen = readyMacScreen(() => parseMacScreen(execFileSync(PROBE, ['screen'], { encoding: 'utf8', timeout: 10_000 })))
@@ -829,7 +832,8 @@ async function orchestrator(): Promise<void> {
     await until(30_000, async () => !!(card = (await macPending()).find((r) => r.kind === 'computer' && r.status === 'pending')))
     if (card) await rpc(mac, 'macBridge.decide', { id: card.id, allow: true })
     const allowedOut = await allowed
-    check('card: an Allow runs the click', !allowedOut.isError && / · (ax|process) · changed/.test(allowedOut.text), allowedOut.text.slice(0, 300))
+    const allowCover = probeCovered()
+    check('card: an Allow runs the click', !allowCover && !allowedOut.isError && / · (ax|process) · changed/.test(allowedOut.text), allowCover ?? allowedOut.text.slice(0, 300))
 
     // 6. the cap
     await awaitScreen()
@@ -883,7 +887,8 @@ async function orchestrator(): Promise<void> {
     check('held: the click has not run unread', macRuns() === runsBefore)
     let read = textOf(await ask('computer_result', { id: heldId }))
     while (read.startsWith('Still held')) read = textOf(await ask('computer_result', { id: heldId }))
-    check("held: computer_result returns the click's step line", / · (ax|process) · changed/.test(read), read.slice(0, 300))
+    const heldCover = probeCovered()
+    check("held: computer_result returns the click's step line", !heldCover && / · (ax|process) · changed/.test(read), heldCover ?? read.slice(0, 300))
     // a second held click left unread is cancelled on the Mac and never runs
     await boxCall('session.markStatus', { sessionId: t2, status: 'idle' })
     await boxCall('session.markStatus', { sessionId: t1, status: 'running' })
@@ -944,7 +949,8 @@ async function orchestrator(): Promise<void> {
     await rpc(mac, 'away.set', { enabled: true })
     await until(10_000, async () => (await boxCall<{ enabled: boolean }>('away.get', {})).enabled === true)
     const awayOut = await computer(t1, 'computer_act', clickArgs)
-    check('away: an acting call that would ask is allowed and marked away', !awayOut.isError && / · (ax|process) · changed/.test(awayOut.text) && logOf(mac).includes('card allowed (away)'), awayOut.text)
+    const awayCover = probeCovered()
+    check('away: an acting call that would ask is allowed and marked away', !awayCover && !awayOut.isError && / · (ax|process) · changed/.test(awayOut.text) && logOf(mac).includes('card allowed (away)'), awayCover ?? awayOut.text)
     // The local socket answers session.events as the rows themselves; a remote one wraps them in { rows }.
     type Row = { event: { type: string; kind?: string; away?: { kind: string; text: string } } }
     const events = await boxCall<Row[] | { rows: Row[] }>('session.events', { sessionId: t1, afterSeq: 0 })
