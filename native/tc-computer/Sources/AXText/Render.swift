@@ -141,9 +141,7 @@ public struct Layout: Sendable {
         func add(_ nodes: [KeptNode], parent: Int?, hidden: Hidden?) {
             // the menu bar's menus, one line each (§27.13)
             if let p = parent, rows[p].parent == nil, rows[p].kind == .element, rows[p].facts.role == "menu bar" {
-                for n in nodes where n.kind == .element {
-                    rows.append(menuRow(n, indexed, parent: p, end: rows.count + 1))
-                }
+                appendMenus(&rows, nodes, indexed, parent: p)
                 return
             }
             let members = nodes.map { n -> Fold.Member in
@@ -156,9 +154,7 @@ public struct Layout: Sendable {
                 if let run = runs.first, run.lowerBound == i {
                     runs.removeFirst()
                     let first = members[run.lowerBound].index, last = members[run.upperBound - 1].index
-                    rows.append(Row(kind: .range, index: first, last: last, parent: parent, end: rows.count + 1, facts: LineFacts(role: members[i].role),
-                                    valueTotal: 0, nameLimit: .max, valueLimit: .max, frame: nil, hidden: Hidden(), cls: nodes[i].facts.cls,
-                                    isList: false, compares: nodes[run].map { Compare($0.facts) }))
+                    appendRange(&rows, first: first, last: last, parent: parent, role: members[i].role, nodes[run])
                     i = run.upperBound
                     continue
                 }
@@ -166,21 +162,13 @@ public struct Layout: Sendable {
                 let r = rows.count
                 switch n.kind {
                 case .stub:
-                    rows.append(Row(kind: .stub, index: 0, last: 0, parent: parent, end: r + 1, facts: LineFacts(role: n.facts.line.role, name: n.facts.line.name),
-                                    valueTotal: 0, nameLimit: .max, valueLimit: .max, frame: n.frame, hidden: Hidden(), cls: .other, isList: false, compares: []))
+                    appendStub(&rows, n, parent: parent)
                 case .element:
-                    let f = n.facts
-                    rows.append(Row(kind: .element, index: indexed.index[n.id]!, last: 0, parent: parent, end: 0, facts: f.line,
-                                    fullName: f.rawName, fullValue: f.fullValue, valueTotal: f.valueTotal,
-                                    nameLimit: ComputerDefaults.ObservationText.nameMaxChars,
-                                    valueLimit: wholeValues ? .max : ComputerDefaults.ObservationText.valueMaxChars,
-                                    frame: n.frame, hidden: Hidden(), cls: f.cls, isList: n.isList, compares: [Compare(f)]))
+                    appendElement(&rows, n, indexed, parent: parent, wholeValues: wholeValues)
                     add(n.children, parent: r, hidden: n.hidden)
                     // a menu the call closes after this read: its items still take actions (§26.11)
                     if s.closingMenus.contains(n.id) {
-                        rows.append(Row(kind: .note, index: 0, last: 0, parent: r, end: rows.count + 1, facts: LineFacts(role: ""),
-                                        valueTotal: 0, nameLimit: .max, valueLimit: .max, frame: nil, hidden: Hidden(), cls: .other,
-                                        isList: false, compares: []))
+                        appendNote(&rows, parent: r)
                     }
                     rows[r].end = rows.count
                 }
@@ -189,13 +177,59 @@ public struct Layout: Sendable {
             // a list's summary row always exists, empty until something is hidden, so the budget can fill it in place
             let isList = parent.map { rows[$0].isList } ?? false
             if let parent, (hidden.map { !$0.isEmpty } ?? false) || isList {
-                rows.append(Row(kind: .more, index: 0, last: 0, parent: parent, end: rows.count + 1, facts: LineFacts(role: ""),
-                                valueTotal: 0, nameLimit: .max, valueLimit: .max, frame: nil, hidden: hidden ?? Hidden(), cls: .other,
-                                isList: false, compares: []))
+                appendMore(&rows, parent: parent, hidden: hidden ?? Hidden())
             }
         }
         add(tree.roots, parent: nil, hidden: nil)
         return Layout(rows: rows, app: s.app.name, title: s.window.title, others: s.otherWindows, document: s.document, space: space, windowFrame: s.window.frame, geometry: geometry)
+    }
+
+    // The rows `build`'s recursive `add` appends are made out here, never inline: a debug build gives each `Row`
+    // temporary its own slot in every level's frame, and a 50-deep tree overflowed a 512 KiB thread stack.
+
+    @inline(never)
+    static func appendRange(_ rows: inout [Row], first: Int, last: Int, parent: Int?, role: String, _ members: ArraySlice<KeptNode>) {
+        rows.append(Row(kind: .range, index: first, last: last, parent: parent, end: rows.count + 1, facts: LineFacts(role: role),
+                        valueTotal: 0, nameLimit: .max, valueLimit: .max, frame: nil, hidden: Hidden(), cls: members.first!.facts.cls,
+                        isList: false, compares: members.map { Compare($0.facts) }))
+    }
+
+    @inline(never)
+    static func appendStub(_ rows: inout [Row], _ n: KeptNode, parent: Int?) {
+        rows.append(Row(kind: .stub, index: 0, last: 0, parent: parent, end: rows.count + 1, facts: LineFacts(role: n.facts.line.role, name: n.facts.line.name),
+                        valueTotal: 0, nameLimit: .max, valueLimit: .max, frame: n.frame, hidden: Hidden(), cls: .other, isList: false, compares: []))
+    }
+
+    @inline(never)
+    static func appendElement(_ rows: inout [Row], _ n: KeptNode, _ indexed: Indexed, parent: Int?, wholeValues: Bool) {
+        let f = n.facts
+        rows.append(Row(kind: .element, index: indexed.index[n.id]!, last: 0, parent: parent, end: 0, facts: f.line,
+                        fullName: f.rawName, fullValue: f.fullValue, valueTotal: f.valueTotal,
+                        nameLimit: ComputerDefaults.ObservationText.nameMaxChars,
+                        valueLimit: wholeValues ? .max : ComputerDefaults.ObservationText.valueMaxChars,
+                        frame: n.frame, hidden: Hidden(), cls: f.cls, isList: n.isList, compares: [Compare(f)]))
+    }
+
+    @inline(never)
+    static func appendMore(_ rows: inout [Row], parent: Int, hidden: Hidden) {
+        rows.append(Row(kind: .more, index: 0, last: 0, parent: parent, end: rows.count + 1, facts: LineFacts(role: ""),
+                        valueTotal: 0, nameLimit: .max, valueLimit: .max, frame: nil, hidden: hidden, cls: .other,
+                        isList: false, compares: []))
+    }
+
+    @inline(never)
+    static func appendNote(_ rows: inout [Row], parent: Int) {
+        rows.append(Row(kind: .note, index: 0, last: 0, parent: parent, end: rows.count + 1, facts: LineFacts(role: ""),
+                        valueTotal: 0, nameLimit: .max, valueLimit: .max, frame: nil, hidden: Hidden(), cls: .other,
+                        isList: false, compares: []))
+    }
+
+    /// The menu bar's menus, one row each.
+    @inline(never)
+    static func appendMenus(_ rows: inout [Row], _ nodes: [KeptNode], _ indexed: Indexed, parent: Int) {
+        for n in nodes where n.kind == .element {
+            rows.append(menuRow(n, indexed, parent: parent, end: rows.count + 1))
+        }
     }
 
     /// A menu-bar item as one row: its title, and the items of its menu with their numbers. An item with no title (a
