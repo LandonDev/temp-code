@@ -143,7 +143,7 @@ struct Tick<Content: View>: View {
         ZStack {
             content(now)
             Color.clear
-                .frame(width: 0, height: 0)
+                .frame(width: .zero, height: .zero)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
                 .task(id: ticking) {
