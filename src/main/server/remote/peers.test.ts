@@ -2,7 +2,7 @@ import { createServer } from 'node:http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { ENVIRONMENTS_PREFIX } from './environments'
-import { PeerLink, Peers } from './peers'
+import { PeerLink, Peers, connectedLine } from './peers'
 
 /** A host: hello first, then every request echoed back as its result, plus whatever the test pushes. */
 async function fakeHost(environmentId: string) {
@@ -97,6 +97,20 @@ describe('PeerLink', () => {
     link.retry()
     await vi.waitFor(() => expect(link.connected).toBe(true), { timeout: 5_000 })
     expect(hostA.tickets).toEqual(['t-1', 't-2'])
+  })
+
+  it('names the negotiated extensions on its connect line', async () => {
+    const host = await fakeHost('env_c')
+    cleanup.push(host.close)
+    const env = { id: 'env_c', name: 'C', routes: [{ url: `ws://127.0.0.1:${host.port}/ws`, kind: 'loopback' as const }], addedAt: 1, caps: ['admin' as const], keyName: 'k' }
+    const store = storeWith({ [`${ENVIRONMENTS_PREFIX}env_c`]: JSON.stringify({ ...env, key: 'tc_x.secret' }) })
+    const lines: string[] = []
+    const link = new PeerLink(env, { store, environmentId: 'env_me', fetch: ticketFetch as unknown as typeof fetch }, {}, (l) => void lines.push(l))
+    cleanup.push(async () => link.close())
+    await link.connect()
+    // the fake host's ws server agrees to no extension by default
+    expect(lines).toEqual(['C: connected over loopback, extensions none'])
+    expect(connectedLine('box', 'tunnel', 'permessage-deflate; client_max_window_bits')).toBe('box: connected over tunnel, extensions permessage-deflate; client_max_window_bits')
   })
 
   it('refuses a host that answers under another environment id', async () => {

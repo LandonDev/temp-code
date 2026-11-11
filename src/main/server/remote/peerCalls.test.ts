@@ -2,14 +2,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ServerFrame } from '@shared/contract'
 import { PEER_CHUNK_CHARS, type MacBridgePush, type MacCallParams } from '@shared/contract-macbridge'
 import {
+  PEER_CHUNK_WINDOW,
   PeerCalls,
   PeerOfflineError,
   handlePeerRequest,
   replyOverLink,
   servePeerCall,
+  type LinkRequest,
   type PeerCallHandler,
   type PeerSocket
 } from './peerCalls'
+
+/** Let queued promise callbacks run. */
+const settle = (): Promise<void> => new Promise((ok) => setTimeout(ok, 0))
 
 type Call = Extract<MacBridgePush, { push: 'peer.call' }>
 const params = { thread: { id: 's1', title: 'T' }, args: { path: '/x' } }
@@ -181,6 +186,60 @@ describe('PeerCalls', () => {
     const value = { s: 'a😀b'.repeat(50), n: [1, 2, 3] }
     await replyOverLink(request, callId, { ok: true, result: value }, 7)
     await expect(pending).resolves.toEqual(value)
+  })
+
+  it('sends chunks two at a time, the reply only once every chunk is acknowledged, and the box rebuilds the value', async () => {
+    const { calls, frames, request } = link(async () => null, { serve: false })
+    const pending = calls.call('env_mac', 'mac.readFile', params, 5_000)
+    const callId = (frames[0] as Call).callId
+    const value = { s: 'x'.repeat(40) }
+    const chunkCount = Math.ceil(JSON.stringify(value).length / 10)
+    expect(chunkCount).toBeGreaterThan(3)
+    const order: string[] = []
+    const acks: (() => void)[] = []
+    const held: LinkRequest = (method, p) => {
+      if (method !== 'peer.chunk') {
+        order.push(method)
+        return request(method, p)
+      }
+      const index = (p as { index: number }).index
+      order.push(`send ${index}`)
+      return new Promise((resolve) => {
+        acks[index] = () => {
+          order.push(`ack ${index}`)
+          resolve(request(method, p))
+        }
+      })
+    }
+    const sending = replyOverLink(held, callId, { ok: true, result: value }, 10)
+    await settle()
+    // chunk 2 is out before chunk 1's ack; chunk 3 waits for it
+    expect(order).toEqual(['send 0', 'send 1'])
+    acks[0]()
+    await settle()
+    expect(order).toEqual(['send 0', 'send 1', 'ack 0', 'send 2'])
+    // the acks may come in any order; the reply waits for every one
+    for (let i = 1; i < chunkCount; i++) {
+      acks[i]()
+      await settle()
+    }
+    await sending
+    expect(order.at(-1)).toBe('peer.reply')
+    expect(order.filter((o) => o.startsWith('send'))).toHaveLength(chunkCount)
+    expect(order.indexOf('peer.reply')).toBeGreaterThan(order.indexOf(`ack ${chunkCount - 1}`))
+    await expect(pending).resolves.toEqual(value)
+  })
+
+  it('a chunk that fails stops the reply, with no rejection left unhandled', async () => {
+    const sent: string[] = []
+    const failing: LinkRequest = async (method, p) => {
+      sent.push(method === 'peer.chunk' ? `chunk ${(p as { index: number }).index}` : method)
+      if (method === 'peer.chunk') throw new Error('link down')
+      return { ok: true }
+    }
+    await expect(replyOverLink(failing, 'c1', { ok: true, result: 'y'.repeat(50) }, 10)).rejects.toThrow('link down')
+    expect(sent).not.toContain('peer.reply')
+    expect(sent.length).toBeLessThanOrEqual(PEER_CHUNK_WINDOW + 1)
   })
 
   it('the away mark rides the reply, ok, error and chunked alike, and the call still returns the bare result', async () => {
