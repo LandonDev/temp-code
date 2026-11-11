@@ -65,6 +65,8 @@ describe('probeCover', () => {
     expect(cover?.by).toEqual([777])
     expect(cover!.fraction).toBeGreaterThan(0)
     expect(coverWord(cover)).toMatch(/^not judged: covered, \d+% by pid 777$/)
+    // the Dock's full-screen window on a higher layer is no cover
+    expect(coverWord(probeCover([w(7, 742, 20, 0, 0, 3200, 1800), probe, person], 92853))).toBeNull()
     // a see-through window does not cover it
     expect(coverWord(probeCover([w(6, 777, 3, 100, 1450, 200, 200, 0.5), probe], 92853))).toBeNull()
   })
