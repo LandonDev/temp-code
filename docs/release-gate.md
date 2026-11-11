@@ -47,6 +47,22 @@ load of 26 with the person at the Mac. Those last two were not run again: the
 person was in a call with the camera on, and the proofs, which float TC Probe
 over the screen, were held.
 
+At 26ceaf74 (the cover check ignoring the Dock by owner name; the Dock's
+window read as owner "Dock", pid 742, layer 20), three publish-shaped runs in a
+row passed whole with no flake on 2026-11-11: 666 s, 685 s and 657 s, load 4.3
+to 12.8, each the four soaks, e2e-tc-computer (194 to 196 s), the bridge, the
+preview (4.00 fps) and computer-bench. The full `--tier publish` in the
+scratch clone then ran four times: the first stopped at hub, since the clone
+had no infra/hub dependencies (`npm --prefix infra/hub ci`; the person's
+checkout has them from an install by hand); the second passed 15 of 17 rows
+and the preview voided two checks while the person moved the pointer (the
+preview now runs once more when it only voided checks, `needsVoidRerun`); the
+third failed e2e-addons' "ready again within 5 s" at 5115 ms with the load at
+179 from another app's build; the fourth passed every row before
+e2e-tc-computer, which failed active 9 on both tries: after save_as, a session
+step, TC Probe kept the front from the person's app (Aside), though the front
+hold read restored.
+
 The rows `e2e-tc-computer` and `e2e-computer-bridge` start through
 `scripts/proof-bun.ts`: `bun run` puts every ancestor's node_modules/.bin on
 PATH, so the package script's `bun` can be any old copy (a 1.3.5 in
