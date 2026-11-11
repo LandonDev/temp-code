@@ -27,7 +27,8 @@
 //
 // `TCProbeSteal` (an Info.plist key, set only in "TC Probe Steal.app", bundle id
 // dev.landon.tempcode.computer-probe-steal, for the front guard's leg): the app takes the front the way a
-// misbehaving app does, `NSApp.activate(ignoringOtherApps: true)`, once its window shows, once per opened
+// misbehaving app does, Launch Services opening its own bundle with `activates` (see `steal()`), once its
+// window shows, once per opened
 // document and each time Ping is pressed. It opens `.tcprobe` documents into a second inert window titled
 // with the file's name. Its windows stay inert all the same, so a steal takes none of the person's keys.
 import AppKit
@@ -164,9 +165,14 @@ final class ProbeDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// The stealer's activation, which the front guard puts back; the plain probe never activates.
+    /// macOS 14 and later refuse `NSApp.activate(ignoringOtherApps:)` and `open -b` from an app in the
+    /// background; asking Launch Services to open its own bundle with `activates` still takes the front
+    /// (macOS 27.2, 2026-11-10), so that is what this misbehaving app does.
     private func steal() {
         guard steals else { return }
-        NSApp.activate(ignoringOtherApps: true)
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config) { _, _ in }
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { false }
