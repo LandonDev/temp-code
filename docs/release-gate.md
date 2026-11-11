@@ -343,8 +343,13 @@ system, never the model's word.
   for the hand run, and so is the System Settings task while System
   Settings is open.
 - **What fails.** A task's end state; its median computer calls above
-  max(1.5 × baseline, baseline + 2); its median host time per call above
-  max(1.3 × baseline, baseline + 150 ms) (`BENCH_RULE`). A run that goes off
+  max(1.5 × baseline, baseline + 2); its median host time per task (the
+  sum over a run's computer calls) or per action step (a batch of n counts
+  n, an observe one) above max(1.3 × baseline, baseline + 150 ms)
+  (`BENCH_RULE`), both judged. A row written before 2026-11-11 holds only
+  per-call figures, so its task figure is its calls times its host ms per
+  call and its step figure its host ms per call (`baseHost`); a new row
+  stores both. A run that goes off
   route (any tool but the computer tools, `ToolSearch`, `update_notes`,
   `TodoWrite`, `update_plan`) or past its step budget fails its end state. A
   gate task the bench's own budget never reached fails, unless the scheduler
@@ -411,15 +416,22 @@ system, never the model's word.
   5.1 to 6.9 with no generator in 166 s. Every end state passed both
   times, no run took the front and nothing else failed; settings-toggle was
   skipped (System Settings open) and save-dialog left for the hand run.
-  The cause is the model's call shape, not load: GPT now does the form as
-  an observe and one batch of five or six actions, often with the final
-  click inside, so a two-call run's median is the mean of the observe
-  (494 to 803 ms) and the batch (2461 to 3117 ms loaded, 2657 to 2837 ms
-  unloaded); the three-call runs of earlier gate runs read about 900. The
-  bound and the baseline are unchanged; the row passes again only when the
-  person rebaselines it (`--rebaseline`) or the model returns to more
-  calls. A per-action measure was tried and dropped: with the same +150 ms
-  floor it is looser for batch-heavy work.
+  The cause was the model's call shape, not load or a slower host: GPT now
+  does the form as an observe and one batch of five or six actions (the
+  batching of computer-protocol.md §27), often with the final click inside,
+  so a two-call run's median per call is the mean of the observe (494 to
+  803 ms) and the batch (2461 to 3117 ms loaded, 2657 to 2837 ms unloaded),
+  while its host time for the whole task fell to about 3.3 s from the
+  row's 6.1 s (7 × 872). So the master, ruling in the person's place on
+  2026-11-11, replaced the per-call cell with two, both judged, the margins
+  unchanged: host ms per task and host ms per action step. Per step alone
+  would not do: its fixed 150 ms floor counts for more against a smaller
+  unit, so a 500 ms observe and a batch of five slowed from 1000 to 1500 ms
+  passes per step (300 against 975) and fails per task (2000 against 1950).
+  The baseline was not re-recorded; its rows' task and step figures come
+  from their per-call ones. Against the 7-call row the two-call shape has
+  room for about twice its host time per task until a green run writes a
+  row of its own shape.
 - **Can the publish load it?** The gate's lanes run at once
   (scripts/gate.ts) beside the build and the sign (release-publish.sh), and
   the bench is the computer lane's last row, after e2e-tc-computer (200 to
