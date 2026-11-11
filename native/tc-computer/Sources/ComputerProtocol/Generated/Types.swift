@@ -596,18 +596,57 @@ public struct ProbeReport: Codable, Hashable, Sendable {
 }
 
 public struct SessionRestore: Codable, Hashable, Sendable {
+    public struct PersonGuard: Codable, Hashable, Sendable {
+        public enum Mode: RawRepresentable, Codable, Hashable, Sendable {
+            case active
+            case passive
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "active": self = .active
+                case "passive": self = .passive
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .active: "active"
+                case .passive: "passive"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let mode: Mode
+        public let dropped: Int
+        public let replayed: Int
+        public let rearmed: Int
+
+        public init(mode: Mode, dropped: Int, replayed: Int, rearmed: Int) {
+            self.mode = mode
+            self.dropped = dropped
+            self.replayed = replayed
+            self.rearmed = rearmed
+        }
+    }
+
     public let frontmost: RestoreOutcome
     public let pointer: RestoreOutcome
     public let held: AppBrief?
+    public let personGuard: PersonGuard?
 
-    public init(frontmost: RestoreOutcome, pointer: RestoreOutcome, held: AppBrief?) {
+    public init(frontmost: RestoreOutcome, pointer: RestoreOutcome, held: AppBrief?, personGuard: PersonGuard? = nil) {
         self.frontmost = frontmost
         self.pointer = pointer
         self.held = held
+        self.personGuard = personGuard
     }
 
     private enum CodingKeys: String, CodingKey {
-        case frontmost, pointer, held
+        case frontmost, pointer, held, personGuard
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -615,6 +654,7 @@ public struct SessionRestore: Codable, Hashable, Sendable {
         try container.encode(frontmost, forKey: .frontmost)
         try container.encode(pointer, forKey: .pointer)
         try container.encode(held, forKey: .held)
+        try container.encodeIfPresent(personGuard, forKey: .personGuard)
     }
 }
 

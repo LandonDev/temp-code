@@ -1,0 +1,19 @@
+{
+  "jsonrpc": "2.0",
+  "id": 42,
+  "result": {
+    "frontmost": "restored",
+    "pointer": "restored",
+    "held": {
+      "pid": 511,
+      "bundleId": "com.apple.Terminal",
+      "name": "Terminal"
+    },
+    "personGuard": {
+      "mode": "active",
+      "dropped": 4,
+      "replayed": 3,
+      "rearmed": 0
+    }
+  }
+}
