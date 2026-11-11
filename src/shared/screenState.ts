@@ -33,6 +33,12 @@ export interface ScreenFacts {
   onConsole: boolean
   /** the cover rose with the person idle (IDLE_LAUNCH_MIN_S or more at that moment, or now when the moment is unknown) */
   idleLaunched: boolean
+  /**
+   * `CGSSessionScreenLockedTime`, Unix seconds: the cover's start plus the lock
+   * delay, from when a password is needed (screenLock off stores a delay of
+   * 2147483647 s, the year 2094); null when the dictionary has none
+   */
+  passwordAt?: number | null
 }
 
 /** An explicit lock comes with the person's own input; the idle saver only after this much quiet (its own minimum is a minute). */
@@ -51,14 +57,17 @@ export function parseLockPolicy(text: string): LockPolicy {
 }
 
 /**
- * Pure: the facts and the policy → the cover. `saverUpMs` is how long the
- * saver has been up when known (presence times it from its own notice);
- * under a delay with no age known it reads locked. Unknown reads locked:
- * keys typed at a lock screen would reach the password field.
+ * Pure: the facts and the policy → the cover. The session's own
+ * `passwordAt` decides when it is there (measured on macOS 27.2, 2026-11-11);
+ * else the idle rule and the policy: `saverUpMs` is how long the saver has
+ * been up when known (presence times it from its own notice), and under a
+ * delay with no age known it reads locked. Unknown reads locked: keys typed
+ * at a lock screen would reach the password field.
  */
-export function classifyScreen(facts: ScreenFacts, policy: LockPolicy, saverUpMs: number | null = null): ScreenCover {
+export function classifyScreen(facts: ScreenFacts, policy: LockPolicy, saverUpMs: number | null = null, nowMs: number = Date.now()): ScreenCover {
   if (!facts.onConsole) return 'locked'
   if (!facts.sessionLocked) return 'unlocked'
+  if (facts.passwordAt != null) return nowMs < facts.passwordAt * 1000 ? 'saver' : 'locked'
   if (!facts.idleLaunched) return 'locked'
   if (policy.kind === 'off') return 'saver'
   if (policy.kind === 'delay' && saverUpMs !== null && saverUpMs < policy.seconds * 1000) return 'saver'

@@ -2654,8 +2654,9 @@ Mac as covered while the person is away (src/main/server/keepAwake.ts).
   heard it (`PEER_LIVE_TTL_MS`) and drops it when the link closes, so a box
   that goes away releases the hold within that. A headless host never holds.
 - **The hold.** Electron's `powerSaveBlocker.start('prevent-display-sleep')`,
-  IOKit's PreventUserIdleDisplaySleep, the assertion `caffeinate -d` takes;
-  IOKit releases it if the app exits.
+  IOKit's PreventUserIdleDisplaySleep, the assertion `caffeinate -d` takes
+  (measured: the same type, dropped when the process dies). To measure: that
+  it keeps the idle saver from starting (docs/computer-protocol.md §20.7).
 - **The setting.** `power.keepAwake`: `while-working` (unset) or `never`,
   This Mac's Keep awake row on Settings → Hosts (While threads work, Never),
   which says On now while the hold is taken; `power.status` and

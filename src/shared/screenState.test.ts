@@ -13,6 +13,14 @@ describe('parseLockPolicy', () => {
 })
 
 describe('classifyScreen', () => {
+  it("the session's own password time decides when it is there", () => {
+    const now = 1_762_848_000_000
+    // screenLock off: the cover's start plus 2147483647 s, as read on the Mac
+    expect(classifyScreen(facts({ passwordAt: 3_941_867_712, idleLaunched: false }), { kind: 'immediate' }, null, now)).toBe('saver')
+    expect(classifyScreen(facts({ passwordAt: now / 1000 }), { kind: 'off' }, null, now)).toBe('locked')
+    expect(classifyScreen(facts({ passwordAt: null }), { kind: 'off' }, null, now)).toBe('saver')
+  })
+
   it('a screen saver with no password needed is not a lock', () => {
     expect(classifyScreen(facts(), { kind: 'off' })).toBe('saver')
     expect(classifyScreen(facts({ sessionLocked: false }), { kind: 'immediate' })).toBe('unlocked')

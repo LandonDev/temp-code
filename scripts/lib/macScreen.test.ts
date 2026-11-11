@@ -99,11 +99,13 @@ describe('the screen probe replies', () => {
 })
 
 describe('a screen saver is not a lock', () => {
-  const covered = '{"locked":true,"asleep":false,"session":true,"console":true,"idle":1250}'
+  const covered = '{"locked":true,"asleep":false,"session":true,"console":true,"idle":1250,"passwordAt":3941867712}'
   it('classifies a covered reply that carries the raw session', () => {
     const seen: unknown[] = []
     expect(parseMacScreen(covered, (s) => (seen.push(s), 'saver'))).toEqual({ locked: false, asleep: false, saver: true })
-    expect(seen).toEqual([{ sessionLocked: true, onConsole: true, idleS: 1250 }])
+    expect(seen).toEqual([{ sessionLocked: true, onConsole: true, idleS: 1250, passwordAt: 3941867712 }])
+    parseMacScreen('{"locked":true,"asleep":false,"session":true,"console":true,"idle":3,"passwordAt":-1}', (s) => (seen.push(s), 'locked'))
+    expect(seen[1]).toMatchObject({ passwordAt: null })
     expect(parseMacScreen(covered, () => 'locked')).toEqual({ locked: true, asleep: false })
     expect(parseMacScreen('{"locked":false,"asleep":false,"session":false,"console":true,"idle":3}', () => { throw new Error('not asked') })).toEqual({ locked: false, asleep: false })
     // an older probe's reply, with no raw session, stays as it says

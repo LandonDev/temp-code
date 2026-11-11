@@ -62,7 +62,7 @@ export function parseConsoleUsers(plistXml: string): boolean | null {
 }
 
 /** The session's cover and the lock policy (a fake in tests): null when the session dictionary has no answer. */
-export type ScreenReader = () => Promise<{ session: { sessionLocked: boolean; onConsole: boolean }; policy: LockPolicy } | null>
+export type ScreenReader = () => Promise<{ session: { sessionLocked: boolean; onConsole: boolean; passwordAt?: number | null }; policy: LockPolicy } | null>
 
 /** While the screen reads covered (locked or a saver), the facts are read again this often: a missed unlock notice never leaves it stale. */
 export const COVERED_RECHECK_MS = 30_000
@@ -93,8 +93,14 @@ export function macScreenReader(exec: ExecFile = nodeExecFile as unknown as Exec
       const value = parseLockPolicy((await run(exec, '/usr/sbin/sysadminctl', ['-screenLock', 'status'])).out)
       policy = value.kind === 'unknown' ? null : { value, at: now() }
     }
-    return { session: { sessionLocked, onConsole: true }, policy: policy?.value ?? { kind: 'unknown' } }
+    return { session: { sessionLocked, onConsole: true, passwordAt: parseLockedTime(ioreg.out) }, policy: policy?.value ?? { kind: 'unknown' } }
   }
+}
+
+/** Pure: the console user's `CGSSessionScreenLockedTime` (Unix seconds) from the same plist; null when it has none. */
+export function parseLockedTime(plistXml: string): number | null {
+  const m = /<key>CGSSessionScreenLockedTime<\/key>\s*<(?:integer|real)>([0-9.]+)<\/(?:integer|real)>/.exec(plistXml)
+  return m ? Number(m[1]) : null
 }
 
 /** TEMP_CODE_PRESENCE=locked|unlocked|asleep|awake (comma-separated pairs allowed: "locked,awake") on an isolated instance (TEMP_CODE_USER_DATA). */
@@ -193,7 +199,8 @@ export class MacPresenceWatcher implements PresenceSource {
     const upMs = this.coveredAt === null ? null : this.now() - this.coveredAt
     // how the cover rose: the idle at its notice, else (at boot) the idle now
     const idleLaunched = !this.refuted && (this.coverIdleS ?? this.idleS()) >= IDLE_LAUNCH_MIN_S
-    const cover = classifyScreen({ ...read.session, idleLaunched }, read.policy, upMs)
+    // a dismiss that did not take was a lock, whatever the session's numbers say
+    const cover = this.refuted && read.session.sessionLocked ? 'locked' : classifyScreen({ ...read.session, idleLaunched }, read.policy, upMs, this.now())
     if (cover === 'unlocked') this.uncovered()
     this.armDelay(cover, read.policy, upMs)
     return this.set(coverPatch(cover))

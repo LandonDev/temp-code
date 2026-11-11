@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { COVERED_RECHECK_MS, MacPresenceWatcher, macScreenReader, parseConsoleUsers, presenceFromEnv, staticPresence, type PowerMonitorLike } from './presence'
+import { COVERED_RECHECK_MS, MacPresenceWatcher, macScreenReader, parseConsoleUsers, parseLockedTime, presenceFromEnv, staticPresence, type PowerMonitorLike } from './presence'
 
 const plist = (users: string): string =>
   `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n\t<key>IOConsoleLocked</key>\n\t<false/>\n\t<key>IOConsoleUsers</key>\n\t${users}\n\t<key>IORegistryEntryName</key>\n\t<string>Root</string>\n</dict>\n</plist>\n`
@@ -203,9 +203,23 @@ describe('a screen saver is not a lock', () => {
       return null
     }
     const read = macScreenReader(exec, () => 0)
-    expect(await read()).toEqual({ session: { sessionLocked: true, onConsole: true }, policy: { kind: 'off' } })
+    expect(await read()).toEqual({ session: { sessionLocked: true, onConsole: true, passwordAt: null }, policy: { kind: 'off' } })
     await read()
     expect(calls.filter((c) => c === '/usr/sbin/sysadminctl')).toHaveLength(1)
+  })
+})
+
+describe("the session's password time", () => {
+  it('is read off the console user and decides saver or lock before the idle rule', async () => {
+    expect(parseLockedTime(LOCKED.replace('<true/>', '<true/>\n\t\t\t<key>CGSSessionScreenLockedTime</key>\n\t\t\t<integer>3941867712</integer>'))).toBe(3941867712)
+    expect(parseLockedTime(LOCKED)).toBeNull()
+    const w = new MacPresenceWatcher({ now: () => 1_762_848_000_000 })
+    // an explicit lock (fresh input) with the password time far ahead still reads the session's word
+    w.useMac(async () => ({ session: { sessionLocked: true, onConsole: true, passwordAt: 3941867712 }, policy: { kind: 'unknown' } }), async () => {}, () => 0)
+    expect(await w.refresh()).toMatchObject({ screen: 'unlocked', saver: true })
+    w.useMac(async () => ({ session: { sessionLocked: true, onConsole: true, passwordAt: 1_762_847_000 }, policy: { kind: 'off' } }), async () => {}, () => 5000)
+    expect((await w.refresh()).screen).toBe('locked')
+    w.dispose()
   })
 })
 

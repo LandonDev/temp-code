@@ -19,18 +19,23 @@ export const SCREEN_SKIP_NOTE = 'the Mac is locked or asleep; run it by hand whe
 export const SCREEN_SKIP_LINE = 'skipped: the Mac is locked or asleep'
 
 // Same rule as computer-proof-probe.swift's screen command, without AppKit or its other probes:
-// `locked` is the raw cover (the flag, or another user on the console); `session`, `console` and `idle`
-// (whole seconds since the last HID input) let it be classified.
+// `locked` is the raw cover (the flag, or another user on the console); `session`, `console`, `idle`
+// (whole seconds since the last HID input) and `passwordAt` (CGSSessionScreenLockedTime, -1 when absent) let it be classified.
 export const SCREEN_SOURCE = String.raw`import CoreGraphics
+import Foundation
 let session = CGSessionCopyCurrentDictionary() as? [String: Any] ?? [:]
 let locked = session["CGSSessionScreenIsLocked"] as? Bool ?? false
 let onConsole = session["kCGSSessionOnConsoleKey"] as? Bool ?? true
 let asleep = CGDisplayIsAsleep(CGMainDisplayID()) != 0
 let idle = Int(CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: CGEventType(rawValue: ~0)!))
-print("{\"locked\":\(locked || !onConsole),\"asleep\":\(asleep),\"session\":\(locked),\"console\":\(onConsole),\"idle\":\(idle)}")
+let passwordAt = (session["CGSSessionScreenLockedTime"] as? NSNumber)?.doubleValue ?? -1
+print("{\"locked\":\(locked || !onConsole),\"asleep\":\(asleep),\"session\":\(locked),\"console\":\(onConsole),\"idle\":\(idle),\"passwordAt\":\(passwordAt)}")
 `
 
 let keptPolicy: LockPolicy | null = null
+
+/** A covered reply's raw facts: the session flag, the console, the HID idle and the session's password time (null when absent). */
+export interface CoveredSession { sessionLocked: boolean; onConsole: boolean; idleS: number; passwordAt: number | null }
 
 /**
  * The Mac's own answer for a covered session: sysadminctl's policy (on
@@ -38,14 +43,17 @@ let keptPolicy: LockPolicy | null = null
  * the cover rose (an explicit lock comes with fresh input; a dismiss that does
  * not take settles the rest, readyMacScreen).
  */
-export function liveCover(session: { sessionLocked: boolean; onConsole: boolean; idleS: number }): ScreenCover {
+export function liveCover(session: CoveredSession): ScreenCover {
   try {
     if (!keptPolicy) {
       const r = spawnSync('/usr/sbin/sysadminctl', ['-screenLock', 'status'], { encoding: 'utf8', timeout: 2_000 })
       const policy = parseLockPolicy(`${r.stdout ?? ''}${r.stderr ?? ''}`)
       if (policy.kind !== 'unknown') keptPolicy = policy
     }
-    return classifyScreen({ sessionLocked: session.sessionLocked, onConsole: session.onConsole, idleLaunched: session.idleS >= IDLE_LAUNCH_MIN_S }, keptPolicy ?? { kind: 'unknown' })
+    return classifyScreen(
+      { sessionLocked: session.sessionLocked, onConsole: session.onConsole, idleLaunched: session.idleS >= IDLE_LAUNCH_MIN_S, passwordAt: session.passwordAt },
+      keptPolicy ?? { kind: 'unknown' }
+    )
   } catch {
     return 'locked'
   }
@@ -56,12 +64,13 @@ export function liveCover(session: { sessionLocked: boolean; onConsole: boolean;
  * covered reply that carries the raw `session`, `console` and `idle` is
  * classified (`coverOf`): a passwordless saver reads `{ locked: false, saver: true }`.
  */
-export function parseMacScreen(text: string, coverOf: (session: { sessionLocked: boolean; onConsole: boolean; idleS: number }) => ScreenCover = liveCover): MacScreen | null {
+export function parseMacScreen(text: string, coverOf: (session: CoveredSession) => ScreenCover = liveCover): MacScreen | null {
   try {
     const value = JSON.parse(text)
     if (typeof value?.locked !== 'boolean' || typeof value?.asleep !== 'boolean') return null
     if (value.locked && typeof value.session === 'boolean' && typeof value.console === 'boolean' && typeof value.idle === 'number') {
-      const cover = coverOf({ sessionLocked: value.session, onConsole: value.console, idleS: value.idle })
+      const passwordAt = typeof value.passwordAt === 'number' && value.passwordAt >= 0 ? value.passwordAt : null
+      const cover = coverOf({ sessionLocked: value.session, onConsole: value.console, idleS: value.idle, passwordAt })
       if (cover === 'saver') return { locked: false, asleep: value.asleep, saver: true }
       if (cover === 'unlocked') return { locked: false, asleep: value.asleep }
     }
