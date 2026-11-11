@@ -416,6 +416,7 @@ extension ComputerService {
     /// The commit check's second read, after the step's wait (§25.8): a step expected to commit with
     /// nothing on disk yet polls every `commitPollMs` for at most `commitSettleMs`.
     private func committed(_ ok: OkStep, _ check: CommitCheck, _ target: Resolved) async -> OkStep {
+        if ok.disk?.saved != nil { return ok } // save_as proved its own file
         let windowID = target.windowID
         let read = documentReader
         let now: () async -> DocumentState? = {
@@ -427,7 +428,6 @@ extension ComputerService {
             try? await Task.sleep(for: .milliseconds(ComputerDefaults.Front.commitPollMs))
             disk = check.diff(await now())
         }
-        if ok.disk?.saved != nil { return ok } // save_as proved its own file
         let (effect, part) = check.judge(window: ok.effect, disk: disk)
         return OkStep(index: ok.index, action: ok.action, tier: ok.tier, effect: effect, element: ok.element, input: ok.input, cursor: ok.cursor, text: ok.text,
                       shot: ok.shot, waited: ok.waited, session: ok.session, front: ok.front, disk: part)

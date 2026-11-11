@@ -77,6 +77,11 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         }
         try requireAccessibility()
         if target.cancelled() { throw cancelledFailure() }
+        // decision 23: a path typed into a save panel's name field is saved as a file named with colons
+        if [.setValue, .type, .paste].contains(action.action), let e = target.element?.element,
+           let refusal = nameFieldRefusal(identifier: AX.string(e, "AXIdentifier"), text: action.value ?? action.text ?? "") {
+            throw ComputerFailure(refusal)
+        }
         let facts = elementFacts(action, target)
         let held = core.held.heldTier(pid: target.pid)
         let live = LiveRoutes(engine: self, action: action, target: target)
@@ -214,6 +219,10 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
     // MARK: dispatch
 
     private func run(_ action: ComputerAction, step: RouteStep, rest: [RouteStep], target: InputTarget, tiers: [Tier], facts: ElementFacts?, held: Tier?, live: LiveRoutes) throws -> InputOutcome {
+        if step.route == .panel {
+            // the panel flow keeps its own holds, one per part that needs the app in front
+            return try saveAs(action, target: target, tiers: tiers, at: step.tier)
+        }
         if step.tier == .front {
             return try runFront(action, step: step, rest: rest, target: target, tiers: tiers, facts: facts, live: live)
         }
@@ -259,7 +268,7 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
 
     /// A named menu item's AXEnabled, read again inside the hold: AppKit re-validates it once the app is
     /// active, so it is polled for a moment before it counts as disabled.
-    private func enabledInHold(_ item: AXUIElement, path: [String], ctx: FrontHoldContext) throws {
+    func enabledInHold(_ item: AXUIElement, path: [String], ctx: FrontHoldContext) throws {
         let deadline = clock.seconds() + Double(InputTiming.frontSettleMs) / 1000
         while AX.bool(item, "AXEnabled") != true {
             try ctx.check()
