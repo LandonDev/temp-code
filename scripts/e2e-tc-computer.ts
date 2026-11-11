@@ -180,7 +180,7 @@ const NOT_QUIET = `the clipboard was not quiet for ${QUIET_MS / 1000} s after ${
 const UNGATED = process.env.TC_PROOF_UNGATED === '1'
 /**
  * A hand run's legs, by name, comma separated (`TC_PROOF_LEGS=fallbacks,web`): windows, fallbacks, web,
- * active, stealer; each other one is recorded skipped. Unset (the gate) runs every leg.
+ * active, fewer, stealer; each other one is recorded skipped. Unset (the gate) runs every leg.
  */
 const LEGS = process.env.TC_PROOF_LEGS?.split(',').map((x) => x.trim()).filter(Boolean) ?? null
 function runsLeg(leg: string): boolean {
