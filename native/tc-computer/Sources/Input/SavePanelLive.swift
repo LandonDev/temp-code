@@ -147,7 +147,7 @@ extension InputEngine {
     }
 
     /// A part of the flow inside a hold of its own; answers the hold's report.
-    private func inHold(_ target: InputTarget, app: String, _ body: (FrontHoldContext) throws -> Void) throws -> FrontHold {
+    private func inHold(_ target: InputTarget, app: String, _ body: (FrontHoldContext) throws -> Void) throws -> FrontHold? {
         try frontTier.hold(pid: target.pid, window: target.window, app: app, cancelled: target.cancelled, changedSince: target.changedSince, body: body).1
     }
 

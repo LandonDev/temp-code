@@ -26,7 +26,7 @@ public final class FrontHoldContext: @unchecked Sendable {
     /// the person guard is on for this hold: their keys, clicks and wheel are dropped and stop nothing
     let guarded: Bool
     private let nowMs: @Sendable () -> Int
-    private let callCancelled: @Sendable () -> Bool
+    private var callCancelled: @Sendable () -> Bool
 
     init(plan: FrontHoldPlan, nowMs: @escaping @Sendable () -> Int, cancelled: @escaping @Sendable () -> Bool, guarded: Bool = false) {
         self.plan = plan
@@ -37,9 +37,12 @@ public final class FrontHoldContext: @unchecked Sendable {
 
     /// The step's cancel flag inside the hold: true at the cap, at the person's touch or when the call
     /// was cancelled. Input checks it before every event and in every pause, as it does a call's cancel.
+    /// A step that joins an open hold brings its own call's cancel.
+    func setCallCancelled(_ c: @escaping @Sendable () -> Bool) { lock.withLock { callCancelled = c } }
+
     public var cancelled: @Sendable () -> Bool {
         { [self] in
-            if callCancelled() { return true }
+            if lock.withLock({ callCancelled })() { return true }
             return lock.withLock {
                 if stop != nil { return true }
                 if case .cap = plan.beforePost(now: nowMs()) {
@@ -150,8 +153,13 @@ final class FrontTier: @unchecked Sendable {
     let watch = HoldWatch()
     /// the person guard's tap for a hold (§14.9, §26.5); nil or refused, the watch alone stops on a touch
     let tap: PersonTapping?
-    /// one hold at a time in this process, as one session step: the per-app queues never share the front
-    private let holds = NSLock()
+    /// one hold step at a time in this process (a cap's close included): the per-app queues never share the front
+    private let steps = NSLock()
+    /// the hold a batch's `front` step left open for the next one (decision 4); under `steps`
+    private var open: OpenHold?
+    /// reports of holds closed after the step that last used them returned, by pid, for the shell to take
+    private let reportLock = NSLock()
+    private var reports: [pid_t: FrontHold] = [:]
 
     init(host: LiveSessionHost, sessionLock: MacLock, clock: InputClock, keyboard: KeyboardState = SessionKeyboardState(), tap: PersonTapping? = nil) {
         self.host = host
@@ -163,21 +171,101 @@ final class FrontTier: @unchecked Sendable {
 
     private func nowMs() -> Int { Int((clock.seconds() * 1000).rounded()) }
 
+    /// One hold, from its activation to its restore: what giving the Mac back needs, and what its steps did.
+    final class OpenHold: @unchecked Sendable {
+        let pid: pid_t
+        let window: AXUIElement
+        let app: String
+        let ctx: FrontHoldContext
+        let lease: MacLockHold
+        let personPid: pid_t?
+        let personWindow: AXUIElement?
+        let person: AppBrief?
+        let arm: TickEpoch
+        var changedSince: (@Sendable (UInt64) -> Bool)?
+        var lastTicks: UInt64?
+        var timer: DispatchWorkItem?
+
+        init(pid: pid_t, window: AXUIElement, app: String, ctx: FrontHoldContext, lease: MacLockHold, personPid: pid_t?, personWindow: AXUIElement?, person: AppBrief?, arm: TickEpoch) {
+            self.pid = pid
+            self.window = window
+            self.app = app
+            self.ctx = ctx
+            self.lease = lease
+            self.personPid = personPid
+            self.personWindow = personWindow
+            self.person = person
+            self.arm = arm
+        }
+    }
+
     /// Runs `body` with the app `pid` in front and `window` its focused window, then gives the person's
     /// app back. `changedSince` says whether the app's AX tree changed since a tick (the settle's signal).
-    /// Answers the body's value and `step.front`; a failure carries `front` too once the hold began.
+    /// With `keepOpen` (another step of the batch follows, decision 4) a step that leaves at least a
+    /// settle's time before the cap keeps the hold for the next `front` step on the same window, which joins
+    /// it with no new activation; the hold closes when a step does not join, at the cap (a timer), or when
+    /// the shell closes it. Answers the body's value and `step.front`, nil while the hold stays open (its
+    /// report then goes to `takeReport`); a failure always closes the hold and carries `front`.
     func hold<T>(
         pid: pid_t, window: AXUIElement, app: String, cancelled: @escaping @Sendable () -> Bool,
-        changedSince: (@Sendable (UInt64) -> Bool)?, body: (FrontHoldContext) throws -> T
-    ) throws -> (T, FrontHold) {
+        changedSince: (@Sendable (UInt64) -> Bool)?, keepOpen: Bool = false, body: (FrontHoldContext) throws -> T
+    ) throws -> (T, FrontHold?) {
         if host.screenLocked() { throw sessionUnavailable(.locked, "The screen is locked; \(app) can't come forward.") }
+        steps.lock()
+        defer { steps.unlock() }
+        let h: OpenHold
+        if let o = open, joins(o, pid: pid, window: window) {
+            o.timer?.cancel()
+            open = nil
+            o.ctx.setCallCancelled(cancelled)
+            h = o
+        } else {
+            if let o = open {
+                open = nil
+                keep(closeLocked(o), for: o.pid)
+            }
+            h = try begin(pid: pid, window: window, app: app, cancelled: cancelled)
+        }
+        h.changedSince = changedSince
+
+        var outcome: Result<T, Error>
+        do {
+            let value = try body(h.ctx)
+            h.lastTicks = clock.ticks()
+            h.ctx.with { $0.acted(now: nowMs()) }
+            outcome = .success(value)
+        } catch {
+            h.lastTicks = clock.ticks()
+            h.ctx.with { $0.acted(now: nowMs()) }
+            outcome = .failure(Self.stopError(error, ctx: h.ctx, app: app))
+        }
+        if case .success(let value) = outcome, keepOpen, h.ctx.stopped == nil, h.ctx.with({ $0.takesAnotherStep(now: nowMs()) }) {
+            open = h
+            armCap(h)
+            return (value, nil)
+        }
+        if case .success = outcome {
+            do { try settle(h.ctx, since: h.lastTicks ?? clock.ticks(), changedSince: changedSince) } catch { outcome = .failure(error) }
+        }
+        let report = closeLocked(h)
+        switch outcome {
+        case .success(let value): return (value, report)
+        case .failure(let error): throw withFront(error, report)
+        }
+    }
+
+    /// The next step joins an open hold: same app and window, nothing stopped it, a settle's time left,
+    /// and the app still the one in front (a person who switched apps took the front back).
+    private func joins(_ o: OpenHold, pid: pid_t, window: AXUIElement) -> Bool {
+        o.pid == pid && CFEqual(o.window, window) && o.ctx.stopped == nil
+            && o.ctx.with({ $0.takesAnotherStep(now: nowMs()) }) && focusedAppPid() == pid
+    }
+
+    /// A new hold: the keyboard quiet, the session lock, the person's app and window recorded, the guard
+    /// armed, the app brought forward. A refused activation restores and throws with the hold's report.
+    private func begin(pid: pid_t, window: AXUIElement, app: String, cancelled: @escaping @Sendable () -> Bool) throws -> OpenHold {
         try quiet(cancelled: cancelled)
         let lease = try takeLock(cancelled: cancelled)
-        defer { lease.release() }
-        guard holds.try() else { throw sessionUnavailable(.inUse, "Another computer step has an app in front.") }
-        defer { holds.unlock() }
-
-        // what to give back: the person's app and its focused window
         let personPid = focusedAppPid()
         let person = personPid.flatMap(appBrief)
         let personWindow = personPid.flatMap { $0 == pid ? nil : AX.element(AX.app($0), "AXFocusedWindow") }
@@ -185,37 +273,73 @@ final class FrontTier: @unchecked Sendable {
         var plan = FrontHoldPlan(startedAt: nowMs(), person: person)
         plan.armedAt = arm.epochMs
         plan.idleAtArmMs = (host.sessionIdleSeconds() * 1000).rounded()
-        let ctx = try guardHold(plan: plan, cancelled: cancelled)
-        defer { endGuard(ctx) }
-
-        var outcome: Result<T, Error>
-        var lastTicks: UInt64?
+        let ctx: FrontHoldContext
+        do {
+            ctx = try guardHold(plan: plan, cancelled: cancelled)
+        } catch {
+            lease.release()
+            throw error
+        }
+        let h = OpenHold(pid: pid, window: window, app: app, ctx: ctx, lease: lease, personPid: personPid, personWindow: personWindow, person: person, arm: arm)
         do {
             try activate(pid: pid, window: window, ctx: ctx)
-            do {
-                let value = try body(ctx)
-                lastTicks = clock.ticks()
-                ctx.with { $0.acted(now: nowMs()) }
-                try settle(ctx, since: lastTicks!, changedSince: changedSince)
-                outcome = .success(value)
-            } catch {
-                lastTicks = clock.ticks()
-                ctx.with { $0.acted(now: nowMs()) }
-                outcome = .failure(Self.stopError(error, ctx: ctx, app: app))
-            }
         } catch {
-            outcome = .failure(error)
+            throw withFront(error, closeLocked(h))
         }
-        restore(personPid: personPid, personWindow: personWindow, agentPid: pid, ctx: ctx)
-        var report = ctx.with { $0.report } ?? FrontHold(heldMs: 0, activateMs: 0, restoreMs: 0, restored: .failed, person: person)
-        report = FrontHold(
-            heldMs: report.heldMs, activateMs: report.activateMs, restoreMs: report.restoreMs, restored: report.restored, person: report.person,
-            armedAt: report.armedAt, idleAtArmMs: report.idleAtArmMs, lastInputAt: lastTicks.map { max(arm.epochMs(of: $0), arm.epochMs) }
+        return h
+    }
+
+    /// The restore, the guard and the lock let go, and the hold's report; under `steps`.
+    private func closeLocked(_ h: OpenHold) -> FrontHold {
+        h.timer?.cancel()
+        restore(personPid: h.personPid, personWindow: h.personWindow, agentPid: h.pid, ctx: h.ctx)
+        endGuard(h.ctx)
+        h.lease.release()
+        let r = h.ctx.with { $0.report } ?? FrontHold(heldMs: 0, activateMs: 0, restoreMs: 0, restored: .failed, person: h.person)
+        return FrontHold(
+            heldMs: r.heldMs, activateMs: r.activateMs, restoreMs: r.restoreMs, restored: r.restored, person: r.person,
+            armedAt: r.armedAt, idleAtArmMs: r.idleAtArmMs, lastInputAt: h.lastTicks.map { max(h.arm.epochMs(of: $0), h.arm.epochMs) }
         )
-        switch outcome {
-        case .success(let value): return (value, report)
-        case .failure(let error): throw withFront(error, report)
+    }
+
+    /// An open hold closes itself at its cap: the next step past it starts a new hold, and the app never
+    /// stays in front longer than `frontHoldMaxMs` while the shell waits between steps.
+    private func armCap(_ h: OpenHold) {
+        let left = h.ctx.with { $0.timeLeft(now: nowMs()) }
+        let item = DispatchWorkItem { [weak self, weak h] in
+            guard let self, let h else { return }
+            self.close(h)
         }
+        h.timer = item
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + .milliseconds(max(0, left)), execute: item)
+    }
+
+    /// Closes `h` if it is still the open hold: the settle its last step skipped, then the restore.
+    private func close(_ h: OpenHold) {
+        steps.lock()
+        defer { steps.unlock() }
+        guard let o = open, o === h else { return }
+        open = nil
+        try? settle(h.ctx, since: h.lastTicks ?? clock.ticks(), changedSince: h.changedSince)
+        keep(closeLocked(h), for: h.pid)
+    }
+
+    /// The shell's close at the end of a call, or before a step that does not run at `front`.
+    func closeOpen(pid: pid_t? = nil) {
+        let o = steps.withLock { pid == nil || open?.pid == pid ? open : nil }
+        if let o { close(o) }
+    }
+
+    /// Whether a hold is open now.
+    var isOpen: Bool { steps.withLock { open != nil } }
+
+    private func keep(_ report: FrontHold, for pid: pid_t) {
+        reportLock.withLock { reports[pid] = report }
+    }
+
+    /// The report of a hold of `pid` closed after its last step returned; nil when none waits.
+    func takeReport(pid: pid_t) -> FrontHold? {
+        reportLock.withLock { reports.removeValue(forKey: pid) }
     }
 
     /// Decision 6: the person guard for the hold, when its tap can be made: their keys, clicks and wheel

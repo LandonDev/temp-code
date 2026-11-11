@@ -126,12 +126,14 @@ why and the measured headline.
   (`frontFreedom`, `SessionScheduler.frontAdmitted`). A hold's span leaves
   the person's idle time like a session step's.
   The service's hold (native/tc-computer Input/FrontTier.swift) waits for
-  the person's keyboard to be quiet (the session's event state), takes the
+  the person's keyboard to be quiet (a listen-only key monitor run while
+  any computer session is open), takes the
   session lock, arms the person guard below for the hold (their keys,
   clicks and wheel dropped, Escape stopping the step and restoring at
   once; with no tap, their first key, click or wheel does the same) and
-  gives their app and window back; each `front` step holds on its own for
-  now (docs/computer-protocol.md §25.16).
+  gives their app and window back; a batch's consecutive `front` steps
+  share one hold while it has time left, and a paste's pasteboard work
+  stays outside it (docs/computer-protocol.md §26.2, §26.3, §26.16).
   From a session step's start until the restore after it, the person
   guard (an active session tap, `PersonTap.swift`) drops the person's keys,
   clicks and wheel and lets pointer moves through, so nothing they do lands

@@ -316,6 +316,8 @@ public struct InputTarget {
     /// whether the step is expected to commit to disk before it acts (CommitRule.expectsBefore, decision 12);
     /// the shell's, since Input does not know the commit rule
     public var commitExpected: (@Sendable (ComputerAction) -> Bool)?
+    /// another step of the batch follows: a `front` step may leave its hold open for it (decision 4, §26.2)
+    public var keepFrontOpen: Bool = false
 
     public init(pid: pid_t, windowID: UInt32, windowFrame: ComputerProtocol.Rect, window: AXUIElement, space: CoordinateSpace, element: ResolvedElement?, startElement: ResolvedElement?, cursor: [Int]?, cancelled: @escaping @Sendable () -> Bool = { false }, pasteQuietMs: Int? = nil, ignored: IgnoredRoutes? = nil, callToken: Int? = nil, personIdleMs: Int? = nil, chromium: Bool = false, expectFocus: ResolvedElement? = nil, briefOf: @escaping (AXUIElement) -> ElementBrief? = { _ in nil }) {
         self.pid = pid
@@ -347,13 +349,19 @@ public struct OpenMenu: @unchecked Sendable {
     public let kind: Opener
     public let title: String
     public let items: [String]
+    /// the walk's node of each item, beside `items` (AXText's NodeID)
+    public let itemIDs: [UInt64]
+    /// each item's index in the read that walked it, by its title: what a later step names it by (§26.11)
+    public var itemIndices: [Int: String] = [:]
 
-    public init(menu: AXUIElement, opener: AXUIElement?, kind: Opener, title: String, items: [String]) {
+    public init(menu: AXUIElement, opener: AXUIElement?, kind: Opener, title: String, items: [String], itemIDs: [UInt64] = [], itemIndices: [Int: String] = [:]) {
         self.menu = menu
         self.opener = opener
         self.kind = kind
         self.title = title
         self.items = items
+        self.itemIDs = itemIDs
+        self.itemIndices = itemIndices
     }
 }
 
@@ -395,6 +403,14 @@ public protocol InputPerforming {
     /// `afterInterrupt`, within 2 s of the person's trip, skips that check and keeps each half's own;
     /// throws `session_unavailable` when another holder keeps the session lock
     func restoreSession(afterInterrupt: Bool) throws -> SessionRestore
+    /// §26.5: the listen-only key monitor the `front` hold's quiet wait reads runs while any session is open
+    func watchKeys(_ on: Bool)
+    /// decision 4: closes a `front` hold a batch's step left open for the next one (the call is over, or
+    /// failed, or was cancelled), restoring the person's app
+    func closeFrontHold(pid: pid_t)
+    /// the report of a hold of `pid` closed after the step that last used it returned (by a later step, the
+    /// cap or `closeFrontHold`); the shell puts it on that step as `front`
+    func takeFrontReport(pid: pid_t) -> FrontHold?
     /// held-input cleanup (§5.1)
     func releaseHeld(pid: pid_t)
     /// the ups of a held record whose writer died, at its tier
@@ -404,6 +420,12 @@ public protocol InputPerforming {
     func callEnded(_ token: Int)
     /// the exit path: the person guard ends with the held input (§16.2)
     func endGuard()
+}
+
+extension InputPerforming {
+    public func watchKeys(_ on: Bool) {}
+    public func closeFrontHold(pid: pid_t) {}
+    public func takeFrontReport(pid: pid_t) -> FrontHold? { nil }
 }
 
 extension InputPerforming {

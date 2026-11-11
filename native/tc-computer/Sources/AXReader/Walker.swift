@@ -243,19 +243,24 @@ extension OpenMenu {
         let kind: Opener = openerNode.role == "AXMenuBarItem" ? .menuBar : .popUp
         let title = [openerNode.title, openerNode.description, openerNode.value.flatMap { if case .string(let s) = $0 { s } else { nil } }]
             .compactMap { $0 }.first { !$0.isEmpty } ?? "menu"
-        return OpenMenu(menu: element, opener: opener, kind: kind, title: title, items: items(node))
+        return OpenMenu(menu: element, opener: opener, kind: kind, title: title, items: items(node), itemIDs: named(node).map(\.0))
     }
 
     /// A menu read as a root of its own: a context menu, or a selected menu bar item's menu.
     static func ofRoot(_ node: AXNode, element: AXUIElement) -> OpenMenu {
         if let parent = AX.element(AX.copy(element, "AXParent").value), AX.string(AX.copy(parent, "AXRole").value) == "AXMenuBarItem" {
-            return OpenMenu(menu: element, opener: parent, kind: .menuBar, title: AX.string(AX.copy(parent, "AXTitle").value) ?? "menu", items: items(node))
+            return OpenMenu(menu: element, opener: parent, kind: .menuBar, title: AX.string(AX.copy(parent, "AXTitle").value) ?? "menu", items: items(node), itemIDs: named(node).map(\.0))
         }
-        return OpenMenu(menu: element, opener: nil, kind: .context, title: "context menu", items: items(node))
+        return OpenMenu(menu: element, opener: nil, kind: .context, title: "context menu", items: items(node), itemIDs: named(node).map(\.0))
     }
 
     private static func items(_ node: AXNode) -> [String] {
-        node.children.filter { $0.role == "AXMenuItem" }.compactMap(\.title).filter { !$0.isEmpty }
+        named(node).map(\.1)
+    }
+
+    /// The titled items with their nodes.
+    static func named(_ node: AXNode) -> [(NodeID, String)] {
+        node.children.filter { $0.role == "AXMenuItem" }.compactMap { c in c.title.flatMap { $0.isEmpty ? nil : (c.id, $0) } }
     }
 }
 #endif

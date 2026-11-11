@@ -191,3 +191,109 @@ private func FileFacts_tilde(_ path: String) -> String { tildeRelative(path, hom
         #expect(rig.reader().observed.last?.closingMenus == false)
     }
 }
+
+/// Decision 4 in the shell: a batch's front steps share a hold, its report on the step that last used it.
+@Suite struct SharedHoldServiceTests {
+    private let all = #","features":["front","commit","save_as"]"#
+    private func hold(_ ms: Int) -> FrontHold { FrontHold(heldMs: ms, activateMs: 30, restoreMs: 20, restored: .restored) }
+    private func batch(_ rig: ServiceRig, _ actions: [String]) async throws -> [JSONValue] {
+        let result = try #require(await rig.call("action.batch", "{\(docTarget),\"actions\":[\(actions.joined(separator: ","))],\"tiers\":[\"ax\",\"process\",\"front\"],\"stepWait\":\(quick),\"wait\":\(quick),\"observe\":{\"mode\":\"none\"}}").result)
+        return try #require(result["steps"]?.arrayValue)
+    }
+    private let key = #"{"action":"key","text":"super+s"}"#
+
+    @Test func stepsThatShareAHoldReportItOnTheLastOne() async throws {
+        let rig = ServiceRig()
+        await rig.ready(features: ["front", "commit", "save_as"])
+        let n = Box<Int>()
+        let r = hold(900)
+        rig.input.onPerform = { _, target in
+            n.value = (n.value ?? 0) + 1
+            // the first two leave the hold open; the third, with nothing after it, closes it
+            let out = InputOutcome(tier: .front, via: .menu, clipboard: nil, cursor: nil, lastInputAt: mach_absolute_time())
+            return target.keepFrontOpen ? out : out.with(front: r)
+        }
+        let steps = try await batch(rig, [key, key, key])
+        #expect(rig.input.keepOpens == [true, true, false])
+        #expect(steps.map { $0["tier"]?.stringValue } == ["front", "front", "front"])
+        #expect(steps[0]["front"] == nil && steps[1]["front"] == nil)
+        #expect(steps[2]["front"]?["heldMs"]?.intValue == 900)
+        #expect(rig.input.frontCloses == 0)
+    }
+
+    @Test func aHoldClosedByALaterStepGoesOnTheStepThatLeftItOpen() async throws {
+        let rig = ServiceRig()
+        await rig.ready(features: ["front", "commit", "save_as"])
+        let n = Box<Int>()
+        rig.input.onPerform = { [rig] _, _ in
+            n.value = (n.value ?? 0) + 1
+            if n.value == 1 { return InputOutcome(tier: .front, via: .menu, clipboard: nil, cursor: nil, lastInputAt: mach_absolute_time()) }
+            // the second runs at process: Input closed the open hold before it, its report waiting
+            rig.input.frontReports.append(FrontHold(heldMs: 400, activateMs: 30, restoreMs: 20, restored: .restored))
+            return InputOutcome(tier: .process, via: nil, clipboard: nil, cursor: nil, lastInputAt: mach_absolute_time())
+        }
+        let steps = try await batch(rig, [key, #"{"action":"key","text":"a"}"#])
+        #expect(steps[0]["front"]?["heldMs"]?.intValue == 400)
+        #expect(steps[1]["front"] == nil)
+    }
+
+    @Test func aBatchThatStopsEarlyClosesTheOpenHold() async throws {
+        let rig = ServiceRig()
+        await rig.ready(features: ["front", "commit", "save_as"])
+        let n = Box<Int>()
+        rig.input.onPerform = { [rig] _, _ in
+            n.value = (n.value ?? 0) + 1
+            if n.value == 1 { return InputOutcome(tier: .front, via: .menu, clipboard: nil, cursor: nil, lastInputAt: mach_absolute_time()) }
+            // a failure before Input touched the hold: it is still open when the batch stops
+            rig.input.closeReport = FrontHold(heldMs: 250, activateMs: 30, restoreMs: 20, restored: .restored)
+            throw ComputerFailure(.actionUnsupported, "File › Close is disabled.")
+        }
+        let steps = try await batch(rig, [key, key, key])
+        #expect(rig.input.frontCloses == 1)
+        #expect(steps[0]["front"]?["heldMs"]?.intValue == 250)
+        #expect(steps[1]["status"]?.stringValue == "failed" && steps[2]["status"]?.stringValue == "not-run")
+    }
+}
+
+/// §26.5: the key monitor runs while any session is open.
+@Suite struct KeyWatchServiceTests {
+    @Test func theMonitorFollowsTheOpenSessions() async throws {
+        let rig = ServiceRig()
+        await rig.ready(session: "s1")
+        _ = await rig.call("session.open", #"{"session":"s2"}"#)
+        _ = await rig.call("session.close", #"{"session":"s1"}"#)
+        #expect(rig.input.keyWatches == [true, true])
+        _ = await rig.call("session.close", #"{"session":"s2"}"#)
+        #expect(rig.input.keyWatches == [true, true, false])
+    }
+}
+
+/// §26.11: a later step on an item of a pop-up the last call closed reaches it through its opener.
+@Suite struct MenuReachServiceTests {
+    @Test func aStepOnAClosedPopUpsItemReopensItByTitle() async throws {
+        let rig = ServiceRig()
+        await rig.ready(features: ["front", "commit", "save_as"])
+        // the closing read walked the Action pop-up's menu; its opener is an app that answers nothing, so the
+        // close reads it gone and the reopen finds no item: the step says which item it went back for
+        rig.reader().menus = [OpenMenu(menu: AXUIElementCreateApplication(999_998), opener: AXUIElementCreateApplication(999_997), kind: .popUp,
+                                       title: "Action", items: ["New Folder"], itemIndices: [4: "New Folder"])]
+        rig.input.onPerform = { _, _ in InputOutcome(tier: .ax, via: nil, clipboard: nil, cursor: nil, lastInputAt: 1) }
+        _ = try #require(await rig.call("action.run", "{\(docTarget),\"action\":{\"action\":\"left_click\",\"coordinate\":[10,10]},\"tiers\":[\"ax\"],\"wait\":\(quick)}").result)
+        rig.reader().menus = []
+        rig.reader().stale = [4]
+        let performs = rig.log.count("perform")
+        let result = try #require(await rig.call("action.run", "{\(docTarget),\"action\":{\"action\":\"perform\",\"name\":\"pick\",\"element\":4},\"epoch\":\"\(rig.service.epoch)\",\"tiers\":[\"ax\"],\"wait\":\(quick)}").result)
+        #expect(result["step"]?["status"]?.stringValue == "failed")
+        #expect(result["step"]?["error"]?["message"]?.stringValue?.contains("Action › New Folder") == true)
+        #expect(rig.log.count("perform") == performs, "the reach is the shell's: Input was never asked")
+    }
+
+    @Test func anIndexNoClosedMenuHeldTakesTheOrdinaryRoute() async throws {
+        let rig = ServiceRig()
+        await rig.ready(features: ["front", "commit", "save_as"])
+        rig.input.onPerform = { _, _ in InputOutcome(tier: .ax, via: nil, clipboard: nil, cursor: nil, lastInputAt: 1) }
+        let performs = rig.log.count("perform")
+        _ = try #require(await rig.call("action.run", "{\(docTarget),\"action\":{\"action\":\"perform\",\"name\":\"pick\",\"element\":2},\"epoch\":\"\(rig.service.epoch)\",\"tiers\":[\"ax\"],\"wait\":\(quick)}").result)
+        #expect(rig.log.count("perform") == performs + 1)
+    }
+}

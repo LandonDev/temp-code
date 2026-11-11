@@ -268,13 +268,14 @@ final class InputCore<Host: SessionHost>: @unchecked Sendable {
     /// flow first refuses a recent foreign copy, once it holds the clipboard lock. `insert` is the
     /// AX insert rung (§24.6); `pressPaste` delivers Command-V as the app's Paste item when it
     /// answers true (§24.2), else the step posts the key.
-    func paste(_ content: PasteContent, flow: PasteFlow, quietMs: Int?, tier: Tier, pid: Int32, windowID: UInt32, window: Host.Window, call: SessionCall = SessionCall(), cancelled: @escaping @Sendable () -> Bool, insert: (() throws -> StepEffect?)? = nil, pressPaste: (() throws -> Bool)? = nil, checks: () throws -> Void, recheck: () throws -> Void, evidence: () -> Evidence?) throws -> (PasteResult, SessionChange?, UInt64?) {
+    func paste(_ content: PasteContent, flow: PasteFlow, quietMs: Int?, tier: Tier, pid: Int32, windowID: UInt32, window: Host.Window, call: SessionCall = SessionCall(), cancelled: @escaping @Sendable () -> Bool, insert: (() throws -> StepEffect?)? = nil, pressPaste: (() throws -> Bool)? = nil, checks: () throws -> Void, recheck: () throws -> Void, evidence: () -> Evidence?,
+               inside: ((_ part: (_ stopped: () -> Bool) throws -> Void) throws -> Void)? = nil) throws -> (PasteResult, SessionChange?, UInt64?) {
         var result = PasteResult(via: .paste, clipboard: .restored, effect: .unknown)
         let (_, change, last) = try step(tier: tier, pid: pid, windowID: windowID, window: window, keys: true, call: call, cancelled: cancelled) { ctx in
             result = try flow.run(content, quietMs: quietMs, cancelled: cancelled, insert: insert, checks: checks, recheck: recheck, deliver: {
                 if let pressPaste, try pressPaste() { return }
                 try commandV(&ctx)
-            }, evidence: evidence)
+            }, evidence: evidence, inside: inside)
         }
         return (result, change, last)
     }

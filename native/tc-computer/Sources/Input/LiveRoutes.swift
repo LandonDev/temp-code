@@ -124,6 +124,7 @@ extension InputTarget {
                             chromium: chromium, expectFocus: expectFocus, briefOf: briefOf)
         t.changedSince = changedSince
         t.commitExpected = commitExpected
+        t.keepFrontOpen = keepFrontOpen
         return t
     }
 }

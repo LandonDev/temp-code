@@ -44,6 +44,9 @@ public final class SessionBook: @unchecked Sendable {
 
     public func isOpen(_ session: String) -> Bool { lock.locked { sessions[session] != nil } }
 
+    /// How many sessions are open: the key monitor runs while any is (§26.5).
+    public var openCount: Int { lock.locked { sessions.count } }
+
     public var openSessions: [String] { lock.locked { Array(sessions.keys) } }
 
     /// The seq and base an observation of `kind` takes: a full, diff or unchanged one counts up, a diff

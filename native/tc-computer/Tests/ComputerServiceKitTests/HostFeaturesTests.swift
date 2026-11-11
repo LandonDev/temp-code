@@ -88,3 +88,34 @@ import Testing
         #expect(HostFeatures.all.fit(batch) == batch)
     }
 }
+
+/// §26.11: the menus a call closed, and the way back to an item a later step names by index.
+@Suite struct ClosedMenusTests {
+    @Test func aClosedPopUpsItemReopensThroughItsOpener() {
+        var book = ClosedMenus()
+        book.saw(OpenedMenu(id: "0", title: "Action", opener: .popUp, items: ["New Folder", "Get Info"]), itemIndices: [41: "New Folder", 42: "Get Info"])
+        #expect(book.nextClose("0", frontAllowed: true) == .cancel)
+        // still open: nothing reaches it yet, the item answers as it is
+        #expect(book.reach(index: 41) == nil)
+        book.checked("0", gone: true)
+        #expect(book.reach(index: 41) == .reopen(openerId: "0", item: "New Folder", on: "Action › New Folder"))
+        #expect(book.reach(index: 7) == nil, "an index that was no item of the menu")
+        #expect(book.leftOpen == nil)
+    }
+
+    @Test func aMenuBarItemIsPressedAsItIs() {
+        var book = ClosedMenus()
+        book.saw(OpenedMenu(id: "0", title: "File", opener: .menuBar, items: ["Save"]), itemIndices: [9: "Save"])
+        _ = book.nextClose("0", frontAllowed: false)
+        book.checked("0", gone: true)
+        #expect(book.reach(index: 9) == .pressAsIs)
+    }
+
+    @Test func aMenuNoCloseRemovedIsNamedAndNeverReached() {
+        var book = ClosedMenus()
+        book.saw(OpenedMenu(id: "0", title: "Sort", opener: .popUp, items: ["Date"]), itemIndices: [3: "Date"])
+        while let _ = book.nextClose("0", frontAllowed: false) { book.checked("0", gone: false) }
+        #expect(book.leftOpen == ["Sort"])
+        #expect(book.reach(index: 3) == nil)
+    }
+}

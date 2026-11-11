@@ -63,7 +63,15 @@ public final class AppReader: AppReading, @unchecked Sendable {
     public private(set) var lastDocument = WindowDocument()
 
     /// The menus the last whole-window read walked (§26.11): the shell closes the ones its call opened.
-    public var openMenus: [OpenMenu] { lock.withLock { lastMenus } }
+    public var openMenus: [OpenMenu] {
+        lock.withLock {
+            lastMenus.map { m in
+                var m = m
+                for (id, title) in zip(m.itemIDs, m.items) { if let index = book.index(of: id) { m.itemIndices[index] = title } }
+                return m
+            }
+        }
+    }
     private var lastMenus: [OpenMenu] = []
     private var extraMenus: [OpenMenu] = []
 
