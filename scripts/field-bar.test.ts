@@ -73,7 +73,7 @@ describe('fieldBar', () => {
 
   it('sums the three Finder task medians against one seconds and calls target', () => {
     const tasks = ['field-finder-rename', 'field-finder-trash', 'field-finder-new-folder']
-    const runs = tasks.map((task, i) => run(MODEL, task, { taskVersion: 2, wallMs: [10_000, 12_000, 14_000][i], calls: calls([2, 2, 3][i]) }))
+    const runs = tasks.map((task, i) => run(MODEL, task, { taskVersion: 3, wallMs: [10_000, 12_000, 14_000][i], calls: calls([2, 2, 3][i]) }))
     const expectTasks = { models: [MODEL], tasks }
     const met = fieldBar([report({}, runs)], expectTasks)
     expect(met.misses).toEqual([])
