@@ -104,6 +104,35 @@ export interface MacComputerReaderResult {
   held: boolean
 }
 
+/** The fields `mac.computerReader` sends: a refusal naming one of them comes from a Mac that knows the call. */
+const READER_FIELDS: readonly string[] = Object.keys(MacComputerReaderArgsSchema.shape)
+
+/**
+ * Whether a refusal of `mac.computerReader` shows the Mac does not know the
+ * call, so it is on a build from before it. Such a Mac has no route for the
+ * method: it reads the args as a file read's and refuses them with zod's
+ * issues on a field the call never sends (`path`), or a router that names the
+ * method says it is unknown. Any other failure (a timeout, the link, the Mac
+ * refusing this call's own fields) says nothing about its build.
+ */
+export function macLacksReader(message: string): boolean {
+  if (/\bunknown method\b/i.test(message)) return true
+  let issues: unknown
+  try {
+    issues = JSON.parse(message)
+  } catch {
+    return false
+  }
+  return (
+    Array.isArray(issues) &&
+    issues.length > 0 &&
+    issues.every((i) => {
+      const path = (i as { path?: unknown } | null)?.path
+      return Array.isArray(path) && path.length > 0 && !READER_FIELDS.includes(String(path[0]))
+    })
+  )
+}
+
 /**
  * What a `mac.computer` call answers: the step lines and the body apart, so
  * the box lays each picture's `screenshot` line between them as the Mac would

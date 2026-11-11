@@ -192,7 +192,9 @@ export function offersComputerTools(
  */
 export function computerMechanicsFor(session: SessionMeta, host: ComputerHost | null = computerHooks.current): string {
   if (!offersComputerTools(session, host)) return ''
-  return renderComputerMechanics({ ...wordsFor(session), search: session.provider === 'claude', provenance: provenanceOf(session) })
+  // Claude's tools are in process and four; the bridge (Codex, Muse) also lists computer_result
+  const claude = session.provider === 'claude'
+  return renderComputerMechanics({ ...wordsFor(session), search: claude, provenance: provenanceOf(session), held: !claude })
 }
 
 /** MCP server entry for a codex thread's config override (config.toml

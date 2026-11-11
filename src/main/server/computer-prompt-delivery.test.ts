@@ -165,7 +165,8 @@ describe('codex and Muse read it once, in their first message', () => {
         const model = provider === 'codex' ? 'gpt-6.1-sol' : 'muse-wonder-1.0'
         const text = await firstMessage({ ...rest, provider, model, ...(parentId ? { parentId } : {}) })
         expect(count(text), text.slice(0, 200)).toBe(1)
-        expect(text).toContain(provider === 'codex' ? 'getAXState' : 'computer_act and computer_batch')
+        expect(text).toContain(provider === 'codex' ? 'getAXState' : 'computer_act, computer_batch and computer_result')
+        expect(text).toContain(provider === 'codex' ? 'computer_result reads a call that answered "Held"' : 'Five app tools')
         expect(text).not.toContain('tool search (query "computer")')
       })
 

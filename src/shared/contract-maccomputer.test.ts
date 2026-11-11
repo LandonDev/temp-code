@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAC_APPROVAL_WAIT_MS, heldLine, type MacBridgeHeld } from './contract-macbridge'
+import { MAC_APPROVAL_WAIT_MS, MAC_BRIDGE_OFF, MacFetchFileArgsSchema, heldLine, type MacBridgeHeld } from './contract-macbridge'
 import {
   COMPUTER_HOLD_MAX_MS,
   COMPUTER_SESSION_WAIT_MS,
@@ -9,8 +9,10 @@ import {
   MacComputerEndArgsSchema,
   bridgedDeadlineMs,
   computerCallBudgetMs,
+  MacComputerReaderArgsSchema,
   isMacComputerPeerMethod,
   macComputerKey,
+  macLacksReader,
   parseMacComputerKey
 } from './contract-maccomputer'
 import type { ComputerToolCall } from './computer/tools'
@@ -97,5 +99,28 @@ describe('the held line', () => {
   it('names the computer cap', () => {
     const held: MacBridgeHeld = { reason: 'computer', position: 1, load: 1, limit: 16, cores: 8, maxRunning: 4, running: 2, computer: 2, maxComputer: 2 }
     expect(heldLine(held)).toBe('Waiting for the Mac, 2 of 2 computer sessions, 1st in line')
+  })
+})
+
+describe('macLacksReader: only a Mac that does not know mac.computerReader is an older build', () => {
+  const refusalOf = (schema: { parse(v: unknown): unknown }, value: unknown): string => {
+    try {
+      schema.parse(value)
+    } catch (err) {
+      return (err as Error).message
+    }
+    throw new Error('parsed')
+  }
+
+  it("reads an older Mac's file-read refusal and an unknown method as an older build", () => {
+    // a Mac with no route for the method reads its args as mac.fetchFile's
+    expect(macLacksReader(refusalOf(MacFetchFileArgsSchema, { callIds: ['c1'], reading: false }))).toBe(true)
+    expect(macLacksReader('unknown method mac.computerReader')).toBe(true)
+  })
+
+  it('reads every other failure as nothing about the build', () => {
+    expect(macLacksReader(refusalOf(MacComputerReaderArgsSchema, { callIds: [], reading: false }))).toBe(false)
+    for (const line of ['the Mac did not answer mac.computerReader within 5 s', 'this Mac does not know that host', MAC_BRIDGE_OFF, '[]', 'refused'])
+      expect(macLacksReader(line), line).toBe(false)
   })
 })

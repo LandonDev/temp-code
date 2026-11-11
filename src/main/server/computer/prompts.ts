@@ -7,7 +7,7 @@ import type { SessionMeta } from '@shared/events'
  * COMPUTER_MECHANICS (docs/computer-protocol.md "The model's words"): the one
  * section a thread with the computer tools reads, once, beside its other
  * mechanics. When to use the tools at all, the tiers, and the confirmations
- * policy in brief; the working rules live in the four tool descriptions
+ * policy in brief; the working rules live in the tool descriptions
  * (descriptions.ts). Assembled from facts in a fixed order, each word shape
  * saying every fact; only `what` differs between the shapes, since the rest
  * is policy and reads the same to every model.
@@ -30,13 +30,17 @@ export const COMPUTER_TIERS =
 type Provenance = 'person' | 'thread'
 
 type Facts = Record<Exclude<MechanicsFact, 'what' | 'provenance'>, string> & {
-  what: Record<ToolShape, string>
+  /** `held`: the bridge also lists computer_result (Codex and Muse), so the count is one more */
+  what: Record<ToolShape, (held: boolean) => string>
   provenance: Record<Provenance, string>
 }
 
 const MAC = 'This thread runs on a Mac.'
 const BACKGROUND = 'read and work the windows of its apps through their accessibility tree, in the background, without taking the screen from the person'
 const PER_VERB_NAMES = 'computer_apps, computer_observe, computer_batch and one tool per action, computer_left_click to computer_paste'
+const count = (held: boolean): string => (held ? 'Five' : 'Four')
+/** computer_result on the bridge: the tool that reads a call which answered "Held" (pending.ts) */
+const RESULT = 'computer_result reads a call that answered "Held"'
 
 const POLICY: Omit<Facts, 'what'> = {
   search: 'Load them with tool search (query "computer") before the first call.',
@@ -63,15 +67,18 @@ const WORDS: Record<WordsShape, Facts> = {
   anthropic: {
     ...POLICY,
     what: {
-      act: `${MAC} Four app tools ${BACKGROUND}: computer_apps, computer_observe, computer_act and computer_batch. Their descriptions say how to work them.`,
-      'per-verb': `${MAC} App tools ${BACKGROUND}: ${PER_VERB_NAMES}. Their descriptions say how to work them.`
+      act: (held) =>
+        `${MAC} ${count(held)} app tools ${BACKGROUND}: computer_apps, computer_observe, computer_act${held ? ', computer_batch and computer_result' : ' and computer_batch'}. Their descriptions say how to work them.`,
+      'per-verb': (held) => `${MAC} App tools ${BACKGROUND}: ${PER_VERB_NAMES}${held ? `; ${RESULT}` : ''}. Their descriptions say how to work them.`
     }
   },
   cua: {
     ...POLICY,
     what: {
-      act: `${MAC} Four app tools ${BACKGROUND}. computer_observe is getAXState; computer_act and computer_batch act and return the fresh state in one call, as a cua_repl script ends in a read; computer_apps lists apps and windows. Their descriptions say how to work them.`,
-      'per-verb': `${MAC} App tools ${BACKGROUND}. computer_observe is getAXState; computer_batch and one tool per action, computer_left_click to computer_paste, act and return the fresh state in one call, as a cua_repl script ends in a read; computer_apps lists apps and windows. Their descriptions say how to work them.`
+      act: (held) =>
+        `${MAC} ${count(held)} app tools ${BACKGROUND}. computer_observe is getAXState; computer_act and computer_batch act and return the fresh state in one call, as a cua_repl script ends in a read; computer_apps lists apps and windows${held ? `; ${RESULT}` : ''}. Their descriptions say how to work them.`,
+      'per-verb': (held) =>
+        `${MAC} App tools ${BACKGROUND}. computer_observe is getAXState; computer_batch and one tool per action, computer_left_click to computer_paste, act and return the fresh state in one call, as a cua_repl script ends in a read; computer_apps lists apps and windows${held ? `; ${RESULT}` : ''}. Their descriptions say how to work them.`
     }
   }
 }
@@ -82,13 +89,15 @@ export interface MechanicsOptions {
   /** claude loads the deferred tools through tool search */
   search: boolean
   provenance: Provenance
+  /** the bridge lists computer_result too (Codex and Muse; never Claude's in-process tools) */
+  held?: boolean
 }
 
 /** The section as a thread reads it. */
 export function renderComputerMechanics(o: MechanicsOptions): string {
   const f = WORDS[o.shape]
   const policy = [f.handoff, f.content, f.provenance[o.provenance], f.away, f.offLimits].join(' ')
-  return ['## Computer use', `${f.what[o.tools]}${o.search ? ` ${f.search}` : ''}`, `${f.prefer} ${f.sideEffects}`, f.tiers, f.confirm, policy].join('\n\n')
+  return ['## Computer use', `${f.what[o.tools](o.held === true)}${o.search ? ` ${f.search}` : ''}`, `${f.prefer} ${f.sideEffects}`, f.tiers, f.confirm, policy].join('\n\n')
 }
 
 /** Every word shape says every fact (the test reads it). */
