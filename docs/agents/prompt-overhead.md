@@ -175,3 +175,97 @@ line at the cap) and logs a first turn that still reports the 258,400 window for
 a listed model; the host's thrash guard catches a recurrence either way. Warm
 adoption needs no models check: the warm case read the model's metadata on both
 hosts.
+
+## after on the box
+
+2026-11-11, tempcode-box, tree 62ed51c34, 2.1.311 (Claude Code), codex-cli 0.163.0. One thread per model at low effort, its first request.
+
+### claude claude-sonnet-5-5
+
+First request: 124,491 bytes, 45.8k input tokens of a 200.0k window (22.9%).
+
+| Part | Bytes | ≈ tokens | Share |
+|---|---:|---:|---:|
+| Tool definitions (27, 1 deferred) | 46,889 | 17.2k | 37.7% |
+| Auto memory MEMORY.md | 18,401 | 6.8k | 14.8% |
+| Other messages | 15,531 | 5.7k | 12.5% |
+| System prompt | 14,947 | 5.5k | 12.0% |
+| Project CLAUDE.md | 12,986 | 4.8k | 10.4% |
+| User CLAUDE.md | 5,705 | 2.1k | 4.6% |
+| The first message | 5,623 | 2.1k | 4.5% |
+| Other system reminders (skills, deferred tools, context) | 2,962 | 1.1k | 2.4% |
+| JSON framing and settings | 1,108 | 407 | 0.9% |
+| field:metadata | 212 | 78 | 0.2% |
+| field:context_management | 59 | 22 | 0.0% |
+| field:thinking | 42 | 15 | 0.0% |
+| field:output_config | 16 | 6 | 0.0% |
+| field:max_tokens | 6 | 2 | 0.0% |
+| field:stream | 4 | 1 | 0.0% |
+
+Tools by group: builtin 28,313, mcp:app 10,618, mcp:orchestrator 7,958.
+
+### claude claude-opus-5-5
+
+First request: 124,803 bytes, 45.9k input tokens of a 200.0k window (22.9%).
+
+| Part | Bytes | ≈ tokens | Share |
+|---|---:|---:|---:|
+| Tool definitions (27, 1 deferred) | 46,578 | 17.1k | 37.3% |
+| Auto memory MEMORY.md | 18,401 | 6.8k | 14.7% |
+| Other messages | 16,026 | 5.9k | 12.8% |
+| System prompt | 14,947 | 5.5k | 12.0% |
+| Project CLAUDE.md | 12,986 | 4.8k | 10.4% |
+| The first message | 5,750 | 2.1k | 4.6% |
+| User CLAUDE.md | 5,705 | 2.1k | 4.6% |
+| Other system reminders (skills, deferred tools, context) | 2,962 | 1.1k | 2.4% |
+| JSON framing and settings | 1,109 | 408 | 0.9% |
+| field:metadata | 212 | 78 | 0.2% |
+| field:context_management | 59 | 22 | 0.0% |
+| field:thinking | 42 | 15 | 0.0% |
+| field:output_config | 16 | 6 | 0.0% |
+| field:max_tokens | 6 | 2 | 0.0% |
+| field:stream | 4 | 1 | 0.0% |
+
+Tools by group: builtin 28,002, mcp:app 10,618, mcp:orchestrator 7,958.
+
+### codex gpt-6.1-sol
+
+First request: 109,648 bytes, 22.7k input tokens of a 475.0k window (4.8%).
+
+| Part | Bytes | ≈ tokens | Share |
+|---|---:|---:|---:|
+| Developer messages | 56,152 | 11.6k | 51.2% |
+| Tools in code mode (additional_tools) | 39,527 | 8.2k | 36.0% |
+| User messages (AGENTS.md, context, the message) | 12,163 | 2.5k | 11.1% |
+| field:client_metadata | 1,466 | 304 | 1.3% |
+| JSON framing and settings | 190 | 39 | 0.2% |
+| field:reasoning | 38 | 8 | 0.0% |
+| field:prompt_cache_key | 36 | 7 | 0.0% |
+| field:include | 31 | 6 | 0.0% |
+| field:text | 19 | 4 | 0.0% |
+| field:service_tier | 8 | 2 | 0.0% |
+| field:parallel_tool_calls | 5 | 1 | 0.0% |
+| field:store | 5 | 1 | 0.0% |
+| field:stream | 4 | 1 | 0.0% |
+| field:tool_choice | 4 | 1 | 0.0% |
+| Tool definitions (0, 0 deferred) | 0 | 0 | 0.0% |
+
+Tool surface: code mode (additional_tools).
+
+## What changed
+
+| | before | after |
+|---|---:|---:|
+| Claude Sonnet 5.5, first request | 160.8k of 200k (80.4%) | 45.8k of 200k (22.9%) |
+| Claude Opus 5.5, first request | 160.9k of 200k (80.5%) | 45.9k of 200k (22.9%) |
+| Codex gpt-6.1-sol, first request | 22.6k of 475k (4.8%) | 22.7k of 475k (4.8%) |
+
+The project CLAUDE.md went from 305,539 bytes (~116k tokens) to an index of
+about 13 KB, which took a Claude thread's first request well under the 35% of
+its window this work aimed for (a real thread also carries the skill listing,
+about 14k tokens, which the isolated instance has none of: about 60k, 30%). The largest parts left are the tool
+definitions (the CLI's own, the app server and the orchestrator) and the auto
+memory index. Codex was already small on this host: its tools ride in code
+mode once it has the model's metadata. The Mac's after-run was not made: its
+isolated instance sees neither the Claude requests (they go through the Aliax
+shim) nor a cold Codex start (see "before on the Mac").
