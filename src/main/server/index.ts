@@ -2302,6 +2302,14 @@ export async function startServer(
             registry.setMaster(req.params.sessionId, req.params.master)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'session.markRead':
+            registry.markRead(req.params.items)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'session.markUnread':
+            registry.markUnread(req.params.sessionIds)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'project.setBranch':
             await registry.setProjectBranch(
               req.params.projectId,

@@ -218,6 +218,9 @@ export const RELAY_METHODS: Partial<Record<ClientRequest['method'], 'link' | 'sc
   // steering a Mac thread's batch, plan, review, resources and routing (both hosts gate the caps)
   'session.reroute': 'link',
   'session.setMaster': 'link',
+  // a Mac thread read on the phone is read on the Mac
+  'session.markRead': 'link',
+  'session.markUnread': 'link',
   'session.batch': 'link',
   'review.override': 'link',
   'resources.remove': 'link',

@@ -301,6 +301,9 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'project.settings.set': 'admin',
   // Pinning a master is steering threads: the key that starts and sends may make one a master.
   'session.setMaster': 'operate',
+  // The person's read marks: a read key watches without moving them.
+  'session.markRead': 'operate',
+  'session.markUnread': 'operate',
   // A master thread's batch (contract-batch.ts): reads, the rules a person may set, the batch's membership and its end.
   'batch.get': 'read',
   'batch.board': 'read',

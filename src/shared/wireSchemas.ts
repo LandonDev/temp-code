@@ -406,6 +406,7 @@ export const SessionMetaSchema = z.object({
   isMaster: z.boolean().optional(),
   masterId: z.string().nullable().optional(),
   after: z.string().nullable().optional(),
+  readAt: z.number().int().optional(),
   createdAt: z.number().int(),
   updatedAt: z.number().int()
 })

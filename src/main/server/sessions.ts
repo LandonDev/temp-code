@@ -648,6 +648,25 @@ export class SessionRegistry {
     this.notifyMeta(next)
   }
 
+  /** The person saw these threads (CLAUDE.md "Read and unread: the host's
+   *  mark"): each one's read mark moves up to its `at`, else to the row as
+   *  it stands; clients hear the meta. Unknown ids are skipped (a thread
+   *  deleted while a client's write was queued), never an error. */
+  markRead(items: readonly { sessionId: string; at?: number }[]): void {
+    for (const { sessionId, at } of items) {
+      const next = this.store.markSessionRead(sessionId, at)
+      if (next) this.notifyMeta(next, 'read')
+    }
+  }
+
+  /** Mark as unread: each thread reads unread until it is seen again. */
+  markUnread(sessionIds: readonly string[]): void {
+    for (const id of sessionIds) {
+      const next = this.store.markSessionUnread(id)
+      if (next) this.notifyMeta(next, 'read')
+    }
+  }
+
   private closed = false
   private handles = new Map<string, DriverHandle>()
   /** Approvals raised through requestApproval, per session: requestId →

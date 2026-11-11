@@ -156,6 +156,14 @@ describe('METHOD_CAPABILITY', () => {
   })
 })
 
+describe('read marks', () => {
+  it('are operate: a read key watches without moving the marks', () => {
+    expect(METHOD_CAPABILITY['session.markRead']).toBe('operate')
+    expect(METHOD_CAPABILITY['session.markUnread']).toBe('operate')
+    expect(allows(normalizeCaps(['read']), 'operate')).toBe(false)
+  })
+})
+
 describe('push registration (thread L6)', () => {
   it('is read: any paired key registers its own device', () => {
     expect(methods.filter((m) => m.startsWith('remote.push.')).sort()).toEqual(['remote.push.activity', 'remote.push.register', 'remote.push.status', 'remote.push.unregister'])

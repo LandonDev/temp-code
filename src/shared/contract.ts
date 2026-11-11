@@ -293,6 +293,21 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('project.settings.set'),
     params: z.object({ projectId: z.string(), bundle: ProjectSettingsBundleSchema })
   }),
+  // Read marks (CLAUDE.md "Read and unread: the host's mark"): the person saw
+  // these threads up to `at` (the updatedAt they saw; absent = as each stands),
+  // or wants them unread again. One call carries a client's coalesced marks.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.markRead'),
+    params: z.object({
+      items: z.array(z.object({ sessionId: z.string(), at: z.number().int().nonnegative().optional() })).max(5000)
+    })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('session.markUnread'),
+    params: z.object({ sessionIds: z.array(z.string()).max(5000) })
+  }),
   // A master thread (CLAUDE.md "Master threads"): pin a root thread as one, or unpin it. Many per project.
   z.object({
     id: z.string(),
