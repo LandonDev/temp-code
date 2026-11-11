@@ -123,8 +123,8 @@ private struct PanelRig {
     var now = 0
     var moves: [PanelMove] = []
 
-    init(path: String = "~/run/note.txt", replace: Bool = false, frontAllowed: Bool = true, appActive: Bool = false) {
-        flow = SavePanelFlow(target: SaveTarget.parse(path, home: home)!, replace: replace, app: "TextEdit", frontAllowed: frontAllowed, appActive: appActive)
+    init(path: String = "~/run/note.txt", replace: Bool = false, frontAllowed: Bool = true, sessionAllowed: Bool = false, appActive: Bool = false) {
+        flow = SavePanelFlow(target: SaveTarget.parse(path, home: home)!, replace: replace, app: "TextEdit", frontAllowed: frontAllowed, sessionAllowed: sessionAllowed, appActive: appActive)
     }
 
     mutating func step(_ o: PanelObservation) -> PanelMove {
@@ -195,6 +195,37 @@ private let noPanel = PanelNode(role: "AXWindow", children: [PanelNode(role: "AX
         #expect(r.step(seen(window(goTo: true), path: "/")) == .insert(.pathField, "/Users/me/run", selectAll: true))
         #expect(r.step(seen(window(goTo: true), path: "/Users/me/run")) == .needsFront(menu: nil))
         #expect(!r.flow.usedFront)
+    }
+
+    @Test func withSessionAllowedGoToIsConfirmedByTheKeyboard() {
+        // the remote panel takes Go to Folder's confirm only from a Return at the HID tap (macOS 27.2)
+        var r = PanelRig(sessionAllowed: true)
+        #expect(r.step(seen(window(goTo: true), path: "/")) == .insert(.pathField, "/Users/me/run", selectAll: true))
+        #expect(r.step(seen(window(goTo: true), path: "/Users/me/run")) == .confirmGoToAtSession)
+        #expect(r.flow.tier == .session && !r.flow.usedFront)
+        #expect(r.step(seen(window(), whereValue: "run")) == .setValue(.nameField, "note.txt"))
+        // without front too: the session step brings the app forward itself
+        var noFront = PanelRig(frontAllowed: false, sessionAllowed: true)
+        _ = noFront.step(seen(window(goTo: true), path: "/"))
+        #expect(noFront.step(seen(window(goTo: true), path: "/Users/me/run")) == .confirmGoToAtSession)
+    }
+
+    @Test func aFrontConfirmThatLeavesGoToOpenAsksForSession() {
+        var r = PanelRig()
+        _ = r.step(seen(window(goTo: true), path: "/"))
+        #expect(r.step(seen(window(goTo: true), path: "/Users/me/run")) == .confirmGoTo)
+        r.now = InputTiming.panelOpenMaxMs + 10
+        #expect(r.step(seen(window(goTo: true))) == .press(.cancel))
+        guard case .fail(let e) = r.step(seen(noPanel)) else { Issue.record("no failure"); return }
+        #expect(e.kind == .needsTier && e.needed == .session)
+        // with session it was the keyboard's own: a Go to still open then saved nothing
+        var s = PanelRig(sessionAllowed: true)
+        _ = s.step(seen(window(goTo: true), path: "/"))
+        _ = s.step(seen(window(goTo: true), path: "/Users/me/run"))
+        s.now = InputTiming.panelOpenMaxMs + 10
+        #expect(s.step(seen(window(goTo: true))) == .press(.cancel))
+        guard case .fail(let f) = s.step(seen(noPanel)) else { Issue.record("no failure"); return }
+        #expect(f.kind == .notCommitted)
     }
 
     @Test func readBacksRetryOnceThenCancelAndFail() {

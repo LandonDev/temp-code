@@ -210,6 +210,9 @@ public enum PanelMove: Equatable, Sendable {
     /// the one part that needs `front` (E4'): bring the app forward, AXConfirm the path field, else
     /// Return posted to the panel's pid, restore
     case confirmGoTo
+    /// Go to Folder confirmed by one Return at the HID tap in a session step: the panel is AppKit's remote view
+    /// (macOS 27.2), which takes neither AXConfirm nor a key posted to the pid; the app's person put back after it
+    case confirmGoToAtSession
     /// a part needs `front` and the step's tiers lack it: fall through to the front route, else `needs_tier`
     case needsFront(menu: [String]?)
     /// the panel closed: judge the disk with SaveProof
@@ -227,6 +230,8 @@ public struct SavePanelFlow: Equatable, Sendable {
     public let replace: Bool
     public let app: String
     public let frontAllowed: Bool
+    /// the step's tiers hold `session`: Go to Folder is confirmed there (`confirmGoToAtSession`)
+    public let sessionAllowed: Bool
     public let appActive: Bool
     var stage: Stage = .find
     var since = 0
@@ -236,17 +241,20 @@ public struct SavePanelFlow: Equatable, Sendable {
     var failing: [PanelMove] = []
     /// a part of the flow ran at `front`: the step's tier
     public private(set) var usedFront = false
+    /// Go to Folder was confirmed at `session`: the step's tier
+    public private(set) var usedSession = false
 
-    public init(target: SaveTarget, replace: Bool, app: String, frontAllowed: Bool, appActive: Bool) {
+    public init(target: SaveTarget, replace: Bool, app: String, frontAllowed: Bool, sessionAllowed: Bool = false, appActive: Bool) {
         self.target = target
         self.replace = replace
         self.app = app
         self.frontAllowed = frontAllowed
+        self.sessionAllowed = sessionAllowed
         self.appActive = appActive
     }
 
-    /// The step's tier: `front` when any part ran there, else `ax`.
-    public var tier: Tier { usedFront ? .front : .ax }
+    /// The step's tier: `session` when Go to Folder was confirmed there, `front` when any part ran there, else `ax`.
+    public var tier: Tier { usedSession ? .session : usedFront ? .front : .ax }
 
     public mutating func next(_ o: PanelObservation) -> PanelMove {
         if !failing.isEmpty { return failing.removeFirst() }
@@ -283,15 +291,24 @@ public struct SavePanelFlow: Equatable, Sendable {
             if retried.insert("path").inserted { return .insert(.pathField, target.folder, selectAll: true) }
             return fail(notCommitted("\(app)'s save panel did not take the folder \(target.displayFolder); nothing was saved."))
         case .confirm:
-            guard frontAllowed else { return .needsFront(menu: nil) }
-            usedFront = true
             stage = .confirmWait
             since = o.now
+            // the keyboard's Return is the one confirm the remote panel takes; `front` stays the try without it
+            if sessionAllowed {
+                usedSession = true
+                return .confirmGoToAtSession
+            }
+            guard frontAllowed else { stage = .confirm; return .needsFront(menu: nil) }
+            usedFront = true
             return .confirmGoTo
         case .confirmWait:
             guard let parts = o.parts else { return lost() }
             if parts.goTo == nil { stage = .folder; return next(o) }
-            if o.now - since >= InputTiming.panelOpenMaxMs { return fail(notCommitted("\(app)'s save panel did not go to \(target.displayFolder); nothing was saved.")) }
+            if o.now - since >= InputTiming.panelOpenMaxMs {
+                if usedSession { return fail(notCommitted("\(app)'s save panel did not go to \(target.displayFolder); nothing was saved.")) }
+                // the front confirm did nothing: the panel takes it only from the keyboard, at `session`
+                return fail(ComputerError(kind: .needsTier, message: "\(app)'s save panel goes to \(target.displayFolder) only on a Return from the keyboard, which needs the session tier; nothing was saved.", needed: .session))
+            }
             return .read(afterMs: InputTiming.panelPollMs)
         case .folder:
             if target.folder == "/" || o.whereValue == target.folderName { stage = .name; return next(o) }

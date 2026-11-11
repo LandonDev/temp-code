@@ -60,9 +60,10 @@ extension InputEngine {
         let app = NSRunningApplication(processIdentifier: pid)?.localizedName ?? "The app"
         let frontAllowed = tiers.contains(.front)
         var flow = SavePanelFlow(target: goal, replace: action.replace ?? false, app: app, frontAllowed: frontAllowed,
-                                 appActive: NSRunningApplication(processIdentifier: pid)?.isActive ?? false)
+                                 sessionAllowed: tiers.contains(.session), appActive: NSRunningApplication(processIdentifier: pid)?.isActive ?? false)
         let startedAt = Date().timeIntervalSince1970 - 1
         var hold: FrontHold?
+        var session: SessionChange?
         var read = PanelRead.read(window: target.window, pid: pid)
         for _ in 0 ..< 400 {
             if target.cancelled() { throw cancelledFailure() }
@@ -120,6 +121,15 @@ extension InputEngine {
                     sink.post(.key(36, down: true, flags: []), route: .pid(panelPid, windowID: target.windowID))
                     sink.post(.key(36, down: false, flags: []), route: .pid(panelPid, windowID: target.windowID))
                 }
+            case .confirmGoToAtSession:
+                // one Return at the HID tap with the app held front (its Go to Folder sheet focused), then the person's app back
+                let (_, change, _) = try core.step(tier: .session, pid: pid, windowID: target.windowID, window: target.window, keys: true, call: target.sessionCall, cancelled: target.cancelled) { ctx in
+                    // AX names the app front before the window server routes keys to its sheet: the settle first
+                    try ctx.poster.pause(InputTiming.frontSettleMs)
+                    try core.key(&ctx, try parseKeyCombo("Return"), repeat: 1)
+                }
+                session = change
+                _ = try? core.restoreSession(afterInterrupt: false)
             case .needsFront(let menu):
                 if tier == .ax { throw RouteFellThrough() }
                 throw needsTierForSave(menu: menu, app: app)
@@ -135,6 +145,7 @@ extension InputEngine {
                 case .success(let saved):
                     var out = InputOutcome(tier: flow.tier, via: .panel, clipboard: nil, cursor: target.cursor, lastInputAt: clock.ticks(), on: goal.on)
                     out.front = hold
+                    out.session = session
                     out.disk = DiskChange(saved: middleCut(tildePath(saved, home: home), max: ComputerDefaults.Front.pathMaxUnits))
                     return out
                 case .failure(let error):
