@@ -1962,6 +1962,15 @@ async function activeAppsSteps(a: Service, leg: Chain, scratch: string, awayLong
     }, SERVICE.frontRestoreMs + 500, 'the person\'s front app and window').catch(() => frontWindow())
     data.front = { before, after }
     if (after.pid === before.pid && after.window === before.window) return
+    // Finder in front over the scratch window: a window the run made there (New Folder's inline name editor)
+    // is the step's own, never the person's
+    if (after.pid === finder && before.pid === finder) {
+      const scratchWindows = ((await a.call('apps.list', { windows: true })).apps.find((x) => x.pid === finder)?.windows ?? []).filter((w) => w.title === basename(fd)).map((w) => w.id)
+      data.front = { before, after, scratchWindows, observed: fdWin?.window.id }
+      // window ids grow: one at or after the scratch window's was made in this run (Finder's rename editor over it)
+      const first = Math.min(...scratchWindows, fdWin?.window.id ?? Infinity)
+      if (before.window >= first && after.window >= first) return
+    }
     // judged by what the service did: a target left in front fails; the person's own change is theirs
     const front = judgeFront({ before, after, scratch: [...scratchPids(), tePid, finder].filter(Boolean), personInput: personIdleSeconds() * 1_000 < Date.now() - since })
     check(front.verdict !== 'failed', `the person's front app and window came back: ${front.verdict === 'failed' ? front.why : ''}`, data.front)
