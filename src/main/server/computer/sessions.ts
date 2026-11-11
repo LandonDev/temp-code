@@ -1,5 +1,4 @@
 import type { PreviewTarget } from './preview'
-import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import type { ComputerSessionRow } from '@shared/contract-computer'
 import type { AppRef, FrontReport } from '@shared/computer/protocol'
@@ -11,6 +10,7 @@ import { runComputerTool, type ComputerRegistry, type ComputerToolContext, type 
 import { CallTiming, timingLine } from '@shared/computer/bridgeTiming'
 import type { Clock, ComputerService } from './service'
 import { TargetResolver } from './policy'
+import { serviceSessionId } from './sessionId'
 import { pruneServiceShots } from './shots'
 import { currentSessionTierGate, type SessionTierGate } from './tierGate'
 import { TierVerdicts, type SettingsStore } from './verdicts'
@@ -53,10 +53,7 @@ export const ROW_PUSH_MS = 250
 const SETTLED: readonly SessionStatus[] = ['idle', 'done', 'error', 'stopped', 'watching']
 const REAL_CLOCK: Clock = { now: () => Date.now(), setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: (h) => clearTimeout(h as NodeJS.Timeout) }
 
-/** The thread id when the capture plan's session pattern takes it, else `t_` and 40 hex of its sha256. */
-export function serviceSessionId(threadId: string): string {
-  return /^[A-Za-z0-9_-]{1,64}$/.test(threadId) ? threadId : `t_${createHash('sha256').update(threadId).digest('hex').slice(0, 40)}`
-}
+export { serviceSessionId }
 
 function rowFor(t: ThreadComputer): ComputerSessionRow | null {
   if (!t.live) return null

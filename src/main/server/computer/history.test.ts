@@ -1,0 +1,352 @@
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, utimesSync, writeFileSync, appendFileSync, chmodSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+import type { ComputerHistoryStep } from '@shared/contract-computer'
+import { ComputerHistory, HISTORY_KEEP_CALLS, HISTORY_KEEP_MS, HISTORY_PAGE, historyPicturesFromEnv, type HistoryChange } from './history'
+import { serviceSessionId } from './sessionId'
+
+const step = (verb: string, object = 'Save', extra: Partial<ComputerHistoryStep> = {}): ComputerHistoryStep => ({ kind: 'click', verb, object, inApp: `${object} in TextEdit`, ...extra })
+const start = (extra: object = {}) => ({ app: 'TextEdit', window: 'Untitled', steps: [step('Clicking')], ...extra })
+const end = (extra: object = {}) => ({ app: 'TextEdit', window: 'Untitled', steps: [step('Clicked', 'Save', { state: 'ok', tier: 'ax' })], ...extra })
+const JPEG = Buffer.from('/9j/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAALCAABAAEBAREA/8QAJgABAAAAAAAAAAAAAAAAAAAAABABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAAPwA//9k=', 'base64')
+
+const open: ComputerHistory[] = []
+function journal(opts: { root?: string; pictures?: () => boolean; log?: (line: string) => void } = {}) {
+  const root = opts.root ?? mkdtempSync(join(tmpdir(), 'tc-history-'))
+  let t = 1_000
+  const changes: HistoryChange[] = []
+  const history = new ComputerHistory({ root, now: () => (t += 10), ...(opts.pictures ? { pictures: opts.pictures } : {}), ...(opts.log ? { log: opts.log } : {}) })
+  history.onChange((c) => changes.push(c))
+  open.push(history)
+  const shotFile = join(mkdtempSync(join(tmpdir(), 'tc-history-shot-')), 'shot.jpg')
+  writeFileSync(shotFile, JPEG)
+  return {
+    root,
+    history,
+    changes,
+    shot: { shot: { path: shotFile, width: 960, height: 804, capturedAt: 5_000 } },
+    dir: (key: string) => join(root, serviceSessionId(key)),
+    lines: (key: string) => readFileSync(join(root, serviceSessionId(key), 'log.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)),
+    calls: async (key: string, before?: number) => (await history.read([key], before))[0]
+  }
+}
+afterEach(async () => {
+  for (const h of open.splice(0)) await h.close()
+})
+
+describe('the journal folds a call from its records', () => {
+  it('start, end and picture are one call, each record a revision and a change', async () => {
+    const j = journal()
+    const entry = j.history.begin('t1', start({ plan: ['click button "Save"', 'press super+s'] }))
+    expect(await entry.n()).toBe(1)
+    expect((await j.calls('t1')).calls).toEqual([
+      { n: 1, turn: 1, at: 1010, state: 'running', app: 'TextEdit', window: 'Untitled', steps: [step('Clicking')], plan: ['click button "Save"', 'press super+s'], text: false, rev: 1 }
+    ])
+    await entry.end(end({ read: 'Read 3 changes', text: 'app "TextEdit" · window "Untitled" · 1280×1072 · changes since your last read\n~ [3] text area = "x"' }))
+    await entry.picture(j.shot)
+    const read = await j.calls('t1')
+    expect(read.born).toBe(1010)
+    expect(read.more).toBe(false)
+    expect(read.calls).toEqual([
+      {
+        n: 1,
+        turn: 1,
+        at: 1010,
+        endedAt: 1020,
+        state: 'done',
+        app: 'TextEdit',
+        window: 'Untitled',
+        steps: [step('Clicked', 'Save', { state: 'ok', tier: 'ax' })],
+        read: 'Read 3 changes',
+        text: true,
+        picture: { width: 960, height: 804, at: 5_000 },
+        rev: 3
+      }
+    ])
+    // one change per record, each with the call as it stood
+    expect(j.changes.map((c) => ('call' in c ? [c.call.state, c.call.rev, c.call.picture !== undefined] : c))).toEqual([['running', 1, false], ['done', 2, false], ['done', 3, true]])
+    expect(j.lines('t1').map((l) => l.r)).toEqual(['start', 'end', 'picture'])
+    for (const line of j.lines('t1')) expect(line.v).toBe(1)
+    expect(readdirSync(join(j.dir('t1'), 'steps')).sort()).toEqual(['1.jpg', '1.txt'])
+  })
+
+  it('a step answers the picture bytes and the text, and nothing for a call it does not hold', async () => {
+    const j = journal()
+    const entry = j.history.begin('t1', start())
+    await entry.end(end({ read: 'Read 1 change', text: 'the read' }))
+    await entry.picture(j.shot)
+    const got = await j.history.step('t1', 1)
+    expect(got.text).toBe('the read')
+    expect(got.picture).toEqual({ data: JPEG.toString('base64'), mimeType: 'image/jpeg', width: 960, height: 804, at: 5_000 })
+    expect(await j.history.step('t1', 2)).toEqual({})
+    expect(await j.history.step('other', 1)).toEqual({})
+  })
+
+  it('a reason takes the picture’s place, and a call with none yet says nothing of it', async () => {
+    const j = journal()
+    const a = j.history.begin('t1', start())
+    await a.end(end())
+    expect((await j.calls('t1')).calls[0].picture).toBeUndefined()
+    await a.picture({ none: 'minimized' })
+    expect((await j.calls('t1')).calls[0]).toMatchObject({ picture: { none: 'minimized' }, rev: 3 })
+    expect(j.lines('t1').at(-1)).toEqual({ v: 1, r: 'picture', n: 1, none: 'minimized' })
+    expect(await j.history.step('t1', 1)).toEqual({})
+  })
+
+  it('the read text is cut at its budget', async () => {
+    const j = journal()
+    const entry = j.history.begin('t1', start())
+    await entry.end(end({ read: 'Read 900 elements', text: Array.from({ length: 900 }, (_, i) => `[${i + 1}] button "Row ${i}"`).join('\n') }))
+    const text = (await j.history.step('t1', 1)).text!
+    expect(Buffer.byteLength(text)).toBeLessThan(12_100)
+    expect(text.split('\n').at(-1)).toMatch(/^… cut here, \d+ more lines$/)
+  })
+})
+
+describe('n, turn and born', () => {
+  it('n counts per thread; a turn starts at the first call after beginTurn', async () => {
+    const j = journal()
+    const a = j.history.begin('t1', start())
+    const b = j.history.begin('t1', start())
+    j.history.beginTurn('t1')
+    j.history.beginTurn('t1')
+    const c = j.history.begin('t1', start())
+    const other = j.history.begin('t2', start())
+    expect([await a.n(), await b.n(), await c.n(), await other.n()]).toEqual([1, 2, 3, 1])
+    expect((await j.calls('t1')).calls.map((x) => x.turn)).toEqual([1, 1, 2])
+    expect((await j.calls('t2')).calls.map((x) => x.turn)).toEqual([1])
+  })
+
+  it("a bridged call's turn follows its box's token, whatever beginTurn said", async () => {
+    const j = journal()
+    j.history.begin('mac:box:t', start({ token: 'turn-a' }))
+    j.history.beginTurn('mac:box:t')
+    j.history.begin('mac:box:t', start({ token: 'turn-a' }))
+    j.history.begin('mac:box:t', start({ token: 'turn-b' }))
+    expect((await j.calls('mac:box:t')).calls.map((x) => x.turn)).toEqual([1, 1, 2])
+    expect(j.lines('mac:box:t').map((l) => l.token)).toEqual(['turn-a', 'turn-a', 'turn-b'])
+  })
+
+  it('after a restart both continue from the highest value in the log, and a new process is a new turn', async () => {
+    const j = journal()
+    const a = j.history.begin('t1', start())
+    j.history.beginTurn('t1')
+    const b = j.history.begin('t1', start())
+    await b.end(end())
+    // the picture of call 1 lands after call 2's end: the log's last line is not its highest call
+    await a.end(end())
+    await a.picture({ none: 'failed' })
+    await j.history.close()
+    expect(j.lines('t1').at(-1)).toMatchObject({ r: 'picture', n: 1 })
+
+    const again = journal({ root: j.root })
+    const c = again.history.begin('t1', start())
+    expect(await c.n()).toBe(3)
+    const read = await again.calls('t1')
+    expect(read.calls.map((x) => [x.n, x.turn, x.state])).toEqual([[1, 1, 'done'], [2, 2, 'done'], [3, 3, 'running']])
+    expect(read.born).toBe(1010)
+  })
+
+  it("an idle close inside one of a box thread's turns does not split it: the token is in the record", async () => {
+    const j = journal()
+    await j.history.begin('mac:box:t', start({ token: 'turn-a' })).end(end())
+    await j.history.close()
+    const again = journal({ root: j.root })
+    again.history.begin('mac:box:t', start({ token: 'turn-a' }))
+    again.history.begin('mac:box:t', start({ token: 'turn-b' }))
+    expect((await again.calls('mac:box:t')).calls.map((x) => x.turn)).toEqual([1, 1, 2])
+  })
+
+  it('a start whose end never came is unfinished once its process is gone', async () => {
+    const j = journal()
+    j.history.begin('t1', start())
+    expect((await j.calls('t1')).calls[0].state).toBe('running')
+    await j.history.close()
+    const again = journal({ root: j.root })
+    expect((await again.calls('t1')).calls[0]).toMatchObject({ state: 'unfinished', rev: 1 })
+  })
+
+  it('a torn last line and a foreign line are skipped', async () => {
+    const j = journal()
+    await j.history.begin('t1', start()).end(end())
+    await j.history.close()
+    appendFileSync(join(j.dir('t1'), 'log.jsonl'), '{"v":2,"r":"start","n":9}\nnot json\n{"v":1,"r":"end","n":7,"at":1}\n{"v":1,"r":"start","n":2,"turn":1,"at":2000,"app":"TextEdit","wind')
+    const again = journal({ root: j.root })
+    const read = await again.calls('t1')
+    expect(read.calls.map((x) => [x.n, x.state])).toEqual([[1, 'done']])
+    // the counter still clears the end with no start
+    expect(await again.history.begin('t1', start()).n()).toBe(8)
+  })
+
+  it('a history removed and begun again has a new born, and its numbers start over', async () => {
+    const j = journal()
+    const old = j.history.begin('t1', start())
+    await old.end(end())
+    const born = (await j.calls('t1')).born
+    await j.history.remove('t1')
+    expect(existsSync(j.dir('t1'))).toBe(false)
+    expect(j.changes.at(-1)).toEqual({ key: 't1', gone: true })
+    expect(await j.calls('t1')).toEqual({ key: 't1', born: 0, calls: [], more: false })
+    const fresh = j.history.begin('t1', start())
+    expect(await fresh.n()).toBe(1)
+    expect((await j.calls('t1')).born).toBeGreaterThan(born)
+  })
+})
+
+describe('best effort', () => {
+  it('a failed append is logged once, changes no answer and keeps the call for this process', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tc-history-'))
+    // the key's directory is a file: every write under it fails
+    writeFileSync(join(root, 't1'), 'in the way')
+    const logged: string[] = []
+    const j = journal({ root, log: (l) => logged.push(l) })
+    const entry = j.history.begin('t1', start())
+    await expect(entry.n()).resolves.toBe(1)
+    await expect(entry.end(end({ read: 'Read 1 change', text: 'text' }))).resolves.toBeUndefined()
+    await expect(entry.picture(j.shot)).resolves.toBeUndefined()
+    const second = j.history.begin('t1', start())
+    await expect(second.end(end())).resolves.toBeUndefined()
+    expect(logged).toHaveLength(1)
+    expect(logged[0]).toContain('computer history')
+    // what could not be written is not claimed: no text, and the picture is a failure
+    expect((await j.calls('t1')).calls.map((c) => [c.state, c.text, c.picture])).toEqual([['done', false, { none: 'failed' }], ['done', false, undefined]])
+  })
+
+  it('a listener that throws stops nothing', async () => {
+    const j = journal()
+    j.history.onChange(() => {
+      throw new Error('boom')
+    })
+    await j.history.begin('t1', start()).end(end())
+    expect(j.lines('t1')).toHaveLength(2)
+  })
+})
+
+describe('read pages by n', () => {
+  it('the newest 200, then the 200 under before, and more says there is older', async () => {
+    const j = journal()
+    for (let i = 0; i < HISTORY_PAGE + 30; i++) void j.history.begin('t1', start()).end(end())
+    const newest = await j.calls('t1')
+    expect(newest.calls).toHaveLength(HISTORY_PAGE)
+    expect([newest.calls[0].n, newest.calls.at(-1)!.n, newest.more]).toEqual([31, 230, true])
+    const older = await j.calls('t1', 31)
+    expect([older.calls[0].n, older.calls.at(-1)!.n, older.more]).toEqual([1, 30, false])
+    // several keys answer in one read, a key with nothing among them
+    const both = await j.history.read(['t1', 'nobody'])
+    expect(both.map((r) => [r.key, r.calls.length])).toEqual([['t1', HISTORY_PAGE], ['nobody', 0]])
+  })
+})
+
+describe('the newest 400 calls keep their picture and text', () => {
+  it('the oldest pair goes when the 401st lands; its lines stay and a read says gone', async () => {
+    const j = journal()
+    const first = j.history.begin('t1', start())
+    await first.end(end({ read: 'Read 1 change', text: 'first text' }))
+    await first.picture(j.shot)
+    for (let i = 1; i < HISTORY_KEEP_CALLS; i++) void j.history.begin('t1', start()).end(end())
+    expect((await j.calls('t1', 2)).calls[0]).toMatchObject({ n: 1, text: true, picture: { width: 960 }, rev: 3 })
+    j.changes.length = 0
+    await j.history.begin('t1', start()).n()
+    expect(readdirSync(join(j.dir('t1'), 'steps'))).toEqual([])
+    const gone = (await j.calls('t1', 2)).calls[0]
+    // each file that went is a revision, so a reader that held the old call takes this one
+    expect(gone).toMatchObject({ n: 1, text: false, picture: { none: 'gone' }, rev: 5, read: 'Read 1 change' })
+    expect(j.changes.some((c) => 'call' in c && c.call.n === 1 && c.call.rev === 5)).toBe(true)
+    expect(await j.history.step('t1', 1)).toEqual({})
+    expect(j.lines('t1').filter((l) => l.n === 1).map((l) => l.r)).toEqual(['start', 'end', 'picture'])
+  })
+})
+
+describe('removal, the switch and the prune', () => {
+  it('nothing lands after a removal: an entry begun before it writes nothing', async () => {
+    const j = journal()
+    const entry = j.history.begin('t1', start())
+    await entry.n()
+    const removed = j.history.remove('t1')
+    const ended = entry.end(end({ read: 'Read 1 change', text: 'late' }))
+    const pictured = entry.picture(j.shot)
+    await Promise.all([removed, ended, pictured])
+    expect(existsSync(j.dir('t1'))).toBe(false)
+    expect((await j.calls('t1')).calls).toEqual([])
+  })
+
+  it('a picture that lands with the switch off is not kept', async () => {
+    let on = true
+    const j = journal({ pictures: () => on })
+    const entry = j.history.begin('t1', start())
+    await entry.end(end())
+    on = false
+    await entry.picture(j.shot)
+    expect((await j.calls('t1')).calls[0].picture).toEqual({ none: 'off' })
+    expect(readdirSync(join(j.dir('t1'), 'steps'))).toEqual([])
+  })
+
+  it('turning the switch off removes every kept picture, loaded or not; the lines and the texts stay', async () => {
+    const j = journal()
+    for (const key of ['t1', 't2']) {
+      const entry = j.history.begin(key, start())
+      await entry.end(end({ read: 'Read 1 change', text: 'kept text' }))
+      await entry.picture(j.shot)
+    }
+    await j.history.close()
+    const again = journal({ root: j.root })
+    await again.calls('t1')
+    again.changes.length = 0
+    await again.history.dropPictures()
+    for (const key of ['t1', 't2']) expect(readdirSync(join(j.dir(key), 'steps'))).toEqual(['1.txt'])
+    expect((await again.calls('t1')).calls[0]).toMatchObject({ picture: { none: 'gone' }, text: true, rev: 4 })
+    expect((await again.calls('t2')).calls[0]).toMatchObject({ picture: { none: 'gone' }, text: true })
+    // the loaded key's readers hear it
+    expect(again.changes).toEqual([{ key: 't1', call: expect.objectContaining({ n: 1, picture: { none: 'gone' } }) }])
+    expect(again.lines('t1')).toHaveLength(3)
+  })
+
+  it('a history whose log was not written for 30 days goes; a newer one and one in flight stay', async () => {
+    const j = journal()
+    for (const key of ['old', 'new', 'busy']) await j.history.begin(key, start()).end(end())
+    j.history.begin('busy', start())
+    await j.calls('busy')
+    await j.history.close()
+    const longAgo = new Date(Date.now() - HISTORY_KEEP_MS - 60_000)
+    for (const key of ['old', 'busy']) utimesSync(join(j.dir(key), 'log.jsonl'), longAgo, longAgo)
+    // an unloaded old history too
+    mkdirSync(join(j.root, 'stray', 'steps'), { recursive: true })
+    writeFileSync(join(j.root, 'stray', 'log.jsonl'), '')
+    utimesSync(join(j.root, 'stray', 'log.jsonl'), longAgo, longAgo)
+    j.changes.length = 0
+    await j.calls('old')
+    await j.history.prune(Date.now())
+    expect(readdirSync(j.root).sort()).toEqual(['busy', 'new'])
+    expect(j.changes).toContainEqual({ key: 'old', gone: true })
+  })
+})
+
+describe('a key never escapes its directory', () => {
+  it('any key lands in one directory right under the root', async () => {
+    const j = journal()
+    const keys = ['../../etc/passwd', '..', '.', '/abs/path', 'a/b', 'mac:env_1:thread', 'x'.repeat(300), 'plain-Thread_1']
+    for (const key of keys) await j.history.begin(key, start()).end(end())
+    const names = readdirSync(j.root)
+    expect(names).toHaveLength(keys.length)
+    for (const name of names) expect(name).toMatch(/^[A-Za-z0-9_-]{1,64}$/)
+    expect(names).toContain('plain-Thread_1')
+    // and a read of each finds its own
+    for (const key of keys) expect((await j.calls(key)).calls).toHaveLength(1)
+  })
+})
+
+describe('the picture seam', () => {
+  it('no pictures under TEMP_CODE_COMPUTER_HISTORY=0, nor in a proof instance without the override', () => {
+    expect(historyPicturesFromEnv({})).toBe(true)
+    expect(historyPicturesFromEnv({ TEMP_CODE_COMPUTER_HISTORY: '0' })).toBe(false)
+    expect(historyPicturesFromEnv({ TEMP_CODE_E2E_STATUS: '1' })).toBe(false)
+    expect(historyPicturesFromEnv({ TEMP_CODE_E2E_STATUS: '1', TEMP_CODE_COMPUTER_HISTORY: '1' })).toBe(true)
+    expect(historyPicturesFromEnv({ TEMP_CODE_E2E_STATUS: '1', TEMP_CODE_COMPUTER_HISTORY: '0' })).toBe(false)
+    expect(historyPicturesFromEnv({ TEMP_CODE_COMPUTER_HISTORY: '1' })).toBe(true)
+  })
+})
+
+// kept for the picture tests below, which need the fake service
+void symlinkSync
+void chmodSync

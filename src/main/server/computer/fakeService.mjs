@@ -81,6 +81,8 @@ const shots = new Map()
 const pending = new Map()
 // replies held for the closing wait: a cancel answers them at once with what ran
 const delayed = new Map()
+// capture.screenshot answers held by FAKE_SHOT_MS: a cancel answers them cancelled
+const slowShots = new Map()
 const permissions = { accessibility: true, screenRecording: process.env.FAKE_SCREEN_RECORDING !== '0' }
 const streams = new Map()
 const lastClicks = new Map()
@@ -565,6 +567,13 @@ function handle({ id, method, params = {} }) {
       reply(params.id, held.result)
       return
     }
+    const slowShot = slowShots.get(params.id)
+    if (slowShot) {
+      slowShots.delete(params.id)
+      clearTimeout(slowShot)
+      refuse(params.id, cancelled())
+      return
+    }
     const request = pending.get(params.id)
     if (request) {
       pending.delete(params.id)
@@ -674,7 +683,22 @@ function handle({ id, method, params = {} }) {
         else reply(id, result)
         return
       }
-      if (method === 'capture.screenshot') return reply(id, shot(ctx, 'screenshot'))
+      if (method === 'capture.screenshot') {
+        // the journal's picture (history.ts): a minimized window, a refusal, a blank shot, a slow one a cancel answers at once
+        if (process.env.FAKE_SHOT_MINIMIZED === '1') return refuse(id, failure('window_minimized', 'Restore the window before capturing it.'))
+        if (process.env.FAKE_SHOT_REFUSE === '1') return refuse(id, failure('capture_failed', 'The window could not be captured.'))
+        const answer = () => {
+          try {
+            reply(id, { ...shot(ctx, 'screenshot'), ...(params.region ? { region: params.region } : {}), ...(process.env.FAKE_SHOT_BLANK === '1' ? { blank: true } : {}) })
+          } catch (error) {
+            refuse(id, error)
+          }
+        }
+        const hold = Number(process.env.FAKE_SHOT_MS ?? 0)
+        if (hold > 0) slowShots.set(id, setTimeout(() => (slowShots.delete(id), answer()), hold))
+        else answer()
+        return
+      }
       if (method === 'capture.stream.start') {
         if (!permissions.screenRecording || ctx.app.name === 'NoShot') return refuse(id, shotFailure())
         if (ctx.window.minimized) return refuse(id, failure('window_minimized', 'Restore the window before previewing it.'))
