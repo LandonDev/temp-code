@@ -418,8 +418,8 @@ struct AgentRow: View {
                             .lineLimit(1)
                         Spacer(minLength: 8)
                         if live, !away {
-                            TimelineView(.periodic(from: .now, by: 1)) { context in
-                                AgentFigures(elapsedMs: Fleet.elapsedMs(meta, now: Int(context.date.timeIntervalSince1970 * 1000)), cost: cost)
+                            Tick(every: 1) { tick in
+                                AgentFigures(elapsedMs: Fleet.elapsedMs(meta, now: Int(tick.timeIntervalSince1970 * 1000)), cost: cost)
                             }
                         } else {
                             // Settled, or a host that is away: the clock stands at what the host last said.

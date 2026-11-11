@@ -456,8 +456,8 @@ private struct CardElapsed: View {
     let since: Int
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let now = Int(context.date.timeIntervalSince1970 * 1_000)
+        Tick(every: 1) { tick in
+            let now = Int(tick.timeIntervalSince1970 * 1_000)
             if ProjectCards.showsElapsed(since: since, now: now) {
                 let text = TimeFormat.duration(ms: now - since)
                 Text(text)
@@ -476,8 +476,8 @@ private struct CardAgo: View {
     let ms: Int
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            let text = TimeFormat.ago(ms, now: context.date)
+        Tick(every: 30) { tick in
+            let text = TimeFormat.ago(ms, now: tick)
             Text(text)
                 .transcriptType(TranscriptType.detail)
                 .monospacedDigit()

@@ -68,8 +68,8 @@ struct WorkingStripView: View {
     /// The open turn's time from the click, then Stop.
     private var timerRow: some View {
         row {
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                let now = Int(context.date.timeIntervalSince1970 * 1000)
+            Tick(every: 1) { tick in
+                let now = Int(tick.timeIntervalSince1970 * 1000)
                 if let ms = ComposerSlot.elapsedMs(.timer, sentAt: dock.sentAt, busySince: chrome.busySince, sentTurn: dock.sentTurn, frozen: nil, now: now) {
                     let shown = TimeFormat.duration(ms: ms)
                     Text(shown)

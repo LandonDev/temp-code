@@ -5,8 +5,8 @@ import TempCodeClient
 // streaming block's text is one `Text` built from runs, the settled prefix
 // as one and each step younger than the fade as its own, tagged with when
 // it arrived (`StreamFadeAttribute`); `StreamFadeRenderer` draws a tagged
-// run at its linear opacity. A `TimelineView` wraps only the renderer and
-// runs only while a run is young; the `Text` is built outside its closure.
+// run at its linear opacity. A task steps the renderer's clock
+// (`StreamFadeText`) and runs only while a run is young.
 
 /// When a run of streamed text arrived, seconds on the reference clock.
 struct StreamFadeAttribute: TextAttribute {
@@ -130,39 +130,37 @@ enum FadedText {
 }
 
 /// One block of streamed prose: its runs drawn through the renderer, the
-/// timeline running only while a run is young.
+/// clock stepping only while a run is young.
 struct StreamFadeText: View {
     let styled: AttributedString
     let runs: [RevealSegment]
     let type: TypeSpec
 
+    /// The clock the renderer draws at, in reference seconds: moved by the task below while a run is young.
+    @State private var now = StreamFadeState.now
+
     var body: some View {
         let young = runs.contains(where: \.young)
-        let text = FadedText.build(styled, runs: runs)
+        let until = RevealSegment.fadeEnd(runs) ?? 0
         #if DEBUG
         // The transcript proof reads these: young runs drawn under full motion, none under reduced.
         let _ = LayoutProbe.count(young ? "streamFadeYoung" : "streamFadeSettled")
         #endif
         // A 0.4 s linear fade reads the same at a 30 Hz redraw (12 steps of opacity), at half the
-        // work of every display frame; the timeline ends with the youngest run's fade, whether or
-        // not anything redraws the row after it.
-        TimelineView(FadeSchedule(until: RevealSegment.fadeEnd(runs) ?? 0, interval: StreamRevealLedger.fade / 12)) { context in
-            text
-                .transcriptType(type)
-                .textRenderer(StreamFadeRenderer(now: context.date.timeIntervalSinceReferenceDate))
-        }
-    }
-}
-
-/// The fade's redraws (`RevealSegment.fadeTicks`): a finite schedule, so the
-/// timeline stops on its own once no run is younger than the fade.
-private struct FadeSchedule: TimelineSchedule {
-    /// Reference-clock seconds.
-    let until: Double
-    let interval: Double
-
-    func entries(from startDate: Date, mode: TimelineScheduleMode) -> [Date] {
-        let ticks = RevealSegment.fadeTicks(from: startDate.timeIntervalSinceReferenceDate, until: until, every: interval)
-        return [startDate] + ticks.dropFirst().map(Date.init(timeIntervalSinceReferenceDate:))
+        // work of every display frame. The redraws are this task's: it steps the clock until the
+        // youngest run's fade has ended and then stops, so a row with nothing young wakes nothing.
+        // (A `TimelineView` drove them before; mounted, it kept SwiftUI's display link updating the
+        // view graph every frame for as long as the row streamed, fade or no fade.)
+        FadedText.build(styled, runs: runs)
+            .transcriptType(type)
+            .textRenderer(StreamFadeRenderer(now: max(now, StreamFadeState.now)))
+            .task(id: until) {
+                while !Task.isCancelled {
+                    let clock = StreamFadeState.now
+                    now = clock
+                    if clock >= until { return }
+                    try? await Task.sleep(for: .seconds(StreamRevealLedger.fade / 12))
+                }
+            }
     }
 }

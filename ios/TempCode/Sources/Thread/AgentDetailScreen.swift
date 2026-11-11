@@ -144,8 +144,8 @@ private struct AgentIdentity: View {
                         AgentMetaLine(agent: agent, branch: Fleet.branch(cwd: agent.cwd, parentCwd: parentCwd), environmentId: environmentId)
                         Spacer(minLength: 8)
                         if live {
-                            TimelineView(.periodic(from: .now, by: 1)) { context in
-                                AgentFigures(elapsedMs: Fleet.elapsedMs(agent, now: Int(context.date.timeIntervalSince1970 * 1000)), cost: thread.fold.board.cost)
+                            Tick(every: 1) { tick in
+                                AgentFigures(elapsedMs: Fleet.elapsedMs(agent, now: Int(tick.timeIntervalSince1970 * 1000)), cost: thread.fold.board.cost)
                             }
                         } else {
                             AgentFigures(elapsedMs: Fleet.elapsedMs(agent, now: Int(Date.now.timeIntervalSince1970 * 1000)), cost: thread.fold.board.cost)

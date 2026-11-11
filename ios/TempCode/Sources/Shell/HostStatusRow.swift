@@ -78,8 +78,8 @@ struct StatusText: View {
 
     var body: some View {
         if status.transport == .reconnecting || status.transport == .connecting, status.nextRetryAt != nil {
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                let text = Self.text(for: status, now: context.date)
+            Tick(every: 1) { tick in
+                let text = Self.text(for: status, now: tick)
                 Text(text)
                     .numeric(text)
             }

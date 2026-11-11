@@ -472,12 +472,12 @@ struct CompactionLine: View {
         Group {
             switch phase {
             case .running:
-                TimelineView(.periodic(from: .now, by: 1)) { context in
+                Tick(every: 1) { tick in
                     HStack(spacing: 0) {
                         StepStateMark(state: .working)
                             .padding(.trailing, TranscriptMetrics.glyphGap)
                         WorkingText(words: "Compacting context")
-                        Text(TimeFormat.duration(ms: max(0, Int(context.date.timeIntervalSince1970 * 1_000) - compaction.ts)))
+                        Text(TimeFormat.duration(ms: max(0, Int(tick.timeIntervalSince1970 * 1_000) - compaction.ts)))
                             .transcriptType(TranscriptType.line)
                             .foregroundStyle(.secondary)
                             .monospacedDigit()

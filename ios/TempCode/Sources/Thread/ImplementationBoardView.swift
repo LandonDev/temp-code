@@ -367,8 +367,8 @@ private struct TodoRowView: View {
                     .multilineTextAlignment(.leading)
                 Spacer(minLength: 8)
                 if live {
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        let elapsed = (ms ?? 0) + Int(context.date.timeIntervalSince(renderedAt) * 1_000)
+                    Tick(every: 1) { tick in
+                        let elapsed = (ms ?? 0) + Int(tick.timeIntervalSince(renderedAt) * 1_000)
                         Text(ToolTime.duration(ms: elapsed))
                             .textStep(.stamp)
                             .numeric(elapsed / 1_000)

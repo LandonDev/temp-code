@@ -79,8 +79,8 @@ struct AccountMenu: View {
             }
             .padding(.horizontal, Layout.textEdge)
             .padding(.top, 8)
-            TimelineView(.periodic(from: .now, by: 30)) { context in
-                let now = Int(context.date.timeIntervalSince1970 * 1000)
+            Tick(every: 30) { tick in
+                let now = Int(tick.timeIntervalSince1970 * 1000)
                 let rows = AccountMenuModel.rows(scope: scope, kind: scopeKind, session: session, project: project, workspace: workspace, accounts: accounts, now: now)
                 List {
                     ForEach(rows) { row in

@@ -18,8 +18,8 @@ struct PresenceLine: View {
     }
 
     var body: some View {
-        TimelineView(.everyMinute) { context in
-            let line = text(context.date)
+        Tick(every: 60) { tick in
+            let line = text(tick)
             ZStack(alignment: .leading) {
                 if let line {
                     Text(line)
@@ -65,8 +65,8 @@ struct RelayStripLine: View {
     var body: some View {
         if client.environment.isRelayed, let presence = client.presence {
             let lockedSince = client.stateSince
-            TimelineView(.everyMinute) { context in
-                if let line = RelayWords.stripLine(presence, lockedSince: lockedSince, now: context.date) {
+            Tick(every: 60) { tick in
+                if let line = RelayWords.stripLine(presence, lockedSince: lockedSince, now: tick) {
                     HStack(spacing: 8) {
                         Text(line)
                             .foregroundStyle(.secondary)

@@ -51,8 +51,8 @@ struct ElapsedText: View {
     }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let text = TimeFormat.elapsed(since: since, now: context.date)
+        Tick(every: 1) { tick in
+            let text = TimeFormat.elapsed(since: since, now: tick)
             Text(text)
                 .textStep(step)
                 .numeric(text)
@@ -71,8 +71,8 @@ struct AgoText: View {
     }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            let text = TimeFormat.ago(ms, now: context.date)
+        Tick(every: 30) { tick in
+            let text = TimeFormat.ago(ms, now: tick)
             Text(text)
                 .textStep(step)
                 .numeric(text)
@@ -114,5 +114,46 @@ struct SwapText: View {
         }
         .lineLimit(1)
         .animation(Motion.crossFade, value: text)
+    }
+}
+
+/// A view drawn again every `period` seconds, for clocks and ages: its
+/// content gets the time of the last tick. A task sleeps to the next whole
+/// period on the wall clock (so every ticker on screen steps together) and
+/// writes one piece of state. A `TimelineView` did this before, and while
+/// one was on screen SwiftUI's display link updated the view graph every
+/// frame, with no body running: about 90 ms of main-thread CPU a second
+/// under a working thread's slot. Not `ticking`, it draws the last time it
+/// had and wakes nothing.
+struct Tick<Content: View>: View {
+    let period: Double
+    var ticking = true
+    @ViewBuilder let content: (Date) -> Content
+    @State private var now = Date()
+
+    init(every period: Double, ticking: Bool = true, @ViewBuilder content: @escaping (Date) -> Content) {
+        self.period = period
+        self.ticking = ticking
+        self.content = content
+    }
+
+    var body: some View {
+        // The task rides a view of its own: content that draws nothing yet (a
+        // timer under its first second) never appears, and a task on it never starts.
+        ZStack {
+            content(now)
+            Color.clear
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .task(id: ticking) {
+                    guard ticking else { return }
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(TickRule.wait(now: Date().timeIntervalSince1970, period: period)))
+                        guard !Task.isCancelled else { return }
+                        now = Date()
+                    }
+                }
+        }
     }
 }

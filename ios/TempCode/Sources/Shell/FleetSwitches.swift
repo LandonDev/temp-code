@@ -162,8 +162,8 @@ struct FleetConfirmSheet: View {
 
     var body: some View {
         NavigationStack {
-            TimelineView(.periodic(from: .now, by: 30)) { context in
-                body(now: context.date)
+            Tick(every: 30) { tick in
+                body(now: tick)
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

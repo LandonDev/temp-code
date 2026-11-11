@@ -329,7 +329,7 @@ private final class ShimmerBandView: UIView {
 /// else counted) and the watch's age ticking each second, amber past 30
 /// minutes on its own tasks. A tap opens the agents list when it watches
 /// subagents. Once shown it stays mounted, folding closed when the watch
-/// ends; folded, its clock stops (`WatchTicks`).
+/// ends; folded, its clock stops (`Tick`).
 private struct WatchingLine: View {
     let meta: SessionMeta
     let client: EnvironmentClient
@@ -366,8 +366,8 @@ private struct WatchingLine: View {
     private func words(ticking: Bool) -> some View {
         let subject = WatchWords.watchSubject(meta.background) { client.session($0)?.title }
         let since = meta.background?.watchingSince
-        return TimelineView(WatchTicks(ticking: ticking)) { context in
-            let nowMs = Int(context.date.timeIntervalSince1970 * 1_000)
+        return Tick(every: 1, ticking: ticking) { tick in
+            let nowMs = Int(tick.timeIntervalSince1970 * 1_000)
             let age = since.map { TimeFormat.duration(ms: max(0, nowMs - $0)) }
             HStack(spacing: 0) {
                 Circle()
@@ -392,20 +392,6 @@ private struct WatchingLine: View {
             .frame(minHeight: TranscriptMetrics.line)
             .contentShape(Rectangle())
             .accessibilityElement(children: .combine)
-        }
-    }
-}
-
-/// The Watching line's clock: a redraw each second while it shows, one and
-/// no more once it folded, so a line at rest wakes nothing.
-private struct WatchTicks: TimelineSchedule {
-    let ticking: Bool
-
-    func entries(from startDate: Date, mode: TimelineScheduleMode) -> AnyIterator<Date> {
-        var next: Date? = startDate
-        return AnyIterator {
-            defer { next = ticking ? next?.addingTimeInterval(1) : nil }
-            return next
         }
     }
 }

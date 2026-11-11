@@ -23,8 +23,8 @@ struct SyncSection: View {
             } else {
                 // One timeline per row: a List splits a ForEach into rows, not a single view holding one.
                 ForEach(peers(extras.sync), id: \.id) { peer in
-                    TimelineView(.periodic(from: .now, by: 30)) { context in
-                        let now = context.date.timeIntervalSince1970 * 1000
+                    Tick(every: 30) { tick in
+                        let now = tick.timeIntervalSince1970 * 1000
                         SyncPeerRow(
                             name: peer.name,
                             connected: peer.connected,
@@ -38,10 +38,10 @@ struct SyncSection: View {
                 if let conflicts = extras.sync.memory?.conflicts, !conflicts.isEmpty {
                     DisclosureGroup(SyncWords.conflictsTitle(conflicts.count)) {
                         ForEach(conflicts, id: \.path) { conflict in
-                            TimelineView(.periodic(from: .now, by: 30)) { context in
+                            Tick(every: 30) { tick in
                                 VStack(alignment: .leading, spacing: 2) {
                                     MonoLine(conflict.of, truncation: .middle)
-                                    Text(SyncWords.conflictLine(conflict, now: context.date.timeIntervalSince1970 * 1000))
+                                    Text(SyncWords.conflictLine(conflict, now: tick.timeIntervalSince1970 * 1000))
                                         .textStep(.meta)
                                 }
                                 .padding(.vertical, 2)
