@@ -1,3 +1,17 @@
+/** Read the button from a full observation; a delta may omit an unchanged Ping. */
+export function bridgeProbePing(text: string): number {
+  const index = text.match(/\[(\d+)\] button "Ping"/)?.[1]
+  if (index === undefined) throw new Error('the full TC Probe observation has no Ping button; refusing to send an invalid click')
+  return Number(index)
+}
+
+/** Never turn a failed held call into a second, invalid computer_result call. */
+export function bridgeHeldId(text: string): string {
+  const id = text.match(/^Held after[^\n]*computer_result with id "(c\d+)"/)?.[1]
+  if (!id) throw new Error(`the click did not answer held with an id: ${text.slice(0, 300)}`)
+  return id
+}
+
 /** Wait through a real Mac load/cap hold without ending the proof's synthetic turn. */
 export async function waitForBridgeProofCall<T>(
   answer: Promise<T>,

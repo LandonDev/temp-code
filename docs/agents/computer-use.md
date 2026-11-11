@@ -258,3 +258,9 @@ why and the measured headline.
   frames, observation texts and app trees recorded from scratch content
   only (scripts/mac/record-computer-fixtures.sh), held to their schemas
   and the privacy guard by computerFixtures.test.ts.
+The bridge gate (`scripts/e2e-computer-bridge.ts --gate`) checks the Mac’s
+short hostname, uses a full TC Probe tree for held-click indices and rejects
+missing indices or held ids. Away allows the ordinary click and records an
+allowed notice, but refuses a `pay`-flagged click before it runs. The
+2026-11-10 timing leg added 3–10 ms at p50 and 19–42 ms at p90 on loopback
+(§18); it passed while the old proof’s other checks failed.

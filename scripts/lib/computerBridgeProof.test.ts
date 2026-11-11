@@ -1,7 +1,26 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { waitForBridgeProofCall } from './computerBridgeProof'
+import { bridgeHeldId, bridgeProbePing, waitForBridgeProofCall } from './computerBridgeProof'
+import { ComputerActInputSchema, ComputerResultInputSchema } from '../../src/shared/computer/tools'
+import { heldAnswerLine } from '../../src/shared/computer/heldCalls'
 
 afterEach(() => vi.useRealTimers())
+
+it('sends the full observation’s Ping index and the held answer’s id in valid tool inputs', () => {
+  const element = bridgeProbePing('app "TC Probe"\n[3] button "Ping"\n[4] button "Ping Window"')
+  expect(ComputerActInputSchema.parse({ app: 'TC Probe', action: 'left_click', element }).element).toBe(3)
+  const id = bridgeHeldId(heldAnswerLine('c12', 3000, 'Waiting for the Mac, 1 of 1 computer sessions, 1st in line'))
+  expect(ComputerResultInputSchema.parse({ id })).toEqual({ id: 'c12' })
+})
+
+it('stops on a change-only tree instead of serializing NaN as a null element', () => {
+  expect(() => bridgeProbePing('app "TC Probe" · no changes · thin tree, see the screenshot')).toThrow('no Ping button')
+  expect(() => bridgeProbePing('[4] button "Ping Window"')).toThrow('no Ping button')
+})
+
+it('stops on a refused click instead of sending computer_result without an id', () => {
+  expect(() => bridgeHeldId('invalid arguments: element: expected number, received null')).toThrow('did not answer held with an id')
+  expect(() => bridgeHeldId('left_click [3] button "Ping" · ax · changed')).toThrow('did not answer held with an id')
+})
 
 it('keeps waiting through a load hold longer than the harness grace, then returns the real answer', async () => {
   vi.useFakeTimers()

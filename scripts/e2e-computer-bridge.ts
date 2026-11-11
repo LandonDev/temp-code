@@ -46,14 +46,15 @@ import { spawn, type ChildProcess, execFileSync } from 'node:child_process'
 import { createHash, createHmac, randomBytes } from 'node:crypto'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
-import { tmpdir } from 'node:os'
+import { hostname, tmpdir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import { createInterface } from 'node:readline'
 
 import { proofDescendants } from './lib/proofProcesses'
 import { cleanupProbeApp } from './lib/tcProbeApp'
 import { COMPUTER_PROOF_ENV, sweepComputerProofProcesses } from './lib/computerProofProcesses'
-import { waitForBridgeProofCall } from './lib/computerBridgeProof'
+import { bridgeHeldId, bridgeProbePing, waitForBridgeProofCall } from './lib/computerBridgeProof'
+import { shortHostName } from '../src/shared/hostNames'
 import { BRIDGE_TIMING_RULE, judgeBridgeTiming, median, timingTable, type TimingKind, type TimingSample } from './lib/computerBridgeTiming'
 import { parseTimingLine } from '../src/shared/computer/bridgeTiming'
 import { proofElectron } from './lib/proofElectron'
@@ -667,6 +668,8 @@ async function orchestrator(): Promise<void> {
   })
   if (!(await until(120_000, () => existsSync(join(mac.data, 'server.json'))))) await stop(`the Mac instance did not start; log ${mac.log}`)
   const macId = (await rpc<{ environmentId: string }>(mac, 'remote.status')).environmentId
+  // The host announces its short name; the pairing key's label is not its name.
+  const macName = shortHostName(hostname())
   await rpc(mac, 'remote.environments.add', { url: `http://127.0.0.1:${tunnel}`, key, name: 'box' })
   const registered = await until(60_000, async () => (await rpc<{ registered: boolean }[]>(mac, 'macBridge.policy.get'))[0]?.registered === true)
   if (!check('the Mac registered on the box over the tunnel', registered)) await stop('no registration')
@@ -717,7 +720,7 @@ async function orchestrator(): Promise<void> {
       JSON.stringify(activity.calls)
     )
     const row = (await sessionsOnBox()).find((r) => r.threadId === t1)
-    check("observe: the box's row names the Mac and TC Probe", row?.macPeer === macId && row?.macName === 'Studio' && row.apps[0]?.name === APP, JSON.stringify(row))
+    check("observe: the box's row names the Mac and TC Probe", row?.macPeer === macId && row?.macName === macName && row.apps[0]?.name === APP, JSON.stringify(row))
 
     // 4. act
     await awaitScreen()
@@ -817,7 +820,7 @@ async function orchestrator(): Promise<void> {
     await until(30_000, async () => !!(card = (await macPending()).find((r) => r.kind === 'computer' && r.status === 'pending')))
     check("card: the Mac's request is kind computer and names the click", !!card && /click/i.test(card.computer?.actions[0] ?? ''), JSON.stringify(card))
     const asking = (await sessionsOnBox()).find((r) => r.threadId === t1)
-    check("card: the box's row asks and says where", !!asking?.asking && asking.running?.words === 'Waiting for approval on Studio', JSON.stringify(asking))
+    check("card: the box's row asks and says where", !!asking?.asking && asking.macPeer === macId && asking.macName === macName && asking.running?.words === `Waiting for approval on ${macName}`, JSON.stringify(asking))
     if (card) await rpc(mac, 'macBridge.decide', { id: card.id, allow: false })
     const deniedOut = await denied
     check('card: a denial answers denied', deniedOut.isError && deniedOut.text.includes('denied: the person did not allow it'), deniedOut.text)
@@ -854,8 +857,8 @@ async function orchestrator(): Promise<void> {
     const textOf = (out: McpOut): string => (out.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('\n')
     // t2 reads TC Probe first, keeping its Ping index; its settle ends its live session
     await boxCall('session.markStatus', { sessionId: t2, status: 'running' })
-    const t2Read = await computer(t2, 'computer_observe', { app: APP, window: APP })
-    const t2Ping = Number(t2Read.text.match(/\[(\d+)\] button "Ping"/)?.[1])
+    const t2Read = await computer(t2, 'computer_observe', { app: APP, window: APP, full: true })
+    const t2Ping = bridgeProbePing(t2Read.text)
     await boxCall('session.markStatus', { sessionId: t2, status: 'idle' })
     // t1 holds the one live session
     await boxCall('session.markStatus', { sessionId: t1, status: 'running' })
@@ -867,7 +870,7 @@ async function orchestrator(): Promise<void> {
     const runsBefore = macRuns()
     const sentAt = Date.now()
     const firstHeld = textOf(await ask('computer_act', { app: APP, window: APP, action: 'left_click', element: t2Ping }))
-    const heldId = firstHeld.match(/computer_result with id "(c\d+)"/)?.[1]
+    const heldId = bridgeHeldId(firstHeld)
     check('held: within 5 s the click answers held, the cap line and an id', Date.now() - sentAt < 5_000 && firstHeld.startsWith('Held after') && firstHeld.includes('computer sessions') && !!heldId, firstHeld)
     const pendingRow = (await sessionsOnBox()).find((r) => r.threadId === t2)
     check("held: the Activity row keeps the hold", /computer sessions/.test(pendingRow?.running?.words ?? ''), JSON.stringify(pendingRow))
@@ -888,6 +891,7 @@ async function orchestrator(): Promise<void> {
     const runsUnread = macRuns()
     const secondAt = Date.now()
     const secondHeld = textOf(await ask('computer_act', { app: APP, window: APP, action: 'left_click', element: t2Ping }))
+    bridgeHeldId(secondHeld)
     check('held: the second click answers held', secondHeld.startsWith('Held after'), secondHeld)
     const heldOnMac = async (): Promise<boolean> => (await macActivity()).calls.some((c) => c.sessionId === t2 && c.status === 'held')
     check('held: the second click waits on the Mac', await until(5_000, heldOnMac))
@@ -938,12 +942,16 @@ async function orchestrator(): Promise<void> {
     await rpc(mac, 'away.set', { enabled: true })
     await until(10_000, async () => (await boxCall<{ enabled: boolean }>('away.get', {})).enabled === true)
     const awayOut = await computer(t1, 'computer_act', clickArgs)
-    check('away: an acting call that would ask answers away', awayOut.text.includes('denied: the person is away'), awayOut.text)
+    check('away: an acting call that would ask is allowed and marked away', !awayOut.isError && / · (ax|process) · changed/.test(awayOut.text) && logOf(mac).includes('card allowed (away)'), awayOut.text)
     // The local socket answers session.events as the rows themselves; a remote one wraps them in { rows }.
-    type Row = { event: { type: string; kind?: string; away?: unknown } }
+    type Row = { event: { type: string; kind?: string; away?: { kind: string; text: string } } }
     const events = await boxCall<Row[] | { rows: Row[] }>('session.events', { sessionId: t1, afterSeq: 0 })
     const eventRows = Array.isArray(events) ? events : events.rows
-    check('away: the box thread has an away notice', eventRows.some((r) => r.event.type === 'notice' && (r.event.kind === 'away' || !!r.event.away)))
+    check('away: the box thread has an Allowed while away notice', eventRows.some((r) => r.event.type === 'notice' && r.event.kind === 'away' && r.event.away?.kind === 'allowed'))
+    const runsBeforePay = macRuns()
+    const paid = await computer(t1, 'computer_act', { ...clickArgs, confirm: { kind: 'pay', what: 'Pay in TC Probe (proof only)' } })
+    check('away: a pay-flagged act is refused with MAC_AWAY_REFUSAL', paid.isError && paid.text.includes('denied: the person is away and this act spends money') && logOf(mac).includes('refused (away, spends money)'), paid.text)
+    check('away: the pay-flagged click never ran', macRuns() === runsBeforePay)
     check('away: an observe still works', !(await computer(t1, 'computer_observe', { app: APP, window: APP })).isError)
     await rpc(mac, 'away.set', { enabled: false })
 

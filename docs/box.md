@@ -1936,7 +1936,10 @@ time. The proof's timing leg holds the bridge to its bound: ten interleaved
 pairs of observe, observe with a picture and `set_value` from a box thread
 and a Mac thread, box minus Mac at most 40 ms median and 100 ms p90 on
 loopback, and over the network at most the run's own round trip plus 40 ms
-for a call without a picture. A direct link, binary frames and smaller
+for a call without a picture. The Mac gate run on 2026-11-10 measured added
+p50/p90 of 3/19 ms for observe, 9/24 ms with a picture and 10/42 ms for
+`set_value` (1 ms loopback round trip), inside +40/+100 ms. The row took
+95 s; timing passed while 11 other checks failed. A direct link, binary frames and smaller
 pictures were ruled out; docs/computer-protocol.md §18 "What the bridge
 costs" says why.
 
