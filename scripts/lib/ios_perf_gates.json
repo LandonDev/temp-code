@@ -1,7 +1,7 @@
 {
   "scroll-cpu": false,
   "batch-turn": false,
-  "scale": false,
+  "scale": true,
   "keystroke": false,
   "rest": false,
   "load-only": true,

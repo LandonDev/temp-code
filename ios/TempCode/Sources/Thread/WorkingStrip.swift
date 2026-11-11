@@ -72,10 +72,13 @@ struct WorkingStripView: View {
                 let now = Int(tick.timeIntervalSince1970 * 1000)
                 if let ms = ComposerSlot.elapsedMs(.timer, sentAt: dock.sentAt, busySince: chrome.busySince, sentTurn: dock.sentTurn, frozen: nil, now: now) {
                     let shown = TimeFormat.duration(ms: ms)
+                    // Tabular digits that step with the second and do not roll: this clock changes
+                    // every second for as long as a turn works, and a roll each time redrew its
+                    // glyphs through half of every second (about 45 ms of main-thread CPU a second).
                     Text(shown)
                         .transcriptType(TranscriptType.detail)
                         .foregroundStyle(.secondary)
-                        .numeric(shown)
+                        .monospacedDigit()
                         .accessibilityLabel("Working for \(shown)")
                 }
             }
