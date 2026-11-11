@@ -606,8 +606,9 @@ struct ThreadScreen: View {
         .frame(width: width)
         // A scroll view shows its content under the safe area: in the Duo's split the next page peeked
         // into the trailing column beside the detail. Clip the sides only; the transcript still runs
-        // under the bars above and below.
-        .mask { Rectangle().padding(.vertical, -4000) }
+        // under the bars above and below. A clip to a rectangle, where a mask drew the whole pager
+        // into an offscreen pass each frame for the same pixels.
+        .clipShape(SideClip())
         .ignoresSafeArea(twoPane ? [.container, .keyboard] : [], edges: .bottom)
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { pagerBottom = $0 }
         // The segment bar's pill rides on this: the offset in pages, every frame of a swipe. In a split the
@@ -748,5 +749,16 @@ final class ThreadScreenModel {
             }
             try? await Task.sleep(for: .milliseconds(running ? 1_500 : 8_000))
         }
+    }
+}
+
+/// Its frame's sides and no top or bottom: what peeks past the left and right
+/// edges is cut, and the content still runs under the bars above and below.
+private nonisolated struct SideClip: Shape {
+    /// Past any screen's height.
+    static let reach: CGFloat = 4_000
+
+    func path(in rect: CGRect) -> Path {
+        Path(rect.insetBy(dx: 0, dy: -Self.reach))
     }
 }

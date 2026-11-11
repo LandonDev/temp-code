@@ -14,9 +14,52 @@ import Testing
         #expect(String(heading.characters) == "Title")
         #expect(String(paragraph.characters) == "para bold here")
         #expect(paragraph.runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true })
-        #expect(code == "let x = 1" && language == "swift")
+        #expect(code.text == "let x = 1" && language == "swift")
         #expect(items.map { String($0.characters) } == ["one", "two"] && !ordered)
         #expect(document.textHash == "# Title\n\npara **bold** here\n\n```swift\nlet x = 1\n```\n\n- one\n- two\n".hashValue)
+    }
+
+    @Test func `a code block's lines are counted and numbered at the parse`() {
+        let one = CodeText("let x = 1")
+        #expect(one.lineCount == 1 && one.numbers == "1")
+        let three = CodeText("a\n\nc")
+        #expect(three.lineCount == 3 && three.numbers == "1\n2\n3")
+        #expect(CodeText("").lineCount == 1)
+        // Within its fold a block is its own strings; past it, its first lines and their numbers.
+        #expect(three.head(3).text == "a\n\nc" && three.head(3).numbers == "1\n2\n3")
+        #expect(three.head(2).text == "a\n" && three.head(2).numbers == "1\n2")
+        #expect(three.head(1).text == "a" && three.head(1).numbers == "1")
+        let long = CodeText((1...50).map { "line \($0)" }.joined(separator: "\n"))
+        let head = long.head(40)
+        #expect(head.text.split(separator: "\n").count == 40 && head.text.hasSuffix("line 40"))
+        #expect(head.numbers.hasSuffix("39\n40") && long.numbers.hasSuffix("49\n50"))
+        // The text is the block.
+        #expect(CodeText("a") == "a" && CodeText("a") != CodeText("b"))
+        guard case .code(let code, _) = MarkdownDocument.renderBlock(.code("x\ny", language: nil)) else { Issue.record("not code"); return }
+        #expect(code.lineCount == 2)
+    }
+
+    @Test func `prose with no inline code says so, and prose with some does not`() {
+        let document = MarkdownDocument.parse("# A title\n\nplain **bold** words\n\ncall `rows()` here\n\na lone ` tick\n\n- one\n- `two`\n\n> quoted\n\n| a | `b` |\n| - | - |\n| c | d |\n")
+        guard case .heading(_, let heading) = document.blocks[0], case .paragraph(let plain) = document.blocks[1], case .paragraph(let coded) = document.blocks[2],
+              case .paragraph(let tick) = document.blocks[3], case .list(let items, _) = document.blocks[4], case .quote(let quote) = document.blocks[5],
+              case .table(let rows) = document.blocks[6] else {
+            Issue.record("shape \(document.blocks)")
+            return
+        }
+        #expect(heading.inlineCodeFree && plain.inlineCodeFree && quote.inlineCodeFree)
+        #expect(!coded.inlineCodeFree && coded.hasInlineCode)
+        // A backtick that opens no code span: walked once at the parse, and free.
+        #expect(tick.inlineCodeFree && !tick.hasInlineCode)
+        #expect(items[0].inlineCodeFree && !items[1].inlineCodeFree)
+        #expect(rows[0][0].inlineCodeFree && !rows[0][1].inlineCodeFree && rows[1][0].inlineCodeFree)
+        // The mark changes no character and no intent, and a string made elsewhere carries none.
+        #expect(String(plain.characters) == "plain bold words")
+        #expect(plain.runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true })
+        #expect(!MarkdownBlocks.inline("plain").inlineCodeFree)
+        #expect(!AttributedString("").inlineCodeFree)
+        // The streaming parse marks as the settled one does: the two documents are equal.
+        #expect(MarkdownDocument.renderBlock(.paragraph("plain **bold** words")) == document.blocks[1])
     }
 
     @MainActor @Test func `a short row parses on the spot once and a hit is free`() {

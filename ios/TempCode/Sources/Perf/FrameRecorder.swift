@@ -426,18 +426,23 @@ struct ScrollProofProbe: UIViewRepresentable {
 
     final class ProbeView: UIView {
         var found: (@MainActor (UIScrollView) -> Void)?
+        /// The scroll view once found, held weakly: an update after that walks nothing and tells no one.
+        private weak var scroll: UIScrollView?
 
+        /// A new place in the tree may be under another scroll view: look again.
         override func didMoveToWindow() {
             super.didMoveToWindow()
+            scroll = nil
             resolve()
         }
 
         func resolve() {
+            guard scroll == nil else { return }
             var parent = superview
             while let view = parent {
                 if let scroll = view as? UIScrollView {
+                    self.scroll = scroll
                     let callback = found
-                    found = nil
                     Task { callback?(scroll) }
                     return
                 }

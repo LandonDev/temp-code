@@ -91,7 +91,7 @@ struct MarkdownBlocksView: View {
                     }
                     .transcriptType(TranscriptType.prose)
                 case .code(let code, let language):
-                    CodeBlock(text: code, language: language, type: TranscriptType.code, maxLines: 40)
+                    CodeBlock(code: code, language: language, type: TranscriptType.code, maxLines: 40)
                 case .quote(let text):
                     prose(text.inlineStyled(typeSize), type: TranscriptType.prose)
                         .foregroundStyle(.secondary)
@@ -141,9 +141,11 @@ struct MarkdownBlocksView: View {
 /// Monospaced text in a code type (`rowCode` by default), never wrapped: a language header when the
 /// fence names one, line numbers in the dim step, sideways scroll, a fold
 /// past `maxLines`, and Copy in the context menu. The desktop's `CodeBlock`
-/// without the colouring (no highlighter runs on the phone).
+/// without the colouring (no highlighter runs on the phone). The lines were
+/// counted and numbered at the parse (`CodeText`): the body splits and joins
+/// nothing, and a block within its fold draws the parse's strings as they are.
 struct CodeBlock: View {
-    let text: String
+    let code: CodeText
     var language: String? = nil
     var type: TypeSpec = TranscriptType.rowCode
     var maxLines = 24
@@ -152,9 +154,8 @@ struct CodeBlock: View {
     @State private var expanded = false
 
     var body: some View {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        let folded = lines.count > maxLines && !expanded
-        let shown = folded ? Array(lines.prefix(maxLines)) : lines
+        let folds = code.lineCount > maxLines
+        let shown = folds && !expanded ? code.head(maxLines) : (text: code.text, numbers: code.numbers)
         VStack(alignment: .leading, spacing: 0) {
             if let language, !language.isEmpty {
                 Text(language)
@@ -166,8 +167,8 @@ struct CodeBlock: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 8) {
-                    if lineNumbers, lines.count > 1 {
-                        Text(shown.indices.map { String($0 + 1) }.joined(separator: "\n"))
+                    if lineNumbers, code.lineCount > 1 {
+                        Text(shown.numbers)
                             .transcriptType(type)
                             .foregroundStyle(.tertiary)
                             .monospacedDigit()
@@ -175,7 +176,7 @@ struct CodeBlock: View {
                             .frame(minWidth: 24, alignment: .trailing)
                             .accessibilityHidden(true)
                     }
-                    Text(shown.joined(separator: "\n"))
+                    Text(shown.text)
                         .transcriptType(type)
                         .foregroundStyle(tint ?? .primary)
                         .textSelection(.enabled)
@@ -185,11 +186,11 @@ struct CodeBlock: View {
             }
             // The first character rests on the block's inset at either end of a sideways scroll.
             .contentMargins(.horizontal, TranscriptMetrics.tableInset, for: .scrollContent)
-            if lines.count > maxLines {
+            if folds {
                 Button {
                     withAnimation(expanded ? Motion.collapse : Motion.expand) { expanded.toggle() }
                 } label: {
-                    Text(expanded ? "Show less" : "Show all \(lines.count) lines")
+                    Text(expanded ? "Show less" : "Show all \(code.lineCount) lines")
                         .transcriptType(TranscriptType.line, weight: .medium)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, TranscriptMetrics.tableInset)
@@ -202,7 +203,7 @@ struct CodeBlock: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .transcriptBlock()
         .contextMenu {
-            Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = text }
+            Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = code.text }
         }
     }
 }
@@ -246,6 +247,8 @@ extension AttributedString {
     /// as the paragraph around it does. (A run's background has no radius
     /// of its own; at text height the square wash reads as the desktop's 4 px.)
     func inlineStyled(_ typeSize: DynamicTypeSize) -> AttributedString {
+        // Prose the parse found no inline code in is drawn as it is (`InlineCodeFree`).
+        if inlineCodeFree { return self }
         var styled = self
         let code = TranscriptType.code.scaledFont(typeSize)
         for run in styled.runs where run.inlinePresentationIntent?.contains(.code) == true {

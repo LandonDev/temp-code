@@ -148,55 +148,29 @@ private struct LineWords: Equatable {
 /// The working line's mark, the desktop's `WorkingMark`: three 3 pt dots
 /// in a 14 pt box that gather into one and part again every 1.6 s, the
 /// right one running behind the left, each moved by offset and scale alone.
-/// Still, the three dots at rest, under reduced motion, while the scene
-/// is not active and while its line is folded (`workingStill`).
+/// Core Animation moves them (`MarkLoopView`): the render server draws each
+/// frame, and no body or closure runs for one. Still, the three dots at
+/// rest, under reduced motion, while the scene is not active and while its
+/// line is folded (`workingStill`).
 struct WorkingMark: View {
     @Environment(\.accessibilityReduceMotion) private var reduced
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.workingStill) private var still
 
-    struct Pose {
-        var x0 = Motion.markDots[0].restX
-        var s0: CGFloat = 1
-        var s1: CGFloat = 1
-        var x2 = Motion.markDots[2].restX
-        var s2: CGFloat = 1
-    }
-
     var body: some View {
         Group {
             if reduced || still || scenePhase != .active {
-                dots(Pose())
-            } else {
-                KeyframeAnimator(initialValue: Pose(), repeating: true) { pose in
-                    dots(pose)
-                } keyframes: { _ in
-                    track(\.x0, Motion.markDots[0].legs(Motion.markDots[0].restX, Motion.markDots[0].gatheredX))
-                    track(\.s0, Motion.markDots[0].legs(1, Motion.markDots[0].gatheredScale))
-                    track(\.s1, Motion.markDots[1].legs(1, Motion.markDots[1].gatheredScale))
-                    track(\.x2, Motion.markDots[2].legs(Motion.markDots[2].restX, Motion.markDots[2].gatheredX))
-                    track(\.s2, Motion.markDots[2].legs(1, Motion.markDots[2].gatheredScale))
+                ZStack {
+                    dot.offset(x: Motion.markDots[0].restX)
+                    dot
+                    dot.offset(x: Motion.markDots[2].restX)
                 }
+            } else {
+                MarkLoop()
             }
         }
         .frame(width: TranscriptMetrics.glyphSlot, height: TranscriptMetrics.glyphSlot)
         .accessibilityHidden(true)
-    }
-
-    private func track(_ path: WritableKeyPath<Pose, CGFloat>, _ legs: [(value: CGFloat, duration: Double, curve: UnitCurve)]) -> some Keyframes<Pose> {
-        KeyframeTrack(path) {
-            LinearKeyframe(legs[0].value, duration: legs[0].duration, timingCurve: legs[0].curve)
-            LinearKeyframe(legs[1].value, duration: legs[1].duration, timingCurve: legs[1].curve)
-            LinearKeyframe(legs[2].value, duration: legs[2].duration, timingCurve: legs[2].curve)
-        }
-    }
-
-    private func dots(_ pose: Pose) -> some View {
-        ZStack {
-            dot.scaleEffect(pose.s0).offset(x: pose.x0)
-            dot.scaleEffect(pose.s1)
-            dot.scaleEffect(pose.s2).offset(x: pose.x2)
-        }
     }
 
     private var dot: some View {
@@ -206,11 +180,55 @@ struct WorkingMark: View {
     }
 }
 
+private struct MarkLoop: UIViewRepresentable {
+    func makeUIView(context: Context) -> MarkLoopView { MarkLoopView() }
+    func updateUIView(_ view: MarkLoopView, context: Context) {}
+}
+
+/// The mark's dots as layers, each on its two loops (`Motion.MarkDot`).
+/// A layer drops its animations when it leaves its window, so they are
+/// added each time the view joins one.
+private final class MarkLoopView: UIView {
+    private let dots = Motion.markDots.map { _ in UIView() }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        for (dot, loop) in zip(dots, Motion.markDots) {
+            dot.backgroundColor = .label
+            dot.bounds.size = CGSize(width: Motion.markDot, height: Motion.markDot)
+            dot.layer.cornerRadius = Motion.markDot / 2
+            // At rest whenever nothing animates it.
+            dot.transform = CGAffineTransform(translationX: loop.restX, y: 0)
+            addSubview(dot)
+        }
+    }
+
+    required init?(coder: NSCoder) { return nil }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        for dot in dots { dot.center = CGPoint(x: bounds.midX, y: bounds.midY) }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil else { return }
+        for (dot, loop) in zip(dots, Motion.markDots) {
+            dot.layer.add(Motion.repeating(loop.x, keyPath: "transform.translation.x"), forKey: "x")
+            dot.layer.add(Motion.repeating(loop.scale, keyPath: "transform.scale"), forKey: "scale")
+        }
+    }
+}
+
 /// The one "words being produced" text, the desktop's `WorkingText`: the
-/// words muted (a call's object in the primary step), and over them a copy
-/// in the primary step seen through a band that crosses every 3 s, the band
-/// moved by its offset alone. Still muted words under reduced motion, while
-/// the scene is not active and while its line is folded (`workingStill`).
+/// words muted (a call's object in the primary step), and over them the
+/// primary step seen through a band that crosses every 3 s, the band moved
+/// by its offset alone. The band is a layer Core Animation moves
+/// (`ShimmerBandView`), cut to the words' shape, so the render server draws
+/// each frame and no body or closure runs for one. Still muted words under
+/// reduced motion, while the scene is not active and while its line is
+/// folded (`workingStill`).
 struct WorkingText: View {
     let words: String
     var verb: String?
@@ -225,10 +243,11 @@ struct WorkingText: View {
             .transcriptType(TranscriptType.line)
             .overlay {
                 if !reduced, !measuring, !still, scenePhase == .active, !words.isEmpty {
-                    Text(words)
-                        .transcriptType(TranscriptType.line)
-                        .foregroundStyle(.primary)
-                        .mask { band }
+                    ShimmerBand()
+                        .mask {
+                            Text(words)
+                                .transcriptType(TranscriptType.line)
+                        }
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
@@ -241,21 +260,66 @@ struct WorkingText: View {
         }
         return Text(words).foregroundStyle(.secondary)
     }
+}
 
-    private var band: some View {
-        GeometryReader { proxy in
-            LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.4), .init(color: .black, location: 0.6), .init(color: .clear, location: 1)], startPoint: .leading, endPoint: .trailing)
-                .frame(width: proxy.size.width)
-                .keyframeAnimator(initialValue: CGFloat(-1), repeating: true) { content, share in
-                    content.offset(x: share * proxy.size.width)
-                } keyframes: { _ in
-                    KeyframeTrack {
-                        LinearKeyframe(Motion.shimmerLegs[0].value, duration: Motion.shimmerLegs[0].duration, timingCurve: Motion.shimmerLegs[0].curve)
-                        LinearKeyframe(Motion.shimmerLegs[1].value, duration: Motion.shimmerLegs[1].duration, timingCurve: Motion.shimmerLegs[1].curve)
-                        LinearKeyframe(Motion.shimmerLegs[2].value, duration: Motion.shimmerLegs[2].duration, timingCurve: Motion.shimmerLegs[2].curve)
-                    }
-                }
+private struct ShimmerBand: UIViewRepresentable {
+    func makeUIView(context: Context) -> ShimmerBandView { ShimmerBandView() }
+    func updateUIView(_ view: ShimmerBandView, context: Context) {}
+}
+
+/// The shimmer's band: the label color through a soft-edged window as wide
+/// as the words, resting off their leading edge and crossing on
+/// `MotionValues.shimmerLoop`. The loop is in points, so it is made again
+/// when the width changes, and added again when the view joins a window.
+private final class ShimmerBandView: UIView {
+    private let band = CAGradientLayer()
+    private var width: CGFloat = 0
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        clipsToBounds = true
+        band.startPoint = CGPoint(x: 0, y: 0.5)
+        band.endPoint = CGPoint(x: 1, y: 0.5)
+        band.locations = [0, 0.4, 0.6, 1]
+        layer.addSublayer(band)
+        tint()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitAccessibilityContrast.self]) { (view: ShimmerBandView, _: UITraitCollection) in
+            view.tint()
         }
+    }
+
+    required init?(coder: NSCoder) { return nil }
+
+    private func tint() {
+        let ink = UIColor.label.resolvedColor(with: traitCollection)
+        let clear = ink.withAlphaComponent(0).cgColor
+        band.colors = [clear, ink.cgColor, ink.cgColor, clear]
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard bounds.width != width || band.bounds.height != bounds.height else { return }
+        width = bounds.width
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        band.bounds = bounds
+        band.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        // Off the words whenever nothing animates it.
+        band.transform = CATransform3DMakeTranslation(-width, 0, 0)
+        CATransaction.commit()
+        sweep()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        sweep()
+    }
+
+    private func sweep() {
+        band.removeAnimation(forKey: "sweep")
+        guard window != nil, width > 0 else { return }
+        band.add(Motion.repeating(MotionValues.shimmerLoop.scaled(by: width), keyPath: "transform.translation.x"), forKey: "sweep")
     }
 }
 

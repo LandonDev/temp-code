@@ -192,9 +192,7 @@ struct TranscriptView: View {
                 LayoutProbe.note("atBottom", verdict.atBottom ? "1" : "0")
                 #endif
             }
-            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
-                noteHold(y)
-            }
+            .scrollHoldTrace { noteHold($0) }
             .transcriptTrace(topRow: { scrollState.topRow })
             // The reader's own scroll: the one road off the bottom besides a deliberate scroll to a row.
             .onScrollPhaseChange { _, phase in
@@ -1179,6 +1177,23 @@ private struct TranscriptTraceModifier: ViewModifier {
 #endif
 
 extension View {
+    /// DEBUG: the scrolled-up proof's offsets (`TC_TEST_SCROLL_UP`), read in
+    /// that run alone. No other run and no Release build has a handler on the
+    /// offset: one ran every frame of a scroll. The recorder reads the
+    /// offset in its own tick.
+    @ViewBuilder
+    func scrollHoldTrace(_ note: @escaping (CGFloat) -> Void) -> some View {
+        #if DEBUG
+        if TestHooks.scrollUp {
+            onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in note(y) }
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
+    }
+
     @ViewBuilder
     func transcriptTrace(topRow: @escaping () -> TranscriptRowID?) -> some View {
         #if DEBUG

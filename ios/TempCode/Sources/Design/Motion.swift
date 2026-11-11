@@ -1,5 +1,6 @@
 import SwiftUI
 import TempCodeClient
+import UIKit
 
 /// The motion table of docs/IOS-DESIGN.md, one name per row. The numbers
 /// are the desktop's, held once in the client package's `MotionValues`
@@ -89,14 +90,8 @@ enum Motion {
     /// The closing line's words slide from past the glyph slot to the prose edge on the morph's arrival.
     static let settleSlide: Animation = swapIn
 
-    /// A `MotionValues` curve as a keyframe's timing curve.
-    static func unit(_ curve: MotionValues.Curve) -> UnitCurve {
-        .bezier(startControlPoint: UnitPoint(x: curve.x1, y: curve.y1), endControlPoint: UnitPoint(x: curve.x2, y: curve.y2))
-    }
-
-    /// One dot of the working mark (MARK in lib/ease.ts): from its rest it
-    /// gathers towards the middle by `gather` of the period on the
-    /// breathing curve, holds, and parts again from `part`.
+    /// One dot of the working mark (MARK in lib/ease.ts): where it rests and
+    /// where it gathers to, and when in the period (`MotionValues.markLoop`).
     struct MarkDot {
         let restX: CGFloat
         let gatheredX: CGFloat
@@ -104,18 +99,12 @@ enum Motion {
         let gather: Double
         let part: Double
 
-        /// The x or scale legs of one period, as keyframe durations and curves.
-        func legs(_ rest: CGFloat, _ gathered: CGFloat) -> [(value: CGFloat, duration: Double, curve: UnitCurve)] {
-            let period = MotionValues.markPeriod
-            return [
-                (gathered, period * gather, Motion.breathe),
-                (gathered, period * (part - gather), .linear),
-                (rest, period * (1 - part), Motion.breathe),
-            ]
-        }
+        /// Its x through one period, in points.
+        var x: MotionLoop { MotionValues.markLoop(rest: restX, gathered: gatheredX, gather: gather, part: part) }
+        /// Its scale through one period.
+        var scale: MotionLoop { MotionValues.markLoop(rest: 1, gathered: gatheredScale, gather: gather, part: part) }
     }
 
-    static let breathe = unit(MotionValues.easeBreathe)
     /// Left, middle, right; the right runs behind the left, so the three drift rather than clap.
     static let markDots = [
         MarkDot(restX: -CGFloat(MotionValues.markSpread), gatheredX: -1, gatheredScale: CGFloat(MotionValues.markSideScale), gather: MotionValues.markGather, part: MotionValues.markPart),
@@ -125,18 +114,22 @@ enum Motion {
     /// A dot of the mark, in points.
     static let markDot: CGFloat = 3
 
-    /// The shimmer's band (SHIMMER in lib/ease.ts), as a share of the
-    /// words' width either side of them: off the words until `shimmerStart`
-    /// of the period, across them on the sweep curve by `shimmerEnd`, then
-    /// off the other side until the period ends.
-    static let shimmerLegs: [(value: CGFloat, duration: Double, curve: UnitCurve)] = {
-        let period = MotionValues.shimmerPeriod
-        return [
-            (-1, period * MotionValues.shimmerStart, .linear),
-            (1, period * (MotionValues.shimmerEnd - MotionValues.shimmerStart), unit(MotionValues.shimmerSweep)),
-            (1, period * (1 - MotionValues.shimmerEnd), .linear),
-        ]
-    }()
+    /// A loop as the animation Core Animation repeats for good on a layer's
+    /// `keyPath`: the render server draws every frame of it, and none runs
+    /// on the main thread. A layer loses its animations when it leaves its
+    /// window; the view that owns it adds them again when it comes back.
+    static func repeating(_ loop: MotionLoop, keyPath: String) -> CAKeyframeAnimation {
+        let animation = CAKeyframeAnimation(keyPath: keyPath)
+        animation.values = loop.values
+        animation.keyTimes = loop.keyTimes.map { NSNumber(value: $0) }
+        animation.timingFunctions = loop.legs.map { leg in
+            leg.curve.map { CAMediaTimingFunction(controlPoints: Float($0.x1), Float($0.y1), Float($0.x2), Float($0.y2)) } ?? CAMediaTimingFunction(name: .linear)
+        }
+        animation.duration = loop.period
+        animation.repeatCount = .infinity
+        animation.isRemovedOnCompletion = false
+        return animation
+    }
 
     // MARK: A glyph trading state
 

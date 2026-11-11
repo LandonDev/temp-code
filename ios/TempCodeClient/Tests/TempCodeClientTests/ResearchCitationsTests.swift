@@ -128,6 +128,6 @@ private func source(_ callId: String, url: String? = nil, query: String? = nil, 
         #expect(pieces.count == 1)
         guard case .blocks(let blocks) = pieces[0] else { Issue.record("swapped a mismatched list"); return }
         #expect(blocks.count == 3)
-        #expect(blocks[0] == .heading(1, MarkdownBlocks.inline("Another title")))
+        #expect(blocks[0] == MarkdownDocument.renderBlock(.heading(1, "Another title")))
     }
 }

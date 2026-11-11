@@ -2,11 +2,14 @@ import Foundation
 import Observation
 
 /// A markdown block with its inline styling resolved: what a row draws.
+/// What a row's body would otherwise work out each time it runs is here from
+/// the parse: a code block's line count and line numbers (`CodeText`), and,
+/// on prose with no inline code, the mark that says so (`InlineCodeFree`).
 public enum RenderedBlock: Sendable, Hashable {
     case paragraph(AttributedString)
     case heading(Int, AttributedString)
     case list([AttributedString], ordered: Bool)
-    case code(String, language: String?)
+    case code(CodeText, language: String?)
     case quote(AttributedString)
     case rule
     /// A pipe table: the header row first, then the body rows.
@@ -23,6 +26,75 @@ extension RenderedBlock {
         case .list(let items, _): items.map { String($0.characters) }.joined(separator: "\n")
         case .code, .rule, .table: nil
         }
+    }
+}
+
+/// A code block's text with what its view draws worked out at the parse:
+/// how many lines it has and their numbers as one string. A block within
+/// its fold is drawn from `text` and `numbers` as they are; a folded one
+/// reads its first lines, which is bounded by the fold.
+public struct CodeText: Sendable, Hashable, ExpressibleByStringLiteral {
+    public let text: String
+    public let lineCount: Int
+    /// "1", "2" and on, a line each, for every line of the text.
+    public let numbers: String
+
+    public init(_ text: String) {
+        self.text = text
+        var count = 1
+        for byte in text.utf8 where byte == UInt8(ascii: "\n") { count += 1 }
+        lineCount = count
+        numbers = (1...count).map(String.init).joined(separator: "\n")
+    }
+
+    public init(stringLiteral value: String) {
+        self.init(value)
+    }
+
+    /// The text is the block: the rest is read off it.
+    public static func == (lhs: CodeText, rhs: CodeText) -> Bool {
+        lhs.text == rhs.text
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(text)
+    }
+
+    /// The first `limit` lines and their numbers; all of both when the block has no more.
+    public func head(_ limit: Int) -> (text: String, numbers: String) {
+        guard lineCount > limit, limit > 0 else { return (text, numbers) }
+        return (Self.head(text, lines: limit), Self.head(numbers, lines: limit))
+    }
+
+    static func head(_ text: String, lines: Int) -> String {
+        var seen = 0
+        let bytes = text.utf8
+        for index in bytes.indices where bytes[index] == UInt8(ascii: "\n") {
+            seen += 1
+            if seen == lines { return String(text[..<index]) }
+        }
+        return text
+    }
+}
+
+/// Set by the parse over prose it found no inline code in. A view that
+/// would restyle inline code reads it off the first run and draws the string
+/// as it is: nothing copied, no run walked. A string without the mark is
+/// walked as before, so one built or changed elsewhere is never drawn wrong.
+public enum InlineCodeFree: AttributedStringKey {
+    public typealias Value = Bool
+    public static let name = "tc.inlineCodeFree"
+}
+
+extension AttributedString {
+    /// The parse marked this prose free of inline code.
+    public var inlineCodeFree: Bool {
+        runs.first?[InlineCodeFree.self] == true
+    }
+
+    /// True when a run carries the inline code intent.
+    public var hasInlineCode: Bool {
+        runs.contains { $0.inlinePresentationIntent?.contains(.code) == true }
     }
 }
 
@@ -45,14 +117,22 @@ public struct MarkdownDocument: Sendable, Hashable {
     /// One block's inline markdown resolved.
     public static func renderBlock(_ block: MarkdownBlock) -> RenderedBlock {
         switch block {
-        case .paragraph(let p): .paragraph(MarkdownBlocks.inline(p))
-        case .heading(let level, let h): .heading(level, MarkdownBlocks.inline(h))
-        case .list(let items, let ordered): .list(items.map(MarkdownBlocks.inline), ordered: ordered)
-        case .code(let code, let language): .code(code, language: language)
-        case .quote(let q): .quote(MarkdownBlocks.inline(q))
+        case .paragraph(let p): .paragraph(prose(p))
+        case .heading(let level, let h): .heading(level, prose(h))
+        case .list(let items, let ordered): .list(items.map(prose), ordered: ordered)
+        case .code(let code, let language): .code(CodeText(code), language: language)
+        case .quote(let q): .quote(prose(q))
         case .rule: .rule
-        case .table(let rows): .table(rows.map { $0.map(MarkdownBlocks.inline) })
+        case .table(let rows): .table(rows.map { $0.map(prose) })
         }
+    }
+
+    /// A block's inline markdown, marked when it holds no inline code
+    /// (`InlineCodeFree`). Text with no backtick has none, and is not walked.
+    static func prose(_ text: String) -> AttributedString {
+        var styled = MarkdownBlocks.inline(text)
+        if !text.utf8.contains(UInt8(ascii: "`")) || !styled.hasInlineCode { styled[InlineCodeFree.self] = true }
+        return styled
     }
 
     /// The same parse, off the caller's actor.

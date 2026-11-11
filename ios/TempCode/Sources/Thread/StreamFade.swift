@@ -109,9 +109,18 @@ enum FadedText {
     static func build(_ styled: AttributedString, runs: [RevealSegment]) -> Text {
         guard runs.contains(where: \.young) else { return Text(styled) }
         var text = Text(verbatim: "")
+        // The runs come in order: each index is found from the one before it, not from the start again.
+        var cursor = styled.startIndex
+        var at = 0
         for run in runs {
-            let start = styled.index(styled.startIndex, offsetByCharacters: run.from)
-            let end = styled.index(styled.startIndex, offsetByCharacters: run.to)
+            if run.from < at {
+                cursor = styled.startIndex
+                at = 0
+            }
+            let start = styled.index(cursor, offsetByCharacters: run.from - at)
+            let end = styled.index(start, offsetByCharacters: run.to - run.from)
+            cursor = end
+            at = run.to
             var piece = Text(AttributedString(styled[start..<end]))
             if let bornAt = run.bornAt { piece = piece.customAttribute(StreamFadeAttribute(bornAt: bornAt)) }
             text = Text("\(text)\(piece)")
