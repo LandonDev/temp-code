@@ -103,12 +103,18 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
             for (i, step) in steps.enumerated() {
                 if step.tier != .ax || action.action == .type { try requirePosting() }
                 let before = toggle.flatMap(AX.valueText)
+                // a write at ax tells its own effect by the value it leaves (ReadBack.written); never a password's
+                let written = action.action == .setValue && step.tier == .ax ? target.element.map(\.element).flatMap { AX.string($0, "AXSubrole") == "AXSecureTextField" ? nil : $0 } : nil
+                let valueBefore = written.flatMap(AX.valueText)
                 let rest = Array(steps.dropFirst(i + 1))
                 do {
                     var outcome = try run(action, step: step, rest: rest, target: target, tiers: tiers, facts: facts, held: held, live: live)
                     if let toggle {
                         let effect = toggleEffect(toggle, before: before, cancelled: target.cancelled)
                         if effect == .none, i < steps.count - 1 { continue }
+                        outcome.effect = effect
+                    }
+                    if let written, outcome.effect == nil, let effect = ReadBack.written(asked: action.value ?? "", before: valueBefore, after: AX.valueText(written)) {
                         outcome.effect = effect
                     }
                     return outcome

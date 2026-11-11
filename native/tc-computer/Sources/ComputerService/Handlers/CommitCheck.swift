@@ -44,6 +44,22 @@ struct DocumentState: Equatable, Sendable {
     }
 }
 
+extension DocumentState {
+    /// The folder of the file an element names by AXURL (Finder's name field: a file reference URL), for a window
+    /// with no AXDocument of its own; nil for anything but a file.
+    static func folder(of element: AXUIElement) -> DocumentState? {
+        var v: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, "AXURL" as CFString, &v) == .success, let v, CFGetTypeID(v) == CFURLGetTypeID() else { return nil }
+        return folderURL(ofFile: v as! URL).map { DocumentState(url: $0, edited: nil) }
+    }
+
+    /// A file URL's folder as a `file://` URL ending in `/`; a file reference URL is resolved to its path first.
+    static func folderURL(ofFile url: URL) -> String? {
+        guard url.isFileURL, let path = (url as NSURL).filePathURL?.path, !path.isEmpty, path != "/" else { return nil }
+        return URL(fileURLWithPath: (path as NSString).deletingLastPathComponent, isDirectory: true).absoluteString
+    }
+}
+
 /// The commit check around one acting step (docs/computer-protocol.md §26.8): the file (or the folder's
 /// listing) behind the window before the step, and again after its wait; the difference is `step.disk`
 /// and decides `uncommitted`. Only a window whose AXDocument is a `file://` URL is checked.

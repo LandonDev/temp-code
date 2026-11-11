@@ -100,6 +100,22 @@ private func key(_ text: String) -> ComputerAction { ComputerAction(action: .key
     }
 }
 
+/// A window with no AXDocument takes the folder of the file its row names (Finder, §26.8).
+@Suite struct ElementFolderTests {
+    @Test func aFilesFolderIsAFolderURL() throws {
+        let s = try Scratch()
+        defer { s.cleanup() }
+        let file = s.files.appendingPathComponent("alpha.txt")
+        let folder = try #require(DocumentState.folderURL(ofFile: file))
+        #expect(folder.hasSuffix("/"))
+        #expect(URL(string: folder)?.path == s.files.path)
+        // a file reference URL, as Finder's name field gives it, resolves to the same folder
+        let reference = try #require((file as NSURL).fileReferenceURL())
+        #expect(DocumentState.folderURL(ofFile: reference) == folder)
+        #expect(DocumentState.folderURL(ofFile: URL(string: "https://example.com/a.txt")!) == nil)
+    }
+}
+
 /// What the rule reads of a resolved element is the observation's role word, never AX's raw role.
 @Suite struct CommitElementWordTests {
     @Test func aRenameFieldAndAMenuItemReadAsTheirWords() {

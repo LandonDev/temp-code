@@ -220,6 +220,20 @@ private let us = USANSILayout()
     }
 }
 
+/// A `set_value`'s write tells its own effect when the app sends no notification (Finder's inline name).
+@Suite struct WrittenValueTests {
+    @Test func aValueTheWriteLeftIsAChange() {
+        #expect(ReadBack.written(asked: "final.txt", before: "draft.txt", after: "final.txt") == .changed)
+        #expect(ReadBack.written(asked: "final.txt", before: nil, after: "final.txt") == .changed)
+    }
+
+    @Test func anUntakenOrAlreadyEqualValueLeavesItToTheWait() {
+        #expect(ReadBack.written(asked: "final.txt", before: "draft.txt", after: "draft.txt") == nil)
+        #expect(ReadBack.written(asked: "final.txt", before: "final.txt", after: "final.txt") == nil)
+        #expect(ReadBack.written(asked: "final.txt", before: "draft.txt", after: nil) == nil)
+    }
+}
+
 private let everyTier: [Tier] = [.ax, .process, .session]
 
 private func runs(_ plan: RoutePlan) -> [String] {

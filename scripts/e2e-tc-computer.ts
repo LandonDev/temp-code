@@ -1884,8 +1884,13 @@ async function activeLeg(a: Service, mayLaunch: () => void): Promise<void> {
   })
   await leg.step('active 8: ⌘⌫ moves the file into <scratch>/Trash', async (data) => {
     await awayLongEnough()
-    const row = findElement(list!, 'the beta.txt row', (e) => (e.role === 'row' || e.role === 'cell') && JSON.stringify(e).includes('beta.txt'))
-    okStep((await act(list!, { action: 'left_click', element: row.index }, ['ax'])).step)
+    // a full read: the step before closed on a diff; a row's line names nothing, its name field under it does
+    list = await read('files')
+    const lines = elementLines(list)
+    const name = lines.findIndex((e) => e.role === 'input' && (e.value === 'beta.txt' || e.name === 'beta.txt'))
+    const row = lines.slice(0, Math.max(0, name)).reverse().find((e) => e.role === 'row')
+    check(name >= 0 && row, 'the observation has the beta.txt row', list.text)
+    okStep((await act(list, { action: 'left_click', element: row.index }, ['ax'])).step)
     list = await read('files')
     const before = personState()
     const r = await act(list, { action: 'key', text: 'super+BackSpace' }, ['ax', 'process', 'front'])
@@ -2063,9 +2068,12 @@ async function activeAppsSteps(a: Service, leg: Chain, scratch: string, awayLong
       const r = await act(finder, fdWin!, { action: 'key', text: 'super+shift+n' }, ['ax', 'process', 'front'])
       const step = okStep(r.step)
       data.step = step
-      noteHold('active Finder 3', step.front)
+      // Finder in front (the person's app) validates its File menu: New Folder is live at ax and needs no hold
+      const inFront = before.pid === finder
+      if (inFront) data.finderInFront = `Finder was the front app, so New Folder ran at ${step.tier}`
+      else noteHold('active Finder 3', step.front)
       await frontBack(before, since, data)
-      check(step.tier === 'front' && step.input?.on === 'File › New Folder', 'New Folder ran at front', step)
+      check((step.tier === 'front' || inFront) && step.input?.on === 'File › New Folder', 'New Folder ran at front, or at once with Finder in front', step)
       await until(() => (readdirSync(fd).some((n) => n.startsWith('untitled folder')) ? true : null), 3_000, 'untitled folder on disk')
     })
   } finally {

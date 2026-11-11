@@ -106,6 +106,15 @@ public enum ReadBack {
         return Double(s.replacingOccurrences(of: ",", with: ""))
     }
 
+    /// A `set_value`'s own evidence: the element reads the value asked and read otherwise before, so the
+    /// write changed it, whatever the wait saw (Finder's inline name sends no notification and its outline's
+    /// signature misses the field, macOS 27.2). Nil leaves the effect to the wait.
+    public static func written(asked: String, before: String?, after: String?) -> StepEffect? {
+        guard let after, same(asked, after) else { return nil }
+        if let before, same(asked, before) { return nil }
+        return .changed
+    }
+
     /// A checkbox's or radio's evidence (§25.7): its value alone before and after the route. Unchanged is
     /// `none`, so a click that only moved the focus ring never reads `changed`; unreadable is `unknown`.
     public static func toggle(before: String?, after: String?) -> StepEffect {

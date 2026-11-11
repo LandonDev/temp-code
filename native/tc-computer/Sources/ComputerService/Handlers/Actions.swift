@@ -449,7 +449,9 @@ extension ComputerService {
                 var check: CommitCheck?
                 if checks {
                     let context = CommitContext(action: input, element: element.map(CommitElement.of), menuPath: element.flatMap { InputEngine.menuItemPath($0.element) }, next: next)
-                    check = CommitCheck.begin(context, state: readDocument(window))
+                    // a window that names no file (Finder's, macOS 27.2) has the folder of the file its row names (§26.8)
+                    let state = readDocument(window)
+                    check = CommitCheck.begin(context, state: state?.url != nil ? state : element.flatMap { DocumentState.folder(of: $0.element) } ?? state)
                     if let expects = check?.expectsBefore { inputTarget.commitExpected = { _ in expects } }
                 }
                 // what the step is judged against after its wait (§27.5, §27.7b), and its record from before its input (§27.4)
