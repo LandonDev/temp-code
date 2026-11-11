@@ -100,6 +100,23 @@ private func key(_ text: String) -> ComputerAction { ComputerAction(action: .key
     }
 }
 
+/// What the rule reads of a resolved element is the observation's role word, never AX's raw role.
+@Suite struct CommitElementWordTests {
+    @Test func aRenameFieldAndAMenuItemReadAsTheirWords() {
+        #expect(CommitElement.word("AXTextField", subrole: nil) == "input")
+        #expect(CommitElement.word("AXTextField", subrole: "AXSearchField") == "search")
+        #expect(CommitElement.word("AXMenuItem", subrole: nil) == "menu item")
+        #expect(CommitElement.word("AXUnknownThing", subrole: nil) == "AXUnknownThing")
+    }
+
+    @Test func aTextFieldInAFolderRowIsARenameByItsWord() {
+        let field = CommitElement(role: CommitElement.word("AXTextField", subrole: nil), inRow: true)
+        let context = CommitContext(action: ComputerAction(action: .setValue, element: 7, value: "gamma.txt"), element: field, document: .folder("/tmp/files"))
+        #expect(CommitRule.expects(context) == .rename)
+        #expect(CommitRule.hint(context) == "commit it with key Return in the field")
+    }
+}
+
 /// The check inside `action.run`, over the fake Input and a document reader the test gives.
 @Suite struct CommitCheckServiceTests {
     private func run(_ rig: ServiceRig, _ action: String) async throws -> JSONValue {

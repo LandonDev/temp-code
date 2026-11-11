@@ -125,7 +125,13 @@ extension CommitElement {
                 isDefault = CFEqual(d, e.element)
             }
         }
-        return CommitElement(role: e.role, inRow: inRow, isPanelDefault: isDefault)
+        return CommitElement(role: word(e.role, subrole: string(e.element, "AXSubrole")), inRow: inRow, isPanelDefault: isDefault)
+    }
+
+    /// The observation's role word for AX's role and subrole (`AXTextField` → `input`, `AXMenuItem` → `menu item`), which
+    /// the rule reads: a resolved element carries AX's raw role, and with it no rename field or menu item ever matched.
+    static func word(_ axRole: String, subrole: String?) -> String {
+        subrole.flatMap { InputTables.roleTags["\(axRole):\($0)"] } ?? InputTables.roleTags[axRole] ?? axRole
     }
 
     private static func namesFile(_ e: AXUIElement) -> Bool {
