@@ -35,13 +35,16 @@ extension ComputerService {
                 session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch,
                 actions: [p.action], tiers: p.tiers, stepWait: nil, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, ignored: p.ignored, ctx: ctx
             )
-            return ActionResult(step: result.steps[0], observation: result.observation, observationError: result.observationError, front: result.front)
+            return features.fit(ActionResult(
+                step: result.steps[0], observation: result.observation, observationError: result.observationError, front: result.front,
+                menusLeftOpen: result.menusLeftOpen
+            ))
         }
         router.on("action.batch", keepsResult: true) { [self] (p: Methods.ActionBatch.Params, ctx) in
-            try await runActions(
+            features.fit(try await runActions(
                 session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch,
                 actions: p.actions, tiers: p.tiers, stepWait: p.stepWait, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, ignored: p.ignored, ctx: ctx
-            )
+            ))
         }
     }
 
@@ -327,6 +330,7 @@ extension ComputerService {
 extension OkStep {
     /// The same step with the wait's verdict.
     func with(effect: StepEffect, waited: WaitReport) -> OkStep {
-        OkStep(index: index, action: action, tier: tier, effect: effect, element: element, input: input, cursor: cursor, text: text, shot: shot, waited: waited, session: session)
+        OkStep(index: index, action: action, tier: tier, effect: effect, element: element, input: input, cursor: cursor, text: text, shot: shot, waited: waited, session: session,
+               front: front, disk: disk)
     }
 }

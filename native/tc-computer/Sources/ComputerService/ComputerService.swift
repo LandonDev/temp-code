@@ -33,6 +33,8 @@ public final class ComputerService: @unchecked Sendable {
 
     let lock = NSLock()
     var initResult: (dataDir: String, result: Methods.Initialize.Output)?
+    /// what the host named in `initialize` (§3, plan decision 14): every result goes out fitted to it
+    var hostFeatures = HostFeatures.none
     var initializing = false
     var serviceLease: FileLockLease?
     var permissions = Permissions(accessibility: false, screenRecording: false)
