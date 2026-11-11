@@ -97,6 +97,7 @@ struct ThreadScreen: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.bump(.threadScreenBody)
         let session = client.session(sessionId)
         let thread = client.threads[sessionId] ?? ThreadState()
         let kind = ThreadKind(session)
@@ -218,6 +219,7 @@ struct ThreadScreen: View {
         .onAppear {
             model.visible = true
             router.visible = ThreadKey(environmentId: client.environment.id, sessionId: sessionId)
+            PerfSession.shared.noteOpened(ThreadKey(environmentId: client.environment.id, sessionId: sessionId))
             Task { await client.openThread(sessionId) }
             client.markSeen(sessionId)
         }
@@ -283,6 +285,10 @@ struct ThreadScreen: View {
         }
         .onChange(of: thread.isLoading, initial: true) {
             if TestHooks.sheet == "start", session?.threadType == .planning, !thread.isLoading, !starting { starting = true }
+        }
+        // A typing check types into this thread's composer (`PerfSession`).
+        .onChange(of: PerfSession.shared.focus == sessionId) { _, wanted in
+            if wanted { composerFocused = true }
         }
     }
 
@@ -464,7 +470,7 @@ struct ThreadScreen: View {
             LayoutProbe.note("measure", String(Int(measure.rounded())))
         }
         // Where the body starts on screen: the composer's edges are checked against the column from here.
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LayoutProbe.note("body.frame", LayoutProbe.rect($0)) }
+        .layoutProbeFrame("body.frame")
         #endif
     }
 
@@ -490,7 +496,7 @@ struct ThreadScreen: View {
         .padding(.bottom, barInset)
         #if DEBUG
         // The whole bar the scroll edge effect spans: the dock and the inset a floating bar adds.
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LayoutProbe.note("dock.bar.frame", LayoutProbe.rect($0)) }
+        .layoutProbeFrame("dock.bar.frame")
         #endif
         .background {
             BarRegionProbe { region, safeArea in

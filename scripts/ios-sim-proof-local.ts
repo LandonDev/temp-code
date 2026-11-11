@@ -17,10 +17,12 @@ if (bundle.error || bundle.status !== 0) {
   process.exit(bundle.status ?? 1)
 }
 
-const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'] })
+// The perf set reads what its fixtures and the control panel write: 16,000 seeded rows more, and no CLI behind any thread.
+const perf = process.env.TC_PROOF_SET === 'perf'
+const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'], env: perf ? { ...process.env, TC_TEST_PERF_SEEDS: '1', TC_TEST_NO_HARNESS: '1' } : process.env })
 const ready = await new Promise<{ baseUrl: string; controlUrl: string; pairingLink: string; pairingLinkOperate: string; adminPairing?: string; second?: { pairingLink: string } }>((ok, bad) => {
   let buffer = ''
-  const timer = setTimeout(() => bad(new Error('the test server did not come up in 60 s')), 60_000)
+  const timer = setTimeout(() => bad(new Error('the test server did not come up in 120 s')), 120_000)
   server.stdout.on('data', (chunk: Buffer) => {
     buffer += chunk.toString('utf8')
     const line = buffer.split('\n').find((l) => l.startsWith('{') && l.includes('"ready":true'))

@@ -55,6 +55,7 @@ final class AppModel: PushHandler {
         guard !started else { return }
         started = true
         PushDelegate.handler = self
+        HitchMetrics.shared.start()
         registry.setSessionObserver { [weak self] client, metas in
             guard let self else { return }
             activities.apply(client, metas, registry: registry)

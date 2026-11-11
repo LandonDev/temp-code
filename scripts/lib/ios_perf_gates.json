@@ -1,0 +1,15 @@
+{
+  "scroll-cpu": false,
+  "batch-turn": false,
+  "scale": false,
+  "keystroke": false,
+  "rest": false,
+  "load-only": false,
+  "bodies-per-batch": false,
+  "refolds": false,
+  "rows-built": false,
+  "keystroke-bodies": false,
+  "jumps": false,
+  "jump-up": false,
+  "late-frames": false
+}

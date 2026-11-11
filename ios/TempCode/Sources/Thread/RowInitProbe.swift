@@ -5,11 +5,15 @@ import TempCodeClient
 extension View {
     /// DEBUG only: counts this transcript row's state inits, appearances and
     /// disappearances by its key (`LayoutProbe.rowInit`); a Release build
-    /// returns the view untouched.
+    /// and a performance run return the view untouched.
     @ViewBuilder
     func rowInitProbe(_ id: TranscriptRowID) -> some View {
         #if DEBUG
-        modifier(RowInitProbe(key: RowInitLedger.key(id)))
+        if LayoutProbe.off {
+            self
+        } else {
+            modifier(RowInitProbe(key: RowInitLedger.key(id)))
+        }
         #else
         self
         #endif

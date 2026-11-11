@@ -30,6 +30,7 @@ struct ThreadStripView: View {
     @ScaledMetric(relativeTo: .caption) private var shelfHeight = StripMetrics.shelfRow
 
     var body: some View {
+        let _ = PerfCounters.bump(.threadStripBody)
         let hosts = HomeRows.inputs(model.registry.ordered)
         let model = ThreadStrip.model(scope: scope, shown: shown, order: ThreadStripStore.shared.order(scope.key), hosts: hosts, sending: ProjectDraftStore.shared.sending[scope.key])
         let strip = pose.isSplit ? model : model.compact

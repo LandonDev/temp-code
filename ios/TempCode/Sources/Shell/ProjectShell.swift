@@ -22,6 +22,7 @@ struct ProjectShell: View {
     var slots = HomeSlots()
 
     var body: some View {
+        let _ = PerfCounters.bump(.projectShellBody)
         let hosts = HomeRows.inputs(model.registry.ordered)
         let scope = ThreadStrip.scope(key: key, hosts: hosts)
         let shown = thread.flatMap(ShellPaths.split)

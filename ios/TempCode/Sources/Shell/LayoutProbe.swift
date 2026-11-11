@@ -27,12 +27,18 @@ import UIKit
 /// Sibling plans make one call: `LayoutProbe.note("sidebar", "visible")`
 /// from any view, a string key and value; a repeated same value is not an
 /// event. `LayoutProbe.route(...)` is RootView's and ThreadScreen's.
+///
+/// In a performance run (`TestHooks.perf`) every entry returns at once: the
+/// run times the views, not the probe's notes and its JSON writes.
 @MainActor
 enum LayoutProbe {
     private static let state = State()
+    /// A performance run is on: nothing is noted, counted or written.
+    static let off = TestHooks.perf != nil
 
     /// A free-form fact for the report (`notes.<key>`), and an event when it changes.
     static func note(_ key: String, _ value: String) {
+        guard !off else { return }
         guard state.notes[key] != value else { return }
         // The reveal's step count changes ten times a second: kept as a note, never logged as an event.
         if key != "revealedUnits" { state.event(key, from: state.notes[key], to: value) }
@@ -47,12 +53,14 @@ enum LayoutProbe {
 
     /// Counts an occurrence (`counts.<key>` in the report): how often a thing was drawn.
     static func count(_ key: String) {
+        guard !off else { return }
         state.counts[key, default: 0] += 1
         state.schedule()
     }
 
     /// The tab and the focused stack's depth (RootView, on every navigation change).
     static func route(tab: String, depth: Int) {
+        guard !off else { return }
         guard state.tab != tab || state.depth != depth else { return }
         state.tab = tab
         state.depth = depth
@@ -61,6 +69,7 @@ enum LayoutProbe {
 
     /// The thread on screen and its segment (ThreadScreen; nil when it leaves).
     static func route(thread: String?, segment: String?) {
+        guard !off else { return }
         guard state.thread != thread || state.segment != segment else { return }
         state.thread = thread
         state.segment = segment
@@ -69,33 +78,39 @@ enum LayoutProbe {
 
     /// The transcript's position, read live at each write (TestHooks.recordTranscript hands it over).
     static func transcript(atBottom: @escaping @MainActor () -> Bool) {
+        guard !off else { return }
         state.atBottom = atBottom
         state.schedule()
     }
 
     /// A transcript row's state was made (its `@StateObject` built): one per identity (`RowInitLedger`).
     static func rowInit(_ key: String) {
+        guard !off else { return }
         state.rowLedger.inited(key, at: state.ms)
         state.schedule()
     }
 
     static func rowAppeared(_ key: String) {
+        guard !off else { return }
         state.rowLedger.appeared(key)
         state.schedule()
     }
 
     static func rowDisappeared(_ key: String) {
+        guard !off else { return }
         state.rowLedger.disappeared(key)
         state.schedule()
     }
 
     static func sizeClasses(horizontal: UserInterfaceSizeClass?, vertical: UserInterfaceSizeClass?) {
+        guard !off else { return }
         state.set(\.hSize, word(horizontal), key: "hSize")
         state.set(\.vSize, word(vertical), key: "vSize")
     }
 
     @available(iOS 27.1, *)
     static func hinge(_ hinge: DeviceHinge?) {
+        guard !off else { return }
         let status: String? = hinge.map {
             switch $0.status {
             case .closed: "closed"
@@ -110,6 +125,7 @@ enum LayoutProbe {
 
     /// What the window probe read.
     static func window(_ window: UIWindow) {
+        guard !off else { return }
         let bounds = window.bounds.size
         let screen = window.screen.bounds.size
         state.screen = screen
@@ -261,6 +277,18 @@ enum LayoutProbe {
             guard JSONSerialization.isValidJSONObject(object),
                   let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else { return }
             try? data.write(to: url(name), options: .atomic)
+        }
+    }
+}
+
+extension View {
+    /// A view's frame on screen as a note (`LayoutProbe.rect`), kept current; no observer at all in a performance run.
+    @ViewBuilder
+    func layoutProbeFrame(_ key: String) -> some View {
+        if LayoutProbe.off {
+            self
+        } else {
+            onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LayoutProbe.note(key, LayoutProbe.rect($0)) }
         }
     }
 }

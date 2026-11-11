@@ -128,6 +128,25 @@
 #           screen's rules (pose_check, scripts/lib/duo_pose_check.py); the set
 #           fails on the first that does not. TC_DUO_POSES, TC_DUO_KINDS,
 #           TC_DUO_HALF_OPEN=0 and TC_FOLD_RUNS narrow a hand run.
+#   perf    The performance proof (docs/IOS-DESIGN.md "Performance"): nine runs,
+#           one launch each, of the Measure build (Release's optimizer with the
+#           launch hooks compiled in: -configuration Release with DEBUG added to
+#           SWIFT_ACTIVE_COMPILATION_CONDITIONS, its own derived data beside
+#           $DERIVED), headless: Simulator.app is never opened and nothing is
+#           typed or tapped from outside. The app runs each (TC_TEST_PERF), plays
+#           the test server's stream and load itself through TC_TEST_CONTROL_URL,
+#           and writes Documents/perf/<run>.json; each lands in $OUT/perf/ with
+#           the Mac's load beside it (<run>.load.txt), and
+#           scripts/lib/ios_perf_check.py judges the pass against the gates that
+#           are on (scripts/lib/ios_perf_gates.json). It pairs with
+#           TC_TEST_PAIR_LINK_OPERATE (the typing runs need the composer) and
+#           needs the server's perf fixtures (TC_TEST_PERF_SEEDS=1, which
+#           scripts/ios-sim-proof-local.ts sets for this set). TC_PERF_RUNS="follow
+#           rest" narrows it; TC_PERF_KEEP=<dir> keeps a copy of the built app
+#           (the baseline); TC_PERF_APP=<app> measures a kept app and builds
+#           nothing; TC_PERF_BASELINE="<dir> <dir>" hands the checker the
+#           baseline's passes. Three passes are judged together by hand:
+#           python3 scripts/lib/ios_perf_check.py --cores N <pass>/perf … --baseline <pass>/perf …
 #   all     shell, threads, scroll, actions and push (the default).
 # TC_SIM="TempCode L3" picks a device by name (default iPhone 17 Pro); TC_SIM_UDID one by id.
 # TC_DUO_POSE=<pose> is the iPhone Duo axis for ANY set: the device defaults to
@@ -180,7 +199,7 @@ DERIVED=${TC_PROOF_DERIVED_DATA:-$OUT/DerivedData}
 BUNDLE=dev.landon.tempcode.ios
 mkdir -p "$OUT"
 # Rebuild incrementally, but never carry a report or screenshot into a new pass.
-rm -rf "$OUT/shots" "$OUT/layout" "$OUT"/*.mov
+rm -rf "$OUT/shots" "$OUT/layout" "$OUT/perf" "$OUT"/*.mov
 rm -f "$OUT"/*.json "$OUT/scroll-sample.txt"
 mkdir -p "$OUT/shots"
 scrub() { sed -E -e 's#pair\#[A-Za-z0-9-]+#pair\#<code>#g' -e 's#tc_[A-Za-z0-9]+\.[A-Za-z0-9_-]+#tc_<key>#g'; }
@@ -203,23 +222,47 @@ if xcrun simctl boot "$TC_SIM_UDID" 2>/dev/null; then
 else
   xcrun simctl bootstatus "$TC_SIM_UDID" -b >/dev/null
 fi
-open -g -a "$DEVELOPER_DIR/Applications/Simulator.app" --args -CurrentDeviceUDID "$TC_SIM_UDID" 2>/dev/null || true
+# The perf set runs headless: the simulator's window would come in front of the person.
+[ "$SET" = perf ] || open -g -a "$DEVELOPER_DIR/Applications/Simulator.app" --args -CurrentDeviceUDID "$TC_SIM_UDID" 2>/dev/null || true
 
-xcodegen generate --quiet
-# Release first: the proof machinery is DEBUG only, so a probe call outside
-# #if DEBUG compiles here and breaks the build that ships. Signed as the Debug
-# build is (project.yml's ad hoc settings); its products sit beside Debug's.
-echo "ios-sim-proof: compiling Release for $SIM ($TC_SIM_UDID)"
-xcodebuild build -project TempCode.xcodeproj -scheme TempCode -configuration Release \
-  -destination "platform=iOS Simulator,id=$TC_SIM_UDID" \
-  -derivedDataPath "$DERIVED" -quiet 2>&1 | scrub
-[ -d "$DERIVED/Build/Products/Release-iphonesimulator/TempCode.app" ] || { echo "ios-sim-proof: the Release build failed" >&2; exit 1; }
-echo "ios-sim-proof: building for $SIM ($TC_SIM_UDID)"
-xcodebuild build -project TempCode.xcodeproj -scheme TempCode \
-  -destination "platform=iOS Simulator,id=$TC_SIM_UDID" \
-  -derivedDataPath "$DERIVED" -quiet 2>&1 | scrub
-APP="$DERIVED/Build/Products/Debug-iphonesimulator/TempCode.app"
+if [ "$SET" = perf ] && [ -n "${TC_PERF_APP:-}" ]; then
+  # A kept app (the baseline, measured in turn with a candidate): nothing is built.
+  APP=$TC_PERF_APP
+  echo "ios-sim-proof: measuring the kept app $APP"
+else
+  xcodegen generate --quiet
+  # Release first: the proof machinery is DEBUG only, so a probe call outside
+  # #if DEBUG compiles here and breaks the build that ships. Signed as the Debug
+  # build is (project.yml's ad hoc settings); its products sit beside Debug's.
+  echo "ios-sim-proof: compiling Release for $SIM ($TC_SIM_UDID)"
+  xcodebuild build -project TempCode.xcodeproj -scheme TempCode -configuration Release \
+    -destination "platform=iOS Simulator,id=$TC_SIM_UDID" \
+    -derivedDataPath "$DERIVED" -quiet 2>&1 | scrub
+  [ -d "$DERIVED/Build/Products/Release-iphonesimulator/TempCode.app" ] || { echo "ios-sim-proof: the Release build failed" >&2; exit 1; }
+  if [ "$SET" = perf ]; then
+    # The Measure build: what Release compiles, optimized as Release is, with the
+    # launch hooks (DEBUG) in. Its own derived data, so the Release check stays what ships.
+    MEASURE=${TC_PERF_DERIVED_DATA:-$DERIVED-measure}
+    echo "ios-sim-proof: building the Measure app for $SIM ($TC_SIM_UDID)"
+    xcodebuild build -project TempCode.xcodeproj -scheme TempCode -configuration Release \
+      -destination "platform=iOS Simulator,id=$TC_SIM_UDID" \
+      -derivedDataPath "$MEASURE" ONLY_ACTIVE_ARCH=YES 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) DEBUG' -quiet 2>&1 | scrub
+    APP="$MEASURE/Build/Products/Release-iphonesimulator/TempCode.app"
+  else
+    echo "ios-sim-proof: building for $SIM ($TC_SIM_UDID)"
+    xcodebuild build -project TempCode.xcodeproj -scheme TempCode \
+      -destination "platform=iOS Simulator,id=$TC_SIM_UDID" \
+      -derivedDataPath "$DERIVED" -quiet 2>&1 | scrub
+    APP="$DERIVED/Build/Products/Debug-iphonesimulator/TempCode.app"
+  fi
+fi
 [ -d "$APP" ] || { echo "ios-sim-proof: no app at $APP" >&2; exit 1; }
+if [ "$SET" = perf ] && [ -n "${TC_PERF_KEEP:-}" ]; then
+  mkdir -p "$TC_PERF_KEEP"
+  rm -rf "$TC_PERF_KEEP/TempCode.app"
+  cp -R "$APP" "$TC_PERF_KEEP/TempCode.app"
+  echo "ios-sim-proof: kept $TC_PERF_KEEP/TempCode.app"
+fi
 
 xcrun simctl uninstall "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
 xcrun simctl install "$TC_SIM_UDID" "$APP"
@@ -339,6 +382,8 @@ launch_app() {
   SIMCTL_CHILD_TC_TEST_STREAM="${TC_STREAM_RUN:-}" \
   SIMCTL_CHILD_TC_TEST_STREAM_SECONDS="${TC_STREAM_SECONDS:-}" \
   SIMCTL_CHILD_TC_TEST_GROUP_GLIDE="${TC_GROUP_GLIDE:-}" \
+  SIMCTL_CHILD_TC_TEST_PERF="${TC_PERF_RUN:-}" \
+  SIMCTL_CHILD_TC_TEST_CONTROL_URL="${TC_PERF_RUN:+${TC_TEST_CONTROL_URL:-}}" \
     xcrun simctl launch --terminate-running-process "$TC_SIM_UDID" "$BUNDLE" >/dev/null
 }
 appearance() { xcrun simctl ui "$TC_SIM_UDID" appearance "$1" >/dev/null 2>&1 || true; }
@@ -371,7 +416,8 @@ pair() {
   return 3
 }
 # The Duo set types into the composer (the keyboard shots, the fold run's draft): it pairs with the key that may act.
-if [ "$SET" = duo ] && [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ]; then TC_TEST_PAIR_LINK=$TC_TEST_PAIR_LINK_OPERATE; fi
+# The perf set's typing runs do too.
+if { [ "$SET" = duo ] || [ "$SET" = perf ]; } && [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ]; then TC_TEST_PAIR_LINK=$TC_TEST_PAIR_LINK_OPERATE; fi
 if [ -n "${TC_TEST_PAIR_LINK:-}" ]; then
   pair || { echo "ios-sim-proof: the app did not pair" >&2; exit 3; }
   rm -f "$OUT/shots/00-pairing.png" "$OUT/shots/$POSE/00-pairing.png" "$OUT/layout/$POSE/00-pairing.json"
@@ -1447,8 +1493,54 @@ markup_set() {
   for i in 1 2 3 4 5 6; do snap "markup-$i"; sleep 0.6; done
 }
 
+# The performance proof: one launch a run, each waited for by its report.
+#   perf_run <run> <thread part> [segment]
+perf_run() {
+  local name=$1 thread=$2 segment=${3:-}
+  rm -rf "$container/Documents/perf"
+  sysctl -n vm.loadavg > "$OUT/perf/$name.load.txt"
+  TC_PERF_RUN=$name launch_app thread "$thread" "$segment"
+  wait_for "$container/Documents/perf/$name.landed.json" "${TC_PERF_LAND_WAIT:-120}" || echo "ios-sim-proof: perf $name: the thread did not land" >&2
+  wait_for "$container/Documents/perf/$name.json" "${TC_PERF_WAIT:-300}" || true
+  if [ -f "$container/Documents/perf/$name.json" ]; then
+    cp "$container/Documents/perf/$name.json" "$OUT/perf/$name.json"
+    python3 - "$OUT/perf/$name.json" "$OUT/perf/$name.load.txt" <<'LINE'
+import json, sys
+r = json.load(open(sys.argv[1]))
+load = open(sys.argv[2]).read().strip()
+if r.get('note'):
+    print(f"ios-sim-proof: perf {r['run']}: {r['note']} (load {load})")
+else:
+    print(f"ios-sim-proof: perf {r['run']}: {r['frames']['count']} frames, {r['late']} late, CPU p95 {r['cpuMs']['p95']} ms an interval, {r['cpuMsPerS']} ms a second, batch p95 {r['batchCpuMs']['p95']} ms, key p95 {r['keyCpuMs']['p95']} ms, {r['rowsHeld']} rows (load {load})")
+LINE
+  else
+    echo "ios-sim-proof: perf $name: no report" >&2
+  fi
+  xcrun simctl terminate "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
+}
+perf_set() {
+  [ -n "${TC_TEST_CONTROL_URL:-}" ] || { echo "ios-sim-proof: the perf set needs TC_TEST_CONTROL_URL" >&2; return 2; }
+  appearance light
+  mkdir -p "$OUT/perf"
+  local container run
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data)
+  for run in ${TC_PERF_RUNS:-scale-short scale-build follow scroll-idle scroll-busy type-idle type-busy rest master}; do
+    case "$run" in
+      scale-short) perf_run "$run" "Perf short" chat ;;
+      scale-build|follow|scroll-idle|scroll-busy) perf_run "$run" "Perf build" chat ;;
+      type-idle|type-busy) perf_run "$run" "Perf chat" ;;
+      rest) perf_run "$run" "Perf rest" ;;
+      master) perf_run "$run" "Perf master" chat ;;
+      *) echo "ios-sim-proof: unknown perf run $run" >&2; return 2 ;;
+    esac
+  done
+  # shellcheck disable=SC2086
+  python3 "$here/lib/ios_perf_check.py" --cores "$(sysctl -n hw.ncpu)" "$OUT/perf" ${TC_PERF_BASELINE:+--baseline $TC_PERF_BASELINE}
+}
+
 case "$SET" in
   duo) duo_set ;;
+  perf) perf_set ;;
   f4) f4_set ;;
   settings) settings_set ;;
   diff) diff_set ;;

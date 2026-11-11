@@ -58,7 +58,10 @@ struct TranscriptView: View {
     static let page = 75
 
     var body: some View {
+        let _ = PerfCounters.bump(.transcriptBody)
         let rows = TranscriptRows.rows(thread.entries, turnOpen: thread.fold.board.turnOpen, memory: keyMemory, waits: thread.fold.waitOutcomes, statusOf: waitStatus)
+        let _ = PerfCounters.bump(.rowBuilds)
+        let _ = PerfCounters.bump(.rowsBuilt, by: rows.count)
         // The agents whose status the omitted waits still need, after this pass kept what it read.
         let waitIds = WaitSteps.unsettledAgents(thread.entries, memory: thread.fold.waitOutcomes)
         let start = TranscriptRows.windowStart(rows, top: windowTop, count: window)
@@ -66,6 +69,7 @@ struct TranscriptView: View {
         let moreAbove = start > 0 || thread.moreBefore
         let turns = TranscriptRows.turnKeys(rows)
         let gaps = TranscriptView.gaps(rows, from: start)
+        let _ = listScroll.note(window: shown, lead: moreAbove || rows.isEmpty ? 1 : 0)
         let _ = bornRows.open(thread: client.threads[sessionId])
         #if DEBUG
         let _ = LayoutProbe.note("bornOpenedAt", bornRows.openedAt.map(String.init) ?? "waiting")
@@ -170,7 +174,6 @@ struct TranscriptView: View {
                 #endif
             }
             .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
-                recorder?.noteOffset(y)
                 noteHold(y)
             }
             .transcriptTrace(topRow: { scrollState.topRow })
@@ -182,7 +185,7 @@ struct TranscriptView: View {
             }
             .overlay(alignment: .bottom) {
                 TranscriptScrollControls(state: scrollState) {
-                    TranscriptTrace.write("jumpPill"); scrollState.offBottomWrite = false; withAnimation(Motion.base) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
+                    TranscriptTrace.write("jumpPill", moving: scrollState.readerMoving); scrollState.offBottomWrite = false; withAnimation(Motion.base) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
                 }
             }
             .overlay(alignment: .top) {
@@ -240,6 +243,11 @@ struct TranscriptView: View {
                 await groupGlideProof()
             }
             #endif
+            // A performance run asked of this thread (the proof's launch, the Diagnostics screen).
+            .task(id: PerfSession.shared.request.map { "\($0.id)|\(thread.isLoading)|\(rows.isEmpty)" } ?? "") {
+                guard !thread.isLoading, !rows.isEmpty else { return }
+                await perfRun()
+            }
             .task(id: TestHooks.scrollUp || TestHooks.stream ? "\(thread.isLoading)|\(rows.isEmpty)" : "") {
                 guard TestHooks.scrollUp || TestHooks.stream, !thread.isLoading, !rows.isEmpty, !scrollRan else { return }
                 scrollRan = true
@@ -358,8 +366,8 @@ struct TranscriptView: View {
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             switch anchor {
-            case .end: TranscriptTrace.write("reflow.end"); proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom)
-            case .row(let id): TranscriptTrace.write("reflow.row \(id.key)"); scrollState.offBottomWrite = true; proxy.scrollTo(id, anchor: .top)
+            case .end: TranscriptTrace.write("reflow.end", moving: scrollState.readerMoving); proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom)
+            case .row(let id): TranscriptTrace.write("reflow.row \(id.key)", moving: scrollState.readerMoving); scrollState.offBottomWrite = true; proxy.scrollTo(id, anchor: .top)
             }
         }
         // The row is at the top edge, laid out at the new width: the reader's place inside it.
@@ -404,7 +412,7 @@ struct TranscriptView: View {
         let highest = max(lowest, list.contentSize.height + inset.bottom - list.bounds.height)
         let y = min(highest, max(lowest, place.edge(rowTop: frame.minY, rowHeight: frame.height, rewrapped: rewrapped) - inset.top))
         guard abs(y - list.contentOffset.y) > 0.5 else { return }
-        TranscriptTrace.write("place \(id.key)")
+        TranscriptTrace.write("place \(id.key)", moving: scrollState.readerMoving)
         scrollState.offBottomWrite = true
         list.setContentOffset(CGPoint(x: list.contentOffset.x, y: y), animated: false)
     }
@@ -421,7 +429,7 @@ struct TranscriptView: View {
             try? await Task.sleep(for: .milliseconds(60))
             var transaction = Transaction()
             transaction.disablesAnimations = true
-            TranscriptTrace.write("openGroup"); scrollState.offBottomWrite = true; withTransaction(transaction) { proxy.scrollTo(first.id, anchor: .center) }
+            TranscriptTrace.write("openGroup", moving: scrollState.readerMoving); scrollState.offBottomWrite = true; withTransaction(transaction) { proxy.scrollTo(first.id, anchor: .center) }
         }
     }
 
@@ -457,6 +465,20 @@ struct TranscriptView: View {
         try? await Task.sleep(for: .seconds(52))
         _ = recorder.stop()
         self.recorder = nil
+    }
+
+    /// A performance run on this transcript (`PerfSession`): the drivers, the
+    /// recorder and the report are `PerfRunner`'s. The scroll driver stands
+    /// in for the reader's finger, as `dragHoldProof` does.
+    private func perfRun() async {
+        guard let run = PerfSession.shared.claim(sessionId) else { return }
+        let state = scrollState
+        let list = listScroll
+        let context = PerfContext(client: client, sessionId: sessionId, scroll: { list.scroll }, rowAt: { list.row(at: $0, of: $1) }) { moving in
+            state.readerMoving = moving
+            if moving { state.offBottomWrite = false }
+        }
+        PerfSession.shared.finish(await PerfRunner().run(run, context))
     }
 
     /// DEBUG proof (`TC_TEST_SCROLL_UP`): 700 pt up from the bottom once the
@@ -658,7 +680,7 @@ struct TranscriptView: View {
         }
         var transaction = Transaction()
         transaction.disablesAnimations = true
-        TranscriptTrace.write("snapToBottom window=\(window)"); scrollState.offBottomWrite = false; withTransaction(transaction) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
+        TranscriptTrace.write("snapToBottom window=\(window)", moving: scrollState.readerMoving); scrollState.offBottomWrite = false; withTransaction(transaction) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
     }
 
     /// An agent's session status wherever it lives: a wait whose body the
@@ -712,7 +734,7 @@ struct TranscriptView: View {
             pins.run(follows) {
                 var transaction = Transaction()
                 transaction.disablesAnimations = true
-                TranscriptTrace.write("pinTail"); withTransaction(transaction) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
+                TranscriptTrace.write("pinTail", moving: scrollState.readerMoving); withTransaction(transaction) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
             }
         }
     }
@@ -776,7 +798,7 @@ struct TranscriptView: View {
         guard !Task.isCancelled else { return }
         var transaction = Transaction()
         transaction.disablesAnimations = true
-        TranscriptTrace.write("land \(id.key)"); scrollState.offBottomWrite = true; withTransaction(transaction) { proxy.scrollTo(id, anchor: .center) }
+        TranscriptTrace.write("land \(id.key)", moving: scrollState.readerMoving); scrollState.offBottomWrite = true; withTransaction(transaction) { proxy.scrollTo(id, anchor: .center) }
         #if DEBUG
         TestHooks.recordTranscript(sessionId: sessionId, state: scrollState)
         #endif
@@ -821,7 +843,7 @@ struct TranscriptView: View {
         }
         var transaction = Transaction()
         transaction.disablesAnimations = true
-        TranscriptTrace.write("extend \(anchor.key)"); scrollState.offBottomWrite = true; withTransaction(transaction) { proxy.scrollTo(anchor, anchor: .top) }
+        TranscriptTrace.write("extend \(anchor.key)", moving: scrollState.readerMoving); scrollState.offBottomWrite = true; withTransaction(transaction) { proxy.scrollTo(anchor, anchor: .top) }
         if let held {
             await Task.yield()
             settle(anchor, at: held, rewrapped: false)
@@ -835,6 +857,20 @@ struct TranscriptView: View {
 final class ListScroll {
     weak var scroll: UIScrollView?
     var place: TranscriptReflow.Place?
+    /// The window as the last body pass drew it, and the rows above it (the sentinel, the empty state).
+    private var shown: [TranscriptRowModel] = []
+    private var lead = 0
+
+    func note(window shown: [TranscriptRowModel], lead: Int) {
+        self.shown = shown
+        self.lead = lead
+    }
+
+    /// The row a list item draws; nil while the list holds another count than the window (`TranscriptReflow.item`).
+    func row(at item: Int, of items: Int) -> TranscriptRowID? {
+        guard items == lead + shown.count + 1, item >= lead, item - lead < shown.count else { return nil }
+        return shown[item - lead].id
+    }
 }
 
 /// The rows on screen, kept outside observation.
@@ -970,7 +1006,14 @@ enum TranscriptTrace {
     private static var writes = 0
     #endif
 
-    static func write(_ cause: String) {
+    /// `moving` is the reader's own scroll at a write of the offset (nil for
+    /// a line that writes nothing): each such write is counted, and one
+    /// under a moving reader on its own (`PerfCounters`), in every configuration.
+    static func write(_ cause: String, moving: Bool? = nil) {
+        if let moving {
+            PerfCounters.bump(.offsetWrites)
+            if moving { PerfCounters.bump(.offsetWritesMoving) }
+        }
         #if DEBUG
         writes += 1
         LayoutProbe.note("write", "\(writes) \(cause)")
@@ -1016,7 +1059,11 @@ extension View {
     @ViewBuilder
     func transcriptTrace(topRow: @escaping () -> TranscriptRowID?) -> some View {
         #if DEBUG
-        modifier(TranscriptTraceModifier(topRow: topRow))
+        if LayoutProbe.off {
+            self
+        } else {
+            modifier(TranscriptTraceModifier(topRow: topRow))
+        }
         #else
         self
         #endif

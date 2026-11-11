@@ -1,12 +1,12 @@
 import Foundation
 import TempCodeClient
-import QuartzCore
 import SwiftUI
-import os
 
 /// DEBUG-only hooks the simulator proof drives through the process
 /// environment: which segment to open, what to open inside it, and the
-/// scroll run that measures frames. Release builds read nothing.
+/// scroll run that measures frames. Release builds read nothing. The
+/// recorder and the drivers themselves are in Sources/Perf, compiled in
+/// every configuration.
 ///
 /// Reports land in the app's Documents as `<name>.json`, each written once
 /// its value settles: `dock-report` / `dock-report-focused` (the dock's
@@ -88,6 +88,13 @@ enum TestHooks {
     /// each visible cell's presentation frame sampled every 8 ms through each;
     /// Documents/group-glide.json (scripts/lib/group_glide_check.py reads it).
     static let groupGlide = env["TC_TEST_GROUP_GLIDE"].flatMap { $0.isEmpty ? nil : $0 }
+    /// A performance run (`PerfRun`): the thread the launch route opens runs it once it has
+    /// landed and writes Documents/perf/<run>.json. The proof's probes stand down for the
+    /// whole launch (`LayoutProbe`, `rowInitProbe`, `transcriptTrace`), so the run times the
+    /// views a Release build has.
+    static let perf = env["TC_TEST_PERF"].flatMap(PerfRun.init(rawValue:))
+    /// The test server's control panel: a performance run plays its own stream and load through it.
+    static let controlURL = env["TC_TEST_CONTROL_URL"].flatMap(URL.init(string:))
     #else
     static let segment: ThreadSegment? = nil
     static let open: String? = nil
@@ -104,6 +111,8 @@ enum TestHooks {
     static let sheet: String? = nil
     static let notification: String? = nil
     static let groupGlide: String? = nil
+    static let perf: PerfRun? = nil
+    static let controlURL: URL? = nil
     #endif
     /// True once per key: a hook that several rows read fires on the first.
     static func once(_ key: String) -> Bool {
@@ -263,205 +272,4 @@ enum TestHooks {
     }
     #endif
 
-}
-
-/// Frame intervals from a display link while a scroll runs: how many frames
-/// came more than 8 ms late, and the worst one. The `scroll` driver moves
-/// the offset itself (two 25 s glides); the `stream` driver moves nothing
-/// and records while a turn streams with the reader pinned at the bottom
-/// (`pinned` is read each frame; `seq` the thread's row count, partials included).
-final class FrameRecorder: NSObject {
-    enum Driver {
-        case scroll
-        case stream(pinned: () -> Bool, seq: () -> Int)
-    }
-
-    private var driver: Driver = .scroll
-    private var unpinnedFrames = 0
-    private var firstUnpinnedAt: Double?
-    private var repinnedAt: Double?
-    private var seqStart = 0
-    private var link: CADisplayLink?
-    private var maxFramesPerSecond = 60
-    private var last: CFTimeInterval?
-    private var intervals: [Double] = []
-    private var expected: Double = 1 / 60
-    private let log = Logger(subsystem: "dev.landon.tempcode", category: "scroll")
-
-    struct Report: Codable {
-        var driver: String
-        var initialOffset: Double
-        var curve: String
-        var scrollFrames: Int
-        var scrollHitches: Int
-        var scrollWorstMs: Double
-        var lateFrames: [LateFrame]
-        var sourceRows: Int
-        var items: Int
-        var frames: Int
-        var maxFramesPerSecond: Int
-        var expectedMs: Double
-        var hitches: Int
-        var worstMs: Double
-        var meanMs: Double
-        var over16Ms: Int
-        /// Scroll offsets seen and the distance between the lowest and highest: proof the run moved.
-        var offsetSamples: Int
-        var travelPt: Double
-        /// When each late frame landed, in seconds since the run began (the first 20).
-        var hitchAtS: [Double]
-        /// The stream driver: frames the reader was not at the bottom, and the thread's rows (partials included) at the start and end.
-        var unpinnedFrames = 0
-        /// When the reader first left the bottom and when it was first back, in seconds since the run began (-1: never).
-        var firstUnpinnedAtS = -1.0
-        var repinnedAtS = -1.0
-        var seqStart = 0
-        var seqEnd = 0
-        var seconds = 0.0
-    }
-
-    struct LateFrame: Codable {
-        var atS: Double
-        var intervalMs: Double
-        var offset: Double
-        var previousOffset: Double
-        var moving: Bool
-    }
-
-    private var movingIntervals: [Double] = []
-    private var lateFrames: [LateFrame] = []
-    private weak var scrollView: UIScrollView?
-    private var initialOffset = 0.0
-    private var lastOffset: Double?
-    private var sourceRows = 0
-    private var items = 0
-    private var startedAt: CFTimeInterval?
-    private var hitchTimes: [Double] = []
-
-    private var minOffset = Double.greatestFiniteMagnitude
-    private var maxOffset = -Double.greatestFiniteMagnitude
-    private var offsetSamples = 0
-
-    /// A scroll offset the view saw while the run was on.
-    func noteOffset(_ y: CGFloat) {
-        guard link != nil else { return }
-        offsetSamples += 1
-        minOffset = min(minOffset, y)
-        maxOffset = max(maxOffset, y)
-    }
-
-    func start(sourceRows: Int, items: Int, scrollView: UIScrollView, driver: Driver = .scroll) {
-        self.driver = driver
-        if case .stream(_, let seq) = driver { seqStart = seq() }
-        self.scrollView = scrollView
-        // The panel the scroll view sits on (the Duo's inner panel is ProMotion, the outer is not); UIScreen.main is deprecated.
-        maxFramesPerSecond = scrollView.window?.screen.maximumFramesPerSecond ?? 60
-        initialOffset = scrollView.contentOffset.y
-        self.sourceRows = sourceRows
-        self.items = items
-        let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
-        link.add(to: .main, forMode: .common)
-        self.link = link
-    }
-
-    @objc private func tick(_ link: CADisplayLink) {
-        expected = link.targetTimestamp - link.timestamp
-        if startedAt == nil { startedAt = link.timestamp }
-        let elapsed = link.timestamp - (startedAt ?? link.timestamp)
-        let offset = scrollView?.contentOffset.y ?? 0
-        let previous = lastOffset ?? offset
-        let moving = abs(offset - previous) > 0.01
-        if let last {
-            let interval = (link.timestamp - last) * 1_000
-            intervals.append(interval)
-            if moving { movingIntervals.append(interval) }
-            if interval - expected * 1_000 > 8 {
-                if hitchTimes.count < 20 { hitchTimes.append(elapsed) }
-                if lateFrames.count < 20 { lateFrames.append(LateFrame(atS: elapsed, intervalMs: interval, offset: offset, previousOffset: previous, moving: moving)) }
-            }
-        }
-        last = link.timestamp
-        lastOffset = offset
-        if case .stream(let pinned, _) = driver {
-            if !pinned() {
-                unpinnedFrames += 1
-                if firstUnpinnedAt == nil { firstUnpinnedAt = elapsed }
-            } else if firstUnpinnedAt != nil, repinnedAt == nil {
-                repinnedAt = elapsed
-            }
-            return
-        }
-        if let scrollView {
-            let top = -scrollView.adjustedContentInset.top
-            let bottom = max(top, scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom)
-            let target = elapsed < 26
-                ? initialOffset + (top - initialOffset) * min(1, elapsed / 25)
-                : top + (bottom - top) * min(1, (elapsed - 26) / 25)
-            scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: target), animated: false)
-        }
-    }
-
-    func stop() -> Report {
-        link?.invalidate()
-        link = nil
-        let expectedMs = expected * 1_000
-        let hitches = intervals.count { $0 - expectedMs > 8 }
-        let worst = intervals.max() ?? 0
-        let mean = intervals.isEmpty ? 0 : intervals.reduce(0, +) / Double(intervals.count)
-        let travel = offsetSamples > 0 ? maxOffset - minOffset : 0
-        let streaming: Bool
-        var seqEnd = 0
-        if case .stream(_, let seq) = driver { streaming = true; seqEnd = seq() } else { streaming = false }
-        var report = Report(driver: streaming ? "stream-pinned" : "native-list-offset", initialOffset: initialOffset, curve: "linear", scrollFrames: movingIntervals.count, scrollHitches: movingIntervals.count { $0 - expectedMs > 8 }, scrollWorstMs: movingIntervals.max() ?? 0, lateFrames: lateFrames, sourceRows: sourceRows, items: items, frames: intervals.count, maxFramesPerSecond: maxFramesPerSecond, expectedMs: expectedMs, hitches: hitches, worstMs: worst, meanMs: mean, over16Ms: intervals.count { $0 > 16.7 }, offsetSamples: offsetSamples, travelPt: travel, hitchAtS: hitchTimes.map { ($0 * 10).rounded() / 10 })
-        report.unpinnedFrames = unpinnedFrames
-        report.firstUnpinnedAtS = firstUnpinnedAt.map { ($0 * 10).rounded() / 10 } ?? -1
-        report.repinnedAtS = repinnedAt.map { ($0 * 10).rounded() / 10 } ?? -1
-        report.seqStart = seqStart
-        report.seqEnd = seqEnd
-        report.seconds = (startedAt.map { (last ?? $0) - $0 } ?? 0)
-        log.notice("\(streaming ? "stream" : "scroll") frames=\(report.frames) hitches=\(report.hitches) worst=\(report.worstMs, format: .fixed(precision: 1))ms mean=\(report.meanMs, format: .fixed(precision: 2))ms travel=\(travel, format: .fixed(precision: 0))pt")
-        if let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first, let data = try? JSONEncoder().encode(report) {
-            try? data.write(to: documents.appending(path: streaming ? "stream-report.json" : "scroll-report.json"))
-        }
-        return report
-    }
-}
-
-/// Finds the native scroll view containing the proof's bottom sentinel.
-struct ScrollProofProbe: UIViewRepresentable {
-    let found: @MainActor (UIScrollView) -> Void
-
-    func makeUIView(context: Context) -> ProbeView {
-        let view = ProbeView()
-        view.found = found
-        return view
-    }
-
-    func updateUIView(_ view: ProbeView, context: Context) {
-        view.found = found
-        view.resolve()
-    }
-
-    final class ProbeView: UIView {
-        var found: (@MainActor (UIScrollView) -> Void)?
-
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            resolve()
-        }
-
-        func resolve() {
-            var parent = superview
-            while let view = parent {
-                if let scroll = view as? UIScrollView {
-                    let callback = found
-                    found = nil
-                    Task { callback?(scroll) }
-                    return
-                }
-                parent = view.superview
-            }
-        }
-    }
 }

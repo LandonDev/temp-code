@@ -24,6 +24,7 @@ struct TranscriptRow: View, Equatable {
     }
 
     var body: some View {
+        let _ = PerfCounters.bump(.transcriptRowBody)
         switch row {
         case .item(let entry):
             ItemRow(entry: entry, client: client, sessionId: sessionId, born: born)

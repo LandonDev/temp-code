@@ -50,6 +50,7 @@ struct ComposerRowView: View {
     var body: some View {
         // The widths give way at the default text size; a larger one keeps
         // giving way in the same order, and only the last lets the name truncate.
+        let _ = PerfCounters.bump(.composerRowBody)
         let steps = ComposerRow.steps(from: fit)
         ViewThatFits(in: .horizontal) {
             ForEach(Array(steps.enumerated()), id: \.offset) { _, step in

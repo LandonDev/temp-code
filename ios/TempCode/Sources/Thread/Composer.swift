@@ -48,18 +48,19 @@ struct BottomDock: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.bump(.bottomDockBody)
         let backing = ComposerSlot.backing(occupies: occupies)
         VStack(spacing: ComposerMetrics.slotGap) {
             if occupies {
                 WorkingStripView(client: client, sessionId: sessionId, session: session, dock: dock, slot: slot)
                     .transition(slotTransition)
                     #if DEBUG
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LayoutProbe.note("slot.frame", LayoutProbe.rect($0)) }
+                    .layoutProbeFrame("slot.frame")
                     #endif
             }
             ComposerBar(client: client, sessionId: sessionId, session: session, dock: dock, focused: focused, draft: draft)
                 #if DEBUG
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LayoutProbe.note("composer.frame", LayoutProbe.rect($0)) }
+                .layoutProbeFrame("composer.frame")
                 #endif
         }
         // The dock is its parts' height in every pose and at every size change, never
@@ -73,11 +74,11 @@ struct BottomDock: View {
         .background(alignment: .top) {
             BottomEdgeFade(solid: backing == .solid)
                 #if DEBUG
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LayoutProbe.note("dock.fade.frame", LayoutProbe.rect($0)) }
+                .layoutProbeFrame("dock.fade.frame")
                 #endif
         }
         #if DEBUG
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { LayoutProbe.note("dock.frame", LayoutProbe.rect($0)) }
+        .layoutProbeFrame("dock.frame")
         #endif
         #if DEBUG
         .onChange(of: backing, initial: true) { LayoutProbe.note("dock.backing", backing.rawValue) }
@@ -180,6 +181,7 @@ struct ComposerBar: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.bump(.composerBarBody)
         VStack(alignment: .leading, spacing: 6) {
             if let failure {
                 QuietLine(symbol: "exclamationmark.circle", text: failure, tint: Tint.destructive)

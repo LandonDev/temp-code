@@ -28,7 +28,8 @@ enum Appearance: String, CaseIterable {
 
 /// Settings, from the Home navigation bar: the hosts, notifications and the
 /// appearance, as Apple's own Settings lays them out. Inset grouped, one
-/// sentence of footer where a row needs explaining, the app's version last.
+/// sentence of footer where a row needs explaining, the app's version last
+/// (a long press on it opens Diagnostics, `DiagnosticsScreen`).
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
@@ -37,6 +38,8 @@ struct SettingsView: View {
     /// Where the switch sits while the permission prompt and the hosts are
     /// asked; nil once they have answered and the registrar's word is true.
     @State private var pushPending: Bool?
+    /// The hidden Diagnostics screen, from a long press on the version line.
+    @State private var showsDiagnostics = false
 
     var body: some View {
         let clients = model.registry.ordered
@@ -99,6 +102,9 @@ struct SettingsView: View {
 
             Section {
                 VersionFooter()
+                    .contentShape(Rectangle())
+                    .onLongPressGesture { showsDiagnostics = true }
+                    .accessibilityAction(named: "Diagnostics") { showsDiagnostics = true }
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
             }
@@ -106,6 +112,7 @@ struct SettingsView: View {
         .listStyle(.insetGrouped)
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $showsDiagnostics) { DiagnosticsScreen() }
     }
 
     private var pushBinding: Binding<Bool> {

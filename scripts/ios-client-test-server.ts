@@ -20,8 +20,14 @@
  *                                 answers, creates, renames, archives and pins the stubs recorded
  *   POST /actions/clear         → forgets them
  *   POST /finish { sessionId, text? }  → ends a simulated turn: the reply, turn-complete, idle (and stops a /stream)
- *   POST /stream { sessionId?, cps?, seconds?, seed?, markup? }  → plays a bursty streaming turn with a growing Edit and
- *                                 live edits into ios-streaming; 409 while one runs
+ *   POST /stream { sessionId?, cps?, seconds?, seed?, markup?, frames?, rows?, hold?, intervalMs? }  → plays a bursty
+ *                                 streaming turn with a growing Edit and live edits into ios-streaming; 409 while
+ *                                 one runs. `frames` ends the answer after that many deltas (no Edit), `rows` after
+ *                                 that many rows; `hold` leaves the turn open; `intervalMs` paces the deltas (7)
+ *   POST /load { seconds, children? }  → the host's other traffic for that long (the perf fixtures, TC_TEST_PERF_SEEDS=1):
+ *                                 metas at 10 a second on 12 sessions outside the perf project, events at 20 a second
+ *                                 into 6 of them, one status flip in the perf project's sibling, and with `children`
+ *                                 a stream into each of the perf master's 8 children
  *   POST /scenario { sessionId? }  → plays the no-jerk timeline (scripts/lib/soakScenarios.ts) as host events on a
  *                                chat at real speed, one at a time; answers { started, ms } (POST /finish stops it)
  *   POST /ask { sessionId, kind: 'approval' | 'question' | 'run-skip' }  → a fresh card on a thread, which waits
@@ -92,6 +98,7 @@ import {
   computerHeldRows
 } from './lib/ios-seeds'
 import { openDb, Store } from '../src/main/server/db'
+import { PERF_CHILDREN, PERF_LOAD, PERF_SIBLING, PERF_THREADS, perfThread } from './lib/ios-perf-seeds'
 
 // A proof set pairs some of these codes late: the features set pairs the
 // second host after a Release compile, a Debug build and forty shots, past a
@@ -1177,6 +1184,30 @@ for (const id of [THREAD_IMPL, THREAD_RESEARCH]) {
   ])
 }
 
+// ── the performance proof's fixtures (TC_PROOF_SET=perf, scripts/lib/ios-perf-seeds.ts) ──
+// Made only when asked: 16,000 rows more would slow every boot of the gate's client tests.
+// A project of their own holds the threads the runs open; the sessions `/load` moves sit
+// in the second workspace, outside it.
+if (process.env.TC_TEST_PERF_SEEDS === '1') {
+  const perfProject = await server.registry.createProject(workspace.id, 'perf-project', 'local')
+  for (const thread of Object.values(PERF_THREADS)) {
+    await make(thread.id, { reasoning: 'medium', projectId: perfProject.id, threadType: thread.type, title: thread.title })
+    at(thread.id, perfThread(thread.id, thread))
+  }
+  server.registry.setMaster(PERF_THREADS.master.id, true)
+  for (const [i, id] of PERF_CHILDREN.entries()) {
+    await make(id, { projectId: perfProject.id, threadType: 'implementation', title: `Perf child ${i + 1}`, masterId: PERF_THREADS.master.id, startedBy: PERF_THREADS.master.id })
+    at(id, [{ type: 'user-text', text: `Build part ${i + 1}.`, newPass: true }, status('running')])
+  }
+  server.batches.seedRow(batchRowMidRun(PERF_THREADS.master.id, { landed: [], pending: PERF_CHILDREN }, Date.now()))
+  await make(PERF_SIBLING, { projectId: perfProject.id, threadType: 'chat', title: 'Perf sibling' })
+  say(PERF_SIBLING, 'Is the gate green?', 'It is.')
+  for (const [i, id] of PERF_LOAD.entries()) {
+    await make(id, { projectId: project2.id, threadType: 'chat', title: `Perf load ${i + 1}` })
+    at(id, [{ type: 'user-text', text: `Keep busy ${i + 1}.`, newPass: true }, status('running')])
+  }
+}
+
 // ── accounts: two Claude accounts with different headroom (thread 24's chip and menu) ──
 const hour = 3_600_000
 export const META_KEY = 'build-key'
@@ -1754,9 +1785,23 @@ const streamAnswer = (length: number, markup = false): string => {
   for (let i = 0; text.length < length; i++) text += (i === 0 && !markup ? '' : '\n\n') + parts[i % parts.length]
   return text.slice(0, length)
 }
-async function playStream(sessionId: string, cps: number, seconds: number, seed: number, markup = false): Promise<void> {
+/** What cuts a stream short: `frames` answer deltas (and no Edit), `rows` rows in all; `hold` leaves the turn open. */
+type StreamLimits = { frames?: number; rows?: number; hold?: boolean; intervalMs?: number }
+/** How many streams have played: each takes its own message and call ids, so a second one on a thread folds into nothing of the first. */
+let streamPlays = 0
+async function playStream(sessionId: string, cps: number, seconds: number, seed: number, markup = false, limits: StreamLimits = {}): Promise<void> {
   const run = { sessionId, stopped: false }
   streamRun = run
+  const play = ++streamPlays
+  const tag = play === 1 ? '' : `-${play}`
+  const interval = limits.intervalMs ?? 7
+  let frames = 0
+  let rows = 0
+  const emit = (event: AgentEvent): void => {
+    registry.append(sessionId, event)
+    rows++
+  }
+  const capped = (): boolean => (limits.frames != null && frames >= limits.frames) || (limits.rows != null && rows >= limits.rows)
   const live = (): boolean => !run.stopped
   let s = seed >>> 0
   const rand = (): number => {
@@ -1765,26 +1810,26 @@ async function playStream(sessionId: string, cps: number, seconds: number, seed:
   }
   const cwd = repo
   const path = 'src/gateway/route.ts'
-  const answer = streamAnswer(Math.round(cps * seconds), markup)
+  const answer = streamAnswer(Math.max(Math.round(cps * seconds), (limits.frames ?? limits.rows ?? 0) * 5), markup)
   try {
-    registry.append(sessionId, { type: 'user-text', text: 'Explain the gateway in detail' })
-    registry.append(sessionId, { type: 'status', status: 'running' })
+    emit({ type: 'user-text', text: 'Explain the gateway in detail' })
+    emit({ type: 'status', status: 'running' })
     // 1. thinking for 1.5 s
     const thought = 'Two listeners, one headroom store, and the warm harness in front: describe each, then the routing.'
     for (let i = 0; i < 10 && live(); i++) {
-      registry.append(sessionId, { type: 'thinking', text: thought.slice(Math.floor((i * thought.length) / 10), Math.floor(((i + 1) * thought.length) / 10)), delta: true, msgId: 'st-think', blockIndex: 0 })
+      emit({ type: 'thinking', text: thought.slice(Math.floor((i * thought.length) / 10), Math.floor(((i + 1) * thought.length) / 10)), delta: true, msgId: `st-think${tag}`, blockIndex: 0 })
       await sleep(150)
     }
     if (!live()) return
-    registry.append(sessionId, { type: 'thinking', text: thought, delta: false, msgId: 'st-think', blockIndex: 0 })
+    emit({ type: 'thinking', text: thought, delta: false, msgId: `st-think${tag}`, blockIndex: 0 })
     const started = Date.now()
     // 2. the answer, bursty
-    const answerLoop = async (): Promise<void> => {
+    const answerLoop = async (): Promise<number> => {
       let at = 0
       let owed = 0
       let nextStall = 2_000
       let longStalled = false
-      while (at < answer.length && live()) {
+      while (at < answer.length && live() && !capped()) {
         const elapsed = Date.now() - started
         if (!longStalled && elapsed >= 6_000) {
           longStalled = true
@@ -1796,14 +1841,19 @@ async function playStream(sessionId: string, cps: number, seconds: number, seed:
         owed += (cps * 7) / 1000
         const chars = Math.min(5, Math.max(1, Math.round(owed * (0.5 + rand()))))
         owed -= chars
-        registry.append(sessionId, { type: 'assistant-text', text: answer.slice(at, at + chars), delta: true, msgId: 'st-answer', blockIndex: 0 })
+        emit({ type: 'assistant-text', text: answer.slice(at, at + chars), delta: true, msgId: `st-answer${tag}`, blockIndex: 0 })
         at += chars
-        await sleep(7)
+        frames++
+        await sleep(interval)
       }
+      return at
     }
     // 3 + 4. the growing edit and its live diff, from 4 s
     const editLoop = async (): Promise<void> => {
+      // A stream cut by frames is the answer alone: the same work for every thread it plays into.
+      if (limits.frames != null || limits.hold) return
       await sleep(Math.max(0, 4_000 - (Date.now() - started)))
+      if (capped()) return
       const oldString = 'export const route = (req: Request) => forward(req)'
       const lines: string[] = []
       let diff = ''
@@ -1811,23 +1861,53 @@ async function playStream(sessionId: string, cps: number, seconds: number, seed:
         for (let i = 0; i < 12; i++) lines.push(`  const step${lines.length + 1} = await forward(req, { hop: ${lines.length + 1} })`)
         diff = `@@ -1,1 +1,${lines.length + 1} @@\n-${oldString}\n+export const route = async (req: Request) => {\n${lines.map((l) => '+' + l).join('\n')}\n`
         const filePath = push === 0 ? 'src/ga' : push === 1 ? 'src/gateway/ro' : path
-        registry.append(sessionId, { type: 'tool-call', callId: 'st-edit', name: 'Edit', input: { file_path: filePath, old_string: oldString, new_string: `export const route = async (req: Request) => {\n${lines.join('\n')}` }, partial: true })
+        emit({ type: 'tool-call', callId: `st-edit${tag}`, name: 'Edit', input: { file_path: filePath, old_string: oldString, new_string: `export const route = async (req: Request) => {\n${lines.join('\n')}` }, partial: true })
         emitLiveEdit({ push: 'live-edit', cwd, sessionIds: [sessionId], edit: { path, kind: 'changed', adds: lines.length, dels: 3, diff, settled: push === 34 || undefined, ts: Date.now() } })
         await sleep(100)
       }
       if (!live()) return
       const previewLines = [{ kind: 'del' as const, number: 1, text: oldString }, { kind: 'add' as const, number: 1, text: 'export const route = async (req: Request) => {' }, ...lines.map((text, i) => ({ kind: 'add' as const, number: i + 2, text }))]
-      registry.append(sessionId, { type: 'tool-call', callId: 'st-edit', name: 'Edit', input: { file_path: path, old_string: oldString, new_string: `export const route = async (req: Request) => {\n${lines.join('\n')}` }, preview: { kind: 'write', path, fileName: 'route.ts', additions: 420, deletions: 3, lines: previewLines } })
-      registry.append(sessionId, { type: 'tool-result', callId: 'st-edit', output: `The file ${path} has been updated.`, isError: false })
+      emit({ type: 'tool-call', callId: `st-edit${tag}`, name: 'Edit', input: { file_path: path, old_string: oldString, new_string: `export const route = async (req: Request) => {\n${lines.join('\n')}` }, preview: { kind: 'write', path, fileName: 'route.ts', additions: 420, deletions: 3, lines: previewLines } })
+      emit({ type: 'tool-result', callId: `st-edit${tag}`, output: `The file ${path} has been updated.`, isError: false })
     }
-    await Promise.all([answerLoop(), editLoop()])
-    if (!live()) return
-    // 5. the final row, turn-complete, idle
-    registry.append(sessionId, { type: 'assistant-text', text: answer, delta: false, msgId: 'st-answer', blockIndex: 0 })
-    registry.append(sessionId, { type: 'turn-complete', costUsd: 0.2, inputTokens: 6_000, outputTokens: 1_200 })
-    registry.append(sessionId, { type: 'status', status: 'idle' })
+    const [said] = await Promise.all([answerLoop(), editLoop()])
+    if (!live() || limits.hold) return
+    // 5. the final row (what was said, when the stream was cut short), turn-complete, idle
+    emit({ type: 'assistant-text', text: answer.slice(0, said), delta: false, msgId: `st-answer${tag}`, blockIndex: 0 })
+    emit({ type: 'turn-complete', costUsd: 0.2, inputTokens: 6_000, outputTokens: 1_200 })
+    emit({ type: 'status', status: 'idle' })
   } finally {
     if (streamRun === run) streamRun = null
+  }
+}
+
+// ── the host's other traffic (POST /load) ───────────────────────────────
+// What a busy host sends a phone that is looking at one thread: metas for
+// sessions it does not show, events into threads it has not opened, a
+// sibling's status. On a 50 ms tick: one delta into one of six load threads
+// (20 a second), a context level on one of the twelve every other tick (10
+// metas a second), and with `children` a delta into each of the perf
+// master's eight children. The sibling runs from 2 s in until the end.
+let loadRun: { stopped: boolean } | null = null
+let loadPlays = 0
+async function playLoad(seconds: number, children: boolean): Promise<void> {
+  const run = { stopped: false }
+  loadRun = run
+  const play = ++loadPlays
+  const end = Date.now() + seconds * 1_000
+  const flip = setTimeout(() => registry.markStatusForProof(PERF_SIBLING, 'running'), 2_000)
+  try {
+    for (let tick = 0; Date.now() < end && !run.stopped; tick++) {
+      const quiet = PERF_LOAD[tick % 6]!
+      registry.append(quiet, { type: 'assistant-text', text: ` w${tick}`, delta: true, msgId: `load-${play}-${tick % 6}`, blockIndex: 0 })
+      if (tick % 2 === 0) registry.append(PERF_LOAD[(tick / 2) % PERF_LOAD.length]!, { type: 'context', tokens: 10_000 + tick * 10, window: 200_000 })
+      if (children) for (const [i, child] of PERF_CHILDREN.entries()) registry.append(child, { type: 'assistant-text', text: ` c${tick}`, delta: true, msgId: `load-${play}-child-${i}`, blockIndex: 0 })
+      await sleep(50)
+    }
+  } finally {
+    clearTimeout(flip)
+    registry.markStatusForProof(PERF_SIBLING, 'idle')
+    if (loadRun === run) loadRun = null
   }
 }
 
@@ -1995,8 +2075,17 @@ const control = createServer((req, res) => {
         // A bursty streaming turn into a thread; one at a time.
         if (streamRun) return answer(409, { error: `a stream is running on ${streamRun.sessionId}` })
         const sessionId = String(body.sessionId ?? THREAD_STREAM)
-        void playStream(sessionId, Number(body.cps ?? 300), Number(body.seconds ?? 12), Number(body.seed ?? 1), body.markup === true).catch((err) => console.error('[stream]', err))
+        const count = (value: unknown): number | undefined => (value == null ? undefined : Number(value))
+        const limits: StreamLimits = { frames: count(body.frames), rows: count(body.rows), hold: body.hold === true, intervalMs: count(body.intervalMs) }
+        void playStream(sessionId, Number(body.cps ?? 300), Number(body.seconds ?? 12), Number(body.seed ?? 1), body.markup === true, limits).catch((err) => console.error('[stream]', err))
         return answer(200, { started: sessionId })
+      }
+      case '/load': {
+        // The perf fixtures' other traffic; one at a time.
+        if (process.env.TC_TEST_PERF_SEEDS !== '1') return answer(400, { error: 'the load needs the perf fixtures (TC_TEST_PERF_SEEDS=1)' })
+        if (loadRun) return answer(409, { error: 'a load is playing' })
+        void playLoad(Number(body.seconds ?? 10), body.children === true).catch((err) => console.error('[load]', err))
+        return answer(200, { started: true })
       }
       case '/scenario': {
         // The desktop soak's no-jerk timeline, as host events at real speed; one at a time.

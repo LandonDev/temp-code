@@ -968,6 +968,7 @@ public final class EnvironmentClient {
         case .events(let value):
             guard threads[value.sessionId] != nil else { return }
             if subscriptions.hold(value.sessionId, rows: value.rows) { return }
+            PerfCounters.mark(.batch)
             append(value.sessionId, rows: value.rows)
             threads[value.sessionId]?.isLive = true
             try? await cache.store(environment.id, sessionId: value.sessionId, rows: value.rows)
@@ -989,6 +990,7 @@ public final class EnvironmentClient {
             // thread's fold, onto its running edit row; memory only, as on the desktop.
             for item in value.items {
                 for sessionId in item.sessionIds where threads[sessionId] != nil {
+                    PerfCounters.bump(.threadPublishes)
                     threads[sessionId]!.fold.applyLiveEdit(item.edit)
                 }
             }
@@ -1041,7 +1043,10 @@ public final class EnvironmentClient {
         let sorted = byId.values.sorted { ($0.updatedAt, $0.id) > ($1.updatedAt, $1.id) }
         // A list that did not change in order or membership is not republished:
         // a catch-up that confirms what was already true moves nothing.
-        if sorted != sessions { publishList { sessions = sorted } }
+        if sorted != sessions {
+            publishList { sessions = sorted }
+            PerfCounters.bump(.sessionPublishes)
+        }
         if readMoved { refreshSeen() }
         reindexPlacing(metas, gone: [])
         // The thread on screen is seen as of this meta: on return its rows
@@ -1081,6 +1086,7 @@ public final class EnvironmentClient {
     private func removeSessions(_ ids: [String]) {
         let gone = Set(ids)
         publishList { sessions.removeAll { gone.contains($0.id) } }
+        PerfCounters.bump(.sessionPublishes)
         reindexPlacing([], gone: gone)
         for id in ids {
             quietly { threads[id] = nil }
@@ -1100,6 +1106,7 @@ public final class EnvironmentClient {
     /// Publishes a change to one thread with the view's motion only when that
     /// thread is on screen; elsewhere it lands with animations off.
     private func publish(thread id: String, _ body: () -> Void) {
+        PerfCounters.bump(.threadPublishes)
         if visibleThread == id { body() } else { quietly(body) }
     }
 
@@ -1118,6 +1125,7 @@ public final class EnvironmentClient {
             state.rows = page.rows
             state.moreBefore = page.moreBefore
             state.refold()
+            PerfCounters.bump(.refolds)
             Self.settle(&state, rows: page.rows)
             state.isLoading = false
             state.isLive = true
@@ -1146,10 +1154,13 @@ public final class EnvironmentClient {
     private func append(_ id: String, rows: [EventRow]) {
         guard threads[id] != nil, !rows.isEmpty else { return }
         let trim = !needsBoardHistory(id)
+        PerfCounters.bump(.batches)
+        let refolds = threads[id]!.refolds
         publish(thread: id) {
             threads[id]!.append(rows, trim: trim)
             Self.settle(&threads[id]!, rows: rows)
         }
+        PerfCounters.bump(.refolds, by: threads[id]!.refolds - refolds)
     }
 
     /// What this device did optimistically, confirmed by the host's rows: the
@@ -1166,6 +1177,7 @@ public final class EnvironmentClient {
         let fresh = rows.filter { !known.contains($0.seq) }
         state.rows = (fresh + state.rows).sorted { ($0.ephemeral == true ? Int.max : $0.seq) < ($1.ephemeral == true ? Int.max : $1.seq) }
         state.refold()
+        PerfCounters.bump(.refolds)
         if let moreBefore {
             state.moreBefore = moreBefore
         } else if fresh.isEmpty {
