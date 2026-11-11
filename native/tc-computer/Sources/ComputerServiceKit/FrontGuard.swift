@@ -168,6 +168,8 @@ public struct FrontGuard: Equatable, Sendable {
         case app(Int32)
         case window(pid: Int32, window: UInt32)
         case order(Int32)
+
+        var isWindow: Bool { if case .window = self { true } else { false } }
     }
 
     public private(set) var watched: WatchedApp
@@ -185,6 +187,9 @@ public struct FrontGuard: Equatable, Sendable {
     public private(set) var pauses: Set<FrontPause> = []
     /// the watched app activated during a pause and was still front at its end
     private var stolenWhilePaused: Double?
+    /// this steal's undo already raised the person's window: a window undo starts with that raise, and an app
+    /// restore that brought the app back on another window raises it once
+    private var windowRaised = false
 
     public init(recorded: FrontRecord?, watched: WatchedApp, at: Double, watchMs: Int = ComputerDefaults.Service.frontWatchMs) {
         self.recorded = recorded
@@ -279,8 +284,9 @@ public struct FrontGuard: Equatable, Sendable {
         switch phase {
         case .restoring(let undo, let stealAt, _), .pending(let undo, let stealAt):
             if pid == recorded?.pid {
-                // its own restore, told by NSWorkspace after it ran
-                if case .app = undo { settle(.restored, ms: at - stealAt) }
+                // its own restore, told by NSWorkspace after it ran; with the person's window recorded the
+                // restore is over once a sample shows that window focused, since an app may come back on another
+                if case .app = undo { return appBack(stealAt: stealAt, at: at) }
                 return .none
             }
             if isWatched, let recorded { return steal(.app(recorded.pid), at: at) }
@@ -335,6 +341,7 @@ public struct FrontGuard: Equatable, Sendable {
             return .hide(pid)
         }
         phase = .pending(undo, stealAt: at)
+        windowRaised = undo.isWindow
         return decide ? decision(undo) : .none
     }
 
@@ -376,12 +383,33 @@ public struct FrontGuard: Equatable, Sendable {
 
     // MARK: Time
 
+    /// The person's app is front again after an app restore: restored when no window of theirs was recorded,
+    /// else the restore goes on as their window's, confirmed by the next sample.
+    private mutating func appBack(stealAt: Double, at: Double) -> FrontDecision {
+        guard case .restoring(.app(let person), _, let startedAt) = phase, let own = recorded?.window, recorded?.pid == person else {
+            settle(.restored, ms: at - stealAt)
+            return .none
+        }
+        phase = .restoring(.window(pid: person, window: own), stealAt: stealAt, startedAt: startedAt)
+        return .none
+    }
+
     private mutating func sample(front: Int32?, window: UInt32?, above: Bool, at: Double) -> FrontDecision {
         guard case .restoring(let undo, let stealAt, let startedAt) = phase else { return .none }
+        if case .app(let person) = undo, front == person, recorded?.window != nil {
+            _ = appBack(stealAt: stealAt, at: at)
+            return sample(front: front, window: window, above: above, at: at)
+        }
         let back: Bool = switch undo {
         case .app(let person): front == person
-        case .window(let pid, let own): front == pid && window == own
+        // an unreadable focus (nil) is the app's own to keep: nothing says the window moved
+        case .window(let pid, let own): front == pid && (window == own || window == nil)
         case .order: !above
+        }
+        if !back, case .window(let pid, let own) = undo, front == pid, !windowRaised {
+            // the app came back on another window: the person's own is raised once, inside the same bound
+            windowRaised = true
+            return .raiseWindow(pid: pid, window: own)
         }
         if back {
             settle(.restored, ms: at - stealAt)

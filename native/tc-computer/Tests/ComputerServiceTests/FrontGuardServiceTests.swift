@@ -71,6 +71,39 @@ private let session = SessionChange(frontmost: .init(), pointer: .init(before: [
         #expect(rig.lines.notifications("apps/frontRestored").isEmpty, "the result told it")
     }
 
+    @Test func aRestoreThatBringsTheirAppBackOnAnotherWindowRaisesTheirs() async throws {
+        // Finder, put back by AXFrontmost, may focus another of its windows: the person's own is raised
+        let rig = ServiceRig()
+        rig.front.set(focused: 11, of: 100)
+        rig.windows.set(100, [window(11, "Mine"), window(12, "Other")])
+        rig.workspace.launchDelay = .milliseconds(250)
+        rig.workspace.onLaunch = { [rig] pid in
+            rig.front.set(focused: 12, of: 100)
+            rig.activate(pid, bundleId: "com.example.Notes")
+        }
+        await rig.ready()
+        let result = try #require(await rig.call("apps.launch", #"{"app":"Notes","session":"s1"}"#).result)
+        #expect(result["front"]?["restored"]?.stringValue == "restored")
+        #expect(rig.front.calls == ["frontmost 100", "raise 100 11"])
+        #expect(rig.front.focusedWindow(pid: 100) == 11)
+    }
+
+    @Test func aRestoreLeavesTheirFocusWhenTheirRecordedWindowClosed() async throws {
+        let rig = ServiceRig()
+        rig.front.set(focused: 11, of: 100)
+        rig.windows.set(100, [window(11, "Mine"), window(12, "Other")])
+        rig.workspace.launchDelay = .milliseconds(250)
+        rig.workspace.onLaunch = { [rig] pid in
+            rig.windows.set(100, [window(12, "Other")])
+            rig.front.set(focused: 12, of: 100)
+            rig.activate(pid, bundleId: "com.example.Notes")
+        }
+        await rig.ready()
+        let result = try #require(await rig.call("apps.launch", #"{"app":"Notes","session":"s1"}"#).result)
+        #expect(result["front"]?["restored"]?.stringValue == "restored")
+        #expect(rig.front.calls == ["frontmost 100"], "nothing of theirs to raise")
+    }
+
     @Test func aStealAfterTheResultIsToldAsANotification() async throws {
         let rig = ServiceRig()
         await rig.ready()

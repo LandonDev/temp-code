@@ -23,6 +23,7 @@ private func stealAndRestore(_ g: inout FrontGuard, at: Double) {
     #expect(g.handle(activated(stealer, at: at)) == .restore(person))
     #expect(g.handle(.restoreStarted(at: at + 5)) == .none)
     #expect(g.handle(activated(person, at: at + 60)) == .none)
+    #expect(g.handle(.sample(front: person, window: 11, above: false, at: at + 60)) == .none)
 }
 
 @Suite struct FrontGuardStealTests {
@@ -61,6 +62,60 @@ private func stealAndRestore(_ g: inout FrontGuard, at: Double) {
         #expect(g.phase == .idle)
     }
 
+    @Test func theirAppBackIsNotEnoughUntilTheirWindowIsFocused() {
+        var g = launch()
+        _ = g.handle(activated(stealer, at: 1_000))
+        _ = g.handle(.restoreStarted(at: 1_005))
+        #expect(g.handle(activated(person, at: 1_040)) == .none)
+        #expect(g.report.restored == nil, "the app is back; its window is not seen yet")
+        #expect(g.handle(.sample(front: person, window: 11, above: false, at: 1_060)) == .none)
+        #expect(g.report == FrontReport(raised: true, restored: .restored, ms: 60))
+        #expect(g.phase == .idle)
+    }
+
+    @Test func theirAppBackOnAnotherWindowRaisesTheirsOnce() {
+        var g = launch()
+        _ = g.handle(activated(stealer, at: 1_000))
+        _ = g.handle(.restoreStarted(at: 1_005))
+        _ = g.handle(activated(person, at: 1_040))
+        #expect(g.handle(.sample(front: person, window: 12, above: false, at: 1_060)) == .raiseWindow(pid: person, window: 11))
+        #expect(g.handle(.sample(front: person, window: 12, above: false, at: 1_080)) == .none, "raised once")
+        #expect(g.handle(.sample(front: person, window: 11, above: false, at: 1_100)) == .none)
+        #expect(g.report == FrontReport(raised: true, restored: .restored, ms: 100))
+    }
+
+    @Test func aSampleAloneFindsTheirAppOnAnotherWindow() {
+        var g = launch()
+        _ = g.handle(activated(stealer, at: 1_000))
+        _ = g.handle(.restoreStarted(at: 1_005))
+        #expect(g.handle(.sample(front: person, window: 12, above: false, at: 1_025)) == .raiseWindow(pid: person, window: 11))
+        #expect(g.handle(.sample(front: person, window: 11, above: false, at: 1_045)) == .none)
+        #expect(g.report == FrontReport(raised: true, restored: .restored, ms: 45))
+    }
+
+    @Test func theirWindowNeverComingBackFailsAfterTheBound() {
+        var g = launch()
+        _ = g.handle(activated(stealer, at: 1_000))
+        _ = g.handle(.restoreStarted(at: 1_000))
+        _ = g.handle(activated(person, at: 1_030))
+        #expect(g.handle(.sample(front: person, window: 12, above: false, at: 1_050)) == .raiseWindow(pid: person, window: 11))
+        #expect(g.handle(.sample(front: person, window: 12, above: false, at: 1_401)) == .none)
+        #expect(g.report == FrontReport(raised: true, restored: .failed))
+    }
+
+    @Test func anUnreadableFocusOrNoRecordedWindowIsTheAppAlone() {
+        var g = launch()
+        _ = g.handle(activated(stealer, at: 1_000))
+        _ = g.handle(.restoreStarted(at: 1_005))
+        #expect(g.handle(.sample(front: person, window: nil, above: false, at: 1_050)) == .none)
+        #expect(g.report == FrontReport(raised: true, restored: .restored, ms: 50))
+        var bare = FrontGuard(recorded: FrontRecord(pid: person), watched: steal, at: 0)
+        _ = bare.handle(activated(stealer, at: 1_000))
+        _ = bare.handle(.restoreStarted(at: 1_005))
+        _ = bare.handle(activated(person, at: 1_060))
+        #expect(bare.report == FrontReport(raised: true, restored: .restored, ms: 60))
+    }
+
     @Test func theThirdStealHidesTheApp() {
         var g = launch()
         stealAndRestore(&g, at: 1_000)
@@ -91,6 +146,7 @@ private func stealAndRestore(_ g: inout FrontGuard, at: Double) {
         #expect(g.handle(.tick(at: 1_200)) == .restore(person))
         _ = g.handle(.restoreStarted(at: 1_200))
         _ = g.handle(activated(person, at: 1_230))
+        _ = g.handle(.sample(front: person, window: 11, above: false, at: 1_230))
         #expect(g.report == FrontReport(raised: true, restored: .restored, ms: 230))
     }
 
@@ -308,6 +364,7 @@ private func stealAndRestore(_ g: inout FrontGuard, at: Double) {
         #expect(g.handle(.tick(at: 1_600)) == .restore(person))
         _ = g.handle(.restoreStarted(at: 1_600))
         _ = g.handle(activated(person, at: 1_650))
+        _ = g.handle(.sample(front: person, window: 11, above: false, at: 1_650))
         #expect(g.report == FrontReport(raised: true, restored: .restored, ms: 650))
     }
 
@@ -374,6 +431,7 @@ private func stealAndRestore(_ g: inout FrontGuard, at: Double) {
         _ = g.handle(.restoreStarted(at: 960))
         #expect(g.handle(.tick(at: 1_000)) == .none)
         _ = g.handle(activated(person, at: 1_010))
+        _ = g.handle(.sample(front: person, window: 11, above: false, at: 1_010))
         #expect(g.handle(.tick(at: 1_100)) == .end)
         #expect(g.report.restored == .restored)
     }

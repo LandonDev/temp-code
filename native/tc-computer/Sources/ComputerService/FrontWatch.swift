@@ -85,7 +85,8 @@ final class FrontWatch: Stoppable, @unchecked Sendable {
     func begin(_ watched: WatchedApp, session: String?, name: String) -> Watch {
         queue.sync {
             let now = source.now()
-            let record = source.frontmost().map { FrontRecord(pid: $0, window: $0 == watched.pid ? source.focusedWindow(pid: $0) : nil) }
+            // the person's focused window too, so a restore puts back their window, not only their app
+            let record = source.frontmost().map { FrontRecord(pid: $0, window: source.focusedWindow(pid: $0)) }
             for (id, entry) in entries where !entry.state.isOver && FrontWatch.same(entry.state.watched, watched) {
                 handle(id, .endBy(now))
                 handle(id, .tick(at: now))
@@ -266,8 +267,7 @@ final class FrontWatch: Stoppable, @unchecked Sendable {
         let now = source.now()
         let front = lift == .reread ? source.frontmost() : nil
         for id in entries.keys.sorted() {
-            let watched = entries[id]?.state.watched.pid
-            let record = front.map { FrontRecord(pid: $0, window: $0 == watched ? source.focusedWindow(pid: $0) : nil) }
+            let record = front.map { FrontRecord(pid: $0, window: source.focusedWindow(pid: $0)) }
             handle(id, .resumed(.request, front: record, at: now))
         }
         sweep()
@@ -321,8 +321,9 @@ final class FrontWatch: Stoppable, @unchecked Sendable {
                 var window: UInt32?
                 var above = false
                 switch undo {
-                case .app: break
-                case .window(let pid, _): window = source.focusedWindow(pid: pid)
+                case .app(let person):
+                    if let own = state.recorded?.window, state.recorded?.pid == person { window = focus(person, recorded: own) }
+                case .window(let pid, let own): window = focus(pid, recorded: own)
                 case .order(let person): above = state.watched.pid.map { source.orderedAbove(pid: $0, over: person) } ?? false
                 }
                 handle(id, .sample(front: source.frontmost(), window: window, above: above, at: now))
@@ -330,6 +331,14 @@ final class FrontWatch: Stoppable, @unchecked Sendable {
             if entries.values.contains(where: { if case .restoring = $0.state.phase { true } else { false } }) { poll(after: timing.frontPoll) }
             sweep()
         }
+    }
+
+    /// The app's focused window during a restore; the recorded window itself when it has closed, since then
+    /// the focus the app chose is the person's to keep and there is nothing to put back.
+    private func focus(_ pid: Int32, recorded own: UInt32) -> UInt32? {
+        let focused = source.focusedWindow(pid: pid)
+        guard focused != own, let list = try? windows.list(pid: pid) else { return focused }
+        return list.contains { UInt32(truncatingIfNeeded: $0.id) == own } ? focused : own
     }
 
     /// Drops a watch once it is over, its result went out and nothing waits on it.
