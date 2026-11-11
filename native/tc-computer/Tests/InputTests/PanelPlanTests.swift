@@ -118,7 +118,7 @@ private func window(goTo: Bool = false, replace: Bool = false, okID: String? = P
 }
 
 /// Plays the flow against what a scripted window would show after each move.
-private struct Rig {
+private struct PanelRig {
     var flow: SavePanelFlow
     var now = 0
     var moves: [PanelMove] = []
@@ -145,7 +145,7 @@ private let noPanel = PanelNode(role: "AXWindow", children: [PanelNode(role: "AX
 
 @Suite struct SavePanelFlowTests {
     @Test func theWholeFlowInItsOrder() {
-        var r = Rig()
+        var r = PanelRig()
         let menu = [MenuItemFacts(title: "New"), MenuItemFacts(title: "Save…", enabled: true), MenuItemFacts(title: "Save As…", enabled: true)]
         #expect(r.step(seen(noPanel, menu: menu)) == .pressMenu(["File", "Save As…"], atFront: false))
         #expect(r.step(seen(noPanel)) == .read(afterMs: InputTiming.panelPollMs))
@@ -161,15 +161,15 @@ private let noPanel = PanelNode(role: "AXWindow", children: [PanelNode(role: "AX
     }
 
     @Test func anOpenPanelIsUsedAsItIs() {
-        var r = Rig()
+        var r = PanelRig()
         #expect(r.step(seen(window())) == .insert(.nameField, "/", selectAll: true))
     }
 
     @Test func saveForAWindowWithNoFileAndNothingElse() {
-        var r = Rig()
+        var r = PanelRig()
         let menu = [MenuItemFacts(title: "New"), MenuItemFacts(title: "Save…")]
         #expect(r.step(seen(noPanel, menu: menu)) == .pressMenu(["File", "Save…"], atFront: false))
-        var withFile = Rig()
+        var withFile = PanelRig()
         let m = withFile.step(seen(noPanel, menu: menu, hasFile: true))
         guard case .fail(let e) = m else { Issue.record("\(m)"); return }
         #expect(e.kind == .actionUnsupported)
@@ -178,25 +178,25 @@ private let noPanel = PanelNode(role: "AXWindow", children: [PanelNode(role: "AX
 
     @Test func aDisabledItemGoesToFront() {
         let menu = [MenuItemFacts(title: "Save As…", enabled: false)]
-        var r = Rig()
+        var r = PanelRig()
         #expect(r.step(seen(noPanel, menu: menu)) == .pressMenu(["File", "Save As…"], atFront: true))
         #expect(r.flow.tier == .front)
-        var noFront = Rig(frontAllowed: false)
+        var noFront = PanelRig(frontAllowed: false)
         #expect(noFront.step(seen(noPanel, menu: menu)) == .needsFront(menu: ["File", "Save As…"]))
-        var active = Rig(appActive: true)
+        var active = PanelRig(appActive: true)
         guard case .fail(let e) = active.step(seen(noPanel, menu: menu)) else { Issue.record("no failure"); return }
         #expect(e.message == "File › Save As… is disabled." && e.menu == ["File", "Save As…"])
     }
 
     @Test func theGoToConfirmNeedsFront() {
-        var r = Rig(frontAllowed: false)
+        var r = PanelRig(frontAllowed: false)
         #expect(r.step(seen(window(goTo: true), path: "/")) == .insert(.pathField, "/Users/me/run", selectAll: true))
         #expect(r.step(seen(window(goTo: true), path: "/Users/me/run")) == .needsFront(menu: nil))
         #expect(!r.flow.usedFront)
     }
 
     @Test func readBacksRetryOnceThenCancelAndFail() {
-        var r = Rig()
+        var r = PanelRig()
         _ = r.step(seen(window(goTo: true), path: "/"))
         #expect(r.step(seen(window(goTo: true), path: "/Users/me/ru")) == .insert(.pathField, "/Users/me/run", selectAll: true))
         #expect(r.step(seen(window(goTo: true), path: "/Users/me/ru")) == .press(.cancel))
@@ -206,7 +206,7 @@ private let noPanel = PanelNode(role: "AXWindow", children: [PanelNode(role: "AX
     }
 
     @Test func theFolderMustShowInTheWherePopup() {
-        var r = Rig()
+        var r = PanelRig()
         _ = r.step(seen(window(goTo: true), path: "/"))
         _ = r.step(seen(window(goTo: true), path: "/Users/me/run"))
         #expect(r.step(seen(window(), whereValue: "Documents")) == .press(.cancel))
@@ -215,7 +215,7 @@ private let noPanel = PanelNode(role: "AXWindow", children: [PanelNode(role: "AX
     }
 
     @Test func theNameIsSetAfterTheFolderAndReadBack() {
-        var r = Rig()
+        var r = PanelRig()
         _ = r.step(seen(window(goTo: true), path: "/"))
         _ = r.step(seen(window(goTo: true), path: "/Users/me/run"))
         #expect(r.step(seen(window(), whereValue: "run")) == .setValue(.nameField, "note.txt"))
@@ -225,7 +225,7 @@ private let noPanel = PanelNode(role: "AXWindow", children: [PanelNode(role: "AX
     }
 
     @Test func aReplaceAlertIsAnsweredOnlyWithReplace() {
-        var keep = Rig()
+        var keep = PanelRig()
         keep.flow.stage = .save
         #expect(keep.step(seen(window())) == .press(.ok))
         #expect(keep.step(seen(window(replace: true))) == .press(.replaceCancel))
@@ -234,7 +234,7 @@ private let noPanel = PanelNode(role: "AXWindow", children: [PanelNode(role: "AX
         #expect(e.kind == .fileExists)
         #expect(e.message == "~/run/note.txt exists; pass replace to overwrite it.")
 
-        var over = Rig(replace: true)
+        var over = PanelRig(replace: true)
         over.flow.stage = .save
         #expect(over.step(seen(window())) == .press(.ok))
         #expect(over.step(seen(window(replace: true))) == .press(.replace))
@@ -242,7 +242,7 @@ private let noPanel = PanelNode(role: "AXWindow", children: [PanelNode(role: "AX
     }
 
     @Test func waitsAreBounded() {
-        var r = Rig()
+        var r = PanelRig()
         _ = r.step(seen(noPanel, menu: [MenuItemFacts(title: "Save As…")]))
         r.now = InputTiming.panelOpenMaxMs
         guard case .fail(let e) = r.step(seen(noPanel)) else { Issue.record("no failure"); return }
@@ -251,7 +251,7 @@ private let noPanel = PanelNode(role: "AXWindow", children: [PanelNode(role: "AX
     }
 
     @Test func aPanelThatClosesEarlySavedNothing() {
-        var r = Rig()
+        var r = PanelRig()
         _ = r.step(seen(window()))
         guard case .fail(let e) = r.step(seen(noPanel)) else { Issue.record("no failure"); return }
         #expect(e.kind == .notCommitted)

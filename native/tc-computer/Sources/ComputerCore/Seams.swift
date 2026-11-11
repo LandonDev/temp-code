@@ -92,6 +92,10 @@ public struct InputOutcome: Sendable {
     /// the step's effect when Input read it itself (§25.7: a web checkbox's or radio's value read back);
     /// the shell puts it on the step in place of the smart wait's
     public var effect: StepEffect?
+    /// a `front` step's hold (§25.4); the shell puts it on the step as `front`
+    public var front: FrontHold?
+    /// what a step that saves (`save_as`) proved on disk; the shell puts it on the step as `disk`
+    public var disk: DiskChange?
 
     public init(tier: Tier?, via: InputVia?, clipboard: ClipboardOutcome?, cursor: [Int]?, session: SessionChange? = nil, lastInputAt: UInt64? = nil, clickAt: [Int]? = nil, on: String? = nil, effect: StepEffect? = nil) {
         self.tier = tier
@@ -103,6 +107,13 @@ public struct InputOutcome: Sendable {
         self.clickAt = clickAt
         self.on = on
         self.effect = effect
+    }
+
+    /// The same outcome with a hold's report.
+    public func with(front: FrontHold?) -> InputOutcome {
+        var out = self
+        out.front = front
+        return out
     }
 }
 
@@ -296,6 +307,11 @@ public struct InputTarget {
     /// the reader's index and line for a live element, nil when the model's latest read never listed it:
     /// `focus_moved` names the focused element by them
     public let briefOf: (AXUIElement) -> ElementBrief?
+    /// whether the app's AX tree changed since a tick (mach_absolute_time): a `front` hold's settle signal (§25.2)
+    public var changedSince: (@Sendable (UInt64) -> Bool)?
+    /// whether the step is expected to commit to disk before it acts (CommitRule.expectsBefore, decision 12);
+    /// the shell's, since Input does not know the commit rule
+    public var commitExpected: (@Sendable (ComputerAction) -> Bool)?
 
     public init(pid: pid_t, windowID: UInt32, windowFrame: ComputerProtocol.Rect, window: AXUIElement, space: CoordinateSpace, element: ResolvedElement?, startElement: ResolvedElement?, cursor: [Int]?, cancelled: @escaping @Sendable () -> Bool = { false }, pasteQuietMs: Int? = nil, ignored: IgnoredRoutes? = nil, callToken: Int? = nil, personIdleMs: Int? = nil, chromium: Bool = false, expectFocus: ResolvedElement? = nil, briefOf: @escaping (AXUIElement) -> ElementBrief? = { _ in nil }) {
         self.pid = pid

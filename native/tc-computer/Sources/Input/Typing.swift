@@ -43,9 +43,12 @@ extension InputEngine {
                 }
             }
         }
-        let eventTiers = tiers.filter { $0 == .process || $0 == .session }
-        guard let tier = held ?? eventTiers.first, tiers.contains(tier) else {
-            throw ComputerFailure(ComputerError(kind: .needsTier, message: "type needs the process tier here, which is not allowed now.", needed: held ?? .process))
+        // the route's own tier (Sol S5): an AX rung that did not finish falls through to the next route
+        // the plan chose, so `front` keys run inside their hold and `session` keys through its driver
+        if chosen == .ax, held == nil { throw RouteFellThrough() }
+        let tier = held ?? chosen
+        guard tiers.contains(tier) else {
+            throw ComputerFailure(ComputerError(kind: .needsTier, message: "type needs the \(tier.rawValue) tier here, which is not allowed now.", needed: tier))
         }
 
         // rung 3: keys; rung 4: paste, plain text; inside a session step the focus is checked again after activation (§25.9)
@@ -124,7 +127,7 @@ extension InputEngine {
             pasteItem = menuItem(KeyCombo(modifiers: .command, key: .character("v")), pid: pid)
             if let (_, m) = pasteItem, !m.enabled {
                 if tier == .process, NSRunningApplication(processIdentifier: pid)?.isActive != true {
-                    throw needsSessionForMenu(m.path, pid: pid)
+                    throw needsFrontForMenu(m.path, pid: pid)
                 }
                 throw ComputerFailure(ComputerError(kind: .actionUnsupported, message: "\(m.line) is disabled.", menu: m.path))
             }
@@ -146,9 +149,10 @@ extension InputEngine {
         return try core.paste(content, flow: flow, quietMs: target.pasteQuietMs, tier: tier, pid: pid, windowID: target.windowID, window: target.window, call: target.sessionCall, cancelled: target.cancelled, insert: insert, pressPaste: pressPaste, checks: checks, recheck: recheck, evidence: { evidence(dest()) })
     }
 
-    /// `needs_tier { needed: 'session', menu }`: a disabled item in an inactive app (§24.2).
-    func needsSessionForMenu(_ path: [String], pid: pid_t) -> ComputerFailure {
+    /// `needs_tier { needed: 'front', menu }`: a disabled item in an inactive app, which only activation
+    /// re-validates (§24.2, §25.3); the host offers `front`, then `session`.
+    func needsFrontForMenu(_ path: [String], pid: pid_t) -> ComputerFailure {
         let app = NSRunningApplication(processIdentifier: pid)?.localizedName ?? "the app"
-        return ComputerFailure(ComputerError(kind: .needsTier, message: "\(path.joined(separator: " › ")) is disabled while \(app) is in the background.", needed: .session, menu: path))
+        return ComputerFailure(ComputerError(kind: .needsTier, message: "\(path.joined(separator: " › ")) is disabled while \(app) is in the background.", needed: .front, menu: path))
     }
 }

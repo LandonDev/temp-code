@@ -19,6 +19,8 @@ private struct StepRun {
     var signature0: UInt64 = 0
     /// the step's effect as Input read it itself (§25.7: a web toggle's value read back); it stands in for the wait's
     var inputEffect: StepEffect?
+    /// the commit check begun before the step acted (§25.8), judged after its wait
+    var check: CommitCheck?
     /// the step failed or was cancelled
     var stops: Bool { if case .ok = step { return false } else { return true } }
 
@@ -29,6 +31,7 @@ private struct StepRun {
 private struct Performed: Sendable {
     let outcome: InputOutcome
     let signature0: UInt64
+    var check: CommitCheck?
     let element: ElementBrief?
     let returnedAt: UInt64
 }
@@ -154,11 +157,14 @@ extension ComputerService {
                 steps += notRun(actions, from: index + 1, first: .failed(FailedStep(index: index, action: action.action, error: Router.cancelledError)))
                 break
             }
-            var run = await step(index, action, target: target, tiers: tiers, maxEdge: observe?.maxEdge, pasteQuietMs: pasteQuietMs, call: call, ignored: ignored, ctx: ctx)
+            let next = index + 1 < actions.count ? actions[index + 1] : nil
+            var run = await step(index, action, target: target, tiers: tiers, maxEdge: observe?.maxEdge, pasteQuietMs: pasteQuietMs, call: call, ignored: ignored, next: next, ctx: ctx)
             let isLast = index == actions.count - 1
             if !run.stops && !isLast, let t0 = run.t0, case .ok(let ok) = run.step {
                 let waited = await waitAfter(target, options: stepWait ?? ComputerDefaults.Wait.step, t0: t0, signature0: run.signature0, pasteboard: WaitRule.readsPasteboard(action), cancel: ctx.cancel)
-                run.step = .ok(ok.with(effect: run.effect(waited.effect(thin: book.lastThin(session, pid: target.pid))), waited: waited.report))
+                var judged = ok.with(effect: run.effect(waited.effect(thin: book.lastThin(session, pid: target.pid))), waited: waited.report)
+                if let check = run.check, !ctx.cancel.isSet { judged = await committed(judged, check, target) }
+                run.step = .ok(judged)
             }
             steps.append(run.step)
             last = run
@@ -180,7 +186,9 @@ extension ComputerService {
             }
             if let at = steps.indices.last, case .ok(let ok) = steps[at] {
                 let effect = waited.effect(thin: book.lastThin(session, pid: target.pid), windowGone: windowGone)
-                steps[at] = .ok(ok.with(effect: last.effect(effect), waited: waited.report))
+                var judged = ok.with(effect: last.effect(effect), waited: waited.report)
+                if let check = last.check, !windowGone, waited.report.reason != .cancelled { judged = await committed(judged, check, target) }
+                steps[at] = .ok(judged)
             }
         }
         front.closing()
@@ -212,7 +220,7 @@ extension ComputerService {
     }
 
     /// One step: the shell's own pictures and wait, or Input.
-    private func step(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], maxEdge: Int?, pasteQuietMs: Int?, call: StepCall, ignored: IgnoredRoutes?, ctx: RequestContext) async -> StepRun {
+    private func step(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], maxEdge: Int?, pasteQuietMs: Int?, call: StepCall, ignored: IgnoredRoutes?, next: ComputerAction?, ctx: RequestContext) async -> StepRun {
         let thin = book.lastThin(target.session, pid: target.pid)
         switch action.action {
         case .screenshot, .zoom:
@@ -245,12 +253,12 @@ extension ComputerService {
                 return StepRun(step: failed(index, action, error, or: .windowNotFound))
             }
         default:
-            return await perform(index, action, target: target, tiers: tiers, pasteQuietMs: pasteQuietMs, call: call, ignored: ignored, ctx: ctx)
+            return await perform(index, action, target: target, tiers: tiers, pasteQuietMs: pasteQuietMs, call: call, ignored: ignored, next: next, ctx: ctx)
         }
     }
 
     /// Everything else, `cursor_position` included, goes to Input (shell §9.1 step 4).
-    private func perform(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], pasteQuietMs: Int?, call: StepCall, ignored: IgnoredRoutes?, ctx: RequestContext) async -> StepRun {
+    private func perform(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], pasteQuietMs: Int?, call: StepCall, ignored: IgnoredRoutes?, next: ComputerAction?, ctx: RequestContext) async -> StepRun {
         let pixel = await pixelWatch(target)
         let keepAlive = keepWatchAlive(target, while: pixel != nil)
         defer { keepAlive?.cancel() }
@@ -264,6 +272,9 @@ extension ComputerService {
         let pid = target.pid
         let windowID = target.windowID
         let expected = call.expectation(at: index)
+        // the commit check only for a host that reads it, and never for the cursor read
+        let checks = features.commit && action.action != .cursorPosition
+        let readDocument = documentReader
         do {
             let done = try await target.worker.run { state -> Performed in
                 guard let reader = state.reader, let window = state.windows[windowID] else {
@@ -273,15 +284,24 @@ extension ComputerService {
                 let start = try action.start_element.map { try reader.resolve($0) }
                 // §25.9: the focus the model's latest read showed, on the one step it binds; gone is `stale_element`
                 let expectFocus = try expected.map { try reader.resolve($0) }
-                let inputTarget = InputTarget(
+                var inputTarget = InputTarget(
                     pid: pid, windowID: windowID, windowFrame: info.frame, window: window, space: space,
                     element: element, startElement: start, cursor: cursor, cancelled: { flag.isSet }, pasteQuietMs: pasteQuietMs, ignored: ignored,
                     callToken: call.token, personIdleMs: call.personIdleMs,
                     chromium: call.chromium, expectFocus: expectFocus, briefOf: { [reader] in reader.brief(of: $0) }
                 )
+                // a front hold's settle: the app's tree changed after its last input (§25.2)
+                let changes = ChangeBox(signal: reader.changes)
+                inputTarget.changedSince = { changes.signal.lastChange > $0 }
+                var check: CommitCheck?
+                if checks {
+                    let context = CommitContext(action: action, element: element.map(CommitElement.of), menuPath: element.flatMap { InputEngine.menuItemPath($0.element) }, next: next)
+                    check = CommitCheck.begin(context, state: readDocument(window))
+                    if let expects = check?.expectsBefore { inputTarget.commitExpected = { _ in expects } }
+                }
                 let sig0 = reader.changes.signature()
                 let outcome = try box.input.perform(action, on: inputTarget, tiers: tiers)
-                return Performed(outcome: outcome, signature0: sig0, element: element?.brief, returnedAt: MachTime.now())
+                return Performed(outcome: outcome, signature0: sig0, check: check, element: element?.brief, returnedAt: MachTime.now())
             }
             let outcome = done.outcome
             if let cursor = outcome.cursor { book.setCursor(target.session, pid: target.pid, cursor) }
@@ -296,9 +316,9 @@ extension ComputerService {
                 effect: outcome.effect ?? WaitRule.skipped().effect(thin: false), element: done.element,
                 input: outcome.via.map { OkStep.Input(via: $0, clipboard: outcome.clipboard, on: outcome.on) },
                 cursor: outcome.cursor, text: isCursor ? outcome.cursor.map { "X=\($0[0]), Y=\($0[1])" } : nil,
-                session: outcome.session
+                session: outcome.session, front: outcome.front, disk: outcome.disk
             )
-            return StepRun(step: .ok(ok), t0: isCursor ? nil : (outcome.lastInputAt ?? done.returnedAt), signature0: done.signature0, inputEffect: outcome.effect)
+            return StepRun(step: .ok(ok), t0: isCursor ? nil : (outcome.lastInputAt ?? done.returnedAt), signature0: done.signature0, inputEffect: outcome.effect, check: done.check)
         } catch {
             let failure = ComputerService.failure(error, or: .actionUnsupported)
             // once per call, whether this step or the between-calls path tells it first
@@ -381,6 +401,26 @@ extension ComputerService {
         for (pid, holder) in held.all where holder == session {
             _ = try? await blocking { box.input.releaseHeld(pid: pid) }
         }
+    }
+
+    /// The commit check's second read, after the step's wait (§25.8): a step expected to commit with
+    /// nothing on disk yet polls every `commitPollMs` for at most `commitSettleMs`.
+    private func committed(_ ok: OkStep, _ check: CommitCheck, _ target: Resolved) async -> OkStep {
+        let windowID = target.windowID
+        let read = documentReader
+        let now: () async -> DocumentState? = {
+            (try? await target.worker.run { state in state.windows[windowID].flatMap(read) }) ?? nil
+        }
+        var disk = check.diff(await now())
+        let deadline = ContinuousClock.now + .milliseconds(ComputerDefaults.Front.commitSettleMs)
+        while check.waiting(disk), ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(ComputerDefaults.Front.commitPollMs))
+            disk = check.diff(await now())
+        }
+        if ok.disk?.saved != nil { return ok } // save_as proved its own file
+        let (effect, part) = check.judge(window: ok.effect, disk: disk)
+        return OkStep(index: ok.index, action: ok.action, tier: ok.tier, effect: effect, element: ok.element, input: ok.input, cursor: ok.cursor, text: ok.text,
+                      shot: ok.shot, waited: ok.waited, session: ok.session, front: ok.front, disk: part)
     }
 
     private func failed(_ index: Int, _ action: ComputerAction, _ error: any Error, or kind: ComputerErrorKind) -> StepResult {

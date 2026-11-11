@@ -21,6 +21,8 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
     let menuCache = MenuIndexCache()
     /// the shell's pasteboard watch, asked right before a paste with the call's `pasteQuietMs`
     let recentForeignCopy: @Sendable (_ withinMs: Int) -> Bool
+    /// the `front` tier's hold (§25.2)
+    let frontTier: FrontTier
     private let sweeper: DispatchSourceTimer
 
     public init(clipboardLock: MacLock, sessionLock: MacLock,
@@ -43,6 +45,7 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         let core = InputCore(host: host, watch: watch, sessionLock: sessionLock, sink: sink, clock: clock, layout: layout, onPersonInput: onPersonInput, onHeld: onHeld)
         self.core = core
         core.driver.trace = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
+        frontTier = FrontTier(host: host, sessionLock: sessionLock, clock: clock)
         host.onActivation = { [weak core] pid in core?.driver.noteActivation(pid: pid) }
         host.observeActivations()
         // the 30 s auto-release of a held button, and the person guard's end (§14.9.2)
@@ -92,8 +95,9 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
             for (i, step) in steps.enumerated() {
                 if step.tier != .ax || action.action == .type { try requirePosting() }
                 let before = toggle.flatMap(AX.valueText)
+                let rest = Array(steps.dropFirst(i + 1))
                 do {
-                    var outcome = try run(action, step: step, rest: Array(steps.dropFirst(i + 1)), target: target, tiers: tiers, facts: facts, held: held, live: live)
+                    var outcome = try run(action, step: step, rest: rest, target: target, tiers: tiers, facts: facts, held: held, live: live)
                     if let toggle {
                         let effect = toggleEffect(toggle, before: before, cancelled: target.cancelled)
                         if effect == .none, i < steps.count - 1 { continue }
@@ -102,10 +106,19 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
                     return outcome
                 } catch is RouteFellThrough {
                     continue
+                } catch let failure as ComputerFailure where Self.retriesForKeyWindow(failure, action: action, at: step) {
+                    // §5.2, decision 10: a key or paste the background window refused goes to `front`, which makes it key
+                    guard let retry = keyWindowRetry(rest) else { throw failure }
+                    return try run(action, step: retry, rest: [], target: target, tiers: tiers, facts: facts, held: held, live: live)
                 }
             }
             throw needsTier(action, needed ?? .session, menu: menu, pid: target.pid)
         }
+    }
+
+    /// A `key` or `paste` refused `key_window_unavailable` at `process`.
+    private static func retriesForKeyWindow(_ failure: ComputerFailure, action: ComputerAction, at step: RouteStep) -> Bool {
+        failure.error.kind == .keyWindowUnavailable && step.tier == .process && (action.action == .key || action.action == .paste)
     }
 
     /// `needs_tier`; a disabled menu item names itself and why (§24.2).
@@ -115,6 +128,12 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
             return ComputerFailure(ComputerError(kind: .needsTier, message: "\(menu.joined(separator: " › ")) is disabled while \(app) is in the background.", needed: t, menu: menu))
         }
         return ComputerFailure(ComputerError(kind: .needsTier, message: "\(action.action.rawValue) needs the \(t.rawValue) tier, which is not allowed now.", needed: t))
+    }
+
+    /// A menu item's title path (`["File", "Save"]`), nil for anything else: what the commit check
+    /// names a pressed item by (§25.9).
+    public static func menuItemPath(_ e: AXUIElement) -> [String]? {
+        AX.string(e, "AXRole") == "AXMenuItem" ? AXTier.menuPath(e) : nil
     }
 
     public func probe(_ target: InputTarget, classes: [ActionClass]) throws -> ProbeReport {
@@ -195,6 +214,78 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
     // MARK: dispatch
 
     private func run(_ action: ComputerAction, step: RouteStep, rest: [RouteStep], target: InputTarget, tiers: [Tier], facts: ElementFacts?, held: Tier?, live: LiveRoutes) throws -> InputOutcome {
+        if step.tier == .front {
+            return try runFront(action, step: step, rest: rest, target: target, tiers: tiers, facts: facts, live: live)
+        }
+        if step.tier == .session, step.route == .element, let item = facts?.menuItem {
+            return try menuItemAtSession(action, item: item, target: target, facts: facts)
+        }
+        return try dispatch(action, step: step, rest: rest, target: target, tiers: tiers, facts: facts, held: held, live: live)
+    }
+
+    /// One `front` step: its route inside a hold (§25.2, §25.3), `step.front` on the outcome.
+    private func runFront(_ action: ComputerAction, step: RouteStep, rest: [RouteStep], target: InputTarget, tiers: [Tier], facts: ElementFacts?, live: LiveRoutes) throws -> InputOutcome {
+        let app = NSRunningApplication(processIdentifier: target.pid)?.localizedName ?? "The app"
+        let (out, report) = try frontTier.hold(pid: target.pid, window: target.window, app: app, cancelled: target.cancelled, changedSince: target.changedSince) { ctx in
+            let inner = target.within(cancelled: ctx.cancelled)
+            var out: InputOutcome
+            switch (step.route, action.action) {
+            case (.menu, _):
+                // the shortcut's item, read again now the app is active; still disabled: action_unsupported
+                guard let (item, match) = live.menuItem else { throw RouteFellThrough() }
+                try enabledInHold(item, path: match.path, ctx: ctx)
+                try ctx.check()
+                try AXTier.pressMenu(item, match: match, count: action.repeat ?? 1)
+                out = InputOutcome(tier: .front, via: .menu, clipboard: nil, cursor: target.cursor, lastInputAt: clock.ticks(), on: match.line)
+            case (.element, _) where facts?.menuItem != nil:
+                let path = facts!.menuItem!.path
+                let e = try element(inner, action)
+                try enabledInHold(e.element, path: path, ctx: ctx)
+                try ctx.check()
+                AX.setTimeout(e.element, seconds: ctx.axTimeout)
+                try pressMenuItem(e, action: action, facts: facts!)
+                out = InputOutcome(tier: .front, via: .menu, clipboard: nil, cursor: target.cursor, lastInputAt: clock.ticks(), on: path.joined(separator: " › "))
+            case (.element, .setValue), (.element, .selectText), (.element, .perform):
+                if let e = inner.element?.element { AX.setTimeout(e, seconds: ctx.axTimeout) }
+                out = try dispatch(action, step: RouteStep(.ax, .element), rest: [], target: inner, tiers: tiers, facts: facts, held: nil, live: live)
+            default:
+                out = try dispatch(action, step: step, rest: rest, target: inner, tiers: tiers, facts: facts, held: nil, live: live)
+            }
+            out.tier = .front
+            return out
+        }
+        return out.with(front: report)
+    }
+
+    /// A named menu item's AXEnabled, read again inside the hold: AppKit re-validates it once the app is
+    /// active, so it is polled for a moment before it counts as disabled.
+    private func enabledInHold(_ item: AXUIElement, path: [String], ctx: FrontHoldContext) throws {
+        let deadline = clock.seconds() + Double(InputTiming.frontSettleMs) / 1000
+        while AX.bool(item, "AXEnabled") != true {
+            try ctx.check()
+            if clock.seconds() >= deadline {
+                throw ComputerFailure(ComputerError(kind: .actionUnsupported, message: "\(path.joined(separator: " › ")) is disabled.", menu: path))
+            }
+            clock.sleep(ms: InputTiming.frontPollMs)
+        }
+    }
+
+    /// `perform pick`/`press` or a click on a menu item: AXPress (or the named word).
+    private func pressMenuItem(_ e: ResolvedElement, action: ComputerAction, facts: ElementFacts) throws {
+        if action.action == .perform { try AXTier.perform(e, word: action.name ?? "", facts: facts) } else { try AXTier.press(e, facts: facts) }
+    }
+
+    /// A menu item the background disables, with `front` not allowed: pressed inside a session step,
+    /// which activates the app first (§24.2, decision 10).
+    private func menuItemAtSession(_ action: ComputerAction, item: NamedMenuItem, target: InputTarget, facts: ElementFacts?) throws -> InputOutcome {
+        let e = try element(target, action)
+        let (_, change, _) = try core.step(tier: .session, pid: target.pid, windowID: target.windowID, window: target.window, keys: false, cancelled: target.cancelled) { _ in
+            try pressMenuItem(e, action: action, facts: facts ?? ElementFacts(role: e.role))
+        }
+        return InputOutcome(tier: .session, via: .menu, clipboard: nil, cursor: target.cursor, session: change, lastInputAt: clock.ticks(), on: item.path.joined(separator: " › "))
+    }
+
+    private func dispatch(_ action: ComputerAction, step: RouteStep, rest: [RouteStep], target: InputTarget, tiers: [Tier], facts: ElementFacts?, held: Tier?, live: LiveRoutes) throws -> InputOutcome {
         let tier = step.tier
         let axDone = { (clickAt: [Int]?) in
             InputOutcome(tier: .ax, via: nil, clipboard: nil, cursor: target.cursor, lastInputAt: self.clock.ticks(), clickAt: clickAt)
@@ -316,7 +407,7 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         }
     }
 
-    /// The event-posting verbs at `process` or `session`.
+    /// The event-posting verbs at `process`, `front` (posted to the pid inside a hold) or `session`.
     private func events(_ action: ComputerAction, tier: Tier, target: InputTarget) throws -> InputOutcome {
         let name = action.action
         let modifiers = Self.isPointerVerb(name) ? try parseModifiers((action.text ?? "").isEmpty ? nil : action.text) : []
