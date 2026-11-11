@@ -446,7 +446,7 @@ public protocol PersonTapping: AnyObject, Sendable {
     /// Disables the tap and answers what it did since `enable`.
     func disable() -> GuardReport
     /// `enable`, and `onEscape` at the person's Escape the guard dropped (a `front` hold stops there,
-    /// §25.5); a tap that cannot tell the key never calls it.
+    /// §26.5); a tap that cannot tell the key never calls it.
     func enableReportingEscape(onTrip: @escaping @Sendable () -> Void, onEscape: @escaping @Sendable () -> Void) -> Bool
 }
 

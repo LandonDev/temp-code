@@ -69,7 +69,7 @@ DispatchQueue.global(qos: .userInitiated).async { [pids, tiers, wantSession, wan
         proof.session(textEdit: &te, chrome: &ch)
     }
     if wantActive {
-        // §25: the front legs, before the fallbacks (TextEdit's ⌘W among those closes its document)
+        // §26: the front legs, before the fallbacks (TextEdit's ⌘W among those closes its document)
         for (app, _) in pids { if var s = scratch[app] { proof.active(app, &s, work: work) } }
     }
     if tiers.contains(.ax) {

@@ -5,7 +5,7 @@ import ComputerServiceKit
 import Foundation
 import Input
 
-/// What the window says of its file now: its AXDocument and its close button's AXEdited (§25.8, E5).
+/// What the window says of its file now: its AXDocument and its close button's AXEdited (§26.8, E5).
 struct DocumentState: Equatable, Sendable {
     var url: String?
     var edited: Bool?
@@ -30,7 +30,7 @@ struct DocumentState: Equatable, Sendable {
     }
 }
 
-/// The commit check around one acting step (docs/computer-protocol.md §25.8): the file (or the folder's
+/// The commit check around one acting step (docs/computer-protocol.md §26.8): the file (or the folder's
 /// listing) behind the window before the step, and again after its wait; the difference is `step.disk`
 /// and decides `uncommitted`. Only a window whose AXDocument is a `file://` URL is checked.
 struct CommitCheck: Sendable {

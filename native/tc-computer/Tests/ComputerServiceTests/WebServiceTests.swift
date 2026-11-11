@@ -12,11 +12,11 @@ import Testing
 let browserPid: pid_t = 700
 
 /// A rig with a browser at pid 700: one window, its tabs Front (selected), Report and Notes.
-func browserRig() async -> ServiceRig {
+func browserRig(features: [String]? = nil) async -> ServiceRig {
     let rig = ServiceRig()
     rig.workspace.apps.append(RunningApp(pid: browserPid, bundleId: "com.example.Browser", name: "Browser", path: "/Applications/Browser.app", active: false, hidden: false))
     rig.windows.setTabs(browserPid, window: window(11, "Front - Browser"), ["Front", "Report", "Notes"])
-    await rig.ready(session: "s1")
+    await rig.ready(session: "s1", features: features)
     _ = await rig.call("session.open", #"{"session":"s2"}"#)
     return rig
 }
@@ -170,5 +170,63 @@ func browser(_ session: String = "s1", tab: String) -> String { #""session":"\#(
         let two = #"[{"action":"left_click","element":2},{"action":"left_click","element":3}]"#
         let batch = try #require(await rig.call("action.batch", "{\(docTarget),\"actions\":\(two),\"epoch\":\"\(rig.service.epoch)\",\"tiers\":[\"ax\"],\"wait\":\(quick)}").result)
         #expect(batch["steps"]?.arrayValue?.map { $0["effect"]?.stringValue } == ["none", "none"])
+    }
+}
+
+/// §26 beside §25: a front hold on a named tab, and web content with no commit check or save_as.
+@Suite struct FrontOnWebTests {
+    private let all = ["front", "commit", "save_as"]
+
+    @Test func aFrontStepOnANamedTabSelectsTheTabBeforeAnythingActs() async throws {
+        let rig = await browserRig(features: all)
+        rig.input.onPerform = { _, _ in InputOutcome(tier: .front, via: .menu, clipboard: nil, cursor: nil, lastInputAt: mach_absolute_time(), on: "File › Print…") }
+        let result = try #require(await rig.call("action.run", "{\(browser(tab: "Report")),\"action\":{\"action\":\"key\",\"text\":\"super+p\"},\"tiers\":[\"ax\",\"process\",\"front\"],\"wait\":\(quick)}").result)
+        #expect(result["step"]?["tier"]?.stringValue == "front")
+        let order = rig.log.all
+        let selected = try #require(order.firstIndex(of: "selectTab Report background"))
+        let acted = try #require(order.firstIndex(of: "perform key"))
+        #expect(selected < acted, "the tab is selected under the slot before the hold brings the window forward")
+    }
+
+    @Test func aFrontStepNeverActivatesATabThePersonHasInFront() async throws {
+        let rig = await browserRig(features: all)
+        rig.windows.personsWindow = true
+        let act = await rig.call("action.run", "{\(browser(tab: "Report")),\"action\":{\"action\":\"key\",\"text\":\"super+p\"},\"tiers\":[\"ax\",\"process\",\"front\"],\"wait\":\(quick)}")
+        #expect(act.error?.data?.kind == .tabInUse)
+        #expect(rig.log.count("perform") == 0)
+    }
+
+    @Test func webContentGetsNoCommitCheck() async throws {
+        let rig = await browserRig(features: all)
+        let read = Box<Int>()
+        rig.service.documentReader = { _ in
+            read.value = (read.value ?? 0) + 1
+            return DocumentState(url: "https://example.com/report", edited: nil)
+        }
+        rig.input.onPerform = { _, target in
+            #expect(target.commitExpected == nil)
+            return InputOutcome(tier: .ax, via: nil, clipboard: nil, cursor: nil, lastInputAt: mach_absolute_time())
+        }
+        let result = try #require(await rig.call("action.run", "{\(browser(tab: "Front")),\"action\":{\"action\":\"key\",\"text\":\"super+s\"},\"tiers\":[\"ax\",\"process\",\"front\"],\"wait\":\(quick)}").result)
+        #expect(result["step"]?["disk"] == nil)
+        #expect(result["step"]?["effect"]?.stringValue != "uncommitted")
+        #expect(read.value == nil)
+    }
+
+    @Test func saveAsIsRefusedOnWebContentBeforeInput() async throws {
+        let rig = await browserRig(features: all)
+        let result = try #require(await rig.call("action.run", "{\(browser(tab: "Front")),\"action\":{\"action\":\"save_as\",\"path\":\"/tmp/page.html\"},\"tiers\":[\"ax\",\"process\",\"front\"],\"wait\":\(quick)}").result)
+        #expect(result["step"]?["status"]?.stringValue == "failed")
+        #expect(result["step"]?["error"]?["kind"]?.stringValue == "action_unsupported")
+        #expect(rig.log.count("perform") == 0)
+    }
+
+    @Test func aPageURLIsNoDocumentSoNothingIsExpected() {
+        // the pure seam: a Chromium window's AXDocument names a page, never a file
+        for url in ["https://example.com/report", "about:blank", "chrome://newtab/"] {
+            #expect(CommitCheck.begin(CommitContext(action: ComputerAction(action: .key, text: "super+s")), state: DocumentState(url: url, edited: nil)) == nil)
+        }
+        let typed = CommitContext(action: ComputerAction(action: .setValue, value: "x"), element: CommitElement(role: "input"))
+        #expect(CommitRule.expects(typed) == nil)
     }
 }

@@ -34,7 +34,7 @@ struct ObserveKnobs: Sendable {
     var geometry: Bool?
     var menus: Bool?
     var budgetBytes: Int = ComputerDefaults.ObservationBudget.defaultBytes
-    /// an action's closing read: the call closes the menus it shows after it (§25.11)
+    /// an action's closing read: the call closes the menus it shows after it (§26.11)
     var closingMenus = false
 
     init() {}

@@ -5,7 +5,7 @@ import ComputerProtocol
 import CoreGraphics
 import Foundation
 
-// The `front` tier, live (docs/computer-protocol.md §25.2–§25.5): one hold brings the agent's app
+// The `front` tier, live (docs/computer-protocol.md §26.2–§26.5): one hold brings the agent's app
 // forward over AX, runs the step's AX calls or events posted to the app's pid, waits for the app
 // to take them, and gives the person their app and key window back. FrontPlan.swift decides every
 // move; this reads the Mac and writes it. Nothing here moves the pointer, posts at the HID or
@@ -105,7 +105,7 @@ final class HoldWatch: @unchecked Sendable {
     }
 }
 
-/// What the keyboard-quiet wait reads (§25.5), from the login session's event state: the person's last
+/// What the keyboard-quiet wait reads (§26.5), from the login session's event state: the person's last
 /// key down and whether any key or modifier is down. Events Input posts to a pid never enter it (only
 /// the session tier's, posted at the HID tap, do, which can only make a hold wait longer).
 public protocol KeyboardState: Sendable {
@@ -148,7 +148,7 @@ final class FrontTier: @unchecked Sendable {
     let clock: InputClock
     let keyboard: KeyboardState
     let watch = HoldWatch()
-    /// the person guard's tap for a hold (§14.9, §25.5); nil or refused, the watch alone stops on a touch
+    /// the person guard's tap for a hold (§14.9, §26.5); nil or refused, the watch alone stops on a touch
     let tap: PersonTapping?
     /// one hold at a time in this process, as one session step: the per-app queues never share the front
     private let holds = NSLock()
@@ -235,7 +235,7 @@ final class FrontTier: @unchecked Sendable {
         if ctx.guarded { _ = tap?.disable() } else { watch.disarm() }
     }
 
-    /// §25.5: wait until the person's last key down is `frontQuietMs` old and nothing is held, at most
+    /// §26.5: wait until the person's last key down is `frontQuietMs` old and nothing is held, at most
     /// `frontQuietMaxMs`; past that the hold goes anyway.
     func quiet(cancelled: () -> Bool) throws {
         let start = nowMs()

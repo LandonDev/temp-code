@@ -4,7 +4,7 @@ import ComputerProtocol
 import ComputerServiceKit
 import Foundation
 
-/// The menus a call left open, closed after its closing read (docs/computer-protocol.md §25.11,
+/// The menus a call left open, closed after its closing read (docs/computer-protocol.md §26.11,
 /// decision 20): AXCancel on the menu, else its opener pressed again, else Escape at `front` when the
 /// call allows it; each checked gone. What none of them closed is named on the result.
 extension ComputerService {

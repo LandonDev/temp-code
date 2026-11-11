@@ -397,7 +397,7 @@ final class FrontRun: @unchecked Sendable {
         self.front = front
         self.tail = tail
         watched = !actions.contains(where: FrontRun.raises)
-        // §23.4, §25.2: a step that may bring the app forward on purpose pauses the guard
+        // §23.4, §26.2: a step that may bring the app forward on purpose pauses the guard
         pausing = tiers.contains(.session) || tiers.contains(.front)
         if pausing { front.requestStarted() }
     }

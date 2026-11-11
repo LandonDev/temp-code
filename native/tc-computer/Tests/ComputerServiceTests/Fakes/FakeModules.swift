@@ -74,7 +74,7 @@ final class FakeReader: AppReading, @unchecked Sendable {
     private var page: Page?
     /// what `brief(of:)` answers for any element (the model's latest read listed it)
     var focusedBrief: ElementBrief?
-    /// what the last read walked open (§25.11); `menusAsked` counts the shell's asks
+    /// what the last read walked open (§26.11); `menusAsked` counts the shell's asks
     var menus: [OpenMenu] = []
     private(set) var menusAsked = 0
     var openMenus: [OpenMenu] {

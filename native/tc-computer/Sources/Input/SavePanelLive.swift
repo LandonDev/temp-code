@@ -4,7 +4,7 @@ import ComputerCore
 import ComputerProtocol
 import Foundation
 
-// `save_as`, live (docs/computer-protocol.md §25.7): SavePanelFlow (PanelPlan.swift) decides each
+// `save_as`, live (docs/computer-protocol.md §26.7): SavePanelFlow (PanelPlan.swift) decides each
 // move from what this reads of the window's sheets and the app's dialogs; this does the move over AX,
 // inside a `front` hold for the parts only an active app runs, and proves the file on disk.
 

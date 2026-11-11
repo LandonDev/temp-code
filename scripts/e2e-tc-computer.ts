@@ -223,7 +223,7 @@ const report = {
   }[],
   stopped: null as string | null,
   cleanup: [] as string[],
-  /** Each `front` step's hold (§25.4): activation, the step and its settle, the settle alone, the restore, the total. */
+  /** Each `front` step's hold (§26.4): activation, the step and its settle, the settle alone, the restore, the total. */
   frontHolds: [] as { step: string; activateMs: number; heldMs: number; settleMs: number | null; restoreMs: number; totalMs: number; restored: string }[]
 }
 
@@ -1523,7 +1523,7 @@ const FRONT_IDLE_S = 120
 const PERSON_ACTIVE = 'skipped: the person is active'
 
 /**
- * The steps that need the app active (§25), on a TC Probe launched with `--active <scratch>`: a
+ * The steps that need the app active (§26), on a TC Probe launched with `--active <scratch>`: a
  * document window over `<scratch>/doc.txt` and a file list over `<scratch>/files`, the app never
  * active. The `ax` and `process` steps always run; each `front` step runs only after two idle
  * minutes and is `skipped: the person is active` otherwise, never passed. The person's app and

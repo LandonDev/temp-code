@@ -41,9 +41,9 @@ public struct ObserveRequest: Sendable {
     public var loading: Bool
     /// false when the call's screenshot policy is `never`: a thin tree is then not told to look at one
     public var noteThin: Bool
-    /// the document line (§25.10): only for a host that listed `commit`, whose parser reads it
+    /// the document line (§26.10): only for a host that listed `commit`, whose parser reads it
     public var document: Bool = false
-    /// every menu the read walks is one the call closes after it: its lines carry the closed-menu note (§25.11)
+    /// every menu the read walks is one the call closes after it: its lines carry the closed-menu note (§26.11)
     public var closingMenus: Bool = false
 
     public init(window: ComputerProtocol.WindowRef?, mode: ObservationMode, element: Int?, budgetBytes: Int, geometry: Bool, menus: Bool, space: CoordinateSpace, loading: Bool = false, noteThin: Bool = true) {
@@ -96,7 +96,7 @@ public struct InputOutcome: Sendable {
     /// the step's effect when Input read it itself (§25.7: a web checkbox's or radio's value read back);
     /// the shell puts it on the step in place of the smart wait's
     public var effect: StepEffect?
-    /// a `front` step's hold (§25.4); the shell puts it on the step as `front`
+    /// a `front` step's hold (§26.4); the shell puts it on the step as `front`
     public var front: FrontHold?
     /// what a step that saves (`save_as`) proved on disk; the shell puts it on the step as `disk`
     public var disk: DiskChange?
@@ -311,7 +311,7 @@ public struct InputTarget {
     /// the reader's index and line for a live element, nil when the model's latest read never listed it:
     /// `focus_moved` names the focused element by them
     public let briefOf: (AXUIElement) -> ElementBrief?
-    /// whether the app's AX tree changed since a tick (mach_absolute_time): a `front` hold's settle signal (§25.2)
+    /// whether the app's AX tree changed since a tick (mach_absolute_time): a `front` hold's settle signal (§26.2)
     public var changedSince: (@Sendable (UInt64) -> Bool)?
     /// whether the step is expected to commit to disk before it acts (CommitRule.expectsBefore, decision 12);
     /// the shell's, since Input does not know the commit rule
@@ -337,7 +337,7 @@ public struct InputTarget {
     }
 }
 
-/// An open menu the last whole-window read walked (docs/computer-protocol.md §25.11): the AXMenu, the
+/// An open menu the last whole-window read walked (docs/computer-protocol.md §26.11): the AXMenu, the
 /// element that opened it (a pop-up, a menu button, a menu bar item; nil for a context menu read as a
 /// root), the opener's name and the items' titles.
 public struct OpenMenu: @unchecked Sendable {

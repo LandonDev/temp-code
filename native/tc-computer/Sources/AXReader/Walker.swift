@@ -21,7 +21,7 @@ struct WalkNotes {
     var busy: [(element: AXUIElement, kind: BusyRule.Kind, containers: [AXUIElement])] = []
     /// the target window's document (§26.8): its `AXDocument` and its close button's `AXEdited`
     var document = WindowDocument()
-    /// every open menu the walk read (§25.11), with what opened it when the walk came through it
+    /// every open menu the walk read (§26.11), with what opened it when the walk came through it
     var menus: [OpenMenu] = []
 }
 

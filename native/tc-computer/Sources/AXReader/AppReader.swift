@@ -62,7 +62,7 @@ public final class AppReader: AppReading, @unchecked Sendable {
     /// read leaves it. The commit check and the document line read it.
     public private(set) var lastDocument = WindowDocument()
 
-    /// The menus the last whole-window read walked (§25.11): the shell closes the ones its call opened.
+    /// The menus the last whole-window read walked (§26.11): the shell closes the ones its call opened.
     public var openMenus: [OpenMenu] { lock.withLock { lastMenus } }
     private var lastMenus: [OpenMenu] = []
     private var extraMenus: [OpenMenu] = []
@@ -175,7 +175,7 @@ public final class AppReader: AppReading, @unchecked Sendable {
         return (snapshot, walker.notes, target.element)
     }
 
-    /// The document line (§25.10) from the window's AXDocument and edited flag, with the file's mtime.
+    /// The document line (§26.10) from the window's AXDocument and edited flag, with the file's mtime.
     static func documentLine(_ d: WindowDocument, home: String = NSHomeDirectory()) -> DocumentLine? {
         let mtime = d.url.flatMap { URL(string: $0) }.flatMap { $0.isFileURL ? $0.path : nil }
             .flatMap { try? FileManager.default.attributesOfItem(atPath: $0)[.modificationDate] as? Date }?.timeIntervalSince1970

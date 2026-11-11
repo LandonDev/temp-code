@@ -21,7 +21,7 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
     let menuCache = MenuIndexCache()
     /// the shell's pasteboard watch, asked right before a paste with the call's `pasteQuietMs`
     let recentForeignCopy: @Sendable (_ withinMs: Int) -> Bool
-    /// the `front` tier's hold (§25.2)
+    /// the `front` tier's hold (§26.2)
     let frontTier: FrontTier
     private let sweeper: DispatchSourceTimer
 
@@ -137,7 +137,7 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
     }
 
     /// A menu item's title path (`["File", "Save"]`), nil for anything else: what the commit check
-    /// names a pressed item by (§25.9).
+    /// names a pressed item by (§26.9).
     public static func menuItemPath(_ e: AXUIElement) -> [String]? {
         AX.string(e, "AXRole") == "AXMenuItem" ? AXTier.menuPath(e) : nil
     }
@@ -233,7 +233,7 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
         return try dispatch(action, step: step, rest: rest, target: target, tiers: tiers, facts: facts, held: held, live: live)
     }
 
-    /// One `front` step: its route inside a hold (§25.2, §25.3), `step.front` on the outcome.
+    /// One `front` step: its route inside a hold (§26.2, §26.3), `step.front` on the outcome.
     private func runFront(_ action: ComputerAction, step: RouteStep, rest: [RouteStep], target: InputTarget, tiers: [Tier], facts: ElementFacts?, live: LiveRoutes) throws -> InputOutcome {
         let app = NSRunningApplication(processIdentifier: target.pid)?.localizedName ?? "The app"
         let (out, report) = try frontTier.hold(pid: target.pid, window: target.window, app: app, cancelled: target.cancelled, changedSince: target.changedSince) { ctx in

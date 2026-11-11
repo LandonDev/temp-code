@@ -19,7 +19,7 @@ private struct StepRun {
     var signature0: UInt64 = 0
     /// the step's effect as Input read it itself (§25.7: a web toggle's value read back); it stands in for the wait's
     var inputEffect: StepEffect?
-    /// the commit check begun before the step acted (§25.8), judged after its wait
+    /// the commit check begun before the step acted (§26.8), judged after its wait
     var check: CommitCheck?
     /// the step failed or was cancelled
     var stops: Bool { if case .ok = step { return false } else { return true } }
@@ -282,8 +282,14 @@ extension ComputerService {
         let pid = target.pid
         let windowID = target.windowID
         let expected = call.expectation(at: index)
-        // the commit check only for a host that reads it, and never for the cursor read
-        let checks = features.commit && action.action != .cursorPosition
+        // the commit check only for a host that reads it, never for the cursor read, and never on web content:
+        // a Chromium window has no file behind it, so nothing there is expected to commit (§25, §26.8)
+        let checks = features.commit && action.action != .cursorPosition && !call.chromium
+        if action.action == .saveAs, call.chromium {
+            // §26.7 saves a document window's file; a page is no document of the app's
+            let error = ComputerError(kind: .actionUnsupported, message: "save_as saves a document window's file; \(target.app.name) shows web content, which has none.")
+            return StepRun(step: .failed(FailedStep(index: index, action: .saveAs, error: error)))
+        }
         let readDocument = documentReader
         do {
             let done = try await target.worker.run { state -> Performed in
@@ -300,7 +306,7 @@ extension ComputerService {
                     callToken: call.token, personIdleMs: call.personIdleMs,
                     chromium: call.chromium, expectFocus: expectFocus, briefOf: { [reader] in reader.brief(of: $0) }
                 )
-                // a front hold's settle: the app's tree changed after its last input (§25.2)
+                // a front hold's settle: the app's tree changed after its last input (§26.2)
                 let changes = ChangeBox(signal: reader.changes)
                 inputTarget.changedSince = { changes.signal.lastChange > $0 }
                 var check: CommitCheck?
@@ -413,7 +419,7 @@ extension ComputerService {
         }
     }
 
-    /// The commit check's second read, after the step's wait (§25.8): a step expected to commit with
+    /// The commit check's second read, after the step's wait (§26.8): a step expected to commit with
     /// nothing on disk yet polls every `commitPollMs` for at most `commitSettleMs`.
     private func committed(_ ok: OkStep, _ check: CommitCheck, _ target: Resolved) async -> OkStep {
         if ok.disk?.saved != nil { return ok } // save_as proved its own file

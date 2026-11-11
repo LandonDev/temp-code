@@ -25,7 +25,7 @@ final class FakeKeyboard: KeyboardState, @unchecked Sendable {
     func anyHeld() -> Bool { lock.withLock { clock.seconds() < heldUntil } }
 }
 
-/// The live hold's seams that need no app in front (docs/computer-protocol.md §25.2–§25.5).
+/// The live hold's seams that need no app in front (docs/computer-protocol.md §26.2–§26.5).
 @Suite struct FrontTierTests {
     private func tier(_ clock: FakeClock, _ keyboard: KeyboardState, lock: MacLock? = nil) -> FrontTier {
         FrontTier(host: LiveSessionHost(), sessionLock: lock ?? FakeLock(clock: clock), clock: clock, keyboard: keyboard)

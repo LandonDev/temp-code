@@ -30,7 +30,7 @@ private struct Scratch {
 
 private func key(_ text: String) -> ComputerAction { ComputerAction(action: .key, text: text) }
 
-/// The commit check's rule over a real file and folder (docs/computer-protocol.md §25.8).
+/// The commit check's rule over a real file and folder (docs/computer-protocol.md §26.8).
 @Suite struct CommitCheckTests {
     @Test func aWindowWithNoFileIsNotChecked() {
         #expect(CommitCheck.begin(CommitContext(action: key("super+s")), state: nil) == nil)
@@ -152,7 +152,7 @@ private func key(_ text: String) -> ComputerAction { ComputerAction(action: .key
 /// `~`-relative as the service writes it.
 private func FileFacts_tilde(_ path: String) -> String { tildeRelative(path, home: NSHomeDirectory()) }
 
-/// The document line (§25.10) is asked for only from a host whose parser reads it.
+/// The document line (§26.10) is asked for only from a host whose parser reads it.
 @Suite struct DocumentLineGateTests {
     @Test func aHostThatListedCommitGetsTheLineAndAnOlderOneDoesNot() async throws {
         let newer = ServiceRig()
@@ -166,7 +166,7 @@ private func FileFacts_tilde(_ path: String) -> String { tildeRelative(path, hom
     }
 }
 
-/// The menus a call left open (§25.11): its closing read notes them, then the call closes them.
+/// The menus a call left open (§26.11): its closing read notes them, then the call closes them.
 @Suite struct MenuCloseServiceTests {
     @Test func anActionsClosingReadAsksForTheNoteAndTheCallClosesWhatItWalked() async throws {
         let rig = ServiceRig()

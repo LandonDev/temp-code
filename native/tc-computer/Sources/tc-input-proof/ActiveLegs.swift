@@ -5,7 +5,7 @@ import ComputerProtocol
 import Foundation
 import Input
 
-/// The hand legs of the steps that need the app active (docs/computer-protocol.md §25, `--active`): each
+/// The hand legs of the steps that need the app active (docs/computer-protocol.md §26, `--active`): each
 /// runs at `front` only after five minutes with no input, else it is recorded "skipped: the person is
 /// active", never passed. Each records its hold (`step.front`: activation, the step and its settle, the
 /// restore) and checks the disk; whatever a leg moved on disk is put back.
@@ -46,7 +46,7 @@ extension Proof {
     }
 
     /// TextEdit: where its untitled autosave lives, save_as into the scratch folder, then a typed line saved
-    /// with ⌘S at front, and whether a click posted to its pid lands while it is active (§25.3's per-app fact).
+    /// with ⌘S at front, and whether a click posted to its pid lands while it is active (§26.3's per-app fact).
     private func activeTextEdit(_ s: inout Scratch, work: String) {
         let app = "textedit"
         print("note textedit AXDocument before any save: \(P.string(s.window, "AXDocument") ?? "none")")

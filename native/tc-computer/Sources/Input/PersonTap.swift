@@ -20,7 +20,7 @@ public final class LivePersonTap: PersonTapping, @unchecked Sendable {
         var bufferedDowns: Set<UInt16> = []
         var tripped = false
         var onTrip: (@Sendable () -> Void)?
-        /// a `front` hold's: the person's Escape, dropped (§25.5)
+        /// a `front` hold's: the person's Escape, dropped (§26.5)
         var onEscape: (@Sendable () -> Void)?
         var replayed = 0
         var port: CFMachPort?

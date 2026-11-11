@@ -151,7 +151,7 @@ extension InputEngine {
     }
 
     /// `needs_tier { needed: 'front', menu }`: a disabled item in an inactive app, which only activation
-    /// re-validates (§24.2, §25.3); the host offers `front`, then `session`.
+    /// re-validates (§24.2, §26.3); the host offers `front`, then `session`.
     func needsFrontForMenu(_ path: [String], pid: pid_t) -> ComputerFailure {
         let app = NSRunningApplication(processIdentifier: pid)?.localizedName ?? "the app"
         return ComputerFailure(ComputerError(kind: .needsTier, message: "\(path.joined(separator: " › ")) is disabled while \(app) is in the background.", needed: .front, menu: path))

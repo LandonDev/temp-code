@@ -12,7 +12,7 @@
 #     electron-vite build first), its own userData under /tmp, a scratch workspace on an
 #     empty folder with one thread, so its composer exists;
 #   - with --finder, a Finder window on a scratch folder of three files;
-#   - with --active, the legs that need the app in front (docs/computer-protocol.md §25), each
+#   - with --active, the legs that need the app in front (docs/computer-protocol.md §26), each
 #     only after five minutes with no input, else "skipped: the person is active": TextEdit's
 #     save_as into the scratch folder (and where its untitled autosave lived), a typed line saved
 #     with ⌘S at front, and whether a click posted to its pid lands while it is active; with
