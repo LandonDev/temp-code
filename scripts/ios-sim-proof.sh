@@ -149,6 +149,8 @@
 #           python3 scripts/lib/ios_perf_check.py --cores N <pass>/perf … --baseline <pass>/perf …
 #   all     shell, threads, scroll, actions and push (the default).
 # TC_SIM="TempCode L3" picks a device by name (default iPhone 17 Pro); TC_SIM_UDID one by id.
+# TC_PROOF_HEADLESS=1 never opens Simulator.app (the perf set never does): the booted device runs with
+# no window, so a set can run while a person is at the Mac. Not for a Duo pose.
 # TC_DUO_POSE=<pose> is the iPhone Duo axis for ANY set: the device defaults to
 # "TempCode Duo" (bun run ios:duo:check -- --create makes it; the proof never
 # does), the check runs first, the simulator is put in that pose before the
@@ -223,7 +225,9 @@ else
   xcrun simctl bootstatus "$TC_SIM_UDID" -b >/dev/null
 fi
 # The perf set runs headless: the simulator's window would come in front of the person.
-[ "$SET" = perf ] || open -g -a "$DEVELOPER_DIR/Applications/Simulator.app" --args -CurrentDeviceUDID "$TC_SIM_UDID" 2>/dev/null || true
+# TC_PROOF_HEADLESS=1 leaves it shut for any other set too: every set drives the device with simctl and
+# shoots it with `simctl io`, so only the Duo's poses (the hinge moves the window) need it open.
+[ "$SET" = perf ] || [ "${TC_PROOF_HEADLESS:-}" = 1 ] || open -g -a "$DEVELOPER_DIR/Applications/Simulator.app" --args -CurrentDeviceUDID "$TC_SIM_UDID" 2>/dev/null || true
 
 if [ "$SET" = perf ] && [ -n "${TC_PERF_APP:-}" ]; then
   # A kept app (the baseline, measured in turn with a candidate): nothing is built.

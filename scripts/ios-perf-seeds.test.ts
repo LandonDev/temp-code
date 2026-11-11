@@ -71,6 +71,10 @@ describe('the test server', () => {
     expect(quiet).toMatch(/stream\.stopped = true[\s\S]*turn-complete[\s\S]*status: 'idle'/)
     expect(proof).toMatch(/simctl terminate[^\n]*\n[^\n]*\n\s*curl[^\n]*\/quiet/)
   })
+  it('opens the Simulator window for no perf run, and for no set that asks to run headless', () => {
+    expect(proof).toMatch(/\[ "\$SET" = perf \] \|\| \[ "\$\{TC_PROOF_HEADLESS:-\}" = 1 \] \|\| open -g -a/)
+    expect([...proof.matchAll(/open -g -a/g)]).toHaveLength(1)
+  })
   it('runs its helper children from a broker process when the proof names one', () => {
     expect(server).toMatch(/process\.env\.TC_TEST_EXEC_BROKER/)
     expect(server).toMatch(/spawnExecBroker,/)
