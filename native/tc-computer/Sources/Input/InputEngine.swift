@@ -68,11 +68,13 @@ public final class InputEngine: InputPerforming, @unchecked Sendable {
     // MARK: InputPerforming
 
     public func perform(_ action: ComputerAction, on target: InputTarget, tiers: [Tier]) throws -> InputOutcome {
+        // §26.9: a row's name the app commits only in its own editor (Finder's list view): known from the field before
+        // anything is posted, and from the ordinary route's refusal for focus, which posted nothing
+        if let renamed = try renameInEditor(action, target: target, tiers: tiers, refused: false) { return renamed }
         do {
             return try performRoutes(action, on: target, tiers: tiers)
         } catch let failure as ComputerFailure where RenameEditor.isFocusRefusal(failure.error) {
-            // §26.9: a row's name the app commits only in its own editor (Finder's list view); nothing was posted
-            guard let renamed = try renameInEditor(action, target: target, tiers: tiers) else { throw failure }
+            guard let renamed = try renameInEditor(action, target: target, tiers: tiers, refused: true) else { throw failure }
             return renamed
         }
     }

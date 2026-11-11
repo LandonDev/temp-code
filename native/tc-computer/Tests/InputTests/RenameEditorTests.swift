@@ -45,3 +45,41 @@ import Testing
     }
 }
 #endif
+
+/// The editor route's moves under a slow app (§26.9): each Return pressed again once, every wait bounded.
+@Suite struct RenameEditorPlanTests {
+    @Test func theWholeRouteInItsOrder() {
+        var p = RenameEditorPlan()
+        #expect(p.next(nowMs: 0, editorOpen: false) == .pressReturn)
+        #expect(p.next(nowMs: 20, editorOpen: false) == .read(afterMs: RenameEditorPlan.pollMs))
+        #expect(p.next(nowMs: 60, editorOpen: true) == .write)
+        #expect(p.next(nowMs: 70, editorOpen: true) == .pressReturn)
+        #expect(p.next(nowMs: 90, editorOpen: true) == .read(afterMs: RenameEditorPlan.pollMs))
+        #expect(p.next(nowMs: 110, editorOpen: false) == .done)
+    }
+
+    @Test func aReturnTheAppMissedIsPressedOnceMore() {
+        var p = RenameEditorPlan()
+        _ = p.next(nowMs: 0, editorOpen: false)
+        #expect(p.next(nowMs: RenameEditorPlan.openAgainMs, editorOpen: false) == .pressReturn)
+        #expect(p.next(nowMs: RenameEditorPlan.openAgainMs + 20, editorOpen: false) == .read(afterMs: RenameEditorPlan.pollMs))
+        #expect(p.next(nowMs: RenameEditorPlan.editorMaxMs, editorOpen: false) == .fail("did not open its rename editor"))
+        var c = RenameEditorPlan()
+        _ = c.next(nowMs: 0, editorOpen: false)
+        _ = c.next(nowMs: 10, editorOpen: true)
+        _ = c.next(nowMs: 20, editorOpen: true)
+        #expect(c.next(nowMs: 20 + RenameEditorPlan.closeAgainMs, editorOpen: true) == .pressReturn)
+        #expect(c.next(nowMs: 30 + RenameEditorPlan.closeAgainMs, editorOpen: true) == .read(afterMs: RenameEditorPlan.pollMs))
+        #expect(c.next(nowMs: 20 + RenameEditorPlan.closeMaxMs, editorOpen: true) == .fail("kept its rename editor open"))
+    }
+
+    @Test func theBoundsFitInsideTheHold() {
+        #expect(RenameEditorPlan.editorMaxMs + RenameEditorPlan.closeMaxMs < InputTiming.frontHoldMaxMs)
+    }
+
+    @Test func aFieldThatListsNoSettableFocusGoesToTheEditorBeforeAnythingIsPosted() {
+        #expect(!RenameEditor.takesFocus(focusSettable: false))
+        #expect(RenameEditor.applies(ComputerAction(action: .key, element: 6, text: "Return"), role: "AXTextField", inRow: true, takesFocus: RenameEditor.takesFocus(focusSettable: false)))
+        #expect(!RenameEditor.applies(ComputerAction(action: .key, element: 6, text: "Return"), role: "AXTextField", inRow: true, takesFocus: RenameEditor.takesFocus(focusSettable: true)))
+    }
+}
