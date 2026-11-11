@@ -166,7 +166,7 @@ export function threadServers(servers: readonly LiveServer[], tree: ReadonlySet<
 }
 
 /** Every session in the thread's tree, the thread first. */
-function treeIds(rootId: string, metas: readonly SessionMeta[]): Set<string> {
+export function treeIds(rootId: string, metas: readonly SessionMeta[]): Set<string> {
   const ids = new Set([rootId]);
   for (let grew = true; grew; ) {
     grew = false;
