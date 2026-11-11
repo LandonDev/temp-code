@@ -80,4 +80,9 @@ public enum PerfOffMain {
     public static let folds = Atomic<Int>(0)
 
     public static var foldCount: Int { folds.load(ordering: .relaxed) }
+
+    /// One more fold ran off the main actor.
+    public static func counted() {
+        folds.add(1, ordering: .relaxed)
+    }
 }

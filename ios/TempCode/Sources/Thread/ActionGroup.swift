@@ -441,7 +441,25 @@ private struct StepBody: View {
 private struct OutputBox: View {
     let text: String
     let failed: Bool
-    @State private var height: CGFloat = 0
+    /// The text's height, measured; until the first layout, its lines at
+    /// the row code's line box, so the box mounts at its height (or at the
+    /// cap, which most outputs reach) and the rows under it never move.
+    @State private var height: CGFloat
+
+    init(text: String, failed: Bool) {
+        self.text = text
+        self.failed = failed
+        _height = State(initialValue: Self.estimate(text))
+    }
+
+    static func estimate(_ text: String) -> CGFloat {
+        var lines = 1
+        for byte in text.utf8 where byte == 0x0A {
+            lines += 1
+            if lines > 200 { break }
+        }
+        return CGFloat(lines) * CGFloat(TranscriptType.rowCode.lineHeight) + 2 * TranscriptMetrics.bodyGap
+    }
 
     var body: some View {
         ScrollView(.vertical) {

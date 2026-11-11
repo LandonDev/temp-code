@@ -61,8 +61,8 @@ struct TranscriptView: View {
     /// The statuses of the agents the omitted waits still need (`watchWaits`).
     @State private var waitRead = WaitStatuses()
 
-    /// Rows a cold open shows, and one page back.
-    static let page = 75
+    /// Rows a cold open shows (`TranscriptWindow.cold`), and one page back at the sentinel.
+    static let page = TranscriptWindow.cold
 
     var body: some View {
         let _ = PerfCounters.bump(.transcriptBody)
@@ -161,7 +161,7 @@ struct TranscriptView: View {
                 client.keepRows(sessionId, from: shown.lazy.compactMap(\.anchorSeq).first { $0 > 0 })
             }
             // The window's settled replies parse off the main actor before their rows mount, newest first.
-            .onChange(of: "\(shown.first?.id.key ?? 0)|\(shown.count)|\(content.lastSeq)", initial: true) { prefetch(shown) }
+            .onChange(of: "\(shown.first?.id.key ?? 0)|\(shown.count)|\(content.lastSeq)", initial: true) { prefetch(from: start) }
             // The measure: the inset past the 16 pt row inset that centres a column no wider than the cap.
             .contentMargins(.horizontal, measured ? ReadingMeasure.sideInset(width: listWidth) - ReadingMeasure.edge : 0, for: .scrollContent)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { was, now in
@@ -317,6 +317,8 @@ struct TranscriptView: View {
     /// anchor for a reader off the bottom. Never moved while a reflow is open.
     private func noteOnScreen(_ id: TranscriptRowID, _ on: Bool, from start: Int) {
         if on { onScreen.ids.insert(id) } else { onScreen.ids.remove(id) }
+        // A row near the window's top came on screen: the window grows above it while the reader is still screens away.
+        if on, let at = model.index(of: id), TranscriptWindow.reaches(index: at, start: start) { grow(from: start) }
         guard !scrollState.reflowHeld else { return }
         // The model knows each row's place: no list of the window's ids is made per row that appears.
         let top = model.topRow(onScreen: onScreen.ids, from: start)
@@ -327,9 +329,44 @@ struct TranscriptView: View {
         #endif
     }
 
-    /// Starts the parse of every settled reply in the window that has none,
-    /// newest first, so each row draws styled from its first frame.
-    private func prefetch(_ rows: [TranscriptRowModel]) {
+    /// The window grows by a page of rows the thread already holds, and older
+    /// rows are asked for while under a page of held rows would be left
+    /// above it (`TranscriptWindow`). It runs when a row near the window's
+    /// top comes on screen, so the join lands screens above the reader; the
+    /// rows on screen keep their place by the list's own bounds
+    /// (`holdPlace`), and nothing writes the offset. A reader at the bottom
+    /// with nothing moving grows nothing above them (`SentinelReach`).
+    private func grow(from start: Int) {
+        guard targetStatus == nil, !extending else { return }
+        let fills = listScroll.scroll.map { $0.contentSize.height > $0.bounds.height } ?? true
+        guard SentinelReach.of(atBottom: scrollState.atBottom, readerMoving: scrollState.readerMoving, contentFills: fills) != .pin else { return }
+        let shownCount = model.rows.count - start
+        let grown = TranscriptWindow.grown(shown: shownCount, above: start)
+        if grown > shownCount, grown > window || windowTop != nil {
+            holdPlace()
+            resize(grown)
+        }
+        let state = thread.value
+        if TranscriptWindow.asksOlder(above: start - (grown - shownCount), moreBefore: state.moreBefore, loading: state.isLoadingOlder) {
+            Task { await client.loadOlder(sessionId) }
+        }
+    }
+
+    /// Rows are about to join above the ones on screen. The row at the top
+    /// edge is noted with where it sits in the list, and when the list has
+    /// laid the new rows out its bounds move by as far as that row moved
+    /// (`ListScroll.landed`): the same rows under the reader's eye, and a
+    /// fling that goes on, since no offset is set.
+    private func holdPlace() {
+        guard let anchor = scrollState.topRow, let (_, frame) = frame(of: anchor) else { return }
+        listScroll.hold(anchor, top: frame.minY)
+    }
+
+    /// Starts the parse of every settled reply in the window and in the page
+    /// above it that has none, newest first, so each row draws styled from
+    /// its first frame and a reader scrolling back meets rows already parsed.
+    private func prefetch(from start: Int) {
+        let rows = model.rows[max(0, start - TranscriptWindow.page)...]
         for row in rows.reversed() {
             guard case .item(let entry) = row, case .assistant(let block) = entry.item, !block.streaming else { continue }
             ThreadCaches.markdown.prefetch(scope: markdownScope, seq: block.seq, text: block.text)
@@ -848,8 +885,12 @@ struct TranscriptView: View {
             return
         }
         let deliberate = reach == .page
+        // Under a moving reader nothing writes the offset: the rows on screen
+        // keep their place by the list's bounds (`holdPlace`), and the fling goes on.
+        let moving = scrollState.readerMoving
         // Where the reader is against the window's first row, before the page joins above it.
-        let held = deliberate ? place(of: top.id) : nil
+        let held = deliberate && !moving ? place(of: top.id) : nil
+        if deliberate, moving { holdPlace() }
         extending = true
         defer { extending = false }
         let anchorSeq = top.anchorSeq
@@ -869,6 +910,10 @@ struct TranscriptView: View {
             pinTail(proxy: proxy)
             return
         }
+        guard !moving else {
+            TranscriptTrace.write("extend held")
+            return
+        }
         var transaction = Transaction()
         transaction.disablesAnimations = true
         TranscriptTrace.write("extend \(anchor.key)", moving: scrollState.readerMoving); scrollState.offBottomWrite = true; withTransaction(transaction) { proxy.scrollTo(anchor, anchor: .top) }
@@ -883,8 +928,45 @@ struct TranscriptView: View {
 /// keeps; plain storage, outside observation.
 @MainActor
 final class ListScroll {
-    weak var scroll: UIScrollView?
+    weak var scroll: UIScrollView? {
+        didSet {
+            guard scroll !== oldValue else { return }
+            // The list's content size moves when rows that joined have been laid out: the moment a held place is put back.
+            sizeWatch = scroll?.observe(\.contentSize) { [weak self] _, _ in
+                MainActor.assumeIsolated { self?.landed() }
+            }
+        }
+    }
     var place: TranscriptReflow.Place?
+    private var sizeWatch: NSKeyValueObservation?
+    /// A join in flight: the row at the top edge, where it sat in the list, and how many rows the window showed then.
+    private var join: (anchor: TranscriptRowID, top: CGFloat, shown: Int, at: Date)?
+
+    /// Rows are about to join above `anchor`, which sits at `top` in the list's layout.
+    func hold(_ anchor: TranscriptRowID, top: CGFloat) {
+        guard join == nil else { return }
+        join = (anchor, top, shown.count, Date())
+    }
+
+    /// The list laid out. Once it holds the grown window, the bounds move by
+    /// as far as the anchor row moved (`TranscriptWindow.correction`), in
+    /// the same pass, with no offset set: a deceleration under way goes on.
+    /// A join that never lands (the window did not grow after all) is let go
+    /// after a second.
+    private func landed() {
+        guard let held = join else { return }
+        guard shown.count > held.shown, let list = scroll as? UICollectionView, list.numberOfSections == 1,
+              let item = item(of: held.anchor, items: list.numberOfItems(inSection: 0)),
+              let frame = list.layoutAttributesForItem(at: IndexPath(item: item, section: 0))?.frame else {
+            if Date().timeIntervalSince(held.at) > 1 { join = nil }
+            return
+        }
+        join = nil
+        guard let shift = TranscriptWindow.correction(anchorTopBefore: Double(held.top), after: Double(frame.minY)) else { return }
+        var bounds = list.bounds
+        bounds.origin.y += CGFloat(shift)
+        list.bounds = bounds
+    }
     /// The window as the last body pass drew it, and the rows above it (the sentinel, the empty state).
     private var shown: [TranscriptRowModel] = []
     private var lead = 0

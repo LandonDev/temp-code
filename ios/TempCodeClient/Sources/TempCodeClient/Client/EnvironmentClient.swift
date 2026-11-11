@@ -890,14 +890,14 @@ public final class EnvironmentClient {
         await cacheWrites.drained()
         let cached = (try? await cache.rows(environment.id, sessionId: id, before: first.seq, limit: olderPage)) ?? []
         if !cached.isEmpty {
-            prepend(id, rows: cached, moreBefore: nil)
+            await prepend(id, rows: cached, moreBefore: nil)
             return
         }
         guard await socket.isOpen else { return }
         guard let page = try? await socket.request(Methods.SessionEvents.self, .init(sessionId: id, afterSeq: nil, beforeSeq: first.seq, tail: olderPage, limit: nil)) else { return }
         let env = environment.id
         cacheWrites.write { try? await $0.store(env, sessionId: id, rows: page.rows, moreBefore: page.moreBefore) }
-        prepend(id, rows: page.rows, moreBefore: page.moreBefore)
+        await prepend(id, rows: page.rows, moreBefore: page.moreBefore)
     }
 
     /// Fetches backwards until the exact search row is held. The bound and
@@ -1524,7 +1524,34 @@ public final class EnvironmentClient {
         PerfCounters.bump(.refolds, by: model.value.refolds - refolds)
     }
 
-    private func prepend(_ id: String, rows: [EventRow], moreBefore: Bool?) {
+    /// An older page joins above. Every row is folded again with the page in,
+    /// off the main actor, against the thread as it stood (`revision`); a
+    /// push that landed meanwhile folds it again, and after three tries the
+    /// fold runs here, as it always did. It lands in one write.
+    private func prepend(_ id: String, rows: [EventRow], moreBefore: Bool?) async {
+        for _ in 0..<3 {
+            guard let held = peek(id) else { return }
+            let joined = await Self.foldOlder(older: rows, current: held.rows, previous: held.fold)
+            guard let now = peek(id) else { return }
+            guard now.revision == held.revision else { continue }
+            PerfCounters.bump(.refolds)
+            publish(thread: id) {
+                write(id) { state in
+                    state.revision += 1
+                    state.rows = joined.rows
+                    var fold = joined.fold
+                    fold.carryLiveEdits(from: state.fold)
+                    state.fold = fold
+                    state.refolds += 1
+                    if let moreBefore {
+                        state.moreBefore = moreBefore
+                    } else if !joined.fresh {
+                        state.moreBefore = false
+                    }
+                }
+            }
+            return
+        }
         guard let model = models[id] else { return }
         PerfCounters.bump(.refolds)
         publish(thread: id) {
@@ -1541,5 +1568,20 @@ public final class EnvironmentClient {
                 }
             }
         }
+    }
+
+    /// `older` joined to `current` and folded whole, on the concurrent pool:
+    /// the rows a `refold` would hold and its fold, with the keys the rows
+    /// were first drawn under. `fresh` says the page brought a row not held.
+    @concurrent
+    private static func foldOlder(older: [EventRow], current: [EventRow], previous: ThreadFold) async -> (rows: [EventRow], fold: ThreadFold, fresh: Bool) {
+        let known = Set(current.map(\.seq))
+        let fresh = older.filter { !known.contains($0.seq) }
+        let rows = (fresh + current).sorted { ($0.ephemeral == true ? Int.max : $0.seq) < ($1.ephemeral == true ? Int.max : $1.seq) }
+        var fold = ThreadFold(keys: previous.keys, provisionalFrom: previous)
+        for row in rows { fold.apply(row) }
+        fold.carryLiveEdits(from: previous)
+        PerfOffMain.counted()
+        return (rows, fold, !fresh.isEmpty)
     }
 }

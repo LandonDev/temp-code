@@ -181,3 +181,46 @@ import Testing
         #expect(short.parses == 0)
     }
 }
+
+@Suite struct MarkdownCacheEvictionTests {
+    @MainActor @Test func `a document read last outlives the ones read before it, whatever their seq`() async {
+        let cache = MarkdownCache(limit: 8, syncLimit: 0)
+        for seq in 0..<8 { await cache.render(seq: seq, text: "row \(seq)") }
+        // The reader scrolls back to the oldest row: it is the newest read.
+        #expect(cache.document(seq: 0, text: "row 0") != nil)
+        for seq in 8..<11 { await cache.render(seq: seq, text: "row \(seq)") }
+        #expect(cache.isReady(seq: 0, text: "row 0"), "read last, kept")
+        #expect(!cache.isReady(seq: 1, text: "row 1"), "read longest ago, gone")
+        #expect(cache.isReady(seq: 10, text: "row 10"))
+    }
+
+    @MainActor @Test func `the documents kept stay under the cost bound`() {
+        let text = String(repeating: "word ", count: 200)
+        let each = MarkdownCache.cost(of: text)
+        let cache = MarkdownCache(limit: 1_000, costLimit: each * 10)
+        for seq in 0..<40 { _ = cache.document(seq: seq, text: text + "\(seq)") }
+        #expect(cache.cost <= each * 10 + each)
+        #expect(cache.isReady(seq: 39, text: text + "39"))
+        #expect(!cache.isReady(seq: 0, text: text + "0"))
+    }
+
+    @MainActor @Test func `a settled text that is not held parses in place up to the limit, and waits past it`() async {
+        let cache = MarkdownCache()
+        let reply = String(repeating: "A **bold** claim. ", count: 300)
+        #expect(reply.utf8.count > MarkdownCache.prefetchFloor && reply.utf8.count <= cache.syncLimit)
+        let document = cache.document(seq: 1, text: reply)
+        #expect(document != nil, "it mounts at its real height")
+        #expect(document == MarkdownDocument.parse(reply))
+        let long = String(repeating: "A **bold** claim. ", count: 700)
+        #expect(long.utf8.count > cache.syncLimit)
+        #expect(cache.document(seq: 2, text: long) == nil)
+        #expect(await cache.render(seq: 2, text: long) == MarkdownDocument.parse(long))
+        // A prefetch parses a middling text ahead of its mount, off the main actor.
+        let ahead = MarkdownCache()
+        ahead.prefetch(seq: 3, text: reply)
+        let deadline = ContinuousClock.now.advanced(by: waitDeadline)
+        while !ahead.isReady(seq: 3, text: reply), ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(2)) }
+        #expect(ahead.document(seq: 3, text: reply) == MarkdownDocument.parse(reply))
+        #expect(ahead.parses == 1, "the mount found it ready")
+    }
+}
