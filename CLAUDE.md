@@ -3209,7 +3209,8 @@ proof and the sizing rules; the pieces, by name:
   package's `TurnLineInput` and `TurnLineModel` in `Rendering/TurnLine.swift`
   and `LinePhase`): the working line (`WorkingMark`, the words in
   `WorkingText`'s shimmer, each phase held 300 ms and changed through
-  `Design/MorphText.swift`), folded while a card waits or the thread is
+  `Design/MorphText.swift`; a lone running computer call says the host's
+  words, "Waiting for the Mac to be free" while held), folded while a card waits or the thread is
   paused, Stopped after a Stop, and "Worked for …" once `RevealDrain`
   says the turn's rows are done revealing, then the Watching line under
   the last turn while the thread watches; a turn's end ends every text
@@ -3383,7 +3384,12 @@ proof and the sizing rules; the pieces, by name:
   puts the buttons back with its line, the client's `CardDecision`,
   `ThreadState.deciding` and `refusals`; the question card in the desktop's
   proportions, option rows of 28 pt; `FailureCard.swift` on the desktop's
-  recipe, radius 8, 12 in, at most three actions, Retry last); the person's
+  recipe, radius 8, 12 in, at most three actions, Retry last; a computer
+  step held for the Mac, the request's `choices: run-skip`, reads Run now
+  and Skip, "Waiting for the Mac to be free", then Ran now, Skipped or
+  Skipped automatically, and a computer tool's card is its title alone:
+  the client package's `CardDecision` and `ApprovalShape.titleOnly`, every
+  word keyed by `choices`, `approve(…, choices:)` wording the refusal); the person's
   turn is the desktop's bubble (`UserTurnRow`: trailing, the chrome fill at
   radius 12, 12 × 8, at most 85 % of the column, `UserTurnLayout`; a sent
   bubble rises 16 pt over `Motion.rise` once, other born rows fade over
@@ -3511,7 +3517,8 @@ proof and the sizing rules; the pieces, by name:
   updates. Notifications: the notifier's `Notice` carries `kind` (approval,
   question, plan, waiting, finished, failed, stuck, batch, stopped),
   `subtitle` (the project's name, else the workspace's), an approval's
-  `requestId` and `hostName`. One voice (the header of remote/notifier.ts):
+  `requestId` (with `choices: 'run-skip'` for a computer step held for
+  the Mac) and `hostName`. One voice (the header of remote/notifier.ts):
   the title is the thread's title (an untitled thread takes its project's
   name and no subtitle), the body one line, a status word or a verb first, a
   colon before its detail, commas after, no dashes, dots or raw tool names:
@@ -3537,7 +3544,11 @@ proof and the sizing rules; the pieces, by name:
   needs_you and failed, time-sensitive only for needs_you, `category`
   `tc.approval` (Approve, which asks for the unlock, and Deny; `PushDelegate`
   decides through `session.approve` after bringing the socket up, and a
-  refusal answers one local notice saying why) or `tc.thread`,
+  refusal answers one local notice saying why), `tc.run-skip` (a computer
+  step held for the Mac: the notice's `choices: 'run-skip'`, carried from
+  the approval by the notifier, the hub body, the box's APNs and the relay;
+  Run now and Skip under the same two actions, a refusal "Not run: …"; the
+  phone's table is the client package's `PushCategories`) or `tc.thread`,
   `mutable-content: 1` and `tc.host` (the host's name): the
   TempCodeNotificationService extension (ios/TempCode/NotificationService)
   appends it to the subtitle only when the phone pairs with two or more

@@ -982,7 +982,18 @@ while it is out, or after this device decided, sends nothing:
 `ThreadState.deciding`), the buttons fade as the card settles in 200 ms
 ease-out, and a refusal puts the buttons back with one quiet secondary
 line ("Not allowed: …", kept on the thread as `ThreadState.refusals`, so
-the buttons coming back still say it) that the next decision clears. The
+the buttons coming back still say it) that the next decision clears. A
+computer step held for the Mac (the request's `choices: run-skip`, the
+host's computer/schedule.ts) takes the same card in the desktop's words:
+the heading says why it asks, "Waiting for the Mac to be free", the
+buttons are Run now and Skip (Allow and Deny underneath: `session.approve
+{ allow }`), the verdict Ran now, Skipped or Skipped automatically, a
+refusal "Not run: …" or "Not skipped: …"; every word is `CardDecision`'s,
+keyed by the request's `choices`, and anything else (absent, `allow-deny`,
+a value this build does not know) keeps Allow and Deny. A computer tool's
+card (`computer_session` and the computer tools by any prefix,
+`ApprovalShape.titleOnly`) is its title alone, which already names the
+app, the window and each action, never the input's fields under it. The
 question card takes the desktop's proportions (components/ui/
 question-card.tsx): the amber glyph beside the title (the question's
 header, else "Question") in 15 medium, each prompt in the prose type, its
@@ -1211,7 +1222,11 @@ the package's `ToolPhrase`, `GroupPhrase` and `ActionRow` (tested). Row kinds an
   step (`WaitSteps.waitOn`, the desktop's `openWaitOf`: the turn's last
   `wait_for_agent` still running with nothing after it that speaks, runs
   or waits on an approval; read from the turn, never the meta); one running call by its verb, muted, and its object in the
-  primary step, several by the group's phrase; a streaming thought's
+  primary step, except a lone computer call while the host sends words
+  for it, which says them ("Clicking button Save in TextEdit", "Waiting
+  for the Mac to be free, 2nd in line", "Waiting for the clipboard", keyed
+  to the first comma so a hold and its release morph; a box thread's
+  bridged hold arrives the same way); several by the group's phrase; a streaming thought's
   newest sentence, said once as Thinking to VoiceOver; the mark alone while
   prose streams; else Thinking. A card that waits on the person (an
   approval undecided, a question unanswered) or a paused, stopped or
@@ -2715,7 +2730,7 @@ else; the host sends what that row needs and the clock ticks on the device.
 | Island compact | leading the type glyph while working, paused or waiting, the final state's mark once settled; trailing `3/7` when there is a list, else the timer in a 60 pt slot that shrinks to 0.8 before `1:02:33` would clip, colored by the phase once the thread stops working |
 | Island minimal | the status dot (8 pt): the type's tint while working, warning paused and waiting, success done, destructive failed; a 6 pt still square for stopped |
 | Island expanded | glyph, title, timer on the top row; the status line and the tally below; keyline in the type's tint; every presentation deep-links to the thread and the row |
-| Notification | title the thread's title, subtitle the project (else the workspace), body one line: "Run bun test?", "Which database?", "Plan ready to approve", "Needs you", "Done in 12m, 2 tasks left", "Ready to build", "Batch done: 3 landed, gate passed in 4m 12s", "Batch stopped: gate failed at vitest", "Failed: <the host's summary, else the first line>", "Stopped unexpectedly", "No output for 12m"; nothing for a thread the person is looking at on the Mac, a batch thread's finish or a plan whose build started. Grouped per thread; relevance needs-you 1, failed 0.8, stuck 0.6, finished 0.4; sound only for needs-you and failed; time-sensitive only for needs-you; Approve and Deny on an approval (Approve asks for the unlock); a refusal answers one notice saying why. No emoji, no exclamation marks |
+| Notification | title the thread's title, subtitle the project (else the workspace), body one line: "Run bun test?", "Which database?", "Plan ready to approve", "Needs you", "Done in 12m, 2 tasks left", "Ready to build", "Batch done: 3 landed, gate passed in 4m 12s", "Batch stopped: gate failed at vitest", "Failed: <the host's summary, else the first line>", "Stopped unexpectedly", "No output for 12m"; nothing for a thread the person is looking at on the Mac, a batch thread's finish or a plan whose build started. Grouped per thread; relevance needs-you 1, failed 0.8, stuck 0.6, finished 0.4; sound only for needs-you and failed; time-sensitive only for needs-you; Approve and Deny on an approval (Approve asks for the unlock; category `tc.approval`), Run now and Skip on a computer step held for the Mac (`tc.run-skip`, the same two actions, Run now asking for the unlock, a refusal "Not run: …"; the categories are the client package's `PushCategories`); a refusal answers one notice saying why. No emoji, no exclamation marks |
 | The host in the subtitle | the host does not know how many hosts a phone pairs with, so the phone decides: the alert is `mutable-content` with the host's name under `tc.host`, and the notification service extension appends it ("temp-code · box") only when two or more hosts are paired, from the App Group directory the app publishes |
 | In the foreground | nothing for the thread on screen; a thread whose Live Activity is live gets the list only, unless it needs you |
 | In the background | an alert and the activity's end for the same settle both show: the alert is the persistent record, the activity leaves after two minutes, and the shared collapse id folds repeats |
@@ -3069,6 +3084,9 @@ and nothing carries over from another phone):
 | Duo 1 shell | the shell in every pose: the split layout, the sidebar, the thread strip, the fold transitions | landed 2026-10-24 |
 | Duo 2 thread screen | the thread screen in every pose: the header, the hero views, the composer, the bars, compact × compact | landed 2026-10-24 |
 | Duo 3 sheets and bars | every sheet by `SheetRules`, Settings, the Inbox split, Search, pairing, the fleet confirm, push, the bars audit | landed 2026-10-24 |
+| Computer use cards | a held computer step's card in Run now and Skip with its verdicts, the `tc.run-skip` notification, a computer tool's card as its title alone, the working line in the host's words for a computer call, the Live Activity's reason for a held step; the `computer` proof set | landed 2026-11-10 |
+| Computer steps, settled | a settled computer call's row in the desktop's `computerPhrase` ("Clicked button Save in TextEdit") in place of the generic MCP row ("Computer Act") | not built |
+| Computer pictures | a picture the model asked for as its own transcript row, the desktop's `ComputerShotRow` | not built |
 | Duo 4 toolchain and proof | Xcode 27.1 and the picker, the Duo simulator's poses under `hinge`, `TC_DUO_POSE` and the `duo` set, `LayoutProbe`, the device build, this section's frame | landed 2026-10-24 |
 
 L3 owns `ios/TempCode/Sources/Design/` and `Sources/Shell/`; L4 owns
