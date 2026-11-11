@@ -14,7 +14,7 @@ import {
 } from './descriptions'
 import { CONFIRM_KINDS } from './policy'
 import { COMPUTER_ACTION_NAMES, NO_INPUT_ACTIONS } from './protocol'
-import { COMPUTER_TOOL_NAMES, ComputerActInputSchema, ComputerBatchInputSchema, computerToolJsonSchema, computerToolSpecs, perVerbTools } from './tools'
+import { COMPUTER_BRIDGE_NOTE, COMPUTER_TOOL_NAMES, ComputerActInputSchema, ComputerBatchInputSchema, computerToolJsonSchema, computerToolSpecs, perVerbTools } from './tools'
 
 type Json = Record<string, unknown>
 
@@ -56,8 +56,8 @@ describe('the tool descriptions', () => {
   })
 
   it('point the batch at the per-verb tools in that shape', () => {
-    expect(toolDescription('anthropic', 'act', 'computer_batch')).toContain('as computer_act takes them')
-    expect(toolDescription('anthropic', 'per-verb', 'computer_batch')).toContain('computer_<action> tool')
+    expect(toolDescription('anthropic', 'act', 'computer_batch')).toContain("Each step takes computer_act's fields")
+    expect(toolDescription('anthropic', 'per-verb', 'computer_batch')).toContain('Each step takes the fields of its own computer_<action> tool')
     expect(toolDescription('anthropic', 'per-verb', 'computer_batch')).not.toContain('computer_act')
   })
 
@@ -77,7 +77,7 @@ describe('the tool specs', () => {
     expect(computerToolSpecs('cua', 'act')).toBe(computerToolSpecs('cua', 'act'))
   })
 
-  it('describe every field of every tool, nested ones included, within 200 characters', () => {
+  it('describe every field of every tool, nested ones included, within 200 characters; a batch step only its action', () => {
     for (const shape of WORDS_SHAPES)
       for (const tools of TOOL_SHAPES)
         for (const spec of computerToolSpecs(shape, tools)) {
@@ -85,6 +85,11 @@ describe('the tool specs', () => {
           expect(props.length).toBeGreaterThanOrEqual(spec.name === 'computer_apps' ? 1 : 3)
           for (const p of props) {
             const d = p.schema.description
+            // §27.12: a batch step's fields are computer_act's, described there once
+            if (p.path.startsWith('actions.[].') && p.path !== 'actions.[].action') {
+              expect(d, `${shape}/${tools} ${spec.name} ${p.path}`).toBeUndefined()
+              continue
+            }
             expect(typeof d, `${shape}/${tools} ${spec.name} ${p.path}`).toBe('string')
             expect((d as string).length, `${shape} ${spec.name} ${p.path}`).toBeLessThanOrEqual(FIELD_DESCRIPTION_MAX)
           }
@@ -142,11 +147,14 @@ describe('the tool specs', () => {
     expect(toolDescription('cua', 'act', 'computer_result')).not.toBe(toolDescription('anthropic', 'act', 'computer_result'))
   })
 
-  it('stay within the tools/list budget the bridge pays on every Mac thread, computer_result included', () => {
+  it('stay within the tools/list budget the bridge pays on every Mac thread, computer_result included, local and remote', () => {
     for (const shape of WORDS_SHAPES) {
       const list = computerToolSpecs(shape, 'act', { result: true }).map((t) => ({ name: t.name, description: t.description, inputSchema: computerToolJsonSchema(t.input) }))
       expect(list).toHaveLength(5)
       expect(JSON.stringify(list).length, shape).toBeLessThanOrEqual(TOOLS_LIST_MAX)
+      // a box thread's listing: the remote-Mac note rides on computer_apps alone (mcp.ts, §27.12)
+      const remote = list.map((t) => (t.name === 'computer_apps' ? { ...t, description: t.description + COMPUTER_BRIDGE_NOTE } : t))
+      expect(JSON.stringify(remote).length, `${shape} remote`).toBeLessThanOrEqual(TOOLS_LIST_MAX)
       for (const t of list) {
         expect(t.inputSchema.oneOf).toBeUndefined()
         expect(t.inputSchema.anyOf).toBeUndefined()
@@ -254,4 +262,44 @@ describe('web content words (§25)', () => {
       expect(toolDescription(shape, 'act', 'computer_apps')).toContain("each browser window's tabs")
     })
   }
+})
+
+describe('fewer calls in the words (§27)', () => {
+  for (const shape of WORDS_SHAPES) {
+    it(`${shape}: says each fact once where it belongs, and drops the sentences it replaces`, () => {
+      const act = toolDescription(shape, 'act', 'computer_act')
+      expect(act).toContain('A step that opens a menu or a window returns it: pick from it in the same batch with named.')
+      expect(act).toContain('Name a target by element, by named: "Team" (its name in the tree), or a menu-bar item by menu: "File > Save…", which needs no read of the menu bar.')
+      const batch = toolDescription(shape, 'act', 'computer_batch')
+      for (const fact of [
+        "Each step takes computer_act's fields, with action one of left_click,",
+        'A step can target what an earlier step opens, by named.',
+        'After a step that names a field or opens one, type and key go to it; otherwise the batch stops there and says where the focus is.',
+        'Keys after a step that changed nothing do not run.'
+      ])
+        expect(batch, fact).toContain(fact)
+      for (const gone of ['An element the batch makes appear needs the next read.', 'After another action in the same batch, type and paste name their element.', 'press Tab, type'])
+        expect(batch, gone).not.toContain(gone)
+      const observe = toolDescription(shape, 'act', 'computer_observe')
+      expect(observe).toContain("An act's result is your next read; read again only when it says something is missing.")
+      expect(observe).toContain('menus: true lists each menu on one line; to run an item you know, use menu.')
+      expect(observe).not.toMatch(/read (again|twice) with no action between/)
+      const fields = fieldWords(shape)
+      expect(fields.named).toBe('An element by its name in the tree, for one this call opens or one you have not read. Instead of element or coordinate.')
+      expect(fields.menu).toBe('A menu-bar item by its path, File > Save…; picks it with no menu open. left_click, or perform with name pick.')
+    })
+  }
+
+  it('describe named and menu on computer_act and the per-verb tools that take them, never on a batch step', () => {
+    for (const shape of WORDS_SHAPES) {
+      const [, , act, batch] = computerToolSpecs(shape, 'act').map((t) => computerToolJsonSchema(t.input) as { properties: Record<string, Json> })
+      expect(act.properties.named.description).toBe(fieldWords(shape).named)
+      expect(act.properties.menu.description).toBe(fieldWords(shape).menu)
+      const step = (batch.properties.actions as { items: { properties: Record<string, Json> } }).items.properties
+      expect(step.named.description).toBeUndefined()
+      expect(step.action.description).toBe(fieldWords(shape).action)
+      const pick = perVerbTools(shape).find((t) => t.name === 'computer_perform')!
+      expect((computerToolJsonSchema(pick.input) as { properties: Record<string, Json> }).properties.menu.description).toBe(fieldWords(shape).menu)
+    }
+  })
 })

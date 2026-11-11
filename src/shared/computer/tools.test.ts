@@ -14,6 +14,8 @@ import {
   ComputerToolCallSchema,
   ComputerToolResultSchema,
   NOT_EXECUTED_LINE,
+  OPENED_ENDING,
+  STOPPED_LINE,
   TOOL_BATCH_MAX_ACTIONS,
   TierVerdictSchema,
   computerToolJsonSchema,
@@ -22,8 +24,10 @@ import {
   mayRunAtAx,
   parseShotLine,
   parseStepLine,
+  parseStoppedLine,
   perVerbTools,
   stepTarget,
+  stoppedLine,
   tierVerdictSetting
 } from './tools'
 
@@ -303,5 +307,108 @@ describe('computer_apps open', () => {
     const confirm = { kind: 'upload', what: 'Uploads a.pdf to the form' }
     expect(ok({ launch: 'Safari', open: ['https://x.test'], confirm })).toBe(true)
     expect(ComputerAppsInputSchema.safeParse({ launch: 'Safari', confirm }).error?.issues[0].message).toBe('confirm goes with open')
+  })
+})
+
+describe('fewer calls in the step lines (§27)', () => {
+  const ok = (action: ComputerAction['action'], extra: object = {}): StepResult => ({ index: 0, action, status: 'ok', tier: 'ax', effect: 'changed', ...extra }) as StepResult
+  const team = { index: 52, line: 'menu item "Team"' }
+
+  /** Each line as the host writes it, and what parseStepLine reads back: always the step's own action. */
+  const cases: [string, StepResult, ComputerAction, string, Partial<NonNullable<ReturnType<typeof parseStepLine>>>][] = [
+    [
+      'a named click that resolved',
+      ok('left_click', { resolved: 52, element: team }),
+      { action: 'left_click', named: 'Team' },
+      'left_click "Team" [52] menu item · ax · changed',
+      { action: 'left_click', target: '"Team" [52] menu item', named: 'Team', element: { index: 52, role: 'menu item', name: 'Team' }, tier: 'ax', effect: 'changed' }
+    ],
+    [
+      'a named click with no line for its element',
+      ok('left_click', { resolved: 52 }),
+      { action: 'left_click', named: 'Team' },
+      'left_click "Team" [52] · ax · changed',
+      { action: 'left_click', named: 'Team', tier: 'ax' }
+    ],
+    [
+      'text into a named field',
+      ok('type', { resolved: 4, element: { index: 4, line: 'text field "Search" = ""' }, input: { via: 'ax-insert' } }),
+      { action: 'type', text: 'a "b" · c', named: 'Search' },
+      'type "a \\"b\\" · c" into "Search" [4] text field · ax-insert · changed',
+      { action: 'type', named: 'Search', element: { index: 4, role: 'text field', name: 'Search' }, tier: 'ax-insert' }
+    ],
+    [
+      'a key on a named field',
+      ok('key', { tier: 'process', resolved: 4, element: { index: 4, line: 'text field "Search"' } }),
+      { action: 'key', text: 'Return', named: 'Search' },
+      'key Return on "Search" [4] text field · process · changed',
+      { action: 'key', named: 'Search', element: { index: 4, role: 'text field', name: 'Search' }, tier: 'process' }
+    ],
+    [
+      'a menu-bar click, its path joined by ›',
+      ok('left_click', { resolved: 157, input: { via: 'menu', on: 'File › Save…' } }),
+      { action: 'left_click', menu: 'File > Save…', text: 'shift' },
+      'left_click menu File › Save… · menu · changed',
+      { action: 'left_click', menu: ['File', 'Save…'], tier: 'menu', effect: 'changed' }
+    ],
+    [
+      'a menu-bar pick, either separator',
+      ok('perform', { resolved: 160 }),
+      { action: 'perform', name: 'pick', menu: 'Edit › Find > Find…' },
+      'perform pick menu Edit › Find › Find… · ax · changed',
+      { action: 'perform', menu: ['Edit', 'Find', 'Find…'], tier: 'ax' }
+    ],
+    [
+      'a step that opened a window',
+      ok('key', { tier: 'process', opened: { id: 7, title: 'Untitled 2' } }),
+      { action: 'key', text: 'super+n' },
+      'key super+n · process · changed · opened window "Untitled 2"',
+      { action: 'key', target: 'super+n', tier: 'process', effect: 'changed', opened: 'Untitled 2' }
+    ],
+    [
+      'an opened window whose title holds the ending',
+      ok('perform', { opened: { id: 8, title: 'a · opened window "b"' } }),
+      { action: 'perform', name: 'pick', menu: 'File > New' },
+      'perform pick menu File › New · ax · changed · opened window "a · opened window \\"b\\""',
+      { action: 'perform', menu: ['File', 'New'], tier: 'ax', effect: 'changed', opened: 'a · opened window "b"' }
+    ],
+    [
+      'a named step that failed',
+      { index: 1, action: 'left_click', status: 'failed', error: { kind: 'named_target', message: 'no element is named "Team".' } },
+      { action: 'left_click', named: 'Team' },
+      'left_click "Team" · failed: no element is named "Team".',
+      { action: 'left_click', target: '"Team"', failed: 'no element is named "Team".' }
+    ]
+  ]
+  for (const [name, step, action, line, back] of cases)
+    it(`writes and reads back ${name}`, () => {
+      expect(formatStepLine(step, action)).toBe(line)
+      expect(parseStepLine(line)).toMatchObject({ ...back, action: action.action })
+    })
+
+  it('leaves the head of a line with no window opened as it was', () => {
+    expect(parseStepLine('key super+n · process · changed')?.opened).toBeUndefined()
+    expect(formatStepLine(ok('key', { tier: 'process' }), { action: 'key', text: 'super+n' })).not.toContain(OPENED_ENDING)
+  })
+
+  it('says a stop after a step that changed nothing by its number from 1, and the plain line otherwise', () => {
+    const stopped: StepResult = { index: 2, action: 'type', status: 'not-run', stopped: { afterStep: 1, reason: 'no-change' } }
+    const line = formatStepLine(stopped, { action: 'type', text: 'hi' })
+    expect(line).toBe('Not executed: step 2 changed nothing, so these keys had no planned place.')
+    expect(line).toBe(stoppedLine(2))
+    expect(line).toMatch(STOPPED_LINE)
+    expect(parseStoppedLine(line)).toBe(2)
+    expect(parseStepLine(line)).toBeNull()
+    expect(parseStoppedLine(NOT_EXECUTED_LINE)).toBeNull()
+    expect(formatStepLine({ index: 2, action: 'type', status: 'not-run' }, { action: 'type', text: 'hi' })).toBe(NOT_EXECUTED_LINE)
+  })
+
+  it("gives a batch step no field descriptions but action's (§27.12)", () => {
+    const step = (computerToolJsonSchema(ComputerBatchInputSchema) as { properties: { actions: { items: { properties: Record<string, { description?: string }> } } } }).properties.actions.items.properties
+    expect(step.action.description).toBeDefined()
+    for (const [k, v] of Object.entries(step)) if (k !== 'action') expect(v.description, k).toBeUndefined()
+    expect(Object.keys(step)).toEqual(expect.arrayContaining(['named', 'menu', 'element', 'coordinate']))
+    expect(ComputerBatchInputSchema.safeParse({ app: 'Mail', actions: [{ action: 'left_click', named: 'Team' }, { action: 'type', text: 'x' }] }).success).toBe(true)
+    expect(ComputerBatchInputSchema.safeParse({ app: 'Mail', actions: [{ action: 'left_click', named: 'Team', element: 3 }] }).success).toBe(false)
   })
 })

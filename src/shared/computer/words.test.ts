@@ -227,6 +227,20 @@ describe('computerPhrase', () => {
     expect(words(computerPhrase('computer_act', { app: 'Mail', action: 'type', text: 'x', element: 33 }, { live: true }))).toBe('Typing in Mail')
   })
 
+  it('names a named or menu target by its name while it runs and from its step line once settled (§27.9, §27.10)', () => {
+    expect(words(live('computer_act', { app: 'Mail', action: 'left_click', named: 'Team' }))).toBe('Clicking Team in Mail')
+    expect(words(live('computer_act', { app: 'Mail', action: 'type', text: 'hi', named: 'Search' }))).toBe('Typing into Search in Mail')
+    expect(words(live('computer_act', { app: 'TextEdit', action: 'left_click', menu: 'File > Save…' }))).toBe('Clicking Save… in TextEdit')
+    expect(words(live('computer_act', { app: 'Mail', action: 'left_click', named: 'https://example.com/private' }))).toBe('Clicking in Mail')
+    const click = { action: 'left_click', named: 'team' } as ComputerAction
+    const text = result([[ok('left_click', { resolved: 52, element: { index: 52, line: 'menu item "Team"' } }), click]], 'Mail')
+    expect(words(settled('computer_act', { app: 'Mail', ...click }, text))).toBe('Clicked team in Mail')
+    const pick = { action: 'perform', name: 'pick', menu: 'Edit › Find > Find…' } as ComputerAction
+    expect(words(settled('computer_act', { app: 'TextEdit', ...pick }, result([[ok('perform', { input: { via: 'menu', on: 'Edit › Find › Find…' } }), pick]])))).toBe(
+      'Used Pick on Find… in TextEdit'
+    )
+  })
+
   it('splits the verb from the object, keeping the fixed verb phrases whole', () => {
     expect(live('computer_act', { app: 'TextEdit', action: 'left_click', element: 14 })).toEqual({ verb: 'Clicking', object: 'Save in TextEdit' })
     expect(live('computer_act', { app: 'TextEdit', action: 'screenshot' })).toEqual({ verb: 'Looking at', object: 'TextEdit' })

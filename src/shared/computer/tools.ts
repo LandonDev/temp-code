@@ -171,9 +171,14 @@ function toolInputs(w: FieldText) {
     }),
     /** The action's own fields beside the target's: one flat object, no `oneOf`. */
     act: z.object({ ...target, ...actionShape, confirm: confirm(w.confirm) }).superRefine(refineAction),
+    // §27.12: a step's fields are computer_act's, described there once; the step names only its action
     batch: z.object({
       ...target,
-      actions: z.array(z.object(actionShape).superRefine(refineAction)).min(1).max(TOOL_BATCH_MAX_ACTIONS).describe(w.actions),
+      actions: z
+        .array(z.object({ ...COMPUTER_ACTION_SHAPE, action: actionShape.action }).superRefine(refineAction))
+        .min(1)
+        .max(TOOL_BATCH_MAX_ACTIONS)
+        .describe(w.actions),
       confirm: confirm(w['batch.confirm'])
     }),
     result: z.object({ id: z.string().min(1).max(16).describe(w['result.id']), cancel: z.boolean().optional().describe(w['result.cancel']) }),
@@ -202,8 +207,8 @@ export type ComputerBatchInput = z.infer<typeof ComputerBatchInputSchema>
 export const ComputerResultInputSchema = INPUTS.anthropic.result
 export type ComputerResultInput = z.infer<typeof ComputerResultInputSchema>
 
-/** After each tool's description on a thread whose calls cross the Mac bridge (computer/bridge.ts). */
-export const COMPUTER_BRIDGE_NOTE = " These act on the user's Mac, where the apps run; this thread runs on another host."
+/** After computer_apps' description alone on a thread whose calls cross the Mac bridge (computer/bridge.ts, §27.12). */
+export const COMPUTER_BRIDGE_NOTE = " The computer tools act on the user's Mac, where the apps run; this thread runs on another host."
 
 export { COMPUTER_SEARCH_HINT, type ToolShape, type WordsShape } from './descriptions'
 
@@ -385,6 +390,22 @@ export const EFFECT_WORDS: Readonly<Record<StepEffect, string>> = {
 }
 /** Anthropic's own sentence, with "batch" for "turn". */
 export const NOT_EXECUTED_LINE = 'Not executed: an earlier action in this batch failed.'
+/**
+ * A step §27.8 stopped: `n` is the step that changed nothing, numbered from 1 as the screenshot lines number steps
+ * (the wire's `afterStep` + 1).
+ */
+export const stoppedLine = (n: number): string => `Not executed: step ${n} changed nothing, so these keys had no planned place.`
+/** stoppedLine's line; group 1 is the step that changed nothing. */
+export const STOPPED_LINE = /^Not executed: step ([1-9]\d*) changed nothing, so these keys had no planned place\.$/
+/** The step that changed nothing, from a stoppedLine line; null for any other line. */
+export const parseStoppedLine = (line: string): number | null => {
+  const m = STOPPED_LINE.exec(line)
+  return m ? Number(m[1]) : null
+}
+/** Ends the line of a step that opened a window the call then followed (§27.5): ` · opened window "Untitled 2"`. */
+export const OPENED_ENDING = `${STEP_SEPARATOR}opened window `
+/** The menu-bar path separators a `menu` target takes (§27.10); a step line joins the segments by the second. */
+export const MENU_PATH_SEPARATORS = [' > ', ' › '] as const
 export const OBSERVATION_FAILED_PREFIX = 'observation failed: '
 /** Image parts in one result; past it the lines still name the files. */
 export const MAX_IMAGE_PARTS = 4
@@ -406,12 +427,33 @@ export function briefTarget(brief: ElementBrief): string {
   }
 }
 
-/** What a step acted on, in the words of its step line. */
-export function stepTarget(action: ComputerAction, brief?: ElementBrief): string {
+/** A `menu` target's segments, split on ` > ` or ` › ` (§27.10). */
+export const menuPathSegments = (path: string): string[] => path.split(/ > | › /).map((s) => s.trim())
+
+/** `menu File › Save…`: the separator never appears inside the part, so the line reads back. */
+const menuWords = (path: string): string => `menu ${menuPathSegments(path).join(' › ').split(STEP_SEPARATOR).join(' ')}`
+
+/** `"Team" [52] menu item`: a `named` target, then the element it resolved to by index and role (§27.9). */
+function namedTarget(named: string, resolved: number | undefined, brief: ElementBrief | undefined): string {
+  if (resolved === undefined) return JSON.stringify(named)
+  let role = ''
+  if (brief?.index === resolved)
+    try {
+      role = ` ${parseElementLine(`[${brief.index}] ${brief.line}`).role}`
+    } catch {
+      role = ''
+    }
+  return `${JSON.stringify(named)} [${resolved}]${role}`
+}
+
+/** What a step acted on, in the words of its step line; `resolved` is the element a `named` target resolved to. */
+export function stepTarget(action: ComputerAction, brief?: ElementBrief, resolved?: number): string {
   const el = (i: number | undefined): string | null =>
     i === undefined ? null : brief && brief.index === i ? briefTarget(brief) : `[${i}]`
   const point = (p: number[] | undefined): string | null => (p ? `${p[0]},${p[1]}` : null)
-  const at = el(action.element) ?? point(action.coordinate)
+  const at =
+    el(action.element) ?? (action.named !== undefined ? namedTarget(action.named, resolved ?? brief?.index, brief) : null) ?? point(action.coordinate)
+  if (action.menu !== undefined) return action.action === 'perform' ? `${action.name} ${menuWords(action.menu)}` : menuWords(action.menu)
   const textIsNotMods: readonly ComputerActionName[] = ['type', 'key', 'hold_key', 'select_text', 'paste']
   const mods = action.text && !textIsNotMods.includes(action.action)
   const withMods = (s: string): string => (mods ? `${s} with ${action.text}` : s)
@@ -439,9 +481,9 @@ export function stepTarget(action: ComputerAction, brief?: ElementBrief): string
     case 'type':
       return `${quoteShort(action.text!)}${at ? ` into ${at}` : ''}`
     case 'key':
-      return `${action.text}${action.repeat && action.repeat > 1 ? ` ×${action.repeat}` : ''}`
+      return `${action.text}${action.repeat && action.repeat > 1 ? ` ×${action.repeat}` : ''}${action.named !== undefined ? ` on ${at}` : ''}`
     case 'hold_key':
-      return `${action.text} for ${action.duration} s`
+      return `${action.text} for ${action.duration} s${action.named !== undefined ? ` on ${at}` : ''}`
     case 'wait':
       return `up to ${action.duration} s`
     case 'set_value':
@@ -466,8 +508,9 @@ function waitWords(w: WaitReport | undefined): string | null {
  * after it says Anthropic's sentence.
  */
 export function formatStepLine(step: StepResult, action: ComputerAction): string {
-  if (step.status === 'not-run') return NOT_EXECUTED_LINE
-  const head = [action.action, stepTarget(action, step.status === 'ok' ? step.element : undefined)].filter(Boolean).join(' ')
+  if (step.status === 'not-run') return step.stopped ? stoppedLine(step.stopped.afterStep + 1) : NOT_EXECUTED_LINE
+  const ok = step.status === 'ok' ? step : undefined
+  const head = [action.action, stepTarget(action, ok?.element, ok?.resolved)].filter(Boolean).join(' ')
   if (step.status === 'failed') return `${head}${STEP_SEPARATOR}failed: ${step.error.message}`
   const parts = [head]
   if (action.action === 'cursor_position' && step.text) parts.push(step.text)
@@ -478,7 +521,8 @@ export function formatStepLine(step: StepResult, action: ComputerAction): string
     parts.push(howWords(action, step))
     parts.push(EFFECT_WORDS[step.effect])
   }
-  return parts.join(STEP_SEPARATOR)
+  const line = parts.join(STEP_SEPARATOR)
+  return step.opened ? `${line}${OPENED_ENDING}${JSON.stringify(step.opened.title)}` : line
 }
 
 /** The background routes (§24.8): the line names them with what they acted on, `menu File › Close`. */
@@ -488,6 +532,8 @@ export const FALLBACK_VIAS: readonly InputVia[] = ['menu', 'hit', 'caret', 'scro
 function howWords(action: ComputerAction, step: Extract<StepResult, { status: 'ok' }>): string {
   const via = step.input?.via
   if (via && FALLBACK_VIAS.includes(via)) {
+    // a menu target already names its path in the head
+    if (action.menu !== undefined) return via
     // the separator never appears inside the part, so the line reads back
     const on = step.input?.on?.split(STEP_SEPARATOR).join(' ')
     return on ? `${via} ${on}` : via
@@ -531,8 +577,14 @@ export interface StepLine {
   action: ComputerActionName
   /** what the step acted on, as its line wrote it (`[14] button "Save"`, `down 3 on [5]`); empty for a step with none */
   target: string
-  /** the element the line names with its role (a bare `[14]` the service had no line for is left out) */
+  /** the element the line names with its role (a bare `[14]` the service had no line for is left out); a `named` target's name when the element's own is not on the line */
   element?: { index: number; role: string; name: string | null }
+  /** the name a `named` step looked for, when it resolved (§27.9) */
+  named?: string
+  /** a `menu` step's path, by segment (§27.10) */
+  menu?: string[]
+  /** the title of the window the step opened (§27.5) */
+  opened?: string
   /** the tier, or for a `type` the way it went in: `ax`, `ax-insert`, `no tier` */
   tier?: string
   effect?: StepEffect
@@ -557,30 +609,56 @@ function headEnd(line: string): number {
   return line.length
 }
 
-/** The first `[n] role "name"` in a target, outside quotes. */
-function targetElement(target: string): StepLine['element'] {
+/** The first `[n] role "name"` in a target, outside quotes, and the `named` target written right before it (`"Team" [52] menu item`). */
+function targetElement(target: string): { element: StepLine['element']; named?: string } | undefined {
   let quoted = false
+  let quoteStart = -1
+  let quoteEnd = -1
   for (let i = 0; i < target.length; i++) {
     const c = target[i]
     if (quoted) {
       if (c === '\\') i++
-      else if (c === '"') quoted = false
+      else if (c === '"') {
+        quoted = false
+        quoteEnd = i
+      }
       continue
     }
     if (c === '"') {
       quoted = true
+      quoteStart = i
       continue
     }
     const m = c === '[' ? /^\[([1-9]\d*)\]/.exec(target.slice(i)) : null
     if (!m) continue
+    const named = quoteEnd === i - 2 && target[i - 1] === ' ' ? (JSON.parse(target.slice(quoteStart, quoteEnd + 1)) as string) : undefined
     const rest = target.slice(i + m[0].length)
     const role = /^ ([a-z][a-z0-9:-]*(?: [a-z][a-z0-9:-]*)*?)(?= "| with | to |$)/.exec(rest)
-    if (!role || ROLE_STOP.test(role[1])) return undefined
+    if (!role || ROLE_STOP.test(role[1])) return named === undefined ? undefined : { element: undefined, named }
     const after = rest.slice(role[0].length)
     const name = /^ ("(?:[^"\\]|\\.)*")/.exec(after)
-    return { index: Number(m[1]), role: role[1], name: name ? (JSON.parse(name[1]) as string) : null }
+    const element = { index: Number(m[1]), role: role[1], name: name ? (JSON.parse(name[1]) as string) : (named ?? null) }
+    return named === undefined ? { element } : { element, named }
   }
   return undefined
+}
+
+/** A `menu` step's path in its target: `menu File › Save…`, or `pick menu …` for perform. */
+function targetMenu(action: ComputerActionName, target: string): string[] | undefined {
+  const prefix = action === 'left_click' ? 'menu ' : action === 'perform' ? 'pick menu ' : null
+  return prefix && target.startsWith(prefix) ? target.slice(prefix.length).split(' › ') : undefined
+}
+
+const OPENED_TITLE = /^("(?:[^"\\]|\\.)*")$/
+
+/** Where a line's ` · opened window "…"` ending starts, past the head, with the title; null when it has none. */
+function openedEnding(line: string, from: number): { at: number; title: string } | null {
+  for (let at = line.lastIndexOf(OPENED_ENDING); at >= from; at = line.lastIndexOf(OPENED_ENDING, at - 1)) {
+    const m = OPENED_TITLE.exec(line.slice(at + OPENED_ENDING.length))
+    if (m) return { at, title: JSON.parse(m[1]) as string }
+    if (at === 0) break
+  }
+  return null
 }
 
 const EFFECT_OF: Readonly<Record<string, StepEffect>> = Object.fromEntries(Object.entries(EFFECT_WORDS).map(([k, v]) => [v, k as StepEffect]))
@@ -597,11 +675,17 @@ export function parseStepLine(line: string): StepLine | null {
   // these name nothing (stepTarget), so a `screenshot 1 (observation): …` line is a shot line
   if (target && NO_TARGET.includes(name)) return null
   const out: StepLine = { action: name, target }
-  const element = targetElement(target)
-  if (element) out.element = element
+  const found = targetElement(target)
+  if (found?.element) out.element = found.element
+  if (found?.named !== undefined) out.named = found.named
+  const menu = targetMenu(name, target)
+  if (menu) out.menu = menu
   if (end === line.length) return out
-  const rest = line.slice(end + STEP_SEPARATOR.length)
-  if (rest.startsWith('failed: ')) return { ...out, failed: rest.slice('failed: '.length) }
+  if (line.startsWith('failed: ', end + STEP_SEPARATOR.length)) return { ...out, failed: line.slice(end + STEP_SEPARATOR.length + 'failed: '.length) }
+  const opened = openedEnding(line, end)
+  if (opened) out.opened = opened.title
+  if (opened?.at === end) return out
+  const rest = line.slice(end + STEP_SEPARATOR.length, opened?.at)
   if (NO_INPUT_ACTIONS.includes(name)) return out
   const [tier, effect, ...extra] = rest.split(STEP_SEPARATOR)
   if (!tier || extra.length || (effect !== undefined && !EFFECT_OF[effect])) return null

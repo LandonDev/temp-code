@@ -9,7 +9,7 @@ import { COMPUTER_RESULT_TOOL } from './heldCalls'
 import { parseElementLine } from './observation'
 import { confirmInput, confirmTitle, type Confirm, type ConfirmNeed, type HostConfirmKind } from './policy'
 import { COMPUTER_ACTION_NAMES, NO_INPUT_ACTIONS, type ComputerAction, type ComputerActionName, type ElementBrief } from './protocol'
-import { parseStepLine, type ComputerToolName, type TierVerdict } from './tools'
+import { menuPathSegments, parseStepLine, type ComputerToolName, type TierVerdict } from './tools'
 
 /**
  * A tool's own name: `mcp__app__computer_act` and `computer_act` alike, a
@@ -335,7 +335,17 @@ const CLICK_FORMS: Partial<Record<ComputerActionName, Forms>> = {
 const titleWords = (s: string): string => s.replace(/\b[a-z]/g, (c) => c.toUpperCase())
 const keyWords = (s: unknown): string | null => (typeof s === 'string' && s.trim() && s.length <= 40 ? s.trim() : null)
 
-type StepInput = { action?: unknown; element?: unknown; text?: unknown; scroll_direction?: unknown; name?: unknown }
+type StepInput = { action?: unknown; element?: unknown; text?: unknown; scroll_direction?: unknown; name?: unknown; named?: unknown; menu?: unknown }
+
+/** A step's target by its name (§27.9) or the last item of its menu path (§27.10), before any line names the element. */
+function targetNamed(a: StepInput): Named {
+  if (typeof a.named === 'string' && a.named.trim()) return { role: '', name: a.named }
+  if (typeof a.menu === 'string') {
+    const item = menuPathSegments(a.menu).at(-1)
+    if (item) return { role: 'menu item', name: item }
+  }
+  return null
+}
 
 /** One action in words, with the element it names (already resolved) in the app. */
 function stepPhrase(a: StepInput, element: Named, app: string, live: boolean): ComputerPhrase {
@@ -435,9 +445,10 @@ export function computerPhrase(tool: string, input: unknown, opts: PhraseOptions
   const lines = !live && opts.result ? opts.result.split('\n') : []
   const named = (k: number): Named => {
     const line = lines[k] !== undefined ? parseStepLine(lines[k]) : null
-    if (line && line.action === actions[k].action) return line.element ? { role: line.element.role, name: line.element.name } : null
+    if (line && line.action === actions[k].action && line.element) return { role: line.element.role, name: line.element.name }
     const index = actions[k].element
-    return typeof index === 'number' && opts.brief ? briefNamed(opts.brief(index)) : null
+    if (typeof index === 'number') return opts.brief ? briefNamed(opts.brief(index)) : null
+    return targetNamed(actions[k])
   }
   const acting = actions.flatMap((a, k) => (sendsInput(a) ? [k] : []))
   const one = acting.length === 1 ? acting[0] : actions.length === 1 ? 0 : null
