@@ -260,7 +260,8 @@ why and the measured headline.
   and the privacy guard by computerFixtures.test.ts.
 
 The bridge gate (`scripts/e2e-computer-bridge.ts --gate`) checks the Mac’s
-short hostname, uses a full TC Probe tree for held-click indices and rejects
+short hostname and the remote note on `computer_apps` alone (§27.12),
+uses a full TC Probe tree for held-click indices and rejects
 missing indices or held ids. Its scratch app launches without the agent’s
 process-guard marks: Launch Services gives it PID 1 as parent, and the
 proof owns its PID cleanup. A cancellation notice passes only when the

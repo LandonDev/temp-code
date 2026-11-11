@@ -53,7 +53,7 @@ import { createInterface } from 'node:readline'
 import { proofDescendants } from './lib/proofProcesses'
 import { cleanupProbeApp } from './lib/tcProbeApp'
 import { COMPUTER_PROOF_ENV, sweepComputerProofProcesses } from './lib/computerProofProcesses'
-import { bridgeCancelledProbeRead, bridgeHeldId, bridgeProbeEnvironment, bridgeProbePing, waitForBridgeProofCall } from './lib/computerBridgeProof'
+import { bridgeCancelledProbeRead, bridgeHasOneRemoteNote, bridgeHeldId, bridgeProbeEnvironment, bridgeProbePing, waitForBridgeProofCall } from './lib/computerBridgeProof'
 import { shortHostName } from '../src/shared/hostNames'
 import { BRIDGE_TIMING_RULE, judgeBridgeTiming, median, timingTable, type TimingKind, type TimingSample } from './lib/computerBridgeTiming'
 import { parseTimingLine } from '../src/shared/computer/bridgeTiming'
@@ -694,7 +694,7 @@ async function orchestrator(): Promise<void> {
     const offered = await until(5_000, async () => (await tools(t1)).tools.length === 5)
     check('on: within 5 s the box lists the four tools and computer_result', offered)
     const listed = await tools(t1)
-    check("on: each description ends with the bridge note", listed.tools.every((t) => t.description.endsWith("this thread runs on another host.")))
+    check('on: only computer_apps ends with the bridge note', bridgeHasOneRemoteNote(listed.tools), JSON.stringify(listed.tools.map((t) => ({ name: t.name, description: t.description }))))
     check("on: the box kept the Mac's offer", (await boxCall<string>('log')).includes(`${macId}: computer use offered`))
 
     // 3. observe

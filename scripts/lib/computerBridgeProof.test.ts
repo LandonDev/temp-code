@@ -1,10 +1,20 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { bridgeCancelledProbeRead, bridgeHeldId, bridgeProbeEnvironment, bridgeProbePing, waitForBridgeProofCall } from './computerBridgeProof'
-import { ComputerActInputSchema, ComputerResultInputSchema } from '../../src/shared/computer/tools'
+import { bridgeCancelledProbeRead, bridgeHasOneRemoteNote, bridgeHeldId, bridgeProbeEnvironment, bridgeProbePing, waitForBridgeProofCall } from './computerBridgeProof'
+import { COMPUTER_BRIDGE_NOTE, COMPUTER_TOOLS, ComputerActInputSchema, ComputerResultInputSchema } from '../../src/shared/computer/tools'
 import { heldAnswerLine } from '../../src/shared/computer/heldCalls'
 import { markersOf } from '../../src/main/server/processGuard'
 
 afterEach(() => vi.useRealTimers())
+
+it('requires the remote note on computer_apps alone and rejects missing or repeated notes', () => {
+  const local = [...COMPUTER_TOOLS.map(({ name, description }) => ({ name, description })), { name: 'computer_result', description: 'Read a held call.' }]
+  const on = (names: string[]) => local.map((t) => ({ ...t, description: t.description + (names.includes(t.name) ? COMPUTER_BRIDGE_NOTE : '') }))
+  expect(bridgeHasOneRemoteNote(on(['computer_apps']))).toBe(true)
+  expect(bridgeHasOneRemoteNote(local)).toBe(false)
+  expect(bridgeHasOneRemoteNote(on(local.map((t) => t.name)))).toBe(false)
+  expect(bridgeHasOneRemoteNote(on(['computer_result']))).toBe(false)
+  expect(bridgeHasOneRemoteNote([])).toBe(false)
+})
 
 it('keeps the launchd-owned probe out of the agent orphan sweep without unmarking its runner', () => {
   const runner = {

@@ -1,4 +1,11 @@
 import { CALL_MARK, INSTANCE_MARK, THREAD_MARK } from '../../src/shared/bashMarks'
+import { COMPUTER_BRIDGE_NOTE } from '../../src/shared/computer/tools'
+
+/** The remote note belongs on computer_apps alone, including the held-result list. */
+export function bridgeHasOneRemoteNote(tools: readonly { name: string; description: string }[]): boolean {
+  const noted = tools.filter((t) => t.description.endsWith(COMPUTER_BRIDGE_NOTE))
+  return noted.length === 1 && noted[0].name === 'computer_apps'
+}
 
 /**
  * Launch Services gives the scratch app to launchd (ppid 1). It belongs to
