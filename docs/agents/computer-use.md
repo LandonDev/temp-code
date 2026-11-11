@@ -51,6 +51,18 @@ why and the measured headline.
   (`focus_moved`, with the host's `expectFocus` from the model's last read);
   a page scrolls by `scroll-into-view`. The gate's `webLeg` runs it on Chrome
   for Testing; field hand runs use plain Chrome with `--cover`.
+- **Fewer calls** (docs/computer-protocol.md §27). A step may name its
+  target by its name (`named`) or a menu-bar item by its path (`menu: "File
+  > Save…"`), resolved when it runs. A menu a step opens comes back in the
+  result (`+ menu opened by step n`), and a window it opens moves the call
+  there (`opened`). Text and keys with no target go to the live focus only
+  when a step of the call aimed there or the step before moved it there,
+  never into a password field (`focus_moved` `unplanned`, `secure`); keys
+  after a step that changed nothing do not run (`stopped`). The host carries
+  these facts across its segments as `prior` (src/shared/computer/batchStop.ts,
+  the shared table fixtures/batch-stop.json). Every wait reports its first
+  change and its gaps; `axAction` and `axStep` rows wait after ax steps
+  (seam `TEMP_CODE_COMPUTER_WAIT_AX`, JSON rows, isolated instances only).
 - **The host** (src/main/server/computer/, §17). On a Mac with a screen,
   one `ComputerService` (binary.ts; respawned with backoff, down five
   minutes after five crashes in two, shut down after ten idle minutes).
@@ -60,7 +72,9 @@ why and the measured headline.
   `computer.tiers.<bundleId>`, probed once per app. Stop on the Activity
   row (`computer.stop`) ends computer use for the turn.
 - **The app tools.** The four `computer_*` tools on every Mac thread,
-  subagents too: deferred on Claude (computer/mcp.ts), through the bridge
+  subagents too: deferred on Claude (computer/mcp.ts) unless the thread is
+  bridged to a Mac with computer use on or has acted before
+  (`computer.used.<threadId>`, §27.11), then loaded at spawn, through the bridge
   on codex and Muse behind a per-thread token. The bridge also lists
   `computer_result`: a Codex or Muse call held 20 s answers with an id and
   waits, running nothing unread, until `computer_result` reads or cancels it
@@ -204,7 +218,9 @@ why and the measured headline.
   for both sides and no step budgets — judged across saved reports by
   `--judge-field` (scripts/lib/fieldBar.ts: parity with Codex, medians at
   or under its, the box within 15% of the Mac, a hole in a report a named
-  miss).
+  miss). With no Codex report it judges seconds and calls against
+  `FIELD_TARGETS` (scripts/lib/fieldTargets.ts, never a full pass), and every
+  report prints a waste table per model (scripts/lib/fieldWaste.ts).
 - **Fixtures.** src/main/server/computer/fixtures/ (its README): wire
   frames, observation texts and app trees recorded from scratch content
   only (scripts/mac/record-computer-fixtures.sh), held to their schemas

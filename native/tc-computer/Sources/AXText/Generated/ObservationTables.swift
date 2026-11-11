@@ -125,4 +125,10 @@ public enum ObservationTables {
     public static let headerThin = "thin tree, see the screenshot"
     public static let otherWindowsPrefix = "other windows: "
     public static let stubSuffix = ": items not exposed to accessibility; see the screenshot)"
+    /// The opened-menu block (§27.4) and the submenu mark (§27.13).
+    public static let menuBlockPrefix = "+ menu opened by step "
+    public static let menuBlockSilent = "; its items did not answer: pick one with named, or close it with key Escape"
+    public static let menuBlockMaxItems = 80
+    public static let menuBlockMaxBytes = 6000
+    public static let submenuMark = "▸"
 }

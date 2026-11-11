@@ -78,7 +78,7 @@ public enum WaitDecision: Sendable, Equatable {
 /// The buckets a wait counts the gaps between adjacent changes into (§27.2, protocol.ts `WAIT_GAP_EDGES_MS`): each edge
 /// is a bucket's upper bound, inclusive, and one bucket above the last counts the rest.
 public enum WaitGaps {
-    public static let edgesMs = [25, 50, 75, 100, 150, 200, 300, 450, 700, 1_000]
+    public static let edgesMs = ComputerDefaults.Wait.gapEdgesMs
 
     public static func bucket(_ gapMs: Int) -> Int {
         edgesMs.firstIndex { gapMs <= $0 } ?? edgesMs.count

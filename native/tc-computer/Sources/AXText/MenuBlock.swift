@@ -22,12 +22,11 @@ public struct OpenedMenu: Sendable {
 /// element line, at most 80, then `… <n> more`; cut last, after every other cut, at 6,000 bytes. A menu whose items
 /// did not answer is one line.
 public enum MenuBlock {
-    // observation.ts's MENU_BLOCK and SUBMENU_MARK; not in the generated tables yet
-    public static let prefix = "+ menu opened by step "
-    public static let silent = "; its items did not answer: pick one with named, or close it with key Escape"
-    public static let maxItems = 80
-    public static let maxBytes = 6_000
-    public static let submenuMark = "▸"
+    public static let prefix = ObservationTables.menuBlockPrefix
+    public static let silent = ObservationTables.menuBlockSilent
+    public static let maxItems = ObservationTables.menuBlockMaxItems
+    public static let maxBytes = ObservationTables.menuBlockMaxBytes
+    public static let submenuMark = ObservationTables.submenuMark
 
     /// One block before its cut: the menu's number and title, and its items' numbers and lines.
     public struct Block: Sendable, Equatable {

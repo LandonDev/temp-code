@@ -98,6 +98,7 @@ import {
   WindowRefSchema,
   WindowSpaceSchema,
   waitActionWait,
+  WAIT_GAP_EDGES_MS,
   type ComputerMethod,
   type WaitOptions
 } from '../src/shared/computer/protocol'
@@ -108,6 +109,7 @@ import {
   HEADER_SEPARATOR,
   HEADER_WORDS,
   KEY_NAMES,
+  MENU_BLOCK,
   MODIFIER_NAMES,
   MODIFIERS,
   OTHER_WINDOWS_PREFIX,
@@ -116,6 +118,7 @@ import {
   STATE_WORDS,
   STRUCTURAL_ROLES,
   STUB_SUFFIX,
+  SUBMENU_MARK,
   SUBROLE_NAMES,
   TITLE_BAR_CORNER,
   TITLE_BAR_SUBROLES,
@@ -253,6 +256,8 @@ export const COMPUTER_CONTRACT: string[] = [
   '            let cap = Int((seconds * 1000).rounded())',
   `            return WaitOptions(minMs: 0, quietMs: ${waitActionWait(1).quietMs}, maxMs: cap, busyMaxMs: cap)`,
   '        }',
+  '        /// The upper edges of the buckets a wait counts the gaps between changes into, one bucket above the last (§27.2).',
+  `        public static let gapEdgesMs: [Int] = [${WAIT_GAP_EDGES_MS.join(', ')}]`,
   '    }',
   '}'
 ]
@@ -362,6 +367,12 @@ export function emitObservationTables(): string {
     `    public static let headerThin = ${swiftString(HEADER_WORDS.thin)}`,
     `    public static let otherWindowsPrefix = ${swiftString(OTHER_WINDOWS_PREFIX)}`,
     `    public static let stubSuffix = ${swiftString(STUB_SUFFIX)}`,
+    '    /// The opened-menu block (§27.4) and the submenu mark (§27.13).',
+    `    public static let menuBlockPrefix = ${swiftString(MENU_BLOCK.prefix)}`,
+    `    public static let menuBlockSilent = ${swiftString(MENU_BLOCK.silent)}`,
+    `    public static let menuBlockMaxItems = ${MENU_BLOCK.maxItems}`,
+    `    public static let menuBlockMaxBytes = ${MENU_BLOCK.maxBytes}`,
+    `    public static let submenuMark = ${swiftString(SUBMENU_MARK)}`,
     '}',
     ''
   ].join('\n')

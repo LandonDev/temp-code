@@ -119,5 +119,7 @@ public enum ComputerDefaults {
             let cap = Int((seconds * 1000).rounded())
             return WaitOptions(minMs: 0, quietMs: 450, maxMs: cap, busyMaxMs: cap)
         }
+        /// The upper edges of the buckets a wait counts the gaps between changes into, one bucket above the last (§27.2).
+        public static let gapEdgesMs: [Int] = [25, 50, 75, 100, 150, 200, 300, 450, 700, 1000]
     }
 }
