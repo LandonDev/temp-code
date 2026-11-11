@@ -87,6 +87,7 @@ final class FakeReader: AppReading, @unchecked Sendable {
 
     func observe(_ request: ObserveRequest) throws -> ObservationText {
         log.add("observe space=\(request.space.width)x\(request.space.height) loading=\(request.loading) noteThin=\(request.noteThin) mode=\(request.mode.rawValue)")
+        if request.openedMenus { lock.withLock { openedMenusAsked = true } }
         while lock.withLock({ hang }) { usleep(5_000) }
         let (kind, thin): (ObservationKind, Bool) = lock.withLock {
             requests.append(request)
@@ -133,6 +134,39 @@ final class FakeReader: AppReading, @unchecked Sendable {
     }
 
     func close() { lock.withLock { closed = true } }
+
+    // §27: what `named` and `menu` resolve to, by name or path; the focused element a blind key step meets
+    var namedTargets: [String: Int] = [:]
+    var menuTargets: [String: Int] = [:]
+    /// the live focus as (in scope, inside a targeted element, secure, index); nil: nothing focused
+    var live: (inScope: Bool, targeted: Bool, secure: Bool, index: Int)?
+    var openedMenusAsked = false
+
+    func beginCallRecord() { log.add("record begin") }
+    func recordStep(_ index: Int) { log.add("record step \(index)") }
+    func endCallRecord() { log.add("record end") }
+
+    func resolveNamed(_ name: String, window: AXUIElement) throws -> ResolvedElement {
+        guard let index = lock.withLock({ namedTargets[name] }) else {
+            throw ComputerFailure(ComputerError(kind: .namedTarget, message: "Nothing named \"\(name)\".", reason: .noMatch))
+        }
+        log.add("named \(name)")
+        return try resolve(index)
+    }
+
+    func resolveMenu(_ path: String) throws -> ResolvedElement {
+        guard let index = lock.withLock({ menuTargets[path] }) else {
+            throw ComputerFailure(ComputerError(kind: .namedTarget, message: "No menu item \"\(path)\".", reason: .noMatch))
+        }
+        log.add("menu \(path)")
+        return try resolve(index)
+    }
+
+    func liveFocus(window: AXUIElement, windows: [AXUIElement], targeted: [Int]) -> LiveFocus? {
+        guard let l = lock.withLock({ live }) else { return nil }
+        return LiveFocus(element: AXUIElementCreateApplication(pid), inScope: l.inScope, insideTargeted: l.targeted, secure: l.secure, role: l.secure ? "password" : "input",
+                         inWebArea: false, brief: ElementBrief(index: l.index, line: l.secure ? "password \"Password\"" : "input \"Name\""))
+    }
 }
 
 final class FakeReaders: ReaderPool, @unchecked Sendable {

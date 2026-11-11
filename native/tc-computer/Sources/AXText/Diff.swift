@@ -28,12 +28,16 @@ public struct Base: Sendable {
     public var stubs: [Int: [String]]
     public var others: [OtherWindow]
     public var fullBytes: Int
+    /// the menu bar's one-line menus by number (§27.13): the grammar has no diff line for one
+    public var menus: [Int: String] = [:]
 }
 
 public enum FullReason: String, Sendable {
     case first, windowChanged, moved, reordered, tooLarge, reset
     /// the truncation footer or the other-windows line went away: no diff line says that
     case unsaid
+    /// a menu bar line came, went or changed (§27.13): no diff line says that
+    case menuBar
 }
 
 public enum DiffOutcome: Sendable, Equatable {
@@ -59,6 +63,7 @@ public enum Diff {
         var order: [Int: [Int]] = [:]
         var summaries: [Int: String] = [:]
         var stubs: [Int: [String]] = [:]
+        var menus: [Int: String] = [:]
         let parentIndex = { (r: Int) -> Int in layout.liveParent(r).map { layout.rows[$0].index } ?? 0 }
         for r in layout.rows.indices where layout.prints(r) {
             let row = layout.rows[r]
@@ -74,12 +79,13 @@ public enum Diff {
                 }
             case .more: summaries[p] = layout.body(r)
             case .stub: stubs[p, default: []].append(layout.body(r))
+            case .menu: menus[row.index] = layout.body(r)
             }
         }
         if let footer { summaries[0] = footer }
         return Base(windowID: windowID, structure: structure, lines: lines, order: order, summaries: summaries, stubs: stubs,
                     // the windows the model was shown: none when the budget left the line out
-                    others: layout.othersLine == nil ? [] : layout.others, fullBytes: fullBytes)
+                    others: layout.othersLine == nil ? [] : layout.others, fullBytes: fullBytes, menus: menus)
     }
 
     /// Spec §4.4 with plan §4.2: full on another window, a move, a new order or
@@ -90,6 +96,7 @@ public enum Diff {
         if base.windowID != next.windowID { return .full(.windowChanged) }
         if moved { return .full(.moved) }
         if reordered { return .full(.reordered) }
+        if base.menus != next.menus { return .full(.menuBar) }
         // the shown picture must change only by what the grammar can say
         for (i, line) in next.lines {
             if let old = base.lines[i], old.parent != line.parent { return .full(.moved) }

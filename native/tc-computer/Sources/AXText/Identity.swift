@@ -98,6 +98,19 @@ public final class IndexBook: @unchecked Sendable {
 
     public var count: Int { byIndex.count }
 
+    /// The element's number, a new one when it has none: an element no read listed yet (the one a `named` step
+    /// resolved to, a focus that moved, an opened menu's item, §27.4 to §27.7) gets one the next read keeps.
+    public func intern(_ id: NodeID) -> Int {
+        if let index = byID[id] {
+            seen[index] = reads
+            return index
+        }
+        let index = allocator.next()
+        rebind(index, to: id)
+        evict()
+        return index
+    }
+
     private struct Flat {
         var id: NodeID
         var parent: Int

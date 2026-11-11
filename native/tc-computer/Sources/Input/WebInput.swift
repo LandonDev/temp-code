@@ -131,6 +131,7 @@ extension InputEngine {
     /// `focusConfirmMs`), then the browser-field rule on whatever is focused. Runs before the step's first
     /// route and again inside a session step after its activation; throws `focus_moved`.
     func checkFocus(_ action: ComputerAction, target: InputTarget) throws {
+        try checkPlannedFocus(action, target: target)
         guard FocusCheck.applies(action, chromium: target.chromium) else { return }
         let app = AX.app(target.pid)
         var expectation: FocusExpectation = .none
@@ -145,6 +146,25 @@ extension InputEngine {
         if case .refuse(let error) = FocusCheck.verdict(action, chromium: true, focused: focused, expectation: expectation, menu: menu) {
             throw ComputerFailure(error)
         }
+    }
+
+    /// §27.7 and §27.7a on every app, run where §25.9's check runs (before the first route, after a session
+    /// step's activation, before a paste's keys): the focus the service admitted still focused, else `focus_moved`
+    /// `moved` with nothing written; a destination reached by name or by focus never a secure text field.
+    func checkPlannedFocus(_ action: ComputerAction, target: InputTarget) throws {
+        guard target.plannedFocus != nil || target.refusesSecure else { return }
+        let focused = AX.element(AX.app(target.pid), "AXFocusedUIElement")
+        if let planned = target.plannedFocus, !AX.same(focused, planned) {
+            throw ComputerFailure(FocusCheck.moved(focused.map { focusedFacts($0, target: target) }))
+        }
+        let writes = action.action == .type || action.action == .paste || action.action == .setValue
+        guard target.refusesSecure, writes, let dest = target.element?.element ?? focused else { return }
+        AX.setTimeout(dest, seconds: InputTiming.axTimeoutS)
+        guard AX.string(dest, "AXSubrole") == "AXSecureTextField" else { return }
+        let brief = target.element?.brief ?? target.briefOf(dest)
+        let at = brief.map { "[\($0.index)] \($0.line)" } ?? AXHit.line(dest)
+        throw ComputerFailure(ComputerError(kind: .focusMoved, message: "\(at) can only be typed into by its element, so the person can be asked.",
+                                            element: brief?.index, reason: .secure, focused: brief))
     }
 
     /// The expected element focused, now or after AXFocused on it within `focusConfirmMs`.

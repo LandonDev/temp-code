@@ -69,6 +69,8 @@ public final class AppReader: AppReading, @unchecked Sendable {
         let build = BuildRequest(mode: request.mode, subtreeOf: request.element, budgetBytes: request.budgetBytes, geometry: request.geometry,
                                  space: request.space, loading: request.loading, noteThin: request.noteThin)
         let chromium = lastProcess.map { $0 != .native } ?? false
+        // §27.4: the menus the call's steps opened and that are still open, walked once for the block
+        let opened = request.openedMenus && request.element == nil ? openedMenus() : []
         /// `last`: no re-read follows, so a selected tab still without a page is `not-drawn`
         func once(last: Bool) throws -> (Built, Base?, WalkNotes, AXUIElement, PageRule.Reading?) {
             let t0 = Self.ms()
@@ -76,6 +78,7 @@ public final class AppReader: AppReading, @unchecked Sendable {
             let reading = chromium && request.element == nil ? snapshot.roots.first.flatMap(PageRule.read) : nil
             var b = build
             b.page = reading?.state(waitedOut: last)
+            b.openedMenus = opened
             let t1 = Self.ms()
             let (built, next) = Builder.build(snapshot, b, book: book, base: base)
             lastWalkMs = t1 - t0
@@ -223,7 +226,139 @@ public final class AppReader: AppReading, @unchecked Sendable {
         n.flags.focused = focused
         let facts = Facts.of(n, FactContext(focusedID: focused ? n.id : nil))
         return ResolvedElement(index: index, element: el, role: n.role, frame: n.frame ?? ComputerProtocol.Rect(x: 0, y: 0, w: 0, h: 0),
-                               actions: n.actions, settable: settable, brief: ElementBrief(index: index, line: Facts.body(facts.line)))
+                               actions: n.actions, settable: settable, brief: ElementBrief(index: index, line: Facts.body(facts.line)),
+                               secure: n.subrole == "AXSecureTextField")
+    }
+
+    // MARK: §27, fewer calls
+
+    public func beginCallRecord() { monitor.beginCall() }
+    public func recordStep(_ index: Int) { monitor.recordStep(index) }
+    public func endCallRecord() { monitor.endCall() }
+
+    public func focusedElement() -> AXUIElement? { AX.element(AX.copy(app, "AXFocusedUIElement").value) }
+
+    public func focusedWindowID() -> Int? {
+        AX.element(AX.copy(app, "AXFocusedWindow").value).flatMap { AppWindows.windowID(of: $0, pid: pid) }
+    }
+
+    public func index(of element: AXUIElement) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return book.intern(handles.intern(element))
+    }
+
+    /// The opened-menu blocks' menus (§27.4): each menu a step of the call opened that still answers, walked whole;
+    /// one whose walk fails within the AX timeout (an app in menu tracking) is the silent line. Under the lock.
+    private func openedMenus() -> [OpenedMenu] {
+        monitor.recorded().filter { $0.kind == .menu }.compactMap { entry -> OpenedMenu? in
+            guard alive(entry.element) else { return nil }
+            let own = AX.string(AX.copy(entry.element, "AXTitle").value)
+            let opener = AX.element(AX.copy(entry.element, "AXParent").value).flatMap { p in
+                [AX.string(AX.copy(p, "AXTitle").value), AX.string(AX.copy(p, "AXDescription").value)].compactMap { $0 }.first { !$0.isEmpty }
+            }
+            let walker = Walker(handles: handles)
+            walker.begin()
+            walker.cut = false
+            let node = try? walker.walk(root: entry.element, clip: nil, menuBar: false, isWindow: false)
+            return OpenedMenu(step: entry.step + 1, menu: node, title: (own?.isEmpty == false ? own : nil) ?? opener)
+        }
+    }
+
+    /// §27.9: the made-appear roots (the record's menus, windows and sheets) first, then the window and what is
+    /// attached to it; exact before case-blind, actionable first; several or none is `named_target`.
+    public func resolveNamed(_ name: String, window: AXUIElement) throws -> ResolvedElement {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !closed else { throw ComputerFailure(.unknownSession, "This reader is closed") }
+        let walker = Walker(handles: handles)
+        walker.begin()
+        var candidates: [NamedTarget.Candidate] = []
+        for entry in monitor.recorded() where alive(entry.element) {
+            if let n = try walker.walk(root: entry.element, clip: nil, menuBar: false, isWindow: entry.kind == .window) {
+                candidates += NamedTarget.candidates(n, madeAppear: true)
+            }
+        }
+        let frame = AX.frame(AX.copy(window, "AXPosition").value, AX.copy(window, "AXSize").value)
+        if let n = try walker.walk(root: window, clip: frame, menuBar: false, isWindow: true) { candidates += NamedTarget.candidates(n, madeAppear: false) }
+        for extra in attached(to: window, menus: false) {
+            if let n = try walker.walk(root: extra, clip: nil, menuBar: false, isWindow: false) { candidates += NamedTarget.candidates(n, madeAppear: false) }
+        }
+        switch NamedTarget.match(name, among: candidates) {
+        case .one(let c):
+            guard let el = handles.element(c.id) else { throw noMatch(name) }
+            return try describe(book.intern(c.id), el)
+        case .several(let all):
+            let briefs = all.compactMap { c in handles.element(c.id).flatMap { try? describe(book.intern(c.id), $0).brief } }
+            throw ComputerFailure(ComputerError(kind: .namedTarget, message: "Several elements are named \(Quote.json(name)); use element.",
+                                                reason: .several, elementCandidates: briefs))
+        case .none:
+            throw noMatch(name)
+        }
+    }
+
+    private func noMatch(_ name: String) -> ComputerFailure {
+        ComputerFailure(ComputerError(kind: .namedTarget, message: "Nothing named \(Quote.json(name)) in the window or what this call opened.", reason: .noMatch))
+    }
+
+    /// §27.10: the menu bar walked as a `menus: true` read walks it, no menu opened, and the path matched in it. A
+    /// disabled item answers as §24.2's `menu` route answers one; an item that opens a submenu picks nothing.
+    public func resolveMenu(_ path: String) throws -> ResolvedElement {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !closed else { throw ComputerFailure(.unknownSession, "This reader is closed") }
+        let none = { (what: String, there: [String]) in
+            ComputerFailure(ComputerError(kind: .namedTarget, message: "No menu item \(Quote.json(what)) in the menu bar.", reason: .noMatch, available: there))
+        }
+        guard let bar = AX.element(AX.copy(app, "AXMenuBar").value) else { throw none(path, []) }
+        let walker = Walker(handles: handles)
+        walker.begin()
+        walker.cut = false
+        guard let node = try walker.walk(root: bar, clip: nil, menuBar: true, isWindow: false) else { throw none(path, []) }
+        switch MenuPath.resolve(path, in: node) {
+        case .found(let f):
+            let shown = f.titles.joined(separator: " › ")
+            if f.submenu {
+                throw ComputerFailure(ComputerError(kind: .actionUnsupported, message: "\(shown) opens a submenu; name an item in it.", menu: f.titles))
+            }
+            if !f.enabled {
+                let name = NSRunningApplication(processIdentifier: pid)?.localizedName ?? "the app"
+                throw ComputerFailure(ComputerError(kind: .needsTier, message: "\(shown) is disabled while \(name) is in the background.", needed: .session, menu: f.titles))
+            }
+            guard let el = handles.element(f.id) else { throw none(path, []) }
+            return try describe(book.intern(f.id), el)
+        case .noMatch(let segment, let titles):
+            throw none(MenuPath.parse(path).prefix(segment + 1).joined(separator: " › "), titles)
+        case .several(_, let ids):
+            let briefs = ids.prefix(NamedTarget.candidatesMax).compactMap { id in handles.element(id).flatMap { try? describe(book.intern(id), $0).brief } }
+            throw ComputerFailure(ComputerError(kind: .namedTarget, message: "Several menu items match \(Quote.json(path)); use element.",
+                                                reason: .several, elementCandidates: briefs))
+        }
+    }
+
+    /// §27.7: the focused element and its ancestors, against the call's windows, record and targeted elements.
+    public func liveFocus(window: AXUIElement, windows: [AXUIElement], targeted: [Int]) -> LiveFocus? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !closed, let focused = AX.element(AX.copy(app, "AXFocusedUIElement").value) else { return nil }
+        var chain = [focused]
+        var up = AX.element(AX.copy(focused, "AXParent").value)
+        while let p = up, chain.count < 64 {
+            if AX.string(AX.copy(p, "AXRole").value) == "AXApplication" { break }
+            chain.append(p)
+            up = AX.element(AX.copy(p, "AXParent").value)
+        }
+        let scope = [window] + windows + monitor.recorded().map(\.element)
+        let aimed = targeted.compactMap { book.id(of: $0).flatMap(handles.element) }
+        let within = { (set: [AXUIElement]) in chain.contains { c in set.contains { CFEqual($0, c) } } }
+        let a = AX.batch(focused, ["AXRole", "AXSubrole"])
+        let role = AX.string(a["AXRole"]?.value) ?? ""
+        let subrole = AX.string(a["AXSubrole"]?.value)
+        let index = book.intern(handles.intern(focused))
+        let brief = (try? describe(index, focused).brief) ?? ElementBrief(index: index, line: Facts.roleWord(role, subrole))
+        return LiveFocus(element: focused, inScope: within(scope), insideTargeted: within(aimed), secure: subrole == "AXSecureTextField",
+                         role: Facts.roleWord(role, subrole), inWebArea: chain.dropFirst().contains { AX.string(AX.copy($0, "AXRole").value) == "AXWebArea" },
+                         brief: brief)
     }
 
     /// The index and line the model's latest window read gave this element; nil for one it did not list.

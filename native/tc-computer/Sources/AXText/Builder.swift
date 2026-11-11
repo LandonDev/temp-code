@@ -14,6 +14,8 @@ public struct BuildRequest: Sendable {
     public var noteThin: Bool
     /// the selected tab's page as the reader found it after its re-reads (§25.2); `not-drawn` prints in the header
     public var page: PageState?
+    /// the menus the call's steps opened and that are still open (§27.4): a block each closes the text
+    public var openedMenus: [OpenedMenu] = []
 
     public init(mode: ObservationMode = .auto, subtreeOf: Int? = nil, budgetBytes: Int = ComputerDefaults.ObservationBudget.defaultBytes, geometry: Bool = false, space: CoordinateSpace, loading: Bool = false, noteThin: Bool = true, page: PageState? = nil) {
         self.mode = mode
@@ -49,13 +51,17 @@ public enum Builder {
         // another window's tree is no candidate for a rebuilt match: only the same element keeps its number there
         let sameWindow = base?.windowID == s.window.id
         let indexed = book.assign(kept, base: subtree || !sameWindow ? nil : base, sameWindow: sameWindow)
+        // the opened menus' block, cut last: the body fits in what it leaves, at least half the budget (§27.4)
+        let blocks = MenuBlock.blocks(request.openedMenus, snapshot: s) { indexed.index[$0] ?? book.intern($0) }
+        let blockLines = MenuBlock.lines(blocks, maxBytes: min(MenuBlock.maxBytes, budget / 2))
+        let bodyBudget = budget - MenuBlock.bytes(blockLines)
         // a thin tree under `noteThin` will carry a screenshot, so its lines carry geometry in that shot's space (shell A12)
         let geometry = request.geometry || (kept.thin && request.noteThin)
         var layout = Layout.build(kept, indexed, snapshot: s, space: request.space, geometry: geometry, wholeValues: subtree)
         let focused = layout.rows.first { $0.kind == .element && $0.facts.states.first == "focused" }?.index
         var header = HeaderFacts(focused: focused, loading: request.loading, change: nil, thin: kept.thin && request.noteThin,
                                  notDrawn: !subtree && request.page == .notDrawn)
-        let fitted = TextBudget.fit(&layout, header: header, budget: budget)
+        let fitted = TextBudget.fit(&layout, header: header, budget: bodyBudget)
         let full = layout.text(header, footer: fitted.footer)
 
         var briefs: [Int: String] = [:]
@@ -63,7 +69,12 @@ public enum Builder {
             let row = layout.rows[r]
             if row.kind == .element { briefs[row.index] = Facts.body(row.shown) }
             if row.kind == .range { for i in row.index...row.last { briefs[i] = row.facts.role } }
+            if row.kind == .menu {
+                briefs[row.index] = Facts.body(row.facts)
+                for item in row.menuItems { briefs[item.index] = "menu item " + Quote.json(item.name) + (item.disabled ? " disabled" : "") }
+            }
         }
+        for block in blocks { for item in block.items { briefs[item.index] = item.body } }
         let elements = layout.rows.indices.filter(layout.prints).reduce(0) { $0 + layout.rows[$1].elements }
 
         var kind: ObservationKind = .full
@@ -92,6 +103,7 @@ public enum Builder {
                 reason = base == nil ? .first : nil
             }
         }
+        if !blockLines.isEmpty { text += "\n" + blockLines.joined(separator: "\n") }
         let ms = Int((ContinuousClock.now - start) / .milliseconds(1))
         let stats = ObservationStats(elements: elements, lines: text.split(separator: "\n", omittingEmptySubsequences: false).count, bytes: text.utf8.count,
                                      omitted: fitted.omitted, thin: kept.thin, partial: s.partial, readMs: s.walkMs + ms)

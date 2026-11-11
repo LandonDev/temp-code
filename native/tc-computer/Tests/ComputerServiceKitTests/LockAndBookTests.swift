@@ -261,8 +261,10 @@ private struct Record: HeldEntry {
     }
 
     @Test func aWaitReadsAsOneLine() {
-        #expect(Trace.waitText(WaitReport(waitedMs: 812, settled: true, busy: false, reason: .quiet), ax: 3, sig: 1, px: 0) == "wait 812ms quiet ax=3 sig=1 px=0")
-        #expect(Trace.waitText(WaitReport(waitedMs: 5_000, settled: false, busy: true, reason: .busyMax), ax: 0, sig: 0, px: 0) == "wait 5000ms busy-max ax=0 sig=0 px=0 busy")
+        #expect(Trace.waitText(WaitReport(waitedMs: 812, settled: true, busy: false, reason: .quiet), ax: 3, sig: 1, px: 0) == "wait 812ms quiet ax=3 sig=1 px=0 first=- gaps=-")
+        #expect(Trace.waitText(WaitReport(waitedMs: 5_000, settled: false, busy: true, reason: .busyMax), ax: 0, sig: 0, px: 0) == "wait 5000ms busy-max ax=0 sig=0 px=0 busy first=- gaps=-")
+        let changed = WaitReport(waitedMs: 600, settled: true, busy: false, reason: .quiet, firstChangeMs: 40, gapCounts: [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1])
+        #expect(Trace.waitText(changed, ax: 3, sig: 0, px: 0) == "wait 600ms quiet ax=3 sig=0 px=0 first=40 gaps=2,0,0,0,0,0,0,0,0,0,1")
     }
 
     @Test func theStampIsSecondsToTheMillisecond() {

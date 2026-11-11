@@ -44,10 +44,13 @@ public enum Keep {
     public static func tree(_ s: AXSnapshot, _ options: KeepOptions = KeepOptions()) -> KeptTree {
         var walk = Walk(snapshot: s, options: options)
         var roots: [KeptNode] = []
-        for root in s.roots { roots += walk.visit(root, inWeb: false, ancestor: (nil, nil), root: true, inMenuBar: false).kept }
+        // a menu item read on its own (a compact menu bar's submenu, §27.13) keeps its closed menu's items as the bar does
+        for root in s.roots { roots += walk.visit(root, inWeb: false, ancestor: (nil, nil), root: true, inMenuBar: menuItemRoles.contains(root.role)).kept }
         if let bar = s.menuBar { roots += walk.visit(bar, inWeb: false, ancestor: (nil, nil), root: true, inMenuBar: true).kept }
         return KeptTree(roots: roots, thin: thin(roots, window: s.window.frame))
     }
+
+    static let menuItemRoles: Set<String> = ["AXMenuBarItem", "AXMenuItem"]
 
     struct Walk {
         let snapshot: AXSnapshot

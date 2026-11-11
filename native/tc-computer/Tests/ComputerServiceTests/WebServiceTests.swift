@@ -121,7 +121,14 @@ func browser(_ session: String = "s1", tab: String) -> String { #""session":"\#(
 @Suite struct ExpectFocusTests {
     @Test func theExpectationBindsTheFirstKeyStepAloneOnAChromiumApp() async throws {
         let rig = await browserRig()
-        rig.reader("s1", pid: browserPid).focusedBrief = ElementBrief(index: 9, line: "input \"Address and search bar\"")
+        let reader = rig.reader("s1", pid: browserPid)
+        reader.focusedBrief = ElementBrief(index: 9, line: "input \"Address and search bar\"")
+        // every step changes the window, so §27.8 never stops the keys after it
+        rig.input.onPerform = { _, _ in
+            let at = mach_absolute_time()
+            reader.signal.notify()
+            return InputOutcome(tier: .process, via: nil, clipboard: nil, cursor: nil, lastInputAt: at - 1)
+        }
         let epoch = rig.service.epoch
         let keys = #"[{"action":"key","text":"Tab"},{"action":"type","text":"hi"}]"#
         let batch = try #require(await rig.call("action.batch", "{\(browser(tab: "Front")),\"actions\":\(keys),\"expectFocus\":4,\"epoch\":\"\(epoch)\",\"tiers\":[\"process\"],\"wait\":\(quick)}").result)

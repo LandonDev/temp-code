@@ -75,6 +75,16 @@ public enum WaitDecision: Sendable, Equatable {
     case done(WaitOutcome)
 }
 
+/// The buckets a wait counts the gaps between adjacent changes into (§27.2, protocol.ts `WAIT_GAP_EDGES_MS`): each edge
+/// is a bucket's upper bound, inclusive, and one bucket above the last counts the rest.
+public enum WaitGaps {
+    public static let edgesMs = [25, 50, 75, 100, 150, 200, 300, 450, 700, 1_000]
+
+    public static func bucket(_ gapMs: Int) -> Int {
+        edgesMs.firstIndex { gapMs <= $0 } ?? edgesMs.count
+    }
+}
+
 /// The smart wait (docs/computer-protocol.md §7, shell A1 and A2), as a pure rule over samples.
 ///
 /// 1. Nothing ends before `minMs`.
@@ -89,6 +99,10 @@ public enum WaitDecision: Sendable, Equatable {
 /// 6. On a copy or cut step (`pasteboard`), a pasteboard change that is not the service's own counts
 ///    and restarts the clock (§24.10); no other step reads the pasteboard, so the person copying
 ///    meanwhile never makes another step read `changed`.
+///
+/// It also records when the window changed (§27.2): the first sample that counted a change (an AX
+/// notification, a signature, pixels or the pasteboard; a busy indicator is not one), and the gaps between
+/// adjacent changes, one change per counting sample at its latest stamp, counted into `WaitGaps`.
 public struct WaitRule: Sendable {
     public let options: WaitOptions
     public let thin: Bool
@@ -108,6 +122,9 @@ public struct WaitRule: Sendable {
     private var lastPasteboard: Int?
     private var pasteboardChanged = false
     private var counts = WaitOutcome.Counts()
+    private var firstChangeSample: Int?
+    private var lastChangePoint: Int?
+    private var gapCounts = [Int](repeating: 0, count: WaitGaps.edgesMs.count + 1)
     private var done: WaitOutcome?
 
     public init(options: WaitOptions, signature0: UInt64, thin: Bool, pixels: Bool, pasteboard: Bool = false) {
@@ -130,18 +147,23 @@ public struct WaitRule: Sendable {
     public mutating func take(_ sample: WaitSample) -> WaitDecision {
         if let done { return .done(done) }
         let at = sample.at
+        // this sample's change for §27.2, at the latest stamp it counted
+        var changeAt: Int?
+        func counted(_ t: Int) { changeAt = max(changeAt ?? t, t) }
 
         if let ax = sample.axLastChange, ax >= 0, ax != lastAx {
             lastAx = ax
             counts.ax += 1
             firstAxChangeAt = min(firstAxChangeAt ?? ax, ax)
             lastChangeAt = max(lastChangeAt, ax)
+            counted(ax)
         }
         if let signature = sample.signature, signature != lastSignature {
             lastSignature = signature
             counts.sig += 1
             firstAxChangeAt = min(firstAxChangeAt ?? at, at)
             lastChangeAt = max(lastChangeAt, at)
+            counted(at)
         }
         if let busy = sample.busy, busy != busyNow {
             busyNow = busy
@@ -154,6 +176,7 @@ public struct WaitRule: Sendable {
                 pixelChanged = true
                 counts.px += 1
                 lastChangeAt = max(lastChangeAt, px)
+                counted(px)
             }
         }
 
@@ -162,6 +185,12 @@ public struct WaitRule: Sendable {
             pasteboardChanged = true
             counts.pb += 1
             lastChangeAt = max(lastChangeAt, pb)
+            counted(pb)
+        }
+        if let changeAt {
+            if firstChangeSample == nil { firstChangeSample = at }
+            if let last = lastChangePoint { gapCounts[WaitGaps.bucket(max(0, changeAt - last))] += 1 }
+            lastChangePoint = max(lastChangePoint ?? changeAt, changeAt)
         }
 
         let quietFrom = max(options.minMs, lastChangeAt)
@@ -201,11 +230,48 @@ public struct WaitRule: Sendable {
 
     private func outcome(at: Int, reason: WaitReason, settled: Bool) -> WaitOutcome {
         WaitOutcome(
-            report: WaitReport(waitedMs: max(0, at), settled: settled, busy: busyNow, reason: reason),
+            // the change times only when something counted (§27.2)
+            report: WaitReport(waitedMs: max(0, at), settled: settled, busy: busyNow, reason: reason,
+                               firstChangeMs: firstChangeSample.map { max(0, $0) }, gapCounts: firstChangeSample == nil ? nil : gapCounts),
             axChanged: firstAxChangeAt != nil,
             pixelChanged: pixelChanged,
             pasteboardChanged: pasteboardChanged,
             counts: counts
         )
+    }
+}
+
+/// §27.3: the wait after each step, by the route it went in at. Between steps `axStep` after one that went in at `ax`,
+/// else `step`; after a segment's last step `axAction` when every step that sent input went in at `ax`, else `action`.
+public struct WaitRows: Sendable, Equatable {
+    public var step: WaitOptions
+    public var action: WaitOptions
+    public var axStep: WaitOptions
+    public var axAction: WaitOptions
+
+    /// The call's rows, each defaulted as `COMPUTER_WAIT` ships it.
+    public init(stepWait: WaitOptions?, wait: WaitOptions?, axStepWait: WaitOptions?, axWait: WaitOptions?) {
+        step = stepWait ?? ComputerDefaults.Wait.step
+        action = wait ?? ComputerDefaults.Wait.action
+        axStep = axStepWait ?? ComputerDefaults.Wait.axStep
+        axAction = axWait ?? ComputerDefaults.Wait.axAction
+    }
+
+    /// After a step that is not the last: its own tier decides.
+    public func between(tier: Tier?) -> WaitOptions { tier == .ax ? axStep : step }
+
+    /// After the last step that ran: the tiers of every step that sent input (nil for one that sent none).
+    public func last(tiers: [Tier?]) -> WaitOptions {
+        let sent = tiers.compactMap { $0 }
+        return !sent.isEmpty && sent.allSatisfy { $0 == .ax } ? axAction : action
+    }
+}
+
+/// §27.5: the window a step opened, which the call then follows: the app's focused window after the step's wait, when
+/// it was not among the windows before the step. A sheet is in its window's tree and opens nothing here.
+public enum WindowFollow {
+    public static func opened(before: [Int], focusedAfter: Int?) -> Int? {
+        guard let id = focusedAfter, !before.contains(id) else { return nil }
+        return id
     }
 }

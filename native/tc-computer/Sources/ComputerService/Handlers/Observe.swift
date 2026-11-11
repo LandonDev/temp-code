@@ -34,6 +34,8 @@ struct ObserveKnobs: Sendable {
     var geometry: Bool?
     var menus: Bool?
     var budgetBytes: Int = ComputerDefaults.ObservationBudget.defaultBytes
+    /// an acting call's closing read: the menus its steps opened close the text (§27.4)
+    var openedMenus = false
 
     init() {}
 
@@ -99,8 +101,9 @@ extension ComputerService {
         let readers = self.readers
         if launched { try await waitForFirstWindow(pid: pid, worker: worker) }
         let (info, tab) = try await worker.run { state -> (WindowInfo, TabRef?) in
-            // §25.4: a ref may name a browser tab; resolution only finds it, the slot's holder selects it
-            let (element, info, tab) = try source.resolveTab(pid: pid, ref: window)
+            // §25.4: a ref may name a browser tab; resolution only finds it, the slot's holder selects it; §27.6: a title no
+            // live window or tab has may be one the service answered for a live window before
+            let (element, info, tab) = try ComputerService.resolveKept(source, pid: pid, ref: window, aliases: &state.aliases)
             let id = UInt32(truncatingIfNeeded: info.id)
             state.windows[id] = element
             state.tabs[id] = tab
@@ -113,6 +116,23 @@ extension ComputerService {
             session: session, pid: pid, app: Observation.App(pid: Int(pid), bundleId: running?.bundleId, name: running?.name ?? ""),
             worker: worker, info: info, launched: launched, tab: tab
         )
+    }
+
+    /// §2.1's match, tabs included, then §27.6's last step: a kept title of exactly one live window. A title a live
+    /// window or tab has wins; two live windows that once shared it, or none, fail as the match failed.
+    static func resolveKept(_ source: any WindowSource, pid: pid_t, ref: WindowRef?, aliases: inout WindowAliases) throws -> (element: AXUIElement, info: WindowInfo, tab: TabHandle?) {
+        let found: (element: AXUIElement, info: WindowInfo, tab: TabHandle?)
+        do {
+            found = try source.resolveTab(pid: pid, ref: ref)
+        } catch {
+            guard ref?.id == nil, let title = ref?.title, ComputerService.failure(error, or: .windowNotFound).kind == .windowNotFound else { throw error }
+            let live = ((try? source.list(pid: pid)) ?? []).map(\.id)
+            aliases.keep(live: live)
+            guard let id = aliases.match(title, live: live) else { throw error }
+            found = try source.resolveTab(pid: pid, ref: WindowRef(id: id))
+        }
+        aliases.answered(id: found.info.id, title: found.info.title)
+        return found
     }
 
     /// After a launch: the app's AX window list, polled every 100 ms up to 10 s.
@@ -171,6 +191,7 @@ extension ComputerService {
             geometry: knobs.geometry ?? (knobs.screenshot == .always), menus: knobs.menus ?? false, space: space,
             loading: loading, noteThin: knobs.screenshot != .never && screenRecording
         )
+        request.openedMenus = knobs.openedMenus
         var text = try await read(target, request)
         if cancel.isSet { return try await dropped(target) }
 
@@ -212,6 +233,8 @@ extension ComputerService {
         return try await target.worker.run { state in
             guard let reader = state.reader else { throw ComputerError(kind: .windowNotFound, message: "The app's reader is gone.") }
             let text = try reader.observe(box.request)
+            // §27.6: the title the service answered for this window, which a later ref may still use
+            if box.request.element == nil { state.aliases.answered(id: text.window.id, title: text.window.title) }
             return TextBox(text: text, page: reader.lastPage)
         }
     }

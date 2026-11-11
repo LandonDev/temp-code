@@ -47,7 +47,7 @@ private func run(
 
     @Test func changesThatNeverStopEndAtMax() {
         let out = run(ax: Array(stride(from: 50, through: 9_000, by: 200)))
-        #expect(out.report == WaitReport(waitedMs: 1_500, settled: false, busy: false, reason: .max))
+        #expect(out.report.waitedMs == 1_500 && !out.report.settled && out.report.reason == .max)
     }
 
     @Test func aBusyIndicatorHoldsTheWaitToBusyMax() {
@@ -151,6 +151,54 @@ private func run(
     }
 }
 
+/// §27.2: every wait says when the window first changed and how far apart its changes came.
+@Suite struct WaitChangeTimesTests {
+    @Test func aWaitWithNoChangeHasNoTimes() {
+        let out = run()
+        #expect(out.report.firstChangeMs == nil)
+        #expect(out.report.gapCounts == nil)
+        #expect(WaitRule.skipped().report.gapCounts == nil)
+    }
+
+    @Test func oneChangeHasItsFirstTimeAndNoGap() {
+        let out = run(ax: [400])
+        #expect(out.report.firstChangeMs == 400)
+        #expect(out.report.gapCounts == [Int](repeating: 0, count: 11))
+    }
+
+    @Test func manyChangesTwentyFiveMillisecondsApartAllFallInTheFirstBucket() {
+        // seventeen notifications 25 ms apart, each seen by its own 25 ms sample: sixteen gaps
+        let out = run(ax: Array(stride(from: 100, through: 500, by: 25)))
+        #expect(out.report.firstChangeMs == 100)
+        var gaps = [Int](repeating: 0, count: 11)
+        gaps[0] = 16
+        #expect(out.report.gapCounts == gaps)
+    }
+
+    @Test func aGapPastTheLastEdgeCountsInTheBucketAbove() {
+        let out = run(WaitOptions(minMs: 0, quietMs: 2_000, maxMs: 5_000, busyMaxMs: 5_000), ax: [100, 1_300])
+        #expect(out.report.gapCounts?[10] == 1)
+        #expect(out.report.gapCounts?.reduce(0, +) == 1)
+    }
+
+    @Test func aSignatureAndAPixelCountAsChangesAndABusyIndicatorDoesNot() {
+        #expect(run(busy: [(0, true), (300, false)]).report.firstChangeMs == nil)
+        let sig = run(signatures: [(500, 7)])
+        #expect(sig.report.firstChangeMs == 500)
+        let px = run(px: [200, 260])
+        #expect(px.report.firstChangeMs == 200)
+        #expect(px.report.gapCounts?[2] == 1)
+    }
+
+    @Test func theBucketsTakeTheirUpperEdge() {
+        #expect(WaitGaps.bucket(0) == 0)
+        #expect(WaitGaps.bucket(25) == 0)
+        #expect(WaitGaps.bucket(26) == 1)
+        #expect(WaitGaps.bucket(1_000) == 9)
+        #expect(WaitGaps.bucket(1_001) == 10)
+    }
+}
+
 /// §24.10: a copy or cut reads the pasteboard; nothing else does.
 @Suite struct PasteboardWaitTests {
     private func run(pasteboard: Bool, pb: [Int]) -> WaitOutcome {
@@ -192,5 +240,36 @@ private func run(
         #expect(!WaitRule.readsPasteboard(ComputerAction(action: .key, text: "super+shift+c")))
         #expect(!WaitRule.readsPasteboard(ComputerAction(action: .key, text: "ctrl+c")))
         #expect(!WaitRule.readsPasteboard(ComputerAction(action: .scroll, scroll_direction: .down)))
+    }
+}
+
+/// §27.3 and §27.5: the wait after each step by its route, and the window a step opened.
+@Suite struct WaitRowsTests {
+    let rows = WaitRows(
+        stepWait: WaitOptions(minMs: 0, quietMs: 150, maxMs: 1_000, busyMaxMs: 2_000), wait: nil,
+        axStepWait: WaitOptions(minMs: 0, quietMs: 80, maxMs: 1_000, busyMaxMs: 2_000), axWait: WaitOptions(minMs: 100, quietMs: 200, maxMs: 1_500, busyMaxMs: 5_000)
+    )
+
+    @Test func betweenStepsTheStepsOwnRouteDecides() {
+        #expect(rows.between(tier: .ax).quietMs == 80)
+        #expect(rows.between(tier: .process).quietMs == 150)
+        #expect(rows.between(tier: nil).quietMs == 150)
+    }
+
+    @Test func afterTheLastEveryInputStepMustHaveGoneInAtAX() {
+        #expect(rows.last(tiers: [.ax, nil, .ax]).quietMs == 200)
+        #expect(rows.last(tiers: [.ax, .session]) == ComputerDefaults.Wait.action)
+        #expect(rows.last(tiers: [nil]) == ComputerDefaults.Wait.action)
+    }
+
+    @Test func theRowsShipEqualToTheOldOnes() {
+        let shipped = WaitRows(stepWait: nil, wait: nil, axStepWait: nil, axWait: nil)
+        #expect(shipped.axStep == shipped.step && shipped.axAction == shipped.action)
+    }
+
+    @Test func aStepOpensTheFocusedWindowOnlyWhenItIsNew() {
+        #expect(WindowFollow.opened(before: [301], focusedAfter: 302) == 302)
+        #expect(WindowFollow.opened(before: [301, 302], focusedAfter: 302) == nil)
+        #expect(WindowFollow.opened(before: [301], focusedAfter: nil) == nil)
     }
 }

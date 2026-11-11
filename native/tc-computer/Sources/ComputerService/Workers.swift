@@ -30,6 +30,8 @@ final class WorkerState: @unchecked Sendable {
     var reader: (any AppReading)?
     /// the tab a window ref matched (§25.4), by the window's CGWindowID: its element stays here
     var tabs: [UInt32: TabHandle] = [:]
+    /// §27.6: the titles the service answered for each window of this session × app
+    var aliases = WindowAliases()
 }
 
 /// One serial queue per session × pid: every AX call, element resolve and `perform` runs here, never on

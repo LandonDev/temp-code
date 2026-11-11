@@ -75,6 +75,8 @@ final class ChangeMonitor: ChangeSignal, @unchecked Sendable {
     private var chrome: [ElementKey: Bool] = [:]
     /// the window's frame and its buttons' frames when last read, for the badge rule of a created element
     private var chromeFrames: (window: ComputerProtocol.Rect?, buttons: [ComputerProtocol.Rect]) = (nil, [])
+    /// §27.4: the call's menus opened and windows and sheets created, by step; §26's menu record too
+    private var record = CallRecord<AXUIElement>()
 
     init(pid: pid_t, app: AXUIElement) {
         self.app = app
@@ -101,6 +103,7 @@ final class ChangeMonitor: ChangeSignal, @unchecked Sendable {
         if isChrome(element, created: notification == kAXCreatedNotification) { return }
         let t = mach_absolute_time()
         last.withLock { $0 = t }
+        noteOpened(element, notification)
         guard Self.candidateNotifications.contains(notification), let role = AX.string(AX.copy(element, "AXRole").value) else { return }
         let kind: BusyRule.Kind? = role == "AXBusyIndicator" ? .busy : role == "AXProgressIndicator" ? .progress : role == "AXWebArea" ? .webArea : nil
         guard let kind else { return }
@@ -120,6 +123,51 @@ final class ChangeMonitor: ChangeSignal, @unchecked Sendable {
             candidates.append(Candidate(element: element, kind: kind, containers: Array(containers.suffix(8))))
         }
         lock.unlock()
+    }
+
+    /// §27.4: a menu that opened, a window or a sheet created, while a step of a call records.
+    private func noteOpened(_ element: AXUIElement, _ notification: String) {
+        lock.lock()
+        let recording = record.step != nil
+        lock.unlock()
+        guard recording else { return }
+        let kind: CallRecord<AXUIElement>.Kind?
+        switch notification {
+        case kAXMenuOpenedNotification: kind = .menu
+        case kAXWindowCreatedNotification: kind = .window
+        // there is no AXSheetCreated: a sheet comes as AXCreated
+        case kAXCreatedNotification: kind = AX.string(AX.copy(element, "AXRole").value) == "AXSheet" ? .sheet : nil
+        default: kind = nil
+        }
+        guard let kind else { return }
+        lock.lock()
+        record.note(kind, element) { CFEqual($0, $1) }
+        lock.unlock()
+    }
+
+    func beginCall() {
+        lock.lock()
+        record.begin()
+        lock.unlock()
+    }
+
+    func recordStep(_ index: Int) {
+        lock.lock()
+        record.record(step: index)
+        lock.unlock()
+    }
+
+    func endCall() {
+        lock.lock()
+        record.end()
+        lock.unlock()
+    }
+
+    /// What the call's steps opened so far.
+    func recorded() -> [CallRecord<AXUIElement>.Entry] {
+        lock.lock()
+        defer { lock.unlock() }
+        return record.entries
     }
 
     /// What the last walk showed: the window, its scroll areas, its busy candidates.

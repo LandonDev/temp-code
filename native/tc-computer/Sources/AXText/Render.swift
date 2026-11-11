@@ -24,9 +24,27 @@ public struct Compare: Sendable, Equatable {
     }
 }
 
+/// One item of a compact menu bar line (§27.13): `New [142]`, `Save… [157] disabled`, `Export ▸ [160]`.
+public struct MenuBarItem: Sendable, Equatable {
+    public var name: String
+    public var index: Int
+    public var disabled: Bool
+    public var submenu: Bool
+
+    public init(name: String, index: Int, disabled: Bool = false, submenu: Bool = false) {
+        self.name = name
+        self.index = index
+        self.disabled = disabled
+        self.submenu = submenu
+    }
+
+    var text: String { name + (submenu ? " " + MenuBlock.submenuMark : "") + " [\(index)]" + (disabled ? " disabled" : "") }
+}
+
 /// One line of a full observation, in reading order.
 public struct Row: Sendable {
-    public enum Kind: Sendable, Equatable { case element, range, more, stub }
+    /// `menu`: a top-level menu of the menu bar on one line, its items with their indices (§27.13)
+    public enum Kind: Sendable, Equatable { case element, range, more, stub, menu }
 
     public var kind: Kind
     /// element: its number; range: the first
@@ -54,16 +72,19 @@ public struct Row: Sendable {
     /// element: what the diff compares; range: one per member
     public var compares: [Compare]
     public var removed = false
+    /// menu: its items, a submenu's left for an element read
+    public var menuItems: [MenuBarItem] = []
 
     public var elements: Int {
         switch kind {
         case .element: 1
         case .range: last - index + 1
+        case .menu: 1 + menuItems.count
         case .more, .stub: 0
         }
     }
 
-    public var isElementLine: Bool { kind == .element || kind == .range }
+    public var isElementLine: Bool { kind == .element || kind == .range || kind == .menu }
 
     /// The facts as this row prints them now: limits and dropped actions applied.
     var shown: LineFacts {
@@ -117,6 +138,13 @@ public struct Layout: Sendable {
     public static func build(_ tree: KeptTree, _ indexed: Indexed, snapshot s: AXSnapshot, space: CoordinateSpace, geometry: Bool, wholeValues: Bool) -> Layout {
         var rows: [Row] = []
         func add(_ nodes: [KeptNode], parent: Int?, hidden: Hidden?) {
+            // the menu bar's menus, one line each (§27.13)
+            if let p = parent, rows[p].parent == nil, rows[p].kind == .element, rows[p].facts.role == "menu bar" {
+                for n in nodes where n.kind == .element {
+                    rows.append(menuRow(n, indexed, parent: p, end: rows.count + 1))
+                }
+                return
+            }
             let members = nodes.map { n -> Fold.Member in
                 let bare = n.kind == .element && n.children.isEmpty && n.hidden == nil && n.facts.line.isBare
                 return Fold.Member(index: n.kind == .element ? indexed.index[n.id]! : -1, role: n.facts.line.role, bare: bare)
@@ -163,6 +191,21 @@ public struct Layout: Sendable {
         return Layout(rows: rows, app: s.app.name, title: s.window.title, others: s.otherWindows, space: space, windowFrame: s.window.frame, geometry: geometry)
     }
 
+    /// A menu-bar item as one row: its title, and the items of its menu with their numbers. An item with no title (a
+    /// separator) is left out; one with a menu under it is a submenu, whose items an element read shows.
+    static func menuRow(_ n: KeptNode, _ indexed: Indexed, parent: Int, end: Int) -> Row {
+        let menu = n.children.first { $0.kind == .element && $0.facts.line.role == "menu" }
+        let items = (menu?.children ?? []).compactMap { c -> MenuBarItem? in
+            guard c.kind == .element, let name = c.facts.line.name, let index = indexed.index[c.id] else { return nil }
+            let sub = c.children.contains { $0.kind == .element && $0.facts.line.role == "menu" && !$0.children.isEmpty }
+            // the line lists names bare: a line break in one would end it
+            let bare = name.split(whereSeparator: \.isNewline).joined(separator: " ")
+            return MenuBarItem(name: bare, index: index, disabled: c.facts.line.states.contains("disabled"), submenu: sub)
+        }
+        return Row(kind: .menu, index: indexed.index[n.id]!, last: 0, parent: parent, end: end, facts: n.facts.line, valueTotal: 0, nameLimit: .max,
+                   valueLimit: .max, frame: n.frame, hidden: Hidden(), cls: .interactive, isList: false, compares: [Compare(n.facts)], menuItems: items)
+    }
+
     /// A row that prints: not removed, and a summary only when it counts something.
     public func prints(_ r: Int) -> Bool { !rows[r].removed && !(rows[r].kind == .more && rows[r].hidden.isEmpty) }
 
@@ -202,6 +245,8 @@ public struct Layout: Sendable {
             return h.below > 0 ? "… \(h.below) more below" : "… \(h.above) more above"
         case .stub:
             return "(" + row.facts.role + (row.facts.name.map { " " + Quote.json($0) } ?? "") + T.stubSuffix
+        case .menu:
+            return "[\(row.index)] menu " + Quote.json(row.facts.name ?? "") + ":" + (row.menuItems.isEmpty ? "" : " " + row.menuItems.map(\.text).joined(separator: ", "))
         }
     }
 

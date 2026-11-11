@@ -41,6 +41,8 @@ public struct ObserveRequest: Sendable {
     public var loading: Bool
     /// false when the call's screenshot policy is `never`: a thin tree is then not told to look at one
     public var noteThin: Bool
+    /// §27.4: the call's closing read ends with a block for each menu its steps opened that is still open
+    public var openedMenus: Bool = false
 
     public init(window: ComputerProtocol.WindowRef?, mode: ObservationMode, element: Int?, budgetBytes: Int, geometry: Bool, menus: Bool, space: CoordinateSpace, loading: Bool = false, noteThin: Bool = true) {
         self.window = window
@@ -250,14 +252,42 @@ public struct ResolvedElement {
     /// which of AXValue, AXSelectedText, AXSelectedTextRange, AXFocused, AXSelected are settable
     public let settable: Set<String>
     public let brief: ElementBrief
+    /// AXSecureTextField (§27.7a)
+    public let secure: Bool
 
-    public init(index: Int, element: AXUIElement, role: String, frame: ComputerProtocol.Rect, actions: [String], settable: Set<String>, brief: ElementBrief) {
+    public init(index: Int, element: AXUIElement, role: String, frame: ComputerProtocol.Rect, actions: [String], settable: Set<String>, brief: ElementBrief, secure: Bool = false) {
         self.index = index
         self.element = element
         self.role = role
         self.frame = frame
         self.actions = actions
         self.settable = settable
+        self.brief = brief
+        self.secure = secure
+    }
+}
+
+/// §27.7: the app's focused element as a key or text step with no target comes up, judged against the call.
+public struct LiveFocus {
+    public let element: AXUIElement
+    /// in the target window, or in a menu, sheet or window the call recorded or opened
+    public let inScope: Bool
+    /// it is, or lies inside, an element an earlier step of the call targeted
+    public let insideTargeted: Bool
+    public let secure: Bool
+    /// the role word its line prints, and whether it lies inside an AXWebArea (§25.9's browser-field rule)
+    public let role: String
+    public let inWebArea: Bool
+    /// its index (interned) and line, for `focus_moved`
+    public let brief: ElementBrief
+
+    public init(element: AXUIElement, inScope: Bool, insideTargeted: Bool, secure: Bool, role: String, inWebArea: Bool, brief: ElementBrief) {
+        self.element = element
+        self.inScope = inScope
+        self.insideTargeted = insideTargeted
+        self.secure = secure
+        self.role = role
+        self.inWebArea = inWebArea
         self.brief = brief
     }
 }
@@ -296,6 +326,12 @@ public struct InputTarget {
     /// the reader's index and line for a live element, nil when the model's latest read never listed it:
     /// `focus_moved` names the focused element by them
     public let briefOf: (AXUIElement) -> ElementBrief?
+    /// §27.7: the focused element the service admitted for a key or text step with no target; on every app it is
+    /// checked again after any activation and before each write, a change failing `focus_moved` `moved`
+    public var plannedFocus: AXUIElement?
+    /// §27.7a: the destination came from `named` or the live focus: a secure text field there fails `focus_moved`
+    /// `secure` before anything is written
+    public var refusesSecure = false
 
     public init(pid: pid_t, windowID: UInt32, windowFrame: ComputerProtocol.Rect, window: AXUIElement, space: CoordinateSpace, element: ResolvedElement?, startElement: ResolvedElement?, cursor: [Int]?, cancelled: @escaping @Sendable () -> Bool = { false }, pasteQuietMs: Int? = nil, ignored: IgnoredRoutes? = nil, callToken: Int? = nil, personIdleMs: Int? = nil, chromium: Bool = false, expectFocus: ResolvedElement? = nil, briefOf: @escaping (AXUIElement) -> ElementBrief? = { _ in nil }) {
         self.pid = pid
@@ -334,12 +370,46 @@ public protocol AppReading: AnyObject {
     func brief(of element: AXUIElement) -> ElementBrief?
     /// §25.2: after a tab switch, the window's page holds the smart wait until it is there and loaded
     func watchPage(window: AXUIElement)
+
+    // §27: fewer calls
+    /// a call begins: the change monitor's record of menus opened and windows and sheets created starts over (§27.4)
+    func beginCallRecord()
+    /// step `index` is about to send its input: what opens from now on is its (§27.4)
+    func recordStep(_ index: Int)
+    /// the call ended: the record keeps what it has for the closing read, and records nothing more
+    func endCallRecord()
+    /// the app's focused element now (AXFocusedUIElement), nil when none answers
+    func focusedElement() -> AXUIElement?
+    /// the app's focused window's id now (§27.5), nil when none answers
+    func focusedWindowID() -> Int?
+    /// the element's number, a new one when no read listed it (`resolved`, `focusTo`, `focus_moved`'s field)
+    func index(of element: AXUIElement) -> Int
+    /// §27.9: `named` among what the call's steps made appear, then in `window`; throws `named_target`
+    func resolveNamed(_ name: String, window: AXUIElement) throws -> ResolvedElement
+    /// §27.10: a menu-bar path, walked without opening a menu; throws `named_target`, or `action_unsupported` for a
+    /// disabled item or one that opens a submenu
+    func resolveMenu(_ path: String) throws -> ResolvedElement
+    /// §27.7: the focused element judged against `window`, the call's `windows` and record, and `targeted`; nil when nothing is focused
+    func liveFocus(window: AXUIElement, windows: [AXUIElement], targeted: [Int]) -> LiveFocus?
 }
 
 extension AppReading {
     public var lastPage: Page? { nil }
     public func brief(of element: AXUIElement) -> ElementBrief? { nil }
     public func watchPage(window: AXUIElement) {}
+    public func beginCallRecord() {}
+    public func recordStep(_ index: Int) {}
+    public func endCallRecord() {}
+    public func focusedElement() -> AXUIElement? { nil }
+    public func focusedWindowID() -> Int? { nil }
+    public func index(of element: AXUIElement) -> Int { 0 }
+    public func resolveNamed(_ name: String, window: AXUIElement) throws -> ResolvedElement {
+        throw ComputerFailure(ComputerError(kind: .namedTarget, message: "Nothing named \"\(name)\" in the window or what this call opened.", reason: .noMatch))
+    }
+    public func resolveMenu(_ path: String) throws -> ResolvedElement {
+        throw ComputerFailure(ComputerError(kind: .namedTarget, message: "No menu item \"\(path)\" in the menu bar.", reason: .noMatch))
+    }
+    public func liveFocus(window: AXUIElement, windows: [AXUIElement], targeted: [Int]) -> LiveFocus? { nil }
 }
 
 /// Input. Every call is synchronous and runs off the main thread; every failure is a `ComputerFailure`.

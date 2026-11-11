@@ -164,7 +164,7 @@ func r(_ y: Double) -> Rect { Rect(x: 10, y: y, w: 100, h: 20) }
             t.node("AXMenuBarItem", title: "Edit", actions: ["AXPress"])
         ])
         let s = snapshot([t.window([t.node("AXButton", title: "OK", frame: r(0), actions: ["AXPress"])]), menu], menuBar: bar)
-        #expect(body(s) == ["[1] window \"Untitled\"", "  [2] button \"OK\"", "[3] menu", "  [4] menu item \"Copy\"", "[5] menu bar", "  [6] menu item \"File\"", "  [7] menu item \"Edit\""])
+        #expect(body(s) == ["[1] window \"Untitled\"", "  [2] button \"OK\"", "[3] menu", "  [4] menu item \"Copy\"", "[5] menu bar", "  [6] menu \"File\":", "  [7] menu \"Edit\":"])
         #expect(!body(snapshot([t.window([])])).contains { $0.contains("menu bar") })
     }
 

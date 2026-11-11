@@ -86,9 +86,12 @@ public final class Trace: @unchecked Sendable {
         return text.replacingCharacters(in: open.upperBound..<close, with: "<jpeg \(bytes) bytes>")
     }
 
-    /// `wait 812ms quiet ax=3 sig=1 px=0`.
+    /// `wait 812ms quiet ax=3 sig=1 px=0 first=40 gaps=2,0,0,0,0,0,0,0,0,0,0`: the change times last (§27.2), `-` when
+    /// nothing counted.
     public static func waitText(_ report: WaitReport, ax: Int, sig: Int, px: Int) -> String {
         "wait \(report.waitedMs)ms \(report.reason.rawValue) ax=\(ax) sig=\(sig) px=\(px)" + (report.busy ? " busy" : "")
+            + " first=" + (report.firstChangeMs.map(String.init) ?? "-")
+            + " gaps=" + (report.gapCounts.map { $0.map(String.init).joined(separator: ",") } ?? "-")
     }
 
     public static func cut(_ text: String) -> String {
