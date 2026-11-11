@@ -178,6 +178,16 @@ const PASTE_TEXT = 'tc-computer paste proof '.repeat(120).slice(0, 2_500)
 const NOT_QUIET = `the clipboard was not quiet for ${QUIET_MS / 1000} s after ${QUIET_RETRIES} more tries`
 /** For a run the person sits beside by their own leave: no idle wait and no abort on input; the screen check stays. */
 const UNGATED = process.env.TC_PROOF_UNGATED === '1'
+/**
+ * A hand run's legs, by name, comma separated (`TC_PROOF_LEGS=fallbacks,web`): windows, fallbacks, web,
+ * active, stealer; each other one is recorded skipped. Unset (the gate) runs every leg.
+ */
+const LEGS = process.env.TC_PROOF_LEGS?.split(',').map((x) => x.trim()).filter(Boolean) ?? null
+function runsLeg(leg: string): boolean {
+  if (!LEGS || LEGS.includes(leg)) return true
+  record({ name: `${leg} leg`, outcome: 'skipped', ms: 0, why: 'not in TC_PROOF_LEGS' })
+  return false
+}
 /** The launch rule: no input this long before an app starts, the idle time read this often while it runs. */
 const LAUNCH_IDLE_S = UNGATED ? 0 : 300
 const WATCH_EVERY_MS = 1_000
@@ -1949,11 +1959,11 @@ async function appSections(
     const exit = await within(miss.exit, 2_000, 'the private-miss service exiting')
     check(exit.code === 0, 'the private-miss service exits 0', exit)
   })
-  await windowLeg(a, mayLaunch)
-  await fallbackLeg(a, mayLaunch)
-  await webLeg()
-  await activeLeg(a, mayLaunch)
-  await fewerLeg(a, mayLaunch)
+  if (runsLeg('windows')) await windowLeg(a, mayLaunch)
+  if (runsLeg('fallbacks')) await fallbackLeg(a, mayLaunch)
+  if (runsLeg('web')) await webLeg()
+  if (runsLeg('active')) await activeLeg(a, mayLaunch)
+  if (runsLeg('fewer')) await fewerLeg(a, mayLaunch)
   if (GATE) {
     for (const name of [
       'open a scratch TextEdit', 'TextEdit full read with geometry',
@@ -2009,7 +2019,7 @@ async function appSections(
     probePid = 0
   })
 
-  await stealerSection(mayLaunch)
+  if (runsLeg('stealer')) await stealerSection(mayLaunch)
 
   if (GATE) {
     if (!a.done) { a.closeStdin(); await within(a.exit, 2_000, 'gate service EOF') }
