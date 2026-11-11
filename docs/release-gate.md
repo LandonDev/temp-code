@@ -14,6 +14,25 @@ file. A sibling change that needs a new check (the bundle-size check after
 | `commit` | typecheck, vitest, build, bundle-size | in the post-commit hook, on every commit on master; vitest holds the prompt budgets too (scripts/claudeMdBudget.test.ts: CLAUDE.md at most 40,000 bytes with every docs/agents file linked once; src/main/server/promptBudget.test.ts: the host-written prompt parts against src/shared/promptBudget.ts) |
 | `publish` | renderer-soak, renderer-soak-chat, renderer-soak-typing, renderer-soak-scroll, e2e-remote-fence, e2e-addons, e2e-addon-grants, e2e-skills-store, e2e-skills-drivers, hub, ios, ios-client, computer-swift, e2e-tc-computer, e2e-computer-bridge, e2e-computer-preview, computer-bench | before signing in `release:publish`; and in the hook when a commit touches a guarded path, all but computer-bench. The four soaks, hub, ios, ios-client, computer-swift, e2e-tc-computer, e2e-computer-bridge, e2e-computer-preview and computer-bench are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships; the four store proofs run on both hosts |
 
+The `computer` lane starts only once the `build` lane has finished
+(`LANE_AFTER` in scripts/gate.ts), so the four renderer soaks and the
+computer rows never share the screen: the soaks open windowed instances that
+come forward and quit, and v1.0.340 and v1.0.341's publishes failed
+e2e-tc-computer with a soak window over TC Probe (2026-11-11). The other
+lanes still run beside the soaks; a soak that fails leaves the computer rows
+not run. The cost is the soak lane's length, measured on the Mac in a
+publish-shaped run (the soak and computer rows of `--tier publish`, a scratch
+clone, 2026-11-11): the soaks took 202 s (63, 63, 47 and 29 s), and the
+computer rows then reached the end of e2e-computer-preview at 507 s, against
+308 s for the same rows side by side, 199 s more, about the soak lane's own
+202 s. Three such runs on 2026-11-11 (507, 414 and 515 s) were not green: the
+soaks passed each time; e2e-tc-computer passed in the first and third with one
+flake each named by the rerun (fewer 3, then web: a refused select), and the
+second failed fewer 3 on both tries beside a web flake. The bridge passed in
+the first and failed its away check in the third, and the preview failed its
+4 ± 1 fps in the first, each with the soaks done and the person's full-screen
+window over TC Probe.
+
 The rows `e2e-tc-computer` and `e2e-computer-bridge` start through
 `scripts/proof-bun.ts`: `bun run` puts every ancestor's node_modules/.bin on
 PATH, so the package script's `bun` can be any old copy (a 1.3.5 in
