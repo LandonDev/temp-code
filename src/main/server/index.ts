@@ -90,6 +90,7 @@ import { ComputerSettingsRpc } from './computer/settingsRpc'
 import { ComputerService } from './computer/service'
 import { ComputerSessions } from './computer/sessions'
 import { ComputerHistory, KEEP_PICTURES_SETTING, historyPicturesFromEnv, historyRoot } from './computer/history'
+import { ComputerHistoryRpc, handleComputerHistory } from './computer/historyRpc'
 import { SessionScheduler } from './computer/schedule'
 import { setSessionTierGate } from './computer/tierGate'
 import { pruneStaleShots } from './computer/shots'
@@ -1430,8 +1431,11 @@ export async function startServer(
   const computerSettings = new ComputerSettingsRpc({
     host: computer ? { service: computer.service, verdicts: computer.sessions.verdicts } : null,
     store,
-    unavailable: () => computerUnavailable()
+    unavailable: () => computerUnavailable(),
+    history: computerHistory
   })
+  // The Computer section's reads (computer/historyRpc.ts): this desktop's own socket only.
+  const computerHistoryRpc = computerHistory ? new ComputerHistoryRpc(computerHistory) : null
   // The box side: a thread here starting or spawning on a registered Mac,
   // reached by the app tools (apptools.ts, orchestration.ts).
   // Notices name this host as the environment switcher does.
@@ -2192,6 +2196,8 @@ export async function startServer(
         if (macBridged.handled) return sendFrame({ id: req.id, ok: true, result: macBridged.result })
         const preview = await handleComputerPreview(req, previews, { connection: previewConnection, send: sendFrame })
         if (preview.handled) return sendFrame({ id: req.id, ok: true, result: preview.result })
+        const computerSteps = await handleComputerHistory(req, computerHistoryRpc, { connection: previewConnection, send: sendFrame })
+        if (computerSteps.handled) return sendFrame({ id: req.id, ok: true, result: computerSteps.result })
         const proofHold = handleComputerProofHold(req, holds)
         if (proofHold.handled) return sendFrame({ id: req.id, ok: true, result: proofHold.result })
         const devices = await handleHostDevices(req, hostDevices, { connection, send: sendFrame })
@@ -3498,6 +3504,7 @@ export async function startServer(
       peerCalls.drop(connection)
       hostDevices.dropConnection(connection)
       previews?.dropConnection(previewConnection)
+      computerHistoryRpc?.dropConnection(previewConnection)
       for (const off of unsubs.values()) off()
       unsubs.clear()
       for (const off of fsWatches.values()) off()
@@ -3714,6 +3721,7 @@ export async function startServer(
       storePush.close()
       computerRpc.close()
       computerSettings.close()
+      computerHistoryRpc?.close()
       computerBridge?.close()
       holds?.close()
       void previews?.close()

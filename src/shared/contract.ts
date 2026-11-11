@@ -1495,6 +1495,8 @@ export type ServerPush =
   | import('./contract-computer').ComputerFramePush
   | import('./contract-computer').ComputerClickPush
   | import('./contract-computer').ComputerPreviewPush
+  // The thread's computer history (contract-computer.ts): a call that changed, to the sockets that read its key only.
+  | import('./contract-computer').ComputerHistoryPush
   // Thread resources (contract-resources.ts): a thread's ledger rows after any change.
   | import('./contract-resources').ResourcesPush
   // Dev servers forwarded to the Mac (contract-ports.ts): the host's list and stream frames down a Mac's link, the Mac's forwards to its renderer.

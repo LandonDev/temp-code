@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { StartOnSchema } from './defaults'
 import type { AccountPins, AccountProvider, AccountsSnapshot } from './accounts'
 import { BatchStateSchema } from './contract-batch'
-import { ComputerServiceStateSchema, ComputerSessionRowSchema, PREVIEW_END_REASONS } from './contract-computer'
+import { ComputerHistoryCallSchema, ComputerServiceStateSchema, ComputerSessionRowSchema, PREVIEW_END_REASONS } from './contract-computer'
 import type { DeployStatus, HostJobPhase, HostJobStatus } from './contract-host'
 import { HostJobSchema } from './contract-host'
 import { HostDevicesReportSchema, type HostDevicesHost } from './contract-hostdevices'
@@ -1135,6 +1135,12 @@ export const ComputerPreviewPushSchema = push('computer-preview', {
   width: z.number().int().optional(),
   height: z.number().int().optional()
 })
+/** The thread's computer history (contract-computer.ts): to the Mac desktop's own socket that read the key, never a remote one. */
+export const ComputerHistoryPushSchema = push('computer-history', {
+  key: z.string(),
+  call: ComputerHistoryCallSchema.optional(),
+  gone: z.literal(true).optional()
+})
 
 /**
  * Every push a remote connection can receive. Out by rule: the singular
@@ -1277,6 +1283,7 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof ComputerFramePushSchema, PushOf<'computer-frame'>>>,
   Expect<Mirror<typeof ComputerClickPushSchema, PushOf<'computer-click'>>>,
   Expect<Mirror<typeof ComputerPreviewPushSchema, PushOf<'computer-preview'>>>,
+  Expect<Mirror<typeof ComputerHistoryPushSchema, PushOf<'computer-history'>>>,
   Expect<Mirror<typeof HarnessEnvironmentStatusSchema, HarnessEnvironmentStatus>>,
   Expect<Mirror<typeof HarnessSyncStatusSchema, HarnessSyncStatus>>,
   Expect<Mirror<typeof MemoryEnvironmentStatusSchema, MemoryEnvironmentStatus>>,

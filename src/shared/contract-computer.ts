@@ -78,6 +78,8 @@ export type ComputerAppVerdict = z.infer<typeof ComputerAppVerdictSchema>
 export const ComputerSettingsSchema = z.object({
   sessionIdleMs: z.number().int(),
   activeApp: z.enum(ACTIVE_APP_MODES),
+  /** one picture of the window is kept after each computer call, on this Mac only (computer/history.ts) */
+  keepPictures: z.boolean(),
   apps: z.array(ComputerAppVerdictSchema)
 })
 export type ComputerSettings = z.infer<typeof ComputerSettingsSchema>
@@ -85,7 +87,9 @@ export type ComputerSettings = z.infer<typeof ComputerSettingsSchema>
 /** `computer.settings.set`: a partial, each field written alone. */
 export const ComputerSettingsPatchSchema = z.object({
   sessionIdleMs: z.number().int().min(SCHEDULE.sessionIdleMsMin).max(SCHEDULE.sessionIdleMsMax).optional(),
-  activeApp: z.enum(ACTIVE_APP_MODES).optional()
+  activeApp: z.enum(ACTIVE_APP_MODES).optional(),
+  /** off stops new pictures and removes the kept ones; the steps stay */
+  keepPictures: z.boolean().optional()
 })
 export type ComputerSettingsPatch = z.infer<typeof ComputerSettingsPatchSchema>
 
@@ -164,6 +168,26 @@ export const ComputerHistoryCallSchema = z.object({
 })
 export type ComputerHistoryCall = z.infer<typeof ComputerHistoryCallSchema>
 
+/** The keys one `computer.history.read` may name, and one read's calls per key (computer/history.ts HISTORY_PAGE). */
+export const HISTORY_READ_MAX_KEYS = 64
+
+/** `computer.history.read`: each key's newest calls, oldest first; `more` says older ones exist. */
+export interface ComputerHistoryReadAnswer {
+  sessions: {
+    key: string
+    /** when the history's first record was written; a new value means it was removed and begun again, and its numbers start over */
+    born: number
+    calls: ComputerHistoryCall[]
+    more: boolean
+  }[]
+}
+
+/** `computer.history.step`: one call's kept picture and the text the model read; each absent when not kept. */
+export interface ComputerHistoryStepAnswer {
+  picture?: { data: string; mimeType: 'image/jpeg'; width: number; height: number; at: number }
+  text?: string
+}
+
 /** What `app.computer` answers the bridge: the result text, its pictures (or none), and whether nothing ran. */
 export const AppComputerAnswerSchema = ComputerToolResultSchema.extend({ isError: z.boolean() })
 export type AppComputerAnswer = z.infer<typeof AppComputerAnswerSchema>
@@ -222,6 +246,18 @@ export const ComputerRequestSchemas = [
   request('computer.permissions', z.object({})),
   /** → ComputerServiceState: Try again on a service down after crashes */
   request('computer.service.retry', z.object({})),
+  // The thread's computer history (computer/history.ts): the desktop's own socket only, since the pictures are the
+  // person's windows and the reads name what was on them. A key is what the host's sessions know a thread by: a Mac
+  // thread's id, or a box thread's `macComputerKey(envId, threadId)`.
+  /** → ComputerHistoryReadAnswer: each key's newest 200 calls, or with one key and `before` the 200 under that call; the socket then hears `computer-history` for those keys until it closes */
+  request(
+    'computer.history.read',
+    z
+      .object({ keys: z.array(z.string().min(1)).min(1).max(HISTORY_READ_MAX_KEYS), before: z.number().int().positive().optional() })
+      .refine((p) => p.before === undefined || p.keys.length === 1, 'before pages one key')
+  ),
+  /** → ComputerHistoryStepAnswer */
+  request('computer.history.step', z.object({ key: z.string().min(1), n: z.number().int().positive() })),
   /** → null: a session hold for no thread, so a proof can show the banner without the session tier; refused unless TEMP_CODE_E2E_STATUS=1 */
   request('computer.proofHold', z.object({ on: z.boolean() }))
 ] as const
@@ -285,4 +321,16 @@ export interface ComputerPreviewPush {
   window?: string | null
   width?: number
   height?: number
+}
+
+/**
+ * A call of a thread's computer history changed (a record landed, or a kept
+ * file went), or the whole history was removed (`gone`): to the sockets
+ * that read `key`, never a remote one.
+ */
+export interface ComputerHistoryPush {
+  push: 'computer-history'
+  key: string
+  call?: ComputerHistoryCall
+  gone?: true
 }

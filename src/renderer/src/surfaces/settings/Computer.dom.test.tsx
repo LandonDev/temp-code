@@ -49,7 +49,7 @@ const { ComputerPage } = await import("./Computer");
 
 const SERVICE: ComputerServiceState = { state: "idle", restarts: 0, permissions: null };
 const app = (bundleId: string, name: string | null, classes: ComputerAppVerdict["classes"] = {}): ComputerAppVerdict => ({ bundleId, name, classes, updatedAt: 1 });
-const SETTINGS: ComputerSettings = { sessionIdleMs: 120_000, activeApp: "brief", apps: [app("com.apple.TextEdit", "TextEdit"), app("com.google.Chrome", "Chrome", { click: "session", type: "session" })] };
+const SETTINGS: ComputerSettings = { sessionIdleMs: 120_000, activeApp: "brief", keepPictures: true, apps: [app("com.apple.TextEdit", "TextEdit"), app("com.google.Chrome", "Chrome", { click: "session", type: "session" })] };
 const GRANTED = { accessibility: true, screenRecording: true };
 const answer = (value: unknown): Handler => async () => value;
 const calls = (method: string) => host.calls.filter(([m]) => m === method);
@@ -257,7 +257,7 @@ describe("Settings › Computer use", () => {
   it("follows the computer-settings push", async () => {
     render(<ComputerPage />);
     await settle();
-    act(() => host.pushes.forEach((fn) => fn({ push: "computer-settings", settings: { sessionIdleMs: 600_000, activeApp: "brief", apps: [app("com.apple.Notes", "Notes")] } })));
+    act(() => host.pushes.forEach((fn) => fn({ push: "computer-settings", settings: { sessionIdleMs: 600_000, activeApp: "brief", keepPictures: true, apps: [app("com.apple.Notes", "Notes")] } })));
     expect((screen.getByRole("textbox", { name: "Take the screen after minutes" }) as HTMLInputElement).value).toBe("10");
     expect(screen.getByRole("button", { name: "Forget Notes" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Forget TextEdit" })).toBeNull();

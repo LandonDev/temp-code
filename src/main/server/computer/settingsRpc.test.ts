@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ComputerServiceState, ComputerSettingsPush } from '@shared/contract-computer'
 import { ACTIVE_APP_SETTING, SCHEDULE, SESSION_IDLE_SETTING, sessionIdleMs } from '@shared/computer/scheduleRules'
 import { tierVerdictSetting } from '@shared/computer/tools'
+import { KEEP_PICTURES_SETTING } from './history'
 import { ComputerSettingsRpc, SETTINGS_PUSH_MS, type ComputerSettingsHost } from './settingsRpc'
 import { TierVerdicts } from './verdicts'
 
@@ -25,7 +26,16 @@ function fakeBin(body: string): string {
   return bin
 }
 
-function make(over: { state?: ComputerServiceState['state']; live?: { accessibility: boolean; screenRecording: boolean } | null; bin?: string; unavailable?: string | null; host?: boolean } = {}) {
+function make(
+  over: {
+    state?: ComputerServiceState['state']
+    live?: { accessibility: boolean; screenRecording: boolean } | null
+    bin?: string
+    unavailable?: string | null
+    host?: boolean
+    history?: { dropPictures(): Promise<void> } | null
+  } = {}
+) {
   const store = memoryStore()
   const verdicts = new TierVerdicts(store)
   const state: ComputerServiceState = { state: over.state ?? 'off', restarts: 0, permissions: over.live ?? null }
@@ -42,7 +52,8 @@ function make(over: { state?: ComputerServiceState['state']; live?: { accessibil
     host: over.host === false ? null : host,
     store,
     unavailable: () => over.unavailable ?? null,
-    ...(over.bin ? { bin: () => over.bin! } : {})
+    ...(over.bin ? { bin: () => over.bin! } : {}),
+    ...(over.history !== undefined ? { history: over.history } : {})
   })
   const pushes: ComputerSettingsPush[] = []
   rpc.onPush((p) => pushes.push(p))
@@ -57,7 +68,7 @@ afterEach(() => {
 
 describe('ComputerSettingsRpc', () => {
   it('answers the default threshold and no apps on a fresh host', () => {
-    expect(make().rpc.get()).toEqual({ sessionIdleMs: SCHEDULE.sessionIdleMsDefault, activeApp: 'brief', apps: [] })
+    expect(make().rpc.get()).toEqual({ sessionIdleMs: SCHEDULE.sessionIdleMsDefault, activeApp: 'brief', keepPictures: true, apps: [] })
   })
 
   it('answers the threshold and every learned app with its name', () => {
@@ -86,6 +97,31 @@ describe('ComputerSettingsRpc', () => {
     expect(rpc.set({ activeApp: 'brief' }).activeApp).toBe('brief')
   })
 
+  it('the pictures switch defaults on, reads and writes its setting, and going off removes the kept ones', async () => {
+    let dropped = 0
+    const m = make({ history: { dropPictures: async () => void dropped++ } })
+    vi.useFakeTimers()
+    expect(m.rpc.get().keepPictures).toBe(true)
+    expect(m.store.rows.get(KEEP_PICTURES_SETTING)).toBeUndefined()
+    // off: written as the journal reads it, the kept pictures dropped, and every client told
+    expect(m.rpc.set({ keepPictures: false }).keepPictures).toBe(false)
+    expect(m.store.rows.get(KEEP_PICTURES_SETTING)).toBe('0')
+    expect(dropped).toBe(1)
+    vi.advanceTimersByTime(SETTINGS_PUSH_MS)
+    expect(m.pushes.at(-1)?.settings.keepPictures).toBe(false)
+    // on again: nothing to remove
+    expect(m.rpc.set({ keepPictures: true }).keepPictures).toBe(true)
+    expect(m.store.rows.get(KEEP_PICTURES_SETTING)).toBe('1')
+    expect(dropped).toBe(1)
+    // another field leaves it alone
+    m.rpc.set({ keepPictures: false })
+    expect(m.rpc.set({ sessionIdleMs: 60_000 }).keepPictures).toBe(false)
+    expect(dropped).toBe(2)
+    // a host with no journal (computer use unavailable) still keeps the setting
+    const bare = make({ host: false, history: null })
+    expect(bare.rpc.set({ keepPictures: false }).keepPictures).toBe(false)
+  })
+
   it('forgets one app and every app, pushing once for a burst', () => {
     vi.useFakeTimers()
     const { rpc, verdicts, pushes } = make()
@@ -98,7 +134,7 @@ describe('ComputerSettingsRpc', () => {
     expect(pushes).toHaveLength(0)
     vi.advanceTimersByTime(SETTINGS_PUSH_MS)
     expect(pushes).toHaveLength(1)
-    expect(pushes[0]).toEqual({ push: 'computer-settings', settings: { sessionIdleMs: SCHEDULE.sessionIdleMsDefault, activeApp: 'brief', apps: [] } })
+    expect(pushes[0]).toEqual({ push: 'computer-settings', settings: { sessionIdleMs: SCHEDULE.sessionIdleMsDefault, activeApp: 'brief', keepPictures: true, apps: [] } })
   })
 
   it('coalesces changes to one push a second', () => {

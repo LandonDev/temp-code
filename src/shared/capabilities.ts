@@ -463,6 +463,9 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'computer.preview.ack': 'local',
   'computer.preview.stop': 'local',
   'computer.proofHold': 'local',
+  // The thread's computer history: pictures of the person's windows and what was read off them, this desktop's alone.
+  'computer.history.read': 'local',
+  'computer.history.step': 'local',
   // Settings → Computer use: this Mac's own values, read and set by its desktop alone.
   'computer.settings.get': 'local',
   'computer.settings.set': 'local',

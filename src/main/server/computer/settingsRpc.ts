@@ -3,12 +3,14 @@ import { PermissionsSchema, type Permissions } from '@shared/computer/protocol'
 import { ACTIVE_APP_SETTING, SESSION_IDLE_SETTING, activeApp, sessionIdleMs } from '@shared/computer/scheduleRules'
 import { execFileBudgeted, oneShotBudget, withBudget } from '../spawnBudget'
 import { computerBinaryPath } from './binary'
+import { KEEP_PICTURES_SETTING } from './history'
 import type { ComputerService } from './service'
 import type { SettingsStore, TierVerdicts } from './verdicts'
 
 /**
  * Settings → Computer use on the host (surfaces/settings/Computer.tsx): the
  * session tier's idle threshold, the apps the verdicts learned with Forget,
+ * whether a picture of the window is kept after each call (history.ts),
  * the two grants, and Try again on a service down after crashes. Every
  * method is `local`: these are this Mac's values. A change pushes
  * `computer-settings` to every client, at most once a second.
@@ -32,6 +34,8 @@ export interface ComputerSettingsRpcOptions {
   unavailable: () => string | null
   /** the binary the one-shot read runs; computerBinaryPath() by default */
   bin?: () => string
+  /** the threads' journal (history.ts): the pictures switch going off removes the kept ones */
+  history?: { dropPictures(): Promise<void> } | null
 }
 
 export class ComputerSettingsRpc {
@@ -54,6 +58,8 @@ export class ComputerSettingsRpc {
     return {
       sessionIdleMs: sessionIdleMs(this.opts.store.getSetting(SESSION_IDLE_SETTING)),
       activeApp: activeApp(this.opts.store.getSetting(ACTIVE_APP_SETTING)),
+      // on unless turned off
+      keepPictures: this.opts.store.getSetting(KEEP_PICTURES_SETTING) !== '0',
       apps
     }
   }
@@ -66,6 +72,12 @@ export class ComputerSettingsRpc {
     }
     if (patch.activeApp !== undefined) {
       this.opts.store.setSetting(ACTIVE_APP_SETTING, patch.activeApp)
+      this.schedule()
+    }
+    if (patch.keepPictures !== undefined) {
+      // the journal reads the setting at every picture, so off holds from the next one; the kept ones go now
+      this.opts.store.setSetting(KEEP_PICTURES_SETTING, patch.keepPictures ? '1' : '0')
+      if (!patch.keepPictures) void this.opts.history?.dropPictures()
       this.schedule()
     }
     return this.get()

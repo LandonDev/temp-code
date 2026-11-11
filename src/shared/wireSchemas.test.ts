@@ -243,6 +243,16 @@ describe('the notice kinds', () => {
     for (const row of kinds) expect(W.WireAgentEventSchema.parse(row)).toEqual(row)
     expect(() => W.WireAgentEventSchema.parse({ type: 'notice', kind: 'weather', message: 'Rain' })).toThrow()
   })
+  it("the computer history's push parses a changed call and a removal, and no remote connection receives it", () => {
+    const call = { n: 1, turn: 1, at: 10, state: 'running', app: 'TextEdit', window: 'Untitled', steps: [{ kind: 'click', verb: 'Clicking', object: 'Save', inApp: 'Save in TextEdit' }], text: false, rev: 1 }
+    expect(W.ComputerHistoryPushSchema.parse({ push: 'computer-history', key: 't1', call })).toEqual({ push: 'computer-history', key: 't1', call })
+    expect(W.ComputerHistoryPushSchema.parse({ push: 'computer-history', key: 'mac:env_1:t2', gone: true })).toEqual({ push: 'computer-history', key: 'mac:env_1:t2', gone: true })
+    expect(() => W.ComputerHistoryPushSchema.parse({ push: 'computer-history', key: 't1', gone: false })).toThrow()
+    expect(() => W.ComputerHistoryPushSchema.parse({ push: 'computer-history', call })).toThrow()
+    // pictures of the person's windows and the reads off them: the Mac desktop's own socket only
+    const remote: string[] = W.RemotePushSchema.options.map((o) => o.shape.push.value)
+    for (const local of ['computer-history', 'computer-frame', 'computer-click', 'computer-preview']) expect(remote).not.toContain(local)
+  })
   it('every remote push has its own schema in the union, once', () => {
     const names = W.RemotePushSchema.options.map((o) => o.shape.push.value)
     expect(names).toEqual(expect.arrayContaining(['notes', 'batch', 'resources', 'boot-resume', 'accounts', 'host.devices', 'host-log', 'macBridge.held']))
