@@ -8,9 +8,9 @@ export const FIELD_TARGETS = {
     { tasks: [{ id: 'field-textedit-save-as', version: 2 }], seconds: 31, calls: 5 },
     {
       tasks: [
-        { id: 'field-finder-rename', version: 2 },
-        { id: 'field-finder-trash', version: 2 },
-        { id: 'field-finder-new-folder', version: 2 }
+        { id: 'field-finder-rename', version: 3 },
+        { id: 'field-finder-trash', version: 3 },
+        { id: 'field-finder-new-folder', version: 3 }
       ],
       seconds: 36,
       calls: 7
