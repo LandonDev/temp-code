@@ -58,6 +58,25 @@ public final class AppReader: AppReading, @unchecked Sendable {
 
     public var changes: any ChangeSignal { monitor }
 
+    /// The target window's file and edited flag as the last whole-window read saw them (§26.8); a subtree
+    /// read leaves it. The commit check and the document line read it.
+    public private(set) var lastDocument = WindowDocument()
+
+    /// The menus the last whole-window read walked (§26.11): the shell closes the ones its call opened.
+    public var openMenus: [OpenMenu] {
+        lock.withLock {
+            lastMenus.map { m in
+                var m = m
+                for (id, title) in zip(m.itemIDs, m.items) { if let index = book.index(of: id) { m.itemIndices[index] = title } }
+                return m
+            }
+        }
+    }
+    private var lastMenus: [OpenMenu] = []
+    private var extraMenus: [OpenMenu] = []
+    /// the opened-menu block's menus (§27.4) the walk did not reach: closed with the rest, their items reached again
+    private var blockMenus: [OpenMenu] = []
+
     private static func ms() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000 }
 
     public func observe(_ request: ObserveRequest) throws -> ObservationText {
@@ -70,6 +89,7 @@ public final class AppReader: AppReading, @unchecked Sendable {
                                  space: request.space, loading: request.loading, noteThin: request.noteThin)
         let chromium = lastProcess.map { $0 != .native } ?? false
         // §27.4: the menus the call's steps opened and that are still open, walked once for the block
+        blockMenus = []
         let opened = request.openedMenus && request.element == nil ? openedMenus() : []
         /// `last`: no re-read follows, so a selected tab still without a page is `not-drawn`
         func once(last: Bool) throws -> (Built, Base?, WalkNotes, AXUIElement, PageRule.Reading?) {
@@ -103,6 +123,7 @@ public final class AppReader: AppReading, @unchecked Sendable {
         if reading?.missing == true { notes.busy.append((window, .pageMissing, [])) }
         if request.element == nil { lastBriefs = built.briefs }
         if request.element == nil, let next { base = next }
+        if request.element == nil { lastDocument = notes.document }
         monitor.noteWalk(notes, window: window)
         handles.trim()
         let s = built.stats
@@ -131,10 +152,15 @@ public final class AppReader: AppReading, @unchecked Sendable {
                 throw ComputerFailure(ComputerError(kind: .windowNotFound, message: "The window is gone", candidates: resolver.titles(app)))
             }
             roots = [root]
+            var rootMenus: [OpenMenu] = []
             for extra in attached(to: target.element, menus: request.menus) {
                 let frame = AX.frame(AX.copy(extra, "AXPosition").value, AX.copy(extra, "AXSize").value)
-                if let n = try walker.walk(root: extra, clip: frame, menuBar: false, isWindow: false) { roots.append(n) }
+                if let n = try walker.walk(root: extra, clip: frame, menuBar: false, isWindow: false) {
+                    roots.append(n)
+                    if n.role == "AXMenu" { rootMenus.append(OpenMenu.ofRoot(n, element: extra)) }
+                }
             }
+            extraMenus = rootMenus
             if request.menus, let bar = AX.element(AX.copy(app, "AXMenuBar").value) {
                 menuBar = try walker.walk(root: bar, clip: nil, menuBar: true, isWindow: false)
             }
@@ -149,13 +175,26 @@ public final class AppReader: AppReading, @unchecked Sendable {
             return OtherWindow(title: AX.string(a["AXTitle"]?.value) ?? "", minimized: minimized, otherSpace: !minimized && !shown)
         }
         lastCounts = walker.counts
+        let walked = walker.notes.menus + extraMenus
+        let menus = request.element == nil ? walked + blockMenus.filter { b in !walked.contains { CFEqual($0.menu, b.menu) } } : []
+        let menuNodes = menus.map { handles.intern($0.menu) }
+        if request.element == nil { lastMenus = menus }
         let snapshot = AXSnapshot(
             app: AppFacts(pid: pid, bundleId: running?.bundleIdentifier, name: running?.localizedName ?? "pid \(pid)"),
             window: target.info, otherWindows: request.element == nil ? others : [], roots: roots, menuBar: menuBar, focusedID: focused,
             ambientActions: ObservationTables.ambientActions, visited: walker.counts.nodes, partial: walker.partial,
-            walkMs: Int((Self.ms() - start).rounded())
+            walkMs: Int((Self.ms() - start).rounded()),
+            document: request.document && request.element == nil ? Self.documentLine(walker.notes.document) : nil,
+            closingMenus: request.closingMenus && request.element == nil ? Set(menuNodes) : []
         )
         return (snapshot, walker.notes, target.element)
+    }
+
+    /// The document line (§26.10) from the window's AXDocument and edited flag, with the file's mtime.
+    static func documentLine(_ d: WindowDocument, home: String = NSHomeDirectory()) -> DocumentLine? {
+        let mtime = d.url.flatMap { URL(string: $0) }.flatMap { $0.isFileURL ? $0.path : nil }
+            .flatMap { try? FileManager.default.attributesOfItem(atPath: $0)[.modificationDate] as? Date }?.timeIntervalSince1970
+        return DocumentLine.from(url: d.url, mtime: mtime, edited: d.edited ?? false, home: home, timeZone: .current)
     }
 
     /// Spec §2.1's focus window beyond the window itself: a context menu, an
@@ -250,8 +289,8 @@ public final class AppReader: AppReading, @unchecked Sendable {
 
     /// The opened-menu blocks' menus (§27.4): each menu a step of the call opened that still answers, walked whole;
     /// one whose walk fails within the AX timeout (an app in menu tracking) is the silent line. Under the lock.
-    private func openedMenus() -> [OpenedMenu] {
-        monitor.recorded().filter { $0.kind == .menu }.compactMap { entry -> OpenedMenu? in
+    private func openedMenus() -> [StepMenu] {
+        monitor.recorded().filter { $0.kind == .menu }.compactMap { entry -> StepMenu? in
             guard alive(entry.element) else { return nil }
             let own = AX.string(AX.copy(entry.element, "AXTitle").value)
             let opener = AX.element(AX.copy(entry.element, "AXParent").value).flatMap { p in
@@ -261,8 +300,21 @@ public final class AppReader: AppReading, @unchecked Sendable {
             walker.begin()
             walker.cut = false
             let node = try? walker.walk(root: entry.element, clip: nil, menuBar: false, isWindow: false)
-            return OpenedMenu(step: entry.step + 1, menu: node, title: (own?.isEmpty == false ? own : nil) ?? opener)
+            // §26.11 closes it after the read; its opener on record lets a later step reach its items again
+            if let node { blockMenus.append(blockMenu(node, element: entry.element)) }
+            return StepMenu(step: entry.step + 1, menu: node, title: (own?.isEmpty == false ? own : nil) ?? opener)
         }
+    }
+
+    /// A block's menu as §26.11 records it: under a pop up or menu button with that opener, else as a root.
+    private func blockMenu(_ node: AXNode, element: AXUIElement) -> OpenMenu {
+        guard let parent = AX.element(AX.copy(element, "AXParent").value),
+              let role = AX.string(AX.copy(parent, "AXRole").value), role != "AXMenuBarItem", role != "AXApplication", role != "AXWindow" else {
+            return OpenMenu.ofRoot(node, element: element)
+        }
+        let a = AX.batch(parent, ["AXTitle", "AXDescription"])
+        let opener = AXNode(id: handles.intern(parent), role: role, title: AX.string(a["AXTitle"]?.value), description: AX.string(a["AXDescription"]?.value))
+        return OpenMenu.of(node, element: element, opener: parent, openerNode: opener)
     }
 
     /// §27.9: the made-appear roots (the record's menus, windows and sheets) first, then the window and what is
@@ -301,8 +353,10 @@ public final class AppReader: AppReading, @unchecked Sendable {
         ComputerFailure(ComputerError(kind: .namedTarget, message: "Nothing named \(Quote.json(name)) in the window or what this call opened.", reason: .noMatch))
     }
 
-    /// §27.10: the menu bar walked as a `menus: true` read walks it, no menu opened, and the path matched in it. A
-    /// disabled item answers as §24.2's `menu` route answers one; an item that opens a submenu picks nothing.
+    /// §27.10: the menu bar walked as a `menus: true` read walks it, no menu opened, and the path matched in it. The
+    /// item comes back enabled or not: Input's route plan judges a disabled one (§26.3: `front`, then `session`, its
+    /// AXEnabled read again with the app active; still disabled there, `action_unsupported`). An item that opens a
+    /// submenu picks nothing.
     public func resolveMenu(_ path: String) throws -> ResolvedElement {
         lock.lock()
         defer { lock.unlock() }
@@ -320,10 +374,6 @@ public final class AppReader: AppReading, @unchecked Sendable {
             let shown = f.titles.joined(separator: " › ")
             if f.submenu {
                 throw ComputerFailure(ComputerError(kind: .actionUnsupported, message: "\(shown) opens a submenu; name an item in it.", menu: f.titles))
-            }
-            if !f.enabled {
-                let name = NSRunningApplication(processIdentifier: pid)?.localizedName ?? "the app"
-                throw ComputerFailure(ComputerError(kind: .needsTier, message: "\(shown) is disabled while \(name) is in the background.", needed: .session, menu: f.titles))
             }
             guard let el = handles.element(f.id) else { throw none(path, []) }
             return try describe(book.intern(f.id), el)

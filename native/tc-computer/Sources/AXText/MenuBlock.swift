@@ -2,7 +2,7 @@ import ComputerProtocol
 import Foundation
 
 /// A menu a step of the call opened and that was still open after its wait (§27.4).
-public struct OpenedMenu: Sendable {
+public struct StepMenu: Sendable {
     /// the step's number as the result's lines count steps, from 1 (the wire's index + 1)
     public var step: Int
     /// the menu as walked; nil when its items did not answer within the AX timeout
@@ -43,7 +43,7 @@ public enum MenuBlock {
 
     /// The blocks of the opened menus, numbered by `number` (the book's index of a node, interned when new). An item
     /// is a direct element child of the menu that has a name or a value; a separator has neither.
-    public static func blocks(_ opened: [OpenedMenu], snapshot s: AXSnapshot, number: (NodeID) -> Int) -> [Block] {
+    public static func blocks(_ opened: [StepMenu], snapshot s: AXSnapshot, number: (NodeID) -> Int) -> [Block] {
         opened.map { o in
             guard let root = o.menu else { return Block(step: o.step, menu: nil, items: []) }
             var one = s

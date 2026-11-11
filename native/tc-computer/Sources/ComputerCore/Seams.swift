@@ -43,6 +43,10 @@ public struct ObserveRequest: Sendable {
     public var noteThin: Bool
     /// §27.4: the call's closing read ends with a block for each menu its steps opened that is still open
     public var openedMenus: Bool = false
+    /// the document line (§26.10): only for a host that listed `commit`, whose parser reads it
+    public var document: Bool = false
+    /// every menu the read walks is one the call closes after it: its lines carry the closed-menu note (§26.11)
+    public var closingMenus: Bool = false
 
     public init(window: ComputerProtocol.WindowRef?, mode: ObservationMode, element: Int?, budgetBytes: Int, geometry: Bool, menus: Bool, space: CoordinateSpace, loading: Bool = false, noteThin: Bool = true) {
         self.window = window
@@ -94,6 +98,10 @@ public struct InputOutcome: Sendable {
     /// the step's effect when Input read it itself (§25.7: a web checkbox's or radio's value read back);
     /// the shell puts it on the step in place of the smart wait's
     public var effect: StepEffect?
+    /// a `front` step's hold (§26.4); the shell puts it on the step as `front`
+    public var front: FrontHold?
+    /// what a step that saves (`save_as`) proved on disk; the shell puts it on the step as `disk`
+    public var disk: DiskChange?
 
     public init(tier: Tier?, via: InputVia?, clipboard: ClipboardOutcome?, cursor: [Int]?, session: SessionChange? = nil, lastInputAt: UInt64? = nil, clickAt: [Int]? = nil, on: String? = nil, effect: StepEffect? = nil) {
         self.tier = tier
@@ -105,6 +113,13 @@ public struct InputOutcome: Sendable {
         self.clickAt = clickAt
         self.on = on
         self.effect = effect
+    }
+
+    /// The same outcome with a hold's report.
+    public func with(front: FrontHold?) -> InputOutcome {
+        var out = self
+        out.front = front
+        return out
     }
 }
 
@@ -332,6 +347,13 @@ public struct InputTarget {
     /// §27.7a: the destination came from `named` or the live focus: a secure text field there fails `focus_moved`
     /// `secure` before anything is written
     public var refusesSecure = false
+    /// whether the app's AX tree changed since a tick (mach_absolute_time): a `front` hold's settle signal (§26.2)
+    public var changedSince: (@Sendable (UInt64) -> Bool)?
+    /// whether the step is expected to commit to disk before it acts (CommitRule.expectsBefore, decision 12);
+    /// the shell's, since Input does not know the commit rule
+    public var commitExpected: (@Sendable (ComputerAction) -> Bool)?
+    /// another step of the batch follows: a `front` step may leave its hold open for it (decision 4, §26.2)
+    public var keepFrontOpen: Bool = false
 
     public init(pid: pid_t, windowID: UInt32, windowFrame: ComputerProtocol.Rect, window: AXUIElement, space: CoordinateSpace, element: ResolvedElement?, startElement: ResolvedElement?, cursor: [Int]?, cancelled: @escaping @Sendable () -> Bool = { false }, pasteQuietMs: Int? = nil, ignored: IgnoredRoutes? = nil, callToken: Int? = nil, personIdleMs: Int? = nil, chromium: Bool = false, expectFocus: ResolvedElement? = nil, briefOf: @escaping (AXUIElement) -> ElementBrief? = { _ in nil }) {
         self.pid = pid
@@ -350,6 +372,32 @@ public struct InputTarget {
         self.chromium = chromium
         self.expectFocus = expectFocus
         self.briefOf = briefOf
+    }
+}
+
+/// An open menu the last whole-window read walked (docs/computer-protocol.md §26.11): the AXMenu, the
+/// element that opened it (a pop-up, a menu button, a menu bar item; nil for a context menu read as a
+/// root), the opener's name and the items' titles.
+public struct OpenMenu: @unchecked Sendable {
+    public enum Opener: Sendable { case menuBar, popUp, context }
+    public let menu: AXUIElement
+    public let opener: AXUIElement?
+    public let kind: Opener
+    public let title: String
+    public let items: [String]
+    /// the walk's node of each item, beside `items` (AXText's NodeID)
+    public let itemIDs: [UInt64]
+    /// each item's index in the read that walked it, by its title: what a later step names it by (§26.11)
+    public var itemIndices: [Int: String] = [:]
+
+    public init(menu: AXUIElement, opener: AXUIElement?, kind: Opener, title: String, items: [String], itemIDs: [UInt64] = [], itemIndices: [Int: String] = [:]) {
+        self.menu = menu
+        self.opener = opener
+        self.kind = kind
+        self.title = title
+        self.items = items
+        self.itemIDs = itemIDs
+        self.itemIndices = itemIndices
     }
 }
 
@@ -391,6 +439,8 @@ public protocol AppReading: AnyObject {
     func resolveMenu(_ path: String) throws -> ResolvedElement
     /// §27.7: the focused element judged against `window`, the call's `windows` and record, and `targeted`; nil when nothing is focused
     func liveFocus(window: AXUIElement, windows: [AXUIElement], targeted: [Int]) -> LiveFocus?
+    /// the menus the last whole-window read walked, open then (§26.11)
+    var openMenus: [OpenMenu] { get }
 }
 
 extension AppReading {
@@ -410,6 +460,7 @@ extension AppReading {
         throw ComputerFailure(ComputerError(kind: .namedTarget, message: "No menu item \"\(path)\" in the menu bar.", reason: .noMatch))
     }
     public func liveFocus(window: AXUIElement, windows: [AXUIElement], targeted: [Int]) -> LiveFocus? { nil }
+    public var openMenus: [OpenMenu] { [] }
 }
 
 /// Input. Every call is synchronous and runs off the main thread; every failure is a `ComputerFailure`.
@@ -422,6 +473,14 @@ public protocol InputPerforming {
     /// `afterInterrupt`, within 2 s of the person's trip, skips that check and keeps each half's own;
     /// throws `session_unavailable` when another holder keeps the session lock
     func restoreSession(afterInterrupt: Bool) throws -> SessionRestore
+    /// §26.5: the listen-only key monitor the `front` hold's quiet wait reads runs while any session is open
+    func watchKeys(_ on: Bool)
+    /// decision 4: closes a `front` hold a batch's step left open for the next one (the call is over, or
+    /// failed, or was cancelled), restoring the person's app
+    func closeFrontHold(pid: pid_t)
+    /// the report of a hold of `pid` closed after the step that last used it returned (by a later step, the
+    /// cap or `closeFrontHold`); the shell puts it on that step as `front`
+    func takeFrontReport(pid: pid_t) -> FrontHold?
     /// held-input cleanup (§5.1)
     func releaseHeld(pid: pid_t)
     /// the ups of a held record whose writer died, at its tier
@@ -431,6 +490,12 @@ public protocol InputPerforming {
     func callEnded(_ token: Int)
     /// the exit path: the person guard ends with the held input (§16.2)
     func endGuard()
+}
+
+extension InputPerforming {
+    public func watchKeys(_ on: Bool) {}
+    public func closeFrontHold(pid: pid_t) {}
+    public func takeFrontReport(pid: pid_t) -> FrontHold? { nil }
 }
 
 extension InputPerforming {

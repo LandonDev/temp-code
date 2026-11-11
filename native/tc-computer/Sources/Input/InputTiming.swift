@@ -87,4 +87,28 @@ public enum InputTiming {
     public static let hitAncestors = 3
     /// the caret route reads its element's focus and range back for at most this long (§24.4)
     public static let caretEvidenceMs = 300
+
+    /// the `front` tier's hold (§26.2): activation polled every `frontPollMs` for at most this long
+    public static let frontActivateMaxMs = ComputerDefaults.Front.activateMaxMs
+    public static let frontPollMs = ComputerDefaults.Front.pollMs
+    /// after the last input, the app stays in front until a change signal or this, at most `frontSettleMaxMs`
+    public static let frontSettleMs = ComputerDefaults.Front.settleMs
+    public static let frontSettleMaxMs = ComputerDefaults.Front.settleMaxMs
+    /// the restore: the person's app back in front within this
+    public static let frontRestoreMaxMs = ComputerDefaults.Front.restoreMaxMs
+    /// a hold never lasts past this from activation to the restore's start
+    public static let frontHoldMaxMs = ComputerDefaults.Front.holdMaxMs
+    /// before a hold: the person's last key down this old and nothing held, waited for at most `frontQuietMaxMs`
+    public static let frontQuietMs = ComputerDefaults.Front.quietMs
+    public static let frontQuietMaxMs = ComputerDefaults.Front.quietMaxMs
+    /// a `key` at `front` repeats at most this often; longer `type` text than this goes by paste
+    public static let frontKeyRepeatMax = ComputerDefaults.Front.keyRepeatMax
+    public static let frontKeysMaxUnits = ComputerDefaults.Front.keysMaxUnits
+    /// a save panel must show within this after the press that opens it (§26.7)
+    public static let panelOpenMaxMs = ComputerDefaults.Front.panelOpenMaxMs
+    /// the save panel flow reads the window again this often while it waits for a sheet to come or go
+    public static let panelPollMs = 50
+    /// a step expected to commit polls the disk every `commitPollMs` for at most this (§26.8)
+    public static let commitSettleMs = ComputerDefaults.Front.commitSettleMs
+    public static let commitPollMs = ComputerDefaults.Front.commitPollMs
 }

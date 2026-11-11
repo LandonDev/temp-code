@@ -1,0 +1,437 @@
+{
+  "app" : {
+    "bundleId" : "com.apple.finder",
+    "name" : "Finder",
+    "version" : "15.0"
+  },
+  "document" : {
+    "mtime" : 1794319331.0,
+    "url" : "file:///Users/me/run/"
+  },
+  "manualAccessibility" : "refused",
+  "os" : "macOS 27.2.0",
+  "recordedAt" : "2026-11-10T14:05:00Z",
+  "recorder" : "hand-built 1",
+  "root" : {
+    "actions" : [
+      "AXRaise"
+    ],
+    "children" : [
+      {
+        "actions" : [
+          "AXScrollUpByPage",
+          "AXScrollDownByPage"
+        ],
+        "children" : [
+          {
+            "children" : [
+              {
+                "actions" : [
+                  "AXShowMenu"
+                ],
+                "children" : [
+                  {
+                    "children" : [
+                      {
+                        "children" : [],
+                        "description" : "icon",
+                        "frame" : {
+                          "h" : 16,
+                          "w" : 16,
+                          "x" : 320,
+                          "y" : 184
+                        },
+                        "role" : "AXImage"
+                      },
+                      {
+                        "actions" : [
+                          "AXShowMenu",
+                          "AXConfirm"
+                        ],
+                        "children" : [],
+                        "frame" : {
+                          "h" : 20,
+                          "w" : 260,
+                          "x" : 340,
+                          "y" : 182
+                        },
+                        "id" : "name-Notes",
+                        "role" : "AXTextField",
+                        "settable" : [
+                          "AXValue"
+                        ],
+                        "value" : {
+                          "text" : "Notes",
+                          "type" : "string"
+                        }
+                      }
+                    ],
+                    "frame" : {
+                      "h" : 24,
+                      "w" : 320,
+                      "x" : 300,
+                      "y" : 180
+                    },
+                    "role" : "AXCell"
+                  },
+                  {
+                    "children" : [
+                      {
+                        "children" : [],
+                        "frame" : {
+                          "h" : 16,
+                          "w" : 200,
+                          "x" : 640,
+                          "y" : 184
+                        },
+                        "role" : "AXStaticText",
+                        "value" : {
+                          "text" : "Today at 14:02",
+                          "type" : "string"
+                        }
+                      }
+                    ],
+                    "frame" : {
+                      "h" : 24,
+                      "w" : 280,
+                      "x" : 620,
+                      "y" : 180
+                    },
+                    "role" : "AXCell"
+                  }
+                ],
+                "frame" : {
+                  "h" : 24,
+                  "w" : 600,
+                  "x" : 300,
+                  "y" : 180
+                },
+                "id" : "row-Notes",
+                "role" : "AXRow",
+                "selected" : false,
+                "settable" : [
+                  "AXSelected"
+                ],
+                "subrole" : "AXOutlineRow"
+              },
+              {
+                "actions" : [
+                  "AXShowMenu"
+                ],
+                "children" : [
+                  {
+                    "children" : [
+                      {
+                        "children" : [],
+                        "description" : "icon",
+                        "frame" : {
+                          "h" : 16,
+                          "w" : 16,
+                          "x" : 320,
+                          "y" : 208
+                        },
+                        "role" : "AXImage"
+                      },
+                      {
+                        "actions" : [
+                          "AXShowMenu",
+                          "AXConfirm"
+                        ],
+                        "children" : [],
+                        "frame" : {
+                          "h" : 20,
+                          "w" : 260,
+                          "x" : 340,
+                          "y" : 206
+                        },
+                        "id" : "name-Total.txt",
+                        "role" : "AXTextField",
+                        "settable" : [
+                          "AXValue"
+                        ],
+                        "value" : {
+                          "text" : "Total.txt",
+                          "type" : "string"
+                        }
+                      }
+                    ],
+                    "frame" : {
+                      "h" : 24,
+                      "w" : 320,
+                      "x" : 300,
+                      "y" : 204
+                    },
+                    "role" : "AXCell"
+                  },
+                  {
+                    "children" : [
+                      {
+                        "children" : [],
+                        "frame" : {
+                          "h" : 16,
+                          "w" : 200,
+                          "x" : 640,
+                          "y" : 208
+                        },
+                        "role" : "AXStaticText",
+                        "value" : {
+                          "text" : "Today at 14:02",
+                          "type" : "string"
+                        }
+                      }
+                    ],
+                    "frame" : {
+                      "h" : 24,
+                      "w" : 280,
+                      "x" : 620,
+                      "y" : 204
+                    },
+                    "role" : "AXCell"
+                  }
+                ],
+                "frame" : {
+                  "h" : 24,
+                  "w" : 600,
+                  "x" : 300,
+                  "y" : 204
+                },
+                "id" : "row-Total.txt",
+                "role" : "AXRow",
+                "selected" : false,
+                "settable" : [
+                  "AXSelected"
+                ],
+                "subrole" : "AXOutlineRow"
+              },
+              {
+                "actions" : [
+                  "AXShowMenu"
+                ],
+                "children" : [
+                  {
+                    "children" : [
+                      {
+                        "children" : [],
+                        "description" : "icon",
+                        "frame" : {
+                          "h" : 16,
+                          "w" : 16,
+                          "x" : 320,
+                          "y" : 232
+                        },
+                        "role" : "AXImage"
+                      },
+                      {
+                        "actions" : [
+                          "AXShowMenu",
+                          "AXConfirm"
+                        ],
+                        "children" : [],
+                        "frame" : {
+                          "h" : 20,
+                          "w" : 260,
+                          "x" : 340,
+                          "y" : 230
+                        },
+                        "id" : "name-draft.rtf",
+                        "role" : "AXTextField",
+                        "settable" : [
+                          "AXValue"
+                        ],
+                        "value" : {
+                          "text" : "draft.rtf",
+                          "type" : "string"
+                        }
+                      }
+                    ],
+                    "frame" : {
+                      "h" : 24,
+                      "w" : 320,
+                      "x" : 300,
+                      "y" : 228
+                    },
+                    "role" : "AXCell"
+                  },
+                  {
+                    "children" : [
+                      {
+                        "children" : [],
+                        "frame" : {
+                          "h" : 16,
+                          "w" : 200,
+                          "x" : 640,
+                          "y" : 232
+                        },
+                        "role" : "AXStaticText",
+                        "value" : {
+                          "text" : "Today at 14:02",
+                          "type" : "string"
+                        }
+                      }
+                    ],
+                    "frame" : {
+                      "h" : 24,
+                      "w" : 280,
+                      "x" : 620,
+                      "y" : 228
+                    },
+                    "role" : "AXCell"
+                  }
+                ],
+                "frame" : {
+                  "h" : 24,
+                  "w" : 600,
+                  "x" : 300,
+                  "y" : 228
+                },
+                "id" : "row-draft.rtf",
+                "role" : "AXRow",
+                "selected" : false,
+                "settable" : [
+                  "AXSelected"
+                ],
+                "subrole" : "AXOutlineRow"
+              },
+              {
+                "actions" : [
+                  "AXShowMenu"
+                ],
+                "children" : [
+                  {
+                    "children" : [
+                      {
+                        "children" : [],
+                        "description" : "icon",
+                        "frame" : {
+                          "h" : 16,
+                          "w" : 16,
+                          "x" : 320,
+                          "y" : 256
+                        },
+                        "role" : "AXImage"
+                      },
+                      {
+                        "actions" : [
+                          "AXShowMenu",
+                          "AXConfirm"
+                        ],
+                        "children" : [],
+                        "frame" : {
+                          "h" : 20,
+                          "w" : 260,
+                          "x" : 340,
+                          "y" : 254
+                        },
+                        "id" : "name-old.txt",
+                        "role" : "AXTextField",
+                        "settable" : [
+                          "AXValue"
+                        ],
+                        "value" : {
+                          "text" : "old.txt",
+                          "type" : "string"
+                        }
+                      }
+                    ],
+                    "frame" : {
+                      "h" : 24,
+                      "w" : 320,
+                      "x" : 300,
+                      "y" : 252
+                    },
+                    "role" : "AXCell"
+                  },
+                  {
+                    "children" : [
+                      {
+                        "children" : [],
+                        "frame" : {
+                          "h" : 16,
+                          "w" : 200,
+                          "x" : 640,
+                          "y" : 256
+                        },
+                        "role" : "AXStaticText",
+                        "value" : {
+                          "text" : "Today at 14:02",
+                          "type" : "string"
+                        }
+                      }
+                    ],
+                    "frame" : {
+                      "h" : 24,
+                      "w" : 280,
+                      "x" : 620,
+                      "y" : 252
+                    },
+                    "role" : "AXCell"
+                  }
+                ],
+                "frame" : {
+                  "h" : 24,
+                  "w" : 600,
+                  "x" : 300,
+                  "y" : 252
+                },
+                "id" : "row-old.txt",
+                "role" : "AXRow",
+                "selected" : false,
+                "settable" : [
+                  "AXSelected"
+                ],
+                "subrole" : "AXOutlineRow"
+              }
+            ],
+            "description" : "list view",
+            "focused" : true,
+            "frame" : {
+              "h" : 96,
+              "w" : 600,
+              "x" : 300,
+              "y" : 180
+            },
+            "id" : "list",
+            "role" : "AXOutline",
+            "settable" : [
+              "AXSelectedRows"
+            ]
+          }
+        ],
+        "frame" : {
+          "h" : 348,
+          "w" : 600,
+          "x" : 300,
+          "y" : 152
+        },
+        "id" : "list-area",
+        "role" : "AXScrollArea"
+      }
+    ],
+    "frame" : {
+      "h" : 400,
+      "w" : 600,
+      "x" : 300,
+      "y" : 100
+    },
+    "id" : "window",
+    "role" : "AXWindow",
+    "subrole" : "AXStandardWindow",
+    "title" : "run"
+  },
+  "scale" : 2,
+  "walk" : {
+    "capped" : false,
+    "depth" : 5,
+    "ms" : 12,
+    "nodes" : 28
+  },
+  "window" : {
+    "frame" : {
+      "h" : 400,
+      "w" : 600,
+      "x" : 300,
+      "y" : 100
+    },
+    "title" : "run"
+  }
+}

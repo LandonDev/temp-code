@@ -174,7 +174,7 @@ describe('ComputerBridge: one call', () => {
     await first
     await b.until(() => b.ofMethod('mac.computer').length === 2, 'the second call')
     const [c1, c2] = b.ofMethod('mac.computer')
-    expect(c1.params.args).toMatchObject({ call: { tool: 'computer_observe', args: observe, threadId: 'child', permission: 'safe' }, rootId: 't1' })
+    expect(c1.params.args).toMatchObject({ call: { tool: 'computer_observe', args: observe, threadId: 'child', permission: 'safe' }, rootId: 't1', features: ['front'] })
     expect(c2.params.args).toMatchObject({ call: { tool: 'computer_act', args: { action: 'left_click' }, permission: 'auto' } })
     expect(c2.params.args.turn).toBe(c1.params.args.turn)
     b.reply(c2.callId, answer())

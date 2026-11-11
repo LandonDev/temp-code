@@ -29,8 +29,8 @@ why and the measured headline.
   tiers, the paste under the clipboard lock; in the background a step first
   tries the AX route that does the same thing, §24: a shortcut's menu item,
   the element under a click, the caret, the scroll bar, an AX insert for a
-  text paste; a disabled menu item in an inactive app waits for the session
-  tier, and the host runs the routes an app ignored last), the AX reader (§15: pure
+  text paste; a menu item the background disables runs at `front`, and the
+  host runs the routes an app ignored last), the AX reader (§15: pure
   `AXText`, tested on the box with `sh scripts/computer-text-test.sh`, and
   the Mac's walk), the service shell (§16: the router, the locks, the
   held-input ledger, the exit codes). `bun run computer:test` builds and
@@ -51,6 +51,23 @@ why and the measured headline.
   (`focus_moved`, with the host's `expectFocus` from the model's last read);
   a page scrolls by `scroll-into-view`. The gate's `webLeg` runs it on Chrome
   for Testing; field hand runs use plain Chrome with `--cover`.
+- **Steps that need the app active** (docs/computer-protocol.md §26, plan
+  .temp-code/plan-CAMMKRiJRhhu.md). The `front` tier sits between `process`
+  and `session` (`TIER_ORDER`): one bounded hold brings the app forward,
+  acts through AX or events posted to its pid, never the pointer or the HID
+  tap, and gives the person's app and key window back (`FRONT` timings in
+  protocol.ts, `step.front`); it serves Save, Move to Trash, New Folder, an
+  inline rename's commit and the key-window retry. `save_as { path,
+  replace? }` saves through the save panel, its folder confirmed in front,
+  and proves the file. The commit check stats the file or folder behind the
+  window around each acting step (`step.disk`): a step expected to reach the
+  disk that changed only the screen reads `uncommitted`, "on screen only,
+  not on disk", with the step that commits it, and counts as a miss; the
+  observation's document line names the file, its write time and `edited`.
+  A menu a call opened is closed at its end, else named (`menu left open:`).
+  `initialize` carries `features` both ways, so an older peer never sees
+  what it cannot parse (`HostFeatures`, `ComputerService.serves`, the
+  bridge's `features: ['front']` and `rowForPeer`).
 - **Fewer calls** (docs/computer-protocol.md §27). A step may name its
   target by its name (`named`) or a menu-bar item by its path (`menu: "File
   > Save…"`), resolved when it runs. A menu a step opens comes back in the
@@ -103,7 +120,8 @@ why and the measured headline.
 - **The page.** Settings → Computer use (surfaces/settings/Computer.tsx;
   Mac desktop only, `macOnly` in lib/settings.ts): the service with Try
   again while down, Take the screen after (`computer.sessionIdleMs`, in
-  minutes), the two grants with Grant…, the learned apps (`verdictWords`)
+  minutes), When a step needs the app in front (`computer.activeApp`: Bring
+  it forward for a moment, or Wait until I'm away; §26.6), the two grants with Grant…, the learned apps (`verdictWords`)
   with Forget; `computer.settings.get/set`, `computer.verdicts.forget`,
   `computer.permissions`, `computer.service.retry`, all `local`
   (computer/settingsRpc.ts); the `computer-settings` push.
@@ -116,6 +134,20 @@ why and the measured headline.
   access; answered Run now while Away is on). One session call at a time per host; the person's app and
   pointer go back after it. A paste waits out the person's copy
   (`RECENT_COPY_MS`). main feeds it `PersonIdle` (src/main/personIdle.ts).
+  The `front` tier runs at once by default, the person present or not
+  (`computer.activeApp` `brief`); `away` makes it wait as the session tier
+  does, with the card "Bring TextEdit forward for a moment to …"
+  (`frontFreedom`, `SessionScheduler.frontAdmitted`). A hold's span leaves
+  the person's idle time like a session step's.
+  The service's hold (native/tc-computer Input/FrontTier.swift) waits for
+  the person's keyboard to be quiet (a listen-only key monitor run while
+  any computer session is open), takes the
+  session lock, arms the person guard below for the hold (their keys,
+  clicks and wheel dropped, Escape stopping the step and restoring at
+  once; with no tap, their first key, click or wheel does the same) and
+  gives their app and window back; a batch's consecutive `front` steps
+  share one hold while it has time left, and a paste's pasteboard work
+  stays outside it (docs/computer-protocol.md §26.2, §26.3, §26.16).
   From a session step's start until the restore after it, the person
   guard (an active session tap, `PersonTap.swift`) drops the person's keys,
   clicks and wheel and lets pointer moves through, so nothing they do lands
@@ -125,7 +157,8 @@ why and the measured headline.
 - **What the person sees** (§8 "What the person sees"). A Computer row per
   live session in the right panel's Activity section
   (src/renderer/src/lib/computerSessions.ts, the tier in
-  `COMPUTER_TIER_WORDS`), opening on the Mac's desktop onto the live
+  `COMPUTER_TIER_WORDS`: in the background, to the app, in front, on the
+  screen), opening on the Mac's desktop onto the live
   preview (computer/preview.ts at 4 fps, the `local` RPCs
   `computer.preview.start/ack/stop`;
   src/renderer/src/surfaces/threads/ComputerPreview.tsx); a picture the

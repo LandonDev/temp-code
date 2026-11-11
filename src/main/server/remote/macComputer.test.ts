@@ -22,7 +22,7 @@ import { MAC_AWAY_REFUSAL } from '../awayPrompts'
 import type { ComputerToolOutcome, LandedShot } from '../computer/result'
 import type { ComputerToolContext } from '../computer/run'
 import { MacBridge, POLICY_PREFIX } from './macBridge'
-import { bridgedLanding, type MacComputerSessions } from './macComputer'
+import { bridgedLanding, rowForPeer, type MacComputerSessions } from './macComputer'
 
 const ENV = 'env_box'
 const KEY = (thread = 's1'): string => `${ENV}:${thread}`
@@ -642,5 +642,14 @@ describe("MacComputer: the box's reader (mac.computerReader)", () => {
   it('a call this Mac does not hold answers held: false', async () => {
     const s = setup()
     expect(await reading(s, ['nobody'], false)).toEqual({ held: false })
+  })
+})
+
+describe('MacComputer: a row an older box can parse (§26, decision 14)', () => {
+  const row = { tier: 'front' } as never as Parameters<typeof rowForPeer>[0]
+  it('says session for a front row unless the box listed front', () => {
+    expect(rowForPeer(row, false).tier).toBe('session')
+    expect(rowForPeer(row, true).tier).toBe('front')
+    expect(rowForPeer({ ...row, tier: 'process' }, false).tier).toBe('process')
   })
 })

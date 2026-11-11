@@ -28,6 +28,10 @@ public struct Base: Sendable {
     public var stubs: [Int: [String]]
     public var others: [OtherWindow]
     public var fullBytes: Int
+    /// the document line's facts the model was shown (§26.10)
+    public var document: DocumentLine? = nil
+    /// the containers shown with the closed-menu note under them (§26.11)
+    public var notes: Set<Int> = []
     /// the menu bar's one-line menus by number (§27.13): the grammar has no diff line for one
     public var menus: [Int: String] = [:]
 }
@@ -64,6 +68,7 @@ public enum Diff {
         var summaries: [Int: String] = [:]
         var stubs: [Int: [String]] = [:]
         var menus: [Int: String] = [:]
+        var notes: Set<Int> = []
         let parentIndex = { (r: Int) -> Int in layout.liveParent(r).map { layout.rows[$0].index } ?? 0 }
         for r in layout.rows.indices where layout.prints(r) {
             let row = layout.rows[r]
@@ -80,12 +85,13 @@ public enum Diff {
             case .more: summaries[p] = layout.body(r)
             case .stub: stubs[p, default: []].append(layout.body(r))
             case .menu: menus[row.index] = layout.body(r)
+            case .note: notes.insert(p)
             }
         }
         if let footer { summaries[0] = footer }
         return Base(windowID: windowID, structure: structure, lines: lines, order: order, summaries: summaries, stubs: stubs,
                     // the windows the model was shown: none when the budget left the line out
-                    others: layout.othersLine == nil ? [] : layout.others, fullBytes: fullBytes, menus: menus)
+                    others: layout.othersLine == nil ? [] : layout.others, fullBytes: fullBytes, document: layout.document, notes: notes, menus: menus)
     }
 
     /// Spec §4.4 with plan §4.2: full on another window, a move, a new order or
@@ -126,6 +132,8 @@ public enum Diff {
         // changed: the new line under its own number; a container whose summary moved carries it one level under
         let summaryChanged = Set(next.summaries.keys.filter { $0 != 0 && base.lines[$0] != nil && base.summaries[$0] != next.summaries[$0] })
             .union(base.summaries.keys.filter { $0 != 0 && next.lines[$0] != nil && next.summaries[$0] == nil })
+            // a menu that took or lost the closed-menu note says it under its `~` line
+            .union(base.notes.symmetricDifference(next.notes).filter { base.lines[$0] != nil && next.lines[$0] != nil })
         var bodies: [Int: Int] = [:]
         for r in now.layout.rows.indices where now.layout.prints(r) && now.layout.rows[r].kind == .element { bodies[now.layout.rows[r].index] = r }
         walk(next.order, from: 0) { i in
@@ -135,6 +143,7 @@ public enum Diff {
             guard facts || summaryChanged.contains(i) else { return }
             out.append("~ " + (bodies[i].map { now.layout.body($0) } ?? line.body))
             if summaryChanged.contains(i), let s = next.summaries[i] { out.append(Layout.indent(1) + s) }
+            if summaryChanged.contains(i), next.notes.contains(i) { out.append(Layout.indent(1) + ObservationTables.menuClosedNote) }
         }
 
         // added: each new subtree by its root, siblings next to each other in one group
@@ -162,6 +171,9 @@ public enum Diff {
         if base.summaries[0] != nil, next.summaries[0] == nil { return .full(.unsaid) }
         if !base.others.isEmpty, next.others.isEmpty { return .full(.unsaid) }
         if next.others != base.others, let o = now.layout.othersLine { out.insert(o, at: 0) }
+        // the document line only when it changed: a diff never names an unchanged document
+        if base.document != nil, next.document == nil { return .full(.unsaid) }
+        if let d = next.document, d != base.document { out.insert(d.line(changed: true), at: 0) }
         if out.isEmpty { return .unchanged }
 
         var header = now.header

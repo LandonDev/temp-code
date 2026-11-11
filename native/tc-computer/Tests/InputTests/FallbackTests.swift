@@ -273,7 +273,7 @@ private func runs(_ plan: RoutePlan) -> [String] {
     @Test func aDisabledItemInTheBackgroundSkipsTheProcessKeys() {
         let key = ComputerAction(action: .key, text: "super+w")
         #expect(chooseRoute(key, element: nil, facts: disabledClose, tiers: everyTier, held: nil) == .run(.session, .events, exact: true))
-        #expect(chooseRoute(key, element: nil, facts: disabledClose, tiers: [.ax, .process], held: nil) == .needs(.session, menu: ["File", "Close"]))
+        #expect(chooseRoute(key, element: nil, facts: disabledClose, tiers: [.ax, .process], held: nil) == .needs(.front, menu: ["File", "Close"]))
         var active = disabledClose
         active.appActive = { true }
         #expect(chooseRoute(key, element: nil, facts: active, tiers: everyTier, held: nil) == .disabledMenu(["File", "Close"]))

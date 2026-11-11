@@ -75,6 +75,36 @@ export function freedom(i: FreedomInput): Freedom {
   return { free: false, why: 'present' }
 }
 
+/**
+ * When a step that needs the app in front gets it (§26.6): `brief`, the default, brings it forward at once;
+ * `away` waits as the session tier does (§20.1). Anything else reads as `brief`.
+ */
+export const ACTIVE_APP_SETTING = 'computer.activeApp'
+export const ACTIVE_APP_MODES = ['brief', 'away'] as const
+export type ActiveAppMode = (typeof ACTIVE_APP_MODES)[number]
+
+/** The setting's raw text → its mode. */
+export function activeApp(raw: string | null): ActiveAppMode {
+  return raw?.trim() === 'away' ? 'away' : 'brief'
+}
+
+export interface FrontFreedomInput {
+  presence: Presence
+  awaySwitch: boolean
+  mode: ActiveAppMode
+  /** what freedom() says of the session tier right now */
+  session: Freedom
+}
+
+/** Whether a `front` step is admitted now (§26.6): never locked or asleep; at once with Away on or under `brief`; else as the session tier. */
+export function frontFreedom(i: FrontFreedomInput): Freedom {
+  if (i.presence.power === 'asleep') return { free: false, why: 'asleep' }
+  if (i.presence.screen === 'locked') return { free: false, why: 'locked' }
+  if (i.awaySwitch) return { free: true, via: 'switch' }
+  if (i.mode === 'brief') return { free: true, via: 'allowed' }
+  return i.session
+}
+
 /** How long a held step waits before the card: `fullAccessMs` in full access, 0 in safe and edits (the call already asks). */
 export function askAfter(permission: PermissionPolicy, fullAccessMs: number = SCHEDULE.askAfterMs): number {
   return permission === 'auto' ? fullAccessMs : 0

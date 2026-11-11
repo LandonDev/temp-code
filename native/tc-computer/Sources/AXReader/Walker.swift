@@ -19,6 +19,23 @@ struct WalkNotes {
     var scrollAreas: [AXUIElement] = []
     /// busy indicators, progress bars and web areas, with the containers above each (at most 8)
     var busy: [(element: AXUIElement, kind: BusyRule.Kind, containers: [AXUIElement])] = []
+    /// the target window's document (§26.8): its `AXDocument` and its close button's `AXEdited`
+    var document = WindowDocument()
+    /// every open menu the walk read (§26.11), with what opened it when the walk came through it
+    var menus: [OpenMenu] = []
+}
+
+/// What the target window says of its file (docs/computer-protocol.md §26.8, E5): the `AXDocument` URL as
+/// AX gave it (a `file://` URL; a Finder window's names its folder) and the close button's `AXEdited`.
+/// Either is nil when the app does not say: a window with no file, or no close button.
+public struct WindowDocument: Hashable, Sendable {
+    public var url: String?
+    public var edited: Bool?
+
+    public init(url: String? = nil, edited: Bool? = nil) {
+        self.url = url
+        self.edited = edited
+    }
 }
 
 /// What one walk counted, for `tc-ax bench`.
@@ -48,6 +65,8 @@ final class Walker {
     private var deadline: UInt64 = 0
     private var seen = Set<NodeID>()
     private var stopped = false
+    /// the target window's close button, from its stage B, so the button's own batch reads the flag
+    private var closeButton: AXUIElement?
 
     init(handles: HandleTable, caps: WalkCaps = .default) {
         self.handles = handles
@@ -64,12 +83,20 @@ final class Walker {
         seen = []
         notes = WalkNotes()
         counts = WalkCounts()
+        closeButton = nil
     }
 
     /// A root (the window, an open menu, a popover, the menu bar). The window's
     /// own failures end the read; another root that fails is left out.
     func walk(root el: AXUIElement, clip: ComputerProtocol.Rect?, menuBar: Bool, isWindow: Bool) throws -> AXNode? {
-        switch try node(el, clip: clip, scope: .window, depth: 0, menuBar: menuBar, containers: [], root: true, isWindow: isWindow) {
+        let out = try node(el, clip: clip, scope: .window, depth: 0, menuBar: menuBar, containers: [], root: true, isWindow: isWindow)
+        // a walk cut short before the close button: its flag in one read of its own
+        if isWindow, notes.document.edited == nil, let closeButton {
+            notes.document.edited = AX.bool(AX.copy(closeButton, Attributes.edited).value)
+            counts.calls += 1
+            counts.attributes += 1
+        }
+        switch out {
         case .node(let n): return n
         default: return nil
         }
@@ -112,7 +139,8 @@ final class Walker {
         seen.insert(id)
 
         // stage B
-        let attrs = Attributes.stageB(role)
+        let subrole = AX.string(a["AXSubrole"]?.value)
+        let attrs = Attributes.stageB(role, subrole: subrole)
         let b = AX.batch(el, attrs)
         counts.calls += 1
         counts.attributes += attrs.count
@@ -121,8 +149,14 @@ final class Walker {
             stop()
         }
         let s = { (k: String) in b[k]?.value }
+        if root, isWindow, role == "AXWindow" {
+            notes.document.url = AX.string(s("AXDocument"))
+            closeButton = AX.element(s("AXCloseButton"))
+        } else if subrole == "AXCloseButton", let closeButton, CFEqual(el, closeButton) {
+            notes.document.edited = AX.bool(s(Attributes.edited))
+        }
         var n = AXNode(
-            id: id, role: role, subrole: AX.string(a["AXSubrole"]?.value), title: AX.string(s("AXTitle")), description: AX.string(s("AXDescription")),
+            id: id, role: role, subrole: subrole, title: AX.string(s("AXTitle")), description: AX.string(s("AXDescription")),
             placeholder: AX.string(s("AXPlaceholderValue")), value: AX.scalar(s("AXValue")),
             identifier: AX.string(s("AXIdentifier")), domIdentifier: AX.string(s("AXDOMIdentifier")),
             flags: AXFlags(enabled: AX.bool(s("AXEnabled")), focused: AX.bool(s("AXFocused")), selected: AX.bool(s("AXSelected")),
@@ -187,12 +221,46 @@ final class Walker {
             }
         }
         let marks = ViewportCut.marks(children.map(ElementKey.init), lists: lists, scope: scope)
+        let opener = n
         let (kept, hidden) = try ViewportCut.children(children, marks: marks, stop: { stopped }) { _, child in
-            try node(child, clip: inner, scope: inside, depth: depth + 1, menuBar: menuBar, containers: below, root: false, isWindow: false, sliver: isContainer)
+            let out = try node(child, clip: inner, scope: inside, depth: depth + 1, menuBar: menuBar, containers: below, root: false, isWindow: false, sliver: isContainer)
+            // an open menu, with what opened it (§26.11)
+            if case .node(let c) = out, c.role == "AXMenu" { notes.menus.append(OpenMenu.of(c, element: child, opener: el, openerNode: opener)) }
+            return out
         }
         n.children = kept
         if !hidden.isEmpty { n.hidden = hidden }
         return .node(n)
+    }
+}
+#endif
+
+#if canImport(ApplicationServices)
+extension OpenMenu {
+    /// A menu the walk reached through its opener's children: a pop-up's, a menu button's, an open
+    /// menu bar item's.
+    static func of(_ node: AXNode, element: AXUIElement, opener: AXUIElement, openerNode: AXNode) -> OpenMenu {
+        let kind: Opener = openerNode.role == "AXMenuBarItem" ? .menuBar : .popUp
+        let title = [openerNode.title, openerNode.description, openerNode.value.flatMap { if case .string(let s) = $0 { s } else { nil } }]
+            .compactMap { $0 }.first { !$0.isEmpty } ?? "menu"
+        return OpenMenu(menu: element, opener: opener, kind: kind, title: title, items: items(node), itemIDs: named(node).map(\.0))
+    }
+
+    /// A menu read as a root of its own: a context menu, or a selected menu bar item's menu.
+    static func ofRoot(_ node: AXNode, element: AXUIElement) -> OpenMenu {
+        if let parent = AX.element(AX.copy(element, "AXParent").value), AX.string(AX.copy(parent, "AXRole").value) == "AXMenuBarItem" {
+            return OpenMenu(menu: element, opener: parent, kind: .menuBar, title: AX.string(AX.copy(parent, "AXTitle").value) ?? "menu", items: items(node), itemIDs: named(node).map(\.0))
+        }
+        return OpenMenu(menu: element, opener: nil, kind: .context, title: "context menu", items: items(node), itemIDs: named(node).map(\.0))
+    }
+
+    private static func items(_ node: AXNode) -> [String] {
+        named(node).map(\.1)
+    }
+
+    /// The titled items with their nodes.
+    static func named(_ node: AXNode) -> [(NodeID, String)] {
+        node.children.filter { $0.role == "AXMenuItem" }.compactMap { c in c.title.flatMap { $0.isEmpty ? nil : (c.id, $0) } }
     }
 }
 #endif

@@ -54,7 +54,7 @@ final class Reader {
 
     @discardableResult
     func read(_ s: AXSnapshot, mode: ObservationMode = .auto, budget: Int = 24_000, geometry: Bool = false, subtree: Int? = nil,
-              loading: Bool = false, noteThin: Bool = false, space: CoordinateSpace = space, page: PageState? = nil, opened: [OpenedMenu] = []) -> Built {
+              loading: Bool = false, noteThin: Bool = false, space: CoordinateSpace = space, page: PageState? = nil, opened: [StepMenu] = []) -> Built {
         var request = BuildRequest(mode: mode, subtreeOf: subtree, budgetBytes: budget, geometry: geometry, space: space, loading: loading, noteThin: noteThin, page: page)
         request.openedMenus = opened
         let (built, next) = Builder.build(s, request, book: book, base: base)

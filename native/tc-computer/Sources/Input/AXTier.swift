@@ -246,6 +246,27 @@ enum AXTier {
         if pageScrolls.isEmpty, let area = AX.ancestor(e, role: "AXScrollArea") {
             pageScrolls = Set(AX.actions(area).filter { $0.hasPrefix("AXScroll") && $0.hasSuffix("ByPage") })
         }
-        return ElementFacts(role: word, actions: Set(actions), settable: settable, expandable: expandable, selectableRow: selectableRow, pageScrolls: pageScrolls, valueEmptyOrAllSelected: valueEmptyOrAllSelected(e))
+        let menuItem = axRole == "AXMenuItem" ? NamedMenuItem(path: menuPath(e), enabled: AX.bool(e, "AXEnabled") ?? false) : nil
+        return ElementFacts(role: word, actions: Set(actions), settable: settable, expandable: expandable, selectableRow: selectableRow, pageScrolls: pageScrolls,
+                            valueEmptyOrAllSelected: valueEmptyOrAllSelected(e), menuItem: menuItem)
+    }
+
+    /// A menu item's title path, `["File", "Save"]`: its own title, then up through each menu to the
+    /// item, bar item or opener (a pop-up, a menu button) that holds it.
+    static func menuPath(_ item: AXUIElement) -> [String] {
+        var path = [AX.string(item, "AXTitle") ?? ""]
+        var node = AX.element(item, "AXParent")
+        for _ in 0 ..< 8 {
+            guard let n = node else { break }
+            let role = AX.string(n, "AXRole") ?? ""
+            if role == "AXMenuBar" || role == "AXApplication" || role == "AXWindow" { break }
+            if role != "AXMenu" {
+                let title = AX.string(n, "AXTitle") ?? AX.string(n, "AXDescription") ?? ""
+                if !title.isEmpty { path.insert(title, at: 0) }
+                if role != "AXMenuItem" && role != "AXMenuBarItem" { break }
+            }
+            node = AX.element(n, "AXParent")
+        }
+        return path
     }
 }

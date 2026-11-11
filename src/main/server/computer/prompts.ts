@@ -20,11 +20,11 @@ export type MechanicsFact = (typeof MECHANICS_FACTS)[number]
 export const MECHANICS_MAX = 3050
 
 /**
- * The tier scheduling plan's paragraph (its §13), cut to the budget with
- * every fact kept; the held lines stay that plan's (schedule.ts).
+ * The tiers (§5.2, §26): what each takes of the person's Mac, cut to the
+ * budget with every fact kept; the held lines stay schedule.ts's.
  */
 export const COMPUTER_TIERS =
-  "Every step line names its tier. ax acts on an element through accessibility and process sends events to the app alone: neither touches the person's screen, pointer, keyboard or clipboard, so name an element whenever the read has one, which keeps a step at ax. session is the person's own pointer and keyboard and brings the app to the front; the app moves to it only when nothing else can do the step, and only while the person is away from the Mac. While they use it the call waits (its result says how long) and may ask them, and they may choose Skip; a touch stops a session step. Never retry a skipped or stopped session step at once: do the parts that need no session tier and name what is left in your report. A long type or a paste borrows the clipboard and waits a few seconds after the person copies."
+  "Every step line names its tier. ax acts on an element through accessibility and process sends events to the app alone: neither touches the person's screen, pointer, keyboard or clipboard, so name an element whenever the read has one. front brings the app forward for a moment when a command needs it active, then gives the person their app back. session is the person's own pointer and keyboard, used only while they are away: until then the call waits (its result says how long), may ask them, and a touch stops it. Never retry a skipped or stopped step at once: do the rest and name what is left in your report. A long type or a paste borrows the clipboard and waits a few seconds after the person copies."
 
 /** Who wrote this thread's first message: the person, or another thread. */
 type Provenance = 'person' | 'thread'
@@ -37,7 +37,7 @@ type Facts = Record<Exclude<MechanicsFact, 'what' | 'provenance'>, string> & {
 
 const MAC = 'This thread runs on a Mac.'
 const BACKGROUND = 'read and work the windows of its apps through their accessibility tree, in the background, without taking the screen from the person'
-const PER_VERB_NAMES = 'computer_apps, computer_observe, computer_batch and one tool per action, computer_left_click to computer_paste'
+const PER_VERB_NAMES = 'computer_apps, computer_observe, computer_batch and one tool per action, computer_left_click to computer_save_as'
 const count = (held: boolean): string => (held ? 'Five' : 'Four')
 /** computer_result on the bridge: the tool that reads a call which answered "Held" (pending.ts) */
 const RESULT = 'computer_result reads a call that answered "Held"'
@@ -78,7 +78,7 @@ const WORDS: Record<WordsShape, Facts> = {
       act: (held) =>
         `${MAC} ${count(held)} app tools ${BACKGROUND}. computer_observe is getAXState; computer_act and computer_batch act and return the fresh state in one call, as a cua_repl script ends in a read; computer_apps lists apps and windows${held ? `; ${RESULT}` : ''}. Their descriptions say how to work them.`,
       'per-verb': (held) =>
-        `${MAC} App tools ${BACKGROUND}. computer_observe is getAXState; computer_batch and one tool per action, computer_left_click to computer_paste, act and return the fresh state in one call, as a cua_repl script ends in a read; computer_apps lists apps and windows${held ? `; ${RESULT}` : ''}. Their descriptions say how to work them.`
+        `${MAC} App tools ${BACKGROUND}. computer_observe is getAXState; computer_batch and one tool per action, computer_left_click to computer_save_as, act and return the fresh state in one call, as a cua_repl script ends in a read; computer_apps lists apps and windows${held ? `; ${RESULT}` : ''}. Their descriptions say how to work them.`
     }
   }
 }

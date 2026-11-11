@@ -48,7 +48,8 @@ public enum TextBudget {
         mutating func measure() {
             depth = layout.depths()
             rowBytes = layout.rows.indices.map { lineBytes($0) }
-            bytes = layout.header(header).utf8.count + (layout.othersLine.map { 1 + $0.utf8.count } ?? 0) + rowBytes.reduce(0, +)
+            let lines: Int = (layout.documentLine.map { 1 + $0.utf8.count } ?? 0) + (layout.othersLine.map { 1 + $0.utf8.count } ?? 0)
+            bytes = layout.header(header).utf8.count + lines + rowBytes.reduce(0, +)
         }
 
         func lineBytes(_ r: Int) -> Int { layout.prints(r) ? 1 + Layout.indent(depth[r]).utf8.count + layout.body(r).utf8.count : 0 }

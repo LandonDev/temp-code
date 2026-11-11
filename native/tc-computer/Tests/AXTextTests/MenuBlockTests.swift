@@ -22,7 +22,7 @@ import Testing
     /// The recorded Size menu: its items one level under the head, under the numbers the body gave them.
     @Test func theRecordedMenuClosesAFullRead() throws {
         let (s, menu, space) = try recorded()
-        let built = Reader().read(s, space: space, opened: [OpenedMenu(step: 1, menu: menu, title: "Size")])
+        let built = Reader().read(s, space: space, opened: [StepMenu(step: 1, menu: menu, title: "Size")])
         let body = built.text.split(separator: "\n").map(String.init)
         let menuLine = try #require(body.first { $0.hasSuffix("] menu actions: cancel") && body.firstIndex(of: $0)! > 30 })
         let menuIndex = menuLine.drop { $0 == " " }.dropFirst().prefix { $0.isNumber }
@@ -41,7 +41,7 @@ import Testing
         let (s, menu, space) = try recorded()
         let reader = Reader()
         reader.read(s, space: space)
-        let again = reader.read(s, space: space, opened: [OpenedMenu(step: 2, menu: menu)])
+        let again = reader.read(s, space: space, opened: [StepMenu(step: 2, menu: menu)])
         #expect(again.kind == .unchanged)
         let rows = again.text.split(separator: "\n").map(String.init)
         #expect(rows[0].hasSuffix(" · no changes"))
@@ -51,14 +51,14 @@ import Testing
 
     @Test func aMenuWhoseItemsDidNotAnswerIsOneLine() {
         let t = Tree()
-        let built = Reader().read(snapshot([t.window([t.node("AXButton", title: "Go", actions: ["AXPress"])])]), opened: [OpenedMenu(step: 3, menu: nil, title: "File")])
+        let built = Reader().read(snapshot([t.window([t.node("AXButton", title: "Go", actions: ["AXPress"])])]), opened: [StepMenu(step: 3, menu: nil, title: "File")])
         #expect(blockLines(built.text) == ["+ menu opened by step 3; its items did not answer: pick one with named, or close it with key Escape"])
     }
 
     @Test func atMostEightyItemsThenHowManyMore() {
         let t = Tree()
         let menu = t.node("AXMenu", nil, (1...95).map { t.node("AXMenuItem", title: "Item \($0)", frame: Rect(x: 0, y: 0, w: 100, h: 20), actions: ["AXPress"]) })
-        let block = blockLines(Reader().read(snapshot([t.window([])]), opened: [OpenedMenu(step: 1, menu: menu, title: "Long")]).text)
+        let block = blockLines(Reader().read(snapshot([t.window([])]), opened: [StepMenu(step: 1, menu: menu, title: "Long")]).text)
         #expect(block.count == 1 + 80 + 1)
         #expect(block.last == "  … 15 more")
         #expect(block[1].hasSuffix("] menu item \"Item 1\""))
@@ -71,7 +71,7 @@ import Testing
             t.node("AXMenuItem", flags: AXFlags(enabled: false)),
             t.node("AXMenuItem", title: "Redo", flags: AXFlags(enabled: false), actions: ["AXPress"])
         ])
-        let block = blockLines(Reader().read(snapshot([t.window([])]), opened: [OpenedMenu(step: 1, menu: menu, title: "Edit")]).text)
+        let block = blockLines(Reader().read(snapshot([t.window([])]), opened: [StepMenu(step: 1, menu: menu, title: "Edit")]).text)
         #expect(block.dropFirst().map { $0.replacingOccurrences(of: #"\[\d+\]"#, with: "[]", options: .regularExpression) } == ["  [] menu item \"Undo\"", "  [] menu item \"Redo\" disabled"])
     }
 
@@ -84,7 +84,7 @@ import Testing
         let t = Tree()
         let menu = t.node("AXMenu", nil, (1...80).map { t.node("AXMenuItem", title: String(repeating: "y", count: 90) + "\($0)", actions: ["AXPress"]) })
         let doc = t.window((1...200).map { t.node("AXButton", title: "Button \($0)", actions: ["AXPress"]) })
-        let built = Reader().read(snapshot([doc]), budget: 4_000, opened: [OpenedMenu(step: 1, menu: menu, title: "Big")])
+        let built = Reader().read(snapshot([doc]), budget: 4_000, opened: [StepMenu(step: 1, menu: menu, title: "Big")])
         #expect(built.text.utf8.count <= 4_000)
         #expect(built.stats.omitted > 0)
         #expect(MenuBlock.bytes(blockLines(built.text)) <= 2_000)
@@ -95,7 +95,7 @@ import Testing
         let t = Tree()
         let menu = t.node("AXMenu", nil, [t.node("AXMenuItem", title: "Team", actions: ["AXPress"])])
         let reader = Reader()
-        let block = blockLines(reader.read(snapshot([t.window([])]), opened: [OpenedMenu(step: 1, menu: menu, title: "Plan")]).text)
+        let block = blockLines(reader.read(snapshot([t.window([])]), opened: [StepMenu(step: 1, menu: menu, title: "Plan")]).text)
         let team = Int(block[1].drop { $0 == " " }.dropFirst().prefix { $0.isNumber })!
         #expect(reader.book.index(of: menu.children[0].id) == team)
         #expect(reader.book.intern(menu.children[0].id) == team)

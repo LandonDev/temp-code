@@ -98,7 +98,12 @@ public struct PasteFlow {
     /// - evidence: the destination's evidence now, nil when unreadable
     /// - quietMs: the call's `pasteQuietMs`; with it, a foreign copy that recent refuses the paste
     ///   `recent-copy` once the lock is held, before the pasteboard is read or written
-    public func run(_ content: PasteContent, quietMs: Int? = nil, cancelled: () -> Bool, insert: (() throws -> StepEffect?)? = nil, checks: () throws -> Void, recheck: () throws -> Void, deliver: () throws -> Void, evidence: () -> Evidence?) throws -> PasteResult {
+    /// - inside: a `front` hold (§26.3, decision 3): the recheck, Command-V and the value wait run inside it,
+    ///   the wait ending at the hold's `stopped` (its cap) as at its own; the lock, the snapshot and the
+    ///   write come before it and the person's pasteboard goes back after it returns, once their app is
+    ///   back, so a stalled pasteboard call never holds the app in front
+    public func run(_ content: PasteContent, quietMs: Int? = nil, cancelled: () -> Bool, insert: (() throws -> StepEffect?)? = nil, checks: () throws -> Void, recheck: () throws -> Void, deliver: () throws -> Void, evidence: () -> Evidence?,
+                    inside: ((_ part: (_ stopped: () -> Bool) throws -> Void) throws -> Void)? = nil) throws -> PasteResult {
         if let insert, let effect = try insert(), effect != .none {
             return PasteResult(via: .axInsert, clipboard: nil, effect: effect)
         }
@@ -122,18 +127,21 @@ public struct PasteFlow {
             owned = store.changeCount
             try store.write(content)
             owned = store.changeCount
-            try recheck()
-            if cancelled() { throw cancelledFailure() }
-            if clock.seconds() >= cap { throw clipboardBusy("The paste ran past its time; nothing was pasted.") }
-            try deliver()
-            let until = min(clock.seconds() + Double(InputTiming.pasteWaitMs) / 1000, cap)
-            var after = evidence() ?? Evidence()
-            while Evidence.compare(before: before, after: after) != .changed, clock.seconds() < until {
+            func part(_ stopped: () -> Bool) throws {
+                try recheck()
                 if cancelled() { throw cancelledFailure() }
-                clock.sleep(ms: 10)
-                after = evidence() ?? Evidence()
+                if clock.seconds() >= cap { throw clipboardBusy("The paste ran past its time; nothing was pasted.") }
+                try deliver()
+                let until = min(clock.seconds() + Double(InputTiming.pasteWaitMs) / 1000, cap)
+                var after = evidence() ?? Evidence()
+                while Evidence.compare(before: before, after: after) != .changed, clock.seconds() < until, !stopped() {
+                    if cancelled() { throw cancelledFailure() }
+                    clock.sleep(ms: 10)
+                    after = evidence() ?? Evidence()
+                }
+                effect = Evidence.compare(before: before, after: after)
             }
-            effect = Evidence.compare(before: before, after: after)
+            if let inside { try inside(part) } else { try part { false } }
         } catch {
             failure = error
         }

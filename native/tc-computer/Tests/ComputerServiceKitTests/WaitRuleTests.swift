@@ -190,6 +190,19 @@ private func run(
         #expect(px.report.gapCounts?[2] == 1)
     }
 
+    /// A `front` step's wait begins after the hold's settle and restore (§26.2): a change the hold already saw
+    /// reports its own time, and later changes count their gaps from it as any step's do.
+    @Test func aChangeBeforeTheFirstLookCountsAtItsStamp() {
+        var rule = WaitRule(options: ComputerDefaults.Wait.action, signature0: 0, thin: false, pixels: false)
+        _ = rule.take(WaitSample(at: 420, axLastChange: 180, signature: 0))
+        _ = rule.take(WaitSample(at: 445, axLastChange: 440, signature: 0))
+        guard case .done(let out) = rule.take(WaitSample(at: 2_000, axLastChange: 440, signature: 0)) else { Issue.record("ends"); return }
+        #expect(out.report.firstChangeMs == 180)
+        var gaps = [Int](repeating: 0, count: 11)
+        gaps[WaitGaps.bucket(260)] = 1
+        #expect(out.report.gapCounts == gaps)
+    }
+
     @Test func theBucketsTakeTheirUpperEdge() {
         #expect(WaitGaps.bucket(0) == 0)
         #expect(WaitGaps.bucket(25) == 0)
@@ -265,6 +278,16 @@ private func run(
     @Test func theRowsShipEqualToTheOldOnes() {
         let shipped = WaitRows(stepWait: nil, wait: nil, axStepWait: nil, axWait: nil)
         #expect(shipped.axStep == shipped.step && shipped.axAction == shipped.action)
+    }
+
+    /// The followed window closed: back to the call's own target when live, else the app's focused window.
+    @Test func aClosedFollowedWindowSendsTheCallBack() {
+        #expect(WindowFollow.back(current: 302, original: 301, live: [301, 303], focusedAfter: 303) == 301)
+        #expect(WindowFollow.back(current: 302, original: 301, live: [303], focusedAfter: 303) == 303)
+        // still live, or no other live window focused: stay
+        #expect(WindowFollow.back(current: 302, original: 301, live: [301, 302], focusedAfter: 301) == nil)
+        #expect(WindowFollow.back(current: 302, original: 301, live: [301], focusedAfter: nil) == nil)
+        #expect(WindowFollow.back(current: 302, original: 301, live: [301], focusedAfter: 304) == nil)
     }
 
     @Test func aStepOpensTheFocusedWindowOnlyWhenItIsNew() {

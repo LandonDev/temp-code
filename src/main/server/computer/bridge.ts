@@ -60,6 +60,8 @@ import { currentLag, recordComputerSpan } from '../stalls'
 export const MAC_SILENT_CANCEL = hostErrorLine('cancelled', 'the Mac did not say what ran')
 
 const SETTLED: readonly SessionStatus[] = ['idle', 'done', 'error', 'stopped', 'watching']
+/** What this box parses on a Mac's computer row beyond the first wire (§26, decision 14). */
+const BOX_READS = ['front'] as const
 /** How long a Stop waits for the call in flight to answer its own steps before it is given up here. */
 export const STOP_REPLY_MS = 10_000
 /** A notice to the Mac (an end, a cancel): nothing waits on it. */
@@ -311,7 +313,7 @@ export class ComputerBridge {
         return this.deps.calls.call<unknown>(
           mac,
           'mac.computer',
-          { thread: { id, title: meta?.title ?? '', permission }, args: { call, turn: `${this.boot}:${t.turn}`, rootId: this.deps.pause.rootOf(id) } } as never,
+          { thread: { id, title: meta?.title ?? '', permission }, args: { call, turn: `${this.boot}:${t.turn}`, rootId: this.deps.pause.rootOf(id), features: [...BOX_READS] } } as never,
           bridgedDeadlineMs(call),
           { callId, onProgress: (frame) => this.progress(t, inflight, frame.chunk) }
         )

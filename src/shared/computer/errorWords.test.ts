@@ -34,6 +34,8 @@ const SAMPLES: Record<ComputerErrorKind, Partial<ComputerError>> = {
   value_not_taken: { element: 19, value: 'Choose a plan' },
   focus_moved: { element: 9, reason: 'browser-field', focused: { index: 9, line: 'input "Address and search bar"' } },
   tab_in_use: {},
+  not_committed: {},
+  file_exists: {},
   named_target: { reason: 'several', elementCandidates: [{ index: 52, line: 'menu item "Team"' }, { index: 9, line: 'button "Team"' }] },
 }
 
@@ -169,5 +171,30 @@ describe('open_refused', () => {
     expect(open('missing', ['/tmp/gone.pdf'])).toBe('no file at "/tmp/gone.pdf" on the Mac; check the path')
     expect(open('missing', [])).toBe('an item is not on the Mac; check the path')
     expect(open('scheme', ['ftp://x'])).toBe('only http, https and file items open; give a web page, a file or a folder')
+  })
+})
+
+describe('the words of steps that need the app in front (§26)', () => {
+  const saveAs: ComputerAction = { action: 'save_as', path: '~/run/note.rtf' }
+  it('names the path a save_as could not write or would overwrite', () => {
+    expect(errorLine(err('not_committed'), { app: 'TextEdit', action: saveAs })).toBe(
+      'the save panel closed and no file appeared at "~/run/note.rtf"; read the window before saving again'
+    )
+    expect(errorLine(err('file_exists'), { action: saveAs })).toBe('"~/run/note.rtf" exists; pass replace to overwrite it, or pick another name')
+    expect(errorLine(err('not_committed'), { action: { action: 'key', text: 'Return' } })).toBe('nothing reached the disk; read the window before trying again')
+  })
+
+  it('says a step needing the app in front waits for the person to be away, with its menu item when named', () => {
+    expect(errorLine(err('needs_tier', { needed: 'front', menu: ['File', 'Save'] }), { app: 'TextEdit' })).toBe(
+      'File › Save needs TextEdit in front, which the person set to wait until they are away'
+    )
+    expect(errorLine(err('needs_tier', { needed: 'front' }), { app: 'Finder' })).toBe('this needs Finder in front, which the person set to wait until they are away')
+  })
+
+  it('says the app could not come forward for a front step refused activation', () => {
+    const front = { heldMs: 0, activateMs: 400, restoreMs: 0, restored: 'restored' as const }
+    expect(errorLine(err('session_unavailable', { reason: 'activation-refused', front }), { app: 'TextEdit' })).toBe(
+      'TextEdit could not come forward now: the app would not come to the front; stay in the background tiers'
+    )
   })
 })

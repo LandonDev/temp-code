@@ -35,6 +35,8 @@ export interface BenchStep {
   /** how a `type` went in, said in the tier's place */
   via?: InputVia
   effect?: StepEffect
+  /** the step line's disk part (§26.12), after `on disk: ` */
+  disk?: string
   ok: boolean
   error?: string
   wait?: Pick<WaitReport, 'waitedMs' | 'reason' | 'firstChangeMs' | 'gapCounts'>
@@ -187,7 +189,7 @@ const runPassed = (run: BenchRun): boolean => run.outcome === 'passed' && runFau
 
 // ── the step lines ──────────────────────────────────────────────────────
 
-const TIERS: readonly string[] = ['ax', 'process', 'session']
+const TIERS: readonly string[] = ['ax', 'process', 'front', 'session']
 const VIAS: readonly string[] = ['ax-insert', 'ax-value', 'keys', 'paste']
 /** The host's line for a step the session tier's gate refused (hostErrors.ts `session_refused`). */
 export const SESSION_REFUSED_PREFIX = 'needs the session tier'
@@ -203,16 +205,20 @@ export function parseStepLine(line: string): BenchStep | null {
     return { action: null, tier: null, ok: false, error: 'not run' }
   const parsed = readStepLine(line)
   if (!parsed) return null
-  const { action, effect, tier: how, failed } = parsed
+  const { action, effect, failed } = parsed
   if (failed !== undefined) return { action, tier: null, ok: false, error: failed }
   if (NO_INPUT_ACTIONS.includes(action)) return { action, tier: null, ok: true }
+  const how = parsed.route ?? parsed.tier
   if (!effect || !how) return null
-  if (TIERS.includes(how)) return { action, tier: how as Tier, effect, ok: true }
-  if (VIAS.includes(how)) return { action, tier: how.startsWith('ax-') ? 'ax' : null, via: how as InputVia, effect, ok: true }
+  const facts = { action, effect, ok: true, ...(parsed.disk !== undefined ? { disk: parsed.disk } : {}) }
+  const front = parsed.tier === 'front'
+  if (TIERS.includes(how)) return { ...facts, tier: how as Tier }
+  if (how === 'panel') return { ...facts, tier: 'front', via: 'panel' }
+  if (VIAS.includes(how)) return { ...facts, tier: how.startsWith('ax-') ? 'ax' : null, via: how as InputVia }
   // a background route names what it acted on after its word (§24.8): `menu File › Close`
   const route = how.split(' ', 1)[0]
-  if ((FALLBACK_VIAS as readonly string[]).includes(route)) return { action, tier: 'ax', via: route as InputVia, effect, ok: true }
-  if (how === 'no tier') return { action, tier: null, effect, ok: true }
+  if ((FALLBACK_VIAS as readonly string[]).includes(route)) return { ...facts, tier: front ? 'front' : 'ax', via: route as InputVia }
+  if (how === 'no tier') return { ...facts, tier: null }
   return null
 }
 

@@ -146,9 +146,10 @@ final class ServiceRig: @unchecked Sendable {
         return (nil, nil)
     }
 
-    /// `initialize` then `session.open`.
-    func ready(session: String = "s1") async {
-        await call("initialize", #"{"protocol":1,"client":{"name":"test","version":"0"},"dataDir":"\#(dataDir.path)"}"#)
+    /// `initialize` (naming `features` when given) then `session.open`.
+    func ready(session: String = "s1", features: [String]? = nil) async {
+        let named = features.map { ",\"features\":[" + $0.map { "\"\($0)\"" }.joined(separator: ",") + "]" } ?? ""
+        await call("initialize", #"{"protocol":1,"client":{"name":"test","version":"0"},"dataDir":"\#(dataDir.path)""# + named + "}")
         await call("session.open", #"{"session":"\#(session)"}"#)
     }
 

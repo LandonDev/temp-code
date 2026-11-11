@@ -86,7 +86,9 @@ export const MacComputerCallArgsSchema = z.object({
   /** The box thread's turn: a new value clears the Mac session's Stop for the turn. */
   turn: z.string().min(1).max(100),
   /** The box thread's root: the scheduler's rootId on the Mac is macComputerKey(env, rootId). */
-  rootId: z.string().min(1).max(200)
+  rootId: z.string().min(1).max(200),
+  /** What the box parses beyond the first wire (§26, decision 14): `front` on a row's tier. An older box sends none. */
+  features: z.array(z.string().max(40)).max(8).optional()
 })
 export type MacComputerCallArgs = z.infer<typeof MacComputerCallArgsSchema>
 

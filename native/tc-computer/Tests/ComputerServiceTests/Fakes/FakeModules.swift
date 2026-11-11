@@ -74,6 +74,13 @@ final class FakeReader: AppReading, @unchecked Sendable {
     private var page: Page?
     /// what `brief(of:)` answers for any element (the model's latest read listed it)
     var focusedBrief: ElementBrief?
+    /// what the last read walked open (§26.11); `menusAsked` counts the shell's asks
+    var menus: [OpenMenu] = []
+    private(set) var menusAsked = 0
+    var openMenus: [OpenMenu] {
+        menusAsked += 1
+        return menus
+    }
 
     init(pid: pid_t, log: CallLog, pageOf: (@Sendable () -> Page?)? = nil) {
         self.pid = pid
@@ -138,8 +145,9 @@ final class FakeReader: AppReading, @unchecked Sendable {
     // §27: what `named` and `menu` resolve to, by name or path; the focused element a blind key step meets
     var namedTargets: [String: Int] = [:]
     var menuTargets: [String: Int] = [:]
-    /// the live focus as (in scope, inside a targeted element, secure, index); nil: nothing focused
-    var live: (inScope: Bool, targeted: Bool, secure: Bool, index: Int)?
+    /// the live focus as (in scope, inside a targeted element, secure, index); by default a field an earlier step
+    /// targeted, so blind keys after a step run; nil: the focus could not be read
+    var live: (inScope: Bool, targeted: Bool, secure: Bool, index: Int)? = (inScope: true, targeted: true, secure: false, index: 9)
     var openedMenusAsked = false
 
     func beginCallRecord() { log.add("record begin") }
@@ -432,13 +440,36 @@ final class FakeInput: InputPerforming, @unchecked Sendable {
     /// §25.9 as each step saw it: the process is Chromium, the expected focus's index, the brief of the window
     private(set) var webFacts: [(chromium: Bool, expect: Int?, brief: ElementBrief?)] = []
     private var nextToken = 0
+    /// decision 4: what each step's target said of the next step, the reports a closed hold leaves, the closes asked
+    private(set) var keepOpens: [Bool] = []
+    var frontReports: [FrontHold] = []
+    private(set) var frontCloses = 0
+    /// §26.5: the shell's key monitor switch, in order
+    private(set) var keyWatches: [Bool] = []
 
     init(wiring: InputWiring, log: CallLog) {
         self.wiring = wiring
         self.log = log
     }
 
+    /// the report a close leaves for `takeFrontReport`
+    var closeReport: FrontHold?
+
+    func closeFrontHold(pid: pid_t) {
+        lock.withLock {
+            frontCloses += 1
+            if let r = closeReport { frontReports.append(r) }
+        }
+    }
+
+    func takeFrontReport(pid: pid_t) -> FrontHold? {
+        lock.withLock { frontReports.isEmpty ? nil : frontReports.removeFirst() }
+    }
+
+    func watchKeys(_ on: Bool) { lock.withLock { keyWatches.append(on) } }
+
     func perform(_ action: ComputerAction, on target: InputTarget, tiers: [Tier]) throws -> InputOutcome {
+        lock.withLock { keepOpens.append(target.keepFrontOpen) }
         log.add("perform \(action.action.rawValue)")
         lock.withLock {
             cursors.append(target.cursor)

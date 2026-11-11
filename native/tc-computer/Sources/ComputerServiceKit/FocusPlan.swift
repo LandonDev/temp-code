@@ -46,9 +46,11 @@ public enum FocusPlan {
         inputBefore && BatchStop.typesBlind(action)
     }
 
-    /// The verdict on a step `applies` admits. Nothing focused (or unreadable) runs: the keys reach no field.
+    /// The verdict on a step `applies` admits. A focus that could not be read (nothing answered, a timeout, a first
+    /// responder AX does not expose) is `unplanned`: nothing says the keys reach a field a step aimed at.
     public static func verdict(_ action: ComputerAction, focus: Focus?) -> Verdict {
-        guard let focus, !focus.browserField else { return .run }
+        guard let focus else { return .unplanned }
+        guard !focus.browserField else { return .run }
         let planned = focus.inScope && (focus.insideTargeted || (focus.movedByStepBefore && !focus.stepBeforeNavigates))
         guard planned else { return .unplanned }
         return writes(action) && focus.secure ? .secure : .run
@@ -59,10 +61,20 @@ public enum FocusPlan {
         writes(action) && secure ? .secure : .run
     }
 
-    /// The steps that write text into their destination.
+    /// The steps that write text into their destination: `type`, `paste`, `set_value`, and a `key` or `hold_key` whose
+    /// combo has no `super` or `ctrl` (a character, Return, Delete go into the field; a command does not).
     public static func writes(_ action: ComputerAction) -> Bool {
-        action.action == .type || action.action == .paste || action.action == .setValue
+        switch action.action {
+        case .type, .paste, .setValue: return true
+        case .key, .holdKey:
+            let parts = (action.text ?? "").lowercased().split(separator: "+", omittingEmptySubsequences: false).map(String.init)
+            return !parts.dropLast().contains(where: commandNames.contains)
+        default: return false
+        }
     }
+
+    /// The modifiers that make a combo a command (observation.ts's names and aliases for `super` and `ctrl`).
+    static let commandNames: Set<String> = ["super", "super_l", "super_r", "cmd", "command", "meta", "meta_l", "meta_r", "ctrl", "control", "control_l", "control_r"]
 
     /// The navigation keys of §27.7(b): Tab, the arrows, Home, End, Page Up and Page Down, alone or with shift.
     static let navigationKeys: Set<String> = [
@@ -71,17 +83,22 @@ public enum FocusPlan {
     ]
     static let shiftNames: Set<String> = ["shift", "shift_l", "shift_r"]
 
-    /// Whether the step is a plain navigation key: moving focus with it never licenses typing.
+    /// Whether the step is a plain navigation key, pressed or held: moving focus with it never licenses typing.
     public static func isNavigationKey(_ action: ComputerAction) -> Bool {
-        guard action.action == .key, let text = action.text?.lowercased(), !text.isEmpty else { return false }
+        guard action.action == .key || action.action == .holdKey, let text = action.text?.lowercased(), !text.isEmpty else { return false }
         let parts = text.split(separator: "+", omittingEmptySubsequences: false).map(String.init)
         guard let key = parts.last, navigationKeys.contains(key) else { return false }
         return parts.dropLast().allSatisfy(shiftNames.contains)
     }
 
-    /// The `focus_moved` error of a refusal: the focused element's line, and its index when the session's book has it.
-    public static func error(_ verdict: Verdict, focused: ElementBrief?, line: String) -> ComputerError? {
-        let at = focused.map { "[\($0.index)] \($0.line)" } ?? line
+    /// The `focus_moved` error of a refusal: the focused element's line, and its index when the session's book has it;
+    /// `line` nil when the focus could not be read.
+    public static func error(_ verdict: Verdict, focused: ElementBrief?, line: String?) -> ComputerError? {
+        guard let at = focused.map({ "[\($0.index)] \($0.line)" }) ?? line else {
+            guard verdict != .run else { return nil }
+            return ComputerError(kind: .focusMoved, message: "The focus could not be read, so no step of this batch is known to aim at it; name the element the text is for.",
+                                 reason: .unplanned)
+        }
         switch verdict {
         case .run: return nil
         case .unplanned:

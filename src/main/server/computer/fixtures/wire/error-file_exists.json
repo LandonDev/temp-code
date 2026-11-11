@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "id": 47,
+  "result": {
+    "step": {
+      "index": 0,
+      "action": "save_as",
+      "status": "failed",
+      "error": {
+        "kind": "file_exists",
+        "message": "~/run/note.rtf exists; pass replace to overwrite it."
+      }
+    }
+  }
+}

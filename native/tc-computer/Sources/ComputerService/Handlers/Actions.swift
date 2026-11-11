@@ -19,9 +19,13 @@ private struct StepRun {
     var signature0: UInt64 = 0
     /// the step's effect as Input read it itself (§25.7: a web toggle's value read back); it stands in for the wait's
     var inputEffect: StepEffect?
+    /// the commit check begun before the step acted (§26.8), judged after its wait
+    var check: CommitCheck?
     /// §27.5, §27.7b: the focused element's index and the app's window ids before the step's input
     var focusBefore: Int?
     var windowsBefore: [Int] = []
+    /// the two above were read (a closed menu's item reached again reads neither)
+    var focusRead = false
     /// the step failed or was cancelled
     var stops: Bool { if case .ok = step { return false } else { return true } }
 
@@ -32,6 +36,7 @@ private struct StepRun {
 private struct Performed: Sendable {
     let outcome: InputOutcome
     let signature0: UInt64
+    var check: CommitCheck?
     let element: ElementBrief?
     let returnedAt: UInt64
     /// §27: the element a `named` or `menu` target resolved to, the focused element and window list before the input
@@ -91,14 +96,17 @@ extension ComputerService {
                 actions: [p.action], tiers: p.tiers, stepWait: nil, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, personIdleMs: p.personIdleMs, ignored: p.ignored,
                 tabs: p.tabs, expectFocus: p.expectFocus, axWait: p.axWait, prior: p.prior, textWindowId: p.textWindowId, ctx: ctx
             )
-            return ActionResult(step: result.steps[0], observation: result.observation, observationError: result.observationError, front: result.front)
+            return features.fit(ActionResult(
+                step: result.steps[0], observation: result.observation, observationError: result.observationError, front: result.front,
+                menusLeftOpen: result.menusLeftOpen
+            ))
         }
         router.on("action.batch", keepsResult: true) { [self] (p: Methods.ActionBatch.Params, ctx) in
-            try await runActions(
+            features.fit(try await runActions(
                 session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch,
                 actions: p.actions, tiers: p.tiers, stepWait: p.stepWait, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, personIdleMs: p.personIdleMs, ignored: p.ignored,
                 tabs: p.tabs, expectFocus: p.expectFocus, axWait: p.axWait, axStepWait: p.axStepWait, prior: p.prior, textWindowId: p.textWindowId, ctx: ctx
-            )
+            ))
         }
     }
 
@@ -181,6 +189,7 @@ extension ComputerService {
         }
 
         var steps: [StepResult] = []
+        var openHold: Int?
         var last: StepRun?
         var lastAction: ComputerAction?
         // §27: what the steps so far tell the next, the window the call acts in (it follows one a step opened), the routes
@@ -194,30 +203,45 @@ extension ComputerService {
                 steps += notRun(actions, from: index + 1, first: .failed(FailedStep(index: index, action: action.action, error: Router.cancelledError)))
                 break
             }
-            // §27.8: keys with no planned place after a step that changed nothing, and everything after them, do not run
+            // §27.8: keys with no planned place after a step that changed nothing, and everything after them, do not run;
+            // a front hold the step before left open closes after the loop
             if let stop = facts.tracker.stop(before: action) {
                 steps += actions.indices.dropFirst(index).map { StepResult.notRun(NotRunStep(index: $0, action: actions[$0].action, stopped: stop)) }
                 break
             }
-            var run = await step(index, action, target: current, tiers: tiers, maxEdge: observe?.maxEdge, pasteQuietMs: pasteQuietMs, call: call, facts: facts, ignored: ignored, ctx: ctx)
+            let next = index + 1 < actions.count ? actions[index + 1] : nil
+            var run = await step(index, action, target: current, tiers: tiers, maxEdge: observe?.maxEdge, pasteQuietMs: pasteQuietMs, call: call, facts: facts, ignored: ignored, next: next, ctx: ctx)
             let isLast = index == actions.count - 1
             if case .ok(let ok) = run.step { routes.append(ok.tier) }
             if !run.stops && !isLast, let t0 = run.t0, case .ok(let ok) = run.step {
+                // §27.3: a step that went in at `ax` takes the axStep row; a `front` step is not one, its wait runs after the restore
                 let waited = await waitAfter(current, options: rows.between(tier: ok.tier), t0: t0, signature0: run.signature0, pasteboard: WaitRule.readsPasteboard(action), cancel: ctx.cancel)
-                run.step = .ok(ok.with(effect: run.effect(waited.effect(thin: book.lastThin(session, pid: target.pid))), waited: waited.report))
+                var judged = ok.with(effect: run.effect(waited.effect(thin: book.lastThin(session, pid: target.pid))), waited: waited.report)
+                if let check = run.check, !ctx.cancel.isSet { judged = await committed(judged, check, current) }
+                run.step = .ok(judged)
             }
             if !run.stops && !isLast, run.t0 != nil {
-                let (step, next) = await afterStep(index, action, run, target: current, facts: &facts)
+                let (step, next) = await afterStep(index, action, run, target: current, original: target, facts: &facts)
                 run.step = step
                 if let next { current = next; followed = true }
             }
             steps.append(run.step)
+            // decision 4: a step that left its hold open, and a hold closed since, reported on the step that last used it
+            await takeFrontReport(target, into: &steps, at: &openHold)
+            // a front step with no report left its hold open; one with a report closed it (a joined hold included)
+            if case .ok(let ok) = run.step, ok.tier == .front { openHold = ok.front == nil ? index : nil }
             last = run
             lastAction = action
             if run.stops {
                 steps += notRun(actions, from: index + 1)
                 break
             }
+        }
+
+        // a hold still open (the batch stopped early) closes before the action wait, which runs in the background
+        if openHold != nil {
+            await closeFrontHold(target)
+            await takeFrontReport(target, into: &steps, at: &openHold)
         }
 
         // the action wait, once, after the last step that ran; a target window the step closed is a change (§22.6)
@@ -231,10 +255,12 @@ extension ComputerService {
             }
             if let at = steps.indices.last, case .ok(let ok) = steps[at] {
                 let effect = waited.effect(thin: book.lastThin(session, pid: target.pid), windowGone: windowGone)
+                var judged = ok.with(effect: last.effect(effect), waited: waited.report)
+                if let check = last.check, !windowGone, waited.report.reason != .cancelled { judged = await committed(judged, check, current) }
                 var ran = last
-                ran.step = .ok(ok.with(effect: last.effect(effect), waited: waited.report))
+                ran.step = .ok(judged)
                 if !windowGone, let lastAction {
-                    let (step, next) = await afterStep(at, lastAction, ran, target: current, facts: &facts)
+                    let (step, next) = await afterStep(at, lastAction, ran, target: current, original: target, facts: &facts)
                     ran.step = step
                     if let next { current = next; followed = true }
                 }
@@ -261,11 +287,21 @@ extension ComputerService {
             // call followed is read whole too (§27.5); a menu a step opened closes the text (§27.4)
             var knobs = ObserveKnobs(observe)
             if windowGone || followed { knobs.mode = .full }
+            knobs.closingMenus = true
             knobs.openedMenus = true
             let shown = windowGone ? try await windowAfterClose(current) : current
             let switched = selection.flatMap { TabPlan.selectedTab(switched: $0.switched, title: $0.title) }
-            let observation = try await self.observe(shown, knobs, loading: waited.report.busy, waited: waited.report, selectedTab: windowGone ? nil : switched, cancel: ctx.cancel)
-            return BatchResult(steps: steps, observation: observation, waited: waited.report)
+            let frontAllowed = tiers.contains(.front)
+            let observation: Observation
+            do {
+                observation = try await self.observe(shown, knobs, loading: waited.report.busy, waited: waited.report, selectedTab: windowGone ? nil : switched, cancel: ctx.cancel)
+            } catch let error where ComputerService.failure(error, or: .windowNotFound).kind == .timeout {
+                // an app that stopped answering may sit in a menu of its own: close it, read once more (§26.11)
+                guard await closeStuckMenu(shown, frontAllowed: frontAllowed) else { throw error }
+                observation = try await self.observe(shown, knobs, loading: waited.report.busy, waited: waited.report, selectedTab: windowGone ? nil : switched, cancel: ctx.cancel)
+            }
+            let leftOpen = await closeMenus(shown, frontAllowed: frontAllowed)
+            return BatchResult(steps: steps, observation: observation, waited: waited.report, menusLeftOpen: leftOpen)
         } catch {
             if ctx.cancel.isSet { await releaseHeld(session: session) }
             return BatchResult(steps: steps, observationError: ComputerService.failure(error, or: .windowNotFound), waited: waited.report)
@@ -273,7 +309,7 @@ extension ComputerService {
     }
 
     /// One step: the shell's own pictures and wait, or Input.
-    private func step(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], maxEdge: Int?, pasteQuietMs: Int?, call: StepCall, facts: CallFacts, ignored: IgnoredRoutes?, ctx: RequestContext) async -> StepRun {
+    private func step(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], maxEdge: Int?, pasteQuietMs: Int?, call: StepCall, facts: CallFacts, ignored: IgnoredRoutes?, next: ComputerAction?, ctx: RequestContext) async -> StepRun {
         let thin = book.lastThin(target.session, pid: target.pid)
         switch action.action {
         case .screenshot, .zoom:
@@ -306,7 +342,7 @@ extension ComputerService {
                 return StepRun(step: failed(index, action, error, or: .windowNotFound))
             }
         default:
-            return await perform(index, action, target: target, tiers: tiers, pasteQuietMs: pasteQuietMs, call: call, facts: facts, ignored: ignored, ctx: ctx)
+            return await perform(index, action, target: target, tiers: tiers, pasteQuietMs: pasteQuietMs, call: call, facts: facts, ignored: ignored, next: next, ctx: ctx)
         }
     }
 
@@ -314,7 +350,7 @@ extension ComputerService {
     /// §27 before the input, on the worker: a `named` or `menu` target resolved (§27.9, §27.10), a password field by name
     /// refused (§27.7a), a key or text step with no target judged at the live focus (§27.7), and the focus and windows
     /// noted for after the step (§27.5, §27.7b); the step's record started before its input (§27.4).
-    private func perform(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], pasteQuietMs: Int?, call: StepCall, facts: CallFacts, ignored: IgnoredRoutes?, ctx: RequestContext) async -> StepRun {
+    private func perform(_ index: Int, _ action: ComputerAction, target: Resolved, tiers: [Tier], pasteQuietMs: Int?, call: StepCall, facts: CallFacts, ignored: IgnoredRoutes?, next: ComputerAction?, ctx: RequestContext) async -> StepRun {
         let pixel = await pixelWatch(target)
         let keepAlive = keepWatchAlive(target, while: pixel != nil)
         defer { keepAlive?.cancel() }
@@ -329,6 +365,27 @@ extension ComputerService {
         let windowID = target.windowID
         let expected = call.expectation(at: index)
         let source = modules.windows
+        // the commit check only for a host that reads it, never for the cursor read, and never on web content:
+        // a Chromium window has no file behind it, so nothing there is expected to commit (§25, §26.8)
+        let checks = features.commit && action.action != .cursorPosition && !call.chromium
+        if action.action == .saveAs, call.chromium {
+            // §26.7 saves a document window's file; a page is no document of the app's
+            let error = ComputerError(kind: .actionUnsupported, message: "save_as saves a document window's file; \(target.app.name) shows web content, which has none.")
+            return StepRun(step: .failed(FailedStep(index: index, action: .saveAs, error: error)))
+        }
+        let readDocument = documentReader
+        // §26.11: an item of a pop-up, menu button or context menu this session's last call closed
+        if let item = action.element, MenuCloser.pressesItem(action) {
+            do {
+                if let on = try await reachClosedItem(target, index: item) {
+                    let ok = OkStep(index: index, action: action.action, tier: .ax, effect: WaitRule.skipped().effect(thin: false),
+                                    input: OkStep.Input(via: .menu, on: on))
+                    return StepRun(step: .ok(ok), t0: MachTime.now(), signature0: (try? await signature(target)) ?? 0)
+                }
+            } catch {
+                return StepRun(step: failed(index, action, error, or: .staleElement))
+            }
+        }
         do {
             let done = try await target.worker.run { state -> Performed in
                 guard let reader = state.reader, let window = state.windows[windowID] else {
@@ -356,16 +413,19 @@ extension ComputerService {
                 var planned: AXUIElement?
                 if FocusPlan.applies(action, inputBefore: facts.inputBefore) {
                     let opened = facts.windows.compactMap { id in (try? source.resolve(pid: pid, ref: WindowRef(id: id)))?.element }
-                    if let live = reader.liveFocus(window: window, windows: opened, targeted: facts.targeted) {
-                        let moved = facts.movedBefore ?? (facts.priorFocusTo.map { $0 == live.brief.index } ?? false)
-                        let focus = FocusPlan.Focus(
-                            inScope: live.inScope, insideTargeted: live.insideTargeted, movedByStepBefore: moved, stepBeforeNavigates: false,
-                            secure: live.secure, browserField: call.chromium && FocusCheck.isBrowserField(FocusedFacts(role: live.role, inWebArea: live.inWebArea))
-                        )
-                        let verdict = FocusPlan.verdict(action, focus: focus)
-                        if let refusal = FocusPlan.error(verdict, focused: live.brief, line: live.brief.line) { throw refusal }
-                        if !focus.browserField { planned = live.element }
+                    // a focus that cannot be read is no planned place for the keys (§27.7)
+                    guard let live = reader.liveFocus(window: window, windows: opened, targeted: facts.targeted) else {
+                        throw FocusPlan.error(FocusPlan.verdict(action, focus: nil), focused: nil, line: nil)
+                            ?? ComputerError(kind: .focusMoved, message: "The focus could not be read.", reason: .unplanned)
                     }
+                    let moved = facts.movedBefore ?? (facts.priorFocusTo.map { $0 == live.brief.index } ?? false)
+                    let focus = FocusPlan.Focus(
+                        inScope: live.inScope, insideTargeted: live.insideTargeted, movedByStepBefore: moved, stepBeforeNavigates: false,
+                        secure: live.secure, browserField: call.chromium && FocusCheck.isBrowserField(FocusedFacts(role: live.role, inWebArea: live.inWebArea))
+                    )
+                    let verdict = FocusPlan.verdict(action, focus: focus)
+                    if let refusal = FocusPlan.error(verdict, focused: live.brief, line: live.brief.line) { throw refusal }
+                    if !focus.browserField { planned = live.element }
                 }
                 let element = try input.element.map { try reader.resolve($0) }
                 let start = try input.start_element.map { try reader.resolve($0) }
@@ -379,13 +439,24 @@ extension ComputerService {
                 )
                 inputTarget.plannedFocus = planned
                 inputTarget.refusesSecure = planned != nil || action.named != nil
+                // decision 4: another step follows, so a `front` step may leave its hold open for it
+                inputTarget.keepFrontOpen = next != nil
+                // a front hold's settle: the app's tree changed after its last input (§26.2)
+                let changes = ChangeBox(signal: reader.changes)
+                inputTarget.changedSince = { changes.signal.lastChange > $0 }
+                var check: CommitCheck?
+                if checks {
+                    let context = CommitContext(action: input, element: element.map(CommitElement.of), menuPath: element.flatMap { InputEngine.menuItemPath($0.element) }, next: next)
+                    check = CommitCheck.begin(context, state: readDocument(window))
+                    if let expects = check?.expectsBefore { inputTarget.commitExpected = { _ in expects } }
+                }
                 // what the step is judged against after its wait (§27.5, §27.7b), and its record from before its input (§27.4)
                 let focusBefore = reader.focusedElement().map { reader.index(of: $0) }
                 let windowsBefore = ((try? source.list(pid: pid)) ?? []).map(\.id)
                 reader.recordStep(index)
                 let sig0 = reader.changes.signature()
                 let outcome = try box.input.perform(input, on: inputTarget, tiers: tiers)
-                var done = Performed(outcome: outcome, signature0: sig0, element: element?.brief, returnedAt: MachTime.now())
+                var done = Performed(outcome: outcome, signature0: sig0, check: check, element: element?.brief, returnedAt: MachTime.now())
                 done.resolved = named?.index
                 done.focusBefore = focusBefore
                 done.windowsBefore = windowsBefore
@@ -404,11 +475,12 @@ extension ComputerService {
                 effect: outcome.effect ?? WaitRule.skipped().effect(thin: false), element: done.element,
                 input: outcome.via.map { OkStep.Input(via: $0, clipboard: outcome.clipboard, on: outcome.on) },
                 cursor: outcome.cursor, text: isCursor ? outcome.cursor.map { "X=\($0[0]), Y=\($0[1])" } : nil,
-                session: outcome.session, resolved: done.resolved
+                session: outcome.session, front: outcome.front, disk: outcome.disk, resolved: done.resolved
             )
-            var run = StepRun(step: .ok(ok), t0: isCursor ? nil : (outcome.lastInputAt ?? done.returnedAt), signature0: done.signature0, inputEffect: outcome.effect)
+            var run = StepRun(step: .ok(ok), t0: isCursor ? nil : (outcome.lastInputAt ?? done.returnedAt), signature0: done.signature0, inputEffect: outcome.effect, check: done.check)
             run.focusBefore = done.focusBefore
             run.windowsBefore = done.windowsBefore
+            run.focusRead = true
             return run
         } catch {
             let failure = ComputerService.failure(error, or: .actionUnsupported)
@@ -422,7 +494,9 @@ extension ComputerService {
     /// After a step's wait (§27.5, §27.7b, §27.8): the stop rule hears its effect; focus that moved during it, not by a
     /// navigation key, is its `focusTo`; a window it opened is its `opened`, and the call's steps and closing read act
     /// there. The step as reported, and the window the call now acts in when it moved.
-    private func afterStep(_ index: Int, _ action: ComputerAction, _ run: StepRun, target: Resolved, facts: inout CallFacts) async -> (StepResult, Resolved?) {
+    /// A window the call followed that a later step closed sends it back (`WindowFollow.back`): to `original`, the call's
+    /// own target, when it is live, else to the app's focused window.
+    private func afterStep(_ index: Int, _ action: ComputerAction, _ run: StepRun, target: Resolved, original: Resolved, facts: inout CallFacts) async -> (StepResult, Resolved?) {
         guard case .ok(let ok) = run.step else { return (run.step, nil) }
         facts.tracker.ran(index, action, effect: ok.effect)
         facts.targeted += [action.element, action.start_element, ok.resolved].compactMap { $0 }
@@ -433,12 +507,12 @@ extension ComputerService {
             return (reader.focusedElement().map { reader.index(of: $0) }, reader.focusedWindowID())
         }
         let focusAfter = read?.0 ?? nil, windowAfter = read?.1 ?? nil
-        let moved = focusAfter != nil && focusAfter != run.focusBefore && !FocusPlan.isNavigationKey(action)
+        let moved = run.focusRead && focusAfter != nil && focusAfter != run.focusBefore && !FocusPlan.isNavigationKey(action)
         facts.movedBefore = moved
         facts.priorFocusTo = nil
         var opened: OkStep.Opened?
         var next: Resolved?
-        if let id = WindowFollow.opened(before: run.windowsBefore, focusedAfter: windowAfter),
+        if run.focusRead, let id = WindowFollow.opened(before: run.windowsBefore, focusedAfter: windowAfter),
            let info = try? await target.worker.run({ state -> WindowInfo in
                let (element, info) = try source.resolve(pid: pid, ref: WindowRef(id: id))
                state.windows[UInt32(truncatingIfNeeded: info.id)] = element
@@ -447,6 +521,20 @@ extension ComputerService {
             opened = OkStep.Opened(id: info.id, title: info.title)
             facts.windows.append(info.id)
             next = Resolved(session: target.session, pid: pid, app: target.app, worker: target.worker, info: info, launched: false)
+        } else if target.info.id != original.info.id {
+            let current = target.info.id, home = original.info.id
+            // the original target keeps its own resolution (its tab, its element on the worker); another window is resolved
+            let back = try? await target.worker.run { state -> WindowInfo? in
+                let live = try source.list(pid: pid).map(\.id)
+                guard let id = WindowFollow.back(current: current, original: home, live: live, focusedAfter: windowAfter) else { return nil }
+                if id == home { return original.info }
+                let (element, info) = try source.resolve(pid: pid, ref: WindowRef(id: id))
+                state.windows[UInt32(truncatingIfNeeded: info.id)] = element
+                return info
+            }
+            if let info = back ?? nil {
+                next = info.id == home ? original : Resolved(session: target.session, pid: pid, app: target.app, worker: target.worker, info: info, launched: false)
+            }
         }
         return (.ok(ok.with(opened: opened, focusTo: moved ? focusAfter : nil)), next)
     }
@@ -534,6 +622,44 @@ extension ComputerService {
         }
     }
 
+    /// Closes a `front` hold the call left open (decision 4), on the app's worker.
+    private func closeFrontHold(_ target: Resolved) async {
+        let box = InputBox(input: input)
+        let pid = target.pid
+        _ = try? await target.worker.run { _ in box.input.closeFrontHold(pid: pid) }
+    }
+
+    /// A hold closed since the step that last used it returned: its report goes on that step.
+    private func takeFrontReport(_ target: Resolved, into steps: inout [StepResult], at index: inout Int?) async {
+        guard let at = index, let report = input.takeFrontReport(pid: target.pid) else { return }
+        index = nil
+        guard steps.indices.contains(at), case .ok(let ok) = steps[at] else { return }
+        steps[at] = .ok(OkStep(index: ok.index, action: ok.action, tier: ok.tier, effect: ok.effect, element: ok.element, input: ok.input, cursor: ok.cursor, text: ok.text,
+                               shot: ok.shot, waited: ok.waited, session: ok.session, front: report, disk: ok.disk,
+                               opened: ok.opened, resolved: ok.resolved, focusTo: ok.focusTo))
+    }
+
+    /// The commit check's second read, after the step's wait (§26.8): a step expected to commit with
+    /// nothing on disk yet polls every `commitPollMs` for at most `commitSettleMs`.
+    private func committed(_ ok: OkStep, _ check: CommitCheck, _ target: Resolved) async -> OkStep {
+        if ok.disk?.saved != nil { return ok } // save_as proved its own file
+        let windowID = target.windowID
+        let read = documentReader
+        let now: () async -> DocumentState? = {
+            (try? await target.worker.run { state in state.windows[windowID].flatMap(read) }) ?? nil
+        }
+        var disk = check.diff(await now())
+        let deadline = ContinuousClock.now + .milliseconds(ComputerDefaults.Front.commitSettleMs)
+        while check.waiting(disk), ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(ComputerDefaults.Front.commitPollMs))
+            disk = check.diff(await now())
+        }
+        let (effect, part) = check.judge(window: ok.effect, disk: disk)
+        return OkStep(index: ok.index, action: ok.action, tier: ok.tier, effect: effect, element: ok.element, input: ok.input, cursor: ok.cursor, text: ok.text,
+                      shot: ok.shot, waited: ok.waited, session: ok.session, front: ok.front, disk: part,
+                      opened: ok.opened, resolved: ok.resolved, focusTo: ok.focusTo)
+    }
+
     private func failed(_ index: Int, _ action: ComputerAction, _ error: any Error, or kind: ComputerErrorKind) -> StepResult {
         .failed(FailedStep(index: index, action: action.action, error: ComputerService.failure(error, or: kind)))
     }
@@ -547,14 +673,14 @@ extension ComputerService {
 extension OkStep {
     /// The same step with the wait's verdict.
     func with(effect: StepEffect, waited: WaitReport) -> OkStep {
-        OkStep(index: index, action: action, tier: tier, effect: effect, element: element, input: input, cursor: cursor, text: text, shot: shot, waited: waited,
-               session: session, opened: opened, resolved: resolved, focusTo: focusTo)
+        OkStep(index: index, action: action, tier: tier, effect: effect, element: element, input: input, cursor: cursor, text: text, shot: shot, waited: waited, session: session,
+               front: front, disk: disk, opened: opened, resolved: resolved, focusTo: focusTo)
     }
 
     /// The same step with what §27.5 and §27.7b found after its wait.
     func with(opened: Opened?, focusTo: Int?) -> OkStep {
-        OkStep(index: index, action: action, tier: tier, effect: effect, element: element, input: input, cursor: cursor, text: text, shot: shot, waited: waited,
-               session: session, opened: opened ?? self.opened, resolved: resolved, focusTo: focusTo)
+        OkStep(index: index, action: action, tier: tier, effect: effect, element: element, input: input, cursor: cursor, text: text, shot: shot, waited: waited, session: session,
+               front: front, disk: disk, opened: opened ?? self.opened, resolved: resolved, focusTo: focusTo)
     }
 }
 
@@ -563,6 +689,6 @@ extension ComputerAction {
     func targeting(_ element: Int) -> ComputerAction {
         ComputerAction(action: action, coordinate: nil, element: element, start_coordinate: start_coordinate, start_element: start_element, text: text,
                        prefix: prefix, suffix: suffix, place: place, format: format, region: region, scroll_direction: scroll_direction,
-                       scroll_amount: scroll_amount, repeat: `repeat`, duration: duration, value: value, name: name, range: range)
+                       scroll_amount: scroll_amount, repeat: `repeat`, duration: duration, value: value, name: name, range: range, path: path, replace: replace)
     }
 }

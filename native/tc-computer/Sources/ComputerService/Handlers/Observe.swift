@@ -36,6 +36,8 @@ struct ObserveKnobs: Sendable {
     var budgetBytes: Int = ComputerDefaults.ObservationBudget.defaultBytes
     /// an acting call's closing read: the menus its steps opened close the text (§27.4)
     var openedMenus = false
+    /// an action's closing read: the call closes the menus it shows after it (§26.11)
+    var closingMenus = false
 
     init() {}
 
@@ -192,6 +194,8 @@ extension ComputerService {
             loading: loading, noteThin: knobs.screenshot != .never && screenRecording
         )
         request.openedMenus = knobs.openedMenus
+        request.document = features.documentLine
+        request.closingMenus = knobs.closingMenus && features.documentLine
         var text = try await read(target, request)
         if cancel.isSet { return try await dropped(target) }
 

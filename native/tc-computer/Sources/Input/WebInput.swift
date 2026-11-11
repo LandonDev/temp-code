@@ -157,7 +157,9 @@ extension InputEngine {
         if let planned = target.plannedFocus, !AX.same(focused, planned) {
             throw ComputerFailure(FocusCheck.moved(focused.map { focusedFacts($0, target: target) }))
         }
-        let writes = action.action == .type || action.action == .paste || action.action == .setValue
+        // a key with no command modifier writes into the field as text does (a character, Return, Delete)
+        let plainKey = (action.action == .key || action.action == .holdKey) && !((try? parseKeyCombo(action.text ?? "")).map(hasMenuModifier) ?? false)
+        let writes = action.action == .type || action.action == .paste || action.action == .setValue || plainKey
         guard target.refusesSecure, writes, let dest = target.element?.element ?? focused else { return }
         AX.setTimeout(dest, seconds: InputTiming.axTimeoutS)
         guard AX.string(dest, "AXSubrole") == "AXSecureTextField" else { return }

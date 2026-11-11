@@ -82,6 +82,7 @@ import {
   openSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync
@@ -97,6 +98,7 @@ import {
   SUBROLE_NAMES
 } from '../src/shared/computer/observation'
 import {
+  COMPUTER_FEATURES,
   COMPUTER_PROTOCOL,
   COMPUTER_WAIT,
   OBSERVATION_BUDGET,
@@ -116,6 +118,7 @@ import {
   type ComputerParams,
   type ComputerResult,
   type CoordinateSpace,
+  type FrontHold,
   type FrontReport,
   type Observation,
   type Permissions,
@@ -223,7 +226,9 @@ const report = {
     afterMs?: number
   }[],
   stopped: null as string | null,
-  cleanup: [] as string[]
+  cleanup: [] as string[],
+  /** Each `front` step's hold (§26.4): activation, the step and its settle, the settle alone, the restore, the total. */
+  frontHolds: [] as { step: string; activateMs: number; heldMs: number; settleMs: number | null; restoreMs: number; totalMs: number; restored: string }[]
 }
 
 /** Thrown by a step that cannot run here; the chain goes on. */
@@ -725,7 +730,7 @@ async function initialize(
   const t0 = performance.now()
   const result = await svc.call(
     'initialize',
-    { protocol: COMPUTER_PROTOCOL, client: { name: 'e2e-tc-computer', version: '1' }, dataDir },
+    { protocol: COMPUTER_PROTOCOL, client: { name: 'e2e-tc-computer', version: '1' }, dataDir, features: [...COMPUTER_FEATURES] },
     5_000
   )
   const ms = Math.round(performance.now() - t0)
@@ -1191,7 +1196,7 @@ async function fallbackLeg(a: Service, mayLaunch: () => void): Promise<void> {
     const failed = r.step.status === 'failed' ? r.step.error : null
     data.answer = r.step
     // AppKit's rule on our own app (§24.2): if the first free run finds the item enabled, §24.2 is corrected
-    check(failed?.kind === 'needs_tier' && failed.needed === 'session' && JSON.stringify(failed.menu) === '["Probe","Ping Window"]', 'needs the session tier, naming the item', r.step)
+    check(failed?.kind === 'needs_tier' && failed.needed === 'front' && JSON.stringify(failed.menu) === '["Probe","Ping Window"]', 'needs the front tier, naming the item', r.step)
     const now = await read()
     check(now.text.includes('"app 1 window 0"'), 'nothing changed', now.text)
     o = now
@@ -1608,6 +1613,204 @@ async function webLeg(): Promise<void> {
   }
 }
 
+/** A `front` step's hold, recorded for the report: the settle is the restore's start less the last input. */
+function noteHold(step: string, hold: FrontHold | undefined): FrontHold {
+  check(hold, `${step}: step.front`, hold)
+  const restoreStart = hold.armedAt !== undefined ? hold.armedAt + hold.activateMs + hold.heldMs : null
+  const settleMs = restoreStart !== null && hold.lastInputAt !== undefined ? Math.max(0, Math.round(restoreStart - hold.lastInputAt)) : null
+  report.frontHolds.push({
+    step, activateMs: hold.activateMs, heldMs: hold.heldMs, settleMs, restoreMs: hold.restoreMs,
+    totalMs: hold.activateMs + hold.heldMs + hold.restoreMs, restored: hold.restored
+  })
+  return hold
+}
+
+/** The person must have been away this long before a step that brings an app forward (the Mac proof rule). */
+const FRONT_IDLE_S = 120
+const PERSON_ACTIVE = 'skipped: the person is active'
+
+/**
+ * The steps that need the app active (§26), on a TC Probe launched with `--active <scratch>`: a
+ * document window over `<scratch>/doc.txt` and a file list over `<scratch>/files`, the app never
+ * active. The `ax` and `process` steps always run; each `front` step runs only after two idle
+ * minutes and is `skipped: the person is active` otherwise, never passed. The person's app and
+ * pointer are checked after every act.
+ */
+async function activeLeg(a: Service, mayLaunch: () => void): Promise<void> {
+  const leg = new Chain()
+  let pid = 0
+  const scratch = realpathSafe(join(WORK, `active-${process.pid}`))
+  const files = join(scratch, 'files')
+  const read = (title: string): Promise<Observation> =>
+    a.call('state.get', { session: SESSION, app: { pid }, window: { title }, mode: 'full', wait: COMPUTER_WAIT.observe })
+  const act = (o: Observation, action: Record<string, unknown>, tiers: ('ax' | 'process' | 'front')[]) =>
+    a.call('action.run', { session: SESSION, app: { pid }, window: { id: o.window.id }, epoch: o.epoch, action, tiers, wait: COMPUTER_WAIT.action } as never)
+  const frontmost = () => ({ pid: probe<{ pid: number }>('frontmost').pid, bundleId: null })
+  const awayLongEnough = (): void => {
+    if (!UNGATED && personIdleSeconds() < FRONT_IDLE_S) throw skip(PERSON_ACTIVE)
+  }
+  const nameField = (o: Observation, name: string) =>
+    findElement(o, `the ${name} row's name`, (e) => e.role === 'input' && (e.value === name || e.name === name))
+  const inode = (path: string): number | null => (existsSync(path) ? statSync(path).ino : null)
+  let doc: Observation | null = null
+  let list: Observation | null = null
+
+  await leg.step('active: launch a TC Probe with --active in the background', async (data) => {
+    rmSync(scratch, { recursive: true, force: true })
+    mkdirSync(scratch, { recursive: true })
+    const before = personState()
+    mayLaunch()
+    pid = (await launchProbe(PROBE_BUILD, ['--active', scratch], frontmost)).pid
+    data.pid = pid
+    const shown = async () => (await a.call('apps.list', { windows: true })).apps.find((x) => x.pid === pid)?.windows ?? []
+    await until(async () => ((await shown()).some((w) => w.title === 'doc.txt') && (await shown()).some((w) => w.title === 'files') ? true : null), 10_000, 'the document and the file list')
+    doc = await read('doc.txt')
+    list = await read('files')
+    data.person = assertPersonUntouched(before, 'after the launch', pid)
+  })
+  await leg.step('active 1: ⌘S at ax and process asks for front, naming File › Save', async (data) => {
+    const before = personState()
+    const r = await act(doc!, { action: 'key', text: 'super+s' }, ['ax', 'process'])
+    data.person = assertPersonUntouched(before, 'after ⌘S')
+    const failed = r.step.status === 'failed' ? r.step.error : null
+    check(failed?.kind === 'needs_tier' && failed.needed === 'front' && JSON.stringify(failed.menu) === '["File","Save"]', 'needs front, naming File › Save', r.step)
+  })
+  await leg.step('active 2: a rename by set_value is on screen only', async (data) => {
+    const before = personState()
+    const r = await act(list!, { action: 'set_value', element: nameField(list!, 'alpha.txt').index, value: 'gamma.txt' }, ['ax'])
+    data.person = assertPersonUntouched(before, 'after set_value')
+    const step = okStep(r.step)
+    data.step = step
+    check(step.effect === 'uncommitted' && step.disk?.hint === 'commit it with key Return in the field', 'on screen only, with the Return hint', step)
+    check(existsSync(join(files, 'alpha.txt')) && !existsSync(join(files, 'gamma.txt')), 'the file kept its name', readdirSync(files))
+    list = r.observation ?? (await read('files'))
+  })
+  await leg.step('active 3: the document line reads edited after a type', async (data) => {
+    const text = findElement(doc!, 'the text view', (e) => e.role === 'text area' || e.name === 'Text')
+    const r = await act(doc!, { action: 'type', element: text.index, text: 'more\n' }, ['ax'])
+    okStep(r.step)
+    doc = await read('doc.txt')
+    const line = doc.text.split('\n').find((l) => l.startsWith('file "'))
+    data.line = line
+    check(line?.includes('doc.txt"') && line.endsWith('edited'), 'the document line names doc.txt, edited', doc.text.split('\n').slice(0, 4))
+  })
+  await leg.step("active 4: a pop-up's menu opened over AX is closed at the call's end", async (data) => {
+    const sort = findElement(list!, 'the Sort pop-up', (e) => e.role === 'pop up' || e.name === 'Sort')
+    const r = await act(list!, { action: 'left_click', element: sort.index }, ['ax'])
+    okStep(r.step)
+    data.menusLeftOpen = r.menusLeftOpen
+    check(r.menusLeftOpen === undefined, 'no menu left open', r.menusLeftOpen)
+    check(r.observation?.text.includes('(menu closed after this read; its items still take actions)'), 'the closing read notes the menu', r.observation?.text)
+    const again = await read('files')
+    check(!again.text.includes('menu item "Date"'), 'the menu is gone from the next read', again.text)
+    list = again
+  })
+  await leg.step('active 5: ⌘S at front saves', async (data) => {
+    awayLongEnough()
+    const mtime0 = statSync(join(scratch, 'doc.txt')).mtimeMs
+    const before = personState()
+    const r = await act(doc!, { action: 'key', text: 'super+s' }, ['ax', 'process', 'front'])
+    data.person = assertPersonUntouched(before, 'after ⌘S at front')
+    const step = okStep(r.step)
+    data.step = step
+    const hold = noteHold('active 5', step.front)
+    check(step.tier === 'front' && step.input?.on === 'File › Save' && hold.restored === 'restored', 'saved at front and the app given back', step)
+    const cleared = step.disk?.edited?.after === false
+    check(statSync(join(scratch, 'doc.txt')).mtimeMs > mtime0 || cleared, 'the file was written or the edited flag cleared', step.disk)
+    doc = r.observation ?? (await read('doc.txt'))
+  })
+  await leg.step('active 6: the rename is committed by Return at front', async (data) => {
+    awayLongEnough()
+    const ino = inode(join(files, 'alpha.txt'))
+    list = await read('files')
+    const field = findElement(list, 'the edited name', (e) => e.role === 'input' && (e.value === 'gamma.txt' || e.name === 'gamma.txt'))
+    const before = personState()
+    const r = await act(list, { action: 'key', text: 'Return', element: field.index }, ['ax', 'process', 'front'])
+    data.person = assertPersonUntouched(before, 'after Return at front')
+    const step = okStep(r.step)
+    data.step = step
+    noteHold('active 6', step.front)
+    check(step.tier === 'front', 'Return ran at front', step)
+    await until(() => (inode(join(files, 'gamma.txt')) === ino ? true : null), 3_000, 'gamma.txt with the same inode')
+    list = r.observation ?? (await read('files'))
+  })
+  await leg.step('active 7: ⇧⌘N, a name and Return make a folder', async (data) => {
+    awayLongEnough()
+    const before = personState()
+    const r = await act(list!, { action: 'key', text: 'super+shift+n' }, ['ax', 'process', 'front'])
+    const step = okStep(r.step)
+    noteHold('active 7 new folder', step.front)
+    check(existsSync(join(files, 'untitled folder')), 'New Folder made untitled folder', readdirSync(files))
+    list = await read('files')
+    const field = findElement(list, 'the new folder name', (e) => e.role === 'input' && (e.value === 'untitled folder' || e.name === 'untitled folder'))
+    okStep((await act(list, { action: 'set_value', element: field.index, value: 'made' }, ['ax'])).step)
+    list = await read('files')
+    const named = findElement(list, 'the typed name', (e) => e.role === 'input' && (e.value === 'made' || e.name === 'made'))
+    const commit = await act(list, { action: 'key', text: 'Return', element: named.index }, ['ax', 'process', 'front'])
+    data.person = assertPersonUntouched(before, 'after New Folder')
+    noteHold('active 7 name', okStep(commit.step).front)
+    await until(() => (existsSync(join(files, 'made')) ? true : null), 3_000, 'the folder "made" on disk')
+    list = commit.observation ?? (await read('files'))
+  })
+  await leg.step('active 8: ⌘⌫ moves the file into <scratch>/Trash', async (data) => {
+    awayLongEnough()
+    const row = findElement(list!, 'the beta.txt row', (e) => (e.role === 'row' || e.role === 'cell') && JSON.stringify(e).includes('beta.txt'))
+    okStep((await act(list!, { action: 'left_click', element: row.index }, ['ax'])).step)
+    list = await read('files')
+    const before = personState()
+    const r = await act(list, { action: 'key', text: 'super+BackSpace' }, ['ax', 'process', 'front'])
+    data.person = assertPersonUntouched(before, 'after ⌘⌫')
+    const step = okStep(r.step)
+    data.step = step
+    noteHold('active 8', step.front)
+    check(existsSync(join(scratch, 'Trash', 'beta.txt')) && !existsSync(join(files, 'beta.txt')), 'beta.txt moved into the scratch Trash', readdirSync(files))
+    list = r.observation ?? (await read('files'))
+  })
+  await leg.step('active 9: save_as into <scratch>/out/note.txt, then again with replace', async (data) => {
+    awayLongEnough()
+    const out = join(scratch, 'out')
+    mkdirSync(out, { recursive: true })
+    const target = join(out, 'note.txt')
+    const before = personState()
+    const first = await act(doc!, { action: 'save_as', path: target }, ['ax', 'process', 'front'])
+    const step = okStep(first.step)
+    data.first = step
+    if (step.front) noteHold('active 9 save_as', step.front)
+    check(step.input?.via === 'panel' && existsSync(target), 'save_as wrote the file', step)
+    doc = await read('note.txt').catch(() => read('doc.txt'))
+    const again = await act(doc, { action: 'save_as', path: target }, ['ax', 'process', 'front'])
+    check(again.step.status === 'failed' && again.step.error.kind === 'file_exists', 'a second save_as without replace refuses', again.step)
+    doc = await read('note.txt').catch(() => read('doc.txt'))
+    const replaced = okStep((await act(doc, { action: 'save_as', path: target, replace: true }, ['ax', 'process', 'front'])).step)
+    data.replaced = replaced
+    if (replaced.front) noteHold('active 9 replace', replaced.front)
+    data.person = assertPersonUntouched(before, 'after save_as')
+  })
+  await leg.step('active 10: every hold within its bound', async (data) => {
+    const holds = report.frontHolds.filter((h) => h.step.startsWith('active'))
+    if (!holds.length) throw skip(PERSON_ACTIVE)
+    data.holds = holds
+    for (const h of holds) check(h.activateMs <= 400 && h.heldMs <= 2_000 && h.restoreMs <= 400 && h.restored === 'restored', `${h.step} within FRONT's bounds`, h)
+  })
+  await leg.step('active 11: end the --active instance', async () => {
+    process.kill(pid, 'SIGKILL')
+    await until(() => (alive(pid) ? null : true), 5_000, 'the --active probe exit')
+    pid = 0
+  })
+  if (pid && alive(pid)) process.kill(pid, 'SIGKILL')
+  rmSync(scratch, { recursive: true, force: true })
+}
+
+/** A path with /private for /tmp, as AXDocument names it; the path as given when it is not there yet. */
+function realpathSafe(p: string): string {
+  const parent = dirname(p)
+  try {
+    return join(realpathSync(parent), basename(p))
+  } catch {
+    return p
+  }
+}
+
 /** One try at the probe app and the scratch TextEdit, on a service of its own. */
 async function appSections(
   attempt: number,
@@ -1748,8 +1951,9 @@ async function appSections(
   })
   await windowLeg(a, mayLaunch)
   await fallbackLeg(a, mayLaunch)
-  await fewerLeg(a, mayLaunch)
   await webLeg()
+  await activeLeg(a, mayLaunch)
+  await fewerLeg(a, mayLaunch)
   if (GATE) {
     for (const name of [
       'open a scratch TextEdit', 'TextEdit full read with geometry',

@@ -19,7 +19,7 @@ import {
   type StepResult,
   type Tier
 } from '@shared/computer/protocol'
-import { buildPrior } from '@shared/computer/batchStop'
+import { buildPrior, lastInputEffect } from '@shared/computer/batchStop'
 import { COMPUTER_ACTIONS, COMPUTER_TOOLS, formatStepLine, mayRunAtAx, type ActionClass, type ComputerToolName } from '@shared/computer/tools'
 import { actionWords, asFourTool, computerActivity, computerApprovalInput, computerApprovalTitle, needsApproval, type TitleContext } from '@shared/computer/words'
 import { errorLine, type ErrorContext } from '@shared/computer/errorWords'
@@ -56,7 +56,7 @@ import type { ComputerService } from './service'
 import type { CallReader } from './pending'
 import { landShot, nextShotNumber } from './shots'
 import type { SessionTierGate, TierDecision, TierGateContext } from './tierGate'
-import type { SettingsStore, TierVerdicts } from './verdicts'
+import type { Admitted, SettingsStore, TierVerdicts } from './verdicts'
 import type { CallTiming } from '@shared/computer/bridgeTiming'
 
 /**
@@ -304,6 +304,8 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
   if (steps.some((s) => s.action === 'type' || s.action === 'paste') && !app()) return refusal(hostErrorLine('no_observation', noReadForTextLine(args.app!)))
   // text with no target goes to the window the thread read: the service judges a named window by its live titles (§27.6)
   const blindText = steps.some((s) => (s.action === 'type' || s.action === 'paste') && s.element === undefined && s.named === undefined)
+  // with no window read (it closed), the service has no id to hold text into a named window to: refused as before
+  if (args.window && blindText && !app()?.window) return refusal(hostErrorLine('no_observation', noReadForTextLine(args.app!, args.window)))
 
   // an app no call may touch, or an item that is no page, file or folder: refused before the card
   if (tool === 'computer_apps') {
@@ -373,13 +375,18 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
       // a step with an ax route tries it first (§24.1): the card claims the session tier only for one without
       (a) => sendsInput(a) && ((host.verdicts.needsSession(bundleId, a) && !mayRunAtAx(a)) || (a.action === 'perform' && a.name === 'raise'))
     )
+    // a step whose class needs the app in front says so; an Allow covers the hold (§26.6)
+    const front =
+      !session &&
+      host.service.serves?.('front') === true &&
+      steps.some((a) => sendsInput(a) && (host.verdicts.needsFront(bundleId, a) || needsKeyWindowFront(host, bundleId, a)))
     const words = titleCtx()
     // Away allows every card but a money act, read off the model's own flag: the card's confirm may be the host's `password`
     const awayDenies = !awayAllowsKind((args.confirm as { kind?: string } | undefined)?.kind)
     const allowed = await approve({
       toolName: `mcp__app__${tool}`,
       input: computerApprovalInput(tool, args, words, need.confirm),
-      title: computerApprovalTitle(tool, args, words, need.confirm, { session }),
+      title: computerApprovalTitle(tool, args, words, need.confirm, { session, front }),
       callId: ctx.callId,
       signal,
       ...(awayDenies ? { awayDenies: true as const } : {})
@@ -467,6 +474,8 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
     const textWindowId = args.window && blindText && a?.window ? a.window.id : undefined
     /** a window a step opened: the call's later requests act there (§27.5) */
     let followed: { id: number } | null = null
+    /** the window the thread had bound before the call followed one */
+    const original = a?.window ? { ...a.window } : null
     const expectFocus = steps.length ? a?.book.focused ?? undefined : undefined
     const epoch = a?.epoch
     const windowOf = (useBound: boolean): TargetBase['window'] =>
@@ -481,12 +490,22 @@ async function runChecked(host: RunHost, t: ThreadComputer, ctx: ComputerToolCon
         ...((named.length || expectFocus !== undefined) && epoch ? { epoch } : {})
       }
     }
-    /** A bound window that closed falls back to the app's main window, once. */
+    /**
+     * A followed window that closed falls back to the call's own window, once (§27.5); a bound window that closed
+     * falls back to the app's main window, once.
+     */
     const targeted: Targeted = async (method, params) => {
       try {
         return await call(method, params(target()))
       } catch (e) {
-        if (!(bound && !readOne && !followed && e instanceof ComputerRpcError && e.data?.kind === 'window_not_found')) throw e
+        const gone = e instanceof ComputerRpcError && e.data?.kind === 'window_not_found'
+        if (gone && followed) {
+          followed = null
+          const st = app()
+          if (st) st.window = original
+          return await targeted(method, params)
+        }
+        if (!(gone && bound && !readOne)) throw e
         if (a) a.window = null
         return await call(method, params(target(false)))
       }
@@ -764,7 +783,9 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
   const gate = host.gate()
   const bundleOf = (): string | null => run.appOf()?.bundleId ?? null
   const classes = [...new Set(actions.filter(sendsInput).map(classOf).filter((c): c is ActionClass => c !== null))]
-  const admitted = gate.admitted(gateCtx(classes))
+  // `front` only to a service that speaks it (§26, decision 14)
+  const served = host.service.serves?.('front') === true
+  const admitted: Admitted = { session: gate.admitted(gateCtx(classes)), front: served && (gate.frontAdmitted?.(gateCtx(classes)) ?? false) }
   const override = new Map<number, Tier[]>()
   const tiersOf = (a: ComputerAction, i: number): Tier[] => override.get(i) ?? host.verdicts.tiersFor(bundleOf(), a, admitted)
   const steps: StepResult[] = actions.map((a, index) => ({ index, action: a.action, status: 'not-run' }))
@@ -774,6 +795,7 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
   let observation: Observation | undefined
   let observationError: ComputerError | undefined
   let front: FrontReport | undefined
+  const menusLeftOpen: string[] = []
   /** A step that will not run: its error's words, its line the host's. */
   const fail = (i: number, error: ComputerError): void => {
     steps[i] = { index: i, action: actions[i].action, status: 'failed', error }
@@ -781,27 +803,30 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
   }
   /** steps trying `ax` alone before the gate, under a `session` verdict */
   const axFirst = new Set<number>()
-  const refuse = (i: number, decision: Extract<TierDecision, { admit: false }>, menu?: string[]): void => {
+  const refuse = (i: number, decision: Extract<TierDecision, { admit: false }>, menu?: string[], needed: 'front' | 'session' = 'session'): void => {
     const message =
       decision.reason === 'cancelled'
         ? (abortedLine(signal) ?? sessionRefusedLine('cancelled'))
-        : sessionRefusedLine(decision.reason, run.appOf()?.name ?? run.args.app, { menu })
-    fail(i, { kind: 'needs_tier', message, needed: 'session', ...(menu ? { menu } : {}) })
+        : sessionRefusedLine(decision.reason, run.appOf()?.name ?? run.args.app, { menu, tier: needed })
+    fail(i, { kind: 'needs_tier', message, needed, ...(menu ? { menu } : {}) })
   }
   const stepCtx = (i: number) => {
     const a = actions[i]
     const cls = classOf(a)
     return { ...gateCtx(cls ? [cls] : []), step: i, action: a, words: run.wordsOf(a), call: run.callKey, signal }
   }
-  const askGate = async (i: number, menu?: string[]): Promise<Tier[] | null> => {
-    const decision = await gate.request(stepCtx(i))
+  /** The gate for a step that needs `front` or `session`; admitted, the step's tiers with that one in them. */
+  const askGate = async (i: number, menu?: string[], needed: 'front' | 'session' = 'session'): Promise<Tier[] | null> => {
+    const decision = await gate.request({ ...stepCtx(i), ...(needed === 'front' ? { needed } : {}) })
     if (!decision.admit) {
-      refuse(i, decision, menu)
+      refuse(i, decision, menu, needed)
       return null
     }
-    const line = decision.via && decision.waitedMs !== undefined ? formatHeldLine({ waitedMs: decision.waitedMs, via: decision.via }) : null
+    const line = decision.via && decision.waitedMs ? formatHeldLine({ waitedMs: decision.waitedMs, via: decision.via }) : null
     if (line) heldLines.set(i, line)
-    return host.verdicts.tiersFor(bundleOf(), actions[i], true)
+    return needed === 'front'
+      ? host.verdicts.tiersFor(bundleOf(), actions[i], { front: true, session: admitted.session })
+      : host.verdicts.tiersFor(bundleOf(), actions[i], { front: admitted.front, session: true })
   }
   /** A paste the service held off for the person's copy: wait for a quiet clipboard, then run it again; null when it may not. */
   const askClipboard = async (i: number, tiers: Tier[]): Promise<Tier[] | null> => {
@@ -818,21 +843,27 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
 
   // the verdict alone says session for a step the gate did not admit up front
   let stopAt = actions.length
-  if (!admitted) {
-    for (const [i, a] of actions.entries()) {
-      if (!sendsInput(a) || !host.verdicts.needsSession(bundleOf(), a)) continue
-      if (mayRunAtAx(a)) {
-        override.set(i, ['ax'])
-        axFirst.add(i)
-        continue
-      }
-      const tiers = await askGate(i)
-      if (!tiers) {
-        stopAt = i
-        break
-      }
-      override.set(i, tiers)
+  for (const [i, a] of actions.entries()) {
+    if (!sendsInput(a)) continue
+    // the verdict alone says session, or front while the setting holds front back (§26.6)
+    const needed =
+      !admitted.session && host.verdicts.needsSession(bundleOf(), a)
+        ? 'session'
+        : served && !admitted.front && host.verdicts.needsFront(bundleOf(), a)
+          ? 'front'
+          : null
+    if (!needed) continue
+    if (mayRunAtAx(a)) {
+      override.set(i, ['ax'])
+      axFirst.add(i)
+      continue
     }
+    const tiers = await askGate(i, undefined, needed)
+    if (!tiers) {
+      stopAt = i
+      break
+    }
+    override.set(i, tiers)
   }
 
   // probe an app once, before the first process-tier input, after the card
@@ -851,15 +882,19 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
   }
 
   const waits = computerAxWaits()
-  const retried = new Set<number>()
+
+  /** the tiers each step has been offered past its first run: `process → front → session`, each once (§26, decision 13) */
+  const offered = new Map<number, Set<Tier>>()
+  const wasOffered = (i: number, tier: Tier): boolean => offered.get(i)?.has(tier) === true
+  /** a key or paste whose window was not key leaves out the tiers that refused it on every later retry */
+  const dropped = new Map<number, Tier[]>()
   let from = 0
   let ranAny = false
-  let ranStep = false
   let tabsAny = false
   let stopped = false
   let opened = false
   while (from < stopAt && !signal.aborted) {
-    const segments = planBatch(actions.slice(from, stopAt), (a, k) => tiersOf(a, from + k), ranStep ? undefined : run.expectFocus)
+    const segments = planBatch(actions.slice(from, stopAt), (a, k) => tiersOf(a, from + k))
     let failedAt: number | null = null
     for (const seg of segments) {
       const at = from + seg.from
@@ -869,13 +904,17 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
         stopped = true
         break
       }
-      // what the call's earlier requests did, for the service to read as if they had run in this one (§27.7b)
-      const prior = at > 0 ? buildPrior(actions, steps.slice(0, at)) : undefined
+      // what the call's earlier requests did, for the service to read as if they had run in this one (§27.7b); before
+      // any step sent input there is nothing to tell, and the read's focus still binds the call's first key or text step
+      const before = steps.slice(0, at)
+      const inputBefore = lastInputEffect(actions, before) !== undefined || before.some((s) => s.status === 'failed' && s.error.session !== undefined)
+      const prior = inputBefore ? buildPrior(actions, before) : undefined
+      const expectFocus = inputBefore ? undefined : run.expectFocus
       // an ax-first try leaves the ignored routes out, so it never ends ok/none short of the gate
       const skip = seg.actions.some((_, k) => axFirst.has(at + k))
       const ignored = host.verdicts.ignoredFor(bundleOf())
       const sendSegment = () =>
-        runSegment(run, gate, classes, seg.actions, seg.tiers, seg.last, { ignored: skip ? { ...ignored, skip: true } : ignored, expectFocus: seg.expectFocus, tabsAny, prior, waits })
+        runSegment(run, gate, classes, seg.actions, seg.tiers, seg.last, { ignored: skip ? { ...ignored, skip: true } : ignored, expectFocus, tabsAny, prior, waits })
       let r: StepsResult
       try {
         r = await sendSegment()
@@ -889,9 +928,9 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
         tabsAny = true
         r = await sendSegment()
       }
-      ranStep ||= r.steps.some((s) => s.status === 'ok' || (s.status === 'failed' && s.error.session !== undefined))
       ranAny = true
       front = mergeFront(front, r.front)
+      for (const m of r.menusLeftOpen ?? []) if (!menusLeftOpen.includes(m)) menusLeftOpen.push(m)
       r.steps.forEach((s, k) => (steps[at + k] = { ...s, index: at + k }))
       for (const s of r.steps)
         if (s.status === 'ok' && s.opened) {
@@ -926,17 +965,46 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
     let retry: Tier[] | null = null
     // the clipboard's wait has its own deadline (schedule.ts), so a paste refused again may wait again
     const recentCopy = failed.error.kind === 'clipboard_busy' && failed.error.reason === 'recent-copy'
-    if (!recentCopy && retried.has(failedAt)) break
     const wasAxFirst = axFirst.delete(failedAt)
+    /** the tier this retry offers; a tier already offered to the step ends the chain */
+    let offering: Tier | null = null
     if (recentCopy) retry = await askClipboard(failedAt, tiersOf(a, failedAt))
-    else if (failed.error.kind === 'needs_tier' && (failed.error.needed === 'session' || wasAxFirst)) retry = await askGate(failedAt, failed.error.menu)
-    else if (failed.error.kind === 'key_window_unavailable') {
+    else if (failed.error.kind === 'needs_tier' && failed.error.needed === 'front' && served && !wasOffered(failedAt, 'front')) {
+      offering = 'front'
+      retry = admitted.front
+        ? host.verdicts.tiersFor(bundleOf(), a, { front: true, session: admitted.session })
+        : await askGate(failedAt, failed.error.menu, 'front')
+    } else if (failed.error.kind === 'needs_tier' && (failed.error.needed === 'session' || wasAxFirst) && !wasOffered(failedAt, 'session')) {
+      offering = 'session'
+      retry = await askGate(failedAt, failed.error.menu)
+    } else if (failed.error.kind === 'key_window_unavailable') {
       // a key or paste: the menu route refuses a window that is not key as the process keys do (§24.2)
       const drop: Tier[] = a.action === 'key' || a.action === 'paste' ? ['ax', 'process'] : ['process']
-      retry = a.action === 'type' ? ['ax'] : ((await askGate(failedAt))?.filter((tier) => !drop.includes(tier)) ?? null)
+      dropped.set(failedAt, drop)
+      if (a.action === 'type') {
+        if (wasOffered(failedAt, 'ax')) break
+        offering = 'ax'
+        retry = ['ax']
+      } else {
+        // `front` makes the target window key with AXMain and AXRaise before the session tier is asked (§26, decision 10);
+        // a front the gate refuses goes on to the session tier's own ask
+        if (served && !wasOffered(failedAt, 'front')) {
+          offering = 'front'
+          const tiers = admitted.front
+            ? host.verdicts.tiersFor(bundleOf(), a, { front: true, session: admitted.session })
+            : await askGate(failedAt, undefined, 'front')
+          retry = tiers?.filter((tier) => !drop.includes(tier)) ?? null
+        }
+        if (!retry && !signal.aborted && !wasOffered(failedAt, 'session')) {
+          offering = 'session'
+          retry = (await askGate(failedAt))?.filter((tier) => !drop.includes(tier) && tier !== 'front') ?? null
+        }
+        if (!retry) break
+      }
     } else break
-    if (!retry) break
-    if (!recentCopy) retried.add(failedAt)
+    retry = retry?.filter((tier) => !(dropped.get(failedAt) ?? []).includes(tier)) ?? null
+    if (!retry?.length) break
+    if (offering) offered.set(failedAt, new Set([...(offered.get(failedAt) ?? []), offering]))
     override.set(failedAt, retry)
     if (observation) run.drop(observation)
     observation = undefined
@@ -962,7 +1030,7 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
     }
   }
   for (const [i, line] of heldLines) if (steps[i].status !== 'not-run') hostLines.set(i, `${line}\n${hostLines.get(i) ?? formatStepLine(steps[i], actions[i])}`)
-  return { steps, observation, observationError, hostLines, ...(front ? { front } : {}) }
+  return { steps, observation, observationError, hostLines, ...(front ? { front } : {}), ...(menusLeftOpen.length ? { menusLeftOpen } : {}) }
 }
 
 /** One acting request, through the gate: it may take `session` out of the tiers, holds the Mac for it and puts it back after. */
@@ -1012,9 +1080,20 @@ async function runSegment(
         ...extras(allowed)
       }))
     )
-    return { steps: [r.step], observation: r.observation, observationError: r.observationError, ...(r.front ? { front: r.front } : {}) }
+    return {
+      steps: [r.step],
+      observation: r.observation,
+      observationError: r.observationError,
+      ...(r.front ? { front: r.front } : {}),
+      ...(r.menusLeftOpen ? { menusLeftOpen: r.menusLeftOpen } : {})
+    }
   }
   return await gate.run(ctx, (allowed) => run.targeted('action.batch', (tg) => ({ ...tg, actions, tiers: allowed, tabs: tabs(allowed), stepWait: COMPUTER_WAIT.step, wait, observe, ...extras(allowed) })))
+}
+
+/** A key or paste into an app whose background windows were seen not key: its retry brings the app forward (§26, decision 10). */
+function needsKeyWindowFront(host: RunHost, bundleId: string | null, a: ComputerAction): boolean {
+  return (a.action === 'key' || a.action === 'paste') && host.verdicts.get(bundleId)?.needsKeyWindow === true
 }
 
 async function probeOnce(host: RunHost, run: ActionsRun, actions: ComputerAction[]): Promise<void> {

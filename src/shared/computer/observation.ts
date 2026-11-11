@@ -378,6 +378,20 @@ export const HEADER_WORDS = {
   thin: 'thin tree, see the screenshot'
 } as const
 export const OTHER_WINDOWS_PREFIX = 'other windows: '
+/**
+ * The document line (§26.10), after the header and before `other windows:`: what is behind the window on
+ * disk. `file "~/run/Total.txt" written 14:02:11 · edited`, `file: not saved yet · edited`, `folder "~/run"`;
+ * a diff carries it only when it changed, marked `~ `.
+ */
+export const DOCUMENT_WORDS = {
+  file: 'file ',
+  folder: 'folder ',
+  unsaved: 'file: not saved yet',
+  written: ' written ',
+  edited: 'edited'
+} as const
+/** Under a menu the call closes after the read (§26.11): its items still take actions. */
+export const MENU_CLOSED_NOTE = '(menu closed after this read; its items still take actions)'
 export const STUB_SUFFIX = ': items not exposed to accessibility; see the screenshot)'
 
 /** A menu a step opened (§27.4): its block closes the observation, cut last, after every other cut. */
@@ -403,6 +417,21 @@ export interface ObservationHeader {
   notDrawn?: boolean
   change: 'diff' | 'unchanged' | null
   thin: boolean
+  /** the document line (§26.10) */
+  document?: DocumentLine
+}
+
+/** What is behind a window on disk, as its document line says it. */
+export interface DocumentLine {
+  kind: 'file' | 'folder' | 'unsaved'
+  /** `~`-relative under the home folder; absent for `unsaved` */
+  path?: string
+  /** the file's mtime as a local clock time, `14:02:11` */
+  written?: string
+  /** the window's edited flag */
+  edited: boolean
+  /** a diff's `~` line: the document changed since the last read */
+  changed?: boolean
 }
 
 export interface OtherWindow {
@@ -479,6 +508,7 @@ export type ObservationLine =
   | { type: 'stub'; depth: number; role: string; name?: string }
   | { type: 'truncated'; omitted: number; element: number }
   | { type: 'added'; parent: number | null }
+  | { type: 'note'; depth: number }
 
 export interface ParsedObservation {
   header: ObservationHeader
@@ -519,6 +549,16 @@ export function formatHeader(h: ObservationHeader): string {
   if (h.change) parts.push(HEADER_WORDS[h.change])
   if (h.thin) parts.push(HEADER_WORDS.thin)
   return parts.join(HEADER_SEPARATOR)
+}
+
+export function formatDocumentLine(d: DocumentLine): string {
+  const head =
+    d.kind === 'unsaved'
+      ? DOCUMENT_WORDS.unsaved
+      : (d.kind === 'file' ? DOCUMENT_WORDS.file : DOCUMENT_WORDS.folder) +
+        quote(d.path ?? '') +
+        (d.kind === 'file' && d.written ? DOCUMENT_WORDS.written + d.written : '')
+  return (d.changed ? '~ ' : '') + head + (d.edited && d.kind !== 'folder' ? HEADER_SEPARATOR + DOCUMENT_WORDS.edited : '')
 }
 
 export function formatOthers(others: readonly OtherWindow[]): string {
@@ -581,11 +621,18 @@ export function formatLine(line: ObservationLine): string {
       return `(truncated: ${line.omitted} elements left out; observe with element: ${line.element} to see one part whole)`
     case 'added':
       return line.parent === null ? '+ at top:' : `+ in [${line.parent}]:`
+    case 'note':
+      return indent(line.depth) + MENU_CLOSED_NOTE
   }
 }
 
 export function formatObservation(o: ParsedObservation): string {
-  return [formatHeader(o.header), ...(o.others.length ? [formatOthers(o.others)] : []), ...o.lines.map(formatLine)].join('\n')
+  return [
+    formatHeader(o.header),
+    ...(o.header.document ? [formatDocumentLine(o.header.document)] : []),
+    ...(o.others.length ? [formatOthers(o.others)] : []),
+    ...o.lines.map(formatLine)
+  ].join('\n')
 }
 
 // ── the parser ──────────────────────────────────────────────────────────
@@ -798,6 +845,7 @@ function parseLineAt(text: string, line: number): ObservationLine {
   const truncated = /^\(truncated: ([1-9]\d*) elements left out; observe with element: ([1-9]\d*) to see one part whole\)$/.exec(text)
   if (truncated) return { type: 'truncated', omitted: Number(truncated[1]), element: Number(truncated[2]) }
   const { depth, rest } = depthOf(text, line)
+  if (rest === MENU_CLOSED_NOTE) return { type: 'note', depth }
   const more = /^… ([1-9]\d*) more (below|above)(?:, ([1-9]\d*) above)?$/.exec(rest)
   if (more) {
     if (more[3] !== undefined && more[2] !== 'below') throw new ObservationParseError(line, 'write "N more below, M above"')
@@ -855,6 +903,35 @@ function parseHeader(text: string): ObservationHeader {
   if (c.take(HEADER_SEPARATOR + HEADER_WORDS.thin)) h.thin = true
   if (!c.done) c.fail('unexpected text in the header')
   return h
+}
+
+const DOCUMENT_TIME = /^\d{2}:\d{2}:\d{2}$/
+
+function parseDocumentLine(text: string): DocumentLine {
+  const changed = text.startsWith('~ ')
+  const c = new Cursor(changed ? text.slice(2) : text, 2)
+  let d: DocumentLine
+  if (c.take(DOCUMENT_WORDS.unsaved)) d = { kind: 'unsaved', edited: false }
+  else if (c.take(DOCUMENT_WORDS.folder)) d = { kind: 'folder', path: c.string(), edited: false }
+  else {
+    c.expect(DOCUMENT_WORDS.file)
+    d = { kind: 'file', path: c.string(), edited: false }
+    if (c.take(DOCUMENT_WORDS.written)) {
+      const written = c.text.slice(c.pos, c.pos + 8)
+      if (!DOCUMENT_TIME.test(written)) c.fail('a written time is HH:MM:SS')
+      d.written = written
+      c.pos += 8
+    }
+  }
+  if (d.kind !== 'folder' && c.take(HEADER_SEPARATOR + DOCUMENT_WORDS.edited)) d.edited = true
+  if (!c.done) c.fail('unexpected text in the document line')
+  if (changed) d.changed = true
+  return d
+}
+
+const isDocumentLine = (row: string | undefined): boolean => {
+  const r = row?.startsWith('~ ') ? row.slice(2) : row
+  return !!r && (r.startsWith(DOCUMENT_WORDS.file) || r.startsWith(DOCUMENT_WORDS.folder) || r.startsWith(DOCUMENT_WORDS.unsaved))
 }
 
 function parseOthers(text: string): OtherWindow[] {
@@ -915,9 +992,15 @@ export function parseObservation(text: string): ParsedObservation {
   const header = parseHeader(rows[0])
   let at = 1
   let others: OtherWindow[] = []
-  if (rows[1]?.startsWith(OTHER_WINDOWS_PREFIX)) {
-    others = parseOthers(rows[1])
-    at = 2
+  if (isDocumentLine(rows[at])) {
+    header.document = parseDocumentLine(rows[at])
+    if (header.document.changed && header.change !== 'diff') throw new ObservationParseError(at + 1, 'a changed document line belongs to a diff')
+    if (!header.document.changed && header.change === 'diff') throw new ObservationParseError(at + 1, 'a diff names its document only when it changed')
+    at++
+  }
+  if (rows[at]?.startsWith(OTHER_WINDOWS_PREFIX)) {
+    others = parseOthers(rows[at])
+    at++
   }
   // the opened-menu blocks close the observation (§27.4); everything before them is held to the rules below
   const firstBlock = rows.findIndex((r, i) => i >= at && r.startsWith(MENU_BLOCK.prefix))
@@ -955,7 +1038,7 @@ export function parseObservation(text: string): ParsedObservation {
       underChanged = line.marker === '~'
     } else if (line.type === 'truncated') {
       // depth 0, last
-    } else if (diff && underChanged && line.type === 'more') {
+    } else if (diff && underChanged && (line.type === 'more' || line.type === 'note')) {
       if (line.depth !== 1) throw new ObservationParseError(n, "a changed container's summary is one level under its line")
     } else {
       const depth = line.depth

@@ -222,7 +222,8 @@ describe('tiers', () => {
     const gate: SessionTierGate = { admitted: () => false, request: async () => ({ admit: true }), run: (c, send) => send(c.tiers) }
     const h = make({ gate })
     const o = await h.run('computer_act', { app: 'KeyWin', action: 'key', text: 'a' })
-    expect(h.requests().filter((r) => r.method === 'action.run').map((r) => r.params.tiers)).toEqual([['ax', 'process'], ['session']])
+    // front first (§26, decision 10): it makes the window key; KeyWin still wants the session tier
+    expect(h.requests().filter((r) => r.method === 'action.run').map((r) => r.params.tiers)).toEqual([['ax', 'process'], ['front'], ['session']])
     expect(o.steps).toEqual(['key a · session · changed'])
   })
 
@@ -918,6 +919,88 @@ describe('a reader (pending.ts): nothing runs unread', () => {
   })
 })
 
+describe('steps that need the app active (§26)', () => {
+  const frontGate = (asked: { step: number; needed?: string }[], frontAdmitted: boolean, admits = true): SessionTierGate => ({
+    admitted: () => false,
+    frontAdmitted: () => frontAdmitted,
+    request: async (c) => (
+      asked.push({ step: c.step, ...(c.needed ? { needed: c.needed } : {}) }),
+      admits && c.needed === 'front' ? { admit: true } : { admit: false, reason: 'skipped', message: 'no' }
+    ),
+    run: (c, send) => send(c.tiers)
+  })
+
+  it('brings the app forward for a command it runs only in front, and names the disk', async () => {
+    const h = make({ gate: frontGate([], true) })
+    await h.run('computer_observe', { app: 'Fronty' })
+    const o = await h.run('computer_act', { app: 'Fronty', action: 'key', text: 'super+s' })
+    expect(last(h, 'action.run').params.tiers).toEqual(['ax', 'process', 'front'])
+    expect(o.steps[0]).toBe('key super+s · front menu File › Save · changed · on disk: saved ~/run/Total.txt')
+  })
+
+  it('under wait-until-away a step that needs front asks the gate for front, and runs once admitted', async () => {
+    const asked: { step: number; needed?: string }[] = []
+    const h = make({ gate: frontGate(asked, false) })
+    await h.run('computer_observe', { app: 'Fronty' })
+    const o = await h.run('computer_act', { app: 'Fronty', action: 'key', text: 'super+s' })
+    expect(asked).toEqual([{ step: 0, needed: 'front' }])
+    expect(last(h, 'action.run').params.tiers).toEqual(['ax', 'process', 'front'])
+    expect(o.steps[0]).toMatch(/^key super\+s · front menu File › Save · changed/)
+  })
+
+  it('a refused front step says the app must come forward and that the person chose to wait', async () => {
+    const h = make({ gate: frontGate([], false, false) })
+    await h.run('computer_observe', { app: 'Fronty' })
+    const o = await h.run('computer_act', { app: 'Fronty', action: 'key', text: 'super+s' })
+    expect(o.steps[0]).toBe(
+      'key super+s · failed: File › Save is disabled while Fronty is in the background; needs Fronty in front for a moment, which the person set to wait until they are away: the person did not choose Run now'
+    )
+  })
+
+  it('an older service hears no front: its tiers stay ax and process, and the session gate is asked', async () => {
+    const asked: { step: number; needed?: string }[] = []
+    const h = make({ gate: frontGate(asked, true), env: { FAKE_NO_FEATURES: '1' } })
+    await h.run('computer_observe', { app: 'Fronty' })
+    const o = await h.run('computer_act', { app: 'Fronty', action: 'key', text: 'super+s' })
+    expect(h.requests().filter((r) => r.method === 'action.run').every((r) => !(r.params.tiers as string[]).includes('front'))).toBe(true)
+    expect(asked).toEqual([{ step: 0 }])
+    expect(o.steps[0]).toMatch(/needs the session tier/)
+  })
+
+  it('a rename on screen only says so with its hint, counts a miss, and the third goes straight to front', async () => {
+    const h = make({ gate: frontGate([], false) })
+    await h.run('computer_observe', { app: 'Committy' })
+    for (let i = 0; i < 2; i++) {
+      const o = await h.run('computer_act', { app: 'Committy', action: 'key', text: 'Return' })
+      expect(o.steps[0]).toBe('key Return · process · on screen only, not on disk; commit it with key Return in the field')
+    }
+    expect(JSON.parse(h.rows.get(tierVerdictSetting('dev.fake.committy'))!).misses).toEqual({ key: 2 })
+    const h2 = make({ gate: frontGate([], true) })
+    h2.rows.set(tierVerdictSetting('dev.fake.committy'), h.rows.get(tierVerdictSetting('dev.fake.committy'))!)
+    await h2.run('computer_observe', { app: 'Committy' })
+    const o = await h2.run('computer_act', { app: 'Committy', action: 'key', text: 'Return' })
+    expect(last(h2, 'action.run').params.tiers).toEqual(['ax', 'front'])
+    expect(o.steps[0]).toBe('key Return · front · changed · on disk: renamed ~/run/a.txt to ~/run/b.txt')
+    expect(JSON.parse(h2.rows.get(tierVerdictSetting('dev.fake.committy'))!).classes.key).toBe('front')
+  })
+
+  it('save_as names the panel and the file, and an existing file asks for replace', async () => {
+    const h = make({ gate: frontGate([], true) })
+    await h.run('computer_observe', { app: 'Panely' })
+    const saved = await h.run('computer_act', { app: 'Panely', action: 'save_as', path: '~/run/note.rtf' })
+    expect(saved.steps[0]).toBe('save_as ~/run/note.rtf · panel · changed · on disk: saved ~/run/note.rtf')
+    const exists = await h.run('computer_act', { app: 'Panely', action: 'save_as', path: '~/run/exists.txt' })
+    expect(exists.steps[0]).toBe('save_as ~/run/exists.txt · failed: "~/run/exists.txt" exists; pass replace to overwrite it, or pick another name')
+  })
+
+  it('names a menu the call could not close', async () => {
+    const h = make()
+    await h.run('computer_observe', { app: 'Menuy' })
+    const o = await h.run('computer_act', { app: 'Menuy', action: 'perform', element: 4, name: 'show menu' })
+    expect(o.steps).toContain('menu left open: Action')
+  })
+})
+
 describe('web content (§25)', () => {
   it('a read refuses an active tab switch with its error line and no card or gate', async () => {
     let asked = 0
@@ -1205,6 +1288,42 @@ describe('fewer calls (§27)', () => {
     expect(last(h, 'state.get').params.window).toEqual({ id: 168211 })
   })
 
+  it('Newdoc: a followed window that closed falls back to the call’s own window, once', async () => {
+    const h = make()
+    verdict(h, 'dev.fake.newdoc', { type: 'session' })
+    await h.run('computer_observe', { app: 'Newdoc' })
+    const o = await h.run('computer_batch', {
+      app: 'Newdoc',
+      actions: [{ action: 'key', text: 'super+n' }, { action: 'key', text: 'super+w' }, { action: 'type', text: 'back' }]
+    })
+    expect(o.steps[2]).toBe('type "back" · ax-insert · changed')
+    // the segment after went to the opened window, which was gone, then once more to the window the call began in
+    expect(batches(h).map((r) => r.params.window)).toEqual([{ id: 168210 }, { id: 168211 }, { id: 168210 }])
+    expect(o.body).toMatch(/^app "Newdoc" · window "Newdoc"/)
+  })
+
+  it('blind text into a named window when the thread has no window read (it closed) is refused before the card', async () => {
+    const h = make()
+    await h.run('computer_observe', { app: 'Closey' })
+    await h.run('computer_act', { app: 'Closey', action: 'left_click', element: 37 })
+    const gone = await h.run('computer_act', { app: 'Closey', action: 'left_click', element: 37 })
+    expect(gone.body).toMatch(/^observation failed: /)
+    const sent = acting(h).length
+    const o = await h.run('computer_act', { app: 'Closey', window: 'Secret', action: 'type', text: 'x' })
+    expect(o).toMatchObject({ isError: true, body: 'read Closey\'s window "Secret" before typing into it' })
+    expect(acting(h)).toHaveLength(sent)
+  })
+
+  it('before any step sent input there is no prior, and the read’s focus rides on the segment of the first input step', async () => {
+    const h = make({ gate: admitAll() })
+    await h.run('computer_observe', { app: 'Sessiony' })
+    await h.run('computer_batch', { app: 'Sessiony', actions: [{ action: 'screenshot' }, { action: 'hold_key', text: 'shift', duration: 1 }, { action: 'key', text: 'a' }] })
+    const sent = batches(h)
+    expect(sent.map((r) => r.params.expectFocus)).toEqual([3, 3, undefined])
+    expect(sent.map((r) => r.params.prior === undefined)).toEqual([true, true, false])
+    expect(sent[2].params.prior).toMatchObject({ effect: 'changed' })
+  })
+
   it('Newdoc: a single act that opens a window binds it for the next call', async () => {
     const h = make()
     await h.run('computer_observe', { app: 'Newdoc' })
@@ -1274,6 +1393,54 @@ describe('fewer calls (§27)', () => {
       h.cards[0].decide(true)
       expect((await resend).steps[0]).not.toContain('failed')
     })
+
+  describe('beside a front step (§26)', () => {
+    /** front waits for the gate (the person chose wait-until-away), which admits it: the step runs again as its own front segment */
+    const frontOnAsk = (asked: string[] = []): SessionTierGate => ({
+      admitted: () => false,
+      frontAdmitted: () => false,
+      request: async (c) => (asked.push(c.needed ?? 'session'), c.needed === 'front' ? { admit: true } : { admit: false, reason: 'skipped', message: 'no' }),
+      run: (c, send) => send(c.tiers)
+    })
+    const tiersSent = (h: ComputerHarness) => batches(h).map((r) => r.params.tiers)
+
+    it('a window a front step opened on its retry takes the next segment, with the prior, and both carry the ax rows', async () => {
+      const h = make({ gate: frontOnAsk() })
+      await h.run('computer_observe', { app: 'Splitty' })
+      const o = await h.run('computer_batch', { app: 'Splitty', actions: [{ action: 'key', text: 'super+o' }, { action: 'type', text: 'notes' }] })
+      expect(o.steps).toEqual(['key super+o · front menu File › Open… · changed · opened window "Opened"', 'type "notes" · ax-insert · changed'])
+      const sent = batches(h)
+      expect(tiersSent(h)).toEqual([['ax', 'process'], ['ax', 'process', 'front'], ['ax', 'process']])
+      expect(sent.map((r) => r.params.window)).toEqual([{ id: 168260 }, { id: 168260 }, { id: 168261 }])
+      expect(sent[2].params.prior).toEqual({ effect: 'changed', focusTo: 8, targeted: [], windows: [168261] })
+      // the service picks the ax rows only for steps that went in at ax, so a front segment gets them too
+      for (const r of sent) expect(r.params).toMatchObject({ axWait: expect.any(Object), axStepWait: COMPUTER_WAIT.axStep })
+      expect(o.body).toMatch(/^app "Splitty" · window "Opened"/)
+    })
+
+    it('a front step that changed nothing stops the blind keys after it at the boundary, and the host reads the window', async () => {
+      const h = make({ gate: frontOnAsk() })
+      await h.run('computer_observe', { app: 'Splitty' })
+      const reads = count(h, 'state.get')
+      const o = await h.run('computer_batch', { app: 'Splitty', actions: [{ action: 'key', text: 'super+s' }, { action: 'key', text: 'Return' }] })
+      expect(o.steps).toEqual([
+        'key super+s · front menu File › Save · no change seen',
+        'Not executed: step 1 changed nothing, so these keys had no planned place.'
+      ])
+      expect(tiersSent(h)).toEqual([['ax', 'process'], ['ax', 'process', 'front']])
+      expect(count(h, 'state.get')).toBe(reads + 1)
+    })
+
+    it('blind keys after a click that changed nothing never bring the app forward: no gate, no front request', async () => {
+      const asked: string[] = []
+      const h = make({ gate: frontOnAsk(asked) })
+      await h.run('computer_observe', { app: 'Splitty' })
+      const o = await h.run('computer_batch', { app: 'Splitty', actions: [{ action: 'left_click', element: 5 }, { action: 'key', text: 'super+s' }] })
+      expect(o.steps[1]).toBe('Not executed: step 1 changed nothing, so these keys had no planned place.')
+      expect(asked).toEqual([])
+      expect(tiersSent(h)).toEqual([['ax', 'process']])
+    })
+  })
 
   describe('Splitty: one call across the segments the host splits it into (§27.7b)', () => {
     const split = (env: Record<string, string> = {}): ComputerHarness => {

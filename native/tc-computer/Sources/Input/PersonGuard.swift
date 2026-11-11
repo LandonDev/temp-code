@@ -445,4 +445,13 @@ public protocol PersonTapping: AnyObject, Sendable {
     func replay(plan: ([GuardedEvent]) -> [Int], gapMs: Int, stillThere: () -> Bool)
     /// Disables the tap and answers what it did since `enable`.
     func disable() -> GuardReport
+    /// `enable`, and `onEscape` at the person's Escape the guard dropped (a `front` hold stops there,
+    /// §26.5); a tap that cannot tell the key never calls it.
+    func enableReportingEscape(onTrip: @escaping @Sendable () -> Void, onEscape: @escaping @Sendable () -> Void) -> Bool
+}
+
+extension PersonTapping {
+    public func enableReportingEscape(onTrip: @escaping @Sendable () -> Void, onEscape: @escaping @Sendable () -> Void) -> Bool {
+        enable(onTrip: onTrip)
+    }
 }

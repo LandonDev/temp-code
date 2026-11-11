@@ -170,6 +170,46 @@ export function lockPath(tmpdir: string, which: 'clipboard' | 'session'): string
   return `${tmpdir.replace(/\/+$/, '')}/${LOCKS.dir}/${LOCKS[which]}`
 }
 
+/**
+ * The `front` tier (§26): a brief, bounded activation of the target app for a step that needs it active.
+ * Bounds, not measurements, until the first free-Mac run of the activeLeg records them (§26.1).
+ */
+export const FRONT = {
+  /** the app must be front with the target window focused within this, polled every pollMs, else `activation-refused` */
+  activateMaxMs: 400,
+  pollMs: 10,
+  /** after the step's last input the app stays in front until a change signal or this… */
+  settleMs: 250,
+  /** …and at most this */
+  settleMaxMs: 600,
+  /** the restore of the person's app, polled every pollMs */
+  restoreMaxMs: 400,
+  /** a hold never lasts past this from activation to the restore's start */
+  holdMaxMs: 2_000,
+  /** a hold starts once the person's last key down is this old and nothing is held… */
+  quietMs: 800,
+  /** …waiting at most this */
+  quietMaxMs: 5_000,
+  /** a key's repeat inside a hold */
+  keyRepeatMax: 10,
+  /** text typed by keys inside a hold, in UTF-16 units; longer goes by AX insert or the paste */
+  keysMaxUnits: 200,
+  /** `save_as` waits this long for its panel to open */
+  panelOpenMaxMs: 3_000,
+  /** a step expected to commit polls the disk every commitPollMs for at most this */
+  commitSettleMs: 1_500,
+  commitPollMs: 100,
+  /** a folder listing for the commit check: at most this many entries within commitListMs, else `unknown` */
+  commitListMax: 2_000,
+  commitListMs: 20,
+  /** `save_as`'s path, in UTF-16 units */
+  pathMaxUnits: 1_024
+} as const
+
+/** What a host or a service can speak beyond protocol 1 (§3, `initialize`); each side sends a field only when the other listed it. */
+export const COMPUTER_FEATURES = ['front', 'commit', 'save_as'] as const
+export type ComputerFeature = (typeof COMPUTER_FEATURES)[number]
+
 /** Bounds of the action parameters (§5.1). */
 export const ACTION_LIMITS = {
   scrollAmountMax: 50,
@@ -206,8 +246,13 @@ export const RegionSchema = z
   .refine((r) => r[2] > r[0] && r[3] > r[1], 'a region is [x0, y0, x1, y1] with x1 > x0 and y1 > y0')
 export type Region = z.infer<typeof RegionSchema>
 
-export const TierSchema = z.enum(['ax', 'process', 'session'])
+/** `front` is appended so the Swift enum keeps its old cases' order; compare tiers with TIER_ORDER. */
+export const TierSchema = z.enum(['ax', 'process', 'session', 'front'])
 export type Tier = z.infer<typeof TierSchema>
+/** The tiers from least to most of the person's Mac they take (§5.2, §26.2). */
+export const TIER_ORDER: readonly Tier[] = ['ax', 'process', 'front', 'session']
+/** A tier's place in TIER_ORDER. */
+export const tierRank = (tier: Tier): number => TIER_ORDER.indexOf(tier)
 
 /** What the tier verdict learns per app (§5.2), and what `input.probe` tries. */
 export const ActionClassSchema = z.enum(['click', 'drag', 'hover', 'scroll', 'key', 'type'])
@@ -381,7 +426,7 @@ export type ElementBrief = z.infer<typeof ElementBriefSchema>
 
 // ── actions (§5.1) ──────────────────────────────────────────────────────
 
-/** The first 17 are Anthropic's `computer_toolset_20260801` member names; the last four are ours. */
+/** The first 17 are Anthropic's `computer_toolset_20260801` member names; the last five are ours. */
 export const COMPUTER_ACTION_NAMES = [
   'screenshot',
   'zoom',
@@ -403,7 +448,8 @@ export const COMPUTER_ACTION_NAMES = [
   'set_value',
   'perform',
   'select_text',
-  'paste'
+  'paste',
+  'save_as'
 ] as const
 export const ComputerActionNameSchema = z.enum(COMPUTER_ACTION_NAMES)
 export type ComputerActionName = z.infer<typeof ComputerActionNameSchema>
@@ -451,6 +497,10 @@ export const COMPUTER_ACTION_SHAPE = {
   name: z.string().min(1).optional(),
   /** `[a, b]` in UTF-16 units */
   range: z.array(int().nonnegative()).length(2).optional(),
+  /** `save_as`: where to save, absolute or `~/…`, file name included */
+  path: z.string().min(1).max(FRONT.pathMaxUnits).optional(),
+  /** `save_as`: overwrite a file already there */
+  replace: z.boolean().optional(),
   /** a target by its name in the tree, resolved when the step runs (§27.9) */
   named: z.string().min(1).max(NAMED_MAX).optional(),
   /** a menu-bar item by its path, `File > Save…`, picked over AX with no menu open (§27.10) */
@@ -504,7 +554,8 @@ export const ACTION_PARAMS: Record<
       ['text', 'range']
     ]
   },
-  paste: { required: ['text'], optional: ['format', 'element', 'named'] }
+  paste: { required: ['text'], optional: ['format', 'element', 'named'] },
+  save_as: { required: ['path'], optional: ['replace'] }
 }
 
 /** Pairs that never go together on any action: one target at most (§27.9, §27.10). */
@@ -543,6 +594,10 @@ export function refineAction(value: { action: ComputerActionName } & Partial<Rec
     ctx.addIssue({ code: 'custom', path: ['text'], message: `paste takes at most ${TYPING.pasteMaxUnits} UTF-16 units` })
   if (CLICK_ACTIONS.includes(value.action) && typeof value.duration === 'number' && value.duration > ACTION_LIMITS.clickDurationMaxSeconds)
     ctx.addIssue({ code: 'custom', path: ['duration'], message: `a click holds its button at most ${ACTION_LIMITS.clickDurationMaxSeconds} s` })
+  if (value.action === 'save_as' && typeof value.path === 'string' && !value.path.startsWith('/') && !value.path.startsWith('~/'))
+    ctx.addIssue({ code: 'custom', path: ['path'], message: 'save_as takes an absolute path or one under ~/' })
+  if (value.action === 'save_as' && typeof value.path === 'string' && value.path.endsWith('/'))
+    ctx.addIssue({ code: 'custom', path: ['path'], message: 'save_as needs the file name at the end of path' })
   if (value.action === 'perform' && value.menu !== undefined && value.name !== 'pick')
     ctx.addIssue({ code: 'custom', path: ['menu'], message: 'perform takes menu only with name pick' })
   const range = value.range as number[] | undefined
@@ -634,6 +689,8 @@ export const COMPUTER_ERROR_KINDS = [
   'value_not_taken',
   'focus_moved',
   'tab_in_use',
+  'not_committed',
+  'file_exists',
   'named_target'
 ] as const
 export const ComputerErrorKindSchema = z.enum(COMPUTER_ERROR_KINDS)
@@ -651,6 +708,8 @@ export const STEP_ONLY_ERROR_KINDS: readonly ComputerErrorKind[] = [
   'key_window_unavailable',
   'value_not_taken',
   'focus_moved',
+  'not_committed',
+  'file_exists',
   'named_target'
 ]
 
@@ -709,6 +768,47 @@ export const SessionChangeSchema = z.object({
 })
 export type SessionChange = z.infer<typeof SessionChangeSchema>
 
+/** How a `front` hold's restore ended (§26.4). */
+export const FrontHoldRestoreSchema = z.enum(['restored', 'person-moved', 'app-gone', 'failed'])
+export type FrontHoldRestore = z.infer<typeof FrontHoldRestoreSchema>
+
+/**
+ * What a `front` hold did (§26.4): how long the app was in front, how long it took to come and to give the
+ * person's app back, and the span of the hold's own input as SessionChange states it, so the host can tell
+ * the hold's posted events from the person's.
+ */
+export const FrontHoldSchema = z.object({
+  heldMs: int().nonnegative(),
+  activateMs: int().nonnegative(),
+  restoreMs: int().nonnegative(),
+  restored: FrontHoldRestoreSchema,
+  /** the app that was in front before the hold */
+  person: AppBriefSchema.optional(),
+  armedAt: z.number().optional(),
+  idleAtArmMs: z.number().nonnegative().optional(),
+  lastInputAt: z.number().optional()
+})
+export type FrontHold = z.infer<typeof FrontHoldSchema>
+
+/** A path the commit check names: `~`-relative under the home folder, at most FRONT.pathMaxUnits. */
+const DiskPathSchema = z.string().max(FRONT.pathMaxUnits)
+
+/** What a step changed on disk behind its window (§26.8); `unknown` when the check could not read it. */
+export const DiskChangeSchema = z.object({
+  saved: DiskPathSchema.optional(),
+  renamed: z.array(z.object({ from: DiskPathSchema, to: DiskPathSchema })).max(32).optional(),
+  added: z.array(DiskPathSchema).max(32).optional(),
+  removed: z.array(DiskPathSchema).max(32).optional(),
+  edited: z.object({ before: z.boolean(), after: z.boolean() }).optional(),
+  document: z.object({ from: DiskPathSchema.optional(), to: DiskPathSchema.optional() }).optional(),
+  /** the app wrote this by itself during the step (an autosave), not as the step's commit */
+  unexpected: z.boolean().optional(),
+  /** an `uncommitted` step: what commits it instead, `commit it with key Return in the field` */
+  hint: z.string().max(200).optional(),
+  unknown: z.boolean().optional()
+})
+export type DiskChange = z.infer<typeof DiskChangeSchema>
+
 /** The most candidates a `named_target` `several` answer lists (§27.9). */
 export const NAMED_CANDIDATES_MAX = 5
 
@@ -729,6 +829,8 @@ export const ComputerErrorSchema = z.object({
   keyWindow: z.object({ id: int(), title: z.string() }).optional(),
   /** a session-tier step that failed after it began to change the Mac says what it changed */
   session: SessionChangeSchema.optional(),
+  /** a step that failed inside a `front` hold says what the hold did */
+  front: FrontHoldSchema.optional(),
   /** a shortcut whose menu item is disabled (§24.2): the item's title path, `["File", "Close"]` */
   menu: z.array(z.string()).max(8).optional(),
   /** `value_not_taken`: what the element reads after the route (§25.8) */
@@ -771,7 +873,7 @@ export type Observation = z.infer<typeof ObservationSchema>
 /**
  * How a step's input went in: the four typing routes, then the background fallbacks of §24 (appended, so the
  * Swift enum keeps its old cases' order): a shortcut's menu item, the element under a click, the caret, the
- * scroll bar, the page scroll a wheel became; then a pop up's menu pick and a web page's scroll into view (§25).
+ * scroll bar, the page scroll a wheel became; then a pop up's menu pick and a web page's scroll into view (§26); then `save_as`'s save panel (§26.7).
  */
 export const InputViaSchema = z.enum([
   'ax-insert',
@@ -784,7 +886,8 @@ export const InputViaSchema = z.enum([
   'scroll-bar',
   'scroll-page',
   'pick',
-  'scroll-into-view'
+  'scroll-into-view',
+  'panel'
 ])
 export type InputVia = z.infer<typeof InputViaSchema>
 /** The fallback routes whose misses the host learns (§24.1, §17.3); `menu`, `scroll-bar` and the typing routes are not learned. */
@@ -792,7 +895,8 @@ export const LEARNED_VIAS = ['hit', 'caret', 'scroll-page', 'scroll-into-view'] 
 export type LearnedVia = (typeof LEARNED_VIAS)[number]
 export const ClipboardOutcomeSchema = z.enum(['restored', 'kept-person-copy'])
 export type ClipboardOutcome = z.infer<typeof ClipboardOutcomeSchema>
-export const StepEffectSchema = z.enum(['changed', 'none', 'unknown'])
+/** `uncommitted` (§26.8): the window changed and the disk did not, for a step expected to reach the disk. */
+export const StepEffectSchema = z.enum(['changed', 'none', 'unknown', 'uncommitted'])
 export type StepEffect = z.infer<typeof StepEffectSchema>
 
 export const StepOkSchema = z.object({
@@ -813,6 +917,10 @@ export const StepOkSchema = z.object({
   waited: WaitReportSchema.optional(),
   /** present on every step that ran at the `session` tier */
   session: SessionChangeSchema.optional(),
+  /** present on every step that ran at the `front` tier (§26.4) */
+  front: FrontHoldSchema.optional(),
+  /** the commit check's finding (§26.8), on a step whose window has a file behind it */
+  disk: DiskChangeSchema.optional(),
   /** the step opened a window, and the call's later steps and closing read act in it (§27.5) */
   opened: z.object({ id: int(), title: z.string() }).optional(),
   /** the element a `named` or `menu` target resolved to (§27.9) */
@@ -853,6 +961,9 @@ export type FrontReport = z.infer<typeof FrontReportSchema>
 export const LaunchedWindowSchema = z.object({ id: int(), title: z.string() })
 export type LaunchedWindow = z.infer<typeof LaunchedWindowSchema>
 
+/** At most 8 menu titles, each at most 100 UTF-16 units. */
+const MenusLeftOpenSchema = z.array(z.string().max(100)).max(8)
+
 export const ActionResultSchema = z.object({
   step: StepResultSchema,
   /** absent with observe.mode 'none', or when observationError says why */
@@ -860,7 +971,9 @@ export const ActionResultSchema = z.object({
   /** the closing observation failed; the step stands */
   observationError: ComputerErrorSchema.optional(),
   /** the app came forward during the call (§23.4) */
-  front: FrontReportSchema.optional()
+  front: FrontReportSchema.optional(),
+  /** menus the call opened and could not close (§26.11), by the title of what opened them */
+  menusLeftOpen: MenusLeftOpenSchema.optional()
 })
 export type ActionResult = z.infer<typeof ActionResultSchema>
 
@@ -870,7 +983,9 @@ export const BatchResultSchema = z.object({
   observationError: ComputerErrorSchema.optional(),
   waited: WaitReportSchema,
   /** the app came forward during the call (§23.4) */
-  front: FrontReportSchema.optional()
+  front: FrontReportSchema.optional(),
+  /** menus the call opened and could not close (§26.11), by the title of what opened them */
+  menusLeftOpen: MenusLeftOpenSchema.optional()
 })
 export type BatchResult = z.infer<typeof BatchResultSchema>
 
@@ -921,6 +1036,8 @@ const PersonIdleSchema = int().nonnegative()
 export const IgnoredRoutesSchema = z.object({
   via: z.array(InputViaSchema).optional(),
   process: z.array(ActionClassSchema).optional(),
+  /** classes whose `front` route missed twice (§26, decision 11): run last, after the session route when it is allowed */
+  front: z.array(ActionClassSchema).optional(),
   skip: z.boolean().optional()
 })
 export type IgnoredRoutes = z.infer<typeof IgnoredRoutesSchema>
@@ -1070,7 +1187,9 @@ export const InitializeParamsSchema = z.object({
   protocol: int(),
   client: z.object({ name: z.string(), version: z.string() }),
   /** shots go under `<dataDir>/shots/<session>/` */
-  dataDir: z.string()
+  dataDir: z.string(),
+  /** what this host speaks beyond protocol 1 (COMPUTER_FEATURES); an unknown name is ignored */
+  features: z.array(z.string()).optional()
 })
 
 export const InitializeResultSchema = z.object({
@@ -1080,7 +1199,9 @@ export const InitializeResultSchema = z.object({
   epoch: z.string(),
   os: z.object({ version: z.string(), arch: z.string() }),
   permissions: PermissionsSchema,
-  displays: z.array(DisplayInfoSchema)
+  displays: z.array(DisplayInfoSchema),
+  /** what this service speaks beyond protocol 1 (COMPUTER_FEATURES); absent from an older service */
+  features: z.array(z.string()).optional()
 })
 
 /** Every method: its params and result. The service answers each request with exactly one of them or an error. */
@@ -1339,7 +1460,12 @@ export const RawAXTreeSchema = z.object({
   walk: WalkStatsSchema,
   root: RawAXNodeSchema,
   /** open menus and popovers the app shows outside the window's own children */
-  attached: z.array(RawAXNodeSchema).optional()
+  attached: z.array(RawAXNodeSchema).optional(),
+  /**
+   * What is behind the window on disk (§26.10, E5): the window's AXDocument (a `file:` URL; a folder's ends in /),
+   * the file's mtime in seconds since 1970, and the close button's AXEdited
+   */
+  document: z.object({ url: z.string().optional(), mtime: z.number().optional(), edited: z.boolean().optional() }).optional()
 })
 export type RawAXTree = z.infer<typeof RawAXTreeSchema>
 

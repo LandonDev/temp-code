@@ -26,6 +26,7 @@ import {
   type ActionParam,
   type ComputerAction,
   type ComputerActionName,
+  type DiskChange,
   type ElementBrief,
   type InputVia,
   type StepEffect,
@@ -66,7 +67,9 @@ const CLASS_OF: Partial<Record<ComputerActionName, ActionClass>> = {
   key: 'key',
   hold_key: 'key',
   type: 'type',
-  paste: 'type'
+  paste: 'type',
+  /** the save panel's name goes in as text (§26.7) */
+  save_as: 'type'
 }
 const AX_ONLY: readonly ComputerActionName[] = ['set_value', 'perform', 'select_text']
 
@@ -74,7 +77,7 @@ const AX_ONLY: readonly ComputerActionName[] = ['set_value', 'perform', 'select_
  * Whether a step may have a route at `ax` (docs/computer-protocol.md §24.1): a `key` holding
  * Command or Control (its menu item), a plain `left_click`, `right_click` or `double_click`
  * (the element or the hit under it), a plain `scroll` (the bar or the page), a `paste` and a
- * `type` (the AX insert). Under a `session` verdict the host tries these at `ax` before the gate.
+ * `type` (the AX insert), and `save_as` (the panel's AX parts). Under a `session` verdict the host tries these at `ax` before the gate.
  */
 export function mayRunAtAx(a: ComputerAction): boolean {
   switch (a.action) {
@@ -93,6 +96,8 @@ export function mayRunAtAx(a: ComputerAction): boolean {
       return !a.text
     case 'paste':
     case 'type':
+    // the panel opens and takes its name over AX; only its folder needs the app in front (§26.7)
+    case 'save_as':
       return true
     default:
       return false
@@ -325,6 +330,15 @@ export type ComputerToolResult = z.infer<typeof ComputerToolResultSchema>
 
 // ── the tier verdict (§5.2) ─────────────────────────────────────────────
 
+const ClassCountsSchema = z.object({
+  click: z.number().int().nonnegative().optional(),
+  drag: z.number().int().nonnegative().optional(),
+  hover: z.number().int().nonnegative().optional(),
+  scroll: z.number().int().nonnegative().optional(),
+  key: z.number().int().nonnegative().optional(),
+  type: z.number().int().nonnegative().optional()
+})
+
 /** Per app: the lowest tier that worked for each class. */
 export const TierVerdictSchema = z.object({
   bundleId: z.string().min(1),
@@ -338,15 +352,10 @@ export const TierVerdictSchema = z.object({
     key: TierSchema.optional(),
     type: TierSchema.optional()
   }),
-  /** steps in a row with effect 'none' at the class's current tier */
-  misses: z.object({
-    click: z.number().int().nonnegative().optional(),
-    drag: z.number().int().nonnegative().optional(),
-    hover: z.number().int().nonnegative().optional(),
-    scroll: z.number().int().nonnegative().optional(),
-    key: z.number().int().nonnegative().optional(),
-    type: z.number().int().nonnegative().optional()
-  }),
+  /** steps in a row with effect 'none' (or 'uncommitted') at `process` */
+  misses: ClassCountsSchema,
+  /** steps in a row with effect 'none' or 'uncommitted' at `front` (§26, decision 11) */
+  frontMisses: ClassCountsSchema.optional(),
   /**
    * This app's background windows have been seen not key: a process-tier keys
    * step answered `key_window_unavailable`, or a probe found the key window
@@ -375,7 +384,7 @@ export type TierVerdict = z.infer<typeof TierVerdictSchema>
 
 /** The tier a class with no verdict starts at. */
 export const DEFAULT_TIER: Tier = 'process'
-/** `effect: 'none'` this many times in a row at a class's tier, then `changed` at `session`, raises the verdict. */
+/** `effect: 'none'` (or `uncommitted`) this many times in a row at a class's tier, then `changed` at the next tier up, raises the verdict. */
 export const VERDICT_MISSES_TO_RAISE = 2
 /** Where the host keeps an app's verdict. */
 export const tierVerdictSetting = (bundleId: string): string => `computer.tiers.${bundleId}`
@@ -386,8 +395,13 @@ export const STEP_SEPARATOR = ' · '
 export const EFFECT_WORDS: Readonly<Record<StepEffect, string>> = {
   changed: 'changed',
   none: 'no change seen',
-  unknown: "can't tell"
+  unknown: "can't tell",
+  uncommitted: 'on screen only, not on disk'
 }
+/** Between `uncommitted`'s words and what commits the step instead (§26.12). */
+export const HINT_SEPARATOR = '; '
+/** The disk part of a step line, after its effect (§26.12). */
+export const DISK_PREFIX = 'on disk: '
 /** Anthropic's own sentence, with "batch" for "turn". */
 export const NOT_EXECUTED_LINE = 'Not executed: an earlier action in this batch failed.'
 /**
@@ -494,7 +508,26 @@ export function stepTarget(action: ComputerAction, brief?: ElementBrief, resolve
       return `${action.text !== undefined ? quoteShort(action.text) : `${action.range![0]}..${action.range![1]}`} in ${at}`
     case 'paste':
       return `${action.format ?? 'text'}${at ? ` into ${at}` : ''}`
+    case 'save_as':
+      return `${action.path}${action.replace ? ' replacing' : ''}`
   }
+}
+
+/**
+ * What the commit check found, in the step line's words (§26.12): `saved ~/run/Total.txt`,
+ * `renamed ~/run/a.txt to ~/run/b.txt`; null when there is nothing to say.
+ */
+export function diskWords(disk: DiskChange | undefined): string | null {
+  if (!disk) return null
+  if (disk.unknown) return "can't tell"
+  const parts: string[] = []
+  if (disk.saved) parts.push(disk.unexpected ? `saved by the app itself to ${disk.saved}` : `saved ${disk.saved}`)
+  for (const r of disk.renamed ?? []) parts.push(`renamed ${r.from} to ${r.to}`)
+  for (const p of disk.added ?? []) parts.push(`added ${p}`)
+  for (const p of disk.removed ?? []) parts.push(`removed ${p}`)
+  if (!parts.length && disk.edited?.before && !disk.edited.after) parts.push('saved in place')
+  // the separator never appears inside the part, so the line reads back
+  return parts.length ? parts.join(', ').split(STEP_SEPARATOR).join(' ') : null
 }
 
 function waitWords(w: WaitReport | undefined): string | null {
@@ -519,7 +552,10 @@ export function formatStepLine(step: StepResult, action: ComputerAction): string
     if (w) parts.push(w)
   } else if (!NO_INPUT_ACTIONS.includes(action.action)) {
     parts.push(howWords(action, step))
-    parts.push(EFFECT_WORDS[step.effect])
+    const hint = step.effect === 'uncommitted' ? step.disk?.hint?.split(STEP_SEPARATOR).join(' ') : undefined
+    parts.push(hint ? `${EFFECT_WORDS[step.effect]}${HINT_SEPARATOR}${hint}` : EFFECT_WORDS[step.effect])
+    const disk = step.effect === 'uncommitted' ? null : diskWords(step.disk)
+    if (disk) parts.push(DISK_PREFIX + disk)
   }
   const line = parts.join(STEP_SEPARATOR)
   return step.opened ? `${line}${OPENED_ENDING}${JSON.stringify(step.opened.title)}` : line
@@ -531,12 +567,15 @@ export const FALLBACK_VIAS: readonly InputVia[] = ['menu', 'hit', 'caret', 'scro
 /** How a step went in: a fallback route and what it acted on, `type`'s way, else the tier. A paste that went by the clipboard names its tier. */
 function howWords(action: ComputerAction, step: Extract<StepResult, { status: 'ok' }>): string {
   const via = step.input?.via
+  if (via === 'panel') return via
   if (via && FALLBACK_VIAS.includes(via)) {
     // a menu target already names its path in the head
     if (action.menu !== undefined) return via
     // the separator never appears inside the part, so the line reads back
     const on = step.input?.on?.split(STEP_SEPARATOR).join(' ')
-    return on ? `${via} ${on}` : via
+    const route = on ? `${via} ${on}` : via
+    // a route run with the app brought forward says so first: `front menu File › Save`
+    return step.tier === 'front' ? `front ${route}` : route
   }
   if (action.action === 'paste') return via === 'ax-insert' ? via : (step.tier ?? 'no tier')
   return via ?? step.tier ?? 'no tier'
@@ -585,9 +624,15 @@ export interface StepLine {
   menu?: string[]
   /** the title of the window the step opened (§27.5) */
   opened?: string
-  /** the tier, or for a `type` the way it went in: `ax`, `ax-insert`, `no tier` */
+  /** the tier, or for a `type` the way it went in: `ax`, `ax-insert`, `no tier`, `panel`, `menu File › Close`; `front` for `front menu File › Save` */
   tier?: string
+  /** the background route a `front` step took, kept apart from its tier: `menu File › Save` */
+  route?: string
   effect?: StepEffect
+  /** what commits an `uncommitted` step instead */
+  hint?: string
+  /** the disk part, after `on disk: ` */
+  disk?: string
   /** a failed step's reason */
   failed?: string
 }
@@ -687,9 +732,21 @@ export function parseStepLine(line: string): StepLine | null {
   if (opened?.at === end) return out
   const rest = line.slice(end + STEP_SEPARATOR.length, opened?.at)
   if (NO_INPUT_ACTIONS.includes(name)) return out
-  const [tier, effect, ...extra] = rest.split(STEP_SEPARATOR)
-  if (!tier || extra.length || (effect !== undefined && !EFFECT_OF[effect])) return null
-  return { ...out, tier, ...(effect !== undefined ? { effect: EFFECT_OF[effect] } : {}) }
+  const [how, effectPart, ...extra] = rest.split(STEP_SEPARATOR)
+  if (!how || extra.length > 1 || (extra.length === 1 && !extra[0].startsWith(DISK_PREFIX))) return null
+  const front = how.startsWith('front ') ? { tier: 'front', route: how.slice('front '.length) } : { tier: how }
+  if (effectPart === undefined) return { ...out, ...front }
+  const cut = effectPart.indexOf(HINT_SEPARATOR)
+  const effectWords = cut < 0 ? effectPart : effectPart.slice(0, cut)
+  const effect = EFFECT_OF[effectWords]
+  if (!effect || (cut >= 0 && effect !== 'uncommitted')) return null
+  return {
+    ...out,
+    ...front,
+    effect,
+    ...(cut >= 0 ? { hint: effectPart.slice(cut + HINT_SEPARATOR.length) } : {}),
+    ...(extra.length ? { disk: extra[0].slice(DISK_PREFIX.length) } : {})
+  }
 }
 
 /**

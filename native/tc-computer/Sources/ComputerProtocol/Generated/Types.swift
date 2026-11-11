@@ -311,6 +311,80 @@ public struct SessionChange: Codable, Hashable, Sendable {
     }
 }
 
+public struct FrontHold: Codable, Hashable, Sendable {
+    public let heldMs: Int
+    public let activateMs: Int
+    public let restoreMs: Int
+    public let restored: FrontHoldRestore
+    public let person: AppBrief?
+    public let armedAt: Double?
+    public let idleAtArmMs: Double?
+    public let lastInputAt: Double?
+
+    public init(heldMs: Int, activateMs: Int, restoreMs: Int, restored: FrontHoldRestore, person: AppBrief? = nil, armedAt: Double? = nil, idleAtArmMs: Double? = nil, lastInputAt: Double? = nil) {
+        self.heldMs = heldMs
+        self.activateMs = activateMs
+        self.restoreMs = restoreMs
+        self.restored = restored
+        self.person = person
+        self.armedAt = armedAt
+        self.idleAtArmMs = idleAtArmMs
+        self.lastInputAt = lastInputAt
+    }
+}
+
+public struct DiskChange: Codable, Hashable, Sendable {
+    public struct Renamed: Codable, Hashable, Sendable {
+        public let from: String
+        public let to: String
+
+        public init(from: String, to: String) {
+            self.from = from
+            self.to = to
+        }
+    }
+    public struct Edited: Codable, Hashable, Sendable {
+        public let before: Bool
+        public let after: Bool
+
+        public init(before: Bool, after: Bool) {
+            self.before = before
+            self.after = after
+        }
+    }
+    public struct Document: Codable, Hashable, Sendable {
+        public let from: String?
+        public let to: String?
+
+        public init(from: String? = nil, to: String? = nil) {
+            self.from = from
+            self.to = to
+        }
+    }
+
+    public let saved: String?
+    public let renamed: [Renamed]?
+    public let added: [String]?
+    public let removed: [String]?
+    public let edited: Edited?
+    public let document: Document?
+    public let unexpected: Bool?
+    public let hint: String?
+    public let unknown: Bool?
+
+    public init(saved: String? = nil, renamed: [Renamed]? = nil, added: [String]? = nil, removed: [String]? = nil, edited: Edited? = nil, document: Document? = nil, unexpected: Bool? = nil, hint: String? = nil, unknown: Bool? = nil) {
+        self.saved = saved
+        self.renamed = renamed
+        self.added = added
+        self.removed = removed
+        self.edited = edited
+        self.document = document
+        self.unexpected = unexpected
+        self.hint = hint
+        self.unknown = unknown
+    }
+}
+
 public struct ComputerAction: Codable, Hashable, Sendable {
     public let action: ComputerActionName
     public let coordinate: Point?
@@ -330,10 +404,12 @@ public struct ComputerAction: Codable, Hashable, Sendable {
     public let value: String?
     public let name: String?
     public let range: [Int]?
+    public let path: String?
+    public let replace: Bool?
     public let named: String?
     public let menu: String?
 
-    public init(action: ComputerActionName, coordinate: Point? = nil, element: Int? = nil, start_coordinate: Point? = nil, start_element: Int? = nil, text: String? = nil, prefix: String? = nil, suffix: String? = nil, place: Placement? = nil, format: PasteFormat? = nil, region: Region? = nil, scroll_direction: ScrollDirection? = nil, scroll_amount: Int? = nil, `repeat`: Int? = nil, duration: Double? = nil, value: String? = nil, name: String? = nil, range: [Int]? = nil, named: String? = nil, menu: String? = nil) {
+    public init(action: ComputerActionName, coordinate: Point? = nil, element: Int? = nil, start_coordinate: Point? = nil, start_element: Int? = nil, text: String? = nil, prefix: String? = nil, suffix: String? = nil, place: Placement? = nil, format: PasteFormat? = nil, region: Region? = nil, scroll_direction: ScrollDirection? = nil, scroll_amount: Int? = nil, `repeat`: Int? = nil, duration: Double? = nil, value: String? = nil, name: String? = nil, range: [Int]? = nil, path: String? = nil, replace: Bool? = nil, named: String? = nil, menu: String? = nil) {
         self.action = action
         self.coordinate = coordinate
         self.element = element
@@ -352,6 +428,8 @@ public struct ComputerAction: Codable, Hashable, Sendable {
         self.value = value
         self.name = name
         self.range = range
+        self.path = path
+        self.replace = replace
         self.named = named
         self.menu = menu
     }
@@ -360,11 +438,13 @@ public struct ComputerAction: Codable, Hashable, Sendable {
 public struct IgnoredRoutes: Codable, Hashable, Sendable {
     public let via: [InputVia]?
     public let process: [ActionClass]?
+    public let front: [ActionClass]?
     public let skip: Bool?
 
-    public init(via: [InputVia]? = nil, process: [ActionClass]? = nil, skip: Bool? = nil) {
+    public init(via: [InputVia]? = nil, process: [ActionClass]? = nil, front: [ActionClass]? = nil, skip: Bool? = nil) {
         self.via = via
         self.process = process
+        self.front = front
         self.skip = skip
     }
 }
@@ -523,12 +603,13 @@ public struct ComputerError: Codable, Hashable, Sendable {
     public let by: InterruptedBy?
     public let keyWindow: KeyWindow?
     public let session: SessionChange?
+    public let front: FrontHold?
     public let menu: [String]?
     public let value: String?
     public let focused: ElementBrief?
     public let elementCandidates: [ElementBrief]?
 
-    public init(kind: ComputerErrorKind, message: String, which: PermissionName? = nil, candidates: [String]? = nil, element: Int? = nil, reason: ErrorReason? = nil, available: [String]? = nil, needed: Tier? = nil, coordinate: Point? = nil, space: CoordinateSpace? = nil, by: InterruptedBy? = nil, keyWindow: KeyWindow? = nil, session: SessionChange? = nil, menu: [String]? = nil, value: String? = nil, focused: ElementBrief? = nil, elementCandidates: [ElementBrief]? = nil) {
+    public init(kind: ComputerErrorKind, message: String, which: PermissionName? = nil, candidates: [String]? = nil, element: Int? = nil, reason: ErrorReason? = nil, available: [String]? = nil, needed: Tier? = nil, coordinate: Point? = nil, space: CoordinateSpace? = nil, by: InterruptedBy? = nil, keyWindow: KeyWindow? = nil, session: SessionChange? = nil, front: FrontHold? = nil, menu: [String]? = nil, value: String? = nil, focused: ElementBrief? = nil, elementCandidates: [ElementBrief]? = nil) {
         self.kind = kind
         self.message = message
         self.which = which
@@ -542,6 +623,7 @@ public struct ComputerError: Codable, Hashable, Sendable {
         self.by = by
         self.keyWindow = keyWindow
         self.session = session
+        self.front = front
         self.menu = menu
         self.value = value
         self.focused = focused
@@ -576,12 +658,14 @@ public struct ActionResult: Codable, Hashable, Sendable {
     public let observation: Observation?
     public let observationError: ComputerError?
     public let front: FrontReport?
+    public let menusLeftOpen: [String]?
 
-    public init(step: StepResult, observation: Observation? = nil, observationError: ComputerError? = nil, front: FrontReport? = nil) {
+    public init(step: StepResult, observation: Observation? = nil, observationError: ComputerError? = nil, front: FrontReport? = nil, menusLeftOpen: [String]? = nil) {
         self.step = step
         self.observation = observation
         self.observationError = observationError
         self.front = front
+        self.menusLeftOpen = menusLeftOpen
     }
 }
 
@@ -591,13 +675,15 @@ public struct BatchResult: Codable, Hashable, Sendable {
     public let observationError: ComputerError?
     public let waited: WaitReport
     public let front: FrontReport?
+    public let menusLeftOpen: [String]?
 
-    public init(steps: [StepResult], observation: Observation? = nil, observationError: ComputerError? = nil, waited: WaitReport, front: FrontReport? = nil) {
+    public init(steps: [StepResult], observation: Observation? = nil, observationError: ComputerError? = nil, waited: WaitReport, front: FrontReport? = nil, menusLeftOpen: [String]? = nil) {
         self.steps = steps
         self.observation = observation
         self.observationError = observationError
         self.waited = waited
         self.front = front
+        self.menusLeftOpen = menusLeftOpen
     }
 }
 
@@ -865,6 +951,17 @@ public struct RawAXTree: Codable, Hashable, Sendable {
             self.capped = capped
         }
     }
+    public struct Document: Codable, Hashable, Sendable {
+        public let url: String?
+        public let mtime: Double?
+        public let edited: Bool?
+
+        public init(url: String? = nil, mtime: Double? = nil, edited: Bool? = nil) {
+            self.url = url
+            self.mtime = mtime
+            self.edited = edited
+        }
+    }
 
     public let recordedAt: String
     public let recorder: String
@@ -876,8 +973,9 @@ public struct RawAXTree: Codable, Hashable, Sendable {
     public let walk: Walk
     public let root: RawAXNode
     public let attached: [RawAXNode]?
+    public let document: Document?
 
-    public init(recordedAt: String, recorder: String, app: App, os: String, window: Window, scale: Double, manualAccessibility: ManualAccessibility, walk: Walk, root: RawAXNode, attached: [RawAXNode]? = nil) {
+    public init(recordedAt: String, recorder: String, app: App, os: String, window: Window, scale: Double, manualAccessibility: ManualAccessibility, walk: Walk, root: RawAXNode, attached: [RawAXNode]? = nil, document: Document? = nil) {
         self.recordedAt = recordedAt
         self.recorder = recorder
         self.app = app
@@ -888,5 +986,6 @@ public struct RawAXTree: Codable, Hashable, Sendable {
         self.walk = walk
         self.root = root
         self.attached = attached
+        self.document = document
     }
 }

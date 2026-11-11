@@ -125,6 +125,14 @@ public enum ObservationTables {
     public static let headerThin = "thin tree, see the screenshot"
     public static let otherWindowsPrefix = "other windows: "
     public static let stubSuffix = ": items not exposed to accessibility; see the screenshot)"
+    /// The document line's words (§26.10): `file "~/run/a.txt" written 14:02:11 · edited`, `file: not saved yet`, `folder "~/run"`.
+    public static let documentFile = "file "
+    public static let documentFolder = "folder "
+    public static let documentUnsaved = "file: not saved yet"
+    public static let documentWritten = " written "
+    public static let documentEdited = "edited"
+    /// Under a menu the call closes after the read (§26.11).
+    public static let menuClosedNote = "(menu closed after this read; its items still take actions)"
     /// The opened-menu block (§27.4) and the submenu mark (§27.13).
     public static let menuBlockPrefix = "+ menu opened by step "
     public static let menuBlockSilent = "; its items did not answer: pick one with named, or close it with key Escape"

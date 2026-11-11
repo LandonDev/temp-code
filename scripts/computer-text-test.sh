@@ -19,8 +19,8 @@ for d in Sources/ComputerProtocol Sources/ComputerServiceKit Sources/AXText Sour
 done
 INPUT_PURE="Evidence.swift InputTiming.swift InputClock.swift KeyCombo.swift KeyCodes.swift KeyLayout.swift Geometry.swift TextMatch.swift
   TierPlan.swift MenuShortcut.swift MenuSearch.swift HitPlan.swift ScrollPlan.swift PasteFlow.swift PersonMark.swift PersonGuard.swift
-  PickPlan.swift IntoViewPlan.swift FocusCheck.swift Generated/InputTables.swift"
-INPUT_PURE_TESTS="FallbackTests.swift PersonGuardTests.swift WebControlTests.swift"
+  PickPlan.swift IntoViewPlan.swift FocusCheck.swift FrontPlan.swift PanelPlan.swift KeyQuiet.swift Generated/InputTables.swift"
+INPUT_PURE_TESTS="FallbackTests.swift PersonGuardTests.swift WebControlTests.swift FrontRouteTests.swift FrontPlanTests.swift PanelPlanTests.swift"
 rm -rf "$pkg/Sources/InputPure" "$pkg/Tests/InputPureTests"
 mkdir -p "$pkg/Sources/InputPure" "$pkg/Tests/InputPureTests"
 for f in $INPUT_PURE; do ln -sfn "$root/native/tc-computer/Sources/Input/$f" "$pkg/Sources/InputPure/$(basename "$f")"; done

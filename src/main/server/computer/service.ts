@@ -3,6 +3,7 @@ import type {
   ComputerMethod,
   ComputerNotification,
   ComputerParams,
+  ComputerFeature,
   ComputerResult,
   HostNotification,
   Permissions
@@ -138,6 +139,11 @@ export class ComputerService {
 
   permissions(): Permissions | null {
     return this.perms
+  }
+
+  /** Whether the live service speaks a feature beyond protocol 1 (§26, decision 14); false with no service up. */
+  serves(feature: ComputerFeature): boolean {
+    return this.conn?.features.has(feature) ?? false
   }
 
   /** Live sessions count as use: the idle shutdown waits for none. */

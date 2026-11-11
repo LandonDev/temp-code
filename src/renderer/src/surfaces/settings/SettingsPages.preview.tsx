@@ -166,6 +166,7 @@ Object.assign(ANSWERS, STORE_ANSWERS);
 // Settings → Computer use: five learned apps (two may take the screen, one saved before names were kept), Screen Recording off.
 const COMPUTER_SETTINGS: ComputerSettings = {
   sessionIdleMs: 120_000,
+  activeApp: "brief",
   apps: [
     { bundleId: "com.apple.TextEdit", name: "TextEdit", classes: { click: "process", type: "process" }, updatedAt: 1 },
     { bundleId: "com.google.Chrome", name: "Google Chrome", classes: { click: "session", scroll: "session", type: "session" }, updatedAt: 1 },

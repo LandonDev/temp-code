@@ -17,8 +17,10 @@ public struct ElementFacts: Equatable, Sendable {
     public var pageScrolls: Set<String>
     /// AXValue is empty or wholly selected, so setting it replaces nothing the person typed
     public var valueEmptyOrAllSelected: Bool
+    /// the element is a menu item: its title path and AXEnabled, read before it is pressed (§26.3)
+    public var menuItem: NamedMenuItem?
 
-    public init(role: String, actions: Set<String> = [], settable: Set<String> = [], expandable: Bool = false, selectableRow: Bool = false, pageScrolls: Set<String> = [], valueEmptyOrAllSelected: Bool = false) {
+    public init(role: String, actions: Set<String> = [], settable: Set<String> = [], expandable: Bool = false, selectableRow: Bool = false, pageScrolls: Set<String> = [], valueEmptyOrAllSelected: Bool = false, menuItem: NamedMenuItem? = nil) {
         self.role = role
         self.actions = actions
         self.settable = settable
@@ -26,6 +28,19 @@ public struct ElementFacts: Equatable, Sendable {
         self.selectableRow = selectableRow
         self.pageScrolls = pageScrolls
         self.valueEmptyOrAllSelected = valueEmptyOrAllSelected
+        self.menuItem = menuItem
+    }
+}
+
+/// A menu item an action names directly (`perform pick`, `perform press`, a click on it).
+public struct NamedMenuItem: Equatable, Sendable {
+    /// `["File", "Save"]`
+    public var path: [String]
+    public var enabled: Bool
+
+    public init(path: [String], enabled: Bool) {
+        self.path = path
+        self.enabled = enabled
     }
 }
 
@@ -70,6 +85,27 @@ func isRaise(_ action: ComputerAction) -> Bool {
     action.action == .perform && action.name == "raise"
 }
 
+/// Whether a verb has a `front` route (§26.3, decision 3): short verbs only, so a hold's bound
+/// holds per step. `hold_key`, drags, a held button, hover and a click with `duration` stay `session`.
+public func hasFrontRoute(_ action: ComputerAction) -> Bool {
+    switch action.action {
+    case .key: (action.repeat ?? 1) <= InputTiming.frontKeyRepeatMax
+    case .leftClick, .rightClick, .middleClick, .doubleClick, .tripleClick: action.duration == nil
+    case .scroll, .type, .paste, .setValue, .selectText, .saveAs: true
+    case .perform: !isRaise(action)
+    default: false
+    }
+}
+
+/// `perform pick`, `perform press` or a plain left click: the verbs that press a named menu item.
+private func pressesMenuItem(_ action: ComputerAction) -> Bool {
+    switch action.action {
+    case .perform: action.name == "pick" || action.name == "press"
+    case .leftClick: isPlainClick(action)
+    default: false
+    }
+}
+
 /// The verdict class of an action (src/shared/computer/tools.ts CLASS_OF): `ignored.process` names classes.
 public func actionClass(_ name: ComputerActionName) -> ActionClass? {
     switch name {
@@ -103,8 +139,10 @@ public enum Route: Equatable, Sendable {
     case pick
     /// AXScrollToVisible on the element about a wheel's distance past the edge, approximately (§25.6)
     case scrollIntoView
-    /// posted events, at `process` or `session`
+    /// posted events, at `process`, `front` or `session`
     case events
+    /// `save_as`: the save panel's flow (§26.7); at `ax` it falls through when a part needs `front`
+    case panel
 
     /// the via a learned route is named by in `ignored`; nil for the routes the host never learns about
     public var via: InputVia? {
@@ -115,6 +153,7 @@ public enum Route: Equatable, Sendable {
         case .scrollBar: .scrollBar
         case .scrollPage: .scrollPage
         case .insert: .axInsert
+        case .panel: .panel
         case .scrollIntoView: .scrollIntoView
         case .element, .events, .pick: nil
         }
@@ -134,16 +173,19 @@ public struct RouteFacts {
     public var pageScrolls: () -> Set<String>
     /// NSRunningApplication.isActive
     public var appActive: () -> Bool
+    /// the step is expected to commit to disk before it acts (CommitRule.expectsBefore, decision 12)
+    public var commitExpected: () -> Bool
     /// §25.1: the named element, or the scroll area a scroll acts on, lies in an AXWebArea of a
     /// Chromium process (`InputTarget.chromium`, and the element's ancestry)
     public var webContent: () -> Bool
 
-    public init(menu: @escaping () -> MenuMatch? = { nil }, hit: @escaping () -> HitChoice? = { nil }, scrollBar: @escaping () -> Bool = { false }, pageScrolls: @escaping () -> Set<String> = { [] }, appActive: @escaping () -> Bool = { false }, webContent: @escaping () -> Bool = { false }) {
+    public init(menu: @escaping () -> MenuMatch? = { nil }, hit: @escaping () -> HitChoice? = { nil }, scrollBar: @escaping () -> Bool = { false }, pageScrolls: @escaping () -> Set<String> = { [] }, appActive: @escaping () -> Bool = { false }, webContent: @escaping () -> Bool = { false }, commitExpected: @escaping () -> Bool = { false }) {
         self.menu = menu
         self.hit = hit
         self.scrollBar = scrollBar
         self.pageScrolls = pageScrolls
         self.appActive = appActive
+        self.commitExpected = commitExpected
         self.webContent = webContent
     }
 
@@ -189,30 +231,42 @@ private struct Candidate {
     var early = false
 }
 
-private let tierRank: [Tier: Int] = [.ax: 0, .process: 1, .session: 2]
+/// TIER_ORDER (src/shared/computer/protocol.ts): `front` sits between `process` and `session`.
+let tierRank: [Tier: Int] = [.ax: 0, .process: 1, .front: 2, .session: 3]
 
 private func isPlainClick(_ action: ComputerAction) -> Bool {
     (action.text ?? "").isEmpty && action.duration == nil
 }
 
 /// Every route a verb has (§24.1's table), in its order, those the facts allow.
-private func candidates(_ action: ComputerAction, element f: ElementFacts?, facts: RouteFacts, ignored: IgnoredRoutes?, disabled: inout MenuMatch?) -> [Candidate] {
+private func candidates(_ action: ComputerAction, element f: ElementFacts?, facts: RouteFacts, ignored: IgnoredRoutes?, disabled: inout [String]?) -> [Candidate] {
     let ignoredVias = Set(ignored?.via ?? [])
-    let processIgnored = actionClass(action.action).map { (ignored?.process ?? []).contains($0) } ?? false
+    let cls = actionClass(action.action)
+    let processIgnored = cls.map { (ignored?.process ?? []).contains($0) } ?? false
+    let frontIgnored = cls.map { (ignored?.front ?? []).contains($0) } ?? false
     func c(_ tier: Tier, _ route: Route, exact: Bool = true, early: Bool = false) -> Candidate {
         let named = route.via.map(ignoredVias.contains) ?? false
-        return Candidate(step: RouteStep(tier, route, exact: exact), ignored: named || (route == .events && tier == .process && processIgnored), early: early)
+        let classMissed = route == .events && ((tier == .process && processIgnored) || (tier == .front && frontIgnored))
+        return Candidate(step: RouteStep(tier, route, exact: exact), ignored: named || classMissed, early: early)
     }
-    let events = [c(.process, .events), c(.session, .events)]
+    let front = hasFrontRoute(action)
+    let atFront = front ? [c(.front, .events)] : []
+    let events = [c(.process, .events)] + atFront + [c(.session, .events)]
     let plain = isPlainClick(action)
+    // a menu item named directly reads AXEnabled first: AXPress on a disabled one answers success and does nothing (§26.3)
+    if let item = f?.menuItem, pressesMenuItem(action) {
+        if item.enabled { return [c(.ax, .element)] }
+        disabled = item.path
+        return facts.appActive() ? [] : [c(.front, .element), c(.session, .element)]
+    }
     switch action.action {
     case .key:
         guard let combo = try? parseKeyCombo(action.text ?? ""), hasMenuModifier(combo) else { return events }
         guard let m = facts.menu() else { return events }
         if m.enabled { return [c(.ax, .menu)] + events }
         // the same key goes through the same disabled item: only activation re-validates it
-        disabled = m
-        return facts.appActive() ? [] : [c(.session, .events)]
+        disabled = m.path
+        return facts.appActive() ? [] : (front ? [c(.front, .menu)] : []) + [c(.session, .events)]
     case .leftClick where plain:
         if let f, f.actions.contains("AXPress") || f.selectableRow { return [c(.ax, .element)] + events }
         switch facts.hit()?.action {
@@ -232,7 +286,7 @@ private func candidates(_ action: ComputerAction, element f: ElementFacts?, fact
         if facts.webContent() { return bar + [c(.ax, .scrollIntoView, exact: false, early: true), c(.process, .events), c(.session, .events)] }
         let pages = (f?.pageScrolls ?? []).union(f == nil ? facts.pageScrolls() : [])
         let page = pageScrollAction(action.scroll_direction).map(pages.contains) == true ? [c(.ax, .scrollPage, exact: false)] : []
-        return bar + [c(.process, .events)] + page + [c(.session, .events)]
+        return bar + [c(.process, .events)] + atFront + page + [c(.session, .events)]
     case .type:
         guard let f else { return events }
         let ax = f.settable.contains("AXSelectedText") || (f.settable.contains("AXValue") && f.valueEmptyOrAllSelected)
@@ -246,20 +300,23 @@ private func candidates(_ action: ComputerAction, element f: ElementFacts?, fact
         // §25.7: a web pop up takes AXValue and ignores it
         return [c(.ax, .pick)]
     case .setValue, .selectText:
-        return [c(.ax, .element)]
+        return [c(.ax, .element), c(.front, .element)]
     case .perform:
-        return isRaise(action) ? [c(.session, .element)] : [c(.ax, .element)]
+        return isRaise(action) ? [c(.session, .element)] : [c(.ax, .element), c(.front, .element)]
+    case .saveAs:
+        return [c(.ax, .panel), c(.front, .panel)]
     default:
         return postsEvents(action.action) ? events : []
     }
 }
 
-/// §24.1: the step's tries, first found: (1) an exact route at `ax`, then at `process`, that
-/// `ignored` does not name, and in a web page `scroll-into-view`, approximate though it is (§25.6);
-/// (2) an approximate route not named there; (3) a route at `session`;
+/// §24.1 and §26.3: the step's tries, first found: (1) an exact route at `ax`, then at `process`,
+/// that `ignored` does not name, and in a web page `scroll-into-view`, approximate though it is
+/// (§25.6); (2) an approximate route not named there; (3) a route at `front`, then at `session`;
 /// (4) the routes `ignored` names, exact first (none with `skip`). A held button or key forces its
-/// tier on every action that posts events. With no allowed route: `needs` naming the lowest tier
-/// with one.
+/// tier on every action that posts events. A disabled menu item runs at `session` only when `front`
+/// is not allowed; a commit step in a background app skips `process` when `front` is allowed
+/// (decision 12). With no allowed route: `needs` naming the lowest tier with one.
 public func planRoutes(_ action: ComputerAction, element: ElementFacts?, facts: RouteFacts = .none, tiers: [Tier], held: Tier?, ignored: IgnoredRoutes? = nil) -> RoutePlan {
     switch action.action {
     case .screenshot, .zoom, .cursorPosition, .wait, .unknown:
@@ -271,21 +328,33 @@ public func planRoutes(_ action: ComputerAction, element: ElementFacts?, facts: 
         return tiers.contains(held) ? .runs([RouteStep(held, .events)], needed: nil, menu: nil) : .needs(held, menu: nil)
     }
     let allowed = Set(tiers.filter { tierRank[$0] != nil })
-    var disabled: MenuMatch?
+    var disabled: [String]?
     var all = candidates(action, element: element, facts: facts, ignored: ignored, disabled: &disabled)
-    if let disabled, all.isEmpty { return .disabledMenu(disabled.path) }
+    if let disabled, all.isEmpty { return .disabledMenu(disabled) }
+    if disabled != nil, allowed.contains(.front) { all.removeAll { $0.step.tier == .session } }
+    if allowed.contains(.front), all.contains(where: { $0.step.tier == .front }), facts.commitExpected(), !facts.appActive() {
+        all.removeAll { $0.step.tier == .process }
+    }
     if ignored?.skip == true { all.removeAll(where: \.ignored) }
     let runnable = all.filter { allowed.contains($0.step.tier) }
     let fresh = runnable.filter { !$0.ignored }
-    let band1 = fresh.filter { ($0.step.exact || $0.early) && $0.step.tier != .session }
+    let touches: Set<Tier> = [.front, .session]
+    let band1 = fresh.filter { ($0.step.exact || $0.early) && !touches.contains($0.step.tier) }
     let band2 = fresh.filter { !$0.step.exact && !$0.early }
-    let band3 = fresh.filter { $0.step.exact && $0.step.tier == .session }
+    let band3 = fresh.filter { $0.step.exact && $0.step.tier == .front } + fresh.filter { $0.step.exact && $0.step.tier == .session }
     let stale = runnable.filter(\.ignored)
     let band4 = stale.filter(\.step.exact) + stale.filter { !$0.step.exact }
     let ordered = (band1 + band2 + band3 + band4).map(\.step)
     let needed = all.map(\.step.tier).filter { !allowed.contains($0) && tierRank[$0] != nil }.min { tierRank[$0]! < tierRank[$1]! }
-    if ordered.isEmpty { return .needs(needed ?? .session, menu: disabled?.path) }
-    return .runs(ordered, needed: needed, menu: disabled?.path)
+    if ordered.isEmpty { return .needs(needed ?? .session, menu: disabled) }
+    return .runs(ordered, needed: needed, menu: disabled)
+}
+
+/// The key-window rule's retry (§5.2, decision 10): a `key` or `paste` refused
+/// `key_window_unavailable` at `process` goes next to `front`, which makes the target window key,
+/// then to `session`; nil when the plan holds neither.
+public func keyWindowRetry(_ rest: [RouteStep]) -> RouteStep? {
+    rest.first { $0.route == .events && $0.tier == .front } ?? rest.first { $0.route == .events && $0.tier == .session }
 }
 
 /// The first try of `planRoutes`.

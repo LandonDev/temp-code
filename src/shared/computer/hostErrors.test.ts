@@ -45,6 +45,11 @@ describe('host error kinds', () => {
     )
     expect(sessionRefusedLine('no-scheduler', 'TextEdit', { menu: [] })).toBe(sessionRefusedLine('no-scheduler'))
   })
+  it('a refused front step says the app must come forward, which waits for the person to be away (§26.6)', () => {
+    expect(sessionRefusedLine('skipped', 'TextEdit', { menu: ['File', 'Save'], tier: 'front' })).toBe(
+      'File › Save is disabled while TextEdit is in the background; needs TextEdit in front for a moment, which the person set to wait until they are away: the person did not choose Run now'
+    )
+  })
   it("a paste that waited out the person's copies too long says to try again", () => {
     expect(hostErrorLine('clipboard_recent')).toBe(
       'the person copied something just now and a paste would swap their clipboard; try again in a minute'

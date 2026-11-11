@@ -213,10 +213,18 @@ describe('the window actions (§22)', () => {
 describe('the background routes in the words (§24)', () => {
   it('computer_act says what a step does in the background, in both shapes, within the caps', () => {
     const act = toolDescription('anthropic', 'act', 'computer_act')
-    expect(act).toContain('In the background a shortcut runs its menu item, a click presses the element under it and text goes straight into the field')
-    expect(act).toContain('a disabled menu item waits for the Mac to be free')
+    expect(act).toContain('In the background a shortcut runs its menu item, a click presses the element under it and text goes straight in')
     const cua = toolDescription('cua', 'act', 'computer_act')
     expect(cua).toContain("In the background pressKey runs the combo's menu item, click presses the element under it")
+    // a command that needs the app active brings it forward, save_as checks the disk, and the uncommitted words (§26)
+    for (const text of [act, cua]) {
+      expect(text).toContain('a command that needs the app in front (Save, Trash) brings it forward briefly')
+      expect(text).toContain('save_as saves to path and checks the file; "on screen only" means not on disk.')
+    }
+    for (const shape of WORDS_SHAPES) {
+      expect(perVerbDescription(shape, 'save_as')).toContain('checks the file on disk')
+      expect(fieldWords(shape).path).toContain('file name')
+    }
     for (const shape of WORDS_SHAPES) for (const name of ['computer_act', 'computer_batch'] as const) expect(toolDescription(shape, 'act', name).length).toBeLessThanOrEqual(TOOL_DESCRIPTION_MAX)
   })
 

@@ -63,10 +63,10 @@ describe("the computer settings wire", () => {
     const heard: unknown[] = [];
     const off = onComputerSettings(link, (s) => heard.push(s));
     push({ push: "computer", service: {}, sessions: [] });
-    push({ push: "computer-settings", settings: { sessionIdleMs: 60_000, apps: [] } });
+    push({ push: "computer-settings", settings: { sessionIdleMs: 60_000, activeApp: "brief", apps: [] } });
     off();
-    push({ push: "computer-settings", settings: { sessionIdleMs: 120_000, apps: [] } });
-    expect(heard).toEqual([{ sessionIdleMs: 60_000, apps: [] }]);
+    push({ push: "computer-settings", settings: { sessionIdleMs: 120_000, activeApp: "brief", apps: [] } });
+    expect(heard).toEqual([{ sessionIdleMs: 60_000, activeApp: "brief", apps: [] }]);
   });
 });
 

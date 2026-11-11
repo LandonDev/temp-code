@@ -1,0 +1,41 @@
+{
+  "after" : {
+    "action" : "saved as ~/run/Total.txt, then typed",
+    "state" : "doc"
+  },
+  "app" : "textedit",
+  "appshot" : false,
+  "backingScale" : 2,
+  "macos" : "27.2.0",
+  "recordedAt" : "2026-11-09T00:45:44Z",
+  "recorder" : "record-computer-fixture 1",
+  "setup" : [
+    "a separate TextEdit instance (open -n -g, persistence ignored, new documents not saved to iCloud) with a new document",
+    "the probe text set through AXValue: \"Hello from the probe\\nSecond line\", caret at 0",
+    "derived from textedit/doc, not recorded: the window's AXDocument file:///Users/me/run/Total.txt, the file's mtime 2026-11-10 14:02:11 UTC and the close button's AXEdited 1 (E5), the title the file's name; the screenshot is textedit/doc's"
+  ],
+  "shot" : {
+    "bytes" : 67880,
+    "file" : "window.jpg",
+    "height" : 1010,
+    "maxEdge" : 1280,
+    "scale" : 2,
+    "width" : 1206
+  },
+  "state" : "doc-edited",
+  "walk" : {
+    "capped" : false,
+    "depth" : 3,
+    "ms" : 35,
+    "nodes" : 47
+  },
+  "window" : {
+    "frame" : {
+      "h" : 505,
+      "w" : 603,
+      "x" : 405,
+      "y" : 129
+    },
+    "title" : "Total.txt"
+  }
+}

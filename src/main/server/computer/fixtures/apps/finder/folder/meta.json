@@ -1,0 +1,36 @@
+{
+  "app" : "finder",
+  "appshot" : false,
+  "backingScale" : 2,
+  "macos" : "27.2.0",
+  "recordedAt" : "2026-11-10T14:05:00Z",
+  "recorder" : "hand-built 1",
+  "setup" : [
+    "hand-built, not recorded: a Finder window on ~/run in list view with four rows, each a name field (AXTextField with AXConfirm) and a date, as Finder shows a folder; the window's AXDocument is the folder's URL file:///Users/me/run/ (decision 16)",
+    "the screenshot is drawn to the window's size (scripts: a canvas in headless Chrome), not taken"
+  ],
+  "shot" : {
+    "bytes" : 18589,
+    "file" : "window.jpg",
+    "height" : 800,
+    "maxEdge" : 1280,
+    "scale" : 2,
+    "width" : 1200
+  },
+  "state" : "folder",
+  "walk" : {
+    "capped" : false,
+    "depth" : 5,
+    "ms" : 12,
+    "nodes" : 28
+  },
+  "window" : {
+    "frame" : {
+      "h" : 400,
+      "w" : 600,
+      "x" : 300,
+      "y" : 100
+    },
+    "title" : "run"
+  }
+}

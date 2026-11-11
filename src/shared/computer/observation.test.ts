@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   formatHeader,
   ACTION_WORDS,
+  MENU_CLOSED_NOTE,
   KeyComboError,
   ObservationParseError,
   ROLE_DEFAULTS,
@@ -14,6 +15,7 @@ import {
   axWords,
   cutName,
   cutValue,
+  formatDocumentLine,
   formatElementLine,
   formatKeyCombo,
   MENU_BLOCK,
@@ -248,6 +250,43 @@ describe('key combos', () => {
     expect(parseModifiers('shift')).toEqual(['shift'])
     expect(parseModifiers('cmd+alt')).toEqual(['super', 'alt'])
     expect(() => parseModifiers('shift+a')).toThrow(KeyComboError)
+  })
+})
+
+describe('the document line (§26.10) and the menu note (§26.11)', () => {
+  const head = 'app "TextEdit" · window "Total.txt" · 800×600'
+  it('reads a file, an unsaved document and a folder back to the same text', () => {
+    for (const doc of ['file "~/run/Total.txt" written 14:02:11 · edited', 'file "~/run/Total.txt" written 14:02:11', 'file: not saved yet · edited', 'folder "~/run"']) {
+      const text = `${head}\n${doc}\nother windows: "Notes"\n[1] window "Total.txt"`
+      const p = parseObservation(text)
+      expect(p.header.document, doc).toBeDefined()
+      expect(formatObservation(p)).toBe(text)
+    }
+    expect(parseObservation(`${head}\nfile "~/a.txt" written 09:01:02 · edited\n[1] window`).header.document).toEqual({
+      kind: 'file',
+      path: '~/a.txt',
+      written: '09:01:02',
+      edited: true
+    })
+    expect(formatDocumentLine({ kind: 'folder', path: '~/run', edited: true })).toBe('folder "~/run"')
+  })
+
+  it('marks a changed document in a diff, and only there', () => {
+    const diff = `${head} · changes since your last read`
+    const p = parseObservation(`${diff}\n~ file "~/run/Total.txt" written 14:02:19\n~ [3] text area`)
+    expect(p.header.document).toMatchObject({ changed: true, written: '14:02:19' })
+    expect(lineOf(`${head}\n~ file "~/a.txt"\n[1] window`)).toBe(2)
+    expect(lineOf(`${diff}\nfile "~/a.txt"\n~ [3] text area`)).toBe(2)
+    expect(lineOf(`${head}\nfile "~/a.txt" written 9:01\n[1] window`)).toBe(2)
+  })
+
+  it('keeps a closed menu note under its menu, in a tree and under a changed line', () => {
+    const text = `${head}\n[1] window\n  [2] menu "Action"\n    [3] menu item "New Folder"\n    ${MENU_CLOSED_NOTE}`
+    const p = parseObservation(text)
+    expect(p.lines.at(-1)).toEqual({ type: 'note', depth: 2 })
+    expect(formatObservation(p)).toBe(text)
+    expect(parses(`${head} · changes since your last read\n~ [2] menu "Action"\n  ${MENU_CLOSED_NOTE}`)).toBe(true)
+
   })
 })
 

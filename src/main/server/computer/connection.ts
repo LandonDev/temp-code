@@ -2,6 +2,7 @@ import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { version as appVersion } from '../../../../package.json'
 import {
+  COMPUTER_FEATURES,
   COMPUTER_METHODS,
   COMPUTER_PROTOCOL,
   ComputerNotificationSchema,
@@ -205,7 +206,7 @@ export class ComputerConnection {
       await spawned
       const init = await conn.request(
         'initialize',
-        { protocol: COMPUTER_PROTOCOL, client: { name: 'temp-code', version: appVersion }, dataDir: opts.dataDir },
+        { protocol: COMPUTER_PROTOCOL, client: { name: 'temp-code', version: appVersion }, dataDir: opts.dataDir, features: [...COMPUTER_FEATURES] },
         { timeoutMs: opts.initTimeoutMs ?? COMPUTER_DEADLINES.initialize }
       )
       if (init.protocol !== COMPUTER_PROTOCOL) throw new ComputerRpcError(RPC_ERROR.computer, `the service speaks protocol ${init.protocol}, not ${COMPUTER_PROTOCOL}`)
@@ -224,6 +225,11 @@ export class ComputerConnection {
 
   get init(): ComputerResult<'initialize'> {
     return this.initResult!
+  }
+
+  /** What the service speaks beyond protocol 1 (§26, decision 14): an older service lists nothing, and the host sends it nothing new. */
+  get features(): ReadonlySet<string> {
+    return new Set(this.initResult?.features ?? [])
   }
 
   get epoch(): string {

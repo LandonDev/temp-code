@@ -34,6 +34,10 @@ export const FAKE_APPS = {
   Hitty: { name: 'Hitty', pid: 16811, bundleId: 'dev.fake.hitty', windowId: 168110 },
   Closey: { name: 'Closey', pid: 16900, bundleId: 'dev.fake.closey', windowId: 169000 },
   Preview: { name: 'Preview', pid: 17000, bundleId: 'com.apple.Preview', windowId: 170000 },
+  Fronty: { name: 'Fronty', pid: 17200, bundleId: 'dev.fake.fronty', windowId: 172000 },
+  Committy: { name: 'Committy', pid: 17201, bundleId: 'dev.fake.committy', windowId: 172010 },
+  Panely: { name: 'Panely', pid: 17202, bundleId: 'dev.fake.panely', windowId: 172020 },
+  Menuy: { name: 'Menuy', pid: 17203, bundleId: 'dev.fake.menuy', windowId: 172030 },
   Finder: { name: 'Finder', pid: 400, bundleId: 'com.apple.finder', windowId: null },
   // §27's scenarios (fakeService.mjs FEWER)
   Menuful: { name: 'Menuful', pid: 16820, bundleId: 'dev.fake.menuful', windowId: 168200 },

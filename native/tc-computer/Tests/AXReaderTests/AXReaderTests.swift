@@ -99,6 +99,42 @@ import Testing
     }
 }
 
+/// §26.8, E5: the window's file and edited flag ride batches the walk already makes.
+@Suite struct WindowDocumentWalkTests {
+    @Test func aWindowAsksForItsDocumentAndTheCloseButtonForItsFlag() {
+        #expect(Attributes.stageB("AXWindow").contains("AXDocument"))
+        #expect(Attributes.stageB("AXButton", subrole: "AXCloseButton").contains("AXEdited"))
+        // nothing else pays for either
+        #expect(!Attributes.stageB("AXSheet").contains("AXDocument"))
+        #expect(!Attributes.stageB("AXWindow").contains("AXEdited"))
+        for subrole in [nil, "AXMinimizeButton", "AXZoomButton", "AXFullScreenButton"] {
+            #expect(!Attributes.stageB("AXButton", subrole: subrole).contains("AXEdited"), "\(subrole ?? "none")")
+        }
+        #expect(Attributes.resolve("AXWindow").contains("AXDocument"))
+    }
+
+    @Test func theDocumentLineReadsTheFilesTimeAndTheFlag() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("tc-docline-\(UUID().uuidString).txt")
+        try "x".write(to: url, atomically: false, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let written = Date(timeIntervalSince1970: 1_800_000_000)
+        try FileManager.default.setAttributes([.modificationDate: written], ofItemAtPath: url.path)
+        let line = try #require(AppReader.documentLine(WindowDocument(url: url.absoluteString, edited: true), home: "/nowhere"))
+        #expect(line.kind == .file && line.edited && line.path == url.path)
+        #expect(line.written == DocumentLine.clock(written.timeIntervalSince1970, timeZone: .current))
+        #expect(AppReader.documentLine(WindowDocument(url: nil, edited: true))?.kind == .unsaved)
+        #expect(AppReader.documentLine(WindowDocument(url: nil, edited: false)) == nil)
+        #expect(AppReader.documentLine(WindowDocument(url: "file:///tmp/run/", edited: nil), home: "/nowhere")?.kind == .folder)
+    }
+
+    @Test func aWalkStartsWithNoDocumentAndAnEmptyReaderSaysNone() {
+        let walker = Walker(handles: HandleTable(capacity: 16))
+        walker.begin()
+        #expect(walker.notes.document == WindowDocument())
+        #expect(WindowDocument().url == nil && WindowDocument().edited == nil)
+    }
+}
+
 /// §22: the window's title-bar buttons come back from its attributes when a capture hid them.
 @Suite struct TitleBarWalkTests {
     @Test func aWindowAsksForItsButtonsAndAXMinimizedInStageB() {

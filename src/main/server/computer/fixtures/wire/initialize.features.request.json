@@ -1,0 +1,18 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "protocol": 1,
+    "client": {
+      "name": "TempCode",
+      "version": "1.0.329"
+    },
+    "dataDir": "/Users/me/Library/Application Support/TempCode/computer",
+    "features": [
+      "front",
+      "commit",
+      "save_as"
+    ]
+  }
+}

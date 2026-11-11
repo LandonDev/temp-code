@@ -83,8 +83,13 @@ export function hostErrorLine(kind: HostErrorKind, detail?: string): string {
  * The session tier refused, in words; `app` names the app a `skipped-earlier` was about. A step the
  * service sent to the session tier because its menu item is disabled in the background (§24.2) says
  * that first: `File › Close is disabled while TextEdit is in the background; needs the session tier …`.
+ * A `front` step held under "wait until I'm away" says it needs the app in front instead.
  */
-export function sessionRefusedLine(reason: SessionTierRefusal, app?: string, opts: { menu?: readonly string[] } = {}): string {
-  const line = hostErrorLine('session_refused', sessionRefusalWords(reason, app))
+export function sessionRefusedLine(reason: SessionTierRefusal, app?: string, opts: { menu?: readonly string[]; tier?: 'front' | 'session' } = {}): string {
+  const line =
+    opts.tier === 'front'
+      ? // a step that needed the app in front, under "wait until I'm away" (§26.6)
+        `needs ${app ?? 'the app'} in front for a moment, which the person set to wait until they are away: ${sessionRefusalWords(reason, app)}`
+      : hostErrorLine('session_refused', sessionRefusalWords(reason, app))
   return opts.menu?.length ? `${opts.menu.join(' › ')} is disabled while ${app ?? 'the app'} is in the background; ${line}` : line
 }

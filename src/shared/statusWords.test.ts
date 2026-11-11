@@ -99,7 +99,7 @@ describe('statusWords', () => {
   })
 
   it('says a computer tier in a person\'s words, never its name', () => {
-    expect(COMPUTER_TIER_WORDS).toEqual({ ax: 'in the background', process: 'to the app', session: 'on the screen' })
+    expect(COMPUTER_TIER_WORDS).toEqual({ ax: 'in the background', process: 'to the app', front: 'in front', session: 'on the screen' })
     for (const words of Object.values(COMPUTER_TIER_WORDS)) expect(words).not.toMatch(/\b(ax|process|session)\b/i)
   })
 

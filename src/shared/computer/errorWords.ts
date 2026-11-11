@@ -127,7 +127,12 @@ export const COMPUTER_ERROR_WORDS: Readonly<Record<ComputerErrorKind, Words>> = 
     return e.available.length ? `${lead}it lists: ${fitList(e.available, ERROR_LINE_MAX - lead.length - 10)}` : `${lead}it lists no actions`
   },
   needs_tier: (e, ctx) =>
-    e.menu?.length
+    e.needed === 'front'
+      ? // front left out of the call's tiers: the person chose to wait until they are away (§26.6)
+        e.menu?.length
+        ? menuLine(e.menu, ` needs ${quoteApp(ctx.app)} in front, which the person set to wait until they are away`)
+        : `this needs ${quoteApp(ctx.app)} in front, which the person set to wait until they are away`
+      : e.menu?.length
       ? menuLine(e.menu, ` is disabled while ${quoteApp(ctx.app)} is in the background; it runs when the Mac is free`)
       : !e.needed || e.needed === 'session'
       ? "this needs the session tier (the real pointer and keyboard); see the step's tier line"
@@ -184,8 +189,16 @@ export const COMPUTER_ERROR_WORDS: Readonly<Record<ComputerErrorKind, Words>> = 
   },
   tab_in_use: (_e, ctx) =>
     `the person has ${quoteApp(ctx.app)}'s window in front on another tab, so a read won't switch it; switch tabs with an act, which waits for the Mac to be free`,
-  session_unavailable: (e) =>
-    `the session tier can't run now${e.reason && SESSION_WHY[e.reason] ? `: ${SESSION_WHY[e.reason]}` : ''}; stay in the background tiers`
+  session_unavailable: (e, ctx) =>
+    e.front
+      ? `${quoteApp(ctx.app)} could not come forward now${e.reason && SESSION_WHY[e.reason] ? `: ${SESSION_WHY[e.reason]}` : ''}; stay in the background tiers`
+      : `the session tier can't run now${e.reason && SESSION_WHY[e.reason] ? `: ${SESSION_WHY[e.reason]}` : ''}; stay in the background tiers`,
+  not_committed: (_e, ctx) =>
+    ctx.action?.action === 'save_as' && ctx.action.path
+      ? `the save panel closed and no file appeared at ${quote(ctx.action.path, 120)}; read the window before saving again`
+      : 'nothing reached the disk; read the window before trying again',
+  file_exists: (_e, ctx) =>
+    `${ctx.action?.action === 'save_as' && ctx.action.path ? quote(ctx.action.path, 120) : 'that file'} exists; pass replace to overwrite it, or pick another name`
 }
 
 /** The line a model reads for a service error: the host's words, else the service's own message. */

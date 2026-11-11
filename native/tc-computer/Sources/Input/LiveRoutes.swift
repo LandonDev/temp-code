@@ -36,7 +36,8 @@ final class LiveRoutes {
             scrollBar: { [self] in readArea().map { AXTier.hasScrollBar($0, direction: action.scroll_direction ?? .down) } ?? false },
             pageScrolls: { [self] in readArea().map { Set(AX.actions($0).filter { $0.hasPrefix("AXScroll") && $0.hasSuffix("ByPage") }) } ?? [] },
             appActive: { [self] in NSRunningApplication(processIdentifier: target.pid)?.isActive ?? false },
-            webContent: { [self] in readWeb() }
+            webContent: { [self] in readWeb() },
+            commitExpected: { [self] in target.commitExpected?(action) ?? false }
         )
     }
 
@@ -112,6 +113,21 @@ final class LiveRoutes {
             if let area { AX.setTimeout(area, seconds: InputTiming.axTimeoutS) }
         }
         return area
+    }
+}
+
+extension InputTarget {
+    /// The same target under another cancel flag: a `front` hold's, which also stops at its cap and the person's touch.
+    func within(cancelled: @escaping @Sendable () -> Bool) -> InputTarget {
+        var t = InputTarget(pid: pid, windowID: windowID, windowFrame: windowFrame, window: window, space: space, element: element, startElement: startElement,
+                            cursor: cursor, cancelled: cancelled, pasteQuietMs: pasteQuietMs, ignored: ignored, callToken: callToken, personIdleMs: personIdleMs,
+                            chromium: chromium, expectFocus: expectFocus, briefOf: briefOf)
+        t.changedSince = changedSince
+        t.commitExpected = commitExpected
+        t.keepFrontOpen = keepFrontOpen
+        t.plannedFocus = plannedFocus
+        t.refusesSecure = refusesSecure
+        return t
     }
 }
 

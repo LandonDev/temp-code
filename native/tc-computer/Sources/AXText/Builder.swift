@@ -15,7 +15,7 @@ public struct BuildRequest: Sendable {
     /// the selected tab's page as the reader found it after its re-reads (§25.2); `not-drawn` prints in the header
     public var page: PageState?
     /// the menus the call's steps opened and that are still open (§27.4): a block each closes the text
-    public var openedMenus: [OpenedMenu] = []
+    public var openedMenus: [StepMenu] = []
 
     public init(mode: ObservationMode = .auto, subtreeOf: Int? = nil, budgetBytes: Int = ComputerDefaults.ObservationBudget.defaultBytes, geometry: Bool = false, space: CoordinateSpace, loading: Bool = false, noteThin: Bool = true, page: PageState? = nil) {
         self.mode = mode

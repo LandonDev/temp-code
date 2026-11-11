@@ -3,10 +3,12 @@ import {
   RECENT_COPY_MS,
   SCHEDULE,
   SESSION_REFUSALS,
+  activeApp,
   askAfter,
   clipboardQuiet,
   formatHeldLine,
   freedom,
+  frontFreedom,
   sessionIdleMs,
   sessionRefusalWords,
   waitedWords,
@@ -153,5 +155,23 @@ describe('refusal words', () => {
       cancelled: 'the call was given up'
     })
     expect(sessionRefusalWords('skipped-earlier')).toBe('the person did not choose Run now earlier in this turn')
+  })
+})
+
+describe('the front tier\'s setting (§26.6)', () => {
+  const present = freedom(at({}))
+  it('reads brief unless the setting says away', () => {
+    expect(activeApp(null)).toBe('brief')
+    expect(activeApp('away')).toBe('away')
+    expect(activeApp(' away ')).toBe('away')
+    expect(activeApp('ask')).toBe('brief')
+  })
+  it('admits at once under brief or Away, as the session tier under away, never locked or asleep', () => {
+    const input = { presence: base.presence, awaySwitch: false, mode: 'brief' as const, session: present }
+    expect(frontFreedom(input)).toEqual({ free: true, via: 'allowed' })
+    expect(frontFreedom({ ...input, mode: 'away' })).toEqual(present)
+    expect(frontFreedom({ ...input, mode: 'away', awaySwitch: true })).toEqual({ free: true, via: 'switch' })
+    expect(frontFreedom({ ...input, presence: { screen: 'locked', power: 'awake' } })).toEqual({ free: false, why: 'locked' })
+    expect(frontFreedom({ ...input, presence: { screen: 'unlocked', power: 'asleep' } })).toEqual({ free: false, why: 'asleep' })
   })
 })

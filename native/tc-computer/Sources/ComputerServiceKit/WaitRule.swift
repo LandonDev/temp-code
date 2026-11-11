@@ -123,6 +123,7 @@ public struct WaitRule: Sendable {
     private var pasteboardChanged = false
     private var counts = WaitOutcome.Counts()
     private var firstChangeSample: Int?
+    private var samples = 0
     private var lastChangePoint: Int?
     private var gapCounts = [Int](repeating: 0, count: WaitGaps.edgesMs.count + 1)
     private var done: WaitOutcome?
@@ -147,9 +148,15 @@ public struct WaitRule: Sendable {
     public mutating func take(_ sample: WaitSample) -> WaitDecision {
         if let done { return .done(done) }
         let at = sample.at
-        // this sample's change for §27.2, at the latest stamp it counted
+        let firstLook = samples == 0
+        samples += 1
+        // this sample's change for §27.2, at the latest stamp it counted (and the earliest, for a first look)
         var changeAt: Int?
-        func counted(_ t: Int) { changeAt = max(changeAt ?? t, t) }
+        var earliest: Int?
+        func counted(_ t: Int) {
+            changeAt = max(changeAt ?? t, t)
+            earliest = min(earliest ?? t, t)
+        }
 
         if let ax = sample.axLastChange, ax >= 0, ax != lastAx {
             lastAx = ax
@@ -188,7 +195,9 @@ public struct WaitRule: Sendable {
             counted(pb)
         }
         if let changeAt {
-            if firstChangeSample == nil { firstChangeSample = at }
+            // a change the wait's first look already finds came before it began (a `front` step's wait starts after
+            // the hold's settle and restore, §26.2): it counts at its own stamp, not at the late first sample
+            if firstChangeSample == nil { firstChangeSample = firstLook ? (earliest ?? at) : at }
             if let last = lastChangePoint { gapCounts[WaitGaps.bucket(max(0, changeAt - last))] += 1 }
             lastChangePoint = max(lastChangePoint ?? changeAt, changeAt)
         }
@@ -273,5 +282,13 @@ public enum WindowFollow {
     public static func opened(before: [Int], focusedAfter: Int?) -> Int? {
         guard let id = focusedAfter, !before.contains(id) else { return nil }
         return id
+    }
+
+    /// The window the call goes back to when the one it acts in is gone after a step (a followed window closed): the
+    /// call's original target when it is live, else the app's focused window; nil while the window is live, or when
+    /// the app's focused window is not another live one.
+    public static func back(current: Int, original: Int, live: [Int], focusedAfter: Int?) -> Int? {
+        guard !live.contains(current), let focused = focusedAfter, focused != current, live.contains(focused) else { return nil }
+        return live.contains(original) ? original : focused
     }
 }

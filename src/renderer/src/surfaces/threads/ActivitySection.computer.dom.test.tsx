@@ -66,6 +66,14 @@ describe("the Computer row", () => {
     expect(r.querySelector('[aria-label="Stop"]')).toBeTruthy();
   });
 
+  it("says in front for a step that brought the app forward for a moment (§26), never the tier's own name", () => {
+    mount(entry({ tier: "front" }));
+    const r = computerRow();
+    expect(r.querySelector('[data-slot="activity-tier"]')!.textContent).toBe("in front");
+    expect(r.textContent).not.toMatch(/\bfront\b.*\bfront\b/);
+    expect(r.querySelector("[aria-label]")?.getAttribute("aria-label")).toContain("Untitled in TextEdit, in front");
+  });
+
   it("Stop is computer.stop on the session's own host, and a failure says so", async () => {
     const e = entry({}, false, "env_box");
     mount(e);

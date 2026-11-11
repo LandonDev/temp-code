@@ -170,6 +170,28 @@ describe('text with no target (§27.7)', () => {
     expect(passwordTarget([{ action: 'type', text: 'x', named: 'Password' } as ComputerAction], read(LOGIN))).toBeNull()
   })
 
+  it('blind text after another input step of the call goes to the live focus, which the service judges: no card off the read', () => {
+    const click = { action: 'left_click', element: 2 } as ComputerAction
+    const type = { action: 'type', text: 'bob' } as ComputerAction
+    expect(passwordTarget([click, type], read(LOGIN))).toBeNull()
+    expect(passwordTarget([click, { action: 'paste', text: 'bob' } as ComputerAction], read(NO_FOCUS))).toBeNull()
+    // first in the call, or after steps that send no input, it still goes to the read's focus
+    expect(passwordTarget([type], read(LOGIN))).not.toBeNull()
+    expect(passwordTarget([{ action: 'screenshot' } as ComputerAction, type], read(LOGIN))).not.toBeNull()
+    // text that names its element is checked wherever it comes
+    expect(passwordTarget([click, { ...type, element: 3 }], read(LOGIN))).not.toBeNull()
+  })
+
+  it('a key or hold_key with no super or ctrl writes, and asks for a password field; a shortcut does not', () => {
+    const key = (text: string, element?: number): ComputerAction => ({ action: 'key', text, ...(element ? { element } : {}) }) as ComputerAction
+    expect(passwordTarget([key('a')], read(LOGIN))).toEqual({ kind: 'password', what: '' })
+    expect(passwordTarget([key('shift+a', 2)], read(PLAIN.replace('input "Search"', 'password "Password"')))).not.toBeNull()
+    expect(passwordTarget([{ action: 'hold_key', text: 'a', duration: 1, element: 3 } as ComputerAction], read(LOGIN))).not.toBeNull()
+    expect(passwordTarget([key('super+a')], read(LOGIN))).toBeNull()
+    expect(passwordTarget([key('ctrl+v', 3)], read(LOGIN))).toBeNull()
+    expect(passwordTarget([key('a', 2)], read(LOGIN))).toBeNull()
+  })
+
   it('a password field a secure refusal named, which no read listed, asks when the step comes back with its element', () => {
     const book = read(PLAIN)
     expect(passwordTarget([{ action: 'type', text: 'x', element: 12 } as ComputerAction], book)).toBeNull()

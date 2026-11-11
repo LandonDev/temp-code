@@ -92,3 +92,35 @@ import Testing
         #expect(wiring.recentForeignCopy(200))
     }
 }
+
+/// `initialize`'s features both ways (docs/computer-protocol.md §3, plan decision 14).
+@Suite struct InitializeFeaturesTests {
+    private func frontRun(_ rig: ServiceRig) async throws -> JSONValue {
+        rig.input.onPerform = { _, _ in InputOutcome(tier: .front, via: .menu, clipboard: nil, cursor: nil, lastInputAt: 1, on: "File › Save") }
+        let key = #"{"action":"key","text":"super+s"}"#
+        let run = try #require(await rig.call("action.run", "{\(docTarget),\"action\":\(key),\"tiers\":[\"ax\",\"process\",\"front\"],\"wait\":\(quick),\"observe\":{\"mode\":\"none\"}}").result)
+        return try #require(run["step"])
+    }
+
+    @Test func theServiceNamesWhatItSpeaks() async throws {
+        let rig = ServiceRig()
+        let result = try #require(await rig.call("initialize", #"{"protocol":1,"client":{"name":"test","version":"0"},"dataDir":"\#(rig.dataDir.path)"}"#).result)
+        #expect(result["features"]?.arrayValue?.compactMap(\.stringValue) == ["front", "commit", "save_as"])
+    }
+
+    @Test func aHostThatListedFrontReadsTheFrontTier() async throws {
+        let rig = ServiceRig()
+        await rig.ready(features: ["front", "commit", "save_as"])
+        let step = try await frontRun(rig)
+        #expect(step["tier"]?.stringValue == "front")
+        #expect(step["input"]?["on"]?.stringValue == "File › Save")
+    }
+
+    @Test func anOlderHostReadsSessionWhereTheStepRanAtFront() async throws {
+        let rig = ServiceRig()
+        await rig.ready()
+        let step = try await frontRun(rig)
+        #expect(step["tier"]?.stringValue == "session")
+        #expect(step["front"] == nil && step["disk"] == nil)
+    }
+}

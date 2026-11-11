@@ -397,7 +397,8 @@ final class FrontRun: @unchecked Sendable {
         self.front = front
         self.tail = tail
         watched = !actions.contains(where: FrontRun.raises)
-        pausing = tiers.contains(.session)
+        // §23.4, §26.2: a step that may bring the app forward on purpose pauses the guard
+        pausing = tiers.contains(.session) || tiers.contains(.front)
         if pausing { front.requestStarted() }
     }
 
@@ -432,7 +433,7 @@ final class FrontRun: @unchecked Sendable {
 extension BatchResult {
     /// The same result with the guard's report.
     func with(front: FrontReport?) -> BatchResult {
-        BatchResult(steps: steps, observation: observation, observationError: observationError, waited: waited, front: front)
+        BatchResult(steps: steps, observation: observation, observationError: observationError, waited: waited, front: front, menusLeftOpen: menusLeftOpen)
     }
 }
 

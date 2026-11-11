@@ -49,20 +49,34 @@ import Testing
     @Test func aPasswordFieldByFocusIsRefusedSecure() {
         #expect(FocusPlan.verdict(type, focus: focus(targeted: true, secure: true)) == .secure)
         #expect(FocusPlan.verdict(ComputerAction(action: .paste, text: "x"), focus: focus(moved: true, secure: true)) == .secure)
-        // a key writes nothing a password field keeps: Return submits the form
-        #expect(FocusPlan.verdict(ComputerAction(action: .key, text: "Return"), focus: focus(targeted: true, secure: true)) == .run)
+        // a key with no command modifier writes into the field as text does; a command does not
+        #expect(FocusPlan.verdict(ComputerAction(action: .key, text: "a"), focus: focus(targeted: true, secure: true)) == .secure)
+        #expect(FocusPlan.verdict(ComputerAction(action: .holdKey, text: "shift+a", duration: 1), focus: focus(targeted: true, secure: true)) == .secure)
+        #expect(FocusPlan.verdict(ComputerAction(action: .key, text: "super+a"), focus: focus(targeted: true, secure: true)) == .run)
+        #expect(FocusPlan.verdict(ComputerAction(action: .key, text: "ctrl+Return"), focus: focus(targeted: true, secure: true)) == .run)
     }
 
     @Test func aPasswordFieldByNameIsRefusedSecure() {
         #expect(FocusPlan.namedVerdict(ComputerAction(action: .type, text: "x", named: "Password"), secure: true) == .secure)
         #expect(FocusPlan.namedVerdict(ComputerAction(action: .setValue, value: "x", named: "Password"), secure: true) == .secure)
         #expect(FocusPlan.namedVerdict(ComputerAction(action: .leftClick, named: "Password"), secure: true) == .run)
+        #expect(FocusPlan.namedVerdict(ComputerAction(action: .key, text: "a", named: "Password"), secure: true) == .secure)
+        #expect(FocusPlan.namedVerdict(ComputerAction(action: .key, text: "cmd+v", named: "Password"), secure: true) == .run)
         #expect(FocusPlan.namedVerdict(ComputerAction(action: .type, text: "x", named: "Name"), secure: false) == .run)
     }
 
-    @Test func theBrowserFieldRuleRunsFirstAndNothingFocusedRuns() {
+    @Test func theBrowserFieldRuleRunsFirst() {
         #expect(FocusPlan.verdict(type, focus: focus(browser: true)) == .run)
-        #expect(FocusPlan.verdict(type, focus: nil) == .run)
+    }
+
+    /// A focus that could not be read (nothing answered, a timeout, a first responder AX does not show) is no planned place.
+    @Test func anUnreadableFocusIsRefused() {
+        #expect(FocusPlan.verdict(type, focus: nil) == .unplanned)
+        #expect(FocusPlan.verdict(ComputerAction(action: .key, text: "Return"), focus: nil) == .unplanned)
+        let error = FocusPlan.error(.unplanned, focused: nil, line: nil)
+        #expect(error?.kind == .focusMoved && error?.reason == .unplanned && error?.element == nil && error?.focused == nil)
+        #expect(error?.message == "The focus could not be read, so no step of this batch is known to aim at it; name the element the text is for.")
+        #expect(FocusPlan.error(.run, focused: nil, line: nil) == nil)
     }
 
     @Test func theNavigationKeysAloneOrWithShift() {
@@ -73,6 +87,10 @@ import Testing
             #expect(!FocusPlan.isNavigationKey(ComputerAction(action: .key, text: text)), "\(text)")
         }
         #expect(!FocusPlan.isNavigationKey(ComputerAction(action: .type, text: "Tab")))
+        // holding Tab walks the focus as far as pressing it again does
+        #expect(FocusPlan.isNavigationKey(ComputerAction(action: .holdKey, text: "tab", duration: 1)))
+        #expect(FocusPlan.isNavigationKey(ComputerAction(action: .holdKey, text: "shift+Down", duration: 1)))
+        #expect(!FocusPlan.isNavigationKey(ComputerAction(action: .holdKey, text: "a", duration: 1)))
     }
 
     @Test func theRefusalsCarryTheFocusedLine() {

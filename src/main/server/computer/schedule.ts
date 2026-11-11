@@ -1,10 +1,13 @@
 import { SERVICE, type ActionResult, type BatchResult, type ComputerNotification, type StepResult, type Tier } from '@shared/computer/protocol'
 import {
+  ACTIVE_APP_SETTING,
   SCHEDULE,
   SESSION_IDLE_SETTING,
+  activeApp,
   askAfter,
   clipboardQuiet,
   freedom,
+  frontFreedom,
   sessionIdleMs,
   sessionRefusalWords,
   type Freedom,
@@ -174,6 +177,15 @@ export class SessionScheduler implements SessionTierGate {
     return this.threads.get(ctx.threadId)?.heldDown === true
   }
 
+  /**
+   * `front` (§26.6): at once under `computer.activeApp` `brief` (the default) or with Away on, never
+   * locked or asleep; under `away` only while the session tier would be. The service's own keyboard-quiet
+   * wait runs as each hold starts.
+   */
+  frontAdmitted(ctx: TierGateContext): boolean {
+    return this.frontFreedom(this.state(ctx.threadId)).free
+  }
+
   personIdleMs(): number {
     return this.opts.idle.getSystemIdleTime() * 1000
   }
@@ -181,6 +193,12 @@ export class SessionScheduler implements SessionTierGate {
   async request(ctx: TierGateRequest): Promise<TierDecision> {
     const st = this.state(ctx.threadId)
     const app = appKeyOf(ctx.app)
+    const front = ctx.needed === 'front'
+    // a front step admitted now needs no wait: the service brought the setting's answer back as needs_tier only because the call left it out
+    if (front) {
+      const f = this.frontFreedom(st)
+      if (f.free) return { admit: true, via: f.via, waitedMs: 0 }
+    }
     if (st.skipped.has(app)) return this.refuse('skipped-earlier', ctx)
     const started = this.clock.now()
     const ask = askAfter(ctx.permission, this.opts.askAfterMs ?? SCHEDULE.askAfterMs)
@@ -189,6 +207,7 @@ export class SessionScheduler implements SessionTierGate {
         if (ctx.signal.aborted) return this.refuse('cancelled', ctx)
         const f = this.freedom(st)
         if (f.free) return { admit: true, via: f.via, waitedMs: this.clock.now() - started }
+        if (front && this.frontFreedom(st).free) return { admit: true, via: 'away', waitedMs: this.clock.now() - started }
         if (f.why === 'locked') return this.refuse('screen-locked', ctx)
         if (f.why === 'asleep') return this.refuse('asleep', ctx)
         if (this.clock.now() - started >= ask) {
@@ -235,7 +254,8 @@ export class SessionScheduler implements SessionTierGate {
       }
     }
     const session = tiers.includes('session')
-    const own = session ? this.opts.idle.beginOwn() : null
+    // a front hold posts events to the app's pid: they move the system's idle time as a session step's do (§26.4)
+    const own = session || tiers.includes('front') ? this.opts.idle.beginOwn() : null
     st.inCall = true
     st.interruptedInCall = false
     let result: T | undefined
@@ -326,6 +346,16 @@ export class SessionScheduler implements SessionTierGate {
     })
   }
 
+  private frontFreedom(st: ThreadState): Freedom {
+    const { screen, power } = this.opts.presence.snapshot()
+    return frontFreedom({
+      presence: { screen, power },
+      awaySwitch: this.opts.awayOn(),
+      mode: activeApp(this.opts.getSetting(ACTIVE_APP_SETTING)),
+      session: this.freedom(st)
+    })
+  }
+
   private refuse(reason: SessionTierRefusal, ctx: TierGateContext): TierDecision {
     return { admit: false, reason, message: sessionRefusalWords(reason, ctx.app.name) }
   }
@@ -340,7 +370,7 @@ export class SessionScheduler implements SessionTierGate {
     const allowed = await ctx.approve({
       toolName: COMPUTER_SESSION_TOOL,
       input: { app: where.appName, window: where.window, actions: [ctx.words] },
-      title: computerSessionAskTitle(ctx.words, where),
+      title: computerSessionAskTitle(ctx.words, where, { front: ctx.needed === 'front' }),
       choices: 'run-skip',
       callId: ctx.callId,
       signal: ctx.signal
@@ -372,9 +402,9 @@ export class SessionScheduler implements SessionTierGate {
     if (interrupted || !result || ctx.signal.aborted) this.letGo(st)
     const spans: OwnSpan[] = []
     for (const s of steps) {
-      const c = s.status === 'ok' ? s.session : undefined
-      if (c?.armedAt !== undefined && c.lastInputAt !== undefined && c.idleAtArmMs !== undefined)
-        spans.push({ armedAt: c.armedAt, lastInputAt: c.lastInputAt, idleAtArmMs: c.idleAtArmMs })
+      for (const c of s.status === 'ok' ? [s.session, s.front] : s.status === 'failed' ? [s.error.front] : [])
+        if (c?.armedAt !== undefined && c.lastInputAt !== undefined && c.idleAtArmMs !== undefined)
+          spans.push({ armedAt: c.armedAt, lastInputAt: c.lastInputAt, idleAtArmMs: c.idleAtArmMs })
     }
     own?.end(interrupted ? [] : spans)
     if (st.restoring) await st.restoring

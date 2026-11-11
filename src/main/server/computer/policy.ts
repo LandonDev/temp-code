@@ -1,7 +1,9 @@
 import { errorLine } from '@shared/computer/errorWords'
 import { hostErrorLine } from '@shared/computer/hostErrors'
 import type { ConfirmNeed } from '@shared/computer/policy'
+import { parseKeyCombo } from '@shared/computer/observation'
 import {
+  NO_INPUT_ACTIONS,
   type AppInfo,
   type ComputerAction,
   type ComputerError,
@@ -133,23 +135,43 @@ export function refusedOpenItem(item: string): string | null {
 
 const TEXT_STEPS: readonly ComputerAction['action'][] = ['type', 'paste']
 
+/** A key with no super or ctrl writes into the field it reaches; a combo that does not parse counts as one. */
+function keyWrites(text: string | undefined): boolean {
+  try {
+    const { modifiers } = parseKeyCombo(text ?? '')
+    return !modifiers.includes('super') && !modifiers.includes('ctrl')
+  } catch {
+    return true
+  }
+}
+
+/** The steps that put text into a field: type, paste, set_value, and a key or hold_key that writes (keyWrites). */
+const writes = (a: ComputerAction): boolean =>
+  TEXT_STEPS.includes(a.action) || a.action === 'set_value' || ((a.action === 'key' || a.action === 'hold_key') && keyWrites(a.text))
+
 const isPasswordLine = (book: ElementBook, index: number): boolean => {
   const brief = book.brief(index)
   return !!brief && (brief.line === 'password' || brief.line.startsWith('password '))
 }
 
 /**
- * The host's own card: a type, paste or set_value step whose destination is a
- * password field asks in every mode. The destination is the step's element,
- * else the latest read's focused element; with neither, a window that shows a
- * password field asks too. A step that names its target by `named` never
- * reaches a password field: the service refuses it (§27.7a). Its `what` is
- * empty: the card's steps say where, and never what is typed.
+ * The host's own card: a step that writes (a type, paste or set_value, a key
+ * or hold_key with no super or ctrl) whose destination is a password field
+ * asks in every mode. The destination is the step's element, else the latest
+ * read's focused element; with neither, a window that shows a password field
+ * asks too. The service judges two destinations the host cannot see, and
+ * refuses a password field at either (§27.7a): a `named` target, and blind
+ * text after another step of the call sent input, which goes to the live
+ * focus (§27.7). Its `what` is empty: the card's steps say where, and never
+ * what is typed.
  */
 export function passwordTarget(actions: readonly ComputerAction[], book: ElementBook | undefined): ConfirmNeed | null {
   if (!book) return null
+  let inputBefore = false
   for (const a of actions) {
-    if ((!TEXT_STEPS.includes(a.action) && a.action !== 'set_value') || a.named !== undefined) continue
+    const blindTextAfterInput = inputBefore && TEXT_STEPS.includes(a.action) && a.element === undefined
+    if (!NO_INPUT_ACTIONS.includes(a.action)) inputBefore = true
+    if (!writes(a) || a.named !== undefined || blindTextAfterInput) continue
     const at = a.element ?? book.focused
     if (at !== null && at !== undefined ? isPasswordLine(book, at) : book.hasRole('password')) return { kind: 'password', what: '' }
   }

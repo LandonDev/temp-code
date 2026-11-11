@@ -20,11 +20,13 @@ public enum Methods {
             public let `protocol`: Int
             public let client: Client
             public let dataDir: String
+            public let features: [String]?
 
-            public init(`protocol`: Int, client: Client, dataDir: String) {
+            public init(`protocol`: Int, client: Client, dataDir: String, features: [String]? = nil) {
                 self.`protocol` = `protocol`
                 self.client = client
                 self.dataDir = dataDir
+                self.features = features
             }
         }
 
@@ -54,14 +56,16 @@ public enum Methods {
             public let os: Os
             public let permissions: Permissions
             public let displays: [DisplayInfo]
+            public let features: [String]?
 
-            public init(`protocol`: Int, service: Service, epoch: String, os: Os, permissions: Permissions, displays: [DisplayInfo]) {
+            public init(`protocol`: Int, service: Service, epoch: String, os: Os, permissions: Permissions, displays: [DisplayInfo], features: [String]? = nil) {
                 self.`protocol` = `protocol`
                 self.service = service
                 self.epoch = epoch
                 self.os = os
                 self.permissions = permissions
                 self.displays = displays
+                self.features = features
             }
         }
     }

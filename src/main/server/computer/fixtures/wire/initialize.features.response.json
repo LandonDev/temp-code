@@ -1,0 +1,47 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "protocol": 1,
+    "service": {
+      "version": "1.0.329",
+      "build": "ec1df5b1"
+    },
+    "epoch": "e-7Kq2",
+    "os": {
+      "version": "27.2",
+      "arch": "arm64"
+    },
+    "permissions": {
+      "accessibility": true,
+      "screenRecording": true
+    },
+    "displays": [
+      {
+        "id": 1,
+        "frame": {
+          "x": 0,
+          "y": 0,
+          "w": 1728,
+          "h": 1117
+        },
+        "scale": 2
+      },
+      {
+        "id": 2,
+        "frame": {
+          "x": 1728,
+          "y": -244,
+          "w": 2560,
+          "h": 1440
+        },
+        "scale": 1
+      }
+    ],
+    "features": [
+      "front",
+      "commit",
+      "save_as"
+    ]
+  }
+}

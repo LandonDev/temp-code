@@ -98,6 +98,15 @@ observation equal to `doc`'s. `chrome/not-drawn` is no recording either:
 leaves a tab selected while its window is covered (docs/computer-protocol.md
 §25.3), and `form`'s shot with everything under the toolbar painted white; its
 observation's header ends ` · page not drawn`.
+Two more are no recordings either, until the
+recorder reads AXDocument and the edited flag (§26.10): `textedit/doc-edited`
+is `doc` with a file behind it (`tree.json`'s `document`: AXDocument
+`file:///Users/me/run/Total.txt`, its mtime, the close button's AXEdited) and
+follows `doc`, so its `diff.txt` is the document line's `~` form;
+`finder/folder` is a hand-built Finder window on `~/run` in list view (rows of
+name fields, AXDocument the folder's URL), its screenshot drawn to the
+window's size. The document line's path is `~`-relative under `/Users/me`
+and its written time is read in UTC (`RawTree.snapshot`).
 
 ### Recording them again
 

@@ -42,7 +42,15 @@ const VARIANTS: Readonly<Record<string, ComputerMethod>> = {
   'input.restoreSession.after-interrupt.request.json': 'input.restoreSession',
   'apps.list.tabs.request.json': 'apps.list',
   'state.get.tab.request.json': 'state.get',
-  'action.run.expect-focus.request.json': 'action.run'
+  'action.run.expect-focus.request.json': 'action.run',
+  // a host that speaks the front tier, save_as and the commit check (§26); the plain files are an older peer's
+  'initialize.features.request.json': 'initialize',
+  'action.run.front.request.json': 'action.run',
+  'action.run.save_as.request.json': 'action.run'
+}
+const RESULT_VARIANTS: Readonly<Record<string, ComputerMethod>> = {
+  'initialize.features.response.json': 'initialize',
+  'action.run.front.response.json': 'action.run'
 }
 /**
  * A second response of one method: the restore that ended a person guard (§14.9); a browser window's tabs, a
@@ -99,6 +107,19 @@ describe('wire fixtures', () => {
       const request = requestFrameSchema(method).safeParse(json(join(wire, file)))
       expect(request.error?.issues, file).toBeUndefined()
     }
+    for (const [file, method] of Object.entries(RESULT_VARIANTS)) {
+      const response = resultFrameSchema(method).safeParse(json(join(wire, file)))
+      expect(response.error?.issues, file).toBeUndefined()
+    }
+  })
+
+  it('keep the front tier, save_as and features out of what an older peer sends (§26, decision 14)', () => {
+    expect(json(join(wire, 'initialize.request.json'))).not.toHaveProperty('params.features')
+    expect(json(join(wire, 'initialize.response.json'))).not.toHaveProperty('result.features')
+    expect(resultFrameSchema('initialize').parse(json(join(wire, 'initialize.features.response.json'))).result.features).toEqual(['front', 'commit', 'save_as'])
+    const step = resultFrameSchema('action.run').parse(json(join(wire, 'action.run.front.response.json'))).result.step
+    expect(step.status === 'ok' && step.tier).toBe('front')
+    expect(step.status === 'ok' && step.disk?.saved).toBe('~/run/Total.txt')
   })
 
   it('take the responses a method has in more than one shape', () => {
@@ -115,6 +136,7 @@ describe('wire fixtures', () => {
     const expected = new Set([
       ...Object.keys(COMPUTER_METHODS).flatMap((m) => [`${m}.request.json`, `${m}.response.json`]),
       ...Object.keys(VARIANTS),
+      ...Object.keys(RESULT_VARIANTS),
       ...Object.keys(RESPONSE_VARIANTS),
       ...COMPUTER_ERROR_KINDS.map((k) => `error-${k}.json`),
       ...[...serviceNotes, ...hostNotes].map(notificationFile)
@@ -155,7 +177,7 @@ describe('observation fixtures', () => {
   it('format every element line back to itself', () => {
     for (const path of texts) {
       const parsed = parseObservation(read(path).replace(/\n$/, ''))
-      const lines = read(path).replace(/\n$/, '').split('\n').slice(parsed.others.length ? 2 : 1)
+      const lines = read(path).replace(/\n$/, '').split('\n').slice(1 + (parsed.header.document ? 1 : 0) + (parsed.others.length ? 1 : 0))
       parsed.lines.forEach((line, i) => {
         if (line.type === 'element') expect(formatObservation({ ...parsed, lines: [line] }).split('\n').pop(), `${relative(root, path)}:${i}`).toBe(lines[i])
       })
@@ -181,6 +203,7 @@ describe('recorded app fixtures', () => {
   const states = [
     'textedit/doc',
     'textedit/doc-shared',
+    'textedit/doc-edited',
     'textedit/typed',
     'textedit/save-sheet',
     'chrome/form',
@@ -189,7 +212,8 @@ describe('recorded app fixtures', () => {
     'chrome/not-drawn',
     'tempcode-dev/first-run',
     'tempcode-dev/thread',
-    'intellij/project'
+    'intellij/project',
+    'finder/folder'
   ]
 
   it('hold every state', () => {

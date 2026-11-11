@@ -4,6 +4,9 @@
 /// The protocol number `initialize` checks (src/shared/computer/protocol.ts COMPUTER_PROTOCOL).
 public let computerProtocol: Int = 1
 
+/// What each side may speak beyond protocol 1 (COMPUTER_FEATURES); `initialize` names them both ways.
+public let computerFeatures: [String] = ["front", "commit", "save_as"]
+
 /// Every number the service applies when the host leaves a field out, and its own limits.
 public enum ComputerDefaults {
     public enum Service {
@@ -98,6 +101,24 @@ public enum ComputerDefaults {
         public static let clickDurationMaxSeconds = 10
         public static let pickMenuMs = 500
         public static let readBackMs = 300
+    }
+    public enum Front {
+        public static let activateMaxMs = 400
+        public static let pollMs = 10
+        public static let settleMs = 250
+        public static let settleMaxMs = 600
+        public static let restoreMaxMs = 400
+        public static let holdMaxMs = 2000
+        public static let quietMs = 800
+        public static let quietMaxMs = 5000
+        public static let keyRepeatMax = 10
+        public static let keysMaxUnits = 200
+        public static let panelOpenMaxMs = 3000
+        public static let commitSettleMs = 1500
+        public static let commitPollMs = 100
+        public static let commitListMax = 2000
+        public static let commitListMs = 20
+        public static let pathMaxUnits = 1024
     }
     public enum RPCErrorCode {
         public static let parseError = -32700

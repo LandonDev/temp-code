@@ -1,3 +1,4 @@
+import ApplicationServices
 import ComputerCore
 import ComputerProtocol
 import ComputerServiceKit
@@ -33,6 +34,12 @@ public final class ComputerService: @unchecked Sendable {
 
     let lock = NSLock()
     var initResult: (dataDir: String, result: Methods.Initialize.Output)?
+    /// what the host named in `initialize` (§3, plan decision 14): every result goes out fitted to it
+    var hostFeatures = HostFeatures.none
+    /// each session's app: the menus its last call closed, and their openers (§26.11)
+    var closedMenus: [String: (ClosedMenus, [String: OpenMenu])] = [:]
+    /// the window's AXDocument and edited flag for the commit check; the tests give their own
+    nonisolated(unsafe) var documentReader: @Sendable (AXUIElement) -> DocumentState? = { DocumentState.read($0) }
     var initializing = false
     var serviceLease: FileLockLease?
     var permissions = Permissions(accessibility: false, screenRecording: false)

@@ -60,7 +60,8 @@ import Testing
         #expect(missing["steps"]?.arrayValue?.first?["error"]?["reason"]?.stringValue == "no-match")
     }
 
-    /// §27.10: a menu path resolves to its item, which the step presses whatever its verb.
+    /// §27.10: a menu path resolves to its item, which the step presses whatever its verb; a disabled item is Input's
+    /// to judge (§26.3), so the step reaches Input with the item as its element.
     @Test func aMenuPathResolvesToItsItem() async throws {
         let rig = ServiceRig()
         await rig.ready()
@@ -91,6 +92,13 @@ import Testing
         reader.live = (inScope: true, targeted: true, secure: false, index: 3)
         let planned = try await batch(rig, #"[{"action":"left_click","element":3},{"action":"type","text":"x"}]"#)
         #expect(planned["steps"]?.arrayValue?.map { $0["status"]?.stringValue } == ["ok", "ok"])
+        // a focus that could not be read is no planned place, and nothing is typed
+        reader.live = nil
+        let performed = rig.log.count("perform type")
+        let unreadable = try await batch(rig, #"[{"action":"left_click","element":3},{"action":"type","text":"x"}]"#)
+        let error = try #require(unreadable["steps"]?.arrayValue?[1]["error"])
+        #expect(error["kind"]?.stringValue == "focus_moved" && error["reason"]?.stringValue == "unplanned" && error["element"] == nil)
+        #expect(rig.log.count("perform type") == performed)
     }
 
     /// §27.4: the call's record starts before the first step's input and the closing read asks for its menus.

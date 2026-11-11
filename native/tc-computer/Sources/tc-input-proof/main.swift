@@ -7,7 +7,7 @@ import Input
 // tc-input-proof: Input's live proof on scratch windows, never shipped (scripts/mac/input-proof.sh
 // sets the windows up and cleans up).
 //
-//   tc-input-proof run --pids textedit=<pid>,chrome=<pid>[,tempcode=<pid>][,finder=<pid>][,intellij=<pid>] [--tiers ax,process] [--session] --report <path>
+//   tc-input-proof run --pids textedit=<pid>,chrome=<pid>[,tempcode=<pid>][,finder=<pid>][,intellij=<pid>] [--tiers ax,process] [--session] [--active] [--work <dir>] --report <path>
 //
 // The scratch apps are named by pid, never by bundle id: the person may have their own
 // TextEdit or Electron windows open, and the proof never touches those.
@@ -19,7 +19,7 @@ import Input
 // TextEdit's ⌘W among them closes its document.
 
 func usage() -> Never {
-    FileHandle.standardError.write(Data("usage: tc-input-proof run --pids textedit=<pid>,chrome=<pid>[,tempcode=<pid>][,finder=<pid>][,intellij=<pid>] [--tiers ax,process] [--session] --report <path>\n".utf8))
+    FileHandle.standardError.write(Data("usage: tc-input-proof run --pids textedit=<pid>,chrome=<pid>[,tempcode=<pid>][,finder=<pid>][,intellij=<pid>] [--tiers ax,process] [--session] [--active] [--work <dir>] --report <path>\n".utf8))
     exit(2)
 }
 
@@ -35,6 +35,8 @@ let pids: [(String, pid_t)] = (value("--pids") ?? "").split(separator: ",").comp
 }
 let tiers = (value("--tiers") ?? "ax,process").split(separator: ",").map { Tier(rawValue: String($0)) }
 let wantSession = args.contains("--session")
+let wantActive = args.contains("--active")
+let work = value("--work") ?? "/tmp/tc-input-proof/work"
 guard let reportPath = value("--report") else { usage() }
 
 let titles: [String: String] = ["textedit": "Untitled", "chrome": "Computer fixture form", "finder": "tc-input-finder"]
@@ -42,7 +44,7 @@ if pids.isEmpty { usage() }
 
 NSApplication.shared.setActivationPolicy(.prohibited)
 
-DispatchQueue.global(qos: .userInitiated).async { [pids, tiers, wantSession, reportPath, titles] in
+DispatchQueue.global(qos: .userInitiated).async { [pids, tiers, wantSession, wantActive, work, reportPath, titles] in
     let proof = Proof()
     var scratch: [String: Scratch] = [:]
     for (app, pid) in pids {
@@ -65,6 +67,10 @@ DispatchQueue.global(qos: .userInitiated).async { [pids, tiers, wantSession, rep
     if wantSession, var te = scratch["textedit"] {
         var ch = scratch["chrome"]
         proof.session(textEdit: &te, chrome: &ch)
+    }
+    if wantActive {
+        // §26: the front legs, before the fallbacks (TextEdit's ⌘W among those closes its document)
+        for (app, _) in pids { if var s = scratch[app] { proof.active(app, &s, work: work) } }
     }
     if tiers.contains(.ax) {
         for (app, _) in pids { if var s = scratch[app] { proof.fallbacks(app, &s) } }
